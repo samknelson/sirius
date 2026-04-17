@@ -163,10 +163,13 @@ export function registerLedgerAccountRoutes(app: Express) {
     }
   });
 
-  // GET /api/ledger/accounts/:id/transactions - Get ledger entries for an account
+  // GET /api/ledger/accounts/:id/transactions - Get ledger entries for an account (paginated)
   app.get("/api/ledger/accounts/:id/transactions", requireComponent("ledger"), requireAccess('staff'), async (req, res) => {
     try {
       const { id } = req.params;
+      const maxLimit = req.query.export === 'true' ? 100000 : 200;
+      const limit = Math.min(parseInt(req.query.limit as string) || 50, maxLimit);
+      const offset = parseInt(req.query.offset as string) || 0;
       
       // Check if account exists
       const account = await storage.ledger.accounts.get(id);
@@ -175,10 +178,11 @@ export function registerLedgerAccountRoutes(app: Express) {
         return;
       }
 
-      // Get all transactions for this account
-      const transactions = await storage.ledger.entries.getByAccountId(id);
-      res.json(transactions);
+      // Get paginated transactions for this account
+      const result = await storage.ledger.entries.getByAccountIdPaginated(id, limit, offset);
+      res.json(result);
     } catch (error) {
+      console.error("Error fetching ledger transactions:", error);
       res.status(500).json({ message: "Failed to fetch ledger transactions" });
     }
   });

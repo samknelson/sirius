@@ -162,6 +162,7 @@ const optionsMetadata: Record<OptionsTypeName, OptionsTableMetadata<any>> = {
     fields: [
       { name: "name", label: "Name", inputType: "text", required: true, placeholder: "ID type name", showInTable: true, columnHeader: "Name" },
       { name: "validator", label: "Validator", inputType: "text", required: false, placeholder: "Validation pattern", showInTable: false },
+      { name: "showOnLists", label: "Show on Lists", inputType: "checkbox", required: false, helperText: "Display this ID type on Worker List, Card Check report, and other list views", showInTable: true, columnHeader: "Show on Lists", dataField: true },
     ],
   },
   "gender": {

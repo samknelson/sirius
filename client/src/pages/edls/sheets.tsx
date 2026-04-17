@@ -1,6 +1,6 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Link } from "wouter";
+import { Link, useSearch, useLocation } from "wouter";
 import { format, addDays, startOfDay } from "date-fns";
 import { formatYmd } from "@shared/utils/date";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -31,7 +31,8 @@ import {
 } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
-import { Plus, FileSpreadsheet, Calendar, Users, CalendarDays, Eye, Pencil, Settings, UserCheck } from "lucide-react";
+import { Plus, FileSpreadsheet, Calendar, Users, CalendarDays, Eye, Pencil, Settings, UserCheck, Layers, Factory, ChevronsUpDown, Check, X } from "lucide-react";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { EdlsSheetForm, type SheetFormData } from "@/components/edls/EdlsSheetForm";
@@ -43,7 +44,26 @@ interface EdlsSheetWithRelations extends EdlsSheet {
   department?: { id: string; name: string };
   supervisorUser?: { id: string; firstName: string | null; lastName: string | null; email: string };
   assigneeUser?: { id: string; firstName: string | null; lastName: string | null; email: string };
+  jobGroup?: { id: string; name: string };
+  facility?: { id: string; name: string };
   assignedCount?: number;
+}
+
+interface FacilityOption {
+  id: string;
+  name: string;
+}
+
+interface PaginatedFacilities {
+  data: FacilityOption[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+interface JobGroupOption {
+  id: string;
+  name: string;
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -112,6 +132,60 @@ export default function EdlsSheetsPage() {
   const [rangeFromDate, setRangeFromDate] = useState<Date | undefined>(undefined);
   const [rangeToDate, setRangeToDate] = useState<Date | undefined>(undefined);
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [eventFilter, setEventFilter] = useState<string>("all");
+  const search = useSearch();
+  const [, setLocation] = useLocation();
+  const initialFacilityFromUrl = useMemo(() => {
+    const params = new URLSearchParams(search);
+    return params.get("facilityId") ?? "";
+  }, []);
+  const [facilityFilter, setFacilityFilterState] = useState<string>(initialFacilityFromUrl);
+  const [facilitySearch, setFacilitySearch] = useState<string>("");
+  const [facilityPickerOpen, setFacilityPickerOpen] = useState(false);
+
+  const setFacilityFilter = (value: string) => {
+    setFacilityFilterState(value);
+    const params = new URLSearchParams(window.location.search);
+    if (value) {
+      params.set("facilityId", value);
+    } else {
+      params.delete("facilityId");
+    }
+    const qs = params.toString();
+    const path = window.location.pathname + (qs ? `?${qs}` : "");
+    setLocation(path, { replace: true });
+  };
+
+  useEffect(() => {
+    const params = new URLSearchParams(search);
+    const next = params.get("facilityId") ?? "";
+    if (next !== facilityFilter) {
+      setFacilityFilterState(next);
+    }
+  }, [search]);
+
+  const { data: facilitiesData } = useQuery<PaginatedFacilities>({
+    queryKey: ["/api/facilities", { search: facilitySearch, sheetsFilter: true }],
+    queryFn: async () => {
+      const params = new URLSearchParams({ page: "0", limit: "50", sortDir: "asc" });
+      if (facilitySearch) params.set("search", facilitySearch);
+      const res = await fetch(`/api/facilities?${params.toString()}`);
+      if (!res.ok) throw new Error("Failed to fetch facilities");
+      return res.json();
+    },
+  });
+  const facilityOptions = facilitiesData?.data ?? [];
+
+  const { data: selectedFacility } = useQuery<{ id: string; name: string }>({
+    queryKey: ["/api/facilities", facilityFilter],
+    queryFn: async () => {
+      const res = await fetch(`/api/facilities/${facilityFilter}`);
+      if (!res.ok) throw new Error("Failed to fetch facility");
+      return res.json();
+    },
+    enabled: !!facilityFilter && !facilityOptions.some(f => f.id === facilityFilter),
+  });
+  const selectedFacilityName = facilityOptions.find(f => f.id === facilityFilter)?.name ?? selectedFacility?.name;
   
   const dateFilterOptions = useMemo(() => getDateFilterOptions(), []);
   
@@ -137,14 +211,42 @@ export default function EdlsSheetsPage() {
     return { dateFrom: undefined, dateTo: undefined };
   }, [dateFilterType, otherDate, rangeFromDate, rangeToDate, dateFilterOptions]);
   
+  const eventOptionsDate = useMemo(() => {
+    if (dateFrom && dateFrom === dateTo) return dateFrom;
+    if (dateFrom && !dateTo) return dateFrom;
+    if (!dateFrom && dateTo) return dateTo;
+    return undefined;
+  }, [dateFrom, dateTo]);
+
+  const { data: eventOptions = [] } = useQuery<JobGroupOption[]>({
+    queryKey: ["/api/edls/job-group-options", eventOptionsDate],
+    queryFn: async () => {
+      if (!eventOptionsDate) return [];
+      const res = await fetch(`/api/edls/job-group-options?date=${eventOptionsDate}`);
+      if (!res.ok) throw new Error("Failed to fetch event options");
+      return res.json();
+    },
+    enabled: !!eventOptionsDate,
+  });
+
+  useEffect(() => {
+    if (eventFilter !== "all" && !eventOptions.some(o => o.id === eventFilter)) {
+      setEventFilter("all");
+    }
+  }, [eventFilter, eventOptions]);
+
+  const activeEventFilter = eventFilter !== "all" && eventOptions.some(o => o.id === eventFilter) ? eventFilter : "all";
+
   const queryParams = new URLSearchParams();
   if (dateFrom) queryParams.set("dateFrom", dateFrom);
   if (dateTo) queryParams.set("dateTo", dateTo);
   if (statusFilter && statusFilter !== "all") queryParams.set("status", statusFilter);
+  if (activeEventFilter && activeEventFilter !== "all") queryParams.set("jobGroupId", activeEventFilter);
+  if (facilityFilter) queryParams.set("facilityId", facilityFilter);
   const queryString = queryParams.toString();
   
   const { data: sheetsData, isLoading } = useQuery<PaginatedEdlsSheets>({
-    queryKey: ["/api/edls/sheets", { dateFrom, dateTo, status: statusFilter }],
+    queryKey: ["/api/edls/sheets", { dateFrom, dateTo, status: statusFilter, jobGroupId: activeEventFilter, facilityId: facilityFilter }],
     queryFn: async () => {
       const url = queryString ? `/api/edls/sheets?${queryString}` : "/api/edls/sheets";
       const res = await fetch(url, { credentials: "include" });
@@ -279,6 +381,108 @@ export default function EdlsSheetsPage() {
               </Select>
             </div>
             
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
+                <Layers className="h-4 w-4" />
+                Event
+              </label>
+              <Select
+                value={eventFilter}
+                onValueChange={setEventFilter}
+                disabled={!eventOptionsDate || eventOptions.length === 0}
+              >
+                <SelectTrigger className="w-[220px]" data-testid="select-event-filter">
+                  <SelectValue placeholder={!eventOptionsDate ? "Select a date first" : "All Events"} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all" data-testid="option-event-all">All Events</SelectItem>
+                  {eventOptions.map((option) => (
+                    <SelectItem key={option.id} value={option.id} data-testid={`option-event-${option.id}`}>
+                      {option.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
+                <Factory className="h-4 w-4" />
+                Facility
+              </label>
+              <Popover open={facilityPickerOpen} onOpenChange={setFacilityPickerOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    className={cn(
+                      "w-[220px] justify-between font-normal",
+                      !facilityFilter && "text-muted-foreground"
+                    )}
+                    data-testid="button-facility-filter"
+                  >
+                    <span className="truncate">
+                      {facilityFilter ? (selectedFacilityName ?? "Selected facility") : "All Facilities"}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      {facilityFilter && (
+                        <X
+                          className="h-4 w-4 opacity-60 hover:opacity-100"
+                          data-testid="button-facility-filter-clear"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setFacilityFilter("");
+                          }}
+                        />
+                      )}
+                      <ChevronsUpDown className="h-4 w-4 opacity-50" />
+                    </span>
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="p-0 w-[--radix-popover-trigger-width]" align="start">
+                  <Command shouldFilter={false}>
+                    <CommandInput
+                      placeholder="Search facilities..."
+                      value={facilitySearch}
+                      onValueChange={setFacilitySearch}
+                      data-testid="input-facility-filter-search"
+                    />
+                    <CommandList>
+                      <CommandEmpty>No facilities found.</CommandEmpty>
+                      <CommandGroup>
+                        <CommandItem
+                          value="__all__"
+                          onSelect={() => {
+                            setFacilityFilter("");
+                            setFacilityPickerOpen(false);
+                          }}
+                          data-testid="option-facility-filter-all"
+                        >
+                          <Check className={cn("mr-2 h-4 w-4", !facilityFilter ? "opacity-100" : "opacity-0")} />
+                          All Facilities
+                        </CommandItem>
+                        {facilityOptions.map((f) => (
+                          <CommandItem
+                            key={f.id}
+                            value={f.id}
+                            onSelect={() => {
+                              setFacilityFilter(f.id);
+                              setFacilityPickerOpen(false);
+                            }}
+                            data-testid={`option-facility-filter-${f.id}`}
+                          >
+                            <Check className={cn("mr-2 h-4 w-4", facilityFilter === f.id ? "opacity-100" : "opacity-0")} />
+                            {f.name}
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+            </div>
+            
             {dateFilterType === "other" && (
               <div className="flex flex-col gap-1.5">
                 <label className="text-sm font-medium text-muted-foreground">Select Date</label>
@@ -380,6 +584,8 @@ export default function EdlsSheetsPage() {
                   <TableHead>Title</TableHead>
                   <TableHead>Date</TableHead>
                   <TableHead>Department</TableHead>
+                  <TableHead>Event</TableHead>
+                  <TableHead>Facility</TableHead>
                   <TableHead>Supervisor / Assignee</TableHead>
                   <TableHead>Workers</TableHead>
                   <TableHead>Tools</TableHead>
@@ -411,6 +617,12 @@ export default function EdlsSheetsPage() {
                     </TableCell>
                     <TableCell>
                       {sheet.department?.name || "—"}
+                    </TableCell>
+                    <TableCell data-testid={`text-event-${sheet.id}`}>
+                      {sheet.jobGroup?.name || "—"}
+                    </TableCell>
+                    <TableCell data-testid={`text-facility-${sheet.id}`}>
+                      {sheet.facility?.name || "—"}
                     </TableCell>
                     <TableCell>
                       <div className="text-sm">

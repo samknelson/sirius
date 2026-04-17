@@ -15,6 +15,26 @@ import { AttributesStep } from './employer-onboarding/AttributesStep';
 import { ContactsStep } from './employer-onboarding/ContactsStep';
 import { WorkerLoadStep } from './employer-onboarding/WorkerLoadStep';
 import { ReviewStep as OnboardingReviewStep } from './employer-onboarding/ReviewStep';
+import { ConfigureStep as BTUConfigureStep } from './btu-worker-import/ConfigureStep';
+import { ProcessStep as BTUProcessStep } from './btu-worker-import/ProcessStep';
+import { ResultsStep as BTUResultsStep } from './btu-worker-import/ResultsStep';
+import { ProcessStep as BTUDuesProcessStep } from './btu-dues-allocation/ProcessStep';
+import { ResultsStep as BTUDuesResultsStep } from './btu-dues-allocation/ResultsStep';
+import { ConfigureStep as BTUCardcheckConfigureStep } from './btu-cardcheck-import/ConfigureStep';
+import { ProcessStep as BTUCardcheckProcessStep } from './btu-cardcheck-import/ProcessStep';
+import { ResultsStep as BTUCardcheckResultsStep } from './btu-cardcheck-import/ResultsStep';
+import { UploadStep as BTUSigUploadStep } from './btu-cardcheck-sig-import/UploadStep';
+import { ConfigureStep as BTUSigConfigureStep } from './btu-cardcheck-sig-import/ConfigureStep';
+import { PreviewStep as BTUSigPreviewStep } from './btu-cardcheck-sig-import/PreviewStep';
+import { ProcessStep as BTUSigProcessStep } from './btu-cardcheck-sig-import/ProcessStep';
+import { ResultsStep as BTUSigResultsStep } from './btu-cardcheck-sig-import/ResultsStep';
+import { ConfigureStep as BTUScrapeConfigureStep } from './btu-cardcheck-scrape-import/ConfigureStep';
+import { ProcessStep as BTUScrapeProcessStep } from './btu-cardcheck-scrape-import/ProcessStep';
+import { ResultsStep as BTUScrapeResultsStep } from './btu-cardcheck-scrape-import/ResultsStep';
+import { UploadStep as BTUBuildingRepUploadStep } from './btu-building-rep-import/UploadStep';
+import { PreviewStep as BTUBuildingRepPreviewStep } from './btu-building-rep-import/PreviewStep';
+import { ProcessStep as BTUBuildingRepProcessStep } from './btu-building-rep-import/ProcessStep';
+import { ResultsStep as BTUBuildingRepResultsStep } from './btu-building-rep-import/ResultsStep';
 
 export interface WizardStepComponent {
   (props: { wizardId: string; wizardType: string; data?: any; onDataChange?: (data: any) => void }): JSX.Element;
@@ -116,6 +136,56 @@ const evaluateBTUInputsComplete: StepCompletionEvaluator = ({ wizard }) => {
   return !!cardcheckDefinitionId;
 };
 
+const evaluateConfigureComplete: StepCompletionEvaluator = ({ wizard }) => {
+  return !!wizard?.data?.asOfDate;
+};
+
+const evaluateCardcheckConfigureComplete: StepCompletionEvaluator = ({ wizard }) => {
+  return !!wizard?.data?.cardcheckDefinitionId;
+};
+
+const evaluateValidateCompleteSkipInvalid: StepCompletionEvaluator = ({ wizard }) => {
+  const validationResults = wizard?.data?.validationResults;
+  if (!validationResults) return false;
+  return validationResults.validRows > 0;
+};
+
+const evaluateSigUploadComplete: StepCompletionEvaluator = ({ wizard }) => {
+  return !!wizard?.data?.uploadedFileId && (wizard?.data?.totalFiles || 0) > 0;
+};
+
+const evaluateSigConfigureComplete: StepCompletionEvaluator = ({ wizard }) => {
+  return !!wizard?.data?.cardcheckDefinitionId;
+};
+
+const evaluateSigPreviewComplete: StepCompletionEvaluator = ({ wizard }) => {
+  return !!wizard?.data?.previewData;
+};
+
+const evaluateSigProcessComplete: StepCompletionEvaluator = ({ wizard }) => {
+  return !!wizard?.data?.processResults;
+};
+
+const evaluateScrapeConfigureComplete: StepCompletionEvaluator = ({ wizard }) => {
+  return !!wizard?.data?.cardcheckDefinitionId;
+};
+
+const evaluateScrapeProcessComplete: StepCompletionEvaluator = ({ wizard }) => {
+  return !!wizard?.data?.processResults;
+};
+
+const evaluateBuildingRepUploadComplete: StepCompletionEvaluator = ({ wizard }) => {
+  return !!wizard?.data?.previewData;
+};
+
+const evaluateBuildingRepPreviewComplete: StepCompletionEvaluator = ({ wizard }) => {
+  return !!wizard?.data?.previewData && (wizard?.data?.previewData?.toCreateCount > 0 || wizard?.data?.previewData?.alreadyAssignedCount > 0);
+};
+
+const evaluateBuildingRepProcessComplete: StepCompletionEvaluator = ({ wizard }) => {
+  return !!wizard?.data?.processResults;
+};
+
 export const stepControllerRegistry: StepControllerRegistry = {
   'gbhet_legal_workers_monthly': {
     'upload': { Component: UploadStep, evaluateCompletion: evaluateUploadComplete },
@@ -168,12 +238,46 @@ export const stepControllerRegistry: StepControllerRegistry = {
     'run': { Component: RunStep, evaluateCompletion: evaluateRunComplete },
     'results': { Component: ResultsStep, evaluateCompletion: alwaysComplete },
   },
-  'hta_union_import': {
+  'btu_worker_import': {
+    'upload': { Component: UploadStep, evaluateCompletion: evaluateUploadComplete },
+    'map': { Component: MapStep, evaluateCompletion: evaluateMapComplete },
+    'configure': { Component: BTUConfigureStep, evaluateCompletion: evaluateConfigureComplete },
+    'validate': { Component: ValidateStep, evaluateCompletion: evaluateValidateComplete },
+    'process': { Component: BTUProcessStep, evaluateCompletion: alwaysComplete },
+    'results': { Component: BTUResultsStep, evaluateCompletion: alwaysComplete },
+  },
+  'btu_dues_allocation': {
     'upload': { Component: UploadStep, evaluateCompletion: evaluateUploadComplete },
     'map': { Component: MapStep, evaluateCompletion: evaluateMapComplete },
     'validate': { Component: ValidateStep, evaluateCompletion: evaluateValidateComplete },
-    'process': { Component: ProcessStep, evaluateCompletion: alwaysComplete },
-    'review': { Component: ReviewStep, evaluateCompletion: alwaysComplete },
+    'process': { Component: BTUDuesProcessStep, evaluateCompletion: alwaysComplete },
+    'results': { Component: BTUDuesResultsStep, evaluateCompletion: alwaysComplete },
+  },
+  'btu_cardcheck_import': {
+    'upload': { Component: UploadStep, evaluateCompletion: evaluateUploadComplete },
+    'map': { Component: MapStep, evaluateCompletion: evaluateMapComplete },
+    'configure': { Component: BTUCardcheckConfigureStep, evaluateCompletion: evaluateCardcheckConfigureComplete },
+    'validate': { Component: ValidateStep, evaluateCompletion: evaluateValidateCompleteSkipInvalid },
+    'process': { Component: BTUCardcheckProcessStep, evaluateCompletion: alwaysComplete },
+    'results': { Component: BTUCardcheckResultsStep, evaluateCompletion: alwaysComplete },
+  },
+  'btu_cardcheck_sig_import': {
+    'upload': { Component: BTUSigUploadStep, evaluateCompletion: evaluateSigUploadComplete },
+    'configure': { Component: BTUSigConfigureStep, evaluateCompletion: evaluateSigConfigureComplete },
+    'preview': { Component: BTUSigPreviewStep, evaluateCompletion: evaluateSigPreviewComplete },
+    'process': { Component: BTUSigProcessStep, evaluateCompletion: evaluateSigProcessComplete },
+    'results': { Component: BTUSigResultsStep, evaluateCompletion: alwaysComplete },
+  },
+  'btu_cardcheck_scrape_import': {
+    'configure': { Component: BTUScrapeConfigureStep, evaluateCompletion: evaluateScrapeConfigureComplete },
+    'process': { Component: BTUScrapeProcessStep, evaluateCompletion: evaluateScrapeProcessComplete },
+    'results': { Component: BTUScrapeResultsStep, evaluateCompletion: alwaysComplete },
+  },
+  'btu_building_rep_import': {
+    'upload': { Component: BTUBuildingRepUploadStep, evaluateCompletion: evaluateBuildingRepUploadComplete },
+    'preview': { Component: BTUBuildingRepPreviewStep, evaluateCompletion: evaluateBuildingRepPreviewComplete },
+    'process': { Component: BTUBuildingRepProcessStep, evaluateCompletion: evaluateBuildingRepProcessComplete },
+    'results': { Component: BTUBuildingRepResultsStep, evaluateCompletion: alwaysComplete },
   },
   'employer_onboarding': {
     'employer_name': { Component: EmployerNameStep, evaluateCompletion: evaluateEmployerNameComplete },
@@ -236,12 +340,46 @@ export const stepComponentRegistry: StepComponentRegistry = {
     'run': RunStep,
     'results': ResultsStep,
   },
-  'hta_union_import': {
+  'btu_worker_import': {
+    'upload': UploadStep,
+    'map': MapStep,
+    'configure': BTUConfigureStep,
+    'validate': ValidateStep,
+    'process': BTUProcessStep,
+    'results': BTUResultsStep,
+  },
+  'btu_dues_allocation': {
     'upload': UploadStep,
     'map': MapStep,
     'validate': ValidateStep,
-    'process': ProcessStep,
-    'review': ReviewStep,
+    'process': BTUDuesProcessStep,
+    'results': BTUDuesResultsStep,
+  },
+  'btu_cardcheck_import': {
+    'upload': UploadStep,
+    'map': MapStep,
+    'configure': BTUCardcheckConfigureStep,
+    'validate': ValidateStep,
+    'process': BTUCardcheckProcessStep,
+    'results': BTUCardcheckResultsStep,
+  },
+  'btu_cardcheck_sig_import': {
+    'upload': BTUSigUploadStep,
+    'configure': BTUSigConfigureStep,
+    'preview': BTUSigPreviewStep,
+    'process': BTUSigProcessStep,
+    'results': BTUSigResultsStep,
+  },
+  'btu_cardcheck_scrape_import': {
+    'configure': BTUScrapeConfigureStep,
+    'process': BTUScrapeProcessStep,
+    'results': BTUScrapeResultsStep,
+  },
+  'btu_building_rep_import': {
+    'upload': BTUBuildingRepUploadStep,
+    'preview': BTUBuildingRepPreviewStep,
+    'process': BTUBuildingRepProcessStep,
+    'results': BTUBuildingRepResultsStep,
   },
   'employer_onboarding': {
     'employer_name': EmployerNameStep,

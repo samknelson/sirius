@@ -1,4 +1,5 @@
 import express, { type Request, Response, NextFunction } from "express";
+import { createServer } from "http";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { initializePermissions } from "@shared/permissions";
@@ -8,7 +9,9 @@ import { setupAuth } from "./auth";
 import { initAccessControl, registerEntityLoader } from "./services/access-policy-evaluator";
 import { storage } from "./storage";
 import { captureRequestContext } from "./middleware/request-context";
-import { registerCronJob, bootstrapCronJobs, cronScheduler, deleteExpiredReportsHandler, deleteOldCronLogsHandler, processWmbBatchHandler, deleteExpiredFloodEventsHandler, deleteExpiredHfeHandler, sweepExpiredBanEligHandler, workerBanActiveScanHandler, workerCertificationActiveScanHandler, logCleanupHandler, dispatchEbaCleanupHandler, dispatchJobPollHandler } from "./cron";
+import { registerCronJob, bootstrapCronJobs, cronScheduler, deleteExpiredReportsHandler, deleteOldCronLogsHandler, processWmbBatchHandler, deleteExpiredFloodEventsHandler, deleteExpiredHfeHandler, sweepExpiredBanEligHandler, workerBanActiveScanHandler, workerCertificationActiveScanHandler, logCleanupHandler, dispatchEbaCleanupHandler, dispatchJobPollHandler, bulkDeliverHandler, t631DispatchJobGroupFetchHandler, t631FacilityFetchHandler } from "./cron";
+import { initDispatchSeniorityReset } from "./services/dispatch-seniority-reset";
+import { memberStatusScanHandler } from "./cron/jobs/memberStatusScan";
 import { loadComponentCache } from "./services/component-cache";
 import { syncComponentPermissions } from "./services/component-permissions";
 import { runMigrations } from "../scripts/migrate";
@@ -42,7 +45,6 @@ import { initWorkerBanNotifications } from "./services/worker-ban-notifications"
 
 // Import dispatch notifications
 import { initDispatchNotifications } from "./services/dispatch-notifications";
-import { initDispatchSeniorityReset } from "./services/dispatch-seniority-reset";
 
 // Import modular access policies (triggers registration via loader)
 import "@shared/access-policies/loader";
@@ -68,8 +70,53 @@ function redactSensitiveData(data: any): any {
 }
 
 const app = express();
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
+
+// Health check endpoint - must be registered BEFORE any heavy initialization
+// This allows deployment health checks to pass while the app is still starting
+let appReady = false;
+app.get('/health', (_req, res) => {
+  res.status(200).json({ status: appReady ? 'ready' : 'starting' });
+});
+
+// Root path handler for health checks during startup
+// Once app is ready, this falls through to the SPA handler
+app.get('/', (req, res, next) => {
+  if (appReady) {
+    // App is ready, let normal SPA handler serve the page
+    return next();
+  }
+  
+  // During startup, respond based on Accept header
+  const acceptHeader = req.headers.accept || '';
+  if (acceptHeader.includes('text/html')) {
+    // Browser request during startup - serve a loading page
+    res.status(200).set({ 'Content-Type': 'text/html' }).send(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Starting...</title>
+          <meta http-equiv="refresh" content="2">
+          <style>
+            body { font-family: system-ui, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #f5f5f5; }
+            .loader { text-align: center; color: #666; }
+          </style>
+        </head>
+        <body>
+          <div class="loader">
+            <p>Application is starting...</p>
+            <p><small>This page will refresh automatically.</small></p>
+          </div>
+        </body>
+      </html>
+    `);
+  } else {
+    // Health check probe - return JSON status
+    res.status(200).json({ status: 'starting' });
+  }
+});
+
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: false, limit: '50mb' }));
 
 app.use((req, res, next) => {
   const start = Date.now();
@@ -126,6 +173,19 @@ app.use((req, res, next) => {
   next();
 });
 
+// Create HTTP server early for health checks
+const server = createServer(app);
+
+// Start listening IMMEDIATELY so health checks pass during initialization
+const port = parseInt(process.env.PORT || '5000', 10);
+server.listen({
+  port,
+  host: "0.0.0.0",
+  reusePort: true,
+}, () => {
+  log(`Server listening on port ${port}, starting initialization...`);
+});
+
 (async () => {
   // Initialize the permission system
   initializePermissions();
@@ -154,16 +214,20 @@ app.use((req, res, next) => {
   logger.info("Access control system initialized", { source: "startup" });
   
   // Register entity loaders for policies that use cacheKeyFields
-  registerEntityLoader('edls_sheet', async (id: string, injectedStorage: any) => {
-    const sheet = await injectedStorage.edlsSheets?.get?.(id);
-    return sheet || null;
-  });
-
   registerEntityLoader('dispatch', async (id: string, injectedStorage: any) => {
     const dispatch = await injectedStorage.dispatches?.get?.(id);
     return dispatch || null;
   });
+
+  registerEntityLoader('edls_sheet', async (id: string, injectedStorage: any) => {
+    const sheet = await injectedStorage.edlsSheets?.get?.(id);
+    return sheet || null;
+  });
   
+  // Initialize dispatch seniority reset
+  initDispatchSeniorityReset();
+  logger.info("Dispatch seniority reset initialized", { source: "startup" });
+
   // Initialize address validation service (loads or creates config)
   await addressValidationService.getConfig();
   logger.info("Address validation service initialized", { source: "startup" });
@@ -206,10 +270,6 @@ app.use((req, res, next) => {
   initDispatchNotifications();
   logger.info("Dispatch notifications initialized", { source: "startup" });
 
-  // Initialize dispatch seniority reset
-  initDispatchSeniorityReset();
-  logger.info("Dispatch seniority reset initialized", { source: "startup" });
-
   // Register charge plugin event listeners
   // Note: Charge plugins are currently called directly from storage for backwards compatibility.
   // The listener is available for future use when we fully migrate to event-driven execution.
@@ -225,8 +285,12 @@ app.use((req, res, next) => {
   registerCronJob('worker-ban-active-scan', workerBanActiveScanHandler);
   registerCronJob('worker-certification-active-scan', workerCertificationActiveScanHandler);
   registerCronJob('log-cleanup', logCleanupHandler);
+  registerCronJob('member-status-scan', memberStatusScanHandler);
   registerCronJob('dispatch-eba-cleanup', dispatchEbaCleanupHandler);
   registerCronJob('dispatch-job-poll', dispatchJobPollHandler);
+  registerCronJob('bulk-deliver', bulkDeliverHandler);
+  registerCronJob('sitespecific-t631-dispatch-job-group-fetch', t631DispatchJobGroupFetchHandler);
+  registerCronJob('sitespecific-t631-facility-fetch', t631FacilityFetchHandler);
   logger.info("Cron job handlers registered", { source: "startup" });
 
   // Register flood events
@@ -255,7 +319,7 @@ app.use((req, res, next) => {
   registerEntityAccessModule(app, storage);
   logger.info("Entity access module registered", { source: "startup" });
 
-  const server = await registerRoutes(app);
+  await registerRoutes(app, server);
 
   // Initialize WebSocket server for real-time notifications
   const sessionMiddleware = getSession();
@@ -293,27 +357,13 @@ app.use((req, res, next) => {
   // importantly only setup vite in development and after
   // setting up all the other routes so the catch-all route
   // doesn't interfere with the other routes
-  app.use((req, res, next) => {
-    if (res.headersSent) return;
-    next();
-  });
-
   if (app.get("env") === "development") {
     await setupVite(app, server);
   } else {
     serveStatic(app);
   }
 
-  // ALWAYS serve the app on the port specified in the environment variable PORT
-  // Other ports are firewalled. Default to 5000 if not specified.
-  // this serves both the API and the client.
-  // It is the only port that is not firewalled.
-  const port = parseInt(process.env.PORT || '5000', 10);
-  server.listen({
-    port,
-    host: "0.0.0.0",
-    reusePort: true,
-  }, () => {
-    log(`serving on port ${port}`);
-  });
+  // Mark app as ready after all initialization is complete
+  appReady = true;
+  logger.info("Application fully initialized and ready", { source: "startup" });
 })();

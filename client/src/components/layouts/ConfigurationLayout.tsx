@@ -58,7 +58,7 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
             const response = await fetch(`/api/access/policies/${policy}`);
             if (response.ok) {
               const data = await response.json();
-              results[policy] = { allowed: data.allowed };
+              results[policy] = { allowed: data.access?.granted ?? false };
             } else {
               results[policy] = { allowed: false };
             }

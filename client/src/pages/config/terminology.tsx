@@ -142,7 +142,7 @@ export default function TerminologyConfigPage() {
     <div className="container mx-auto py-6 space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2" data-testid="text-page-title">
+          <h1 className="text-xl md:text-2xl font-bold flex items-center gap-2" data-testid="text-page-title">
             <Type className="h-6 w-6" />
             Terminology
           </h1>

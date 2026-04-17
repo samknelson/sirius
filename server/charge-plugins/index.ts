@@ -10,3 +10,4 @@ export * from "./listener";
 import "./plugins/gbhetLegalBenefit";
 import "./plugins/paymentSimpleAllocation";
 import "./plugins/btuStewardAttendance";
+import "./plugins/btuDuesAllocation";

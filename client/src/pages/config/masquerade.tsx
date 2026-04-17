@@ -109,7 +109,7 @@ export default function MasqueradePage() {
     <div className="container mx-auto py-8 max-w-7xl">
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold">Masquerade</h1>
+          <h1 className="text-2xl md:text-3xl font-bold">Masquerade</h1>
         <p className="text-muted-foreground mt-1">
           Temporarily view the application as another user for support and troubleshooting
         </p>

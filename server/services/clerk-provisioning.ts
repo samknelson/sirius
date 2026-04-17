@@ -127,13 +127,14 @@ export async function provisionClerkAccount(params: {
     });
 
     return { success: true, clerkUserId };
-  } catch (clerkErr: any) {
+  } catch (clerkErr: unknown) {
+    const err = clerkErr as Record<string, unknown>;
     const errorDetails = {
-      message: clerkErr?.message,
-      status: clerkErr?.status,
-      clerkError: clerkErr?.errors || clerkErr?.clerkError,
-      code: clerkErr?.code,
-      raw: JSON.stringify(clerkErr, Object.getOwnPropertyNames(clerkErr || {})),
+      message: err?.message,
+      status: err?.status,
+      clerkError: err?.errors || err?.clerkError,
+      code: err?.code,
+      raw: JSON.stringify(err, Object.getOwnPropertyNames(err || {})),
     };
     logger.error("Failed to create/link Clerk account for provisioned user", {
       userId,
@@ -142,7 +143,7 @@ export async function provisionClerkAccount(params: {
     });
     return {
       success: false,
-      warning: `Clerk account could not be created automatically: ${clerkErr?.message || 'Unknown error'}. User will need to sign up manually.`,
+      warning: `Clerk account could not be created automatically: ${err?.message || 'Unknown error'}. User will need to sign up manually.`,
     };
   }
 }

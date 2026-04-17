@@ -1,7 +1,10 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
+import { stringify } from "csv-stringify/sync";
+import { sql } from "drizzle-orm";
+import multer from "multer";
 import { storage } from "./storage";
-import { insertWorkerSchema, insertWorkerDispatchHfeSchema, type InsertEmployer, type WorkerId, type ContactPostal, type PhoneNumber } from "@shared/schema";
+import { insertWorkerSchema, insertWorkerDispatchHfeSchema, type WorkerId, type ContactPostal, type PhoneNumber } from "@shared/schema";
 import { z } from "zod";
 import { registerUserRoutes } from "./modules/users";
 import { registerVariableRoutes } from "./modules/variables";
@@ -9,18 +12,25 @@ import { registerContactPostalRoutes } from "./modules/contact-postal";
 import { registerPhoneNumberRoutes } from "./modules/phone-numbers";
 import { registerCommRoutes } from "./modules/comm";
 import { registerEmployerContactRoutes } from "./modules/employer-contacts";
-import { registerTrustBenefitsRoutes } from "./modules/trust-benefits";
-import { registerTrustProvidersRoutes } from "./modules/trust-providers";
-import { registerTrustProviderContactRoutes } from "./modules/trust-provider-contacts";
+import { registerTrustBenefitsRoutes } from "./modules/trust/benefits";
+import { registerTrustProvidersRoutes } from "./modules/trust/providers";
+import { registerTrustProviderContactRoutes } from "./modules/trust/provider/contacts";
 import { registerConsolidatedOptionsRoutes } from "./modules/options-routes";
+import { getOptionsType } from "./modules/options-registry";
 import { registerWorkerIdsRoutes } from "./modules/worker-ids";
 import { registerAddressValidationRoutes } from "./modules/address-validation";
-import { registerMasqueradeRoutes, getEffectiveUser } from "./modules/masquerade";
+import {
+  registerMasqueradeRoutes,
+  getEffectiveUser,
+} from "./modules/masquerade";
 import { registerDashboardRoutes } from "./modules/dashboard";
 import { registerBookmarkRoutes } from "./modules/bookmarks";
-import { registerComponentRoutes, getEnabledComponentIds } from "./modules/components";
+import {
+  registerComponentRoutes,
+  getEnabledComponentIds,
+} from "./modules/components";
 import { registerEmployerUserSettingsRoutes } from "./modules/employer-user-settings";
-import { registerTrustProviderUserSettingsRoutes } from "./modules/trust-provider-user-settings";
+import { registerTrustProviderUserSettingsRoutes } from "./modules/trust/provider/user-settings";
 import { registerWorkerUserSettingsRoutes } from "./modules/worker-user-settings";
 import { registerWorkerUsersRoutes } from "./modules/worker-users";
 import { registerWizardRoutes } from "./modules/wizards";
@@ -30,6 +40,7 @@ import { registerLedgerStripeRoutes } from "./modules/ledger/stripe";
 import { registerLedgerAccountRoutes } from "./modules/ledger/accounts";
 import { registerLedgerEaRoutes } from "./modules/ledger/ea";
 import { registerLedgerPaymentRoutes } from "./modules/ledger/payments";
+import { registerLedgerPaymentBatchRoutes } from "./modules/ledger/payment-batches";
 import { registerAccessPolicyRoutes } from "./modules/access-policies";
 import { registerLogRoutes } from "./modules/logs";
 import { registerWorkerWshRoutes } from "./modules/worker-wsh";
@@ -46,12 +57,16 @@ import { registerSiteSettingsRoutes } from "./modules/site-settings";
 import { registerSystemModeRoutes } from "./modules/system-mode";
 import { registerBootstrapRoutes } from "./modules/bootstrap";
 import { registerBargainingUnitsRoutes } from "./modules/bargaining-units";
+import { registerSftpClientDestinationRoutes } from "./modules/sftp-client-destinations";
+import { registerTrustProviderEdiRoutes } from "./modules/trust/provider/edi";
+import { registerBulkMessageRoutes } from "./modules/bulk/messages";
+import { registerEmployerRoutes } from "./modules/employers";
 import { registerEmployerPolicyHistoryRoutes } from "./modules/employer-policy-history";
 import { registerWorkerBenefitsScanRoutes } from "./modules/worker-benefits-scan";
 import { registerWmbScanQueueRoutes } from "./modules/wmb-scan-queue";
 import { registerStaffAlertRoutes } from "./modules/staff-alerts";
-import { registerDispatchDncConfigRoutes } from "./modules/dispatch-dnc-config";
-import { registerDispatchEbaConfigRoutes } from "./modules/dispatch-eba-config";
+import { registerDispatchDncConfigRoutes } from "./modules/dispatch/dnc-config";
+import { registerDispatchEbaConfigRoutes } from "./modules/dispatch/eba-config";
 import { registerWorkerBanConfigRoutes } from "./modules/worker-ban-config";
 import { registerCardcheckDefinitionsRoutes } from "./modules/cardcheck-definitions";
 import { registerCardchecksRoutes } from "./modules/cardchecks";
@@ -59,8 +74,10 @@ import { registerEsigsRoutes } from "./modules/esigs";
 import { registerSessionRoutes } from "./modules/sessions";
 import { registerFloodEventRoutes } from "./modules/flood-events";
 import { registerEventsRoutes } from "./modules/events";
-import { registerDispatchJobsRoutes } from "./modules/dispatch-jobs";
-import { registerDispatchesRoutes } from "./modules/dispatches";
+import { registerDispatchJobsRoutes } from "./modules/dispatch/jobs";
+import { registerDispatchJobGroupsRoutes } from "./modules/dispatch/job-groups";
+import { registerFacilityRoutes } from "./modules/facility/facilities";
+import { registerDispatchesRoutes } from "./modules/dispatch/dispatches";
 import { registerWorkerDispatchStatusRoutes } from "./modules/worker-dispatch-status";
 import { registerWorkerDispatchDncRoutes } from "./modules/worker-dispatch-dnc";
 import { registerWorkerDispatchHfeRoutes } from "./modules/worker-dispatch-hfe";
@@ -71,14 +88,22 @@ import { registerWorkerCertificationsRoutes } from "./modules/worker-certificati
 import { registerWorkerRatingsRoutes } from "./modules/worker-ratings";
 import { requireComponent } from "./modules/components";
 import { registerWorkerStewardAssignmentRoutes } from "./modules/worker-steward-assignments";
-import { registerBtuCsgRoutes } from "./modules/sitespecific-btu-csg";
+import { registerBtuCsgRoutes } from "./modules/sitespecific/btu/csg";
 import { registerHtaRoutes } from "./modules/hta";
-import { registerEdlsSheetsRoutes } from "./modules/edls-sheets";
-import { registerEdlsTasksRoutes } from "./modules/edls-tasks";
+import { registerBtuTerritoriesRoutes } from "./modules/sitespecific/btu/territories";
+import { registerBtuSchoolRoutes } from "./modules/sitespecific/btu/school";
+import { registerBtuSigImportRoutes } from "./modules/sitespecific/btu/sig-import";
+import { registerBtuScraperImportRoutes } from "./modules/sitespecific/btu/scraper-import";
+import { registerBtuBuildingRepImportRoutes } from "./modules/sitespecific/btu/building-rep-import";
+import { registerBtuPoliticalRoutes } from "./modules/sitespecific/btu/political";
+import { registerT631ClientFetchRoutes } from "./modules/sitespecific/t631/client/fetch";
+import { registerEdlsSheetsRoutes } from "./modules/edls/sheets";
+import { registerEdlsTasksRoutes } from "./modules/edls/tasks";
 import { registerWebServiceBundle } from "./modules/webservices";
 import { setupEdlsRoutes, EDLS_BUNDLE_CODE } from "./modules/webservices/edls";
 import { registerWebServiceAdminRoutes } from "./modules/webservices/admin";
 import { registerTerminologyRoutes } from "./modules/terminology";
+import { registerCompaniesRoutes } from "./modules/companies";
 import { registerPoliciesRoutes } from "./modules/policies";
 import { requireAccess } from "./services/access-policy-evaluator";
 import { addressValidationService } from "./services/address-validation";
@@ -104,17 +129,20 @@ const requirePermission = (permissionKey: string) => {
     if (!dbUser) {
       return res.status(401).json({ message: "User not found" });
     }
-    
-    const hasPermission = await storage.users.userHasPermission(dbUser.id, permissionKey);
+
+    const hasPermission = await storage.users.userHasPermission(
+      dbUser.id,
+      permissionKey,
+    );
     if (!hasPermission) {
       return res.status(403).json({ message: "Insufficient permissions" });
     }
-    
+
     next();
   };
 };
 
-export async function registerRoutes(app: Express): Promise<Server> {
+export async function registerRoutes(app: Express, existingServer?: Server): Promise<Server> {
   // Unauthorized route for failed logins
   app.get("/unauthorized", (req, res) => {
     res.status(401).send(`
@@ -160,7 +188,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const user = req.user as any;
       const session = req.session as any;
-      
+
       // Get effective user (handles masquerading)
       const { dbUser, originalUser } = await getEffectiveUser(session, user);
       
@@ -171,39 +199,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userPermissions = await storage.users.getUserPermissions(dbUser.id);
       const enabledComponents = await getEnabledComponentIds();
       
+      // Get user's associated worker if they have one
       let workerId: string | null = null;
-      const identities = await storage.authIdentities.getByUserId(dbUser.id);
-      for (const identity of identities) {
-        const meta = identity.metadata as Record<string, any> | null;
-        if (meta?.workerId) {
-          const worker = await storage.workers.getWorker(meta.workerId);
-          if (worker) {
-            workerId = worker.id;
-            break;
-          }
-        }
-      }
-      if (!workerId && dbUser.email) {
+      if (dbUser.email) {
         const worker = await storage.workers.getWorkerByContactEmail(dbUser.email);
         if (worker) {
           workerId = worker.id;
         }
       }
-      if (!workerId) {
-        for (const identity of identities) {
-          if (identity.email && identity.email !== dbUser.email) {
-            const worker = await storage.workers.getWorkerByContactEmail(identity.email);
-            if (worker) {
-              workerId = worker.id;
-              break;
-            }
-          }
-        }
-      }
       
       res.json({
-        user: { 
-          id: dbUser.id, 
+        user: {
+          id: dbUser.id,
           email: dbUser.email,
           firstName: dbUser.firstName,
           lastName: dbUser.lastName,
@@ -211,44 +218,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
           isActive: dbUser.isActive,
           workerId: workerId
         },
-        permissions: userPermissions.map(p => p.key),
+        permissions: userPermissions.map((p) => p.key),
         components: enabledComponents,
-        masquerade: session.masqueradeUserId ? {
-          isMasquerading: true,
-          originalUser: originalUser ? {
-            id: originalUser.id,
-            email: originalUser.email,
-            firstName: originalUser.firstName,
-            lastName: originalUser.lastName,
-          } : null
-        } : {
-          isMasquerading: false
-        }
+        masquerade: session.masqueradeUserId
+          ? {
+              isMasquerading: true,
+              originalUser: originalUser
+                ? {
+                    id: originalUser.id,
+                    email: originalUser.email,
+                    firstName: originalUser.firstName,
+                    lastName: originalUser.lastName,
+                  }
+                : null,
+            }
+          : {
+              isMasquerading: false,
+            },
       });
     } catch (error) {
-      console.error("Error in /api/auth/user:", error);
+      console.error("Failed to fetch user info:", error);
       res.status(500).json({ message: "Failed to fetch user info" });
     }
   });
 
   // Register access policy evaluation routes
   registerAccessPolicyRoutes(app);
-  
+
   // Register masquerade routes
   registerMasqueradeRoutes(app, requireAuth, requirePermission);
-  
+
   // Register session management routes
   registerSessionRoutes(app, requireAuth, storage);
-  
+
   // Register flood events routes
   registerFloodEventRoutes(app, requireAuth, storage);
-  
+
   // Register user management routes
   registerUserRoutes(app, requireAuth, requirePermission);
-  
+
   // Register employer user settings routes
   registerEmployerUserSettingsRoutes(app, requireAuth, requirePermission);
-  
+
   // Register trust provider user settings routes
   registerTrustProviderUserSettingsRoutes(app, requireAuth, requirePermission);
   
@@ -263,19 +274,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Register phone number management routes
   registerPhoneNumberRoutes(app, requireAuth, requirePermission, requireAccess);
-  
+
   // Register communication routes
   registerCommRoutes(app, requireAuth, requirePermission, requireAccess);
-  
+
   // Register employer contact routes
   registerEmployerContactRoutes(app, requireAuth, requirePermission);
-  
+
   // Register trust benefits routes
   registerTrustBenefitsRoutes(app, requireAuth, requirePermission);
-  
+
   // Register trust providers routes
-  registerTrustProvidersRoutes(app, requireAuth, requirePermission, requireAccess);
-  
+  registerTrustProvidersRoutes(
+    app,
+    requireAuth,
+    requirePermission,
+    requireAccess,
+  );
+
   // Register trust provider contacts routes
   registerTrustProviderContactRoutes(app, requireAuth, requirePermission);
   
@@ -284,13 +300,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Register worker IDs routes
   registerWorkerIdsRoutes(app, requireAuth, requirePermission);
-  
+
   // Register address validation routes
   registerAddressValidationRoutes(app, requireAuth, requirePermission);
-  
+
   // Register dashboard routes
   registerDashboardRoutes(app, requireAuth, requirePermission);
-  
+
   // Register bookmark routes
   registerBookmarkRoutes(app, requireAuth, requirePermission);
 
@@ -316,12 +332,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Register ledger/payments routes
   registerLedgerPaymentRoutes(app);
 
+  // Register ledger/payment-batches routes
+  registerLedgerPaymentBatchRoutes(app);
+
   // Register log management routes
   registerLogRoutes(app, requireAuth, requirePermission, requireAccess);
   registerWorkerWshRoutes(app, requireAuth, requirePermission, requireAccess, storage.workerWsh);
   registerWorkerMshRoutes(app, requireAuth, requirePermission, requireAccess, storage.workerMsh);
   registerWorkerHoursRoutes(app, requireAuth, requirePermission, requireAccess, storage.workerHours, storage.ledger);
   registerQuickstartRoutes(app);
+  
 
   // Register cron job management routes
   registerCronJobRoutes(app, requireAuth, requirePermission);
@@ -359,6 +379,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Register bargaining units configuration routes
   registerBargainingUnitsRoutes(app, requireAuth, requireAccess, storage);
 
+  // Register SFTP client destination routes
+  registerSftpClientDestinationRoutes(app, requireAuth, requireAccess, storage);
+
+  // Register trust provider EDI routes
+  registerTrustProviderEdiRoutes(app, requireAuth, requireAccess, storage);
+
+  // Register bulk message routes
+  registerBulkMessageRoutes(app, requireAuth, requireAccess, storage);
+
   // Register worker steward assignments routes
   registerWorkerStewardAssignmentRoutes(app, requireAuth, requireAccess, storage);
 
@@ -384,16 +413,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
   registerWorkerBanConfigRoutes(app, requireAuth, requireAccess, storage);
   
   // Register cardcheck definitions routes
-  registerCardcheckDefinitionsRoutes(app, requireAuth, requirePermission, requireAccess);
-  
+  registerCardcheckDefinitionsRoutes(
+    app,
+    requireAuth,
+    requirePermission,
+    requireAccess,
+  );
+
   // Register cardchecks routes
   registerCardchecksRoutes(app, requireAuth, requirePermission, requireAccess);
-  
+
   // Register e-signature routes
   registerEsigsRoutes(app, requireAuth, requirePermission, requireAccess, storage);
 
   // Worker routes (protected with authentication and permissions)
-  
+
   // GET /api/workers/with-details - Get all workers with contact and phone data (optimized for list view)
   app.get("/api/workers/with-details", requireAuth, requireAccess("worker.list"), async (req, res) => {
     try {
@@ -404,7 +438,454 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Failed to fetch workers" });
     }
   });
-  
+
+  // GET /api/workers/with-details/paginated - Get paginated workers with contact data
+  app.get("/api/workers/with-details/paginated", requireAuth, requirePermission("staff"), async (req, res) => {
+    try {
+      const rawPage = parseInt(req.query.page as string);
+      const rawPageSize = parseInt(req.query.pageSize as string);
+      const page = isNaN(rawPage) || rawPage < 1 ? 1 : rawPage;
+      const pageSize = isNaN(rawPageSize) || rawPageSize < 1 ? 50 : Math.min(rawPageSize, 100);
+      const search = typeof req.query.search === 'string' ? req.query.search : undefined;
+      const sortOrderParam = req.query.sortOrder as string;
+      const sortOrder = sortOrderParam === 'desc' ? 'desc' : 'asc';
+      const sortByParam = req.query.sortBy as string;
+      const validSortByValues = ['lastName', 'firstName', 'employer'];
+      const sortBy = validSortByValues.includes(sortByParam) ? sortByParam as 'lastName' | 'firstName' | 'employer' : 'lastName';
+      
+      // Filter parameters
+      const employerId = typeof req.query.employerId === 'string' && req.query.employerId !== 'all' ? req.query.employerId : undefined;
+      const employerTypeId = typeof req.query.employerTypeId === 'string' && req.query.employerTypeId !== 'all' ? req.query.employerTypeId : undefined;
+      const bargainingUnitId = typeof req.query.bargainingUnitId === 'string' && req.query.bargainingUnitId !== 'all' ? req.query.bargainingUnitId : undefined;
+      const benefitId = typeof req.query.benefitId === 'string' && req.query.benefitId !== 'all' ? req.query.benefitId : undefined;
+      const contactStatusParam = req.query.contactStatus as string;
+      const validContactStatuses = ['all', 'has_email', 'missing_email', 'has_phone', 'missing_phone', 'has_address', 'missing_address', 'complete', 'incomplete'];
+      const contactStatus = validContactStatuses.includes(contactStatusParam) ? contactStatusParam as any : 'all';
+      const hasMultipleEmployers = req.query.hasMultipleEmployers === 'true';
+      const jobTitle = typeof req.query.jobTitle === 'string' && req.query.jobTitle.trim() ? req.query.jobTitle.trim() : undefined;
+      const memberStatusId = typeof req.query.memberStatusId === 'string' && req.query.memberStatusId !== 'all' ? req.query.memberStatusId : undefined;
+      const representativeId = typeof req.query.representativeId === 'string' && req.query.representativeId !== 'all' ? req.query.representativeId : undefined;
+      
+      const result = await storage.workers.getWorkersWithDetailsPaginated({
+        page,
+        pageSize,
+        search,
+        sortOrder,
+        sortBy,
+        employerId,
+        employerTypeId,
+        bargainingUnitId,
+        benefitId,
+        contactStatus,
+        hasMultipleEmployers,
+        jobTitle,
+        memberStatusId,
+        representativeId,
+      });
+      res.json(result);
+    } catch (error) {
+      console.error("Failed to fetch paginated workers:", error);
+      res.status(500).json({ message: "Failed to fetch workers" });
+    }
+  });
+
+  // POST /api/workers/latest-dues - Get latest dues payment info for a batch of workers
+  app.post("/api/workers/latest-dues", requireAuth, requirePermission("staff"), async (req, res) => {
+    try {
+      const { workerIds } = req.body;
+      if (!Array.isArray(workerIds) || workerIds.length === 0) {
+        return res.json({});
+      }
+      const limitedWorkerIds = workerIds.slice(0, 100);
+      const duesMap = await storage.readOnly.query(async (client) => {
+        const configResult = await client.execute(sql`
+          SELECT settings FROM charge_plugin_configs WHERE plugin_id = 'btu-dues-allocation' AND enabled = true LIMIT 1
+        `);
+        if (configResult.rows.length === 0) {
+          return {};
+        }
+        const settings = (configResult.rows[0] as any).settings as { accountIds?: string[] } | null;
+        const duesAccountId = settings?.accountIds?.[0];
+        if (!duesAccountId) {
+          return {};
+        }
+        const workerIdArray = sql`ARRAY[${sql.join(limitedWorkerIds.map(id => sql`${id}`), sql`, `)}]::varchar[]`;
+        const result = await client.execute(sql`
+          SELECT DISTINCT ON (ea.entity_id)
+            ea.entity_id as worker_id,
+            l.amount,
+            l.date
+          FROM ledger_ea ea
+          INNER JOIN ledger l ON l.ea_id = ea.id
+          WHERE ea.entity_type = 'worker'
+            AND ea.account_id = ${duesAccountId}
+            AND ea.entity_id = ANY(${workerIdArray})
+          ORDER BY ea.entity_id, l.date DESC
+        `);
+        const map: Record<string, { amount: string; date: string }> = {};
+        for (const row of result.rows as any[]) {
+          map[row.worker_id] = { amount: row.amount, date: row.date };
+        }
+        return map;
+      });
+      res.json(duesMap);
+    } catch (error) {
+      console.error("Failed to fetch latest dues:", error);
+      res.status(500).json({ message: "Failed to fetch latest dues" });
+    }
+  });
+
+  // GET /api/workers/export - Export workers to CSV with filters
+  app.get("/api/workers/export", requireAuth, requirePermission("staff"), async (req, res) => {
+    try {
+      const search = typeof req.query.search === 'string' ? req.query.search : undefined;
+      const sortOrderParam = req.query.sortOrder as string;
+      const sortOrder = sortOrderParam === 'desc' ? 'desc' : 'asc';
+      
+      // Filter parameters
+      const employerId = typeof req.query.employerId === 'string' && req.query.employerId !== 'all' ? req.query.employerId : undefined;
+      const employerTypeId = typeof req.query.employerTypeId === 'string' && req.query.employerTypeId !== 'all' ? req.query.employerTypeId : undefined;
+      const bargainingUnitId = typeof req.query.bargainingUnitId === 'string' && req.query.bargainingUnitId !== 'all' ? req.query.bargainingUnitId : undefined;
+      const benefitId = typeof req.query.benefitId === 'string' && req.query.benefitId !== 'all' ? req.query.benefitId : undefined;
+      const contactStatusParam = req.query.contactStatus as string;
+      const validContactStatuses = ['all', 'has_email', 'missing_email', 'has_phone', 'missing_phone', 'has_address', 'missing_address', 'complete', 'incomplete'];
+      const contactStatus = validContactStatuses.includes(contactStatusParam) ? contactStatusParam as any : 'all';
+      const jobTitle = typeof req.query.jobTitle === 'string' && req.query.jobTitle.trim() ? req.query.jobTitle.trim() : undefined;
+      const memberStatusId = typeof req.query.memberStatusId === 'string' && req.query.memberStatusId !== 'all' ? req.query.memberStatusId : undefined;
+      const representativeId = typeof req.query.representativeId === 'string' && req.query.representativeId !== 'all' ? req.query.representativeId : undefined;
+      const includeBenefits = req.query.includeBenefits === 'true';
+      
+      // Get all workers matching filters
+      const workers = await storage.workers.getWorkersForExport({
+        search,
+        sortOrder,
+        employerId,
+        employerTypeId,
+        bargainingUnitId,
+        benefitId,
+        contactStatus,
+        jobTitle,
+        memberStatusId,
+        representativeId,
+      });
+      
+      // Helper to format SSN
+      const formatSSN = (ssn: string | null) => {
+        if (!ssn) return '';
+        const digits = ssn.replace(/\D/g, '');
+        if (digits.length === 9) {
+          return `${digits.slice(0, 3)}-${digits.slice(3, 5)}-${digits.slice(5)}`;
+        }
+        return ssn;
+      };
+
+      const workerIdsList = workers.map(w => w.id);
+
+      const [showOnListsTypes, workerIdRecords, allEmployers, memberStatusOptions] = await Promise.all([
+        storage.workerIds.getShowOnListsIdTypes(),
+        workerIdsList.length > 0 ? storage.workerIds.getWorkerIdsForListByWorkerIds(workerIdsList) : Promise.resolve([]),
+        storage.employers.getAllEmployers(),
+        (async () => {
+          const config = getOptionsType("worker-ms");
+          return config ? config.getAll() : [];
+        })(),
+      ]);
+
+      const employerNameMap = new Map<string, string>();
+      for (const emp of allEmployers) {
+        employerNameMap.set(emp.id, emp.name);
+      }
+
+      const memberStatusNameMap = new Map<string, string>();
+      for (const ms of memberStatusOptions) {
+        memberStatusNameMap.set(ms.id, ms.name);
+      }
+
+      const workerIdMap = new Map<string, Map<string, string>>();
+      for (const wid of workerIdRecords) {
+        if (!workerIdMap.has(wid.workerId)) {
+          workerIdMap.set(wid.workerId, new Map());
+        }
+        workerIdMap.get(wid.workerId)!.set(wid.typeId, wid.value);
+      }
+
+      // Build CSV data
+      const csvData = workers.map(worker => {
+        const baseData: Record<string, string> = {
+          'First Name': worker.given || '',
+          'Middle Name': worker.middle || '',
+          'Last Name': worker.family || '',
+          'SSN': formatSSN(worker.ssn),
+        };
+
+        for (const idType of showOnListsTypes) {
+          const idValue = workerIdMap.get(worker.id)?.get(idType.id) || '';
+          baseData[idType.name] = idValue;
+        }
+
+        baseData['Job Title'] = (worker as any).denorm_job_title || '';
+        baseData['Bargaining Unit'] = (worker as any).bargaining_unit_name || '';
+
+        const msIds: string[] = (worker as any).denorm_ms_ids || [];
+        const msNames = msIds
+          .map(id => memberStatusNameMap.get(id))
+          .filter((n): n is string => !!n);
+        baseData['Member Status'] = msNames.join('; ');
+
+        const employerIds: string[] = (worker as any).denorm_employer_ids || [];
+        const empNames = employerIds
+          .map(id => employerNameMap.get(id))
+          .filter((n): n is string => !!n);
+        baseData['Employer(s)'] = empNames.join('; ');
+
+        baseData['Street'] = worker.address_street || '';
+        baseData['City'] = worker.address_city || '';
+        baseData['State'] = worker.address_state || '';
+        baseData['Postal Code'] = worker.address_postal_code || '';
+        baseData['Country'] = worker.address_country || '';
+        baseData['Email'] = worker.contact_email || '';
+        baseData['Phone Number'] = worker.phone_number || '';
+        
+        if (includeBenefits) {
+          const benefits = worker.benefits || [];
+          const benefitsString = benefits
+            .filter((b: any) => b && b.name)
+            .map((b: any) => b.name)
+            .join('; ');
+          baseData['Current Benefits'] = benefitsString;
+        }
+        
+        return baseData;
+      });
+      
+      // Define columns
+      const columns = [
+        'First Name',
+        'Middle Name',
+        'Last Name',
+        'SSN',
+        ...showOnListsTypes.map(t => t.name),
+        'Job Title',
+        'Bargaining Unit',
+        'Member Status',
+        'Employer(s)',
+        'Street',
+        'City',
+        'State',
+        'Postal Code',
+        'Country',
+        'Email',
+        'Phone Number',
+        ...(includeBenefits ? ['Current Benefits'] : [])
+      ];
+      
+      // Generate CSV
+      const csv = stringify(csvData, {
+        header: true,
+        columns
+      });
+      
+      // Send CSV response
+      const filename = `workers_export_${new Date().toISOString().split('T')[0]}.csv`;
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.send(csv);
+    } catch (error) {
+      console.error("Failed to export workers:", error);
+      res.status(500).json({ message: "Failed to export workers" });
+    }
+  });
+
+  const contactExportUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 5 * 1024 * 1024 },
+  });
+
+  app.post("/api/workers/contact-export", requireAuth, requirePermission("staff"), contactExportUpload.single("file"), async (req, res) => {
+    try {
+      const file = (req as any).file;
+      const typeId = typeof req.body.typeId === "string" ? req.body.typeId : null;
+
+      if (!file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+      if (!typeId) {
+        return res.status(400).json({ message: "Worker ID type is required" });
+      }
+
+      const fileContent = file.buffer.toString("utf-8");
+      const rawIds = fileContent
+        .split(/[\r\n]+/)
+        .map((line: string) => line.trim())
+        .filter((line: string) => line.length > 0);
+
+      if (rawIds.length === 0) {
+        return res.status(400).json({ message: "File contains no IDs" });
+      }
+      if (rawIds.length > 10000) {
+        return res.status(400).json({ message: "File contains more than 10,000 IDs. Please split into smaller batches." });
+      }
+
+      const workerIdRecords = await storage.readOnly.query(async (queryClient: any) => {
+        const result = await queryClient.execute(sql`
+          SELECT wi.value, wi.worker_id
+          FROM worker_ids wi
+          WHERE wi.type_id = ${typeId}
+            AND wi.value = ANY(ARRAY[${sql.join(rawIds.map((id: string) => sql`${id}`), sql`, `)}]::text[])
+        `);
+        return result.rows as Array<{ value: string; worker_id: string }>;
+      });
+
+      const idToWorkerMap = new Map<string, string>();
+      for (const rec of workerIdRecords) {
+        idToWorkerMap.set(rec.value, rec.worker_id);
+      }
+
+      const matchedIds: string[] = [];
+      const unmatchedIds: string[] = [];
+      const workerIdSet = new Set<string>();
+
+      for (const rawId of rawIds) {
+        const workerId = idToWorkerMap.get(rawId);
+        if (workerId) {
+          matchedIds.push(rawId);
+          workerIdSet.add(workerId);
+        } else {
+          unmatchedIds.push(rawId);
+        }
+      }
+
+      const workerIds = [...workerIdSet];
+
+      if (workerIds.length === 0) {
+        return res.json({
+          matched: 0,
+          unmatched: unmatchedIds.length,
+          unmatchedIds,
+          csvData: null,
+        });
+      }
+
+      const workerData = await storage.readOnly.query(async (queryClient: any) => {
+        const result = await queryClient.execute(sql`
+          SELECT
+            w.id,
+            c.given,
+            c.family,
+            c.email,
+            w.denorm_ms_ids,
+            w.denorm_employer_ids,
+            (SELECT cp2.phone_number FROM contact_phone cp2 WHERE cp2.contact_id = c.id AND cp2.is_active = true ORDER BY cp2.is_primary DESC NULLS LAST LIMIT 1) as phone_number,
+            (SELECT cpo.street FROM contact_postal cpo WHERE cpo.contact_id = c.id AND cpo.is_active = true ORDER BY cpo.is_primary DESC NULLS LAST LIMIT 1) as address_street,
+            (SELECT cpo.city FROM contact_postal cpo WHERE cpo.contact_id = c.id AND cpo.is_active = true ORDER BY cpo.is_primary DESC NULLS LAST LIMIT 1) as address_city,
+            (SELECT cpo.state FROM contact_postal cpo WHERE cpo.contact_id = c.id AND cpo.is_active = true ORDER BY cpo.is_primary DESC NULLS LAST LIMIT 1) as address_state,
+            (SELECT cpo.postal_code FROM contact_postal cpo WHERE cpo.contact_id = c.id AND cpo.is_active = true ORDER BY cpo.is_primary DESC NULLS LAST LIMIT 1) as address_postal_code
+          FROM workers w
+          INNER JOIN contacts c ON w.contact_id = c.id
+          WHERE w.id = ANY(ARRAY[${sql.join(workerIds.map((id: string) => sql`${id}`), sql`, `)}]::varchar[])
+        `);
+        return result.rows as Array<{
+          id: string;
+          given: string | null;
+          family: string | null;
+          email: string | null;
+          denorm_ms_ids: string[] | null;
+          denorm_employer_ids: string[] | null;
+          phone_number: string | null;
+          address_street: string | null;
+          address_city: string | null;
+          address_state: string | null;
+          address_postal_code: string | null;
+        }>;
+      });
+
+      const workerMap = new Map<string, (typeof workerData)[0]>();
+      for (const w of workerData) {
+        workerMap.set(w.id, w);
+      }
+
+      const allEmployerIds = new Set<string>();
+      const allMsIds = new Set<string>();
+      for (const w of workerData) {
+        (w.denorm_employer_ids || []).forEach(id => allEmployerIds.add(id));
+        (w.denorm_ms_ids || []).forEach(id => allMsIds.add(id));
+      }
+
+      const [allEmployers, memberStatusOptions] = await Promise.all([
+        storage.employers.getAllEmployers(),
+        (async () => {
+          const config = getOptionsType("worker-ms");
+          return config ? config.getAll() : [];
+        })(),
+      ]);
+
+      const employerNameMap = new Map<string, string>();
+      for (const emp of allEmployers) {
+        employerNameMap.set(emp.id, emp.name);
+      }
+      const memberStatusNameMap = new Map<string, string>();
+      for (const ms of memberStatusOptions) {
+        memberStatusNameMap.set(ms.id, ms.name);
+      }
+
+      const workerIdTypeRecords = await storage.workerIds.getWorkerIdsForListByWorkerIds(workerIds);
+      const workerIdValueMap = new Map<string, string>();
+      for (const wid of workerIdTypeRecords) {
+        if (wid.typeId === typeId) {
+          workerIdValueMap.set(wid.workerId, wid.value);
+        }
+      }
+
+      const csvRows = [];
+      for (const rawId of rawIds) {
+        const workerId = idToWorkerMap.get(rawId);
+        if (!workerId) continue;
+        const w = workerMap.get(workerId);
+        if (!w) continue;
+
+        const msNames = (w.denorm_ms_ids || [])
+          .map(id => memberStatusNameMap.get(id))
+          .filter((n): n is string => !!n);
+
+        const empNames = (w.denorm_employer_ids || [])
+          .map(id => employerNameMap.get(id))
+          .filter((n): n is string => !!n);
+
+        csvRows.push({
+          'ID': rawId,
+          'First Name': w.given || '',
+          'Last Name': w.family || '',
+          'Email': w.email || '',
+          'Phone': w.phone_number || '',
+          'Street': w.address_street || '',
+          'City': w.address_city || '',
+          'State': w.address_state || '',
+          'Postal Code': w.address_postal_code || '',
+          'Member Status': msNames.join('; '),
+          'Employer(s)': empNames.join('; '),
+        });
+      }
+
+      const columns = [
+        'ID', 'First Name', 'Last Name', 'Email', 'Phone',
+        'Street', 'City', 'State', 'Postal Code',
+        'Member Status', 'Employer(s)',
+      ];
+
+      const csv = stringify(csvRows, { header: true, columns });
+
+      res.json({
+        matched: matchedIds.length,
+        unmatched: unmatchedIds.length,
+        unmatchedIds,
+        csv,
+      });
+    } catch (error) {
+      console.error("Failed to export contacts:", error);
+      res.status(500).json({ message: "Failed to export contacts" });
+    }
+  });
+
   // GET /api/workers - Get all workers
   app.get("/api/workers", requireAuth, requireAccess("worker.list"), async (req, res) => {
     try {
@@ -462,12 +943,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { id } = req.params;
       const worker = await storage.workers.getWorker(id);
-      
+
       if (!worker) {
         res.status(404).json({ message: "Worker not found" });
         return;
       }
-      
+
       // Fetch contact to get name fields
       const contact = await storage.contacts.getContact(worker.contactId);
       
@@ -482,7 +963,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // POST /api/workers - Create a new worker (requires workers.manage permission)
+  // POST /api/workers - Create a new worker (requires staff permission)
   app.post("/api/workers", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
       const { name } = req.body;
@@ -544,11 +1025,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
             res.status(404).json({ message: "Worker not found" });
             return;
           }
-          
+
           res.json(worker);
         } catch (error: any) {
           if (error.message === "SSN already exists for another worker") {
-            res.status(409).json({ message: "This SSN is already assigned to another worker" });
+            res.status(409).json({
+              message: "This SSN is already assigned to another worker",
+            });
             return;
           }
           throw error;
@@ -557,44 +1040,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Handle gender updates
       else if (gender !== undefined || genderNota !== undefined) {
         const worker = await storage.workers.updateWorkerContactGender(id, gender, genderNota);
-        
+
         if (!worker) {
           res.status(404).json({ message: "Worker not found" });
           return;
         }
-        
+
         res.json(worker);
       }
       // Support both old format (name) and new format (nameComponents)
       else if (nameComponents) {
         // New format: name components
         const worker = await storage.workers.updateWorkerContactNameComponents(id, nameComponents);
-        
+
         if (!worker) {
           res.status(404).json({ message: "Worker not found" });
           return;
         }
-        
+
         res.json(worker);
-      } else if (name && typeof name === 'string' && name.trim()) {
+      } else if (name && typeof name === "string" && name.trim()) {
         // Old format: simple name string (for backwards compatibility)
         const worker = await storage.workers.updateWorkerContactName(id, name.trim());
-        
+
         if (!worker) {
           res.status(404).json({ message: "Worker not found" });
           return;
         }
-        
+
         res.json(worker);
       } else {
-        return res.status(400).json({ message: "Worker name, name components, email, birth date, or SSN are required" });
+        return res.status(400).json({
+          message: "Worker name, name components, email, birth date, or SSN are required",
+        });
       }
     } catch (error) {
       res.status(500).json({ message: "Failed to update worker" });
     }
   });
 
-  // PATCH /api/workers/:id - Partially update a worker (requires workers.manage permission)
+  // PATCH /api/workers/:id - Partially update a worker (requires staff permission)
   app.patch("/api/workers/:id", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
       const { id } = req.params;
@@ -615,25 +1100,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
             return;
           }
         }
-        
+
         const worker = await storage.workers.updateWorkerBargainingUnit(id, normalizedId);
-        
+
         if (!worker) {
           res.status(404).json({ message: "Worker not found" });
           return;
         }
-        
+
         res.json(worker);
         return;
       }
-      
+
       res.status(400).json({ message: "No valid update fields provided" });
     } catch (error) {
       res.status(500).json({ message: "Failed to update worker" });
     }
   });
 
-  // DELETE /api/workers/:id - Delete a worker (requires workers.manage permission)
+  // DELETE /api/workers/:id - Delete a worker (requires staff permission)
   app.delete("/api/workers/:id", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
       const { id } = req.params;
@@ -643,7 +1128,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         res.status(404).json({ message: "Worker not found" });
         return;
       }
-      
+
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ message: "Failed to delete worker" });
@@ -729,8 +1214,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // GET /api/employers/:id - Get a specific employer (requires employer.view policy)
-  app.get("/api/employers/:id", requireAuth, requireAccess('employer.view', (req) => req.params.id), async (req, res) => {
+  // GET /api/employers/:id - Get a specific employer (requires employer.steward.view policy)
+  app.get("/api/employers/:id", requireAuth, requireAccess('employer.steward.view', (req) => req.params.id), async (req, res) => {
     try {
       const { id } = req.params;
       const employer = await storage.employers.getEmployer(id);
@@ -739,15 +1224,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         res.status(404).json({ message: "Employer not found" });
         return;
       }
-      
+
       res.json(employer);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch employer" });
     }
   });
 
-  // GET /api/employers/:employerId/workers - Get workers for an employer (requires employer.view policy)
-  app.get("/api/employers/:employerId/workers", requireAuth, requireAccess('employer.view', (req) => req.params.employerId), async (req, res) => {
+  // GET /api/employers/:employerId/workers - Get workers for an employer (requires employer.steward.view policy)
+  app.get("/api/employers/:employerId/workers", requireAuth, requireAccess('employer.steward.view', (req) => req.params.employerId), async (req, res) => {
     try {
       const { employerId } = req.params;
       
@@ -757,7 +1242,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         res.status(404).json({ message: "Employer not found" });
         return;
       }
-      
+
       const workers = await storage.employers.getEmployerWorkers(employerId);
       res.json(workers);
     } catch (error) {
@@ -766,7 +1251,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // POST /api/employers - Create a new employer (requires workers.manage permission)
+  // POST /api/employers - Create a new employer (requires staff permission)
   app.post("/api/employers", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
       const { name, isActive = true, typeId } = req.body;
@@ -774,20 +1259,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!name || typeof name !== 'string' || !name.trim()) {
         return res.status(400).json({ message: "Employer name is required" });
       }
-      
-      const employer = await storage.employers.createEmployer({ 
+
+      const employer = await storage.employers.createEmployer({
         name: name.trim(),
-        isActive: typeof isActive === 'boolean' ? isActive : true,
-        typeId: typeId === null || typeId === "" ? null : (typeId || null)
+        isActive: typeof isActive === "boolean" ? isActive : true,
+        typeId: typeId || null,
       });
-      
+
       res.status(201).json(employer);
     } catch (error: any) {
       res.status(500).json({ message: "Failed to create employer" });
     }
   });
 
-  // PUT /api/employers/:id - Update an employer (requires workers.manage permission)
+  // PUT /api/employers/:id - Update an employer (requires staff permission)
   app.put("/api/employers/:id", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
       const { id } = req.params;
@@ -801,16 +1286,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         updates.name = name.trim();
       }
-      
+
       if (isActive !== undefined) {
-        if (typeof isActive !== 'boolean') {
+        if (typeof isActive !== "boolean") {
           return res.status(400).json({ message: "isActive must be a boolean" });
         }
         updates.isActive = isActive;
       }
-      
+
       if (typeId !== undefined) {
-        updates.typeId = typeId === null || typeId === "" ? null : typeId;
+        updates.typeId = typeId;
       }
       
       if (industryId !== undefined) {
@@ -820,21 +1305,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (Object.keys(updates).length === 0) {
         return res.status(400).json({ message: "No fields to update" });
       }
-      
+
       const employer = await storage.employers.updateEmployer(id, updates);
-      
+
       if (!employer) {
         res.status(404).json({ message: "Employer not found" });
         return;
       }
-      
+
       res.json(employer);
     } catch (error) {
       res.status(500).json({ message: "Failed to update employer" });
     }
   });
 
-  // DELETE /api/employers/:id - Delete an employer (requires workers.manage permission)
+  // DELETE /api/employers/:id - Delete an employer (requires staff permission)
   app.delete("/api/employers/:id", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
       const { id } = req.params;
@@ -844,14 +1329,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         res.status(404).json({ message: "Employer not found" });
         return;
       }
-      
+
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ message: "Failed to delete employer" });
     }
   });
+  // Register employer routes
+  registerEmployerRoutes(app, requireAuth, requirePermission, requireAccess);
 
-  // GET /api/contacts/by-email/:email - Get a contact by email (requires workers.view permission)
+  // GET /api/contacts/by-email/:email - Get a contact by email (requires staff permission)
   app.get("/api/contacts/by-email/:email", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
       const { email } = req.params;
@@ -884,7 +1371,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         res.status(404).json({ message: "Contact not found" });
         return;
       }
-      
+
       res.json(contact);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch contact" });
@@ -893,14 +1380,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // IMPORTANT: Register specific variable routes BEFORE generic variable routes
   // GET /api/variables/address_validation_config - Get address validation configuration
-  app.get("/api/variables/address_validation_config", requireAuth, async (req, res) => {
-    try {
-      const config = await addressValidationService.getConfig();
-      res.json(config);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch address validation configuration" });
-    }
-  });
+  app.get(
+    "/api/variables/address_validation_config",
+    requireAuth,
+    async (req, res) => {
+      try {
+        const config = await addressValidationService.getConfig();
+        res.json(config);
+      } catch (error) {
+        res.status(500).json({
+          message: "Failed to fetch address validation configuration",
+        });
+      }
+    },
+  );
 
   // PUT /api/variables/address_validation_config - Update address validation configuration
   app.put("/api/variables/address_validation_config", requireAuth, requireAccess('admin'), async (req, res) => {
@@ -911,58 +1404,77 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!mode || (mode !== "local" && mode !== "google")) {
         return res.status(400).json({ message: "Invalid validation mode. Must be 'local' or 'google'." });
       }
-      
+
       if (!local || typeof local.enabled !== "boolean") {
         return res.status(400).json({ message: "Invalid local configuration." });
       }
-      
+
       if (!google || typeof google.enabled !== "boolean") {
         return res.status(400).json({ message: "Invalid google configuration." });
       }
-      
+
       await addressValidationService.updateConfig(req.body);
       const updatedConfig = await addressValidationService.getConfig();
       res.json(updatedConfig);
     } catch (error) {
-      res.status(500).json({ message: "Failed to update address validation configuration" });
+      res.status(500).json({
+        message: "Failed to update address validation configuration",
+      });
     }
   });
 
   // GET /api/variables/phone_validation_config - Get phone validation configuration
   // Now derived from SMS provider selection, with stored settings for each provider
-  app.get("/api/variables/phone_validation_config", requireAuth, async (req, res) => {
-    try {
-      const smsConfig = await serviceRegistry.getCategoryConfig('sms');
-      const isTwilioMode = smsConfig.defaultProvider === 'twilio';
-      
-      // Get stored validation settings from both providers
-      const localSettings = await serviceRegistry.getProviderSettings('sms', 'local');
-      const twilioSettings = await serviceRegistry.getProviderSettings('sms', 'twilio');
-      const localValidation = (localSettings as any)?.phoneValidation || {};
-      const twilioValidation = (twilioSettings as any)?.phoneValidation || {};
-      
-      // Return config in the legacy format for backward compatibility
-      // Fallback settings are stored with twilio provider since they control Twilio failure behavior
-      res.json({
-        mode: isTwilioMode ? 'twilio' : 'local',
-        local: {
-          enabled: !isTwilioMode,
-          defaultCountry: localValidation.defaultCountry || 'US',
-          strictValidation: localValidation.strictValidation ?? true
-        },
-        twilio: {
-          enabled: isTwilioMode,
-          lookupType: twilioValidation.lookupType || ['line_type_intelligence', 'caller_name']
-        },
-        fallback: {
-          useLocalOnTwilioFailure: twilioValidation.useLocalOnTwilioFailure ?? true,
-          logValidationAttempts: twilioValidation.logValidationAttempts ?? true
-        }
-      });
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch phone validation configuration" });
-    }
-  });
+  app.get(
+    "/api/variables/phone_validation_config",
+    requireAuth,
+    async (req, res) => {
+      try {
+        const smsConfig = await serviceRegistry.getCategoryConfig("sms");
+        const isTwilioMode = smsConfig.defaultProvider === "twilio";
+
+        // Get stored validation settings from both providers
+        const localSettings = await serviceRegistry.getProviderSettings(
+          "sms",
+          "local",
+        );
+        const twilioSettings = await serviceRegistry.getProviderSettings(
+          "sms",
+          "twilio",
+        );
+        const localValidation = (localSettings as any)?.phoneValidation || {};
+        const twilioValidation = (twilioSettings as any)?.phoneValidation || {};
+
+        // Return config in the legacy format for backward compatibility
+        // Fallback settings are stored with twilio provider since they control Twilio failure behavior
+        res.json({
+          mode: isTwilioMode ? "twilio" : "local",
+          local: {
+            enabled: !isTwilioMode,
+            defaultCountry: localValidation.defaultCountry || "US",
+            strictValidation: localValidation.strictValidation ?? true,
+          },
+          twilio: {
+            enabled: isTwilioMode,
+            lookupType: twilioValidation.lookupType || [
+              "line_type_intelligence",
+              "caller_name",
+            ],
+          },
+          fallback: {
+            useLocalOnTwilioFailure:
+              twilioValidation.useLocalOnTwilioFailure ?? true,
+            logValidationAttempts:
+              twilioValidation.logValidationAttempts ?? true,
+          },
+        });
+      } catch (error) {
+        res
+          .status(500)
+          .json({ message: "Failed to fetch phone validation configuration" });
+      }
+    },
+  );
 
   // PUT /api/variables/phone_validation_config - Update phone validation configuration
   // Now updates the SMS provider selection and stores validation settings for each provider
@@ -983,61 +1495,67 @@ export async function registerRoutes(app: Express): Promise<Server> {
           defaultCountry: local.defaultCountry ?? existingLocalValidation.defaultCountry ?? 'US',
           strictValidation: local.strictValidation ?? existingLocalValidation.strictValidation ?? true
         };
-        await serviceRegistry.saveProviderSettings('sms', 'local', {
+        await serviceRegistry.saveProviderSettings("sms", "local", {
           ...localCurrentSettings,
-          phoneValidation: localValidationSettings
+          phoneValidation: localValidationSettings,
         });
       }
-      
+
       // Store twilio-specific settings and fallback settings in the twilio provider
       // Fallback settings belong with twilio since they control Twilio failure behavior
-      const twilioCurrentSettings = await serviceRegistry.getProviderSettings('sms', 'twilio');
+      const twilioCurrentSettings = await serviceRegistry.getProviderSettings("sms", "twilio");
       const existingTwilioValidation = (twilioCurrentSettings as any)?.phoneValidation || {};
       const twilioValidationSettings = {
         ...existingTwilioValidation,
-        lookupType: twilio?.lookupType ?? existingTwilioValidation.lookupType ?? ['line_type_intelligence', 'caller_name'],
+        lookupType: twilio?.lookupType ?? existingTwilioValidation.lookupType ?? [
+          "line_type_intelligence",
+          "caller_name",
+        ],
         useLocalOnTwilioFailure: fallback?.useLocalOnTwilioFailure ?? existingTwilioValidation.useLocalOnTwilioFailure ?? true,
-        logValidationAttempts: fallback?.logValidationAttempts ?? existingTwilioValidation.logValidationAttempts ?? true
+        logValidationAttempts: fallback?.logValidationAttempts ?? existingTwilioValidation.logValidationAttempts ?? true,
       };
-      await serviceRegistry.saveProviderSettings('sms', 'twilio', {
+      await serviceRegistry.saveProviderSettings("sms", "twilio", {
         ...twilioCurrentSettings,
-        phoneValidation: twilioValidationSettings
+        phoneValidation: twilioValidationSettings,
       });
-      
+
       // Update the SMS provider selection
-      await serviceRegistry.setDefaultProvider('sms', mode);
-      
+      await serviceRegistry.setDefaultProvider("sms", mode);
+
       // Fetch updated config from both providers for response
-      const localSettings = await serviceRegistry.getProviderSettings('sms', 'local');
-      const twilioSettings = await serviceRegistry.getProviderSettings('sms', 'twilio');
+      const localSettings = await serviceRegistry.getProviderSettings("sms", "local");
+      const twilioSettings = await serviceRegistry.getProviderSettings("sms", "twilio");
       const localValidation = (localSettings as any)?.phoneValidation || {};
       const twilioValidation = (twilioSettings as any)?.phoneValidation || {};
-      
-      const smsConfig = await serviceRegistry.getCategoryConfig('sms');
-      const isTwilioMode = smsConfig.defaultProvider === 'twilio';
-      
+
+      const smsConfig = await serviceRegistry.getCategoryConfig("sms");
+      const isTwilioMode = smsConfig.defaultProvider === "twilio";
+
       // Return config in the legacy format
       res.json({
-        mode: isTwilioMode ? 'twilio' : 'local',
+        mode: isTwilioMode ? "twilio" : "local",
         local: {
           enabled: !isTwilioMode,
-          defaultCountry: localValidation.defaultCountry || 'US',
-          strictValidation: localValidation.strictValidation ?? true
+          defaultCountry: localValidation.defaultCountry || "US",
+          strictValidation: localValidation.strictValidation ?? true,
         },
         twilio: {
           enabled: isTwilioMode,
-          lookupType: twilioValidation.lookupType || ['line_type_intelligence', 'caller_name']
+          lookupType: twilioValidation.lookupType || [
+            "line_type_intelligence",
+            "caller_name",
+          ],
         },
         fallback: {
           useLocalOnTwilioFailure: twilioValidation.useLocalOnTwilioFailure ?? true,
-          logValidationAttempts: twilioValidation.logValidationAttempts ?? true
-        }
+          logValidationAttempts: twilioValidation.logValidationAttempts ?? true,
+        },
       });
     } catch (error) {
-      console.error('Error updating phone validation config:', error);
-      res.status(500).json({ 
+      console.error("Error updating phone validation config:", error);
+      res.status(500).json({
         message: "Failed to update phone validation configuration",
-        error: error instanceof Error ? error.message : String(error)
+        error: error instanceof Error ? error.message : String(error),
       });
     }
   });
@@ -1046,7 +1564,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/geocode", requireAuth, async (req, res) => {
     try {
       const { street, city, state, postalCode, country } = req.body;
-      
+
       const result = await addressValidationService.geocodeAddress({
         street: street || "",
         city: city || "",
@@ -1054,12 +1572,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         postalCode: postalCode || "",
         country: country || "",
       });
-      
+
       res.json(result);
     } catch (error) {
-      res.status(500).json({ 
-        success: false, 
-        error: "Failed to geocode address" 
+      res.status(500).json({
+        success: false,
+        error: "Failed to geocode address",
       });
     }
   });
@@ -1078,14 +1596,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // POST /api/workers/:workerId/benefits - Create a new benefit entry for a worker (requires workers.manage permission)
+  // POST /api/workers/:workerId/benefits - Create a new benefit entry for a worker (requires staff permission)
   app.post("/api/workers/:workerId/benefits", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
       const { workerId } = req.params;
       const { month, year, employerId, benefitId } = req.body;
 
       if (!month || !year || !employerId || !benefitId) {
-        return res.status(400).json({ message: "Month, year, employer ID, and benefit ID are required" });
+        return res.status(400).json({
+          message: "Month, year, employer ID, and benefit ID are required",
+        });
       }
 
       const wmb = await storage.workers.createWorkerBenefit({
@@ -1100,13 +1620,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error("Failed to create worker benefit:", error);
       if (error.message?.includes("duplicate key") || error.code === "23505") {
-        return res.status(409).json({ message: "This benefit entry already exists for this worker, employer, and month/year" });
+        return res.status(409).json({
+          message: "This benefit entry already exists for this worker, employer, and month/year",
+        });
       }
       res.status(500).json({ message: "Failed to create worker benefit" });
     }
   });
 
-  // DELETE /api/worker-benefits/:id - Delete a worker benefit entry (requires workers.manage permission)
+  // DELETE /api/worker-benefits/:id - Delete a worker benefit entry (requires staff permission)
   app.delete("/api/worker-benefits/:id", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
       const { id } = req.params;
@@ -1131,6 +1653,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Register dispatch jobs routes
   registerDispatchJobsRoutes(app, requireAuth, requirePermission);
+
+  // Register dispatch job groups routes
+  registerDispatchJobGroupsRoutes(app, requireAuth, requirePermission);
+  registerFacilityRoutes(app, requireAuth, requirePermission);
 
   // Register dispatches routes
   registerDispatchesRoutes(app, requireAuth, requirePermission);
@@ -1161,7 +1687,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Register site-specific routes
   registerBtuCsgRoutes(app, requireAuth, requirePermission);
+  registerBtuTerritoriesRoutes(app, requireAuth, requirePermission);
+  registerBtuSchoolRoutes(app, requireAuth, requirePermission);
+  registerBtuSigImportRoutes(app, requireAuth, requirePermission);
+  registerBtuScraperImportRoutes(app, requireAuth, requirePermission);
+  registerBtuBuildingRepImportRoutes(app, requireAuth, requirePermission);
 
+  // Register BTU Political Profile routes
+  registerBtuPoliticalRoutes(app, requireAuth, requirePermission);
+
+  // Register T631 Client routes
+  registerT631ClientFetchRoutes(app, requireAuth, requirePermission);
+
+  // Register HTA routes
   registerHtaRoutes(app, requireAuth, requirePermission);
 
   // Register EDLS routes
@@ -1177,6 +1715,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Register Web Service admin routes (for managing bundles, clients, credentials)
   registerWebServiceAdminRoutes(app, requireAuth, requirePermission);
 
-  const httpServer = createServer(app);
+  // Register companies routes
+  registerCompaniesRoutes(app, requireAuth);
+
+  const httpServer = existingServer || createServer(app);
   return httpServer;
 }

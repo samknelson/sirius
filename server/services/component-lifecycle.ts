@@ -94,30 +94,18 @@ export async function enableComponentSchema(componentId: string): Promise<Compon
   const now = new Date().toISOString();
   let hasError = false;
 
-  // First check if all tables already exist
-  const existingTables: boolean[] = [];
-  for (const tableName of component.schemaManifest.tables) {
-    existingTables.push(await tableExists(tableName));
-  }
-  const allTablesExist = existingTables.every(exists => exists);
-
   try {
-    // Only run schema push if some tables are missing
-    if (!allTablesExist) {
-      const { pushComponentSchema } = await import("./component-schema-push");
-      await pushComponentSchema(componentId);
-    }
+    const { pushComponentSchema } = await import("./component-schema-push");
+    await pushComponentSchema(componentId);
     
-    for (let i = 0; i < component.schemaManifest.tables.length; i++) {
-      const tableName = component.schemaManifest.tables[i];
-      const exists = allTablesExist ? true : await tableExists(tableName);
+    for (const tableName of component.schemaManifest.tables) {
+      const exists = await tableExists(tableName);
       
       if (exists) {
         operations.push({
           success: true,
           tableName,
           operation: "push",
-          message: allTablesExist ? "Table already exists" : undefined,
         });
 
         tableStates.push({
@@ -140,6 +128,7 @@ export async function enableComponentSchema(componentId: string): Promise<Compon
   } catch (error) {
     hasError = true;
     const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error(`Component schema push failed for ${componentId}:`, errorMessage, error instanceof Error ? error.stack : '');
     operations.push({
       success: false,
       tableName: component.schemaManifest.schemaPath,

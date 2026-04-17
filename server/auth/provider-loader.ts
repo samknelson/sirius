@@ -31,7 +31,7 @@ export async function loadProvider(config: AuthProviderConfig): Promise<AuthProv
     const clerkProvider = await loadClerkProvider();
     return clerkProvider.createProvider(config);
   }
-  
+
   throw new Error(`Unknown auth provider type: ${config.type}`);
 }
 

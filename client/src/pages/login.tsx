@@ -4,7 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader2, LogIn, LogOut, UserPlus } from 'lucide-react';
-import { SignInButton, SignedIn, SignedOut, useClerk } from '@clerk/clerk-react';
+import { SignIn, SignedIn, SignedOut, useClerk } from '@clerk/clerk-react';
 
 const CLERK_ENABLED = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
@@ -88,16 +88,15 @@ export default function LoginPage() {
           {CLERK_ENABLED ? (
             <>
               <SignedOut>
-                <SignInButton mode="modal">
-                  <Button
-                    className="w-full"
-                    size="lg"
-                    data-testid="button-login-clerk"
-                  >
-                    <LogIn className="mr-2 h-5 w-5" />
-                    Sign In
-                  </Button>
-                </SignInButton>
+                <SignIn
+                  routing="hash"
+                  appearance={{
+                    elements: {
+                      rootBox: "w-full",
+                      card: "shadow-none w-full",
+                    }
+                  }}
+                />
 
                 <div className="relative">
                   <div className="absolute inset-0 flex items-center">

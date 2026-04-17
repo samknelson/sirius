@@ -137,10 +137,9 @@ export default function WizardView() {
         title: "Wizard Deleted",
         description: "The wizard and all associated files have been deleted successfully.",
       });
+      // Navigate back to employer wizards page or homepage
       if (wizard?.entityId && wizardType?.entityType === 'employer') {
         setLocation(`/employers/${wizard.entityId}/wizards`);
-      } else if (wizardType?.isFeed) {
-        setLocation("/imports");
       } else {
         setLocation("/");
       }
@@ -211,7 +210,7 @@ export default function WizardView() {
               <Wand2 className="text-primary-foreground" size={20} />
             </div>
             <div>
-              <h1 className="text-2xl font-semibold text-foreground" data-testid="text-wizard-title">
+              <h1 className="text-xl md:text-2xl font-semibold text-foreground" data-testid="text-wizard-title">
                 {wizardType?.displayName || wizard.type}
               </h1>
               <p className="text-sm text-muted-foreground">

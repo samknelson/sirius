@@ -1,7 +1,7 @@
 import { 
   Users, MapPin, Phone, Globe, List, UserCog, Puzzle, Package, Heart, 
   CreditCard, Activity, Wallet, Settings, Shield, Key, FileText, 
-  Building2, Database, Clock, Zap, Server, MessageSquare, Calendar, Truck, Network, RefreshCw, type LucideIcon
+  Building2, Database, Clock, Zap, Server, MessageSquare, Calendar, GraduationCap, Truck, Network, RefreshCw, School, type LucideIcon
 } from "lucide-react";
 
 export interface NavItem {
@@ -12,6 +12,7 @@ export interface NavItem {
   permission?: string;
   policy?: string;
   requiresComponent?: string;
+  requiresComponents?: string[];
 }
 
 export interface NavSection {
@@ -48,6 +49,7 @@ export const configSections: NavSection[] = [
       { path: "/config/logs", label: "System Logs", icon: FileText, testId: "nav-config-logs", permission: "admin" },
       { path: "/admin/quickstarts", label: "Quickstarts", icon: Database, testId: "nav-config-quickstarts", permission: "admin" },
       { path: "/admin/cron-jobs", label: "Cron Jobs", icon: Clock, testId: "nav-config-cron-jobs", permission: "admin" },
+      { path: "/config/sftp/clients", label: "SFTP Clients", icon: Server, testId: "nav-config-sftp-clients", permission: "admin", requiresComponent: "system.sftp.client" },
     ],
   },
   {
@@ -131,8 +133,23 @@ export const configSections: NavSection[] = [
     icon: Truck,
     items: [
       { path: "/config/dispatch-job-types", label: "Job Types", icon: List, testId: "nav-config-dispatch-job-types", permission: "admin", requiresComponent: "dispatch" },
+      { path: "/config/dispatch/plugins", label: "Eligibility Plugins", icon: Puzzle, testId: "nav-config-dispatch-plugins", permission: "admin", requiresComponent: "dispatch" },
       { path: "/config/dispatch/dnc", label: "Do Not Call", icon: Phone, testId: "nav-config-dispatch-dnc", permission: "admin", requiresComponent: "dispatch.dnc" },
       { path: "/config/dispatch/eba", label: "EBA", icon: Calendar, testId: "nav-config-dispatch-eba", permission: "admin", requiresComponent: "dispatch.eba" },
+      { path: "/config/sitespecific/hta/home-employment-statuses", label: "Home Employment Statuses", icon: Building2, testId: "nav-config-hta-home-employment-statuses", permission: "staff", requiresComponent: "sitespecific.hta" },
+    ],
+  },
+  {
+    id: "btu",
+    title: "BTU",
+    description: "Boston Teachers Union configuration",
+    icon: GraduationCap,
+    items: [
+      { path: "/sitespecific/btu/csgs", label: "CSG Management", icon: Users, testId: "nav-btu-csgs", permission: "admin", requiresComponent: "sitespecific.btu" },
+      { path: "/sitespecific/btu/employer-map", label: "Employer Map", icon: Building2, testId: "nav-btu-employer-map", permission: "admin", requiresComponent: "sitespecific.btu" },
+      { path: "/sitespecific/btu/territories", label: "Territories", icon: MapPin, testId: "nav-btu-territories", permission: "admin", requiresComponent: "sitespecific.btu" },
+      { path: "/sitespecific/btu/school-types", label: "School Types", icon: School, testId: "nav-btu-school-types", permission: "admin", requiresComponent: "sitespecific.btu" },
+      { path: "/sitespecific/btu/regions", label: "Regions", icon: MapPin, testId: "nav-btu-regions", permission: "admin", requiresComponent: "sitespecific.btu" },
     ],
   },
   {
@@ -167,6 +184,7 @@ export const configSections: NavSection[] = [
     items: [
       { path: "/config/edls/settings", label: "Settings", icon: Settings, testId: "nav-config-edls-settings", permission: "admin", requiresComponent: "edls" },
       { path: "/config/edls/tasks", label: "Tasks", icon: List, testId: "nav-config-edls-tasks", permission: "admin", requiresComponent: "edls" },
+      { path: "/config/edls/t631-fetch", label: "Teamsters 631 Fetch", icon: Zap, testId: "nav-config-edls-t631-fetch", permission: "admin", requiresComponents: ["edls", "sitespecific.t631.client"] },
     ],
   },
   {
@@ -188,13 +206,15 @@ export interface AccessContext {
 }
 
 export function hasAccessToItem(item: NavItem, context: AccessContext): boolean {
+  const hasComponentCheck = !item.requiresComponent || context.isComponentEnabled(item.requiresComponent);
+  const hasComponentsCheck = !item.requiresComponents || item.requiresComponents.every(c => context.isComponentEnabled(c));
+  if (!hasComponentCheck || !hasComponentsCheck) return false;
+
   if (item.policy) {
     return context.policyResults[item.policy]?.allowed ?? false;
   }
   if (item.permission) {
-    const hasPermissionCheck = context.hasPermission(item.permission);
-    const hasComponentCheck = !item.requiresComponent || context.isComponentEnabled(item.requiresComponent);
-    return hasPermissionCheck && hasComponentCheck;
+    return context.hasPermission(item.permission);
   }
   return false;
 }

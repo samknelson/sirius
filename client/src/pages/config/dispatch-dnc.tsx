@@ -94,7 +94,7 @@ export default function DispatchDncConfigPage() {
   return (
     <div className="p-6 space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold" data-testid="text-page-title">
+        <h1 className="text-xl md:text-2xl font-semibold" data-testid="text-page-title">
           Do Not Call Notifications
         </h1>
         <p className="text-muted-foreground">

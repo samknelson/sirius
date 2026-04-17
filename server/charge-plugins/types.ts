@@ -6,6 +6,7 @@ export enum TriggerType {
   WMB_SAVED = "wmb_saved",
   PARTICIPANT_SAVED = "participant_saved",
   CRON = "cron",
+  DUES_IMPORT_SAVED = "dues_import_saved",
 }
 
 export interface HoursSavedContext {
@@ -67,7 +68,21 @@ export interface CronContext {
   mode: "live" | "test";
 }
 
-export type PluginContext = HoursSavedContext | PaymentSavedContext | WmbSavedContext | ParticipantSavedContext | CronContext;
+export interface DuesImportSavedContext {
+  trigger: TriggerType.DUES_IMPORT_SAVED;
+  wizardId: string;
+  rowIndex: number;
+  workerId: string;
+  workerName: string;
+  bpsEmployeeId: string;
+  amount: string;
+  transactionDate: Date;
+  accountId: string;
+  deductionCode: string | null;
+  memo: string | null;
+}
+
+export type PluginContext = HoursSavedContext | PaymentSavedContext | WmbSavedContext | ParticipantSavedContext | CronContext | DuesImportSavedContext;
 
 export interface LedgerTransaction {
   chargePlugin: string;
@@ -97,6 +112,7 @@ export interface LedgerNotification {
 
 export interface PluginExecutionResult {
   success: boolean;
+  skippedDuplicate?: boolean;
   transactions: LedgerTransaction[];
   notifications?: LedgerNotification[];
   message?: string;

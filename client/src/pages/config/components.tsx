@@ -96,21 +96,18 @@ export default function ComponentsConfigPage() {
       setIsCheckingSchema(true);
       try {
         const response = await fetch(`/api/components/${componentId}/schema-info`);
-        
         if (!response.ok) {
-          console.error("Failed to fetch schema info:", response.status, response.statusText);
           toast({
-            title: "Error",
-            description: "Failed to fetch component schema info. The component may not be properly registered.",
+            title: "Schema Check Failed",
+            description: "Unable to retrieve schema information for this component.",
             variant: "destructive",
           });
           setIsCheckingSchema(false);
           return;
         }
-        
         const schemaInfo: SchemaInfo = await response.json();
         
-        if (!enabled && schemaInfo.tablesExist?.some(exists => exists)) {
+        if (!enabled && schemaInfo.tablesExist.some(exists => exists)) {
           setPendingAction({ componentId, enabled, component, schemaInfo });
           setIsCheckingSchema(false);
           return;
@@ -123,11 +120,6 @@ export default function ComponentsConfigPage() {
         }
       } catch (error) {
         console.error("Failed to fetch schema info:", error);
-        toast({
-          title: "Error",
-          description: "Failed to fetch component schema info.",
-          variant: "destructive",
-        });
       }
       setIsCheckingSchema(false);
     }
@@ -176,7 +168,7 @@ export default function ComponentsConfigPage() {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+          <h1 className="text-xl md:text-2xl font-bold text-gray-900 dark:text-gray-100">
             Components
           </h1>
           <p className="text-muted-foreground mt-2">Loading...</p>
@@ -188,7 +180,7 @@ export default function ComponentsConfigPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+        <h1 className="text-xl md:text-2xl font-bold text-gray-900 dark:text-gray-100">
           Components
         </h1>
         <p className="text-muted-foreground mt-2">

@@ -1,5 +1,5 @@
-import { createRoot } from "react-dom/client";
 import { useEffect } from "react";
+import { createRoot } from "react-dom/client";
 import App from "./App";
 import "./index.css";
 import { ClerkProvider, useClerk } from "@clerk/clerk-react";

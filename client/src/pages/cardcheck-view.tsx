@@ -297,7 +297,7 @@ export default function CardcheckViewPage() {
               </Link>
             )}
             <div>
-              <h1 className="text-2xl font-bold text-foreground" data-testid="heading-cardcheck">
+              <h1 className="text-xl md:text-2xl font-bold text-foreground" data-testid="heading-cardcheck">
                 Cardcheck
               </h1>
               <p className="text-muted-foreground text-sm">
@@ -526,7 +526,11 @@ export default function CardcheckViewPage() {
             </span>
           )}
           
-          {cardcheck.status === "signed" && (
+          {cardcheck.status === "signed" && (() => {
+            const revokeRoles: string[] = (definition?.data as any)?.revokeRoles || ["staff"];
+            const canRevoke = hasPermission('staff') || revokeRoles.includes("worker");
+            return canRevoke;
+          })() && (
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button variant="destructive" data-testid="button-revoke">

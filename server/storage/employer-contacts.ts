@@ -31,8 +31,7 @@ export const employerContactEmailValidate = createStorageValidator<{ email: stri
 );
 
 export interface EmployerContactStorage {
-  create(data: { employerId: string; contactData: InsertContact & { email: string }; contactTypeId?: string | null }): Promise<{ employerContact: EmployerContact; contact: Contact }>;
-  createOrLink(data: { employerId: string; contactData: InsertContact & { email: string }; contactTypeId?: string | null }): Promise<{ employerContact: EmployerContact; contact: Contact; linked?: boolean }>;
+  create(data: { employerId: string; contactData: InsertContact & { email?: string }; contactTypeId?: string | null }): Promise<{ employerContact: EmployerContact; contact: Contact }>;
   listByEmployer(employerId: string): Promise<Array<EmployerContact & { contact: Contact; contactType?: { id: string; name: string; description: string | null } | null }>>;
   listByContactId(contactId: string): Promise<Array<EmployerContact & { contact: Contact; employer: Employer; contactType?: { id: string; name: string; description: string | null } | null }>>;
   getAll(filters?: { employerId?: string; contactName?: string; contactTypeId?: string }): Promise<Array<EmployerContact & { contact: Contact; employer: Employer; contactType?: { id: string; name: string; description: string | null } | null }>>;
@@ -55,15 +54,12 @@ export interface EmployerContactStorage {
 
 export function createEmployerContactStorage(contactsStorage: ContactsStorage): EmployerContactStorage {
   return {
-    async create(data: { employerId: string; contactData: InsertContact & { email: string }; contactTypeId?: string | null }): Promise<{ employerContact: EmployerContact; contact: Contact }> {
+    async create(data: { employerId: string; contactData: InsertContact & { email?: string }; contactTypeId?: string | null }): Promise<{ employerContact: EmployerContact; contact: Contact }> {
       const client = getClient();
       
-      const validated = employerContactEmailValidate.validateOrThrow({ email: data.contactData.email });
-      
-      const contact = await contactsStorage.createContact({
-        ...data.contactData,
-        email: validated.email
-      });
+      // Email is optional for all contact types
+      // Create the contact first using contacts storage
+      const contact = await contactsStorage.createContact(data.contactData);
 
       // Create the employer contact relationship
       const [employerContact] = await client

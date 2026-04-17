@@ -17,6 +17,7 @@ export const dispatchWsPlugin: DispatchEligPlugin = {
   name: "Work Status",
   description: "Filters workers based on eligible work statuses configured per job type",
   componentId: COMPONENT_ID,
+  backfill: () => backfillDispatchWsEligibility(),
 
   eventHandlers: [
     {

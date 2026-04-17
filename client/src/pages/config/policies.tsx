@@ -120,7 +120,7 @@ export default function PoliciesConfigPage() {
       <div className="space-y-6">
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div>
-            <h1 className="text-2xl font-bold text-foreground" data-testid="heading-policies">
+            <h1 className="text-xl md:text-2xl font-bold text-foreground" data-testid="heading-policies">
               Policies
             </h1>
             <p className="text-muted-foreground mt-2">

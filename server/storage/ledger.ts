@@ -1,7 +1,9 @@
 import { createNoopValidator } from './utils/validation';
 import { getClient } from './transaction-context';
-import { db } from './db';
+import { logger } from "../logger";
 import { ledgerAccounts, ledgerStripePaymentMethods, ledgerEa, ledgerPayments, ledger, employers, workers, contacts, trustProviders, optionsLedgerPaymentType } from "@shared/schema";
+import { ledgerPaymentBatches } from "@shared/schema/ledger/payment-batch/schema";
+import type { LedgerPaymentBatch, InsertLedgerPaymentBatch } from "@shared/schema/ledger/payment-batch/schema";
 import type { 
   LedgerAccount, 
   InsertLedgerAccount,
@@ -15,7 +17,7 @@ import type {
   Ledger,
   InsertLedger
 } from "@shared/schema";
-import { eq, and, desc, or, isNull, asc, sql as sqlRaw, sum, min, max, count, inArray } from "drizzle-orm";
+import { eq, and, desc, or, isNull, asc, sql as sqlRaw, sum, min, max, count, inArray, gte, lte } from "drizzle-orm";
 import { alias as pgAlias } from "drizzle-orm/pg-core";
 import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
 import { formatAmount, getCurrency } from "@shared/currency";
@@ -35,10 +37,13 @@ export interface StripePaymentMethodStorage {
   setAsDefault(paymentMethodId: string, entityType: string, entityId: string): Promise<LedgerStripePaymentMethod | undefined>;
 }
 
+export type LedgerEaWithBalance = SelectLedgerEa & { balance: string };
+
 export interface LedgerEaStorage {
   getAll(): Promise<SelectLedgerEa[]>;
   get(id: string): Promise<SelectLedgerEa | undefined>;
   getByEntity(entityType: string, entityId: string): Promise<SelectLedgerEa[]>;
+  getByEntityWithBalance(entityType: string, entityId: string): Promise<LedgerEaWithBalance[]>;
   getByEntityAndAccount(entityType: string, entityId: string, accountId: string): Promise<SelectLedgerEa | undefined>;
   getOrCreate(entityType: string, entityId: string, accountId: string): Promise<SelectLedgerEa>;
   getBalance(id: string): Promise<string>;
@@ -82,12 +87,15 @@ export interface LedgerEntryStorage {
   getByReferenceAndConfig(referenceId: string, chargePluginConfigId: string): Promise<Ledger[]>;
   getByFilter(filter: LedgerEntryFilter): Promise<Ledger[]>;
   getTransactions(filter: TransactionFilter): Promise<LedgerEntryWithDetails[]>;
+  getTransactionsPaginated(filter: TransactionFilter, limit: number, offset: number): Promise<{ data: LedgerEntryWithDetails[]; total: number }>;
   getByAccountId(accountId: string): Promise<LedgerEntryWithDetails[]>;
+  getByAccountIdPaginated(accountId: string, limit: number, offset: number): Promise<{ data: LedgerEntryWithDetails[]; total: number }>;
   create(entry: InsertLedger): Promise<Ledger>;
   update(id: string, entry: Partial<InsertLedger>): Promise<Ledger | undefined>;
   delete(id: string): Promise<boolean>;
   deleteByReference(referenceType: string, referenceId: string): Promise<number>;
   deleteByChargePluginKey(chargePlugin: string, chargePluginKey: string): Promise<boolean>;
+  findByAccountEntityDatePlugin(accountId: string, entityId: string, date: Date, chargePlugin: string, chargePluginConfigId?: string, amount?: string): Promise<Ledger | undefined>;
 }
 
 export interface LedgerEntryWithDetails extends Ledger {
@@ -161,6 +169,15 @@ export interface LedgerAccountStorage {
   getParticipants(accountId: string, limit: number, offset: number): Promise<{ data: AccountParticipant[]; total: number }>;
 }
 
+export interface LedgerPaymentBatchStorage {
+  getAll(): Promise<LedgerPaymentBatch[]>;
+  getByAccountId(accountId: string): Promise<LedgerPaymentBatch[]>;
+  get(id: string): Promise<LedgerPaymentBatch | undefined>;
+  create(batch: InsertLedgerPaymentBatch): Promise<LedgerPaymentBatch>;
+  update(id: string, batch: Partial<InsertLedgerPaymentBatch>): Promise<LedgerPaymentBatch | undefined>;
+  delete(id: string): Promise<boolean>;
+}
+
 export interface LedgerStorage {
   accounts: LedgerAccountStorage;
   stripePaymentMethods: StripePaymentMethodStorage;
@@ -168,6 +185,7 @@ export interface LedgerStorage {
   payments: LedgerPaymentStorage;
   entries: LedgerEntryStorage;
   invoices: LedgerInvoiceStorage;
+  paymentBatches: LedgerPaymentBatchStorage;
 }
 
 export function createLedgerAccountStorage(): LedgerAccountStorage {
@@ -400,6 +418,31 @@ export function createLedgerEaStorage(): LedgerEaStorage {
         ));
     },
 
+    async getByEntityWithBalance(entityType: string, entityId: string): Promise<LedgerEaWithBalance[]> {
+      const client = getClient();
+      const entries = await client
+        .select({
+          id: ledgerEa.id,
+          accountId: ledgerEa.accountId,
+          entityType: ledgerEa.entityType,
+          entityId: ledgerEa.entityId,
+          data: ledgerEa.data,
+          balance: sqlRaw<string>`COALESCE(SUM(${ledger.amount}), 0)::numeric(10,2)::text`,
+        })
+        .from(ledgerEa)
+        .leftJoin(ledger, eq(ledger.eaId, ledgerEa.id))
+        .where(and(
+          eq(ledgerEa.entityType, entityType),
+          eq(ledgerEa.entityId, entityId)
+        ))
+        .groupBy(ledgerEa.id, ledgerEa.accountId, ledgerEa.entityType, ledgerEa.entityId, ledgerEa.data);
+      
+      return entries.map(e => ({
+        ...e,
+        balance: e.balance || "0.00"
+      }));
+    },
+
     async getByEntityAndAccount(entityType: string, entityId: string, accountId: string): Promise<SelectLedgerEa | undefined> {
       const client = getClient();
       const [entry] = await client.select().from(ledgerEa)
@@ -412,8 +455,9 @@ export function createLedgerEaStorage(): LedgerEaStorage {
     },
 
     async getOrCreate(entityType: string, entityId: string, accountId: string): Promise<SelectLedgerEa> {
+      const client = getClient();
       // Use a transaction with conflict handling to prevent race conditions
-      return await db.transaction(async (tx) => {
+      return await client.transaction(async (tx: typeof client) => {
         // First, try to find existing EA entry
         const [existingEa] = await tx
           .select()
@@ -561,7 +605,7 @@ export function createLedgerPaymentStorage(): LedgerPaymentStorage {
       const client = getClient();
       const [countResult] = await client
         .select({
-          count: db.$count(ledgerPayments.id)
+          count: count()
         })
         .from(ledgerPayments)
         .innerJoin(ledgerEa, eq(ledgerPayments.ledgerEaId, ledgerEa.id))
@@ -704,6 +748,7 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
 
     async getTransactions(filter: TransactionFilter): Promise<LedgerEntryWithDetails[]> {
       const client = getClient();
+      try {
       const refEmployers = pgAlias(employers, 'ref_employers');
       const refTrustProviders = pgAlias(trustProviders, 'ref_trust_providers');
       const refWorkers = pgAlias(workers, 'ref_workers');
@@ -853,8 +898,10 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
               referenceName = `Worker: ${row.refWorkerContact.given} ${row.refWorkerContact.family}`;
             } else if (row.refWorkerSiriusId) {
               referenceName = `Worker #${row.refWorkerSiriusId}`;
-            } else {
+            } else if (row.entry.referenceId) {
               referenceName = `Worker (${row.entry.referenceId.substring(0, 8)}...)`;
+            } else {
+              referenceName = 'Worker';
             }
           } else if (row.entry.referenceType && row.entry.referenceId) {
             const capitalizedType = row.entry.referenceType.charAt(0).toUpperCase() + row.entry.referenceType.slice(1);
@@ -871,10 +918,161 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
             referenceName,
           };
         });
+      } catch (error) {
+        logger.error("Error in getTransactions", {
+          service: "ledger-storage",
+          filter,
+          error: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+        });
+        throw error;
+      }
     },
 
     async getByAccountId(accountId: string): Promise<LedgerEntryWithDetails[]> {
       return this.getTransactions({ accountId });
+    },
+
+    async getTransactionsPaginated(filter: TransactionFilter, limit: number, offset: number): Promise<{ data: LedgerEntryWithDetails[]; total: number }> {
+      const client = getClient();
+      try {
+        const refEmployers = pgAlias(employers, 'ref_employers');
+        const refTrustProviders = pgAlias(trustProviders, 'ref_trust_providers');
+        const refWorkers = pgAlias(workers, 'ref_workers');
+        const refContacts = pgAlias(contacts, 'ref_contacts');
+
+        let whereClause;
+        if ('accountId' in filter) {
+          whereClause = eq(ledgerEa.accountId, filter.accountId);
+        } else if ('eaId' in filter) {
+          whereClause = eq(ledger.eaId, filter.eaId);
+        } else {
+          whereClause = and(
+            eq(ledger.referenceType, filter.referenceType),
+            eq(ledger.referenceId, filter.referenceId)
+          );
+        }
+
+        const [countResult] = await client
+          .select({ count: count() })
+          .from(ledger)
+          .innerJoin(ledgerEa, eq(ledger.eaId, ledgerEa.id))
+          .where(whereClause);
+        
+        const total = countResult?.count || 0;
+
+        const results = await client
+          .select({
+            entry: ledger,
+            ea: ledgerEa,
+            account: ledgerAccounts,
+            employer: employers,
+            trustProvider: trustProviders,
+            workerSiriusId: workers.siriusId,
+            workerContact: contacts,
+            payment: ledgerPayments,
+            paymentType: optionsLedgerPaymentType,
+            refEmployer: refEmployers,
+            refTrustProvider: refTrustProviders,
+            refWorkerSiriusId: refWorkers.siriusId,
+            refWorkerContact: refContacts,
+          })
+          .from(ledger)
+          .innerJoin(ledgerEa, eq(ledger.eaId, ledgerEa.id))
+          .innerJoin(ledgerAccounts, eq(ledgerEa.accountId, ledgerAccounts.id))
+          .leftJoin(employers, and(eq(ledgerEa.entityType, 'employer'), eq(ledgerEa.entityId, employers.id)))
+          .leftJoin(trustProviders, and(eq(ledgerEa.entityType, 'trustProvider'), eq(ledgerEa.entityId, trustProviders.id)))
+          .leftJoin(workers, and(eq(ledgerEa.entityType, 'worker'), eq(ledgerEa.entityId, workers.id)))
+          .leftJoin(contacts, and(eq(ledgerEa.entityType, 'worker'), eq(workers.contactId, contacts.id)))
+          .leftJoin(ledgerPayments, and(eq(ledger.referenceType, 'payment'), eq(ledger.referenceId, ledgerPayments.id)))
+          .leftJoin(optionsLedgerPaymentType, eq(ledgerPayments.paymentType, optionsLedgerPaymentType.id))
+          .leftJoin(refEmployers, and(eq(ledger.referenceType, 'employer'), eq(ledger.referenceId, refEmployers.id)))
+          .leftJoin(refTrustProviders, and(eq(ledger.referenceType, 'trustProvider'), eq(ledger.referenceId, refTrustProviders.id)))
+          .leftJoin(refWorkers, and(eq(ledger.referenceType, 'worker'), eq(ledger.referenceId, refWorkers.id)))
+          .leftJoin(refContacts, and(eq(ledger.referenceType, 'worker'), eq(refWorkers.contactId, refContacts.id)))
+          .where(whereClause)
+          .orderBy(desc(ledger.date), desc(ledger.id))
+          .limit(limit)
+          .offset(offset);
+
+        const data = results.map(row => {
+          let entityName: string | null = null;
+          const entityType = row.ea.entityType;
+          const entityId = row.ea.entityId;
+
+          if (entityType === 'employer' && row.employer) {
+            entityName = row.employer.name;
+          } else if (entityType === 'trustProvider' && row.trustProvider) {
+            entityName = row.trustProvider.name;
+          } else if (entityType === 'worker') {
+            if (row.workerContact) {
+              entityName = `${row.workerContact.given} ${row.workerContact.family}`;
+            } else if (row.workerSiriusId) {
+              entityName = `Worker #${row.workerSiriusId}`;
+            }
+          } else {
+            entityName = `${entityType} ${entityId.substring(0, 8)}`;
+          }
+
+          let referenceName: string | null = null;
+          if (row.entry.referenceType === 'payment' && row.payment) {
+            const paymentTypeName = row.paymentType?.name || 'Payment';
+            const currencyCode = row.paymentType?.currencyCode || 'USD';
+            const currency = getCurrency(currencyCode);
+            const currencyLabel = currency?.label || currencyCode;
+            const formattedAmount = formatAmount(parseFloat(row.payment.amount), currencyCode);
+            
+            if (row.payment.memo) {
+              referenceName = `${currencyLabel} Adjustment: ${formattedAmount} - ${row.payment.memo}`;
+            } else {
+              referenceName = `${currencyLabel} Adjustment: ${formattedAmount}`;
+            }
+          } else if (row.entry.referenceType === 'employer' && row.refEmployer) {
+            referenceName = `Employer: ${row.refEmployer.name}`;
+          } else if (row.entry.referenceType === 'trustProvider' && row.refTrustProvider) {
+            referenceName = `Trust Provider: ${row.refTrustProvider.name}`;
+          } else if (row.entry.referenceType === 'worker') {
+            if (row.refWorkerContact) {
+              referenceName = `Worker: ${row.refWorkerContact.given} ${row.refWorkerContact.family}`;
+            } else if (row.refWorkerSiriusId) {
+              referenceName = `Worker #${row.refWorkerSiriusId}`;
+            } else if (row.entry.referenceId) {
+              referenceName = `Worker (${row.entry.referenceId.substring(0, 8)}...)`;
+            } else {
+              referenceName = 'Worker';
+            }
+          } else if (row.entry.referenceType && row.entry.referenceId) {
+            const capitalizedType = row.entry.referenceType.charAt(0).toUpperCase() + row.entry.referenceType.slice(1);
+            referenceName = `${capitalizedType} (${row.entry.referenceId.substring(0, 8)}...)`;
+          }
+
+          return {
+            ...row.entry,
+            entityType,
+            entityId,
+            entityName,
+            eaAccountId: row.ea.accountId,
+            eaAccountName: row.account?.name || null,
+            referenceName,
+          };
+        });
+
+        return { data, total };
+      } catch (error) {
+        logger.error("Error in getTransactionsPaginated", {
+          service: "ledger-storage",
+          filter,
+          limit,
+          offset,
+          error: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+        });
+        throw error;
+      }
+    },
+
+    async getByAccountIdPaginated(accountId: string, limit: number, offset: number): Promise<{ data: LedgerEntryWithDetails[]; total: number }> {
+      return this.getTransactionsPaginated({ accountId }, limit, offset);
     },
 
     async create(insertEntry: InsertLedger): Promise<Ledger> {
@@ -883,10 +1081,28 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
         throw new Error("statementYmd is required when creating a ledger entry");
       }
       const client = getClient();
-      const [entry] = await client.insert(ledger)
-        .values({ ...insertEntry, date: sqlRaw`now()` } as typeof ledger.$inferInsert)
-        .returning();
-      return entry;
+      logger.debug("Creating ledger entry", {
+        service: "ledger-storage",
+        insertEntry,
+      });
+      try {
+        const [entry] = await client.insert(ledger)
+          .values({ ...insertEntry, date: sqlRaw`now()` } as typeof ledger.$inferInsert)
+          .returning();
+        logger.debug("Created ledger entry successfully", {
+          service: "ledger-storage",
+          entryId: entry.id,
+        });
+        return entry;
+      } catch (error) {
+        logger.error("Failed to insert ledger entry", {
+          service: "ledger-storage",
+          insertEntry,
+          error: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+        });
+        throw error;
+      }
     },
 
     async update(id: string, entryUpdate: Partial<InsertLedger>): Promise<Ledger | undefined> {
@@ -972,6 +1188,31 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
           eq(ledger.chargePluginKey, chargePluginKey)
         ));
       return result.rowCount ? result.rowCount > 0 : false;
+    },
+
+    async findByAccountEntityDatePlugin(accountId: string, entityId: string, date: Date, chargePluginId: string, chargePluginConfigId?: string, amount?: string): Promise<Ledger | undefined> {
+      const client = getClient();
+      const dayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0);
+      const dayEnd = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
+      const conditions = [
+        eq(ledgerEa.accountId, accountId),
+        eq(ledgerEa.entityId, entityId),
+        eq(ledger.chargePlugin, chargePluginId),
+        gte(ledger.date, dayStart),
+        lte(ledger.date, dayEnd),
+      ];
+      if (chargePluginConfigId) {
+        conditions.push(eq(ledger.chargePluginConfigId, chargePluginConfigId));
+      }
+      if (amount) {
+        conditions.push(eq(ledger.amount, amount));
+      }
+      const [entry] = await client.select({ entry: ledger })
+        .from(ledger)
+        .innerJoin(ledgerEa, eq(ledger.eaId, ledgerEa.id))
+        .where(and(...conditions))
+        .limit(1);
+      return entry?.entry || undefined;
     }
   };
 }
@@ -1360,12 +1601,57 @@ function createLedgerInvoiceStorage(): LedgerInvoiceStorage {
   };
 }
 
+export function createLedgerPaymentBatchStorage(): LedgerPaymentBatchStorage {
+  return {
+    async getAll(): Promise<LedgerPaymentBatch[]> {
+      const client = getClient();
+      return await client.select().from(ledgerPaymentBatches).orderBy(desc(ledgerPaymentBatches.name));
+    },
+
+    async getByAccountId(accountId: string): Promise<LedgerPaymentBatch[]> {
+      const client = getClient();
+      return await client.select().from(ledgerPaymentBatches)
+        .where(eq(ledgerPaymentBatches.accountId, accountId))
+        .orderBy(desc(ledgerPaymentBatches.name));
+    },
+
+    async get(id: string): Promise<LedgerPaymentBatch | undefined> {
+      const client = getClient();
+      const [batch] = await client.select().from(ledgerPaymentBatches).where(eq(ledgerPaymentBatches.id, id));
+      return batch || undefined;
+    },
+
+    async create(insertBatch: InsertLedgerPaymentBatch): Promise<LedgerPaymentBatch> {
+      validate.validateOrThrow(insertBatch);
+      const client = getClient();
+      const [batch] = await client.insert(ledgerPaymentBatches).values(insertBatch).returning();
+      return batch;
+    },
+
+    async update(id: string, batchUpdate: Partial<InsertLedgerPaymentBatch>): Promise<LedgerPaymentBatch | undefined> {
+      const client = getClient();
+      const [batch] = await client.update(ledgerPaymentBatches)
+        .set(batchUpdate)
+        .where(eq(ledgerPaymentBatches.id, id))
+        .returning();
+      return batch || undefined;
+    },
+
+    async delete(id: string): Promise<boolean> {
+      const client = getClient();
+      const result = await client.delete(ledgerPaymentBatches).where(eq(ledgerPaymentBatches.id, id));
+      return result.rowCount ? result.rowCount > 0 : false;
+    },
+  };
+}
+
 export function createLedgerStorage(
   accountLoggingConfig?: StorageLoggingConfig<LedgerAccountStorage>,
   stripePaymentMethodLoggingConfig?: StorageLoggingConfig<StripePaymentMethodStorage>,
   eaLoggingConfig?: StorageLoggingConfig<LedgerEaStorage>,
   paymentLoggingConfig?: StorageLoggingConfig<LedgerPaymentStorage>,
-  entryLoggingConfig?: StorageLoggingConfig<LedgerEntryStorage>
+  entryLoggingConfig?: StorageLoggingConfig<LedgerEntryStorage>,
+  paymentBatchLoggingConfig?: StorageLoggingConfig<LedgerPaymentBatchStorage>
 ): LedgerStorage {
   // Create nested storage instances with optional logging
   const accountStorage = accountLoggingConfig
@@ -1389,6 +1675,10 @@ export function createLedgerStorage(
     : createLedgerEntryStorage();
 
   const invoiceStorage = createLedgerInvoiceStorage();
+
+  const paymentBatchStorage = paymentBatchLoggingConfig
+    ? withStorageLogging(createLedgerPaymentBatchStorage(), paymentBatchLoggingConfig)
+    : createLedgerPaymentBatchStorage();
   
   return {
     accounts: accountStorage,
@@ -1396,7 +1686,8 @@ export function createLedgerStorage(
     ea: eaStorage,
     payments: paymentStorage,
     entries: entryStorage,
-    invoices: invoiceStorage
+    invoices: invoiceStorage,
+    paymentBatches: paymentBatchStorage,
   };
 }
 
@@ -1489,6 +1780,31 @@ function formatPaymentForLog(payment: LedgerPayment | undefined): string {
   const memo = payment.memo ? ` - ${payment.memo}` : '';
   return amount ? `${amount} payment${memo}` : 'payment';
 }
+
+export const ledgerPaymentBatchLoggingConfig: StorageLoggingConfig<LedgerPaymentBatchStorage> = {
+  module: 'ledger.paymentBatches',
+  methods: {
+    create: {
+      enabled: true,
+      getEntityId: (args, result) => result?.id || args[0]?.name || 'new batch',
+      getHostEntityId: (args, result) => result?.id,
+      after: async (args, result) => result,
+    },
+    update: {
+      enabled: true,
+      getEntityId: (args) => args[0],
+      getHostEntityId: (args) => args[0],
+      before: async (args, storage) => await storage.get(args[0]),
+      after: async (args, result) => result,
+    },
+    delete: {
+      enabled: true,
+      getEntityId: (args) => args[0],
+      getHostEntityId: (args) => args[0],
+      before: async (args, storage) => await storage.get(args[0]),
+    },
+  },
+};
 
 /**
  * Logging configuration for ledger payment storage operations

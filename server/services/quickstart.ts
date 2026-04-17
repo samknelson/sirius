@@ -2,8 +2,12 @@ import { db } from "../db";
 import { sql } from "drizzle-orm";
 import { getTableConfig } from "drizzle-orm/pg-core";
 import * as schema from "@shared/schema";
+import * as btuSchema from "@shared/schema/sitespecific/btu/schema";
 import fs from "fs/promises";
 import path from "path";
+
+// Merge BTU schema into main schema for quickstart operations
+const fullSchema = { ...schema, ...btuSchema };
 
 export interface QuickstartMetadata {
   name: string;
@@ -71,6 +75,13 @@ const TABLE_ORDER = [
   'workerWsh',
   'trustWmb',
   'ledger',
+  
+  // BTU sitespecific tables
+  'sitespecificBtuEmployerMap',
+  'sitespecificBtuCsg',
+  'sitespecificBtuSchoolTypes',
+  'sitespecificBtuRegions',
+  'sitespecificBtuSchoolAttributes',
 ] as const;
 
 // Tables to exclude from export/import (runtime/audit data, or stored in object storage)
@@ -80,35 +91,38 @@ const QUICKSTARTS_DIR = path.join(process.cwd(), 'database', 'quickstarts');
 
 /**
  * Convert ISO date strings back to Date objects for Drizzle timestamp columns
- * Recursively processes objects and arrays
+ * Uses iterative approach to avoid stack overflow on large datasets
  */
-function reviveDates(obj: any): any {
-  if (obj === null || obj === undefined) {
-    return obj;
-  }
+function reviveDates(rows: any[]): any[] {
+  const isoDateRegex = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z?$/;
   
-  if (typeof obj === 'string') {
-    // Check if string matches ISO 8601 date format
-    const isoDateRegex = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z?$/;
-    if (isoDateRegex.test(obj)) {
-      return new Date(obj);
+  const result: any[] = [];
+  
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    if (row === null || row === undefined) {
+      result.push(row);
+      continue;
     }
-    return obj;
-  }
-  
-  if (Array.isArray(obj)) {
-    return obj.map(item => reviveDates(item));
-  }
-  
-  if (typeof obj === 'object') {
-    const result: any = {};
-    for (const [key, value] of Object.entries(obj)) {
-      result[key] = reviveDates(value);
+    
+    if (typeof row !== 'object' || Array.isArray(row)) {
+      result.push(row);
+      continue;
     }
-    return result;
+    
+    const processedRow: any = {};
+    for (const key of Object.keys(row)) {
+      const value = row[key];
+      if (typeof value === 'string' && isoDateRegex.test(value)) {
+        processedRow[key] = new Date(value);
+      } else {
+        processedRow[key] = value;
+      }
+    }
+    result.push(processedRow);
   }
   
-  return obj;
+  return result;
 }
 
 /**
@@ -177,7 +191,7 @@ export async function exportQuickstart(name: string): Promise<QuickstartMetadata
 
   // Export each table in order
   for (const tableName of TABLE_ORDER) {
-    const table = (schema as any)[tableName];
+    const table = (fullSchema as any)[tableName];
     if (!table) {
       console.warn(`Table ${tableName} not found in schema, skipping`);
       continue;
@@ -235,7 +249,7 @@ export async function importQuickstart(name: string): Promise<QuickstartMetadata
     // Use proper identifier quoting to prevent SQL injection
     for (let i = TABLE_ORDER.length - 1; i >= 0; i--) {
       const tableVarName = TABLE_ORDER[i];
-      const table = (schema as any)[tableVarName];
+      const table = (fullSchema as any)[tableVarName];
       if (!table) {
         console.warn(`Table ${tableVarName} not found in schema, skipping truncate`);
         continue;
@@ -250,7 +264,7 @@ export async function importQuickstart(name: string): Promise<QuickstartMetadata
 
     // Insert data in forward order
     for (const tableVarName of TABLE_ORDER) {
-      const table = (schema as any)[tableVarName];
+      const table = (fullSchema as any)[tableVarName];
       if (!table) {
         console.warn(`Table ${tableVarName} not found in schema, skipping insert`);
         continue;

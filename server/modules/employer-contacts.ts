@@ -49,7 +49,7 @@ export function registerEmployerContactRoutes(
   });
   
   // GET /api/employers/:employerId/contacts - Get all contacts for an employer
-  app.get("/api/employers/:employerId/contacts", requireAuth, requireAccess('employer.mine', (req) => req.params.employerId), async (req, res) => {
+  app.get("/api/employers/:employerId/contacts", requireAuth, requireAccess('employer.steward.view', (req) => req.params.employerId), async (req, res) => {
     try {
       const { employerId } = req.params;
       const contacts = await storage.employerContacts.listByEmployer(employerId);
@@ -64,7 +64,12 @@ export function registerEmployerContactRoutes(
     try {
       const { employerId } = req.params;
       const parsed = insertContactSchema.extend({ 
-        email: z.string().email("Valid email is required"),
+        email: z.union([
+          z.string().email("Valid email format"),
+          z.literal(""),
+          z.null(),
+          z.undefined()
+        ]).transform(val => val === "" ? null : val),
         contactTypeId: z.string().optional().nullable()
       }).safeParse(req.body);
       
@@ -76,17 +81,15 @@ export function registerEmployerContactRoutes(
       
       const result = await storage.employerContacts.createOrLink({
         employerId,
-        contactData: contactData as InsertContact & { email: string },
+        contactData: contactData as InsertContact & { email?: string },
         contactTypeId: contactTypeId || null,
       });
       
       res.status(201).json(result);
     } catch (error: any) {
-      if (error.message === "Email is required for employer contacts") {
-        return res.status(400).json({ message: error.message });
-      }
-      if (error.message === "This contact is already linked to this employer") {
-        return res.status(409).json({ message: error.message });
+      // Handle duplicate email constraint violation
+      if (error.code === '23505' && error.constraint === 'contacts_email_unique') {
+        return res.status(409).json({ message: "A contact with this email already exists. Employers cannot add existing contacts, only create new ones." });
       }
       res.status(500).json({ message: "Failed to create employer contact" });
     }
@@ -317,7 +320,6 @@ export function registerEmployerContactRoutes(
       }
       
       let user = await storage.users.getUserByEmail(email);
-      let clerkWarning: string | undefined;
       
       if (!user) {
         const clerkCheck = await checkClerkConflict(email);
@@ -345,8 +347,6 @@ export function registerEmployerContactRoutes(
 
         if (clerkResult.success) {
           user = await storage.users.getUser(user.id) || user;
-        } else if (clerkResult.warning) {
-          clerkWarning = clerkResult.warning;
         }
       } else {
         // Update existing user
@@ -415,7 +415,7 @@ export function registerEmployerContactRoutes(
       const updatedRoles = await storage.users.getUserRoles(user.id);
       const updatedRoleIds = updatedRoles.map(r => r.id);
       
-      const responseData: any = {
+      res.json({
         user: {
           id: user.id,
           email: user.email,
@@ -425,11 +425,7 @@ export function registerEmployerContactRoutes(
           accountStatus: user.accountStatus,
         },
         userRoleIds: updatedRoleIds,
-      };
-      if (clerkWarning) {
-        responseData.clerkWarning = clerkWarning;
-      }
-      res.json(responseData);
+      });
     } catch (error) {
       console.error("Error creating/updating employer contact user:", error);
       res.status(500).json({ message: "Failed to create or update user" });

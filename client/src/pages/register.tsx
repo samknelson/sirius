@@ -10,9 +10,27 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2, ShieldCheck, AlertCircle, ArrowLeft, UserPlus, CheckCircle2, Eye, EyeOff } from "lucide-react";
 import { SignUp, useUser } from "@clerk/clerk-react";
 
+const CLERK_ENABLED = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+
 type Step = "verify" | "signup" | "completing";
 
 export default function RegisterPage() {
+  const [, setLocation] = useLocation();
+
+  useEffect(() => {
+    if (!CLERK_ENABLED) {
+      setLocation("/login");
+    }
+  }, [setLocation]);
+
+  if (!CLERK_ENABLED) {
+    return null;
+  }
+
+  return <RegisterPageInner />;
+}
+
+function RegisterPageInner() {
   const [, setLocation] = useLocation();
   const { isAuthenticated } = useAuth();
   const { isSignedIn } = useUser();

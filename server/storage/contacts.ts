@@ -163,7 +163,6 @@ export interface AddressStorage {
 export interface PhoneNumberStorage {
   getAllPhoneNumbers(): Promise<PhoneNumber[]>;
   getPhoneNumber(id: string): Promise<PhoneNumber | undefined>;
-  getPhoneNumbersByNumber(phoneNumber: string): Promise<PhoneNumber[]>;
   getPhoneNumbersByContact(contactId: string): Promise<PhoneNumber[]>;
   createPhoneNumber(phoneNumber: InsertPhoneNumber): Promise<PhoneNumber>;
   updatePhoneNumber(id: string, phoneNumber: Partial<InsertPhoneNumber>): Promise<PhoneNumber | undefined>;
@@ -318,11 +317,6 @@ export function createPhoneNumberStorage(): PhoneNumberStorage {
       const client = getClient();
       const [phoneNumber] = await client.select().from(phoneNumbers).where(eq(phoneNumbers.id, id));
       return phoneNumber || undefined;
-    },
-
-    async getPhoneNumbersByNumber(phoneNumberStr: string): Promise<PhoneNumber[]> {
-      const client = getClient();
-      return await client.select().from(phoneNumbers).where(eq(phoneNumbers.phoneNumber, phoneNumberStr));
     },
 
     async getPhoneNumbersByContact(contactId: string): Promise<PhoneNumber[]> {

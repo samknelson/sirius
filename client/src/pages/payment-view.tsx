@@ -208,7 +208,7 @@ function PaymentViewContent() {
       </Card>
 
       <LedgerTransactionsView
-        queryKey={[`/api/ledger/payments/${id}/transactions`]}
+        baseUrl={`/api/ledger/payments/${id}/transactions`}
         title="Associated Transactions"
         csvFilename={`payment-${id}-transactions`}
         showEntityType={true}

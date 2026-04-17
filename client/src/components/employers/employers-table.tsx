@@ -1,19 +1,29 @@
 import { useState, useMemo } from "react";
-import { ArrowUpDown, Building2, Eye, Search, Pencil, Trash2 } from "lucide-react";
+import { ArrowUpDown, Building2, Eye, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Employer } from "@shared/schema";
+import { Company } from "@shared/schema/employer/company-schema";
 import { Link } from "wouter";
+import { useQuery } from "@tanstack/react-query";
+import { renderIcon } from "@/components/ui/icon-picker";
+
+type EmployerWithCompany = Employer & { companyId?: string | null; companyName?: string | null };
 
 interface EmployersTableProps {
-  employers: Employer[];
+  employers: EmployerWithCompany[];
   isLoading: boolean;
   includeInactive: boolean;
   onToggleInactive: () => void;
+  showCompany?: boolean;
+  companies?: Company[];
 }
 
 const avatarColors = [
@@ -24,23 +34,65 @@ const avatarColors = [
   "bg-red-100 text-red-600",
 ];
 
-export function EmployersTable({ employers, isLoading, includeInactive, onToggleInactive }: EmployersTableProps) {
+interface EmployerType {
+  id: string;
+  name: string;
+  data?: { icon?: string } | null;
+}
+
+export function EmployersTable({ employers, isLoading, includeInactive, onToggleInactive, showCompany, companies = [] }: EmployersTableProps) {
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedTypeId, setSelectedTypeId] = useState<string>("all");
+  const [companyFilter, setCompanyFilter] = useState<string>("all");
 
-  // Filter employers based on search query
+  // Fetch employer types for icons
+  const { data: employerTypes = [] } = useQuery<EmployerType[]>({
+    queryKey: ["/api/employer-types"],
+  });
+
+  // Create map for employer type info (icon and name)
+  const employerTypeMap = useMemo(() => {
+    const map = new Map<string, { icon: string; name: string }>();
+    for (const type of employerTypes) {
+      const iconName = type.data?.icon || "Building";
+      map.set(type.id, { icon: iconName, name: type.name });
+    }
+    return map;
+  }, [employerTypes]);
+
+  // Filter employers based on search query and type
   const filteredEmployers = useMemo(() => {
-    if (!searchQuery.trim()) return employers;
-    
-    const query = searchQuery.toLowerCase();
     return employers.filter(employer => {
-      const id = employer.id.toLowerCase();
-      const name = employer.name.toLowerCase();
-      const siriusId = String(employer.siriusId);
+      // Filter by employer type
+      if (selectedTypeId !== "all" && employer.typeId !== selectedTypeId) {
+        return false;
+      }
       
-      return id.includes(query) || name.includes(query) || siriusId.includes(query);
+      // Filter by search query
+      if (searchQuery.trim()) {
+        const query = searchQuery.toLowerCase();
+        const id = employer.id.toLowerCase();
+        const name = employer.name.toLowerCase();
+        const siriusId = String(employer.siriusId);
+        
+        if (!id.includes(query) && !name.includes(query) && !siriusId.includes(query)) {
+          return false;
+        }
+      }
+      
+      // Filter by company
+      if (showCompany && companyFilter !== "all") {
+        if (companyFilter === "none") {
+          if (employer.companyId) return false;
+        } else {
+          if (employer.companyId !== companyFilter) return false;
+        }
+      }
+
+      return true;
     });
-  }, [employers, searchQuery]);
+  }, [employers, searchQuery, selectedTypeId, showCompany, companyFilter]);
 
   const sortedEmployers = [...filteredEmployers].sort((a, b) => {
     if (sortOrder === "asc") {
@@ -104,20 +156,64 @@ export function EmployersTable({ employers, isLoading, includeInactive, onToggle
             />
           </div>
           
-          {/* Include Inactive Toggle */}
-          <div className="flex items-center space-x-2">
-            <Checkbox
-              id="include-inactive"
-              checked={includeInactive}
-              onCheckedChange={onToggleInactive}
-              data-testid="checkbox-include-inactive"
-            />
-            <Label
-              htmlFor="include-inactive"
-              className="text-sm text-muted-foreground cursor-pointer"
-            >
-              Include inactive employers
-            </Label>
+          {/* Filters Row */}
+          <div className="flex items-center gap-4 flex-wrap">
+            {/* Include Inactive Toggle */}
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="include-inactive"
+                checked={includeInactive}
+                onCheckedChange={onToggleInactive}
+                data-testid="checkbox-include-inactive"
+              />
+              <Label
+                htmlFor="include-inactive"
+                className="text-sm text-muted-foreground cursor-pointer"
+              >
+                Include inactive employers
+              </Label>
+            </div>
+            
+            {/* Employer Type Filter */}
+            <div className="flex items-center gap-2">
+              <Select value={selectedTypeId} onValueChange={setSelectedTypeId}>
+                <SelectTrigger className="w-[180px]" data-testid="select-employer-type-filter">
+                  <SelectValue placeholder="All Types" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Types</SelectItem>
+                  {employerTypes.map((type) => (
+                    <SelectItem key={type.id} value={type.id}>
+                      <div className="flex items-center gap-2">
+                        {renderIcon(type.data?.icon || "Building2", "w-4 h-4")}
+                        <span>{type.name}</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Company Filter */}
+            {showCompany && (
+              <div className="flex items-center space-x-2">
+                <Label className="text-sm text-muted-foreground whitespace-nowrap">Company:</Label>
+                <Select value={companyFilter} onValueChange={setCompanyFilter}>
+                  <SelectTrigger className="w-[200px] h-8 text-sm" data-testid="select-company-filter">
+                    <SelectValue placeholder="All companies" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all" data-testid="select-company-all">All</SelectItem>
+                    <SelectItem value="none" data-testid="select-company-none">No company</SelectItem>
+                    {companies.map((c) => (
+                      <SelectItem key={c.id} value={c.id} data-testid={`select-company-${c.id}`}>
+                        {c.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
         </div>
 
@@ -140,6 +236,11 @@ export function EmployersTable({ employers, isLoading, includeInactive, onToggle
                     <ArrowUpDown size={12} />
                   </div>
                 </th>
+                {showCompany && (
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    <span>Company</span>
+                  </th>
+                )}
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   <span>Status</span>
                 </th>
@@ -161,9 +262,25 @@ export function EmployersTable({ employers, isLoading, includeInactive, onToggle
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center space-x-3">
-                      <div className={`w-8 h-8 ${avatarColors[index % avatarColors.length]} rounded-full flex items-center justify-center`}>
-                        <Building2 size={12} />
-                      </div>
+                      {employer.typeId && employerTypeMap.has(employer.typeId) ? (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div 
+                              className={`w-8 h-8 ${avatarColors[index % avatarColors.length]} rounded-full flex items-center justify-center cursor-help`}
+                              data-testid={`icon-employer-type-${employer.id}`}
+                            >
+                              {renderIcon(employerTypeMap.get(employer.typeId)!.icon, "w-4 h-4")}
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>{employerTypeMap.get(employer.typeId)!.name}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      ) : (
+                        <div className={`w-8 h-8 ${avatarColors[index % avatarColors.length]} rounded-full flex items-center justify-center`}>
+                          <Building2 size={12} />
+                        </div>
+                      )}
                       <span 
                         className="text-sm font-medium text-foreground"
                         data-testid={`text-employer-name-${employer.id}`}
@@ -172,6 +289,16 @@ export function EmployersTable({ employers, isLoading, includeInactive, onToggle
                       </span>
                     </div>
                   </td>
+                  {showCompany && (
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span
+                        className="text-sm text-muted-foreground"
+                        data-testid={`text-employer-company-${employer.id}`}
+                      >
+                        {employer.companyName || ""}
+                      </span>
+                    </td>
+                  )}
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span 
                       className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${

@@ -24,7 +24,7 @@ export function PageHeader({ title, icon, backLink, actions }: PageHeaderProps) 
                 {icon}
               </div>
             )}
-            <h1 className="text-xl font-semibold text-foreground" data-testid="text-page-title">
+            <h1 className="text-base md:text-xl font-semibold text-foreground" data-testid="text-page-title">
               {title}
             </h1>
           </div>

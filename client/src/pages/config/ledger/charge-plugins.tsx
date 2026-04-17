@@ -193,7 +193,7 @@ export default function ChargePluginsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Charge Plugins</h1>
+          <h1 className="text-xl md:text-2xl font-bold text-foreground">Charge Plugins</h1>
           <p className="text-muted-foreground mt-2">
             Configure automatic charge plugins for ledger transactions
           </p>

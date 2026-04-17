@@ -107,7 +107,7 @@ export default function ReportType() {
                 <FileText className="text-primary-foreground" size={20} />
               </div>
               <div>
-                <h1 className="text-2xl font-semibold text-foreground" data-testid="text-report-type-title">
+                <h1 className="text-xl md:text-2xl font-semibold text-foreground" data-testid="text-report-type-title">
                   {reportType.displayName}
                 </h1>
                 {reportType.description && (

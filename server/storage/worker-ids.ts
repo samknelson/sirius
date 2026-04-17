@@ -1,7 +1,7 @@
 import { createNoopValidator } from './utils/validation';
 import { getClient } from './transaction-context';
 import { workerIds, optionsWorkerIdType, type WorkerId, type InsertWorkerId } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { eq, and, inArray, sql } from "drizzle-orm";
 import { type StorageLoggingConfig } from "./middleware/logging";
 
 /**
@@ -9,12 +9,25 @@ import { type StorageLoggingConfig } from "./middleware/logging";
  */
 export const validate = createNoopValidator();
 
+export interface ShowOnListsIdType {
+  id: string;
+  name: string;
+}
+
+export interface WorkerIdForList {
+  workerId: string;
+  typeId: string;
+  value: string;
+}
+
 export interface WorkerIdStorage {
   getWorkerIdsByWorkerId(workerId: string): Promise<WorkerId[]>;
   getWorkerId(id: string): Promise<WorkerId | undefined>;
   createWorkerId(workerId: InsertWorkerId): Promise<WorkerId>;
   updateWorkerId(id: string, workerId: Partial<InsertWorkerId>): Promise<WorkerId | undefined>;
   deleteWorkerId(id: string): Promise<boolean>;
+  getShowOnListsIdTypes(): Promise<ShowOnListsIdType[]>;
+  getWorkerIdsForListByWorkerIds(workerIdsList: string[]): Promise<WorkerIdForList[]>;
 }
 
 export function createWorkerIdStorage(): WorkerIdStorage {
@@ -55,6 +68,38 @@ export function createWorkerIdStorage(): WorkerIdStorage {
       const client = getClient();
       const result = await client.delete(workerIds).where(eq(workerIds.id, id)).returning();
       return result.length > 0;
+    },
+
+    async getShowOnListsIdTypes(): Promise<ShowOnListsIdType[]> {
+      const client = getClient();
+      const results = await client
+        .select({ id: optionsWorkerIdType.id, name: optionsWorkerIdType.name })
+        .from(optionsWorkerIdType)
+        .where(sql`(${optionsWorkerIdType.data}->>'showOnLists')::boolean = true`)
+        .orderBy(optionsWorkerIdType.sequence);
+      return results;
+    },
+
+    async getWorkerIdsForListByWorkerIds(workerIdsList: string[]): Promise<WorkerIdForList[]> {
+      if (workerIdsList.length === 0) return [];
+      const client = getClient();
+      const showOnListsTypes = await this.getShowOnListsIdTypes();
+      if (showOnListsTypes.length === 0) return [];
+      const typeIds = showOnListsTypes.map(t => t.id);
+      const results = await client
+        .select({
+          workerId: workerIds.workerId,
+          typeId: workerIds.typeId,
+          value: workerIds.value,
+        })
+        .from(workerIds)
+        .where(
+          and(
+            inArray(workerIds.typeId, typeIds),
+            inArray(workerIds.workerId, workerIdsList)
+          )
+        );
+      return results;
     }
   };
 }

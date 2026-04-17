@@ -28,6 +28,24 @@ export const TERM_REGISTRY: Record<string, TermDefinition> = {
       plural: "Shop Stewards",
     },
   },
+  worker: {
+    key: "worker",
+    label: "Worker",
+    description: "Individual employees or members (e.g., Worker, Member, Employee)",
+    defaults: {
+      singular: "Worker",
+      plural: "Workers",
+    },
+  },
+  employer: {
+    key: "employer",
+    label: "Employer",
+    description: "Organizations that employ workers (e.g., Employer, School, Company)",
+    defaults: {
+      singular: "Employer",
+      plural: "Employers",
+    },
+  },
 };
 
 export const TERMINOLOGY_VARIABLE_NAME = "site_terminology";

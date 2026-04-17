@@ -25,16 +25,13 @@ import RegisterPage from "@/pages/register";
 // Lazy-loaded pages
 const Bootstrap = lazy(() => import("@/pages/bootstrap"));
 const SmsOptinPage = lazy(() => import("@/pages/sms-optin"));
-const PrivacyPolicyPage = lazy(() => import("@/pages/privacy"));
-const TermsOfServicePage = lazy(() => import("@/pages/terms"));
 const Dashboard = lazy(() => import("@/pages/dashboard"));
 const Bookmarks = lazy(() => import("@/pages/bookmarks"));
 const AlertsPage = lazy(() => import("@/pages/alerts").then(m => ({ default: m.default })));
 const AlertsRedirect = lazy(() => import("@/pages/alerts").then(m => ({ default: m.AlertsRedirect })));
 const Reports = lazy(() => import("@/pages/reports"));
-const Imports = lazy(() => import("@/pages/imports"));
-const InactivityScan = lazy(() => import("@/pages/inactivity-scan"));
 const ReportType = lazy(() => import("@/pages/report-type"));
+const ContactExport = lazy(() => import("@/pages/contact-export"));
 const Workers = lazy(() => import("@/pages/workers"));
 const WorkersAdd = lazy(() => import("@/pages/workers-add"));
 const WorkerView = lazy(() => import("@/pages/worker-view"));
@@ -80,9 +77,16 @@ const WorkerSendPostal = lazy(() => import("@/pages/worker-send-postal"));
 const WorkerSendInApp = lazy(() => import("@/pages/worker-send-inapp"));
 const CommDetail = lazy(() => import("@/pages/comm-detail"));
 const WorkerDelete = lazy(() => import("@/pages/worker-delete"));
+const Companies = lazy(() => import("@/pages/companies"));
+const CompanyView = lazy(() => import("@/pages/company-view"));
+const CompanyEdit = lazy(() => import("@/pages/company-edit"));
+const CompanyLogs = lazy(() => import("@/pages/company-logs"));
+const CompanyAdd = lazy(() => import("@/pages/company-add"));
 const Employers = lazy(() => import("@/pages/employers"));
 const EmployersAdd = lazy(() => import("@/pages/employers-add"));
 const EmployersOnboarding = lazy(() => import("@/pages/employers-onboarding"));
+const EmployersOrganizing = lazy(() => import("@/pages/employers-organizing"));
+const EmployerMissingCardchecks = lazy(() => import("@/pages/employer-missing-cardchecks"));
 const EmployerView = lazy(() => import("@/pages/employer-view"));
 const EmployerEdit = lazy(() => import("@/pages/employer-edit"));
 const EmployerWorkers = lazy(() => import("@/pages/employer-workers"));
@@ -110,6 +114,7 @@ const EmployerDispatchPage = lazy(() => import("@/pages/employers/dispatch"));
 const WizardView = lazy(() => import("@/pages/wizard-view"));
 const StripeCustomerPage = lazy(() => import("@/pages/employers/stripe-customer"));
 const StripePaymentMethodsPage = lazy(() => import("@/pages/employers/stripe-payment-methods"));
+const EmployerSchoolAttributesPage = lazy(() => import("@/pages/employers/school-attributes"));
 const EmployerLedgerAccountsWrapper = lazy(() => import("@/pages/employer-ledger-accounts-wrapper"));
 const EAView = lazy(() => import("@/pages/ea-view"));
 const EAInvoices = lazy(() => import("@/pages/ea-invoices"));
@@ -143,6 +148,10 @@ const TrustProviderContactSendSms = lazy(() => import("@/pages/trust-provider-co
 const TrustProviderContactSendEmail = lazy(() => import("@/pages/trust-provider-contact-send-email"));
 const TrustProviderContactSendPostal = lazy(() => import("@/pages/trust-provider-contact-send-postal"));
 const TrustProviderContactSendInApp = lazy(() => import("@/pages/trust-provider-contact-send-inapp"));
+const TrustProviderEdiPage = lazy(() => import("@/pages/trust-provider-edi"));
+const TrustProviderEdiDetailsPage = lazy(() => import("@/pages/trust-provider-edi-details"));
+const TrustProviderEdiEditPage = lazy(() => import("@/pages/trust-provider-edi-edit"));
+const TrustProviderEdiLogsPage = lazy(() => import("@/pages/trust-provider-edi-logs"));
 const TrustProviderLogsPage = lazy(() => import("@/pages/trust-provider-logs"));
 const BargainingUnitsPage = lazy(() => import("@/pages/bargaining-units"));
 const BargainingUnitViewPage = lazy(() => import("@/pages/bargaining-unit-view"));
@@ -191,11 +200,14 @@ const DispatchJobTypeEditPage = lazy(() => import("@/pages/config/dispatch-job-t
 const DispatchJobTypeDeletePage = lazy(() => import("@/pages/config/dispatch-job-type-delete"));
 const DispatchJobTypePluginsPage = lazy(() => import("@/pages/config/dispatch-job-type-plugins"));
 const DispatchJobTypeNotificationsPage = lazy(() => import("@/pages/config/dispatch-job-type-notifications"));
-const DispatchJobTypeRunSettingsPage = lazy(() => import("@/pages/config/dispatch-job-type-run-settings"));
 const DispatchDncConfigPage = lazy(() => import("@/pages/config/dispatch-dnc"));
+const DispatchJobTypeRunSettingsPage = lazy(() => import("@/pages/config/dispatch-job-type-run-settings"));
 const DispatchEbaSettingsPage = lazy(() => import("@/pages/config/dispatch-eba-settings"));
+const DispatchPluginsPage = lazy(() => import("@/pages/config/dispatch-plugins"));
+const HtaHomeEmploymentStatusesPage = lazy(() => import("@/pages/config/hta-home-employment-statuses"));
 const EdlsSettingsPage = lazy(() => import("@/pages/config/edls/settings"));
 const EdlsTasksPage = lazy(() => import("@/pages/config/edls/tasks"));
+const T631FetchPage = lazy(() => import("@/pages/config/edls/t631-fetch"));
 const WsBundlesPage = lazy(() => import("@/pages/config/ws/bundles"));
 const WsClientsPage = lazy(() => import("@/pages/config/ws/clients"));
 const WsClientSettingsPage = lazy(() => import("@/pages/config/ws/client-settings"));
@@ -203,6 +215,12 @@ const WsClientCredentialsPage = lazy(() => import("@/pages/config/ws/client-cred
 const WsClientIpRulesPage = lazy(() => import("@/pages/config/ws/client-ip-rules"));
 const WsClientTestPage = lazy(() => import("@/pages/config/ws/client-test"));
 const WsClientLogsPage = lazy(() => import("@/pages/config/ws/client-logs"));
+const SftpClientsPage = lazy(() => import("@/pages/config/sftp/clients"));
+const SftpClientDetailsPage = lazy(() => import("@/pages/config/sftp/client-details"));
+const SftpClientConnectionPage = lazy(() => import("@/pages/config/sftp/client-connection"));
+const SftpClientTestPage = lazy(() => import("@/pages/config/sftp/client-test"));
+const SftpClientLogsPage = lazy(() => import("@/pages/config/sftp/client-logs"));
+const SftpClientEditPage = lazy(() => import("@/pages/config/sftp/client-edit"));
 const WorkerBanConfigPage = lazy(() => import("@/pages/config/workers-ban"));
 const DispatchJobsPage = lazy(() => import("@/pages/dispatch/jobs"));
 const DispatchJobDetailsPage = lazy(() => import("@/pages/dispatch/job-details"));
@@ -215,6 +233,19 @@ const DispatchJobNewPage = lazy(() => import("@/pages/dispatch/job-new"));
 const DispatchJobRunPage = lazy(() => import("@/pages/dispatch/job-run"));
 const DispatchJobRunSettingsPage = lazy(() => import("@/pages/dispatch/job-run-settings"));
 const DispatchJobRunBatchPage = lazy(() => import("@/pages/dispatch/job-run-batch"));
+const DispatchJobGroupListPage = lazy(() => import("@/pages/dispatch/job-group-list"));
+const DispatchJobGroupDetailsPage = lazy(() => import("@/pages/dispatch/job-group-details"));
+const DispatchJobGroupEditPage = lazy(() => import("@/pages/dispatch/job-group-edit"));
+const DispatchJobGroupLogsPage = lazy(() => import("@/pages/dispatch/job-group-logs"));
+const DispatchJobGroupNewPage = lazy(() => import("@/pages/dispatch/job-group-new"));
+const FacilityListPage = lazy(() => import("@/pages/facility/list"));
+const FacilityNewPage = lazy(() => import("@/pages/facility/new"));
+const FacilityDetailsPage = lazy(() => import("@/pages/facility/details"));
+const FacilityEditPage = lazy(() => import("@/pages/facility/edit"));
+const FacilityEmailPage = lazy(() => import("@/pages/facility/email"));
+const FacilityAddressesPage = lazy(() => import("@/pages/facility/addresses"));
+const FacilityPhoneNumbersPage = lazy(() => import("@/pages/facility/phone-numbers"));
+const FacilityLogsPage = lazy(() => import("@/pages/facility/logs"));
 const DispatchDetailsPage = lazy(() => import("@/pages/dispatch/dispatch-details"));
 const DispatchEditPage = lazy(() => import("@/pages/dispatch/dispatch-edit"));
 const DispatchManagePage = lazy(() => import("@/pages/dispatch/dispatch-manage"));
@@ -244,6 +275,11 @@ const AccountPayments = lazy(() => import("@/pages/config/ledger/account-payment
 const AccountTransactions = lazy(() => import("@/pages/config/ledger/account-transactions"));
 const AccountParticipants = lazy(() => import("@/pages/account-participants"));
 const AccountSettings = lazy(() => import("@/pages/config/ledger/account-settings"));
+const AccountBatches = lazy(() => import("@/pages/config/ledger/account-batches"));
+const PaymentBatchDetailsPage = lazy(() => import("@/pages/ledger/payment-batch-details"));
+const PaymentBatchEditPage = lazy(() => import("@/pages/ledger/payment-batch-edit"));
+const PaymentBatchPaymentsPage = lazy(() => import("@/pages/ledger/payment-batch-payments"));
+const PaymentBatchLogsPage = lazy(() => import("@/pages/ledger/payment-batch-logs"));
 const SiteInformation = lazy(() => import("@/pages/site-information"));
 const TerminologyConfigPage = lazy(() => import("@/pages/config/terminology"));
 const PolicyView = lazy(() => import("@/pages/policy-view"));
@@ -256,9 +292,12 @@ const CardcheckDefinitionViewPage = lazy(() => import("@/pages/cardcheck-definit
 const CardcheckDefinitionEditPage = lazy(() => import("@/pages/cardcheck-definition-edit"));
 const WorkerCardchecks = lazy(() => import("@/pages/worker-cardchecks"));
 const CardcheckViewPage = lazy(() => import("@/pages/cardcheck-view"));
+const CardcheckReportPage = lazy(() => import("@/pages/cardcheck-report"));
 const EventsListPage = lazy(() => import("@/pages/events"));
 const EventViewPage = lazy(() => import("@/pages/event-view"));
 const EventEditPage = lazy(() => import("@/pages/event-edit"));
+const EventScanCheckinPage = lazy(() => import("@/pages/event-scan-checkin"));
+const WorkerQRCodePage = lazy(() => import("@/pages/worker-qr-code"));
 const EventDeletePage = lazy(() => import("@/pages/event-delete"));
 const EventRegisterPage = lazy(() => import("@/pages/event-register"));
 const EventRosterPage = lazy(() => import("@/pages/event-roster"));
@@ -268,12 +307,32 @@ const BtuCsgViewPage = lazy(() => import("@/pages/sitespecific/btu/csg-view"));
 const BtuCsgEditPage = lazy(() => import("@/pages/sitespecific/btu/csg-edit"));
 const BtuCsgNewPage = lazy(() => import("@/pages/sitespecific/btu/csg-new"));
 const BtuEmployerMapListPage = lazy(() => import("@/pages/sitespecific/btu/employer-map-list"));
+const BtuTerritoriesListPage = lazy(() => import("@/pages/sitespecific/btu/territories-list"));
+const BtuSchoolTypesListPage = lazy(() => import("@/pages/sitespecific/btu/school-types-list"));
+const BtuRegionsListPage = lazy(() => import("@/pages/sitespecific/btu/regions-list"));
+const BtuWorkerImportPage = lazy(() => import("@/pages/sitespecific/btu/worker-import"));
+const BtuDuesAllocationPage = lazy(() => import("@/pages/sitespecific/btu/dues-allocation"));
+const BtuCardcheckImportPage = lazy(() => import("@/pages/sitespecific/btu/cardcheck-import"));
+const BtuCardcheckSigImportPage = lazy(() => import("@/pages/sitespecific/btu/cardcheck-sig-import"));
+const BtuCardcheckScrapeImportPage = lazy(() => import("@/pages/sitespecific/btu/cardcheck-scrape-import"));
+const BtuBuildingRepImportPage = lazy(() => import("@/pages/sitespecific/btu/building-rep-import"));
+const WorkerPoliticalProfile = lazy(() => import("@/pages/worker-political-profile"));
+const PoliticalProfilesReport = lazy(() => import("@/pages/political-profiles-report"));
 const EdlsSheetsPage = lazy(() => import("@/pages/edls/sheets"));
 const EdlsSheetDetailsPage = lazy(() => import("@/pages/edls/sheet-details"));
 const EdlsSheetAssignmentsPage = lazy(() => import("@/pages/edls/sheet-assignments"));
 const EdlsSheetManagePage = lazy(() => import("@/pages/edls/sheet-manage"));
 const EdlsSheetEditPage = lazy(() => import("@/pages/edls/sheet-edit"));
 const EdlsSheetLogsPage = lazy(() => import("@/pages/edls/sheet-logs"));
+const BulkMessagesPage = lazy(() => import("@/pages/bulk-messages"));
+const BulkMessageDetailsPage = lazy(() => import("@/pages/bulk-message-details"));
+const BulkMessageEditPage = lazy(() => import("@/pages/bulk-message-edit"));
+const BulkMessageMessagePage = lazy(() => import("@/pages/bulk-message-message"));
+const BulkMessageLogsPage = lazy(() => import("@/pages/bulk-message-logs"));
+const BulkMessageRecipientsListPage = lazy(() => import("@/pages/bulk-message-recipients-list"));
+const BulkMessageRecipientsAddPage = lazy(() => import("@/pages/bulk-message-recipients-add"));
+const BulkMessageDeliverPage = lazy(() => import("@/pages/bulk-message-deliver"));
+const BulkMessageTestPage = lazy(() => import("@/pages/bulk-message-test"));
 
 // Loading fallback component
 function PageLoader() {
@@ -350,8 +409,6 @@ function Router() {
         <Route path="/register" component={RegisterPage} />
         <Route path="/unauthorized" component={UnauthorizedPage} />
         <Route path="/sms/optin/:token" component={SmsOptinPage} />
-        <Route path="/privacy" component={PrivacyPolicyPage} />
-        <Route path="/terms" component={TermsOfServicePage} />
 
       {/* Protected routes */}
       <Route path="/workers/add">
@@ -700,6 +757,14 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/workers/:id/political">
+        <ProtectedRoute tabId="political" entityType="worker">
+          <AuthenticatedLayout>
+            <WorkerPoliticalProfile />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/workers/:id/delete">
         <ProtectedRoute tabId="delete" entityType="worker">
           <AuthenticatedLayout>
@@ -804,6 +869,30 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/reports/cardchecks">
+        <ProtectedRoute permission="staff" component="cardcheck">
+          <AuthenticatedLayout>
+            <CardcheckReportPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/reports/political-profiles">
+        <ProtectedRoute permission="staff" component="sitespecific.btu.political">
+          <AuthenticatedLayout>
+            <PoliticalProfilesReport />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/reports/contact-export">
+        <ProtectedRoute permission="staff">
+          <AuthenticatedLayout>
+            <ContactExport />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/reports/:reportType">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
@@ -816,22 +905,6 @@ function Router() {
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <Reports />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/imports">
-        <ProtectedRoute permission="staff">
-          <AuthenticatedLayout>
-            <Imports />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/inactivity-scan">
-        <ProtectedRoute permission="staff">
-          <AuthenticatedLayout>
-            <InactivityScan />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -1156,10 +1229,74 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/employers/:id/school-attributes">
+        <ProtectedRoute tabId="school-attributes" entityType="employer">
+          <AuthenticatedLayout>
+            <EmployerSchoolAttributesPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/employers/organizing">
+        <ProtectedRoute permission="staff" componentAny={["sitespecific.btu", "cardcheck"]}>
+          <AuthenticatedLayout>
+            <EmployersOrganizing />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/employers/:employerId/missing-cardchecks">
+        <ProtectedRoute permission="staff" componentAny={["sitespecific.btu", "cardcheck"]}>
+          <AuthenticatedLayout>
+            <EmployerMissingCardchecks />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/employers/:id">
         <ProtectedRoute tabId="details" entityType="employer">
           <AuthenticatedLayout>
             <EmployerView />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/companies/add">
+        <ProtectedRoute policy="staff" component="employer.company">
+          <AuthenticatedLayout>
+            <CompanyAdd />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/companies/:id/edit">
+        <ProtectedRoute policy="staff" component="employer.company">
+          <AuthenticatedLayout>
+            <CompanyEdit />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/companies/:id/logs">
+        <ProtectedRoute policy="staff" component="employer.company">
+          <AuthenticatedLayout>
+            <CompanyLogs />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/companies/:id">
+        <ProtectedRoute policy="staff" component="employer.company">
+          <AuthenticatedLayout>
+            <CompanyView />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/companies">
+        <ProtectedRoute policy="staff" component="employer.company">
+          <AuthenticatedLayout>
+            <Companies />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -1220,6 +1357,16 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/events/:id/scan-checkin">
+        <ProtectedRoute tabId="scan-checkin" entityType="event">
+          <AuthenticatedLayout>
+            <Suspense fallback={<PageLoader />}>
+              <EventScanCheckinPage />
+            </Suspense>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/events/:id">
         <ProtectedRoute tabId="view" entityType="event">
           <AuthenticatedLayout>
@@ -1273,6 +1420,78 @@ function Router() {
         <ProtectedRoute permission="admin" component="sitespecific.btu">
           <AuthenticatedLayout>
             <BtuEmployerMapListPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/sitespecific/btu/territories">
+        <ProtectedRoute permission="admin" component="sitespecific.btu">
+          <AuthenticatedLayout>
+            <BtuTerritoriesListPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/sitespecific/btu/school-types">
+        <ProtectedRoute permission="admin" component="sitespecific.btu">
+          <AuthenticatedLayout>
+            <BtuSchoolTypesListPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/sitespecific/btu/regions">
+        <ProtectedRoute permission="admin" component="sitespecific.btu">
+          <AuthenticatedLayout>
+            <BtuRegionsListPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/sitespecific/btu/worker-import">
+        <ProtectedRoute permission="admin" component="sitespecific.btu">
+          <AuthenticatedLayout>
+            <BtuWorkerImportPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/sitespecific/btu/dues-allocation">
+        <ProtectedRoute permission="admin" component="sitespecific.btu">
+          <AuthenticatedLayout>
+            <BtuDuesAllocationPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/sitespecific/btu/cardcheck-import">
+        <ProtectedRoute permission="admin" component="sitespecific.btu">
+          <AuthenticatedLayout>
+            <BtuCardcheckImportPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/sitespecific/btu/cardcheck-sig-import">
+        <ProtectedRoute permission="admin" component="sitespecific.btu">
+          <AuthenticatedLayout>
+            <BtuCardcheckSigImportPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/sitespecific/btu/cardcheck-scrape-import">
+        <ProtectedRoute permission="admin" component="sitespecific.btu">
+          <AuthenticatedLayout>
+            <BtuCardcheckScrapeImportPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/sitespecific/btu/building-rep-import">
+        <ProtectedRoute permission="admin" component="sitespecific.btu">
+          <AuthenticatedLayout>
+            <BtuBuildingRepImportPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -1477,6 +1696,110 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/trust/provider/:id/edi">
+        <ProtectedRoute permission="admin" component="trust.providers.edi">
+          <AuthenticatedLayout>
+            <TrustProviderEdiPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/trust/provider-edi/:id/edit">
+        <ProtectedRoute permission="admin" component="trust.providers.edi">
+          <AuthenticatedLayout>
+            <TrustProviderEdiEditPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/trust/provider-edi/:id/logs">
+        <ProtectedRoute permission="admin" component="trust.providers.edi">
+          <AuthenticatedLayout>
+            <TrustProviderEdiLogsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/trust/provider-edi/:id">
+        <ProtectedRoute permission="admin" component="trust.providers.edi">
+          <AuthenticatedLayout>
+            <TrustProviderEdiDetailsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/bulk/list">
+        <ProtectedRoute policy="bulk.edit">
+          <AuthenticatedLayout>
+            <BulkMessagesPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/bulk/:id/edit">
+        <ProtectedRoute policy="bulk.edit">
+          <AuthenticatedLayout>
+            <BulkMessageEditPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/bulk/:id/message">
+        <ProtectedRoute policy="bulk.edit">
+          <AuthenticatedLayout>
+            <BulkMessageMessagePage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/bulk/:id/recipients/list">
+        <ProtectedRoute policy="bulk.edit">
+          <AuthenticatedLayout>
+            <BulkMessageRecipientsListPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/bulk/:id/recipients/add">
+        <ProtectedRoute policy="bulk.edit">
+          <AuthenticatedLayout>
+            <BulkMessageRecipientsAddPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/bulk/:id/deliver">
+        <ProtectedRoute policy="bulk.edit">
+          <AuthenticatedLayout>
+            <BulkMessageDeliverPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/bulk/:id/test">
+        <ProtectedRoute policy="bulk.edit">
+          <AuthenticatedLayout>
+            <BulkMessageTestPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/bulk/:id/logs">
+        <ProtectedRoute policy="bulk.edit">
+          <AuthenticatedLayout>
+            <BulkMessageLogsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/bulk/:id">
+        <ProtectedRoute policy="bulk.edit">
+          <AuthenticatedLayout>
+            <BulkMessageDetailsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/trust/provider/:id/edit">
         <ProtectedRoute tabId="edit" entityType="provider">
           <AuthenticatedLayout>
@@ -1654,6 +1977,18 @@ function Router() {
       <Route path="/config/users/flood-events">
         <Redirect to="/admin/users/flood-events" />
       </Route>
+
+      <Route path="/config/users/sessions">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <SessionsPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      {/* Redirect old /config/users to new structure */}
       <Route path="/config/users">
         <Redirect to="/admin/users/list" />
       </Route>
@@ -1750,14 +2085,6 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/dispatch-job-type/:id/run-settings">
-        <ProtectedRoute tabId="run-settings" entityType="dispatch_job_type">
-          <AuthenticatedLayout>
-            <DispatchJobTypeRunSettingsPage />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
       <Route path="/config/dispatch-job-type/:id/delete">
         <ProtectedRoute tabId="delete" entityType="dispatch_job_type">
           <AuthenticatedLayout>
@@ -1786,6 +2113,36 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/config/dispatch-job-type/:id/run-settings">
+        <ProtectedRoute tabId="run-settings" entityType="dispatch_job_type">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <DispatchJobTypeRunSettingsPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/dispatch/plugins">
+        <ProtectedRoute permission="admin" component="dispatch">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <DispatchPluginsPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/sitespecific/hta/home-employment-statuses">
+        <ProtectedRoute policy="staff" component="sitespecific.hta">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <HtaHomeEmploymentStatusesPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/config/edls/settings">
         <ProtectedRoute permission="admin" component="edls">
           <AuthenticatedLayout>
@@ -1801,6 +2158,16 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <EdlsTasksPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/edls/t631-fetch">
+        <ProtectedRoute permission="admin" componentAll={["edls", "sitespecific.t631.client"]}>
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <T631FetchPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
@@ -1861,6 +2228,56 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <WsClientsPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/sftp/client/:id/connection">
+        <ProtectedRoute permission="admin" component="system.sftp.client">
+          <AuthenticatedLayout>
+            <SftpClientConnectionPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/sftp/client/:id/test">
+        <ProtectedRoute permission="admin" component="system.sftp.client">
+          <AuthenticatedLayout>
+            <SftpClientTestPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/sftp/client/:id/logs">
+        <ProtectedRoute permission="admin" component="system.sftp.client">
+          <AuthenticatedLayout>
+            <SftpClientLogsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/sftp/client/:id/edit">
+        <ProtectedRoute permission="admin" component="system.sftp.client">
+          <AuthenticatedLayout>
+            <SftpClientEditPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/sftp/client/:id">
+        <ProtectedRoute permission="admin" component="system.sftp.client">
+          <AuthenticatedLayout>
+            <SftpClientDetailsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/sftp/clients">
+        <ProtectedRoute permission="admin" component="system.sftp.client">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <SftpClientsPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
@@ -1960,6 +2377,103 @@ function Router() {
         <ProtectedRoute tabId="eligible-workers-check" entityType="dispatch_job">
           <AuthenticatedLayout>
             <DispatchJobEligibleWorkersCheckPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/dispatch/job_groups">
+        <ProtectedRoute policy="staff" component="dispatch.job_group">
+          <AuthenticatedLayout>
+            <DispatchJobGroupListPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/dispatch/job_group/new">
+        <ProtectedRoute policy="staff" component="dispatch.job_group">
+          <AuthenticatedLayout>
+            <DispatchJobGroupNewPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/dispatch/job_group/:id">
+        <ProtectedRoute tabId="details" entityType="dispatch_job_group">
+          <AuthenticatedLayout>
+            <DispatchJobGroupDetailsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/dispatch/job_group/:id/edit">
+        <ProtectedRoute tabId="edit" entityType="dispatch_job_group">
+          <AuthenticatedLayout>
+            <DispatchJobGroupEditPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/dispatch/job_group/:id/logs">
+        <ProtectedRoute tabId="logs" entityType="dispatch_job_group">
+          <AuthenticatedLayout>
+            <DispatchJobGroupLogsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/facilities">
+        <ProtectedRoute component="facility" policy="facility.view">
+          <AuthenticatedLayout>
+            <FacilityListPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/facilities/new">
+        <ProtectedRoute component="facility" policy="facility.edit">
+          <AuthenticatedLayout>
+            <FacilityNewPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/facility/:id">
+        <ProtectedRoute component="facility" tabId="details" entityType="facility">
+          <AuthenticatedLayout>
+            <FacilityDetailsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/facility/:id/edit">
+        <ProtectedRoute component="facility" tabId="edit" entityType="facility">
+          <AuthenticatedLayout>
+            <FacilityEditPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/facility/:id/email">
+        <ProtectedRoute component="facility" tabId="email" entityType="facility">
+          <AuthenticatedLayout>
+            <FacilityEmailPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/facility/:id/addresses">
+        <ProtectedRoute component="facility" tabId="addresses" entityType="facility">
+          <AuthenticatedLayout>
+            <FacilityAddressesPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/facility/:id/phone-numbers">
+        <ProtectedRoute component="facility" tabId="phone-numbers" entityType="facility">
+          <AuthenticatedLayout>
+            <FacilityPhoneNumbersPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/facility/:id/logs">
+        <ProtectedRoute component="facility" tabId="logs" entityType="facility">
+          <AuthenticatedLayout>
+            <FacilityLogsPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -2264,7 +2778,48 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      {/* Payment batch detail pages */}
+      <Route path="/ledger/payment-batch/:id/edit">
+        <ProtectedRoute tabId="edit" entityType="ledger_payment_batch">
+          <AuthenticatedLayout>
+            <PaymentBatchEditPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/ledger/payment-batch/:id/payments">
+        <ProtectedRoute tabId="payments" entityType="ledger_payment_batch">
+          <AuthenticatedLayout>
+            <PaymentBatchPaymentsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/ledger/payment-batch/:id/logs">
+        <ProtectedRoute tabId="logs" entityType="ledger_payment_batch">
+          <AuthenticatedLayout>
+            <PaymentBatchLogsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/ledger/payment-batch/:id">
+        <ProtectedRoute tabId="details" entityType="ledger_payment_batch">
+          <AuthenticatedLayout>
+            <PaymentBatchDetailsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       {/* Ledger account detail pages */}
+      <Route path="/ledger/accounts/:id/batches">
+        <ProtectedRoute tabId="batches" entityType="ledger_account">
+          <AuthenticatedLayout>
+            <AccountBatches />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/ledger/accounts/:id/payments">
         <ProtectedRoute tabId="payments" entityType="ledger_account">
           <AuthenticatedLayout>
@@ -2458,6 +3013,7 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+
       <Route path="/admin/wmb-scan-queue">
         <ProtectedRoute permission="admin" component="trust.benefits.scan">
           <AuthenticatedLayout>
@@ -2525,6 +3081,14 @@ function Router() {
           <AuthenticatedLayout>
             <Dashboard />
           </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/my-qr-code">
+        <ProtectedRoute>
+          <Suspense fallback={<PageLoader />}>
+            <WorkerQRCodePage />
+          </Suspense>
         </ProtectedRoute>
       </Route>
 

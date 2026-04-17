@@ -53,22 +53,46 @@ const DEFAULT_CRON_JOBS: DefaultCronJob[] = [
     isEnabled: true,
   },
   {
-    name: 'dispatch-eba-cleanup',
-    description: 'Deletes worker EBA (availability) records that are more than 30 days in the past',
-    schedule: '0 4 * * *', // Daily at 4 AM
-    isEnabled: true,
-  },
-  {
     name: 'log-cleanup',
     description: 'Purges log entries based on configurable retention policies per module/operation combination',
     schedule: '0 3 * * *', // Daily at 3 AM
     isEnabled: false, // Disabled by default - must configure policies first
   },
   {
+    name: 'member-status-scan',
+    description: 'Scans all active workers and updates their member status based on card check and dues payment history',
+    schedule: '0 7 * * *', // Daily at 7 AM
+    isEnabled: true,
+  },
+  {
+    name: 'dispatch-eba-cleanup',
+    description: 'Cleans up expired EBA (Employed but Available) dispatch entries',
+    schedule: '0 4 * * *', // Daily at 4 AM
+    isEnabled: true,
+  },
+  {
     name: 'dispatch-job-poll',
-    description: 'Polls all open, running dispatch jobs to process eligible workers',
+    description: 'Polls active dispatch jobs and processes pending phases',
     schedule: '*/5 * * * *', // Every 5 minutes
     isEnabled: true,
+  },
+  {
+    name: 'bulk-deliver',
+    description: 'Delivers queued bulk messages to pending participants in batches',
+    schedule: '*/5 * * * *', // Every 5 minutes
+    isEnabled: false, // Disabled by default - enable and configure batch sizes first
+  },
+  {
+    name: 'sitespecific-t631-dispatch-job-group-fetch',
+    description: 'Fetches dispatch job groups from the T631 server and syncs them into the local database',
+    schedule: '0 8 * * *', // Daily at 8 AM
+    isEnabled: false, // Disabled by default - requires sitespecific.t631.client component
+  },
+  {
+    name: 'sitespecific-t631-facility-fetch',
+    description: 'Fetches the facility dropdown from the T631 server and syncs facilities into the local database',
+    schedule: '0 9 * * *', // Daily at 9 AM
+    isEnabled: false, // Disabled by default - requires sitespecific.t631.client component
   },
 ];
 

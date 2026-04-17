@@ -699,57 +699,49 @@ export function PhoneNumberManagement({ contactId, canEdit = true }: PhoneNumber
               ) : (
                 <>
                   <div className="space-y-4">
-                    <div className="space-y-3 p-4 border rounded-md">
-                      <div className="flex items-start gap-3">
-                        <Checkbox
-                          id="optin-checkbox"
-                          checked={smsOptinData?.optin?.optin ?? false}
-                          onCheckedChange={(checked) => {
-                            if (checked === "indeterminate") return;
-                            updateSmsOptinMutation.mutate({
-                              phoneNumber: smsOptinPhoneNumber.phoneNumber,
-                              optin: checked,
-                            });
-                          }}
-                          disabled={updateSmsOptinMutation.isPending}
-                          data-testid="checkbox-sms-optin"
-                        />
-                        <Label htmlFor="optin-checkbox" className="text-sm leading-relaxed cursor-pointer">
-                          By checking this box, you agree to receive automated dispatch alerts from HTA Connect (a program of the Hospitality Industry Training and Education Fund). Message and data rates may apply. Frequency depends on job availability. Text STOP to cancel, HELP for help.
-                        </Label>
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-0.5">
+                        <Label htmlFor="optin-switch">SMS Opt-in</Label>
+                        <p className="text-sm text-muted-foreground">
+                          Allow sending SMS messages to this number
+                        </p>
                       </div>
-                      <div className="flex gap-4 pl-7 text-xs">
-                        <a href="/privacy" target="_blank" rel="noopener noreferrer" className="text-primary underline hover:no-underline" data-testid="link-privacy-policy">Privacy Policy</a>
-                        <a href="/terms" target="_blank" rel="noopener noreferrer" className="text-primary underline hover:no-underline" data-testid="link-terms-of-service">Terms of Service</a>
-                      </div>
+                      <Switch
+                        id="optin-switch"
+                        checked={smsOptinData?.optin?.optin ?? false}
+                        onCheckedChange={(checked) => {
+                          updateSmsOptinMutation.mutate({
+                            phoneNumber: smsOptinPhoneNumber.phoneNumber,
+                            optin: checked,
+                          });
+                        }}
+                        disabled={updateSmsOptinMutation.isPending}
+                        data-testid="switch-sms-optin"
+                      />
                     </div>
 
-                    {canEdit && (
-                      <>
-                        <Separator />
+                    <Separator />
 
-                        <div className="flex items-center justify-between">
-                          <div className="space-y-0.5">
-                            <Label htmlFor="allowlist-switch">Allowlist</Label>
-                            <p className="text-sm text-muted-foreground">
-                              Allow sending even when the system is in dev or test mode
-                            </p>
-                          </div>
-                          <Switch
-                            id="allowlist-switch"
-                            checked={smsOptinData?.optin?.allowlist ?? false}
-                            onCheckedChange={(checked) => {
-                              updateSmsOptinMutation.mutate({
-                                phoneNumber: smsOptinPhoneNumber.phoneNumber,
-                                allowlist: checked,
-                              });
-                            }}
-                            disabled={updateSmsOptinMutation.isPending}
-                            data-testid="switch-sms-allowlist"
-                          />
-                        </div>
-                      </>
-                    )}
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-0.5">
+                        <Label htmlFor="allowlist-switch">Allowlist</Label>
+                        <p className="text-sm text-muted-foreground">
+                          Allow sending even when the system is in dev or test mode
+                        </p>
+                      </div>
+                      <Switch
+                        id="allowlist-switch"
+                        checked={smsOptinData?.optin?.allowlist ?? false}
+                        onCheckedChange={(checked) => {
+                          updateSmsOptinMutation.mutate({
+                            phoneNumber: smsOptinPhoneNumber.phoneNumber,
+                            allowlist: checked,
+                          });
+                        }}
+                        disabled={updateSmsOptinMutation.isPending}
+                        data-testid="switch-sms-allowlist"
+                      />
+                    </div>
                   </div>
 
                   {smsOptinData?.exists && smsOptinData.optin && (

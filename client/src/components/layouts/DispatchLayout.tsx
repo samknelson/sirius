@@ -119,7 +119,7 @@ export function DispatchLayout({ activeTab, children }: DispatchLayoutProps) {
             </Link>
             <div className="flex-1">
               <div className="flex items-center gap-3 flex-wrap">
-                <h1 className="text-2xl font-bold text-foreground" data-testid="title-dispatch">
+                <h1 className="text-xl md:text-2xl font-bold text-foreground" data-testid="title-dispatch">
                   {getWorkerName(dispatch)}
                 </h1>
                 <Badge className={statusColors[dispatch.status] || statusColors.pending} data-testid="badge-status">
@@ -136,7 +136,7 @@ export function DispatchLayout({ activeTab, children }: DispatchLayoutProps) {
 
       <section className="bg-card border-b border-border">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center space-x-2 py-3">
+          <div className="flex flex-wrap items-center gap-2 py-3">
             {tabs.map((tab) => {
               const isActive = tab.id === activeTab;
               return isActive ? (

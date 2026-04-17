@@ -245,6 +245,7 @@ export function registerAccessPolicyRoutes(app: Express) {
         worker: 'worker.view',
         employer: 'employer.view',
         provider: 'trust.provider.mine',
+        company: 'staff',
         employer_contact: 'employer.manage',
         provider_contact: 'trust.provider.mine',
         policy: 'authenticated',
@@ -260,6 +261,9 @@ export function registerAccessPolicyRoutes(app: Express) {
         worker_hours: 'staff',
         user: 'admin',
         ws_client: 'admin',
+        bulk_message: 'bulk.edit',
+        ledger_payment_batch: 'staff',
+        dispatch_job_group: 'staff',
       };
       const basePolicy = entityPolicyMap[entityType] || 'authenticated';
       const baseAccessResult = await checkAccess(basePolicy, context.user, resolvedEntityId);

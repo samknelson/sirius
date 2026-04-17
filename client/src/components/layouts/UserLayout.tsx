@@ -218,7 +218,7 @@ export function UserLayout({ activeTab, children }: UserLayoutProps) {
 
         <div className="bg-card border-b border-border">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex items-center space-x-2 py-3">
+            <div className="flex flex-wrap items-center gap-2 py-3">
               {mainTabs.map((tab) => {
                 const isActive = tab.id === activeTab || (tab.id === "contact" && isContactSubTab) || (tab.id === "comm" && isCommSubTab);
                 return isActive ? (
@@ -249,7 +249,7 @@ export function UserLayout({ activeTab, children }: UserLayoutProps) {
         {showContactSubTabs && (
           <div className="bg-muted/30 border-b border-border">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-              <div className="flex items-center space-x-2 py-2 pl-4">
+              <div className="flex flex-wrap items-center gap-2 py-2 pl-4">
                 {contactSubTabs.map((tab) => (
                   tab.id === activeTab ? (
                     <Button
@@ -280,7 +280,7 @@ export function UserLayout({ activeTab, children }: UserLayoutProps) {
         {showCommSubTabs && (
           <div className="bg-muted/30 border-b border-border">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-              <div className="flex items-center space-x-2 py-2 pl-4">
+              <div className="flex flex-wrap items-center gap-2 py-2 pl-4">
                 {commSubTabs.map((tab) => (
                   tab.id === activeTab ? (
                     <Button

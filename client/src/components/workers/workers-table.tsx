@@ -1,18 +1,19 @@
 import { useState, useMemo, useEffect } from "react";
-import { ArrowUpDown, User, Eye, Search, Home, Building2, MapPin, CheckCircle2, XCircle, Scale, Stethoscope, Smile, Eye as EyeIcon, Star, Download, GraduationCap, Heart, Laptop, ShoppingBag, Mail, Phone, FileText, type LucideIcon } from "lucide-react";
+import { ArrowUpDown, User, Eye, Search, Home, Building2, MapPin, CheckCircle2, XCircle, Scale, Stethoscope, Smile, Eye as EyeIcon, Star, Download, GraduationCap, Heart, Laptop, ShoppingBag, Mail, Phone, FileText, Briefcase, Users, Landmark, type LucideIcon } from "lucide-react";
 import { renderIcon } from "@/components/ui/icon-picker";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Worker, Contact, PhoneNumber, Employer, ContactPostal } from "@shared/schema";
 import { ComponentConfig } from "@shared/components";
 import { formatSSN } from "@shared/schema";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 import { parsePhoneNumber } from "libphonenumber-js";
-import { stringify } from 'csv-stringify/browser/esm/sync';
 import {
   Select,
   SelectContent,
@@ -32,9 +33,41 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
+export interface WorkerFilters {
+  employerId: string;
+  employerTypeId: string;
+  bargainingUnitId: string;
+  benefitId: string;
+  contactStatus: string;
+  hasMultipleEmployers?: boolean;
+  jobTitle: string;
+  memberStatusId: string;
+  representativeId?: string;
+}
+
 interface WorkersTableProps {
   workers: Worker[];
   isLoading: boolean;
+  page?: number;
+  pageSize?: number;
+  totalPages?: number;
+  total?: number;
+  onPageChange?: (page: number) => void;
+  searchQuery?: string;
+  onSearchChange?: (query: string) => void;
+  onApplySearch?: () => void;
+  appliedSearch?: string;
+  sortOrder?: "asc" | "desc";
+  onSortOrderChange?: (order: "asc" | "desc") => void;
+  sortBy?: "lastName" | "firstName" | "employer";
+  onSortByChange?: (sortBy: "lastName" | "firstName" | "employer") => void;
+  filters?: WorkerFilters;
+  onFiltersChange?: (filters: WorkerFilters) => void;
+  appliedJobTitle?: string;
+  selectable?: boolean;
+  selectedIds?: Set<string>;
+  onSelectionChange?: (selectedIds: Set<string>) => void;
+  disabledIds?: Set<string>;
 }
 
 interface WorkerBenefit {
@@ -65,6 +98,17 @@ interface WorkerWithContact extends Worker {
   benefitIds?: string[];
   benefits?: WorkerBenefit[];
   workStatusName?: string;
+  bargainingUnitCode?: string | null;
+  bargainingUnitName?: string | null;
+  denormMsIdsParsed?: string[];
+}
+
+interface MemberStatusOption {
+  id: string;
+  name: string;
+  code: string | null;
+  industryId: string;
+  data?: { color?: string } | null;
 }
 
 interface EmployerInfo {
@@ -130,13 +174,65 @@ const getIconByName = (iconName?: string) => {
   return { Icon, color };
 };
 
-export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
-  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedEmployerId, setSelectedEmployerId] = useState<string>("all");
-  const [selectedBenefitId, setSelectedBenefitId] = useState<string>("all");
-  const [contactStatusFilter, setContactStatusFilter] = useState<string>("all");
-  const [cardcheckFilters, setCardcheckFilters] = useState<Record<string, string>>({});
+export function WorkersTable({ 
+  workers, 
+  isLoading,
+  page = 1,
+  pageSize = 50,
+  totalPages = 1,
+  total = 0,
+  onPageChange,
+  searchQuery: externalSearchQuery,
+  onSearchChange,
+  onApplySearch,
+  appliedSearch: externalAppliedSearch,
+  sortOrder: externalSortOrder,
+  onSortOrderChange,
+  sortBy: externalSortBy,
+  onSortByChange,
+  filters: externalFilters,
+  onFiltersChange,
+  appliedJobTitle: externalAppliedJobTitle,
+  selectable = false,
+  selectedIds,
+  onSelectionChange,
+  disabledIds,
+}: WorkersTableProps) {
+  const isPaginated = onPageChange !== undefined;
+  const [internalSortOrder, setInternalSortOrder] = useState<"asc" | "desc">("asc");
+  const [internalSortBy, setInternalSortBy] = useState<"lastName" | "firstName" | "employer">("lastName");
+  const [internalSearchQuery, setInternalSearchQuery] = useState("");
+  const [internalFilters, setInternalFilters] = useState<WorkerFilters>({
+    employerId: "all",
+    employerTypeId: "all",
+    bargainingUnitId: "all",
+    benefitId: "all",
+    contactStatus: "all",
+    jobTitle: "",
+    memberStatusId: "all",
+  });
+  
+  const sortOrder = externalSortOrder ?? internalSortOrder;
+  const setSortOrder = onSortOrderChange ?? setInternalSortOrder;
+  const sortBy = externalSortBy ?? internalSortBy;
+  const setSortBy = onSortByChange ?? setInternalSortBy;
+  const searchQuery = externalSearchQuery ?? internalSearchQuery;
+  const setSearchQuery = onSearchChange ?? setInternalSearchQuery;
+  
+  // Use external filters if provided (server-side filtering), otherwise use internal
+  const filters = externalFilters ?? internalFilters;
+  const setFilters = onFiltersChange ?? setInternalFilters;
+  
+  const selectedEmployerId = filters.employerId;
+  const selectedBenefitId = filters.benefitId;
+  const contactStatusFilter = filters.contactStatus;
+  const selectedEmployerTypeId = filters.employerTypeId;
+  const selectedBargainingUnitId = filters.bargainingUnitId;
+  
+  // Helper to update a single filter
+  const updateFilter = (key: keyof WorkerFilters, value: string) => {
+    setFilters({ ...filters, [key]: value });
+  };
 
   // Fetch component configs to check if trust benefits is enabled
   const { data: componentConfigs = [] } = useQuery<ComponentConfig[]>({
@@ -144,13 +240,33 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
   });
   const trustBenefitsEnabled = componentConfigs.find(c => c.componentId === "trust.benefits")?.enabled ?? false;
   const cardcheckEnabled = componentConfigs.find(c => c.componentId === "cardcheck")?.enabled ?? false;
+  const politicalEnabled = componentConfigs.find(c => c.componentId === "sitespecific.btu.political")?.enabled ?? false;
 
   // Reset benefit filter when trust.benefits is disabled
   useEffect(() => {
     if (!trustBenefitsEnabled && selectedBenefitId !== "all") {
-      setSelectedBenefitId("all");
+      updateFilter("benefitId", "all");
     }
   }, [trustBenefitsEnabled, selectedBenefitId]);
+
+  // Reset member status filter when cardcheck is disabled
+  useEffect(() => {
+    if (!cardcheckEnabled && filters.memberStatusId !== "all") {
+      updateFilter("memberStatusId", "all");
+    }
+  }, [cardcheckEnabled, filters.memberStatusId]);
+
+  // Reset representative filter when political component is disabled
+  useEffect(() => {
+    if (!politicalEnabled && filters.representativeId && filters.representativeId !== "all") {
+      updateFilter("representativeId", "all");
+    }
+  }, [politicalEnabled, filters.representativeId]);
+
+  const { data: politicalOfficials = [] } = useQuery<{ id: string; name: string; officeName: string; level: string }[]>({
+    queryKey: ["/api/sitespecific/btu/political/officials"],
+    enabled: politicalEnabled,
+  });
 
   // Fetch worker-employer summary
   const { data: workerEmployers = [] } = useQuery<WorkerEmployerSummary[]>({
@@ -174,6 +290,12 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
     queryKey: ["/api/options/employer-type"],
   });
 
+  // Fetch bargaining units for filter dropdown
+  const { data: bargainingUnits = [] } = useQuery<{ id: string; siriusId: string; name: string; data?: { icon?: string } | null }[]>({
+    queryKey: ["/api/bargaining-units"],
+  });
+
+  
   // Create map for employer type icons
   const employerTypeIconMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -185,6 +307,18 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
     }
     return map;
   }, [employerTypes]);
+
+  // Create map for bargaining unit icons (by ID)
+  const bargainingUnitIconMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const unit of bargainingUnits) {
+      const iconName = unit.data?.icon;
+      if (typeof iconName === "string") {
+        map.set(unit.id, iconName);
+      }
+    }
+    return map;
+  }, [bargainingUnits]);
 
   // Fetch trust benefits for filter dropdown (only when trust.benefits is enabled)
   const { data: trustBenefits = [] } = useQuery<any[]>({
@@ -247,6 +381,73 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
     
     return Array.from(defsMap.values()).sort((a, b) => a.name.localeCompare(b.name));
   }, [cardcheckStatusSummary, cardcheckDefinitions]);
+
+  // Fetch member status options (when cardcheck is enabled, for membership column)
+  const { data: memberStatusOptions = [] } = useQuery<MemberStatusOption[]>({
+    queryKey: ["/api/options/worker-ms"],
+    enabled: cardcheckEnabled,
+  });
+
+  // Create map for member status lookup by ID
+  const memberStatusMap = useMemo(() => {
+    const map = new Map<string, MemberStatusOption>();
+    for (const ms of memberStatusOptions) {
+      map.set(ms.id, ms);
+    }
+    return map;
+  }, [memberStatusOptions]);
+
+  // Fetch worker ID types configured to show on lists
+  const { data: showOnListsIdTypes = [] } = useQuery<{ id: string; name: string }[]>({
+    queryKey: ["/api/worker-id-types/show-on-lists"],
+  });
+
+  // Fetch worker IDs for show-on-lists types
+  const workerIdsList = useMemo(() => workers.map((w: any) => w.id), [workers]);
+  const { data: workerIdsForList = [] } = useQuery<{ workerId: string; typeId: string; value: string }[]>({
+    queryKey: ["/api/worker-ids/for-list", workerIdsList],
+    queryFn: async () => {
+      if (workerIdsList.length === 0 || showOnListsIdTypes.length === 0) return [];
+      const res = await fetch("/api/worker-ids/for-list", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workerIds: workerIdsList }),
+        credentials: "include",
+      });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: workerIdsList.length > 0 && showOnListsIdTypes.length > 0,
+  });
+
+  // Create map: workerId -> { typeId -> value }
+  const workerIdValueMap = useMemo(() => {
+    const map = new Map<string, Map<string, string>>();
+    for (const item of workerIdsForList) {
+      if (!map.has(item.workerId)) {
+        map.set(item.workerId, new Map());
+      }
+      map.get(item.workerId)!.set(item.typeId, item.value);
+    }
+    return map;
+  }, [workerIdsForList]);
+
+  // Fetch latest dues payment for displayed workers
+  const { data: latestDuesMap = {} } = useQuery<Record<string, { amount: string; date: string }>>({
+    queryKey: ["/api/workers/latest-dues", workerIdsList],
+    queryFn: async () => {
+      if (workerIdsList.length === 0) return {};
+      const res = await fetch("/api/workers/latest-dues", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workerIds: workerIdsList }),
+        credentials: "include",
+      });
+      if (!res.ok) return {};
+      return res.json();
+    },
+    enabled: workerIdsList.length > 0 && cardcheckEnabled,
+  });
 
   // Create map for worker employers
   const employerMap = new Map(workerEmployers.map(we => [we.workerId, we.employers]));
@@ -346,107 +547,121 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
       benefitIds,
       benefits,
       workStatusName: worker.work_status_name || '',
+      bargainingUnitId: worker.bargaining_unit_id || undefined,
+      bargainingUnitCode: worker.bargaining_unit_code || undefined,
+      bargainingUnitName: worker.bargaining_unit_name || undefined,
+      denormMsIdsParsed: Array.isArray(worker.denorm_ms_ids) ? worker.denorm_ms_ids : [],
     };
   });
 
   // Filter workers based on search query, employer, and benefit
+  // When using server-side pagination (isPaginated), skip client-side filters as they're already applied on the server
   const filteredWorkers = useMemo(() => {
     let filtered = workersWithNames;
     
-    // Filter by employer if selected
-    if (selectedEmployerId !== "all") {
-      filtered = filtered.filter(worker => 
-        worker.employers?.some(emp => emp.id === selectedEmployerId)
-      );
-    }
-    
-    // Filter by specific benefit if selected (using benefit IDs) - only when trust.benefits is enabled
-    if (trustBenefitsEnabled && selectedBenefitId !== "all") {
-      filtered = filtered.filter(worker => 
-        worker.benefitIds?.includes(selectedBenefitId)
-      );
-    }
-    
-    // Filter by contact status
-    if (contactStatusFilter !== "all") {
-      filtered = filtered.filter(worker => {
-        const hasEmail = Boolean(worker.email);
-        const hasPhone = Boolean(worker.phoneNumber);
-        const hasAddress = Boolean(worker.address);
-        
-        switch (contactStatusFilter) {
-          case "has_email":
-            return hasEmail;
-          case "missing_email":
-            return !hasEmail;
-          case "has_phone":
-            return hasPhone;
-          case "missing_phone":
-            return !hasPhone;
-          case "has_address":
-            return hasAddress;
-          case "missing_address":
-            return !hasAddress;
-          case "complete":
-            return hasEmail && hasPhone && hasAddress;
-          case "incomplete":
-            return !hasEmail || !hasPhone || !hasAddress;
-          default:
-            return true;
-        }
-      });
-    }
-    
-    // Filter by cardcheck status for each definition
-    if (cardcheckEnabled) {
-      const activeFilters = Object.entries(cardcheckFilters).filter(([_, value]) => value !== "all");
-      if (activeFilters.length > 0) {
+    // Skip these filters when using server-side pagination - they're handled by the API
+    if (!isPaginated) {
+      // Filter by employer if selected
+      if (selectedEmployerId !== "all") {
+        filtered = filtered.filter(worker => 
+          worker.employers?.some(emp => emp.id === selectedEmployerId)
+        );
+      }
+      
+      // Filter by employer type if selected
+      if (selectedEmployerTypeId !== "all") {
+        filtered = filtered.filter(worker => 
+          worker.employers?.some(emp => emp.employerTypeId === selectedEmployerTypeId)
+        );
+      }
+      
+      // Filter by bargaining unit if selected
+      if (selectedBargainingUnitId !== "all") {
+        filtered = filtered.filter(worker => 
+          worker.bargainingUnitId === selectedBargainingUnitId
+        );
+      }
+      
+      // Filter by specific benefit if selected (using benefit IDs) - only when trust.benefits is enabled
+      if (trustBenefitsEnabled && selectedBenefitId !== "all") {
+        filtered = filtered.filter(worker => 
+          worker.benefitIds?.includes(selectedBenefitId)
+        );
+      }
+      
+      // Filter by contact status
+      if (contactStatusFilter !== "all") {
         filtered = filtered.filter(worker => {
-          const workerCardchecks = cardcheckMap.get(worker.id) || [];
-          return activeFilters.every(([definitionId, filterValue]) => {
-            const cardcheck = workerCardchecks.find(cc => cc.definitionId === definitionId);
-            const status = cardcheck?.status || 'none';
-            return status === filterValue;
-          });
+          const hasEmail = Boolean(worker.email);
+          const hasPhone = Boolean(worker.phoneNumber);
+          const hasAddress = Boolean(worker.address);
+          
+          switch (contactStatusFilter) {
+            case "has_email":
+              return hasEmail;
+            case "missing_email":
+              return !hasEmail;
+            case "has_phone":
+              return hasPhone;
+            case "missing_phone":
+              return !hasPhone;
+            case "has_address":
+              return hasAddress;
+            case "missing_address":
+              return !hasAddress;
+            case "complete":
+              return hasEmail && hasPhone && hasAddress;
+            case "incomplete":
+              return !hasEmail || !hasPhone || !hasAddress;
+            default:
+              return true;
+          }
+        });
+      }
+      
+      // Filter by search query (only client-side when not paginated)
+      if (searchQuery.trim()) {
+        const query = searchQuery.toLowerCase();
+        filtered = filtered.filter(worker => {
+          const name = (worker.contactName || '').toLowerCase();
+          const email = (worker.email || '').toLowerCase();
+          const phone = (worker.phoneNumber || '').toLowerCase();
+          const ssn = formatSSN(worker.ssn).toLowerCase();
+          
+          return name.includes(query) || 
+                 email.includes(query) || 
+                 phone.includes(query) || 
+                 ssn.includes(query);
         });
       }
     }
     
-    // Filter by search query
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(worker => {
-        const name = (worker.contactName || '').toLowerCase();
-        const email = (worker.email || '').toLowerCase();
-        const phone = (worker.phoneNumber || '').toLowerCase();
-        const ssn = formatSSN(worker.ssn).toLowerCase();
-        
-        return name.includes(query) || 
-               email.includes(query) || 
-               phone.includes(query) || 
-               ssn.includes(query);
-      });
-    }
-    
     return filtered;
-  }, [workersWithNames, searchQuery, selectedEmployerId, selectedBenefitId, contactStatusFilter, trustBenefitsEnabled, cardcheckEnabled, cardcheckFilters, cardcheckMap]);
+  }, [workersWithNames, searchQuery, selectedEmployerId, selectedEmployerTypeId, selectedBargainingUnitId, selectedBenefitId, contactStatusFilter, trustBenefitsEnabled, isPaginated]);
 
   const sortedWorkers = [...filteredWorkers].sort((a, b) => {
     const familyA = a.family || '';
     const familyB = b.family || '';
     const givenA = a.given || '';
     const givenB = b.given || '';
+    const dir = sortOrder === "asc" ? 1 : -1;
     
-    if (sortOrder === "asc") {
-      // Sort by family name first, then by given name
-      const familyCompare = familyA.localeCompare(familyB);
+    if (sortBy === 'firstName') {
+      const givenCompare = givenA.localeCompare(givenB) * dir;
+      if (givenCompare !== 0) return givenCompare;
+      return familyA.localeCompare(familyB) * dir;
+    } else if (sortBy === 'employer') {
+      const empA = a.employers?.[0]?.name || '';
+      const empB = b.employers?.[0]?.name || '';
+      const empCompare = empA.localeCompare(empB) * dir;
+      if (empCompare !== 0) return empCompare;
+      const familyCompare = familyA.localeCompare(familyB) * dir;
       if (familyCompare !== 0) return familyCompare;
-      return givenA.localeCompare(givenB);
+      return givenA.localeCompare(givenB) * dir;
     } else {
-      // Sort by family name first (descending), then by given name (descending)
-      const familyCompare = familyB.localeCompare(familyA);
+      const familyCompare = familyA.localeCompare(familyB) * dir;
       if (familyCompare !== 0) return familyCompare;
-      return givenB.localeCompare(givenA);
+      return givenA.localeCompare(givenB) * dir;
     }
   });
 
@@ -454,73 +669,27 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
     setSortOrder(sortOrder === "asc" ? "desc" : "asc");
   };
 
-  // CSV Export function
+  // CSV Export function - calls server endpoint to get all matching workers
   const handleExportCSV = () => {
-    // Prepare data for CSV export
-    const csvData = sortedWorkers.map(worker => {
-      const baseData: Record<string, string> = {
-        'First Name': worker.given || '',
-        'Middle Name': worker.middle || '',
-        'Last Name': worker.family || '',
-        'SSN': formatSSN(worker.ssn),
-        'Street': worker.address?.street || '',
-        'City': worker.address?.city || '',
-        'State': worker.address?.state || '',
-        'Postal Code': worker.address?.postalCode || '',
-        'Country': worker.address?.country || '',
-        'Email': worker.email || '',
-        'Phone Number': worker.phoneNumber || '',
-      };
-
-      if (trustBenefitsEnabled) {
-        const currentBenefits = currentBenefitsMap.get(worker.id) || [];
-        const benefitsString = currentBenefits
-          .filter((b: any) => b && b.name)
-          .map((b: any) => {
-            if (b.employerName) {
-              return `${b.name} (${b.employerName})`;
-            }
-            return b.name;
-          })
-          .join('; ');
-        baseData['Current Benefits'] = benefitsString;
-      }
-
-      return baseData;
-    });
-
-    // Define columns based on whether trust benefits is enabled
-    const columns = [
-      'First Name',
-      'Middle Name',
-      'Last Name',
-      'SSN',
-      'Street',
-      'City',
-      'State',
-      'Postal Code',
-      'Country',
-      'Email',
-      'Phone Number',
-      ...(trustBenefitsEnabled ? ['Current Benefits'] : [])
-    ];
-
-    // Generate CSV string
-    const csv = stringify(csvData, {
-      header: true,
-      columns
-    });
-
-    // Create download link
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', `workers_export_${new Date().toISOString().split('T')[0]}.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    // Build URL with current filter parameters - use applied search when available
+    const params = new URLSearchParams();
+    const exportSearch = externalAppliedSearch ?? searchQuery;
+    if (exportSearch) params.set('search', exportSearch);
+    params.set('sortOrder', sortOrder);
+    if (selectedEmployerId !== 'all') params.set('employerId', selectedEmployerId);
+    if (selectedEmployerTypeId !== 'all') params.set('employerTypeId', selectedEmployerTypeId);
+    if (selectedBargainingUnitId !== 'all') params.set('bargainingUnitId', selectedBargainingUnitId);
+    if (selectedBenefitId !== 'all') params.set('benefitId', selectedBenefitId);
+    if (contactStatusFilter !== 'all') params.set('contactStatus', contactStatusFilter);
+    const exportJobTitle = externalAppliedJobTitle ?? filters.jobTitle;
+    if (exportJobTitle) params.set('jobTitle', exportJobTitle);
+    if (filters.memberStatusId !== 'all') params.set('memberStatusId', filters.memberStatusId);
+    if (filters.representativeId && filters.representativeId !== 'all') params.set('representativeId', filters.representativeId);
+    if (trustBenefitsEnabled) params.set('includeBenefits', 'true');
+    
+    // Trigger download by opening the export URL
+    const exportUrl = `/api/workers/export?${params.toString()}`;
+    window.location.href = exportUrl;
   };
 
   if (isLoading) {
@@ -548,12 +717,32 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
     <>
       <Card className="shadow-sm overflow-hidden">
         <div className="px-6 py-4 border-b border-border bg-muted/30">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between gap-2 flex-wrap mb-4">
             <h2 className="text-lg font-semibold text-foreground">Workers Database</h2>
-            <div className="flex items-center gap-4">
-              <div className="flex items-center space-x-2">
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="flex items-center gap-2">
                 <ArrowUpDown className="text-muted-foreground" size={16} />
-                <span className="text-sm text-muted-foreground">Sort by Name</span>
+                <Select
+                  value={sortBy}
+                  onValueChange={(value) => setSortBy(value as "lastName" | "firstName" | "employer")}
+                >
+                  <SelectTrigger className="w-36" data-testid="select-sort-by">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="lastName">Last Name</SelectItem>
+                    <SelectItem value="firstName">First Name</SelectItem>
+                    <SelectItem value="employer">Employer</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={toggleSort}
+                  data-testid="button-toggle-sort"
+                >
+                  {sortOrder === "asc" ? "A-Z" : "Z-A"}
+                </Button>
               </div>
               <span className="text-sm font-medium text-primary" data-testid="text-total-workers">
                 {filteredWorkers.length} of {workers.length}
@@ -571,17 +760,30 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
             </div>
           </div>
           
-          {/* Search Input - own row */}
-          <div className="relative mb-3">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" size={16} />
-            <Input
-              type="text"
-              placeholder="Search by name, email, phone, or SSN..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
-              data-testid="input-search-workers"
-            />
+          {/* Search Input with Apply button */}
+          <div className="flex gap-2 mb-3">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" size={16} />
+              <Input
+                type="text"
+                placeholder="Search by name, email, phone, SSN, or worker ID..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && onApplySearch) {
+                    onApplySearch();
+                  }
+                }}
+                className="pl-10"
+                data-testid="input-search-workers"
+              />
+            </div>
+            <Button
+              onClick={() => onApplySearch?.()}
+              data-testid="button-apply-search"
+            >
+              Search
+            </Button>
           </div>
           
           {/* Employer Filter - own row */}
@@ -627,7 +829,7 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
               <div className="w-64">
                 <Select
                   value={selectedBenefitId}
-                  onValueChange={setSelectedBenefitId}
+                  onValueChange={(value) => updateFilter("benefitId", value)}
                 >
                   <SelectTrigger data-testid="select-benefit-filter">
                     <div className="flex items-center gap-2">
@@ -664,7 +866,7 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
             <div className="w-56">
               <Select
                 value={contactStatusFilter}
-                onValueChange={setContactStatusFilter}
+                onValueChange={(value) => updateFilter("contactStatus", value)}
               >
                 <SelectTrigger data-testid="select-contact-status-filter">
                   <div className="flex items-center gap-2">
@@ -726,49 +928,119 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
               </Select>
             </div>
             
-            {/* Card Check Status Filters - one per definition with icon */}
-            {cardcheckEnabled && cardcheckDefinitionsWithIcons.map((def) => (
-              <div key={def.id} className="w-48">
+            {/* Multiple Employers Filter */}
+            <div className="flex items-center gap-2 h-9 px-3 border rounded-md bg-background">
+              <Checkbox
+                id="multiple-employers-filter"
+                checked={filters.hasMultipleEmployers ?? false}
+                onCheckedChange={(checked) => 
+                  setFilters({ ...filters, hasMultipleEmployers: checked === true })
+                }
+                data-testid="checkbox-multiple-employers"
+              />
+              <label 
+                htmlFor="multiple-employers-filter" 
+                className="text-sm cursor-pointer flex items-center gap-2 whitespace-nowrap"
+              >
+                <Users size={14} className="text-muted-foreground" />
+                Multiple Employers
+              </label>
+            </div>
+
+            {/* Job Title Filter */}
+            <div className="w-48">
+              <Input
+                placeholder="Filter by job title..."
+                value={filters.jobTitle || ""}
+                onChange={(e) => {
+                  const newFilters = { ...filters, jobTitle: e.target.value };
+                  if (onFiltersChange) {
+                    onFiltersChange(newFilters);
+                  } else {
+                    setInternalFilters(newFilters);
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && onApplySearch) {
+                    onApplySearch();
+                  }
+                }}
+                className="h-9"
+                data-testid="input-job-title-filter"
+              />
+            </div>
+
+            {/* Member Status Filter - only show when cardcheck component is enabled */}
+            {cardcheckEnabled && (
+              <div className="w-56">
                 <Select
-                  value={cardcheckFilters[def.id] || "all"}
-                  onValueChange={(value) => setCardcheckFilters(prev => ({ ...prev, [def.id]: value }))}
+                  value={filters.memberStatusId || "all"}
+                  onValueChange={(value) => updateFilter("memberStatusId", value)}
                 >
-                  <SelectTrigger data-testid={`select-cardcheck-filter-${def.id}`}>
+                  <SelectTrigger data-testid="select-member-status-filter">
                     <div className="flex items-center gap-2">
-                      {renderIcon(def.icon, "h-4 w-4 text-muted-foreground")}
-                      <SelectValue placeholder={`All ${def.name}`} />
+                      <Users size={16} className="text-muted-foreground" />
+                      <SelectValue placeholder="All Statuses" />
                     </div>
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All {def.name}</SelectItem>
-                    <SelectItem value="signed">
-                      <div className="flex items-center gap-2">
-                        {renderIcon(def.icon, "h-3.5 w-3.5 text-green-600")}
-                        <span>Signed</span>
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="pending">
-                      <div className="flex items-center gap-2">
-                        {renderIcon(def.icon, "h-3.5 w-3.5 text-yellow-500")}
-                        <span>Pending signature</span>
-                      </div>
-                    </SelectItem>
+                    <SelectItem value="all">All Member Statuses</SelectItem>
                     <SelectItem value="none">
-                      <div className="flex items-center gap-2">
-                        {renderIcon(def.icon, "h-3.5 w-3.5 text-yellow-500")}
-                        <span>None on file</span>
-                      </div>
+                      <span className="text-muted-foreground italic">No Status</span>
                     </SelectItem>
-                    <SelectItem value="revoked">
-                      <div className="flex items-center gap-2">
-                        {renderIcon(def.icon, "h-3.5 w-3.5 text-red-600")}
-                        <span>Revoked</span>
-                      </div>
-                    </SelectItem>
+                    {memberStatusOptions
+                      .sort((a, b) => a.name.localeCompare(b.name))
+                      .map((ms) => {
+                        const color = ms.code === 'paid' ? 'text-green-600'
+                          : ms.code === 'delinquent' ? 'text-red-600'
+                          : ms.code === 'pend' ? 'text-yellow-600'
+                          : 'text-muted-foreground';
+                        return (
+                          <SelectItem
+                            key={ms.id}
+                            value={ms.id}
+                            data-testid={`select-member-status-${ms.id}`}
+                          >
+                            <span className={color}>{ms.name}</span>
+                          </SelectItem>
+                        );
+                      })}
                   </SelectContent>
                 </Select>
               </div>
-            ))}
+            )}
+
+            {/* Representative Filter - only show when political component is enabled */}
+            {politicalEnabled && politicalOfficials.length > 0 && (
+              <div className="w-64">
+                <Select
+                  value={filters.representativeId || "all"}
+                  onValueChange={(value) => updateFilter("representativeId", value)}
+                >
+                  <SelectTrigger data-testid="select-representative-filter">
+                    <div className="flex items-center gap-2">
+                      <Landmark size={16} className="text-muted-foreground" />
+                      <SelectValue placeholder="All Representatives" />
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Representatives</SelectItem>
+                    {politicalOfficials
+                      .sort((a, b) => a.name.localeCompare(b.name))
+                      .map((official) => (
+                        <SelectItem
+                          key={official.id}
+                          value={official.id}
+                          data-testid={`select-representative-${official.id}`}
+                        >
+                          {official.name} ({official.officeName})
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            
           </div>
         </div>
 
@@ -776,11 +1048,27 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
           <table className="w-full">
             <thead className="bg-muted/20">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  <div className="flex items-center space-x-2">
-                    <span>Sirius ID</span>
-                  </div>
-                </th>
+                {selectable && (
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-12">
+                    <Checkbox
+                      checked={
+                        sortedWorkers.length > 0 &&
+                        sortedWorkers.every(w => disabledIds?.has(w.contactId) || selectedIds?.has(w.contactId))
+                      }
+                      onCheckedChange={(checked) => {
+                        if (!onSelectionChange) return;
+                        const next = new Set(selectedIds);
+                        for (const w of sortedWorkers) {
+                          if (disabledIds?.has(w.contactId)) continue;
+                          if (checked) next.add(w.contactId);
+                          else next.delete(w.contactId);
+                        }
+                        onSelectionChange(next);
+                      }}
+                      data-testid="checkbox-select-all"
+                    />
+                  </th>
+                )}
                 <th 
                   className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider cursor-pointer hover:text-foreground transition-colors"
                   onClick={toggleSort}
@@ -794,16 +1082,21 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   <span>Contact</span>
                 </th>
+                {cardcheckEnabled && (
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    <span>Membership</span>
+                  </th>
+                )}
                 {trustBenefitsEnabled && (
                   <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     <span>Benefits</span>
                   </th>
                 )}
-                {cardcheckEnabled && cardcheckStatusSummary.length > 0 && (
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                    <span>Card Checks</span>
+                {showOnListsIdTypes.map((idType) => (
+                  <th key={idType.id} className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    <span>{idType.name}</span>
                   </th>
-                )}
+                ))}
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   <span>Employment</span>
                 </th>
@@ -813,22 +1106,45 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
               </tr>
             </thead>
             <tbody className="bg-background divide-y divide-border">
-              {sortedWorkers.map((worker, index) => (
-                <tr key={worker.id} className="hover:bg-muted/30 transition-colors" data-testid={`row-worker-${worker.id}`}>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-muted-foreground">
-                    {worker.siriusId}
-                  </td>
+              {sortedWorkers.map((worker, index) => {
+                const isDisabled = selectable && disabledIds?.has(worker.contactId);
+                const isSelected = selectable && selectedIds?.has(worker.contactId);
+                return (
+                <tr key={worker.id} className={`hover:bg-muted/30 transition-colors ${isDisabled ? 'opacity-50' : ''}`} data-testid={`row-worker-${worker.id}`}>
+                  {selectable && (
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <Checkbox
+                        checked={isDisabled || isSelected}
+                        disabled={!!isDisabled}
+                        onCheckedChange={(checked) => {
+                          if (!onSelectionChange) return;
+                          const next = new Set(selectedIds);
+                          if (checked) next.add(worker.contactId);
+                          else next.delete(worker.contactId);
+                          onSelectionChange(next);
+                        }}
+                        data-testid={`checkbox-select-worker-${worker.id}`}
+                      />
+                    </td>
+                  )}
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center space-x-3">
                       <div className={`w-8 h-8 ${avatarColors[index % avatarColors.length]} rounded-full flex items-center justify-center`}>
                         <User size={12} />
                       </div>
-                      <span 
-                        className="text-sm font-medium text-foreground"
-                        data-testid={`text-worker-name-${worker.id}`}
-                      >
-                        {worker.contactName}
-                      </span>
+                      <div>
+                        <Link href={`/workers/${worker.id}`}>
+                          <span 
+                            className="text-sm font-medium text-foreground hover:text-primary hover:underline cursor-pointer"
+                            data-testid={`text-worker-name-${worker.id}`}
+                          >
+                            {worker.contactName}
+                          </span>
+                        </Link>
+                        <p className="text-xs text-muted-foreground" data-testid={`text-job-title-${worker.id}`}>
+                          {worker.siriusId}{worker.denormJobTitle ? ` · ${worker.denormJobTitle}` : ""}
+                        </p>
+                      </div>
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -841,7 +1157,7 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
                               data-testid={`email-indicator-${worker.id}`}
                               aria-label={`Email for ${worker.contactName}`}
                             >
-                              <Mail size={16} className="text-green-600" />
+                              <Mail size={20} className="text-green-600" />
                             </div>
                           </HoverCardTrigger>
                           <HoverCardContent className="w-80" data-testid={`email-hover-${worker.id}`}>
@@ -863,7 +1179,7 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
                             aria-label={`Add email for ${worker.contactName}`}
                             className="cursor-pointer hover:opacity-70 transition-opacity"
                           >
-                            <Mail size={16} className="text-red-500" />
+                            <Mail size={20} className="text-red-500" />
                           </div>
                         </Link>
                       )}
@@ -876,7 +1192,7 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
                               data-testid={`phone-indicator-${worker.id}`}
                               aria-label={`Phone for ${worker.contactName}`}
                             >
-                              <Phone size={16} className="text-green-600" />
+                              <Phone size={20} className="text-green-600" />
                             </div>
                           </HoverCardTrigger>
                           <HoverCardContent className="w-80" data-testid={`phone-hover-${worker.id}`}>
@@ -898,7 +1214,7 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
                             aria-label={`Add phone for ${worker.contactName}`}
                             className="cursor-pointer hover:opacity-70 transition-opacity"
                           >
-                            <Phone size={16} className="text-red-500" />
+                            <Phone size={20} className="text-red-500" />
                           </div>
                         </Link>
                       )}
@@ -911,7 +1227,7 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
                               data-testid={`address-indicator-${worker.id}`}
                               aria-label={`Address for ${worker.contactName}`}
                             >
-                              <Home size={16} className="text-green-600" />
+                              <Home size={20} className="text-green-600" />
                             </div>
                           </HoverCardTrigger>
                           <HoverCardContent className="w-80" data-testid={`address-hover-${worker.id}`}>
@@ -945,12 +1261,84 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
                             aria-label={`Add address for ${worker.contactName}`}
                             className="cursor-pointer hover:opacity-70 transition-opacity"
                           >
-                            <Home size={16} className="text-red-500" />
+                            <Home size={20} className="text-red-500" />
                           </div>
                         </Link>
                       )}
                     </div>
                   </td>
+                  {cardcheckEnabled && (
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {(() => {
+                        const msIds = worker.denormMsIdsParsed || [];
+                        const statuses = msIds
+                          .map(msId => memberStatusMap.get(msId))
+                          .filter((ms): ms is MemberStatusOption => ms !== undefined);
+                        const statusName = statuses.length > 0 ? statuses[0].name : null;
+                        const statusCode = statuses.length > 0 ? statuses[0].code : null;
+                        const dues = latestDuesMap[worker.id];
+                        const buName = worker.bargainingUnitName;
+                        const statusColor = statusCode === 'paid' ? 'text-green-600'
+                          : statusCode === 'delinquent' ? 'text-red-600'
+                          : statusCode === 'pend' ? 'text-yellow-600'
+                          : 'text-muted-foreground';
+
+                        if (!statusName && !buName) {
+                          return <span className="text-sm text-muted-foreground italic" data-testid={`membership-${worker.id}`}>-</span>;
+                        }
+
+                        const content = (
+                          <div className="flex flex-col" data-testid={`membership-${worker.id}`}>
+                            {buName && (
+                              <span className="text-xs text-muted-foreground" data-testid={`membership-bu-${worker.id}`}>{buName}</span>
+                            )}
+                            {statusName ? (
+                              <span className={`text-sm font-medium ${statusColor}`}>
+                                {statusName}
+                              </span>
+                            ) : (
+                              <span className="text-sm text-muted-foreground italic">-</span>
+                            )}
+                          </div>
+                        );
+
+                        if (!statusName) {
+                          return content;
+                        }
+
+                        return (
+                          <HoverCard>
+                            <HoverCardTrigger asChild>
+                              <div className="cursor-pointer">
+                                {content}
+                              </div>
+                            </HoverCardTrigger>
+                            <HoverCardContent className="w-64" data-testid={`membership-hover-${worker.id}`}>
+                              <div className="space-y-2">
+                                {buName && (
+                                  <p className="text-xs text-muted-foreground">{buName}</p>
+                                )}
+                                <p className="text-sm font-semibold text-foreground">{statusName}</p>
+                                {dues ? (
+                                  <div className="text-sm text-muted-foreground">
+                                    <p>Last dues: ${parseFloat(dues.amount).toFixed(2)}</p>
+                                    <p>Date: {dues.date}</p>
+                                  </div>
+                                ) : (
+                                  <p className="text-sm text-muted-foreground italic">No dues on record</p>
+                                )}
+                                <Link href={`/workers/${worker.id}/union/cardchecks`}>
+                                  <span className="text-sm text-primary hover:underline cursor-pointer" data-testid={`link-cardchecks-${worker.id}`}>
+                                    View Card Checks →
+                                  </span>
+                                </Link>
+                              </div>
+                            </HoverCardContent>
+                          </HoverCard>
+                        );
+                      })()}
+                    </td>
+                  )}
                   {trustBenefitsEnabled && (
                     <td className="px-6 py-4 whitespace-nowrap">
                       <TooltipProvider>
@@ -978,56 +1366,25 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
                       </TooltipProvider>
                     </td>
                   )}
-                  {cardcheckEnabled && cardcheckStatusSummary.length > 0 && (
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <TooltipProvider>
-                        <div className="flex items-center gap-2" data-testid={`cardcheck-icons-${worker.id}`}>
-                          {(() => {
-                            const workerCardchecks = cardcheckMap.get(worker.id) || [];
-                            if (workerCardchecks.length === 0) {
-                              return <span className="text-sm text-muted-foreground italic">-</span>;
-                            }
-                            return workerCardchecks.map((cc) => {
-                              const statusColor = cc.status === 'signed' 
-                                ? 'text-green-600' 
-                                : cc.status === 'revoked' 
-                                  ? 'text-red-600' 
-                                  : 'text-yellow-500';
-                              const statusLabel = cc.status === 'signed' 
-                                ? 'Signed' 
-                                : cc.status === 'revoked' 
-                                  ? 'Revoked' 
-                                  : cc.status === 'pending'
-                                    ? 'Pending signature'
-                                    : 'None on file';
-                              return (
-                                <Tooltip key={cc.definitionId}>
-                                  <TooltipTrigger asChild>
-                                    <div className="cursor-help">
-                                      {renderIcon(cc.definitionIcon, `h-4 w-4 ${statusColor}`)}
-                                    </div>
-                                  </TooltipTrigger>
-                                  <TooltipContent>
-                                    <p>{cc.definitionName}: {statusLabel}</p>
-                                  </TooltipContent>
-                                </Tooltip>
-                              );
-                            });
-                          })()}
-                        </div>
-                      </TooltipProvider>
-                    </td>
-                  )}
+                  {showOnListsIdTypes.map((idType) => {
+                    const typeMap = workerIdValueMap.get(worker.id);
+                    const value = typeMap?.get(idType.id);
+                    return (
+                      <td key={idType.id} className="px-6 py-4 whitespace-nowrap text-sm" data-testid={`worker-id-${idType.id}-${worker.id}`}>
+                        {value || <span className="text-muted-foreground italic">-</span>}
+                      </td>
+                    );
+                  })}
                   <td className="px-6 py-4 whitespace-nowrap">
                     <TooltipProvider>
                       <div className="flex items-center gap-1" data-testid={`employment-indicators-${worker.id}`}>
                         {worker.employers && worker.employers.length > 0 ? (
-                          worker.employers.map((employer) => (
+                          [...worker.employers].sort((a, b) => (b.isHome ? 1 : 0) - (a.isHome ? 1 : 0)).map((employer) => (
                             <Tooltip key={employer.id}>
                               <TooltipTrigger asChild>
                                 <span 
                                   className="cursor-help inline-flex"
-                                  style={{ color: employer.employmentStatusColor || "#6b7280" }}
+                                  style={{ color: employer.isHome ? "#22c55e" : "#3b82f6" }}
                                   tabIndex={0}
                                   data-testid={`employment-icon-${employer.id}`}
                                 >
@@ -1067,7 +1424,8 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
                     </div>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -1083,6 +1441,56 @@ export function WorkersTable({ workers, isLoading }: WorkersTableProps) {
                 <h3 className="text-lg font-medium text-foreground mb-2">No workers found</h3>
                 <p className="text-muted-foreground">Add your first worker using the form above.</p>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Pagination Controls */}
+        {isPaginated && totalPages > 1 && (
+          <div className="px-6 py-4 border-t border-border flex flex-wrap items-center justify-between gap-4">
+            <div className="text-sm text-muted-foreground" data-testid="text-pagination-info">
+              Showing {((page - 1) * pageSize) + 1} - {Math.min(page * pageSize, total)} of {total.toLocaleString()} workers
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onPageChange?.(1)}
+                disabled={page === 1}
+                data-testid="button-page-first"
+              >
+                First
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onPageChange?.(page - 1)}
+                disabled={page === 1}
+                data-testid="button-page-prev"
+              >
+                Previous
+              </Button>
+              <span className="text-sm text-muted-foreground px-2" data-testid="text-page-number">
+                Page {page} of {totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onPageChange?.(page + 1)}
+                disabled={page === totalPages}
+                data-testid="button-page-next"
+              >
+                Next
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onPageChange?.(totalPages)}
+                disabled={page === totalPages}
+                data-testid="button-page-last"
+              >
+                Last
+              </Button>
             </div>
           </div>
         )}

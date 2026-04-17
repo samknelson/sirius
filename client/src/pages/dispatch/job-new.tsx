@@ -156,7 +156,7 @@ export default function DispatchJobNewPage() {
             <ArrowLeft className="h-4 w-4" />
           </Button>
         </Link>
-        <h1 className="text-2xl font-bold">New Dispatch Job</h1>
+        <h1 className="text-xl md:text-2xl font-bold">New Dispatch Job</h1>
       </div>
 
       <Card>

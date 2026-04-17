@@ -221,7 +221,7 @@ export default function HourFixedConfigForm({ pluginId }: ChargePluginConfigProp
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold text-foreground">Hour - Fixed Rate Configuration</h2>
+        <h2 className="text-xl md:text-2xl font-bold text-foreground">Hour - Fixed Rate Configuration</h2>
         <p className="text-muted-foreground mt-2">
           Configure fixed hourly rates with effective dates and ledger accounts
         </p>

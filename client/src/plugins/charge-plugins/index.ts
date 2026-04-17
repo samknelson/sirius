@@ -4,6 +4,7 @@ import "./gbhet-legal-hourly";
 import "./gbhet-legal-benefit";
 import "./payment-simple-allocation";
 import "./btu-steward-attendance";
+import "./btu-dues-allocation";
 
 export { chargePluginUIRegistry } from "./registry";
 export type { ChargePluginConfigProps, ChargePluginUIRegistration } from "./registry";

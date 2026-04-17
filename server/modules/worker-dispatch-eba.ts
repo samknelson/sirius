@@ -3,7 +3,7 @@ import { createWorkerDispatchEbaStorage, workerDispatchEbaLoggingConfig } from "
 import { withStorageLogging } from "../storage/middleware/logging";
 import { z } from "zod";
 import { requireComponent } from "./components";
-import { getEbaSettings } from "./dispatch-eba-config";
+import { getEbaSettings } from "./dispatch/eba-config";
 import { storage as appStorage } from "../storage";
 
 type RequireAccess = (policy: string, getEntityId?: (req: Request) => string | Promise<string | undefined> | undefined) => (req: Request, res: Response, next: () => void) => void;

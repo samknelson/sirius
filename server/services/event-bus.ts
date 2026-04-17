@@ -7,12 +7,12 @@ export enum EventType {
   PARTICIPANT_SAVED = "participant.saved",
   DISPATCH_DNC_SAVED = "dispatch.dnc.saved",
   DISPATCH_HFE_SAVED = "dispatch.hfe.saved",
+  DISPATCH_EBA_SAVED = "dispatch.eba.saved",
   DISPATCH_STATUS_SAVED = "dispatch.status.saved",
   DISPATCH_SAVED = "dispatch.saved",
   WORKER_BAN_SAVED = "worker.ban.saved",
   WORKER_SKILL_SAVED = "worker.skill.saved",
   WORKER_WS_CHANGED = "worker.ws.changed",
-  DISPATCH_EBA_SAVED = "dispatch.eba.saved",
   CRON = "cron",
   LOG = "log",
 }
@@ -78,6 +78,10 @@ export interface DispatchHfeSavedPayload {
   isDeleted?: boolean;
 }
 
+export interface DispatchEbaSavedPayload {
+  workerId: string;
+}
+
 export interface DispatchStatusSavedPayload {
   statusId: string;
   workerId: string;
@@ -116,10 +120,6 @@ export interface WorkerWsChangedPayload {
   previousWsId: string | null;
 }
 
-export interface DispatchEbaSavedPayload {
-  workerId: string;
-}
-
 export interface CronPayload {
   jobId: string;
   mode: "live" | "test";
@@ -149,12 +149,12 @@ export interface EventPayloadMap {
   [EventType.PARTICIPANT_SAVED]: ParticipantSavedPayload;
   [EventType.DISPATCH_DNC_SAVED]: DispatchDncSavedPayload;
   [EventType.DISPATCH_HFE_SAVED]: DispatchHfeSavedPayload;
+  [EventType.DISPATCH_EBA_SAVED]: DispatchEbaSavedPayload;
   [EventType.DISPATCH_STATUS_SAVED]: DispatchStatusSavedPayload;
   [EventType.DISPATCH_SAVED]: DispatchSavedPayload;
   [EventType.WORKER_BAN_SAVED]: WorkerBanSavedPayload;
   [EventType.WORKER_SKILL_SAVED]: WorkerSkillSavedPayload;
   [EventType.WORKER_WS_CHANGED]: WorkerWsChangedPayload;
-  [EventType.DISPATCH_EBA_SAVED]: DispatchEbaSavedPayload;
   [EventType.CRON]: CronPayload;
   [EventType.LOG]: LogPayload;
 }

@@ -107,11 +107,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!response.ok) {
         throw new Error('Failed to stop masquerade');
       }
-      // Invalidate all user-specific queries to refresh navigation and access
       await queryClient.invalidateQueries({ queryKey: ['/api/auth/user'] });
       await queryClient.invalidateQueries({ queryKey: ['/api/access/policies/staff'] });
       await queryClient.invalidateQueries({ queryKey: ['/api/my-employers'] });
-      // Invalidate any user roles queries
       queryClient.invalidateQueries({ predicate: (query) => {
         const key = query.queryKey[0];
         return typeof key === 'string' && (

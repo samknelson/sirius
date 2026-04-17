@@ -181,7 +181,7 @@ export default function EmailConfigPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold" data-testid="heading-email-config">Email Configuration</h2>
+        <h2 className="text-xl md:text-2xl font-bold" data-testid="heading-email-config">Email Configuration</h2>
         <p className="text-muted-foreground mt-1">
           Manage your email provider for sending messages
         </p>

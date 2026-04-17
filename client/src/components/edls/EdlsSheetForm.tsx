@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,8 +11,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Trash2, AlertCircle, Lock, ArrowUp, ArrowDown } from "lucide-react";
+import { Plus, Trash2, AlertCircle, Lock, ArrowUp, ArrowDown, ChevronsUpDown, Check, X } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { cn } from "@/lib/utils";
 import type { EdlsSheet, EdlsCrew, InsertEdlsCrew } from "@shared/schema";
 
 interface SupervisorOption {
@@ -43,6 +46,23 @@ interface TaskOption {
   departmentId: string;
 }
 
+interface JobGroupOption {
+  id: string;
+  name: string;
+}
+
+interface FacilityOption {
+  id: string;
+  name: string;
+}
+
+interface PaginatedFacilities {
+  data: FacilityOption[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
 export interface SheetFormData {
   title: string;
   ymd: string;
@@ -50,12 +70,14 @@ export interface SheetFormData {
   workerCount: number;
   supervisor: string;
   assignee: string;
+  jobGroupId: string;
+  facilityId: string;
   crews: CrewInput[];
 }
 
 interface EdlsSheetFormProps {
   initialData?: {
-    sheet: EdlsSheet;
+    sheet: EdlsSheet & { facility?: { id: string; name: string } | null };
     crews: EdlsCrew[];
   };
   onSubmit: (data: SheetFormData) => void;
@@ -92,6 +114,19 @@ export function EdlsSheetForm({
   const { data: allTasks = [] } = useQuery<TaskOption[]>({
     queryKey: ["/api/edls/tasks/options"],
   });
+
+  const [facilitySearch, setFacilitySearch] = useState("");
+  const { data: facilitiesData, isLoading: facilitiesLoading } = useQuery<PaginatedFacilities>({
+    queryKey: ["/api/facilities", { search: facilitySearch, picker: true }],
+    queryFn: async () => {
+      const params = new URLSearchParams({ page: "0", limit: "50", sortDir: "asc" });
+      if (facilitySearch) params.set("search", facilitySearch);
+      const res = await fetch(`/api/facilities?${params.toString()}`);
+      if (!res.ok) throw new Error("Failed to fetch facilities");
+      return res.json();
+    },
+  });
+  const facilityOptions = facilitiesData?.data ?? [];
   
   const [formData, setFormData] = useState<SheetFormData>(() => {
     if (initialData) {
@@ -102,6 +137,8 @@ export function EdlsSheetForm({
         workerCount: initialData.sheet.workerCount,
         supervisor: initialData.sheet.supervisor || "",
         assignee: initialData.sheet.assignee || "",
+        jobGroupId: initialData.sheet.jobGroupId || "",
+        facilityId: initialData.sheet.facilityId || "",
         crews: initialData.crews.map((c) => ({
           id: c.id,
           title: c.title,
@@ -121,9 +158,31 @@ export function EdlsSheetForm({
       workerCount: 0,
       supervisor: "",
       assignee: "",
+      jobGroupId: "",
+      facilityId: "",
       crews: [],
     };
   });
+
+  const { data: jobGroupOptions = [], isLoading: jobGroupsLoading } = useQuery<JobGroupOption[]>({
+    queryKey: ["/api/edls/job-group-options", formData.ymd],
+    queryFn: async () => {
+      if (!formData.ymd) return [];
+      const response = await fetch(`/api/edls/job-group-options?date=${formData.ymd}`);
+      if (!response.ok) throw new Error("Failed to fetch job group options");
+      return response.json();
+    },
+    enabled: !!formData.ymd,
+  });
+
+  useEffect(() => {
+    if (formData.jobGroupId && !jobGroupsLoading) {
+      const stillValid = jobGroupOptions.some(g => g.id === formData.jobGroupId);
+      if (!stillValid) {
+        setFormData(prev => ({ ...prev, jobGroupId: "" }));
+      }
+    }
+  }, [jobGroupOptions, jobGroupsLoading]);
 
   const effectiveSupervisor = supervisorContext?.enforcedSupervisorId || formData.supervisor;
   const canChangeSupervisor = supervisorContext?.canManage ?? true;
@@ -203,6 +262,8 @@ export function EdlsSheetForm({
     onSubmit({
       ...formData,
       supervisor: effectiveSupervisor,
+      jobGroupId: formData.jobGroupId || "",
+      facilityId: formData.facilityId || "",
     });
   };
 
@@ -369,6 +430,106 @@ export function EdlsSheetForm({
               </SelectContent>
             </Select>
           )}
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="jobGroup">Event</Label>
+          {jobGroupsLoading ? (
+            <Skeleton className="h-10 w-full" />
+          ) : (
+            <Select
+              value={formData.jobGroupId || "__none__"}
+              onValueChange={(value) =>
+                setFormData({ ...formData, jobGroupId: value === "__none__" ? "" : value })
+              }
+            >
+              <SelectTrigger data-testid="select-job-group">
+                <SelectValue placeholder="None" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">None</SelectItem>
+                {jobGroupOptions.map((group) => (
+                  <SelectItem key={group.id} value={group.id}>
+                    {group.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="facility">Facility</Label>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                role="combobox"
+                className={cn(
+                  "w-full justify-between font-normal",
+                  !formData.facilityId && "text-muted-foreground"
+                )}
+                data-testid="button-facility-picker"
+              >
+                <span className="truncate">
+                  {formData.facilityId
+                    ? facilityOptions.find((f) => f.id === formData.facilityId)?.name
+                      ?? (initialData?.sheet.facilityId === formData.facilityId
+                        ? (initialData?.sheet.facility?.name ?? "Selected facility")
+                        : "Selected facility")
+                    : "None"}
+                </span>
+                <span className="flex items-center gap-1">
+                  {formData.facilityId && (
+                    <X
+                      className="h-4 w-4 opacity-60 hover:opacity-100"
+                      data-testid="button-facility-clear"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setFormData({ ...formData, facilityId: "" });
+                      }}
+                    />
+                  )}
+                  <ChevronsUpDown className="h-4 w-4 opacity-50" />
+                </span>
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="p-0 w-[--radix-popover-trigger-width]" align="start">
+              <Command shouldFilter={false}>
+                <CommandInput
+                  placeholder="Search facilities..."
+                  value={facilitySearch}
+                  onValueChange={setFacilitySearch}
+                  data-testid="input-facility-search"
+                />
+                <CommandList>
+                  <CommandEmpty>
+                    {facilitiesLoading ? "Loading..." : "No facilities found."}
+                  </CommandEmpty>
+                  <CommandGroup>
+                    {facilityOptions.map((f) => (
+                      <CommandItem
+                        key={f.id}
+                        value={f.id}
+                        onSelect={() => {
+                          setFormData({ ...formData, facilityId: f.id });
+                        }}
+                        data-testid={`option-facility-${f.id}`}
+                      >
+                        <Check
+                          className={cn(
+                            "mr-2 h-4 w-4",
+                            formData.facilityId === f.id ? "opacity-100" : "opacity-0"
+                          )}
+                        />
+                        {f.name}
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                </CommandList>
+              </Command>
+            </PopoverContent>
+          </Popover>
         </div>
       </div>
 

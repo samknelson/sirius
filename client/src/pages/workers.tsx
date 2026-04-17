@@ -1,18 +1,86 @@
+import { useState, useCallback } from "react";
 import { Users } from "lucide-react";
-import { WorkersTable } from "@/components/workers/workers-table";
+import { WorkersTable, WorkerFilters } from "@/components/workers/workers-table";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
-import { Worker } from "@shared/schema";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { useAuth } from "@/contexts/AuthContext";
+
+interface PaginatedWorkersResponse {
+  data: any[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
 
 export default function Workers() {
   const [location] = useLocation();
   const { hasPermission } = useAuth();
-  const { data: workers = [], isLoading } = useQuery<Worker[]>({
-    queryKey: ["/api/workers/with-details"],
+  const [page, setPage] = useState(1);
+  const [pageSize] = useState(50);
+  const [searchInput, setSearchInput] = useState("");
+  const [appliedSearch, setAppliedSearch] = useState("");
+  const [appliedJobTitle, setAppliedJobTitle] = useState("");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
+  const [sortBy, setSortBy] = useState<"lastName" | "firstName" | "employer">("lastName");
+  const [filters, setFilters] = useState<WorkerFilters>({
+    employerId: "all",
+    employerTypeId: "all",
+    bargainingUnitId: "all",
+    benefitId: "all",
+    contactStatus: "all",
+    jobTitle: "",
+    memberStatusId: "all",
   });
+
+  const handleApplySearch = useCallback(() => {
+    setAppliedSearch(searchInput);
+    setAppliedJobTitle(filters.jobTitle);
+    setPage(1);
+  }, [searchInput, filters.jobTitle]);
+
+  const handleFiltersChange = useCallback((newFilters: WorkerFilters) => {
+    setFilters(prev => {
+      const jobTitleOnly = prev.employerId === newFilters.employerId
+        && prev.employerTypeId === newFilters.employerTypeId
+        && prev.bargainingUnitId === newFilters.bargainingUnitId
+        && prev.benefitId === newFilters.benefitId
+        && prev.contactStatus === newFilters.contactStatus
+        && prev.hasMultipleEmployers === newFilters.hasMultipleEmployers
+        && prev.memberStatusId === newFilters.memberStatusId
+        && prev.representativeId === newFilters.representativeId
+        && prev.jobTitle !== newFilters.jobTitle;
+      if (!jobTitleOnly) {
+        setPage(1);
+      }
+      return newFilters;
+    });
+  }, []);
+
+  const { data: paginatedData, isLoading } = useQuery<PaginatedWorkersResponse>({
+    queryKey: ["/api/workers/with-details/paginated", { 
+      page, 
+      pageSize, 
+      search: appliedSearch, 
+      sortOrder,
+      sortBy,
+      employerId: filters.employerId,
+      employerTypeId: filters.employerTypeId,
+      bargainingUnitId: filters.bargainingUnitId,
+      benefitId: filters.benefitId,
+      contactStatus: filters.contactStatus,
+      hasMultipleEmployers: filters.hasMultipleEmployers,
+      jobTitle: appliedJobTitle,
+      memberStatusId: filters.memberStatusId,
+      representativeId: filters.representativeId,
+    }],
+  });
+
+  const workers = paginatedData?.data ?? [];
+  const total = paginatedData?.total ?? 0;
+  const totalPages = paginatedData?.totalPages ?? 1;
 
   const tabs = [
     { id: "list", label: "List", href: "/workers" },
@@ -26,7 +94,7 @@ export default function Workers() {
         icon={<Users className="text-primary-foreground" size={16} />}
         actions={
           <span className="text-sm text-muted-foreground" data-testid="text-worker-count">
-            {workers.length} Workers
+            {total.toLocaleString()} Workers
           </span>
         }
       />
@@ -51,7 +119,26 @@ export default function Workers() {
       </div>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <WorkersTable workers={workers} isLoading={isLoading} />
+        <WorkersTable 
+          workers={workers} 
+          isLoading={isLoading}
+          page={page}
+          pageSize={pageSize}
+          totalPages={totalPages}
+          total={total}
+          onPageChange={setPage}
+          searchQuery={searchInput}
+          onSearchChange={setSearchInput}
+          onApplySearch={handleApplySearch}
+          appliedSearch={appliedSearch}
+          sortOrder={sortOrder}
+          onSortOrderChange={setSortOrder}
+          sortBy={sortBy}
+          onSortByChange={setSortBy}
+          filters={filters}
+          onFiltersChange={handleFiltersChange}
+          appliedJobTitle={appliedJobTitle}
+        />
       </main>
     </div>
   );

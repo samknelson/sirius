@@ -56,6 +56,20 @@ export {
 } from "./schema/dispatch/eba-schema";
 
 export {
+  dispatchJobGroups,
+  insertDispatchJobGroupSchema,
+  type InsertDispatchJobGroup,
+  type DispatchJobGroup,
+} from "./schema/dispatch/job-group-schema";
+
+export {
+  facilities,
+  insertFacilitySchema,
+  type InsertFacility,
+  type Facility,
+} from "./schema/facility/schema";
+
+export {
   eligibilityPluginConfigSchema,
   jobTypeEligibilitySchema,
   type EligibilityPluginConfig,
@@ -778,6 +792,21 @@ export {
   type BtuEmployerMap,
   type InsertBtuEmployerMap,
 } from "./schema/sitespecific/btu/schema";
+
+export {
+  sitespecificBtuPoliticalOfficials,
+  insertBtuPoliticalOfficialSchema,
+  type BtuPoliticalOfficial,
+  type InsertBtuPoliticalOfficial,
+  sitespecificBtuPoliticalWorkerReps,
+  insertBtuPoliticalWorkerRepSchema,
+  type BtuPoliticalWorkerRep,
+  type InsertBtuPoliticalWorkerRep,
+  sitespecificBtuPoliticalDistrictCache,
+  insertBtuPoliticalDistrictCacheSchema,
+  type BtuPoliticalDistrictCache,
+  type InsertBtuPoliticalDistrictCache,
+} from "./schema/sitespecific/btu/political-schema";
 
 export {
   optionsSkills,

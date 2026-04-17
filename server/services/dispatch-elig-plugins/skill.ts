@@ -1,7 +1,7 @@
 import { logger } from "../../logger";
 import { createWorkerSkillStorage } from "../../storage/worker-skills";
 import { createWorkerDispatchEligDenormStorage } from "../../storage/worker-dispatch-elig-denorm";
-import { createDispatchJobStorage } from "../../storage/dispatch-jobs";
+import { createDispatchJobStorage } from "../../storage/dispatch/jobs";
 import type { DispatchEligPlugin, EligibilityCondition, EligibilityQueryContext } from "../dispatch-elig-plugin-registry";
 import { EventType } from "../event-bus";
 import { isComponentEnabledSync, isCacheInitialized } from "../component-cache";
@@ -18,6 +18,7 @@ export const dispatchSkillPlugin: DispatchEligPlugin = {
   name: "Required Skills",
   description: "Filters workers based on required skills for the job",
   componentId: "worker.skills",
+  backfill: () => backfillDispatchSkillEligibility(),
 
   eventHandlers: [
     {

@@ -247,6 +247,7 @@ export function createEventParticipantStorage(): EventParticipantStorage {
           contactId: eventParticipants.contactId,
           role: eventParticipants.role,
           status: eventParticipants.status,
+          registeredAt: eventParticipants.registeredAt,
           data: eventParticipants.data,
           contact: {
             id: contacts.id,

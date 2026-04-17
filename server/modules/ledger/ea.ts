@@ -68,14 +68,14 @@ export function registerLedgerEaRoutes(app: Express) {
     }
   });
 
-  // GET /api/ledger/ea/entity/:entityType/:entityId - Get ledger EA entries for an entity
+  // GET /api/ledger/ea/entity/:entityType/:entityId - Get ledger EA entries for an entity (with balances)
   app.get("/api/ledger/ea/entity/:entityType/:entityId", requireComponent("ledger"), requireAccess('ledger.ea.view', {
     getEntityId: (req) => req.params.entityId,
     getEntityData: (req) => ({ entityType: req.params.entityType, entityId: req.params.entityId })
   }), async (req, res) => {
     try {
       const { entityType, entityId } = req.params;
-      const entries = await storage.ledger.ea.getByEntity(entityType, entityId);
+      const entries = await storage.ledger.ea.getByEntityWithBalance(entityType, entityId);
       res.json(entries);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch ledger EA entries" });
@@ -188,10 +188,13 @@ export function registerLedgerEaRoutes(app: Express) {
     }
   });
 
-  // GET /api/ledger/ea/:id/transactions - Get ledger entries for an EA
+  // GET /api/ledger/ea/:id/transactions - Get ledger entries for an EA (paginated)
   app.get("/api/ledger/ea/:id/transactions", requireComponent("ledger"), requireAccess('authenticated'), async (req, res) => {
     try {
       const { id } = req.params;
+      const maxLimit = req.query.export === 'true' ? 100000 : 200;
+      const limit = Math.min(parseInt(req.query.limit as string) || 50, maxLimit);
+      const offset = parseInt(req.query.offset as string) || 0;
       
       // Check if EA exists
       const ea = await storage.ledger.ea.get(id);
@@ -202,9 +205,9 @@ export function registerLedgerEaRoutes(app: Express) {
 
       if (!await checkEaAccessInline(req, res, ea, 'ledger.ea.view')) return;
 
-      // Get all transactions for this EA
-      const transactions = await storage.ledger.entries.getTransactions({ eaId: id });
-      res.json(transactions);
+      // Get paginated transactions for this EA
+      const result = await storage.ledger.entries.getTransactionsPaginated({ eaId: id }, limit, offset);
+      res.json(result);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch ledger transactions" });
     }

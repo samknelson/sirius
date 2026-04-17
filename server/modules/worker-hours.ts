@@ -44,7 +44,7 @@ export function registerWorkerHoursRoutes(
   app.post("/api/workers/:workerId/hours", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
       const { workerId } = req.params;
-      const { month, year, day, employerId, employmentStatusId, hours, home, jobTitle } = req.body;
+      const { month, year, day, employerId, employmentStatusId, hours, home } = req.body;
 
       if (!month || !year || !day || !employerId || !employmentStatusId) {
         return res.status(400).json({ message: "Month, year, day, employer ID, and employment status ID are required" });
@@ -59,7 +59,6 @@ export function registerWorkerHoursRoutes(
         employmentStatusId,
         hours: hours ?? null,
         home: home ?? false,
-        jobTitle: jobTitle ?? null,
       });
 
       res.status(201).json({
@@ -147,15 +146,18 @@ export function registerWorkerHoursRoutes(
     }
   });
 
-  // GET /api/worker-hours/:id/transactions - Get ledger entries for an hours entry
+  // GET /api/worker-hours/:id/transactions - Get ledger entries for an hours entry (paginated)
   app.get("/api/worker-hours/:id/transactions", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
       const { id } = req.params;
+      const maxLimit = req.query.export === 'true' ? 100000 : 200;
+      const limit = Math.min(parseInt(req.query.limit as string) || 50, maxLimit);
+      const offset = parseInt(req.query.offset as string) || 0;
       
       const hoursEntry = await workerHoursStorage.getWorkerHoursById(id);
       
       if (!hoursEntry) {
-        return res.json([]);
+        return res.json({ data: [], total: 0 });
       }
       
       const newFormatTransactions = await ledgerStorage.entries.getTransactions({
@@ -179,7 +181,18 @@ export function registerWorkerHoursRoutes(
         index === self.findIndex(t => t.id === tx.id)
       );
       
-      res.json(uniqueTransactions);
+      // Sort by date descending
+      uniqueTransactions.sort((a, b) => {
+        const dateA = a.date ? new Date(a.date).getTime() : 0;
+        const dateB = b.date ? new Date(b.date).getTime() : 0;
+        return dateB - dateA;
+      });
+      
+      // Apply pagination in memory since this merges multiple sources
+      const total = uniqueTransactions.length;
+      const paginatedData = uniqueTransactions.slice(offset, offset + limit);
+      
+      res.json({ data: paginatedData, total });
     } catch (error) {
       console.error("Failed to fetch hours transactions:", error);
       res.status(500).json({ message: "Failed to fetch hours transactions" });

@@ -8,6 +8,7 @@ import GbhetLegalHourlyConfigFormPage from "@/plugins/charge-plugins/gbhet-legal
 import GbhetLegalBenefitConfigFormPage from "@/plugins/charge-plugins/gbhet-legal-benefit/ConfigFormPage";
 import PaymentSimpleAllocationConfigFormPage from "@/plugins/charge-plugins/payment-simple-allocation/ConfigFormPage";
 import BtuStewardAttendanceConfigFormPage from "@/plugins/charge-plugins/btu-steward-attendance/ConfigFormPage";
+import BtuDuesAllocationConfigFormPage from "@/plugins/charge-plugins/btu-dues-allocation/ConfigFormPage";
 
 interface ChargePluginMetadata {
   id: string;
@@ -48,7 +49,7 @@ export default function ChargePluginFormPage() {
           </Link>
         </div>
         <div className="text-center py-12">
-          <h2 className="text-2xl font-bold text-foreground">Plugin Not Available</h2>
+          <h2 className="text-xl md:text-2xl font-bold text-foreground">Plugin Not Available</h2>
           <p className="text-muted-foreground mt-2">
             The plugin "{pluginId}" is not available. It may be disabled or not installed.
           </p>
@@ -69,10 +70,12 @@ export default function ChargePluginFormPage() {
       return <PaymentSimpleAllocationConfigFormPage />;
     case "btu-steward-attendance":
       return <BtuStewardAttendanceConfigFormPage />;
+    case "btu-dues-allocation":
+      return <BtuDuesAllocationConfigFormPage />;
     default:
       return (
         <div className="p-8 text-center">
-          <h2 className="text-2xl font-bold mb-4">Form Not Available</h2>
+          <h2 className="text-xl md:text-2xl font-bold mb-4">Form Not Available</h2>
           <p className="text-muted-foreground">
             No form configuration is available for plugin "{pluginId}".
           </p>

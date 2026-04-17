@@ -349,7 +349,6 @@
     "users": [
       {
         "id": "b4a10a1f-0350-4543-81d7-f1df6e1ca398",
-        "replitUserId": null,
         "email": "placeholder-b4a10a1f-0350-4543-81d7-f1df6e1ca398@temporary.local",
         "firstName": null,
         "lastName": null,
@@ -362,7 +361,6 @@
       },
       {
         "id": "8971aaf0-3c81-4745-a0b5-7cbb16bdec9e",
-        "replitUserId": null,
         "email": "placeholder-8971aaf0-3c81-4745-a0b5-7cbb16bdec9e@temporary.local",
         "firstName": null,
         "lastName": null,
@@ -375,7 +373,6 @@
       },
       {
         "id": "7cc8579b-8295-43a7-a633-64c32121103d",
-        "replitUserId": null,
         "email": "provider@nodomain.com",
         "firstName": "Peter",
         "lastName": "Provider",
@@ -388,7 +385,6 @@
       },
       {
         "id": "bf1b01c2-dcd9-4aeb-a562-1cde1f1e3a91",
-        "replitUserId": "45845176",
         "email": "sam@clevernamehere.com",
         "firstName": null,
         "lastName": null,
@@ -401,7 +397,6 @@
       },
       {
         "id": "cc9beee4-60e1-47a6-a66e-9fd26114b04d",
-        "replitUserId": null,
         "email": "samknelson+alien@gmail.com",
         "firstName": "Alien",
         "lastName": "Martian",
@@ -414,7 +409,6 @@
       },
       {
         "id": "8edec822-3669-401a-b1b4-c3d2a91a077f",
-        "replitUserId": null,
         "email": "samknelson+1234@gmail.com",
         "firstName": "Invader",
         "lastName": "Invaderson",
@@ -427,7 +421,6 @@
       },
       {
         "id": "d4a40936-e27f-41e9-9098-ff1f1266b6c7",
-        "replitUserId": "49383536",
         "email": "john.young@activistcentral.net",
         "firstName": null,
         "lastName": null,
@@ -440,7 +433,6 @@
       },
       {
         "id": "42d909f6-6a19-45e1-8a02-c9405caf5b6f",
-        "replitUserId": null,
         "email": "samknelson+vinnie@gmail.com",
         "firstName": "Vinnie",
         "lastName": "Vogon",
@@ -453,7 +445,6 @@
       },
       {
         "id": "b1da1dde-38ac-4fef-92eb-db8bf9a6cbe3",
-        "replitUserId": null,
         "email": "samknelson+buria3@gmail.com",
         "firstName": "Barney",
         "lastName": "Burial",
@@ -466,7 +457,6 @@
       },
       {
         "id": "331d0601-870d-48dd-9a1f-63a79577155b",
-        "replitUserId": "45808420",
         "email": "samknelson@gmail.com",
         "firstName": "Sam",
         "lastName": "Nelson",

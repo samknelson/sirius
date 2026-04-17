@@ -59,6 +59,33 @@ export function ValidateStep({ wizardId, wizardType, data, onDataChange }: Valid
     queryKey: ['/api/employment-status-options'],
     enabled: !!(results?.unmappedStatuses && results.unmappedStatuses.length > 0),
   });
+  const checkValidationCompletion = async (): Promise<boolean> => {
+    try {
+      const res = await fetch(`/api/wizards/${wizardId}`, { credentials: 'include' });
+      if (!res.ok) return false;
+      const wizardData = await res.json();
+      const validationResults = wizardData?.data?.validationResults;
+      if (validationResults) {
+        setResults(validationResults);
+        setIsValidating(false);
+        queryClient.invalidateQueries({ queryKey: [`/api/wizards/${wizardId}`] });
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  };
+
+  const pollForValidationCompletion = async () => {
+    for (let attempt = 0; attempt < 60; attempt++) {
+      await new Promise(resolve => setTimeout(resolve, 5000));
+      const done = await checkValidationCompletion();
+      if (done) return;
+    }
+    setError('Validation is taking longer than expected. Please refresh the page to check the results.');
+    setIsValidating(false);
+  };
 
   const startValidation = async () => {
     setIsValidating(true);
@@ -95,9 +122,8 @@ export function ValidateStep({ wizardId, wizardType, data, onDataChange }: Valid
       };
 
       eventSource.onerror = () => {
-        setError('Connection to validation server lost');
-        setIsValidating(false);
         eventSource.close();
+        pollForValidationCompletion();
       };
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Validation failed');

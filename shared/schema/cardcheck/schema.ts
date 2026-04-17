@@ -25,6 +25,7 @@ export const cardchecks = pgTable("cardchecks", {
   data: jsonb("data"),
   esigId: varchar("esig_id").references(() => esigs.id, { onDelete: 'set null' }),
   bargainingUnitId: varchar("bargaining_unit_id").references(() => bargainingUnits.id, { onDelete: 'set null' }),
+  externalId: varchar("external_id"),
 });
 
 export const insertCardcheckDefinitionSchema = createInsertSchema(cardcheckDefinitions).omit({

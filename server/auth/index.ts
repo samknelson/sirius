@@ -8,6 +8,7 @@ import type {
   AuthProvider,
   ProviderRegistry,
   AuthenticatedUser,
+  ProviderConfig,
 } from "./types";
 import type { AuthProviderType } from "@shared/schema";
 import { logger } from "../logger";
@@ -119,7 +120,7 @@ export async function setupAuth(app: Express): Promise<void> {
     }
 
     try {
-      const provider: AuthProvider = await loadProvider(providerConfig);
+      const provider = await loadProvider(providerConfig);
 
       await provider.setup(app);
       providerRegistry.register(provider);

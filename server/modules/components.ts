@@ -1,5 +1,5 @@
 import type { Express, Request, Response, NextFunction } from "express";
-import { requireAccess } from "../services/access-policy-evaluator";
+import { requireAccess, clearAccessCache } from "../services/access-policy-evaluator";
 import { getAllComponents, getComponentById, ComponentConfig, ComponentDefinition, ComponentSchemaState } from "../../shared/components";
 import {
   enableComponentSchema,
@@ -170,6 +170,9 @@ export function registerComponentRoutes(
 
       // Sync permissions from enabled components (registers any new permissions)
       syncComponentPermissions();
+
+      // Invalidate access policy cache since policy results depend on component state
+      clearAccessCache();
 
       const effectiveEnabled = await isComponentEnabled(componentId);
 

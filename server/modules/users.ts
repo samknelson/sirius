@@ -138,7 +138,7 @@ export function registerUserRoutes(
 
       const updatedUser = await storage.users.getUser(user.id);
 
-      const responseData: any = { 
+      const responseData: Record<string, unknown> = { 
         id: updatedUser?.id || user.id, 
         email: updatedUser?.email || user.email,
         firstName: updatedUser?.firstName || user.firstName,
@@ -423,7 +423,7 @@ export function registerUserRoutes(
       }
       
       const assignments = await storage.users.assignPermissionsToRoleBulk(roleId, permissionKeys);
-      clearAccessCache(); // Invalidate policy cache when permissions change
+      clearAccessCache();
       res.status(201).json({ 
         message: `${assignments.length} permission(s) assigned successfully`,
         assignments 

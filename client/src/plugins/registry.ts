@@ -10,6 +10,9 @@ import { WmbScanStatusPlugin } from "./wmbScanStatus/WmbScanStatusPlugin";
 import { ActiveSessionsPlugin } from "./activeSessions/ActiveSessionsPlugin";
 import { MyStewardPlugin } from "./mySteward/MyStewardPlugin";
 import { MyShopsPlugin } from "./myShops/MyShopsPlugin";
+import { BtuDuesStatusPlugin } from "./btuDuesStatus/BtuDuesStatusPlugin";
+import { BtuBuSummaryPlugin } from "./btuBuSummary/BtuBuSummaryPlugin";
+import { EdlsSummaryPlugin } from "./edlsSummary/EdlsSummaryPlugin";
 
 export const pluginRegistry: DashboardPlugin[] = [
   {
@@ -27,7 +30,7 @@ export const pluginRegistry: DashboardPlugin[] = [
     description: "Display user's most recent bookmarks",
     order: 2,
     component: BookmarksPlugin,
-    requiredPermissions: ["bookmark", "admin", "employer", "worker"],
+    requiredPermissions: ["bookmark", "admin"],
     enabledByDefault: true,
   },
   {
@@ -83,6 +86,35 @@ export const pluginRegistry: DashboardPlugin[] = [
     order: 8,
     component: MyShopsPlugin,
     requiredPermissions: ["employer"],
+    enabledByDefault: true,
+  },
+  {
+    id: "btu-dues-status",
+    name: "BTU Dues Status",
+    description: "Display summary of most recent BTU dues allocation import with card check comparison",
+    order: 9,
+    component: BtuDuesStatusPlugin,
+    requiredPermissions: ["admin"],
+    enabledByDefault: true,
+  },
+  {
+    id: "btu-bu-summary",
+    name: "BTU Bargaining Unit Summary",
+    description: "Display workers per bargaining unit with signed card check percentages",
+    order: 10,
+    component: BtuBuSummaryPlugin,
+    requiredPermissions: ["admin"],
+    enabledByDefault: true,
+  },
+  {
+    id: "edls-summary",
+    name: "EDLS Daily Summary",
+    description: "Worker assignment counts by member status and sheet status for a selected day",
+    order: 11,
+    component: EdlsSummaryPlugin,
+    requiredPolicy: "edls.coordinator",
+    requiredComponent: "edls",
+    fullWidth: true,
     enabledByDefault: true,
   },
 ];

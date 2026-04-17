@@ -19,6 +19,7 @@ import './employer/manage';
 import './employer/view';
 import './employer/mine';
 import './employer/ledger';
+import './employer/steward-view';
 
 import './worker/list';
 import './worker/view';
@@ -58,5 +59,10 @@ import './edls/sheet/edit';
 import './edls/sheet/create';
 import './edls/sheet/manage';
 import './edls/sheet/set-status';
+
+import './bulk/edit';
+
+import './facility/view';
+import './facility/edit';
 
 export { getAllPolicies, getPolicy, hasPolicy } from './index';

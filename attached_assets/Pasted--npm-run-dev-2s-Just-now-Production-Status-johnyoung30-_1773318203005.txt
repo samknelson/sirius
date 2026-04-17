@@ -1,0 +1,166 @@
+
+/
+
+npm run dev
+2s
+ • 
+Just now
+Production
+Status
+johnyoung30 published 3 days ago
+Visibility
+Public
+Domain
+https://sirius-btu-test-2.replit.app
+Type
+Reserved VM
+(0.5 vCPU / 2 GiB RAM)
+Database
+Production database connected
+Your production database is ready! Your app can now save and manage live user data securely.
+5ef59519
+JO
+johnyoung30
+johnyoung30
+published 4 days ago
+60ed0df3
+JO
+johnyoung30
+johnyoung30
+published 4 days ago
+001e2b08
+JO
+johnyoung30
+johnyoung30
+published 4 days ago
+269a7cc9
+JO
+johnyoung30
+johnyoung30
+published 4 days ago
+616ec0fe
+JO
+johnyoung30
+johnyoung30
+published 4 days ago
+948a00b2
+JO
+johnyoung30
+johnyoung30
+published 12 days ago
+8a4e00bd
+JO
+johnyoung30
+johnyoung30
+published 13 days ago
+32fb55cf
+JO
+johnyoung30
+johnyoung30
+published 14 days ago
+8b8ea145
+JO
+johnyoung30
+johnyoung30
+published 20 days ago
+b72bb831
+JO
+johnyoung30
+johnyoung30
+published 20 days ago
+0f907306
+JO
+johnyoung30
+johnyoung30
+published 21 days ago
+d73b7d44
+JO
+johnyoung30
+johnyoung30
+published 21 days ago
+0975b2a3
+JO
+johnyoung30
+johnyoung30
+published 21 days ago
+b624633e
+JO
+johnyoung30
+johnyoung30
+published 21 days ago
+e70c5827
+JO
+johnyoung30
+johnyoung30
+published 27 days ago
+26835f04
+JO
+johnyoung30
+johnyoung30
+published 27 days ago
+fb66b1a7
+JO
+johnyoung30
+johnyoung30
+published 27 days ago
+2b495542
+JO
+johnyoung30
+johnyoung30
+published 27 days ago
+7827d3dc
+JO
+johnyoung30
+johnyoung30
+published 28 days ago
+eaf5b7a1
+JO
+johnyoung30
+johnyoung30
+published 28 days ago
+d3f27a73
+JO
+johnyoung30
+johnyoung30
+published 29 days ago
+36f63cd2
+JO
+johnyoung30
+johnyoung30
+published 30 days ago
+588e5dd0
+JO
+johnyoung30
+johnyoung30
+published about 1 month ago
+1b25ed30
+JO
+johnyoung30
+johnyoung30
+published about 1 month ago
+b725bf89
+JO
+johnyoung30
+johnyoung30
+published about 1 month ago
+b5be3373
+JO
+johnyoung30
+johnyoung30
+published about 1 month ago
+24eb83db
+JO
+johnyoung30
+johnyoung30
+published about 1 month ago
+Databases
+Development Database
+501.72MB / 20GB
+Production Database
+1.46GB / 100GB
+Billing Period
+Renews monthly, Apr 3
+Hours of Compute Used
+0 hours
+Unsupported state: you are in the middle of a rebase.
+Please finish the rebase manually.

@@ -3,7 +3,6 @@ import { storage } from "../storage";
 import { insertVariableSchema } from "@shared/schema";
 import { requireAccess } from "../services/access-policy-evaluator";
 
-// Type for middleware functions that we'll accept from the main routes
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 
@@ -12,9 +11,6 @@ export function registerVariableRoutes(
   requireAuth: AuthMiddleware, 
   requirePermission: PermissionMiddleware
 ) {
-  // Variable routes (protected with authentication and permissions)
-  
-  // GET /api/variables - Get all variables (requires admin permission)
   app.get("/api/variables", requireAccess('admin'), async (req, res) => {
     try {
       const variables = await storage.variables.getAll();
@@ -24,7 +20,6 @@ export function registerVariableRoutes(
     }
   });
 
-  // GET /api/variables/:id - Get a specific variable (requires admin permission)
   app.get("/api/variables/:id", requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
@@ -41,7 +36,6 @@ export function registerVariableRoutes(
     }
   });
 
-  // GET /api/variables/by-name/:name - Get a variable by name (requires admin permission)
   app.get("/api/variables/by-name/:name", requireAccess('admin'), async (req, res) => {
     try {
       const { name } = req.params;
@@ -58,12 +52,10 @@ export function registerVariableRoutes(
     }
   });
 
-  // POST /api/variables - Create a new variable (requires admin permission)
   app.post("/api/variables", requireAccess('admin'), async (req, res) => {
     try {
       const validatedData = insertVariableSchema.parse(req.body);
       
-      // Check if variable name already exists
       const existingVariable = await storage.variables.getByName(validatedData.name);
       if (existingVariable) {
         res.status(409).json({ message: "Variable name already exists" });
@@ -76,7 +68,6 @@ export function registerVariableRoutes(
       if (error instanceof Error && error.name === "ZodError") {
         res.status(400).json({ message: "Invalid variable data" });
       } else if (error instanceof Error && 'code' in error && (error as any).code === '23505') {
-        // PostgreSQL unique constraint violation
         res.status(409).json({ message: "Variable name already exists" });
       } else {
         res.status(500).json({ message: "Failed to create variable" });
@@ -84,13 +75,11 @@ export function registerVariableRoutes(
     }
   });
 
-  // PUT /api/variables/:id - Update a variable (requires admin permission)
   app.put("/api/variables/:id", requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
       const validatedData = insertVariableSchema.partial().parse(req.body);
       
-      // If updating name, check for conflicts
       if (validatedData.name) {
         const existingVariable = await storage.variables.getByName(validatedData.name);
         if (existingVariable && existingVariable.id !== id) {
@@ -111,7 +100,6 @@ export function registerVariableRoutes(
       if (error instanceof Error && error.name === "ZodError") {
         res.status(400).json({ message: "Invalid variable data" });
       } else if (error instanceof Error && 'code' in error && (error as any).code === '23505') {
-        // PostgreSQL unique constraint violation
         res.status(409).json({ message: "Variable name already exists" });
       } else {
         res.status(500).json({ message: "Failed to update variable" });
@@ -119,7 +107,6 @@ export function registerVariableRoutes(
     }
   });
 
-  // DELETE /api/variables/:id - Delete a variable (requires admin permission)
   app.delete("/api/variables/:id", requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;

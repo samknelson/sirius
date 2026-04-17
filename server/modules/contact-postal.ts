@@ -59,6 +59,12 @@ export function registerContactPostalRoutes(
       return requireAccess('employer.manage', () => employerContacts[0].employerId)(req, res, next);
     }
     
+    // Check if this contact belongs to a facility
+    const facility = await storage.facilities.getByContactId(req.params.contactId);
+    if (facility) {
+      return requireAccess('facility.view', () => facility.id)(req, res, next);
+    }
+    
     // Other contact types - require staff permission
     return requireAccess('staff')(req, res, next);
   }, async (req, res) => {

@@ -144,7 +144,7 @@ export function WorkerHoursLayout({ children, activeTab }: WorkerHoursLayoutProp
     );
   }
 
-  const headerTitle = `${getMonthName(hoursEntry.month)} ${hoursEntry.day}, ${hoursEntry.year} - ${hoursEntry.employer?.name || "Unknown Employer"}`;
+  const hoursHeaderTitle = `${getMonthName(hoursEntry.month)} ${hoursEntry.day}, ${hoursEntry.year} - ${hoursEntry.employer?.name || "Unknown Employer"}`;
 
   const contextValue: WorkerHoursLayoutContextValue = {
     hoursEntry,
@@ -163,7 +163,7 @@ export function WorkerHoursLayout({ children, activeTab }: WorkerHoursLayoutProp
                   <Clock className="text-primary-foreground" size={16} />
                 </div>
                 <h1 className="text-xl font-semibold text-foreground" data-testid="text-hours-title">
-                  {headerTitle}
+                  {hoursHeaderTitle}
                 </h1>
               </div>
               <Link href={`/workers/${hoursEntry.workerId}/employment/daily`}>
@@ -178,7 +178,7 @@ export function WorkerHoursLayout({ children, activeTab }: WorkerHoursLayoutProp
 
         <div className="bg-card border-b border-border">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex items-center space-x-2 py-3">
+            <div className="flex flex-wrap items-center gap-2 py-3">
               {mainTabs.map((tab) => {
                 const isActive = tab.id === activeTab;
                 return isActive ? (

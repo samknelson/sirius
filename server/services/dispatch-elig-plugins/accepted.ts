@@ -1,6 +1,6 @@
 import { logger } from "../../logger";
-import { createDispatchStorage } from "../../storage/dispatches";
-import { createDispatchJobStorage } from "../../storage/dispatch-jobs";
+import { createDispatchStorage } from "../../storage/dispatch/dispatches";
+import { createDispatchJobStorage } from "../../storage/dispatch/jobs";
 import { createWorkerDispatchEligDenormStorage } from "../../storage/worker-dispatch-elig-denorm";
 import type { DispatchEligPlugin, EligibilityCondition, EligibilityQueryContext } from "../dispatch-elig-plugin-registry";
 import { EventType } from "../event-bus";
@@ -12,6 +12,8 @@ export const dispatchAcceptedPlugin: DispatchEligPlugin = {
   name: "Accepted Dispatch Tracker",
   description: "Maintains denormalized records of which jobs each worker has accepted. Used by other plugins for exemption logic.",
   hidden: true,
+  backfill: () => backfillDispatchAcceptedEligibility(),
+  backfillOrder: -10,
 
   eventHandlers: [
     {

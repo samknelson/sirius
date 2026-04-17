@@ -1,15 +1,16 @@
+import { useMemo } from "react";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { Home, AlertCircle, User, Building2 } from "lucide-react";
+import { Home, User, Building2, AlertCircle } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { Role } from "@shared/schema";
 import { getAllPlugins } from "@/plugins/registry";
 import { PluginConfig } from "@/plugins/types";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 
 export default function Dashboard() {
-  const { user, permissions, components, staffPolicyGranted } = useAuth();
+  const { user, permissions, components } = useAuth();
   
   const { data: userRoles = [], isLoading: rolesLoading } = useQuery<Role[]>({
     queryKey: [`/api/users/${user?.id}/roles`],
@@ -19,7 +20,41 @@ export default function Dashboard() {
   const { data: pluginConfigs = [], isLoading: configsLoading } = useQuery<PluginConfig[]>({
     queryKey: ["/api/dashboard-plugins/config"],
   });
+
+  const allPlugins = getAllPlugins();
+  const policiesNeeded = useMemo(
+    () => [...new Set(allPlugins.filter(p => p.requiredPolicy).map(p => p.requiredPolicy!))],
+    [allPlugins]
+  );
+
+  const { data: policyResults = {}, isLoading: policiesLoading } = useQuery<Record<string, { allowed: boolean }>>({
+    queryKey: ["/api/access/policies/batch", ...policiesNeeded],
+    queryFn: async () => {
+      if (policiesNeeded.length === 0) return {};
+      const results: Record<string, { allowed: boolean }> = {};
+      await Promise.all(
+        policiesNeeded.map(async (policy) => {
+          try {
+            const response = await fetch(`/api/access/policies/${policy}`);
+            if (response.ok) {
+              const data = await response.json();
+              results[policy] = { allowed: data.access?.granted === true };
+            } else {
+              results[policy] = { allowed: false };
+            }
+          } catch {
+            results[policy] = { allowed: false };
+          }
+        })
+      );
+      return results;
+    },
+    staleTime: 30000,
+    enabled: policiesNeeded.length > 0 && !!user,
+  });
   
+  const staffPolicyGranted = policyResults["staff"]?.allowed === true || permissions.includes("admin") || permissions.includes("staff");
+
   // Check for linked employers (for employer role users without staff access)
   const { data: myEmployers = [] } = useQuery<{ id: string; name: string }[]>({
     queryKey: ["/api/my-employers"],
@@ -34,12 +69,6 @@ export default function Dashboard() {
   const showWorkerLinkageMessage = hasWorkerRole && !hasLinkedWorker && !staffPolicyGranted;
   const showEmployerLinkageMessage = hasEmployerRole && !hasLinkedEmployer && !staffPolicyGranted;
 
-  // Get all registered plugins
-  const allPlugins = getAllPlugins();
-
-  // Filter plugins based on:
-  // 1. Plugin is enabled in config (or enabled by default if no config exists)
-  // 2. User has required permissions
   const enabledPlugins = allPlugins.filter(plugin => {
     // Check if plugin is enabled
     const config = pluginConfigs.find(c => c.pluginId === plugin.id);
@@ -49,17 +78,31 @@ export default function Dashboard() {
 
     // Check permissions
     if (plugin.requiredPermissions && plugin.requiredPermissions.length > 0) {
-      return plugin.requiredPermissions.some(perm => permissions.includes(perm));
+      if (!plugin.requiredPermissions.some(perm => permissions.includes(perm))) {
+        return false;
+      }
+    }
+
+    if (plugin.requiredComponent && components && !components.includes(plugin.requiredComponent)) {
+      return false;
+    }
+
+    if (plugin.requiredPolicy) {
+      const policyResult = policyResults[plugin.requiredPolicy];
+      if (!policyResult || !policyResult.allowed) return false;
     }
 
     return true;
   });
 
+  const fullWidthPlugins = enabledPlugins.filter(p => p.fullWidth);
+  const gridPlugins = enabledPlugins.filter(p => !p.fullWidth);
+
   return (
     <div className="bg-background text-foreground min-h-screen">
       <PageHeader title="Dashboard" icon={<Home className="text-primary-foreground" size={16} />} />
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {rolesLoading || configsLoading ? (
+        {rolesLoading || configsLoading || policiesLoading ? (
           <div className="text-center text-muted-foreground py-8">
             <p>Loading dashboard...</p>
           </div>
@@ -114,8 +157,24 @@ export default function Dashboard() {
               </div>
             )}
             
+            {fullWidthPlugins.length > 0 && (
+              <div className="space-y-6 mb-6">
+                {fullWidthPlugins.map(plugin => {
+                  const PluginComponent = plugin.component;
+                  return (
+                    <PluginComponent
+                      key={plugin.id}
+                      userId={user?.id || ""}
+                      userRoles={userRoles}
+                      userPermissions={permissions}
+                      enabledComponents={components}
+                    />
+                  );
+                })}
+              </div>
+            )}
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-              {enabledPlugins.map(plugin => {
+              {gridPlugins.map(plugin => {
                 const PluginComponent = plugin.component;
                 return (
                   <PluginComponent
@@ -128,7 +187,7 @@ export default function Dashboard() {
                 );
               })}
             </div>
-            {enabledPlugins.length === 0 && !showWorkerLinkageMessage && !showEmployerLinkageMessage && (
+            {enabledPlugins.length === 0 && (
               <div className="text-center text-muted-foreground">
                 <p>No plugins are currently enabled for your dashboard.</p>
               </div>

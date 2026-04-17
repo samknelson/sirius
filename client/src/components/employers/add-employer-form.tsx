@@ -108,7 +108,7 @@ export function AddEmployerForm() {
                   </SelectItem>
                   {employerTypes.map((type) => {
                     const iconName = (type.data as any)?.icon;
-                    const IconComponent = iconName ? iconMap[iconName] : Building;
+                    const IconComponent = (iconName && iconMap[iconName]) || Building;
                     return (
                       <SelectItem key={type.id} value={type.id} data-testid={`select-item-type-${type.id}`}>
                         <div className="flex items-center gap-2">

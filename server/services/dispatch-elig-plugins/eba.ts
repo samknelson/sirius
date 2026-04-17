@@ -1,7 +1,7 @@
 import { logger } from "../../logger";
 import { createWorkerDispatchEbaStorage } from "../../storage/worker-dispatch-eba";
 import { createWorkerDispatchEligDenormStorage } from "../../storage/worker-dispatch-elig-denorm";
-import { createDispatchJobStorage } from "../../storage/dispatch-jobs";
+import { createDispatchJobStorage } from "../../storage/dispatch/jobs";
 import type { DispatchEligPlugin, EligibilityCondition, EligibilityQueryContext } from "../dispatch-elig-plugin-registry";
 import { EventType } from "../event-bus";
 import { isComponentEnabledSync, isCacheInitialized } from "../component-cache";
@@ -14,6 +14,7 @@ export const dispatchEbaPlugin: DispatchEligPlugin = {
   name: "Employed but Available",
   description: "Requires workers to have marked themselves available for the job's start date",
   componentId: COMPONENT_ID,
+  backfill: () => backfillDispatchEbaEligibility(),
 
   eventHandlers: [
     {

@@ -35,7 +35,7 @@ export const dispatchJobPollHandler: CronJobHandler = {
         pollResults.push({
           jobId: job.id,
           title: job.title,
-          message: pollResult.message || 'Poll completed',
+          message: pollResult.exitedAtPhase ? `Exited at phase: ${pollResult.exitedAtPhase}` : 'Poll completed',
         });
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);

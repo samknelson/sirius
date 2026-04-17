@@ -16,6 +16,7 @@ export interface WorkerDispatchEligDenormStorage {
   create(entry: InsertWorkerDispatchEligDenorm): Promise<WorkerDispatchEligDenorm>;
   createMany(entries: InsertWorkerDispatchEligDenorm[]): Promise<WorkerDispatchEligDenorm[]>;
   deleteByWorkerAndCategory(workerId: string, category: string): Promise<number>;
+  deleteAllByCategory(category: string): Promise<number>;
 }
 
 export function createWorkerDispatchEligDenormStorage(): WorkerDispatchEligDenormStorage {
@@ -90,6 +91,15 @@ export function createWorkerDispatchEligDenormStorage(): WorkerDispatchEligDenor
           eq(workerDispatchEligDenorm.workerId, workerId),
           eq(workerDispatchEligDenorm.category, category)
         ))
+        .returning();
+      return result.length;
+    },
+
+    async deleteAllByCategory(category: string) {
+      const client = getClient();
+      const result = await client
+        .delete(workerDispatchEligDenorm)
+        .where(eq(workerDispatchEligDenorm.category, category))
         .returning();
       return result.length;
     }

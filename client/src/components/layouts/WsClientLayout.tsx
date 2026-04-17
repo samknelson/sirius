@@ -112,7 +112,7 @@ export function WsClientLayout({ activeTab, children }: WsClientLayoutProps) {
         </div>
         <div className="flex-1">
           <div className="flex items-center gap-3">
-            <h1 className="text-3xl font-bold text-foreground" data-testid="heading-client-name">
+            <h1 className="text-2xl md:text-3xl font-bold text-foreground" data-testid="heading-client-name">
               {client.name}
             </h1>
             <StatusBadge status={client.status} />

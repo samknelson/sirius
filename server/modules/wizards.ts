@@ -6,9 +6,14 @@ import { requireAccess, buildContext, checkAccess, getAccessStorage } from "../s
 import { wizardRegistry } from "../wizards/index.js";
 import { FeedWizard } from "../wizards/feed.js";
 import { createUnifiedOptionsStorage } from "../storage/unified-options.js";
+import { BtuWorkerImportWizard } from "../wizards/types/btu_worker_import.js";
+import { BtuDuesAllocationWizard } from "../wizards/types/btu_dues_allocation.js";
 import { objectStorageService } from "../services/objectStorage.js";
 import { hashHeaderRow } from "../utils/hash.js";
 import { getEffectiveUser } from "./masquerade";
+import { sendInapp } from "../services/inapp-sender.js";
+import { sendEmail } from "../services/email-sender.js";
+import { logger } from "../logger.js";
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -1355,6 +1360,11 @@ export function registerWizardRoutes(
         // Send initial event
         res.write(`data: ${JSON.stringify({ type: 'start', message: 'Starting validation...' })}\n\n`);
 
+        // Start heartbeat to keep connection alive through proxies
+        const heartbeatInterval = setInterval(() => {
+          try { res.write(`: heartbeat\n\n`); } catch (_e) { /* connection closed */ }
+        }, 15000);
+
         // Run validation with progress callback
         try {
           const results = await wizardType.validateFeedData(
@@ -1369,6 +1379,8 @@ export function registerWizardRoutes(
             }
           );
 
+          clearInterval(heartbeatInterval);
+
           // Send completion event
           res.write(`data: ${JSON.stringify({ 
             type: 'complete', 
@@ -1376,6 +1388,7 @@ export function registerWizardRoutes(
           })}\n\n`);
           res.end();
         } catch (validationError) {
+          clearInterval(heartbeatInterval);
           // Send error event
           res.write(`data: ${JSON.stringify({ 
             type: 'error', 
@@ -1398,99 +1411,329 @@ export function registerWizardRoutes(
     }
   );
 
-  // Process wizard data with SSE for progress tracking
-  app.get("/api/wizards/:id/process",
+  async function sendWizardCompletionNotifications(
+    wizardId: string,
+    userId: string,
+    wizardDisplayName: string,
+    results: { successCount: number; failureCount: number; createdCount: number; updatedCount: number },
+    isReprocess: boolean = false,
+  ) {
+    try {
+      const user = await storage.users.getUser(userId);
+      if (!user) {
+        logger.warn('Cannot send wizard notification: user not found', { service: 'wizard-notifications', userId, wizardId });
+        return;
+      }
+
+      const actionLabel = isReprocess ? 'Reprocessing' : 'Processing';
+      const statusLabel = results.failureCount > 0 ? 'completed with errors' : 'completed successfully';
+      const title = `${wizardDisplayName} ${actionLabel} Complete`;
+      const body = `${actionLabel} ${statusLabel}. ${results.createdCount} created, ${results.updatedCount} updated${results.failureCount > 0 ? `, ${results.failureCount} errors` : ''}.`;
+      const linkUrl = `/wizards/${wizardId}`;
+      const linkLabel = 'View Results';
+
+      if (user.email) {
+        const contact = await storage.contacts.getContactByEmail(user.email);
+        if (contact) {
+          const inappResult = await sendInapp({
+            contactId: contact.id,
+            userId: user.id,
+            title,
+            body,
+            linkUrl,
+            linkLabel,
+            initiatedBy: 'system',
+          });
+          if (!inappResult.success) {
+            logger.warn('Failed to send in-app wizard notification', { service: 'wizard-notifications', wizardId, error: inappResult.error });
+          }
+
+          const emailResult = await sendEmail({
+            contactId: contact.id,
+            toEmail: user.email,
+            toName: `${user.firstName || ''} ${user.lastName || ''}`.trim() || undefined,
+            subject: title,
+            bodyText: `${body}\n\nView results: ${linkUrl}`,
+            bodyHtml: `<p>${body}</p><p><a href="${linkUrl}">View Results</a></p>`,
+            userId: user.id,
+          });
+          if (!emailResult.success && emailResult.errorCode !== 'NOT_OPTED_IN' && emailResult.errorCode !== 'NOT_ALLOWLISTED' && emailResult.errorCode !== 'EMAIL_NOT_SUPPORTED') {
+            logger.warn('Failed to send email wizard notification', { service: 'wizard-notifications', wizardId, error: emailResult.error });
+          }
+        }
+      }
+    } catch (err) {
+      logger.error('Error sending wizard completion notifications', { service: 'wizard-notifications', wizardId, error: err instanceof Error ? err.message : 'Unknown' });
+    }
+  }
+
+  // Start background wizard processing
+  app.post("/api/wizards/:id/process",
     checkWizardAccess,
     async (req, res) => {
       try {
         const { id } = req.params;
         const wizard = (req as any).wizard;
 
-        // Get wizard type instance
         const wizardType = wizardRegistry.get(wizard.type);
         if (!wizardType || !(wizardType instanceof FeedWizard)) {
           return res.status(400).json({ message: "This wizard type does not support processing" });
         }
 
-        // Set up SSE headers
-        res.setHeader('Content-Type', 'text/event-stream');
-        res.setHeader('Cache-Control', 'no-cache');
-        res.setHeader('Connection', 'keep-alive');
-        res.flushHeaders();
+        if (wizard.status === 'processing' || 
+            wizard.data?.progress?.process?.status === 'processing') {
+          return res.status(409).json({ message: "This wizard is already being processed" });
+        }
 
-        // Send initial event
-        res.write(`data: ${JSON.stringify({ type: 'start', message: 'Starting processing...' })}\n\n`);
+        const { dbUser } = await getEffectiveUser(req.session, (req as any).user);
+        const initiatingUserId = dbUser?.id;
 
-        // Run processing with progress callback
-        try {
-          const results = await wizardType.processFeedData(
-            id,
-            100, // batch size
-            (progress) => {
-              // Send progress event with explicit fields
-              const progressData: any = { 
-                type: 'progress',
-                processed: progress.processed,
-                total: progress.total,
-                createdCount: progress.createdCount,
-                updatedCount: progress.updatedCount,
-                successCount: progress.successCount,
-                failureCount: progress.failureCount,
-                currentRow: progress.currentRow,
-              };
-              if (progress.phase) {
-                progressData.phase = progress.phase;
-                progressData.phaseMessage = progress.phaseMessage;
+        const allTypes = wizardRegistry.getAll();
+        const typeConfig = allTypes.find(t => t.name === wizard.type);
+        const wizardDisplayName = typeConfig?.displayName || wizard.type;
+
+        await storage.wizards.update(id, {
+          status: 'processing',
+          data: {
+            ...wizard.data,
+            progress: {
+              ...(wizard.data as any)?.progress,
+              process: {
+                status: 'processing',
+                startedAt: new Date().toISOString()
               }
-              res.write(`data: ${JSON.stringify(progressData)}\n\n`);
             }
-          );
+          }
+        });
 
-          // Update wizard status based on results
-          const finalStatus = results.failureCount > 0 ? 'needs_review' : 'completed';
-          
-          // Update wizard with final status (preserve processResults that was just saved)
-          await storage.wizards.update(id, {
-            status: finalStatus,
-            data: {
-              ...wizard.data,
-              processResults: results, // Preserve the complete results including resultsFileId
-              progress: {
-                ...wizard.data?.progress,
-                process: {
-                  status: 'completed',
-                  completedAt: new Date().toISOString()
+        res.json({ message: "Processing started", status: "processing" });
+
+        setImmediate(async () => {
+          try {
+            const results = await wizardType.processFeedData(id, 100);
+
+            const finalStatus = results.failureCount > 0 ? 'needs_review' : 'completed';
+            const updatedWizard = await storage.wizards.getById(id);
+            const latestData = updatedWizard?.data || wizard.data;
+
+            await storage.wizards.update(id, {
+              status: finalStatus,
+              data: {
+                ...latestData,
+                processResults: results,
+                progress: {
+                  ...(latestData as any)?.progress,
+                  process: {
+                    status: 'completed',
+                    completedAt: new Date().toISOString()
+                  }
                 }
               }
-            }
-          });
+            });
 
-          // Send completion event
-          res.write(`data: ${JSON.stringify({ 
-            type: 'complete', 
-            results,
-            wizardStatus: finalStatus
-          })}\n\n`);
-          res.end();
-        } catch (processingError) {
-          // Send error event
-          res.write(`data: ${JSON.stringify({ 
-            type: 'error', 
-            message: processingError instanceof Error ? processingError.message : 'Processing failed' 
-          })}\n\n`);
-          res.end();
-        }
+            if (initiatingUserId) {
+              await sendWizardCompletionNotifications(id, initiatingUserId, wizardDisplayName, results);
+            }
+          } catch (processingError) {
+            logger.error('Background wizard processing failed', {
+              service: 'wizard-process',
+              wizardId: id,
+              error: processingError instanceof Error ? processingError.message : 'Unknown error',
+            });
+
+            try {
+              const failedWizard = await storage.wizards.getById(id);
+              const failedData = failedWizard?.data || wizard.data;
+              await storage.wizards.update(id, {
+                status: 'error',
+                data: {
+                  ...failedData,
+                  progress: {
+                    ...(failedData as any)?.progress,
+                    process: {
+                      status: 'error',
+                      error: processingError instanceof Error ? processingError.message : 'Processing failed',
+                      completedAt: new Date().toISOString()
+                    }
+                  }
+                }
+              });
+            } catch { /* best effort status update */ }
+
+            if (initiatingUserId) {
+              try {
+                const user = await storage.users.getUser(initiatingUserId);
+                if (user?.email) {
+                  const contact = await storage.contacts.getContactByEmail(user.email);
+                  if (contact) {
+                    await sendInapp({
+                      contactId: contact.id,
+                      userId: initiatingUserId,
+                      title: `${wizardDisplayName} Processing Failed`,
+                      body: processingError instanceof Error ? processingError.message : 'Processing encountered an error.',
+                      linkUrl: `/wizards/${id}`,
+                      linkLabel: 'View Wizard',
+                      initiatedBy: 'system',
+                    });
+                  }
+                }
+              } catch { /* best effort notification */ }
+            }
+          }
+        });
       } catch (error) {
         console.error("Processing error:", error);
-        if (!res.headersSent) {
-          res.status(500).json({ message: error instanceof Error ? error.message : "Failed to start processing" });
-        } else {
-          res.write(`data: ${JSON.stringify({ 
-            type: 'error', 
-            message: error instanceof Error ? error.message : 'Processing failed' 
-          })}\n\n`);
-          res.end();
+        res.status(500).json({ message: error instanceof Error ? error.message : "Failed to start processing" });
+      }
+    }
+  );
+
+  // Start background reprocessing of unmatched workers
+  app.post("/api/wizards/:id/reprocess-unmatched",
+    checkWizardAccess,
+    async (req, res) => {
+      try {
+        const { id } = req.params;
+        const wizard = (req as any).wizard;
+
+        const wizardType = wizardRegistry.get(wizard.type);
+        if (!wizardType || !(wizardType instanceof BtuWorkerImportWizard)) {
+          return res.status(400).json({ message: "This wizard type does not support reprocessing" });
         }
+
+        if (wizard.status === 'processing' || 
+            wizard.data?.progress?.process?.status === 'processing') {
+          return res.status(409).json({ message: "This wizard is already being processed" });
+        }
+
+        const { dbUser } = await getEffectiveUser(req.session, (req as any).user);
+        const initiatingUserId = dbUser?.id;
+
+        const allTypes = wizardRegistry.getAll();
+        const typeConfig = allTypes.find(t => t.name === wizard.type);
+        const wizardDisplayName = typeConfig?.displayName || wizard.type;
+
+        await storage.wizards.update(id, {
+          status: 'processing',
+          data: {
+            ...wizard.data,
+            progress: {
+              ...(wizard.data as any)?.progress,
+              process: {
+                status: 'reprocessing',
+                startedAt: new Date().toISOString()
+              }
+            }
+          }
+        });
+
+        res.json({ message: "Reprocessing started", status: "processing" });
+
+        setImmediate(async () => {
+          try {
+            const results = await wizardType.reprocessUnmatched(id);
+
+            const finalStatus = results.failureCount > 0 ? 'needs_review' : 'completed';
+            const updatedWizard = await storage.wizards.getById(id);
+            const latestData = updatedWizard?.data || wizard.data;
+
+            await storage.wizards.update(id, {
+              status: finalStatus,
+              data: {
+                ...latestData,
+                processResults: results,
+                progress: {
+                  ...(latestData as any)?.progress,
+                  process: {
+                    status: 'completed',
+                    completedAt: new Date().toISOString()
+                  }
+                }
+              }
+            });
+
+            if (initiatingUserId) {
+              await sendWizardCompletionNotifications(id, initiatingUserId, wizardDisplayName, results, true);
+            }
+          } catch (processingError) {
+            logger.error('Background wizard reprocessing failed', {
+              service: 'wizard-reprocess',
+              wizardId: id,
+              error: processingError instanceof Error ? processingError.message : 'Unknown error',
+            });
+
+            try {
+              const failedWizard = await storage.wizards.getById(id);
+              const failedData = failedWizard?.data || wizard.data;
+              await storage.wizards.update(id, {
+                status: 'error',
+                data: {
+                  ...failedData,
+                  progress: {
+                    ...(failedData as any)?.progress,
+                    process: {
+                      status: 'error',
+                      error: processingError instanceof Error ? processingError.message : 'Reprocessing failed',
+                      completedAt: new Date().toISOString()
+                    }
+                  }
+                }
+              });
+            } catch { /* best effort status update */ }
+
+            if (initiatingUserId) {
+              try {
+                const user = await storage.users.getUser(initiatingUserId);
+                if (user?.email) {
+                  const contact = await storage.contacts.getContactByEmail(user.email);
+                  if (contact) {
+                    await sendInapp({
+                      contactId: contact.id,
+                      userId: initiatingUserId,
+                      title: `${wizardDisplayName} Reprocessing Failed`,
+                      body: processingError instanceof Error ? processingError.message : 'Reprocessing encountered an error.',
+                      linkUrl: `/wizards/${id}`,
+                      linkLabel: 'View Wizard',
+                      initiatedBy: 'system',
+                    });
+                  }
+                }
+              } catch { /* best effort notification */ }
+            }
+          }
+        });
+      } catch (error) {
+        console.error("Reprocessing error:", error);
+        res.status(500).json({ message: error instanceof Error ? error.message : "Failed to start reprocessing" });
+      }
+    }
+  );
+
+  app.post("/api/wizards/:id/rescan-comparison",
+    checkWizardAccess,
+    async (req, res) => {
+      try {
+        const { id } = req.params;
+        const wizard = (req as any).wizard;
+
+        const wizardType = wizardRegistry.get(wizard.type);
+        if (!wizardType || !(wizardType instanceof BtuDuesAllocationWizard)) {
+          return res.status(400).json({ message: "This wizard type does not support comparison rescan" });
+        }
+
+        if (!['completed', 'completed_with_errors', 'needs_review'].includes(wizard.status)) {
+          return res.status(400).json({ message: "Wizard must be in a completed state to rescan" });
+        }
+
+        const comparisonReport = await wizardType.rescanComparison(id);
+        res.json({ message: "Comparison rescan completed", comparisonReport });
+      } catch (error) {
+        logger.error("Comparison rescan error:", {
+          service: 'wizard-rescan',
+          wizardId: req.params.id,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        });
+        res.status(500).json({ message: error instanceof Error ? error.message : "Failed to rescan comparison" });
       }
     }
   );
@@ -1534,6 +1777,131 @@ export function registerWizardRoutes(
         res.status(204).send();
       } catch (error) {
         res.status(500).json({ message: error instanceof Error ? error.message : "Failed to delete file" });
+      }
+    }
+  );
+
+  // Export BTU Dues Allocation comparison report as Excel
+  app.get("/api/wizards/:id/export-comparison-report",
+    checkWizardAccess,
+    async (req, res) => {
+      try {
+        const { id } = req.params;
+        const wizard = (req as any).wizard;
+
+        if (wizard.type !== 'btu_dues_allocation') {
+          return res.status(400).json({ message: "Export only available for BTU Dues Allocation wizards" });
+        }
+
+        const wizardData = wizard.data as any;
+        const comparisonReport = wizardData?.cardCheckComparisonReport;
+        const processResults = wizardData?.processResults;
+
+        if (!comparisonReport) {
+          return res.status(400).json({ message: "No comparison report available for export" });
+        }
+
+        const XLSX = await import('xlsx');
+        const workbook = XLSX.utils.book_new();
+
+        // Summary sheet
+        const summaryData = [
+          ['BTU Dues Allocation - Comparison Report'],
+          [''],
+          ['Generated:', new Date().toISOString()],
+          ['Wizard ID:', id],
+          [''],
+          ['Import Summary'],
+          ['Total Rows Processed:', processResults?.totalRows || 0],
+          ['Entries Created:', processResults?.createdCount || 0],
+          ['Successful:', processResults?.successCount || 0],
+          ['Errors:', processResults?.failureCount || 0],
+          [''],
+          ['Comparison Summary'],
+          ['Matching Rate:', comparisonReport.matchingRate?.length || 0],
+          ['Mismatched Rate:', comparisonReport.mismatchingRate?.length || 0],
+          ['No Card Check:', comparisonReport.noCardCheck?.length || 0],
+          ['Card Check No Allocation:', comparisonReport.cardCheckNoAllocation?.length || 0],
+          ['Worker Not Found:', comparisonReport.workerNotFound?.length || 0],
+        ];
+        const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
+        summarySheet['!cols'] = [{ wch: 30 }, { wch: 40 }];
+        XLSX.utils.book_append_sheet(workbook, summarySheet, 'Summary');
+
+        const createComparisonSheet = (entries: any[], includeAmount: boolean, includeCardRate: boolean) => {
+          const headers = ['Worker Name', 'Worker ID', 'BPS Employee ID', 'Bargaining Unit', 'Employers'];
+          if (includeAmount) headers.push('Allocated Amount');
+          if (includeCardRate) headers.push('Card Check Rate');
+
+          const rows = entries.map((entry: any) => {
+            const row: any[] = [
+              entry.workerName || '',
+              entry.workerSiriusId || '',
+              entry.bpsEmployeeId || '',
+              entry.bargainingUnitName || '',
+              (entry.employerNames || []).join(', '),
+            ];
+            if (includeAmount) row.push(entry.allocatedAmount != null ? entry.allocatedAmount : '');
+            if (includeCardRate) row.push(entry.cardCheckRate != null ? entry.cardCheckRate : '');
+            return row;
+          });
+
+          const sheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+          sheet['!cols'] = [{ wch: 35 }, { wch: 12 }, { wch: 18 }, { wch: 25 }, { wch: 40 }, { wch: 15 }, { wch: 15 }];
+          return sheet;
+        };
+
+        // Add sheets for each category
+        if (comparisonReport.matchingRate?.length > 0) {
+          XLSX.utils.book_append_sheet(workbook, 
+            createComparisonSheet(comparisonReport.matchingRate, true, true), 
+            'Matching Rate');
+        }
+
+        if (comparisonReport.mismatchingRate?.length > 0) {
+          XLSX.utils.book_append_sheet(workbook, 
+            createComparisonSheet(comparisonReport.mismatchingRate, true, true), 
+            'Mismatched Rate');
+        }
+
+        if (comparisonReport.noCardCheck?.length > 0) {
+          XLSX.utils.book_append_sheet(workbook, 
+            createComparisonSheet(comparisonReport.noCardCheck, true, false), 
+            'No Card Check');
+        }
+
+        if (comparisonReport.cardCheckNoAllocation?.length > 0) {
+          XLSX.utils.book_append_sheet(workbook, 
+            createComparisonSheet(comparisonReport.cardCheckNoAllocation, false, true), 
+            'Card Check No Allocation');
+        }
+
+        // Worker Not Found sheet has different columns
+        if (comparisonReport.workerNotFound?.length > 0) {
+          const notFoundHeaders = ['Row', 'Employee ID', 'Name (from file)', 'Amount', 'Date', 'Deduction Code'];
+          const notFoundRows = comparisonReport.workerNotFound.map((entry: any) => [
+            entry.rowIndex + 1,
+            entry.bpsEmployeeId || '',
+            entry.workerNameFromFile || '',
+            entry.amount != null ? `$${entry.amount.toFixed(2)}` : '',
+            entry.date || '',
+            entry.deductionCode || '',
+          ]);
+          const notFoundSheet = XLSX.utils.aoa_to_sheet([notFoundHeaders, ...notFoundRows]);
+          notFoundSheet['!cols'] = [{ wch: 8 }, { wch: 15 }, { wch: 30 }, { wch: 12 }, { wch: 12 }, { wch: 15 }];
+          XLSX.utils.book_append_sheet(workbook, notFoundSheet, 'Worker Not Found');
+        }
+
+        // Generate buffer and send
+        const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+        const filename = `btu-dues-comparison-report-${new Date().toISOString().split('T')[0]}.xlsx`;
+
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.send(buffer);
+      } catch (error) {
+        console.error("Error exporting comparison report:", error);
+        res.status(500).json({ message: error instanceof Error ? error.message : "Failed to export comparison report" });
       }
     }
   );

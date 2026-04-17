@@ -46,7 +46,7 @@ export default function ChargePluginConfigPage() {
           </Link>
         </div>
         <div className="text-center py-12">
-          <h2 className="text-2xl font-bold text-foreground">Plugin Not Found</h2>
+          <h2 className="text-xl md:text-2xl font-bold text-foreground">Plugin Not Found</h2>
           <p className="text-muted-foreground mt-2">
             The plugin "{pluginId}" could not be found.
           </p>
@@ -67,7 +67,7 @@ export default function ChargePluginConfigPage() {
           </Link>
         </div>
         <div className="text-center py-12">
-          <h2 className="text-2xl font-bold text-foreground">Configuration UI Not Available</h2>
+          <h2 className="text-xl md:text-2xl font-bold text-foreground">Configuration UI Not Available</h2>
           <p className="text-muted-foreground mt-2">
             The plugin "{plugin.name}" does not have a configuration interface yet.
           </p>

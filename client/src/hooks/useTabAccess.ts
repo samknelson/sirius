@@ -193,6 +193,17 @@ export function useEmployerTabAccess(employerId: string | undefined, enabled = t
 }
 
 /**
+ * Hook specifically for company entity tabs
+ */
+export function useCompanyTabAccess(companyId: string | undefined, enabled = true) {
+  return useTabAccess({ 
+    entityType: 'company', 
+    entityId: companyId, 
+    enabled 
+  });
+}
+
+/**
  * Hook specifically for provider entity tabs
  */
 export function useProviderTabAccess(providerId: string | undefined, enabled = true) {
@@ -387,5 +398,59 @@ export function useWsClientTabAccess(clientId: string | undefined, enabled = tru
     entityType: 'ws_client', 
     entityId: clientId, 
     enabled 
+  });
+}
+
+/**
+ * Hook specifically for SFTP client destination entity tabs
+ */
+export function useSftpClientDestinationTabAccess(destinationId: string | undefined, enabled = true) {
+  return useTabAccess({ 
+    entityType: 'sftp_client_destination', 
+    entityId: destinationId, 
+    enabled 
+  });
+}
+
+/**
+ * Hook specifically for Trust Provider EDI entity tabs
+ */
+export function useTrustProviderEdiTabAccess(ediId: string | undefined, enabled = true) {
+  return useTabAccess({ 
+    entityType: 'trust_provider_edi', 
+    entityId: ediId, 
+    enabled 
+  });
+}
+
+export function useBulkMessageTabAccess(bulkMessageId: string | undefined, enabled = true) {
+  return useTabAccess({ 
+    entityType: 'bulk_message', 
+    entityId: bulkMessageId, 
+    enabled 
+  });
+}
+
+export function useDispatchJobGroupTabAccess(groupId: string | undefined, enabled = true) {
+  return useTabAccess({ 
+    entityType: 'dispatch_job_group', 
+    entityId: groupId, 
+    enabled 
+  });
+}
+
+export function useLedgerPaymentBatchTabAccess(batchId: string | undefined, enabled = true) {
+  return useTabAccess({ 
+    entityType: 'ledger_payment_batch', 
+    entityId: batchId, 
+    enabled 
+  });
+}
+
+export function useFacilityTabAccess(facilityId: string | undefined, enabled = true) {
+  return useTabAccess({
+    entityType: 'facility',
+    entityId: facilityId,
+    enabled,
   });
 }

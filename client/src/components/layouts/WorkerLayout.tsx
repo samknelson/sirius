@@ -10,7 +10,6 @@ import { BookmarkButton } from "@/components/ui/bookmark-button";
 import { DebugRecordViewer } from "@/components/debug/DebugRecordViewer";
 import { useWorkerTabAccess } from "@/hooks/useTabAccess";
 import { usePageTitle } from "@/contexts/PageTitleContext";
-import { useAuth } from "@/contexts/AuthContext";
 
 interface WorkerLayoutContextValue {
   worker: Worker;
@@ -37,9 +36,6 @@ interface WorkerLayoutProps {
 
 export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
   const { id } = useParams<{ id: string }>();
-  const { hasPermission } = useAuth();
-  
-  const canAccessWorkersList = hasPermission("staff");
   
   const { 
     tabs,
@@ -102,16 +98,14 @@ export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
                 <h1 className="text-xl font-semibold text-foreground">Sirius</h1>
                 <span className="text-muted-foreground text-sm font-medium">Worker Not Found</span>
               </div>
-              {canAccessWorkersList && (
-                <div className="flex items-center space-x-4">
-                  <Link href="/workers">
-                    <Button variant="ghost" size="sm" data-testid="button-back-to-workers">
-                      <ArrowLeft size={16} className="mr-2" />
-                      Back to Workers
-                    </Button>
-                  </Link>
-                </div>
-              )}
+              <div className="flex items-center space-x-4">
+                <Link href="/workers">
+                  <Button variant="ghost" size="sm" data-testid="button-back-to-workers">
+                    <ArrowLeft size={16} className="mr-2" />
+                    Back to Workers
+                  </Button>
+                </Link>
+              </div>
             </div>
           </div>
         </header>
@@ -126,13 +120,11 @@ export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
               <p className="text-muted-foreground text-center">
                 The worker you're looking for doesn't exist or has been removed.
               </p>
-              {canAccessWorkersList && (
-                <Link href="/workers">
-                  <Button className="mt-4" data-testid="button-return-to-workers">
-                    Return to Workers
-                  </Button>
-                </Link>
-              )}
+              <Link href="/workers">
+                <Button className="mt-4" data-testid="button-return-to-workers">
+                  Return to Workers
+                </Button>
+              </Link>
             </CardContent>
           </Card>
         </main>
@@ -152,16 +144,14 @@ export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
                 </div>
                 <Skeleton className="h-6 w-48" />
               </div>
-              {canAccessWorkersList && (
-                <div className="flex items-center space-x-4">
-                  <Link href="/workers">
-                    <Button variant="ghost" size="sm" data-testid="button-back-to-workers">
-                      <ArrowLeft size={16} className="mr-2" />
-                      Back to Workers
-                    </Button>
-                  </Link>
-                </div>
-              )}
+              <div className="flex items-center space-x-4">
+                <Link href="/workers">
+                  <Button variant="ghost" size="sm" data-testid="button-back-to-workers">
+                    <ArrowLeft size={16} className="mr-2" />
+                    Back to Workers
+                  </Button>
+                </Link>
+              </div>
             </div>
           </div>
         </header>
@@ -204,14 +194,12 @@ export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
               </div>
               <div className="flex items-center space-x-4">
                 <DebugRecordViewer record={worker} entityLabel="Worker" />
-                {canAccessWorkersList && (
-                  <Link href="/workers">
-                    <Button variant="ghost" size="sm" data-testid="button-back-to-workers">
-                      <ArrowLeft size={16} className="mr-2" />
-                      Back to Workers
-                    </Button>
-                  </Link>
-                )}
+                <Link href="/workers">
+                  <Button variant="ghost" size="sm" data-testid="button-back-to-workers">
+                    <ArrowLeft size={16} className="mr-2" />
+                    Back to Workers
+                  </Button>
+                </Link>
               </div>
             </div>
           </div>
@@ -220,7 +208,7 @@ export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
         {/* Main Tab Navigation - rendered dynamically from registry */}
         <div className="bg-card border-b border-border">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex items-center space-x-2 py-3">
+            <div className="flex flex-wrap items-center gap-2 py-3">
               {mainTabs.map((tab) => {
                 const isActive = tab.id === activeRoot?.id;
                 return isActive ? (
@@ -252,7 +240,7 @@ export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
         {subTabs && subTabs.length > 0 && (
           <div className="bg-muted/30 border-b border-border">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-              <div className="flex items-center space-x-2 py-2 pl-4">
+              <div className="flex flex-wrap items-center gap-2 py-2 pl-4">
                 {subTabs.map((tab) => (
                   tab.id === activeTab ? (
                     <Button

@@ -8,6 +8,12 @@ import { ReportEmployerUsers } from './types/report_employer_users.js';
 import { ReportLedgerIntegrity } from './types/report_ledger_integrity.js';
 import { ReportGbhetLegalCompliance } from './types/report_gbhet_legal_compliance.js';
 import { ReportBTUWorkersInvalidCardcheck } from './types/report_btu_workers_invalid_cardcheck.js';
+import { btuWorkerImport } from './types/btu_worker_import.js';
+import { btuDuesAllocation } from './types/btu_dues_allocation.js';
+import { btuCardcheckImport } from './types/btu_cardcheck_import.js';
+import { btuCardcheckSigImport } from './types/btu_cardcheck_sig_import.js';
+import { btuCardcheckScrapeImport } from './types/btu_cardcheck_scrape_import.js';
+import { btuBuildingRepImport } from './types/btu_building_rep_import.js';
 import { htaUnionImport } from './types/hta_union_import.js';
 import { employerOnboarding } from './types/employer_onboarding.js';
 
@@ -20,6 +26,12 @@ wizardRegistry.register(new ReportEmployerUsers());
 wizardRegistry.register(new ReportLedgerIntegrity());
 wizardRegistry.register(new ReportGbhetLegalCompliance());
 wizardRegistry.register(new ReportBTUWorkersInvalidCardcheck());
+wizardRegistry.register(btuWorkerImport);
+wizardRegistry.register(btuDuesAllocation);
+wizardRegistry.register(btuCardcheckImport);
+wizardRegistry.register(btuCardcheckSigImport);
+wizardRegistry.register(btuCardcheckScrapeImport);
+wizardRegistry.register(btuBuildingRepImport);
 wizardRegistry.register(htaUnionImport);
 wizardRegistry.register(employerOnboarding);
 

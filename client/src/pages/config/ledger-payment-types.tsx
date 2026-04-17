@@ -231,7 +231,7 @@ export default function LedgerPaymentTypesPage() {
   return (
     <div className="container mx-auto py-8 max-w-6xl">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold" data-testid="heading-ledger-payment-types">
+        <h1 className="text-2xl md:text-3xl font-bold" data-testid="heading-ledger-payment-types">
           Ledger Payment Types
         </h1>
         <Button onClick={() => setIsAddDialogOpen(true)} data-testid="button-add-payment-type">

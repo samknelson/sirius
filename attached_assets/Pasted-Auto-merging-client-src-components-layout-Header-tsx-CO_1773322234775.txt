@@ -1,0 +1,39 @@
+Auto-merging client/src/components/layout/Header.tsx
+CONFLICT (content): Merge conflict in client/src/components/layout/Header.tsx
+Auto-merging client/src/components/layouts/WorkerHoursLayout.tsx
+CONFLICT (content): Merge conflict in client/src/components/layouts/WorkerHoursLayout.tsx
+Auto-merging client/src/components/wizards/steps/gbhet-legal-workers/ProcessStep.tsx
+CONFLICT (content): Merge conflict in client/src/components/wizards/steps/gbhet-legal-workers/ProcessStep.tsx
+Auto-merging client/src/components/wizards/steps/registry.ts
+CONFLICT (content): Merge conflict in client/src/components/wizards/steps/registry.ts
+Auto-merging client/src/config/navigation-registry.ts
+Auto-merging client/src/plugins/registry.ts
+Auto-merging package-lock.json
+Auto-merging package.json
+CONFLICT (content): Merge conflict in package.json
+Auto-merging replit.md
+CONFLICT (content): Merge conflict in replit.md
+Auto-merging scripts/dev/list-structure-changes.sh
+CONFLICT (content): Merge conflict in scripts/dev/list-structure-changes.sh
+Auto-merging server/auth/index.ts
+CONFLICT (content): Merge conflict in server/auth/index.ts
+Auto-merging server/cron/bootstrap.ts
+CONFLICT (content): Merge conflict in server/cron/bootstrap.ts
+Auto-merging server/cron/index.ts
+Auto-merging server/index.ts
+CONFLICT (content): Merge conflict in server/index.ts
+Auto-merging server/modules/employer-contacts.ts
+Auto-merging server/modules/wizards.ts
+CONFLICT (content): Merge conflict in server/modules/wizards.ts
+Auto-merging server/modules/worker-hours.ts
+Auto-merging server/routes.ts
+CONFLICT (content): Merge conflict in server/routes.ts
+Auto-merging server/storage/worker-hours.ts
+Auto-merging server/wizards/index.ts
+CONFLICT (content): Merge conflict in server/wizards/index.ts
+Auto-merging shared/access-policies/loader.ts
+Auto-merging shared/components.ts
+Auto-merging shared/permissions.ts
+CONFLICT (content): Merge conflict in shared/permissions.ts
+Auto-merging shared/tabRegistry.ts
+Automatic merge failed; fix conflicts and then commit the result.

@@ -23,6 +23,7 @@ import {
   createAsyncStorageValidator
 } from "./utils/validation";
 import { parseSSN, validateSSN } from "@shared/utils/ssn";
+import { isComponentEnabledSync } from "../services/component-cache";
 
 export const ssnValidate = createAsyncStorageValidator<{ ssn: string | null; workerId?: string }, never, { ssn: string | null }>(
   async (data) => {
@@ -117,6 +118,46 @@ export interface WorkerWithDetails {
   benefits: Array<{ id: string; name: string; typeName: string; typeIcon: string | null }> | null;
 }
 
+export interface PaginatedWorkersResult {
+  data: WorkerWithDetails[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+export interface WorkersExportParams {
+  search?: string;
+  sortOrder?: 'asc' | 'desc';
+  employerId?: string;
+  employerTypeId?: string;
+  bargainingUnitId?: string;
+  benefitId?: string;
+  contactStatus?: 'all' | 'has_email' | 'missing_email' | 'has_phone' | 'missing_phone' | 'has_address' | 'missing_address' | 'complete' | 'incomplete';
+  jobTitle?: string;
+  memberStatusId?: string;
+  representativeId?: string;
+}
+
+export interface WorkersPaginationParams {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  sortField?: 'name' | 'email';
+  sortBy?: 'lastName' | 'firstName' | 'employer';
+  sortOrder?: 'asc' | 'desc';
+  // Filters
+  employerId?: string;
+  employerTypeId?: string;
+  bargainingUnitId?: string;
+  benefitId?: string;
+  contactStatus?: 'all' | 'has_email' | 'missing_email' | 'has_phone' | 'missing_phone' | 'has_address' | 'missing_address' | 'complete' | 'incomplete';
+  hasMultipleEmployers?: boolean;
+  jobTitle?: string;
+  memberStatusId?: string;
+  representativeId?: string;
+}
+
 export interface WorkerSearchResult {
   workers: Array<{ id: string; siriusId: number; displayName: string }>;
   total: number;
@@ -126,6 +167,8 @@ export interface WorkerStorage {
   getAllWorkers(): Promise<Worker[]>;
   searchWorkers(query: string, limit?: number): Promise<WorkerSearchResult>;
   getWorkersWithDetails(): Promise<WorkerWithDetails[]>;
+  getWorkersWithDetailsPaginated(params: WorkersPaginationParams): Promise<PaginatedWorkersResult>;
+  getWorkersForExport(params: WorkersExportParams): Promise<WorkerWithDetails[]>;
   getWorkersEmployersSummary(): Promise<WorkerEmployerSummary[]>;
   getWorkersCurrentBenefits(month?: number, year?: number): Promise<WorkerCurrentBenefits[]>;
   getWorker(id: string): Promise<Worker | undefined>;
@@ -159,6 +202,7 @@ export interface WorkerStorage {
   updateWorkerMemberStatuses(workerId: string, denormMsIds: string[] | null): Promise<Worker | undefined>;
   setDenormDataProvider(provider: (workerId: string) => Promise<WorkerDenormData>): void;
   syncWorkerEmployerDenorm(workerId: string): Promise<void>;
+  updateWorkerBargainingUnit(workerId: string, bargainingUnitId: string | null): Promise<Worker | undefined>;
   deleteWorker(id: string): Promise<boolean>;
   updateWorkerBargainingUnit(workerId: string, bargainingUnitId: string | null): Promise<Worker | undefined>;
   // Worker benefits methods
@@ -166,6 +210,321 @@ export interface WorkerStorage {
   createWorkerBenefit(data: { workerId: string; month: number; year: number; employerId: string; benefitId: string }): Promise<TrustWmb>;
   deleteWorkerBenefit(id: string): Promise<boolean>;
   workerBenefitExists(workerId: string, benefitId: string, month: number, year: number): Promise<boolean>;
+}
+
+interface InternalSearchParams {
+  search?: string;
+  sortOrder?: 'asc' | 'desc';
+  sortBy?: 'lastName' | 'firstName' | 'employer';
+  employerId?: string;
+  employerTypeId?: string;
+  bargainingUnitId?: string;
+  benefitId?: string;
+  contactStatus?: string;
+  hasMultipleEmployers?: boolean;
+  jobTitle?: string;
+  memberStatusId?: string;
+  representativeId?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+interface InternalSearchResult {
+  rows: WorkerWithDetails[];
+  total?: number;
+}
+
+function _buildContactStatusCondition(contactStatus: string | undefined) {
+  if (!contactStatus || contactStatus === 'all') return sql``;
+  switch (contactStatus) {
+    case 'has_email':
+      return sql`AND c.email IS NOT NULL AND c.email != ''`;
+    case 'missing_email':
+      return sql`AND (c.email IS NULL OR c.email = '')`;
+    case 'has_phone':
+      return sql`AND EXISTS (SELECT 1 FROM contact_phone cp WHERE cp.contact_id = c.id)`;
+    case 'missing_phone':
+      return sql`AND NOT EXISTS (SELECT 1 FROM contact_phone cp WHERE cp.contact_id = c.id)`;
+    case 'has_address':
+      return sql`AND EXISTS (SELECT 1 FROM contact_postal ca WHERE ca.contact_id = c.id AND ca.is_active = true)`;
+    case 'missing_address':
+      return sql`AND NOT EXISTS (SELECT 1 FROM contact_postal ca WHERE ca.contact_id = c.id AND ca.is_active = true)`;
+    case 'complete':
+      return sql`AND c.email IS NOT NULL AND c.email != '' 
+        AND EXISTS (SELECT 1 FROM contact_phone cp WHERE cp.contact_id = c.id)
+        AND EXISTS (SELECT 1 FROM contact_postal ca WHERE ca.contact_id = c.id AND ca.is_active = true)`;
+    case 'incomplete':
+      return sql`AND (
+        (c.email IS NULL OR c.email = '')
+        OR NOT EXISTS (SELECT 1 FROM contact_phone cp WHERE cp.contact_id = c.id)
+        OR NOT EXISTS (SELECT 1 FROM contact_postal ca WHERE ca.contact_id = c.id AND ca.is_active = true)
+      )`;
+    default:
+      return sql``;
+  }
+}
+
+async function _searchWorkers(params: InternalSearchParams): Promise<InternalSearchResult> {
+  const client = getClient();
+  const search = params.search?.trim() ?? '';
+  const sortOrder = params.sortOrder ?? 'asc';
+  const sortBy = params.sortBy ?? 'lastName';
+  const { employerId, employerTypeId, bargainingUnitId, benefitId, contactStatus, hasMultipleEmployers, jobTitle, memberStatusId, representativeId } = params;
+
+  const now = new Date();
+  const currentMonth = now.getMonth() + 1;
+  const currentYear = now.getFullYear();
+
+  const benefitsEnabled = isComponentEnabledSync('trust.benefits');
+  const bargainingUnitsEnabled = isComponentEnabledSync('bargainingunits');
+  const politicalEnabled = isComponentEnabledSync('sitespecific.btu.political');
+
+  const searchCondition = (() => {
+    if (!search) return sql``;
+    const terms = search.toLowerCase().split(/\s+/).filter(t => t.length > 0);
+    if (terms.length === 0) return sql``;
+    const termConditions = terms.map(term => {
+      const pattern = `%${term}%`;
+      const digitsOnly = term.replace(/\D/g, '');
+      const phonePattern = digitsOnly.length >= 3 ? `%${digitsOnly}%` : null;
+      return sql`(
+        LOWER(c.display_name) LIKE ${pattern}
+        OR LOWER(c.email) LIKE ${pattern}
+        OR LOWER(c.given) LIKE ${pattern}
+        OR LOWER(c.family) LIKE ${pattern}
+        OR EXISTS (
+          SELECT 1 FROM worker_ids wid
+          INNER JOIN options_worker_id_type widt ON wid.type_id = widt.id
+          WHERE wid.worker_id = w.id
+            AND (widt.data->>'showOnLists')::boolean = true
+            AND LOWER(wid.value) LIKE ${pattern}
+        )
+        OR EXISTS (
+          SELECT 1 FROM contact_phone cp
+          WHERE cp.contact_id = c.id
+            AND cp.is_active = true
+            AND (
+              LOWER(cp.phone_number) LIKE ${pattern}
+              ${phonePattern ? sql`OR REGEXP_REPLACE(cp.phone_number, '[^0-9]', '', 'g') LIKE ${phonePattern}` : sql``}
+            )
+        )
+        OR EXISTS (
+          SELECT 1 FROM contact_postal cpo
+          WHERE cpo.contact_id = c.id
+            AND cpo.is_active = true
+            AND (
+              LOWER(cpo.street) LIKE ${pattern}
+              OR LOWER(cpo.city) LIKE ${pattern}
+              OR LOWER(cpo.state) LIKE ${pattern}
+              OR cpo.postal_code LIKE ${pattern}
+            )
+        )
+      )`;
+    });
+    let combined = termConditions[0];
+    for (let i = 1; i < termConditions.length; i++) {
+      combined = sql`${combined} AND ${termConditions[i]}`;
+    }
+    return sql`AND (${combined})`;
+  })();
+
+  const employerCondition = employerId 
+    ? sql`AND ${employerId} = ANY(w.denorm_employer_ids)`
+    : sql``;
+
+  const employerTypeCondition = employerTypeId
+    ? sql`AND EXISTS (
+        SELECT 1 FROM employers e 
+        WHERE e.id = ANY(w.denorm_employer_ids) 
+        AND e.type_id = ${employerTypeId}
+      )`
+    : sql``;
+
+  const bargainingUnitCondition = (bargainingUnitId && bargainingUnitsEnabled)
+    ? sql`AND w.bargaining_unit_id = ${bargainingUnitId}`
+    : sql``;
+
+  const benefitCondition = (benefitId && benefitsEnabled)
+    ? sql`AND EXISTS (
+        SELECT 1 FROM trust_wmb wmb
+        WHERE wmb.worker_id = w.id
+        AND wmb.benefit_id = ${benefitId}
+        AND wmb.month = ${currentMonth}
+        AND wmb.year = ${currentYear}
+      )`
+    : sql``;
+
+  const contactStatusCondition = _buildContactStatusCondition(contactStatus);
+
+  const multipleEmployersCondition = hasMultipleEmployers
+    ? sql`AND array_length(w.denorm_employer_ids, 1) > 1`
+    : sql``;
+
+  const jobTitleCondition = jobTitle
+    ? sql`AND LOWER(w.denorm_job_title) LIKE ${`%${jobTitle.toLowerCase()}%`}`
+    : sql``;
+
+  const memberStatusCondition = memberStatusId
+    ? memberStatusId === 'none'
+      ? sql`AND (w.denorm_ms_ids IS NULL OR array_length(w.denorm_ms_ids, 1) IS NULL)`
+      : sql`AND ${memberStatusId} = ANY(w.denorm_ms_ids)`
+    : sql``;
+
+  const representativeCondition = (representativeId && politicalEnabled)
+    ? sql`AND EXISTS (
+        SELECT 1 FROM sitespecific_btu_political_worker_reps pwr
+        WHERE pwr.worker_id = w.id
+        AND pwr.official_id = ${representativeId}
+      )`
+    : sql``;
+
+  const allConditions = sql`${searchCondition} ${employerCondition} ${employerTypeCondition} ${bargainingUnitCondition} ${benefitCondition} ${contactStatusCondition} ${multipleEmployersCondition} ${jobTitleCondition} ${memberStatusCondition} ${representativeCondition}`;
+
+  const isPaginated = params.page !== undefined && params.pageSize !== undefined;
+  let total: number | undefined;
+
+  if (isPaginated) {
+    const countResult = await client.execute(sql`
+      SELECT COUNT(*) as total
+      FROM workers w
+      INNER JOIN contacts c ON w.contact_id = c.id
+      WHERE 1=1 ${allConditions}
+    `);
+    total = parseInt((countResult.rows[0] as any).total, 10);
+  }
+
+  const orderDirection = sortOrder === 'desc' ? sql`DESC` : sql`ASC`;
+
+  let orderByClause;
+  if (sortBy === 'firstName') {
+    orderByClause = sql`ORDER BY c.given ${orderDirection}, c.family ${orderDirection}`;
+  } else if (sortBy === 'employer') {
+    orderByClause = sql`ORDER BY (
+      SELECT MIN(e.name) FROM employers e WHERE e.id = ANY(w.denorm_employer_ids)
+    ) ${orderDirection} NULLS LAST, c.family ${orderDirection}, c.given ${orderDirection}`;
+  } else {
+    orderByClause = sql`ORDER BY c.family ${orderDirection}, c.given ${orderDirection}`;
+  }
+
+  const bargainingUnitColumns = bargainingUnitsEnabled
+    ? sql`bu.sirius_id as bargaining_unit_code, bu.name as bargaining_unit_name,`
+    : sql`NULL::integer as bargaining_unit_code, NULL::text as bargaining_unit_name,`;
+
+  const bargainingUnitJoin = bargainingUnitsEnabled
+    ? sql`LEFT JOIN bargaining_units bu ON w.bargaining_unit_id = bu.id`
+    : sql``;
+
+  const benefitColumns = benefitsEnabled
+    ? sql`
+        COALESCE(
+          (
+            SELECT json_agg(DISTINCT bt.name)
+            FROM trust_wmb wmb
+            INNER JOIN trust_benefits tb ON wmb.benefit_id = tb.id
+            INNER JOIN options_trust_benefit_type bt ON tb.benefit_type = bt.id
+            WHERE wmb.worker_id = w.id
+              AND tb.is_active = true
+              AND wmb.month = ${currentMonth}
+              AND wmb.year = ${currentYear}
+          ),
+          '[]'::json
+        ) as benefit_types,
+        COALESCE(
+          (
+            SELECT json_agg(DISTINCT wmb.benefit_id)
+            FROM trust_wmb wmb
+            INNER JOIN trust_benefits tb ON wmb.benefit_id = tb.id
+            WHERE wmb.worker_id = w.id
+              AND tb.is_active = true
+              AND wmb.month = ${currentMonth}
+              AND wmb.year = ${currentYear}
+          ),
+          '[]'::json
+        ) as benefit_ids,
+        COALESCE(
+          (
+            SELECT json_agg(DISTINCT jsonb_build_object(
+              'id', tb.id,
+              'name', tb.name,
+              'typeName', bt.name,
+              'typeIcon', bt.data->>'icon'
+            ))
+            FROM trust_wmb wmb
+            INNER JOIN trust_benefits tb ON wmb.benefit_id = tb.id
+            INNER JOIN options_trust_benefit_type bt ON tb.benefit_type = bt.id
+            WHERE wmb.worker_id = w.id
+              AND tb.is_active = true
+              AND wmb.month = ${currentMonth}
+              AND wmb.year = ${currentYear}
+          ),
+          '[]'::json
+        ) as benefits`
+    : sql`
+        '[]'::json as benefit_types,
+        '[]'::json as benefit_ids,
+        '[]'::json as benefits`;
+
+  const paginationClause = isPaginated
+    ? sql`LIMIT ${params.pageSize} OFFSET ${(params.page! - 1) * params.pageSize!}`
+    : sql``;
+
+  const result = await client.execute(sql`
+    SELECT 
+      w.id,
+      w.sirius_id,
+      w.contact_id,
+      w.ssn,
+      w.denorm_ws_id,
+      w.denorm_job_title,
+      w.denorm_home_employer_id,
+      w.denorm_employer_ids,
+      w.denorm_ms_ids,
+      w.bargaining_unit_id,
+      c.display_name as contact_name,
+      c.email as contact_email,
+      c.given,
+      c.middle,
+      c.family,
+      p.phone_number,
+      p.is_primary,
+      a.id as address_id,
+      a.friendly_name as address_friendly_name,
+      a.street as address_street,
+      a.city as address_city,
+      a.state as address_state,
+      a.postal_code as address_postal_code,
+      a.country as address_country,
+      a.is_primary as address_is_primary,
+      ws.name as work_status_name,
+      ${bargainingUnitColumns}
+      ${benefitColumns}
+    FROM workers w
+    INNER JOIN contacts c ON w.contact_id = c.id
+    LEFT JOIN options_worker_ws ws ON w.denorm_ws_id = ws.id
+    ${bargainingUnitJoin}
+    LEFT JOIN LATERAL (
+      SELECT phone_number, is_primary
+      FROM contact_phone
+      WHERE contact_id = c.id
+      ORDER BY is_primary DESC NULLS LAST, created_at ASC
+      LIMIT 1
+    ) p ON true
+    LEFT JOIN LATERAL (
+      SELECT id, friendly_name, street, city, state, postal_code, country, is_primary
+      FROM contact_postal
+      WHERE contact_id = c.id AND is_active = true
+      ORDER BY is_primary DESC NULLS LAST, created_at ASC
+      LIMIT 1
+    ) a ON true
+    WHERE 1=1 ${allConditions}
+    ${orderByClause}
+    ${paginationClause}
+  `);
+
+  return {
+    rows: result.rows as unknown as WorkerWithDetails[],
+    total,
+  };
 }
 
 export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerStorage {
@@ -225,101 +584,54 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
     },
 
     async getWorkersWithDetails(): Promise<WorkerWithDetails[]> {
-      const client = getClient();
-      const now = new Date();
-      const currentMonth = now.getMonth() + 1;
-      const currentYear = now.getFullYear();
-      
-      const result = await client.execute(sql`
-        SELECT 
-          w.id,
-          w.sirius_id,
-          w.contact_id,
-          w.ssn,
-          w.denorm_ws_id,
-          w.denorm_job_title,
-          w.denorm_home_employer_id,
-          w.denorm_employer_ids,
-          c.display_name as contact_name,
-          c.email as contact_email,
-          c.given,
-          c.middle,
-          c.family,
-          p.phone_number,
-          p.is_primary,
-          a.id as address_id,
-          a.friendly_name as address_friendly_name,
-          a.street as address_street,
-          a.city as address_city,
-          a.state as address_state,
-          a.postal_code as address_postal_code,
-          a.country as address_country,
-          a.is_primary as address_is_primary,
-          ws.name as work_status_name,
-          COALESCE(
-            (
-              SELECT json_agg(DISTINCT bt.name)
-              FROM trust_wmb wmb
-              INNER JOIN trust_benefits tb ON wmb.benefit_id = tb.id
-              INNER JOIN options_trust_benefit_type bt ON tb.benefit_type = bt.id
-              WHERE wmb.worker_id = w.id
-                AND tb.is_active = true
-                AND wmb.month = ${currentMonth}
-                AND wmb.year = ${currentYear}
-            ),
-            '[]'::json
-          ) as benefit_types,
-          COALESCE(
-            (
-              SELECT json_agg(DISTINCT wmb.benefit_id)
-              FROM trust_wmb wmb
-              INNER JOIN trust_benefits tb ON wmb.benefit_id = tb.id
-              WHERE wmb.worker_id = w.id
-                AND tb.is_active = true
-                AND wmb.month = ${currentMonth}
-                AND wmb.year = ${currentYear}
-            ),
-            '[]'::json
-          ) as benefit_ids,
-          COALESCE(
-            (
-              SELECT json_agg(DISTINCT jsonb_build_object(
-                'id', tb.id,
-                'name', tb.name,
-                'typeName', bt.name,
-                'typeIcon', bt.data->>'icon'
-              ))
-              FROM trust_wmb wmb
-              INNER JOIN trust_benefits tb ON wmb.benefit_id = tb.id
-              INNER JOIN options_trust_benefit_type bt ON tb.benefit_type = bt.id
-              WHERE wmb.worker_id = w.id
-                AND tb.is_active = true
-                AND wmb.month = ${currentMonth}
-                AND wmb.year = ${currentYear}
-            ),
-            '[]'::json
-          ) as benefits
-        FROM workers w
-        INNER JOIN contacts c ON w.contact_id = c.id
-        LEFT JOIN options_worker_ws ws ON w.denorm_ws_id = ws.id
-        LEFT JOIN LATERAL (
-          SELECT phone_number, is_primary
-          FROM contact_phone
-          WHERE contact_id = c.id
-          ORDER BY is_primary DESC NULLS LAST, created_at ASC
-          LIMIT 1
-        ) p ON true
-        LEFT JOIN LATERAL (
-          SELECT id, friendly_name, street, city, state, postal_code, country, is_primary
-          FROM contact_postal
-          WHERE contact_id = c.id AND is_active = true
-          ORDER BY is_primary DESC NULLS LAST, created_at ASC
-          LIMIT 1
-        ) a ON true
-        ORDER BY c.family, c.given
-      `);
-      
-      return result.rows as unknown as WorkerWithDetails[];
+      const { rows } = await _searchWorkers({});
+      return rows;
+    },
+
+    async getWorkersWithDetailsPaginated(params: WorkersPaginationParams): Promise<PaginatedWorkersResult> {
+      const page = params.page ?? 1;
+      const pageSize = params.pageSize ?? 50;
+
+      const { rows, total } = await _searchWorkers({
+        search: params.search,
+        sortOrder: params.sortOrder,
+        sortBy: params.sortBy,
+        employerId: params.employerId,
+        employerTypeId: params.employerTypeId,
+        bargainingUnitId: params.bargainingUnitId,
+        benefitId: params.benefitId,
+        contactStatus: params.contactStatus,
+        hasMultipleEmployers: params.hasMultipleEmployers,
+        jobTitle: params.jobTitle,
+        memberStatusId: params.memberStatusId,
+        representativeId: params.representativeId,
+        page,
+        pageSize,
+      });
+
+      return {
+        data: rows,
+        total: total!,
+        page,
+        pageSize,
+        totalPages: Math.ceil(total! / pageSize),
+      };
+    },
+
+    async getWorkersForExport(params: WorkersExportParams): Promise<WorkerWithDetails[]> {
+      const { rows } = await _searchWorkers({
+        search: params.search,
+        sortOrder: params.sortOrder,
+        employerId: params.employerId,
+        employerTypeId: params.employerTypeId,
+        bargainingUnitId: params.bargainingUnitId,
+        benefitId: params.benefitId,
+        contactStatus: params.contactStatus,
+        jobTitle: params.jobTitle,
+        memberStatusId: params.memberStatusId,
+        representativeId: params.representativeId,
+      });
+      return rows;
     },
 
     async getWorkersEmployersSummary(): Promise<WorkerEmployerSummary[]> {

@@ -79,7 +79,7 @@ export default function ChargePluginsListPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-foreground">Charge Plugins</h1>
+        <h1 className="text-xl md:text-2xl font-bold text-foreground">Charge Plugins</h1>
         <p className="text-muted-foreground mt-2">
           Manage automatic charge plugins for ledger transactions
         </p>

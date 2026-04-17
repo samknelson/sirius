@@ -374,16 +374,13 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
         return [];
       }
 
-      // Deduplicate incoming permission keys
       const uniqueKeys = Array.from(new Set(permissionKeys));
 
-      // Validate all permissions exist in registry
       const invalidKeys = uniqueKeys.filter(key => !permissionRegistry.exists(key));
       if (invalidKeys.length > 0) {
         throw new Error(`Permissions do not exist in the registry: ${invalidKeys.join(', ')}`);
       }
 
-      // Get existing permissions for this role to avoid duplicates
       const existing = await client
         .select({ permissionKey: rolePermissions.permissionKey })
         .from(rolePermissions)
@@ -396,7 +393,6 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
         return [];
       }
 
-      // Insert all new permissions at once
       const values = newKeys.map(permissionKey => ({
         roleId,
         permissionKey,
@@ -406,7 +402,6 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
         .insert(rolePermissions)
         .values(values)
         .returning();
-
       return result;
     },
 

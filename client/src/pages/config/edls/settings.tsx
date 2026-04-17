@@ -150,7 +150,7 @@ export default function EdlsSettingsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-foreground" data-testid="heading-edls-settings">
+        <h1 className="text-xl md:text-2xl font-bold text-foreground" data-testid="heading-edls-settings">
           EDLS Settings
         </h1>
         <p className="text-muted-foreground mt-2">

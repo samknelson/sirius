@@ -1,0 +1,437 @@
+2026-01-29T19:36:27Z info: Deployment: ef3bc906-6b11-4049-9555-b5fad9df0430
+2026-01-29T19:36:27Z info: Build: d57801e0-40f0-4ae3-8ea5-aeb963d4518d
+2026-01-29T19:36:27Z info: Running Security Scan
+2026-01-29T19:36:28Z info: Security Scan Complete
+2026-01-29T19:36:28Z info: Connecting to builder
+2026-01-29T19:36:28Z info: Builder connected
+2026-01-29T19:36:28Z info: Installing packages
+--> npm install
+
+
+up to date, audited 877 packages in 3s
+
+104 packages are looking for funding
+  run `npm fund` for details
+
+
+13 vulnerabilities (1 low, 6 moderate, 6 high)
+
+To address issues that do not require attention, run:
+  npm audit fix
+
+To address all issues possible (including breaking changes), run:
+  npm audit fix --force
+
+Some issues need review, and may require choosing
+a different dependency.
+
+Run `npm audit` for details.
+
+npm notice
+npm notice New major version of npm available! 10.8.2 -> 11.8.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.8.0
+npm notice To update run: npm install -g npm@11.8.0
+npm notice
+
+2026-01-29T19:36:32Z info: Starting Build
+
+> rest-express@1.0.0 build
+> vite build && esbuild server/production-entry.ts server/app-init.ts --platform=node --packages=external --bundle --format=esm --splitting --outdir=dist
+
+
+vite v5.4.20 building for production...
+
+transforming...
+
+Browserslist: browsers data (caniuse-lite) is 15 months old. Please run:
+  npx update-browserslist-db@latest
+  Why you should do it regularly: https://github.com/browserslist/update-db#readme
+
+✓ 3320 modules transformed.
+
+rendering chunks...
+
+computing gzip size...
+
+../dist/public/index.html                                                   1.95 kB │ gzip:     0.74 kB
+../dist/public/assets/index-ChrOn0Vg.css                                  103.24 kB │ gzip:    16.50 kB
+
+../dist/public/assets/isBefore-DpCenMqR.js                                  0.17 kB │ gzip:     0.14 kB
+
+../dist/public/assets/minus-C5lWCSlU.js                                     0.29 kB │ gzip:     0.24 kB
+
+../dist/public/assets/addMonths-jO0GzBK2.js                                 0.29 kB │ gzip:     0.22 kB
+../dist/public/assets/chevron-left-Wg-wbtXV.js                              0.30 kB │ gzip:     0.25 kB
+../dist/public/assets/play-DwHAeJvi.js                                      0.30 kB │ gzip:     0.25 kB
+../dist/public/assets/square-Xseq7NUB.js                                    0.32 kB │ gzip:     0.25 kB
+../dist/public/assets/useAddressValidationConfig-BPVrZ1-o.js                0.32 kB │ gzip:     0.24 kB
+../dist/public/assets/filter-QK-lnlhz.js                                    0.33 kB │ gzip:     0.27 kB
+../dist/public/assets/arrow-left-D1JPxyal.js                                0.33 kB │ gzip:     0.27 kB
+../dist/public/assets/arrow-right-s4WGNvXC.js                               0.33 kB │ gzip:     0.27 kB
+../dist/public/assets/search-BmJI1q2a.js                                    0.34 kB │ gzip:     0.27 kB
+../dist/public/assets/ban-BzYZzczw.js                                       0.34 kB │ gzip:     0.27 kB
+../dist/public/assets/circle-check-D4EBBFrM.js                              0.35 kB │ gzip:     0.27 kB
+../dist/public/assets/code-0LxeP38G.js                                      0.35 kB │ gzip:     0.27 kB
+../dist/public/assets/circle-check-big-C8oaamlm.js                          0.36 kB │ gzip:     0.28 kB
+../dist/public/assets/smartphone-Bis9EfAS.js                                0.37 kB │ gzip:     0.28 kB
+../dist/public/assets/rotate-ccw-DwbRNCkG.js                                0.37 kB │ gzip:     0.28 kB
+../dist/public/assets/info-gR_zADPo.js                                      0.37 kB │ gzip:     0.28 kB
+../dist/public/assets/circle-x-BFWJCqrg.js                                  0.38 kB │ gzip:     0.28 kB
+../dist/public/assets/lock-Df1kXplz.js                                      0.38 kB │ gzip:     0.29 kB
+../dist/public/assets/star-CcSjxZdT.js                                      0.38 kB │ gzip:     0.29 kB
+../dist/public/assets/mail-Dqox7byM.js                                      0.38 kB │ gzip:     0.30 kB
+../dist/public/assets/dollar-sign-B7Tsp00E.js                               0.39 kB │ gzip:     0.29 kB
+../dist/public/assets/pen-CkNILm1M.js                                       0.40 kB │ gzip:     0.31 kB
+../dist/public/assets/copy-BjKHDTK_.js                                      0.41 kB │ gzip:     0.31 kB
+../dist/public/assets/circle-help-BpwxvSai.js                               0.41 kB │ gzip:     0.30 kB
+../dist/public/assets/arrow-up-down-DiZkDOOt.js                             0.41 kB │ gzip:     0.30 kB
+../dist/public/assets/type-BWRX4Slv.js                                      0.41 kB │ gzip:     0.29 kB
+../dist/public/assets/camera-Cbj53tLw.js                                    0.42 kB │ gzip:     0.31 kB
+../dist/public/assets/external-link-DElRxnit.js                             0.42 kB │ gzip:     0.30 kB
+../dist/public/assets/archive-DlZAi84o.js                                   0.42 kB │ gzip:     0.31 kB
+../dist/public/assets/user-check-BCie0SJT.js                                0.42 kB │ gzip:     0.32 kB
+../dist/public/assets/link-DQrBO6dV.js                                      0.43 kB │ gzip:     0.30 kB
+../dist/public/assets/eye-C_e0emig.js                                       0.43 kB │ gzip:     0.31 kB
+../dist/public/assets/download-j3liH6XP.js                                  0.43 kB │ gzip:     0.32 kB
+../dist/public/assets/wrench-NWWAp9cO.js                                    0.43 kB │ gzip:     0.31 kB
+../dist/public/assets/triangle-alert-Djxfz1rE.js                            0.43 kB │ gzip:     0.31 kB
+../dist/public/assets/award-BYd0sMVe.js                                     0.44 kB │ gzip:     0.33 kB
+../dist/public/assets/pencil-wNC-Gk8S.js                                    0.45 kB │ gzip:     0.32 kB
+../dist/public/assets/inbox-Cj7Q0oI0.js                                     0.46 kB │ gzip:     0.33 kB
+../dist/public/assets/scan-UXZd39_y.js                                      0.46 kB │ gzip:     0.31 kB
+../dist/public/assets/send-Dfe4mrcA.js  
+../dist/public/assets/event-self-register-CEIszZv8.js                       3.88 kB │ gzip:     1.33 kB
+../dist/public/assets/steward-settings-CuXlX5wW.js                          3.95 kB │ gzip:     1.67 kB
+../dist/public/assets/EmployerLayout-CNVlfW9q.js                            3.95 kB │ gzip:     1.30 kB
+../dist/public/assets/DispatchLayout-B3X4PM89.js                            3.97 kB │ gzip:     1.47 kB
+../dist/public/assets/EmployerContactLayout-c3XXO8Kg.js                     3.98 kB │ gzip:     1.30 kB
+../dist/public/assets/dashboard-plugins-D2Ka77wi.js                         4.03 kB │ gzip:     1.67 kB
+../dist/public/assets/employer-workers-BOh7BA5H.js                          4.10 kB │ gzip:     1.41 kB
+../dist/public/assets/employers-add-BsZKYfHy.js                             4.17 kB │ gzip:     1.69 kB
+../dist/public/assets/dispatch-manage-BAsDOEd1.js                           4.23 kB │ gzip:     1.68 kB
+../dist/public/assets/trust-benefits-add-GJdDk8FZ.js                        4.27 kB │ gzip:     1.67 kB
+../dist/public/assets/DispatchJobLayout-DfspqLVI.js                         4.28 kB │ gzip:     1.45 kB
+../dist/public/assets/job-dispatches-cbn-BMg3ZcUQ.js                        4.30 kB │ gzip:     1.82 kB
+
+../dist/public/assets/addresses-YObe3hAU.js                                 4.35 kB │ gzip:     1.60 kB
+
+../dist/public/assets/dispatch-status-Q0UjQrKW.js                           4.41 kB │ gzip:     1.56 kB
+
+../dist/public/assets/dispatch-job-type-edit-zx8nHM8C.js                    4.41 kB │ gzip:     1.73 kB
+
+../dist/public/assets/event-roster-DC9Hfocc.js                              4.43 kB │ gzip:     1.68 kB
+
+../dist/public/assets/terminology-CcvjMIGX.js                               4.46 kB │ gzip:     1.67 kB
+../dist/public/assets/BargainingUnitLayout-DqYEsBzu.js                      4.48 kB │ gzip:     1.06 kB
+../dist/public/assets/EALayout-DveV4FEH.js                                  4.50 kB │ gzip:     1.37 kB
+../dist/public/assets/employer-edit-75fobh29.js                             4.50 kB │ gzip:     1.64 kB
+../dist/public/assets/accordion-BEF_dkyj.js                                 4.51 kB │ gzip:     1.80 kB
+../dist/public/assets/worker-gender-CDFLizJp.js                             4.52 kB │ gzip:     1.76 kB
+../dist/public/assets/event-register-Bk4wVofo.js                            4.53 kB │ gzip:     1.75 kB
+../dist/public/assets/payment-view-Bi5PjXoC.js                              4.62 kB │ gzip:     1.37 kB
+../dist/public/assets/bargaining-units-B1-5KQCA.js                          4.68 kB │ gzip:     1.66 kB
+../dist/public/assets/worker-settings-skmaTNsF.js                           4.75 kB │ gzip:     1.59 kB
+../dist/public/assets/employer-settings-DZul8z02.js                         4.76 kB │ gzip:     1.58 kB
+../dist/public/assets/client-settings-BrgGgaEs.js                           4.77 kB │ gzip:     1.68 kB
+../dist/public/assets/DispatchJobTypeLayout-DBJ2TVZD.js                     4.78 kB │ gzip:     1.28 kB
+../dist/public/assets/WorkerHoursLayout-DIU_F7mm.js                         4.80 kB │ gzip:     1.37 kB
+../dist/public/assets/PaymentLayout-CHejlpYf.js                             4.83 kB │ gzip:     1.41 kB
+../dist/public/assets/trust-provider-settings-Cn8usMEv.js                   4.83 kB │ gzip:     1.59 kB
+../dist/public/assets/EntityNameManagement-C8qSg8DH.js                      4.87 kB │ gzip:     1.66 kB
+../dist/public/assets/cron-job-view-XxeDAZht.js                             4.92 kB │ gzip:     1.52 kB
+../dist/public/assets/EventLayout-BKEcB15A.js                               4.96 kB │ gzip:     1.36 kB
+../dist/public/assets/LedgerAccountLayout-DlsyIbo7.js                       4.98 kB │ gzip:     1.19 kB
+
+../dist/public/assets/policies-KXruZIhe.js                                  4.98 kB │ gzip:     1.78 kB
+../dist/public/assets/worker-cardchecks-DDGQm1m8.js                         4.99 kB │ gzip:     2.01 kB
+../dist/public/assets/PolicyLayout-B3tpTMqT.js                              5.03 kB │ gzip:     1.21 kB
+
+../dist/public/assets/TrustBenefitLayout-DB-I0_ln.js                        5.09 kB │ gzip:     1.20 kB
+../dist/public/assets/TrustProviderLayout-zpZa5ics.js                       5.16 kB │ gzip:     1.22 kB
+
+../dist/public/assets/account-participants-P9-xFGzq.js                      5.16 kB │ gzip:     1.96 kB
+
+../dist/public/assets/worker-name-B51GYhUu.js                               5.19 kB │ gzip:     1.79 kB
+
+../dist/public/assets/accounts-Dx2Rk8Ax.js                                  5.22 kB │ gzip:     1.90 kB
+
+../dist/public/assets/all-employer-contacts-gmVTzcNg.js                     5.24 kB │ gzip:     1.82 kB
+../dist/public/assets/BtuCsgLayout-Dc7XlF7H.js                              5.30 kB │ gzip:     1.34 kB
+../dist/public/assets/report-type-C7i9Q0zy.js                               5.33 kB │ gzip:     1.96 kB
+../dist/public/assets/ea-view-Dj36wnwF.js                                   5.35 kB │ gzip:     1.67 kB
+../dist/public/assets/CronJobLayout-Co1SBgKL.js                             5.37 kB │ gzip:     1.32 kB
+../dist/public/assets/employer-ledger-accounts-wrapper-Dg8RWtA2.js          5.41 kB │ gzip:     1.95 kB
+../dist/public/assets/reports-C9BZFlpS.js                                   5.43 kB │ gzip:     1.78 kB
+../dist/public/assets/policies-BbWkBPMC.js                                  5.44 kB │ gzip:     1.78 kB
+../dist/public/assets/site-information-C7wXXrQw.js                          5.54 kB │ gzip:     1.69 kB
+../dist/public/assets/alerts-9Tor0t3H.js                                    5.59 kB │ gzip:     1.95 kB
+../dist/public/assets/client-ip-rules-C3YDGWD7.js                           5.65 kB │ gzip:     2.02 kB
+../dist/public/assets/PermissionsManagement-CJlQEW49.js                     5.68 kB │ gzip:     1.91 kB
+../dist/public/assets/payment-types-BPyr9LRB.js                             5.71 kB │ gzip:     2.17 kB
+../dist/public/assets/worker-ledger-accounts-2BQShoDt.js                    5.78 kB │ gzip:     2.09 kB
+../dist/public/assets/stewards-NvCu2qe3.js                                  5.87 kB │ gzip:     2.04 kB
+
+../dist/public/assets/dispatch-hold-for-employer-DtVw6Fan.js                5.89 kB │ gzip:     2.22 kB
+../dist/public/assets/worker-hours-edit-DngVwVBu.js                         5.92 kB │ gzip:     2.11 kB
+
+../dist/public/assets/flood-events-config-up1eozJ8.js                       5.97 kB │ gzip:     2.14 kB
+
+../dist/public/assets/ActivityLogView-BgBfHeiW.js                           6.09 kB │ gzip:     1.87 kB
+
+../dist/public/assets/WorkerLayout-beZnQrvI.js                              6.12 kB │ gzip:     1.52 kB
+
+../dist/public/assets/dispatch-do-not-call-DnpudB46.js                      6.13 kB │ gzip:     2.29 kB
+
+../dist/public/assets/worker-benefits-history-Dz2C85Si.js                   6.16 kB │ gzip:     2.07 kB
+../dist/public/assets/employer-contact-user-D_BoX7kQ.js                     6.20 kB │ gzip:     2.23 kB
+../dist/public/assets/user-account-C-ACLIOq.js                              6.22 kB │ gzip:     1.85 kB
+
+../dist/public/assets/trust-provider-contact-user-DaQlhkss.js               6.23 kB │ gzip:     2.24 kB
+../dist/public/assets/employer-missing-cardchecks-CFJxEKv9.js               6.24 kB │ gzip:     2.29 kB
+
+../dist/public/assets/dispatch-details-B3XjBQ46.js                          6.26 kB │ gzip:     1.75 kB
+
+../dist/public/assets/DispatchListTable-DssxmEc3.js                         6.33 kB │ gzip:     2.01 kB
+
+../dist/public/assets/simple-html-editor-DDoxcRYr.js                        6.33 kB │ gzip:     2.38 kB
+../dist/public/assets/test-CBpKC_EG.js                                      6.41 kB │ gzip:     1.74 kB
+../dist/public/assets/worker-user-DuLyE9xO.js                               6.45 kB │ gzip:     2.32 kB
+../dist/public/assets/job-eligible-check-DBGVY5wv.js                        6.53 kB │ gzip:     2.12 kB
+../dist/public/assets/dispatch-job-types-MYPfwGFU.js                        6.53 kB │ gzip:     2.36 kB
+../dist/public/assets/cardcheck-definition-view-CHPyoHXb.js                 6.57 kB │ gzip:     2.00 kB
+../dist/public/assets/flood-events-DUIZtZk-.js                              6.71 kB │ gzip:     2.17 kB
+
+../dist/public/assets/cron-job-history-bVNUaQTw.js                          6.92 kB │ gzip:     2.23 kB
+
+../dist/public/assets/clients-Dmb2-a7l.js                                   6.92 kB │ gzip:     2.27 kB
+
+../dist/public/assets/job-new-DR6aoXj0.js                                   6.92 kB │ gzip:     2.47 kB
+../dist/public/assets/csg-new-4EzyEWjS.js                                   6.99 kB │ gzip:     1.95 kB
+../dist/public/assets/UserLayout-B3ng6reS.js                                7.03 kB │ gzip:     1.76 kB
+../dist/public/assets/worker-work-status-DAT3J-cC.js                        7.07 kB │ gzip:     2.13 kB
+../dist/public/assets/bans-CPdriAtg.js                                      7.08 kB │ gzip:     2.38 kB
+../dist/public/assets/csg-edit-D7Yoz2Ye.js                                  7.15 kB │ gzip:     1.93 kB
+../dist/public/assets/admin-quickstarts-CGsnBzgQ.js                         7.15 kB │ gzip:     2.28 kB
+../dist/public/assets/job-details-0iWeO6BM.js                               7.17 kB │ gzip:     2.44 kB
+../dist/public/assets/tasks-BQLtwuNB.js                                     7.24 kB │ gzip:     2.12 kB
+
+../dist/public/assets/worker-skills-PxxtXGQR.js                             7.24 kB │ gzip:     2.48 kB
+../dist/public/assets/cardcheck-definition-edit-DevgGj3s.js                 7.27 kB │ gzip:     2.48 kB
+
+../dist/public/assets/employer-wizards-Bc1NqDZJ.js                          7.28 kB │ gzip:     2.50 kB
+
+../dist/public/assets/employer-policy-history-DK9VWLbF.js                   7.40 kB │ gzip:     2.26 kB
+
+../dist/public/assets/csg-view-BvWLNJ5j.js                                  7.41 kB │ gzip:     1.74 kB
+
+../dist/public/assets/cardcheck-definitions-DyWG88m6.js                     7.42 kB │ gzip:     2.35 kB
+../dist/public/assets/sheet-details-BYMqDc5B.js                             7.43 kB │ gzip:     2.18 kB
+../dist/public/assets/logs-l6lqIaRR.js                                      7.48 kB │ gzip:     2.20 kB
+../dist/public/assets/worker-email-ClJE7BTQ.js                              7.68 kB │ gzip:     2.38 kB
+../dist/public/assets/RolesManagement-LSofJZgk.js                           7.70 kB │ gzip:     2.19 kB
+
+../dist/public/assets/ea-invoices-DqpH7A51.js                               7.81 kB │ gzip:     2.03 kB
+
+../dist/public/assets/sheet-manage-DqzCr9BX.js                              7.87 kB │ gzip:     2.87 kB
+
+../dist/public/assets/events-CCrZDO-y.js                                    7.91 kB │ gzip:     3.06 kB
+
+../dist/public/assets/DispatchJobsList-D31vj6X_.js                          7.92 kB │ gzip:     2.57 kB
+../dist/public/assets/worker-benefits-eligibility-Bwdv5V4A.js               7.96 kB │ gzip:     2.78 kB
+../dist/public/assets/worker-hours-daily-CM7LrFT7.js                        8.10 kB │ gzip:     2.77 kB
+../dist/public/assets/trust-benefits-DpnwPafu.js                            8.15 kB │ gzip:     2.51 kB
+../dist/public/assets/worker-certifications-Cv_Ce1_H.js                     8.19 kB │ gzip:     2.74 kB
+../dist/public/assets/client-credentials-BTqof7LL.js                        8.22 kB │ gzip:     2.37 kB
+../dist/public/assets/csg-list-CVKcsWuA.js                                  8.26 kB │ gzip:     2.98 kB
+../dist/public/assets/UsersManagement-DP08c0gP.js                           8.32 kB │ gzip:     2.63 kB
+../dist/public/assets/email-gziwoutO.js                                     8.35 kB │ gzip:     2.43 kB
+
+../dist/public/assets/cardcheck-report-DXc5kHBA.js                          8.36 kB │ gzip:     2.61 kB
+../dist/public/assets/worker-member-status-DAGOvhqa.js                      8.36 kB │ gzip:     2.33 kB
+../dist/public/assets/payment-edit-WPHzwRwq.js                              8.44 kB │ gzip:     2.75 kB
+
+../dist/public/assets/CommList-CyNPzXJ3.js                                  8.47 kB │ gzip:     2.60 kB
+
+../dist/public/assets/job-edit-5um1PPXW.js                                  8.59 kB │ gzip:     2.91 kB
+
+../dist/public/assets/twilio-CbuzbvSv.js                                    8.83 kB │ gzip:     2.49 kB
+
+../dist/public/assets/employers-monthly-uploads-jWyJ9tEQ.js                 8.93 kB │ gzip:     3.00 kB
+../dist/public/assets/trust-provider-contacts-C0crEwZS.js                   8.97 kB │ gzip:     2.73 kB
+../dist/public/assets/employer-contacts-D586akk5.js                         9.08 kB │ gzip:     2.75 kB
+../dist/public/assets/policy-benefits-B1kB1cfx.js                           9.09 kB │ gzip:     3.02 kB
+../dist/public/assets/bargaining-units-DCdjmW9e.js                          9.12 kB │ gzip:     2.62 kB
+../dist/public/assets/client-test-BpIR8ZkH.js                               9.28 kB │ gzip:     3.32 kB
+../dist/public/assets/employers-CxTHpA0-.js                                 9.42 kB │ gzip:     3.01 kB
+../dist/public/assets/bargaining-unit-edit-seRrBst6.js                      9.47 kB │ gzip:     3.03 kB
+../dist/public/assets/worker-benefits-scan-CWBwaHHK.js                      9.55 kB │ gzip:     2.75 kB
+
+../dist/public/assets/employers-organizing-_M_nV3-U.js                      9.55 kB │ gzip:     3.23 kB
+../dist/public/assets/ledger-payment-types-CnlhNm01.js                      9.65 kB │ gzip:     2.70 kB
+../dist/public/assets/EdlsSheetForm-CPo0pN-_.js                             9.72 kB │ gzip:     2.76 kB
+../dist/public/assets/worker-certification-view-D8T7cz_P.js                10.68 kB │ gzip:     2.72 kB
+../dist/public/assets/worker-ids-Cei_9B2w.js                               11.35 kB │ gzip:     3.04 kB
+../dist/public/assets/event-types-BBMnbv_r.js                              11.55 kB │ gzip:     3.21 kB
+../dist/public/assets/dispatch-job-type-plugins-5XSsXhL8.js                11.93 kB │ gzip:     4.42 kB
+
+../dist/public/assets/worker-view-D_Db04Q1.js                              12.71 kB │ gzip:     2.98 kB
+../dist/public/assets/format-BBfV5EdD.js                                   13.07 kB │ gzip:     3.46 kB
+../dist/public/assets/comm-detail-D_ZQiRH6.js                              14.36 kB │ gzip:     3.35 kB
+
+../dist/public/assets/postal-CCXJ2FW4.js                                   14.55 kB │ gzip:     3.34 kB
+../dist/public/assets/options-BRGxuy_D.js                                  15.43 kB │ gzip:     4.71 kB
+../dist/public/assets/components-B2J_wB0E.js                               15.70 kB │ gzip:     4.33 kB
+../dist/public/assets/event-edit-CSNz-tN7.js                               15.92 kB │ gzip:     4.03 kB
+
+../dist/public/assets/account-payments-Do8enF8n.js                         16.20 kB │ gzip:     4.53 kB
+../dist/public/assets/wmb-scan-detail-BxL5K05G.js                          16.53 kB │ gzip:     4.44 kB
+
+../dist/public/assets/wmb-scan-queue-DiSvydfn.js                           16.57 kB │ gzip:     4.79 kB
+../dist/public/assets/index-Bp1JZqdu.js                                    16.68 kB │ gzip:     6.23 kB
+../dist/public/assets/worker-steward-6ChsHEw-.js                           18.38 kB │ gzip:     4.49 kB
+../dist/public/assets/ea-payments-QWJnJjRC.js                              18.53 kB │ gzip:     5.11 kB
+../dist/public/assets/LedgerTransactionsView-XuuN8DO3.js                   18.96 kB │ gzip:     4.79 kB
+../dist/public/assets/masquerade-BAIHlENM.js                               20.57 kB │ gzip:     7.59 kB
+../dist/public/assets/cron-job-settings-EXL1OHQl.js                        20.59 kB │ gzip:     5.63 kB
+../dist/public/assets/PhoneNumberManagement-BspABevl.js                    20.87 kB │ gzip:     4.71 kB
+../dist/public/assets/select-FyIZZV5p.js                                   21.27 kB │ gzip:     7.44 kB
+../dist/public/assets/icon-picker-Dt--qDem.js                              24.51 kB │ gzip:     6.34 kB
+../dist/public/assets/sheet-assignments-Cg9GQ35M.js                        25.24 kB │ gzip:     6.74 kB
+../dist/public/assets/registry-w8U44JIx.js                                 28.51 kB │ gzip:     7.24 kB
+../dist/public/assets/stripe-payment-methods-D-Ue8fYr.js                   29.35 kB │ gzip:     7.80 kB
+../dist/public/assets/cardcheck-view-CoNIeDA3.js                           29.82 kB │ gzip:     7.91 kB
+
+../dist/public/assets/AddressManagement-4qzNw6Zs.js                        30.18 kB │ gzip:     7.06 kB
+../dist/public/assets/form-DEO_GzCN.js                                     30.74 kB │ gzip:    11.28 kB
+../dist/public/assets/sync-D74ul6Ia.js                                     31.30 kB │ gzip:     9.67 kB
+../dist/public/assets/employer-map-list-CeLgiK4S.js                        32.15 kB │ gzip:     7.41 kB
+../dist/public/assets/workers-CXlFXJC6.js                                  34.57 kB │ gzip:     9.01 kB
+../dist/public/assets/CommSendWrapper-DtpOdbza.js                          36.78 kB │ gzip:     8.14 kB
+../dist/public/assets/charge-plugin-form-D3H7ww9o.js                       36.96 kB │ gzip:     5.81 kB
+../dist/public/assets/sheets-CAbK7gZ-.js                                   44.59 kB │ gzip:    13.85 kB
+../dist/public/assets/schema-DYrDgpf_.js                                   87.55 kB │ gzip:    20.61 kB
+../dist/public/assets/parsePhoneNumberWithError-TSB4N4j7.js               118.22 kB │ gzip:    29.65 kB
+../dist/public/assets/wizard-view-ZdZIa2_x.js                             121.33 kB │ gzip:    24.13 kB
+../dist/public/assets/job-eligible-workers-D2TrKypg.js                    260.05 kB │ gzip:    66.30 kB
+
+../dist/public/assets/event-scan-checkin-COI_ypsD.js                      340.15 kB │ gzip:   101.26 kB
+../dist/public/assets/index-x1m1QrPd.js                                   658.96 kB │ gzip:   180.36 kB
+../dist/public/assets/vfs_fonts-UnsThSvc.js                             2,052.40 kB │ gzip: 1,037.21 kB
+
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+
+✓ built in 24.51s
+
+
+  dist/app-init.js                          938.9kb
+  dist/chunk-NBMBXK3V.js                    808.4kb
+  dist/chunk-GF65F3VI.js                    100.7kb
+  dist/chunk-BJNNGP62.js                     38.5kb
+  dist/chunk-UXRRQGAX.js                     33.9kb
+  dist/schema-JZRMRSSG.js                    10.3kb
+  dist/chunk-5RZHEY4T.js                      7.8kb
+  dist/component-schema-push-O4737DAK.js      4.8kb
+  dist/chunk-7PNIEUT5.js                      2.0kb
+  dist/chunk-EURKPCZI.js                      1.9kb
+  dist/production-entry.js                    1.9kb
+  dist/access-policy-evaluator-EQQBU6RS.js    955b 
+  dist/chunk-PNKVD2UK.js                      953b 
+  dist/charge-plugins-O5S2O7OD.js             841b 
+  dist/components-CM6SIK57.js                 447b 
+  dist/validation-YEGLL43B.js                 363b 
+  dist/masquerade-Z6KTU634.js                 355b 
+  dist/helpers-VR536JMJ.js                    343b 
+  dist/report-74QXF2RM.js                     261b 
+  dist/ssn-W7CVWG3T.js                        183b 
+
+⚡ Done in 597ms
+
+2026-01-29T19:36:59Z info: Pushing pid1 binary layer...
+2026-01-29T19:37:00Z info: Pushing Repl layer...
+2026-01-29T19:37:00Z info: Pushing hosting layer...
+2026-01-29T19:37:01Z info: Created hosting layer
+2026-01-29T19:37:02Z info: Created pid1 binary layer
+2026-01-29T19:37:30Z info: Created Repl layer
+2026-01-29T19:37:33Z info: Pushed image manifest
+2026-01-29T19:37:35Z info: Pushed soci index manifest
+2026-01-29T19:37:38Z info: Creating Autoscale service
+forwarding local port 5000 to external port 80 (mapped as 1104)
+07:37:59 PM [app] INFO: Registered eligibility plugin: work-status {"service":"eligibility-plugin-registry"}
+starting up user application
+metasidecar: loaded enterprise status from environment is_enterprise=false
+> rest-express@1.0.0 start
+> NODE_ENV=production node dist/production-entry.js
+07:37:59 PM [app] INFO: Registered charge plugin: gbhet-legal-benefit {"service":"charge-plugin-registry","triggers":["wmb_saved"],"requiredComponent":"sitespecific.gbhet.legal"}
+07:37:59 PM [startup] INFO: Permission system initialized with core permissions {"service":"sirius"}
+07:37:59 PM [app] INFO: Registered charge plugin: payment-simple-allocation {"service":"charge-plugin-registry","triggers":["payment_saved"]}
+Server listening on port 5000, loading application...
+07:37:59 PM [app] INFO: Registered charge plugin: btu-steward-attendance {"service":"charge-plugin-registry","triggers":["participant_saved"],"requiredComponent":"sitespecific.btu"}
+07:37:59 PM [app] INFO: Registered charge plugin: btu-dues-allocation {"service":"charge-plugin-registry","triggers":["dues_import_saved"],"requiredComponent":"sitespecific.btu"}
+07:37:59 PM [app] INFO: Registered eligibility plugin: manual {"service":"eligibility-plugin-registry"}
+07:37:59 PM [startup] INFO: Access control system initialized {"service":"sirius"}
+07:38:02 PM [startup] INFO: Address validation service initialized {"service":"sirius"}
+07:38:02 PM [app] INFO: Registered cron job: delete-old-cron-logs {"service":"cron-registry"}
+07:38:02 PM [app] INFO: Dispatch eligibility plugin registered: dispatch_hfe {"service":"dispatch-elig-registry"}
+07:38:02 PM [app] INFO: Dispatch eligibility plugin registered: dispatch_skill {"service":"dispatch-elig-registry"}
+07:38:02 PM [app] INFO: Worker ban notifications initialized {"service":"worker-ban-notifications"}
+07:38:02 PM [app] INFO: Registered cron job: process-wmb-batch {"service":"cron-registry"}
+07:38:02 PM [app] INFO: Component permissions registered {"service":"component-permissions","count":9}
+07:38:02 PM [startup] INFO: Dispatch eligibility system initialized {"service":"sirius"}
+07:38:02 PM [app] INFO: Registered cron job: delete-expired-reports {"service":"cron-registry"}
+07:38:02 PM [app] INFO: Registered cron job: log-cleanup {"service":"cron-registry"}
+07:38:02 PM [app] INFO: Registered cron job: worker-ban-active-scan {"service":"cron-registry"}
+07:38:02 PM [app] INFO: Dispatch eligibility plugins registered {"service":"dispatch-elig-plugins","plugins":["dispatch_ban","dispatch_dnc","dispatch_hfe","dispatch_skill","dispatch_status","dispatch_ws"]}
+07:38:02 PM [startup] INFO: Component permissions synced {"service":"sirius"}
+07:38:03 PM [startup] INFO: Authentication system initialized {"service":"sirius"}
+07:38:02 PM [startup] INFO: Component cache initialized {"service":"sirius"}
+07:38:02 PM [startup] INFO: Dispatch notifications initialized {"service":"sirius"}
+07:38:03 PM [app] INFO: Auth provider registered: replit {"service":"sirius"}
+07:38:02 PM [app] INFO: Dispatch eligibility plugin registered: dispatch_ws {"service":"dispatch-elig-registry"}
+07:38:02 PM [app] INFO: Registered flood event: bookmark {"service":"flood-registry","threshold":1000,"windowSeconds":360}
+07:38:02 PM [startup] INFO: Worker ban notifications initialized {"service":"sirius"}
+07:38:02 PM [app] INFO: Registered cron job: worker-certification-active-scan {"service":"cron-registry"}
+07:38:02 PM [app] INFO: Dispatch notifications service initialized {"service":"dispatch-notifications"}
+07:38:03 PM [startup] INFO: Entity access module registered {"service":"sirius"}
+07:38:03 PM [app] INFO: WebSocket server initialized {"service":"websocket"}
+07:38:02 PM [startup] INFO: Cron job handlers registered {"service":"sirius"}
+07:38:03 PM [app] INFO: Default auth provider set to: replit {"service":"sirius"}
+07:38:03 PM [app] INFO: Auth system initialized {"service":"sirius","providers":["replit"],"defaultProvider":"replit"}
+07:38:02 PM [app] INFO: Registered cron job: sweep-expired-ban-elig {"service":"cron-registry"}
+07:38:02 PM [startup] INFO: Default cron jobs bootstrapped {"service":"sirius"}
+07:38:03 PM [app] INFO: Replit auth provider initialized {"service":"sirius"}
+07:38:02 PM [log-notifier] INFO: Log notifier initialized {"service":"sirius"}
+07:38:02 PM [app] INFO: Registered cron job: delete-expired-flood-events {"service":"cron-registry"}
+07:38:02 PM [app] INFO: Dispatch eligibility plugin registered: dispatch_dnc {"service":"dispatch-elig-registry"}
+07:38:02 PM [app] INFO: Bootstrapping default cron jobs {"service":"cron-bootstrap"}
+07:38:03 PM [startup] INFO: WebSocket server initialized {"service":"sirius"}
+Application fully initialized and ready
+07:38:03 PM [app] INFO: Starting cron scheduler {"service":"cron-scheduler"}
+07:38:02 PM [app] INFO: Cron job bootstrap completed {"service":"cron-bootstrap","created":0,"skipped":8,"errors":0,"total":8}
+07:38:03 PM [app] INFO: Scheduled job: sweep-expired-ban-elig {"service":"cron-scheduler","jobName":"sweep-expired-ban-elig","schedule":"0 5 * * *"}
+07:38:03 PM [app] INFO: Scheduled job: delete-expired-hfe {"service":"cron-scheduler","jobName":"delete-expired-hfe","schedule":"0 4 * * *"}
+07:38:03 PM [startup] INFO: Application fully initialized and ready {"service":"sirius"}
+07:38:03 PM [startup] INFO: Cron scheduler started {"service":"sirius"}
+07:38:03 PM [app] WARN: No handler registered for job: sync-ban-active-status {"service":"cron-scheduler","jobName":"sync-ban-active-status"}
+07:38:02 PM [app] INFO: Registered cron job: delete-expired-hfe {"service":"cron-registry"}
+07:38:03 PM [app] INFO: Scheduled job: delete-expired-flood-events {"service":"cron-scheduler","jobName":"delete-expired-flood-events","schedule":"0 * * * *"}
+07:38:03 PM [app] INFO: Scheduled job: delete-expired-reports {"service":"cron-scheduler","jobName":"delete-expired-reports","schedule":"0 2 * * *"}
+07:38:03 PM [app] INFO: Scheduled job: delete-old-cron-logs {"service":"cron-scheduler","jobName":"delete-old-cron-logs","schedule":"0 3 * * *"}
+07:38:02 PM [app] INFO: Dispatch eligibility plugin registered: dispatch_status {"service":"dispatch-elig-registry"}
+07:38:03 PM [app] INFO: Found 7 enabled cron jobs {"service":"cron-scheduler"}
+07:38:03 PM [app] INFO: Cron scheduler started successfully {"service":"cron-scheduler","jobCount":6}
+07:38:02 PM [app] INFO: Dispatch eligibility plugin registered: dispatch_ban {"service":"dispatch-elig-registry"}
+07:38:03 PM [app] INFO: Registered web service bundle: edls at /api/ws/edls {"service":"sirius"}
+07:38:02 PM [startup] INFO: Flood configs loaded from variables {"service":"sirius"}
+07:38:02 PM [startup] INFO: Flood events registered {"service":"sirius"}
+07:38:03 PM [app] INFO: Scheduled job: worker-ban-active-scan {"service":"cron-scheduler","jobName":"worker-ban-active-scan","schedule":"0 6 * * *"}
+> NODE_ENV=production node dist/production-entry.js
+07:38:36 PM [app] INFO: Scheduled job: sweep-expired-ban-elig {"service":"cron-scheduler","jobName":"sweep-expired-ban-elig","schedule":"0 5 * * *"}
+07:38:36 PM [app] INFO: Bootstrapping default cron jobs {"service":"cron-bootstrap"}
+metasidecar: loaded enterprise status from environment is_enterprise=false
+07:39:32 PM [app] INFO: Bootstrapping default cron jobs {"service":"cron-bootstrap"}
+07:39:32 PM [app] INFO: Scheduled job: delete-expired-hfe {"service":"cron-scheduler","jobName":"delete-expired-hfe","schedule":"0 4 * * *"}
+2026-01-29T19:40:31Z error: The deployment is failing health checks. This can happen if the application isn't responding, responds with an error, or doesn't respond in time. Health checks are sent to the / endpoint by default and must respond as soon as possible. Make sure that the / endpoint is implemented and returns a 200 status code in a timely manner. Avoid doing expensive or long running operations on the / endpoint, prefer deferring them to a different route. Check the logs for more information.

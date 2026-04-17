@@ -376,7 +376,7 @@ export default function WmbScanDetail() {
             </Button>
           </Link>
           <div>
-            <h1 className="text-2xl font-semibold" data-testid="text-scan-title">
+            <h1 className="text-xl md:text-2xl font-semibold" data-testid="text-scan-title">
               Benefits Scan: {MonthName(status.month)} {status.year}
             </h1>
             <p className="text-muted-foreground flex items-center gap-2">
