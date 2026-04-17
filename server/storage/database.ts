@@ -56,7 +56,6 @@ import { type PolicyStorage, createPolicyStorage, policyLoggingConfig } from "./
 import { type BargainingUnitStorage, createBargainingUnitStorage, bargainingUnitLoggingConfig } from "./bargaining-units";
 import { type SftpClientDestinationStorage, createSftpClientDestinationStorage, sftpClientDestinationLoggingConfig } from "./sftp-client-destinations";
 import { type TrustProviderEdiStorage, createTrustProviderEdiStorage, trustProviderEdiLoggingConfig } from "./trust/provider/edi";
-import { type BulkCampaignStorage, createBulkCampaignStorage, bulkCampaignLoggingConfig } from "./bulk/campaigns";
 import { type BulkMessageStorage, createBulkMessageStorage, bulkMessageLoggingConfig } from "./bulk/messages";
 import { type BulkMessagesEmailStorage, createBulkMessagesEmailStorage, bulkMessagesEmailLoggingConfig } from "./bulk/messages/email";
 import { type BulkMessagesSmsStorage, createBulkMessagesSmsStorage, bulkMessagesSmsLoggingConfig } from "./bulk/messages/sms";
@@ -166,7 +165,6 @@ export interface IStorage {
   employerCompanies: EmployerCompanyStorage;
   sftpClientDestinations: SftpClientDestinationStorage;
   trustProviderEdi: TrustProviderEdiStorage;
-  bulkCampaigns: BulkCampaignStorage;
   bulkMessages: BulkMessageStorage;
   bulkMessagesEmail: BulkMessagesEmailStorage;
   bulkMessagesSms: BulkMessagesSmsStorage;
@@ -241,7 +239,6 @@ export class DatabaseStorage implements IStorage {
   employerCompanies: EmployerCompanyStorage;
   sftpClientDestinations: SftpClientDestinationStorage;
   trustProviderEdi: TrustProviderEdiStorage;
-  bulkCampaigns: BulkCampaignStorage;
   bulkMessages: BulkMessageStorage;
   bulkMessagesEmail: BulkMessagesEmailStorage;
   bulkMessagesSms: BulkMessagesSmsStorage;
@@ -420,10 +417,6 @@ export class DatabaseStorage implements IStorage {
     this.trustProviderEdi = withStorageLogging(
       createTrustProviderEdiStorage(),
       trustProviderEdiLoggingConfig
-    );
-    this.bulkCampaigns = withStorageLogging(
-      createBulkCampaignStorage(),
-      bulkCampaignLoggingConfig
     );
     this.bulkMessages = withStorageLogging(
       createBulkMessageStorage(),

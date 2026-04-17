@@ -296,9 +296,15 @@ const EdlsSheetAssignmentsPage = lazy(() => import("@/pages/edls/sheet-assignmen
 const EdlsSheetManagePage = lazy(() => import("@/pages/edls/sheet-manage"));
 const EdlsSheetEditPage = lazy(() => import("@/pages/edls/sheet-edit"));
 const EdlsSheetLogsPage = lazy(() => import("@/pages/edls/sheet-logs"));
-const CampaignsPage = lazy(() => import("@/pages/campaigns"));
-const CampaignCreatePage = lazy(() => import("@/pages/campaign-create"));
-const CampaignDetailPage = lazy(() => import("@/pages/campaign-detail"));
+const BulkMessagesPage = lazy(() => import("@/pages/bulk-messages"));
+const BulkMessageDetailsPage = lazy(() => import("@/pages/bulk-message-details"));
+const BulkMessageEditPage = lazy(() => import("@/pages/bulk-message-edit"));
+const BulkMessageMessagePage = lazy(() => import("@/pages/bulk-message-message"));
+const BulkMessageLogsPage = lazy(() => import("@/pages/bulk-message-logs"));
+const BulkMessageRecipientsListPage = lazy(() => import("@/pages/bulk-message-recipients-list"));
+const BulkMessageRecipientsAddPage = lazy(() => import("@/pages/bulk-message-recipients-add"));
+const BulkMessageDeliverPage = lazy(() => import("@/pages/bulk-message-deliver"));
+const BulkMessageTestPage = lazy(() => import("@/pages/bulk-message-test"));
 
 // Loading fallback component
 function PageLoader() {
@@ -1630,30 +1636,77 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/campaigns/new">
+      <Route path="/bulk/list">
         <ProtectedRoute policy="bulk.edit">
           <AuthenticatedLayout>
-            <CampaignCreatePage />
+            <BulkMessagesPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
 
-      <Route path="/campaigns/:id">
+      <Route path="/bulk/:id/edit">
         <ProtectedRoute policy="bulk.edit">
           <AuthenticatedLayout>
-            <CampaignDetailPage />
+            <BulkMessageEditPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
 
-      <Route path="/campaigns">
+      <Route path="/bulk/:id/message">
         <ProtectedRoute policy="bulk.edit">
           <AuthenticatedLayout>
-            <CampaignsPage />
+            <BulkMessageMessagePage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
 
+      <Route path="/bulk/:id/recipients/list">
+        <ProtectedRoute policy="bulk.edit">
+          <AuthenticatedLayout>
+            <BulkMessageRecipientsListPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/bulk/:id/recipients/add">
+        <ProtectedRoute policy="bulk.edit">
+          <AuthenticatedLayout>
+            <BulkMessageRecipientsAddPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/bulk/:id/deliver">
+        <ProtectedRoute policy="bulk.edit">
+          <AuthenticatedLayout>
+            <BulkMessageDeliverPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/bulk/:id/test">
+        <ProtectedRoute policy="bulk.edit">
+          <AuthenticatedLayout>
+            <BulkMessageTestPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/bulk/:id/logs">
+        <ProtectedRoute policy="bulk.edit">
+          <AuthenticatedLayout>
+            <BulkMessageLogsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/bulk/:id">
+        <ProtectedRoute policy="bulk.edit">
+          <AuthenticatedLayout>
+            <BulkMessageDetailsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
 
       <Route path="/trust/provider/:id/edit">
         <ProtectedRoute tabId="edit" entityType="provider">

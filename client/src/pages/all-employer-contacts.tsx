@@ -20,18 +20,9 @@ import {
   Truck, 
   HardHat, 
   Users,
-  Megaphone,
   type LucideIcon 
 } from "lucide-react";
 import type { Employer, Contact, EmployerContact, EmployerContactType } from "@shared/schema";
-import { CampaignComposerModal } from "@/components/bulk/CampaignComposerModal";
-
-type PolicyAccessResponse = { access: { granted: boolean } };
-
-interface ComponentConfig {
-  componentId: string;
-  enabled: boolean;
-}
 
 const iconMap: Record<string, LucideIcon> = {
   User,
@@ -62,7 +53,6 @@ export default function AllEmployerContacts() {
   const [contactNameFilter, setContactNameFilter] = useState<string>("");
   const [contactTypeFilter, setContactTypeFilter] = useState<string>("all");
   const [debouncedContactName, setDebouncedContactName] = useState<string>("");
-  const [composerOpen, setComposerOpen] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -92,17 +82,6 @@ export default function AllEmployerContacts() {
     queryKey: ["/api/options/employer-contact-type"],
   });
 
-  const { data: bulkEditPolicy } = useQuery<PolicyAccessResponse>({
-    queryKey: ["/api/access/policies/bulk.edit"],
-    staleTime: 30000,
-  });
-
-  const { data: componentConfigs = [] } = useQuery<ComponentConfig[]>({
-    queryKey: ["/api/components/config"],
-    staleTime: 60000,
-  });
-  const bulkEnabled = componentConfigs.find(c => c.componentId === "bulk")?.enabled ?? false;
-
   const handleClearFilters = () => {
     setEmployerFilter("all");
     setContactNameFilter("");
@@ -120,17 +99,6 @@ export default function AllEmployerContacts() {
             View and manage all employer contact relationships
           </p>
         </div>
-        {bulkEnabled && bulkEditPolicy?.access?.granted && (
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => setComposerOpen(true)}
-            data-testid="button-bulk-message-employer-contacts"
-          >
-            <Megaphone className="h-4 w-4 mr-2" />
-            Bulk Message
-          </Button>
-        )}
       </div>
 
       <Card>
@@ -295,20 +263,6 @@ export default function AllEmployerContacts() {
           )}
         </CardContent>
       </Card>
-
-      {composerOpen && (
-        <CampaignComposerModal
-          open={composerOpen}
-          onClose={() => setComposerOpen(false)}
-          audienceType="employer_contact"
-          audienceFilters={filters}
-          audienceLabel={
-            Object.keys(filters).length > 0
-              ? `${Object.keys(filters).length} filter${Object.keys(filters).length !== 1 ? "s" : ""} applied`
-              : `${employerContacts?.length ?? 0} contacts (no filters)`
-          }
-        />
-      )}
     </div>
   );
 }

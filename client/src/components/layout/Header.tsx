@@ -75,7 +75,6 @@ export default function Header() {
 
   // Type for policy access check response
   type PolicyAccessResponse = { access: { granted: boolean } };
-  interface ComponentConfig { componentId: string; enabled: boolean; }
 
   // Check staff policy for Accounts navigation (ledger component also required)
   const { data: ledgerStaffPolicy } = useQuery<PolicyAccessResponse>({
@@ -96,12 +95,6 @@ export default function Header() {
     queryKey: ["/api/access/policies/bulk.edit"],
     staleTime: 30000,
   });
-
-  const { data: headerComponentConfigs = [] } = useQuery<ComponentConfig[]>({
-    queryKey: ["/api/components/config"],
-    staleTime: 60000,
-  });
-  const bulkComponentEnabled = headerComponentConfigs.find(c => c.componentId === "bulk")?.enabled ?? false;
 
   // Get employers associated with the current user's contact
   const { employers: myEmployers, hasSingleEmployer, hasMultipleEmployers } = useMyEmployers();
@@ -681,15 +674,15 @@ export default function Header() {
                   </Link>
                 )}
 
-                {bulkComponentEnabled && bulkEditPolicy?.access?.granted && (
-                  <Link href="/campaigns" onClick={() => setMobileMenuOpen(false)}>
+                {bulkEditPolicy?.access?.granted && (
+                  <Link href="/bulk/list" onClick={() => setMobileMenuOpen(false)}>
                     <Button
-                      variant={location.startsWith("/campaigns") ? "default" : "ghost"}
+                      variant={location.startsWith("/bulk") ? "default" : "ghost"}
                       className="w-full justify-start"
-                      data-testid="mobile-nav-campaigns"
+                      data-testid="mobile-nav-bulk-messages"
                     >
                       <Megaphone className="h-4 w-4 mr-2" />
-                      Campaigns
+                      Bulk Messages
                     </Button>
                   </Link>
                 )}
@@ -1373,15 +1366,15 @@ export default function Header() {
               </Link>
             )}
 
-            {bulkComponentEnabled && bulkEditPolicy?.access?.granted && (
-              <Link href="/campaigns">
+            {bulkEditPolicy?.access?.granted && (
+              <Link href="/bulk/list">
                 <Button
-                  variant={location.startsWith("/campaigns") ? "default" : "ghost"}
+                  variant={location.startsWith("/bulk") ? "default" : "ghost"}
                   size="sm"
-                  data-testid="nav-campaigns"
+                  data-testid="nav-bulk-messages"
                 >
                   <Megaphone className="h-4 w-4 mr-2" />
-                  Campaigns
+                  Bulk Messages
                 </Button>
               </Link>
             )}

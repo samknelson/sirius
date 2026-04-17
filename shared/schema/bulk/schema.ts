@@ -2,54 +2,14 @@ import { pgTable, varchar, text, timestamp, jsonb, boolean, pgEnum } from "drizz
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
-import { contacts, comm, users } from "../../schema";
+import { contacts, comm } from "../../schema";
 
 export const bulkMediumEnum = pgEnum("bulk_medium", ["sms", "email", "inapp", "postal"]);
 
-export const bulkMessageStatusEnum = pgEnum("bulk_message_status", ["draft", "queued", "processing", "sent", "completed", "failed", "aborted"]);
-
-export const bulkCampaignStatusEnum = pgEnum("bulk_campaign_status", [
-  "draft",
-  "queued",
-  "processing",
-  "completed",
-  "failed",
-  "aborted",
-]);
-
-export const bulkCampaignAudienceTypeEnum = pgEnum("bulk_campaign_audience_type", [
-  "worker",
-  "employer_contact",
-]);
-
-export const bulkCampaigns = pgTable("bulk_campaigns", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  name: varchar("name").notNull(),
-  status: bulkCampaignStatusEnum("status").notNull().default("draft"),
-  audienceType: bulkCampaignAudienceTypeEnum("audience_type"),
-  audienceFilters: jsonb("audience_filters"),
-  channels: text("channels").array().notNull().default(sql`'{}'::text[]`),
-  scheduledAt: timestamp("scheduled_at"),
-  createdAt: timestamp("created_at").default(sql`now()`).notNull(),
-  updatedAt: timestamp("updated_at").default(sql`now()`).notNull(),
-  creatorUserId: varchar("creator_user_id").references(() => users.id, { onDelete: "set null" }),
-  data: jsonb("data"),
-});
-
-export const insertBulkCampaignSchema = createInsertSchema(bulkCampaigns).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-});
-
-export const updateBulkCampaignSchema = insertBulkCampaignSchema.partial();
-
-export type BulkCampaign = typeof bulkCampaigns.$inferSelect;
-export type InsertBulkCampaign = z.infer<typeof insertBulkCampaignSchema>;
+export const bulkMessageStatusEnum = pgEnum("bulk_message_status", ["draft", "queued", "sent"]);
 
 export const bulkMessages = pgTable("bulk_messages", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  campaignId: varchar("campaign_id").references(() => bulkCampaigns.id, { onDelete: "cascade" }),
   medium: bulkMediumEnum("medium").notNull(),
   name: varchar("name").notNull(),
   status: bulkMessageStatusEnum("status").notNull().default("draft"),
