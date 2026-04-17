@@ -1,5 +1,41 @@
 export type TokenScope = "contact" | "worker" | "employer" | "system";
 
+/**
+ * Lightweight, channel-neutral data shapes the registry's resolvers
+ * read from. Server fetches these once per recipient; the registry
+ * is the single source of truth for which fields turn into which
+ * tokens. Adding a new token = adding one entry below — no other
+ * file changes are required as long as the data is already in
+ * TokenSourceData.
+ */
+export interface TokenSourceContact {
+  id?: string | null;
+  given?: string | null;
+  family?: string | null;
+  displayName?: string | null;
+  email?: string | null;
+}
+
+export interface TokenSourceWorker {
+  id?: string | null;
+  given?: string | null;
+  family?: string | null;
+  jobTitle?: string | null;
+  siriusId?: number | string | null;
+}
+
+export interface TokenSourceEmployer {
+  id?: string | null;
+  name?: string | null;
+}
+
+export interface TokenSourceData {
+  contact?: TokenSourceContact | null;
+  worker?: TokenSourceWorker | null;
+  employer?: TokenSourceEmployer | null;
+  now?: Date;
+}
+
 export interface TokenDefinition {
   id: string;
   scope: TokenScope;
@@ -7,6 +43,15 @@ export interface TokenDefinition {
   description: string;
   defaultValue: string;
   example: string;
+  resolve: (data: TokenSourceData) => string | number | null | undefined;
+}
+
+function fullName(given?: string | null, family?: string | null, display?: string | null): string {
+  return (display || `${given || ""} ${family || ""}`.trim() || "").trim();
+}
+
+function fmtDate(d: Date): string {
+  return d.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
 }
 
 export const TOKEN_REGISTRY: TokenDefinition[] = [
@@ -17,6 +62,7 @@ export const TOKEN_REGISTRY: TokenDefinition[] = [
     description: "Given name on the contact record",
     defaultValue: "Friend",
     example: "Jamie",
+    resolve: (d) => d.contact?.given,
   },
   {
     id: "contact.lastName",
@@ -25,6 +71,7 @@ export const TOKEN_REGISTRY: TokenDefinition[] = [
     description: "Family name on the contact record",
     defaultValue: "",
     example: "Rivera",
+    resolve: (d) => d.contact?.family,
   },
   {
     id: "contact.fullName",
@@ -33,6 +80,7 @@ export const TOKEN_REGISTRY: TokenDefinition[] = [
     description: "Display name on the contact record",
     defaultValue: "Friend",
     example: "Jamie Rivera",
+    resolve: (d) => fullName(d.contact?.given, d.contact?.family, d.contact?.displayName),
   },
   {
     id: "contact.email",
@@ -41,6 +89,7 @@ export const TOKEN_REGISTRY: TokenDefinition[] = [
     description: "Primary email on the contact record",
     defaultValue: "",
     example: "jamie@example.com",
+    resolve: (d) => d.contact?.email,
   },
   {
     id: "worker.firstName",
@@ -49,6 +98,7 @@ export const TOKEN_REGISTRY: TokenDefinition[] = [
     description: "First name when the contact is a worker",
     defaultValue: "Friend",
     example: "Jamie",
+    resolve: (d) => d.worker?.given || d.contact?.given,
   },
   {
     id: "worker.lastName",
@@ -57,6 +107,7 @@ export const TOKEN_REGISTRY: TokenDefinition[] = [
     description: "Last name when the contact is a worker",
     defaultValue: "",
     example: "Rivera",
+    resolve: (d) => d.worker?.family || d.contact?.family,
   },
   {
     id: "worker.fullName",
@@ -65,6 +116,11 @@ export const TOKEN_REGISTRY: TokenDefinition[] = [
     description: "Full display name when the contact is a worker",
     defaultValue: "Friend",
     example: "Jamie Rivera",
+    resolve: (d) => fullName(
+      d.worker?.given || d.contact?.given,
+      d.worker?.family || d.contact?.family,
+      d.contact?.displayName,
+    ),
   },
   {
     id: "worker.jobTitle",
@@ -73,6 +129,7 @@ export const TOKEN_REGISTRY: TokenDefinition[] = [
     description: "Most recent job title on the worker",
     defaultValue: "",
     example: "Lead Carpenter",
+    resolve: (d) => d.worker?.jobTitle,
   },
   {
     id: "worker.siriusId",
@@ -81,6 +138,7 @@ export const TOKEN_REGISTRY: TokenDefinition[] = [
     description: "Sirius worker ID number",
     defaultValue: "",
     example: "10241",
+    resolve: (d) => d.worker?.siriusId == null ? "" : String(d.worker.siriusId),
   },
   {
     id: "employer.name",
@@ -89,6 +147,7 @@ export const TOKEN_REGISTRY: TokenDefinition[] = [
     description: "Name of the worker's home employer (or first linked employer)",
     defaultValue: "",
     example: "Acme Construction",
+    resolve: (d) => d.employer?.name,
   },
   {
     id: "system.year",
@@ -97,14 +156,16 @@ export const TOKEN_REGISTRY: TokenDefinition[] = [
     description: "Four-digit current year",
     defaultValue: String(new Date().getFullYear()),
     example: String(new Date().getFullYear()),
+    resolve: (d) => String((d.now ?? new Date()).getFullYear()),
   },
   {
     id: "system.dateToday",
     scope: "system",
     label: "Today's date",
     description: "Today's date, e.g. Apr 17, 2026",
-    defaultValue: "",
+    defaultValue: fmtDate(new Date()),
     example: "Apr 17, 2026",
+    resolve: (d) => fmtDate(d.now ?? new Date()),
   },
 ];
 
@@ -136,6 +197,21 @@ export function findUnknownTokenIds(template: string | null | undefined): string
 }
 
 export type TokenContext = Record<string, string | null | undefined>;
+
+/**
+ * Run every registered resolver against the supplied source data
+ * and produce a flat token-id → string context the renderer consumes.
+ * This is the only place that turns source data into token values,
+ * so adding a token to the registry is sufficient end-to-end.
+ */
+export function buildContextFromSources(data: TokenSourceData): TokenContext {
+  const ctx: TokenContext = {};
+  for (const def of TOKEN_REGISTRY) {
+    const v = def.resolve(data);
+    ctx[def.id] = v == null || v === "" ? null : String(v);
+  }
+  return ctx;
+}
 
 export interface RenderOptions {
   /** When true, missing/unknown values render as `[unknown token]` rather than the registry default. */
