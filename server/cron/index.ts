@@ -16,3 +16,5 @@ export { memberStatusScanHandler } from './jobs/memberStatusScan';
 export { dispatchEbaCleanupHandler } from './jobs/dispatchEbaCleanup';
 export { dispatchJobPollHandler } from './jobs/dispatchJobPoll';
 export { bulkDeliverHandler } from './jobs/bulkDeliver';
+export { t631DispatchJobGroupFetchHandler } from './jobs/t631DispatchJobGroupFetch';
+export { t631FacilityFetchHandler } from './jobs/t631FacilityFetch';

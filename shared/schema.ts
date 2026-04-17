@@ -56,6 +56,20 @@ export {
 } from "./schema/dispatch/eba-schema";
 
 export {
+  dispatchJobGroups,
+  insertDispatchJobGroupSchema,
+  type InsertDispatchJobGroup,
+  type DispatchJobGroup,
+} from "./schema/dispatch/job-group-schema";
+
+export {
+  facilities,
+  insertFacilitySchema,
+  type InsertFacility,
+  type Facility,
+} from "./schema/facility/schema";
+
+export {
   eligibilityPluginConfigSchema,
   jobTypeEligibilitySchema,
   type EligibilityPluginConfig,

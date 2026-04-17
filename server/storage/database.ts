@@ -14,6 +14,7 @@ import {
   ledgerAccountLoggingConfig,
   stripePaymentMethodLoggingConfig,
   ledgerPaymentLoggingConfig,
+  ledgerPaymentBatchLoggingConfig,
 } from "./ledger";
 import {
   type EmployerContactStorage,
@@ -71,6 +72,8 @@ import { type SessionStorage, createSessionStorage, sessionLoggingConfig } from 
 import { type FloodStorage, createFloodStorage } from "./flood";
 import { type EventStorage, createEventStorage, eventLoggingConfig, type EventOccurrenceStorage, createEventOccurrenceStorage, eventOccurrenceLoggingConfig, type EventParticipantStorage, createEventParticipantStorage, eventParticipantLoggingConfig } from "./events";
 import { type DispatchJobStorage, createDispatchJobStorage, dispatchJobLoggingConfig } from "./dispatch/jobs";
+import { type DispatchJobGroupStorage, createDispatchJobGroupStorage, dispatchJobGroupLoggingConfig } from "./dispatch/job-groups";
+import { type FacilityStorage, createFacilityStorage, facilityLoggingConfig } from "./facility/facilities";
 import { type DispatchStorage, createDispatchStorage, dispatchLoggingConfig } from "./dispatch/dispatches";
 import { type WorkerStewardAssignmentStorage, createWorkerStewardAssignmentStorage, workerStewardAssignmentLoggingConfig } from "./worker-steward-assignments";
 import { type BtuCsgStorage, createBtuCsgStorage, btuCsgLoggingConfig } from "./sitespecific/btu/csg";
@@ -136,6 +139,7 @@ export interface IStorage {
   eventOccurrences: EventOccurrenceStorage;
   eventParticipants: EventParticipantStorage;
   dispatchJobs: DispatchJobStorage;
+  dispatchJobGroups: DispatchJobGroupStorage;
   dispatches: DispatchStorage;
   workerStewardAssignments: WorkerStewardAssignmentStorage;
   btuCsg: BtuCsgStorage;
@@ -171,6 +175,7 @@ export interface IStorage {
   bulkMessagesPostal: BulkMessagesPostalStorage;
   bulkMessagesInapp: BulkMessagesInappStorage;
   bulkParticipants: BulkParticipantStorage;
+  facilities: FacilityStorage;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -210,6 +215,7 @@ export class DatabaseStorage implements IStorage {
   eventOccurrences: EventOccurrenceStorage;
   eventParticipants: EventParticipantStorage;
   dispatchJobs: DispatchJobStorage;
+  dispatchJobGroups: DispatchJobGroupStorage;
   dispatches: DispatchStorage;
   workerStewardAssignments: WorkerStewardAssignmentStorage;
   btuCsg: BtuCsgStorage;
@@ -245,6 +251,7 @@ export class DatabaseStorage implements IStorage {
   bulkMessagesPostal: BulkMessagesPostalStorage;
   bulkMessagesInapp: BulkMessagesInappStorage;
   bulkParticipants: BulkParticipantStorage;
+  facilities: FacilityStorage;
 
   constructor() {
     this.variables = withStorageLogging(
@@ -286,6 +293,8 @@ export class DatabaseStorage implements IStorage {
       stripePaymentMethodLoggingConfig,
       undefined,
       ledgerPaymentLoggingConfig,
+      undefined,
+      ledgerPaymentBatchLoggingConfig,
     );
     this.employerContacts = withStorageLogging(
       createEmployerContactStorage(this.contacts),
@@ -380,6 +389,7 @@ export class DatabaseStorage implements IStorage {
     this.eventOccurrences = withStorageLogging(createEventOccurrenceStorage(), eventOccurrenceLoggingConfig);
     this.eventParticipants = withStorageLogging(createEventParticipantStorage(), eventParticipantLoggingConfig);
     this.dispatchJobs = withStorageLogging(createDispatchJobStorage(), dispatchJobLoggingConfig);
+    this.dispatchJobGroups = withStorageLogging(createDispatchJobGroupStorage(), dispatchJobGroupLoggingConfig);
     this.dispatches = withStorageLogging(createDispatchStorage(), dispatchLoggingConfig);
     this.workerStewardAssignments = withStorageLogging(createWorkerStewardAssignmentStorage(), workerStewardAssignmentLoggingConfig);
     this.btuCsg = withStorageLogging(createBtuCsgStorage(), btuCsgLoggingConfig);
@@ -442,6 +452,7 @@ export class DatabaseStorage implements IStorage {
       createBulkParticipantStorage(),
       bulkParticipantLoggingConfig
     );
+    this.facilities = withStorageLogging(createFacilityStorage(this.contacts), facilityLoggingConfig);
   }
 }
 

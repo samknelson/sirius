@@ -7,6 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Eye, Megaphone, Plus, Loader2, Search } from "lucide-react";
 import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
@@ -20,6 +21,8 @@ const mediumLabels: Record<string, string> = {
   postal: "Postal",
   inapp: "In-App",
 };
+
+const ALL_MEDIA = ["email", "sms", "postal", "inapp"] as const;
 
 const statusVariants: Record<string, "default" | "secondary" | "outline"> = {
   draft: "secondary",
@@ -36,7 +39,7 @@ export default function BulkMessagesPage() {
   const [filterName, setFilterName] = useState<string>("");
   const [formData, setFormData] = useState({
     name: "",
-    medium: "email" as "email" | "sms" | "postal" | "inapp",
+    medium: ["email"] as string[],
   });
 
   const queryParams = new URLSearchParams();
@@ -66,7 +69,7 @@ export default function BulkMessagesPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/bulk-messages"] });
       toast({ title: "Bulk message created", description: "The bulk message has been created." });
-      setFormData({ name: "", medium: "email" });
+      setFormData({ name: "", medium: ["email"] });
       setIsAdding(false);
     },
     onError: (error: Error) => {
@@ -80,7 +83,19 @@ export default function BulkMessagesPage() {
       toast({ title: "Validation error", description: "Name is required.", variant: "destructive" });
       return;
     }
+    if (formData.medium.length === 0) {
+      toast({ title: "Validation error", description: "At least one medium is required.", variant: "destructive" });
+      return;
+    }
     createMutation.mutate(formData);
+  };
+
+  const toggleMedium = (m: string) => {
+    setFormData((prev) => {
+      const has = prev.medium.includes(m);
+      const next = has ? prev.medium.filter((x) => x !== m) : [...prev.medium, m];
+      return { ...prev, medium: next };
+    });
   };
 
   return (
@@ -156,33 +171,29 @@ export default function BulkMessagesPage() {
               </CardHeader>
               <CardContent>
                 <form onSubmit={handleCreate} className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="bulk-name">Name *</Label>
-                      <Input
-                        id="bulk-name"
-                        value={formData.name}
-                        onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
-                        placeholder="Message name"
-                        data-testid="input-bulk-name"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="bulk-medium">Medium *</Label>
-                      <Select
-                        value={formData.medium}
-                        onValueChange={(value) => setFormData((prev) => ({ ...prev, medium: value as typeof prev.medium }))}
-                      >
-                        <SelectTrigger data-testid="select-bulk-medium">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="email">Email</SelectItem>
-                          <SelectItem value="sms">SMS</SelectItem>
-                          <SelectItem value="postal">Postal</SelectItem>
-                          <SelectItem value="inapp">In-App</SelectItem>
-                        </SelectContent>
-                      </Select>
+                  <div className="space-y-2">
+                    <Label htmlFor="bulk-name">Name *</Label>
+                    <Input
+                      id="bulk-name"
+                      value={formData.name}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
+                      placeholder="Message name"
+                      data-testid="input-bulk-name"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Media *</Label>
+                    <div className="flex flex-wrap gap-4">
+                      {ALL_MEDIA.map((m) => (
+                        <label key={m} className="flex items-center gap-2 cursor-pointer">
+                          <Checkbox
+                            checked={formData.medium.includes(m)}
+                            onCheckedChange={() => toggleMedium(m)}
+                            data-testid={`checkbox-medium-${m}`}
+                          />
+                          <span className="text-sm">{mediumLabels[m]}</span>
+                        </label>
+                      ))}
                     </div>
                   </div>
                   <div className="flex gap-3">
@@ -211,35 +222,40 @@ export default function BulkMessagesPage() {
             </p>
           ) : (
             <div className="space-y-2">
-              {messages.map((msg) => (
-                <Link key={msg.id} href={`/bulk/${msg.id}`}>
-                  <div
-                    className="flex items-center justify-between p-4 rounded-lg border hover:bg-muted/50 cursor-pointer transition-colors"
-                    data-testid={`row-bulk-message-${msg.id}`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <Megaphone className="h-5 w-5 text-muted-foreground" />
-                      <div>
-                        <p className="font-medium" data-testid={`text-bulk-name-${msg.id}`}>{msg.name}</p>
-                        <div className="flex items-center gap-2 mt-1">
-                          <Badge variant={statusVariants[msg.status] || "secondary"} className="text-xs">
-                            {msg.status}
-                          </Badge>
-                          <Badge variant="outline" className="text-xs">
-                            {mediumLabels[msg.medium] || msg.medium}
-                          </Badge>
-                          {msg.sendDate && (
-                            <span className="text-xs text-muted-foreground">
-                              Send: {new Date(msg.sendDate).toLocaleDateString()}
-                            </span>
-                          )}
+              {messages.map((msg) => {
+                const media = Array.isArray(msg.medium) ? msg.medium : [msg.medium];
+                return (
+                  <Link key={msg.id} href={`/bulk/${msg.id}`}>
+                    <div
+                      className="flex items-center justify-between p-4 rounded-lg border hover:bg-muted/50 cursor-pointer transition-colors"
+                      data-testid={`row-bulk-message-${msg.id}`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <Megaphone className="h-5 w-5 text-muted-foreground" />
+                        <div>
+                          <p className="font-medium" data-testid={`text-bulk-name-${msg.id}`}>{msg.name}</p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <Badge variant={statusVariants[msg.status] || "secondary"} className="text-xs">
+                              {msg.status}
+                            </Badge>
+                            {media.map((m) => (
+                              <Badge key={m} variant="outline" className="text-xs">
+                                {mediumLabels[m] || m}
+                              </Badge>
+                            ))}
+                            {msg.sendDate && (
+                              <span className="text-xs text-muted-foreground">
+                                Send: {new Date(msg.sendDate).toLocaleDateString()}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
+                      <Eye className="h-4 w-4 text-muted-foreground" />
                     </div>
-                    <Eye className="h-4 w-4 text-muted-foreground" />
-                  </div>
-                </Link>
-              ))}
+                  </Link>
+                );
+              })}
             </div>
           )}
         </CardContent>

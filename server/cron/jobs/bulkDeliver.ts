@@ -29,6 +29,11 @@ const MEDIUM_BATCH_KEY: Record<string, keyof BulkDeliverSettings> = {
 
 const rawParticipantStorage = createBulkParticipantStorage();
 
+function getBatchSizeForMedium(settings: BulkDeliverSettings, medium: string): number {
+  const batchKey = MEDIUM_BATCH_KEY[medium];
+  return batchKey ? settings[batchKey] : 25;
+}
+
 export const bulkDeliverHandler: CronJobHandler = {
   description: 'Delivers queued bulk messages to pending participants in batches',
   requiresComponent: 'bulk',
@@ -88,19 +93,17 @@ export const bulkDeliverHandler: CronJobHandler = {
 
     if (context.mode === 'test') {
       let totalPending = 0;
-      const messageSummaries: Array<{ id: string; name: string; medium: string; pendingCount: number; batchSize: number }> = [];
+      const messageSummaries: Array<{ id: string; name: string; media: string[]; pendingCount: number }> = [];
 
       for (const msg of eligibleMessages) {
-        const batchKey = MEDIUM_BATCH_KEY[msg.medium];
-        const batchSize = batchKey ? settings[batchKey] : 25;
-        const pending = await rawParticipantStorage.getPendingByMessageId(msg.id, batchSize);
+        const totalBatch = msg.medium.reduce((sum, m) => sum + getBatchSizeForMedium(settings, m), 0);
+        const pending = await rawParticipantStorage.getPendingByMessageId(msg.id, totalBatch);
         totalPending += pending.length;
         messageSummaries.push({
           id: msg.id,
           name: msg.name,
-          medium: msg.medium,
+          media: msg.medium,
           pendingCount: pending.length,
-          batchSize,
         });
       }
 
@@ -121,11 +124,18 @@ export const bulkDeliverHandler: CronJobHandler = {
     let totalProcessed = 0;
 
     for (const msg of eligibleMessages) {
-      const batchKey = MEDIUM_BATCH_KEY[msg.medium];
-      const batchSize = batchKey ? settings[batchKey] : 25;
-      const pendingParticipants = await rawParticipantStorage.getPendingByMessageId(msg.id, batchSize);
+      const mediumCounts: Record<string, number> = {};
+
+      const totalBatch = msg.medium.reduce((sum, m) => sum + getBatchSizeForMedium(settings, m), 0);
+      const pendingParticipants = await rawParticipantStorage.getPendingByMessageId(msg.id, totalBatch);
 
       for (const participant of pendingParticipants) {
+        const participantMedium = participant.medium;
+        const batchSize = getBatchSizeForMedium(settings, participantMedium);
+        const currentCount = mediumCounts[participantMedium] || 0;
+        if (currentCount >= batchSize) continue;
+        mediumCounts[participantMedium] = currentCount + 1;
+
         try {
           const result = await deliverToParticipant(storage, msg.id, participant.id);
           totalProcessed++;

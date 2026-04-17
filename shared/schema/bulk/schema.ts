@@ -1,4 +1,4 @@
-import { pgTable, varchar, text, timestamp, jsonb, boolean, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, varchar, text, timestamp, jsonb, boolean, pgEnum, unique } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -10,7 +10,7 @@ export const bulkMessageStatusEnum = pgEnum("bulk_message_status", ["draft", "qu
 
 export const bulkMessages = pgTable("bulk_messages", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  medium: bulkMediumEnum("medium").notNull(),
+  medium: text("medium").array().notNull(),
   name: varchar("name").notNull(),
   status: bulkMessageStatusEnum("status").notNull().default("draft"),
   sendDate: timestamp("send_date"),
@@ -19,6 +19,8 @@ export const bulkMessages = pgTable("bulk_messages", {
 
 export const insertBulkMessageSchema = createInsertSchema(bulkMessages).omit({
   id: true,
+}).extend({
+  medium: z.array(z.enum(["sms", "email", "inapp", "postal"])).min(1).transform(arr => [...new Set(arr)]),
 });
 
 export type BulkMessage = typeof bulkMessages.$inferSelect;
@@ -108,11 +110,14 @@ export const bulkParticipants = pgTable("bulk_participants", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   messageId: varchar("message_id").notNull().references(() => bulkMessages.id, { onDelete: "cascade" }),
   contactId: varchar("contact_id").notNull().references(() => contacts.id, { onDelete: "cascade" }),
+  medium: varchar("medium").notNull(),
   commId: varchar("comm_id").references(() => comm.id, { onDelete: "set null" }),
   status: bulkParticipantStatusEnum("status").notNull().default("pending"),
   message: text("message"),
   data: jsonb("data"),
-});
+}, (table) => [
+  unique("bulk_participants_msg_contact_medium").on(table.messageId, table.contactId, table.medium),
+]);
 
 export const insertBulkParticipantSchema = createInsertSchema(bulkParticipants).omit({
   id: true,

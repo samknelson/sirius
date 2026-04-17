@@ -1,7 +1,7 @@
 import { createNoopValidator } from '../utils/validation';
 import { getClient } from '../transaction-context';
 import { bulkMessages, type BulkMessage, type InsertBulkMessage } from "../../../shared/schema/bulk/schema";
-import { eq, and, ilike, type SQL } from "drizzle-orm";
+import { eq, and, ilike, sql, type SQL } from "drizzle-orm";
 import type { StorageLoggingConfig } from "../middleware/logging";
 
 export const validate = createNoopValidator<InsertBulkMessage, BulkMessage>();
@@ -23,7 +23,7 @@ export function createBulkMessageStorage(): BulkMessageStorage {
         conditions.push(eq(bulkMessages.status, filters.status as "draft" | "queued" | "sent"));
       }
       if (filters?.medium) {
-        conditions.push(eq(bulkMessages.medium, filters.medium as "sms" | "email" | "inapp" | "postal"));
+        conditions.push(sql`${filters.medium} = ANY(${bulkMessages.medium})`);
       }
       if (filters?.name) {
         conditions.push(ilike(bulkMessages.name, `%${filters.name}%`));

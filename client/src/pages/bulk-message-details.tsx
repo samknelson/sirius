@@ -11,6 +11,7 @@ const mediumLabels: Record<string, string> = {
 
 function BulkMessageDetailsContent() {
   const { bulkMessage } = useBulkMessageLayout();
+  const media = Array.isArray(bulkMessage.medium) ? bulkMessage.medium : [bulkMessage.medium];
 
   return (
     <div className="space-y-6">
@@ -25,11 +26,13 @@ function BulkMessageDetailsContent() {
               <dd className="mt-1 text-sm" data-testid="text-bulk-detail-name">{bulkMessage.name}</dd>
             </div>
             <div>
-              <dt className="text-sm font-medium text-muted-foreground">Medium</dt>
-              <dd className="mt-1 text-sm" data-testid="text-bulk-detail-medium">
-                <Badge variant="outline">
-                  {mediumLabels[bulkMessage.medium] || bulkMessage.medium}
-                </Badge>
+              <dt className="text-sm font-medium text-muted-foreground">Media</dt>
+              <dd className="mt-1 text-sm flex flex-wrap gap-1" data-testid="text-bulk-detail-medium">
+                {media.map((m) => (
+                  <Badge key={m} variant="outline">
+                    {mediumLabels[m] || m}
+                  </Badge>
+                ))}
               </dd>
             </div>
             <div>

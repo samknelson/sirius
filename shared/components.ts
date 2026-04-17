@@ -102,6 +102,19 @@ export const componentRegistry: ComponentDefinition[] = [
     category: "ledger"
   },
   {
+    id: "ledger.payment.batch",
+    name: "Payment Batches",
+    description: "Batch creation and management of payments",
+    enabledByDefault: false,
+    category: "ledger",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/ledger/payment-batch/schema.ts",
+      tables: ["ledger_payment_batches", "ledger_payment_batch_assignments"]
+    }
+  },
+  {
     id: "cardcheck",
     name: "Card Check",
     description: "Worker cardcheck functionality",
@@ -462,6 +475,32 @@ export const componentRegistry: ComponentDefinition[] = [
     category: "dispatch",
   },
   {
+    id: "dispatch.job_group",
+    name: "Dispatch Job Groups",
+    description: "Grouping of dispatch jobs",
+    enabledByDefault: false,
+    category: "dispatch",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/dispatch/job-group-schema.ts",
+      tables: ["dispatch_job_group"]
+    }
+  },
+  {
+    id: "facility",
+    name: "Facilities",
+    description: "Facility records linked to contacts, optionally synced from external systems",
+    enabledByDefault: false,
+    category: "core",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/facility/schema.ts",
+      tables: ["facilities"]
+    }
+  },
+  {
     id: "debug",
     name: "Debug",
     description: "Debug tools and developer utilities",
@@ -495,6 +534,13 @@ export const componentRegistry: ComponentDefinition[] = [
     id: "sitespecific.freeman",
     name: "Freeman Customization",
     description: "Custom functionality for Freeman",
+    enabledByDefault: false,
+    category: "site-specific"
+  },
+  {
+    id: "sitespecific.t631.client",
+    name: "Teamsters 631 Client",
+    description: "Client connection to the Teamsters 631 site",
     enabledByDefault: false,
     category: "site-specific"
   },

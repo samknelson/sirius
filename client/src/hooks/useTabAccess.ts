@@ -430,3 +430,27 @@ export function useBulkMessageTabAccess(bulkMessageId: string | undefined, enabl
     enabled 
   });
 }
+
+export function useDispatchJobGroupTabAccess(groupId: string | undefined, enabled = true) {
+  return useTabAccess({ 
+    entityType: 'dispatch_job_group', 
+    entityId: groupId, 
+    enabled 
+  });
+}
+
+export function useLedgerPaymentBatchTabAccess(batchId: string | undefined, enabled = true) {
+  return useTabAccess({ 
+    entityType: 'ledger_payment_batch', 
+    entityId: batchId, 
+    enabled 
+  });
+}
+
+export function useFacilityTabAccess(facilityId: string | undefined, enabled = true) {
+  return useTabAccess({
+    entityType: 'facility',
+    entityId: facilityId,
+    enabled,
+  });
+}

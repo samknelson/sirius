@@ -199,6 +199,7 @@ const DispatchPluginsPage = lazy(() => import("@/pages/config/dispatch-plugins")
 const HtaHomeEmploymentStatusesPage = lazy(() => import("@/pages/config/hta-home-employment-statuses"));
 const EdlsSettingsPage = lazy(() => import("@/pages/config/edls/settings"));
 const EdlsTasksPage = lazy(() => import("@/pages/config/edls/tasks"));
+const T631FetchPage = lazy(() => import("@/pages/config/edls/t631-fetch"));
 const WsBundlesPage = lazy(() => import("@/pages/config/ws/bundles"));
 const WsClientsPage = lazy(() => import("@/pages/config/ws/clients"));
 const WsClientSettingsPage = lazy(() => import("@/pages/config/ws/client-settings"));
@@ -224,6 +225,19 @@ const DispatchJobNewPage = lazy(() => import("@/pages/dispatch/job-new"));
 const DispatchJobRunPage = lazy(() => import("@/pages/dispatch/job-run"));
 const DispatchJobRunSettingsPage = lazy(() => import("@/pages/dispatch/job-run-settings"));
 const DispatchJobRunBatchPage = lazy(() => import("@/pages/dispatch/job-run-batch"));
+const DispatchJobGroupListPage = lazy(() => import("@/pages/dispatch/job-group-list"));
+const DispatchJobGroupDetailsPage = lazy(() => import("@/pages/dispatch/job-group-details"));
+const DispatchJobGroupEditPage = lazy(() => import("@/pages/dispatch/job-group-edit"));
+const DispatchJobGroupLogsPage = lazy(() => import("@/pages/dispatch/job-group-logs"));
+const DispatchJobGroupNewPage = lazy(() => import("@/pages/dispatch/job-group-new"));
+const FacilityListPage = lazy(() => import("@/pages/facility/list"));
+const FacilityNewPage = lazy(() => import("@/pages/facility/new"));
+const FacilityDetailsPage = lazy(() => import("@/pages/facility/details"));
+const FacilityEditPage = lazy(() => import("@/pages/facility/edit"));
+const FacilityEmailPage = lazy(() => import("@/pages/facility/email"));
+const FacilityAddressesPage = lazy(() => import("@/pages/facility/addresses"));
+const FacilityPhoneNumbersPage = lazy(() => import("@/pages/facility/phone-numbers"));
+const FacilityLogsPage = lazy(() => import("@/pages/facility/logs"));
 const DispatchDetailsPage = lazy(() => import("@/pages/dispatch/dispatch-details"));
 const DispatchEditPage = lazy(() => import("@/pages/dispatch/dispatch-edit"));
 const DispatchManagePage = lazy(() => import("@/pages/dispatch/dispatch-manage"));
@@ -252,6 +266,11 @@ const AccountPayments = lazy(() => import("@/pages/config/ledger/account-payment
 const AccountTransactions = lazy(() => import("@/pages/config/ledger/account-transactions"));
 const AccountParticipants = lazy(() => import("@/pages/account-participants"));
 const AccountSettings = lazy(() => import("@/pages/config/ledger/account-settings"));
+const AccountBatches = lazy(() => import("@/pages/config/ledger/account-batches"));
+const PaymentBatchDetailsPage = lazy(() => import("@/pages/ledger/payment-batch-details"));
+const PaymentBatchEditPage = lazy(() => import("@/pages/ledger/payment-batch-edit"));
+const PaymentBatchPaymentsPage = lazy(() => import("@/pages/ledger/payment-batch-payments"));
+const PaymentBatchLogsPage = lazy(() => import("@/pages/ledger/payment-batch-logs"));
 const SiteInformation = lazy(() => import("@/pages/site-information"));
 const TerminologyConfigPage = lazy(() => import("@/pages/config/terminology"));
 const PolicyView = lazy(() => import("@/pages/policy-view"));
@@ -2071,6 +2090,16 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/config/edls/t631-fetch">
+        <ProtectedRoute permission="admin" componentAll={["edls", "sitespecific.t631.client"]}>
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <T631FetchPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/config/ws/bundles">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
@@ -2275,6 +2304,103 @@ function Router() {
         <ProtectedRoute tabId="eligible-workers-check" entityType="dispatch_job">
           <AuthenticatedLayout>
             <DispatchJobEligibleWorkersCheckPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/dispatch/job_groups">
+        <ProtectedRoute policy="staff" component="dispatch.job_group">
+          <AuthenticatedLayout>
+            <DispatchJobGroupListPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/dispatch/job_group/new">
+        <ProtectedRoute policy="staff" component="dispatch.job_group">
+          <AuthenticatedLayout>
+            <DispatchJobGroupNewPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/dispatch/job_group/:id">
+        <ProtectedRoute tabId="details" entityType="dispatch_job_group">
+          <AuthenticatedLayout>
+            <DispatchJobGroupDetailsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/dispatch/job_group/:id/edit">
+        <ProtectedRoute tabId="edit" entityType="dispatch_job_group">
+          <AuthenticatedLayout>
+            <DispatchJobGroupEditPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/dispatch/job_group/:id/logs">
+        <ProtectedRoute tabId="logs" entityType="dispatch_job_group">
+          <AuthenticatedLayout>
+            <DispatchJobGroupLogsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/facilities">
+        <ProtectedRoute component="facility" policy="facility.view">
+          <AuthenticatedLayout>
+            <FacilityListPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/facilities/new">
+        <ProtectedRoute component="facility" policy="facility.edit">
+          <AuthenticatedLayout>
+            <FacilityNewPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/facility/:id">
+        <ProtectedRoute component="facility" tabId="details" entityType="facility">
+          <AuthenticatedLayout>
+            <FacilityDetailsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/facility/:id/edit">
+        <ProtectedRoute component="facility" tabId="edit" entityType="facility">
+          <AuthenticatedLayout>
+            <FacilityEditPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/facility/:id/email">
+        <ProtectedRoute component="facility" tabId="email" entityType="facility">
+          <AuthenticatedLayout>
+            <FacilityEmailPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/facility/:id/addresses">
+        <ProtectedRoute component="facility" tabId="addresses" entityType="facility">
+          <AuthenticatedLayout>
+            <FacilityAddressesPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/facility/:id/phone-numbers">
+        <ProtectedRoute component="facility" tabId="phone-numbers" entityType="facility">
+          <AuthenticatedLayout>
+            <FacilityPhoneNumbersPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/facility/:id/logs">
+        <ProtectedRoute component="facility" tabId="logs" entityType="facility">
+          <AuthenticatedLayout>
+            <FacilityLogsPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -2569,7 +2695,48 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      {/* Payment batch detail pages */}
+      <Route path="/ledger/payment-batch/:id/edit">
+        <ProtectedRoute tabId="edit" entityType="ledger_payment_batch">
+          <AuthenticatedLayout>
+            <PaymentBatchEditPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/ledger/payment-batch/:id/payments">
+        <ProtectedRoute tabId="payments" entityType="ledger_payment_batch">
+          <AuthenticatedLayout>
+            <PaymentBatchPaymentsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/ledger/payment-batch/:id/logs">
+        <ProtectedRoute tabId="logs" entityType="ledger_payment_batch">
+          <AuthenticatedLayout>
+            <PaymentBatchLogsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/ledger/payment-batch/:id">
+        <ProtectedRoute tabId="details" entityType="ledger_payment_batch">
+          <AuthenticatedLayout>
+            <PaymentBatchDetailsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       {/* Ledger account detail pages */}
+      <Route path="/ledger/accounts/:id/batches">
+        <ProtectedRoute tabId="batches" entityType="ledger_account">
+          <AuthenticatedLayout>
+            <AccountBatches />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/ledger/accounts/:id/payments">
         <ProtectedRoute tabId="payments" entityType="ledger_account">
           <AuthenticatedLayout>

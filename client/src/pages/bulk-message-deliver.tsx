@@ -20,7 +20,18 @@ import {
   Users,
   RotateCcw,
   Pause,
+  Mail,
+  MessageSquare,
+  MapPin,
+  Bell,
 } from "lucide-react";
+
+interface MediumStats {
+  total: number;
+  pending: number;
+  sendFailed: number;
+  seeComm: number;
+}
 
 interface DeliveryStats {
   total: number;
@@ -28,6 +39,7 @@ interface DeliveryStats {
   sendFailed: number;
   seeComm: number;
   commBreakdown: Record<string, number>;
+  byMedium: Record<string, MediumStats>;
 }
 
 const commIcons: Record<string, typeof CheckCircle> = {
@@ -42,6 +54,20 @@ const commColors: Record<string, string> = {
   delivered: "text-green-500",
   failed: "text-red-500",
   sending: "text-yellow-500",
+};
+
+const mediumIcons: Record<string, typeof Mail> = {
+  email: Mail,
+  sms: MessageSquare,
+  postal: MapPin,
+  inapp: Bell,
+};
+
+const mediumLabels: Record<string, string> = {
+  email: "Email",
+  sms: "SMS",
+  postal: "Postal",
+  inapp: "In-App",
 };
 
 function DeliveryStatsCard({ messageId }: { messageId: string }) {
@@ -65,6 +91,7 @@ function DeliveryStatsCard({ messageId }: { messageId: string }) {
   const commEntries = Object.entries(stats.commBreakdown).sort(
     ([a], [b]) => a.localeCompare(b)
   );
+  const byMediumEntries = Object.entries(stats.byMedium || {});
 
   return (
     <Card data-testid="card-delivery-stats">
@@ -101,6 +128,48 @@ function DeliveryStatsCard({ messageId }: { messageId: string }) {
               style={{ width: `${Math.round((processed / stats.total) * 100)}%` }}
             />
           </div>
+        )}
+
+        {byMediumEntries.length > 1 && (
+          <>
+            <Separator />
+            <div className="space-y-3">
+              <p className="text-sm font-medium">By Medium</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {byMediumEntries.map(([medium, ms]) => {
+                  const Icon = mediumIcons[medium] || Mail;
+                  const label = mediumLabels[medium] || medium;
+                  const mProcessed = ms.seeComm + ms.sendFailed;
+                  return (
+                    <div
+                      key={medium}
+                      className="border rounded-md p-3 space-y-2"
+                      data-testid={`stat-medium-${medium}`}
+                    >
+                      <div className="flex items-center gap-2 text-sm font-medium">
+                        <Icon className="h-4 w-4" />
+                        {label}
+                        <Badge variant="secondary" className="ml-auto text-xs">{ms.total}</Badge>
+                      </div>
+                      <div className="grid grid-cols-3 gap-1 text-xs text-muted-foreground">
+                        <span>Pending: {ms.pending}</span>
+                        <span className="text-blue-500">Delivered: {ms.seeComm}</span>
+                        <span className="text-red-500">Failed: {ms.sendFailed}</span>
+                      </div>
+                      {ms.total > 0 && (
+                        <div className="w-full bg-muted rounded-full h-1.5">
+                          <div
+                            className="bg-primary rounded-full h-1.5 transition-all"
+                            style={{ width: `${Math.round((mProcessed / ms.total) * 100)}%` }}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </>
         )}
 
         {commEntries.length > 0 && (

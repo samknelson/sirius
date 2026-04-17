@@ -39,6 +39,7 @@ import { registerLedgerStripeRoutes } from "./modules/ledger/stripe";
 import { registerLedgerAccountRoutes } from "./modules/ledger/accounts";
 import { registerLedgerEaRoutes } from "./modules/ledger/ea";
 import { registerLedgerPaymentRoutes } from "./modules/ledger/payments";
+import { registerLedgerPaymentBatchRoutes } from "./modules/ledger/payment-batches";
 import { registerAccessPolicyRoutes } from "./modules/access-policies";
 import { registerLogRoutes } from "./modules/logs";
 import { registerWorkerWshRoutes } from "./modules/worker-wsh";
@@ -73,6 +74,8 @@ import { registerSessionRoutes } from "./modules/sessions";
 import { registerFloodEventRoutes } from "./modules/flood-events";
 import { registerEventsRoutes } from "./modules/events";
 import { registerDispatchJobsRoutes } from "./modules/dispatch/jobs";
+import { registerDispatchJobGroupsRoutes } from "./modules/dispatch/job-groups";
+import { registerFacilityRoutes } from "./modules/facility/facilities";
 import { registerDispatchesRoutes } from "./modules/dispatch/dispatches";
 import { registerWorkerDispatchStatusRoutes } from "./modules/worker-dispatch-status";
 import { registerWorkerDispatchDncRoutes } from "./modules/worker-dispatch-dnc";
@@ -92,6 +95,7 @@ import { registerBtuSigImportRoutes } from "./modules/sitespecific/btu/sig-impor
 import { registerBtuScraperImportRoutes } from "./modules/sitespecific/btu/scraper-import";
 import { registerBtuBuildingRepImportRoutes } from "./modules/sitespecific/btu/building-rep-import";
 import { registerBtuPoliticalRoutes } from "./modules/sitespecific/btu/political";
+import { registerT631ClientFetchRoutes } from "./modules/sitespecific/t631/client/fetch";
 import { registerEdlsSheetsRoutes } from "./modules/edls/sheets";
 import { registerEdlsTasksRoutes } from "./modules/edls/tasks";
 import { registerWebServiceBundle } from "./modules/webservices";
@@ -325,6 +329,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register ledger/payments routes
   registerLedgerPaymentRoutes(app);
+
+  // Register ledger/payment-batches routes
+  registerLedgerPaymentBatchRoutes(app);
 
   // Register log management routes
   registerLogRoutes(app, requireAuth, requirePermission, requireAccess);
@@ -1645,6 +1652,10 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Register dispatch jobs routes
   registerDispatchJobsRoutes(app, requireAuth, requirePermission);
 
+  // Register dispatch job groups routes
+  registerDispatchJobGroupsRoutes(app, requireAuth, requirePermission);
+  registerFacilityRoutes(app, requireAuth, requirePermission);
+
   // Register dispatches routes
   registerDispatchesRoutes(app, requireAuth, requirePermission);
 
@@ -1682,6 +1693,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register BTU Political Profile routes
   registerBtuPoliticalRoutes(app, requireAuth, requirePermission);
+
+  // Register T631 Client routes
+  registerT631ClientFetchRoutes(app, requireAuth, requirePermission);
 
   // Register HTA routes
   registerHtaRoutes(app, requireAuth, requirePermission);

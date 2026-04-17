@@ -21,9 +21,10 @@ import { WinstonLog } from "@/lib/system-types";
 interface ActivityLogViewProps {
   hostEntityId: string;
   title?: string;
+  endpoint?: string;
 }
 
-export function ActivityLogView({ hostEntityId, title = "Activity Logs" }: ActivityLogViewProps) {
+export function ActivityLogView({ hostEntityId, title = "Activity Logs", endpoint }: ActivityLogViewProps) {
   const [moduleFilter, setModuleFilter] = useState<string>("");
   const [operationFilter, setOperationFilter] = useState<string>("");
   const [startDate, setStartDate] = useState<string>("");
@@ -32,16 +33,20 @@ export function ActivityLogView({ hostEntityId, title = "Activity Logs" }: Activ
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
 
   const params = new URLSearchParams();
-  params.append("hostEntityId", hostEntityId);
+  if (!endpoint) {
+    params.append("hostEntityId", hostEntityId);
+  }
   if (moduleFilter) params.append("module", moduleFilter);
   if (operationFilter) params.append("operation", operationFilter);
   if (startDate) params.append("startDate", startDate);
   if (endDate) params.append("endDate", endDate);
 
+  const baseUrl = endpoint ?? "/api/logs/by-entity";
   const { data: logs = [], isLoading } = useQuery<WinstonLog[]>({
-    queryKey: ["/api/logs/by-entity", hostEntityId, moduleFilter, operationFilter, startDate, endDate],
+    queryKey: [baseUrl, hostEntityId, moduleFilter, operationFilter, startDate, endDate],
     queryFn: async () => {
-      const url = `/api/logs/by-entity?${params.toString()}`;
+      const qs = params.toString();
+      const url = qs ? `${baseUrl}?${qs}` : baseUrl;
       const response = await fetch(url);
       if (!response.ok) {
         throw new Error("Failed to fetch logs");
