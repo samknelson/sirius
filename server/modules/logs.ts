@@ -69,21 +69,25 @@ export function registerLogRoutes(
     }
 
     // Resolve entity type and pick the matching policy.
-    const worker = await storage.workers.getWorker(hostEntityId);
+    const safeGet = async <T>(fn: () => Promise<T>): Promise<T | null> => {
+      try { return await fn(); } catch { return null; }
+    };
+
+    const worker = await safeGet(() => storage.workers.getWorker(hostEntityId));
     if (worker) {
       (req as any).logHostIds = worker.contactId ? [worker.id, worker.contactId] : [worker.id];
       return requireAccess('worker.view', () => worker.id)(req, res, next);
     }
 
-    const facility = await storage.facilities.get(hostEntityId);
+    const facility = await safeGet(() => storage.facilities.get(hostEntityId));
     if (facility) {
       (req as any).logHostIds = facility.contactId ? [facility.id, facility.contactId] : [facility.id];
       return requireAccess('facility.view', () => facility.id)(req, res, next);
     }
 
-    const employer = await storage.employers.getEmployer(hostEntityId);
+    const employer = await safeGet(() => storage.employers.getEmployer(hostEntityId));
     if (employer) {
-      const employerContacts = await storage.employerContacts.listByEmployer(employer.id);
+      const employerContacts = await safeGet(() => storage.employerContacts.listByEmployer(employer.id)) ?? [];
       (req as any).logHostIds = [employer.id, ...employerContacts.map((ec) => ec.contactId)];
       return requireAccess('employer.manage', () => employer.id)(req, res, next);
     }
