@@ -8,27 +8,33 @@ import type { FacilityFilters } from "../../storage/facility/facilities";
 // Note: `siriusId` and `data` are sync-only fields, populated programmatically
 // by backend processes (e.g. T631 sync). They are intentionally NOT part of
 // user-editable create/update payloads.
-const createFacilitySchema = z.object({
-  name: z.string().trim().min(1, "Facility name is required"),
-});
+const createFacilitySchema = z
+  .object({
+    name: z.string().trim().min(1, "Facility name is required"),
+  })
+  .strict();
 
-const nameComponentsSchema = z.object({
-  title: z.string().optional(),
-  given: z.string().optional(),
-  middle: z.string().optional(),
-  family: z.string().optional(),
-  generational: z.string().optional(),
-  credentials: z.string().optional(),
-});
+const nameComponentsSchema = z
+  .object({
+    title: z.string().optional(),
+    given: z.string().optional(),
+    middle: z.string().optional(),
+    family: z.string().optional(),
+    generational: z.string().optional(),
+    credentials: z.string().optional(),
+  })
+  .strict();
 
-const updateFacilitySchema = z.object({
-  name: z.string().trim().min(1).optional(),
-  nameComponents: nameComponentsSchema.optional(),
-  email: z
-    .union([z.string().email(), z.literal(""), z.null()])
-    .transform((v) => (v === "" ? null : v))
-    .optional(),
-});
+const updateFacilitySchema = z
+  .object({
+    name: z.string().trim().min(1).optional(),
+    nameComponents: nameComponentsSchema.optional(),
+    email: z
+      .union([z.string().email(), z.literal(""), z.null()])
+      .transform((v) => (v === "" ? null : v))
+      .optional(),
+  })
+  .strict();
 
 export function registerFacilityRoutes(
   app: Express,

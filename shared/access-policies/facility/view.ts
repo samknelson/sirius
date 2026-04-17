@@ -3,8 +3,7 @@ import { definePolicy, registerPolicy } from '../index';
 const policy = definePolicy({
   id: 'facility.view',
   description: 'View facility details',
-  scope: 'entity',
-  entityType: 'facility',
+  scope: 'route',
   component: 'facility',
   rules: [{ authenticated: true }],
 });

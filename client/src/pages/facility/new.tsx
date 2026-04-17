@@ -16,19 +16,16 @@ export default function FacilityNewPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
-  const [formData, setFormData] = useState({ name: "", siriusId: "" });
+  const [name, setName] = useState("");
 
   const createMutation = useMutation({
-    mutationFn: async (data: typeof formData) =>
-      apiRequest("POST", "/api/facilities", {
-        name: data.name,
-        siriusId: data.siriusId || null,
-      }),
+    mutationFn: async (facilityName: string) =>
+      apiRequest("POST", "/api/facilities", { name: facilityName }),
     onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: ["/api/facilities"] });
       const facility = response as Facility;
       toast({ title: "Facility created", description: `"${facility.name}" has been created.` });
-      setLocation(`/facilities/${facility.id}`);
+      setLocation(`/facility/${facility.id}`);
     },
     onError: (error: Error) => {
       toast({ title: "Failed to create", description: error?.message || "An error occurred", variant: "destructive" });
@@ -37,11 +34,12 @@ export default function FacilityNewPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.name.trim()) {
+    const trimmed = name.trim();
+    if (!trimmed) {
       toast({ title: "Validation error", description: "Name is required.", variant: "destructive" });
       return;
     }
-    createMutation.mutate(formData);
+    createMutation.mutate(trimmed);
   };
 
   return (
@@ -66,23 +64,13 @@ export default function FacilityNewPage() {
               <Label htmlFor="name">Name</Label>
               <Input
                 id="name"
-                value={formData.name}
-                onChange={(e) => setFormData((p) => ({ ...p, name: e.target.value }))}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
                 data-testid="input-create-name"
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="siriusId">Sirius ID</Label>
-              <Input
-                id="siriusId"
-                value={formData.siriusId}
-                onChange={(e) => setFormData((p) => ({ ...p, siriusId: e.target.value }))}
-                placeholder="Optional external identifier"
-                data-testid="input-create-sirius-id"
-              />
-            </div>
             <div className="flex gap-3 pt-4">
-              <Button type="submit" disabled={createMutation.isPending || !formData.name} data-testid="button-create">
+              <Button type="submit" disabled={createMutation.isPending || !name.trim()} data-testid="button-create">
                 {createMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                 Create Facility
               </Button>

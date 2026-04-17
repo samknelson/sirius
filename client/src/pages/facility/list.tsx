@@ -112,7 +112,7 @@ export default function FacilityListPage() {
                   {data.data.map((f) => (
                     <tr key={f.id} className="border-b last:border-0 hover:bg-muted/30" data-testid={`row-facility-${f.id}`}>
                       <td className="p-3">
-                        <Link href={`/facilities/${f.id}`} className="text-primary hover:underline font-medium" data-testid={`link-facility-${f.id}`}>
+                        <Link href={`/facility/${f.id}`} className="text-primary hover:underline font-medium" data-testid={`link-facility-${f.id}`}>
                           {f.name}
                         </Link>
                       </td>

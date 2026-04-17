@@ -2362,42 +2362,42 @@ function Router() {
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
-      <Route path="/facilities/:id">
+      <Route path="/facility/:id">
         <ProtectedRoute component="facility" tabId="details" entityType="facility">
           <AuthenticatedLayout>
             <FacilityDetailsPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
-      <Route path="/facilities/:id/edit">
+      <Route path="/facility/:id/edit">
         <ProtectedRoute component="facility" tabId="edit" entityType="facility">
           <AuthenticatedLayout>
             <FacilityEditPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
-      <Route path="/facilities/:id/email">
+      <Route path="/facility/:id/email">
         <ProtectedRoute component="facility" tabId="email" entityType="facility">
           <AuthenticatedLayout>
             <FacilityEmailPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
-      <Route path="/facilities/:id/addresses">
+      <Route path="/facility/:id/addresses">
         <ProtectedRoute component="facility" tabId="addresses" entityType="facility">
           <AuthenticatedLayout>
             <FacilityAddressesPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
-      <Route path="/facilities/:id/phone-numbers">
+      <Route path="/facility/:id/phone-numbers">
         <ProtectedRoute component="facility" tabId="phone-numbers" entityType="facility">
           <AuthenticatedLayout>
             <FacilityPhoneNumbersPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
-      <Route path="/facilities/:id/logs">
+      <Route path="/facility/:id/logs">
         <ProtectedRoute component="facility" tabId="logs" entityType="facility">
           <AuthenticatedLayout>
             <FacilityLogsPage />
