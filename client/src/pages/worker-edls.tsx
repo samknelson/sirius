@@ -25,8 +25,7 @@ function WorkerEdlsContent() {
 
   const setActive = useMutation({
     mutationFn: async (active: boolean) => {
-      const res = await apiRequest("PUT", `/api/workers/${worker.id}/edls`, { active });
-      return res.json();
+      return apiRequest("PUT", `/api/workers/${worker.id}/edls`, { active });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/workers", worker.id, "edls"] });
