@@ -46,12 +46,20 @@ export interface TokenDefinition {
   resolve: (data: TokenSourceData) => string | number | null | undefined;
 }
 
-function fullName(given?: string | null, family?: string | null, display?: string | null): string {
+function fullName(
+  given?: string | null,
+  family?: string | null,
+  display?: string | null,
+): string {
   return (display || `${given || ""} ${family || ""}`.trim() || "").trim();
 }
 
 function fmtDate(d: Date): string {
-  return d.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
+  return d.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
 }
 
 export const TOKEN_REGISTRY: TokenDefinition[] = [
@@ -78,9 +86,10 @@ export const TOKEN_REGISTRY: TokenDefinition[] = [
     scope: "contact",
     label: "Contact full name",
     description: "Display name on the contact record",
-    defaultValue: "Friend",
+    defaultValue: "Member",
     example: "Jamie Rivera",
-    resolve: (d) => fullName(d.contact?.given, d.contact?.family, d.contact?.displayName),
+    resolve: (d) =>
+      fullName(d.contact?.given, d.contact?.family, d.contact?.displayName),
   },
   {
     id: "contact.email",
@@ -116,11 +125,12 @@ export const TOKEN_REGISTRY: TokenDefinition[] = [
     description: "Full display name when the contact is a worker",
     defaultValue: "Friend",
     example: "Jamie Rivera",
-    resolve: (d) => fullName(
-      d.worker?.given || d.contact?.given,
-      d.worker?.family || d.contact?.family,
-      d.contact?.displayName,
-    ),
+    resolve: (d) =>
+      fullName(
+        d.worker?.given || d.contact?.given,
+        d.worker?.family || d.contact?.family,
+        d.contact?.displayName,
+      ),
   },
   {
     id: "worker.jobTitle",
@@ -138,13 +148,15 @@ export const TOKEN_REGISTRY: TokenDefinition[] = [
     description: "Sirius worker ID number",
     defaultValue: "",
     example: "10241",
-    resolve: (d) => d.worker?.siriusId == null ? "" : String(d.worker.siriusId),
+    resolve: (d) =>
+      d.worker?.siriusId == null ? "" : String(d.worker.siriusId),
   },
   {
     id: "employer.name",
     scope: "employer",
     label: "Employer name",
-    description: "Name of the worker's home employer (or first linked employer)",
+    description:
+      "Name of the worker's home employer (or first linked employer)",
     defaultValue: "",
     example: "Acme Construction",
     resolve: (d) => d.employer?.name,
@@ -169,19 +181,21 @@ export const TOKEN_REGISTRY: TokenDefinition[] = [
   },
 ];
 
-export const TOKEN_REGISTRY_MAP: Record<string, TokenDefinition> = TOKEN_REGISTRY.reduce(
-  (acc, t) => {
-    acc[t.id] = t;
-    return acc;
-  },
-  {} as Record<string, TokenDefinition>,
-);
+export const TOKEN_REGISTRY_MAP: Record<string, TokenDefinition> =
+  TOKEN_REGISTRY.reduce(
+    (acc, t) => {
+      acc[t.id] = t;
+      return acc;
+    },
+    {} as Record<string, TokenDefinition>,
+  );
 
 export function isKnownToken(id: string): boolean {
   return Object.prototype.hasOwnProperty.call(TOKEN_REGISTRY_MAP, id);
 }
 
-const TOKEN_PATTERN = /\{\{\s*([a-zA-Z][a-zA-Z0-9_]*(?:\.[a-zA-Z][a-zA-Z0-9_]*)*)\s*\}\}/g;
+const TOKEN_PATTERN =
+  /\{\{\s*([a-zA-Z][a-zA-Z0-9_]*(?:\.[a-zA-Z][a-zA-Z0-9_]*)*)\s*\}\}/g;
 
 export function extractTokenIds(template: string | null | undefined): string[] {
   if (!template) return [];
@@ -192,7 +206,9 @@ export function extractTokenIds(template: string | null | undefined): string[] {
   return Array.from(found);
 }
 
-export function findUnknownTokenIds(template: string | null | undefined): string[] {
+export function findUnknownTokenIds(
+  template: string | null | undefined,
+): string[] {
   return extractTokenIds(template).filter((id) => !isKnownToken(id));
 }
 

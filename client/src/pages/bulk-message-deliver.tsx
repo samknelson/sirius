@@ -8,8 +8,19 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { TokenCoverageCard, type TokenCoverageResponse } from "@/components/bulk/TokenCoverageCard";
 import {
   Send,
   Loader2,
@@ -218,6 +229,11 @@ function BulkMessageDeliverContent() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [sendDate, setSendDate] = useState("");
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
+  const { data: coverage } = useQuery<TokenCoverageResponse>({
+    queryKey: ["/api/bulk-messages", bulkMessage.id, "token-coverage"],
+  });
 
   const statusMutation = useMutation({
     mutationFn: (update: { status: string; sendDate?: string | null }) => {
@@ -226,6 +242,7 @@ function BulkMessageDeliverContent() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/bulk-messages", bulkMessage.id] });
       queryClient.invalidateQueries({ queryKey: ["/api/bulk-messages", bulkMessage.id, "delivery-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bulk-messages", bulkMessage.id, "token-coverage"] });
       toast({ title: "Status updated", description: "The message status has been updated." });
     },
     onError: (error: Error) => {
@@ -233,11 +250,27 @@ function BulkMessageDeliverContent() {
     },
   });
 
-  const handleQueue = () => {
+  const missingTokens = (coverage?.perToken || []).filter((t) => t.missingCount > 0);
+  const totalMissing = missingTokens.reduce((sum, t) => sum + t.missingCount, 0);
+
+  const queueNow = () => {
     statusMutation.mutate({
       status: "queued",
       sendDate: sendDate || null,
     });
+  };
+
+  const handleQueue = () => {
+    if (missingTokens.length > 0) {
+      setConfirmOpen(true);
+      return;
+    }
+    queueNow();
+  };
+
+  const handleConfirmQueue = () => {
+    setConfirmOpen(false);
+    queueNow();
   };
 
   const handleCancel = () => {
@@ -378,7 +411,40 @@ function BulkMessageDeliverContent() {
         </CardContent>
       </Card>
 
+      <TokenCoverageCard messageId={bulkMessage.id} />
+
       <DeliveryStatsCard messageId={bulkMessage.id} />
+
+      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <AlertDialogContent data-testid="dialog-confirm-missing-tokens">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Some recipients are missing token data</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2">
+                <p>
+                  {totalMissing} recipient value{totalMissing === 1 ? " is" : "s are"} missing across{" "}
+                  {missingTokens.length} token{missingTokens.length === 1 ? "" : "s"}. Affected recipients
+                  will see each token's default value.
+                </p>
+                <ul className="text-sm list-disc pl-5">
+                  {missingTokens.map((t) => (
+                    <li key={t.tokenId} data-testid={`text-confirm-missing-${t.tokenId}`}>
+                      <code className="text-xs">{`{{${t.tokenId}}}`}</code> — {t.missingCount} missing
+                      {t.defaultValue ? ` (default: "${t.defaultValue}")` : " (no default)"}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-confirm-cancel">Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmQueue} data-testid="button-confirm-send-anyway">
+              Queue anyway
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -8,14 +8,14 @@ import {
   insertBulkMessagesInappSchema,
   bulkParticipants,
 } from "../../../shared/schema/bulk/schema";
-import { contacts, workers, comm, phoneNumbers, contactPostal } from "../../../shared/schema";
+import { contacts, workers, employers, employerContacts, comm, phoneNumbers, contactPostal } from "../../../shared/schema";
 import { eq, or, ilike, sql, inArray, and } from "drizzle-orm";
 import { getClient, runInTransaction } from "../../storage/transaction-context";
 import { createBulkParticipantStorage } from "../../storage/bulk/participants";
 import { deliverToContact, deliverToParticipant, resolveAddressForMedium } from "./deliver";
 import { storageLogger } from "../../logger";
 import { resolveContactLinks, resolveContactLinksForMany } from "../contact-links";
-import { TOKEN_REGISTRY, renderTemplate, extractTokenIds, findUnknownTokenIds, buildSampleContext } from "../../../shared/bulk-tokens";
+import { TOKEN_REGISTRY, TOKEN_REGISTRY_MAP, renderTemplate, extractTokenIds, findUnknownTokenIds, isKnownToken, buildSampleContext, buildContextFromSources, type TokenSourceData } from "../../../shared/bulk-tokens";
 import { buildRecipientContext, detectAudienceScopes } from "./token-context";
 type RequireAccess = (policy: string) => (req: Request, res: Response, next: () => void) => void;
 type RequireAuth = (req: Request, res: Response, next: () => void) => void;
@@ -741,6 +741,187 @@ export function registerBulkMessageRoutes(
       res.json({ tokens, scopes: Array.from(scopes) });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Failed to load tokens";
+      res.status(500).json({ message });
+    }
+  });
+
+  // Returns per-token coverage across this message's participants:
+  // for every token used in any channel template, how many distinct
+  // recipients are missing a value. Used by the deliver page to warn
+  // the author before they queue the message.
+  app.get("/api/bulk-messages/:id/token-coverage", requireAuth, requireAccess('bulk.edit'), async (req, res) => {
+    try {
+      const bulk = await storage.bulkMessages.getById(req.params.id);
+      if (!bulk) {
+        return res.status(404).json({ message: "Bulk message not found" });
+      }
+
+      const templates: string[] = [];
+      const email = await storage.bulkMessagesEmail.getByBulkId(bulk.id);
+      if (email) templates.push(email.subject || "", email.bodyText || "", email.bodyHtml || "");
+      const sms = await storage.bulkMessagesSms.getByBulkId(bulk.id);
+      if (sms) templates.push(sms.body || "");
+      const inapp = await storage.bulkMessagesInapp.getByBulkId(bulk.id);
+      if (inapp) templates.push(inapp.title || "", inapp.body || "", inapp.linkLabel || "");
+      const postal = await storage.bulkMessagesPostal.getByBulkId(bulk.id);
+      if (postal) templates.push(postal.description || "");
+
+      const tokenIds = Array.from(new Set(
+        templates.flatMap((t) => extractTokenIds(t)).filter((id) => isKnownToken(id))
+      ));
+
+      const participants = await storage.bulkParticipants.getByMessageId(req.params.id);
+      const contactIds = Array.from(new Set(
+        participants.map((p) => p.contactId).filter(Boolean) as string[]
+      ));
+
+      if (tokenIds.length === 0 || contactIds.length === 0) {
+        return res.json({
+          totalRecipients: contactIds.length,
+          perToken: tokenIds.map((id) => {
+            const def = TOKEN_REGISTRY_MAP[id];
+            return {
+              tokenId: id,
+              label: def?.label || id,
+              defaultValue: def?.defaultValue || "",
+              missingCount: 0,
+              missingSample: [] as { contactId: string; name: string }[],
+            };
+          }),
+        });
+      }
+
+      const db = getClient();
+
+      // Batch-load every data source once instead of per-recipient.
+      const contactRows = await db
+        .select({
+          id: contacts.id,
+          given: contacts.given,
+          family: contacts.family,
+          displayName: contacts.displayName,
+          email: contacts.email,
+        })
+        .from(contacts)
+        .where(inArray(contacts.id, contactIds));
+      const contactById = new Map(contactRows.map((c) => [c.id, c]));
+      const nameById = new Map(
+        contactRows.map((c) => [c.id, c.displayName || `${c.given || ''} ${c.family || ''}`.trim() || c.id]),
+      );
+
+      const workerRows = await db
+        .select({
+          contactId: workers.contactId,
+          id: workers.id,
+          jobTitle: workers.denormJobTitle,
+          siriusId: workers.siriusId,
+          homeEmployerId: workers.denormHomeEmployerId,
+          employerIds: workers.denormEmployerIds,
+        })
+        .from(workers)
+        .where(inArray(workers.contactId, contactIds));
+      const workerByContactId = new Map(workerRows.map((w) => [w.contactId, w]));
+
+      // Collect all employer ids the workers reference, then batch-load.
+      const workerEmployerIds = Array.from(new Set(
+        workerRows
+          .map((w) => w.homeEmployerId || (w.employerIds && w.employerIds[0]) || null)
+          .filter((id): id is string => !!id),
+      ));
+
+      // Fallback employer-contact links for contacts without a worker employer.
+      const contactsNeedingEmployerLink = contactIds.filter((cid) => {
+        const w = workerByContactId.get(cid);
+        if (!w) return true;
+        return !(w.homeEmployerId || (w.employerIds && w.employerIds[0]));
+      });
+      const ecRows = contactsNeedingEmployerLink.length > 0
+        ? await db
+            .select({
+              contactId: employerContacts.contactId,
+              employerId: employerContacts.employerId,
+            })
+            .from(employerContacts)
+            .where(inArray(employerContacts.contactId, contactsNeedingEmployerLink))
+        : [];
+      const employerLinkByContactId = new Map<string, string>();
+      for (const r of ecRows) {
+        if (!employerLinkByContactId.has(r.contactId)) {
+          employerLinkByContactId.set(r.contactId, r.employerId);
+        }
+      }
+
+      const allEmployerIds = Array.from(new Set([
+        ...workerEmployerIds,
+        ...employerLinkByContactId.values(),
+      ]));
+      const employerRows = allEmployerIds.length > 0
+        ? await db
+            .select({ id: employers.id, name: employers.name })
+            .from(employers)
+            .where(inArray(employers.id, allEmployerIds))
+        : [];
+      const employerById = new Map(employerRows.map((e) => [e.id, e]));
+
+      const now = new Date();
+      const missing: Record<string, { contactId: string; name: string }[]> = {};
+      for (const id of tokenIds) missing[id] = [];
+
+      for (const cid of contactIds) {
+        const data: TokenSourceData = { now };
+        const c = contactById.get(cid);
+        if (c) {
+          data.contact = {
+            id: c.id,
+            given: c.given ?? null,
+            family: c.family ?? null,
+            displayName: c.displayName ?? null,
+            email: c.email ?? null,
+          };
+        }
+        const w = workerByContactId.get(cid);
+        let employerId: string | null = null;
+        if (w) {
+          data.worker = {
+            id: w.id,
+            given: c?.given ?? null,
+            family: c?.family ?? null,
+            jobTitle: w.jobTitle ?? null,
+            siriusId: w.siriusId ?? null,
+          };
+          employerId = w.homeEmployerId || (w.employerIds && w.employerIds[0]) || null;
+        }
+        if (!employerId) {
+          employerId = employerLinkByContactId.get(cid) || null;
+        }
+        if (employerId) {
+          const emp = employerById.get(employerId);
+          if (emp) data.employer = { id: emp.id, name: emp.name };
+        }
+
+        const ctx = buildContextFromSources(data);
+        for (const tid of tokenIds) {
+          const v = ctx[tid];
+          if (v == null || v === "") {
+            missing[tid].push({ contactId: cid, name: nameById.get(cid) || cid });
+          }
+        }
+      }
+
+      const perToken = tokenIds.map((tid) => {
+        const def = TOKEN_REGISTRY_MAP[tid];
+        return {
+          tokenId: tid,
+          label: def?.label || tid,
+          defaultValue: def?.defaultValue || "",
+          missingCount: missing[tid].length,
+          missingSample: missing[tid].slice(0, 10),
+        };
+      });
+
+      res.json({ totalRecipients: contactIds.length, perToken });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Failed to compute token coverage";
       res.status(500).json({ message });
     }
   });
