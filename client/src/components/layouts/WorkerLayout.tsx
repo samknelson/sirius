@@ -12,6 +12,7 @@ import { useWorkerTabAccess } from "@/hooks/useTabAccess";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { Badge } from "@/components/ui/badge";
+import { useAccessCheck } from "@/hooks/use-access-check";
 
 interface WorkerLayoutContextValue {
   worker: Worker;
@@ -38,7 +39,9 @@ interface WorkerLayoutProps {
 
 function WorkerEdlsBadge({ workerId }: { workerId: string }) {
   const { hasComponent } = useAuth();
-  const enabled = hasComponent('edls');
+  const componentEnabled = hasComponent('edls');
+  const { canAccess, isLoading: accessLoading } = useAccessCheck('edls.coordinator', workerId);
+  const enabled = componentEnabled && !accessLoading && canAccess;
   const { data } = useQuery<{ active: boolean; exists: boolean }>({
     queryKey: ["/api/workers", workerId, "edls"],
     enabled,

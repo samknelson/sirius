@@ -31,10 +31,11 @@ function WorkerEdlsContent() {
       queryClient.invalidateQueries({ queryKey: ["/api/workers", worker.id, "edls"] });
       toast({ title: "EDLS state updated" });
     },
-    onError: (err: any) => {
+    onError: (err: unknown) => {
+      const description = err instanceof Error ? err.message : "Unknown error";
       toast({
         title: "Failed to update EDLS state",
-        description: err?.message || "Unknown error",
+        description,
         variant: "destructive",
       });
     },

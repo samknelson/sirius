@@ -12,6 +12,7 @@ import { type StorageLoggingConfig } from "../middleware/logging";
 export interface WorkerEdlsStorage {
   getByWorker(workerId: string): Promise<WorkerEdls | undefined>;
   setActive(workerId: string, active: boolean): Promise<WorkerEdls>;
+  ensure(workerId: string): Promise<WorkerEdls>;
 }
 
 async function getWorkerName(workerId: string): Promise<string> {
@@ -64,6 +65,12 @@ export function createWorkerEdlsStorage(): WorkerEdlsStorage {
         .values(insertValue)
         .returning();
       return created;
+    },
+
+    async ensure(workerId: string): Promise<WorkerEdls> {
+      const existing = await this.getByWorker(workerId);
+      if (existing) return existing;
+      return this.setActive(workerId, true);
     },
   };
 }
