@@ -15,6 +15,9 @@ export const bulkMessages = pgTable("bulk_messages", {
   status: bulkMessageStatusEnum("status").notNull().default("draft"),
   sendDate: timestamp("send_date"),
   data: jsonb("data"),
+  // Per-token filler values used at send time when a recipient has no
+  // value for that token. Maps token id → user-supplied filler.
+  tokenFallbacks: jsonb("token_fallbacks").$type<Record<string, string>>(),
 });
 
 export const insertBulkMessageSchema = createInsertSchema(bulkMessages).omit({
