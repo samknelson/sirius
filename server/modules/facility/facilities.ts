@@ -181,33 +181,6 @@ export function registerFacilityRoutes(
     },
   );
 
-  app.get(
-    "/api/facilities/:id/logs",
-    facilityComponent,
-    requireAuth,
-    requireAccess('facility.view', (req) => req.params.id),
-    async (req, res) => {
-      try {
-        const facility = await storage.facilities.get(req.params.id);
-        if (!facility) {
-          return res.status(404).json({ message: "Facility not found" });
-        }
-        const { module, operation, startDate, endDate } = req.query;
-        const hostEntityIds: string[] = [facility.id];
-        if (facility.contactId) hostEntityIds.push(facility.contactId);
-
-        const logs = await storage.logs.getLogsByHostEntityIds({
-          hostEntityIds,
-          module: typeof module === 'string' ? module : undefined,
-          operation: typeof operation === 'string' ? operation : undefined,
-          startDate: typeof startDate === 'string' ? startDate : undefined,
-          endDate: typeof endDate === 'string' ? endDate : undefined,
-        });
-        res.json(logs);
-      } catch (error) {
-        console.error("Failed to fetch facility logs:", error);
-        res.status(500).json({ message: "Failed to fetch facility logs" });
-      }
-    },
-  );
+  // Logs are served through the shared /api/logs/by-entity endpoint, which
+  // resolves facility -> contact aggregation and applies facility.view access.
 }

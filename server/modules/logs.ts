@@ -52,19 +52,52 @@ export function registerLogRoutes(
     }
   });
 
-  // GET /api/logs/by-entity - Unified endpoint to get logs by host entity ID (requires staff permission)
-  // This is the preferred endpoint for fetching entity-specific logs
+  // GET /api/logs/by-entity - Unified endpoint to get logs by host entity ID
+  // Resolves the entity type (worker / employer / facility) and aggregates host
+  // entity IDs to include the associated contact id(s), so contact-side activity
+  // (emails, addresses, phone numbers, name) shows up alongside the parent entity's
+  // own logs. Access policy is selected based on entity type:
+  //   - worker         -> worker.view
+  //   - employer       -> employer.manage
+  //   - facility       -> facility.view
+  //   - other / unknown-> staff
   // NOTE: This route must be defined BEFORE /api/logs/:id to avoid route matching conflicts
-  app.get("/api/logs/by-entity", requireAuth, requireAccess('staff'), async (req, res) => {
-    try {
-      const { hostEntityId, module, operation, startDate, endDate } = req.query;
+  app.get("/api/logs/by-entity", requireAuth, async (req, res, next) => {
+    const { hostEntityId } = req.query;
+    if (!hostEntityId || typeof hostEntityId !== 'string') {
+      return res.status(400).json({ message: "hostEntityId is required" });
+    }
 
-      if (!hostEntityId || typeof hostEntityId !== 'string') {
-        return res.status(400).json({ message: "hostEntityId is required" });
-      }
+    // Resolve entity type and pick the matching policy.
+    const worker = await storage.workers.getWorker(hostEntityId);
+    if (worker) {
+      (req as any).logHostIds = worker.contactId ? [worker.id, worker.contactId] : [worker.id];
+      return requireAccess('worker.view', () => worker.id)(req, res, next);
+    }
+
+    const facility = await storage.facilities.get(hostEntityId);
+    if (facility) {
+      (req as any).logHostIds = facility.contactId ? [facility.id, facility.contactId] : [facility.id];
+      return requireAccess('facility.view', () => facility.id)(req, res, next);
+    }
+
+    const employer = await storage.employers.getEmployer(hostEntityId);
+    if (employer) {
+      const employerContacts = await storage.employerContacts.listByEmployer(employer.id);
+      (req as any).logHostIds = [employer.id, ...employerContacts.map((ec) => ec.contactId)];
+      return requireAccess('employer.manage', () => employer.id)(req, res, next);
+    }
+
+    // Unknown entity type - fall back to staff and use the id as-is.
+    (req as any).logHostIds = [hostEntityId];
+    return requireAccess('staff')(req, res, next);
+  }, async (req, res) => {
+    try {
+      const { module, operation, startDate, endDate } = req.query;
+      const hostEntityIds: string[] = (req as any).logHostIds ?? [];
 
       const logs = await storage.logs.getLogsByHostEntityIds({
-        hostEntityIds: [hostEntityId],
+        hostEntityIds,
         module: typeof module === 'string' ? module : undefined,
         operation: typeof operation === 'string' ? operation : undefined,
         startDate: typeof startDate === 'string' ? startDate : undefined,

@@ -56,6 +56,7 @@ export interface FacilityStorage {
   getPaginated(page: number, limit: number, filters?: FacilityFilters): Promise<PaginatedFacilities>;
   get(id: string): Promise<Facility | undefined>;
   getWithContact(id: string): Promise<FacilityWithContact | undefined>;
+  getByContactId(contactId: string): Promise<Facility | undefined>;
   getBySiriusId(siriusId: string): Promise<Facility | undefined>;
   create(input: CreateFacilityInput): Promise<Facility>;
   update(id: string, input: UpdateFacilityInput): Promise<Facility | undefined>;
@@ -209,6 +210,15 @@ export function createFacilityStorage(contactsStorage: ContactsStorage): Facilit
         .where(eq(facilities.id, id));
       if (!row) return undefined;
       return { ...row.facility, contact: row.contact };
+    },
+
+    async getByContactId(contactId: string): Promise<Facility | undefined> {
+      const client = getClient();
+      const [facility] = await client
+        .select()
+        .from(facilities)
+        .where(eq(facilities.contactId, contactId));
+      return facility || undefined;
     },
 
     async getBySiriusId(siriusId: string): Promise<Facility | undefined> {

@@ -4,11 +4,7 @@ import { ActivityLogView } from "@/components/shared";
 function LogsContent() {
   const { facility } = useFacilityLayout();
   return (
-    <ActivityLogView
-      hostEntityId={facility.id}
-      title="Activity Logs"
-      endpoint={`/api/facilities/${facility.id}/logs`}
-    />
+    <ActivityLogView hostEntityId={facility.id} title="Activity Logs" />
   );
 }
 
