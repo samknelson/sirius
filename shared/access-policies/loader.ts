@@ -61,4 +61,7 @@ import './edls/sheet/set-status';
 
 import './bulk/edit';
 
+import './facility/view';
+import './facility/edit';
+
 export { getAllPolicies, getPolicy, hasPolicy } from './index';

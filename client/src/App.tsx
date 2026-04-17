@@ -230,6 +230,14 @@ const DispatchJobGroupDetailsPage = lazy(() => import("@/pages/dispatch/job-grou
 const DispatchJobGroupEditPage = lazy(() => import("@/pages/dispatch/job-group-edit"));
 const DispatchJobGroupLogsPage = lazy(() => import("@/pages/dispatch/job-group-logs"));
 const DispatchJobGroupNewPage = lazy(() => import("@/pages/dispatch/job-group-new"));
+const FacilityListPage = lazy(() => import("@/pages/facility/list"));
+const FacilityNewPage = lazy(() => import("@/pages/facility/new"));
+const FacilityDetailsPage = lazy(() => import("@/pages/facility/details"));
+const FacilityEditPage = lazy(() => import("@/pages/facility/edit"));
+const FacilityEmailPage = lazy(() => import("@/pages/facility/email"));
+const FacilityAddressesPage = lazy(() => import("@/pages/facility/addresses"));
+const FacilityPhoneNumbersPage = lazy(() => import("@/pages/facility/phone-numbers"));
+const FacilityLogsPage = lazy(() => import("@/pages/facility/logs"));
 const DispatchDetailsPage = lazy(() => import("@/pages/dispatch/dispatch-details"));
 const DispatchEditPage = lazy(() => import("@/pages/dispatch/dispatch-edit"));
 const DispatchManagePage = lazy(() => import("@/pages/dispatch/dispatch-manage"));
@@ -2336,6 +2344,63 @@ function Router() {
         <ProtectedRoute tabId="logs" entityType="dispatch_job_group">
           <AuthenticatedLayout>
             <DispatchJobGroupLogsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/facilities">
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <FacilityListPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/facilities/new">
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <FacilityNewPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/facilities/:id">
+        <ProtectedRoute tabId="details" entityType="facility">
+          <AuthenticatedLayout>
+            <FacilityDetailsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/facilities/:id/edit">
+        <ProtectedRoute tabId="edit" entityType="facility">
+          <AuthenticatedLayout>
+            <FacilityEditPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/facilities/:id/email">
+        <ProtectedRoute tabId="email" entityType="facility">
+          <AuthenticatedLayout>
+            <FacilityEmailPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/facilities/:id/addresses">
+        <ProtectedRoute tabId="addresses" entityType="facility">
+          <AuthenticatedLayout>
+            <FacilityAddressesPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/facilities/:id/phone-numbers">
+        <ProtectedRoute tabId="phone-numbers" entityType="facility">
+          <AuthenticatedLayout>
+            <FacilityPhoneNumbersPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/facilities/:id/logs">
+        <ProtectedRoute tabId="logs" entityType="facility">
+          <AuthenticatedLayout>
+            <FacilityLogsPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

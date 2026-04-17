@@ -1315,6 +1315,16 @@ export default function Header() {
                       </Link>
                     </DropdownMenuItem>
                   )}
+                  {hasComponent("facility") && (
+                    <DropdownMenuItem asChild>
+                      <Link href="/facilities" className="w-full">
+                        <div className="flex items-center cursor-pointer" data-testid="menu-facilities">
+                          <Building2 className="h-4 w-4 mr-2" />
+                          Facilities
+                        </div>
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
                   {hasComponent("cardcheck") && hasPermission("staff") && !hasComponent("sitespecific.btu") && (
                     <DropdownMenuItem asChild>
                       <Link href="/employers/organizing" className="w-full">

@@ -452,7 +452,7 @@ export class DatabaseStorage implements IStorage {
       createBulkParticipantStorage(),
       bulkParticipantLoggingConfig
     );
-    this.facilities = withStorageLogging(createFacilityStorage(), facilityLoggingConfig);
+    this.facilities = withStorageLogging(createFacilityStorage(this.contacts), facilityLoggingConfig);
   }
 }
 

@@ -68,7 +68,8 @@ export type TabEntityType =
   | 'sftp_client_destination'
   | 'trust_provider_edi'
   | 'bulk_message'
-  | 'ledger_payment_batch';
+  | 'ledger_payment_batch'
+  | 'facility';
 
 /**
  * Tab check request for batch access evaluation
@@ -330,6 +331,15 @@ export const dispatchJobTypeTabTree: HierarchicalTab[] = [
   { id: 'delete', label: 'Delete', hrefTemplate: '/config/dispatch-job-type/{id}/delete', permission: 'staff', component: 'dispatch' },
 ];
 
+export const facilityTabTree: HierarchicalTab[] = [
+  { id: 'details', label: 'Details', hrefTemplate: '/facilities/{id}', policyId: 'facility.view', component: 'facility' },
+  { id: 'edit', label: 'Edit', hrefTemplate: '/facilities/{id}/edit', policyId: 'facility.edit', component: 'facility' },
+  { id: 'email', label: 'Email', hrefTemplate: '/facilities/{id}/email', policyId: 'facility.view', component: 'facility' },
+  { id: 'addresses', label: 'Addresses', hrefTemplate: '/facilities/{id}/addresses', policyId: 'facility.view', component: 'facility' },
+  { id: 'phone-numbers', label: 'Phone Numbers', hrefTemplate: '/facilities/{id}/phone-numbers', policyId: 'facility.view', component: 'facility' },
+  { id: 'logs', label: 'Logs', hrefTemplate: '/facilities/{id}/logs', policyId: 'facility.view', component: 'facility' },
+];
+
 export const dispatchJobGroupTabTree: HierarchicalTab[] = [
   { id: 'details', label: 'Details', hrefTemplate: '/dispatch/job_group/{id}', permission: 'staff', component: 'dispatch.job_group' },
   { id: 'edit', label: 'Edit', hrefTemplate: '/dispatch/job_group/{id}/edit', permission: 'staff', component: 'dispatch.job_group' },
@@ -550,6 +560,7 @@ export const tabTreeRegistry: Record<TabEntityType, HierarchicalTab[]> = {
   trust_provider_edi: trustProviderEdiTabTree,
   bulk_message: bulkMessageTabTree,
   ledger_payment_batch: ledgerPaymentBatchTabTree,
+  facility: facilityTabTree,
 };
 
 /**

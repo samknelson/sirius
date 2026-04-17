@@ -446,3 +446,11 @@ export function useLedgerPaymentBatchTabAccess(batchId: string | undefined, enab
     enabled 
   });
 }
+
+export function useFacilityTabAccess(facilityId: string | undefined, enabled = true) {
+  return useTabAccess({
+    entityType: 'facility',
+    entityId: facilityId,
+    enabled,
+  });
+}
