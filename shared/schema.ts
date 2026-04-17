@@ -851,6 +851,10 @@ export {
   insertEdlsTaskSchema,
   type EdlsTask,
   type InsertEdlsTask,
+  workerEdls,
+  insertWorkerEdlsSchema,
+  type WorkerEdls,
+  type InsertWorkerEdls,
 } from "./schema/edls/schema";
 
 // Zod schemas for validation
