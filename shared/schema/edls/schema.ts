@@ -4,6 +4,7 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { employers, workers, users, optionsDepartment } from "../../schema";
 import { dispatchJobGroups } from "../dispatch/job-group-schema";
+import { facilities } from "../facility/schema";
 
 export const edlsSheetStatusEnum = ["draft", "request", "lock", "trash", "reserved"] as const;
 export type EdlsSheetStatus = typeof edlsSheetStatusEnum[number];
@@ -19,6 +20,7 @@ export const edlsSheets = pgTable("edls_sheets", {
   supervisor: varchar("supervisor").references(() => users.id, { onDelete: 'set null' }),
   assignee: varchar("assignee").references(() => users.id, { onDelete: 'set null' }),
   jobGroupId: varchar("job_group_id").references(() => dispatchJobGroups.id, { onDelete: 'set null' }),
+  facilityId: varchar("facility_id").references(() => facilities.id, { onDelete: 'set null' }),
   data: jsonb("data"),
 });
 
@@ -27,6 +29,7 @@ export const insertEdlsSheetsSchema = createInsertSchema(edlsSheets).omit({
 }).extend({
   assignee: z.string().nullish(),
   jobGroupId: z.string().nullish(),
+  facilityId: z.string().nullish(),
 });
 
 export type EdlsSheet = typeof edlsSheets.$inferSelect;

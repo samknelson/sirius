@@ -31,7 +31,8 @@ export function registerEdlsSheetsRoutes(
         dateFrom,
         dateTo,
         status,
-        jobGroupId
+        jobGroupId,
+        facilityId
       } = req.query;
       
       const page = parseInt(pageParam as string) || 0;
@@ -46,6 +47,7 @@ export function registerEdlsSheetsRoutes(
           dateTo: dateTo as string | undefined,
           status: status as string | undefined,
           jobGroupId: jobGroupId as string | undefined,
+          facilityId: facilityId as string | undefined,
         }
       );
       res.json(result);
@@ -224,6 +226,7 @@ export function registerEdlsSheetsRoutes(
         supervisor: supervisorValidation.supervisorId,
         assignee: sheetData.assignee || supervisorValidation.supervisorId,
         jobGroupId: sheetData.jobGroupId || null,
+        facilityId: sheetData.facilityId || null,
       };
       
       const crewsTotalWorkerCount = crews.reduce((sum, crew) => sum + crew.workerCount, 0);
@@ -300,6 +303,7 @@ export function registerEdlsSheetsRoutes(
         ...parsedSheetData,
         employerId: edlsSettings.employer,
         jobGroupId: parsedSheetData.jobGroupId !== undefined ? (parsedSheetData.jobGroupId || null) : undefined,
+        facilityId: parsedSheetData.facilityId !== undefined ? (parsedSheetData.facilityId || null) : undefined,
       };
       
       if (!sheetData.departmentId) {
