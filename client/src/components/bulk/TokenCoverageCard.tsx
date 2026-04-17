@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { AlertCircle, CheckCircle, ChevronDown, ChevronRight, Loader2, ShieldCheck } from "lucide-react";
+import { AlertCircle, CheckCircle, ChevronDown, ChevronRight, Loader2, RefreshCw, ShieldCheck } from "lucide-react";
 
 export interface TokenCoverageRow {
   tokenId: string;
@@ -25,9 +25,23 @@ interface Props {
 }
 
 export function TokenCoverageCard({ messageId }: Props) {
-  const { data, isLoading, isError, error } = useQuery<TokenCoverageResponse>({
+  const { data, isLoading, isError, error, refetch, isFetching } = useQuery<TokenCoverageResponse>({
     queryKey: ["/api/bulk-messages", messageId, "token-coverage"],
   });
+
+  const refreshButton = (
+    <Button
+      variant="ghost"
+      size="sm"
+      className="ml-auto h-7 px-2"
+      onClick={() => refetch()}
+      disabled={isFetching}
+      data-testid="button-refresh-coverage"
+      aria-label="Refresh token coverage"
+    >
+      <RefreshCw className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
+    </Button>
+  );
 
   if (isLoading) {
     return (
@@ -46,6 +60,7 @@ export function TokenCoverageCard({ messageId }: Props) {
           <CardTitle className="flex items-center gap-2 text-base">
             <AlertCircle className="h-4 w-4 text-destructive" />
             Token Coverage
+            {refreshButton}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -83,6 +98,17 @@ export function TokenCoverageCard({ messageId }: Props) {
                 : `${totalMissing} missing across ${tokensWithMissing.length} token${tokensWithMissing.length === 1 ? "" : "s"}`}
             </Badge>
           )}
+          <Button
+            variant="ghost"
+            size="sm"
+            className={`h-7 px-2 ${data.perToken.length > 0 ? "" : "ml-auto"}`}
+            onClick={() => refetch()}
+            disabled={isFetching}
+            data-testid="button-refresh-coverage"
+            aria-label="Refresh token coverage"
+          >
+            <RefreshCw className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
+          </Button>
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
