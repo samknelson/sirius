@@ -19,7 +19,19 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { ChevronDown, Loader2, MailPlus, ListChecks } from "lucide-react";
+
+const LARGE_DRAFT_THRESHOLD = 100;
 
 interface ComponentConfig {
   componentId: string;
@@ -64,6 +76,8 @@ export function ListBulkAction({
     inapp: false,
     postal: false,
   });
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [pendingMediums, setPendingMediums] = useState<Medium[]>([]);
 
   const { data: componentConfig = [] } = useQuery<ComponentConfig[]>({
     queryKey: ["/api/components/config"],
@@ -81,6 +95,7 @@ export function ListBulkAction({
       });
     },
     onSuccess: (result) => {
+      setConfirmOpen(false);
       toast({
         title: "Bulk message draft created",
         description: `${result.recipientsResolved} recipient${result.recipientsResolved === 1 ? "" : "s"} attached${result.recipientsMissing ? `, ${result.recipientsMissing} skipped` : ""}.`,
@@ -106,13 +121,24 @@ export function ListBulkAction({
   const noMedia = chosenMedia.length === 0;
   const messageDisabled = noSelection || noMedia || createMutation.isPending;
 
+  const requiresConfirmation = selectionCount >= LARGE_DRAFT_THRESHOLD;
+
+  const handleMessageClick = () => {
+    if (messageDisabled) return;
+    if (requiresConfirmation) {
+      setPendingMediums(chosenMedia);
+      setConfirmOpen(true);
+      return;
+    }
+    createMutation.mutate(chosenMedia);
+  };
+
   const messageItem = (
     <DropdownMenuItem
       disabled={messageDisabled}
       onSelect={(e) => {
         e.preventDefault();
-        if (messageDisabled) return;
-        createMutation.mutate(chosenMedia);
+        handleMessageClick();
       }}
       data-testid={`${testIdPrefix}-message`}
     >
@@ -191,6 +217,52 @@ export function ListBulkAction({
           )}
         </DropdownMenuContent>
       </DropdownMenu>
+      <AlertDialog open={confirmOpen} onOpenChange={(open) => { if (!createMutation.isPending) setConfirmOpen(open); }}>
+        <AlertDialogContent data-testid={`${testIdPrefix}-confirm-dialog`}>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Create bulk message draft?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2">
+                <div data-testid={`${testIdPrefix}-confirm-summary`}>
+                  You're about to create a draft with{" "}
+                  <span className="font-semibold text-foreground">
+                    {selectionCount.toLocaleString()} recipient{selectionCount === 1 ? "" : "s"}
+                  </span>
+                  {" "}from{" "}
+                  <span className="font-semibold text-foreground" data-testid={`${testIdPrefix}-confirm-source`}>
+                    {sourceLabel}
+                  </span>
+                  .
+                </div>
+                <div data-testid={`${testIdPrefix}-confirm-mediums`}>
+                  Channels: <span className="font-semibold text-foreground">{pendingMediums.join(", ")}</span>
+                </div>
+                <div className="text-xs">
+                  Drafts of this size can be slow to delete. Confirm to continue.
+                </div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={createMutation.isPending} data-testid={`${testIdPrefix}-confirm-cancel`}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={createMutation.isPending}
+              onClick={(e) => {
+                e.preventDefault();
+                createMutation.mutate(pendingMediums);
+              }}
+              data-testid={`${testIdPrefix}-confirm-create`}
+            >
+              {createMutation.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : null}
+              Create draft
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
