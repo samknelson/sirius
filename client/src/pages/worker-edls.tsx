@@ -13,13 +13,14 @@ interface WorkerEdlsState {
   workerId: string;
   active: boolean;
   exists: boolean;
+  tableMissing?: boolean;
 }
 
 function WorkerEdlsContent() {
   const { worker } = useWorkerLayout();
   const { hasComponent } = useAuth();
   const componentEnabled = hasComponent('edls');
-  const { canAccess: canEdit } = useAccessCheck('edls.coordinator', worker.id);
+  const { canAccess: canEdit } = useAccessCheck('edls.coordinator', worker.id, { enabled: componentEnabled });
   const { toast } = useToast();
 
   const { data, isLoading } = useQuery<WorkerEdlsState>({
@@ -45,13 +46,13 @@ function WorkerEdlsContent() {
     },
   });
 
-  if (!componentEnabled) {
+  if (!componentEnabled || data?.tableMissing) {
     return (
       <Card>
         <CardHeader>
           <CardTitle>EDLS</CardTitle>
           <CardDescription>
-            The EDLS component is not enabled for this site.
+            EDLS is not available for this site.
           </CardDescription>
         </CardHeader>
       </Card>

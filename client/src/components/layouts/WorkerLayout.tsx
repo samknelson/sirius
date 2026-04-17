@@ -46,13 +46,13 @@ function WorkerEdlsBadge({ workerId }: { workerId: string }) {
 function WorkerEdlsBadgeInner({ workerId }: { workerId: string }) {
   const { canAccess, isLoading: accessLoading } = useAccessCheck('edls.coordinator', workerId);
   const enabled = !accessLoading && canAccess;
-  const { data } = useQuery<{ active: boolean; exists: boolean }>({
+  const { data } = useQuery<{ active: boolean; exists: boolean; tableMissing?: boolean }>({
     queryKey: ["/api/workers", workerId, "edls"],
     enabled,
     retry: false,
   });
 
-  if (!enabled || !data) return null;
+  if (!enabled || !data || data.tableMissing) return null;
 
   return (
     <Badge
