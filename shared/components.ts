@@ -520,7 +520,7 @@ export const componentRegistry: ComponentDefinition[] = [
     schemaManifest: {
       version: 1,
       schemaPath: "./shared/schema/edls/schema.ts",
-      tables: ["edls_sheets"]
+      tables: ["edls_sheets", "edls_crews", "edls_assignments", "options_edls_tasks", "worker_edls"]
     },
     permissions: [
       { key: "edls.manager", description: "Full EDLS management access" },

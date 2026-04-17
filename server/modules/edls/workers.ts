@@ -3,6 +3,7 @@ import { z } from "zod";
 import { storage } from "../../storage";
 import { requireAccess } from "../../services/access-policy-evaluator";
 import { isWorkerEdlsAvailable } from "./capability";
+import { requireComponent } from "../components";
 
 type RequireAuth = (req: Request, res: Response, next: () => void) => void;
 
@@ -20,16 +21,20 @@ async function requireWorkerEdlsCapability(req: Request, res: Response, next: Ne
 }
 
 export function registerWorkerEdlsRoutes(app: Express, requireAuth: RequireAuth) {
+  const edlsComponent = requireComponent("edls");
+
   app.get(
     "/api/workers/:id/edls",
     requireAuth,
+    edlsComponent,
     requireWorkerEdlsCapability,
     requireAccess('edls.coordinator', req => req.params.id),
     async (req: Request, res: Response) => {
-      const workerId = req.params.id;
       try {
+        const workerId = req.params.id;
         const row = await storage.workerEdls.getByWorker(workerId);
         if (!row) {
+          // Default state when no row exists yet
           res.json({ workerId, active: true, exists: false });
           return;
         }
@@ -44,6 +49,7 @@ export function registerWorkerEdlsRoutes(app: Express, requireAuth: RequireAuth)
   app.put(
     "/api/workers/:id/edls",
     requireAuth,
+    edlsComponent,
     requireWorkerEdlsCapability,
     requireAccess('edls.coordinator', req => req.params.id),
     async (req: Request, res: Response) => {

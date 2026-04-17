@@ -66,7 +66,6 @@ export function createWorkerEdlsStorage(): WorkerEdlsStorage {
         .returning();
       return created;
     },
-
     async ensure(workerId: string): Promise<WorkerEdls> {
       const existing = await this.getByWorker(workerId);
       if (existing) return existing;
