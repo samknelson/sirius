@@ -791,7 +791,6 @@ export function registerBulkMessageRoutes(
       res.json({
         contactId: contactId || null,
         sample: !contactId,
-        context: ctx,
         rendered,
       });
     } catch (error: unknown) {
