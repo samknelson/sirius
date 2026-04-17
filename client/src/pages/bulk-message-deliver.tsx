@@ -103,6 +103,13 @@ function DeliveryStatsCard({ messageId }: { messageId: string }) {
     ([a], [b]) => a.localeCompare(b)
   );
   const byMediumEntries = Object.entries(stats.byMedium || {});
+  const commDelivered = stats.commBreakdown?.delivered ?? 0;
+  const commFailed = Object.entries(stats.commBreakdown ?? {})
+    .filter(([k]) => k !== "delivered")
+    .reduce((sum, [, v]) => sum + (v as number), 0);
+  const totalDelivered = commDelivered;
+  const totalFailed = stats.sendFailed + commFailed;
+  const inFlight = Math.max(0, stats.seeComm - commDelivered - commFailed);
 
   return (
     <Card data-testid="card-delivery-stats">
@@ -113,7 +120,7 @@ function DeliveryStatsCard({ messageId }: { messageId: string }) {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-5 gap-4">
           <div className="text-center" data-testid="stat-total">
             <p className="text-2xl font-bold">{stats.total}</p>
             <p className="text-xs text-muted-foreground">Total</p>
@@ -122,13 +129,17 @@ function DeliveryStatsCard({ messageId }: { messageId: string }) {
             <p className="text-2xl font-bold text-muted-foreground">{stats.pending}</p>
             <p className="text-xs text-muted-foreground">Pending</p>
           </div>
-          <div className="text-center" data-testid="stat-see-comm">
-            <p className="text-2xl font-bold text-blue-500">{stats.seeComm}</p>
+          <div className="text-center" data-testid="stat-in-flight">
+            <p className="text-2xl font-bold text-amber-500">{inFlight}</p>
+            <p className="text-xs text-muted-foreground">In Flight</p>
+          </div>
+          <div className="text-center" data-testid="stat-delivered">
+            <p className="text-2xl font-bold text-blue-500">{totalDelivered}</p>
             <p className="text-xs text-muted-foreground">Delivered</p>
           </div>
-          <div className="text-center" data-testid="stat-send-failed">
-            <p className="text-2xl font-bold text-red-500">{stats.sendFailed}</p>
-            <p className="text-xs text-muted-foreground">Send Failed</p>
+          <div className="text-center" data-testid="stat-failed">
+            <p className="text-2xl font-bold text-red-500">{totalFailed}</p>
+            <p className="text-xs text-muted-foreground">Failed</p>
           </div>
         </div>
 

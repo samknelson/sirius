@@ -135,6 +135,35 @@ export async function deliverToParticipant(
     });
   }
 
+  // Activity log so the contact's Logs tab reflects each bulk-message
+  // send attempt — independent of the comm record (which only exists
+  // when a provider hand-off was attempted).
+  try {
+    const { logger } = await import("../../logger");
+    const logMeta = {
+      module: "bulk_message",
+      operation: `send_${participant.medium}`,
+      entity_id: messageId,
+      host_entity_id: participant.contactId,
+      user_id: userId,
+      description: result.success
+        ? `Sent ${participant.medium} via bulk message`
+        : `Failed to send ${participant.medium} via bulk message: ${result.error || "unknown error"}`,
+      bulk_message_id: messageId,
+      participant_id: participantId,
+      medium: participant.medium,
+      comm_id: result.commId,
+      error_code: result.errorCode,
+    };
+    if (result.success) {
+      logger.info(logMeta.description!, logMeta);
+    } else {
+      logger.warn(logMeta.description!, logMeta);
+    }
+  } catch (logError) {
+    console.error("Failed to record bulk-message activity log:", logError);
+  }
+
   return {
     ...result,
     participantId,
