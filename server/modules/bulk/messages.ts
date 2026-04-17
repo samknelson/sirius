@@ -486,14 +486,14 @@ export function registerBulkMessageRoutes(
         return res.json(rows.map(r => ({ ...r, primaryPhone: null, primaryAddress: null })));
       }
 
-      let phones: { contactId: string; number: string; isPrimary: boolean }[] = [];
+      let phones: { contactId: string; phoneNumber: string; isPrimary: boolean }[] = [];
       let addrs: { contactId: string; street: string; city: string; state: string; isPrimary: boolean }[] = [];
 
       try {
         phones = await db
           .select({
             contactId: phoneNumbers.contactId,
-            number: phoneNumbers.number,
+            phoneNumber: phoneNumbers.phoneNumber,
             isPrimary: phoneNumbers.isPrimary,
           })
           .from(phoneNumbers)
@@ -516,7 +516,7 @@ export function registerBulkMessageRoutes(
       const phoneMap = new Map<string, string>();
       for (const p of phones) {
         if (!phoneMap.has(p.contactId) || p.isPrimary) {
-          phoneMap.set(p.contactId, p.number);
+          phoneMap.set(p.contactId, p.phoneNumber);
         }
       }
 
