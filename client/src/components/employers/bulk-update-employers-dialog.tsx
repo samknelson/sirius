@@ -94,10 +94,9 @@ export function BulkUpdateEmployersDialog({
   };
 
   const bulkMutation = useMutation({
-    mutationFn: async () => {
-      const payload = buildPayload();
+    mutationFn: async ({ ids, payload }: { ids: string[]; payload: Record<string, unknown> }) => {
       const results = await Promise.all(
-        selectedIds.map(async (id) => {
+        ids.map(async (id) => {
           try {
             await apiRequest("PUT", `/api/employers/${id}`, payload);
             return { id, ok: true as const };
@@ -141,8 +140,9 @@ export function BulkUpdateEmployersDialog({
   const hasChanges = Object.keys(payload).length > 0;
 
   const handleSubmit = () => {
-    if (!hasChanges || selectedIds.length === 0) return;
-    bulkMutation.mutate();
+    const currentPayload = buildPayload();
+    if (Object.keys(currentPayload).length === 0 || selectedIds.length === 0) return;
+    bulkMutation.mutate({ ids: [...selectedIds], payload: currentPayload });
   };
 
   const handleOpenChange = (next: boolean) => {
