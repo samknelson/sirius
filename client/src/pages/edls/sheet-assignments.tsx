@@ -320,7 +320,7 @@ function AssignedWorkerSlot({ assignment, crewId, sheetId }: AssignedWorkerSlotP
   const classification = assignmentData.classificationId ? classificationsMap.get(assignmentData.classificationId) : null;
   const displayIdLabel = workerIdTypeConfigured
     ? (displayIdValues[assignment.workerId] ?? "—")
-    : (assignment.worker.siriusId ? `#${assignment.worker.siriusId}` : "—");
+    : (assignment.worker.siriusId ? `#${assignment.worker.siriusId}` : null);
 
   const handleUnassign = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -345,13 +345,15 @@ function AssignedWorkerSlot({ assignment, crewId, sheetId }: AssignedWorkerSlotP
           className="flex items-center gap-2 flex-1 cursor-pointer hover-elevate rounded px-1 -mx-1"
           onClick={handleUnassign}
         >
-          <Badge
-            variant="outline"
-            className="text-xs tabular-nums"
-            data-testid={`badge-assignment-display-id-${assignment.id}`}
-          >
-            {displayIdLabel}
-          </Badge>
+          {displayIdLabel !== null && (
+            <Badge
+              variant="outline"
+              className="text-xs tabular-nums"
+              data-testid={`badge-assignment-display-id-${assignment.id}`}
+            >
+              {displayIdLabel}
+            </Badge>
+          )}
           <span className="text-sm">{formatAssignedWorkerName(assignment.worker)}</span>
           {ratingValue !== undefined && (
             <span className="flex items-center text-xs text-muted-foreground">
@@ -1138,7 +1140,7 @@ function AvailableWorkersPanel() {
                     const isAssigned = assignedWorkerIds.has(worker.id);
                     const displayIdLabel = workerIdTypeConfigured
                       ? (displayIdValues[worker.id] ?? "—")
-                      : (worker.siriusId ? `#${worker.siriusId}` : "—");
+                      : (worker.siriusId ? `#${worker.siriusId}` : null);
                     return (
                       <div
                         key={worker.id}
@@ -1154,13 +1156,15 @@ function AvailableWorkersPanel() {
                         {selectedRatingId && selectedRatingId !== "all" && worker.ratingValue !== null && (
                           <StarRating value={worker.ratingValue} />
                         )}
-                        <Badge
-                          variant="outline"
-                          className="text-xs tabular-nums"
-                          data-testid={`badge-worker-display-id-${worker.id}`}
-                        >
-                          {displayIdLabel}
-                        </Badge>
+                        {displayIdLabel !== null && (
+                          <Badge
+                            variant="outline"
+                            className="text-xs tabular-nums"
+                            data-testid={`badge-worker-display-id-${worker.id}`}
+                          >
+                            {displayIdLabel}
+                          </Badge>
+                        )}
                         <span className="text-sm truncate">{formatWorkerName(worker)}</span>
                       </div>
                     );
