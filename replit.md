@@ -1,6 +1,6 @@
 # Overview
 
-Sirius is a full-stack web application for comprehensive worker management. Its purpose is to streamline administration, enhance user experience, and deliver business value through efficient operations. Key capabilities include robust CRUD operations, configurable organizational settings, legal compliance reporting, benefit charge billing, detailed worker contact management, and a powerful dispatch system. The project aims to provide a reliable, efficient, and user-friendly platform for all aspects of worker administration.
+Sirius is a comprehensive full-stack web application designed for efficient worker management. Its primary goal is to streamline administrative tasks, improve user experience, and deliver significant business value through features like robust CRUD operations, configurable organizational settings, legal compliance reporting, benefit charge billing, detailed worker contact management, and an advanced dispatch system. The project aims to provide a reliable, efficient, and user-friendly platform for all aspects of worker administration.
 
 # User Preferences
 
@@ -9,55 +9,46 @@ Preferred communication style: Simple, everyday language.
 # System Architecture
 
 ## UI/UX Decisions
-The frontend uses React 18 with TypeScript, Vite, Shadcn/ui (built on Radix UI), and Tailwind CSS with a "new-york" theme, ensuring a modern, accessible, and responsive user experience.
+The frontend is built with React 18, TypeScript, Vite, Shadcn/ui (based on Radix UI), and Tailwind CSS with a "new-york" theme, ensuring a modern, accessible, and responsive user interface.
 
 ## Technical Implementations
--   **Frontend**: React 18, TypeScript, Vite, Wouter for routing, TanStack Query for server state management, and React Hook Form with Zod for form handling. Pages are lazy-loaded.
--   **Backend**: Express.js with TypeScript, implementing a RESTful API with a feature-based module structure.
--   **Authentication**: Supports multi-provider authentication (Replit Auth, Okta, SAML/OAuth, Clerk, local username/password) with environment-driven configuration and masquerade support.
--   **Access Control**: Modular, entity-based policy architecture with server-side LRU caching.
--   **Logging**: Winston logging integrated with a PostgreSQL backend for audit trails.
--   **Data Storage**: PostgreSQL (Neon Database) managed with Drizzle ORM.
--   **Object Storage**: Replit Object Storage (Google Cloud Storage backend).
--   **Real-time Notifications**: WebSocket-based push notification system.
--   **Event Bus System**: Typed publish/subscribe event bus.
--   **Cron Job System**: Framework for scheduling periodic tasks.
--   **Migration Framework**: Versioned database migration system.
+-   **Frontend**: React 18, TypeScript, Vite, Wouter for routing, TanStack Query for server state management, and React Hook Form with Zod for form validation. Pages are lazy-loaded for performance.
+-   **Backend**: Express.js with TypeScript, providing a RESTful API structured with feature-based modules.
+-   **Authentication**: Supports multi-provider authentication (Replit Auth, Okta, SAML/OAuth, Clerk, local username/password) with environment-driven configuration and masquerade capabilities.
+-   **Access Control**: Implements a modular, entity-based policy architecture with server-side LRU caching.
+-   **Logging**: Winston logging is integrated with a PostgreSQL backend to maintain audit trails.
+-   **Data Storage**: PostgreSQL (Neon Database) is managed using Drizzle ORM.
+-   **Object Storage**: Utilizes Replit Object Storage, backed by Google Cloud Storage.
+-   **Real-time Notifications**: Features a WebSocket-based push notification system.
+-   **Event Bus System**: A typed publish/subscribe event bus facilitates inter-service communication.
+-   **Cron Job System**: Provides a framework for scheduling periodic tasks.
+-   **Migration Framework**: Manages database schema changes with a versioned migration system.
 
 ## System Design Choices
--   **Database Access Architecture**: All database interactions are channeled through a centralized storage layer to enforce audit logging, access control, validation, and separation of concerns.
--   **Data Validation**: Robust validation using Zod schemas and `libphonenumber-js`.
--   **Worker Management**: Comprehensive CRUD for workers, contacts, and benefits, with server-side pagination, search, and advanced filtering.
--   **Configurable Settings**: Unified, metadata-driven options system for dynamic form and table rendering.
+-   **Database Access Architecture**: All database interactions are centralized through a storage layer for audit logging, access control, validation, and separation of concerns.
+-   **Data Validation**: Utilizes Zod schemas and `libphonenumber-js` for robust data validation.
+-   **Worker Management**: Comprehensive CRUD operations for workers, contacts, and benefits, with server-side pagination, search, and advanced filtering.
+-   **Configurable Settings**: A unified, metadata-driven options system supports dynamic form and table rendering.
 -   **User Provisioning**: Email-based provisioning integrated with Replit accounts and automatic contact synchronization.
 -   **Employer & Policy Management**: Manages employer records, contacts, and historical policy assignments.
--   **Bookmarks**: User-specific, entity-agnostic bookmarking.
--   **Dashboard Plugin System**: Extensible architecture for customizable widgets.
--   **Components Feature Flag System**: Centralized system for managing application features with dependency and access control.
+-   **Bookmarks**: Provides user-specific, entity-agnostic bookmarking functionality.
+-   **Dashboard Plugin System**: An extensible architecture allows for customizable widgets.
+-   **Components Feature Flag System**: A centralized system for managing application features, including dependencies and access control.
 -   **Ledger System**: Manages financial transactions, accounts, payments, and integrity reports, including payment batches.
--   **Wizards**: Flexible workflow state management for multi-step processes.
+-   **Wizards**: Offers flexible workflow state management for multi-step processes.
 -   **File Storage System**: Comprehensive file management with metadata and access control.
 -   **Worker Hours & Employment Views**: Tracks worker hours and employment history.
--   **Trust Eligibility Plugin System**: Registry-based architecture for worker eligibility determination.
+-   **Trust Eligibility Plugin System**: A registry-based architecture determines worker eligibility.
 -   **Events Management**: Full CRUD for events, occurrences, and scheduling.
--   **Database Quickstarts**: Admin-only feature for database snapshot export/import.
--   **System Mode**: Application-wide environment mode setting.
--   **Staff Alert Configuration & Sending System**: Reusable system for configuring and dispatching multi-media alerts.
--   **Terminology Framework**: Provides site-specific terminology customization.
--   **Dispatch System**: Manages dispatch jobs, types, listings, and detail pages, featuring a plugin system for worker eligibility filtering. Includes Dispatch Job Groups for grouping jobs with date ranges and external system linkage, with data managed programmatically by backend sync processes.
+-   **Dispatch System**: Manages dispatch jobs, types, listings, and detail pages, including a plugin system for worker eligibility filtering. Supports Dispatch Job Groups for grouping jobs with date ranges and external system linkage.
 -   **Worker Bans**: Tracks worker restrictions and dynamically calculates active status.
 -   **Worker Member Status History**: Tracks worker member statuses per industry over time.
--   **HTA Union/Apprentice Import**: Site-specific feed wizard for importing worker data from spreadsheets.
 -   **Worker Certifications**: Manages worker certifications with automatic skill synchronization.
 -   **EDLS (Employer Day Labor Scheduler)**: Manages day labor scheduling with sheets, crews, department-based task assignment, supervisor tracking, and audit logging.
--   **Web Services Framework**: Server-side API framework for exposing services to external clients with client credential authentication and optional IP allowlisting.
+-   **Web Services Framework**: A server-side API framework for exposing services to external clients with client credential authentication and optional IP allowlisting.
 -   **SFTP Client Destinations**: Manages SFTP client configurations with CRUD API and UI, including connection diagnostics.
 -   **Trust Provider EDI**: Manages trust provider data interchange records with SFTP client destination integration.
--   **Contact Links Resolution**: Utility to resolve a `contactId` to its canonical page URLs across different entity types (worker, employer, provider contacts).
--   **Teamsters 631 Client Fetch**: Backend module for communicating with the Teamsters 631 server, supporting actions like service ping, worker lists, dispatch group search, and facility dropdowns. Includes a cron job for syncing T631 Dispatch Job Groups into the local `dispatch_job_group` table, and a separate `sitespecific-t631-facility-fetch` cron job (daily, disabled by default, gated by the `sitespecific.t631.client` component) that pulls `sirius_dispatch_facility_dropdown` and reconciles each `{siriusId, name}` entry against the local `facilities` table via `syncFacilities` in `server/modules/sitespecific/t631/client/sync-facilities.ts`. The facility sync uses only existing `FacilityStorage` methods (`getBySiriusId`, `create`, `updateContactName`), processes one row at a time, never deletes locally-only rows, never writes the `data` jsonb (the feed only carries a name), and skips the write entirely when the local name already matches — so re-runs are idempotent and don't generate audit-log churn. A third `sitespecific-t631-tos-fetch` cron job (daily 10 AM, disabled by default, same component gate) pulls `sirius_edls_server_tos_list` and mirrors active Time Off Sick records into the local `worker_tos` table via `syncTos` in `server/modules/sitespecific/t631/client/sync-tos.ts`. The remote payload shape is `body.data.tos_nodes` (object keyed by nid) where each node carries `nid` (→ `worker_tos.sirius_id`), top-level `worker_id` (→ matched against `worker_ids` of type `t631`, resolved once via `options_worker_id_type.sirius_id='t631'`), `created` (epoch seconds → `start_date`), and `field_sirius_summary.und[0].value` (→ `description`). Sync logic per remote row: missing nid/worker_id/created → skipped; unknown remote worker → skipped (`worker_not_found`); existing local row by sirius_id with matching start+description → unchanged (no write); existing closed row → re-opened by clearing `end_date` only if no other active record exists for that worker (otherwise skipped with `cannot_reopen`); new row → created only if no manual active record exists (otherwise skipped with `manual_conflict` — never auto-link to manual rows). Phase 2 termination: any local row with `end_date IS NULL AND sirius_id IS NOT NULL` whose sirius_id is no longer in the remote set is closed via `update(id, { endDate: new Date() })` — but only if the worker has at least one t631 worker_id (so non-T631 workers' manual records are untouched). All writes go through `WorkerTosStorage.create/update` so the partial unique index, single-active validator, and audit logging (events hosted on the worker) all fire. Two new storage helpers were added: `getBySiriusId(siriusId)` and `listActive()`.
--   **Facilities** (`facility` component): Each facility owns a `contacts` row (FK `contacts_id`, ON DELETE RESTRICT) and the facility's name is stored on that contact; renaming the facility goes through `storage.facilities.updateContactName` so contact and facility stay in sync. Optional unique `sirius_id` and `data` jsonb are populated programmatically by sync processes (never via the UI). REST API at `/api/facilities` (`server/modules/facility/facilities.ts`) uses `facility.view` (authenticated) for list/detail and `facility.edit` (staff) for create/update; PATCH accepts `{name?, nameComponents?, email?}` and delegates name + email to the contacts storage. Detail UI lives at `/facility/:id` with tabs Details / Edit / Contact (parent of Email, Addresses, Phone Numbers) / Logs, declared in `shared/tabRegistry.ts`'s `facilityTabTree` and rendered by `FacilityLayout`. Contact sub-tabs reuse the shared `EntityEmailManagement`, `AddressManagement`, and `PhoneNumberManagement` components against `facility.contactId`; the address/phone GET routes in `server/modules/contact-postal.ts` and `server/modules/phone-numbers.ts` recognize facility-owned contacts and gate read access with `facility.view` so non-staff can view but not modify. Logs are served through the shared `/api/logs/by-entity` endpoint, which now resolves worker / facility / employer entities and aggregates the parent id with its associated contact id(s) so contact-side activity (email/address/phone/name changes) shows up alongside the parent entity's own audit trail.
--   **Worker Time Off Sick (TOS)** (`worker.tos` component): Tracks unplanned-absence periods per worker. Schema in `shared/schema/worker/tos/schema.ts` — table `worker_tos` with start_date, optional end_date, optional sirius_id/description/data, and a partial unique index `worker_tos_one_active_per_worker_idx` on `(worker_id) WHERE end_date IS NULL` so at most one active record per worker can exist. "Active" is derived (no `status` column). Storage `server/storage/worker-tos.ts` enforces end>start, no future dates, and single-active in app code as well; API `server/modules/worker-tos.ts` exposes `GET /api/workers/:workerId/tos`, `POST /api/workers/:workerId/tos/start`, `POST /api/workers/:workerId/tos/stop` (no record id — operates on the worker's active record), `PATCH /api/worker-tos/:id`, `DELETE /api/worker-tos/:id`, all gated by `requireComponent("worker.tos")` + `requireAccess('staff')`. Audit logging hosts events on the worker so they appear on the worker's Logs tab. UI lives at `/workers/:id/employment/tos` (registered as a child of the existing `employment` parent tab) with a green "Start an absence" / amber "Stop absence (started X ago)" header button and an inline-editable table of records (start, end, duration, description, sirius id).
--   **Bulk Messaging**: Infrastructure for bulk message management with multi-medium support. Main table `bulk_messages` with `medium` as `text[]` array (email/sms/postal/inapp) and status enum (draft/queued/sent). A single bulk message campaign can target multiple channels simultaneously. Four medium-specific content tables (`bulk_messages_email`, `bulk_messages_sms`, `bulk_messages_postal`, `bulk_messages_inapp`) with FK cascade to parent. `bulk_participants` table links messages to contacts with a `medium` varchar column indicating the delivery channel; unique constraint on `(messageId, contactId, medium)` allows one participant row per contact per medium. Participant `status` enum (pending/send_failed/see_comm) tracks delivery outcome per medium. POST participants fans out one row per medium in the message's medium array (returns `{created, skipped}`). GET `/message` without `?medium` returns `{media, records}` dict of all medium content; with `?medium=` returns single medium. PUT `/message?medium=` saves content for a specific medium. PATCH updates use add/remove logic for medium-specific content tables when the medium array changes. `delivery-stats` returns `byMedium` breakdown alongside totals. `resolve-address` and `deliver-test` accept `medium` in request body (defaults to first medium). Delivery engine in `server/modules/bulk/deliver.ts` uses `resolveAddressForMedium(storage, medium, contactId)` and `deliverToParticipant` reads `participant.medium`. Cron job (`bulkDeliver.ts`) uses per-participant medium for batch sizing. Frontend: create/edit pages use checkbox multi-select for media; Message tab shows sub-tabs per selected medium; Recipients list includes Medium column; Test tab has medium selector dropdown; Deliver tab shows per-medium progress stats. Protected by the `bulk.edit` access policy (requires `bulk` component + either `admin` or `staff.bulk` permission). Tab registry entity type `bulk_message`.
+-   **Bulk Messaging**: Infrastructure for bulk message management with multi-medium support (email, SMS, postal, in-app).
 
 # External Dependencies
 
@@ -72,7 +63,7 @@ The frontend uses React 18 with TypeScript, Vite, Shadcn/ui (built on Radix UI),
 ## Validation and Type Safety
 -   **Zod**: Runtime type validation.
 -   **TypeScript**: Static type checking.
--   **Drizzle Zod**: Drizzle ORM and Zod integration.
+-   **Drizzle Zod**: Integration between Drizzle ORM and Zod.
 -   **libphonenumber-js**: Phone number parsing, validation, and formatting.
 
 ## File Transfer

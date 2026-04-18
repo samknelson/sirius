@@ -62,6 +62,15 @@ export async function syncTos(
     return result;
   }
 
+  const tosNodes = responseData.data.tos_nodes;
+  if (typeof tosNodes !== "object" || Array.isArray(tosNodes)) {
+    const msg = "T631 TOS payload data.tos_nodes must be a non-array object keyed by nid";
+    logger.error(msg, { service: "t631-sync-tos" });
+    result.errors++;
+    result.details.push({ siriusId: "(payload)", action: "error", error: msg });
+    return result;
+  }
+
   // Resolve t631 worker_id type id (sirius_id = "t631")
   const [t631Type] = await db
     .select({ id: optionsWorkerIdType.id })
@@ -80,7 +89,7 @@ export async function syncTos(
 
   const remoteSiriusIds = new Set<string>();
 
-  for (const [, rawNode] of Object.entries(responseData.data.tos_nodes)) {
+  for (const [, rawNode] of Object.entries(tosNodes)) {
     const node = rawNode as T631TosNode;
     const siriusId = node.nid !== undefined && node.nid !== null ? String(node.nid).trim() : "";
     const remoteWorkerId = node.worker_id !== undefined && node.worker_id !== null ? String(node.worker_id).trim() : "";
