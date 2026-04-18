@@ -87,6 +87,12 @@ export function BulkUpdateEmployersDialog({
     return payload;
   };
 
+  const errorMessage = (err: unknown): string => {
+    if (err instanceof Error) return err.message;
+    if (typeof err === "string") return err;
+    return "Unknown error";
+  };
+
   const bulkMutation = useMutation({
     mutationFn: async () => {
       const payload = buildPayload();
@@ -95,8 +101,8 @@ export function BulkUpdateEmployersDialog({
           try {
             await apiRequest("PUT", `/api/employers/${id}`, payload);
             return { id, ok: true as const };
-          } catch (error: any) {
-            return { id, ok: false as const, error: error?.message || "Unknown error" };
+          } catch (error: unknown) {
+            return { id, ok: false as const, error: errorMessage(error) };
           }
         })
       );
@@ -122,10 +128,10 @@ export function BulkUpdateEmployersDialog({
       onOpenChange(false);
       onComplete();
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
       toast({
         title: "Bulk update failed",
-        description: error?.message || "Unable to apply bulk update.",
+        description: errorMessage(error) || "Unable to apply bulk update.",
         variant: "destructive",
       });
     },

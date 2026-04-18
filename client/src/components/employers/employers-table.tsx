@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { ArrowUpDown, Building2, Eye, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -103,6 +103,27 @@ export function EmployersTable({ employers, isLoading, includeInactive, onToggle
     }
     return b.name.localeCompare(a.name);
   });
+
+  // Prune selection to currently visible (filtered) rows whenever the visible set changes.
+  const visibleIdsKey = sortedEmployers.map((e) => e.id).join(",");
+  useEffect(() => {
+    if (!selectable || !selectedIds || !onSelectionChange) return;
+    if (selectedIds.size === 0) return;
+    const visible = new Set(sortedEmployers.map((e) => e.id));
+    let changed = false;
+    const pruned = new Set<string>();
+    selectedIds.forEach((id) => {
+      if (visible.has(id)) {
+        pruned.add(id);
+      } else {
+        changed = true;
+      }
+    });
+    if (changed) {
+      onSelectionChange(pruned);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleIdsKey, selectable]);
 
   const toggleSort = () => {
     setSortOrder(sortOrder === "asc" ? "desc" : "asc");
