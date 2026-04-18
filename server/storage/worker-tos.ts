@@ -31,12 +31,25 @@ export interface WorkerTosUpdate {
   siriusId?: string | null;
 }
 
+export interface ActiveWorkerTosWorker {
+  id: string;
+  siriusId: number | null;
+  displayName: string | null;
+  given: string | null;
+  family: string | null;
+}
+
+export interface ActiveWorkerTosWithWorker extends WorkerTos {
+  worker: ActiveWorkerTosWorker;
+}
+
 export interface WorkerTosStorage {
   getByWorker(workerId: string): Promise<WorkerTos[]>;
   get(id: string): Promise<WorkerTos | undefined>;
   getBySiriusId(siriusId: string): Promise<WorkerTos | undefined>;
   getActiveForWorker(workerId: string): Promise<WorkerTos | undefined>;
   listActive(): Promise<WorkerTos[]>;
+  listActiveWithWorker(): Promise<ActiveWorkerTosWithWorker[]>;
   create(input: InsertWorkerTos): Promise<WorkerTos>;
   update(id: string, patch: WorkerTosUpdate): Promise<WorkerTos | undefined>;
   delete(id: string, message?: string): Promise<boolean>;
@@ -200,6 +213,27 @@ export function createWorkerTosStorage(): WorkerTosStorage {
         .select()
         .from(workerTos)
         .where(isNull(workerTos.endDate));
+    },
+
+    async listActiveWithWorker(): Promise<ActiveWorkerTosWithWorker[]> {
+      const client = getClient();
+      const rows = await client
+        .select({
+          tos: workerTos,
+          worker: {
+            id: workers.id,
+            siriusId: workers.siriusId,
+            displayName: contacts.displayName,
+            given: contacts.given,
+            family: contacts.family,
+          },
+        })
+        .from(workerTos)
+        .innerJoin(workers, eq(workerTos.workerId, workers.id))
+        .innerJoin(contacts, eq(workers.contactId, contacts.id))
+        .where(isNull(workerTos.endDate))
+        .orderBy(contacts.family, contacts.given);
+      return rows.map((row) => ({ ...row.tos, worker: row.worker }));
     },
 
     async getActiveForWorker(workerId: string): Promise<WorkerTos | undefined> {

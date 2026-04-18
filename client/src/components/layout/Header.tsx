@@ -1345,6 +1345,16 @@ export default function Header() {
                       </Link>
                     </DropdownMenuItem>
                   )}
+                  {hasComponent("edls") && hasComponent("worker.tos") && (
+                    <DropdownMenuItem asChild>
+                      <Link href="/edls/tos" className="w-full">
+                        <div className="flex items-center cursor-pointer" data-testid="menu-edls-tos">
+                          <FileSpreadsheet className="h-4 w-4 mr-2" />
+                          TOS
+                        </div>
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
             )}

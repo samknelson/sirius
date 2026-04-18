@@ -44,7 +44,7 @@ The frontend is built with React 18, TypeScript, Vite, Shadcn/ui (based on Radix
 -   **Worker Bans**: Tracks worker restrictions and dynamically calculates active status.
 -   **Worker Member Status History**: Tracks worker member statuses per industry over time.
 -   **Worker Certifications**: Manages worker certifications with automatic skill synchronization.
--   **EDLS (Employer Day Labor Scheduler)**: Manages day labor scheduling with sheets, crews, department-based task assignment, supervisor tracking, and audit logging.
+-   **EDLS (Employer Day Labor Scheduler)**: Manages day labor scheduling with sheets, crews, department-based task assignment, supervisor tracking, and audit logging. Includes a TOS view at `/edls/tos` that lists every worker on active Time Off Sick alongside their upcoming day-labor assignments, with filters for supervisor, facility, and job group.
 -   **Web Services Framework**: A server-side API framework for exposing services to external clients with client credential authentication and optional IP allowlisting.
 -   **SFTP Client Destinations**: Manages SFTP client configurations with CRUD API and UI, including connection diagnostics.
 -   **Trust Provider EDI**: Manages trust provider data interchange records with SFTP client destination integration.

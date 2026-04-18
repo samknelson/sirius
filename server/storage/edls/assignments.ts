@@ -8,10 +8,13 @@ import {
   edlsSheets,
   workers,
   contacts,
+  users,
+  facilities,
+  dispatchJobGroups,
   type EdlsAssignment, 
   type InsertEdlsAssignment
 } from "@shared/schema";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, gte, lte, asc, inArray } from "drizzle-orm";
 import { StorageLoggingConfig } from "../middleware/logging";
 import { getClient, runInTransaction } from "../transaction-context";
 import { createUnifiedOptionsStorage } from "../unified-options";
@@ -111,6 +114,29 @@ export interface WorkerAssignmentDetails {
   next: WorkerAssignmentDetail | null;
 }
 
+export interface AssignmentForWorkerFilters {
+  startYmd?: string;
+  endYmd?: string;
+  supervisorId?: string;
+  facilityId?: string;
+  jobGroupId?: string;
+}
+
+export interface AssignmentForWorker {
+  assignmentId: string;
+  ymd: string;
+  sheetId: string;
+  sheetTitle: string;
+  sheetStatus: string;
+  crewId: string;
+  crewTitle: string;
+  startTime: string | null;
+  endTime: string | null;
+  supervisor: { id: string; firstName: string | null; lastName: string | null; email: string } | null;
+  facility: { id: string; name: string } | null;
+  jobGroup: { id: string; name: string } | null;
+}
+
 export interface EdlsAssignmentsStorage {
   getByCrewId(crewId: string): Promise<EdlsAssignmentWithWorker[]>;
   getBySheetId(sheetId: string): Promise<EdlsAssignmentWithWorker[]>;
@@ -121,6 +147,8 @@ export interface EdlsAssignmentsStorage {
   updateData(id: string, data: Record<string, unknown>): Promise<EdlsAssignment | undefined>;
   getAvailableWorkersForSheet(sheetYmd: string, industryId: string | null, ratingId?: string): Promise<AvailableWorkerForSheet[]>;
   getWorkerAssignmentDetails(workerId: string, sheetYmd: string): Promise<WorkerAssignmentDetails | null>;
+  getAssignmentsForWorker(workerId: string, filters?: AssignmentForWorkerFilters): Promise<AssignmentForWorker[]>;
+  getAssignmentsForWorkerIds(workerIds: string[], filters?: AssignmentForWorkerFilters): Promise<Map<string, AssignmentForWorker[]>>;
 }
 
 async function sortAssignmentsByClassification(
@@ -340,6 +368,144 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
         ${orderBy}
       `);
       return result.rows as unknown as AvailableWorkerForSheet[];
+    },
+
+    async getAssignmentsForWorker(
+      workerId: string,
+      filters?: AssignmentForWorkerFilters
+    ): Promise<AssignmentForWorker[]> {
+      const client = getClient();
+      const conditions = [eq(edlsAssignments.workerId, workerId)];
+      if (filters?.startYmd) conditions.push(gte(edlsSheets.ymd, filters.startYmd));
+      if (filters?.endYmd) conditions.push(lte(edlsSheets.ymd, filters.endYmd));
+      if (filters?.supervisorId) conditions.push(eq(edlsSheets.supervisor, filters.supervisorId));
+      if (filters?.facilityId) conditions.push(eq(edlsSheets.facilityId, filters.facilityId));
+      if (filters?.jobGroupId) conditions.push(eq(edlsSheets.jobGroupId, filters.jobGroupId));
+
+      const rows = await client
+        .select({
+          assignmentId: edlsAssignments.id,
+          ymd: edlsSheets.ymd,
+          sheetId: edlsSheets.id,
+          sheetTitle: edlsSheets.title,
+          sheetStatus: edlsSheets.status,
+          crewId: edlsCrews.id,
+          crewTitle: edlsCrews.title,
+          startTime: edlsCrews.startTime,
+          endTime: edlsCrews.endTime,
+          supervisorId: users.id,
+          supervisorFirstName: users.firstName,
+          supervisorLastName: users.lastName,
+          supervisorEmail: users.email,
+          facilityId: facilities.id,
+          facilityName: facilities.name,
+          jobGroupId: dispatchJobGroups.id,
+          jobGroupName: dispatchJobGroups.name,
+        })
+        .from(edlsAssignments)
+        .innerJoin(edlsCrews, eq(edlsAssignments.crewId, edlsCrews.id))
+        .innerJoin(edlsSheets, eq(edlsCrews.sheetId, edlsSheets.id))
+        .leftJoin(users, eq(edlsSheets.supervisor, users.id))
+        .leftJoin(facilities, eq(edlsSheets.facilityId, facilities.id))
+        .leftJoin(dispatchJobGroups, eq(edlsSheets.jobGroupId, dispatchJobGroups.id))
+        .where(and(...conditions))
+        .orderBy(asc(edlsSheets.ymd), asc(edlsCrews.startTime));
+
+      return rows.map((r) => ({
+        assignmentId: r.assignmentId,
+        ymd: r.ymd,
+        sheetId: r.sheetId,
+        sheetTitle: r.sheetTitle,
+        sheetStatus: r.sheetStatus,
+        crewId: r.crewId,
+        crewTitle: r.crewTitle,
+        startTime: r.startTime,
+        endTime: r.endTime,
+        supervisor: r.supervisorId
+          ? {
+              id: r.supervisorId,
+              firstName: r.supervisorFirstName,
+              lastName: r.supervisorLastName,
+              email: r.supervisorEmail!,
+            }
+          : null,
+        facility: r.facilityId ? { id: r.facilityId, name: r.facilityName! } : null,
+        jobGroup: r.jobGroupId ? { id: r.jobGroupId, name: r.jobGroupName! } : null,
+      }));
+    },
+
+    async getAssignmentsForWorkerIds(
+      workerIds: string[],
+      filters?: AssignmentForWorkerFilters
+    ): Promise<Map<string, AssignmentForWorker[]>> {
+      const result = new Map<string, AssignmentForWorker[]>();
+      for (const id of workerIds) result.set(id, []);
+      if (workerIds.length === 0) return result;
+
+      const client = getClient();
+      const conditions = [inArray(edlsAssignments.workerId, workerIds)];
+      if (filters?.startYmd) conditions.push(gte(edlsSheets.ymd, filters.startYmd));
+      if (filters?.endYmd) conditions.push(lte(edlsSheets.ymd, filters.endYmd));
+      if (filters?.supervisorId) conditions.push(eq(edlsSheets.supervisor, filters.supervisorId));
+      if (filters?.facilityId) conditions.push(eq(edlsSheets.facilityId, filters.facilityId));
+      if (filters?.jobGroupId) conditions.push(eq(edlsSheets.jobGroupId, filters.jobGroupId));
+
+      const rows = await client
+        .select({
+          workerId: edlsAssignments.workerId,
+          assignmentId: edlsAssignments.id,
+          ymd: edlsSheets.ymd,
+          sheetId: edlsSheets.id,
+          sheetTitle: edlsSheets.title,
+          sheetStatus: edlsSheets.status,
+          crewId: edlsCrews.id,
+          crewTitle: edlsCrews.title,
+          startTime: edlsCrews.startTime,
+          endTime: edlsCrews.endTime,
+          supervisorId: users.id,
+          supervisorFirstName: users.firstName,
+          supervisorLastName: users.lastName,
+          supervisorEmail: users.email,
+          facilityId: facilities.id,
+          facilityName: facilities.name,
+          jobGroupId: dispatchJobGroups.id,
+          jobGroupName: dispatchJobGroups.name,
+        })
+        .from(edlsAssignments)
+        .innerJoin(edlsCrews, eq(edlsAssignments.crewId, edlsCrews.id))
+        .innerJoin(edlsSheets, eq(edlsCrews.sheetId, edlsSheets.id))
+        .leftJoin(users, eq(edlsSheets.supervisor, users.id))
+        .leftJoin(facilities, eq(edlsSheets.facilityId, facilities.id))
+        .leftJoin(dispatchJobGroups, eq(edlsSheets.jobGroupId, dispatchJobGroups.id))
+        .where(and(...conditions))
+        .orderBy(asc(edlsSheets.ymd), asc(edlsCrews.startTime));
+
+      for (const r of rows) {
+        const item: AssignmentForWorker = {
+          assignmentId: r.assignmentId,
+          ymd: r.ymd,
+          sheetId: r.sheetId,
+          sheetTitle: r.sheetTitle,
+          sheetStatus: r.sheetStatus,
+          crewId: r.crewId,
+          crewTitle: r.crewTitle,
+          startTime: r.startTime,
+          endTime: r.endTime,
+          supervisor: r.supervisorId
+            ? {
+                id: r.supervisorId,
+                firstName: r.supervisorFirstName,
+                lastName: r.supervisorLastName,
+                email: r.supervisorEmail!,
+              }
+            : null,
+          facility: r.facilityId ? { id: r.facilityId, name: r.facilityName! } : null,
+          jobGroup: r.jobGroupId ? { id: r.jobGroupId, name: r.jobGroupName! } : null,
+        };
+        const list = result.get(r.workerId);
+        if (list) list.push(item);
+      }
+      return result;
     },
 
     async getWorkerAssignmentDetails(workerId: string, sheetYmd: string): Promise<WorkerAssignmentDetails | null> {

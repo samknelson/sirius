@@ -313,6 +313,7 @@ const BtuBuildingRepImportPage = lazy(() => import("@/pages/sitespecific/btu/bui
 const WorkerPoliticalProfile = lazy(() => import("@/pages/worker-political-profile"));
 const PoliticalProfilesReport = lazy(() => import("@/pages/political-profiles-report"));
 const EdlsSheetsPage = lazy(() => import("@/pages/edls/sheets"));
+const EdlsTosPage = lazy(() => import("@/pages/edls/tos"));
 const EdlsSheetDetailsPage = lazy(() => import("@/pages/edls/sheet-details"));
 const EdlsSheetAssignmentsPage = lazy(() => import("@/pages/edls/sheet-assignments"));
 const EdlsSheetManagePage = lazy(() => import("@/pages/edls/sheet-manage"));
@@ -2460,6 +2461,14 @@ function Router() {
         <ProtectedRoute policy="edls.any" component="edls">
           <AuthenticatedLayout>
             <EdlsSheetsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/edls/tos">
+        <ProtectedRoute policy="edls.any" component="worker.tos">
+          <AuthenticatedLayout>
+            <EdlsTosPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

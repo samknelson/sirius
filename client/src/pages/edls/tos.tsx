@@ -1,0 +1,483 @@
+import { useMemo, useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { Link, useSearch, useLocation } from "wouter";
+import { format } from "date-fns";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Stethoscope, Users, Factory, Layers, UserCheck, ChevronsUpDown, Check, X } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import { cn } from "@/lib/utils";
+import { getTodayYmd, formatYmd } from "@shared/utils/date";
+
+interface ActiveWorkerTosWorker {
+  id: string;
+  siriusId: number | null;
+  displayName: string | null;
+  given: string | null;
+  family: string | null;
+}
+
+interface ActiveTosRecord {
+  id: string;
+  workerId: string;
+  startDate: string;
+  endDate: string | null;
+  description: string | null;
+  worker: ActiveWorkerTosWorker;
+}
+
+interface AssignmentForWorker {
+  assignmentId: string;
+  ymd: string;
+  sheetId: string;
+  sheetTitle: string;
+  sheetStatus: string;
+  crewId: string;
+  crewTitle: string;
+  startTime: string | null;
+  endTime: string | null;
+  supervisor: { id: string; firstName: string | null; lastName: string | null; email: string } | null;
+  facility: { id: string; name: string } | null;
+  jobGroup: { id: string; name: string } | null;
+}
+
+interface TosWithAssignments {
+  tos: ActiveTosRecord;
+  assignments: AssignmentForWorker[];
+}
+
+interface TosResponse {
+  items: TosWithAssignments[];
+  filterActive: boolean;
+}
+
+interface SupervisorOption {
+  id: string;
+  firstName: string | null;
+  lastName: string | null;
+  email: string;
+}
+
+interface SupervisorContextResponse {
+  options: SupervisorOption[];
+}
+
+interface FacilityOption {
+  id: string;
+  name: string;
+}
+
+interface PaginatedFacilities {
+  data: FacilityOption[];
+}
+
+interface JobGroupOption {
+  id: string;
+  name: string;
+}
+
+function workerName(w: ActiveWorkerTosWorker): string {
+  if (w.family || w.given) return [w.family, w.given].filter(Boolean).join(", ");
+  return w.displayName || `Worker #${w.siriusId ?? "?"}`;
+}
+
+function supervisorName(s: AssignmentForWorker["supervisor"]): string {
+  if (!s) return "—";
+  if (s.firstName || s.lastName) return [s.firstName, s.lastName].filter(Boolean).join(" ");
+  return s.email;
+}
+
+export default function EdlsTosPage() {
+  const search = useSearch();
+  const [, setLocation] = useLocation();
+
+  const initialFilters = useMemo(() => {
+    const params = new URLSearchParams(search);
+    return {
+      supervisorId: params.get("supervisorId") ?? "",
+      facilityId: params.get("facilityId") ?? "",
+      jobGroupId: params.get("jobGroupId") ?? "",
+    };
+  }, []);
+
+  const [supervisorId, setSupervisorIdState] = useState(initialFilters.supervisorId);
+  const [facilityId, setFacilityIdState] = useState(initialFilters.facilityId);
+  const [jobGroupId, setJobGroupIdState] = useState(initialFilters.jobGroupId);
+  const [facilitySearch, setFacilitySearch] = useState("");
+  const [facilityPickerOpen, setFacilityPickerOpen] = useState(false);
+
+  const writeUrl = (next: { supervisorId: string; facilityId: string; jobGroupId: string }) => {
+    const params = new URLSearchParams();
+    if (next.supervisorId) params.set("supervisorId", next.supervisorId);
+    if (next.facilityId) params.set("facilityId", next.facilityId);
+    if (next.jobGroupId) params.set("jobGroupId", next.jobGroupId);
+    const qs = params.toString();
+    setLocation("/edls/tos" + (qs ? `?${qs}` : ""), { replace: true });
+  };
+
+  const setSupervisorId = (v: string) => {
+    setSupervisorIdState(v);
+    writeUrl({ supervisorId: v, facilityId, jobGroupId });
+  };
+  const setFacilityId = (v: string) => {
+    setFacilityIdState(v);
+    writeUrl({ supervisorId, facilityId: v, jobGroupId });
+  };
+  const setJobGroupId = (v: string) => {
+    setJobGroupIdState(v);
+    writeUrl({ supervisorId, facilityId, jobGroupId: v });
+  };
+
+  useEffect(() => {
+    const params = new URLSearchParams(search);
+    setSupervisorIdState(params.get("supervisorId") ?? "");
+    setFacilityIdState(params.get("facilityId") ?? "");
+    setJobGroupIdState(params.get("jobGroupId") ?? "");
+  }, [search]);
+
+  const startYmd = getTodayYmd();
+
+  const queryParams = new URLSearchParams({ startYmd });
+  if (supervisorId) queryParams.set("supervisorId", supervisorId);
+  if (facilityId) queryParams.set("facilityId", facilityId);
+  if (jobGroupId) queryParams.set("jobGroupId", jobGroupId);
+
+  const { data, isLoading, isError } = useQuery<TosResponse>({
+    queryKey: ["/api/edls/tos", { startYmd, supervisorId, facilityId, jobGroupId }],
+    queryFn: async () => {
+      const res = await fetch(`/api/edls/tos?${queryParams.toString()}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load TOS list");
+      return res.json();
+    },
+  });
+
+  const { data: supervisorContext } = useQuery<SupervisorContextResponse>({
+    queryKey: ["/api/edls/supervisor-context"],
+    queryFn: async () => {
+      const res = await fetch("/api/edls/supervisor-context", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load supervisors");
+      return res.json();
+    },
+  });
+  const supervisorOptions = supervisorContext?.options ?? [];
+
+  const { data: facilitiesData } = useQuery<PaginatedFacilities>({
+    queryKey: ["/api/facilities", { search: facilitySearch, tosFilter: true }],
+    queryFn: async () => {
+      const params = new URLSearchParams({ page: "0", limit: "50", sortDir: "asc" });
+      if (facilitySearch) params.set("search", facilitySearch);
+      const res = await fetch(`/api/facilities?${params.toString()}`);
+      if (!res.ok) throw new Error("Failed to fetch facilities");
+      return res.json();
+    },
+  });
+  const facilityOptions = facilitiesData?.data ?? [];
+
+  const { data: selectedFacility } = useQuery<{ id: string; name: string }>({
+    queryKey: ["/api/facilities", facilityId],
+    queryFn: async () => {
+      const res = await fetch(`/api/facilities/${facilityId}`);
+      if (!res.ok) throw new Error("Failed to fetch facility");
+      return res.json();
+    },
+    enabled: !!facilityId && !facilityOptions.some((f) => f.id === facilityId),
+  });
+  const selectedFacilityName =
+    facilityOptions.find((f) => f.id === facilityId)?.name ?? selectedFacility?.name;
+
+  const { data: jobGroupOptions = [] } = useQuery<JobGroupOption[]>({
+    queryKey: ["/api/edls/job-groups/active"],
+    queryFn: async () => {
+      const res = await fetch("/api/edls/job-groups/active", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch job groups");
+      return res.json();
+    },
+  });
+
+  const items = data?.items ?? [];
+  const filterActive = data?.filterActive ?? false;
+  const hasAnyFilter = !!(supervisorId || facilityId || jobGroupId);
+
+  return (
+    <div className="container mx-auto py-8 space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle data-testid="title-page" className="flex items-center gap-2">
+            <Stethoscope className="h-5 w-5" />
+            TOS — Workers on Time Off Sick
+          </CardTitle>
+          <CardDescription>
+            Active sick absences and each worker's upcoming day-labor assignments.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-wrap items-end gap-4">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
+                <UserCheck className="h-4 w-4" />
+                Supervisor
+              </label>
+              <Select value={supervisorId || "all"} onValueChange={(v) => setSupervisorId(v === "all" ? "" : v)}>
+                <SelectTrigger className="w-[240px]" data-testid="select-supervisor-filter">
+                  <SelectValue placeholder="All supervisors" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all" data-testid="option-supervisor-all">
+                    All supervisors
+                  </SelectItem>
+                  {supervisorOptions.map((s) => (
+                    <SelectItem key={s.id} value={s.id} data-testid={`option-supervisor-${s.id}`}>
+                      {supervisorName(s)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
+                <Factory className="h-4 w-4" />
+                Facility
+              </label>
+              <Popover open={facilityPickerOpen} onOpenChange={setFacilityPickerOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    className={cn("w-[240px] justify-between font-normal", !facilityId && "text-muted-foreground")}
+                    data-testid="button-facility-filter"
+                  >
+                    <span className="truncate">
+                      {facilityId ? selectedFacilityName ?? "Selected facility" : "All facilities"}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      {facilityId && (
+                        <X
+                          className="h-4 w-4 opacity-60 hover:opacity-100"
+                          data-testid="button-facility-filter-clear"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setFacilityId("");
+                          }}
+                        />
+                      )}
+                      <ChevronsUpDown className="h-4 w-4 opacity-50" />
+                    </span>
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="p-0 w-[--radix-popover-trigger-width]" align="start">
+                  <Command shouldFilter={false}>
+                    <CommandInput
+                      placeholder="Search facilities..."
+                      value={facilitySearch}
+                      onValueChange={setFacilitySearch}
+                      data-testid="input-facility-filter-search"
+                    />
+                    <CommandList>
+                      <CommandEmpty>No facilities found.</CommandEmpty>
+                      <CommandGroup>
+                        <CommandItem
+                          value="__all__"
+                          onSelect={() => {
+                            setFacilityId("");
+                            setFacilityPickerOpen(false);
+                          }}
+                          data-testid="option-facility-all"
+                        >
+                          <Check className={cn("mr-2 h-4 w-4", !facilityId ? "opacity-100" : "opacity-0")} />
+                          All facilities
+                        </CommandItem>
+                        {facilityOptions.map((f) => (
+                          <CommandItem
+                            key={f.id}
+                            value={f.id}
+                            onSelect={() => {
+                              setFacilityId(f.id);
+                              setFacilityPickerOpen(false);
+                            }}
+                            data-testid={`option-facility-${f.id}`}
+                          >
+                            <Check className={cn("mr-2 h-4 w-4", facilityId === f.id ? "opacity-100" : "opacity-0")} />
+                            {f.name}
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
+                <Layers className="h-4 w-4" />
+                Job Group
+              </label>
+              <Select value={jobGroupId || "all"} onValueChange={(v) => setJobGroupId(v === "all" ? "" : v)}>
+                <SelectTrigger className="w-[240px]" data-testid="select-job-group-filter">
+                  <SelectValue placeholder="All job groups" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all" data-testid="option-job-group-all">
+                    All job groups
+                  </SelectItem>
+                  {jobGroupOptions.map((g) => (
+                    <SelectItem key={g.id} value={g.id} data-testid={`option-job-group-${g.id}`}>
+                      {g.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {hasAnyFilter && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setSupervisorIdState("");
+                  setFacilityIdState("");
+                  setJobGroupIdState("");
+                  writeUrl({ supervisorId: "", facilityId: "", jobGroupId: "" });
+                }}
+                data-testid="button-clear-filters"
+              >
+                Clear filters
+              </Button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {isLoading ? (
+        <Card>
+          <CardContent className="pt-6 space-y-3">
+            <Skeleton className="h-12 w-full" />
+            <Skeleton className="h-12 w-full" />
+            <Skeleton className="h-12 w-full" />
+          </CardContent>
+        </Card>
+      ) : isError ? (
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-sm text-destructive" data-testid="text-error">
+              Failed to load TOS list.
+            </p>
+          </CardContent>
+        </Card>
+      ) : items.length === 0 ? (
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex flex-col items-center text-center py-8 text-muted-foreground" data-testid="text-empty">
+              <Users className="h-10 w-10 mb-2 opacity-50" />
+              <p className="text-sm">
+                {filterActive
+                  ? "No workers on Time Off Sick have upcoming assignments matching the filters."
+                  : "No workers are currently on Time Off Sick."}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-3">
+          {items.map(({ tos, assignments }) => (
+            <Card key={tos.id} data-testid={`card-tos-${tos.workerId}`}>
+              <CardHeader className="pb-3">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <CardTitle className="text-base">
+                      <Link
+                        href={`/workers/${tos.workerId}`}
+                        className="hover:underline"
+                        data-testid={`link-worker-${tos.workerId}`}
+                      >
+                        {workerName(tos.worker)}
+                      </Link>
+                      {tos.worker.siriusId !== null && (
+                        <span className="ml-2 text-sm font-normal text-muted-foreground">
+                          #{tos.worker.siriusId}
+                        </span>
+                      )}
+                    </CardTitle>
+                    <CardDescription>
+                      Sick since{" "}
+                      <span data-testid={`text-tos-start-${tos.workerId}`}>
+                        {format(new Date(tos.startDate), "MMM d, yyyy")}
+                      </span>
+                      {tos.description ? ` — ${tos.description}` : ""}
+                    </CardDescription>
+                  </div>
+                  <Badge variant="secondary" data-testid={`badge-assignment-count-${tos.workerId}`}>
+                    {assignments.length} upcoming
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-0">
+                {assignments.length === 0 ? (
+                  <p
+                    className="text-sm text-muted-foreground italic"
+                    data-testid={`text-no-assignments-${tos.workerId}`}
+                  >
+                    No upcoming assignments.
+                  </p>
+                ) : (
+                  <ul className="divide-y border rounded-md">
+                    {assignments.map((a) => (
+                      <li
+                        key={a.assignmentId}
+                        className="px-3 py-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm"
+                        data-testid={`row-assignment-${a.assignmentId}`}
+                      >
+                        <Link
+                          href={`/edls/sheet/${a.sheetId}`}
+                          className="font-medium hover:underline"
+                          data-testid={`link-sheet-${a.assignmentId}`}
+                        >
+                          {formatYmd(a.ymd, "short")} — {a.sheetTitle}
+                        </Link>
+                        <span className="text-muted-foreground">{a.crewTitle}</span>
+                        {a.startTime && (
+                          <span className="text-muted-foreground">
+                            {a.startTime}
+                            {a.endTime ? `–${a.endTime}` : ""}
+                          </span>
+                        )}
+                        <span className="text-muted-foreground">
+                          Sup: {supervisorName(a.supervisor)}
+                        </span>
+                        {a.facility && (
+                          <span className="text-muted-foreground">Facility: {a.facility.name}</span>
+                        )}
+                        {a.jobGroup && (
+                          <span className="text-muted-foreground">Group: {a.jobGroup.name}</span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
