@@ -200,7 +200,7 @@ export async function findSecondShiftTo(
 
 export type SyncResult =
   | { configError: ConfigErrorDetail }
-  | { error: { code: "HAS_2ND_ID" | "MISSING_FREEMAN_ID"; message: string } }
+  | { error: { code: "HAS_2ND_ID" | "MISSING_FREEMAN_ID" | "WORKER_NOT_FOUND"; message: string } }
   | { link: SecondShiftLink; source: SourceEligibility };
 
 interface DesiredNameComponents {
@@ -293,9 +293,8 @@ export async function syncSecondShift(
 
   const primary = await deps.storage.workers.getWorker(primaryWorkerId);
   if (!primary) {
-    // The route handler already 404s before calling, but be defensive.
     return {
-      error: { code: "MISSING_FREEMAN_ID", message: "Worker not found." },
+      error: { code: "WORKER_NOT_FOUND", message: "Worker not found." },
     };
   }
 
@@ -334,15 +333,6 @@ export async function syncSecondShift(
   let shadowWorkerId: string;
 
   if (existing) {
-    if (existing.workerId === primaryWorkerId) {
-      // Defensive — shouldn't happen since secondValue would be set above.
-      return {
-        error: {
-          code: "HAS_2ND_ID",
-          message: "Cannot create a shadow of a shadow: this worker already has a 2nd ID.",
-        },
-      };
-    }
     shadowWorkerId = existing.workerId;
 
     const shadowWorker = await deps.storage.workers.getWorker(shadowWorkerId);
