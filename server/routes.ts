@@ -1272,52 +1272,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
-  // PUT /api/employers/:id - Update an employer (requires staff permission)
-  app.put("/api/employers/:id", requireAuth, requirePermission("staff"), async (req, res) => {
-    try {
-      const { id } = req.params;
-      const { name, isActive, typeId, industryId } = req.body;
-      
-      const updates: Partial<InsertEmployer> = {};
-      
-      if (name !== undefined) {
-        if (!name || typeof name !== 'string' || !name.trim()) {
-          return res.status(400).json({ message: "Employer name cannot be empty" });
-        }
-        updates.name = name.trim();
-      }
-
-      if (isActive !== undefined) {
-        if (typeof isActive !== "boolean") {
-          return res.status(400).json({ message: "isActive must be a boolean" });
-        }
-        updates.isActive = isActive;
-      }
-
-      if (typeId !== undefined) {
-        updates.typeId = typeId;
-      }
-      
-      if (industryId !== undefined) {
-        updates.industryId = industryId === null || industryId === "" ? null : industryId;
-      }
-      
-      if (Object.keys(updates).length === 0) {
-        return res.status(400).json({ message: "No fields to update" });
-      }
-
-      const employer = await storage.employers.updateEmployer(id, updates);
-
-      if (!employer) {
-        res.status(404).json({ message: "Employer not found" });
-        return;
-      }
-
-      res.json(employer);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to update employer" });
-    }
-  });
+  // PUT /api/employers/:id - Handler moved to server/modules/employers.ts
+  // (the modular handler additionally supports companyId for the employer.company component)
 
   // DELETE /api/employers/:id - Delete an employer (requires staff permission)
   app.delete("/api/employers/:id", requireAuth, requirePermission("staff"), async (req, res) => {

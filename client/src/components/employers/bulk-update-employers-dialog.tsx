@@ -141,15 +141,6 @@ export function BulkUpdateEmployersDialog({
 
   const handleSubmit = () => {
     const currentPayload = buildPayload();
-    console.log("[BulkUpdate] handleSubmit", {
-      industryId,
-      typeId,
-      companyId,
-      activeValue,
-      showCompany,
-      currentPayload,
-      selectedIds,
-    });
     if (Object.keys(currentPayload).length === 0 || selectedIds.length === 0) return;
     bulkMutation.mutate({ ids: [...selectedIds], payload: currentPayload });
   };
