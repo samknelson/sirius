@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { Building2 } from "lucide-react";
+import { Building2, Pencil } from "lucide-react";
 import { EmployersTable } from "@/components/employers/employers-table";
+import { BulkUpdateEmployersDialog } from "@/components/employers/bulk-update-employers-dialog";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
@@ -14,8 +15,11 @@ type EmployerWithCompany = Employer & { companyId?: string | null; companyName?:
 export default function Employers() {
   const [location] = useLocation();
   const [includeInactive, setIncludeInactive] = useState(false);
-  const { hasComponent } = useAuth();
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
+  const { hasComponent, hasPermission } = useAuth();
   const showCompany = hasComponent("employer.company");
+  const canBulkUpdate = hasPermission("staff");
   
   const { data: employers = [], isLoading } = useQuery<EmployerWithCompany[]>({
     queryKey: ["/api/employers", includeInactive],
@@ -49,9 +53,21 @@ export default function Employers() {
         title="Employers" 
         icon={<Building2 className="text-primary-foreground" size={16} />}
         actions={
-          <span className="text-sm text-muted-foreground" data-testid="text-employer-count">
-            {employers.length} Employers
-          </span>
+          <div className="flex items-center gap-3">
+            {canBulkUpdate && selectedIds.size > 0 && (
+              <Button
+                size="sm"
+                onClick={() => setBulkDialogOpen(true)}
+                data-testid="button-bulk-update-employers"
+              >
+                <Pencil className="mr-2" size={14} />
+                Bulk Update ({selectedIds.size})
+              </Button>
+            )}
+            <span className="text-sm text-muted-foreground" data-testid="text-employer-count">
+              {employers.length} Employers
+            </span>
+          </div>
         }
       />
 
@@ -82,8 +98,22 @@ export default function Employers() {
           onToggleInactive={() => setIncludeInactive(!includeInactive)}
           showCompany={showCompany}
           companies={companiesList}
+          selectable={canBulkUpdate}
+          selectedIds={selectedIds}
+          onSelectionChange={setSelectedIds}
         />
       </main>
+
+      {canBulkUpdate && (
+        <BulkUpdateEmployersDialog
+          open={bulkDialogOpen}
+          onOpenChange={setBulkDialogOpen}
+          selectedIds={Array.from(selectedIds)}
+          showCompany={showCompany}
+          companies={companiesList}
+          onComplete={() => setSelectedIds(new Set())}
+        />
+      )}
     </div>
   );
 }

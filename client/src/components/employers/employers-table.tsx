@@ -24,6 +24,9 @@ interface EmployersTableProps {
   onToggleInactive: () => void;
   showCompany?: boolean;
   companies?: Company[];
+  selectable?: boolean;
+  selectedIds?: Set<string>;
+  onSelectionChange?: (selectedIds: Set<string>) => void;
 }
 
 const avatarColors = [
@@ -40,7 +43,7 @@ interface EmployerType {
   data?: { icon?: string } | null;
 }
 
-export function EmployersTable({ employers, isLoading, includeInactive, onToggleInactive, showCompany, companies = [] }: EmployersTableProps) {
+export function EmployersTable({ employers, isLoading, includeInactive, onToggleInactive, showCompany, companies = [], selectable = false, selectedIds, onSelectionChange }: EmployersTableProps) {
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedTypeId, setSelectedTypeId] = useState<string>("all");
@@ -221,6 +224,28 @@ export function EmployersTable({ employers, isLoading, includeInactive, onToggle
           <table className="w-full">
             <thead className="bg-muted/20">
               <tr>
+                {selectable && (
+                  <th className="px-6 py-3 text-left w-10">
+                    <Checkbox
+                      checked={
+                        sortedEmployers.length > 0 &&
+                        sortedEmployers.every((e) => selectedIds?.has(e.id))
+                      }
+                      onCheckedChange={(checked) => {
+                        if (!onSelectionChange) return;
+                        const next = new Set(selectedIds ?? []);
+                        if (checked) {
+                          sortedEmployers.forEach((e) => next.add(e.id));
+                        } else {
+                          sortedEmployers.forEach((e) => next.delete(e.id));
+                        }
+                        onSelectionChange(next);
+                      }}
+                      data-testid="checkbox-select-all-employers"
+                      aria-label="Select all visible employers"
+                    />
+                  </th>
+                )}
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   <div className="flex items-center space-x-2">
                     <span>Sirius ID</span>
@@ -252,6 +277,25 @@ export function EmployersTable({ employers, isLoading, includeInactive, onToggle
             <tbody className="bg-background divide-y divide-border">
               {sortedEmployers.map((employer, index) => (
                 <tr key={employer.id} className="hover:bg-muted/30 transition-colors" data-testid={`row-employer-${employer.id}`}>
+                  {selectable && (
+                    <td className="px-6 py-4 whitespace-nowrap w-10">
+                      <Checkbox
+                        checked={selectedIds?.has(employer.id) ?? false}
+                        onCheckedChange={(checked) => {
+                          if (!onSelectionChange) return;
+                          const next = new Set(selectedIds ?? []);
+                          if (checked) {
+                            next.add(employer.id);
+                          } else {
+                            next.delete(employer.id);
+                          }
+                          onSelectionChange(next);
+                        }}
+                        data-testid={`checkbox-select-employer-${employer.id}`}
+                        aria-label={`Select ${employer.name}`}
+                      />
+                    </td>
+                  )}
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span 
                       className="text-sm font-medium text-muted-foreground"
