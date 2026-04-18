@@ -1197,22 +1197,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
-  // GET /api/employers - Get all employers (requires staff permission)
-  app.get("/api/employers", requireAuth, requireAccess('staff'), async (req, res) => {
-    try {
-      const includeInactive = req.query.includeInactive === 'true';
-      const allEmployers = await storage.employers.getAllEmployers();
-      
-      // Filter to active only by default
-      const employers = includeInactive 
-        ? allEmployers 
-        : allEmployers.filter(emp => emp.isActive);
-      
-      res.json(employers);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch employers" });
-    }
-  });
+  // GET /api/employers - Handler moved to server/modules/employers.ts
+  // (the modular handler additionally enriches each row with companyId/companyName
+  // when the employer.company component is enabled)
 
   // GET /api/employers/:id - Get a specific employer (requires employer.steward.view policy)
   app.get("/api/employers/:id", requireAuth, requireAccess('employer.steward.view', (req) => req.params.id), async (req, res) => {
