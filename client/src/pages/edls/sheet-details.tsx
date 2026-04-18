@@ -142,6 +142,7 @@ function EdlsSheetDetailsContent() {
   const filledSlots = assignments.length;
 
   return (
+    <TooltipProvider>
     <div className="space-y-6">
       <Card>
         <CardHeader>
@@ -303,18 +304,22 @@ function EdlsSheetDetailsContent() {
                                 </span>
                                 <span className="flex items-center gap-1.5">
                                   {isOutOfPopulation && (
-                                    <TooltipProvider>
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <span
+                                          tabIndex={0}
+                                          className="inline-flex items-center"
+                                          aria-label="Out of population"
+                                          data-testid={`icon-out-of-population-${assignment.id}`}
+                                        >
                                           <UserX
                                             className="h-4 w-4 text-red-600 dark:text-red-500 shrink-0"
-                                            data-testid={`icon-out-of-population-${assignment.id}`}
-                                            aria-label="Out of population"
+                                            aria-hidden="true"
                                           />
-                                        </TooltipTrigger>
-                                        <TooltipContent>Out of population</TooltipContent>
-                                      </Tooltip>
-                                    </TooltipProvider>
+                                        </span>
+                                      </TooltipTrigger>
+                                      <TooltipContent>Out of population</TooltipContent>
+                                    </Tooltip>
                                   )}
                                   {formatWorkerName(assignment.worker)}
                                 </span>
@@ -349,6 +354,7 @@ function EdlsSheetDetailsContent() {
         </CardContent>
       </Card>
     </div>
+    </TooltipProvider>
   );
 }
 
