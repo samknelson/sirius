@@ -289,6 +289,13 @@ export const componentRegistry: ComponentDefinition[] = [
     }
   },
   {
+    id: "worker.tos",
+    name: "Time Off Sick",
+    description: "Tracking of worker unplanned absences (Time Off Sick)",
+    enabledByDefault: false,
+    category: "core"
+  },
+  {
     id: "trust.providers.login",
     name: "Trust Provider Login",
     description: "Ability for trust provider contacts to log in",
