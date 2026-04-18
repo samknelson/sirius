@@ -470,7 +470,7 @@ export default function Header() {
                       data-testid="mobile-nav-edls-tos"
                     >
                       <Stethoscope className="h-4 w-4 mr-2" />
-                      TOS
+                      Absences
                     </Button>
                   </Link>
                 )}
@@ -1369,7 +1369,7 @@ export default function Header() {
                       <Link href="/edls/tos" className="w-full">
                         <div className="flex items-center cursor-pointer" data-testid="menu-edls-tos">
                           <Stethoscope className="h-4 w-4 mr-2" />
-                          TOS
+                          Absences
                         </div>
                       </Link>
                     </DropdownMenuItem>

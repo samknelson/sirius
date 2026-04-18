@@ -221,7 +221,7 @@ export default function EdlsTosPage() {
         <CardHeader>
           <CardTitle data-testid="title-page" className="flex items-center gap-2">
             <Stethoscope className="h-5 w-5" />
-            TOS — Workers on Time Off Sick
+            Absences — Workers on Time Off Sick
           </CardTitle>
           <CardDescription>
             Active sick absences and each worker's upcoming day-labor assignments.
