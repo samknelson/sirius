@@ -24,6 +24,7 @@ export class WorkerTosConflictError extends Error {
 }
 
 export interface WorkerTosUpdate {
+  workerId?: string;
   startDate?: Date;
   endDate?: Date | null;
   description?: string | null;
@@ -242,6 +243,7 @@ export function createWorkerTosStorage(): WorkerTosStorage {
       }
 
       const updateValues: Partial<typeof workerTos.$inferInsert> = {};
+      if (patch.workerId !== undefined) updateValues.workerId = patch.workerId;
       if (patch.startDate !== undefined) updateValues.startDate = patch.startDate;
       if (patch.endDate !== undefined) updateValues.endDate = patch.endDate;
       if (patch.description !== undefined) updateValues.description = patch.description;

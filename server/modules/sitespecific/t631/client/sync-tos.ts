@@ -3,6 +3,7 @@ import { logger } from "../../../../logger";
 import { optionsWorkerIdType } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { db } from "../../../../storage/db";
+import { WorkerTosConflictError } from "../../../../storage/worker-tos";
 
 interface T631TosNode {
   nid?: unknown;
@@ -69,10 +70,10 @@ export async function syncTos(
     .limit(1);
 
   if (!t631Type) {
-    logger.error("Cannot sync T631 TOS: no options_worker_id_type row with sirius_id='t631'", {
-      service: "t631-sync-tos",
-    });
+    const msg = "Cannot sync T631 TOS: no options_worker_id_type row with sirius_id='t631'";
+    logger.error(msg, { service: "t631-sync-tos" });
     result.errors++;
+    result.details.push({ siriusId: "(config)", action: "error", error: msg });
     return result;
   }
   const t631TypeId = t631Type.id;
@@ -116,10 +117,10 @@ export async function syncTos(
       const existing = await storage.workerTos.getBySiriusId(siriusId);
 
       if (existing) {
-        // Compare fields; only update if changed
         const startMs = existing.startDate ? new Date(existing.startDate).getTime() : 0;
         const sameStart = startMs === startDate.getTime();
         const sameDesc = (existing.description ?? null) === description;
+        const sameWorker = existing.workerId === localWorkerId;
         const stillActive = existing.endDate === null;
 
         if (!stillActive) {
@@ -138,25 +139,61 @@ export async function syncTos(
             result.reopened++;
             result.details.push({ siriusId, action: "would_reopen" });
           } else {
-            await storage.workerTos.update(existing.id, {
-              endDate: null,
-              startDate,
-              description,
-            });
-            result.reopened++;
-            result.details.push({ siriusId, action: "reopened" });
+            try {
+              await storage.workerTos.update(existing.id, {
+                workerId: localWorkerId,
+                endDate: null,
+                startDate,
+                description,
+              });
+              result.reopened++;
+              result.details.push({ siriusId, action: "reopened" });
+            } catch (err) {
+              if (err instanceof WorkerTosConflictError) {
+                result.skipped++;
+                result.details.push({ siriusId, action: "skipped", error: `conflict: ${err.message}` });
+              } else {
+                throw err;
+              }
+            }
           }
-        } else if (sameStart && sameDesc) {
+        } else if (sameStart && sameDesc && sameWorker) {
           result.unchanged++;
           result.details.push({ siriusId, action: dryRun ? "would_be_unchanged" : "unchanged" });
         } else {
+          // Worker reassignment requires no other active row for the new worker
+          if (!sameWorker) {
+            const activeForNew = await storage.workerTos.getActiveForWorker(localWorkerId);
+            if (activeForNew && activeForNew.id !== existing.id) {
+              result.skipped++;
+              result.details.push({
+                siriusId,
+                action: "skipped",
+                error: `cannot_reassign: target worker already has active record (id=${activeForNew.id})`,
+              });
+              continue;
+            }
+          }
           if (dryRun) {
             result.updated++;
             result.details.push({ siriusId, action: "would_update" });
           } else {
-            await storage.workerTos.update(existing.id, { startDate, description });
-            result.updated++;
-            result.details.push({ siriusId, action: "updated" });
+            try {
+              await storage.workerTos.update(existing.id, {
+                workerId: localWorkerId,
+                startDate,
+                description,
+              });
+              result.updated++;
+              result.details.push({ siriusId, action: "updated" });
+            } catch (err) {
+              if (err instanceof WorkerTosConflictError) {
+                result.skipped++;
+                result.details.push({ siriusId, action: "skipped", error: `conflict: ${err.message}` });
+              } else {
+                throw err;
+              }
+            }
           }
         }
       } else {
@@ -175,15 +212,24 @@ export async function syncTos(
           result.created++;
           result.details.push({ siriusId, action: "would_create" });
         } else {
-          await storage.workerTos.create({
-            workerId: localWorkerId,
-            siriusId,
-            startDate,
-            endDate: null,
-            description,
-          });
-          result.created++;
-          result.details.push({ siriusId, action: "created" });
+          try {
+            await storage.workerTos.create({
+              workerId: localWorkerId,
+              siriusId,
+              startDate,
+              endDate: null,
+              description,
+            });
+            result.created++;
+            result.details.push({ siriusId, action: "created" });
+          } catch (err) {
+            if (err instanceof WorkerTosConflictError) {
+              result.skipped++;
+              result.details.push({ siriusId, action: "skipped", error: `conflict: ${err.message}` });
+            } else {
+              throw err;
+            }
+          }
         }
       }
     } catch (error) {
@@ -208,7 +254,15 @@ export async function syncTos(
       // Confirm this worker is a T631 worker
       const wIds = await storage.workerIds.getWorkerIdsByWorkerId(row.workerId);
       const isT631 = wIds.some((w) => w.typeId === t631TypeId);
-      if (!isT631) continue;
+      if (!isT631) {
+        result.skipped++;
+        result.details.push({
+          siriusId: row.siriusId,
+          action: "skipped",
+          error: "not_t631_worker",
+        });
+        continue;
+      }
 
       if (dryRun) {
         result.terminated++;
@@ -218,14 +272,19 @@ export async function syncTos(
           await storage.workerTos.update(row.id, { endDate: new Date() });
           result.terminated++;
           result.details.push({ siriusId: row.siriusId, action: "terminated" });
-        } catch (error) {
-          result.errors++;
-          const errMsg = error instanceof Error ? error.message : String(error);
-          result.details.push({ siriusId: row.siriusId, action: "error", error: `terminate_failed: ${errMsg}` });
-          logger.error(`Failed to terminate T631 TOS siriusId=${row.siriusId}`, {
-            service: "t631-sync-tos",
-            error: errMsg,
-          });
+        } catch (err) {
+          if (err instanceof WorkerTosConflictError) {
+            result.skipped++;
+            result.details.push({ siriusId: row.siriusId, action: "skipped", error: `conflict: ${err.message}` });
+          } else {
+            result.errors++;
+            const errMsg = err instanceof Error ? err.message : String(err);
+            result.details.push({ siriusId: row.siriusId, action: "error", error: `terminate_failed: ${errMsg}` });
+            logger.error(`Failed to terminate T631 TOS siriusId=${row.siriusId}`, {
+              service: "t631-sync-tos",
+              error: errMsg,
+            });
+          }
         }
       }
     }

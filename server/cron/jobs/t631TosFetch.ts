@@ -27,6 +27,9 @@ export const t631TosFetchHandler: CronJobHandler = {
     if (!typed.data || typeof typed.data !== "object") {
       throw new Error("T631 response missing 'data' field or data is not an object");
     }
+    if (!typed.data.tos_nodes || typeof typed.data.tos_nodes !== "object" || Array.isArray(typed.data.tos_nodes)) {
+      throw new Error("T631 response missing 'data.tos_nodes' field or it is not an object");
+    }
 
     const syncResult = await syncTos(
       responseBody as Parameters<typeof syncTos>[0],
