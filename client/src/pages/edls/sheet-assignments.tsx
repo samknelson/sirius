@@ -91,6 +91,8 @@ interface AssignmentsContextValue {
   isLoadingWorkers: boolean;
   classifications: ClassificationOption[];
   classificationsMap: Map<string, ClassificationOption>;
+  workerIdTypeConfigured: boolean;
+  displayIdValues: Record<string, string>;
 }
 
 const AssignmentsContext = createContext<AssignmentsContextValue | null>(null);
@@ -312,10 +314,13 @@ interface AssignedWorkerSlotProps {
 }
 
 function AssignedWorkerSlot({ assignment, crewId, sheetId }: AssignedWorkerSlotProps) {
-  const { unassignWorker, isUnassigning, setSelectedCrewId, selectedRatingId, workerRatingsMap, classificationsMap } = useAssignments();
+  const { unassignWorker, isUnassigning, setSelectedCrewId, selectedRatingId, workerRatingsMap, classificationsMap, workerIdTypeConfigured, displayIdValues } = useAssignments();
   const [editModalOpen, setEditModalOpen] = useState(false);
   const assignmentData = (assignment.data as AssignmentExtra) || {};
   const classification = assignmentData.classificationId ? classificationsMap.get(assignmentData.classificationId) : null;
+  const displayIdLabel = workerIdTypeConfigured
+    ? (displayIdValues[assignment.workerId] ?? "—")
+    : (assignment.worker.siriusId ? `#${assignment.worker.siriusId}` : "—");
 
   const handleUnassign = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -340,6 +345,13 @@ function AssignedWorkerSlot({ assignment, crewId, sheetId }: AssignedWorkerSlotP
           className="flex items-center gap-2 flex-1 cursor-pointer hover-elevate rounded px-1 -mx-1"
           onClick={handleUnassign}
         >
+          <Badge
+            variant="outline"
+            className="text-xs tabular-nums"
+            data-testid={`badge-assignment-display-id-${assignment.id}`}
+          >
+            {displayIdLabel}
+          </Badge>
           <span className="text-sm">{formatAssignedWorkerName(assignment.worker)}</span>
           {ratingValue !== undefined && (
             <span className="flex items-center text-xs text-muted-foreground">
@@ -363,11 +375,6 @@ function AssignedWorkerSlot({ assignment, crewId, sheetId }: AssignedWorkerSlotP
             <Badge variant="outline" className="text-xs">
               <Clock className="h-3 w-3 mr-1" />
               {formatTime12h(assignmentData.startTime)}
-            </Badge>
-          )}
-          {assignment.worker.siriusId && (
-            <Badge variant="outline" className="text-xs">
-              #{assignment.worker.siriusId}
             </Badge>
           )}
           <Button
@@ -915,7 +922,9 @@ function AvailableWorkersPanel() {
     ratingsEnabled,
     hierarchicalRatings,
     availableWorkers: workers,
-    isLoadingWorkers: isLoading
+    isLoadingWorkers: isLoading,
+    workerIdTypeConfigured,
+    displayIdValues,
   } = useAssignments();
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState("");
@@ -1127,6 +1136,9 @@ function AvailableWorkersPanel() {
                 <div className="space-y-1">
                   {group.workers.map((worker) => {
                     const isAssigned = assignedWorkerIds.has(worker.id);
+                    const displayIdLabel = workerIdTypeConfigured
+                      ? (displayIdValues[worker.id] ?? "—")
+                      : (worker.siriusId ? `#${worker.siriusId}` : "—");
                     return (
                       <div
                         key={worker.id}
@@ -1142,12 +1154,14 @@ function AvailableWorkersPanel() {
                         {selectedRatingId && selectedRatingId !== "all" && worker.ratingValue !== null && (
                           <StarRating value={worker.ratingValue} />
                         )}
+                        <Badge
+                          variant="outline"
+                          className="text-xs tabular-nums"
+                          data-testid={`badge-worker-display-id-${worker.id}`}
+                        >
+                          {displayIdLabel}
+                        </Badge>
                         <span className="text-sm truncate">{formatWorkerName(worker)}</span>
-                        {worker.siriusId && (
-                          <Badge variant="outline" className="ml-auto text-xs">
-                            #{worker.siriusId}
-                          </Badge>
-                        )}
                       </div>
                     );
                   })}
@@ -1175,6 +1189,17 @@ function EdlsSheetAssignmentsContent() {
       return response.json();
     },
   });
+
+  const { data: displayIdData } = useQuery<{ workerIdTypeConfigured: boolean; values: Record<string, string> }>({
+    queryKey: ["/api/edls/sheets", sheet.id, "worker-display-ids"],
+    queryFn: async () => {
+      const response = await fetch(`/api/edls/sheets/${sheet.id}/worker-display-ids`);
+      if (!response.ok) throw new Error("Failed to fetch worker display IDs");
+      return response.json();
+    },
+  });
+  const workerIdTypeConfigured = !!displayIdData?.workerIdTypeConfigured;
+  const displayIdValues = displayIdData?.values ?? {};
 
   const { data: componentConfigs = [] } = useQuery<ComponentConfig[]>({
     queryKey: ["/api/components/config"],
@@ -1287,6 +1312,8 @@ function EdlsSheetAssignmentsContent() {
     isLoadingWorkers,
     classifications,
     classificationsMap,
+    workerIdTypeConfigured,
+    displayIdValues,
   };
 
   return (

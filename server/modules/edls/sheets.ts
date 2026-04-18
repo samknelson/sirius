@@ -449,7 +449,7 @@ export function registerEdlsSheetsRoutes(
     }
   });
 
-  app.get("/api/edls/sheets/:id/assignment-display-ids", requireAuth, edlsComponent, requireAccess('edls.sheet.view', req => req.params.id), async (req, res) => {
+  app.get("/api/edls/sheets/:id/worker-display-ids", requireAuth, edlsComponent, requireAccess('edls.sheet.view', req => req.params.id), async (req, res) => {
     try {
       const { id } = req.params;
       const sheet = await storage.edlsSheets.get(id);
@@ -464,17 +464,30 @@ export function registerEdlsSheetsRoutes(
         return;
       }
 
-      const assignments = await storage.edlsAssignments.getBySheetId(id);
-      const workerIds = Array.from(new Set(assignments.map(a => a.workerId)));
-      const rows = await storage.workerIds.getWorkerIdsByTypeForWorkerIds(settings.worker_id_type, workerIds);
+      const employer = await storage.employers.getEmployer(sheet.employerId);
+      const industryId = employer?.industryId ?? null;
+
+      const [assignments, availableWorkers] = await Promise.all([
+        storage.edlsAssignments.getBySheetId(id),
+        storage.edlsAssignments.getAvailableWorkersForSheet(sheet.ymd, industryId, undefined),
+      ]);
+
+      const workerIdSet = new Set<string>();
+      for (const a of assignments) workerIdSet.add(a.workerId);
+      for (const w of availableWorkers) workerIdSet.add(w.id);
+
+      const rows = await storage.workerIds.getWorkerIdsByTypeForWorkerIds(
+        settings.worker_id_type,
+        Array.from(workerIdSet)
+      );
       const values: Record<string, string> = {};
       for (const row of rows) {
         values[row.workerId] = row.value;
       }
       res.json({ workerIdTypeConfigured: true, values });
     } catch (error) {
-      console.error("Failed to fetch assignment display IDs:", error);
-      res.status(500).json({ message: "Failed to fetch assignment display IDs" });
+      console.error("Failed to fetch worker display IDs:", error);
+      res.status(500).json({ message: "Failed to fetch worker display IDs" });
     }
   });
 

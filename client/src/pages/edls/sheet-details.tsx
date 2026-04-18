@@ -111,10 +111,10 @@ function EdlsSheetDetailsContent() {
   });
 
   const { data: displayIdData } = useQuery<{ workerIdTypeConfigured: boolean; values: Record<string, string> }>({
-    queryKey: ["/api/edls/sheets", sheet.id, "assignment-display-ids"],
+    queryKey: ["/api/edls/sheets", sheet.id, "worker-display-ids"],
     queryFn: async () => {
-      const response = await fetch(`/api/edls/sheets/${sheet.id}/assignment-display-ids`);
-      if (!response.ok) throw new Error("Failed to fetch assignment display IDs");
+      const response = await fetch(`/api/edls/sheets/${sheet.id}/worker-display-ids`);
+      if (!response.ok) throw new Error("Failed to fetch worker display IDs");
       return response.json();
     },
   });
@@ -311,7 +311,7 @@ function EdlsSheetDetailsContent() {
                                 data-testid={`assignment-${assignment.id}`}
                               >
                                 <span
-                                  className="text-muted-foreground w-16 text-right tabular-nums"
+                                  className="text-muted-foreground w-16 text-left tabular-nums"
                                   data-testid={`text-assignment-display-id-${assignment.id}`}
                                 >
                                   {workerIdTypeConfigured
