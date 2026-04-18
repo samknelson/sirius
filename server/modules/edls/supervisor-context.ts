@@ -32,9 +32,9 @@ export async function getEdlsSettings(): Promise<EdlsSettings> {
       ? JSON.parse(variable.value) 
       : variable.value;
     return { 
-      supervisor_role: parsed.supervisor_role || null,
-      employer: parsed.employer || null,
-      worker_id_type: parsed.worker_id_type || null,
+      supervisor_role: typeof parsed.supervisor_role === 'string' ? parsed.supervisor_role : null,
+      employer: typeof parsed.employer === 'string' ? parsed.employer : null,
+      worker_id_type: typeof parsed.worker_id_type === 'string' ? parsed.worker_id_type : null,
     };
   } catch {
     return { supervisor_role: null, employer: null, worker_id_type: null };

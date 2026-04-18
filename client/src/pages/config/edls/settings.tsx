@@ -84,9 +84,9 @@ export default function EdlsSettingsPage() {
           ? JSON.parse(settingsVariable.value) 
           : settingsVariable.value;
         setSettings({
-          supervisor_role: parsed.supervisor_role || null,
-          employer: parsed.employer || null,
-          worker_id_type: parsed.worker_id_type || null,
+          supervisor_role: typeof parsed.supervisor_role === 'string' ? parsed.supervisor_role : null,
+          employer: typeof parsed.employer === 'string' ? parsed.employer : null,
+          worker_id_type: typeof parsed.worker_id_type === 'string' ? parsed.worker_id_type : null,
         });
       } catch {
         setSettings(DEFAULT_SETTINGS);
@@ -137,9 +137,9 @@ export default function EdlsSettingsPage() {
           ? JSON.parse(settingsVariable.value)
           : settingsVariable.value;
         return {
-          supervisor_role: parsed.supervisor_role || null,
-          employer: parsed.employer || null,
-          worker_id_type: parsed.worker_id_type || null,
+          supervisor_role: typeof parsed.supervisor_role === 'string' ? parsed.supervisor_role : null,
+          employer: typeof parsed.employer === 'string' ? parsed.employer : null,
+          worker_id_type: typeof parsed.worker_id_type === 'string' ? parsed.worker_id_type : null,
         };
       } catch {
         return DEFAULT_SETTINGS;
