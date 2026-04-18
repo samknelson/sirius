@@ -53,6 +53,7 @@ const WorkerBans = lazy(() => import("@/pages/workers/bans"));
 const WorkerEdls = lazy(() => import("@/pages/worker-edls"));
 const WorkerSecondShift = lazy(() => import("@/pages/worker-sitespecific-freeman-2shift"));
 const WorkerSkills = lazy(() => import("@/pages/worker-skills"));
+const WorkerTos = lazy(() => import("@/pages/worker-tos"));
 const WorkerCertifications = lazy(() => import("@/pages/worker-certifications"));
 const WorkerCertificationView = lazy(() => import("@/pages/worker-certification-view"));
 const WorkerRatings = lazy(() => import("@/pages/worker-ratings"));
@@ -728,6 +729,14 @@ function Router() {
         <ProtectedRoute tabId="daily" entityType="worker">
           <AuthenticatedLayout>
             <WorkerHoursDaily />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/workers/:id/employment/tos">
+        <ProtectedRoute tabId="tos" entityType="worker">
+          <AuthenticatedLayout>
+            <WorkerTos />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

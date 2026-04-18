@@ -83,6 +83,7 @@ import { registerWorkerDispatchHfeRoutes } from "./modules/worker-dispatch-hfe";
 import { registerWorkerDispatchEbaRoutes } from "./modules/worker-dispatch-eba";
 import { registerWorkerBansRoutes } from "./modules/worker-bans";
 import { registerWorkerSkillsRoutes } from "./modules/worker-skills";
+import { registerWorkerTosRoutes } from "./modules/worker-tos";
 import { registerWorkerCertificationsRoutes } from "./modules/worker-certifications";
 import { registerWorkerRatingsRoutes } from "./modules/worker-ratings";
 import { requireComponent } from "./modules/components";
@@ -1705,6 +1706,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register worker skills routes (handles all access control internally)
   registerWorkerSkillsRoutes(app, requireAuth, requireAccess);
+
+  // Register worker time-off-sick (TOS) routes
+  registerWorkerTosRoutes(app, requireAuth, requireAccess);
 
   // Register worker certifications routes (handles all access control internally)
   registerWorkerCertificationsRoutes(app, requireAuth, requireAccess, requirePermission);

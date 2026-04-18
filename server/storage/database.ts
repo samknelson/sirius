@@ -85,6 +85,7 @@ import { type BtuSchoolAttributesStorage, createBtuSchoolAttributesStorage } fro
 import { type WorkerBanStorage, createWorkerBanStorage, workerBanLoggingConfig } from "./worker-bans";
 import { type WorkerDispatchDncStorage, createWorkerDispatchDncStorage, workerDispatchDncLoggingConfig } from "./worker-dispatch-dnc";
 import { type WorkerSkillStorage, createWorkerSkillStorage, workerSkillLoggingConfig } from "./worker-skills";
+import { type WorkerTosStorage, createWorkerTosStorage, workerTosLoggingConfig } from "./worker-tos";
 import { type WorkerCertificationStorage, createWorkerCertificationStorage, workerCertificationLoggingConfig } from "./worker-certifications";
 import { type WorkerRatingStorage, createWorkerRatingStorage, workerRatingLoggingConfig } from "./worker-ratings";
 import { type EdlsSheetsStorage, createEdlsSheetsStorage, edlsSheetsLoggingConfig } from "./edls/sheets";
@@ -152,6 +153,7 @@ export interface IStorage {
   workerBans: WorkerBanStorage;
   workerDispatchDnc: WorkerDispatchDncStorage;
   workerSkills: WorkerSkillStorage;
+  workerTos: WorkerTosStorage;
   workerCertifications: WorkerCertificationStorage;
   workerRatings: WorkerRatingStorage;
   edlsSheets: EdlsSheetsStorage;
@@ -229,6 +231,7 @@ export class DatabaseStorage implements IStorage {
   workerBans: WorkerBanStorage;
   workerDispatchDnc: WorkerDispatchDncStorage;
   workerSkills: WorkerSkillStorage;
+  workerTos: WorkerTosStorage;
   workerCertifications: WorkerCertificationStorage;
   workerRatings: WorkerRatingStorage;
   edlsSheets: EdlsSheetsStorage;
@@ -404,6 +407,7 @@ export class DatabaseStorage implements IStorage {
     this.workerBans = withStorageLogging(createWorkerBanStorage(), workerBanLoggingConfig);
     this.workerDispatchDnc = withStorageLogging(createWorkerDispatchDncStorage(), workerDispatchDncLoggingConfig);
     this.workerSkills = withStorageLogging(createWorkerSkillStorage(), workerSkillLoggingConfig);
+    this.workerTos = withStorageLogging(createWorkerTosStorage(), workerTosLoggingConfig);
     this.workerCertifications = withStorageLogging(
       createWorkerCertificationStorage({ workerSkills: this.workerSkills }), 
       workerCertificationLoggingConfig
