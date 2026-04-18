@@ -19,12 +19,13 @@ export interface SupervisorContext {
 export interface EdlsSettings {
   supervisor_role: string | null;
   employer: string | null;
+  worker_id_type: string | null;
 }
 
 export async function getEdlsSettings(): Promise<EdlsSettings> {
   const variable = await storage.variables.getByName("edls_settings");
   if (!variable?.value) {
-    return { supervisor_role: null, employer: null };
+    return { supervisor_role: null, employer: null, worker_id_type: null };
   }
   try {
     const parsed = typeof variable.value === 'string' 
@@ -33,9 +34,10 @@ export async function getEdlsSettings(): Promise<EdlsSettings> {
     return { 
       supervisor_role: parsed.supervisor_role || null,
       employer: parsed.employer || null,
+      worker_id_type: parsed.worker_id_type || null,
     };
   } catch {
-    return { supervisor_role: null, employer: null };
+    return { supervisor_role: null, employer: null, worker_id_type: null };
   }
 }
 
