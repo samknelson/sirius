@@ -181,8 +181,9 @@ function ToSection({
       const name = "link" in result && result.link ? result.link.displayName : "the shadow worker";
       toast({ title: "2nd shift worker synced", description: `Updated ${name}.` });
     },
-    onError: (err: any) => {
-      const description = err?.message || "Could not sync the 2nd shift worker.";
+    onError: (err: unknown) => {
+      const description =
+        err instanceof Error ? err.message : "Could not sync the 2nd shift worker.";
       toast({ title: "Sync failed", description, variant: "destructive" });
     },
   });

@@ -282,7 +282,14 @@ export async function syncSecondShift(
   primaryWorkerId: string,
 ): Promise<SyncResult> {
   const cfg = await resolveConfig(deps);
-  if (!cfg.ok) return configErrorResponse(cfg) as { configError: ConfigErrorDetail };
+  if (!cfg.ok) {
+    return {
+      configError: {
+        missingTypes: cfg.missingTypes,
+        missingMemberStatuses: cfg.missingMemberStatuses,
+      },
+    };
+  }
 
   const primary = await deps.storage.workers.getWorker(primaryWorkerId);
   if (!primary) {
