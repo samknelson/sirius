@@ -110,6 +110,17 @@ function EdlsSheetDetailsContent() {
     },
   });
 
+  const { data: displayIdData } = useQuery<{ workerIdTypeConfigured: boolean; values: Record<string, string> }>({
+    queryKey: ["/api/edls/sheets", sheet.id, "assignment-display-ids"],
+    queryFn: async () => {
+      const response = await fetch(`/api/edls/sheets/${sheet.id}/assignment-display-ids`);
+      if (!response.ok) throw new Error("Failed to fetch assignment display IDs");
+      return response.json();
+    },
+  });
+  const workerIdTypeConfigured = !!displayIdData?.workerIdTypeConfigured;
+  const displayIdValues = displayIdData?.values ?? {};
+
   const { data: classifications = [] } = useQuery<{ id: string; name: string; code: string | null; sequence: number }[]>({
     queryKey: ["/api/options/classification"],
   });
@@ -299,8 +310,13 @@ function EdlsSheetDetailsContent() {
                                 className="flex items-center gap-3 text-sm"
                                 data-testid={`assignment-${assignment.id}`}
                               >
-                                <span className="text-muted-foreground w-16 text-right tabular-nums">
-                                  {assignment.worker.siriusId ? `#${assignment.worker.siriusId}` : "—"}
+                                <span
+                                  className="text-muted-foreground w-16 text-right tabular-nums"
+                                  data-testid={`text-assignment-display-id-${assignment.id}`}
+                                >
+                                  {workerIdTypeConfigured
+                                    ? (displayIdValues[assignment.workerId] ?? "—")
+                                    : (assignment.worker.siriusId ? `#${assignment.worker.siriusId}` : "—")}
                                 </span>
                                 <span className="flex items-center gap-1.5">
                                   {isOutOfPopulation && (

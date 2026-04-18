@@ -449,6 +449,35 @@ export function registerEdlsSheetsRoutes(
     }
   });
 
+  app.get("/api/edls/sheets/:id/assignment-display-ids", requireAuth, edlsComponent, requireAccess('edls.sheet.view', req => req.params.id), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const sheet = await storage.edlsSheets.get(id);
+      if (!sheet) {
+        res.status(404).json({ message: "Sheet not found" });
+        return;
+      }
+
+      const settings = await getEdlsSettings();
+      if (!settings.worker_id_type) {
+        res.json({ workerIdTypeConfigured: false, values: {} });
+        return;
+      }
+
+      const assignments = await storage.edlsAssignments.getBySheetId(id);
+      const workerIds = Array.from(new Set(assignments.map(a => a.workerId)));
+      const rows = await storage.workerIds.getWorkerIdsByTypeForWorkerIds(settings.worker_id_type, workerIds);
+      const values: Record<string, string> = {};
+      for (const row of rows) {
+        values[row.workerId] = row.value;
+      }
+      res.json({ workerIdTypeConfigured: true, values });
+    } catch (error) {
+      console.error("Failed to fetch assignment display IDs:", error);
+      res.status(500).json({ message: "Failed to fetch assignment display IDs" });
+    }
+  });
+
   const createAssignmentSchema = z.object({
     workerId: z.string().min(1, "Worker ID is required"),
   });

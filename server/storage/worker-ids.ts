@@ -28,6 +28,7 @@ export interface WorkerIdStorage {
   deleteWorkerId(id: string): Promise<boolean>;
   getShowOnListsIdTypes(): Promise<ShowOnListsIdType[]>;
   getWorkerIdsForListByWorkerIds(workerIdsList: string[]): Promise<WorkerIdForList[]>;
+  getWorkerIdsByTypeForWorkerIds(typeId: string, workerIdsList: string[]): Promise<{ workerId: string; value: string }[]>;
   getWorkerIdByTypeAndValue(typeId: string, value: string): Promise<WorkerId | undefined>;
 }
 
@@ -107,6 +108,24 @@ export function createWorkerIdStorage(): WorkerIdStorage {
         .where(
           and(
             inArray(workerIds.typeId, typeIds),
+            inArray(workerIds.workerId, workerIdsList)
+          )
+        );
+      return results;
+    },
+
+    async getWorkerIdsByTypeForWorkerIds(typeId: string, workerIdsList: string[]): Promise<{ workerId: string; value: string }[]> {
+      if (workerIdsList.length === 0) return [];
+      const client = getClient();
+      const results = await client
+        .select({
+          workerId: workerIds.workerId,
+          value: workerIds.value,
+        })
+        .from(workerIds)
+        .where(
+          and(
+            eq(workerIds.typeId, typeId),
             inArray(workerIds.workerId, workerIdsList)
           )
         );
