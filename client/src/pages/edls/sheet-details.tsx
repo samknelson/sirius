@@ -1,8 +1,9 @@
 import { formatYmd } from "@shared/utils/date";
-import { Calendar, Users, FileText, Clock, MapPin, Lock, User, Building, ClipboardList, Layers, Factory } from "lucide-react";
+import { Calendar, Users, FileText, Clock, MapPin, Lock, User, UserX, Building, ClipboardList, Layers, Factory } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { EdlsSheetLayout, useEdlsSheetLayout } from "@/components/layouts/EdlsSheetLayout";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
@@ -112,6 +113,20 @@ function EdlsSheetDetailsContent() {
   const { data: classifications = [] } = useQuery<{ id: string; name: string; code: string | null; sequence: number }[]>({
     queryKey: ["/api/options/classification"],
   });
+
+  const { data: eligibleWorkers, isLoading: eligibleLoading } = useQuery<{ id: string }[]>({
+    queryKey: ["/api/edls/sheets", sheet.id, "available-workers"],
+    queryFn: async () => {
+      const response = await fetch(`/api/edls/sheets/${sheet.id}/available-workers`);
+      if (!response.ok) throw new Error("Failed to fetch available workers");
+      return response.json();
+    },
+  });
+
+  const eligibleWorkerIds = useMemo(
+    () => new Set((eligibleWorkers ?? []).map(w => w.id)),
+    [eligibleWorkers],
+  );
 
   const classificationsMap = useMemo(() => new Map(classifications.map(c => [c.id, c])), [classifications]);
 
@@ -275,6 +290,8 @@ function EdlsSheetDetailsContent() {
                         <div className="space-y-1">
                           {crewAssignments.map((assignment) => {
                             const assignmentData = (assignment.data as AssignmentExtra) || {};
+                            const isOutOfPopulation =
+                              !eligibleLoading && !!eligibleWorkers && !eligibleWorkerIds.has(assignment.workerId);
                             return (
                               <div 
                                 key={assignment.id} 
@@ -284,7 +301,23 @@ function EdlsSheetDetailsContent() {
                                 <span className="text-muted-foreground w-16 text-right tabular-nums">
                                   {assignment.worker.siriusId ? `#${assignment.worker.siriusId}` : "—"}
                                 </span>
-                                <span>{formatWorkerName(assignment.worker)}</span>
+                                <span className="flex items-center gap-1.5">
+                                  {isOutOfPopulation && (
+                                    <TooltipProvider>
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <UserX
+                                            className="h-4 w-4 text-red-600 dark:text-red-500 shrink-0"
+                                            data-testid={`icon-out-of-population-${assignment.id}`}
+                                            aria-label="Out of population"
+                                          />
+                                        </TooltipTrigger>
+                                        <TooltipContent>Out of population</TooltipContent>
+                                      </Tooltip>
+                                    </TooltipProvider>
+                                  )}
+                                  {formatWorkerName(assignment.worker)}
+                                </span>
                                 <span className="flex-1" />
                                 {assignmentData.classificationId && classificationsMap.get(assignmentData.classificationId) && (
                                   <Badge variant="outline" className="text-xs">
