@@ -293,7 +293,13 @@ export const componentRegistry: ComponentDefinition[] = [
     name: "Time Off Sick",
     description: "Tracking of worker unplanned absences (Time Off Sick)",
     enabledByDefault: false,
-    category: "core"
+    category: "core",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/worker/tos/schema.ts",
+      tables: ["worker_tos"]
+    }
   },
   {
     id: "trust.providers.login",
