@@ -96,6 +96,7 @@ import { registerBtuScraperImportRoutes } from "./modules/sitespecific/btu/scrap
 import { registerBtuBuildingRepImportRoutes } from "./modules/sitespecific/btu/building-rep-import";
 import { registerBtuPoliticalRoutes } from "./modules/sitespecific/btu/political";
 import { registerT631ClientFetchRoutes } from "./modules/sitespecific/t631/client/fetch";
+import { registerFreemanSecondShiftRoutes } from "./modules/sitespecific/freeman/second-shift";
 import { registerEdlsSheetsRoutes } from "./modules/edls/sheets";
 import { registerEdlsTasksRoutes } from "./modules/edls/tasks";
 import { registerWorkerEdlsRoutes } from "./modules/edls/workers";
@@ -1700,6 +1701,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register T631 Client routes
   registerT631ClientFetchRoutes(app, requireAuth, requirePermission);
+
+  // Register Freeman Second Shift routes
+  registerFreemanSecondShiftRoutes(app, requireAuth, requireAccess);
 
   // Register HTA routes
   registerHtaRoutes(app, requireAuth, requirePermission);
