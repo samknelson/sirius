@@ -27,7 +27,7 @@ interface SyncResult {
   terminated: number;
   skipped: number;
   errors: number;
-  details: Array<{ siriusId: string; action: string; error?: string }>;
+  details: Array<{ workerId?: string; siriusId: string; action: string; error?: string }>;
 }
 
 function extractDescription(node: T631TosNode): string | null {
@@ -113,6 +113,7 @@ export async function syncTos(
         continue;
       }
       const localWorkerId = workerIdRow.workerId;
+      const wd = (action: string, error?: string) => ({ workerId: localWorkerId, siriusId, action, ...(error ? { error } : {}) });
 
       const existing = await storage.workerTos.getBySiriusId(siriusId);
 
@@ -128,16 +129,12 @@ export async function syncTos(
           const activeForWorker = await storage.workerTos.getActiveForWorker(localWorkerId);
           if (activeForWorker && activeForWorker.id !== existing.id) {
             result.skipped++;
-            result.details.push({
-              siriusId,
-              action: "skipped",
-              error: `cannot_reopen: worker has another active record (id=${activeForWorker.id})`,
-            });
+            result.details.push(wd("skipped", `cannot_reopen: worker has another active record (id=${activeForWorker.id})`));
             continue;
           }
           if (dryRun) {
             result.reopened++;
-            result.details.push({ siriusId, action: "would_reopen" });
+            result.details.push(wd("would_reopen"));
           } else {
             try {
               await storage.workerTos.update(existing.id, {
@@ -147,11 +144,11 @@ export async function syncTos(
                 description,
               });
               result.reopened++;
-              result.details.push({ siriusId, action: "reopened" });
+              result.details.push(wd("reopened"));
             } catch (err) {
               if (err instanceof WorkerTosConflictError) {
                 result.skipped++;
-                result.details.push({ siriusId, action: "skipped", error: `conflict: ${err.message}` });
+                result.details.push(wd("skipped", `conflict: ${err.message}`));
               } else {
                 throw err;
               }
@@ -159,24 +156,20 @@ export async function syncTos(
           }
         } else if (sameStart && sameDesc && sameWorker) {
           result.unchanged++;
-          result.details.push({ siriusId, action: dryRun ? "would_be_unchanged" : "unchanged" });
+          result.details.push(wd(dryRun ? "would_be_unchanged" : "unchanged"));
         } else {
           // Worker reassignment requires no other active row for the new worker
           if (!sameWorker) {
             const activeForNew = await storage.workerTos.getActiveForWorker(localWorkerId);
             if (activeForNew && activeForNew.id !== existing.id) {
               result.skipped++;
-              result.details.push({
-                siriusId,
-                action: "skipped",
-                error: `cannot_reassign: target worker already has active record (id=${activeForNew.id})`,
-              });
+              result.details.push(wd("skipped", `cannot_reassign: target worker already has active record (id=${activeForNew.id})`));
               continue;
             }
           }
           if (dryRun) {
             result.updated++;
-            result.details.push({ siriusId, action: "would_update" });
+            result.details.push(wd("would_update"));
           } else {
             try {
               await storage.workerTos.update(existing.id, {
@@ -185,11 +178,11 @@ export async function syncTos(
                 description,
               });
               result.updated++;
-              result.details.push({ siriusId, action: "updated" });
+              result.details.push(wd("updated"));
             } catch (err) {
               if (err instanceof WorkerTosConflictError) {
                 result.skipped++;
-                result.details.push({ siriusId, action: "skipped", error: `conflict: ${err.message}` });
+                result.details.push(wd("skipped", `conflict: ${err.message}`));
               } else {
                 throw err;
               }
@@ -201,16 +194,12 @@ export async function syncTos(
         const activeForWorker = await storage.workerTos.getActiveForWorker(localWorkerId);
         if (activeForWorker) {
           result.skipped++;
-          result.details.push({
-            siriusId,
-            action: "skipped",
-            error: `manual_conflict: worker already has active record (id=${activeForWorker.id}, siriusId=${activeForWorker.siriusId ?? "none"})`,
-          });
+          result.details.push(wd("skipped", `manual_conflict: worker already has active record (id=${activeForWorker.id}, siriusId=${activeForWorker.siriusId ?? "none"})`));
           continue;
         }
         if (dryRun) {
           result.created++;
-          result.details.push({ siriusId, action: "would_create" });
+          result.details.push(wd("would_create"));
         } else {
           try {
             await storage.workerTos.create({
@@ -221,11 +210,11 @@ export async function syncTos(
               description,
             });
             result.created++;
-            result.details.push({ siriusId, action: "created" });
+            result.details.push(wd("created"));
           } catch (err) {
             if (err instanceof WorkerTosConflictError) {
               result.skipped++;
-              result.details.push({ siriusId, action: "skipped", error: `conflict: ${err.message}` });
+              result.details.push(wd("skipped", `conflict: ${err.message}`));
             } else {
               throw err;
             }
@@ -236,6 +225,7 @@ export async function syncTos(
       result.errors++;
       const errMsg = error instanceof Error ? error.message : String(error);
       result.details.push({ siriusId, action: "error", error: errMsg });
+      // (workerId may not be resolved at this point — omitted)
       logger.error(`Failed to sync T631 TOS siriusId=${siriusId}`, {
         service: "t631-sync-tos",
         error: errMsg,
@@ -257,6 +247,7 @@ export async function syncTos(
       if (!isT631) {
         result.skipped++;
         result.details.push({
+          workerId: row.workerId,
           siriusId: row.siriusId,
           action: "skipped",
           error: "not_t631_worker",
@@ -266,20 +257,20 @@ export async function syncTos(
 
       if (dryRun) {
         result.terminated++;
-        result.details.push({ siriusId: row.siriusId, action: "would_terminate" });
+        result.details.push({ workerId: row.workerId, siriusId: row.siriusId, action: "would_terminate" });
       } else {
         try {
           await storage.workerTos.update(row.id, { endDate: new Date() });
           result.terminated++;
-          result.details.push({ siriusId: row.siriusId, action: "terminated" });
+          result.details.push({ workerId: row.workerId, siriusId: row.siriusId, action: "terminated" });
         } catch (err) {
           if (err instanceof WorkerTosConflictError) {
             result.skipped++;
-            result.details.push({ siriusId: row.siriusId, action: "skipped", error: `conflict: ${err.message}` });
+            result.details.push({ workerId: row.workerId, siriusId: row.siriusId, action: "skipped", error: `conflict: ${err.message}` });
           } else {
             result.errors++;
             const errMsg = err instanceof Error ? err.message : String(err);
-            result.details.push({ siriusId: row.siriusId, action: "error", error: `terminate_failed: ${errMsg}` });
+            result.details.push({ workerId: row.workerId, siriusId: row.siriusId, action: "error", error: `terminate_failed: ${errMsg}` });
             logger.error(`Failed to terminate T631 TOS siriusId=${row.siriusId}`, {
               service: "t631-sync-tos",
               error: errMsg,

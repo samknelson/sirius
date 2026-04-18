@@ -236,10 +236,11 @@ export function createWorkerTosStorage(): WorkerTosStorage {
 
       const nextStart = patch.startDate !== undefined ? patch.startDate : existing.startDate;
       const nextEnd = patch.endDate !== undefined ? patch.endDate : existing.endDate;
+      const nextWorkerId = patch.workerId !== undefined ? patch.workerId : existing.workerId;
       validateDates(nextStart, nextEnd);
 
       if (!nextEnd) {
-        await ensureNoOtherActive(existing.workerId, id);
+        await ensureNoOtherActive(nextWorkerId, id);
       }
 
       const updateValues: Partial<typeof workerTos.$inferInsert> = {};
