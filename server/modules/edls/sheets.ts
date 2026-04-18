@@ -486,8 +486,9 @@ export function registerEdlsSheetsRoutes(
         return;
       }
 
-      if (worker.denormHomeEmployerId !== sheet.employerId) {
-        res.status(400).json({ message: "Worker is not an employee of this employer" });
+      const workerEdlsRow = await storage.workerEdls.getByWorker(parsed.data.workerId);
+      if (!workerEdlsRow || !workerEdlsRow.active) {
+        res.status(400).json({ message: "Worker is not active in EDLS" });
         return;
       }
       
