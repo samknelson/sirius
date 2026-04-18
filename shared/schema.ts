@@ -389,6 +389,7 @@ export const optionsGender = pgTable("options_gender", {
 export const optionsWorkerIdType = pgTable("options_worker_id_type", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
+  siriusId: varchar("sirius_id", { length: 255 }).unique(),
   sequence: integer("sequence").notNull().default(0),
   validator: text("validator"),
   data: jsonb("data"),
