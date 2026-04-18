@@ -14,7 +14,7 @@ import {
   type EdlsAssignment, 
   type InsertEdlsAssignment
 } from "@shared/schema";
-import { eq, and, sql, gte, lte, asc, inArray } from "drizzle-orm";
+import { eq, and, sql, gte, lte, asc, inArray, ne } from "drizzle-orm";
 import { StorageLoggingConfig } from "../middleware/logging";
 import { getClient, runInTransaction } from "../transaction-context";
 import { createUnifiedOptionsStorage } from "../unified-options";
@@ -375,7 +375,10 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
       filters?: AssignmentForWorkerFilters
     ): Promise<AssignmentForWorker[]> {
       const client = getClient();
-      const conditions = [eq(edlsAssignments.workerId, workerId)];
+      const conditions = [
+        eq(edlsAssignments.workerId, workerId),
+        ne(edlsSheets.status, 'trash'),
+      ];
       if (filters?.startYmd) conditions.push(gte(edlsSheets.ymd, filters.startYmd));
       if (filters?.endYmd) conditions.push(lte(edlsSheets.ymd, filters.endYmd));
       if (filters?.supervisorId) conditions.push(eq(edlsSheets.supervisor, filters.supervisorId));
@@ -443,7 +446,10 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
       if (workerIds.length === 0) return result;
 
       const client = getClient();
-      const conditions = [inArray(edlsAssignments.workerId, workerIds)];
+      const conditions = [
+        inArray(edlsAssignments.workerId, workerIds),
+        ne(edlsSheets.status, 'trash'),
+      ];
       if (filters?.startYmd) conditions.push(gte(edlsSheets.ymd, filters.startYmd));
       if (filters?.endYmd) conditions.push(lte(edlsSheets.ymd, filters.endYmd));
       if (filters?.supervisorId) conditions.push(eq(edlsSheets.supervisor, filters.supervisorId));

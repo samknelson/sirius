@@ -5,6 +5,7 @@ import { requireComponent } from "../components";
 import { getClient } from "../../storage/transaction-context";
 import { dispatchJobGroups } from "@shared/schema";
 import { and, or, isNull, gte, asc } from "drizzle-orm";
+import { getTodayYmd } from "@shared/utils/date";
 
 type RequireAuth = (req: Request, res: Response, next: () => void) => void;
 
@@ -20,8 +21,7 @@ export function registerEdlsTosRoutes(app: Express, requireAuth: RequireAuth) {
     requireAccess("edls.any"),
     async (req: Request, res: Response) => {
       try {
-        const today = new Date();
-        const todayYmd = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+        const todayYmd = getTodayYmd();
         const client = getClient();
         const rows = await client
           .select({ id: dispatchJobGroups.id, name: dispatchJobGroups.name })
@@ -44,8 +44,10 @@ export function registerEdlsTosRoutes(app: Express, requireAuth: RequireAuth) {
     requireAccess("edls.any"),
     async (req: Request, res: Response) => {
       try {
-        const startYmd = typeof req.query.startYmd === "string" ? req.query.startYmd : undefined;
-        const endYmd = typeof req.query.endYmd === "string" ? req.query.endYmd : undefined;
+        const startYmd = getTodayYmd();
+        const endYmd = typeof req.query.endYmd === "string" && /^\d{4}-\d{2}-\d{2}$/.test(req.query.endYmd)
+          ? req.query.endYmd
+          : undefined;
         const supervisorId = typeof req.query.supervisorId === "string" && req.query.supervisorId
           ? req.query.supervisorId : undefined;
         const facilityId = typeof req.query.facilityId === "string" && req.query.facilityId
