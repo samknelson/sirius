@@ -33,7 +33,9 @@ export interface WorkerTosUpdate {
 export interface WorkerTosStorage {
   getByWorker(workerId: string): Promise<WorkerTos[]>;
   get(id: string): Promise<WorkerTos | undefined>;
+  getBySiriusId(siriusId: string): Promise<WorkerTos | undefined>;
   getActiveForWorker(workerId: string): Promise<WorkerTos | undefined>;
+  listActive(): Promise<WorkerTos[]>;
   create(input: InsertWorkerTos): Promise<WorkerTos>;
   update(id: string, patch: WorkerTosUpdate): Promise<WorkerTos | undefined>;
   delete(id: string, message?: string): Promise<boolean>;
@@ -179,6 +181,24 @@ export function createWorkerTosStorage(): WorkerTosStorage {
       const client = getClient();
       const [row] = await client.select().from(workerTos).where(eq(workerTos.id, id));
       return row;
+    },
+
+    async getBySiriusId(siriusId: string): Promise<WorkerTos | undefined> {
+      const client = getClient();
+      const [row] = await client
+        .select()
+        .from(workerTos)
+        .where(eq(workerTos.siriusId, siriusId))
+        .limit(1);
+      return row;
+    },
+
+    async listActive(): Promise<WorkerTos[]> {
+      const client = getClient();
+      return client
+        .select()
+        .from(workerTos)
+        .where(isNull(workerTos.endDate));
     },
 
     async getActiveForWorker(workerId: string): Promise<WorkerTos | undefined> {

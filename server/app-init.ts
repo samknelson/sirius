@@ -9,7 +9,7 @@ import { setupAuth } from "./auth";
 import { initAccessControl, registerEntityLoader } from "./services/access-policy-evaluator";
 import { storage } from "./storage";
 import { captureRequestContext } from "./middleware/request-context";
-import { registerCronJob, bootstrapCronJobs, cronScheduler, deleteExpiredReportsHandler, deleteOldCronLogsHandler, processWmbBatchHandler, deleteExpiredFloodEventsHandler, deleteExpiredHfeHandler, sweepExpiredBanEligHandler, workerBanActiveScanHandler, workerCertificationActiveScanHandler, logCleanupHandler, memberStatusScanHandler, t631DispatchJobGroupFetchHandler } from "./cron";
+import { registerCronJob, bootstrapCronJobs, cronScheduler, deleteExpiredReportsHandler, deleteOldCronLogsHandler, processWmbBatchHandler, deleteExpiredFloodEventsHandler, deleteExpiredHfeHandler, sweepExpiredBanEligHandler, workerBanActiveScanHandler, workerCertificationActiveScanHandler, logCleanupHandler, memberStatusScanHandler, t631DispatchJobGroupFetchHandler, t631FacilityFetchHandler, t631TosFetchHandler } from "./cron";
 import { loadComponentCache } from "./services/component-cache";
 import { syncComponentPermissions } from "./services/component-permissions";
 import { runMigrations } from "../scripts/migrate";
@@ -172,6 +172,8 @@ export async function startApp(app: Express, server: Server, onReady: () => void
   registerCronJob('log-cleanup', logCleanupHandler);
   registerCronJob('member-status-scan', memberStatusScanHandler);
   registerCronJob('sitespecific-t631-dispatch-job-group-fetch', t631DispatchJobGroupFetchHandler);
+  registerCronJob('sitespecific-t631-facility-fetch', t631FacilityFetchHandler);
+  registerCronJob('sitespecific-t631-tos-fetch', t631TosFetchHandler);
   logger.info("Cron job handlers registered", { source: "startup" });
 
   registerFloodEvents();

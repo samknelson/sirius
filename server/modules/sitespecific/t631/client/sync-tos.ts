@@ -1,0 +1,242 @@
+import { storage } from "../../../../storage";
+import { logger } from "../../../../logger";
+import { optionsWorkerIdType } from "@shared/schema";
+import { eq } from "drizzle-orm";
+import { db } from "../../../../storage/db";
+
+interface T631TosNode {
+  nid?: unknown;
+  worker_id?: unknown;
+  created?: unknown;
+  field_sirius_summary?: { und?: Array<{ value?: unknown }> };
+  [key: string]: unknown;
+}
+
+interface T631TosResponse {
+  success: boolean;
+  data?: { tos_nodes?: Record<string, T631TosNode> };
+  [key: string]: unknown;
+}
+
+interface SyncResult {
+  created: number;
+  reopened: number;
+  updated: number;
+  unchanged: number;
+  terminated: number;
+  skipped: number;
+  errors: number;
+  details: Array<{ siriusId: string; action: string; error?: string }>;
+}
+
+function extractDescription(node: T631TosNode): string | null {
+  const v = node.field_sirius_summary?.und?.[0]?.value;
+  if (typeof v !== "string") return null;
+  const trimmed = v.trim();
+  return trimmed === "" ? null : trimmed;
+}
+
+function parseStartDate(raw: unknown): Date | null {
+  if (raw === null || raw === undefined) return null;
+  const num = typeof raw === "number" ? raw : parseInt(String(raw), 10);
+  if (!Number.isFinite(num) || num <= 0) return null;
+  const d = new Date(num * 1000);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+export async function syncTos(
+  responseData: T631TosResponse,
+  dryRun: boolean,
+): Promise<SyncResult> {
+  const result: SyncResult = {
+    created: 0, reopened: 0, updated: 0, unchanged: 0,
+    terminated: 0, skipped: 0, errors: 0, details: [],
+  };
+
+  if (!responseData.success || !responseData.data?.tos_nodes) {
+    logger.warn("T631 TOS list returned unsuccessful or empty data", {
+      service: "t631-sync-tos",
+      success: responseData.success,
+    });
+    return result;
+  }
+
+  // Resolve t631 worker_id type id (sirius_id = "t631")
+  const [t631Type] = await db
+    .select({ id: optionsWorkerIdType.id })
+    .from(optionsWorkerIdType)
+    .where(eq(optionsWorkerIdType.siriusId, "t631"))
+    .limit(1);
+
+  if (!t631Type) {
+    logger.error("Cannot sync T631 TOS: no options_worker_id_type row with sirius_id='t631'", {
+      service: "t631-sync-tos",
+    });
+    result.errors++;
+    return result;
+  }
+  const t631TypeId = t631Type.id;
+
+  const remoteSiriusIds = new Set<string>();
+
+  for (const [, rawNode] of Object.entries(responseData.data.tos_nodes)) {
+    const node = rawNode as T631TosNode;
+    const siriusId = node.nid !== undefined && node.nid !== null ? String(node.nid).trim() : "";
+    const remoteWorkerId = node.worker_id !== undefined && node.worker_id !== null ? String(node.worker_id).trim() : "";
+    const startDate = parseStartDate(node.created);
+    const description = extractDescription(node);
+
+    if (!siriusId) {
+      result.skipped++;
+      result.details.push({ siriusId: "(empty)", action: "skipped", error: "Missing nid" });
+      continue;
+    }
+    remoteSiriusIds.add(siriusId);
+
+    if (!remoteWorkerId) {
+      result.skipped++;
+      result.details.push({ siriusId, action: "skipped", error: "Missing worker_id" });
+      continue;
+    }
+    if (!startDate) {
+      result.skipped++;
+      result.details.push({ siriusId, action: "skipped", error: "Missing or invalid created date" });
+      continue;
+    }
+
+    try {
+      const workerIdRow = await storage.workerIds.getWorkerIdByTypeAndValue(t631TypeId, remoteWorkerId);
+      if (!workerIdRow) {
+        result.skipped++;
+        result.details.push({ siriusId, action: "skipped", error: `worker_not_found (t631=${remoteWorkerId})` });
+        continue;
+      }
+      const localWorkerId = workerIdRow.workerId;
+
+      const existing = await storage.workerTos.getBySiriusId(siriusId);
+
+      if (existing) {
+        // Compare fields; only update if changed
+        const startMs = existing.startDate ? new Date(existing.startDate).getTime() : 0;
+        const sameStart = startMs === startDate.getTime();
+        const sameDesc = (existing.description ?? null) === description;
+        const stillActive = existing.endDate === null;
+
+        if (!stillActive) {
+          // Closed locally but still active remotely -> re-open if no conflict
+          const activeForWorker = await storage.workerTos.getActiveForWorker(localWorkerId);
+          if (activeForWorker && activeForWorker.id !== existing.id) {
+            result.skipped++;
+            result.details.push({
+              siriusId,
+              action: "skipped",
+              error: `cannot_reopen: worker has another active record (id=${activeForWorker.id})`,
+            });
+            continue;
+          }
+          if (dryRun) {
+            result.reopened++;
+            result.details.push({ siriusId, action: "would_reopen" });
+          } else {
+            await storage.workerTos.update(existing.id, {
+              endDate: null,
+              startDate,
+              description,
+            });
+            result.reopened++;
+            result.details.push({ siriusId, action: "reopened" });
+          }
+        } else if (sameStart && sameDesc) {
+          result.unchanged++;
+          result.details.push({ siriusId, action: dryRun ? "would_be_unchanged" : "unchanged" });
+        } else {
+          if (dryRun) {
+            result.updated++;
+            result.details.push({ siriusId, action: "would_update" });
+          } else {
+            await storage.workerTos.update(existing.id, { startDate, description });
+            result.updated++;
+            result.details.push({ siriusId, action: "updated" });
+          }
+        }
+      } else {
+        // New remote record - check for manual active conflict
+        const activeForWorker = await storage.workerTos.getActiveForWorker(localWorkerId);
+        if (activeForWorker) {
+          result.skipped++;
+          result.details.push({
+            siriusId,
+            action: "skipped",
+            error: `manual_conflict: worker already has active record (id=${activeForWorker.id}, siriusId=${activeForWorker.siriusId ?? "none"})`,
+          });
+          continue;
+        }
+        if (dryRun) {
+          result.created++;
+          result.details.push({ siriusId, action: "would_create" });
+        } else {
+          await storage.workerTos.create({
+            workerId: localWorkerId,
+            siriusId,
+            startDate,
+            endDate: null,
+            description,
+          });
+          result.created++;
+          result.details.push({ siriusId, action: "created" });
+        }
+      }
+    } catch (error) {
+      result.errors++;
+      const errMsg = error instanceof Error ? error.message : String(error);
+      result.details.push({ siriusId, action: "error", error: errMsg });
+      logger.error(`Failed to sync T631 TOS siriusId=${siriusId}`, {
+        service: "t631-sync-tos",
+        error: errMsg,
+      });
+    }
+  }
+
+  // Phase 2: terminate any local active records whose siriusId is no longer in the remote set,
+  // but only for workers that have a t631 worker_id row.
+  try {
+    const activeLocal = await storage.workerTos.listActive();
+    for (const row of activeLocal) {
+      if (!row.siriusId) continue; // skip manual records
+      if (remoteSiriusIds.has(row.siriusId)) continue;
+
+      // Confirm this worker is a T631 worker
+      const wIds = await storage.workerIds.getWorkerIdsByWorkerId(row.workerId);
+      const isT631 = wIds.some((w) => w.typeId === t631TypeId);
+      if (!isT631) continue;
+
+      if (dryRun) {
+        result.terminated++;
+        result.details.push({ siriusId: row.siriusId, action: "would_terminate" });
+      } else {
+        try {
+          await storage.workerTos.update(row.id, { endDate: new Date() });
+          result.terminated++;
+          result.details.push({ siriusId: row.siriusId, action: "terminated" });
+        } catch (error) {
+          result.errors++;
+          const errMsg = error instanceof Error ? error.message : String(error);
+          result.details.push({ siriusId: row.siriusId, action: "error", error: `terminate_failed: ${errMsg}` });
+          logger.error(`Failed to terminate T631 TOS siriusId=${row.siriusId}`, {
+            service: "t631-sync-tos",
+            error: errMsg,
+          });
+        }
+      }
+    }
+  } catch (error) {
+    result.errors++;
+    const errMsg = error instanceof Error ? error.message : String(error);
+    logger.error("Failed phase-2 termination scan for T631 TOS sync", {
+      service: "t631-sync-tos",
+      error: errMsg,
+    });
+  }
+
+  return result;
+}

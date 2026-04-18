@@ -94,6 +94,12 @@ const DEFAULT_CRON_JOBS: DefaultCronJob[] = [
     schedule: '0 9 * * *', // Daily at 9 AM
     isEnabled: false, // Disabled by default - requires sitespecific.t631.client component
   },
+  {
+    name: 'sitespecific-t631-tos-fetch',
+    description: 'Fetches active Time Off Sick records from the T631 server and syncs them into the local worker_tos table',
+    schedule: '0 10 * * *', // Daily at 10 AM
+    isEnabled: false, // Disabled by default - requires sitespecific.t631.client component
+  },
 ];
 
 export async function bootstrapCronJobs(): Promise<void> {
