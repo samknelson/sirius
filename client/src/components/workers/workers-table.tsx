@@ -790,7 +790,7 @@ export function WorkersTable({
           <div className="mb-3">
             <Select
               value={selectedEmployerId}
-              onValueChange={setSelectedEmployerId}
+              onValueChange={(value) => setFilters(prev => ({ ...prev, employerId: value }))}
             >
               <SelectTrigger data-testid="select-employer-filter">
                 <div className="flex items-center gap-2">
