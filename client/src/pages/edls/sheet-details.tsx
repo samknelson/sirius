@@ -5,8 +5,11 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { EdlsSheetLayout, useEdlsSheetLayout } from "@/components/layouts/EdlsSheetLayout";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
+import { useSearch, useLocation } from "wouter";
 import type { EdlsSheetStatus, EdlsCrew, AssignmentExtra } from "@shared/schema";
 
 interface EdlsCrewWithRelations extends EdlsCrew {
@@ -94,6 +97,20 @@ function EdlsSheetDetailsContent() {
   const { sheet } = useEdlsSheetLayout();
   const sheetData = (sheet.data as Record<string, any>) || {};
   const hasTrashLock = !!sheetData.trashLock;
+  const search = useSearch();
+  const [location, navigate] = useLocation();
+  const selectedCrewId = new URLSearchParams(search).get("crew") || "all";
+
+  const setSelectedCrewId = (id: string) => {
+    const params = new URLSearchParams(search);
+    if (id === "all") {
+      params.delete("crew");
+    } else {
+      params.set("crew", id);
+    }
+    const qs = params.toString();
+    navigate(qs ? `${location}?${qs}` : location, { replace: false });
+  };
 
   const { data: crews = [], isLoading: crewsLoading } = useQuery<EdlsCrewWithRelations[]>({
     queryKey: ["/api/edls/sheets", sheet.id, "crews"],
@@ -247,7 +264,35 @@ function EdlsSheetDetailsContent() {
         </p>
       ) : (
         <div className="space-y-3">
-          {crews.map((crew) => {
+          {crews.length > 1 && (
+            <div className="flex items-center gap-2 print:hidden">
+              <Label htmlFor="crew-filter" className="text-sm text-muted-foreground">
+                Crew:
+              </Label>
+              <Select value={selectedCrewId} onValueChange={setSelectedCrewId}>
+                <SelectTrigger
+                  id="crew-filter"
+                  className="w-[240px]"
+                  data-testid="select-crew-filter"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all" data-testid="option-crew-all">
+                    All crews ({crews.length})
+                  </SelectItem>
+                  {crews.map((c) => (
+                    <SelectItem key={c.id} value={c.id} data-testid={`option-crew-${c.id}`}>
+                      {c.title}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+          {crews
+            .filter((c) => selectedCrewId === "all" || c.id === selectedCrewId)
+            .map((crew) => {
                 const crewAssignments = assignmentsByCrewId[crew.id] || [];
                 const crewFilled = crewAssignments.length;
                 return (
