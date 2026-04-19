@@ -447,40 +447,120 @@ export default function EdlsTosPage() {
           </CardContent>
         </Card>
       ) : (
-        <Card>
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[110px]">ID</TableHead>
-                  <TableHead className="w-[60px]">Status</TableHead>
-                  <TableHead className="w-[260px]">Worker</TableHead>
-                  <TableHead className="w-[280px]">Today</TableHead>
-                  <TableHead>Next (up to {FUTURE_LIMIT})</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {items.map(({ tos, edlsId, memberStatusCode, today, future }) => {
-                  const visibleFuture = future.slice(0, FUTURE_LIMIT);
-                  const overflow = Math.max(0, future.length - FUTURE_LIMIT);
-                  return (
-                    <TableRow key={tos.id} data-testid={`row-tos-${tos.workerId}`}>
-                      <TableCell
-                        className="font-mono text-sm align-top"
-                        data-testid={`text-edls-id-${tos.workerId}`}
-                      >
-                        {edlsId ?? "—"}
-                      </TableCell>
-                      <TableCell
-                        className="font-mono text-sm align-top text-muted-foreground"
-                        data-testid={`text-member-status-${tos.workerId}`}
-                      >
-                        {memberStatusCode ?? "—"}
-                      </TableCell>
-                      <TableCell className="align-top">
+        <>
+          {/* Desktop: table layout */}
+          <Card className="hidden md:block">
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[110px]">ID</TableHead>
+                    <TableHead className="w-[60px]">Status</TableHead>
+                    <TableHead className="w-[260px]">Worker</TableHead>
+                    <TableHead className="w-[280px]">Today</TableHead>
+                    <TableHead>Next (up to {FUTURE_LIMIT})</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {items.map(({ tos, edlsId, memberStatusCode, today, future }) => {
+                    const visibleFuture = future.slice(0, FUTURE_LIMIT);
+                    const overflow = Math.max(0, future.length - FUTURE_LIMIT);
+                    return (
+                      <TableRow key={tos.id} data-testid={`row-tos-${tos.workerId}`}>
+                        <TableCell
+                          className="font-mono text-sm align-top"
+                          data-testid={`text-edls-id-${tos.workerId}`}
+                        >
+                          {edlsId ?? "—"}
+                        </TableCell>
+                        <TableCell
+                          className="font-mono text-sm align-top text-muted-foreground"
+                          data-testid={`text-member-status-${tos.workerId}`}
+                        >
+                          {memberStatusCode ?? "—"}
+                        </TableCell>
+                        <TableCell className="align-top">
+                          <Link
+                            href={`/workers/${tos.workerId}`}
+                            className="font-medium hover:underline"
+                            data-testid={`link-worker-${tos.workerId}`}
+                          >
+                            {workerName(tos.worker)}
+                          </Link>
+                          <div
+                            className="text-xs text-muted-foreground mt-0.5"
+                            data-testid={`text-tos-start-${tos.workerId}`}
+                          >
+                            Sick since {format(new Date(tos.startDate), "MMM d, yyyy")}
+                            {tos.description ? ` — ${tos.description}` : ""}
+                          </div>
+                        </TableCell>
+                        <TableCell className="align-top">
+                          {today ? (
+                            <AssignmentCell
+                              a={today}
+                              showDate={false}
+                              testIdPrefix="link-today"
+                            />
+                          ) : (
+                            <span
+                              className="text-sm text-muted-foreground"
+                              data-testid={`text-no-today-${tos.workerId}`}
+                            >
+                              —
+                            </span>
+                          )}
+                        </TableCell>
+                        <TableCell className="align-top">
+                          {visibleFuture.length === 0 ? (
+                            <span
+                              className="text-sm text-muted-foreground"
+                              data-testid={`text-no-future-${tos.workerId}`}
+                            >
+                              —
+                            </span>
+                          ) : (
+                            <div className="space-y-0.5">
+                              {visibleFuture.map((a) => (
+                                <AssignmentCell
+                                  key={a.assignmentId}
+                                  a={a}
+                                  showDate={true}
+                                  testIdPrefix="link-future"
+                                />
+                              ))}
+                              {overflow > 0 && (
+                                <div
+                                  className="text-xs text-muted-foreground italic"
+                                  data-testid={`text-future-overflow-${tos.workerId}`}
+                                >
+                                  +{overflow} more
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+
+          {/* Mobile: stacked cards */}
+          <div className="md:hidden space-y-3">
+            {items.map(({ tos, edlsId, memberStatusCode, today, future }) => {
+              const visibleFuture = future.slice(0, FUTURE_LIMIT);
+              const overflow = Math.max(0, future.length - FUTURE_LIMIT);
+              return (
+                <Card key={tos.id} data-testid={`row-tos-${tos.workerId}`}>
+                  <CardContent className="pt-4 space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
                         <Link
                           href={`/workers/${tos.workerId}`}
-                          className="font-medium hover:underline"
+                          className="font-medium hover:underline block truncate"
                           data-testid={`link-worker-${tos.workerId}`}
                         >
                           {workerName(tos.worker)}
@@ -492,59 +572,75 @@ export default function EdlsTosPage() {
                           Sick since {format(new Date(tos.startDate), "MMM d, yyyy")}
                           {tos.description ? ` — ${tos.description}` : ""}
                         </div>
-                      </TableCell>
-                      <TableCell className="align-top">
-                        {today ? (
-                          <AssignmentCell
-                            a={today}
-                            showDate={false}
-                            testIdPrefix="link-today"
-                          />
-                        ) : (
-                          <span
-                            className="text-sm text-muted-foreground"
-                            data-testid={`text-no-today-${tos.workerId}`}
-                          >
-                            —
-                          </span>
-                        )}
-                      </TableCell>
-                      <TableCell className="align-top">
-                        {visibleFuture.length === 0 ? (
-                          <span
-                            className="text-sm text-muted-foreground"
-                            data-testid={`text-no-future-${tos.workerId}`}
-                          >
-                            —
-                          </span>
-                        ) : (
-                          <div className="space-y-0.5">
-                            {visibleFuture.map((a) => (
-                              <AssignmentCell
-                                key={a.assignmentId}
-                                a={a}
-                                showDate={true}
-                                testIdPrefix="link-future"
-                              />
-                            ))}
-                            {overflow > 0 && (
-                              <div
-                                className="text-xs text-muted-foreground italic"
-                                data-testid={`text-future-overflow-${tos.workerId}`}
-                              >
-                                +{overflow} more
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+                      </div>
+                      <div className="flex flex-col items-end gap-0.5 flex-shrink-0">
+                        <span
+                          className="font-mono text-xs"
+                          data-testid={`text-edls-id-${tos.workerId}`}
+                        >
+                          {edlsId ?? "—"}
+                        </span>
+                        <span
+                          className="font-mono text-xs text-muted-foreground"
+                          data-testid={`text-member-status-${tos.workerId}`}
+                        >
+                          {memberStatusCode ?? "—"}
+                        </span>
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">
+                        Today
+                      </div>
+                      {today ? (
+                        <AssignmentCell a={today} showDate={false} testIdPrefix="link-today" />
+                      ) : (
+                        <span
+                          className="text-sm text-muted-foreground"
+                          data-testid={`text-no-today-${tos.workerId}`}
+                        >
+                          —
+                        </span>
+                      )}
+                    </div>
+                    <div>
+                      <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">
+                        Next (up to {FUTURE_LIMIT})
+                      </div>
+                      {visibleFuture.length === 0 ? (
+                        <span
+                          className="text-sm text-muted-foreground"
+                          data-testid={`text-no-future-${tos.workerId}`}
+                        >
+                          —
+                        </span>
+                      ) : (
+                        <div className="space-y-0.5">
+                          {visibleFuture.map((a) => (
+                            <AssignmentCell
+                              key={a.assignmentId}
+                              a={a}
+                              showDate={true}
+                              testIdPrefix="link-future"
+                            />
+                          ))}
+                          {overflow > 0 && (
+                            <div
+                              className="text-xs text-muted-foreground italic"
+                              data-testid={`text-future-overflow-${tos.workerId}`}
+                            >
+                              +{overflow} more
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        </>
       )}
     </div>
   );
