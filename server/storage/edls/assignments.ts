@@ -244,6 +244,22 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
         ? sql`member_status.id as "memberStatusId", member_status.code as "memberStatusCode", member_status.name as "memberStatusName"`
         : sql`NULL::varchar as "memberStatusId", NULL::varchar as "memberStatusCode", NULL::varchar as "memberStatusName"`;
 
+      interface RawSheetAssignmentRow {
+        id: string;
+        ymd: string;
+        workerId: string;
+        crewId: string;
+        data: unknown;
+        workerRowId: string;
+        siriusId: number | null;
+        displayName: string | null;
+        given: string | null;
+        family: string | null;
+        memberStatusId: string | null;
+        memberStatusCode: string | null;
+        memberStatusName: string | null;
+      }
+
       const result = await client.execute(sql`
         SELECT
           ea.id,
@@ -265,7 +281,8 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
         WHERE ec.sheet_id = ${sheetId}
       `);
 
-      const unsortedAssignments: EdlsAssignmentWithWorker[] = result.rows.map((row: any) => ({
+      const rows = result.rows as unknown as RawSheetAssignmentRow[];
+      const unsortedAssignments: EdlsAssignmentWithWorker[] = rows.map((row) => ({
         id: row.id,
         ymd: row.ymd,
         workerId: row.workerId,
