@@ -180,50 +180,50 @@ function EdlsSheetDetailsContent() {
           <CardTitle>Sheet Details</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <h3 className="text-sm font-medium text-muted-foreground mb-1">Title</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 print:grid-cols-2 print:gap-x-4 print:gap-y-1">
+            <div className="print:flex print:items-baseline print:gap-2">
+              <h3 className="text-sm font-medium text-muted-foreground mb-1 print:mb-0 print:after:content-[':']">Title</h3>
               <p className="text-foreground" data-testid="text-title">{sheet.title}</p>
             </div>
-            <div>
-              <h3 className="text-sm font-medium text-muted-foreground mb-1">Date</h3>
+            <div className="print:flex print:items-baseline print:gap-2">
+              <h3 className="text-sm font-medium text-muted-foreground mb-1 print:mb-0 print:after:content-[':']">Date</h3>
               <p className="text-foreground flex items-center gap-2" data-testid="text-date">
-                <Calendar className="h-4 w-4 text-muted-foreground" />
+                <Calendar className="h-4 w-4 text-muted-foreground print:hidden" />
                 {formatYmd(sheet.ymd, 'long')}
               </p>
             </div>
-            <div>
-              <h3 className="text-sm font-medium text-muted-foreground mb-1">Department</h3>
+            <div className="print:flex print:items-baseline print:gap-2">
+              <h3 className="text-sm font-medium text-muted-foreground mb-1 print:mb-0 print:after:content-[':']">Department</h3>
               <p className="text-foreground flex items-center gap-2" data-testid="text-department">
-                <Building className="h-4 w-4 text-muted-foreground" />
+                <Building className="h-4 w-4 text-muted-foreground print:hidden" />
                 {(sheet as any).department?.name || "Not assigned"}
               </p>
             </div>
-            <div>
-              <h3 className="text-sm font-medium text-muted-foreground mb-1">Event</h3>
+            <div className="print:flex print:items-baseline print:gap-2">
+              <h3 className="text-sm font-medium text-muted-foreground mb-1 print:mb-0 print:after:content-[':']">Event</h3>
               <p className="text-foreground flex items-center gap-2" data-testid="text-job-group">
-                <Layers className="h-4 w-4 text-muted-foreground" />
+                <Layers className="h-4 w-4 text-muted-foreground print:hidden" />
                 {(sheet as any).jobGroup?.name || "None"}
               </p>
             </div>
-            <div>
-              <h3 className="text-sm font-medium text-muted-foreground mb-1">Facility</h3>
+            <div className="print:flex print:items-baseline print:gap-2">
+              <h3 className="text-sm font-medium text-muted-foreground mb-1 print:mb-0 print:after:content-[':']">Facility</h3>
               <p className="text-foreground flex items-center gap-2" data-testid="text-facility">
-                <Factory className="h-4 w-4 text-muted-foreground" />
+                <Factory className="h-4 w-4 text-muted-foreground print:hidden" />
                 {(sheet as any).facility?.name || "None"}
               </p>
             </div>
-            <div>
-              <h3 className="text-sm font-medium text-muted-foreground mb-1">Worker Count</h3>
+            <div className="print:flex print:items-baseline print:gap-2">
+              <h3 className="text-sm font-medium text-muted-foreground mb-1 print:mb-0 print:after:content-[':']">Worker Count</h3>
               <p className="text-foreground flex items-center gap-2" data-testid="text-worker-count">
-                <Users className="h-4 w-4 text-muted-foreground" />
+                <Users className="h-4 w-4 text-muted-foreground print:hidden" />
                 <span data-testid="text-assigned-total">{filledSlots}/{totalSlots}</span>
               </p>
             </div>
-            <div>
-              <h3 className="text-sm font-medium text-muted-foreground mb-1">Status</h3>
+            <div className="print:flex print:items-baseline print:gap-2">
+              <h3 className="text-sm font-medium text-muted-foreground mb-1 print:mb-0 print:after:content-[':']">Status</h3>
               <div className="flex items-center gap-2" data-testid="text-status">
-                <FileText className="h-4 w-4 text-muted-foreground" />
+                <FileText className="h-4 w-4 text-muted-foreground print:hidden" />
                 <Badge className={statusColors[(sheet.status as EdlsSheetStatus) || "draft"]}>
                   {statusLabels[(sheet.status as EdlsSheetStatus) || "draft"]}
                 </Badge>
@@ -235,17 +235,17 @@ function EdlsSheetDetailsContent() {
                 )}
               </div>
             </div>
-            <div>
-              <h3 className="text-sm font-medium text-muted-foreground mb-1">Supervisor</h3>
+            <div className="print:flex print:items-baseline print:gap-2">
+              <h3 className="text-sm font-medium text-muted-foreground mb-1 print:mb-0 print:after:content-[':']">Supervisor</h3>
               <p className="text-foreground flex items-center gap-2" data-testid="text-supervisor">
-                <User className="h-4 w-4 text-muted-foreground" />
+                <User className="h-4 w-4 text-muted-foreground print:hidden" />
                 {formatUserName((sheet as any).supervisorUser)}
               </p>
             </div>
-            <div>
-              <h3 className="text-sm font-medium text-muted-foreground mb-1">Assignee</h3>
+            <div className="print:flex print:items-baseline print:gap-2">
+              <h3 className="text-sm font-medium text-muted-foreground mb-1 print:mb-0 print:after:content-[':']">Assignee</h3>
               <p className="text-foreground flex items-center gap-2" data-testid="text-assignee">
-                <User className="h-4 w-4 text-muted-foreground" />
+                <User className="h-4 w-4 text-muted-foreground print:hidden" />
                 {formatUserName((sheet as any).assigneeUser)}
               </p>
             </div>
@@ -263,7 +263,7 @@ function EdlsSheetDetailsContent() {
           No crews assigned to this sheet.
         </p>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-3 print:space-y-0 print:grid print:grid-cols-2 print:gap-3">
           {crews.length > 1 && (
             <div className="flex items-center gap-2 print:hidden">
               <Label htmlFor="crew-filter" className="text-sm text-muted-foreground">
@@ -298,7 +298,7 @@ function EdlsSheetDetailsContent() {
                 return (
                   <div
                     key={crew.id}
-                    className="border rounded-md p-4"
+                    className="border rounded-md p-4 print:break-inside-avoid print:p-2"
                     data-testid={`crew-card-${crew.id}`}
                   >
                     <div className="flex flex-wrap items-start justify-between gap-2 mb-2">
