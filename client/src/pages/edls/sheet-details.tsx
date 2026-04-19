@@ -200,7 +200,7 @@ function EdlsSheetDetailsContent() {
               <h3 className="text-sm font-medium text-muted-foreground mb-1">Worker Count</h3>
               <p className="text-foreground flex items-center gap-2" data-testid="text-worker-count">
                 <Users className="h-4 w-4 text-muted-foreground" />
-                {sheet.workerCount}
+                <span data-testid="text-assigned-total">{filledSlots}/{totalSlots}</span>
               </p>
             </div>
             <div>
@@ -236,27 +236,18 @@ function EdlsSheetDetailsContent() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Users className="h-5 w-5" />
-            Crews ({crews.length})
-            <Badge variant="outline" className="ml-auto" data-testid="badge-total-assignments">
-              {filledSlots}/{totalSlots} assigned
-            </Badge>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {crewsLoading ? (
-            <div className="space-y-3">
-              <Skeleton className="h-20 w-full" />
-              <Skeleton className="h-20 w-full" />
-            </div>
-          ) : crews.length === 0 ? (
-            <p className="text-muted-foreground text-center py-4">No crews assigned to this sheet.</p>
-          ) : (
-            <div className="space-y-3">
-              {crews.map((crew) => {
+      {crewsLoading ? (
+        <div className="space-y-3">
+          <Skeleton className="h-20 w-full" />
+          <Skeleton className="h-20 w-full" />
+        </div>
+      ) : crews.length === 0 ? (
+        <p className="text-muted-foreground text-center py-4" data-testid="text-no-crews">
+          No crews assigned to this sheet.
+        </p>
+      ) : (
+        <div className="space-y-3">
+          {crews.map((crew) => {
                 const crewAssignments = assignmentsByCrewId[crew.id] || [];
                 const crewFilled = crewAssignments.length;
                 return (
@@ -406,10 +397,8 @@ function EdlsSheetDetailsContent() {
                   </div>
                 );
               })}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+        </div>
+      )}
     </div>
     </TooltipProvider>
   );
