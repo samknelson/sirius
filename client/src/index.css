@@ -125,7 +125,9 @@
 }
 
 @media print {
-  [role="tablist"] {
+  [role="tablist"],
+  nav[data-testid$="tabs"],
+  div.flex.flex-wrap.items-center.gap-2.py-3 {
     display: none !important;
   }
 }
