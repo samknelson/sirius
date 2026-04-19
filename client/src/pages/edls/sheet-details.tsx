@@ -329,19 +329,19 @@ function EdlsSheetDetailsContent() {
                               {positionNumber}.
                             </span>
                             <span
+                              className="w-12 text-left text-xs tabular-nums text-muted-foreground truncate"
+                              title={assignment.worker.memberStatusName ?? undefined}
+                              data-testid={`text-member-status-${assignment.id}`}
+                            >
+                              {assignment.worker.memberStatusCode ?? "—"}
+                            </span>
+                            <span
                               className="text-muted-foreground w-16 text-left tabular-nums"
                               data-testid={`text-assignment-display-id-${assignment.id}`}
                             >
                               {workerIdTypeConfigured
                                 ? (displayIdValues[assignment.workerId] ?? "—")
                                 : (assignment.worker.siriusId ? `#${assignment.worker.siriusId}` : "—")}
-                            </span>
-                            <span
-                              className="w-12 text-left text-xs tabular-nums text-muted-foreground truncate"
-                              title={assignment.worker.memberStatusName ?? undefined}
-                              data-testid={`text-member-status-${assignment.id}`}
-                            >
-                              {assignment.worker.memberStatusCode ?? "—"}
                             </span>
                             <span className="flex items-center gap-1.5 min-w-0">
                               {isOutOfPopulation && (

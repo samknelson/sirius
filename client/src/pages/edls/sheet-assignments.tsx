@@ -362,17 +362,17 @@ function AssignedWorkerSlot({ assignment, crewId, sheetId, positionNumber }: Ass
             {positionNumber}.
           </span>
           <span
-            className="text-sm text-muted-foreground w-16 text-left tabular-nums"
-            data-testid={`text-assignment-display-id-${assignment.id}`}
-          >
-            {displayIdLabel}
-          </span>
-          <span
             className="w-12 text-left text-xs tabular-nums text-muted-foreground truncate"
             title={assignment.worker.memberStatusName ?? undefined}
             data-testid={`text-member-status-${assignment.id}`}
           >
             {assignment.worker.memberStatusCode ?? "—"}
+          </span>
+          <span
+            className="text-sm text-muted-foreground w-16 text-left tabular-nums"
+            data-testid={`text-assignment-display-id-${assignment.id}`}
+          >
+            {displayIdLabel}
           </span>
           <span className="text-sm truncate">{formatAssignedWorkerName(assignment.worker)}</span>
           {ratingValue !== undefined && (
