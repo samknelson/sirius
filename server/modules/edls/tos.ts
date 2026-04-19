@@ -4,7 +4,7 @@ import { requireAccess } from "../../services/access-policy-evaluator";
 import { requireComponent } from "../components";
 import { getClient } from "../../storage/transaction-context";
 import { dispatchJobGroups } from "@shared/schema";
-import { and, or, isNull, gte, asc, sql, inArray } from "drizzle-orm";
+import { or, isNull, gte, asc, sql } from "drizzle-orm";
 import { getTodayYmd } from "@shared/utils/date";
 import { getEdlsSettings } from "./supervisor-context";
 
