@@ -6,10 +6,9 @@ import {
   insertBulkMessagesSmsSchema,
   insertBulkMessagesPostalSchema,
   insertBulkMessagesInappSchema,
-  bulkParticipants,
 } from "../../../shared/schema/bulk/schema";
-import { contacts, workers, employers, employerContacts, comm, phoneNumbers, contactPostal } from "../../../shared/schema";
-import { eq, or, ilike, sql, inArray, and } from "drizzle-orm";
+import { contacts, workers, employers, employerContacts } from "../../../shared/schema";
+import { eq, inArray, and } from "drizzle-orm";
 import { getClient, runInTransaction } from "../../storage/transaction-context";
 import { createBulkParticipantStorage } from "../../storage/bulk/participants";
 import { deliverToContact, deliverToParticipant, resolveAddressForMedium } from "./deliver";
@@ -369,35 +368,7 @@ export function registerBulkMessageRoutes(
       if (!bulk) {
         return res.status(404).json({ message: "Bulk message not found" });
       }
-      const db = getClient();
-      const workerSub = db
-        .selectDistinctOn([workers.contactId], {
-          contactId: workers.contactId,
-          id: workers.id,
-          siriusId: workers.siriusId,
-        })
-        .from(workers)
-        .as("w");
-      const rows = await db
-        .select({
-          id: bulkParticipants.id,
-          messageId: bulkParticipants.messageId,
-          contactId: bulkParticipants.contactId,
-          medium: bulkParticipants.medium,
-          commId: bulkParticipants.commId,
-          data: bulkParticipants.data,
-          contactDisplayName: contacts.displayName,
-          contactGiven: contacts.given,
-          contactFamily: contacts.family,
-          workerId: workerSub.id,
-          workerSiriusId: workerSub.siriusId,
-          commStatus: comm.status,
-        })
-        .from(bulkParticipants)
-        .innerJoin(contacts, eq(bulkParticipants.contactId, contacts.id))
-        .leftJoin(workerSub, eq(workerSub.contactId, contacts.id))
-        .leftJoin(comm, eq(bulkParticipants.commId, comm.id))
-        .where(eq(bulkParticipants.messageId, req.params.id));
+      const rows = await storage.bulkParticipants.listForMessageWithRelations(req.params.id);
       res.json(rows);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Failed to fetch participants";
@@ -465,86 +436,21 @@ export function registerBulkMessageRoutes(
       if (q.length < 2) {
         return res.json([]);
       }
-      const db = getClient();
-      const term = `%${q}%`;
-
-      const rows = await db
-        .select({
-          id: contacts.id,
-          displayName: contacts.displayName,
-          email: contacts.email,
-          given: contacts.given,
-          family: contacts.family,
-        })
-        .from(contacts)
-        .where(
-          or(
-            ilike(contacts.displayName, term),
-            ilike(contacts.email, term),
-            ilike(contacts.given, term),
-            ilike(contacts.family, term),
-          )
-        )
-        .limit(20);
+      const rows = await storage.contacts.searchWithPrimaryContactInfo(q, 20);
 
       const contactIds = rows.map(r => r.id).filter(Boolean);
-      if (contactIds.length === 0) {
-        return res.json(rows.map(r => ({ ...r, primaryPhone: null, primaryAddress: null })));
-      }
-
-      let phones: { contactId: string; phoneNumber: string; isPrimary: boolean }[] = [];
-      let addrs: { contactId: string; street: string; city: string; state: string; isPrimary: boolean }[] = [];
-
-      try {
-        phones = await db
-          .select({
-            contactId: phoneNumbers.contactId,
-            phoneNumber: phoneNumbers.phoneNumber,
-            isPrimary: phoneNumbers.isPrimary,
-          })
-          .from(phoneNumbers)
-          .where(and(inArray(phoneNumbers.contactId, contactIds), eq(phoneNumbers.isActive, true)));
-      } catch (_e) {}
-
-      try {
-        addrs = await db
-          .select({
-            contactId: contactPostal.contactId,
-            street: contactPostal.street,
-            city: contactPostal.city,
-            state: contactPostal.state,
-            isPrimary: contactPostal.isPrimary,
-          })
-          .from(contactPostal)
-          .where(and(inArray(contactPostal.contactId, contactIds), eq(contactPostal.isActive, true)));
-      } catch (_e) {}
-
-      const phoneMap = new Map<string, string>();
-      for (const p of phones) {
-        if (!phoneMap.has(p.contactId) || p.isPrimary) {
-          phoneMap.set(p.contactId, p.phoneNumber);
-        }
-      }
-
-      const addrMap = new Map<string, string>();
-      for (const a of addrs) {
-        if (!addrMap.has(a.contactId) || a.isPrimary) {
-          addrMap.set(a.contactId, [a.street, a.city, a.state].filter(Boolean).join(", "));
-        }
-      }
-
       let linkMap = new Map<string, { url: string; label: string } | null>();
-      try {
-        const resolved = await resolveContactLinksForMany(contactIds);
-        for (const [cid, result] of resolved) {
-          linkMap.set(cid, result.mainLink ? { url: result.mainLink.url, label: result.mainLink.label } : null);
-        }
-      } catch (_e) {}
+      if (contactIds.length > 0) {
+        try {
+          const resolved = await resolveContactLinksForMany(contactIds);
+          for (const [cid, result] of resolved) {
+            linkMap.set(cid, result.mainLink ? { url: result.mainLink.url, label: result.mainLink.label } : null);
+          }
+        } catch (_e) {}
+      }
 
       const enriched = rows.map(r => ({
         ...r,
-        primaryPhone: phoneMap.get(r.id) || null,
-        primaryAddress: addrMap.get(r.id) || null,
         mainLink: linkMap.get(r.id) || null,
       }));
 
@@ -674,17 +580,7 @@ export function registerBulkMessageRoutes(
       if (!existing) {
         return res.status(404).json({ message: "Bulk message not found" });
       }
-      const db = getClient();
-      const rows = await db
-        .select({
-          participantStatus: bulkParticipants.status,
-          medium: bulkParticipants.medium,
-          commId: bulkParticipants.commId,
-          commStatus: comm.status,
-        })
-        .from(bulkParticipants)
-        .leftJoin(comm, eq(bulkParticipants.commId, comm.id))
-        .where(eq(bulkParticipants.messageId, req.params.id));
+      const rows = await storage.bulkParticipants.getDeliveryStats(req.params.id);
 
       const total = rows.length;
       let pending = 0;

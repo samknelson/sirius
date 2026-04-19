@@ -1,13 +1,11 @@
 import type { Express } from "express";
 import { storage } from "../../storage";
-import { insertEdlsSheetsSchema, insertEdlsCrewsSchema, updateAssignmentExtraSchema, dispatchJobGroups, type InsertEdlsCrew } from "@shared/schema";
+import { insertEdlsSheetsSchema, insertEdlsCrewsSchema, updateAssignmentExtraSchema, type InsertEdlsCrew } from "@shared/schema";
 import { requireAccess } from "../../services/access-policy-evaluator";
 import { requireComponent } from "../components";
 import { z } from "zod";
-import { and, or, lte, gte, isNull } from "drizzle-orm";
 import { getSupervisorContext, validateSupervisorForSave, getEdlsSettings } from "./supervisor-context";
 import { getEffectiveUser } from "../masquerade";
-import { getClient } from "../../storage/transaction-context";
 
 const crewInputSchema = insertEdlsCrewsSchema.omit({ sheetId: true });
 
@@ -136,17 +134,7 @@ export function registerEdlsSheetsRoutes(
         res.status(400).json({ message: "date query parameter is required (YYYY-MM-DD)" });
         return;
       }
-      const client = getClient();
-      const results = await client
-        .select({ id: dispatchJobGroups.id, name: dispatchJobGroups.name })
-        .from(dispatchJobGroups)
-        .where(
-          and(
-            or(isNull(dispatchJobGroups.startYmd), lte(dispatchJobGroups.startYmd, date)),
-            or(isNull(dispatchJobGroups.endYmd), gte(dispatchJobGroups.endYmd, date))
-          )
-        )
-        .orderBy(dispatchJobGroups.name);
+      const results = await storage.dispatchJobGroups.getActiveOnDate(date);
       res.json(results);
     } catch (error) {
       console.error("Failed to fetch job group options:", error);

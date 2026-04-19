@@ -39,6 +39,25 @@ Routes stay thin; all SQL lives in storage.
 It is acceptable **only inside a storage method**, never inside a
 route handler, service, plugin, or cron job.
 
+**Cross-domain query helpers:** When a feature needs to query several
+unrelated tables (for example, contact-link resolution touches
+`workers`, `employer_contacts`, and `trust_provider_contacts`), do
+**not** put those queries in a service file. Add a dedicated storage
+namespace (e.g. `storage.contactLinks`) that exposes one focused method
+per query, and have the service compose the results in pure
+TypeScript.
+
+**Service files stay query-free:** Files under `server/modules/` and
+`server/services/` may orchestrate, transform, and aggregate data
+returned by `storage.*` calls, but they must not import schema tables,
+`db`, `getClient`, or `drizzle-orm` operators (`eq`, `and`, `ilike`,
+`sql`, `inArray`, etc.) for query construction. If you reach for any
+of those imports, the work belongs in a storage method.
+
+**Routes stay thin:** Route handlers should call one or more
+`storage.*` methods, perform request validation, and shape the
+response. They must contain zero query logic.
+
 If you find yourself wanting to break this rule, the answer is always
 to add a new storage method instead. See the **Database Access
 Architecture** entry under System Design Choices for the rationale

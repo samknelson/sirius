@@ -99,6 +99,7 @@ import { type ReadOnlyStorage, createReadOnlyStorage } from "./read-only";
 import { type BtuPoliticalStorage, createBtuPoliticalStorage, btuPoliticalLoggingConfig } from "./sitespecific/btu/political";
 import { type WsBundleStorage, type WsClientStorage, type WsClientCredentialStorage, type WsClientIpRuleStorage, createWsBundleStorage, createWsClientStorage, createWsClientCredentialStorage, createWsClientIpRuleStorage } from "./webservices";
 import { type CompanyStorage, createCompanyStorage, companyLoggingConfig, type EmployerCompanyStorage, createEmployerCompanyStorage, employerCompanyLoggingConfig } from "./companies";
+import { type ContactLinkStorage, createContactLinkStorage } from "./contact-links";
 import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
 import { db } from "./db";
 import { employers, workers, contacts } from "@shared/schema";
@@ -180,6 +181,7 @@ export interface IStorage {
   bulkMessagesInapp: BulkMessagesInappStorage;
   bulkParticipants: BulkParticipantStorage;
   facilities: FacilityStorage;
+  contactLinks: ContactLinkStorage;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -258,6 +260,7 @@ export class DatabaseStorage implements IStorage {
   bulkMessagesInapp: BulkMessagesInappStorage;
   bulkParticipants: BulkParticipantStorage;
   facilities: FacilityStorage;
+  contactLinks: ContactLinkStorage;
 
   constructor() {
     this.variables = withStorageLogging(
@@ -461,6 +464,7 @@ export class DatabaseStorage implements IStorage {
       bulkParticipantLoggingConfig
     );
     this.facilities = withStorageLogging(createFacilityStorage(this.contacts), facilityLoggingConfig);
+    this.contactLinks = createContactLinkStorage();
   }
 }
 
