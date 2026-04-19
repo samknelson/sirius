@@ -138,6 +138,7 @@ export interface AssignmentForWorker {
   supervisor: { id: string; firstName: string | null; lastName: string | null; email: string } | null;
   facility: { id: string; name: string } | null;
   jobGroup: { id: string; name: string } | null;
+  data: Record<string, unknown> | null;
 }
 
 export interface EdlsAssignmentsStorage {
@@ -445,6 +446,7 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
       const rows = await client
         .select({
           assignmentId: edlsAssignments.id,
+          assignmentData: edlsAssignments.data,
           ymd: edlsSheets.ymd,
           sheetId: edlsSheets.id,
           sheetTitle: edlsSheets.title,
@@ -491,6 +493,7 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
           : null,
         facility: r.facilityId ? { id: r.facilityId, name: r.facilityName! } : null,
         jobGroup: r.jobGroupId ? { id: r.jobGroupId, name: r.jobGroupName! } : null,
+        data: (r.assignmentData as Record<string, unknown> | null) ?? null,
       }));
     },
 
@@ -517,6 +520,7 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
         .select({
           workerId: edlsAssignments.workerId,
           assignmentId: edlsAssignments.id,
+          assignmentData: edlsAssignments.data,
           ymd: edlsSheets.ymd,
           sheetId: edlsSheets.id,
           sheetTitle: edlsSheets.title,
@@ -564,6 +568,7 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
             : null,
           facility: r.facilityId ? { id: r.facilityId, name: r.facilityName! } : null,
           jobGroup: r.jobGroupId ? { id: r.jobGroupId, name: r.jobGroupName! } : null,
+          data: (r.assignmentData as Record<string, unknown> | null) ?? null,
         };
         const list = result.get(r.workerId);
         if (list) list.push(item);

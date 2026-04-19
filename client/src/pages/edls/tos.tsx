@@ -4,7 +4,6 @@ import { Link, useSearch, useLocation } from "wouter";
 import { format } from "date-fns";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -13,6 +12,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { Stethoscope, Users, Factory, Layers, UserCheck, ChevronsUpDown, Check, X } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
@@ -25,6 +32,8 @@ import {
 } from "@/components/ui/command";
 import { cn } from "@/lib/utils";
 import { getTodayYmd, formatYmd } from "@shared/utils/date";
+
+const FUTURE_LIMIT = 5;
 
 interface ActiveWorkerTosWorker {
   id: string;
@@ -56,16 +65,21 @@ interface AssignmentForWorker {
   supervisor: { id: string; firstName: string | null; lastName: string | null; email: string } | null;
   facility: { id: string; name: string } | null;
   jobGroup: { id: string; name: string } | null;
+  data: Record<string, unknown> | null;
 }
 
-interface TosWithAssignments {
+interface TosItem {
   tos: ActiveTosRecord;
-  assignments: AssignmentForWorker[];
+  edlsId: string | null;
+  memberStatusCode: string | null;
+  today: AssignmentForWorker | null;
+  future: AssignmentForWorker[];
 }
 
 interface TosResponse {
-  items: TosWithAssignments[];
+  items: TosItem[];
   filterActive: boolean;
+  workerIdTypeConfigured: boolean;
 }
 
 interface SupervisorOption {
@@ -104,6 +118,41 @@ function supervisorName(s: AssignmentForWorker["supervisor"]): string {
   return s.email;
 }
 
+function effectiveStartTime(a: AssignmentForWorker): string | null {
+  const override = a.data && typeof (a.data as { startTime?: unknown }).startTime === "string"
+    ? ((a.data as { startTime: string }).startTime)
+    : null;
+  const raw = override || a.startTime;
+  return raw ? raw.slice(0, 5) : null;
+}
+
+function AssignmentCell({
+  a,
+  showDate,
+  testIdPrefix,
+}: {
+  a: AssignmentForWorker;
+  showDate: boolean;
+  testIdPrefix: string;
+}) {
+  const time = effectiveStartTime(a);
+  const parts: string[] = [];
+  if (showDate) parts.push(formatYmd(a.ymd, "short"));
+  parts.push(a.crewTitle);
+  if (time) parts.push(time);
+  parts.push(`Sup: ${supervisorName(a.supervisor)}`);
+  if (a.facility) parts.push(a.facility.name);
+  return (
+    <Link
+      href={`/edls/sheet/${a.sheetId}`}
+      className="text-sm hover:underline block leading-snug"
+      data-testid={`${testIdPrefix}-${a.assignmentId}`}
+    >
+      {parts.join(" · ")}
+    </Link>
+  );
+}
+
 export default function EdlsTosPage() {
   const search = useSearch();
   const [, setLocation] = useLocation();
@@ -115,6 +164,7 @@ export default function EdlsTosPage() {
       facilityId: params.get("facilityId") ?? "",
       jobGroupId: params.get("jobGroupId") ?? "",
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const [supervisorId, setSupervisorIdState] = useState(initialFilters.supervisorId);
@@ -397,86 +447,104 @@ export default function EdlsTosPage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-3">
-          {items.map(({ tos, assignments }) => (
-            <Card key={tos.id} data-testid={`card-tos-${tos.workerId}`}>
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <CardTitle className="text-base">
-                      <Link
-                        href={`/workers/${tos.workerId}`}
-                        className="hover:underline"
-                        data-testid={`link-worker-${tos.workerId}`}
+        <Card>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[110px]">ID</TableHead>
+                  <TableHead className="w-[60px]">Status</TableHead>
+                  <TableHead className="w-[260px]">Worker</TableHead>
+                  <TableHead className="w-[280px]">Today</TableHead>
+                  <TableHead>Next (up to {FUTURE_LIMIT})</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {items.map(({ tos, edlsId, memberStatusCode, today, future }) => {
+                  const visibleFuture = future.slice(0, FUTURE_LIMIT);
+                  const overflow = Math.max(0, future.length - FUTURE_LIMIT);
+                  return (
+                    <TableRow key={tos.id} data-testid={`row-tos-${tos.workerId}`}>
+                      <TableCell
+                        className="font-mono text-sm align-top"
+                        data-testid={`text-edls-id-${tos.workerId}`}
                       >
-                        {workerName(tos.worker)}
-                      </Link>
-                      {tos.worker.siriusId !== null && (
-                        <span className="ml-2 text-sm font-normal text-muted-foreground">
-                          #{tos.worker.siriusId}
-                        </span>
-                      )}
-                    </CardTitle>
-                    <CardDescription>
-                      Sick since{" "}
-                      <span data-testid={`text-tos-start-${tos.workerId}`}>
-                        {format(new Date(tos.startDate), "MMM d, yyyy")}
-                      </span>
-                      {tos.description ? ` — ${tos.description}` : ""}
-                    </CardDescription>
-                  </div>
-                  <Badge variant="secondary" data-testid={`badge-assignment-count-${tos.workerId}`}>
-                    {assignments.length} upcoming
-                  </Badge>
-                </div>
-              </CardHeader>
-              <CardContent className="pt-0">
-                {assignments.length === 0 ? (
-                  <p
-                    className="text-sm text-muted-foreground italic"
-                    data-testid={`text-no-assignments-${tos.workerId}`}
-                  >
-                    No upcoming assignments.
-                  </p>
-                ) : (
-                  <ul className="divide-y border rounded-md">
-                    {assignments.map((a) => (
-                      <li
-                        key={a.assignmentId}
-                        className="px-3 py-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm"
-                        data-testid={`row-assignment-${a.assignmentId}`}
+                        {edlsId ?? "—"}
+                      </TableCell>
+                      <TableCell
+                        className="font-mono text-sm align-top text-muted-foreground"
+                        data-testid={`text-member-status-${tos.workerId}`}
                       >
+                        {memberStatusCode ?? "—"}
+                      </TableCell>
+                      <TableCell className="align-top">
                         <Link
-                          href={`/edls/sheet/${a.sheetId}`}
+                          href={`/workers/${tos.workerId}`}
                           className="font-medium hover:underline"
-                          data-testid={`link-sheet-${a.assignmentId}`}
+                          data-testid={`link-worker-${tos.workerId}`}
                         >
-                          {formatYmd(a.ymd, "short")} — {a.sheetTitle}
+                          {workerName(tos.worker)}
                         </Link>
-                        <span className="text-muted-foreground">{a.crewTitle}</span>
-                        {a.startTime && (
-                          <span className="text-muted-foreground">
-                            {a.startTime}
-                            {a.endTime ? `–${a.endTime}` : ""}
+                        <div
+                          className="text-xs text-muted-foreground mt-0.5"
+                          data-testid={`text-tos-start-${tos.workerId}`}
+                        >
+                          Sick since {format(new Date(tos.startDate), "MMM d, yyyy")}
+                          {tos.description ? ` — ${tos.description}` : ""}
+                        </div>
+                      </TableCell>
+                      <TableCell className="align-top">
+                        {today ? (
+                          <AssignmentCell
+                            a={today}
+                            showDate={false}
+                            testIdPrefix="link-today"
+                          />
+                        ) : (
+                          <span
+                            className="text-sm text-muted-foreground"
+                            data-testid={`text-no-today-${tos.workerId}`}
+                          >
+                            —
                           </span>
                         )}
-                        <span className="text-muted-foreground">
-                          Sup: {supervisorName(a.supervisor)}
-                        </span>
-                        {a.facility && (
-                          <span className="text-muted-foreground">Facility: {a.facility.name}</span>
+                      </TableCell>
+                      <TableCell className="align-top">
+                        {visibleFuture.length === 0 ? (
+                          <span
+                            className="text-sm text-muted-foreground"
+                            data-testid={`text-no-future-${tos.workerId}`}
+                          >
+                            —
+                          </span>
+                        ) : (
+                          <div className="space-y-0.5">
+                            {visibleFuture.map((a) => (
+                              <AssignmentCell
+                                key={a.assignmentId}
+                                a={a}
+                                showDate={true}
+                                testIdPrefix="link-future"
+                              />
+                            ))}
+                            {overflow > 0 && (
+                              <div
+                                className="text-xs text-muted-foreground italic"
+                                data-testid={`text-future-overflow-${tos.workerId}`}
+                              >
+                                +{overflow} more
+                              </div>
+                            )}
+                          </div>
                         )}
-                        {a.jobGroup && (
-                          <span className="text-muted-foreground">Group: {a.jobGroup.name}</span>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
       )}
     </div>
   );
