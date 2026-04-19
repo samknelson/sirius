@@ -365,22 +365,27 @@ function EdlsSheetDetailsContent() {
                               <span className="truncate">{formatWorkerName(assignment.worker)}</span>
                             </span>
                             <span className="flex-1" />
-                            {assignmentData.classificationId && classificationsMap.get(assignmentData.classificationId) && (
-                              <Badge variant="outline" className="text-xs">
-                                {classificationsMap.get(assignmentData.classificationId)!.code || classificationsMap.get(assignmentData.classificationId)!.name}
-                              </Badge>
-                            )}
-                            {assignmentData.note && (
-                              <Badge variant="outline" className="text-xs truncate max-w-[120px]" title={assignmentData.note}>
-                                {assignmentData.note}
-                              </Badge>
-                            )}
-                            {assignmentData.startTime && (
-                              <Badge variant="outline" className="text-xs">
-                                <Clock className="h-3 w-3 mr-1" />
-                                {formatTime12h(assignmentData.startTime)}
-                              </Badge>
-                            )}
+                            {(() => {
+                              const parts: string[] = [];
+                              if (assignmentData.classificationId) {
+                                const c = classificationsMap.get(assignmentData.classificationId);
+                                if (c) parts.push(c.code || c.name);
+                              }
+                              if (assignmentData.startTime) {
+                                parts.push(assignmentData.startTime.slice(0, 5));
+                              }
+                              if (assignmentData.note) parts.push(assignmentData.note);
+                              if (parts.length === 0) return null;
+                              return (
+                                <span
+                                  className="text-xs text-muted-foreground truncate max-w-[200px]"
+                                  title={parts.join(" ")}
+                                  data-testid={`text-assignment-extras-${assignment.id}`}
+                                >
+                                  ({parts.join(" ")})
+                                </span>
+                              );
+                            })()}
                           </div>
                         );
                       };
