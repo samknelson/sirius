@@ -6,6 +6,44 @@ Sirius is a comprehensive full-stack web application designed for efficient work
 
 Preferred communication style: Simple, everyday language.
 
+# Non-Negotiable Rules
+
+## All database access MUST go through the storage layer
+
+This is a hard, project-wide rule with **no exceptions**. Every database
+query — read or write, one row or one million — must be issued from a
+method on a storage module under `server/storage/`. Anything else is a
+bug.
+
+**Forbidden anywhere outside `server/storage/`** (this includes every
+file under `server/modules/`, `server/services/`, `server/routes/`,
+cron handlers, dashboard plugins, eligibility/charge plugins, web
+service handlers, scripts, seeders, and any other server-side code):
+
+-   Importing `db` from `server/db.ts`.
+-   Calling `getClient()` from `server/storage/transaction-context`.
+-   Embedding `sql\`...\`` template literals.
+-   Calling `db.execute(...)`, `db.select(...)`, `db.insert(...)`,
+    `db.update(...)`, `db.delete(...)`, `db.transaction(...)`, or any
+    direct Drizzle query builder method on a database client.
+-   Importing schema tables from `@shared/schema` for the purpose of
+    building a query (importing types is fine).
+
+**Required pattern:** Add or extend a method on the appropriate
+`*Storage` interface (e.g. `storage.workers.foo(...)`,
+`storage.cardchecks.bar(...)`) and call it from your route/service.
+Routes stay thin; all SQL lives in storage.
+
+**Read-only escape hatch:** `storage.readOnly.query(async (client) =>
+…)` exists for cross-cutting reports that don't fit a single domain.
+It is acceptable **only inside a storage method**, never inside a
+route handler, service, plugin, or cron job.
+
+If you find yourself wanting to break this rule, the answer is always
+to add a new storage method instead. See the **Database Access
+Architecture** entry under System Design Choices for the rationale
+(audit logging, access control, validation, separation of concerns).
+
 # System Architecture
 
 ## UI/UX Decisions
@@ -25,7 +63,7 @@ The frontend is built with React 18, TypeScript, Vite, Shadcn/ui (based on Radix
 -   **Migration Framework**: Manages database schema changes with a versioned migration system.
 
 ## System Design Choices
--   **Database Access Architecture**: All database interactions are centralized through a storage layer for audit logging, access control, validation, and separation of concerns.
+-   **Database Access Architecture**: All database interactions are centralized through a storage layer for audit logging, access control, validation, and separation of concerns. **This is enforced as a hard rule — see the "All database access MUST go through the storage layer" section under Non-Negotiable Rules above.**
 -   **Data Validation**: Utilizes Zod schemas and `libphonenumber-js` for robust data validation.
 -   **Worker Management**: Comprehensive CRUD operations for workers, contacts, and benefits, with server-side pagination, search, and advanced filtering.
 -   **Configurable Settings**: A unified, metadata-driven options system supports dynamic form and table rendering.
