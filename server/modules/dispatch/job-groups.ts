@@ -15,7 +15,7 @@ export function registerDispatchJobGroupsRoutes(
   app.get(
     "/api/dispatch-job-groups",
     jobGroupComponent,
-    requireAccess("staff"),
+    requireAccess("authenticated"),
     async (req, res) => {
       try {
         const {
@@ -59,7 +59,7 @@ export function registerDispatchJobGroupsRoutes(
   app.get(
     "/api/dispatch-job-groups/:id",
     jobGroupComponent,
-    requireAccess("staff"),
+    requireAccess("authenticated"),
     async (req, res) => {
       try {
         const group = await storage.dispatchJobGroups.get(req.params.id);

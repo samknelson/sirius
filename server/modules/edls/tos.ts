@@ -2,9 +2,6 @@ import type { Express, Request, Response } from "express";
 import { storage } from "../../storage";
 import { requireAccess } from "../../services/access-policy-evaluator";
 import { requireComponent } from "../components";
-import { getClient } from "../../storage/transaction-context";
-import { dispatchJobGroups } from "@shared/schema";
-import { or, isNull, gte, asc, sql } from "drizzle-orm";
 import { getTodayYmd } from "@shared/utils/date";
 import { getEdlsSettings } from "./supervisor-context";
 
@@ -13,29 +10,6 @@ type RequireAuth = (req: Request, res: Response, next: () => void) => void;
 export function registerEdlsTosRoutes(app: Express, requireAuth: RequireAuth) {
   const edlsComponent = requireComponent("edls");
   const tosComponent = requireComponent("worker.tos");
-
-  app.get(
-    "/api/edls/job-groups/active",
-    requireAuth,
-    edlsComponent,
-    tosComponent,
-    requireAccess("edls.any"),
-    async (req: Request, res: Response) => {
-      try {
-        const todayYmd = getTodayYmd();
-        const client = getClient();
-        const rows = await client
-          .select({ id: dispatchJobGroups.id, name: dispatchJobGroups.name })
-          .from(dispatchJobGroups)
-          .where(or(isNull(dispatchJobGroups.endYmd), gte(dispatchJobGroups.endYmd, todayYmd)))
-          .orderBy(asc(dispatchJobGroups.name));
-        res.json(rows);
-      } catch (err) {
-        console.error("Failed to list active job groups:", err);
-        res.status(500).json({ message: "Failed to list active job groups" });
-      }
-    }
-  );
 
   app.get(
     "/api/edls/tos",
@@ -88,21 +62,11 @@ export function registerEdlsTosRoutes(app: Express, requireAuth: RequireAuth) {
         // Industry-scoped member status code, keyed by workerId.
         const memberStatusMap = new Map<string, string>();
         if (employerIndustryId && workerIds.length > 0) {
-          const client = getClient();
-          const result = await client.execute(sql`
-            SELECT w.id AS "workerId", ms.code AS "code"
-            FROM workers w
-            CROSS JOIN LATERAL (
-              SELECT ms.code
-              FROM UNNEST(w.denorm_ms_ids) AS ms_id
-              INNER JOIN options_worker_ms ms ON ms.id = ms_id AND ms.industry_id = ${employerIndustryId}
-              LIMIT 1
-            ) ms
-            WHERE w.id IN (${sql.join(workerIds.map((id) => sql`${id}`), sql`, `)})
-          `);
-          for (const r of result.rows as unknown as Array<{ workerId: string; code: string | null }>) {
-            if (r.code) memberStatusMap.set(r.workerId, r.code);
-          }
+          const rows = await storage.workers.getMemberStatusCodesByIndustry(
+            employerIndustryId,
+            workerIds
+          );
+          for (const r of rows) memberStatusMap.set(r.workerId, r.code);
         }
 
         const enriched = tosRecords.map((tos) => {

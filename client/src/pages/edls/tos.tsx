@@ -107,6 +107,10 @@ interface JobGroupOption {
   name: string;
 }
 
+interface PaginatedJobGroups {
+  data: JobGroupOption[];
+}
+
 function workerName(w: ActiveWorkerTosWorker): string {
   if (w.family || w.given) return [w.family, w.given].filter(Boolean).join(", ");
   return w.displayName || `Worker #${w.siriusId ?? "?"}`;
@@ -252,14 +256,15 @@ export default function EdlsTosPage() {
   const selectedFacilityName =
     facilityOptions.find((f) => f.id === facilityId)?.name ?? selectedFacility?.name;
 
-  const { data: jobGroupOptions = [] } = useQuery<JobGroupOption[]>({
-    queryKey: ["/api/edls/job-groups/active"],
+  const { data: jobGroupsData } = useQuery<PaginatedJobGroups>({
+    queryKey: ["/api/dispatch-job-groups", { active: "active", limit: 100, sortDir: "asc" }],
     queryFn: async () => {
-      const res = await fetch("/api/edls/job-groups/active", { credentials: "include" });
+      const res = await fetch("/api/dispatch-job-groups?active=active&limit=100&sortDir=asc", { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch job groups");
       return res.json();
     },
   });
+  const jobGroupOptions: JobGroupOption[] = (jobGroupsData?.data ?? []).map((g) => ({ id: g.id, name: g.name }));
 
   const items = data?.items ?? [];
   const filterActive = data?.filterActive ?? false;
