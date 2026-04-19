@@ -64,6 +64,9 @@ interface AssignmentWithWorker {
     displayName: string | null;
     given: string | null;
     family: string | null;
+    memberStatusId: string | null;
+    memberStatusCode: string | null;
+    memberStatusName: string | null;
   };
 }
 
@@ -311,16 +314,17 @@ interface AssignedWorkerSlotProps {
   assignment: AssignmentWithWorker;
   crewId: string;
   sheetId: string;
+  positionNumber: number;
 }
 
-function AssignedWorkerSlot({ assignment, crewId, sheetId }: AssignedWorkerSlotProps) {
+function AssignedWorkerSlot({ assignment, crewId, sheetId, positionNumber }: AssignedWorkerSlotProps) {
   const { unassignWorker, isUnassigning, setSelectedCrewId, selectedRatingId, workerRatingsMap, classificationsMap, workerIdTypeConfigured, displayIdValues } = useAssignments();
   const [editModalOpen, setEditModalOpen] = useState(false);
   const assignmentData = (assignment.data as AssignmentExtra) || {};
   const classification = assignmentData.classificationId ? classificationsMap.get(assignmentData.classificationId) : null;
   const displayIdLabel = workerIdTypeConfigured
     ? (displayIdValues[assignment.workerId] ?? "—")
-    : (assignment.worker.siriusId ? `#${assignment.worker.siriusId}` : null);
+    : (assignment.worker.siriusId ? `#${assignment.worker.siriusId}` : "—");
 
   const handleUnassign = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -335,60 +339,68 @@ function AssignedWorkerSlot({ assignment, crewId, sheetId }: AssignedWorkerSlotP
 
   const ratingValue = selectedRatingId !== "all" ? workerRatingsMap.get(assignment.workerId) : undefined;
 
+  const extrasParts: string[] = [];
+  if (classification) extrasParts.push(classification.code || classification.name);
+  if (assignmentData.startTime) extrasParts.push(assignmentData.startTime.slice(0, 5));
+  if (assignmentData.note) extrasParts.push(assignmentData.note);
+  const extrasText = extrasParts.length > 0 ? `(${extrasParts.join(" ")})` : null;
+
   return (
     <>
       <div
-        className={`flex items-center gap-2 p-2 border rounded-md bg-background ${isUnassigning ? "pointer-events-none opacity-50" : ""}`}
+        className={`flex items-center gap-3 p-2 border rounded-md bg-background ${isUnassigning ? "pointer-events-none opacity-50" : ""}`}
         data-testid={`assigned-${assignment.id}`}
       >
-        <div 
-          className="flex items-center gap-2 flex-1 cursor-pointer hover-elevate rounded px-1 -mx-1"
+        <div
+          className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer hover-elevate rounded px-1 -mx-1"
           onClick={handleUnassign}
         >
-          {displayIdLabel !== null && (
-            <Badge
-              variant="outline"
-              className="text-xs tabular-nums"
-              data-testid={`badge-assignment-display-id-${assignment.id}`}
-            >
-              {displayIdLabel}
-            </Badge>
-          )}
-          <span className="text-sm">{formatAssignedWorkerName(assignment.worker)}</span>
+          <span
+            className="text-sm text-muted-foreground w-6 text-right tabular-nums"
+            data-testid={`text-assignment-position-${assignment.id}`}
+          >
+            {positionNumber}.
+          </span>
+          <span
+            className="text-sm text-muted-foreground w-16 text-left tabular-nums"
+            data-testid={`text-assignment-display-id-${assignment.id}`}
+          >
+            {displayIdLabel}
+          </span>
+          <span
+            className="w-12 text-left text-xs tabular-nums text-muted-foreground truncate"
+            title={assignment.worker.memberStatusName ?? undefined}
+            data-testid={`text-member-status-${assignment.id}`}
+          >
+            {assignment.worker.memberStatusCode ?? "—"}
+          </span>
+          <span className="text-sm truncate">{formatAssignedWorkerName(assignment.worker)}</span>
           {ratingValue !== undefined && (
             <span className="flex items-center text-xs text-muted-foreground">
               <Star className="h-3 w-3 mr-0.5 text-yellow-400" fill="currentColor" />
               {ratingValue}
             </span>
           )}
+          <span className="flex-1" />
+          {extrasText && (
+            <span
+              className="text-xs text-muted-foreground truncate max-w-[200px]"
+              title={extrasParts.join(" ")}
+              data-testid={`text-assignment-extras-${assignment.id}`}
+            >
+              {extrasText}
+            </span>
+          )}
         </div>
-        <div className="flex items-center gap-1 ml-auto">
-          {classification && (
-            <Badge variant="outline" className="text-xs">
-              {classification.code || classification.name}
-            </Badge>
-          )}
-          {assignmentData.note && (
-            <Badge variant="outline" className="text-xs truncate max-w-[120px]" title={assignmentData.note}>
-              {assignmentData.note}
-            </Badge>
-          )}
-          {assignmentData.startTime && (
-            <Badge variant="outline" className="text-xs">
-              <Clock className="h-3 w-3 mr-1" />
-              {formatTime12h(assignmentData.startTime)}
-            </Badge>
-          )}
-          <Button
-            size="icon"
-            variant="ghost"
-            className="h-6 w-6"
-            onClick={handleEditClick}
-            data-testid={`button-edit-${assignment.id}`}
-          >
-            <Pencil className="h-3 w-3" />
-          </Button>
-        </div>
+        <Button
+          size="icon"
+          variant="ghost"
+          className="h-6 w-6 shrink-0"
+          onClick={handleEditClick}
+          data-testid={`button-edit-${assignment.id}`}
+        >
+          <Pencil className="h-3 w-3" />
+        </Button>
       </div>
       <EditAssignmentExtrasModal
         assignment={assignment}
@@ -403,14 +415,18 @@ function AssignedWorkerSlot({ assignment, crewId, sheetId }: AssignedWorkerSlotP
 interface EmptySlotProps {
   slotIndex: number;
   crewId: string;
+  positionNumber: number;
 }
 
-function EmptySlot({ slotIndex, crewId }: EmptySlotProps) {
+function EmptySlot({ slotIndex, crewId, positionNumber }: EmptySlotProps) {
   return (
     <div
-      className="flex items-center gap-2 p-2 border border-dashed rounded-md bg-muted/30"
+      className="flex items-center gap-3 p-2 border border-dashed rounded-md bg-muted/30"
       data-testid={`slot-${crewId}-${slotIndex}`}
     >
+      <span className="text-sm text-muted-foreground w-6 text-right tabular-nums">
+        {positionNumber}.
+      </span>
       <UserPlus className="h-4 w-4 text-muted-foreground" />
       <span className="text-sm text-muted-foreground">Empty slot</span>
     </div>
@@ -504,11 +520,22 @@ function CrewCard({ crew }: CrewCardProps) {
       </CardHeader>
       <CardContent>
         <div className="flex flex-col gap-2">
-          {crewAssignments.map((assignment) => (
-            <AssignedWorkerSlot key={assignment.id} assignment={assignment} crewId={crew.id} sheetId={sheet.id} />
+          {crewAssignments.map((assignment, idx) => (
+            <AssignedWorkerSlot
+              key={assignment.id}
+              assignment={assignment}
+              crewId={crew.id}
+              sheetId={sheet.id}
+              positionNumber={idx + 1}
+            />
           ))}
           {emptySlots.map((slotIndex) => (
-            <EmptySlot key={`empty-${slotIndex}`} slotIndex={slotIndex} crewId={crew.id} />
+            <EmptySlot
+              key={`empty-${slotIndex}`}
+              slotIndex={slotIndex}
+              crewId={crew.id}
+              positionNumber={crewAssignments.length + slotIndex + 1}
+            />
           ))}
         </div>
       </CardContent>
