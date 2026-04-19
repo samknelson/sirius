@@ -263,7 +263,7 @@ function EdlsSheetDetailsContent() {
           No crews assigned to this sheet.
         </p>
       ) : (
-        <div className="space-y-3 print:space-y-0 print:grid print:grid-cols-2 print:gap-3">
+        <div className="space-y-3">
           {crews.length > 1 && (
             <div className="flex items-center gap-2 print:hidden">
               <Label htmlFor="crew-filter" className="text-sm text-muted-foreground">
@@ -298,7 +298,7 @@ function EdlsSheetDetailsContent() {
                 return (
                   <div
                     key={crew.id}
-                    className="border rounded-md p-4 print:break-inside-avoid print:p-2"
+                    className="border rounded-md p-4 print:break-inside-avoid print:p-2 print:mb-2"
                     data-testid={`crew-card-${crew.id}`}
                   >
                     <div className="flex flex-wrap items-start justify-between gap-2 mb-2">
@@ -428,7 +428,7 @@ function EdlsSheetDetailsContent() {
                       return (
                         <div className="mt-3 pt-3 border-t">
                           <p className="text-xs text-muted-foreground mb-2">Assigned Workers:</p>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 print:grid-cols-2">
                             <div className="space-y-1" data-testid={`column-left-${crew.id}`}>
                               {Array.from({ length: leftCount }).map((_, i) => renderSlot(i))}
                             </div>
