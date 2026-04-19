@@ -121,6 +121,87 @@ export interface CardcheckStorageDependencies {
   createEsig: (data: InsertEsig) => Promise<Esig>;
 }
 
+export interface OrganizingEmployerRow {
+  id: string;
+  name: string;
+  typeId: string | null;
+  typeName: string | null;
+  typeIcon: string | null;
+  schoolTypeIds: string[] | null;
+  regionId: string | null;
+  regionName: string | null;
+  gradeStart: number | null;
+  gradeEnd: number | null;
+}
+
+export interface OrganizingSchoolType {
+  id: string;
+  name: string;
+  icon: string | null;
+}
+
+export interface OrganizingEmployerStat {
+  employerId: string;
+  bargainingUnitId: string | null;
+  bargainingUnitName: string | null;
+  totalWorkers: number;
+  signedWorkers: number;
+}
+
+export interface OrganizingSecondaryGroupWorker {
+  workerId: string;
+  employerId: string;
+  employerName: string;
+  displayName: string;
+  statusName: string;
+  statusDate: Date | string | null;
+}
+
+export interface OrganizingSteward {
+  employerId: string;
+  workerId: string;
+  bargainingUnitId: string | null;
+  bargainingUnitName: string | null;
+  displayName: string;
+  email: string | null;
+  phone: string | null;
+}
+
+export interface OrganizingPrincipal {
+  employerId: string;
+  contactId: string;
+  displayName: string;
+  email: string | null;
+  phone: string | null;
+}
+
+export interface OrganizingDistinctStat {
+  bargainingUnitId: string | null;
+  totalDistinctWorkers: number;
+  signedDistinctWorkers: number;
+}
+
+export interface OrganizingNewMember {
+  workerId: string;
+  displayName: string;
+  signedDate: Date | string | null;
+  bargainingUnitName: string | null;
+  bargainingUnitId: string | null;
+  employerName: string;
+  employerId: string | null;
+}
+
+export interface MissingCardcheckWorkerRow {
+  workerId: string;
+  displayName: string;
+  email: string | null;
+  phone: string | null;
+  bargainingUnitId: string | null;
+  bargainingUnitName: string | null;
+  invalidReason: string | null;
+  employmentStatus: string | null;
+}
+
 export interface CardcheckStorage {
   getAllCardchecks(): Promise<Cardcheck[]>;
   getCardcheckById(id: string): Promise<Cardcheck | undefined>;
@@ -137,6 +218,15 @@ export interface CardcheckStorage {
   updateCardcheck(id: string, data: Partial<InsertCardcheck>): Promise<Cardcheck | undefined>;
   deleteCardcheck(id: string): Promise<boolean>;
   signCardcheck(params: SignCardcheckParams): Promise<SignCardcheckResult>;
+  getOrganizingEmployerList(): Promise<OrganizingEmployerRow[]>;
+  getOrganizingSchoolTypes(): Promise<OrganizingSchoolType[]>;
+  getOrganizingEmployerStats(primaryStatusIds: string[]): Promise<OrganizingEmployerStat[]>;
+  getOrganizingSecondaryGroupWorkers(statusIds: string[]): Promise<OrganizingSecondaryGroupWorker[]>;
+  getOrganizingStewards(): Promise<OrganizingSteward[]>;
+  getOrganizingPrincipals(): Promise<OrganizingPrincipal[]>;
+  getOrganizingDistinctStats(primaryStatusIds: string[]): Promise<OrganizingDistinctStat[]>;
+  getOrganizingNewMembers(days: number): Promise<OrganizingNewMember[]>;
+  getMissingCardchecksForEmployer(employerId: string, primaryStatusIds: string[]): Promise<MissingCardcheckWorkerRow[]>;
 }
 
 let storedDeps: CardcheckStorageDependencies | null = null;
@@ -692,6 +782,391 @@ export function createCardcheckStorage(): CardcheckStorage {
       }
 
       return { esig: newEsig, cardcheck: updatedCardcheck };
+    },
+
+    async getOrganizingEmployerList(): Promise<OrganizingEmployerRow[]> {
+      const client = getClient();
+      const result = await client.execute(sql`
+        SELECT
+          e.id,
+          e.name,
+          e.type_id as "typeId",
+          et.name as "typeName",
+          et.data->>'icon' as "typeIcon",
+          sa.school_type_ids as "schoolTypeIds",
+          sa.region_id as "regionId",
+          r.name as "regionName",
+          sa.grade_start as "gradeStart",
+          sa.grade_end as "gradeEnd"
+        FROM employers e
+        LEFT JOIN options_employer_type et ON e.type_id = et.id
+        LEFT JOIN sitespecific_btu_school_attributes sa ON sa.employer_id = e.id
+        LEFT JOIN sitespecific_btu_regions r ON r.id = sa.region_id
+        WHERE e.is_active = true
+        ORDER BY e.name
+      `);
+      return result.rows as unknown as OrganizingEmployerRow[];
+    },
+
+    async getOrganizingSchoolTypes(): Promise<OrganizingSchoolType[]> {
+      const client = getClient();
+      try {
+        const result = await client.execute(sql`
+          SELECT id, name, data->>'icon' as icon
+          FROM sitespecific_btu_school_types
+        `);
+        return (result.rows as any[]).map(row => ({
+          id: row.id,
+          name: row.name,
+          icon: row.icon || null,
+        }));
+      } catch {
+        return [];
+      }
+    },
+
+    async getOrganizingEmployerStats(primaryStatusIds: string[]): Promise<OrganizingEmployerStat[]> {
+      const client = getClient();
+      const hasPrimaryFilter = primaryStatusIds.length > 0;
+      const result = await client.execute(sql`
+        WITH latest_employment AS (
+          SELECT DISTINCT ON (wh.worker_id, wh.employer_id)
+            wh.worker_id,
+            wh.employer_id,
+            wh.employment_status_id,
+            es.name as status_name,
+            es.employed as is_employed
+          FROM worker_hours wh
+          LEFT JOIN options_employment_status es ON wh.employment_status_id = es.id
+          ORDER BY wh.worker_id, wh.employer_id, wh.year DESC, wh.month DESC, wh.day DESC
+        ),
+        active_workers AS (
+          SELECT
+            le.worker_id,
+            le.employer_id,
+            w.bargaining_unit_id
+          FROM latest_employment le
+          INNER JOIN workers w ON w.id = le.worker_id
+          WHERE ${hasPrimaryFilter
+            ? sql`le.employment_status_id IN (${sql.join(primaryStatusIds.map(id => sql`${id}`), sql`, `)})`
+            : sql`le.is_employed = true`}
+        ),
+        worker_cardchecks AS (
+          SELECT
+            aw.employer_id,
+            aw.bargaining_unit_id,
+            COUNT(DISTINCT aw.worker_id) as total_workers,
+            COUNT(DISTINCT CASE WHEN cc.status = 'signed' THEN aw.worker_id END) as signed_workers
+          FROM active_workers aw
+          LEFT JOIN cardchecks cc ON cc.worker_id = aw.worker_id AND cc.status = 'signed'
+          GROUP BY aw.employer_id, aw.bargaining_unit_id
+        )
+        SELECT
+          wc.employer_id as "employerId",
+          wc.bargaining_unit_id as "bargainingUnitId",
+          bu.name as "bargainingUnitName",
+          wc.total_workers as "totalWorkers",
+          wc.signed_workers as "signedWorkers"
+        FROM worker_cardchecks wc
+        LEFT JOIN bargaining_units bu ON bu.id = wc.bargaining_unit_id
+      `);
+      return (result.rows as any[]).map(row => ({
+        employerId: row.employerId,
+        bargainingUnitId: row.bargainingUnitId,
+        bargainingUnitName: row.bargainingUnitName,
+        totalWorkers: Number(row.totalWorkers) || 0,
+        signedWorkers: Number(row.signedWorkers) || 0,
+      }));
+    },
+
+    async getOrganizingSecondaryGroupWorkers(statusIds: string[]): Promise<OrganizingSecondaryGroupWorker[]> {
+      if (statusIds.length === 0) return [];
+      const client = getClient();
+      const result = await client.execute(sql`
+        WITH latest_employment AS (
+          SELECT DISTINCT ON (wh.worker_id, wh.employer_id)
+            wh.worker_id,
+            wh.employer_id,
+            wh.employment_status_id,
+            es.name as status_name,
+            make_date(wh.year, wh.month, wh.day) as status_date
+          FROM worker_hours wh
+          LEFT JOIN options_employment_status es ON wh.employment_status_id = es.id
+          ORDER BY wh.worker_id, wh.employer_id, wh.year DESC, wh.month DESC, wh.day DESC
+        )
+        SELECT
+          le.worker_id as "workerId",
+          le.employer_id as "employerId",
+          e.name as "employerName",
+          c.display_name as "displayName",
+          le.status_name as "statusName",
+          le.status_date as "statusDate"
+        FROM latest_employment le
+        INNER JOIN workers w ON w.id = le.worker_id
+        INNER JOIN contacts c ON c.id = w.contact_id
+        INNER JOIN employers e ON e.id = le.employer_id
+        WHERE le.employment_status_id IN (${sql.join(statusIds.map(id => sql`${id}`), sql`, `)})
+          AND e.is_active = true
+        ORDER BY e.name, c.display_name
+      `);
+      return result.rows as unknown as OrganizingSecondaryGroupWorker[];
+    },
+
+    async getOrganizingStewards(): Promise<OrganizingSteward[]> {
+      const client = getClient();
+      try {
+        const result = await client.execute(sql`
+          SELECT
+            wsa.employer_id as "employerId",
+            wsa.worker_id as "workerId",
+            wsa.bargaining_unit_id as "bargainingUnitId",
+            c.display_name as "displayName",
+            c.email,
+            bu.name as "bargainingUnitName",
+            (
+              SELECT cp.phone_number
+              FROM contact_phone cp
+              WHERE cp.contact_id = c.id AND cp.is_active = true
+              ORDER BY cp.is_primary DESC NULLS LAST
+              LIMIT 1
+            ) as "phone"
+          FROM worker_steward_assignments wsa
+          INNER JOIN workers w ON w.id = wsa.worker_id
+          INNER JOIN contacts c ON c.id = w.contact_id
+          LEFT JOIN bargaining_units bu ON bu.id = wsa.bargaining_unit_id
+          ORDER BY c.display_name
+        `);
+        return result.rows as unknown as OrganizingSteward[];
+      } catch {
+        return [];
+      }
+    },
+
+    async getOrganizingPrincipals(): Promise<OrganizingPrincipal[]> {
+      const client = getClient();
+      const result = await client.execute(sql`
+        SELECT
+          ec.employer_id as "employerId",
+          c.id as "contactId",
+          c.display_name as "displayName",
+          c.email,
+          (
+            SELECT cp.phone_number
+            FROM contact_phone cp
+            WHERE cp.contact_id = c.id AND cp.is_active = true
+            ORDER BY cp.is_primary DESC NULLS LAST
+            LIMIT 1
+          ) as "phone"
+        FROM employer_contacts ec
+        INNER JOIN contacts c ON c.id = ec.contact_id
+        INNER JOIN options_employer_contact_type ect ON ec.contact_type_id = ect.id
+        WHERE ect.name = 'Principal'
+        ORDER BY c.display_name
+      `);
+      return result.rows as unknown as OrganizingPrincipal[];
+    },
+
+    async getOrganizingDistinctStats(primaryStatusIds: string[]): Promise<OrganizingDistinctStat[]> {
+      const client = getClient();
+      const hasPrimaryFilter = primaryStatusIds.length > 0;
+      const result = await client.execute(sql`
+        WITH latest_employment AS (
+          SELECT DISTINCT ON (wh.worker_id, wh.employer_id)
+            wh.worker_id,
+            wh.employer_id,
+            wh.employment_status_id,
+            es.employed as is_employed
+          FROM worker_hours wh
+          LEFT JOIN options_employment_status es ON wh.employment_status_id = es.id
+          ORDER BY wh.worker_id, wh.employer_id, wh.year DESC, wh.month DESC, wh.day DESC
+        ),
+        active_workers AS (
+          SELECT DISTINCT le.worker_id
+          FROM latest_employment le
+          WHERE ${hasPrimaryFilter
+            ? sql`le.employment_status_id IN (${sql.join(primaryStatusIds.map(id => sql`${id}`), sql`, `)})`
+            : sql`le.is_employed = true`}
+        )
+        SELECT
+          w.bargaining_unit_id as "bargainingUnitId",
+          COUNT(DISTINCT aw.worker_id) as "totalDistinctWorkers",
+          COUNT(DISTINCT CASE WHEN cc.status = 'signed' THEN aw.worker_id END) as "signedDistinctWorkers"
+        FROM active_workers aw
+        INNER JOIN workers w ON w.id = aw.worker_id
+        LEFT JOIN cardchecks cc ON cc.worker_id = aw.worker_id AND cc.status = 'signed'
+        GROUP BY w.bargaining_unit_id
+      `);
+      return (result.rows as any[]).map(row => ({
+        bargainingUnitId: row.bargainingUnitId,
+        totalDistinctWorkers: Number(row.totalDistinctWorkers) || 0,
+        signedDistinctWorkers: Number(row.signedDistinctWorkers) || 0,
+      }));
+    },
+
+    async getOrganizingNewMembers(days: number): Promise<OrganizingNewMember[]> {
+      const client = getClient();
+      const result = await client.execute(sql`
+        WITH first_signed AS (
+          SELECT
+            cc.worker_id,
+            MIN(cc.signed_date) as first_signed_date,
+            (ARRAY_AGG(cc.bargaining_unit_id ORDER BY cc.signed_date ASC))[1] as bargaining_unit_id
+          FROM cardchecks cc
+          WHERE cc.status = 'signed'
+          GROUP BY cc.worker_id
+          HAVING MIN(cc.signed_date) >= CURRENT_DATE - ${days}::integer
+        )
+        SELECT
+          fs.worker_id as "workerId",
+          c.display_name as "displayName",
+          fs.first_signed_date as "signedDate",
+          bu.name as "bargainingUnitName",
+          bu.id as "bargainingUnitId",
+          COALESCE(
+            (
+              SELECT e.name
+              FROM worker_hours wh
+              INNER JOIN employers e ON e.id = wh.employer_id
+              WHERE wh.worker_id = fs.worker_id
+              ORDER BY wh.year DESC, wh.month DESC, wh.day DESC
+              LIMIT 1
+            ),
+            'Unknown'
+          ) as "employerName",
+          COALESCE(
+            (
+              SELECT wh.employer_id
+              FROM worker_hours wh
+              WHERE wh.worker_id = fs.worker_id
+              ORDER BY wh.year DESC, wh.month DESC, wh.day DESC
+              LIMIT 1
+            ),
+            NULL
+          ) as "employerId"
+        FROM first_signed fs
+        INNER JOIN workers w ON w.id = fs.worker_id
+        INNER JOIN contacts c ON c.id = w.contact_id
+        LEFT JOIN bargaining_units bu ON bu.id = fs.bargaining_unit_id
+        ORDER BY fs.first_signed_date DESC, c.display_name
+      `);
+      return (result.rows as any[]).map(row => ({
+        workerId: row.workerId,
+        displayName: row.displayName,
+        signedDate: row.signedDate,
+        bargainingUnitName: row.bargainingUnitName || null,
+        bargainingUnitId: row.bargainingUnitId,
+        employerName: row.employerName,
+        employerId: row.employerId,
+      }));
+    },
+
+    async getMissingCardchecksForEmployer(employerId: string, primaryStatusIds: string[]): Promise<MissingCardcheckWorkerRow[]> {
+      const client = getClient();
+      const hasPrimaryFilter = primaryStatusIds.length > 0;
+      const result = await client.execute(sql`
+        WITH latest_employment AS (
+          SELECT DISTINCT ON (wh.worker_id)
+            wh.worker_id,
+            wh.employment_status_id,
+            es.name as status_name,
+            es.employed as is_employed,
+            make_date(wh.year, wh.month, wh.day) as status_date
+          FROM worker_hours wh
+          LEFT JOIN options_employment_status es ON wh.employment_status_id = es.id
+          WHERE wh.employer_id = ${employerId}
+          ORDER BY wh.worker_id, wh.year DESC, wh.month DESC, wh.day DESC
+        ),
+        active_workers AS (
+          SELECT le.worker_id, le.status_date as current_active_date, le.status_name
+          FROM latest_employment le
+          WHERE ${hasPrimaryFilter
+            ? sql`le.employment_status_id IN (${sql.join(primaryStatusIds.map(id => sql`${id}`), sql`, `)})`
+            : sql`le.is_employed = true`}
+        ),
+        latest_signed_cardcheck AS (
+          SELECT DISTINCT ON (cc.worker_id)
+            cc.worker_id,
+            cc.bargaining_unit_id,
+            cc.signed_date
+          FROM cardchecks cc
+          WHERE cc.status = 'signed'
+          ORDER BY cc.worker_id, cc.signed_date DESC NULLS LAST
+        ),
+        status_with_next AS (
+          SELECT
+            wh.worker_id,
+            es.name as status_name,
+            es.employed as is_employed,
+            make_date(wh.year, wh.month, wh.day) as status_date,
+            LEAD(es.employed) OVER (PARTITION BY wh.worker_id ORDER BY wh.year, wh.month, wh.day) as next_employed,
+            LEAD(make_date(wh.year, wh.month, wh.day)) OVER (PARTITION BY wh.worker_id ORDER BY wh.year, wh.month, wh.day) as next_date
+          FROM worker_hours wh
+          LEFT JOIN options_employment_status es ON wh.employment_status_id = es.id
+          WHERE wh.employer_id = ${employerId}
+        ),
+        termination_requiring_new_cardcheck AS (
+          SELECT DISTINCT ON (aw.worker_id)
+            aw.worker_id,
+            swn.status_date as termination_date,
+            swn.next_date as return_active_date
+          FROM active_workers aw
+          INNER JOIN status_with_next swn ON swn.worker_id = aw.worker_id
+          WHERE swn.is_employed = false
+            AND swn.next_employed = true
+            AND swn.next_date = aw.current_active_date
+            AND (swn.next_date - swn.status_date) >= 30
+          ORDER BY aw.worker_id, swn.status_date DESC
+        ),
+        worker_invalid_reasons AS (
+          SELECT DISTINCT ON (aw.worker_id)
+            aw.worker_id,
+            CASE
+              WHEN lsc.worker_id IS NULL THEN 'Missing'
+              WHEN trn.worker_id IS NOT NULL
+                   AND (lsc.signed_date IS NULL OR lsc.signed_date < trn.termination_date)
+              THEN 'Termination Expired'
+              WHEN w.bargaining_unit_id IS NOT NULL
+                   AND lsc.bargaining_unit_id IS NOT NULL
+                   AND w.bargaining_unit_id != lsc.bargaining_unit_id
+              THEN 'BU Mismatch'
+              ELSE NULL
+            END as invalid_reason
+          FROM active_workers aw
+          INNER JOIN workers w ON w.id = aw.worker_id
+          LEFT JOIN latest_signed_cardcheck lsc ON lsc.worker_id = aw.worker_id
+          LEFT JOIN termination_requiring_new_cardcheck trn ON trn.worker_id = aw.worker_id
+          ORDER BY aw.worker_id
+        )
+        SELECT
+          w.id as "workerId",
+          c.display_name as "displayName",
+          c.email,
+          bu.id as "bargainingUnitId",
+          bu.name as "bargainingUnitName",
+          wir.invalid_reason as "invalidReason",
+          aw.status_name as "employmentStatus",
+          (
+            SELECT cp.phone_number
+            FROM contact_phone cp
+            WHERE cp.contact_id = c.id AND cp.is_active = true
+            ORDER BY cp.is_primary DESC NULLS LAST
+            LIMIT 1
+          ) as phone
+        FROM worker_invalid_reasons wir
+        INNER JOIN workers w ON w.id = wir.worker_id
+        INNER JOIN contacts c ON c.id = w.contact_id
+        INNER JOIN active_workers aw ON aw.worker_id = w.id
+        LEFT JOIN bargaining_units bu ON bu.id = w.bargaining_unit_id
+        WHERE wir.invalid_reason IS NOT NULL
+        ORDER BY
+          CASE wir.invalid_reason
+            WHEN 'Missing' THEN 1
+            WHEN 'Termination Expired' THEN 2
+            WHEN 'BU Mismatch' THEN 3
+          END,
+          c.display_name
+      `);
+      return result.rows as unknown as MissingCardcheckWorkerRow[];
     },
   };
 
