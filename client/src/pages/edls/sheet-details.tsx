@@ -336,14 +336,13 @@ function EdlsSheetDetailsContent() {
                                 ? (displayIdValues[assignment.workerId] ?? "—")
                                 : (assignment.worker.siriusId ? `#${assignment.worker.siriusId}` : "—")}
                             </span>
-                            <Badge
-                              variant="outline"
-                              className="text-xs tabular-nums"
+                            <span
+                              className="w-12 text-left text-xs tabular-nums text-muted-foreground truncate"
                               title={assignment.worker.memberStatusName ?? undefined}
-                              data-testid={`badge-member-status-${assignment.id}`}
+                              data-testid={`text-member-status-${assignment.id}`}
                             >
                               {assignment.worker.memberStatusCode ?? "—"}
-                            </Badge>
+                            </span>
                             <span className="flex items-center gap-1.5 min-w-0">
                               {isOutOfPopulation && (
                                 <Tooltip>
