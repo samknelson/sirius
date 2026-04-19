@@ -1,7 +1,6 @@
 import { useMemo, useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useSearch, useLocation } from "wouter";
-import { format } from "date-fns";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -109,6 +108,17 @@ interface JobGroupOption {
 
 interface PaginatedJobGroups {
   data: JobGroupOption[];
+}
+
+function formatOutDuration(startDate: string): string {
+  const start = new Date(startDate);
+  const now = new Date();
+  let ms = now.getTime() - start.getTime();
+  if (!Number.isFinite(ms) || ms < 0) ms = 0;
+  const totalHours = Math.floor(ms / (1000 * 60 * 60));
+  const days = Math.floor(totalHours / 24);
+  const hours = totalHours % 24;
+  return `Out: ${days} day${days === 1 ? "" : "s"} ${hours} hour${hours === 1 ? "" : "s"}`;
 }
 
 function workerName(w: ActiveWorkerTosWorker): string {
@@ -276,10 +286,10 @@ export default function EdlsTosPage() {
         <CardHeader>
           <CardTitle data-testid="title-page" className="flex items-center gap-2">
             <Stethoscope className="h-5 w-5" />
-            Absences — Workers on Time Off Sick
+            Absences — Workers on Time Off
           </CardTitle>
           <CardDescription>
-            Active sick absences and each worker's upcoming day-labor assignments.
+            Active absences and each worker's upcoming day-labor assignments.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -445,8 +455,8 @@ export default function EdlsTosPage() {
               <Users className="h-10 w-10 mb-2 opacity-50" />
               <p className="text-sm">
                 {filterActive
-                  ? "No workers on Time Off Sick have upcoming assignments matching the filters."
-                  : "No workers are currently on Time Off Sick."}
+                  ? "No workers on Time Off have upcoming assignments matching the filters."
+                  : "No workers are currently on Time Off."}
               </p>
             </div>
           </CardContent>
@@ -459,8 +469,7 @@ export default function EdlsTosPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-[110px]">ID</TableHead>
-                    <TableHead className="w-[60px]">Status</TableHead>
+                    <TableHead className="w-[120px]">ID</TableHead>
                     <TableHead className="w-[260px]">Worker</TableHead>
                     <TableHead className="w-[280px]">Today</TableHead>
                     <TableHead>Next (up to {FUTURE_LIMIT})</TableHead>
@@ -472,17 +481,19 @@ export default function EdlsTosPage() {
                     const overflow = Math.max(0, future.length - FUTURE_LIMIT);
                     return (
                       <TableRow key={tos.id} data-testid={`row-tos-${tos.workerId}`}>
-                        <TableCell
-                          className="font-mono text-sm align-top"
-                          data-testid={`text-edls-id-${tos.workerId}`}
-                        >
-                          {edlsId ?? "—"}
-                        </TableCell>
-                        <TableCell
-                          className="font-mono text-sm align-top text-muted-foreground"
-                          data-testid={`text-member-status-${tos.workerId}`}
-                        >
-                          {memberStatusCode ?? "—"}
+                        <TableCell className="align-top">
+                          <div
+                            className="font-mono text-sm"
+                            data-testid={`text-edls-id-${tos.workerId}`}
+                          >
+                            {edlsId ?? "—"}
+                          </div>
+                          <div
+                            className="font-mono text-xs text-muted-foreground mt-0.5"
+                            data-testid={`text-member-status-${tos.workerId}`}
+                          >
+                            {memberStatusCode ?? "—"}
+                          </div>
                         </TableCell>
                         <TableCell className="align-top">
                           <Link
@@ -496,8 +507,7 @@ export default function EdlsTosPage() {
                             className="text-xs text-muted-foreground mt-0.5"
                             data-testid={`text-tos-start-${tos.workerId}`}
                           >
-                            Sick since {format(new Date(tos.startDate), "MMM d, yyyy")}
-                            {tos.description ? ` — ${tos.description}` : ""}
+                            {formatOutDuration(tos.startDate)}
                           </div>
                         </TableCell>
                         <TableCell className="align-top">
@@ -574,8 +584,7 @@ export default function EdlsTosPage() {
                           className="text-xs text-muted-foreground mt-0.5"
                           data-testid={`text-tos-start-${tos.workerId}`}
                         >
-                          Sick since {format(new Date(tos.startDate), "MMM d, yyyy")}
-                          {tos.description ? ` — ${tos.description}` : ""}
+                          {formatOutDuration(tos.startDate)}
                         </div>
                       </div>
                       <div className="flex flex-col items-end gap-0.5 flex-shrink-0">
