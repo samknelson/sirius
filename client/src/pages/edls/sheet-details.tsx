@@ -33,6 +33,9 @@ interface AssignmentWithWorker {
     displayName: string | null;
     given: string | null;
     family: string | null;
+    memberStatusId: string | null;
+    memberStatusCode: string | null;
+    memberStatusName: string | null;
   };
 }
 
@@ -296,72 +299,106 @@ function EdlsSheetDetailsContent() {
                         </div>
                       )}
                     </div>
-                    {crewAssignments.length > 0 && (
-                      <div className="mt-3 pt-3 border-t">
-                        <p className="text-xs text-muted-foreground mb-2">Assigned Workers:</p>
-                        <div className="space-y-1">
-                          {crewAssignments.map((assignment) => {
-                            const assignmentData = (assignment.data as AssignmentExtra) || {};
-                            const isOutOfPopulation =
-                              !eligibleLoading && !!eligibleWorkers && !eligibleWorkerIds.has(assignment.workerId);
-                            return (
-                              <div 
-                                key={assignment.id} 
-                                className="flex items-center gap-3 text-sm"
-                                data-testid={`assignment-${assignment.id}`}
-                              >
-                                <span
-                                  className="text-muted-foreground w-16 text-left tabular-nums"
-                                  data-testid={`text-assignment-display-id-${assignment.id}`}
-                                >
-                                  {workerIdTypeConfigured
-                                    ? (displayIdValues[assignment.workerId] ?? "—")
-                                    : (assignment.worker.siriusId ? `#${assignment.worker.siriusId}` : "—")}
-                                </span>
-                                <span className="flex items-center gap-1.5">
-                                  {isOutOfPopulation && (
-                                    <Tooltip>
-                                      <TooltipTrigger asChild>
-                                        <span
-                                          tabIndex={0}
-                                          className="inline-flex items-center"
-                                          aria-label="Out of population"
-                                          data-testid={`icon-out-of-population-${assignment.id}`}
-                                        >
-                                          <UserX
-                                            className="h-4 w-4 text-red-600 dark:text-red-500 shrink-0"
-                                            aria-hidden="true"
-                                          />
-                                        </span>
-                                      </TooltipTrigger>
-                                      <TooltipContent>Out of population</TooltipContent>
-                                    </Tooltip>
-                                  )}
-                                  {formatWorkerName(assignment.worker)}
-                                </span>
-                                <span className="flex-1" />
-                                {assignmentData.classificationId && classificationsMap.get(assignmentData.classificationId) && (
-                                  <Badge variant="outline" className="text-xs">
-                                    {classificationsMap.get(assignmentData.classificationId)!.code || classificationsMap.get(assignmentData.classificationId)!.name}
-                                  </Badge>
-                                )}
-                                {assignmentData.note && (
-                                  <Badge variant="outline" className="text-xs truncate max-w-[120px]" title={assignmentData.note}>
-                                    {assignmentData.note}
-                                  </Badge>
-                                )}
-                                {assignmentData.startTime && (
-                                  <Badge variant="outline" className="text-xs">
-                                    <Clock className="h-3 w-3 mr-1" />
-                                    {formatTime12h(assignmentData.startTime)}
-                                  </Badge>
-                                )}
-                              </div>
-                            );
-                          })}
+                    {crew.workerCount > 0 && (() => {
+                      const leftCount = Math.ceil(crew.workerCount / 2);
+                      const renderSlot = (idx: number) => {
+                        const positionNumber = idx + 1;
+                        const assignment = crewAssignments[idx];
+                        if (!assignment) {
+                          return (
+                            <div
+                              key={`empty-${crew.id}-${idx}`}
+                              className="flex items-center gap-3 text-sm text-muted-foreground"
+                              data-testid={`position-empty-${crew.id}-${positionNumber}`}
+                            >
+                              <span className="w-6 text-right tabular-nums">{positionNumber}.</span>
+                              <span className="flex-1">&nbsp;</span>
+                            </div>
+                          );
+                        }
+                        const assignmentData = (assignment.data as AssignmentExtra) || {};
+                        const isOutOfPopulation =
+                          !eligibleLoading && !!eligibleWorkers && !eligibleWorkerIds.has(assignment.workerId);
+                        return (
+                          <div
+                            key={assignment.id}
+                            className="flex items-center gap-3 text-sm"
+                            data-testid={`assignment-${assignment.id}`}
+                          >
+                            <span className="text-muted-foreground w-6 text-right tabular-nums">
+                              {positionNumber}.
+                            </span>
+                            <span
+                              className="text-muted-foreground w-16 text-left tabular-nums"
+                              data-testid={`text-assignment-display-id-${assignment.id}`}
+                            >
+                              {workerIdTypeConfigured
+                                ? (displayIdValues[assignment.workerId] ?? "—")
+                                : (assignment.worker.siriusId ? `#${assignment.worker.siriusId}` : "—")}
+                            </span>
+                            <Badge
+                              variant="outline"
+                              className="text-xs tabular-nums"
+                              title={assignment.worker.memberStatusName ?? undefined}
+                              data-testid={`badge-member-status-${assignment.id}`}
+                            >
+                              {assignment.worker.memberStatusCode ?? "—"}
+                            </Badge>
+                            <span className="flex items-center gap-1.5 min-w-0">
+                              {isOutOfPopulation && (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span
+                                      tabIndex={0}
+                                      className="inline-flex items-center"
+                                      aria-label="Out of population"
+                                      data-testid={`icon-out-of-population-${assignment.id}`}
+                                    >
+                                      <UserX
+                                        className="h-4 w-4 text-red-600 dark:text-red-500 shrink-0"
+                                        aria-hidden="true"
+                                      />
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Out of population</TooltipContent>
+                                </Tooltip>
+                              )}
+                              <span className="truncate">{formatWorkerName(assignment.worker)}</span>
+                            </span>
+                            <span className="flex-1" />
+                            {assignmentData.classificationId && classificationsMap.get(assignmentData.classificationId) && (
+                              <Badge variant="outline" className="text-xs">
+                                {classificationsMap.get(assignmentData.classificationId)!.code || classificationsMap.get(assignmentData.classificationId)!.name}
+                              </Badge>
+                            )}
+                            {assignmentData.note && (
+                              <Badge variant="outline" className="text-xs truncate max-w-[120px]" title={assignmentData.note}>
+                                {assignmentData.note}
+                              </Badge>
+                            )}
+                            {assignmentData.startTime && (
+                              <Badge variant="outline" className="text-xs">
+                                <Clock className="h-3 w-3 mr-1" />
+                                {formatTime12h(assignmentData.startTime)}
+                              </Badge>
+                            )}
+                          </div>
+                        );
+                      };
+                      return (
+                        <div className="mt-3 pt-3 border-t">
+                          <p className="text-xs text-muted-foreground mb-2">Assigned Workers:</p>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6">
+                            <div className="space-y-1" data-testid={`column-left-${crew.id}`}>
+                              {Array.from({ length: leftCount }).map((_, i) => renderSlot(i))}
+                            </div>
+                            <div className="space-y-1" data-testid={`column-right-${crew.id}`}>
+                              {Array.from({ length: crew.workerCount - leftCount }).map((_, i) => renderSlot(leftCount + i))}
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      );
+                    })()}
                   </div>
                 );
               })}

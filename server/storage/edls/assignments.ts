@@ -72,6 +72,9 @@ export interface EdlsAssignmentWithWorker extends EdlsAssignment {
     displayName: string | null;
     given: string | null;
     family: string | null;
+    memberStatusId: string | null;
+    memberStatusCode: string | null;
+    memberStatusName: string | null;
   };
 }
 
@@ -139,7 +142,7 @@ export interface AssignmentForWorker {
 
 export interface EdlsAssignmentsStorage {
   getByCrewId(crewId: string): Promise<EdlsAssignmentWithWorker[]>;
-  getBySheetId(sheetId: string): Promise<EdlsAssignmentWithWorker[]>;
+  getBySheetId(sheetId: string, industryId?: string | null): Promise<EdlsAssignmentWithWorker[]>;
   get(id: string): Promise<EdlsAssignment | undefined>;
   create(assignment: InsertEdlsAssignment): Promise<EdlsAssignment>;
   delete(id: string): Promise<boolean>;
@@ -213,34 +216,71 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
 
       const unsortedAssignments = rows.map(row => ({
         ...row.assignment,
-        worker: row.worker,
+        worker: {
+          ...row.worker,
+          memberStatusId: null,
+          memberStatusCode: null,
+          memberStatusName: null,
+        },
       }));
 
       return sortAssignmentsByClassification(unsortedAssignments);
     },
 
-    async getBySheetId(sheetId: string): Promise<EdlsAssignmentWithWorker[]> {
+    async getBySheetId(sheetId: string, industryId?: string | null): Promise<EdlsAssignmentWithWorker[]> {
       const client = getClient();
-      const rows = await client
-        .select({
-          assignment: edlsAssignments,
-          worker: {
-            id: workers.id,
-            siriusId: workers.siriusId,
-            displayName: contacts.displayName,
-            given: contacts.given,
-            family: contacts.family,
-          },
-        })
-        .from(edlsAssignments)
-        .innerJoin(edlsCrews, eq(edlsAssignments.crewId, edlsCrews.id))
-        .innerJoin(workers, eq(edlsAssignments.workerId, workers.id))
-        .innerJoin(contacts, eq(workers.contactId, contacts.id))
-        .where(eq(edlsCrews.sheetId, sheetId));
 
-      const unsortedAssignments = rows.map(row => ({
-        ...row.assignment,
-        worker: row.worker,
+      // Lateral join to find the worker's member status for the sheet's industry,
+      // mirroring the join used by getAvailableWorkersForSheet.
+      const memberStatusJoin = industryId
+        ? sql`LEFT JOIN LATERAL (
+          SELECT ms.id, ms.code, ms.name
+          FROM UNNEST(w.denorm_ms_ids) AS ms_id
+          INNER JOIN options_worker_ms ms ON ms.id = ms_id AND ms.industry_id = ${industryId}
+          LIMIT 1
+        ) member_status ON true`
+        : sql``;
+      const memberStatusSelect = industryId
+        ? sql`member_status.id as "memberStatusId", member_status.code as "memberStatusCode", member_status.name as "memberStatusName"`
+        : sql`NULL::varchar as "memberStatusId", NULL::varchar as "memberStatusCode", NULL::varchar as "memberStatusName"`;
+
+      const result = await client.execute(sql`
+        SELECT
+          ea.id,
+          ea.ymd,
+          ea.worker_id as "workerId",
+          ea.crew_id as "crewId",
+          ea.data,
+          w.id as "workerRowId",
+          w.sirius_id as "siriusId",
+          c.display_name as "displayName",
+          c.given,
+          c.family,
+          ${memberStatusSelect}
+        FROM edls_assignments ea
+        INNER JOIN edls_crews ec ON ea.crew_id = ec.id
+        INNER JOIN workers w ON ea.worker_id = w.id
+        INNER JOIN contacts c ON w.contact_id = c.id
+        ${memberStatusJoin}
+        WHERE ec.sheet_id = ${sheetId}
+      `);
+
+      const unsortedAssignments: EdlsAssignmentWithWorker[] = result.rows.map((row: any) => ({
+        id: row.id,
+        ymd: row.ymd,
+        workerId: row.workerId,
+        crewId: row.crewId,
+        data: row.data,
+        worker: {
+          id: row.workerRowId,
+          siriusId: row.siriusId,
+          displayName: row.displayName,
+          given: row.given,
+          family: row.family,
+          memberStatusId: row.memberStatusId,
+          memberStatusCode: row.memberStatusCode,
+          memberStatusName: row.memberStatusName,
+        },
       }));
 
       return sortAssignmentsByClassification(unsortedAssignments);

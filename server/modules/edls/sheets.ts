@@ -440,8 +440,11 @@ export function registerEdlsSheetsRoutes(
         res.status(404).json({ message: "Sheet not found" });
         return;
       }
-      
-      const assignments = await storage.edlsAssignments.getBySheetId(sheetId);
+
+      const employer = await storage.employers.getEmployer(sheet.employerId);
+      const industryId = employer?.industryId ?? null;
+
+      const assignments = await storage.edlsAssignments.getBySheetId(sheetId, industryId);
       res.json(assignments);
     } catch (error) {
       console.error("Failed to fetch assignments:", error);
