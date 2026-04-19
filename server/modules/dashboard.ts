@@ -2,11 +2,9 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 import { requireAccess } from "../services/access-policy-evaluator";
 import { requireComponent } from "./components";
-import { employerMonthlyPluginConfigSchema, workers, bargainingUnits, workerHours, optionsEmploymentStatus } from "@shared/schema";
-import { cardchecks } from "@shared/schema/cardcheck/schema";
+import { employerMonthlyPluginConfigSchema } from "@shared/schema";
 import { getPluginMetadata } from "@shared/pluginMetadata";
 import { getEffectiveUser } from "./masquerade";
-import { eq, sql, countDistinct } from "drizzle-orm";
 
 // Content resolver context passed to each plugin's content resolver
 interface ContentResolverContext {
@@ -488,14 +486,6 @@ export function registerDashboardRoutes(
 
   app.get("/api/dashboard-plugins/btu-bu-summary/data", requireAuth, requireComponent('sitespecific.btu'), async (req, res) => {
     try {
-      const employedWorkerFilter = sql`${workers.id} IN (
-            SELECT DISTINCT ON (wh.worker_id) wh.worker_id
-            FROM ${workerHours} wh
-            JOIN ${optionsEmploymentStatus} es ON es.id = wh.employment_status_id
-            WHERE es.employed = true
-            ORDER BY wh.worker_id, wh.year DESC, wh.month DESC, wh.day DESC
-          )`;
-
       const allBargainingUnits = await storage.bargainingUnits.getAllBargainingUnits();
       const buMinRateMap = new Map<string, number>();
       for (const bu of allBargainingUnits) {
@@ -518,43 +508,13 @@ export function registerDashboardRoutes(
         }
       }
 
-      const { buResults, unassignedResults } = await storage.readOnly.query(async (client) => {
-        const buResults = await client
-          .select({
-            bargainingUnitId: bargainingUnits.id,
-            bargainingUnitName: bargainingUnits.name,
-            workerCount: countDistinct(workers.id).as('worker_count'),
-            signedWorkerCount: sql<number>`count(distinct case when ${cardchecks.id} is not null then ${workers.id} end)`.as('signed_worker_count'),
-          })
-          .from(bargainingUnits)
-          .leftJoin(workers, sql`${workers.bargainingUnitId} = ${bargainingUnits.id} AND ${employedWorkerFilter}`)
-          .leftJoin(
-            cardchecks,
-            sql`${cardchecks.workerId} = ${workers.id} AND ${cardchecks.status} = 'signed'`
-          )
-          .groupBy(bargainingUnits.id, bargainingUnits.name)
-          .orderBy(bargainingUnits.name);
+      const { units: buResults, unassigned: unassignedResults } = await storage.bargainingUnits.getCardcheckSummary();
 
-        const [unassignedResults] = await client
-          .select({
-            workerCount: countDistinct(workers.id).as('worker_count'),
-            signedWorkerCount: sql<number>`count(distinct case when ${cardchecks.id} is not null then ${workers.id} end)`.as('signed_worker_count'),
-          })
-          .from(workers)
-          .leftJoin(
-            cardchecks,
-            sql`${cardchecks.workerId} = ${workers.id} AND ${cardchecks.status} = 'signed'`
-          )
-          .where(sql`${workers.bargainingUnitId} is null AND ${employedWorkerFilter}`);
+      const unassignedWorkerCount = unassignedResults.workerCount;
+      const unassignedSignedCount = unassignedResults.signedWorkerCount;
 
-        return { buResults, unassignedResults };
-      });
-
-      const unassignedWorkerCount = Number(unassignedResults?.workerCount ?? 0);
-      const unassignedSignedCount = Number(unassignedResults?.signedWorkerCount ?? 0);
-
-      const buWorkers = buResults.reduce((sum, r) => sum + Number(r.workerCount), 0);
-      const buSigned = buResults.reduce((sum, r) => sum + Number(r.signedWorkerCount), 0);
+      const buWorkers = buResults.reduce((sum, r) => sum + r.workerCount, 0);
+      const buSigned = buResults.reduce((sum, r) => sum + r.signedWorkerCount, 0);
       const totalWorkers = buWorkers + unassignedWorkerCount;
       const totalSigned = buSigned + unassignedSignedCount;
 
@@ -623,42 +583,16 @@ export function registerDashboardRoutes(
           return;
         }
 
-        const result = await storage.readOnly.query(async (client) => {
-          const rows = await client.execute(sql`
-            SELECT
-              COALESCE(oms.name, 'Unassigned') AS member_status,
-              oms.sequence AS ms_sequence,
-              s.status AS sheet_status,
-              COUNT(DISTINCT a.worker_id)::int AS worker_count
-            FROM edls_assignments a
-            JOIN edls_crews c ON c.id = a.crew_id
-            JOIN edls_sheets s ON s.id = c.sheet_id
-            JOIN workers w ON w.id = a.worker_id
-            LEFT JOIN LATERAL (
-              SELECT oms2.name, oms2.sequence
-              FROM options_worker_ms oms2
-              JOIN employers emp ON emp.id = s.employer_id
-              WHERE oms2.industry_id = emp.industry_id
-                AND oms2.id = ANY(w.denorm_ms_ids)
-              ORDER BY oms2.sequence ASC NULLS LAST, oms2.name
-              LIMIT 1
-            ) oms ON true
-            WHERE a.ymd = ${ymd}
-              AND s.status != 'trash'
-            GROUP BY oms.name, oms.sequence, s.status
-            ORDER BY oms.sequence NULLS LAST, oms.name
-          `);
-          return rows.rows;
-        });
+        const result = await storage.edlsAssignments.getDailySummaryByMemberStatus(ymd);
 
         const memberStatuses: string[] = [];
         const seenStatuses = new Set<string>();
         const grid: Record<string, Record<string, number>> = {};
 
-        for (const row of result as any[]) {
-          const ms = row.member_status as string;
-          const sheetStatus = row.sheet_status as string;
-          const count = row.worker_count as number;
+        for (const row of result) {
+          const ms = row.memberStatus;
+          const sheetStatus = row.sheetStatus;
+          const count = row.workerCount;
 
           if (!seenStatuses.has(ms)) {
             seenStatuses.add(ms);

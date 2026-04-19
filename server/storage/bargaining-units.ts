@@ -1,7 +1,9 @@
 import { createNoopValidator } from './utils/validation';
 import { getClient } from './transaction-context';
-import { bargainingUnits, type BargainingUnit, type InsertBargainingUnit } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { bargainingUnits, workers, workerHours, optionsEmploymentStatus, type BargainingUnit, type InsertBargainingUnit } from "@shared/schema";
+import { cardchecks } from "@shared/schema/cardcheck/schema";
+import { eq, sql, countDistinct } from "drizzle-orm";
+import { createReadOnlyStorage } from "./read-only";
 import type { StorageLoggingConfig } from "./middleware/logging";
 
 export interface NamedRate {
@@ -36,8 +38,26 @@ function normalizeAccountRates(raw: Record<string, unknown> | undefined): Accoun
  */
 export const validate = createNoopValidator<InsertBargainingUnit, BargainingUnit>();
 
+export interface BargainingUnitSummaryRow {
+  bargainingUnitId: string;
+  bargainingUnitName: string;
+  workerCount: number;
+  signedWorkerCount: number;
+}
+
+export interface UnassignedCardcheckSummary {
+  workerCount: number;
+  signedWorkerCount: number;
+}
+
+export interface CardcheckSummary {
+  units: BargainingUnitSummaryRow[];
+  unassigned: UnassignedCardcheckSummary;
+}
+
 export interface BargainingUnitStorage {
   getAllBargainingUnits(): Promise<BargainingUnit[]>;
+  getCardcheckSummary(): Promise<CardcheckSummary>;
   getBargainingUnitById(id: string): Promise<BargainingUnit | undefined>;
   getBargainingUnitBySiriusId(siriusId: string): Promise<BargainingUnit | undefined>;
   createBargainingUnit(data: InsertBargainingUnit): Promise<BargainingUnit>;
@@ -55,6 +75,60 @@ export function createBargainingUnitStorage(): BargainingUnitStorage {
     async getAllBargainingUnits(): Promise<BargainingUnit[]> {
       const client = getClient();
       return await client.select().from(bargainingUnits);
+    },
+
+    async getCardcheckSummary(): Promise<CardcheckSummary> {
+      const readOnly = createReadOnlyStorage();
+      return readOnly.query(async (client) => {
+        const employedWorkerFilter = sql`${workers.id} IN (
+          SELECT DISTINCT ON (wh.worker_id) wh.worker_id
+          FROM ${workerHours} wh
+          JOIN ${optionsEmploymentStatus} es ON es.id = wh.employment_status_id
+          WHERE es.employed = true
+          ORDER BY wh.worker_id, wh.year DESC, wh.month DESC, wh.day DESC
+        )`;
+
+        const buResults = await client
+          .select({
+            bargainingUnitId: bargainingUnits.id,
+            bargainingUnitName: bargainingUnits.name,
+            workerCount: countDistinct(workers.id).as('worker_count'),
+            signedWorkerCount: sql<number>`count(distinct case when ${cardchecks.id} is not null then ${workers.id} end)`.as('signed_worker_count'),
+          })
+          .from(bargainingUnits)
+          .leftJoin(workers, sql`${workers.bargainingUnitId} = ${bargainingUnits.id} AND ${employedWorkerFilter}`)
+          .leftJoin(
+            cardchecks,
+            sql`${cardchecks.workerId} = ${workers.id} AND ${cardchecks.status} = 'signed'`
+          )
+          .groupBy(bargainingUnits.id, bargainingUnits.name)
+          .orderBy(bargainingUnits.name);
+
+        const [unassignedResult] = await client
+          .select({
+            workerCount: countDistinct(workers.id).as('worker_count'),
+            signedWorkerCount: sql<number>`count(distinct case when ${cardchecks.id} is not null then ${workers.id} end)`.as('signed_worker_count'),
+          })
+          .from(workers)
+          .leftJoin(
+            cardchecks,
+            sql`${cardchecks.workerId} = ${workers.id} AND ${cardchecks.status} = 'signed'`
+          )
+          .where(sql`${workers.bargainingUnitId} is null AND ${employedWorkerFilter}`);
+
+        return {
+          units: buResults.map((r) => ({
+            bargainingUnitId: r.bargainingUnitId,
+            bargainingUnitName: r.bargainingUnitName,
+            workerCount: Number(r.workerCount ?? 0),
+            signedWorkerCount: Number(r.signedWorkerCount ?? 0),
+          })),
+          unassigned: {
+            workerCount: Number(unassignedResult?.workerCount ?? 0),
+            signedWorkerCount: Number(unassignedResult?.signedWorkerCount ?? 0),
+          },
+        };
+      });
     },
 
     async getBargainingUnitById(id: string): Promise<BargainingUnit | undefined> {
