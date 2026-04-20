@@ -3,8 +3,9 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { SimpleHtmlEditor } from "@/components/ui/simple-html-editor";
+import { htmlToPlainText } from "@shared/bulk-tokens";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { 
   Bell, 
@@ -39,9 +40,11 @@ interface CommInAppProps {
 export function CommInApp({ contactId, onSendSuccess }: CommInAppProps) {
   const { toast } = useToast();
   const [title, setTitle] = useState("");
-  const [body, setBody] = useState("");
+  const [bodyHtml, setBodyHtml] = useState("");
   const [linkUrl, setLinkUrl] = useState("");
   const [linkLabel, setLinkLabel] = useState("");
+
+  const derivedBody = htmlToPlainText(bodyHtml);
 
   const { data: userLookup, isLoading: isLoadingUserLookup } = useQuery<UserLookupResponse>({
     queryKey: ["/api/contacts", contactId, "user-lookup"],
@@ -70,7 +73,7 @@ export function CommInApp({ contactId, onSendSuccess }: CommInAppProps) {
         description: "The notification has been sent successfully.",
       });
       setTitle("");
-      setBody("");
+      setBodyHtml("");
       setLinkUrl("");
       setLinkLabel("");
       queryClient.invalidateQueries({ queryKey: ["/api/contacts", contactId, "comm"] });
@@ -87,11 +90,11 @@ export function CommInApp({ contactId, onSendSuccess }: CommInAppProps) {
   });
 
   const handleSend = () => {
-    if (!userLookup?.user?.id || !title.trim() || !body.trim()) return;
+    if (!userLookup?.user?.id || !title.trim() || !derivedBody.trim()) return;
     sendInappMutation.mutate({
       userId: userLookup.user.id,
       title: title.trim(),
-      body: body.trim(),
+      body: derivedBody.trim(),
       linkUrl: linkUrl.trim() || undefined,
       linkLabel: linkLabel.trim() || undefined,
     });
@@ -102,12 +105,12 @@ export function CommInApp({ contactId, onSendSuccess }: CommInAppProps) {
     userLookup?.user?.id &&
     title.trim().length > 0 && 
     title.trim().length <= 100 &&
-    body.trim().length > 0 &&
-    body.trim().length <= 500 &&
+    derivedBody.trim().length > 0 &&
+    derivedBody.trim().length <= 500 &&
     (!linkUrl.trim() || isValidUrl(linkUrl.trim()));
 
   const titleCharCount = title.length;
-  const bodyCharCount = body.length;
+  const bodyCharCount = derivedBody.length;
 
   return (
     <Card>
@@ -185,15 +188,19 @@ export function CommInApp({ contactId, onSendSuccess }: CommInAppProps) {
                   {bodyCharCount}/500
                 </span>
               </div>
-              <Textarea
-                id="inapp-body"
+              <SimpleHtmlEditor
+                value={bodyHtml}
+                onChange={setBodyHtml}
+                minHeight={140}
                 placeholder="Type your notification message here..."
-                value={body}
-                onChange={(e) => setBody(e.target.value)}
-                rows={4}
-                maxLength={500}
                 data-testid="input-inapp-body"
               />
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs text-muted-foreground">In-app notifications display as plain text; formatting will be flattened on send.</p>
+                <span className={`text-xs ${bodyCharCount > 500 ? 'text-destructive' : 'text-muted-foreground'}`} data-testid="text-inapp-derived-body-count">
+                  {bodyCharCount}/500
+                </span>
+              </div>
             </div>
 
             <div className="space-y-4 border-t pt-4">

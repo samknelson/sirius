@@ -1,3 +1,5 @@
+export { htmlToPlainText } from "./html-to-text";
+
 export type TokenScope = "contact" | "worker" | "employer" | "system";
 
 /**

@@ -15,7 +15,7 @@ import { createBulkParticipantStorage } from "../../storage/bulk/participants";
 import { deliverToContact, deliverToParticipant, resolveAddressForMedium } from "./deliver";
 import { storageLogger } from "../../logger";
 import { resolveContactLinks, resolveContactLinksForMany } from "../contact-links";
-import { TOKEN_REGISTRY, TOKEN_REGISTRY_MAP, renderTemplate, extractTokenIds, findUnknownTokenIds, isKnownToken, buildSampleContext, buildContextFromSources, type TokenSourceData } from "../../../shared/bulk-tokens";
+import { TOKEN_REGISTRY, TOKEN_REGISTRY_MAP, renderTemplate, extractTokenIds, findUnknownTokenIds, isKnownToken, buildSampleContext, buildContextFromSources, htmlToPlainText, type TokenSourceData } from "../../../shared/bulk-tokens";
 import { buildRecipientContext, detectAudienceScopes } from "./token-context";
 type RequireAccess = (policy: string) => (req: Request, res: Response, next: () => void) => void;
 type RequireAuth = (req: Request, res: Response, next: () => void) => void;
@@ -276,13 +276,19 @@ export function registerBulkMessageRoutes(
 
       switch (medium) {
         case 'email': {
+          // The client now sends only `bodyHtml`; derive the plain-text
+          // fallback server-side so the two stay in sync.
+          const emailBody: Record<string, unknown> = { ...messageBody };
+          if (typeof emailBody.bodyHtml === 'string') {
+            emailBody.bodyText = htmlToPlainText(emailBody.bodyHtml as string);
+          }
           const existing = await storage.bulkMessagesEmail.getByBulkId(bulk.id);
           if (existing) {
-            const parsed = insertBulkMessagesEmailSchema.partial().safeParse(messageBody);
+            const parsed = insertBulkMessagesEmailSchema.partial().safeParse(emailBody);
             if (!parsed.success) return res.status(400).json({ message: "Validation failed", errors: parsed.error.issues });
             result = await storage.bulkMessagesEmail.update(existing.id, parsed.data);
           } else {
-            const parsed = insertBulkMessagesEmailSchema.safeParse({ ...messageBody, bulkId: bulk.id });
+            const parsed = insertBulkMessagesEmailSchema.safeParse({ ...emailBody, bulkId: bulk.id });
             if (!parsed.success) return res.status(400).json({ message: "Validation failed", errors: parsed.error.issues });
             result = await storage.bulkMessagesEmail.create(parsed.data);
           }

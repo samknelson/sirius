@@ -13,7 +13,9 @@ import { apiRequest } from "@/lib/queryClient";
 import { Loader2, Save, Mail, MessageSquare, MapPin, Bell, Eye, AlertTriangle } from "lucide-react";
 import { TokenPicker } from "@/components/bulk/TokenPicker";
 import { SlashTokenField } from "@/components/bulk/SlashTokenField";
-import { findUnknownTokenIds, extractTokenIds } from "@shared/bulk-tokens";
+import { SimpleHtmlEditor } from "@/components/ui/simple-html-editor";
+import { cn } from "@/lib/utils";
+import { findUnknownTokenIds, extractTokenIds, htmlToPlainText } from "@shared/bulk-tokens";
 
 type TokenInsertTarget = HTMLInputElement | HTMLTextAreaElement;
 
@@ -168,17 +170,14 @@ interface FormProps {
 }
 
 function EmailForm({ record, onSave, isPending, messageId }: FormProps) {
-  const [form, setForm] = useState({ subject: "", bodyText: "", bodyHtml: "" });
+  const [form, setForm] = useState({ subject: "", bodyHtml: "" });
   const inserter = useTokenInserter();
   inserter.registerField("subject", (next) => setForm((p) => ({ ...p, subject: next })));
-  inserter.registerField("bodyText", (next) => setForm((p) => ({ ...p, bodyText: next })));
-  inserter.registerField("bodyHtml", (next) => setForm((p) => ({ ...p, bodyHtml: next })));
 
   useEffect(() => {
     if (record) {
       setForm({
         subject: (record.subject as string) || "",
-        bodyText: (record.bodyText as string) || "",
         bodyHtml: (record.bodyHtml as string) || "",
       });
     }
@@ -194,17 +193,21 @@ function EmailForm({ record, onSave, isPending, messageId }: FormProps) {
         <SlashTokenField as="input" messageId={messageId} id="subject" value={form.subject} onFocus={inserter.handleFocus("subject")} onChange={(next) => setForm((p) => ({ ...p, subject: next }))} placeholder="Email subject — type / to insert a token" data-testid="input-email-subject" />
       </div>
       <div className="space-y-2">
-        <Label htmlFor="bodyText">Body (Plain Text)</Label>
-        <SlashTokenField as="textarea" messageId={messageId} id="bodyText" value={form.bodyText} onFocus={inserter.handleFocus("bodyText")} onChange={(next) => setForm((p) => ({ ...p, bodyText: next }))} rows={6} placeholder="Plain text version of the email — type / to insert a token" data-testid="textarea-email-body-text" />
+        <Label htmlFor="bodyHtml">Body</Label>
+        <SimpleHtmlEditor
+          value={form.bodyHtml}
+          onChange={(next) => setForm((p) => ({ ...p, bodyHtml: next }))}
+          enableTokens
+          minHeight={200}
+          placeholder="Type your email — use the toolbar to format and / to insert a token"
+          data-testid="editor-email-body"
+        />
+        <p className="text-xs text-muted-foreground">A plain-text version is generated automatically for recipients whose mail client can't display HTML.</p>
       </div>
-      <div className="space-y-2">
-        <Label htmlFor="bodyHtml">Body (HTML)</Label>
-        <SlashTokenField as="textarea" messageId={messageId} id="bodyHtml" value={form.bodyHtml} onFocus={inserter.handleFocus("bodyHtml")} onChange={(next) => setForm((p) => ({ ...p, bodyHtml: next }))} rows={6} className="font-mono text-sm" placeholder="<html>... — type / to insert a token" data-testid="textarea-email-body-html" />
-      </div>
-      <TokenWarnings templates={[form.subject, form.bodyText, form.bodyHtml]} />
-      <PreviewPanel messageId={messageId} fields={{ subject: form.subject, bodyText: form.bodyText, bodyHtml: form.bodyHtml }} escapeHtmlFields={["bodyHtml"]} />
+      <TokenWarnings templates={[form.subject, form.bodyHtml]} />
+      <PreviewPanel messageId={messageId} fields={{ subject: form.subject, bodyHtml: form.bodyHtml }} escapeHtmlFields={["bodyHtml"]} />
       <div className="flex justify-end pt-2">
-        <Button onClick={() => onSave({ ...form })} disabled={isPending} data-testid="button-save-email-message">
+        <Button onClick={() => onSave({ subject: form.subject, bodyHtml: form.bodyHtml })} disabled={isPending} data-testid="button-save-email-message">
           {isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
           Save Email Content
         </Button>
@@ -323,25 +326,31 @@ function PostalForm({ record, onSave, isPending, messageId }: FormProps) {
 function InappForm({ record, onSave, isPending, messageId }: FormProps) {
   const [form, setForm] = useState({
     title: "",
-    body: "",
+    bodyHtml: "",
     linkUrl: "",
     linkLabel: "",
   });
   const inserter = useTokenInserter();
   inserter.registerField("title", (next) => setForm((p) => ({ ...p, title: next })));
-  inserter.registerField("body", (next) => setForm((p) => ({ ...p, body: next })));
   inserter.registerField("linkLabel", (next) => setForm((p) => ({ ...p, linkLabel: next })));
 
   useEffect(() => {
     if (record) {
+      const existing = (record.body as string) || "";
+      // Treat already-stored plain text as plain text by escaping/wrapping
+      // so the editor can show it; new edits are stored as plain text again.
+      const looksLikeHtml = /<[a-z][^>]*>/i.test(existing);
       setForm({
         title: (record.title as string) || "",
-        body: (record.body as string) || "",
+        bodyHtml: looksLikeHtml ? existing : existing.replace(/\n/g, "<br>"),
         linkUrl: (record.linkUrl as string) || "",
         linkLabel: (record.linkLabel as string) || "",
       });
     }
   }, [record]);
+
+  const derivedBody = htmlToPlainText(form.bodyHtml);
+  const overLimit = derivedBody.length > 500;
 
   return (
     <div className="space-y-4">
@@ -355,8 +364,20 @@ function InappForm({ record, onSave, isPending, messageId }: FormProps) {
       </div>
       <div className="space-y-2">
         <Label htmlFor="inappBody">Body</Label>
-        <SlashTokenField as="textarea" messageId={messageId} id="inappBody" value={form.body} onFocus={inserter.handleFocus("body")} onChange={(next) => setForm((p) => ({ ...p, body: next }))} rows={4} maxLength={500} placeholder="Notification body text — type / to insert a token" data-testid="textarea-inapp-body" />
-        <div className="flex justify-end"><span className="text-xs text-muted-foreground">{form.body.length} / 500</span></div>
+        <SimpleHtmlEditor
+          value={form.bodyHtml}
+          onChange={(next) => setForm((p) => ({ ...p, bodyHtml: next }))}
+          enableTokens
+          minHeight={140}
+          placeholder="Notification body — use / to insert a token"
+          data-testid="editor-inapp-body"
+        />
+        <div className="flex justify-end">
+          <span className={cn("text-xs", overLimit ? "text-destructive" : "text-muted-foreground")} data-testid="text-inapp-body-count">
+            {derivedBody.length} / 500
+          </span>
+        </div>
+        <p className="text-xs text-muted-foreground">In-app notifications display as plain text; formatting will be flattened on send.</p>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-2">
@@ -368,10 +389,19 @@ function InappForm({ record, onSave, isPending, messageId }: FormProps) {
           <SlashTokenField as="input" messageId={messageId} id="inappLinkLabel" value={form.linkLabel} onFocus={inserter.handleFocus("linkLabel")} onChange={(next) => setForm((p) => ({ ...p, linkLabel: next }))} maxLength={50} placeholder="Click here — type / to insert a token" data-testid="input-inapp-link-label" />
         </div>
       </div>
-      <TokenWarnings templates={[form.title, form.body, form.linkLabel]} />
-      <PreviewPanel messageId={messageId} fields={{ title: form.title, body: form.body, linkLabel: form.linkLabel }} />
+      <TokenWarnings templates={[form.title, form.bodyHtml, form.linkLabel]} />
+      <PreviewPanel messageId={messageId} fields={{ title: form.title, body: derivedBody, linkLabel: form.linkLabel }} />
       <div className="flex justify-end pt-2">
-        <Button onClick={() => onSave({ ...form })} disabled={isPending} data-testid="button-save-inapp-message">
+        <Button
+          onClick={() => onSave({
+            title: form.title,
+            body: derivedBody,
+            linkUrl: form.linkUrl,
+            linkLabel: form.linkLabel,
+          })}
+          disabled={isPending || overLimit}
+          data-testid="button-save-inapp-message"
+        >
           {isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
           Save In-App Content
         </Button>
