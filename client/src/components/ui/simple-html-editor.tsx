@@ -746,19 +746,24 @@ export function SimpleHtmlEditor({
           display: inline-flex;
           align-items: center;
           gap: 0.125rem;
-          padding: 0 0.375rem;
+          padding: 1px 0.375rem;
           margin: 0 1px;
           border-radius: 0.25rem;
-          background: hsl(var(--secondary));
-          color: hsl(var(--secondary-foreground));
+          background: hsl(var(--muted));
+          color: hsl(var(--foreground));
           border: 1px solid hsl(var(--border));
           font-size: 0.8125rem;
           font-weight: 500;
-          line-height: 1.4;
+          line-height: 1.3;
           vertical-align: baseline;
           white-space: nowrap;
           user-select: all;
           cursor: default;
+          box-shadow: 0 1px 0 hsl(var(--border) / 0.5);
+        }
+        .dark .token-chip {
+          background: hsl(var(--muted));
+          border-color: hsl(var(--border));
         }
         .token-chip-label {
           user-select: all;
