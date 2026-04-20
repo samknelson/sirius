@@ -337,12 +337,17 @@ function InappForm({ record, onSave, isPending, messageId }: FormProps) {
   useEffect(() => {
     if (record) {
       const existing = (record.body as string) || "";
-      // Treat already-stored plain text as plain text by escaping/wrapping
-      // so the editor can show it; new edits are stored as plain text again.
-      const looksLikeHtml = /<[a-z][^>]*>/i.test(existing);
+      // Treat already-stored plain text as plain text by escaping any HTML
+      // metacharacters before turning newlines into <br>, so legacy bodies
+      // containing "<" or "&" aren't reinterpreted as markup by the editor.
+      const escaped = existing
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/\n/g, "<br>");
       setForm({
         title: (record.title as string) || "",
-        bodyHtml: looksLikeHtml ? existing : existing.replace(/\n/g, "<br>"),
+        bodyHtml: escaped,
         linkUrl: (record.linkUrl as string) || "",
         linkLabel: (record.linkLabel as string) || "",
       });

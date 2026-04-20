@@ -191,8 +191,9 @@ export function CommInApp({ contactId, onSendSuccess }: CommInAppProps) {
               <SimpleHtmlEditor
                 value={bodyHtml}
                 onChange={setBodyHtml}
+                enableTokens
                 minHeight={140}
-                placeholder="Type your notification message here..."
+                placeholder="Type your notification message here — type / to insert a token"
                 data-testid="input-inapp-body"
               />
               <div className="flex items-center justify-between gap-2">
