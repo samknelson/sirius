@@ -9,7 +9,7 @@
     "start": "NODE_ENV=production node dist/production-entry.js",
     "check": "tsc",
     "check:storage": "tsx scripts/dev/check-storage-encapsulation.ts",
-    "db:push": "drizzle-kit push",
+    "db:push": "tsx scripts/db-push.ts",
     "db:push:component": "tsx scripts/db-push-component.ts"
   },
   "dependencies": {

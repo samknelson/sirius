@@ -96,8 +96,10 @@ import { registerBtuScraperImportRoutes } from "./modules/sitespecific/btu/scrap
 import { registerBtuBuildingRepImportRoutes } from "./modules/sitespecific/btu/building-rep-import";
 import { registerBtuPoliticalRoutes } from "./modules/sitespecific/btu/political";
 import { registerT631ClientFetchRoutes } from "./modules/sitespecific/t631/client/fetch";
+import { registerFreemanSecondShiftRoutes } from "./modules/sitespecific/freeman/second-shift";
 import { registerEdlsSheetsRoutes } from "./modules/edls/sheets";
 import { registerEdlsTasksRoutes } from "./modules/edls/tasks";
+import { registerWorkerEdlsRoutes } from "./modules/edls/workers";
 import { registerWebServiceBundle } from "./modules/webservices";
 import { setupEdlsRoutes, EDLS_BUNDLE_CODE } from "./modules/webservices/edls";
 import { registerWebServiceAdminRoutes } from "./modules/webservices/admin";
@@ -219,6 +221,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         },
         permissions: userPermissions.map((p) => p.key),
         components: enabledComponents,
+        capabilities: {
+          workerEdls: await (await import('./modules/edls/capability')).isWorkerEdlsAvailable(),
+        },
         masquerade: session.masqueradeUserId
           ? {
               isMasquerading: true,
@@ -1721,12 +1726,16 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Register T631 Client routes
   registerT631ClientFetchRoutes(app, requireAuth, requirePermission);
 
+  // Register Freeman Second Shift routes
+  registerFreemanSecondShiftRoutes(app, requireAuth, requireAccess);
+
   // Register HTA routes
   registerHtaRoutes(app, requireAuth, requirePermission);
 
   // Register EDLS routes
   registerEdlsSheetsRoutes(app, requireAuth, requirePermission);
   registerEdlsTasksRoutes(app, requireAuth, requirePermission);
+  registerWorkerEdlsRoutes(app, requireAuth);
 
   // Register Web Service bundles (API access via client credentials)
   registerWebServiceBundle(app, {

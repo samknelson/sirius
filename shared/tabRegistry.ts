@@ -18,6 +18,8 @@ export interface TabDefinition {
   policyId?: string;
   permission?: string;
   component?: string;
+  /** Optional capability name; tab is hidden when capability is unavailable */
+  capability?: string;
   parent?: string;
   /** Terminology key for dynamic label substitution (e.g., 'steward', 'union') */
   termKey?: string;
@@ -167,6 +169,8 @@ export const workerTabTree: HierarchicalTab[] = [
     ]
   },
   { id: 'political', label: 'Political', hrefTemplate: '/workers/{id}/political', permission: 'staff', component: 'sitespecific.btu.political' },
+  { id: 'edls', label: 'EDLS', hrefTemplate: '/workers/{id}/edls', policyId: 'edls.coordinator', component: 'edls', capability: 'workerEdls' },
+  { id: 'sitespecific-freeman-2shift', label: 'Second Shift', hrefTemplate: '/workers/{id}/sitespecific-freeman-2shift', policyId: 'edls.any', component: 'sitespecific.freeman' },
   { id: 'accounting', label: 'Accounting', hrefTemplate: '/workers/{id}/ledger/accounts', policyId: 'worker.ledger', component: 'ledger' },
   { id: 'logs', label: 'Logs', hrefTemplate: '/workers/{id}/logs', permission: 'staff' },
   { id: 'delete', label: 'Delete', hrefTemplate: '/workers/{id}/delete', permission: 'workers.delete' },
@@ -362,7 +366,7 @@ export const edlsSheetTabTree: HierarchicalTab[] = [
   { id: 'details', label: 'Details', hrefTemplate: '/edls/sheet/{id}', policyId: 'edls.sheet.view', component: 'edls' },
   { id: 'edit', label: 'Edit', hrefTemplate: '/edls/sheet/{id}/edit', policyId: 'edls.sheet.edit', component: 'edls' },
   { id: 'manage', label: 'Manage', hrefTemplate: '/edls/sheet/{id}/manage', policyId: 'edls.sheet.manage', component: 'edls' },
-  { id: 'assignments', label: 'Assignments', hrefTemplate: '/edls/sheet/{id}/assignments', policyId: 'edls.sheet.view', component: 'edls' },
+  { id: 'assignments', label: 'Assignments', hrefTemplate: '/edls/sheet/{id}/assignments', policyId: 'edls.sheet.edit', component: 'edls' },
   { id: 'logs', label: 'Logs', hrefTemplate: '/edls/sheet/{id}/logs', policyId: 'edls.coordinator', component: 'edls' },
 ];
 

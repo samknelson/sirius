@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { Fragment, useState, useEffect, useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Switch } from "@/components/ui/switch";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Info, Database, AlertTriangle, Loader2, Archive, Trash2, Shield } from "lucide-react";
+import { Info, Database, AlertTriangle, Loader2, Archive, Trash2, Shield, ChevronRight, ChevronDown } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { getAllComponents, ComponentDefinition, ComponentConfig } from "@shared/components";
 import { usePageTitle } from "@/contexts/PageTitleContext";
@@ -42,6 +42,7 @@ export default function ComponentsConfigPage() {
   });
 
   const [localStates, setLocalStates] = useState<Record<string, boolean>>({});
+  const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [confirmText, setConfirmText] = useState("");
   const [isCheckingSchema, setIsCheckingSchema] = useState(false);
@@ -208,6 +209,7 @@ export default function ComponentsConfigPage() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-10"></TableHead>
                 <TableHead>Component ID</TableHead>
                 <TableHead>Name</TableHead>
                 <TableHead>Description</TableHead>
@@ -215,38 +217,126 @@ export default function ComponentsConfigPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {sortedComponents.map((component) => (
-                <TableRow key={component.id} data-testid={`row-component-${component.id}`}>
-                  <TableCell className="font-mono text-sm">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      {component.id}
-                      {component.managesSchema && (
-                        <Badge variant="outline" className="text-xs">
-                          <Database className="h-3 w-3 mr-1" />
-                          Schema
-                        </Badge>
-                      )}
-                      {component.permissions && component.permissions.length > 0 && (
-                        <Badge variant="outline" className="text-xs">
-                          <Shield className="h-3 w-3 mr-1" />
-                          Permissions
-                        </Badge>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell className="font-medium">{component.name}</TableCell>
-                  <TableCell className="text-muted-foreground">{component.description}</TableCell>
-                  <TableCell className="text-right">
-                    <Switch
-                      id={`component-${component.id}`}
-                      checked={localStates[component.id] || false}
-                      onCheckedChange={(checked) => handleToggle(component.id, checked)}
-                      disabled={isCheckingSchema}
-                      data-testid={`switch-component-${component.id}`}
-                    />
-                  </TableCell>
-                </TableRow>
-              ))}
+              {sortedComponents.map((component) => {
+                const isExpanded = !!expandedRows[component.id];
+                const tables = component.schemaManifest?.tables ?? [];
+                const permissions = component.permissions ?? [];
+                return (
+                  <Fragment key={component.id}>
+                    <TableRow data-testid={`row-component-${component.id}`}>
+                      <TableCell className="w-10">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={() => setExpandedRows(prev => ({ ...prev, [component.id]: !prev[component.id] }))}
+                          aria-label={isExpanded ? "Collapse details" : "Expand details"}
+                          data-testid={`button-toggle-component-${component.id}`}
+                        >
+                          {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                        </Button>
+                      </TableCell>
+                      <TableCell className="font-mono text-sm">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {component.id}
+                          {component.managesSchema && (
+                            <Badge variant="outline" className="text-xs">
+                              <Database className="h-3 w-3 mr-1" />
+                              Schema
+                            </Badge>
+                          )}
+                          {component.permissions && component.permissions.length > 0 && (
+                            <Badge variant="outline" className="text-xs">
+                              <Shield className="h-3 w-3 mr-1" />
+                              Permissions
+                            </Badge>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="font-medium">{component.name}</TableCell>
+                      <TableCell className="text-muted-foreground">{component.description}</TableCell>
+                      <TableCell className="text-right">
+                        <Switch
+                          id={`component-${component.id}`}
+                          checked={localStates[component.id] || false}
+                          onCheckedChange={(checked) => handleToggle(component.id, checked)}
+                          disabled={isCheckingSchema}
+                          data-testid={`switch-component-${component.id}`}
+                        />
+                      </TableCell>
+                    </TableRow>
+                    {isExpanded && (
+                      <TableRow
+                        data-testid={`row-component-detail-${component.id}`}
+                        className="bg-muted/30 hover:bg-muted/30"
+                      >
+                        <TableCell colSpan={5} className="p-0">
+                          <div className="p-4 grid gap-4 md:grid-cols-2">
+                            <div className="space-y-2">
+                              <div className="flex items-center gap-2 text-sm font-semibold">
+                                <Database className="h-4 w-4 text-muted-foreground" />
+                                Tables
+                              </div>
+                              {tables.length > 0 ? (
+                                <div className="flex flex-wrap gap-2">
+                                  {tables.map((table) => (
+                                    <Badge
+                                      key={table}
+                                      variant="secondary"
+                                      className="font-mono text-xs"
+                                      data-testid={`badge-table-${component.id}-${table}`}
+                                    >
+                                      {table}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              ) : (
+                                <p className="text-sm text-muted-foreground">
+                                  This component does not manage any database tables.
+                                </p>
+                              )}
+                            </div>
+                            <div className="space-y-2">
+                              <div className="flex items-center gap-2 text-sm font-semibold">
+                                <Shield className="h-4 w-4 text-muted-foreground" />
+                                Permissions
+                              </div>
+                              {permissions.length > 0 ? (
+                                <ul className="space-y-2">
+                                  {permissions.map((perm) => (
+                                    <li
+                                      key={perm.key}
+                                      className="text-sm"
+                                      data-testid={`row-permission-${component.id}-${perm.key}`}
+                                    >
+                                      <div
+                                        className="font-mono text-xs"
+                                        data-testid={`text-permission-key-${component.id}-${perm.key}`}
+                                      >
+                                        {perm.key}
+                                      </div>
+                                      <div
+                                        className="text-muted-foreground"
+                                        data-testid={`text-permission-description-${component.id}-${perm.key}`}
+                                      >
+                                        {perm.description}
+                                      </div>
+                                    </li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <p className="text-sm text-muted-foreground">
+                                  This component does not define any permissions.
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </Fragment>
+                );
+              })}
             </TableBody>
           </Table>
         </div>
