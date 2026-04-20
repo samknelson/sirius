@@ -182,12 +182,7 @@ export function CommInApp({ contactId, onSendSuccess }: CommInAppProps) {
             </div>
 
             <div className="space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                <Label htmlFor="inapp-body">Message</Label>
-                <span className={`text-xs ${bodyCharCount > 500 ? 'text-destructive' : 'text-muted-foreground'}`}>
-                  {bodyCharCount}/500
-                </span>
-              </div>
+              <Label htmlFor="inapp-body">Message</Label>
               <SimpleHtmlEditor
                 value={bodyHtml}
                 onChange={setBodyHtml}
