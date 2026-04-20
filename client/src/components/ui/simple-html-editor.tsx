@@ -91,7 +91,8 @@ const TOKEN_PATTERN = /\{\{([a-zA-Z0-9_.-]+)\}\}/g;
 function buildChipHtml(id: string, tokens: TokenDefinition[]): string {
   const t = tokens.find((x) => x.id === id);
   const label = t?.label ?? id;
-  return `<span data-token="${escapeHtml(id)}" contenteditable="false" class="token-chip" title="{{${escapeHtml(id)}}}">${escapeHtml(label)}</span>`;
+  const safeId = escapeHtml(id);
+  return `<span data-token="${safeId}" contenteditable="false" class="token-chip" title="{{${safeId}}}"><span class="token-chip-label">${escapeHtml(label)}</span><span class="token-chip-remove" data-token-remove="true" role="button" aria-label="Remove ${escapeHtml(label)} token" title="Remove token">\u00D7</span></span>`;
 }
 
 function renderTokensAsChips(html: string, tokens: TokenDefinition[]): string {
@@ -421,12 +422,10 @@ export function SimpleHtmlEditor({
         return;
       }
       replace.deleteContents();
-      const chip = document.createElement('span');
-      chip.setAttribute('data-token', t.id);
-      chip.setAttribute('contenteditable', 'false');
-      chip.setAttribute('title', snippet);
-      chip.className = 'token-chip';
-      chip.textContent = t.label;
+      const tmp = document.createElement('div');
+      tmp.innerHTML = buildChipHtml(t.id, tokens);
+      const chip = tmp.firstChild as HTMLElement | null;
+      if (!chip) return;
       replace.insertNode(chip);
       const after = document.createRange();
       const next = chip.nextSibling;
@@ -457,6 +456,49 @@ export function SimpleHtmlEditor({
     const recent = loadRecent();
     saveRecent([t.id, ...recent.filter((id) => id !== t.id)]);
     closeSlash();
+  };
+
+  const removeChip = (chip: HTMLElement) => {
+    if (!editorRef.current) return;
+    const parent = chip.parentNode;
+    const nextSibling = chip.nextSibling;
+    chip.remove();
+    const sel = window.getSelection();
+    if (sel && parent) {
+      const range = document.createRange();
+      try {
+        if (nextSibling) {
+          range.setStartBefore(nextSibling);
+        } else {
+          range.selectNodeContents(parent);
+          range.collapse(false);
+        }
+        range.collapse(true);
+        sel.removeAllRanges();
+        sel.addRange(range);
+      } catch {
+        /* noop */
+      }
+    }
+    handleInput();
+    editorRef.current.focus();
+  };
+
+  const handleEditorClick = (e: React.MouseEvent) => {
+    if (enableTokens) {
+      const target = e.target as HTMLElement | null;
+      const removeBtn = target?.closest('[data-token-remove]') as HTMLElement | null;
+      if (removeBtn && editorRef.current?.contains(removeBtn)) {
+        const chip = removeBtn.closest('[data-token]') as HTMLElement | null;
+        if (chip && editorRef.current.contains(chip)) {
+          e.preventDefault();
+          e.stopPropagation();
+          removeChip(chip);
+          return;
+        }
+      }
+      detectSlashRich();
+    }
   };
 
   const handleEditorInput = () => {
@@ -608,7 +650,7 @@ export function SimpleHtmlEditor({
           }}
           onKeyDown={handleEditorKeyDown}
           onKeyUp={() => enableTokens && detectSlashRich()}
-          onClick={() => enableTokens && detectSlashRich()}
+          onClick={handleEditorClick}
           data-placeholder={placeholder}
           data-testid={testId}
           suppressContentEditableWarning
@@ -701,7 +743,9 @@ export function SimpleHtmlEditor({
           opacity: 0.8;
         }
         .token-chip {
-          display: inline-block;
+          display: inline-flex;
+          align-items: center;
+          gap: 0.125rem;
           padding: 0 0.375rem;
           margin: 0 1px;
           border-radius: 0.25rem;
@@ -715,6 +759,37 @@ export function SimpleHtmlEditor({
           white-space: nowrap;
           user-select: all;
           cursor: default;
+        }
+        .token-chip-label {
+          user-select: all;
+        }
+        .token-chip-remove {
+          display: none;
+          align-items: center;
+          justify-content: center;
+          width: 1rem;
+          height: 1rem;
+          margin-left: 0.125rem;
+          margin-right: -0.125rem;
+          border-radius: 9999px;
+          font-size: 0.875rem;
+          line-height: 1;
+          color: hsl(var(--muted-foreground));
+          cursor: pointer;
+          user-select: none;
+        }
+        .token-chip:hover .token-chip-remove,
+        .token-chip:focus-within .token-chip-remove {
+          display: inline-flex;
+        }
+        .token-chip-remove:hover {
+          background: hsl(var(--destructive));
+          color: hsl(var(--destructive-foreground));
+        }
+        @media (hover: none) {
+          .token-chip-remove {
+            display: inline-flex;
+          }
         }
       `}</style>
     </div>
