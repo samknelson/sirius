@@ -747,23 +747,24 @@ export function SimpleHtmlEditor({
           align-items: center;
           gap: 0.125rem;
           padding: 1px 0.375rem;
-          margin: 0 1px;
+          margin: 0 2px;
           border-radius: 0.25rem;
-          background: hsl(var(--muted));
-          color: hsl(var(--foreground));
-          border: 1px solid hsl(var(--border));
+          background: #e5e7eb;
+          color: #1f2937;
+          border: 1px solid #9ca3af;
           font-size: 0.8125rem;
           font-weight: 500;
+          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
           line-height: 1.3;
           vertical-align: baseline;
           white-space: nowrap;
           user-select: all;
           cursor: default;
-          box-shadow: 0 1px 0 hsl(var(--border) / 0.5);
         }
         .dark .token-chip {
-          background: hsl(var(--muted));
-          border-color: hsl(var(--border));
+          background: #374151;
+          color: #f3f4f6;
+          border-color: #6b7280;
         }
         .token-chip-label {
           user-select: all;
