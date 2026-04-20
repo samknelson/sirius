@@ -1,7 +1,19 @@
 import type { IStorage } from "../../storage";
 import { getClient } from "../../storage/transaction-context";
-import { workers, employers, employerContacts } from "../../../shared/schema";
-import { eq, inArray } from "drizzle-orm";
+import {
+  workers,
+  employers,
+  employerContacts,
+  contacts,
+  optionsGender,
+  optionsWorkerWs,
+  optionsWorkerMs,
+  bargainingUnits,
+  cardchecks,
+  cardcheckDefinitions,
+  workerStewardAssignments,
+} from "../../../shared/schema";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import {
   buildContextFromSources,
   type TokenContext,
@@ -17,8 +29,27 @@ import {
  */
 async function loadSourceData(storage: IStorage, contactId: string): Promise<TokenSourceData> {
   const data: TokenSourceData = { now: new Date() };
+  const db = getClient();
 
-  const contact = await storage.contacts.getContact(contactId);
+  // Contact (with DOB + gender label resolution).
+  const contactRows = await db
+    .select({
+      id: contacts.id,
+      given: contacts.given,
+      family: contacts.family,
+      displayName: contacts.displayName,
+      email: contacts.email,
+      birthDate: contacts.birthDate,
+      genderId: contacts.gender,
+      genderNota: contacts.genderNota,
+      genderName: optionsGender.name,
+    })
+    .from(contacts)
+    .leftJoin(optionsGender, eq(optionsGender.id, contacts.gender))
+    .where(eq(contacts.id, contactId))
+    .limit(1);
+
+  const contact = contactRows[0];
   if (contact) {
     data.contact = {
       id: contact.id,
@@ -26,10 +57,12 @@ async function loadSourceData(storage: IStorage, contactId: string): Promise<Tok
       family: contact.family ?? null,
       displayName: contact.displayName ?? null,
       email: contact.email ?? null,
+      birthDate: contact.birthDate ?? null,
+      genderName: contact.genderName ?? contact.genderNota ?? null,
     };
   }
 
-  const db = getClient();
+  // Worker (with denormalized refs we need for the new tokens).
   const workerRows = await db
     .select({
       id: workers.id,
@@ -37,14 +70,21 @@ async function loadSourceData(storage: IStorage, contactId: string): Promise<Tok
       siriusId: workers.siriusId,
       homeEmployerId: workers.denormHomeEmployerId,
       employerIds: workers.denormEmployerIds,
+      wsId: workers.denormWsId,
+      msIds: workers.denormMsIds,
+      bargainingUnitId: workers.bargainingUnitId,
     })
     .from(workers)
     .where(eq(workers.contactId, contactId))
     .limit(1);
 
   let employerId: string | null = null;
+  let workerId: string | null = null;
+  let bargainingUnitId: string | null = null;
   if (workerRows.length > 0) {
     const w = workerRows[0];
+    workerId = w.id;
+    bargainingUnitId = w.bargainingUnitId ?? null;
     data.worker = {
       id: w.id,
       given: contact?.given ?? null,
@@ -53,6 +93,79 @@ async function loadSourceData(storage: IStorage, contactId: string): Promise<Tok
       siriusId: w.siriusId ?? null,
     };
     employerId = w.homeEmployerId || (w.employerIds && w.employerIds[0]) || null;
+
+    // Work status name.
+    if (w.wsId) {
+      const wsRows = await db
+        .select({ name: optionsWorkerWs.name })
+        .from(optionsWorkerWs)
+        .where(eq(optionsWorkerWs.id, w.wsId))
+        .limit(1);
+      if (wsRows.length > 0) data.worker.workStatusName = wsRows[0].name;
+    }
+
+    // Member status names (array).
+    if (w.msIds && w.msIds.length > 0) {
+      const msRows = await db
+        .select({ name: optionsWorkerMs.name, sequence: optionsWorkerMs.sequence })
+        .from(optionsWorkerMs)
+        .where(inArray(optionsWorkerMs.id, w.msIds))
+        .orderBy(optionsWorkerMs.sequence);
+      data.worker.memberStatusNames = msRows.map((r) => r.name);
+    }
+
+    // Bargaining unit name.
+    if (bargainingUnitId) {
+      const buRows = await db
+        .select({ name: bargainingUnits.name })
+        .from(bargainingUnits)
+        .where(eq(bargainingUnits.id, bargainingUnitId))
+        .limit(1);
+      if (buRows.length > 0) data.worker.bargainingUnitName = buRows[0].name;
+    }
+
+    // Most recent cardcheck (latest signed_date; pending rows sort last).
+    const ccRows = await db
+      .select({
+        type: cardcheckDefinitions.name,
+        status: cardchecks.status,
+        signedDate: cardchecks.signedDate,
+      })
+      .from(cardchecks)
+      .innerJoin(
+        cardcheckDefinitions,
+        eq(cardcheckDefinitions.id, cardchecks.cardcheckDefinitionId),
+      )
+      .where(eq(cardchecks.workerId, w.id))
+      .orderBy(sql`${cardchecks.signedDate} DESC NULLS LAST`)
+      .limit(1);
+    if (ccRows.length > 0) {
+      data.worker.cardcheckType = ccRows[0].type ?? null;
+      data.worker.cardcheckStatus = ccRows[0].status ?? null;
+      data.worker.cardcheckSignedDate = ccRows[0].signedDate ?? null;
+    }
+
+    // Building rep: a steward assigned to this worker's BU + home employer
+    // (other than the worker themselves).
+    if (employerId && bargainingUnitId) {
+      const repRows = await db
+        .select({ displayName: contacts.displayName })
+        .from(workerStewardAssignments)
+        .innerJoin(workers, eq(workers.id, workerStewardAssignments.workerId))
+        .innerJoin(contacts, eq(contacts.id, workers.contactId))
+        .where(
+          and(
+            eq(workerStewardAssignments.employerId, employerId),
+            eq(workerStewardAssignments.bargainingUnitId, bargainingUnitId),
+            workerId
+              ? sql`${workerStewardAssignments.workerId} <> ${workerId}`
+              : sql`true`,
+          ),
+        )
+        .orderBy(contacts.displayName)
+        .limit(1);
+      if (repRows.length > 0) data.worker.buildingRepName = repRows[0].displayName ?? null;
+    }
   }
 
   if (employerId) {

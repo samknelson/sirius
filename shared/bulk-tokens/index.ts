@@ -16,6 +16,9 @@ export interface TokenSourceContact {
   family?: string | null;
   displayName?: string | null;
   email?: string | null;
+  birthDate?: string | Date | null;
+  /** Resolved gender label (option name, falling back to nota text). */
+  genderName?: string | null;
 }
 
 export interface TokenSourceWorker {
@@ -24,6 +27,20 @@ export interface TokenSourceWorker {
   family?: string | null;
   jobTitle?: string | null;
   siriusId?: number | string | null;
+  /** Display name of options_worker_ws referenced by denormWsId. */
+  workStatusName?: string | null;
+  /** Display names of options_worker_ms referenced by denormMsIds (array). */
+  memberStatusNames?: string[] | null;
+  /** Display name of bargaining_units referenced by bargainingUnitId. */
+  bargainingUnitName?: string | null;
+  /** Most-recent cardcheck definition name (cardcheck_definitions.name). */
+  cardcheckType?: string | null;
+  /** Most-recent cardcheck status (pending|signed|revoked). */
+  cardcheckStatus?: string | null;
+  /** Most-recent cardcheck signed_date. */
+  cardcheckSignedDate?: Date | string | null;
+  /** Display name of the steward assigned to this worker's BU + employer. */
+  buildingRepName?: string | null;
 }
 
 export interface TokenSourceEmployer {
@@ -62,6 +79,18 @@ function fmtDate(d: Date): string {
     month: "short",
     day: "numeric",
   });
+}
+
+function fmtDateLike(v: string | Date | null | undefined): string {
+  if (v == null || v === "") return "";
+  const d = v instanceof Date ? v : new Date(v);
+  if (Number.isNaN(d.getTime())) return "";
+  return fmtDate(d);
+}
+
+function titleCase(s: string | null | undefined): string {
+  if (!s) return "";
+  return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
 }
 
 export const TOKEN_REGISTRY: TokenDefinition[] = [
@@ -152,6 +181,90 @@ export const TOKEN_REGISTRY: TokenDefinition[] = [
     example: "10241",
     resolve: (d) =>
       d.worker?.siriusId == null ? "" : String(d.worker.siriusId),
+  },
+  {
+    id: "worker.dob",
+    scope: "worker",
+    label: "Worker date of birth",
+    description: "Date of birth from the worker's contact record",
+    defaultValue: "",
+    example: "Apr 17, 1987",
+    resolve: (d) => fmtDateLike(d.contact?.birthDate),
+  },
+  {
+    id: "worker.gender",
+    scope: "worker",
+    label: "Worker gender",
+    description: "Gender label from the worker's contact record",
+    defaultValue: "",
+    example: "Female",
+    resolve: (d) => d.contact?.genderName || "",
+  },
+  {
+    id: "worker.workStatus",
+    scope: "worker",
+    label: "Worker work status",
+    description: "Current work status (e.g. Active, Out-of-Work)",
+    defaultValue: "",
+    example: "Active",
+    resolve: (d) => d.worker?.workStatusName || "",
+  },
+  {
+    id: "worker.memberStatus",
+    scope: "worker",
+    label: "Worker member status",
+    description: "Member status (multiple values joined with /)",
+    defaultValue: "",
+    example: "In Good Standing",
+    resolve: (d) =>
+      d.worker?.memberStatusNames && d.worker.memberStatusNames.length > 0
+        ? d.worker.memberStatusNames.join(" / ")
+        : "",
+  },
+  {
+    id: "worker.bargainingUnit",
+    scope: "worker",
+    label: "Worker bargaining unit",
+    description: "Name of the worker's bargaining unit",
+    defaultValue: "",
+    example: "Local 123",
+    resolve: (d) => d.worker?.bargainingUnitName || "",
+  },
+  {
+    id: "worker.cardcheckType",
+    scope: "worker",
+    label: "Worker cardcheck type",
+    description: "Name of the most recent cardcheck definition for the worker",
+    defaultValue: "",
+    example: "Authorization Card",
+    resolve: (d) => d.worker?.cardcheckType || "",
+  },
+  {
+    id: "worker.cardcheckStatus",
+    scope: "worker",
+    label: "Worker cardcheck status",
+    description: "Status of the most recent cardcheck (Pending, Signed, Revoked)",
+    defaultValue: "",
+    example: "Signed",
+    resolve: (d) => titleCase(d.worker?.cardcheckStatus),
+  },
+  {
+    id: "worker.cardcheckSignedDate",
+    scope: "worker",
+    label: "Worker cardcheck signed date",
+    description: "Signed date of the most recent cardcheck",
+    defaultValue: "",
+    example: "Apr 17, 2026",
+    resolve: (d) => fmtDateLike(d.worker?.cardcheckSignedDate),
+  },
+  {
+    id: "worker.buildingRep",
+    scope: "worker",
+    label: "Worker building rep",
+    description: "Steward assigned to this worker's bargaining unit and employer",
+    defaultValue: "",
+    example: "Jamie Rivera",
+    resolve: (d) => d.worker?.buildingRepName || "",
   },
   {
     id: "employer.name",
