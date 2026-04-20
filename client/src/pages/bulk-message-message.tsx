@@ -145,12 +145,27 @@ function PreviewPanel({ messageId, fields, escapeHtmlFields = [] }: { messageId:
       {error && <p className="text-xs text-destructive" data-testid="text-preview-error">{error}</p>}
       {data && (
         <div className="rounded-md border p-3 space-y-3 bg-background" data-testid="panel-preview">
-          {Object.entries(data.rendered).map(([field, r]) => (
-            <div key={field}>
-              <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">{field}</div>
-              <pre className="text-sm whitespace-pre-wrap break-words font-sans" data-testid={`text-preview-${field}`}>{r.output || <span className="text-muted-foreground italic">(empty)</span>}</pre>
-            </div>
-          ))}
+          {Object.entries(data.rendered).map(([field, r]) => {
+            const isHtml = escapeHtmlFields.includes(field);
+            return (
+              <div key={field}>
+                <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">{field}</div>
+                {r.output ? (
+                  isHtml ? (
+                    <div
+                      className="text-sm break-words prose prose-sm max-w-none dark:prose-invert"
+                      data-testid={`text-preview-${field}`}
+                      dangerouslySetInnerHTML={{ __html: r.output }}
+                    />
+                  ) : (
+                    <pre className="text-sm whitespace-pre-wrap break-words font-sans" data-testid={`text-preview-${field}`}>{r.output}</pre>
+                  )
+                ) : (
+                  <pre className="text-sm whitespace-pre-wrap break-words font-sans" data-testid={`text-preview-${field}`}><span className="text-muted-foreground italic">(empty)</span></pre>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
