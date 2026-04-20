@@ -77,6 +77,73 @@ function sanitizeHtml(html: string): string {
   return temp.innerHTML;
 }
 
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+const TOKEN_PATTERN = /\{\{([a-zA-Z0-9_.-]+)\}\}/g;
+
+function buildChipHtml(id: string, tokens: TokenDefinition[]): string {
+  const t = tokens.find((x) => x.id === id);
+  const label = t?.label ?? id;
+  return `<span data-token="${escapeHtml(id)}" contenteditable="false" class="token-chip" title="{{${escapeHtml(id)}}}">${escapeHtml(label)}</span>`;
+}
+
+function renderTokensAsChips(html: string, tokens: TokenDefinition[]): string {
+  const temp = document.createElement('div');
+  temp.innerHTML = html;
+  const walker = document.createTreeWalker(temp, NodeFilter.SHOW_TEXT);
+  const targets: Text[] = [];
+  let n: Node | null = walker.nextNode();
+  while (n) {
+    if ((n.textContent || '').includes('{{')) targets.push(n as Text);
+    n = walker.nextNode();
+  }
+  for (const textNode of targets) {
+    const text = textNode.textContent || '';
+    TOKEN_PATTERN.lastIndex = 0;
+    if (!TOKEN_PATTERN.test(text)) continue;
+    TOKEN_PATTERN.lastIndex = 0;
+    const wrapper = document.createElement('span');
+    let last = 0;
+    let m: RegExpExecArray | null;
+    while ((m = TOKEN_PATTERN.exec(text)) !== null) {
+      if (m.index > last) {
+        wrapper.appendChild(document.createTextNode(text.slice(last, m.index)));
+      }
+      const tmp = document.createElement('div');
+      tmp.innerHTML = buildChipHtml(m[1], tokens);
+      const chip = tmp.firstChild;
+      if (chip) wrapper.appendChild(chip);
+      last = m.index + m[0].length;
+    }
+    if (last < text.length) {
+      wrapper.appendChild(document.createTextNode(text.slice(last)));
+    }
+    const parent = textNode.parentNode;
+    if (!parent) continue;
+    while (wrapper.firstChild) {
+      parent.insertBefore(wrapper.firstChild, textNode);
+    }
+    parent.removeChild(textNode);
+  }
+  return temp.innerHTML;
+}
+
+function serializeChipsToTokens(root: HTMLElement): string {
+  const clone = root.cloneNode(true) as HTMLElement;
+  clone.querySelectorAll('span[data-token]').forEach((el) => {
+    const id = el.getAttribute('data-token') || '';
+    el.replaceWith(document.createTextNode(`{{${id}}}`));
+  });
+  return clone.innerHTML;
+}
+
 const RECENT_KEY = "token-picker-recent";
 const RECENT_MAX = 5;
 
@@ -169,11 +236,12 @@ export function SimpleHtmlEditor({
   useEffect(() => {
     if (editorRef.current && !isFocused && !rawMode) {
       const sanitized = sanitizeHtml(value);
-      if (editorRef.current.innerHTML !== sanitized) {
-        editorRef.current.innerHTML = sanitized;
+      const rendered = enableTokens ? renderTokensAsChips(sanitized, tokens) : sanitized;
+      if (editorRef.current.innerHTML !== rendered) {
+        editorRef.current.innerHTML = rendered;
       }
     }
-  }, [value, isFocused, rawMode]);
+  }, [value, isFocused, rawMode, enableTokens, tokens]);
 
   useEffect(() => {
     if (!rawMode) {
@@ -183,7 +251,10 @@ export function SimpleHtmlEditor({
 
   const handleInput = () => {
     if (editorRef.current) {
-      const sanitized = sanitizeHtml(editorRef.current.innerHTML);
+      const serialized = enableTokens
+        ? serializeChipsToTokens(editorRef.current)
+        : editorRef.current.innerHTML;
+      const sanitized = sanitizeHtml(serialized);
       onChange(sanitized);
     }
   };
@@ -350,10 +421,21 @@ export function SimpleHtmlEditor({
         return;
       }
       replace.deleteContents();
-      const textNode = document.createTextNode(snippet);
-      replace.insertNode(textNode);
+      const chip = document.createElement('span');
+      chip.setAttribute('data-token', t.id);
+      chip.setAttribute('contenteditable', 'false');
+      chip.setAttribute('title', snippet);
+      chip.className = 'token-chip';
+      chip.textContent = t.label;
+      replace.insertNode(chip);
       const after = document.createRange();
-      after.setStartAfter(textNode);
+      const next = chip.nextSibling;
+      const nextText = next && next.nodeType === Node.TEXT_NODE ? (next.textContent || '') : '';
+      if (next && nextText.length > 0 && /^[\s\u00A0]/.test(nextText)) {
+        after.setStart(next, 1);
+      } else {
+        after.setStartAfter(chip);
+      }
       after.collapse(true);
       sel.removeAllRanges();
       sel.addRange(after);
@@ -617,6 +699,22 @@ export function SimpleHtmlEditor({
         }
         [contenteditable] a:hover {
           opacity: 0.8;
+        }
+        .token-chip {
+          display: inline-block;
+          padding: 0 0.375rem;
+          margin: 0 1px;
+          border-radius: 0.25rem;
+          background: hsl(var(--secondary));
+          color: hsl(var(--secondary-foreground));
+          border: 1px solid hsl(var(--border));
+          font-size: 0.8125rem;
+          font-weight: 500;
+          line-height: 1.4;
+          vertical-align: baseline;
+          white-space: nowrap;
+          user-select: all;
+          cursor: default;
         }
       `}</style>
     </div>
