@@ -172,7 +172,7 @@ export function EmployersTable({ employers, isLoading, includeInactive, onToggle
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" size={16} />
             <Input
               type="text"
-              placeholder="Search by Sirius ID, Record ID, or name..."
+              placeholder="Search by Record ID or name..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-10"
@@ -267,11 +267,11 @@ export function EmployersTable({ employers, isLoading, includeInactive, onToggle
                     />
                   </th>
                 )}
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  <div className="flex items-center space-x-2">
-                    <span>Sirius ID</span>
-                  </div>
-                </th>
+                {showCompany && (
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    <span>Company</span>
+                  </th>
+                )}
                 <th 
                   className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider cursor-pointer hover:text-foreground transition-colors"
                   onClick={toggleSort}
@@ -282,11 +282,6 @@ export function EmployersTable({ employers, isLoading, includeInactive, onToggle
                     <ArrowUpDown size={12} />
                   </div>
                 </th>
-                {showCompany && (
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                    <span>Company</span>
-                  </th>
-                )}
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   <span>Status</span>
                 </th>
@@ -317,14 +312,16 @@ export function EmployersTable({ employers, isLoading, includeInactive, onToggle
                       />
                     </td>
                   )}
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span 
-                      className="text-sm font-medium text-muted-foreground"
-                      data-testid={`text-employer-sirius-id-${employer.id}`}
-                    >
-                      {employer.siriusId}
-                    </span>
-                  </td>
+                  {showCompany && (
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span
+                        className="text-sm text-muted-foreground"
+                        data-testid={`text-employer-company-${employer.id}`}
+                      >
+                        {employer.companyName || ""}
+                      </span>
+                    </td>
+                  )}
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center space-x-3">
                       {employer.typeId && employerTypeMap.has(employer.typeId) ? (
@@ -354,16 +351,6 @@ export function EmployersTable({ employers, isLoading, includeInactive, onToggle
                       </span>
                     </div>
                   </td>
-                  {showCompany && (
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span
-                        className="text-sm text-muted-foreground"
-                        data-testid={`text-employer-company-${employer.id}`}
-                      >
-                        {employer.companyName || ""}
-                      </span>
-                    </td>
-                  )}
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span 
                       className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
