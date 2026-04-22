@@ -323,33 +323,12 @@ export function EmployersTable({ employers, isLoading, includeInactive, onToggle
                     </td>
                   )}
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center space-x-3">
-                      {employer.typeId && employerTypeMap.has(employer.typeId) ? (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <div 
-                              className={`w-8 h-8 ${avatarColors[index % avatarColors.length]} rounded-full flex items-center justify-center cursor-help`}
-                              data-testid={`icon-employer-type-${employer.id}`}
-                            >
-                              {renderIcon(employerTypeMap.get(employer.typeId)!.icon, "w-4 h-4")}
-                            </div>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>{employerTypeMap.get(employer.typeId)!.name}</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      ) : (
-                        <div className={`w-8 h-8 ${avatarColors[index % avatarColors.length]} rounded-full flex items-center justify-center`}>
-                          <Building2 size={12} />
-                        </div>
-                      )}
-                      <span 
-                        className="text-sm font-medium text-foreground"
-                        data-testid={`text-employer-name-${employer.id}`}
-                      >
-                        {employer.name}
-                      </span>
-                    </div>
+                    <span
+                      className="text-sm font-medium text-foreground"
+                      data-testid={`text-employer-name-${employer.id}`}
+                    >
+                      {employer.name}
+                    </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span 
