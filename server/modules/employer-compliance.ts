@@ -12,7 +12,7 @@ import {
   employerCompanies,
   companies,
 } from "@shared/schema";
-import { and, eq, inArray, sum } from "drizzle-orm";
+import { and, eq, inArray, sum, sql } from "drizzle-orm";
 import { createBulkParticipantStorage } from "../storage/bulk/participants";
 import { insertBulkMessageSchema } from "@shared/schema/bulk/schema";
 
@@ -24,6 +24,7 @@ interface MonthCell {
   wizardId: string | null;
   status: string | null;
   currentStep: string | null;
+  balanceDelta: string | null;
 }
 
 interface ComplianceRow {
@@ -160,20 +161,61 @@ export function registerEmployerComplianceRoutes(
           }
         }
 
+        const monthlyDeltaMap = new Map<string, Map<string, number>>();
+        if (employerIds.length > 0 && ledgerAccountIds.length > 0) {
+          const monthKeys = monthPeriods.map(
+            (p) => `${p.year}-${String(p.month).padStart(2, "0")}`,
+          );
+          const ymExpr = sql<string>`substring(${ledger.statementYmd}, 1, 7)`;
+          const monthlyRows = await db
+            .select({
+              entityId: ledgerEa.entityId,
+              ym: ymExpr,
+              total: sum(ledger.amount),
+            })
+            .from(ledger)
+            .innerJoin(ledgerEa, eq(ledger.eaId, ledgerEa.id))
+            .where(
+              and(
+                eq(ledgerEa.entityType, "employer"),
+                inArray(ledgerEa.entityId, employerIds),
+                inArray(ledgerEa.accountId, ledgerAccountIds),
+                inArray(ymExpr, monthKeys),
+              ),
+            )
+            .groupBy(ledgerEa.entityId, ymExpr);
+
+          for (const r of monthlyRows) {
+            if (!monthlyDeltaMap.has(r.entityId)) {
+              monthlyDeltaMap.set(r.entityId, new Map());
+            }
+            monthlyDeltaMap
+              .get(r.entityId)!
+              .set(r.ym, r.total ? Number(r.total) : 0);
+          }
+        }
+
         const rows: ComplianceRow[] = activeEmployers.map(({ employer, uploads }) => {
           const sortedUploads = [...uploads].sort((a, b) => {
             const ad = a.createdAt ? new Date(a.createdAt).getTime() : 0;
             const bd = b.createdAt ? new Date(b.createdAt).getTime() : 0;
             return bd - ad;
           });
+          const employerMonthlyDeltas = monthlyDeltaMap.get(employer.id);
           const months: MonthCell[] = monthPeriods.map((p) => {
             const u = sortedUploads.find((up) => up.year === p.year && up.month === p.month);
+            const ymKey = `${p.year}-${String(p.month).padStart(2, "0")}`;
+            const delta = employerMonthlyDeltas?.get(ymKey);
             return {
               year: p.year,
               month: p.month,
               wizardId: u ? u.id : null,
               status: u ? u.status : null,
               currentStep: u ? u.currentStep : null,
+              balanceDelta:
+                ledgerAccountIds.length > 0 && delta !== undefined
+                  ? delta.toFixed(2)
+                  : null,
             };
           });
 

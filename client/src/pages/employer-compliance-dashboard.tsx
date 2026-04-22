@@ -74,6 +74,7 @@ interface MonthCell {
   wizardId: string | null;
   status: string | null;
   currentStep: string | null;
+  balanceDelta: string | null;
 }
 
 interface ComplianceRow {
@@ -729,19 +730,40 @@ export default function EmployerComplianceDashboard() {
                           className="text-center align-middle"
                           data-testid={`cell-${row.employerId}-${m.year}-${m.month}`}
                         >
-                          {m.status ? (
-                            <button
-                              type="button"
-                              className={`text-xs px-2 py-1 rounded border ${statusToVariant(m.status)}`}
-                              onClick={() =>
-                                m.wizardId && setLocation(`/wizards/${m.wizardId}`)
-                              }
-                            >
-                              {m.status.replace("_", " ")}
-                            </button>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">—</span>
-                          )}
+                          <div className="flex flex-col items-center gap-1">
+                            {m.status ? (
+                              <button
+                                type="button"
+                                className={`text-xs px-2 py-1 rounded border ${statusToVariant(m.status)}`}
+                                onClick={() =>
+                                  m.wizardId && setLocation(`/wizards/${m.wizardId}`)
+                                }
+                              >
+                                {m.status.replace("_", " ")}
+                              </button>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">—</span>
+                            )}
+                            {selectedAccountIds.length > 0 && (
+                              <span
+                                className={`text-[11px] tabular-nums ${
+                                  m.balanceDelta === null
+                                    ? "text-muted-foreground"
+                                    : Number(m.balanceDelta) > 0
+                                      ? "text-destructive"
+                                      : Number(m.balanceDelta) < 0
+                                        ? "text-emerald-600"
+                                        : "text-muted-foreground"
+                                }`}
+                                title="Net invoice activity for this month across selected accounts"
+                                data-testid={`delta-${row.employerId}-${m.year}-${m.month}`}
+                              >
+                                {m.balanceDelta === null
+                                  ? "—"
+                                  : Number(m.balanceDelta).toFixed(2)}
+                              </span>
+                            )}
+                          </div>
                         </TableCell>
                       ))}
                       {selectedAccountIds.map((accId) => {
