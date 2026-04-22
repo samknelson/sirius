@@ -1227,6 +1227,14 @@ export default function Header() {
                       </div>
                     </Link>
                   </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/employers/compliance" className="w-full">
+                      <div className="flex items-center cursor-pointer" data-testid="menu-employer-compliance">
+                        <Calendar className="h-4 w-4 mr-2" />
+                        Compliance Dashboard
+                      </div>
+                    </Link>
+                  </DropdownMenuItem>
                   {hasComponent("sitespecific.btu") && (
                     <DropdownMenuItem asChild>
                       <Link href="/sitespecific/btu/employer-map" className="w-full">

@@ -60,6 +60,7 @@ import { registerBargainingUnitsRoutes } from "./modules/bargaining-units";
 import { registerSftpClientDestinationRoutes } from "./modules/sftp-client-destinations";
 import { registerTrustProviderEdiRoutes } from "./modules/trust/provider/edi";
 import { registerBulkMessageRoutes } from "./modules/bulk/messages";
+import { registerEmployerComplianceRoutes } from "./modules/employer-compliance";
 import { registerEmployerRoutes } from "./modules/employers";
 import { registerEmployerPolicyHistoryRoutes } from "./modules/employer-policy-history";
 import { registerWorkerBenefitsScanRoutes } from "./modules/worker-benefits-scan";
@@ -387,6 +388,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register bulk message routes
   registerBulkMessageRoutes(app, requireAuth, requireAccess, storage);
+
+  // Register employer compliance dashboard routes
+  registerEmployerComplianceRoutes(app, requireAuth);
 
   // Register worker steward assignments routes
   registerWorkerStewardAssignmentRoutes(app, requireAuth, requireAccess, storage);

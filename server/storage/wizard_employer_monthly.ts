@@ -40,7 +40,7 @@ export interface WizardEmployerMonthlyStorage {
   listByPeriod(year: number, month: number): Promise<any[]>;
   listByEmployer(employerId: string, year?: number, month?: number): Promise<WizardEmployerMonthly[]>;
   listAllEmployersWithUploads(year: number, month: number, wizardType: string): Promise<EmployerWithUploads[]>;
-  listAllEmployersWithUploadsForRange(year: number, month: number, wizardType: string): Promise<EmployerWithUploads[]>;
+  listAllEmployersWithUploadsForRange(year: number, month: number, wizardType: string, monthsBack?: number): Promise<EmployerWithUploads[]>;
   getMonthlyStats(year: number, month: number, wizardType: string): Promise<EmployerMonthlyStats>;
   findWizards(employerId: string, wizardType: string, year: number, month: number, status?: string | string[]): Promise<any[]>;
   delete(wizardId: string): Promise<boolean>;
@@ -152,12 +152,13 @@ export function createWizardEmployerMonthlyStorage(): WizardEmployerMonthlyStora
       }));
     },
 
-    async listAllEmployersWithUploadsForRange(year: number, month: number, wizardType: string): Promise<EmployerWithUploads[]> {
+    async listAllEmployersWithUploadsForRange(year: number, month: number, wizardType: string, monthsBack: number = 5): Promise<EmployerWithUploads[]> {
       const client = getClient();
       const allEmployers = await client.select().from(employers);
+      const span = Math.max(1, Math.min(24, monthsBack));
       
       const monthPeriods: Array<{ year: number; month: number }> = [];
-      for (let i = 4; i >= 0; i--) {
+      for (let i = span - 1; i >= 0; i--) {
         const targetDate = new Date(year, month - 1 - i, 1);
         monthPeriods.push({
           year: targetDate.getFullYear(),

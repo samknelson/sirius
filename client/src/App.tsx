@@ -93,6 +93,7 @@ const EmployerWorkers = lazy(() => import("@/pages/employer-workers"));
 const EmployerContacts = lazy(() => import("@/pages/employer-contacts"));
 const EmployerWizards = lazy(() => import("@/pages/employer-wizards"));
 const EmployersMonthlyUploads = lazy(() => import("@/pages/employers-monthly-uploads"));
+const EmployerComplianceDashboard = lazy(() => import("@/pages/employer-compliance-dashboard"));
 const AllEmployerContacts = lazy(() => import("@/pages/all-employer-contacts"));
 const EmployerContactView = lazy(() => import("@/pages/employer-contact-view"));
 const EmployerContactEdit = lazy(() => import("@/pages/employer-contact-edit"));
@@ -913,6 +914,14 @@ function Router() {
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <EmployersMonthlyUploads />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/employers/compliance">
+        <ProtectedRoute permission="staff">
+          <AuthenticatedLayout>
+            <EmployerComplianceDashboard />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
