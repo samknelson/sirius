@@ -55,7 +55,7 @@ export async function validateCrewDelete(crewId: string): Promise<void> {
   const assignmentCount = lockedRows.rows.length;
   
   if (assignmentCount > 0) {
-    const { DomainValidationError } = await import('./utils/validation');
+    const { DomainValidationError } = await import('../utils/validation');
     throw new DomainValidationError([{
       field: 'id',
       code: 'HAS_ASSIGNMENTS',
