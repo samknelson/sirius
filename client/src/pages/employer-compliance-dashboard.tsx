@@ -202,7 +202,14 @@ export default function EmployerComplianceDashboard() {
   const { data, isLoading, error, refetch } = useQuery<DashboardResponse>({
     queryKey: [
       "/api/employer-compliance/dashboard",
-      { year, month, wizardType, monthsBack: 6, ledgerAccountIds: selectedAccountIds.join(",") },
+      {
+        year,
+        month,
+        wizardType,
+        monthsBack: 6,
+        ledgerAccountIds: selectedAccountIds.join(","),
+        companyId: companyFilter !== "all" ? companyFilter : "",
+      },
     ],
     enabled: dashboardEnabled,
   });
@@ -360,6 +367,8 @@ export default function EmployerComplianceDashboard() {
       const missing = Array.isArray(resp.employersWithoutContacts)
         ? resp.employersWithoutContacts.length
         : 0;
+      const failed = Number(resp.participantFailures ?? 0);
+      const warn = missing > 0 || failed > 0;
       toast({
         title: "Bulk message draft created",
         description:
@@ -370,8 +379,11 @@ export default function EmployerComplianceDashboard() {
           }.` +
           (missing > 0
             ? ` ${missing} employer${missing === 1 ? " has" : "s have"} no matching contacts.`
+            : "") +
+          (failed > 0
+            ? ` ${failed} participant write${failed === 1 ? "" : "s"} failed — review the draft.`
             : ""),
-        variant: missing > 0 ? "destructive" : undefined,
+        variant: warn ? "destructive" : undefined,
       });
       setBulkOpen(false);
       setBulkName("");

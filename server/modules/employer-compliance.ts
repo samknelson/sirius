@@ -49,7 +49,7 @@ export function registerEmployerComplianceRoutes(
     requireAccess("staff"),
     async (req, res) => {
       try {
-        const { wizardType, year, month, monthsBack } = req.query;
+        const { wizardType, year, month, monthsBack, companyId } = req.query;
         const ledgerAccountIdsParam = req.query.ledgerAccountIds;
 
         const yearNum = Number(year);
@@ -99,13 +99,13 @@ export function registerEmployerComplianceRoutes(
           monthPeriods.push({ year: d.getFullYear(), month: d.getMonth() + 1 });
         }
 
-        const activeEmployers = employersWithUploads.filter((e) => e.employer.isActive);
-        const employerIds = activeEmployers.map((e) => e.employer.id);
+        const allActiveEmployers = employersWithUploads.filter((e) => e.employer.isActive);
+        const initialEmployerIds = allActiveEmployers.map((e) => e.employer.id);
 
         const db = getClient();
 
         let companyMap = new Map<string, { id: string; name: string }>();
-        if (employerIds.length > 0) {
+        if (initialEmployerIds.length > 0) {
           const companyRows = await db
             .select({
               employerId: employerCompanies.employerId,
@@ -114,7 +114,7 @@ export function registerEmployerComplianceRoutes(
             })
             .from(employerCompanies)
             .innerJoin(companies, eq(employerCompanies.companyId, companies.id))
-            .where(inArray(employerCompanies.employerId, employerIds));
+            .where(inArray(employerCompanies.employerId, initialEmployerIds));
           for (const row of companyRows) {
             companyMap.set(row.employerId, {
               id: row.companyId,
@@ -122,6 +122,16 @@ export function registerEmployerComplianceRoutes(
             });
           }
         }
+
+        const companyFilter = typeof companyId === "string" ? companyId : null;
+        const activeEmployers = companyFilter
+          ? allActiveEmployers.filter((e) => {
+              const m = companyMap.get(e.employer.id);
+              if (companyFilter === "__none__") return !m;
+              return m?.id === companyFilter;
+            })
+          : allActiveEmployers;
+        const employerIds = activeEmployers.map((e) => e.employer.id);
 
         const balanceMap = new Map<string, Map<string, string>>();
         if (employerIds.length > 0 && ledgerAccountIds.length > 0) {
@@ -338,23 +348,34 @@ export function registerEmployerComplianceRoutes(
         const participantStorage = createBulkParticipantStorage();
         const mediums = parsed.data.medium;
 
-        const tasks: Array<Promise<boolean>> = [];
+        const tasks: Array<Promise<{ ok: boolean; reason?: string }>> = [];
         for (const contactId of contactIds) {
           for (const m of mediums) {
             tasks.push(
               participantStorage
                 .create({ messageId: bulk.id, contactId, medium: m })
-                .then(() => true)
-                .catch(() => false),
+                .then(() => ({ ok: true }))
+                .catch((err) => ({
+                  ok: false,
+                  reason: err instanceof Error ? err.message : "unknown",
+                })),
             );
           }
         }
         const results = await Promise.all(tasks);
-        const participantsCreated = results.filter(Boolean).length;
+        const participantsCreated = results.filter((r) => r.ok).length;
+        const expected = contactIds.length * mediums.length;
+        const failures = results.filter((r) => !r.ok);
+        const uniqueViolations = failures.filter(
+          (r) => r.reason && /unique|duplicate/i.test(r.reason),
+        ).length;
+        const realFailures = failures.length - uniqueViolations;
 
         res.status(201).json({
           bulkMessageId: bulk.id,
           participantsCreated,
+          participantsExpected: expected,
+          participantFailures: realFailures,
           contactCount: contactIds.length,
           employerCount: employerIdList.length,
           employersWithoutContacts,
