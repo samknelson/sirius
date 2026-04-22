@@ -50,9 +50,12 @@ type StatusFilter =
   | "missing_current"
   | "incomplete"
   | "completed"
-  | "any_overdue";
+  | "any_overdue"
+  | "missing_last_2"
+  | "missing_last_3"
+  | "missing_last_6";
 
-type BalanceFilter = "all" | "positive" | "negative" | "nonzero";
+type BalanceFilter = "all" | "positive" | "negative" | "nonzero" | "threshold";
 
 interface ContactTypeOption {
   id: string;
@@ -156,6 +159,9 @@ export default function EmployerComplianceDashboard() {
   const [balanceFilter, setBalanceFilter] = useState<BalanceFilter>(
     () => (readQueryParam("balance") as BalanceFilter) || "all",
   );
+  const [balanceThreshold, setBalanceThreshold] = useState<string>(
+    () => readQueryParam("balanceMin") ?? "",
+  );
 
   const [selectedEmployerIds, setSelectedEmployerIds] = useState<Set<string>>(new Set());
   const [selectedContactTypeIds, setSelectedContactTypeIds] = useState<string[]>([]);
@@ -211,6 +217,9 @@ export default function EmployerComplianceDashboard() {
     if (nameSearch) params.set("q", nameSearch);
     if (statusFilter !== "all") params.set("status", statusFilter);
     if (balanceFilter !== "all") params.set("balance", balanceFilter);
+    if (balanceFilter === "threshold" && balanceThreshold) {
+      params.set("balanceMin", balanceThreshold);
+    }
     const qs = params.toString();
     const newUrl = `/employers/compliance${qs ? `?${qs}` : ""}`;
     if (window.location.pathname + window.location.search !== newUrl) {
@@ -225,6 +234,7 @@ export default function EmployerComplianceDashboard() {
     nameSearch,
     statusFilter,
     balanceFilter,
+    balanceThreshold,
   ]);
 
   const monthPeriods = data?.monthPeriods ?? [];
@@ -251,6 +261,8 @@ export default function EmployerComplianceDashboard() {
       }
       if (statusFilter !== "all") {
         const last = row.months[row.months.length - 1];
+        const isMissing = (m: MonthCell | undefined) =>
+          !m || !m.status || (m.status !== "completed" && m.status !== "cancelled");
         if (statusFilter === "missing_current") {
           if (last && last.status) return false;
         } else if (statusFilter === "completed") {
@@ -258,10 +270,16 @@ export default function EmployerComplianceDashboard() {
         } else if (statusFilter === "incomplete") {
           if (!last || last.status === "completed") return false;
         } else if (statusFilter === "any_overdue") {
-          const hasOverdue = row.months
-            .slice(0, -1)
-            .some((m) => !m.status || (m.status !== "completed" && m.status !== "cancelled"));
+          const hasOverdue = row.months.slice(0, -1).some(isMissing);
           if (!hasOverdue) return false;
+        } else if (statusFilter === "missing_last_2") {
+          const window = row.months.slice(-2);
+          if (!window.some(isMissing)) return false;
+        } else if (statusFilter === "missing_last_3") {
+          const window = row.months.slice(-3);
+          if (!window.some(isMissing)) return false;
+        } else if (statusFilter === "missing_last_6") {
+          if (!row.months.some(isMissing)) return false;
         }
       }
       if (balanceFilter !== "all" && selectedAccountIds.length > 0) {
@@ -269,10 +287,23 @@ export default function EmployerComplianceDashboard() {
         if (balanceFilter === "positive" && !(total > 0)) return false;
         if (balanceFilter === "negative" && !(total < 0)) return false;
         if (balanceFilter === "nonzero" && total === 0) return false;
+        if (balanceFilter === "threshold") {
+          const min = Number(balanceThreshold);
+          if (!Number.isFinite(min)) return false;
+          if (!(total >= min)) return false;
+        }
       }
       return true;
     });
-  }, [rows, nameSearch, companyFilter, statusFilter, balanceFilter, selectedAccountIds.length]);
+  }, [
+    rows,
+    nameSearch,
+    companyFilter,
+    statusFilter,
+    balanceFilter,
+    balanceThreshold,
+    selectedAccountIds.length,
+  ]);
 
   const allVisibleSelected =
     filteredRows.length > 0 && filteredRows.every((r) => selectedEmployerIds.has(r.employerId));
@@ -509,6 +540,9 @@ export default function EmployerComplianceDashboard() {
                 <SelectContent>
                   <SelectItem value="all">All</SelectItem>
                   <SelectItem value="missing_current">Missing current month</SelectItem>
+                  <SelectItem value="missing_last_2">Missing in last 2 months</SelectItem>
+                  <SelectItem value="missing_last_3">Missing in last 3 months</SelectItem>
+                  <SelectItem value="missing_last_6">Missing in last 6 months</SelectItem>
                   <SelectItem value="incomplete">Current month not completed</SelectItem>
                   <SelectItem value="completed">Current month completed</SelectItem>
                   <SelectItem value="any_overdue">Any prior month overdue</SelectItem>
@@ -517,21 +551,35 @@ export default function EmployerComplianceDashboard() {
             </div>
             <div>
               <Label className="mb-1 block">Balance</Label>
-              <Select
-                value={balanceFilter}
-                onValueChange={(v) => setBalanceFilter(v as BalanceFilter)}
-                disabled={selectedAccountIds.length === 0}
-              >
-                <SelectTrigger data-testid="select-balance-filter">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All</SelectItem>
-                  <SelectItem value="positive">Outstanding (&gt; 0)</SelectItem>
-                  <SelectItem value="negative">Credit (&lt; 0)</SelectItem>
-                  <SelectItem value="nonzero">Non-zero</SelectItem>
-                </SelectContent>
-              </Select>
+              <div className="flex gap-2">
+                <Select
+                  value={balanceFilter}
+                  onValueChange={(v) => setBalanceFilter(v as BalanceFilter)}
+                  disabled={selectedAccountIds.length === 0}
+                >
+                  <SelectTrigger data-testid="select-balance-filter">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All</SelectItem>
+                    <SelectItem value="positive">Outstanding (&gt; 0)</SelectItem>
+                    <SelectItem value="negative">Credit (&lt; 0)</SelectItem>
+                    <SelectItem value="nonzero">Non-zero</SelectItem>
+                    <SelectItem value="threshold">≥ threshold</SelectItem>
+                  </SelectContent>
+                </Select>
+                {balanceFilter === "threshold" && (
+                  <Input
+                    type="number"
+                    step="0.01"
+                    placeholder="Min"
+                    className="w-24"
+                    value={balanceThreshold}
+                    onChange={(e) => setBalanceThreshold(e.target.value)}
+                    data-testid="input-balance-threshold"
+                  />
+                )}
+              </div>
             </div>
           </div>
 

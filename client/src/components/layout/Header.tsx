@@ -1227,14 +1227,6 @@ export default function Header() {
                       </div>
                     </Link>
                   </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <Link href="/employers/compliance" className="w-full">
-                      <div className="flex items-center cursor-pointer" data-testid="menu-employer-compliance">
-                        <Calendar className="h-4 w-4 mr-2" />
-                        Compliance Dashboard
-                      </div>
-                    </Link>
-                  </DropdownMenuItem>
                   {hasComponent("sitespecific.btu") && (
                     <DropdownMenuItem asChild>
                       <Link href="/sitespecific/btu/employer-map" className="w-full">
@@ -1481,6 +1473,16 @@ export default function Header() {
                         <div className="flex items-center cursor-pointer" data-testid="menu-cardcheck-report">
                           <FileCheck className="h-4 w-4 mr-2" />
                           Card Check Report
+                        </div>
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
+                  {hasPermission("staff") && hasComponent("ledger") && (
+                    <DropdownMenuItem asChild>
+                      <Link href="/employers/compliance" className="w-full">
+                        <div className="flex items-center cursor-pointer" data-testid="menu-employer-compliance">
+                          <FileCheck className="h-4 w-4 mr-2" />
+                          Employer Compliance
                         </div>
                       </Link>
                     </DropdownMenuItem>

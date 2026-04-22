@@ -919,7 +919,7 @@ function Router() {
       </Route>
 
       <Route path="/employers/compliance">
-        <ProtectedRoute permission="staff">
+        <ProtectedRoute permission="staff" component="ledger">
           <AuthenticatedLayout>
             <EmployerComplianceDashboard />
           </AuthenticatedLayout>

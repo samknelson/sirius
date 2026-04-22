@@ -1,6 +1,7 @@
 import type { Express, Request, Response } from "express";
 import { storage } from "../storage";
 import { requireAccess } from "../services/access-policy-evaluator";
+import { requireComponent } from "./components";
 import { getClient } from "../storage/transaction-context";
 import {
   ledgerEa,
@@ -44,6 +45,7 @@ export function registerEmployerComplianceRoutes(
   app.get(
     "/api/employer-compliance/dashboard",
     requireAuth,
+    requireComponent("ledger"),
     requireAccess("staff"),
     async (req, res) => {
       try {
@@ -204,6 +206,7 @@ export function registerEmployerComplianceRoutes(
   app.post(
     "/api/employer-compliance/resolve-contacts",
     requireAuth,
+    requireComponent("ledger"),
     requireAccess("bulk.edit"),
     async (req, res) => {
       try {
@@ -273,6 +276,7 @@ export function registerEmployerComplianceRoutes(
   app.post(
     "/api/employer-compliance/queue-bulk",
     requireAuth,
+    requireComponent("ledger"),
     requireAccess("bulk.edit"),
     async (req, res) => {
       try {
