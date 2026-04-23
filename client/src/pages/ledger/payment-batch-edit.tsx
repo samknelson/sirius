@@ -225,16 +225,12 @@ function BatchEditContent() {
                 </a>
               )}
               {attachmentFileId && attachment?.mimeType === "application/pdf" && (
-                <object
-                  data={`/api/files/${attachmentFileId}/download`}
-                  type="application/pdf"
-                  className="w-full h-96 mt-2 rounded border"
+                <iframe
+                  src={`/api/files/${attachmentFileId}/download#view=FitH`}
+                  title={attachment?.fileName || "Batch attachment"}
+                  className="w-full h-96 mt-2 rounded border bg-muted"
                   data-testid="embed-attachment-pdf-preview"
-                >
-                  <p className="text-sm text-muted-foreground p-4">
-                    PDF preview not available in this browser.
-                  </p>
-                </object>
+                />
               )}
             </div>
 

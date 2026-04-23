@@ -216,16 +216,12 @@ function BatchDetailsContent() {
                         />
                       </a>
                     ) : attachment?.mimeType === "application/pdf" ? (
-                      <object
-                        data={`/api/files/${batch.attachmentFileId}/download`}
-                        type="application/pdf"
-                        className="w-full h-[600px] rounded border"
+                      <iframe
+                        src={`/api/files/${batch.attachmentFileId}/download#view=FitH`}
+                        title={attachment?.fileName || "Batch attachment"}
+                        className="w-full h-[600px] rounded border bg-muted"
                         data-testid="embed-batch-attachment-pdf"
-                      >
-                        <p className="text-muted-foreground p-4">
-                          PDF preview not available in this browser.
-                        </p>
-                      </object>
+                      />
                     ) : null}
                     <a
                       href={`/api/files/${batch.attachmentFileId}/download`}
