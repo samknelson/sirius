@@ -70,6 +70,8 @@ export default function AddressManagement({ workerId, contactId, canEdit = true 
   const [editingAddress, setEditingAddress] = useState<ContactPostal | null>(null);
   const [editFriendlyName, setEditFriendlyName] = useState("");
   const [editIsPrimary, setEditIsPrimary] = useState(false);
+  const [editLatitude, setEditLatitude] = useState<string>("");
+  const [editLongitude, setEditLongitude] = useState<string>("");
   const [viewingAddress, setViewingAddress] = useState<ContactPostal | null>(null);
   const [jsonViewAddress, setJsonViewAddress] = useState<ContactPostal | null>(null);
   const [postalOptinAddress, setPostalOptinAddress] = useState<ContactPostal | null>(null);
@@ -319,6 +321,8 @@ export default function AddressManagement({ workerId, contactId, canEdit = true 
     setEditingAddress(address);
     setEditFriendlyName(address.friendlyName ?? "");
     setEditIsPrimary(!!address.isPrimary);
+    setEditLatitude(address.latitude != null ? String(address.latitude) : "");
+    setEditLongitude(address.longitude != null ? String(address.longitude) : "");
   };
 
   const handleDelete = (addressId: string) => {
@@ -391,12 +395,32 @@ export default function AddressManagement({ workerId, contactId, canEdit = true 
   const handleEditMetadataSubmit = () => {
     if (!editingAddress) return;
     const trimmed = editFriendlyName.trim();
-    const updates: Partial<AddressFormData> = {
+    const updates: Partial<AddressFormData> & { latitude?: number; longitude?: number } = {
       friendlyName: trimmed.length > 0 ? trimmed : undefined,
     };
     // Only include isPrimary when toggled to true (avoid demoting via PUT)
     if (editIsPrimary && !editingAddress.isPrimary) {
       updates.isPrimary = true;
+    }
+    // Lat/lng are mutable metadata. Empty input leaves the existing value alone;
+    // a malformed number aborts the save with a toast.
+    const latStr = editLatitude.trim();
+    const lngStr = editLongitude.trim();
+    if (latStr.length > 0) {
+      const n = Number(latStr);
+      if (!Number.isFinite(n) || n < -90 || n > 90) {
+        toast({ title: "Invalid latitude", description: "Latitude must be a number between -90 and 90.", variant: "destructive" });
+        return;
+      }
+      updates.latitude = n;
+    }
+    if (lngStr.length > 0) {
+      const n = Number(lngStr);
+      if (!Number.isFinite(n) || n < -180 || n > 180) {
+        toast({ title: "Invalid longitude", description: "Longitude must be a number between -180 and 180.", variant: "destructive" });
+        return;
+      }
+      updates.longitude = n;
     }
     updateAddressMutation.mutate({ id: editingAddress.id, updates });
   };
@@ -658,6 +682,36 @@ export default function AddressManagement({ workerId, contactId, canEdit = true 
                   data-testid="input-edit-friendly-name"
                 />
               </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-latitude">Latitude</Label>
+                  <Input
+                    id="edit-latitude"
+                    type="text"
+                    inputMode="decimal"
+                    value={editLatitude}
+                    onChange={(e) => setEditLatitude(e.target.value)}
+                    placeholder="-90 to 90"
+                    data-testid="input-edit-latitude"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-longitude">Longitude</Label>
+                  <Input
+                    id="edit-longitude"
+                    type="text"
+                    inputMode="decimal"
+                    value={editLongitude}
+                    onChange={(e) => setEditLongitude(e.target.value)}
+                    placeholder="-180 to 180"
+                    data-testid="input-edit-longitude"
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Address lines are immutable on edit. To change the street, city, state, postal code, or country, add a new address — the old one will be retained for history.
+              </p>
 
               {!editingAddress.isPrimary && (
                 <div className="flex items-center justify-between">

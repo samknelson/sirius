@@ -1,5 +1,5 @@
 import { sql, relations } from "drizzle-orm";
-import { pgTable, pgEnum, text, varchar, boolean, timestamp, date, primaryKey, jsonb, doublePrecision, integer, unique, serial, index, uniqueIndex, numeric } from "drizzle-orm/pg-core";
+import { pgTable, pgEnum, text, varchar, boolean, timestamp, date, primaryKey, jsonb, doublePrecision, integer, unique, serial, index, uniqueIndex, numeric, check } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -577,7 +577,23 @@ export const contactPostal = pgTable("contact_postal", {
   longitude: doublePrecision("longitude"),
   accuracy: text("accuracy"),
   createdAt: timestamp("created_at").default(sql`now()`).notNull(),
-});
+}, (table) => ({
+  chkSource: check(
+    "chk_source",
+    sql`${table.source} IN ('worker_self', 'employer_feed', 'admin', 'import', 'system')`
+  ),
+  chkDeliverabilityStatus: check(
+    "chk_deliverability_status",
+    sql`${table.deliverabilityStatus} IN ('unknown', 'verified', 'undeliverable', 'vacant', 'returned_mail')`
+  ),
+  idxContactId: index("idx_contact_postal_contact_id").on(table.contactId),
+  idxContactPrimary: index("idx_contact_postal_contact_primary")
+    .on(table.contactId, table.isPrimary)
+    .where(sql`${table.isActive} = true`),
+  idxNeedsReview: index("idx_contact_postal_needs_review")
+    .on(table.needsReview)
+    .where(sql`${table.needsReview} = true`),
+}));
 
 export const phoneNumbers = pgTable("contact_phone", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
