@@ -5,6 +5,5 @@ import "./003_rename_source_nid_to_external_id";
 import "./004_add_clerk_auth_provider_type";
 import "./005_add_edls_sheet_job_group";
 import "./002_drop_replit_user_id";
-import "./006_address_management";
 
 export { runMigrations, getMigrationStatus, getMigrations } from "../../server/services/migration-runner";
