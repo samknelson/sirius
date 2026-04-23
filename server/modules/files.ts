@@ -187,8 +187,12 @@ export function registerFileRoutes(
 
       const fileContent = await objectStorageService.downloadFile(file.storagePath);
       
-      res.setHeader('Content-Type', file.mimeType || 'application/octet-stream');
-      res.setHeader('Content-Disposition', `attachment; filename="${file.fileName}"`);
+      const safeName = file.fileName.replace(/"/g, '');
+      const mime = file.mimeType || 'application/octet-stream';
+      const inlineEligible = mime.startsWith('image/') || mime === 'application/pdf';
+      const disposition = req.query.download === '1' || !inlineEligible ? 'attachment' : 'inline';
+      res.setHeader('Content-Type', mime);
+      res.setHeader('Content-Disposition', `${disposition}; filename="${safeName}"`);
       res.setHeader('Content-Length', file.size);
       res.send(fileContent);
     } catch (error) {
