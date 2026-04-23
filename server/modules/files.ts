@@ -110,7 +110,7 @@ export function registerFileRoutes(
           storagePath: uploadResult.storagePath,
           mimeType: req.file.mimetype,
           size: uploadResult.size,
-          uploadedBy: (req.user as any).id,
+          uploadedBy: context.user?.id,
           entityType: entityType || null,
           entityId: entityId || null,
           accessLevel: accessLevel,
