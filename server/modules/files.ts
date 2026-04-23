@@ -75,6 +75,18 @@ export function registerFileRoutes(
             });
             return res.status(403).json({ message: "Insufficient permissions to upload to this entity" });
           }
+
+          // Per-entity MIME whitelist. Batch attachments are deposit slips / check
+          // images / wire confirmations, so we only allow images and PDFs.
+          const entityMimeWhitelist: Record<string, RegExp> = {
+            ledger_payment_batch: /^(image\/.+|application\/pdf)$/,
+          };
+          const allowedMime = entityMimeWhitelist[entityType];
+          if (allowedMime && !allowedMime.test(req.file.mimetype)) {
+            return res.status(400).json({
+              message: `File type ${req.file.mimetype} is not allowed for ${entityType}. Allowed: image/* or application/pdf.`,
+            });
+          }
         } else if (entityType || entityId) {
           // Partial entity context provided - require both
           return res.status(400).json({ message: "Both entityType and entityId are required for entity-scoped uploads" });
