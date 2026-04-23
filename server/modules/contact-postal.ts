@@ -237,6 +237,9 @@ export function registerContactPostalRoutes(
         deliverabilityStatus: _ds,
         lastVerifiedAt: _lv,
         needsReview: _nr,
+        // isActive is owned by the dedicated soft-delete endpoint (DELETE /api/addresses/:id);
+        // strip it here so a metadata PUT cannot deactivate or revive a row outside that audit path.
+        isActive: _ia,
         ...safeBody
       } = req.body;
       const updateData = insertContactPostalSchema.partial().omit({ contactId: true }).parse({

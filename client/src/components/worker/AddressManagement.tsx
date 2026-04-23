@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Edit, Trash2, MapPin, Star, Eye, Code, CheckCircle, AlertCircle, Copy, XCircle, Loader2, Mail, ShieldAlert, User as UserIcon, Building2, Database, Settings as SettingsIcon } from "lucide-react";
+import { Plus, Edit, Trash2, MapPin, Star, Eye, Code, CheckCircle, AlertCircle, Copy, XCircle, Loader2, Mail, ShieldAlert, User as UserIcon, Building2, Database, Settings as SettingsIcon, type LucideIcon } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { apiRequest } from "@/lib/queryClient";
 import { UnifiedAddressInput } from "@/components/ui/unified-address-input";
@@ -337,7 +337,7 @@ export default function AddressManagement({ workerId, contactId, canEdit = true 
 
   const getSourceBadge = (source?: string | null) => {
     if (!source) return null;
-    const map: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline"; icon: any }> = {
+    const map: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline"; icon: LucideIcon }> = {
       worker_self: { label: "Worker", variant: "default", icon: UserIcon },
       employer_feed: { label: "Employer", variant: "secondary", icon: Building2 },
       admin: { label: "Admin", variant: "outline", icon: SettingsIcon },
@@ -356,7 +356,7 @@ export default function AddressManagement({ workerId, contactId, canEdit = true 
 
   const getDeliverabilityBadge = (status?: string | null) => {
     if (!status || status === "unknown") return null;
-    const map: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline"; icon: any }> = {
+    const map: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline"; icon: LucideIcon }> = {
       verified: { label: "Verified", variant: "default", icon: CheckCircle },
       undeliverable: { label: "Undeliverable", variant: "destructive", icon: XCircle },
       vacant: { label: "Vacant", variant: "destructive", icon: XCircle },
@@ -430,7 +430,7 @@ export default function AddressManagement({ workerId, contactId, canEdit = true 
       return null;
     }
 
-    const accuracyMap: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline"; icon: any }> = {
+    const accuracyMap: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline"; icon: LucideIcon }> = {
       ROOFTOP: { label: "Rooftop", variant: "default", icon: CheckCircle },
       RANGE_INTERPOLATED: { label: "Range Interpolated", variant: "secondary", icon: MapPin },
       GEOMETRIC_CENTER: { label: "Geometric Center", variant: "outline", icon: MapPin },
