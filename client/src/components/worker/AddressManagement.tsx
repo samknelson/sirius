@@ -53,7 +53,17 @@ interface AddressManagementProps {
   canEdit?: boolean;
 }
 
-interface AddressFormData extends Omit<InsertContactPostal, 'contactId'> {}
+interface AddressFormData {
+  friendlyName?: string;
+  street: string;
+  city: string;
+  state: string;
+  postalCode: string;
+  country: string;
+  isPrimary: boolean;
+  isActive: boolean;
+  validationResponse?: any;
+}
 
 export default function AddressManagement({ workerId, contactId, canEdit = true }: AddressManagementProps) {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
@@ -171,9 +181,12 @@ export default function AddressManagement({ workerId, contactId, canEdit = true 
   });
 
   // Verify address mutation for postal opt-in
+  // Passing addressId lets the server update deliverability_status / last_verified_at
+  // on the contact_postal row and run primary auto-promotion side-effects on terminal status.
   const verifyAddressMutation = useMutation({
     mutationFn: async (address: ContactPostal) => {
       const response = await apiRequest("POST", "/api/postal/verify-address", {
+        addressId: address.id,
         addressLine1: address.street,
         city: address.city,
         state: address.state,
@@ -187,6 +200,8 @@ export default function AddressManagement({ workerId, contactId, canEdit = true 
       if (result.valid && result.canonicalAddress) {
         queryClient.invalidateQueries({ queryKey: ["/api/postal-optin", result.canonicalAddress] });
       }
+      // Refresh the addresses list to surface server-side deliverability/primary updates.
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts", contactId, "addresses"] });
     },
     onError: (error: Error) => {
       toast({
@@ -375,8 +390,9 @@ export default function AddressManagement({ workerId, contactId, canEdit = true 
 
   const handleEditMetadataSubmit = () => {
     if (!editingAddress) return;
+    const trimmed = editFriendlyName.trim();
     const updates: Partial<AddressFormData> = {
-      friendlyName: editFriendlyName.trim() || null,
+      friendlyName: trimmed.length > 0 ? trimmed : undefined,
     };
     // Only include isPrimary when toggled to true (avoid demoting via PUT)
     if (editIsPrimary && !editingAddress.isPrimary) {
@@ -513,9 +529,9 @@ export default function AddressManagement({ workerId, contactId, canEdit = true 
                       {!address.isActive && (
                         <Badge variant="secondary">Inactive</Badge>
                       )}
-                      {getSourceBadge((address as any).source)}
-                      {getDeliverabilityBadge((address as any).deliverabilityStatus)}
-                      {(address as any).needsReview && (
+                      {getSourceBadge(address.source)}
+                      {getDeliverabilityBadge(address.deliverabilityStatus)}
+                      {address.needsReview && (
                         <Badge variant="destructive" className="flex items-center gap-1">
                           <ShieldAlert size={12} />
                           <span>Needs Review</span>
@@ -567,7 +583,7 @@ export default function AddressManagement({ workerId, contactId, canEdit = true 
                         <Edit size={14} />
                       </Button>
                     )}
-                    {canEdit && address.isActive && !["undeliverable", "vacant", "returned_mail"].includes(((address as any).deliverabilityStatus) ?? "") && (
+                    {canEdit && address.isActive && !["undeliverable", "vacant", "returned_mail"].includes(address.deliverabilityStatus ?? "") && (
                       <Button
                         variant="ghost"
                         size="sm"

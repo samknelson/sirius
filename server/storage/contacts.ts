@@ -262,7 +262,7 @@ export function createAddressStorage(): AddressStorage {
 
       const [address] = await client
         .insert(contactPostal)
-        .values(data as any)
+        .values(data)
         .returning();
       return address;
     },
@@ -303,7 +303,7 @@ export function createAddressStorage(): AddressStorage {
 
       const [address] = await client
         .update(contactPostal)
-        .set({ ...sanitized, updatedAt: new Date() } as any)
+        .set({ ...sanitized, updatedAt: new Date() })
         .where(eq(contactPostal.id, id))
         .returning();
 
@@ -421,7 +421,7 @@ export function createAddressStorage(): AddressStorage {
 
         const [updated] = await getClient()
           .update(contactPostal)
-          .set(matchUpdates as any)
+          .set(matchUpdates)
           .where(eq(contactPostal.id, existing.id))
           .returning();
         return { address: updated, isNew: false };
@@ -530,7 +530,7 @@ export function createAddressStorage(): AddressStorage {
       }
       const [updated] = await client
         .update(contactPostal)
-        .set(updateFields as any)
+        .set(updateFields)
         .where(eq(contactPostal.id, addressId))
         .returning();
       return updated || undefined;

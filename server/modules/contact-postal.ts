@@ -223,7 +223,22 @@ export function registerContactPostalRoutes(
 
       const geometryData = extractGeometryFromValidationResponse(req.body.validationResponse);
 
-      const { source: _source, street: _street, city: _city, state: _state, postalCode: _pc, country: _country, ...safeBody } = req.body;
+      // Strip immutable address fields, server-derived source, and system-managed
+      // deliverability lifecycle fields. Deliverability state must only flow through
+      // the verify-address pipeline (or markUndeliverable) so terminal-status side
+      // effects (e.g. primary auto-promotion) cannot be bypassed by a metadata PUT.
+      const {
+        source: _source,
+        street: _street,
+        city: _city,
+        state: _state,
+        postalCode: _pc,
+        country: _country,
+        deliverabilityStatus: _ds,
+        lastVerifiedAt: _lv,
+        needsReview: _nr,
+        ...safeBody
+      } = req.body;
       const updateData = insertContactPostalSchema.partial().omit({ contactId: true }).parse({
         ...safeBody,
         ...geometryData,

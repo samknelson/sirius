@@ -1080,7 +1080,10 @@ export const insertVariableSchema = createInsertSchema(variables).omit({
   id: true,
 });
 
-export const insertContactPostalSchema = createInsertSchema(contactPostal).omit({
+export const insertContactPostalSchema = createInsertSchema(contactPostal, {
+  source: z.enum(['worker_self', 'employer_feed', 'admin', 'import', 'system']).optional(),
+  deliverabilityStatus: z.enum(['unknown', 'verified', 'undeliverable', 'vacant', 'returned_mail']).optional(),
+}).omit({
   id: true,
   createdAt: true,
 });
