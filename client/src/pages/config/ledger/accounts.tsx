@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { Loader2, Plus, Eye } from "lucide-react";
+import { Loader2, Plus, Eye, Layers, ArrowLeftRight, CreditCard } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -180,16 +180,48 @@ export default function LedgerAccountsPage() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">
-                        <Link href={`/ledger/accounts/${account.id}`}>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            data-testid={`button-view-${account.id}`}
-                          >
-                            <Eye className="h-4 w-4 mr-2" />
-                            View
-                          </Button>
-                        </Link>
+                        <div className="flex items-center justify-end gap-1 flex-wrap">
+                          <Link href={`/ledger/accounts/${account.id}`}>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              data-testid={`button-view-${account.id}`}
+                            >
+                              <Eye className="h-4 w-4 mr-2" />
+                              View
+                            </Button>
+                          </Link>
+                          <Link href={`/ledger/accounts/${account.id}/batches`}>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              data-testid={`button-batches-${account.id}`}
+                            >
+                              <Layers className="h-4 w-4 mr-2" />
+                              Batches
+                            </Button>
+                          </Link>
+                          <Link href={`/ledger/accounts/${account.id}/transactions`}>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              data-testid={`button-transactions-${account.id}`}
+                            >
+                              <ArrowLeftRight className="h-4 w-4 mr-2" />
+                              Transactions
+                            </Button>
+                          </Link>
+                          <Link href={`/ledger/accounts/${account.id}/payments/new`}>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              data-testid={`button-new-payment-${account.id}`}
+                            >
+                              <CreditCard className="h-4 w-4 mr-2" />
+                              New Payment
+                            </Button>
+                          </Link>
+                        </div>
                       </TableCell>
                     </TableRow>
                   );
