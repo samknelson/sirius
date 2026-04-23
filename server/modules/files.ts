@@ -47,6 +47,7 @@ export function registerFileRoutes(
             'cardcheck': 'cardcheck.edit',
             'worker': 'worker.edit',
             'employer': 'employer.view',
+            'ledger_payment_batch': 'staff',
             // Add more entity types as needed
           };
           

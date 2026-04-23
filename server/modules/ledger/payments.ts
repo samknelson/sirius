@@ -81,7 +81,7 @@ interface ProposedAllocationEntry {
   statementYmd: string;
 }
 
-function validateProposedAllocation(
+export function validateProposedAllocation(
   details: Record<string, unknown> | null | undefined,
   paymentAmount: string
 ): { valid: boolean; error?: string; allocations?: ProposedAllocationEntry[] } {
@@ -144,7 +144,7 @@ async function checkPaymentEaAccessInline(req: Request, res: Response, ea: { ent
   return true;
 }
 
-async function triggerPaymentChargePlugins(payment: LedgerPayment): Promise<LedgerNotification[]> {
+export async function triggerPaymentChargePlugins(payment: LedgerPayment): Promise<LedgerNotification[]> {
   try {
     const allNotifications: LedgerNotification[] = [];
     const details = (payment.details || {}) as Record<string, unknown>;
