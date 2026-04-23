@@ -1,13 +1,19 @@
 import type { Express } from "express";
 import { storage } from "../../storage";
 import { insertLedgerPaymentBatchSchema, ledgerPaymentBatchAssignments } from "@shared/schema/ledger/payment-batch/schema";
-import { ledgerPayments, insertLedgerPaymentSchema } from "@shared/schema";
+import { ledgerPayments, ledgerEa, employers, insertLedgerPaymentSchema } from "@shared/schema";
 import { requireAccess } from "../../services/access-policy-evaluator";
 import { requireComponent } from "../components";
-import { getClient } from "../../storage/transaction-context";
+import { getClient, runInTransaction } from "../../storage/transaction-context";
 import { eq, and, sql } from "drizzle-orm";
 import { logger } from "../../logger";
-import { validateProposedAllocation, triggerPaymentChargePlugins } from "./payments";
+import {
+  validateProposedAllocation,
+  triggerPaymentChargePlugins,
+  enrichWithAllocatedEntities,
+} from "./payments";
+import type { LedgerNotification } from "../../charge-plugins";
+import type { LedgerPayment, LedgerPaymentWithEntity, AllocatedEntity } from "@shared/schema";
 
 async function computeBatchSummary(batchId: string) {
   const client = getClient();
@@ -133,15 +139,36 @@ export function registerLedgerPaymentBatchRoutes(app: Express) {
           return;
         }
         const client = getClient();
+        // Match the enriched shape used by /api/ledger/accounts/:id/payments
+        // (joins EA + employer for entity info) so the batch Payments tab
+        // can reuse the same UI components.
         const rows = await client
-          .select({ payment: ledgerPayments, assignmentId: ledgerPaymentBatchAssignments.id })
+          .select({
+            payment: ledgerPayments,
+            ea: ledgerEa,
+            employer: employers,
+            assignmentId: ledgerPaymentBatchAssignments.id,
+          })
           .from(ledgerPaymentBatchAssignments)
           .innerJoin(ledgerPayments, eq(ledgerPaymentBatchAssignments.paymentId, ledgerPayments.id))
+          .innerJoin(ledgerEa, eq(ledgerPayments.ledgerEaId, ledgerEa.id))
+          .leftJoin(
+            employers,
+            and(eq(ledgerEa.entityType, "employer"), eq(ledgerEa.entityId, employers.id)),
+          )
           .where(eq(ledgerPaymentBatchAssignments.batchId, batch.id))
           .orderBy(sql`${ledgerPayments.dateReceived} DESC NULLS LAST`);
 
+        const baseList: LedgerPaymentWithEntity[] = rows.map((r) => ({
+          ...(r.payment as LedgerPayment),
+          entityType: r.ea.entityType,
+          entityId: r.ea.entityId,
+          entityName: r.employer?.name ?? null,
+          allocatedEntities: [] as AllocatedEntity[],
+        }));
+        const enriched = await enrichWithAllocatedEntities(baseList);
         res.json(
-          rows.map((r) => ({ ...r.payment, _assignmentId: r.assignmentId })),
+          enriched.map((p, i) => ({ ...p, _assignmentId: rows[i].assignmentId })),
         );
       } catch (error) {
         logger.error("Error fetching batch payments", { error: error instanceof Error ? error.message : String(error) });
@@ -165,112 +192,145 @@ export function registerLedgerPaymentBatchRoutes(app: Express) {
           return;
         }
 
-        const client = getClient();
-        let paymentId: string;
-        let createdNotifications: any[] = [];
+        type AttachOutcome =
+          | { kind: "created"; paymentId: string; assignment: typeof ledgerPaymentBatchAssignments.$inferSelect; createdPayment: LedgerPayment }
+          | { kind: "attached"; paymentId: string; assignment: typeof ledgerPaymentBatchAssignments.$inferSelect }
+          | { kind: "conflict"; assignment: typeof ledgerPaymentBatchAssignments.$inferSelect };
+        type AttachError = { status: number; message: string };
 
-        if (typeof req.body?.paymentId === "string") {
-          paymentId = req.body.paymentId;
-          const existing = await storage.ledger.payments.get(paymentId);
-          if (!existing) {
-            res.status(404).json({ message: "Payment not found" });
-            return;
-          }
-          // Account consistency check
-          const ea = await storage.ledger.ea.get(existing.ledgerEaId);
-          if (!ea || ea.accountId !== batch.accountId) {
-            res.status(400).json({
-              message: "Payment belongs to a different account than this batch",
-            });
-            return;
-          }
-        } else if (req.body?.payment) {
-          const raw = req.body.payment;
-          const processed = {
-            ...raw,
-            dateReceived: raw.dateReceived ? new Date(raw.dateReceived) : undefined,
-            dateCleared: raw.dateCleared ? new Date(raw.dateCleared) : undefined,
-          };
-          const validated = insertLedgerPaymentSchema.parse(processed);
-
-          // Account consistency: primary EA must belong to batch's account
-          const primaryEa = await storage.ledger.ea.get(validated.ledgerEaId);
-          if (!primaryEa) {
-            res.status(400).json({ message: "EA entry not found" });
-            return;
-          }
-          if (primaryEa.accountId !== batch.accountId) {
-            res.status(400).json({
-              message: "Selected participant belongs to a different account than this batch",
-            });
-            return;
-          }
-
-          // Validate proposedAllocation just like /api/ledger/payments does
-          const allocValidation = validateProposedAllocation(
-            validated.details as Record<string, unknown> | null,
-            validated.amount,
-          );
-          if (!allocValidation.valid) {
-            res.status(400).json({ message: allocValidation.error });
-            return;
-          }
-
-          // All allocation EAs must also belong to this batch's account
-          if (allocValidation.allocations) {
-            for (const alloc of allocValidation.allocations) {
-              const allocEa = await storage.ledger.ea.get(alloc.eaId);
-              if (!allocEa) {
-                res.status(400).json({
-                  message: `Allocation references non-existent EA: ${alloc.eaId}`,
-                });
-                return;
-              }
-              if (allocEa.accountId !== batch.accountId) {
-                res.status(400).json({
-                  message: "Allocation participant belongs to a different account than this batch",
-                });
-                return;
-              }
-            }
-          }
-
-          const created = await storage.ledger.payments.create(validated);
-          paymentId = created.id;
-
-          // Fire charge plugins (creates ledger entries) just like /api/ledger/payments
-          createdNotifications = await triggerPaymentChargePlugins(created);
-        } else {
-          res.status(400).json({ message: "Provide either paymentId or payment body" });
-          return;
-        }
-
-        // upsert assignment
+        // Single transaction: create payment (if needed) + assignment must succeed together,
+        // or both roll back. Charge plugins fire only after the transaction commits.
+        let outcome: AttachOutcome | AttachError;
         try {
-          const [assignment] = await client
-            .insert(ledgerPaymentBatchAssignments)
-            .values({ batchId: batch.id, paymentId })
-            .returning();
-          res.status(201).json({
-            assignment,
-            paymentId,
-            ledgerNotifications: createdNotifications,
+          outcome = await runInTransaction(async (): Promise<AttachOutcome | AttachError> => {
+            const txClient = getClient();
+            let paymentIdLocal: string;
+            let createdPayment: LedgerPayment | undefined;
+
+            if (typeof req.body?.paymentId === "string") {
+              paymentIdLocal = req.body.paymentId;
+              const existing = await storage.ledger.payments.get(paymentIdLocal);
+              if (!existing) {
+                return { status: 404, message: "Payment not found" };
+              }
+              const ea = await storage.ledger.ea.get(existing.ledgerEaId);
+              if (!ea || ea.accountId !== batch.accountId) {
+                return {
+                  status: 400,
+                  message: "Payment belongs to a different account than this batch",
+                };
+              }
+            } else if (req.body?.payment) {
+              const raw = req.body.payment;
+              const processed = {
+                ...raw,
+                dateReceived: raw.dateReceived ? new Date(raw.dateReceived) : undefined,
+                dateCleared: raw.dateCleared ? new Date(raw.dateCleared) : undefined,
+              };
+              const validated = insertLedgerPaymentSchema.parse(processed);
+
+              const primaryEa = await storage.ledger.ea.get(validated.ledgerEaId);
+              if (!primaryEa) {
+                return { status: 400, message: "EA entry not found" };
+              }
+              if (primaryEa.accountId !== batch.accountId) {
+                return {
+                  status: 400,
+                  message: "Selected participant belongs to a different account than this batch",
+                };
+              }
+
+              const allocValidation = validateProposedAllocation(
+                validated.details as Record<string, unknown> | null,
+                validated.amount,
+              );
+              if (!allocValidation.valid) {
+                return { status: 400, message: allocValidation.error || "Invalid allocation" };
+              }
+
+              if (allocValidation.allocations) {
+                for (const alloc of allocValidation.allocations) {
+                  const allocEa = await storage.ledger.ea.get(alloc.eaId);
+                  if (!allocEa) {
+                    return {
+                      status: 400,
+                      message: `Allocation references non-existent EA: ${alloc.eaId}`,
+                    };
+                  }
+                  if (allocEa.accountId !== batch.accountId) {
+                    return {
+                      status: 400,
+                      message:
+                        "Allocation participant belongs to a different account than this batch",
+                    };
+                  }
+                }
+              }
+
+              createdPayment = await storage.ledger.payments.create(validated);
+              paymentIdLocal = createdPayment.id;
+            } else {
+              return { status: 400, message: "Provide either paymentId or payment body" };
+            }
+
+            // Insert the assignment in the SAME transaction so a failure rolls back the create.
+            try {
+              const [assignment] = await txClient
+                .insert(ledgerPaymentBatchAssignments)
+                .values({ batchId: batch.id, paymentId: paymentIdLocal })
+                .returning();
+              return createdPayment
+                ? { kind: "created", paymentId: paymentIdLocal, assignment, createdPayment }
+                : { kind: "attached", paymentId: paymentIdLocal, assignment };
+            } catch (insertErr) {
+              // unique violation on paymentId means already assigned to a batch.
+              const existingAssignment = await txClient
+                .select()
+                .from(ledgerPaymentBatchAssignments)
+                .where(eq(ledgerPaymentBatchAssignments.paymentId, paymentIdLocal));
+              if (existingAssignment.length > 0) {
+                // For an attach (no create), this is a 409. For a create attempt, throwing
+                // forces the whole transaction (including the payment insert) to roll back.
+                if (createdPayment) {
+                  throw insertErr;
+                }
+                return { kind: "conflict", assignment: existingAssignment[0] };
+              }
+              throw insertErr;
+            }
           });
         } catch (err) {
-          // unique violation on paymentId means already assigned (possibly to another batch)
-          const existing = await client
-            .select()
-            .from(ledgerPaymentBatchAssignments)
-            .where(eq(ledgerPaymentBatchAssignments.paymentId, paymentId));
-          if (existing.length > 0) {
-            res.status(409).json({
-              message: "Payment is already assigned to a batch",
-              assignment: existing[0],
-            });
+          if (err instanceof Error && err.name === "ZodError") {
+            res.status(400).json({ message: "Invalid payment data", error: err.message });
             return;
           }
           throw err;
         }
+
+        if ("status" in outcome) {
+          res.status(outcome.status).json({ message: outcome.message });
+          return;
+        }
+        if (outcome.kind === "conflict") {
+          res.status(409).json({
+            message: "Payment is already assigned to a batch",
+            assignment: outcome.assignment,
+          });
+          return;
+        }
+
+        // Trigger charge plugins AFTER the transaction has committed, so we never produce
+        // ledger side-effects for a payment whose assignment failed.
+        let createdNotifications: LedgerNotification[] = [];
+        if (outcome.kind === "created") {
+          createdNotifications = await triggerPaymentChargePlugins(outcome.createdPayment);
+        }
+
+        res.status(201).json({
+          assignment: outcome.assignment,
+          paymentId: outcome.paymentId,
+          ledgerNotifications: createdNotifications,
+        });
       } catch (error) {
         if (error instanceof Error && error.name === "ZodError") {
           res.status(400).json({ message: "Invalid payment data", error: error.message });

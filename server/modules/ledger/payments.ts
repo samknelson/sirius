@@ -10,7 +10,7 @@ import { eventBus, EventType } from "../../services/event-bus";
 
 const unifiedOptionsStorage = createUnifiedOptionsStorage();
 
-async function enrichWithAllocatedEntities(
+export async function enrichWithAllocatedEntities(
   payments: LedgerPaymentWithEntity[]
 ): Promise<LedgerPaymentWithEntity[]> {
   const allEaIds = new Set<string>();

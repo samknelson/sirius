@@ -1,13 +1,8 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link } from "wouter";
 import { PaymentBatchLayout, usePaymentBatchLayout } from "@/components/layouts/PaymentBatchLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import {
   AlertDialog,
@@ -20,8 +15,9 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Loader2, Plus, Trash2, Pencil, AlertCircle, CheckCircle2 } from "lucide-react";
+import { apiRequest } from "@/lib/queryClient";
+import { Loader2, Plus, Trash2, AlertCircle, CheckCircle2, MinusCircle } from "lucide-react";
+import { PaymentForm } from "@/components/ledger/PaymentForm";
 import type { LedgerPayment, LedgerPaymentType, LedgerAccount } from "@shared/schema";
 
 type EAListItem = {
@@ -32,9 +28,17 @@ type EAListItem = {
   entityName: string | null;
 };
 
-type BatchPayment = LedgerPayment & { _assignmentId: string };
+interface BatchPaymentAllocation {
+  eaId: string;
+  amount: string;
+  statementYmd: string;
+  ea?: EAListItem | null;
+}
 
-const paymentStatuses = ["draft", "canceled", "cleared", "error"] as const;
+export type BatchPayment = LedgerPayment & {
+  _assignmentId: string;
+  allocatedEntities?: BatchPaymentAllocation[];
+};
 
 function formatCurrency(amount: string | number | null | undefined, currencyCode = "USD") {
   if (amount == null || amount === "") return "—";
@@ -43,260 +47,7 @@ function formatCurrency(amount: string | number | null | undefined, currencyCode
   return new Intl.NumberFormat("en-US", { style: "currency", currency: currencyCode }).format(num);
 }
 
-interface NewPaymentFormProps {
-  batchId: string;
-  accountId: string;
-  currencyCode: string;
-  onCreated: () => void;
-}
-
-function NewPaymentForm({ batchId, accountId, currencyCode, onCreated }: NewPaymentFormProps) {
-  const { toast } = useToast();
-  const qc = useQueryClient();
-
-  const { data: paymentTypes = [] } = useQuery<LedgerPaymentType[]>({
-    queryKey: ["/api/ledger/payment-types"],
-  });
-  const { data: accountEAs = [] } = useQuery<EAListItem[]>({
-    queryKey: ["/api/ledger/ea", { accountId }],
-    queryFn: () => apiRequest("GET", `/api/ledger/ea?accountId=${accountId}`),
-    enabled: !!accountId,
-  });
-
-  const [paymentType, setPaymentType] = useState("");
-  const [amount, setAmount] = useState("");
-  const [status, setStatus] = useState<typeof paymentStatuses[number]>("draft");
-  const [eaId, setEaId] = useState("");
-  const [dateReceived, setDateReceived] = useState("");
-  const [dateCleared, setDateCleared] = useState("");
-  const [merchant, setMerchant] = useState("");
-  const [checkTransactionNumber, setCheckTransactionNumber] = useState("");
-  const [memo, setMemo] = useState("");
-  const [statementMonth, setStatementMonth] = useState("");
-  const [statementYear, setStatementYear] = useState("");
-
-  const createMutation = useMutation({
-    mutationFn: (data: Record<string, unknown>) =>
-      apiRequest("POST", `/api/ledger-payment-batches/${batchId}/payments`, { payment: data }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/ledger-payment-batches", batchId, "payments"] });
-      qc.invalidateQueries({ queryKey: ["/api/ledger-payment-batches", batchId] });
-      toast({ title: "Payment added", description: "The payment was added to this batch." });
-      // reset form
-      setAmount("");
-      setEaId("");
-      setMerchant("");
-      setCheckTransactionNumber("");
-      setMemo("");
-      setStatementMonth("");
-      setStatementYear("");
-      onCreated();
-    },
-    onError: (err: Error) => {
-      toast({ title: "Failed to add payment", description: err.message, variant: "destructive" });
-    },
-  });
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!paymentType) {
-      toast({ title: "Payment type required", variant: "destructive" });
-      return;
-    }
-    if (!eaId) {
-      toast({ title: "Participant required", variant: "destructive" });
-      return;
-    }
-    const amt = parseFloat(amount);
-    if (!amt || amt <= 0) {
-      toast({ title: "Amount required", description: "Enter a valid amount.", variant: "destructive" });
-      return;
-    }
-    if (!dateReceived) {
-      toast({ title: "Date received required", variant: "destructive" });
-      return;
-    }
-
-    const details: Record<string, unknown> = {};
-    if (merchant) details.merchant = merchant;
-    if (checkTransactionNumber) details.checkTransactionNumber = checkTransactionNumber;
-
-    const ymd =
-      statementMonth && statementYear
-        ? `${statementYear}-${String(parseInt(statementMonth, 10)).padStart(2, "0")}-01`
-        : "";
-    details.proposedAllocation = [
-      { eaId, amount: amt.toFixed(2), statementYmd: ymd },
-    ];
-
-    createMutation.mutate({
-      paymentType,
-      amount: amt.toFixed(2),
-      status,
-      ledgerEaId: eaId,
-      allocated: false,
-      dateReceived,
-      dateCleared: dateCleared || null,
-      memo: memo || null,
-      details,
-    });
-  };
-
-  return (
-    <Card data-testid="card-new-payment-form">
-      <CardHeader>
-        <CardTitle>Add Payment to Batch</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <Label>Payment Type</Label>
-              <Select value={paymentType} onValueChange={setPaymentType}>
-                <SelectTrigger data-testid="select-new-payment-type">
-                  <SelectValue placeholder="Select type" />
-                </SelectTrigger>
-                <SelectContent>
-                  {paymentTypes.map((t) => (
-                    <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label>Amount</Label>
-              <Input
-                type="number"
-                step="0.01"
-                min="0"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                placeholder="0.00"
-                data-testid="input-new-amount"
-              />
-            </div>
-          </div>
-
-          <div className="space-y-1">
-            <Label>Participant</Label>
-            <Select value={eaId} onValueChange={setEaId}>
-              <SelectTrigger data-testid="select-new-ea">
-                <SelectValue placeholder="Select participant" />
-              </SelectTrigger>
-              <SelectContent>
-                {accountEAs.map((ea) => (
-                  <SelectItem key={ea.id} value={ea.id}>
-                    {ea.entityName || `${ea.entityType} ${ea.entityId}`}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <Label>Status</Label>
-              <Select value={status} onValueChange={(v) => setStatus(v as typeof paymentStatuses[number])}>
-                <SelectTrigger data-testid="select-new-status">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {paymentStatuses.map((s) => (
-                    <SelectItem key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label>Date Received</Label>
-              <Input
-                type="date"
-                value={dateReceived}
-                onChange={(e) => setDateReceived(e.target.value)}
-                data-testid="input-new-date-received"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <Label>Date Cleared (optional)</Label>
-              <Input
-                type="date"
-                value={dateCleared}
-                onChange={(e) => setDateCleared(e.target.value)}
-                data-testid="input-new-date-cleared"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>Check / Transaction # (optional)</Label>
-              <Input
-                value={checkTransactionNumber}
-                onChange={(e) => setCheckTransactionNumber(e.target.value)}
-                data-testid="input-new-check-number"
-              />
-            </div>
-          </div>
-
-          <div className="space-y-1">
-            <Label>Merchant (optional)</Label>
-            <Input
-              value={merchant}
-              onChange={(e) => setMerchant(e.target.value)}
-              data-testid="input-new-merchant"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <Label>Statement Month (optional)</Label>
-              <Input
-                type="number"
-                min="1"
-                max="12"
-                value={statementMonth}
-                onChange={(e) => setStatementMonth(e.target.value)}
-                placeholder="1-12"
-                data-testid="input-new-stmt-month"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>Statement Year (optional)</Label>
-              <Input
-                type="number"
-                min="2000"
-                max="2100"
-                value={statementYear}
-                onChange={(e) => setStatementYear(e.target.value)}
-                placeholder="YYYY"
-                data-testid="input-new-stmt-year"
-              />
-            </div>
-          </div>
-
-          <div className="space-y-1">
-            <Label>Memo (optional)</Label>
-            <Textarea
-              value={memo}
-              onChange={(e) => setMemo(e.target.value)}
-              placeholder="Optional memo"
-              data-testid="input-new-memo"
-            />
-          </div>
-
-          <div className="flex gap-2 pt-2">
-            <Button type="submit" disabled={createMutation.isPending} data-testid="button-create-batch-payment">
-              {createMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Save Payment
-            </Button>
-          </div>
-        </form>
-      </CardContent>
-    </Card>
-  );
-}
-
-interface PaymentDetailPaneProps {
+interface PaymentDetailHeaderProps {
   payment: BatchPayment;
   paymentType?: LedgerPaymentType;
   currencyCode: string;
@@ -304,7 +55,13 @@ interface PaymentDetailPaneProps {
   onRemoved: () => void;
 }
 
-function PaymentDetailPane({ payment, paymentType, currencyCode, batchId, onRemoved }: PaymentDetailPaneProps) {
+function PaymentDetailHeader({
+  payment,
+  paymentType,
+  currencyCode,
+  batchId,
+  onRemoved,
+}: PaymentDetailHeaderProps) {
   const { toast } = useToast();
   const qc = useQueryClient();
   const [confirmOpen, setConfirmOpen] = useState<null | "unassign" | "delete">(null);
@@ -319,10 +76,8 @@ function PaymentDetailPane({ payment, paymentType, currencyCode, batchId, onRemo
     },
     onSuccess: (_, mode) => {
       qc.invalidateQueries({ queryKey: ["/api/ledger-payment-batches", batchId, "payments"] });
-      qc.invalidateQueries({ queryKey: ["/api/ledger-payment-batches", batchId] });
-      toast({
-        title: mode === "delete" ? "Payment deleted" : "Payment unassigned",
-      });
+      qc.invalidateQueries({ queryKey: [`/api/ledger-payment-batches/${batchId}`] });
+      toast({ title: mode === "delete" ? "Payment deleted" : "Payment unassigned" });
       onRemoved();
     },
     onError: (err: Error) => {
@@ -344,18 +99,13 @@ function PaymentDetailPane({ payment, paymentType, currencyCode, batchId, onRemo
             </div>
           </div>
           <div className="flex gap-2">
-            <Link href={`/ledger/payment/${payment.id}/edit`}>
-              <Button variant="outline" size="sm" data-testid={`button-edit-${payment.id}`}>
-                <Pencil className="h-4 w-4 mr-1" /> Edit
-              </Button>
-            </Link>
             <Button
               variant="outline"
               size="sm"
               onClick={() => setConfirmOpen("unassign")}
               data-testid={`button-unassign-${payment.id}`}
             >
-              Unassign
+              <MinusCircle className="h-4 w-4 mr-1" /> Unassign
             </Button>
             <Button
               variant="destructive"
@@ -368,28 +118,6 @@ function PaymentDetailPane({ payment, paymentType, currencyCode, batchId, onRemo
           </div>
         </div>
       </CardHeader>
-      <CardContent>
-        <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-          <div>
-            <dt className="text-muted-foreground">Date Received</dt>
-            <dd>{payment.dateReceived ? new Date(payment.dateReceived).toLocaleDateString() : "—"}</dd>
-          </div>
-          <div>
-            <dt className="text-muted-foreground">Date Cleared</dt>
-            <dd>{payment.dateCleared ? new Date(payment.dateCleared).toLocaleDateString() : "—"}</dd>
-          </div>
-          {payment.memo && (
-            <div className="col-span-2">
-              <dt className="text-muted-foreground">Memo</dt>
-              <dd>{payment.memo}</dd>
-            </div>
-          )}
-          <div className="col-span-2">
-            <dt className="text-muted-foreground">Payment ID</dt>
-            <dd className="font-mono text-xs text-muted-foreground">{payment.id}</dd>
-          </div>
-        </dl>
-      </CardContent>
 
       <AlertDialog open={confirmOpen !== null} onOpenChange={(open) => !open && setConfirmOpen(null)}>
         <AlertDialogContent>
@@ -446,7 +174,7 @@ function BatchPaymentsContent() {
   }, [paymentTypes]);
 
   const { data: enrichedBatch } = useQuery<typeof batch & { paymentsCount?: number; paymentsTotal?: string }>({
-    queryKey: ["/api/ledger-payment-batches", batch.id],
+    queryKey: [`/api/ledger-payment-batches/${batch.id}`],
     enabled: !!batch.id,
   });
 
@@ -456,6 +184,47 @@ function BatchPaymentsContent() {
   const expectedCount = batch.expectedPaymentCount;
   const actualCount = enrichedBatch?.paymentsCount ?? payments.length;
   const totalReconciled = totalDiff != null && Math.abs(totalDiff) < 0.01;
+  const countReconciled =
+    expectedCount == null ? null : actualCount === expectedCount;
+
+  const reconciliationBadge = (() => {
+    if (expectedTotal == null && expectedCount == null) {
+      return (
+        <Badge variant="outline" data-testid="badge-reconciliation">
+          Unset
+        </Badge>
+      );
+    }
+    const totalsOk = expectedTotal == null || totalReconciled;
+    const countsOk = expectedCount == null || countReconciled;
+    if (totalsOk && countsOk) {
+      return (
+        <Badge variant="default" className="bg-green-600 hover:bg-green-700" data-testid="badge-reconciliation">
+          <CheckCircle2 className="h-3 w-3 mr-1" /> Balanced
+        </Badge>
+      );
+    }
+    if (totalDiff != null && totalDiff > 0) {
+      return (
+        <Badge variant="destructive" data-testid="badge-reconciliation">
+          <AlertCircle className="h-3 w-3 mr-1" /> Over by {formatCurrency(Math.abs(totalDiff), currency)}
+        </Badge>
+      );
+    }
+    if (totalDiff != null && totalDiff < 0) {
+      return (
+        <Badge variant="destructive" data-testid="badge-reconciliation">
+          <AlertCircle className="h-3 w-3 mr-1" /> Under by {formatCurrency(Math.abs(totalDiff), currency)}
+        </Badge>
+      );
+    }
+    // Only count mismatch
+    return (
+      <Badge variant="destructive" data-testid="badge-reconciliation">
+        <AlertCircle className="h-3 w-3 mr-1" /> Count mismatch
+      </Badge>
+    );
+  })();
 
   const selectedPayment = selected && selected !== "new" ? payments.find((p) => p.id === selected) : null;
 
@@ -483,17 +252,7 @@ function BatchPaymentsContent() {
                 <span className="text-muted-foreground"> / {expectedCount}</span>
               )}
             </div>
-            {totalDiff != null &&
-              (totalReconciled ? (
-                <Badge variant="default" className="bg-green-600 hover:bg-green-700">
-                  <CheckCircle2 className="h-3 w-3 mr-1" /> Reconciled
-                </Badge>
-              ) : (
-                <Badge variant="destructive">
-                  <AlertCircle className="h-3 w-3 mr-1" />
-                  {totalDiff > 0 ? "Over" : "Under"} by {formatCurrency(Math.abs(totalDiff), currency)}
-                </Badge>
-              ))}
+            {reconciliationBadge}
           </div>
         </CardContent>
       </Card>
@@ -550,6 +309,13 @@ function BatchPaymentsContent() {
                             ? ` · ${new Date(p.dateReceived).toLocaleDateString()}`
                             : ""}
                         </div>
+                        {p.allocatedEntities && p.allocatedEntities.length > 0 && (
+                          <div className="text-xs text-muted-foreground mt-0.5 truncate">
+                            {p.allocatedEntities
+                              .map((a) => a.ea?.entityName || `${a.ea?.entityType ?? "—"}`)
+                              .join(", ")}
+                          </div>
+                        )}
                       </button>
                     </li>
                   );
@@ -562,21 +328,37 @@ function BatchPaymentsContent() {
         {/* Right pane */}
         <div className="md:col-span-2">
           {selected === "new" && (
-            <NewPaymentForm
-              batchId={batch.id}
+            <PaymentForm
+              mode="create"
               accountId={batch.accountId}
-              currencyCode={currency}
-              onCreated={() => setSelected(null)}
+              batchId={batch.id}
+              title="Add Payment to Batch"
+              description="Create a new payment that will be assigned to this batch."
+              submitLabel="Save Payment"
+              onSuccess={() => setSelected(null)}
+              onCancel={() => setSelected(null)}
             />
           )}
           {selectedPayment && (
-            <PaymentDetailPane
-              payment={selectedPayment}
-              paymentType={paymentTypeMap.get(selectedPayment.paymentType)}
-              currencyCode={currency}
-              batchId={batch.id}
-              onRemoved={() => setSelected(null)}
-            />
+            <div className="space-y-4">
+              <PaymentDetailHeader
+                payment={selectedPayment}
+                paymentType={paymentTypeMap.get(selectedPayment.paymentType)}
+                currencyCode={currency}
+                batchId={batch.id}
+                onRemoved={() => setSelected(null)}
+              />
+              <PaymentForm
+                mode="edit"
+                paymentId={selectedPayment.id}
+                title="Edit Payment"
+                description="Update this payment in the batch."
+                onSuccess={() => {
+                  // stay on the selected payment so the user sees the updated values
+                }}
+                onCancel={() => setSelected(null)}
+              />
+            </div>
           )}
           {selected === null && (
             <Card>
