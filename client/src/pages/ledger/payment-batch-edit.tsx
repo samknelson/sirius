@@ -208,6 +208,34 @@ function BatchEditContent() {
                   </>
                 )}
               </div>
+              {attachmentFileId && attachment?.mimeType?.startsWith("image/") && (
+                <a
+                  href={`/api/files/${attachmentFileId}/download`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="block mt-2"
+                  data-testid="link-attachment-image-preview"
+                >
+                  <img
+                    src={`/api/files/${attachmentFileId}/download`}
+                    alt={attachment?.fileName || "Batch attachment"}
+                    className="max-h-64 max-w-full rounded border bg-muted object-contain"
+                    data-testid="img-attachment-preview"
+                  />
+                </a>
+              )}
+              {attachmentFileId && attachment?.mimeType === "application/pdf" && (
+                <object
+                  data={`/api/files/${attachmentFileId}/download`}
+                  type="application/pdf"
+                  className="w-full h-96 mt-2 rounded border"
+                  data-testid="embed-attachment-pdf-preview"
+                >
+                  <p className="text-sm text-muted-foreground p-4">
+                    PDF preview not available in this browser.
+                  </p>
+                </object>
+              )}
             </div>
 
             <div className="flex gap-3 pt-4">

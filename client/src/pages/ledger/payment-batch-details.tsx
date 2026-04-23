@@ -198,16 +198,44 @@ function BatchDetailsContent() {
             </div>
             <div className="sm:col-span-2">
               <dt className="text-sm font-medium text-muted-foreground">Attachment</dt>
-              <dd className="mt-1 text-sm" data-testid="text-batch-attachment">
+              <dd className="mt-2 text-sm space-y-2" data-testid="text-batch-attachment">
                 {batch.attachmentFileId ? (
-                  <a
-                    href={`/api/files/${batch.attachmentFileId}/download`}
-                    className="text-primary hover:underline inline-flex items-center gap-1"
-                    data-testid="link-batch-attachment"
-                  >
-                    <Download className="h-4 w-4" />
-                    {attachment?.fileName || "Download attachment"}
-                  </a>
+                  <>
+                    {attachment?.mimeType?.startsWith("image/") ? (
+                      <a
+                        href={`/api/files/${batch.attachmentFileId}/download`}
+                        target="_blank"
+                        rel="noreferrer"
+                        data-testid="link-batch-attachment-image"
+                      >
+                        <img
+                          src={`/api/files/${batch.attachmentFileId}/download`}
+                          alt={attachment?.fileName || "Batch attachment"}
+                          className="max-h-96 max-w-full rounded border bg-muted object-contain"
+                          data-testid="img-batch-attachment"
+                        />
+                      </a>
+                    ) : attachment?.mimeType === "application/pdf" ? (
+                      <object
+                        data={`/api/files/${batch.attachmentFileId}/download`}
+                        type="application/pdf"
+                        className="w-full h-[600px] rounded border"
+                        data-testid="embed-batch-attachment-pdf"
+                      >
+                        <p className="text-muted-foreground p-4">
+                          PDF preview not available in this browser.
+                        </p>
+                      </object>
+                    ) : null}
+                    <a
+                      href={`/api/files/${batch.attachmentFileId}/download`}
+                      className="text-primary hover:underline inline-flex items-center gap-1"
+                      data-testid="link-batch-attachment"
+                    >
+                      <Download className="h-4 w-4" />
+                      {attachment?.fileName || "Download attachment"}
+                    </a>
+                  </>
                 ) : (
                   <span className="text-muted-foreground italic">No attachment</span>
                 )}
