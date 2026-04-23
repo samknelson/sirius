@@ -161,7 +161,7 @@ export function registerFileRoutes(
     }
   });
 
-  app.get("/api/files/:id", requireAccess('file.read'), async (req, res) => {
+  app.get("/api/files/:id", requireAccess('file.read', (req) => req.params.id), async (req, res) => {
     try {
       const { id } = req.params;
       const file = await storage.files.getById(id);
