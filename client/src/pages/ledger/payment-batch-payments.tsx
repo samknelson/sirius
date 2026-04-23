@@ -75,7 +75,7 @@ function PaymentDetailHeader({
       );
     },
     onSuccess: (_, mode) => {
-      qc.invalidateQueries({ queryKey: ["/api/ledger-payment-batches", batchId, "payments"] });
+      qc.invalidateQueries({ queryKey: [`/api/ledger-payment-batches/${batchId}/payments`] });
       qc.invalidateQueries({ queryKey: [`/api/ledger-payment-batches/${batchId}`] });
       toast({ title: mode === "delete" ? "Payment deleted" : "Payment unassigned" });
       onRemoved();
@@ -158,7 +158,7 @@ function BatchPaymentsContent() {
   const currency = account?.currencyCode || "USD";
 
   const { data: payments = [], isLoading } = useQuery<BatchPayment[]>({
-    queryKey: ["/api/ledger-payment-batches", batch.id, "payments"],
+    queryKey: [`/api/ledger-payment-batches/${batch.id}/payments`],
     queryFn: () => apiRequest("GET", `/api/ledger-payment-batches/${batch.id}/payments`),
     enabled: !!batch.id,
   });
@@ -351,6 +351,7 @@ function BatchPaymentsContent() {
               <PaymentForm
                 mode="edit"
                 paymentId={selectedPayment.id}
+                batchId={batch.id}
                 title="Edit Payment"
                 description="Update this payment in the batch."
                 onSuccess={() => {

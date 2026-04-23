@@ -30,7 +30,7 @@ function BatchDetailsContent() {
   // The layout query already returned summary fields too — re-fetch the same key
   // to read them via an enriched type.
   const { data: enriched } = useQuery<BatchWithSummary>({
-    queryKey: ["/api/ledger-payment-batches", batch.id],
+    queryKey: [`/api/ledger-payment-batches/${batch.id}`],
     enabled: !!batch.id,
   });
 
@@ -56,12 +56,47 @@ function BatchDetailsContent() {
   const totalReconciled = totalDiff != null && Math.abs(totalDiff) < 0.01;
   const countReconciled = countDiff != null && countDiff === 0;
 
+  // Overall reconciliation badge: exactly one of Unset | Balanced | Over by $X | Under by $X.
+  // Count mismatches are surfaced separately in the Payments section below.
+  let overallBadge: JSX.Element;
+  if (expectedTotal == null) {
+    overallBadge = (
+      <Badge variant="outline" data-testid="badge-overall-reconciliation">
+        Unset
+      </Badge>
+    );
+  } else if (totalReconciled) {
+    overallBadge = (
+      <Badge variant="default" className="bg-green-600 hover:bg-green-700" data-testid="badge-overall-reconciliation">
+        <CheckCircle2 className="h-3 w-3 mr-1" />
+        Balanced
+      </Badge>
+    );
+  } else if ((totalDiff ?? 0) > 0) {
+    overallBadge = (
+      <Badge variant="destructive" data-testid="badge-overall-reconciliation">
+        <AlertCircle className="h-3 w-3 mr-1" />
+        Over by {formatCurrency(Math.abs(totalDiff!), currency)}
+      </Badge>
+    );
+  } else {
+    overallBadge = (
+      <Badge variant="destructive" data-testid="badge-overall-reconciliation">
+        <AlertCircle className="h-3 w-3 mr-1" />
+        Under by {formatCurrency(Math.abs(totalDiff!), currency)}
+      </Badge>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Reconciliation summary */}
       <Card data-testid="card-batch-reconciliation">
         <CardHeader>
-          <CardTitle>Reconciliation</CardTitle>
+          <div className="flex items-center justify-between gap-3">
+            <CardTitle>Reconciliation</CardTitle>
+            {overallBadge}
+          </div>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">

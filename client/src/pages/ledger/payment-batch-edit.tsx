@@ -46,7 +46,7 @@ function BatchEditContent() {
       apiRequest("PATCH", `/api/ledger-payment-batches/${batch.id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/ledger-payment-batches"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/ledger-payment-batches", batch.id] });
+      queryClient.invalidateQueries({ queryKey: [`/api/ledger-payment-batches/${batch.id}`] });
       toast({ title: "Batch updated", description: "The payment batch has been updated." });
       setLocation(`/ledger/payment-batch/${batch.id}`);
     },
