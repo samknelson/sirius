@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { Loader2, Paperclip, X, Download } from "lucide-react";
+import { Loader2, Paperclip, X, Download, FileText } from "lucide-react";
 import type { File as FileRecord } from "@shared/schema";
 
 function BatchEditContent() {
@@ -225,12 +225,25 @@ function BatchEditContent() {
                 </a>
               )}
               {attachmentFileId && attachment?.mimeType === "application/pdf" && (
-                <iframe
-                  src={`/api/files/${attachmentFileId}/download#view=FitH`}
-                  title={attachment?.fileName || "Batch attachment"}
-                  className="w-full h-96 mt-2 rounded border bg-muted"
-                  data-testid="embed-attachment-pdf-preview"
-                />
+                <a
+                  href={`/api/files/${attachmentFileId}/download`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-3 rounded border bg-muted/40 hover:bg-muted/70 transition-colors px-4 py-4 max-w-md mt-2"
+                  data-testid="link-attachment-pdf-preview"
+                >
+                  <div className="rounded bg-background border p-2">
+                    <FileText className="h-6 w-6 text-primary" />
+                  </div>
+                  <div className="min-w-0 text-sm">
+                    <div className="font-medium truncate">
+                      {attachment?.fileName || "PDF attachment"}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      Click to open PDF in a new tab
+                    </div>
+                  </div>
+                </a>
               )}
             </div>
 

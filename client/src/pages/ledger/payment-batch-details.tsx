@@ -4,7 +4,7 @@ import { PaymentBatchLayout, usePaymentBatchLayout } from "@/components/layouts/
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { apiRequest } from "@/lib/queryClient";
-import { Download, AlertCircle, CheckCircle2 } from "lucide-react";
+import { Download, AlertCircle, CheckCircle2, FileText } from "lucide-react";
 import type { LedgerAccount, File as FileRecord } from "@shared/schema";
 
 interface BatchWithSummary {
@@ -216,12 +216,25 @@ function BatchDetailsContent() {
                         />
                       </a>
                     ) : attachment?.mimeType === "application/pdf" ? (
-                      <iframe
-                        src={`/api/files/${batch.attachmentFileId}/download#view=FitH`}
-                        title={attachment?.fileName || "Batch attachment"}
-                        className="w-full h-[600px] rounded border bg-muted"
-                        data-testid="embed-batch-attachment-pdf"
-                      />
+                      <a
+                        href={`/api/files/${batch.attachmentFileId}/download`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center gap-3 rounded border bg-muted/40 hover:bg-muted/70 transition-colors px-4 py-6 max-w-md"
+                        data-testid="link-batch-attachment-pdf"
+                      >
+                        <div className="rounded bg-background border p-3">
+                          <FileText className="h-8 w-8 text-primary" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="font-medium truncate">
+                            {attachment?.fileName || "PDF attachment"}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            Click to open PDF in a new tab
+                          </div>
+                        </div>
+                      </a>
                     ) : null}
                     <a
                       href={`/api/files/${batch.attachmentFileId}/download`}
