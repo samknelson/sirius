@@ -444,7 +444,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   });
 
   // GET /api/workers/with-details/paginated - Get paginated workers with contact data
-  app.get("/api/workers/with-details/paginated", requireAuth, requirePermission("staff"), async (req, res) => {
+  app.get("/api/workers/with-details/paginated", requireAccess("worker.list"), async (req, res) => {
     try {
       const rawPage = parseInt(req.query.page as string);
       const rawPageSize = parseInt(req.query.pageSize as string);
