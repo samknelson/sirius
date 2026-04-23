@@ -148,6 +148,11 @@ export const birthDateValidate = createStorageValidator<{ birthDate: string | nu
   }
 );
 
+export type AddressSource = "worker_self" | "employer_feed" | "admin" | "import" | "system";
+export type DeliverabilityStatus = "unknown" | "verified" | "undeliverable" | "vacant" | "returned_mail";
+
+const TERMINAL_DELIVERABILITY_STATUSES: DeliverabilityStatus[] = ["undeliverable", "vacant", "returned_mail"];
+
 // Address Storage Interface
 export interface AddressStorage {
   getAllContactPostal(): Promise<ContactPostal[]>;
@@ -157,6 +162,19 @@ export interface AddressStorage {
   updateContactPostal(id: string, address: Partial<InsertContactPostal>): Promise<ContactPostal | undefined>;
   deleteContactPostal(id: string): Promise<boolean>;
   setAddressAsPrimary(addressId: string, contactId: string): Promise<ContactPostal | undefined>;
+  findMatchingAddress(contactId: string, street: string, city: string, state: string, postalCode: string, country?: string): Promise<ContactPostal | undefined>;
+  createOrMatchAddress(
+    contactId: string,
+    addressData: { street: string; city: string; state: string; postalCode: string; country: string },
+    source: AddressSource,
+    metadata?: { friendlyName?: string; latitude?: number; longitude?: number; accuracy?: string },
+  ): Promise<{ address: ContactPostal; isNew: boolean }>;
+  markUndeliverable(addressId: string): Promise<ContactPostal | undefined>;
+  updateDeliverabilityStatus(addressId: string, status: DeliverabilityStatus, lastVerifiedAt?: Date): Promise<ContactPostal | undefined>;
+}
+
+function normalizeAddressField(val: string): string {
+  return val.trim().toLowerCase().replace(/\s+/g, " ").replace(/[.,#]/g, "");
 }
 
 // Phone Number Storage Interface
@@ -231,20 +249,20 @@ export function createAddressStorage(): AddressStorage {
       return await client.select().from(contactPostal).where(eq(contactPostal.contactId, contactId)).orderBy(desc(contactPostal.isPrimary));
     },
 
-    async createContactPostal(insertContactPostal: InsertContactPostal): Promise<ContactPostal> {
+    async createContactPostal(data: InsertContactPostal): Promise<ContactPostal> {
       const client = getClient();
-      addressValidate.validateOrThrow(insertContactPostal);
+      addressValidate.validateOrThrow(data);
 
-      if (insertContactPostal.isPrimary) {
+      if (data.isPrimary) {
         await client
           .update(contactPostal)
-          .set({ isPrimary: false })
-          .where(eq(contactPostal.contactId, insertContactPostal.contactId));
+          .set({ isPrimary: false, updatedAt: new Date() })
+          .where(eq(contactPostal.contactId, data.contactId));
       }
-      
+
       const [address] = await client
         .insert(contactPostal)
-        .values(insertContactPostal)
+        .values(data as any)
         .returning();
       return address;
     },
@@ -256,52 +274,267 @@ export function createAddressStorage(): AddressStorage {
         throw new Error("Address not found");
       }
 
-      addressValidate.validateOrThrow(addressUpdate, currentAddress);
+      const immutableFields = ["street", "city", "state", "postalCode", "country"] as const;
+      const updateKeys = Object.keys(addressUpdate);
+      const attemptedImmutable = immutableFields.filter(f => updateKeys.includes(f));
+      if (attemptedImmutable.length > 0) {
+        throw new Error(`Address fields are immutable and cannot be changed: ${attemptedImmutable.join(", ")}. Create a new address record instead.`);
+      }
+      const sanitized = { ...addressUpdate };
 
-      if (addressUpdate.isPrimary) {
+      addressValidate.validateOrThrow(sanitized, currentAddress);
+
+      if (sanitized.isPrimary && !currentAddress.isPrimary) {
+        if (TERMINAL_DELIVERABILITY_STATUSES.includes(currentAddress.deliverabilityStatus as DeliverabilityStatus)) {
+          throw new Error("Cannot set an undeliverable address as primary.");
+        }
+
+        const allAddresses = await client.select().from(contactPostal).where(eq(contactPostal.contactId, currentAddress.contactId));
+        const currentPrimary = allAddresses.find(a => a.isPrimary && a.id !== id);
+        if (currentPrimary?.source === "worker_self" && currentAddress.source !== "worker_self") {
+          throw new Error("Cannot override a worker-reported primary address. Only a worker_self address can replace it.");
+        }
+
         await client
           .update(contactPostal)
-          .set({ isPrimary: false })
-          .where(eq(contactPostal.contactId, currentAddress.contactId));
+          .set({ isPrimary: false, updatedAt: new Date() })
+          .where(and(eq(contactPostal.contactId, currentAddress.contactId), eq(contactPostal.isPrimary, true)));
       }
-      
+
       const [address] = await client
         .update(contactPostal)
-        .set(addressUpdate)
+        .set({ ...sanitized, updatedAt: new Date() } as any)
         .where(eq(contactPostal.id, id))
         .returning();
-      
+
       return address || undefined;
     },
 
     async deleteContactPostal(id: string): Promise<boolean> {
       const client = getClient();
-      const result = await client.delete(contactPostal).where(eq(contactPostal.id, id)).returning();
-      return result.length > 0;
+      const [currentAddress] = await client.select().from(contactPostal).where(eq(contactPostal.id, id));
+      if (!currentAddress) return false;
+      const wasPrimary = currentAddress.isPrimary;
+      const [updated] = await client
+        .update(contactPostal)
+        .set({ isActive: false, isPrimary: false, updatedAt: new Date() })
+        .where(eq(contactPostal.id, id))
+        .returning();
+      if (!updated) return false;
+
+      if (wasPrimary) {
+        const remaining = await client.select().from(contactPostal)
+          .where(and(eq(contactPostal.contactId, currentAddress.contactId), eq(contactPostal.isActive, true)));
+        const deliverable = remaining
+          .filter(a => !TERMINAL_DELIVERABILITY_STATUSES.includes(a.deliverabilityStatus as DeliverabilityStatus))
+          .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+        // Worker_self priority then recency: pick most-recently-updated worker_self if any, else most-recent overall.
+        const workerSelf = deliverable.find(a => a.source === "worker_self");
+        const best = workerSelf || deliverable[0];
+        if (best) {
+          await client.update(contactPostal).set({ isPrimary: true, updatedAt: new Date() }).where(eq(contactPostal.id, best.id));
+        }
+      }
+
+      return true;
     },
 
     async setAddressAsPrimary(addressId: string, contactId: string): Promise<ContactPostal | undefined> {
+      const client = getClient();
+      const [targetAddress] = await client.select().from(contactPostal).where(eq(contactPostal.id, addressId));
+      if (!targetAddress) {
+        throw new Error("Address not found");
+      }
+
+      addressValidate.validateOrThrow({ isPrimary: true }, targetAddress);
+
+      if (TERMINAL_DELIVERABILITY_STATUSES.includes(targetAddress.deliverabilityStatus as DeliverabilityStatus)) {
+        throw new Error("Cannot set an undeliverable address as primary.");
+      }
+
+      const allAddresses = await client.select().from(contactPostal).where(eq(contactPostal.contactId, contactId));
+      const currentPrimary = allAddresses.find(a => a.isPrimary && a.id !== addressId);
+
+      if (currentPrimary?.source === "worker_self" && targetAddress.source !== "worker_self") {
+        throw new Error("Cannot override a worker-reported primary address. Only a worker_self address can replace it.");
+      }
+
+      await client
+        .update(contactPostal)
+        .set({ isPrimary: false, updatedAt: new Date() })
+        .where(eq(contactPostal.contactId, contactId));
+
+      const [address] = await client
+        .update(contactPostal)
+        .set({ isPrimary: true, updatedAt: new Date() })
+        .where(and(eq(contactPostal.id, addressId), eq(contactPostal.contactId, contactId)))
+        .returning();
+
+      return address || undefined;
+    },
+
+    async findMatchingAddress(contactId, street, city, state, postalCode, country?: string) {
+      const client = getClient();
+      const existing = await client.select().from(contactPostal).where(eq(contactPostal.contactId, contactId));
+      const normStreet = normalizeAddressField(street);
+      const normCity = normalizeAddressField(city);
+      const normState = normalizeAddressField(state);
+      const normZip = postalCode.replace(/\D/g, "").substring(0, 5);
+      const normCountry = country ? normalizeAddressField(country) : undefined;
+
+      return existing.find(a => {
+        return a.isActive
+          && normalizeAddressField(a.street) === normStreet
+          && normalizeAddressField(a.city) === normCity
+          && normalizeAddressField(a.state) === normState
+          && a.postalCode.replace(/\D/g, "").substring(0, 5) === normZip
+          && (normCountry === undefined || normalizeAddressField(a.country) === normCountry);
+      });
+    },
+
+    async createOrMatchAddress(contactId, addressData, source, metadata) {
+      const existing = await this.findMatchingAddress(
+        contactId,
+        addressData.street,
+        addressData.city,
+        addressData.state,
+        addressData.postalCode,
+        addressData.country,
+      );
+
+      if (existing) {
+        const matchUpdates: Partial<InsertContactPostal> & { updatedAt: Date } = { updatedAt: new Date() };
+
+        // Only allow promotion to primary if matched address is itself deliverable.
+        const matchedIsTerminal = TERMINAL_DELIVERABILITY_STATUSES.includes(existing.deliverabilityStatus as DeliverabilityStatus);
+
+        if (source === "worker_self") {
+          matchUpdates.source = "worker_self";
+          if (!existing.isPrimary && !matchedIsTerminal) {
+            await getClient()
+              .update(contactPostal)
+              .set({ isPrimary: false, updatedAt: new Date() })
+              .where(and(eq(contactPostal.contactId, contactId), eq(contactPostal.isPrimary, true)));
+            matchUpdates.isPrimary = true;
+          }
+        }
+
+        const [updated] = await getClient()
+          .update(contactPostal)
+          .set(matchUpdates as any)
+          .where(eq(contactPostal.id, existing.id))
+          .returning();
+        return { address: updated, isNew: false };
+      }
+
+      const allAddresses = await this.getContactPostalByContact(contactId);
+      const currentPrimary = allAddresses.find(a => a.isPrimary);
+
+      let makePrimary = false;
+      let needsReview = false;
+
+      const currentPrimaryIsTerminal = currentPrimary && TERMINAL_DELIVERABILITY_STATUSES.includes(currentPrimary.deliverabilityStatus as DeliverabilityStatus);
+      const currentPrimaryIsWorkerSelf = currentPrimary?.source === "worker_self";
+
+      if (!currentPrimary) {
+        makePrimary = true;
+      } else if (source === "worker_self") {
+        makePrimary = true;
+      } else if (currentPrimaryIsTerminal) {
+        makePrimary = true;
+      } else if (source === "admin") {
+        if (currentPrimaryIsWorkerSelf) {
+          needsReview = true;
+        } else {
+          makePrimary = true;
+        }
+      } else if (source === "employer_feed") {
+        needsReview = true;
+      }
+
+      const address = await this.createContactPostal({
+        contactId,
+        street: addressData.street,
+        city: addressData.city,
+        state: addressData.state,
+        postalCode: addressData.postalCode,
+        country: addressData.country,
+        isPrimary: makePrimary,
+        isActive: true,
+        source,
+        needsReview,
+        ...(metadata?.friendlyName ? { friendlyName: metadata.friendlyName } : {}),
+        ...(metadata?.latitude != null ? { latitude: metadata.latitude } : {}),
+        ...(metadata?.longitude != null ? { longitude: metadata.longitude } : {}),
+        ...(metadata?.accuracy ? { accuracy: metadata.accuracy } : {}),
+      });
+
+      return { address, isNew: true };
+    },
+
+    async markUndeliverable(addressId: string): Promise<ContactPostal | undefined> {
       const client = getClient();
       const [currentAddress] = await client.select().from(contactPostal).where(eq(contactPostal.id, addressId));
       if (!currentAddress) {
         throw new Error("Address not found");
       }
 
-      addressValidate.validateOrThrow({ isPrimary: true }, currentAddress);
+      const existingStatus = currentAddress.deliverabilityStatus as DeliverabilityStatus;
+      const statusToSet: DeliverabilityStatus = TERMINAL_DELIVERABILITY_STATUSES.includes(existingStatus) ? existingStatus : "undeliverable";
 
-      await client
+      const [updated] = await client
         .update(contactPostal)
-        .set({ isPrimary: false })
-        .where(eq(contactPostal.contactId, contactId));
-      
-      const [address] = await client
-        .update(contactPostal)
-        .set({ isPrimary: true })
-        .where(and(eq(contactPostal.id, addressId), eq(contactPostal.contactId, contactId)))
+        .set({
+          deliverabilityStatus: statusToSet,
+          updatedAt: new Date(),
+          ...(currentAddress.isPrimary ? { isPrimary: false } : {}),
+        })
+        .where(eq(contactPostal.id, addressId))
         .returning();
-      
-      return address || undefined;
-    }
+
+      if (currentAddress.isPrimary) {
+        const allAddresses = await client.select().from(contactPostal)
+          .where(eq(contactPostal.contactId, currentAddress.contactId))
+          .orderBy(desc(contactPostal.updatedAt));
+
+        const nextBest = allAddresses.find(a =>
+          a.id !== addressId
+          && a.isActive
+          && !TERMINAL_DELIVERABILITY_STATUSES.includes(a.deliverabilityStatus as DeliverabilityStatus)
+        );
+
+        if (nextBest) {
+          await client
+            .update(contactPostal)
+            .set({ isPrimary: false, updatedAt: new Date() })
+            .where(eq(contactPostal.contactId, currentAddress.contactId));
+
+          await client
+            .update(contactPostal)
+            .set({ isPrimary: true, updatedAt: new Date() })
+            .where(eq(contactPostal.id, nextBest.id));
+        }
+      }
+
+      return updated || undefined;
+    },
+
+    async updateDeliverabilityStatus(addressId: string, status: DeliverabilityStatus, lastVerifiedAt?: Date): Promise<ContactPostal | undefined> {
+      const client = getClient();
+      const updateFields: Partial<InsertContactPostal> & { updatedAt: Date } = {
+        deliverabilityStatus: status,
+        updatedAt: new Date(),
+      };
+      if (lastVerifiedAt) {
+        updateFields.lastVerifiedAt = lastVerifiedAt;
+      }
+      const [updated] = await client
+        .update(contactPostal)
+        .set(updateFields as any)
+        .where(eq(contactPostal.id, addressId))
+        .returning();
+      return updated || undefined;
+    },
   };
 }
 

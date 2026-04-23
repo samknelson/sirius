@@ -1,6 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 import { insertContactPostalSchema } from "@shared/schema";
+import type { AddressSource } from "../storage/contacts";
 
 // Type for middleware functions that we'll accept from the main routes
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -33,39 +34,31 @@ function extractGeometryFromValidationResponse(validationResponse: any): {
 }
 
 export function registerContactPostalRoutes(
-  app: Express, 
-  requireAuth: AuthMiddleware, 
+  app: Express,
+  requireAuth: AuthMiddleware,
   requirePermission: PermissionMiddleware,
   requireAccess?: PolicyMiddleware
 ) {
-  
-  // GET /api/contacts/:contactId/addresses - Get all addresses for a contact
-  // Uses worker.view policy for worker contacts, employer.manage for employer contacts, staff policy for others
+
+  // GET /api/contacts/:contactId/addresses
   app.get("/api/contacts/:contactId/addresses", requireAuth, async (req, res, next) => {
     if (!requireAccess) return next();
-    
-    // Check if this contact belongs to a worker
+
     const worker = await storage.workers.getWorkerByContactId(req.params.contactId);
-    
     if (worker) {
-      // Worker contact - use worker.view policy with worker ID
       return requireAccess('worker.view', () => worker.id)(req, res, next);
     }
-    
-    // Check if this contact belongs to an employer contact
+
     const employerContacts = await storage.employerContacts.listByContactId(req.params.contactId);
     if (employerContacts && employerContacts.length > 0) {
-      // Employer contact - use employer.manage policy with employer ID
       return requireAccess('employer.manage', () => employerContacts[0].employerId)(req, res, next);
     }
-    
-    // Check if this contact belongs to a facility
+
     const facility = await storage.facilities.getByContactId(req.params.contactId);
     if (facility) {
       return requireAccess('facility.view', () => facility.id)(req, res, next);
     }
-    
-    // Other contact types - require staff permission
+
     return requireAccess('staff')(req, res, next);
   }, async (req, res) => {
     try {
@@ -77,23 +70,19 @@ export function registerContactPostalRoutes(
     }
   });
 
-  // GET /api/addresses/:id - Get specific address
-  // Uses contact.view policy
+  // GET /api/addresses/:id
   app.get("/api/addresses/:id", requireAuth, async (req, res, next) => {
     if (!requireAccess) return next();
-    
-    // Get address to find contactId for access check
+
     const address = await storage.contacts.addresses.getContactPostal(req.params.id);
     if (!address) {
       return res.status(404).json({ message: "Address not found" });
     }
-    
-    // Store address on request for handler to avoid duplicate lookup
+
     (req as any).addressRecord = address;
     return requireAccess('contact.view', () => address.contactId)(req, res, next);
   }, async (req, res) => {
     try {
-      // Use stored address from middleware
       const address = (req as any).addressRecord;
       res.json(address);
     } catch (error) {
@@ -101,26 +90,42 @@ export function registerContactPostalRoutes(
     }
   });
 
-  // POST /api/contacts/:contactId/addresses - Create new address for a contact
-  // Uses contact.edit policy with contactId from params
+  // POST /api/contacts/:contactId/addresses - admin path (server forces source=admin)
   app.post("/api/contacts/:contactId/addresses", requireAuth, async (req, res, next) => {
     if (!requireAccess) return next();
     return requireAccess('contact.edit', () => req.params.contactId)(req, res, next);
   }, async (req, res) => {
     try {
       const { contactId } = req.params;
-      
-      // Extract geometry data from validationResponse if present
+
       const geometryData = extractGeometryFromValidationResponse(req.body.validationResponse);
-      
-      const addressData = insertContactPostalSchema.parse({ 
+
+      const source: AddressSource = "admin";
+      const parsed = insertContactPostalSchema.parse({
         ...req.body,
         ...geometryData,
-        contactId 
+        contactId,
+        source,
       });
-      
-      const newAddress = await storage.contacts.addresses.createContactPostal(addressData);
-      res.status(201).json(newAddress);
+
+      const { address: newAddress, isNew } = await storage.contacts.addresses.createOrMatchAddress(
+        contactId,
+        {
+          street: parsed.street,
+          city: parsed.city,
+          state: parsed.state,
+          postalCode: parsed.postalCode,
+          country: parsed.country,
+        },
+        source,
+        {
+          friendlyName: parsed.friendlyName ?? undefined,
+          latitude: parsed.latitude ?? undefined,
+          longitude: parsed.longitude ?? undefined,
+          accuracy: parsed.accuracy ?? undefined,
+        },
+      );
+      res.status(isNew ? 201 : 200).json(newAddress);
     } catch (error) {
       if (error instanceof Error && error.name === 'ZodError') {
         return res.status(400).json({ message: "Invalid address data", errors: error });
@@ -132,39 +137,104 @@ export function registerContactPostalRoutes(
     }
   });
 
-  // PUT /api/addresses/:id - Update address
-  // Uses contact.edit policy - lookup address first to get contactId
+  // POST /api/contacts/:contactId/addresses/self - worker self-service path (source=worker_self)
+  // Authorization: in addition to contact.edit, the authenticated user MUST be the worker for this contact
+  // (their email matches the contact's email and the contact belongs to a worker). This prevents privileged
+  // non-worker actors from minting worker_self provenance records that would otherwise be considered
+  // higher trust than admin-entered addresses.
+  app.post("/api/contacts/:contactId/addresses/self", requireAuth, async (req, res, next) => {
+    try {
+      const { contactId } = req.params;
+      const contact = await storage.contacts.getContact(contactId);
+      if (!contact) {
+        return res.status(404).json({ message: "Contact not found" });
+      }
+      const worker = await storage.workers.getWorkerByContactId(contactId);
+      if (!worker) {
+        return res.status(403).json({ message: "Worker self-service is only available for worker contacts." });
+      }
+      const userEmail = ((req.user as any)?.dbUser?.email ?? (req.user as any)?.email ?? "").toLowerCase();
+      const contactEmail = (contact.email ?? "").toLowerCase();
+      if (!userEmail || !contactEmail || userEmail !== contactEmail) {
+        return res.status(403).json({ message: "You may only add a self-reported address to your own contact record." });
+      }
+    } catch (e) {
+      return res.status(500).json({ message: "Failed to authorize worker-self request" });
+    }
+    if (!requireAccess) return next();
+    return requireAccess('contact.edit', () => req.params.contactId)(req, res, next);
+  }, async (req, res) => {
+    try {
+      const { contactId } = req.params;
+
+      const geometryData = extractGeometryFromValidationResponse(req.body.validationResponse);
+
+      const source: AddressSource = "worker_self";
+      const parsed = insertContactPostalSchema.parse({
+        ...req.body,
+        ...geometryData,
+        contactId,
+        source,
+      });
+
+      const { address: newAddress, isNew } = await storage.contacts.addresses.createOrMatchAddress(
+        contactId,
+        {
+          street: parsed.street,
+          city: parsed.city,
+          state: parsed.state,
+          postalCode: parsed.postalCode,
+          country: parsed.country,
+        },
+        source,
+        {
+          friendlyName: parsed.friendlyName ?? undefined,
+          latitude: parsed.latitude ?? undefined,
+          longitude: parsed.longitude ?? undefined,
+          accuracy: parsed.accuracy ?? undefined,
+        },
+      );
+      res.status(isNew ? 201 : 200).json(newAddress);
+    } catch (error) {
+      if (error instanceof Error && error.name === 'ZodError') {
+        return res.status(400).json({ message: "Invalid address data", errors: error });
+      }
+      if (error instanceof Error) {
+        return res.status(400).json({ message: error.message });
+      }
+      res.status(500).json({ message: "Failed to create address" });
+    }
+  });
+
+  // PUT /api/addresses/:id - update metadata; immutable address fields are stripped silently
   app.put("/api/addresses/:id", requireAuth, async (req, res, next) => {
     if (!requireAccess) return next();
-    
-    // Get address to find contactId for access check
+
     const address = await storage.contacts.addresses.getContactPostal(req.params.id);
     if (!address) {
       return res.status(404).json({ message: "Address not found" });
     }
-    
-    // Store address on request to avoid duplicate lookup
+
     (req as any).addressRecord = address;
     return requireAccess('contact.edit', () => address.contactId)(req, res, next);
   }, async (req, res) => {
     try {
       const { id } = req.params;
-      
-      // Extract geometry data from validationResponse if present
+
       const geometryData = extractGeometryFromValidationResponse(req.body.validationResponse);
-      
-      // Parse the update data, but don't require contactId since it shouldn't change
+
+      const { source: _source, street: _street, city: _city, state: _state, postalCode: _pc, country: _country, ...safeBody } = req.body;
       const updateData = insertContactPostalSchema.partial().omit({ contactId: true }).parse({
-        ...req.body,
+        ...safeBody,
         ...geometryData,
       });
-      
+
       const updatedAddress = await storage.contacts.addresses.updateContactPostal(id, updateData);
-      
+
       if (!updatedAddress) {
         return res.status(404).json({ message: "Address not found" });
       }
-      
+
       res.json(updatedAddress);
     } catch (error) {
       if (error instanceof Error && error.name === 'ZodError') {
@@ -177,31 +247,28 @@ export function registerContactPostalRoutes(
     }
   });
 
-  // PUT /api/addresses/:id/set-primary - Set address as primary
-  // Uses contact.edit policy - lookup address first to get contactId
+  // PUT /api/addresses/:id/set-primary
   app.put("/api/addresses/:id/set-primary", requireAuth, async (req, res, next) => {
     if (!requireAccess) return next();
-    
-    // Get address to find contactId for access check
+
     const address = await storage.contacts.addresses.getContactPostal(req.params.id);
     if (!address) {
       return res.status(404).json({ message: "Address not found" });
     }
-    
-    // Store address on request
+
     (req as any).addressRecord = address;
     return requireAccess('contact.edit', () => address.contactId)(req, res, next);
   }, async (req, res) => {
     try {
       const { id } = req.params;
       const currentAddress = (req as any).addressRecord;
-      
+
       const updatedAddress = await storage.contacts.addresses.setAddressAsPrimary(id, currentAddress.contactId);
-      
+
       if (!updatedAddress) {
         return res.status(404).json({ message: "Failed to set address as primary" });
       }
-      
+
       res.json(updatedAddress);
     } catch (error) {
       if (error instanceof Error) {
@@ -211,27 +278,49 @@ export function registerContactPostalRoutes(
     }
   });
 
-  // DELETE /api/addresses/:id - Delete address
-  // Uses contact.edit policy - lookup address first to get contactId
-  app.delete("/api/addresses/:id", requireAuth, async (req, res, next) => {
+  // PUT /api/addresses/:id/mark-undeliverable
+  app.put("/api/addresses/:id/mark-undeliverable", requireAuth, async (req, res, next) => {
     if (!requireAccess) return next();
-    
-    // Get address to find contactId for access check
     const address = await storage.contacts.addresses.getContactPostal(req.params.id);
     if (!address) {
       return res.status(404).json({ message: "Address not found" });
     }
-    
+    return requireAccess('contact.edit', () => address.contactId)(req, res, next);
+  }, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updated = await storage.contacts.addresses.markUndeliverable(id);
+      if (!updated) {
+        return res.status(404).json({ message: "Address not found" });
+      }
+      res.json(updated);
+    } catch (error) {
+      if (error instanceof Error) {
+        return res.status(400).json({ message: error.message });
+      }
+      res.status(500).json({ message: "Failed to mark address as undeliverable" });
+    }
+  });
+
+  // DELETE /api/addresses/:id - soft-delete (deactivate)
+  app.delete("/api/addresses/:id", requireAuth, async (req, res, next) => {
+    if (!requireAccess) return next();
+
+    const address = await storage.contacts.addresses.getContactPostal(req.params.id);
+    if (!address) {
+      return res.status(404).json({ message: "Address not found" });
+    }
+
     return requireAccess('contact.edit', () => address.contactId)(req, res, next);
   }, async (req, res) => {
     try {
       const { id } = req.params;
       const deleted = await storage.contacts.addresses.deleteContactPostal(id);
-      
+
       if (!deleted) {
         return res.status(404).json({ message: "Address not found" });
       }
-      
+
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ message: "Failed to delete address" });

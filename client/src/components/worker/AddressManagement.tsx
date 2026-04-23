@@ -7,7 +7,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Edit, Trash2, MapPin, Star, Eye, Code, CheckCircle, AlertCircle, Copy, XCircle, Loader2, Mail } from "lucide-react";
+import { Plus, Edit, Trash2, MapPin, Star, Eye, Code, CheckCircle, AlertCircle, Copy, XCircle, Loader2, Mail, ShieldAlert, User as UserIcon, Building2, Database, Settings as SettingsIcon } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { apiRequest } from "@/lib/queryClient";
 import { UnifiedAddressInput } from "@/components/ui/unified-address-input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -57,10 +58,13 @@ interface AddressFormData extends Omit<InsertContactPostal, 'contactId'> {}
 export default function AddressManagement({ workerId, contactId, canEdit = true }: AddressManagementProps) {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [editingAddress, setEditingAddress] = useState<ContactPostal | null>(null);
+  const [editFriendlyName, setEditFriendlyName] = useState("");
+  const [editIsPrimary, setEditIsPrimary] = useState(false);
   const [viewingAddress, setViewingAddress] = useState<ContactPostal | null>(null);
   const [jsonViewAddress, setJsonViewAddress] = useState<ContactPostal | null>(null);
   const [postalOptinAddress, setPostalOptinAddress] = useState<ContactPostal | null>(null);
   const [verificationResult, setVerificationResult] = useState<VerifyAddressResult | null>(null);
+  const [showInactive, setShowInactive] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -298,16 +302,87 @@ export default function AddressManagement({ workerId, contactId, canEdit = true 
 
   const handleEdit = (address: ContactPostal) => {
     setEditingAddress(address);
+    setEditFriendlyName(address.friendlyName ?? "");
+    setEditIsPrimary(!!address.isPrimary);
   };
 
   const handleDelete = (addressId: string) => {
-    if (confirm("Are you sure you want to delete this address?")) {
+    if (confirm("Deactivate this address? It will be hidden from the active list but kept in history. Use 'Show inactive' to view deactivated addresses.")) {
       deleteAddressMutation.mutate(addressId);
     }
   };
 
   const handleSetPrimary = (addressId: string) => {
     setPrimaryMutation.mutate(addressId);
+  };
+
+  const getSourceBadge = (source?: string | null) => {
+    if (!source) return null;
+    const map: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline"; icon: any }> = {
+      worker_self: { label: "Worker", variant: "default", icon: UserIcon },
+      employer_feed: { label: "Employer", variant: "secondary", icon: Building2 },
+      admin: { label: "Admin", variant: "outline", icon: SettingsIcon },
+      import: { label: "Import", variant: "outline", icon: Database },
+      system: { label: "System", variant: "outline", icon: SettingsIcon },
+    };
+    const cfg = map[source] || { label: source, variant: "outline" as const, icon: SettingsIcon };
+    const Icon = cfg.icon;
+    return (
+      <Badge variant={cfg.variant} className="flex items-center gap-1">
+        <Icon size={12} />
+        <span>{cfg.label}</span>
+      </Badge>
+    );
+  };
+
+  const getDeliverabilityBadge = (status?: string | null) => {
+    if (!status || status === "unknown") return null;
+    const map: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline"; icon: any }> = {
+      verified: { label: "Verified", variant: "default", icon: CheckCircle },
+      undeliverable: { label: "Undeliverable", variant: "destructive", icon: XCircle },
+      vacant: { label: "Vacant", variant: "destructive", icon: XCircle },
+      returned_mail: { label: "Returned Mail", variant: "destructive", icon: XCircle },
+    };
+    const cfg = map[status];
+    if (!cfg) return null;
+    const Icon = cfg.icon;
+    return (
+      <Badge variant={cfg.variant} className="flex items-center gap-1">
+        <Icon size={12} />
+        <span>{cfg.label}</span>
+      </Badge>
+    );
+  };
+
+  const markUndeliverableMutation = useMutation({
+    mutationFn: async (addressId: string) => {
+      return apiRequest("PUT", `/api/addresses/${addressId}/mark-undeliverable`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts", contactId, "addresses"] });
+      toast({ title: "Marked Undeliverable", description: "Address marked as undeliverable. Primary may have been auto-promoted." });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error?.message || "Failed to mark undeliverable", variant: "destructive" });
+    },
+  });
+
+  const handleMarkUndeliverable = (addressId: string) => {
+    if (confirm("Mark this address as undeliverable? If it is primary, another address will be auto-promoted.")) {
+      markUndeliverableMutation.mutate(addressId);
+    }
+  };
+
+  const handleEditMetadataSubmit = () => {
+    if (!editingAddress) return;
+    const updates: Partial<AddressFormData> = {
+      friendlyName: editFriendlyName.trim() || null,
+    };
+    // Only include isPrimary when toggled to true (avoid demoting via PUT)
+    if (editIsPrimary && !editingAddress.isPrimary) {
+      updates.isPrimary = true;
+    }
+    updateAddressMutation.mutate({ id: editingAddress.id, updates });
   };
 
   const getAccuracyBadge = (accuracy?: string | null) => {
@@ -363,6 +438,16 @@ export default function AddressManagement({ workerId, contactId, canEdit = true 
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h3 className="text-lg font-semibold text-foreground">Postal Addresses</h3>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <Switch
+              id="show-inactive-addresses"
+              checked={showInactive}
+              onCheckedChange={setShowInactive}
+              data-testid="switch-show-inactive-addresses"
+            />
+            <Label htmlFor="show-inactive-addresses" className="text-sm">Show inactive</Label>
+          </div>
         {canEdit && (
           <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
             <DialogTrigger asChild>
@@ -393,6 +478,7 @@ export default function AddressManagement({ workerId, contactId, canEdit = true 
           </DialogContent>
         </Dialog>
         )}
+        </div>
       </div>
 
       {addresses.length === 0 ? (
@@ -413,7 +499,9 @@ export default function AddressManagement({ workerId, contactId, canEdit = true 
         </Card>
       ) : (
         <div className="space-y-4">
-          {addresses.map((address) => (
+          {addresses
+            .filter(a => showInactive || a.isActive)
+            .map((address) => (
             <Card key={address.id} className="relative">
               <CardHeader className="pb-2">
                 <div className="flex items-start justify-between">
@@ -424,6 +512,14 @@ export default function AddressManagement({ workerId, contactId, canEdit = true 
                       </CardTitle>
                       {!address.isActive && (
                         <Badge variant="secondary">Inactive</Badge>
+                      )}
+                      {getSourceBadge((address as any).source)}
+                      {getDeliverabilityBadge((address as any).deliverabilityStatus)}
+                      {(address as any).needsReview && (
+                        <Badge variant="destructive" className="flex items-center gap-1">
+                          <ShieldAlert size={12} />
+                          <span>Needs Review</span>
+                        </Badge>
                       )}
                       {getAccuracyBadge(address.accuracy)}
                     </div>
@@ -471,6 +567,18 @@ export default function AddressManagement({ workerId, contactId, canEdit = true 
                         <Edit size={14} />
                       </Button>
                     )}
+                    {canEdit && address.isActive && !["undeliverable", "vacant", "returned_mail"].includes(((address as any).deliverabilityStatus) ?? "") && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleMarkUndeliverable(address.id)}
+                        disabled={markUndeliverableMutation.isPending}
+                        data-testid={`button-mark-undeliverable-${address.id}`}
+                        title="Mark as undeliverable"
+                      >
+                        <ShieldAlert size={14} className="text-destructive" />
+                      </Button>
+                    )}
                     {canEdit && (
                       <Button
                         variant="ghost"
@@ -503,22 +611,76 @@ export default function AddressManagement({ workerId, contactId, canEdit = true 
             <DialogTitle>Edit Address</DialogTitle>
           </DialogHeader>
           {editingAddress && (
-            <UnifiedAddressInput
-              defaultValues={{
-                friendlyName: editingAddress.friendlyName || undefined,
-                street: editingAddress.street,
-                city: editingAddress.city,
-                state: editingAddress.state,
-                postalCode: editingAddress.postalCode,
-                country: editingAddress.country,
-                isPrimary: editingAddress.isPrimary,
-                isActive: editingAddress.isActive,
-              }}
-              onSubmit={handleEditSubmit}
-              onCancel={() => setEditingAddress(null)}
-              isSubmitting={updateAddressMutation.isPending}
-              submitLabel="Update Address"
-            />
+            <div className="space-y-4">
+              <Alert>
+                <AlertCircle className="h-4 w-4" />
+                <AlertTitle>Append-only address policy</AlertTitle>
+                <AlertDescription>
+                  Street, city, state, postal code, and country cannot be changed once an address is created.
+                  To use a different street address, add a new address and mark this one inactive.
+                </AlertDescription>
+              </Alert>
+
+              <div className="space-y-1">
+                <Label className="text-muted-foreground">Address</Label>
+                <p className="font-medium">{editingAddress.street}</p>
+                <p className="text-sm text-muted-foreground">
+                  {editingAddress.city}, {editingAddress.state} {editingAddress.postalCode}
+                </p>
+                <p className="text-sm text-muted-foreground">{editingAddress.country}</p>
+              </div>
+
+              <Separator />
+
+              <div className="space-y-2">
+                <Label htmlFor="edit-friendly-name">Friendly Name</Label>
+                <Input
+                  id="edit-friendly-name"
+                  value={editFriendlyName}
+                  onChange={(e) => setEditFriendlyName(e.target.value)}
+                  placeholder="e.g., Home, Work"
+                  data-testid="input-edit-friendly-name"
+                />
+              </div>
+
+              {!editingAddress.isPrimary && (
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="edit-is-primary">Set as Primary</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Promote this address to primary for the contact.
+                    </p>
+                  </div>
+                  <Switch
+                    id="edit-is-primary"
+                    checked={editIsPrimary}
+                    onCheckedChange={setEditIsPrimary}
+                    data-testid="switch-edit-is-primary"
+                  />
+                </div>
+              )}
+
+              <div className="flex justify-end gap-2 pt-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setEditingAddress(null)}
+                  data-testid="button-cancel-edit-address"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleEditMetadataSubmit}
+                  disabled={updateAddressMutation.isPending}
+                  data-testid="button-submit-edit-address"
+                >
+                  {updateAddressMutation.isPending ? (
+                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Saving...</>
+                  ) : (
+                    "Save Changes"
+                  )}
+                </Button>
+              </div>
+            </div>
           )}
         </DialogContent>
       </Dialog>
