@@ -5,12 +5,17 @@ import { BulkUpdateEmployersDialog } from "@/components/employers/bulk-update-em
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
-import { Employer } from "@shared/schema";
+import { Employer, TrustBenefit } from "@shared/schema";
 import { Company } from "@shared/schema/employer/company-schema";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { useAuth } from "@/contexts/AuthContext";
 
 type EmployerWithCompany = Employer & { companyId?: string | null; companyName?: string | null };
+
+interface EmployerCountsResponse {
+  workerCounts: Record<string, number>;
+  benefitCounts?: Record<string, Record<string, number>>;
+}
 
 export default function Employers() {
   const [location] = useLocation();
@@ -19,6 +24,7 @@ export default function Employers() {
   const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
   const { hasComponent, hasPermission } = useAuth();
   const showCompany = hasComponent("employer.company");
+  const showBenefits = hasComponent("trust.benefits");
   const canBulkUpdate = hasPermission("staff");
   
   const { data: employers = [], isLoading } = useQuery<EmployerWithCompany[]>({
@@ -40,6 +46,17 @@ export default function Employers() {
     queryKey: ["/api/companies"],
     enabled: showCompany,
   });
+
+  const { data: counts, isLoading: countsLoading } = useQuery<EmployerCountsResponse>({
+    queryKey: ["/api/employers/counts"],
+  });
+
+  const { data: benefits = [] } = useQuery<TrustBenefit[]>({
+    queryKey: ["/api/trust-benefits"],
+    enabled: showBenefits,
+  });
+
+  const activeBenefits = benefits.filter((b) => b.isActive);
 
   const tabs = [
     { id: "list", label: "List", href: "/employers" },
@@ -101,6 +118,11 @@ export default function Employers() {
           selectable={canBulkUpdate}
           selectedIds={selectedIds}
           onSelectionChange={setSelectedIds}
+          workerCounts={counts?.workerCounts}
+          benefitCounts={counts?.benefitCounts}
+          countsLoading={countsLoading}
+          showBenefits={showBenefits}
+          benefits={activeBenefits}
         />
       </main>
 

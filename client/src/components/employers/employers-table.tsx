@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Employer } from "@shared/schema";
+import { Employer, TrustBenefit } from "@shared/schema";
 import { Company } from "@shared/schema/employer/company-schema";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
@@ -27,6 +27,11 @@ interface EmployersTableProps {
   selectable?: boolean;
   selectedIds?: Set<string>;
   onSelectionChange?: (selectedIds: Set<string>) => void;
+  workerCounts?: Record<string, number>;
+  benefitCounts?: Record<string, Record<string, number>>;
+  countsLoading?: boolean;
+  showBenefits?: boolean;
+  benefits?: TrustBenefit[];
 }
 
 const avatarColors = [
@@ -43,7 +48,7 @@ interface EmployerType {
   data?: { icon?: string } | null;
 }
 
-export function EmployersTable({ employers, isLoading, includeInactive, onToggleInactive, showCompany, companies = [], selectable = false, selectedIds, onSelectionChange }: EmployersTableProps) {
+export function EmployersTable({ employers, isLoading, includeInactive, onToggleInactive, showCompany, companies = [], selectable = false, selectedIds, onSelectionChange, workerCounts, benefitCounts, countsLoading = false, showBenefits = false, benefits = [] }: EmployersTableProps) {
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedTypeId, setSelectedTypeId] = useState<string>("all");
@@ -285,6 +290,19 @@ export function EmployersTable({ employers, isLoading, includeInactive, onToggle
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   <span>Status</span>
                 </th>
+                <th className="px-6 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider whitespace-nowrap">
+                  <span>Workers</span>
+                </th>
+                {showBenefits && benefits.map((b) => (
+                  <th
+                    key={b.id}
+                    className="px-4 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider whitespace-nowrap"
+                    title={b.name}
+                    data-testid={`th-benefit-${b.id}`}
+                  >
+                    <span>{b.name}</span>
+                  </th>
+                ))}
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   <span>Actions</span>
                 </th>
@@ -342,6 +360,33 @@ export function EmployersTable({ employers, isLoading, includeInactive, onToggle
                       {employer.isActive ? 'Active' : 'Inactive'}
                     </span>
                   </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm" data-testid={`text-employer-worker-count-${employer.id}`}>
+                    {countsLoading && !workerCounts ? (
+                      <Skeleton className="h-4 w-8 ml-auto" />
+                    ) : (workerCounts?.[employer.id] ?? 0) > 0 ? (
+                      <span className="font-medium tabular-nums">{workerCounts?.[employer.id]}</span>
+                    ) : (
+                      <span className="text-muted-foreground tabular-nums">0</span>
+                    )}
+                  </td>
+                  {showBenefits && benefits.map((b) => {
+                    const count = benefitCounts?.[employer.id]?.[b.id] ?? 0;
+                    return (
+                      <td
+                        key={b.id}
+                        className="px-4 py-4 whitespace-nowrap text-right text-sm"
+                        data-testid={`text-employer-benefit-count-${employer.id}-${b.id}`}
+                      >
+                        {countsLoading && !benefitCounts ? (
+                          <Skeleton className="h-4 w-6 ml-auto" />
+                        ) : count > 0 ? (
+                          <span className="font-medium tabular-nums">{count}</span>
+                        ) : (
+                          <span className="text-muted-foreground tabular-nums">0</span>
+                        )}
+                      </td>
+                    );
+                  })}
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
                     <div className="flex items-center space-x-2">
                       <Link href={`/employers/${employer.id}`}>
