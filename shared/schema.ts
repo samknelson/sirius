@@ -928,6 +928,8 @@ export {
   type InsertBtuPoliticalDistrictCache,
 } from "./schema/sitespecific/btu/political-schema";
 
+export * from "./schema/sitespecific/gbhet-pension/schema";
+
 export {
   optionsSkills,
   insertOptionsSkillsSchema,
@@ -1145,7 +1147,6 @@ export type SelectLedgerEa = typeof ledgerEa.$inferSelect;
 
 export const insertLedgerSchema = createInsertSchema(ledger).omit({
   id: true,
-  date: true,
 });
 
 export type InsertLedger = z.infer<typeof insertLedgerSchema>;

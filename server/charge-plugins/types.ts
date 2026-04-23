@@ -7,6 +7,7 @@ export enum TriggerType {
   PARTICIPANT_SAVED = "participant_saved",
   CRON = "cron",
   DUES_IMPORT_SAVED = "dues_import_saved",
+  LEDGER_ENTRY_SAVED = "ledger_entry_saved",
 }
 
 export interface HoursSavedContext {
@@ -82,7 +83,23 @@ export interface DuesImportSavedContext {
   memo: string | null;
 }
 
-export type PluginContext = HoursSavedContext | PaymentSavedContext | WmbSavedContext | ParticipantSavedContext | CronContext | DuesImportSavedContext;
+export interface LedgerEntrySavedContext {
+  trigger: TriggerType.LEDGER_ENTRY_SAVED;
+  entryId: string;
+  chargePlugin: string | null;
+  chargePluginConfigId: string | null;
+  accountId: string;
+  entityType: string;
+  entityId: string;
+  amount: string;
+  date: Date;
+  referenceType: string | null;
+  referenceId: string | null;
+  changeType: "created" | "updated" | "deleted";
+  data?: Record<string, any> | null;
+}
+
+export type PluginContext = HoursSavedContext | PaymentSavedContext | WmbSavedContext | ParticipantSavedContext | CronContext | DuesImportSavedContext | LedgerEntrySavedContext;
 
 export interface LedgerTransaction {
   chargePlugin: string;

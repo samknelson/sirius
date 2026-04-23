@@ -91,6 +91,7 @@ import { requireComponent } from "./modules/components";
 import { registerWorkerStewardAssignmentRoutes } from "./modules/worker-steward-assignments";
 import { registerBtuCsgRoutes } from "./modules/sitespecific/btu/csg";
 import { registerHtaRoutes } from "./modules/hta";
+import { registerGbhetPensionRoutes } from "./modules/sitespecific-gbhet-pension";
 import { registerBtuTerritoriesRoutes } from "./modules/sitespecific/btu/territories";
 import { registerBtuSchoolRoutes } from "./modules/sitespecific/btu/school";
 import { registerBtuSigImportRoutes } from "./modules/sitespecific/btu/sig-import";
@@ -1711,6 +1712,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register HTA routes
   registerHtaRoutes(app, requireAuth, requirePermission);
+  registerGbhetPensionRoutes(app, requireAuth, requirePermission);
 
   // Register EDLS routes
   registerEdlsSheetsRoutes(app, requireAuth, requirePermission);

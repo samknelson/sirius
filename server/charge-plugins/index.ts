@@ -8,6 +8,10 @@ export * from "./listener";
 // import "./plugins/hourFixed"; // Temporarily disabled - no charge plugins active
 // import "./plugins/gbhetLegalHourly"; // Replaced by gbhetLegalBenefit
 import "./plugins/gbhetLegalBenefit";
+import "./plugins/gbheHourlyCharge";
+import "./plugins/gbhetPensionSlaHourly";
+import "./plugins/gbhetPensionSlaContribution";
+import "./plugins/gbhetPensionVariableContribution";
 import "./plugins/paymentSimpleAllocation";
 import "./plugins/btuStewardAttendance";
 import "./plugins/btuDuesAllocation";

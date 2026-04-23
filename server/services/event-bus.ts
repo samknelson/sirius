@@ -15,6 +15,22 @@ export enum EventType {
   WORKER_WS_CHANGED = "worker.ws.changed",
   CRON = "cron",
   LOG = "log",
+  LEDGER_ENTRY_SAVED = "ledger.entry.saved",
+}
+
+export interface LedgerEntrySavedPayload {
+  entryId: string;
+  chargePlugin: string;
+  chargePluginConfigId: string | null;
+  accountId: string;
+  entityType: string;
+  entityId: string;
+  amount: string;
+  date: Date | null;
+  referenceType: string | null;
+  referenceId: string | null;
+  changeType: "create" | "update" | "delete";
+  data: unknown;
 }
 
 export interface HoursSavedPayload {
@@ -157,6 +173,7 @@ export interface EventPayloadMap {
   [EventType.WORKER_WS_CHANGED]: WorkerWsChangedPayload;
   [EventType.CRON]: CronPayload;
   [EventType.LOG]: LogPayload;
+  [EventType.LEDGER_ENTRY_SAVED]: LedgerEntrySavedPayload;
 }
 
 export type EventHandler<T extends EventType> = (payload: EventPayloadMap[T]) => Promise<void>;

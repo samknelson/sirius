@@ -333,6 +333,15 @@ const BulkMessageLogsPage = lazy(() => import("@/pages/bulk-message-logs"));
 const BulkMessageRecipientsListPage = lazy(() => import("@/pages/bulk-message-recipients-list"));
 const BulkMessageRecipientsAddPage = lazy(() => import("@/pages/bulk-message-recipients-add"));
 const BulkMessageDeliverPage = lazy(() => import("@/pages/bulk-message-deliver"));
+const PensionPlanYearsPage = lazy(() => import("@/pages/sitespecific/gbhet/pension-plan-years"));
+const PensionEmployerPlansPage = lazy(() => import("@/pages/sitespecific/gbhet/pension-employer-plans"));
+const PensionAccrualTiersPage = lazy(() => import("@/pages/sitespecific/gbhet/pension-accrual-tiers"));
+const PensionBenefitSchedulesPage = lazy(() => import("@/pages/sitespecific/gbhet/pension-benefit-schedules"));
+const PensionActuarialFactorsPage = lazy(() => import("@/pages/sitespecific/gbhet/pension-actuarial-factors"));
+const PensionPayoutCalculatorPage = lazy(() => import("@/pages/sitespecific/gbhet/pension-payout-calculator"));
+const PensionShareValuesPage = lazy(() => import("@/pages/sitespecific/gbhet/pension-share-values"));
+const PensionAnnualSummariesPage = lazy(() => import("@/pages/sitespecific/gbhet/pension-annual-summaries"));
+const WorkerVdbPensionPage = lazy(() => import("@/pages/worker-vdb-pension"));
 const BulkMessageTestPage = lazy(() => import("@/pages/bulk-message-test"));
 
 // Loading fallback component
@@ -680,6 +689,78 @@ function Router() {
         <ProtectedRoute tabId="accounting" entityType="worker">
           <AuthenticatedLayout>
             <WorkerLedgerAccounts />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/workers/:id/vdb-pension">
+        <ProtectedRoute permission="staff" component="sitespecific.gbhet.pension">
+          <AuthenticatedLayout>
+            <WorkerVdbPensionPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/sitespecific/gbhet/pension/plan-years">
+        <ProtectedRoute permission="admin" component="sitespecific.gbhet.pension">
+          <AuthenticatedLayout>
+            <PensionPlanYearsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/sitespecific/gbhet/pension/employer-plans">
+        <ProtectedRoute permission="admin" component="sitespecific.gbhet.pension">
+          <AuthenticatedLayout>
+            <PensionEmployerPlansPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/sitespecific/gbhet/pension/accrual-tiers">
+        <ProtectedRoute permission="admin" component="sitespecific.gbhet.pension">
+          <AuthenticatedLayout>
+            <PensionAccrualTiersPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/sitespecific/gbhet/pension/benefit-schedules">
+        <ProtectedRoute permission="admin" component="sitespecific.gbhet.pension">
+          <AuthenticatedLayout>
+            <PensionBenefitSchedulesPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/sitespecific/gbhet/pension/actuarial-factors">
+        <ProtectedRoute permission="admin" component="sitespecific.gbhet.pension">
+          <AuthenticatedLayout>
+            <PensionActuarialFactorsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/sitespecific/gbhet/pension/payout-calculator">
+        <ProtectedRoute permission="staff" component="sitespecific.gbhet.pension">
+          <AuthenticatedLayout>
+            <PensionPayoutCalculatorPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/sitespecific/gbhet/pension/share-values">
+        <ProtectedRoute permission="admin" component="sitespecific.gbhet.pension">
+          <AuthenticatedLayout>
+            <PensionShareValuesPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/sitespecific/gbhet/pension/annual-summaries">
+        <ProtectedRoute permission="staff" component="sitespecific.gbhet.pension">
+          <AuthenticatedLayout>
+            <PensionAnnualSummariesPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

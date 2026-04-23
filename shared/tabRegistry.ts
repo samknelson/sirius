@@ -168,6 +168,7 @@ export const workerTabTree: HierarchicalTab[] = [
   },
   { id: 'political', label: 'Political', hrefTemplate: '/workers/{id}/political', permission: 'staff', component: 'sitespecific.btu.political' },
   { id: 'accounting', label: 'Accounting', hrefTemplate: '/workers/{id}/ledger/accounts', policyId: 'worker.ledger', component: 'ledger' },
+  { id: 'vdb-pension', label: 'VDB Pension', hrefTemplate: '/workers/{id}/vdb-pension', permission: 'staff', component: 'sitespecific.gbhet.pension' },
   { id: 'logs', label: 'Logs', hrefTemplate: '/workers/{id}/logs', permission: 'staff' },
   { id: 'delete', label: 'Delete', hrefTemplate: '/workers/{id}/delete', permission: 'workers.delete' },
 ];

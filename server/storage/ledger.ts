@@ -21,6 +21,35 @@ import { eq, and, desc, or, isNull, asc, sql as sqlRaw, sum, min, max, count, in
 import { alias as pgAlias } from "drizzle-orm/pg-core";
 import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
 import { formatAmount, getCurrency } from "@shared/currency";
+import { eventBus, EventType } from "../services/event-bus";
+
+async function emitLedgerEntrySaved(entry: Ledger, changeType: "create" | "update" | "delete"): Promise<void> {
+  try {
+    const client = getClient();
+    const [ea] = await client.select().from(ledgerEa).where(eq(ledgerEa.id, entry.eaId)).limit(1);
+    if (!ea) return;
+    await eventBus.emit(EventType.LEDGER_ENTRY_SAVED, {
+      entryId: entry.id,
+      chargePlugin: entry.chargePlugin,
+      chargePluginConfigId: entry.chargePluginConfigId,
+      accountId: ea.accountId,
+      entityType: ea.entityType,
+      entityId: ea.entityId,
+      amount: entry.amount,
+      date: entry.date,
+      referenceType: entry.referenceType,
+      referenceId: entry.referenceId,
+      changeType,
+      data: entry.data,
+    });
+  } catch (err) {
+    logger.error("Failed to emit LEDGER_ENTRY_SAVED event", {
+      service: "ledger-storage",
+      entryId: entry.id,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
 
 /**
  * Stub validator - add validation logic here when needed
@@ -89,6 +118,7 @@ export interface LedgerEntryStorage {
   getTransactions(filter: TransactionFilter): Promise<LedgerEntryWithDetails[]>;
   getTransactionsPaginated(filter: TransactionFilter, limit: number, offset: number): Promise<{ data: LedgerEntryWithDetails[]; total: number }>;
   getByAccountId(accountId: string): Promise<LedgerEntryWithDetails[]>;
+  getRawByAccountId(accountId: string): Promise<Ledger[]>;
   getByAccountIdPaginated(accountId: string, limit: number, offset: number): Promise<{ data: LedgerEntryWithDetails[]; total: number }>;
   create(entry: InsertLedger): Promise<Ledger>;
   update(id: string, entry: Partial<InsertLedger>): Promise<Ledger | undefined>;
@@ -1075,6 +1105,21 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
       return this.getTransactionsPaginated({ accountId }, limit, offset);
     },
 
+    async getRawByAccountId(accountId: string): Promise<Ledger[]> {
+      const client = getClient();
+      const eaRows = await client
+        .select({ id: ledgerEa.id })
+        .from(ledgerEa)
+        .where(eq(ledgerEa.accountId, accountId));
+      if (eaRows.length === 0) return [];
+      const eaIds = eaRows.map(r => r.id);
+      return await client
+        .select()
+        .from(ledger)
+        .where(inArray(ledger.eaId, eaIds))
+        .orderBy(desc(ledger.date));
+    },
+
     async create(insertEntry: InsertLedger): Promise<Ledger> {
       validate.validateOrThrow(insertEntry);
       if (!insertEntry.statementYmd) {
@@ -1087,12 +1132,13 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
       });
       try {
         const [entry] = await client.insert(ledger)
-          .values({ ...insertEntry, date: sqlRaw`now()` } as typeof ledger.$inferInsert)
+          .values({ ...insertEntry, date: insertEntry.date ?? sqlRaw`now()` } as typeof ledger.$inferInsert)
           .returning();
         logger.debug("Created ledger entry successfully", {
           service: "ledger-storage",
           entryId: entry.id,
         });
+        await emitLedgerEntrySaved(entry, "create");
         return entry;
       } catch (error) {
         logger.error("Failed to insert ledger entry", {
@@ -1113,14 +1159,18 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
         .set(safeUpdate)
         .where(eq(ledger.id, id))
         .returning();
+      if (entry) await emitLedgerEntrySaved(entry, "update");
       return entry || undefined;
     },
 
     async delete(id: string): Promise<boolean> {
       const client = getClient();
+      const [existing] = await client.select().from(ledger).where(eq(ledger.id, id)).limit(1);
       const result = await client.delete(ledger)
         .where(eq(ledger.id, id));
-      return result.rowCount ? result.rowCount > 0 : false;
+      const deleted = result.rowCount ? result.rowCount > 0 : false;
+      if (deleted && existing) await emitLedgerEntrySaved(existing, "delete");
+      return deleted;
     },
 
     async deleteByReference(referenceType: string, referenceId: string): Promise<number> {

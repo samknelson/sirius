@@ -78,6 +78,7 @@ import { type EventStorage, createEventStorage, eventLoggingConfig, type EventOc
 import { type DispatchJobStorage, createDispatchJobStorage, dispatchJobLoggingConfig } from "./dispatch/jobs";
 import { type DispatchJobGroupStorage, createDispatchJobGroupStorage, dispatchJobGroupLoggingConfig } from "./dispatch/job-groups";
 import { type FacilityStorage, createFacilityStorage, facilityLoggingConfig } from "./facility/facilities";
+import { type GbhetPensionStorage, createGbhetPensionStorage } from "./gbhet-pension";
 import { type DispatchStorage, createDispatchStorage, dispatchLoggingConfig } from "./dispatch/dispatches";
 import { type WorkerStewardAssignmentStorage, createWorkerStewardAssignmentStorage, workerStewardAssignmentLoggingConfig } from "./worker-steward-assignments";
 import { type BtuCsgStorage, createBtuCsgStorage, btuCsgLoggingConfig } from "./sitespecific/btu/csg";
@@ -181,6 +182,7 @@ export interface IStorage {
   bulkMessagesInapp: BulkMessagesInappStorage;
   bulkParticipants: BulkParticipantStorage;
   facilities: FacilityStorage;
+  gbhetPension: GbhetPensionStorage;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -258,6 +260,7 @@ export class DatabaseStorage implements IStorage {
   bulkMessagesInapp: BulkMessagesInappStorage;
   bulkParticipants: BulkParticipantStorage;
   facilities: FacilityStorage;
+  gbhetPension: GbhetPensionStorage;
 
   constructor() {
     this.variables = withStorageLogging(
@@ -460,6 +463,7 @@ export class DatabaseStorage implements IStorage {
       bulkParticipantLoggingConfig
     );
     this.facilities = withStorageLogging(createFacilityStorage(this.contacts), facilityLoggingConfig);
+    this.gbhetPension = createGbhetPensionStorage();
   }
 }
 

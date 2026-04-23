@@ -142,6 +142,30 @@ export const componentRegistry: ComponentDefinition[] = [
     category: "sitespecific.gbhet"
   },
   {
+    id: "sitespecific.gbhet.pension",
+    name: "GBHET VDB Pension",
+    description: "Variable Defined Benefit pension module for GBHET (plan years, accrual tiers, AI/payout/early retirement factors, share values, employer plans, interest rates)",
+    enabledByDefault: false,
+    category: "sitespecific.gbhet",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/sitespecific/gbhet-pension/schema.ts",
+      tables: [
+        "gbhet_pension_benefit_schedules",
+        "gbhet_pension_accrual_tiers",
+        "gbhet_pension_annual_summary",
+        "gbhet_pension_share_values",
+        "gbhet_pension_plan_years",
+        "gbhet_pension_employer_plans",
+        "gbhet_pension_ai_factors",
+        "gbhet_pension_payout_factors",
+        "gbhet_pension_early_retirement_factors",
+        "gbhet_pension_interest_rates"
+      ]
+    }
+  },
+  {
     id: "sitespecific.btu",
     name: "BTU Customization",
     description: "Custom functionality for BTU",
