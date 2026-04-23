@@ -298,18 +298,10 @@ export function EmployersTable({ employers, isLoading, includeInactive, onToggle
                   <th
                     key={b.id}
                     className="px-4 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider whitespace-nowrap"
+                    title={b.name}
                     data-testid={`th-benefit-${b.id}`}
                   >
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span className="inline-flex justify-end" aria-label={b.name}>
-                          {b.benefitTypeIcon
-                            ? renderIcon(b.benefitTypeIcon, "w-4 h-4 inline-block")
-                            : <span>{b.name}</span>}
-                        </span>
-                      </TooltipTrigger>
-                      <TooltipContent>{b.name}</TooltipContent>
-                    </Tooltip>
+                    <span>{b.name}</span>
                   </th>
                 ))}
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
