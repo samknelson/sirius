@@ -488,7 +488,7 @@ async function processContributionEntry(
         data: {
           pluginId: CONTRIBUTION_PLUGIN_ID, sourceEntryId: entry.id, sourceAmount: entry.amount,
           contributionPct, year, isSpecialDesignation: isSpecial,
-          entityType: entry.entityType, entityId: entry.entityId, workerId,
+          sourceEntityType: entry.entityType, sourceEntityId: entry.entityId, workerId,
         },
       });
 

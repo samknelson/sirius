@@ -194,8 +194,8 @@ class GbhetPensionSlaContributionPlugin extends ChargePlugin {
           contributionPct,
           year,
           isSpecialDesignation: isSpecial,
-          entityType: ctx.entityType,
-          entityId: ctx.entityId,
+          sourceEntityType: ctx.entityType,
+          sourceEntityId: ctx.entityId,
           workerId,
         },
       });
