@@ -1122,8 +1122,15 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
 
     async create(insertEntry: InsertLedger): Promise<Ledger> {
       validate.validateOrThrow(insertEntry);
-      if (!insertEntry.statementYmd) {
-        throw new Error("statementYmd is required when creating a ledger entry");
+      const resolvedDate: Date = insertEntry.date instanceof Date
+        ? insertEntry.date
+        : insertEntry.date
+          ? new Date(insertEntry.date)
+          : new Date();
+      const statementYmd = insertEntry.statementYmd
+        ?? `${resolvedDate.getFullYear()}-${String(resolvedDate.getMonth() + 1).padStart(2, "0")}-${String(resolvedDate.getDate()).padStart(2, "0")}`;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(statementYmd)) {
+        throw new Error("statementYmd must be in YYYY-MM-DD format");
       }
       const client = getClient();
       logger.debug("Creating ledger entry", {
@@ -1131,8 +1138,13 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
         insertEntry,
       });
       try {
+        const values: typeof ledger.$inferInsert = {
+          ...insertEntry,
+          date: resolvedDate,
+          statementYmd,
+        };
         const [entry] = await client.insert(ledger)
-          .values({ ...insertEntry, date: insertEntry.date ?? sqlRaw`now()` } as typeof ledger.$inferInsert)
+          .values(values)
           .returning();
         logger.debug("Created ledger entry successfully", {
           service: "ledger-storage",
@@ -1153,7 +1165,15 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
 
     async update(id: string, entryUpdate: Partial<InsertLedger>): Promise<Ledger | undefined> {
       validate.validateOrThrow(id);
-      const { date: _date, ...safeUpdate } = entryUpdate as Partial<InsertLedger> & { date?: unknown };
+      const { date, ...rest } = entryUpdate;
+      const safeUpdate: Partial<typeof ledger.$inferInsert> = { ...rest };
+      if (date !== undefined) {
+        safeUpdate.date = date === null
+          ? null
+          : date instanceof Date
+            ? date
+            : new Date(date);
+      }
       const client = getClient();
       const [entry] = await client.update(ledger)
         .set(safeUpdate)

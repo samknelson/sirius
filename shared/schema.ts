@@ -1145,8 +1145,13 @@ export const insertLedgerEaSchema = createInsertSchema(ledgerEa).omit({
 export type InsertLedgerEa = z.infer<typeof insertLedgerEaSchema>;
 export type SelectLedgerEa = typeof ledgerEa.$inferSelect;
 
-export const insertLedgerSchema = createInsertSchema(ledger).omit({
+export const insertLedgerSchema = createInsertSchema(ledger, {
+  date: z.coerce.date().nullish(),
+}).omit({
   id: true,
+}).extend({
+  // statementYmd may be derived from `date` by the storage layer when omitted.
+  statementYmd: z.string().length(10).optional(),
 });
 
 export type InsertLedger = z.infer<typeof insertLedgerSchema>;
