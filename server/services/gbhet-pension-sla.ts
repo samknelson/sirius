@@ -1,7 +1,7 @@
 import { storage } from "../storage";
 import { logger } from "../logger";
 import type { GbhetPensionAccrualTier, GbhetPensionPlanYear } from "../storage/gbhet-pension";
-import type { Ledger } from "@shared/schema";
+import type { RawLedgerEntryWithEntity } from "../storage/ledger";
 
 export class SlaConfigError extends Error {
   constructor(message: string) {
@@ -397,7 +397,7 @@ async function resolveContributionContext(): Promise<ContributionContext | null>
   return { contribYearsByYear, effectiveConfigId, specialDesignationIds, outputAccountId };
 }
 
-type RawLedgerEntry = Ledger & { entityType: string; entityId: string };
+type RawLedgerEntry = RawLedgerEntryWithEntity;
 
 function filterTriggerEntries(
   entries: RawLedgerEntry[],

@@ -118,7 +118,7 @@ export interface LedgerEntryStorage {
   getTransactions(filter: TransactionFilter): Promise<LedgerEntryWithDetails[]>;
   getTransactionsPaginated(filter: TransactionFilter, limit: number, offset: number): Promise<{ data: LedgerEntryWithDetails[]; total: number }>;
   getByAccountId(accountId: string): Promise<LedgerEntryWithDetails[]>;
-  getRawByAccountId(accountId: string): Promise<Ledger[]>;
+  getRawByAccountId(accountId: string): Promise<RawLedgerEntryWithEntity[]>;
   getByAccountIdPaginated(accountId: string, limit: number, offset: number): Promise<{ data: LedgerEntryWithDetails[]; total: number }>;
   create(entry: InsertLedger): Promise<Ledger>;
   update(id: string, entry: Partial<InsertLedger>): Promise<Ledger | undefined>;
@@ -135,6 +135,11 @@ export interface LedgerEntryWithDetails extends Ledger {
   eaAccountId: string;
   eaAccountName: string | null;
   referenceName: string | null;
+}
+
+export interface RawLedgerEntryWithEntity extends Ledger {
+  entityType: string;
+  entityId: string;
 }
 
 export interface InvoiceSummary {
@@ -1105,19 +1110,23 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
       return this.getTransactionsPaginated({ accountId }, limit, offset);
     },
 
-    async getRawByAccountId(accountId: string): Promise<Ledger[]> {
+    async getRawByAccountId(accountId: string): Promise<RawLedgerEntryWithEntity[]> {
       const client = getClient();
-      const eaRows = await client
-        .select({ id: ledgerEa.id })
-        .from(ledgerEa)
-        .where(eq(ledgerEa.accountId, accountId));
-      if (eaRows.length === 0) return [];
-      const eaIds = eaRows.map(r => r.id);
-      return await client
-        .select()
+      const rows = await client
+        .select({
+          entry: ledger,
+          entityType: ledgerEa.entityType,
+          entityId: ledgerEa.entityId,
+        })
         .from(ledger)
-        .where(inArray(ledger.eaId, eaIds))
+        .innerJoin(ledgerEa, eq(ledger.eaId, ledgerEa.id))
+        .where(eq(ledgerEa.accountId, accountId))
         .orderBy(desc(ledger.date));
+      return rows.map(row => ({
+        ...row.entry,
+        entityType: row.entityType,
+        entityId: row.entityId,
+      }));
     },
 
     async create(insertEntry: InsertLedger): Promise<Ledger> {
