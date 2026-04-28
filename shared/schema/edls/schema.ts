@@ -1,4 +1,4 @@
-import { pgTable, varchar, date, integer, time, jsonb, unique, text } from "drizzle-orm/pg-core";
+import { pgTable, varchar, date, integer, time, jsonb, unique, text, boolean } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -101,3 +101,17 @@ export const insertEdlsTaskSchema = createInsertSchema(optionsEdlsTasks).omit({
 
 export type EdlsTask = typeof optionsEdlsTasks.$inferSelect;
 export type InsertEdlsTask = z.infer<typeof insertEdlsTaskSchema>;
+
+export const workerEdls = pgTable("worker_edls", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  workerId: varchar("worker_id").notNull().unique().references(() => workers.id, { onDelete: 'cascade' }),
+  active: boolean("active").notNull().default(true),
+  data: jsonb("data"),
+});
+
+export const insertWorkerEdlsSchema = createInsertSchema(workerEdls).omit({
+  id: true,
+});
+
+export type WorkerEdls = typeof workerEdls.$inferSelect;
+export type InsertWorkerEdls = z.infer<typeof insertWorkerEdlsSchema>;

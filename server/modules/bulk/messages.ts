@@ -8,13 +8,15 @@ import {
   insertBulkMessagesInappSchema,
   bulkParticipants,
 } from "../../../shared/schema/bulk/schema";
-import { contacts, workers, comm, phoneNumbers, contactPostal } from "../../../shared/schema";
+import { contacts, workers, employers, employerContacts, comm, phoneNumbers, contactPostal } from "../../../shared/schema";
 import { eq, or, ilike, sql, inArray, and } from "drizzle-orm";
-import { getClient } from "../../storage/transaction-context";
+import { getClient, runInTransaction } from "../../storage/transaction-context";
 import { createBulkParticipantStorage } from "../../storage/bulk/participants";
 import { deliverToContact, deliverToParticipant, resolveAddressForMedium } from "./deliver";
 import { storageLogger } from "../../logger";
 import { resolveContactLinks, resolveContactLinksForMany } from "../contact-links";
+import { TOKEN_REGISTRY, TOKEN_REGISTRY_MAP, renderTemplate, extractTokenIds, findUnknownTokenIds, isKnownToken, buildSampleContext, buildContextFromSources, htmlToPlainText, type TokenSourceData } from "../../../shared/bulk-tokens";
+import { buildRecipientContext, detectAudienceScopes } from "./token-context";
 type RequireAccess = (policy: string) => (req: Request, res: Response, next: () => void) => void;
 type RequireAuth = (req: Request, res: Response, next: () => void) => void;
 
@@ -85,6 +87,84 @@ export function registerBulkMessageRoutes(
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Failed to fetch bulk message";
       res.status(500).json({ message });
+    }
+  });
+
+  app.post("/api/bulk-messages/from-recipients", requireAuth, requireAccess('bulk.edit'), async (req, res) => {
+    try {
+      const body = req.body ?? {};
+      const contactIds: unknown = body.contactIds;
+      if (!Array.isArray(contactIds) || contactIds.length === 0 || !contactIds.every(c => typeof c === 'string' && c.length > 0)) {
+        return res.status(400).json({ message: "contactIds must be a non-empty array of strings" });
+      }
+
+      const requestedMedium = Array.isArray(body.medium) && body.medium.length > 0 ? body.medium : ['email'];
+      const allowedMedia = ['sms', 'email', 'inapp', 'postal'];
+      const filteredMedium = Array.from(new Set((requestedMedium as unknown[]).filter(m => typeof m === 'string' && allowedMedia.includes(m)))) as string[];
+      if (filteredMedium.length === 0) {
+        return res.status(400).json({ message: "At least one valid medium is required" });
+      }
+
+      const sourceLabel = typeof body.sourceLabel === 'string' && body.sourceLabel.trim() ? body.sourceLabel.trim() : 'Recipients';
+      const dateLabel = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      const requestedName = typeof body.name === 'string' && body.name.trim() ? body.name.trim() : null;
+      const autoName = `${sourceLabel} — ${dateLabel} — ${contactIds.length} recipient${contactIds.length === 1 ? '' : 's'}`;
+      const finalName = requestedName ?? autoName;
+
+      const db = getClient();
+      const uniqueIds = Array.from(new Set(contactIds as string[]));
+      const existingContacts = await db
+        .select({ id: contacts.id })
+        .from(contacts)
+        .where(inArray(contacts.id, uniqueIds));
+      const validContactIds = new Set(existingContacts.map(c => c.id));
+      const missingCount = uniqueIds.length - validContactIds.size;
+      if (missingCount > 0) {
+        const unresolvedIds = uniqueIds.filter(id => !validContactIds.has(id));
+        return res.status(400).json({
+          message: `${missingCount} of ${uniqueIds.length} supplied contactIds do not resolve to real contacts`,
+          unresolvedContactIds: unresolvedIds.slice(0, 50),
+          unresolvedCount: missingCount,
+        });
+      }
+
+      const parsed = insertBulkMessageSchema.safeParse({
+        name: finalName,
+        medium: filteredMedium,
+        status: 'draft',
+      });
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Validation failed", errors: parsed.error.issues });
+      }
+
+      const { created, participantsCreated } = await runInTransaction(async () => {
+        const draft = await storage.bulkMessages.create(parsed.data);
+        let count = 0;
+        // Iterate the original deduped order so participant insert order matches
+        // the recipient order the caller supplied.
+        for (const cid of uniqueIds) {
+          for (const m of draft.medium) {
+            await rawParticipantStorage.create({
+              messageId: draft.id,
+              contactId: cid,
+              medium: m,
+            });
+            count++;
+          }
+        }
+        return { created: draft, participantsCreated: count };
+      });
+
+      return res.status(201).json({
+        bulkMessage: created,
+        participantsCreated,
+        recipientsRequested: uniqueIds.length,
+        recipientsResolved: validContactIds.size,
+        recipientsMissing: missingCount,
+      });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Failed to create bulk message from recipients";
+      return res.status(500).json({ message });
     }
   });
 
@@ -196,13 +276,19 @@ export function registerBulkMessageRoutes(
 
       switch (medium) {
         case 'email': {
+          // The client now sends only `bodyHtml`; derive the plain-text
+          // fallback server-side so the two stay in sync.
+          const emailBody: Record<string, unknown> = { ...messageBody };
+          if (typeof emailBody.bodyHtml === 'string') {
+            emailBody.bodyText = htmlToPlainText(emailBody.bodyHtml as string);
+          }
           const existing = await storage.bulkMessagesEmail.getByBulkId(bulk.id);
           if (existing) {
-            const parsed = insertBulkMessagesEmailSchema.partial().safeParse(messageBody);
+            const parsed = insertBulkMessagesEmailSchema.partial().safeParse(emailBody);
             if (!parsed.success) return res.status(400).json({ message: "Validation failed", errors: parsed.error.issues });
             result = await storage.bulkMessagesEmail.update(existing.id, parsed.data);
           } else {
-            const parsed = insertBulkMessagesEmailSchema.safeParse({ ...messageBody, bulkId: bulk.id });
+            const parsed = insertBulkMessagesEmailSchema.safeParse({ ...emailBody, bulkId: bulk.id });
             if (!parsed.success) return res.status(400).json({ message: "Validation failed", errors: parsed.error.issues });
             result = await storage.bulkMessagesEmail.create(parsed.data);
           }
@@ -406,14 +492,14 @@ export function registerBulkMessageRoutes(
         return res.json(rows.map(r => ({ ...r, primaryPhone: null, primaryAddress: null })));
       }
 
-      let phones: { contactId: string; number: string; isPrimary: boolean }[] = [];
+      let phones: { contactId: string; phoneNumber: string; isPrimary: boolean }[] = [];
       let addrs: { contactId: string; street: string; city: string; state: string; isPrimary: boolean }[] = [];
 
       try {
         phones = await db
           .select({
             contactId: phoneNumbers.contactId,
-            number: phoneNumbers.number,
+            phoneNumber: phoneNumbers.phoneNumber,
             isPrimary: phoneNumbers.isPrimary,
           })
           .from(phoneNumbers)
@@ -436,7 +522,7 @@ export function registerBulkMessageRoutes(
       const phoneMap = new Map<string, string>();
       for (const p of phones) {
         if (!phoneMap.has(p.contactId) || p.isPrimary) {
-          phoneMap.set(p.contactId, p.number);
+          phoneMap.set(p.contactId, p.phoneNumber);
         }
       }
 
@@ -605,12 +691,12 @@ export function registerBulkMessageRoutes(
       let sendFailed = 0;
       let seeComm = 0;
       const commBreakdown: Record<string, number> = {};
-      const byMedium: Record<string, { total: number; pending: number; sendFailed: number; seeComm: number }> = {};
+      const byMedium: Record<string, { total: number; pending: number; sendFailed: number; seeComm: number; commBreakdown: Record<string, number> }> = {};
 
       for (const row of rows) {
         const m = row.medium;
         if (!byMedium[m]) {
-          byMedium[m] = { total: 0, pending: 0, sendFailed: 0, seeComm: 0 };
+          byMedium[m] = { total: 0, pending: 0, sendFailed: 0, seeComm: 0, commBreakdown: {} };
         }
         byMedium[m].total++;
 
@@ -628,6 +714,7 @@ export function registerBulkMessageRoutes(
             byMedium[m].seeComm++;
             if (row.commStatus) {
               commBreakdown[row.commStatus] = (commBreakdown[row.commStatus] || 0) + 1;
+              byMedium[m].commBreakdown[row.commStatus] = (byMedium[m].commBreakdown[row.commStatus] || 0) + 1;
             }
             break;
         }
@@ -639,4 +726,266 @@ export function registerBulkMessageRoutes(
       res.status(500).json({ message });
     }
   });
+
+  app.get("/api/bulk-tokens", requireAuth, requireAccess('bulk.edit'), (_req, res) => {
+    res.json({ tokens: TOKEN_REGISTRY });
+  });
+
+  // Returns the registry filtered to scopes that apply to this
+  // message's actual participants. `contact` and `system` are always
+  // included; `worker`/`employer` only when at least one participant
+  // matches.
+  app.get("/api/bulk-messages/:id/tokens", requireAuth, requireAccess('bulk.edit'), async (req, res) => {
+    try {
+      const bulk = await storage.bulkMessages.getById(req.params.id);
+      if (!bulk) {
+        return res.status(404).json({ message: "Bulk message not found" });
+      }
+      const participants = await storage.bulkParticipants.getByMessageId(req.params.id);
+      const contactIds = Array.from(new Set(participants.map((p) => p.contactId).filter(Boolean) as string[]));
+      const scopes = await detectAudienceScopes(contactIds);
+      const tokens = TOKEN_REGISTRY.filter((t) => scopes.has(t.scope));
+      res.json({ tokens, scopes: Array.from(scopes) });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Failed to load tokens";
+      res.status(500).json({ message });
+    }
+  });
+
+  // Returns per-token coverage across this message's participants:
+  // for every token used in any channel template, how many distinct
+  // recipients are missing a value. Used by the deliver page to warn
+  // the author before they queue the message.
+  app.get("/api/bulk-messages/:id/token-coverage", requireAuth, requireAccess('bulk.edit'), async (req, res) => {
+    try {
+      const bulk = await storage.bulkMessages.getById(req.params.id);
+      if (!bulk) {
+        return res.status(404).json({ message: "Bulk message not found" });
+      }
+
+      const templates: string[] = [];
+      const email = await storage.bulkMessagesEmail.getByBulkId(bulk.id);
+      if (email) templates.push(email.subject || "", email.bodyText || "", email.bodyHtml || "");
+      const sms = await storage.bulkMessagesSms.getByBulkId(bulk.id);
+      if (sms) templates.push(sms.body || "");
+      const inapp = await storage.bulkMessagesInapp.getByBulkId(bulk.id);
+      if (inapp) templates.push(inapp.title || "", inapp.body || "", inapp.linkLabel || "");
+      const postal = await storage.bulkMessagesPostal.getByBulkId(bulk.id);
+      if (postal) templates.push(postal.description || "");
+
+      const tokenIds = Array.from(new Set(
+        templates.flatMap((t) => extractTokenIds(t)).filter((id) => isKnownToken(id))
+      ));
+
+      const participants = await storage.bulkParticipants.getByMessageId(req.params.id);
+      const contactIds = Array.from(new Set(
+        participants.map((p) => p.contactId).filter(Boolean) as string[]
+      ));
+
+      if (tokenIds.length === 0 || contactIds.length === 0) {
+        return res.json({
+          totalRecipients: contactIds.length,
+          perToken: tokenIds.map((id) => {
+            const def = TOKEN_REGISTRY_MAP[id];
+            return {
+              tokenId: id,
+              label: def?.label || id,
+              defaultValue: def?.defaultValue || "",
+              missingCount: 0,
+              missingSample: [] as { contactId: string; name: string }[],
+            };
+          }),
+        });
+      }
+
+      const db = getClient();
+
+      // Batch-load every data source once instead of per-recipient.
+      const contactRows = await db
+        .select({
+          id: contacts.id,
+          given: contacts.given,
+          family: contacts.family,
+          displayName: contacts.displayName,
+          email: contacts.email,
+        })
+        .from(contacts)
+        .where(inArray(contacts.id, contactIds));
+      const contactById = new Map(contactRows.map((c) => [c.id, c]));
+      const nameById = new Map(
+        contactRows.map((c) => [c.id, c.displayName || `${c.given || ''} ${c.family || ''}`.trim() || c.id]),
+      );
+
+      const workerRows = await db
+        .select({
+          contactId: workers.contactId,
+          id: workers.id,
+          jobTitle: workers.denormJobTitle,
+          siriusId: workers.siriusId,
+          homeEmployerId: workers.denormHomeEmployerId,
+          employerIds: workers.denormEmployerIds,
+        })
+        .from(workers)
+        .where(inArray(workers.contactId, contactIds));
+      const workerByContactId = new Map(workerRows.map((w) => [w.contactId, w]));
+
+      // Collect all employer ids the workers reference, then batch-load.
+      const workerEmployerIds = Array.from(new Set(
+        workerRows
+          .map((w) => w.homeEmployerId || (w.employerIds && w.employerIds[0]) || null)
+          .filter((id): id is string => !!id),
+      ));
+
+      // Fallback employer-contact links for contacts without a worker employer.
+      const contactsNeedingEmployerLink = contactIds.filter((cid) => {
+        const w = workerByContactId.get(cid);
+        if (!w) return true;
+        return !(w.homeEmployerId || (w.employerIds && w.employerIds[0]));
+      });
+      const ecRows = contactsNeedingEmployerLink.length > 0
+        ? await db
+            .select({
+              contactId: employerContacts.contactId,
+              employerId: employerContacts.employerId,
+            })
+            .from(employerContacts)
+            .where(inArray(employerContacts.contactId, contactsNeedingEmployerLink))
+        : [];
+      const employerLinkByContactId = new Map<string, string>();
+      for (const r of ecRows) {
+        if (!employerLinkByContactId.has(r.contactId)) {
+          employerLinkByContactId.set(r.contactId, r.employerId);
+        }
+      }
+
+      const allEmployerIds = Array.from(new Set([
+        ...workerEmployerIds,
+        ...employerLinkByContactId.values(),
+      ]));
+      const employerRows = allEmployerIds.length > 0
+        ? await db
+            .select({ id: employers.id, name: employers.name })
+            .from(employers)
+            .where(inArray(employers.id, allEmployerIds))
+        : [];
+      const employerById = new Map(employerRows.map((e) => [e.id, e]));
+
+      const now = new Date();
+      const missing: Record<string, { contactId: string; name: string }[]> = {};
+      for (const id of tokenIds) missing[id] = [];
+
+      for (const cid of contactIds) {
+        const data: TokenSourceData = { now };
+        const c = contactById.get(cid);
+        if (c) {
+          data.contact = {
+            id: c.id,
+            given: c.given ?? null,
+            family: c.family ?? null,
+            displayName: c.displayName ?? null,
+            email: c.email ?? null,
+          };
+        }
+        const w = workerByContactId.get(cid);
+        let employerId: string | null = null;
+        if (w) {
+          data.worker = {
+            id: w.id,
+            given: c?.given ?? null,
+            family: c?.family ?? null,
+            jobTitle: w.jobTitle ?? null,
+            siriusId: w.siriusId ?? null,
+          };
+          employerId = w.homeEmployerId || (w.employerIds && w.employerIds[0]) || null;
+        }
+        if (!employerId) {
+          employerId = employerLinkByContactId.get(cid) || null;
+        }
+        if (employerId) {
+          const emp = employerById.get(employerId);
+          if (emp) data.employer = { id: emp.id, name: emp.name };
+        }
+
+        const ctx = buildContextFromSources(data);
+        for (const tid of tokenIds) {
+          const v = ctx[tid];
+          if (v == null || v === "") {
+            missing[tid].push({ contactId: cid, name: nameById.get(cid) || cid });
+          }
+        }
+      }
+
+      const perToken = tokenIds.map((tid) => {
+        const def = TOKEN_REGISTRY_MAP[tid];
+        return {
+          tokenId: tid,
+          label: def?.label || tid,
+          defaultValue: def?.defaultValue || "",
+          missingCount: missing[tid].length,
+          missingSample: missing[tid].slice(0, 10),
+        };
+      });
+
+      res.json({ totalRecipients: contactIds.length, perToken });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Failed to compute token coverage";
+      res.status(500).json({ message });
+    }
+  });
+
+  app.post("/api/bulk-messages/:id/preview", requireAuth, requireAccess('bulk.edit'), async (req, res) => {
+    try {
+      const bulk = await storage.bulkMessages.getById(req.params.id);
+      if (!bulk) {
+        return res.status(404).json({ message: "Bulk message not found" });
+      }
+      const body = req.body ?? {};
+      const fields: Record<string, string> = (body.fields && typeof body.fields === 'object') ? body.fields : {};
+      const contactId: string | undefined = typeof body.contactId === 'string' ? body.contactId : undefined;
+      const escapeHtmlFields: string[] = Array.isArray(body.escapeHtmlFields) ? body.escapeHtmlFields.filter((s: unknown) => typeof s === 'string') : [];
+
+      // Enforce that any contactId used for preview is actually a
+      // participant of this bulk message — prevents leaking arbitrary
+      // contact PII through the preview endpoint.
+      if (contactId) {
+        const db = getClient();
+        const membership = await db
+          .select({ id: bulkParticipants.id })
+          .from(bulkParticipants)
+          .where(and(
+            eq(bulkParticipants.messageId, req.params.id),
+            eq(bulkParticipants.contactId, contactId),
+          ))
+          .limit(1);
+        if (membership.length === 0) {
+          return res.status(403).json({ message: "Contact is not a participant of this message" });
+        }
+      }
+
+      const ctx = contactId ? await buildRecipientContext(storage, contactId) : buildSampleContext();
+
+      const rendered: Record<string, { output: string; unknownTokens: string[]; missingValues: string[]; tokens: string[] }> = {};
+      for (const [field, template] of Object.entries(fields)) {
+        if (typeof template !== 'string') continue;
+        const result = renderTemplate(template, ctx, { escapeHtml: escapeHtmlFields.includes(field), strictUnknown: true });
+        rendered[field] = {
+          output: result.output,
+          unknownTokens: result.unknownTokens,
+          missingValues: result.missingValues,
+          tokens: extractTokenIds(template),
+        };
+      }
+
+      res.json({
+        contactId: contactId || null,
+        sample: !contactId,
+        rendered,
+      });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Failed to render preview";
+      res.status(500).json({ message });
+    }
+  });
 }
+
+export { extractTokenIds, findUnknownTokenIds };

@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 import { Users } from "lucide-react";
 import { WorkersTable, WorkerFilters } from "@/components/workers/workers-table";
 import { Link, useLocation } from "wouter";
@@ -6,6 +6,9 @@ import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { useAuth } from "@/contexts/AuthContext";
+import { ListBulkAction } from "@/components/bulk/list-bulk-action";
+import { apiRequest, serializeQueryKey } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 interface PaginatedWorkersResponse {
   data: any[];
@@ -18,6 +21,7 @@ interface PaginatedWorkersResponse {
 export default function Workers() {
   const [location] = useLocation();
   const { hasPermission } = useAuth();
+  const { toast } = useToast();
   const [page, setPage] = useState(1);
   const [pageSize] = useState(50);
   const [searchInput, setSearchInput] = useState("");
@@ -25,6 +29,8 @@ export default function Workers() {
   const [appliedJobTitle, setAppliedJobTitle] = useState("");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [sortBy, setSortBy] = useState<"lastName" | "firstName" | "employer">("lastName");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isSelectingAll, setIsSelectingAll] = useState(false);
   const [filters, setFilters] = useState<WorkerFilters>({
     employerId: "all",
     employerTypeId: "all",
@@ -59,28 +65,65 @@ export default function Workers() {
     });
   }, []);
 
+  // Build the filter param object exactly the way the paginated query does, so the
+  // "all matching IDs" endpoint receives identical inputs and can never drift.
+  const filterParams = useMemo(() => ({
+    search: appliedSearch,
+    sortOrder,
+    sortBy,
+    employerId: filters.employerId,
+    employerTypeId: filters.employerTypeId,
+    bargainingUnitId: filters.bargainingUnitId,
+    benefitId: filters.benefitId,
+    contactStatus: filters.contactStatus,
+    hasMultipleEmployers: filters.hasMultipleEmployers,
+    jobTitle: appliedJobTitle,
+    memberStatusId: filters.memberStatusId,
+    representativeId: filters.representativeId,
+  }), [appliedSearch, sortOrder, sortBy, filters, appliedJobTitle]);
+
+  // Reset selection whenever the effective filter set changes so users can never
+  // accidentally bulk-message recipients that no longer match their current filters.
+  const filterSignature = useMemo(() => JSON.stringify(filterParams), [filterParams]);
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [filterSignature]);
+
   const { data: paginatedData, isLoading } = useQuery<PaginatedWorkersResponse>({
-    queryKey: ["/api/workers/with-details/paginated", { 
-      page, 
-      pageSize, 
-      search: appliedSearch, 
-      sortOrder,
-      sortBy,
-      employerId: filters.employerId,
-      employerTypeId: filters.employerTypeId,
-      bargainingUnitId: filters.bargainingUnitId,
-      benefitId: filters.benefitId,
-      contactStatus: filters.contactStatus,
-      hasMultipleEmployers: filters.hasMultipleEmployers,
-      jobTitle: appliedJobTitle,
-      memberStatusId: filters.memberStatusId,
-      representativeId: filters.representativeId,
-    }],
+    queryKey: ["/api/workers/with-details/paginated", { page, pageSize, ...filterParams }],
   });
 
   const workers = paginatedData?.data ?? [];
   const total = paginatedData?.total ?? 0;
   const totalPages = paginatedData?.totalPages ?? 1;
+
+  const visibleSelectedCount = useMemo(
+    () => workers.filter(w => selectedIds.has(w.contact_id)).length,
+    [workers, selectedIds],
+  );
+
+  const handleSelectAllMatching = useCallback(async () => {
+    setIsSelectingAll(true);
+    try {
+      // Reuse the exact same query-key serialization as the paginated list query
+      // so the all-ids request receives identical query parameters.
+      const url = serializeQueryKey(["/api/workers/with-details/all-ids", filterParams]);
+      const res = await apiRequest("GET", url);
+      setSelectedIds(new Set(res.contactIds));
+      toast({
+        title: "Selected all matching workers",
+        description: `${res.total.toLocaleString()} recipient${res.total === 1 ? "" : "s"} selected.`,
+      });
+    } catch (err: any) {
+      toast({
+        title: "Failed to select all",
+        description: err?.message ?? "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSelectingAll(false);
+    }
+  }, [filterParams, toast]);
 
   const tabs = [
     { id: "list", label: "List", href: "/workers" },
@@ -93,9 +136,20 @@ export default function Workers() {
         title="Workers" 
         icon={<Users className="text-primary-foreground" size={16} />}
         actions={
-          <span className="text-sm text-muted-foreground" data-testid="text-worker-count">
-            {total.toLocaleString()} Workers
-          </span>
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="text-sm text-muted-foreground" data-testid="text-worker-count">
+              {total.toLocaleString()} Workers
+            </span>
+            <ListBulkAction
+              selectedContactIds={Array.from(selectedIds)}
+              totalMatching={total}
+              visibleSelectedCount={visibleSelectedCount}
+              onSelectAllMatching={handleSelectAllMatching}
+              isSelectingAllMatching={isSelectingAll}
+              sourceLabel="Workers"
+              testIdPrefix="workers-bulk-action"
+            />
+          </div>
         }
       />
 
@@ -138,6 +192,9 @@ export default function Workers() {
           filters={filters}
           onFiltersChange={handleFiltersChange}
           appliedJobTitle={appliedJobTitle}
+          selectable
+          selectedIds={selectedIds}
+          onSelectionChange={setSelectedIds}
         />
       </main>
     </div>

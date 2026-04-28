@@ -8,8 +8,19 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { TokenCoverageCard, type TokenCoverageResponse } from "@/components/bulk/TokenCoverageCard";
 import {
   Send,
   Loader2,
@@ -31,6 +42,7 @@ interface MediumStats {
   pending: number;
   sendFailed: number;
   seeComm: number;
+  commBreakdown?: Record<string, number>;
 }
 
 interface DeliveryStats {
@@ -92,6 +104,13 @@ function DeliveryStatsCard({ messageId }: { messageId: string }) {
     ([a], [b]) => a.localeCompare(b)
   );
   const byMediumEntries = Object.entries(stats.byMedium || {});
+  const commDelivered = stats.commBreakdown?.delivered ?? 0;
+  const commFailed = Object.entries(stats.commBreakdown ?? {})
+    .filter(([k]) => k !== "delivered")
+    .reduce((sum, [, v]) => sum + (v as number), 0);
+  const totalDelivered = commDelivered;
+  const totalFailed = stats.sendFailed + commFailed;
+  const inFlight = Math.max(0, stats.seeComm - commDelivered - commFailed);
 
   return (
     <Card data-testid="card-delivery-stats">
@@ -102,7 +121,7 @@ function DeliveryStatsCard({ messageId }: { messageId: string }) {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-5 gap-4">
           <div className="text-center" data-testid="stat-total">
             <p className="text-2xl font-bold">{stats.total}</p>
             <p className="text-xs text-muted-foreground">Total</p>
@@ -111,13 +130,17 @@ function DeliveryStatsCard({ messageId }: { messageId: string }) {
             <p className="text-2xl font-bold text-muted-foreground">{stats.pending}</p>
             <p className="text-xs text-muted-foreground">Pending</p>
           </div>
-          <div className="text-center" data-testid="stat-see-comm">
-            <p className="text-2xl font-bold text-blue-500">{stats.seeComm}</p>
+          <div className="text-center" data-testid="stat-in-flight">
+            <p className="text-2xl font-bold text-amber-500">{inFlight}</p>
+            <p className="text-xs text-muted-foreground">In Flight</p>
+          </div>
+          <div className="text-center" data-testid="stat-delivered">
+            <p className="text-2xl font-bold text-blue-500">{totalDelivered}</p>
             <p className="text-xs text-muted-foreground">Delivered</p>
           </div>
-          <div className="text-center" data-testid="stat-send-failed">
-            <p className="text-2xl font-bold text-red-500">{stats.sendFailed}</p>
-            <p className="text-xs text-muted-foreground">Send Failed</p>
+          <div className="text-center" data-testid="stat-failed">
+            <p className="text-2xl font-bold text-red-500">{totalFailed}</p>
+            <p className="text-xs text-muted-foreground">Failed</p>
           </div>
         </div>
 
@@ -140,6 +163,12 @@ function DeliveryStatsCard({ messageId }: { messageId: string }) {
                   const Icon = mediumIcons[medium] || Mail;
                   const label = mediumLabels[medium] || medium;
                   const mProcessed = ms.seeComm + ms.sendFailed;
+                  const mDelivered = ms.commBreakdown?.delivered ?? 0;
+                  const mCommFailed = Object.entries(ms.commBreakdown ?? {})
+                    .filter(([k]) => k !== "delivered")
+                    .reduce((sum, [, v]) => sum + (v as number), 0);
+                  const mFailed = ms.sendFailed + mCommFailed;
+                  const mInFlight = Math.max(0, ms.seeComm - mDelivered - mCommFailed);
                   return (
                     <div
                       key={medium}
@@ -151,10 +180,11 @@ function DeliveryStatsCard({ messageId }: { messageId: string }) {
                         {label}
                         <Badge variant="secondary" className="ml-auto text-xs">{ms.total}</Badge>
                       </div>
-                      <div className="grid grid-cols-3 gap-1 text-xs text-muted-foreground">
+                      <div className="grid grid-cols-4 gap-1 text-xs text-muted-foreground">
                         <span>Pending: {ms.pending}</span>
-                        <span className="text-blue-500">Delivered: {ms.seeComm}</span>
-                        <span className="text-red-500">Failed: {ms.sendFailed}</span>
+                        <span className="text-amber-500">In Flight: {mInFlight}</span>
+                        <span className="text-blue-500">Delivered: {mDelivered}</span>
+                        <span className="text-red-500">Failed: {mFailed}</span>
                       </div>
                       {ms.total > 0 && (
                         <div className="w-full bg-muted rounded-full h-1.5">
@@ -218,6 +248,11 @@ function BulkMessageDeliverContent() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [sendDate, setSendDate] = useState("");
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
+  const { data: coverage } = useQuery<TokenCoverageResponse>({
+    queryKey: ["/api/bulk-messages", bulkMessage.id, "token-coverage"],
+  });
 
   const statusMutation = useMutation({
     mutationFn: (update: { status: string; sendDate?: string | null }) => {
@@ -226,6 +261,7 @@ function BulkMessageDeliverContent() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/bulk-messages", bulkMessage.id] });
       queryClient.invalidateQueries({ queryKey: ["/api/bulk-messages", bulkMessage.id, "delivery-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bulk-messages", bulkMessage.id, "token-coverage"] });
       toast({ title: "Status updated", description: "The message status has been updated." });
     },
     onError: (error: Error) => {
@@ -233,11 +269,27 @@ function BulkMessageDeliverContent() {
     },
   });
 
-  const handleQueue = () => {
+  const missingTokens = (coverage?.perToken || []).filter((t) => t.missingCount > 0);
+  const totalMissing = missingTokens.reduce((sum, t) => sum + t.missingCount, 0);
+
+  const queueNow = () => {
     statusMutation.mutate({
       status: "queued",
       sendDate: sendDate || null,
     });
+  };
+
+  const handleQueue = () => {
+    if (missingTokens.length > 0) {
+      setConfirmOpen(true);
+      return;
+    }
+    queueNow();
+  };
+
+  const handleConfirmQueue = () => {
+    setConfirmOpen(false);
+    queueNow();
   };
 
   const handleCancel = () => {
@@ -378,7 +430,40 @@ function BulkMessageDeliverContent() {
         </CardContent>
       </Card>
 
+      <TokenCoverageCard messageId={bulkMessage.id} />
+
       <DeliveryStatsCard messageId={bulkMessage.id} />
+
+      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <AlertDialogContent data-testid="dialog-confirm-missing-tokens">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Some recipients are missing token data</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2">
+                <p>
+                  {totalMissing} recipient value{totalMissing === 1 ? " is" : "s are"} missing across{" "}
+                  {missingTokens.length} token{missingTokens.length === 1 ? "" : "s"}. Affected recipients
+                  will see each token's default value.
+                </p>
+                <ul className="text-sm list-disc pl-5">
+                  {missingTokens.map((t) => (
+                    <li key={t.tokenId} data-testid={`text-confirm-missing-${t.tokenId}`}>
+                      <code className="text-xs">{`{{${t.tokenId}}}`}</code> — {t.missingCount} missing
+                      {t.defaultValue ? ` (default: "${t.defaultValue}")` : " (no default)"}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-confirm-cancel">Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmQueue} data-testid="button-confirm-send-anyway">
+              Queue anyway
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -10,6 +10,9 @@ import { BookmarkButton } from "@/components/ui/bookmark-button";
 import { DebugRecordViewer } from "@/components/debug/DebugRecordViewer";
 import { useWorkerTabAccess } from "@/hooks/useTabAccess";
 import { usePageTitle } from "@/contexts/PageTitleContext";
+import { useAuth } from "@/contexts/AuthContext";
+import { Badge } from "@/components/ui/badge";
+import { useAccessCheck } from "@/hooks/use-access-check";
 
 interface WorkerLayoutContextValue {
   worker: Worker;
@@ -33,6 +36,33 @@ interface WorkerLayoutProps {
   children: ReactNode;
 }
 
+
+function WorkerEdlsBadge({ workerId }: { workerId: string }) {
+  const { hasComponent, hasCapability } = useAuth();
+  if (!hasComponent('edls') || !hasCapability('workerEdls')) return null;
+  return <WorkerEdlsBadgeInner workerId={workerId} />;
+}
+
+function WorkerEdlsBadgeInner({ workerId }: { workerId: string }) {
+  const { canAccess, isLoading: accessLoading } = useAccessCheck('edls.coordinator', workerId);
+  const enabled = !accessLoading && canAccess;
+  const { data } = useQuery<{ active: boolean; exists: boolean; tableMissing?: boolean }>({
+    queryKey: ["/api/workers", workerId, "edls"],
+    enabled,
+    retry: false,
+  });
+
+  if (!enabled || !data || data.tableMissing) return null;
+
+  return (
+    <Badge
+      variant={data.active ? "default" : "secondary"}
+      data-testid={`badge-edls-status-${workerId}`}
+    >
+      EDLS: {data.active ? "Active" : "Inactive"}
+    </Badge>
+  );
+}
 
 export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
   const { id } = useParams<{ id: string }>();
@@ -191,6 +221,7 @@ export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
                   {contact?.displayName || `Worker ${worker.id.slice(0, 8)}`}
                 </h1>
                 <BookmarkButton entityType="worker" entityId={worker.id} entityName={contact?.displayName || `Worker ${worker.id.slice(0, 8)}`} />
+                <WorkerEdlsBadge workerId={worker.id} />
               </div>
               <div className="flex items-center space-x-4">
                 <DebugRecordViewer record={worker} entityLabel="Worker" />

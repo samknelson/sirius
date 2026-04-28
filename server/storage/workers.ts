@@ -169,6 +169,7 @@ export interface WorkerStorage {
   getWorkersWithDetails(): Promise<WorkerWithDetails[]>;
   getWorkersWithDetailsPaginated(params: WorkersPaginationParams): Promise<PaginatedWorkersResult>;
   getWorkersForExport(params: WorkersExportParams): Promise<WorkerWithDetails[]>;
+  getAllMatchingContactIds(params: Omit<WorkersPaginationParams, 'page' | 'pageSize' | 'sortField'>): Promise<string[]>;
   getWorkersEmployersSummary(): Promise<WorkerEmployerSummary[]>;
   getWorkersCurrentBenefits(month?: number, year?: number): Promise<WorkerCurrentBenefits[]>;
   getWorker(id: string): Promise<Worker | undefined>;
@@ -632,6 +633,32 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         representativeId: params.representativeId,
       });
       return rows;
+    },
+
+    async getAllMatchingContactIds(params: Omit<WorkersPaginationParams, 'page' | 'pageSize' | 'sortField'>): Promise<string[]> {
+      const { rows } = await _searchWorkers({
+        search: params.search,
+        sortOrder: params.sortOrder,
+        sortBy: params.sortBy,
+        employerId: params.employerId,
+        employerTypeId: params.employerTypeId,
+        bargainingUnitId: params.bargainingUnitId,
+        benefitId: params.benefitId,
+        contactStatus: params.contactStatus,
+        hasMultipleEmployers: params.hasMultipleEmployers,
+        jobTitle: params.jobTitle,
+        memberStatusId: params.memberStatusId,
+        representativeId: params.representativeId,
+      });
+      const seen = new Set<string>();
+      const ordered: string[] = [];
+      for (const r of rows) {
+        if (r.contact_id && !seen.has(r.contact_id)) {
+          seen.add(r.contact_id);
+          ordered.push(r.contact_id);
+        }
+      }
+      return ordered;
     },
 
     async getWorkersEmployersSummary(): Promise<WorkerEmployerSummary[]> {

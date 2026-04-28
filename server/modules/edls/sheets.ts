@@ -91,10 +91,9 @@ export function registerEdlsSheetsRoutes(
       const employer = await storage.employers.getEmployer(sheet.employerId);
       const industryId = employer?.industryId ?? null;
       
-      // Return all workers for the employer with assignment status indicators
-      // Workers are grouped by member status (for the employer's industry) and optionally filtered/sorted by rating
+      // Return all EDLS-active workers (worker_edls.active = true) with assignment status indicators
+      // Workers are grouped by member status (for the sheet employer's industry) and optionally filtered/sorted by rating
       const workers = await storage.edlsAssignments.getAvailableWorkersForSheet(
-        sheet.employerId,
         sheet.ymd,
         industryId,
         typeof ratingId === 'string' ? ratingId : undefined
@@ -487,8 +486,9 @@ export function registerEdlsSheetsRoutes(
         return;
       }
 
-      if (worker.denormHomeEmployerId !== sheet.employerId) {
-        res.status(400).json({ message: "Worker is not an employee of this employer" });
+      const workerEdlsRow = await storage.workerEdls.getByWorker(parsed.data.workerId);
+      if (!workerEdlsRow || !workerEdlsRow.active) {
+        res.status(400).json({ message: "Worker is not active in EDLS" });
         return;
       }
       

@@ -657,11 +657,13 @@ export default function EdlsSheetsPage() {
                             <Settings className="h-4 w-4" />
                           </Button>
                         </Link>
-                        <Link href={`/edls/sheet/${sheet.id}/assignments`}>
-                          <Button size="icon" variant="ghost" data-testid={`button-assignments-${sheet.id}`} title="Assignments">
-                            <UserCheck className="h-4 w-4" />
-                          </Button>
-                        </Link>
+                        {sheet.status !== "lock" && sheet.status !== "trash" && (
+                          <Link href={`/edls/sheet/${sheet.id}/assignments`}>
+                            <Button size="icon" variant="ghost" data-testid={`button-assignments-${sheet.id}`} title="Assignments">
+                              <UserCheck className="h-4 w-4" />
+                            </Button>
+                          </Link>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>

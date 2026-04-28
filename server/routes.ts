@@ -99,8 +99,10 @@ import { registerBtuScraperImportRoutes } from "./modules/sitespecific/btu/scrap
 import { registerBtuBuildingRepImportRoutes } from "./modules/sitespecific/btu/building-rep-import";
 import { registerBtuPoliticalRoutes } from "./modules/sitespecific/btu/political";
 import { registerT631ClientFetchRoutes } from "./modules/sitespecific/t631/client/fetch";
+import { registerFreemanSecondShiftRoutes } from "./modules/sitespecific/freeman/second-shift";
 import { registerEdlsSheetsRoutes } from "./modules/edls/sheets";
 import { registerEdlsTasksRoutes } from "./modules/edls/tasks";
+import { registerWorkerEdlsRoutes } from "./modules/edls/workers";
 import { registerWebServiceBundle } from "./modules/webservices";
 import { setupEdlsRoutes, EDLS_BUNDLE_CODE } from "./modules/webservices/edls";
 import { registerWebServiceAdminRoutes } from "./modules/webservices/admin";
@@ -222,6 +224,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         },
         permissions: userPermissions.map((p) => p.key),
         components: enabledComponents,
+        capabilities: {
+          workerEdls: await (await import('./modules/edls/capability')).isWorkerEdlsAvailable(),
+        },
         masquerade: session.masqueradeUserId
           ? {
               isMasquerading: true,
@@ -444,6 +449,47 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
+  // Shared parser for the workers-with-details listing filters. Both the paginated
+  // listing and the "all matching IDs" endpoint route through this single helper
+  // so the two query interpretations cannot drift.
+  const parseWorkersWithDetailsFilters = (query: Request['query']) => {
+    const search = typeof query.search === 'string' ? query.search : undefined;
+    const sortOrderParam = query.sortOrder as string;
+    const sortOrder: 'asc' | 'desc' = sortOrderParam === 'desc' ? 'desc' : 'asc';
+    const sortByParam = query.sortBy as string;
+    const validSortByValues = ['lastName', 'firstName', 'employer'] as const;
+    const sortBy = (validSortByValues as readonly string[]).includes(sortByParam)
+      ? (sortByParam as 'lastName' | 'firstName' | 'employer')
+      : 'lastName';
+
+    const employerId = typeof query.employerId === 'string' && query.employerId !== 'all' ? query.employerId : undefined;
+    const employerTypeId = typeof query.employerTypeId === 'string' && query.employerTypeId !== 'all' ? query.employerTypeId : undefined;
+    const bargainingUnitId = typeof query.bargainingUnitId === 'string' && query.bargainingUnitId !== 'all' ? query.bargainingUnitId : undefined;
+    const benefitId = typeof query.benefitId === 'string' && query.benefitId !== 'all' ? query.benefitId : undefined;
+    const contactStatusParam = query.contactStatus as string;
+    const validContactStatuses = ['all', 'has_email', 'missing_email', 'has_phone', 'missing_phone', 'has_address', 'missing_address', 'complete', 'incomplete'];
+    const contactStatus = validContactStatuses.includes(contactStatusParam) ? (contactStatusParam as any) : 'all';
+    const hasMultipleEmployers = query.hasMultipleEmployers === 'true';
+    const jobTitle = typeof query.jobTitle === 'string' && query.jobTitle.trim() ? query.jobTitle.trim() : undefined;
+    const memberStatusId = typeof query.memberStatusId === 'string' && query.memberStatusId !== 'all' ? query.memberStatusId : undefined;
+    const representativeId = typeof query.representativeId === 'string' && query.representativeId !== 'all' ? query.representativeId : undefined;
+
+    return {
+      search,
+      sortOrder,
+      sortBy,
+      employerId,
+      employerTypeId,
+      bargainingUnitId,
+      benefitId,
+      contactStatus,
+      hasMultipleEmployers,
+      jobTitle,
+      memberStatusId,
+      representativeId,
+    };
+  };
+
   // GET /api/workers/with-details/paginated - Get paginated workers with contact data
   app.get("/api/workers/with-details/paginated", requireAccess("worker.list"), async (req, res) => {
     try {
@@ -451,46 +497,29 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       const rawPageSize = parseInt(req.query.pageSize as string);
       const page = isNaN(rawPage) || rawPage < 1 ? 1 : rawPage;
       const pageSize = isNaN(rawPageSize) || rawPageSize < 1 ? 50 : Math.min(rawPageSize, 100);
-      const search = typeof req.query.search === 'string' ? req.query.search : undefined;
-      const sortOrderParam = req.query.sortOrder as string;
-      const sortOrder = sortOrderParam === 'desc' ? 'desc' : 'asc';
-      const sortByParam = req.query.sortBy as string;
-      const validSortByValues = ['lastName', 'firstName', 'employer'];
-      const sortBy = validSortByValues.includes(sortByParam) ? sortByParam as 'lastName' | 'firstName' | 'employer' : 'lastName';
-      
-      // Filter parameters
-      const employerId = typeof req.query.employerId === 'string' && req.query.employerId !== 'all' ? req.query.employerId : undefined;
-      const employerTypeId = typeof req.query.employerTypeId === 'string' && req.query.employerTypeId !== 'all' ? req.query.employerTypeId : undefined;
-      const bargainingUnitId = typeof req.query.bargainingUnitId === 'string' && req.query.bargainingUnitId !== 'all' ? req.query.bargainingUnitId : undefined;
-      const benefitId = typeof req.query.benefitId === 'string' && req.query.benefitId !== 'all' ? req.query.benefitId : undefined;
-      const contactStatusParam = req.query.contactStatus as string;
-      const validContactStatuses = ['all', 'has_email', 'missing_email', 'has_phone', 'missing_phone', 'has_address', 'missing_address', 'complete', 'incomplete'];
-      const contactStatus = validContactStatuses.includes(contactStatusParam) ? contactStatusParam as any : 'all';
-      const hasMultipleEmployers = req.query.hasMultipleEmployers === 'true';
-      const jobTitle = typeof req.query.jobTitle === 'string' && req.query.jobTitle.trim() ? req.query.jobTitle.trim() : undefined;
-      const memberStatusId = typeof req.query.memberStatusId === 'string' && req.query.memberStatusId !== 'all' ? req.query.memberStatusId : undefined;
-      const representativeId = typeof req.query.representativeId === 'string' && req.query.representativeId !== 'all' ? req.query.representativeId : undefined;
-      
+      const filters = parseWorkersWithDetailsFilters(req.query);
+
       const result = await storage.workers.getWorkersWithDetailsPaginated({
         page,
         pageSize,
-        search,
-        sortOrder,
-        sortBy,
-        employerId,
-        employerTypeId,
-        bargainingUnitId,
-        benefitId,
-        contactStatus,
-        hasMultipleEmployers,
-        jobTitle,
-        memberStatusId,
-        representativeId,
+        ...filters,
       });
       res.json(result);
     } catch (error) {
       console.error("Failed to fetch paginated workers:", error);
       res.status(500).json({ message: "Failed to fetch workers" });
+    }
+  });
+
+  // GET /api/workers/with-details/all-ids - Return all matching contact IDs for the same filters as the paginated list
+  app.get("/api/workers/with-details/all-ids", requireAuth, requirePermission("staff"), async (req, res) => {
+    try {
+      const filters = parseWorkersWithDetailsFilters(req.query);
+      const contactIds = await storage.workers.getAllMatchingContactIds(filters);
+      res.json({ contactIds, total: contactIds.length });
+    } catch (error) {
+      console.error("Failed to fetch matching worker contact IDs:", error);
+      res.status(500).json({ message: "Failed to fetch matching workers" });
     }
   });
 
@@ -1710,6 +1739,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Register T631 Client routes
   registerT631ClientFetchRoutes(app, requireAuth, requirePermission);
 
+  // Register Freeman Second Shift routes
+  registerFreemanSecondShiftRoutes(app, requireAuth, requireAccess);
+
   // Register HTA routes
   registerHtaRoutes(app, requireAuth, requirePermission);
   registerGbhetPensionRoutes(app, requireAuth, requirePermission);
@@ -1717,6 +1749,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Register EDLS routes
   registerEdlsSheetsRoutes(app, requireAuth, requirePermission);
   registerEdlsTasksRoutes(app, requireAuth, requirePermission);
+  registerWorkerEdlsRoutes(app, requireAuth);
 
   // Register Web Service bundles (API access via client credentials)
   registerWebServiceBundle(app, {

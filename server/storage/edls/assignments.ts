@@ -119,7 +119,7 @@ export interface EdlsAssignmentsStorage {
   delete(id: string): Promise<boolean>;
   deleteByCrewId(crewId: string): Promise<number>;
   updateData(id: string, data: Record<string, unknown>): Promise<EdlsAssignment | undefined>;
-  getAvailableWorkersForSheet(employerId: string, sheetYmd: string, industryId: string | null, ratingId?: string): Promise<AvailableWorkerForSheet[]>;
+  getAvailableWorkersForSheet(sheetYmd: string, industryId: string | null, ratingId?: string): Promise<AvailableWorkerForSheet[]>;
   getWorkerAssignmentDetails(workerId: string, sheetYmd: string): Promise<WorkerAssignmentDetails | null>;
 }
 
@@ -255,7 +255,7 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
       return assignment || undefined;
     },
 
-    async getAvailableWorkersForSheet(employerId: string, sheetYmd: string, industryId: string | null, ratingId?: string): Promise<AvailableWorkerForSheet[]> {
+    async getAvailableWorkersForSheet(sheetYmd: string, industryId: string | null, ratingId?: string): Promise<AvailableWorkerForSheet[]> {
       const client = getClient();
       
       // Build query with optional rating join
@@ -307,6 +307,7 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
           ${memberStatusSelect}
         FROM workers w
         INNER JOIN contacts c ON w.contact_id = c.id
+        INNER JOIN worker_edls we ON we.worker_id = w.id
         ${ratingJoin}
         ${memberStatusJoin}
         LEFT JOIN LATERAL (
@@ -335,7 +336,7 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
           ORDER BY es.ymd ASC
           LIMIT 1
         ) next_asg ON true
-        WHERE w.denorm_home_employer_id = ${employerId}
+        WHERE we.active = true
         ${orderBy}
       `);
       return result.rows as unknown as AvailableWorkerForSheet[];

@@ -22,29 +22,50 @@ export function registerEmployerContactRoutes(
   requirePermission: PermissionMiddleware
 ) {
   
+  // Shared filter parser so the list endpoint and the all-ids endpoint can never drift.
+  const parseEmployerContactFilters = (query: Request['query']) => {
+    const { employerId, contactName, contactTypeId } = query;
+    const filters: { employerId?: string; contactName?: string; contactTypeId?: string } = {};
+    if (employerId && typeof employerId === 'string' && employerId !== 'all') {
+      filters.employerId = employerId;
+    }
+    if (contactName && typeof contactName === 'string') {
+      filters.contactName = contactName;
+    }
+    if (contactTypeId && typeof contactTypeId === 'string' && contactTypeId !== 'all') {
+      filters.contactTypeId = contactTypeId;
+    }
+    return filters;
+  };
+
   // GET /api/employer-contacts - Get all employer contacts with optional filtering (requires staff policy)
   app.get("/api/employer-contacts", requireAuth, requireAccess('staff'), async (req, res) => {
     try {
-      const { employerId, contactName, contactTypeId } = req.query;
-      
-      const filters: { employerId?: string; contactName?: string; contactTypeId?: string } = {};
-      
-      if (employerId && typeof employerId === 'string') {
-        filters.employerId = employerId;
-      }
-      
-      if (contactName && typeof contactName === 'string') {
-        filters.contactName = contactName;
-      }
-      
-      if (contactTypeId && typeof contactTypeId === 'string') {
-        filters.contactTypeId = contactTypeId;
-      }
-      
+      const filters = parseEmployerContactFilters(req.query);
       const contacts = await storage.employerContacts.getAll(filters);
       res.json(contacts);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch employer contacts" });
+    }
+  });
+
+  // GET /api/employer-contacts/all-ids - Return all matching contact IDs honoring the same filters
+  app.get("/api/employer-contacts/all-ids", requireAuth, requireAccess('staff'), async (req, res) => {
+    try {
+      const filters = parseEmployerContactFilters(req.query);
+      const rows = await storage.employerContacts.getAll(filters);
+      const seen = new Set<string>();
+      const ordered: string[] = [];
+      for (const row of rows) {
+        const cid = row.contact?.id;
+        if (cid && !seen.has(cid)) {
+          seen.add(cid);
+          ordered.push(cid);
+        }
+      }
+      return res.json({ contactIds: ordered, total: ordered.length });
+    } catch (error) {
+      return res.status(500).json({ message: "Failed to fetch matching employer contacts" });
     }
   });
   

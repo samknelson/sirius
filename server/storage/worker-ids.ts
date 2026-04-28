@@ -28,6 +28,7 @@ export interface WorkerIdStorage {
   deleteWorkerId(id: string): Promise<boolean>;
   getShowOnListsIdTypes(): Promise<ShowOnListsIdType[]>;
   getWorkerIdsForListByWorkerIds(workerIdsList: string[]): Promise<WorkerIdForList[]>;
+  getWorkerIdByTypeAndValue(typeId: string, value: string): Promise<WorkerId | undefined>;
 }
 
 export function createWorkerIdStorage(): WorkerIdStorage {
@@ -68,6 +69,16 @@ export function createWorkerIdStorage(): WorkerIdStorage {
       const client = getClient();
       const result = await client.delete(workerIds).where(eq(workerIds.id, id)).returning();
       return result.length > 0;
+    },
+
+    async getWorkerIdByTypeAndValue(typeId: string, value: string): Promise<WorkerId | undefined> {
+      const client = getClient();
+      const [row] = await client
+        .select()
+        .from(workerIds)
+        .where(and(eq(workerIds.typeId, typeId), eq(workerIds.value, value)))
+        .limit(1);
+      return row || undefined;
     },
 
     async getShowOnListsIdTypes(): Promise<ShowOnListsIdType[]> {
