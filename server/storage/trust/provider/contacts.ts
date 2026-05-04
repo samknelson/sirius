@@ -290,11 +290,19 @@ export const trustProviderContactLoggingConfig: StorageLoggingConfig<TrustProvid
       enabled: true,
       getEntityId: (args) => args[0]?.providerId || 'new trust provider contact',
       getHostEntityId: (args, result) => result?.providerId || args[0]?.providerId,
+      before: async (args, storage) => {
+        const existingLinks = await storage.listByContactId(args[0]?.contactId);
+        return { existingLinkCount: existingLinks.length };
+      },
       after: async (args, result, storage) => {
-        return result;
+        return await storage.get(result.id);
       },
       getDescription: (args, result, beforeState, afterState) => {
-        return `Created trust provider contact link for provider "${args[0]?.providerId}"`;
+        const contactName = afterState?.contact?.displayName || 'Unknown Contact';
+        if (beforeState?.existingLinkCount > 0) {
+          return `Linked existing contact "${contactName}" to additional trust provider`;
+        }
+        return `Created new trust provider contact "${contactName}"`;
       }
     },
     update: {
