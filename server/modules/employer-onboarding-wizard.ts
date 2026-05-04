@@ -87,8 +87,8 @@ export function registerEmployerOnboardingWizardRoutes(
       for (const contactData of data.contacts) {
         try {
           const contact = await storage.contacts.createContact({
-            firstName: contactData.firstName || null,
-            lastName: contactData.lastName || null,
+            given: contactData.firstName || null,
+            family: contactData.lastName || null,
             email: contactData.email,
           });
 

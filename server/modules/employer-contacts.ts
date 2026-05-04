@@ -1,6 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
-import { insertContactSchema, type InsertContact } from "@shared/schema";
+import { insertContactSchema } from "@shared/schema";
 import { requireAccess } from "../services/access-policy-evaluator";
 import { checkClerkConflict, provisionClerkAccount } from "../services/clerk-provisioning";
 import { z } from "zod";
@@ -98,11 +98,11 @@ export function registerEmployerContactRoutes(
         return res.status(400).json({ message: "Invalid contact data", errors: parsed.error.errors });
       }
 
-      const { contactTypeId, ...contactData } = parsed.data;
+      const { contactTypeId, email: rawEmail, ...contactFields } = parsed.data;
+      const email = rawEmail?.trim() || null;
 
       let contact;
       let linked = false;
-      const email = (contactData as any).email?.trim() || null;
 
       if (email) {
         const existingContact = await storage.contacts.getContactByEmail(email);
@@ -113,7 +113,7 @@ export function registerEmployerContactRoutes(
       }
 
       if (!contact) {
-        contact = await storage.contacts.createContact(contactData as InsertContact);
+        contact = await storage.contacts.createContact({ ...contactFields, email });
       }
 
       const employerContact = await storage.employerContacts.create({
