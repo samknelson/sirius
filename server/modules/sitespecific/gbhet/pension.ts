@@ -1,6 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
-import { requireComponent } from "./components";
-import { storage } from "../storage";
+import { requireComponent } from "../../components";
+import { storage } from "../../../storage";
 import { 
   insertGbhetPensionBenefitScheduleSchema, 
   insertGbhetPensionAccrualTierSchema, 
@@ -12,10 +12,10 @@ import {
   insertGbhetPensionPayoutFactorSchema,
   insertGbhetPensionEarlyRetirementFactorSchema,
   insertGbhetPensionInterestRateSchema,
-} from "../../shared/schema/sitespecific/gbhet-pension/schema";
-import { computeSlaForWorker, computeSlaForAllWorkers, SLA_ACCOUNT_VARIABLE, SLA_TRIGGER_ACCOUNT_VARIABLE, clearAccountCache, SlaConfigError } from "../services/gbhet-pension-sla";
-import { computePayout, computeAllPayouts, getWorkerPensionSummary } from "../services/gbhet-pension-payout-calculator";
-import { VAR_CONTRIB_SOURCE_ACCOUNT_VARIABLE, VAR_CONTRIB_TARGET_ACCOUNT_VARIABLE, clearVarContribAccountCache } from "../charge-plugins/plugins/gbhetPensionVariableContribution";
+} from "../../../../shared/schema/sitespecific/gbhet-pension/schema";
+import { computeSlaForWorker, computeSlaForAllWorkers, SLA_ACCOUNT_VARIABLE, SLA_TRIGGER_ACCOUNT_VARIABLE, clearAccountCache, SlaConfigError } from "../../../services/gbhet-pension-sla";
+import { computePayout, computeAllPayouts, getWorkerPensionSummary } from "../../../services/gbhet-pension-payout-calculator";
+import { VAR_CONTRIB_SOURCE_ACCOUNT_VARIABLE, VAR_CONTRIB_TARGET_ACCOUNT_VARIABLE, clearVarContribAccountCache } from "../../../charge-plugins/plugins/gbhetPensionVariableContribution";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -27,7 +27,7 @@ export function registerGbhetPensionRoutes(
 ) {
   const componentMiddleware = requireComponent("sitespecific.gbhet.pension");
   const mutatingComponentMiddleware = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    const { isComponentEnabled } = await import("./components");
+    const { isComponentEnabled } = await import("../../components");
     const enabled = await isComponentEnabled("sitespecific.gbhet.pension");
     if (!enabled) {
       res.status(503).json({ message: "GBHE Pension component is not enabled" });

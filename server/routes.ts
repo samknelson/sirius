@@ -91,7 +91,7 @@ import { requireComponent } from "./modules/components";
 import { registerWorkerStewardAssignmentRoutes } from "./modules/worker-steward-assignments";
 import { registerBtuCsgRoutes } from "./modules/sitespecific/btu/csg";
 import { registerHtaRoutes } from "./modules/hta";
-import { registerGbhetPensionRoutes } from "./modules/sitespecific-gbhet-pension";
+import { registerGbhetPensionRoutes } from "./modules/sitespecific/gbhet/pension";
 import { registerBtuTerritoriesRoutes } from "./modules/sitespecific/btu/territories";
 import { registerBtuSchoolRoutes } from "./modules/sitespecific/btu/school";
 import { registerBtuSigImportRoutes } from "./modules/sitespecific/btu/sig-import";
