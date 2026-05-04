@@ -1,6 +1,6 @@
-import { getClient } from './transaction-context';
+import { getClient } from '../../transaction-context';
 import { eq, and, desc, lte } from "drizzle-orm";
-import { tableExists as tableExistsUtil } from "./utils";
+import { tableExists as tableExistsUtil } from "../../utils";
 import {
   gbhetPensionBenefitSchedules,
   type GbhetPensionBenefitSchedule,
@@ -32,8 +32,8 @@ import {
   gbhetPensionInterestRates,
   type GbhetPensionInterestRate,
   type InsertGbhetPensionInterestRate,
-} from "../../shared/schema/sitespecific/gbhet-pension/schema";
-import { employers } from "../../shared/schema";
+} from "../../../../shared/schema/sitespecific/gbhet-pension/schema";
+import { employers } from "../../../../shared/schema";
 import { getTableName } from "drizzle-orm";
 
 export type {

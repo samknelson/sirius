@@ -78,7 +78,7 @@ import { type EventStorage, createEventStorage, eventLoggingConfig, type EventOc
 import { type DispatchJobStorage, createDispatchJobStorage, dispatchJobLoggingConfig } from "./dispatch/jobs";
 import { type DispatchJobGroupStorage, createDispatchJobGroupStorage, dispatchJobGroupLoggingConfig } from "./dispatch/job-groups";
 import { type FacilityStorage, createFacilityStorage, facilityLoggingConfig } from "./facility/facilities";
-import { type GbhetPensionStorage, createGbhetPensionStorage } from "./gbhet-pension";
+import { type GbhetPensionStorage, createGbhetPensionStorage } from "./sitespecific/gbhet/pension";
 import { type DispatchStorage, createDispatchStorage, dispatchLoggingConfig } from "./dispatch/dispatches";
 import { type WorkerStewardAssignmentStorage, createWorkerStewardAssignmentStorage, workerStewardAssignmentLoggingConfig } from "./worker-steward-assignments";
 import { type BtuCsgStorage, createBtuCsgStorage, btuCsgLoggingConfig } from "./sitespecific/btu/csg";

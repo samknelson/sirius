@@ -1,6 +1,6 @@
 import { storage } from "../storage";
 import { logger } from "../logger";
-import type { GbhetPensionAccrualTier, GbhetPensionPlanYear } from "../storage/gbhet-pension";
+import type { GbhetPensionAccrualTier, GbhetPensionPlanYear } from "../storage/sitespecific/gbhet/pension";
 import type { RawLedgerEntryWithEntity } from "../storage/ledger";
 
 export class SlaConfigError extends Error {
