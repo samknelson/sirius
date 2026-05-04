@@ -526,7 +526,7 @@ export function registerTrustProviderContactRoutes(
         return res.status(404).json({ message: "Provider contact not found" });
       }
 
-      const result = await storage.trustProviderContacts.linkToProvider({
+      const result = await storage.trustProviderContacts.create({
         contactId: providerContact.contactId,
         providerId: parsed.data.providerId,
         contactTypeId: parsed.data.contactTypeId || null,

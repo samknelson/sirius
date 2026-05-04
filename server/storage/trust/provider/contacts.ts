@@ -26,7 +26,6 @@ export interface TrustProviderContactStorage {
     generational?: string;
     credentials?: string;
   }): Promise<(TrustProviderContact & { contact: Contact; contactType?: { id: string; name: string; description: string | null } | null }) | null>;
-  linkToProvider(data: { contactId: string; providerId: string; contactTypeId?: string | null }): Promise<TrustProviderContact>;
   getByUserEmail(email: string): Promise<TrustProviderContact | null>;
   delete(id: string): Promise<boolean>;
 }
@@ -232,35 +231,6 @@ export function createTrustProviderContactStorage(contactsStorage: ContactsStora
         provider: row.provider,
         contactType: row.contactType,
       }));
-    },
-
-    async linkToProvider(data: { contactId: string; providerId: string; contactTypeId?: string | null }): Promise<TrustProviderContact> {
-      const client = getClient();
-      const [existingLink] = await client
-        .select()
-        .from(trustProviderContacts)
-        .where(
-          and(
-            eq(trustProviderContacts.providerId, data.providerId),
-            eq(trustProviderContacts.contactId, data.contactId)
-          )
-        )
-        .limit(1);
-
-      if (existingLink) {
-        throw new Error("This contact is already linked to this provider");
-      }
-
-      const [providerContact] = await client
-        .insert(trustProviderContacts)
-        .values({
-          providerId: data.providerId,
-          contactId: data.contactId,
-          contactTypeId: data.contactTypeId || null,
-        })
-        .returning();
-
-      return providerContact;
     },
 
     async getByUserEmail(email: string): Promise<TrustProviderContact | null> {
