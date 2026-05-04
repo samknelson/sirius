@@ -746,6 +746,19 @@ export function createLedgerPaymentStorage(): LedgerPaymentStorage {
 
     async delete(id: string): Promise<boolean> {
       const client = getClient();
+      const entriesResult = await client.delete(ledger)
+        .where(and(
+          eq(ledger.referenceType, "payment"),
+          eq(ledger.referenceId, id)
+        ));
+      const deletedEntriesCount = entriesResult.rowCount || 0;
+      if (deletedEntriesCount > 0) {
+        logger.info("Deleted ledger entries when deleting payment", {
+          service: "ledger-payments",
+          paymentId: id,
+          deletedCount: deletedEntriesCount,
+        });
+      }
       const result = await client.delete(ledgerPayments)
         .where(eq(ledgerPayments.id, id));
       return result.rowCount ? result.rowCount > 0 : false;

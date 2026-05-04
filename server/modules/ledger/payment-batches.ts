@@ -375,7 +375,6 @@ export function registerLedgerPaymentBatchRoutes(app: Express) {
         }
 
         if (deletePayment) {
-          await storage.ledger.entries.deleteByReference("payment", paymentId);
           await storage.ledger.payments.delete(paymentId);
         }
 

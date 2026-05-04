@@ -541,16 +541,6 @@ export function registerLedgerPaymentRoutes(app: Express) {
         return;
       }
       
-      // Delete any associated ledger entries first
-      const deletedEntriesCount = await storage.ledger.entries.deleteByReference("payment", id);
-      if (deletedEntriesCount > 0) {
-        logger.info("Deleted ledger entries when deleting payment", {
-          service: "ledger-payments",
-          paymentId: id,
-          deletedCount: deletedEntriesCount,
-        });
-      }
-      
       const success = await storage.ledger.payments.delete(id);
       
       if (!success) {
