@@ -1,6 +1,6 @@
 import { createNoopValidator } from '../../utils/validation';
 import { getClient } from '../../transaction-context';
-import { trustProviderContacts, contacts, optionsEmployerContactType, optionsTrustProviderType, trustProviders, type TrustProviderContact, type InsertTrustProviderContact, type Contact, type InsertContact, type TrustProvider } from "@shared/schema";
+import { trustProviderContacts, contacts, optionsEmployerContactType, optionsTrustProviderType, trustProviders, type TrustProviderContact, type Contact, type TrustProvider } from "@shared/schema";
 import { eq, and, or, ilike, sql } from "drizzle-orm";
 import { withStorageLogging, type StorageLoggingConfig } from "../../middleware/logging";
 import type { ContactsStorage } from "../../contacts";
@@ -11,8 +11,7 @@ import type { ContactsStorage } from "../../contacts";
 export const validate = createNoopValidator();
 
 export interface TrustProviderContactStorage {
-  create(data: { providerId: string; contactData: InsertContact & { email: string }; contactTypeId?: string | null }): Promise<{ providerContact: TrustProviderContact; contact: Contact }>;
-  createOrLink(data: { providerId: string; contactData: InsertContact & { email: string }; contactTypeId?: string | null }): Promise<{ providerContact: TrustProviderContact; contact: Contact; linked?: boolean }>;
+  create(data: { contactId: string; providerId: string; contactTypeId?: string | null }): Promise<TrustProviderContact>;
   listByProvider(providerId: string): Promise<Array<TrustProviderContact & { contact: Contact; contactType?: { id: string; name: string; description: string | null } | null }>>;
   listByContactId(contactId: string): Promise<Array<TrustProviderContact & { contact: Contact; provider: TrustProvider; contactType?: { id: string; name: string; description: string | null } | null }>>;
   getAll(filters?: { providerId?: string; contactName?: string; contactTypeId?: string }): Promise<Array<TrustProviderContact & { contact: Contact; provider: TrustProvider; contactType?: { id: string; name: string; description: string | null } | null }>>;
@@ -34,88 +33,35 @@ export interface TrustProviderContactStorage {
 
 export function createTrustProviderContactStorage(contactsStorage: ContactsStorage): TrustProviderContactStorage {
   return {
-    async create(data: { providerId: string; contactData: InsertContact & { email: string }; contactTypeId?: string | null }): Promise<{ providerContact: TrustProviderContact; contact: Contact }> {
+    async create(data: { contactId: string; providerId: string; contactTypeId?: string | null }): Promise<TrustProviderContact> {
       validate.validateOrThrow(data);
       const client = getClient();
-      // Validate email is provided
-      if (!data.contactData.email || !data.contactData.email.trim()) {
-        throw new Error("Email is required for provider contacts");
-      }
 
-      // Create the contact first
-      const [contact] = await client
-        .insert(contacts)
-        .values(data.contactData)
-        .returning();
-
-      // Create the provider contact relationship
-      const [providerContact] = await client
-        .insert(trustProviderContacts)
-        .values({
-          providerId: data.providerId,
-          contactId: contact.id,
-          contactTypeId: data.contactTypeId || null,
-        })
-        .returning();
-
-      return { providerContact, contact };
-    },
-
-    async createOrLink(data: { providerId: string; contactData: InsertContact & { email: string }; contactTypeId?: string | null }): Promise<{ providerContact: TrustProviderContact; contact: Contact; linked?: boolean }> {
-      const client = getClient();
-      if (!data.contactData.email || !data.contactData.email.trim()) {
-        throw new Error("Email is required for provider contacts");
-      }
-
-      const [existingContact] = await client
+      const [existingLink] = await client
         .select()
-        .from(contacts)
-        .where(eq(contacts.email, data.contactData.email.trim()))
+        .from(trustProviderContacts)
+        .where(
+          and(
+            eq(trustProviderContacts.providerId, data.providerId),
+            eq(trustProviderContacts.contactId, data.contactId)
+          )
+        )
         .limit(1);
 
-      if (existingContact) {
-        const [existingLink] = await client
-          .select()
-          .from(trustProviderContacts)
-          .where(
-            and(
-              eq(trustProviderContacts.providerId, data.providerId),
-              eq(trustProviderContacts.contactId, existingContact.id)
-            )
-          )
-          .limit(1);
-
-        if (existingLink) {
-          throw new Error("This contact is already linked to this provider");
-        }
-
-        const [providerContact] = await client
-          .insert(trustProviderContacts)
-          .values({
-            providerId: data.providerId,
-            contactId: existingContact.id,
-            contactTypeId: data.contactTypeId || null,
-          })
-          .returning();
-
-        return { providerContact, contact: existingContact, linked: true };
+      if (existingLink) {
+        throw new Error("This contact is already linked to this provider");
       }
-
-      const [contact] = await client
-        .insert(contacts)
-        .values(data.contactData)
-        .returning();
 
       const [providerContact] = await client
         .insert(trustProviderContacts)
         .values({
           providerId: data.providerId,
-          contactId: contact.id,
+          contactId: data.contactId,
           contactTypeId: data.contactTypeId || null,
         })
         .returning();
 
-      return { providerContact, contact };
+      return providerContact;
     },
 
     async listByProvider(providerId: string): Promise<Array<TrustProviderContact & { contact: Contact; contactType?: { id: string; name: string; description: string | null } | null }>> {
@@ -373,13 +319,12 @@ export const trustProviderContactLoggingConfig: StorageLoggingConfig<TrustProvid
     create: {
       enabled: true,
       getEntityId: (args) => args[0]?.providerId || 'new trust provider contact',
-      getHostEntityId: (args, result) => result?.providerContact?.providerId || args[0]?.providerId, // Provider ID is the host
+      getHostEntityId: (args, result) => result?.providerId || args[0]?.providerId,
       after: async (args, result, storage) => {
         return result;
       },
       getDescription: (args, result, beforeState, afterState) => {
-        const contactName = afterState?.contact?.displayName || 'Unknown Contact';
-        return `Created trust provider contact "${contactName}"`;
+        return `Created trust provider contact link for provider "${args[0]?.providerId}"`;
       }
     },
     update: {

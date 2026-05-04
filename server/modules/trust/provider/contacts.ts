@@ -64,21 +64,37 @@ export function registerTrustProviderContactRoutes(
         return res.status(400).json({ message: "Invalid contact data", errors: parsed.error.errors });
       }
 
-      const { contactTypeId, ...contactData } = parsed.data;
-      
-      const result = await storage.trustProviderContacts.createOrLink({
+      const { contactTypeId, email, ...contactFields } = parsed.data;
+      const trimmedEmail = email?.trim() || null;
+
+      if (!trimmedEmail) {
+        return res.status(400).json({ message: "Email is required for provider contacts" });
+      }
+
+      let contact;
+      let linked = false;
+
+      const existingContact = await storage.contacts.getContactByEmail(trimmedEmail);
+      if (existingContact) {
+        contact = existingContact;
+        linked = true;
+      } else {
+        contact = await storage.contacts.createContact({ ...contactFields, email: trimmedEmail });
+      }
+
+      const providerContact = await storage.trustProviderContacts.create({
+        contactId: contact.id,
         providerId,
-        contactData: contactData as InsertContact & { email: string },
         contactTypeId: contactTypeId || null,
       });
       
-      res.status(201).json(result);
+      res.status(201).json({ providerContact, contact, ...(linked ? { linked: true } : {}) });
     } catch (error: any) {
-      if (error.message === "Email is required for provider contacts") {
-        return res.status(400).json({ message: error.message });
-      }
       if (error.message === "This contact is already linked to this provider") {
         return res.status(409).json({ message: error.message });
+      }
+      if (error?.code === '23505' && error?.constraint === 'contacts_email_unique') {
+        return res.status(409).json({ message: "A contact with this email already exists." });
       }
       res.status(500).json({ message: "Failed to create provider contact" });
     }
