@@ -86,20 +86,22 @@ export function registerEmployerOnboardingWizardRoutes(
 
       for (const contactData of data.contacts) {
         try {
-          const contactResult = await storage.employerContacts.create({
+          const contact = await storage.contacts.createContact({
+            firstName: contactData.firstName || null,
+            lastName: contactData.lastName || null,
+            email: contactData.email,
+          });
+
+          const employerContact = await storage.employerContacts.create({
+            contactId: contact.id,
             employerId: employer.id,
-            contactData: {
-              firstName: contactData.firstName || null,
-              lastName: contactData.lastName || null,
-              email: contactData.email,
-            },
             contactTypeId: contactData.contactTypeId || null,
           });
 
           if (contactData.phone) {
             try {
               await storage.contacts.phoneNumbers.createPhoneNumber({
-                contactId: contactResult.contact.id,
+                contactId: contact.id,
                 phoneNumber: contactData.phone,
                 isPrimary: true,
                 isActive: true,
@@ -114,8 +116,8 @@ export function registerEmployerOnboardingWizardRoutes(
           }
 
           const contactInfo: any = {
-            employerContactId: contactResult.employerContact.id,
-            contactId: contactResult.contact.id,
+            employerContactId: employerContact.id,
+            contactId: contact.id,
             email: contactData.email,
             phone: contactData.phone || null,
             name: `${contactData.firstName || ''} ${contactData.lastName || ''}`.trim(),

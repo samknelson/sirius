@@ -99,24 +99,36 @@ export function registerEmployerContactRoutes(
       }
 
       const { contactTypeId, ...contactData } = parsed.data;
-      
-      const result = await storage.employerContacts.createOrLink({
+
+      let contact;
+      let linked = false;
+      const email = (contactData as any).email?.trim() || null;
+
+      if (email) {
+        const existingContact = await storage.contacts.getContactByEmail(email);
+        if (existingContact) {
+          contact = existingContact;
+          linked = true;
+        }
+      }
+
+      if (!contact) {
+        contact = await storage.contacts.createContact(contactData as InsertContact);
+      }
+
+      const employerContact = await storage.employerContacts.create({
+        contactId: contact.id,
         employerId,
-        contactData: contactData as InsertContact & { email?: string },
         contactTypeId: contactTypeId || null,
       });
-      
-      res.status(201).json(result);
+
+      res.status(201).json({ employerContact, contact, ...(linked ? { linked: true } : {}) });
     } catch (error: any) {
-      if (error?.message === "Email is required for employer contacts") {
-        return res.status(400).json({ message: error.message });
-      }
       if (error?.message === "This contact is already linked to this employer") {
         return res.status(409).json({ message: error.message });
       }
-      // Handle duplicate email constraint violation
       if (error?.code === '23505' && error?.constraint === 'contacts_email_unique') {
-        return res.status(409).json({ message: "A contact with this email already exists. Employers cannot add existing contacts, only create new ones." });
+        return res.status(409).json({ message: "A contact with this email already exists." });
       }
       res.status(500).json({ message: "Failed to create employer contact" });
     }
@@ -492,7 +504,7 @@ export function registerEmployerContactRoutes(
         return res.status(404).json({ message: "Employer contact not found" });
       }
 
-      const result = await storage.employerContacts.linkToEmployer({
+      const result = await storage.employerContacts.create({
         contactId: employerContact.contactId,
         employerId: parsed.data.employerId,
         contactTypeId: parsed.data.contactTypeId || null,

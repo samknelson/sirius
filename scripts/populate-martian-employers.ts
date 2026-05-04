@@ -68,14 +68,16 @@ async function populateEmployers() {
         const contactTypeId = Math.random() > 0.5 ? contactTypes.overlord : contactTypes.underlord;
         const contactTypeName = contactTypeId === contactTypes.overlord ? 'Overlord' : 'Underlord';
 
+        const contact = await storage.contacts.createContact({
+          given: firstName,
+          family: lastName,
+          displayName: `${firstName} ${lastName}`,
+          email
+        });
+
         await storage.employerContacts.create({
+          contactId: contact.id,
           employerId: employer.id,
-          contactData: {
-            given: firstName,
-            family: lastName,
-            displayName: `${firstName} ${lastName}`,
-            email
-          },
           contactTypeId
         });
 

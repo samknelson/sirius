@@ -1,38 +1,11 @@
 import { getClient } from './transaction-context';
-import { employerContacts, contacts, optionsEmployerContactType, employers, users, type EmployerContact, type InsertEmployerContact, type Contact, type InsertContact, type Employer } from "@shared/schema";
+import { employerContacts, contacts, optionsEmployerContactType, employers, users, type EmployerContact, type InsertEmployerContact, type Contact, type Employer } from "@shared/schema";
 import { eq, and, or, like, ilike, sql, inArray } from "drizzle-orm";
 import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
 import type { ContactsStorage } from "./contacts";
-import { 
-  type ValidationError,
-  createStorageValidator
-} from "./utils/validation";
-
-/**
- * Validates required email for employer contacts
- * Returns trimmed email value to match original behavior
- */
-export const employerContactEmailValidate = createStorageValidator<{ email: string | null | undefined }, never, { email: string }>(
-  (data) => {
-    const errors: ValidationError[] = [];
-    const trimmedEmail = data.email?.trim() || '';
-    
-    if (!trimmedEmail) {
-      errors.push({
-        field: 'email',
-        code: 'REQUIRED',
-        message: "Email is required for employer contacts"
-      });
-      return { ok: false, errors };
-    }
-    
-    return { ok: true, value: { email: trimmedEmail } };
-  }
-);
 
 export interface EmployerContactStorage {
-  create(data: { employerId: string; contactData: InsertContact & { email?: string }; contactTypeId?: string | null }): Promise<{ employerContact: EmployerContact; contact: Contact }>;
-  createOrLink(data: { employerId: string; contactData: InsertContact & { email: string }; contactTypeId?: string | null }): Promise<{ employerContact: EmployerContact; contact: Contact; linked?: boolean }>;
+  create(data: { contactId: string; employerId: string; contactTypeId?: string | null }): Promise<EmployerContact>;
   listByEmployer(employerId: string): Promise<Array<EmployerContact & { contact: Contact; contactType?: { id: string; name: string; description: string | null } | null }>>;
   listByContactId(contactId: string): Promise<Array<EmployerContact & { contact: Contact; employer: Employer; contactType?: { id: string; name: string; description: string | null } | null }>>;
   getAll(filters?: { employerId?: string; contactName?: string; contactTypeId?: string }): Promise<Array<EmployerContact & { contact: Contact; employer: Employer; contactType?: { id: string; name: string; description: string | null } | null }>>;
@@ -47,7 +20,6 @@ export interface EmployerContactStorage {
     generational?: string;
     credentials?: string;
   }): Promise<(EmployerContact & { contact: Contact; contactType?: { id: string; name: string; description: string | null } | null }) | null>;
-  linkToEmployer(data: { contactId: string; employerId: string; contactTypeId?: string | null }): Promise<EmployerContact>;
   getByUserEmail(email: string): Promise<EmployerContact | null>;
   delete(id: string): Promise<boolean>;
   getUserAccountStatuses(employerContactIds: string[]): Promise<Array<{ employerContactId: string; userId: string | null; hasUser: boolean; accountStatus: string | null }>>;
@@ -55,80 +27,34 @@ export interface EmployerContactStorage {
 
 export function createEmployerContactStorage(contactsStorage: ContactsStorage): EmployerContactStorage {
   return {
-    async create(data: { employerId: string; contactData: InsertContact & { email?: string }; contactTypeId?: string | null }): Promise<{ employerContact: EmployerContact; contact: Contact }> {
+    async create(data: { contactId: string; employerId: string; contactTypeId?: string | null }): Promise<EmployerContact> {
       const client = getClient();
-      
-      // Email is optional for all contact types
-      // Create the contact first using contacts storage
-      const contact = await contactsStorage.createContact(data.contactData);
 
-      // Create the employer contact relationship
-      const [employerContact] = await client
-        .insert(employerContacts)
-        .values({
-          employerId: data.employerId,
-          contactId: contact.id,
-          contactTypeId: data.contactTypeId || null,
-        })
-        .returning();
-
-      return { employerContact, contact };
-    },
-
-    async createOrLink(data: { employerId: string; contactData: InsertContact & { email: string }; contactTypeId?: string | null }): Promise<{ employerContact: EmployerContact; contact: Contact; linked?: boolean }> {
-      const client = getClient();
-      
-      const validated = employerContactEmailValidate.validateOrThrow({ email: data.contactData.email });
-
-      const [existingContact] = await client
+      const [existingLink] = await client
         .select()
-        .from(contacts)
-        .where(eq(contacts.email, validated.email))
+        .from(employerContacts)
+        .where(
+          and(
+            eq(employerContacts.employerId, data.employerId),
+            eq(employerContacts.contactId, data.contactId)
+          )
+        )
         .limit(1);
 
-      if (existingContact) {
-        const [existingLink] = await client
-          .select()
-          .from(employerContacts)
-          .where(
-            and(
-              eq(employerContacts.employerId, data.employerId),
-              eq(employerContacts.contactId, existingContact.id)
-            )
-          )
-          .limit(1);
-
-        if (existingLink) {
-          throw new Error("This contact is already linked to this employer");
-        }
-
-        const [employerContact] = await client
-          .insert(employerContacts)
-          .values({
-            employerId: data.employerId,
-            contactId: existingContact.id,
-            contactTypeId: data.contactTypeId || null,
-          })
-          .returning();
-
-        return { employerContact, contact: existingContact, linked: true };
+      if (existingLink) {
+        throw new Error("This contact is already linked to this employer");
       }
-
-      const contact = await contactsStorage.createContact({
-        ...data.contactData,
-        email: validated.email
-      });
 
       const [employerContact] = await client
         .insert(employerContacts)
         .values({
           employerId: data.employerId,
-          contactId: contact.id,
+          contactId: data.contactId,
           contactTypeId: data.contactTypeId || null,
         })
         .returning();
 
-      return { employerContact, contact };
+      return employerContact;
     },
 
     async listByEmployer(employerId: string): Promise<Array<EmployerContact & { contact: Contact; contactType?: { id: string; name: string; description: string | null } | null }>> {
@@ -307,35 +233,6 @@ export function createEmployerContactStorage(contactsStorage: ContactsStorage): 
       return this.get(id);
     },
 
-    async linkToEmployer(data: { contactId: string; employerId: string; contactTypeId?: string | null }): Promise<EmployerContact> {
-      const client = getClient();
-      const [existingLink] = await client
-        .select()
-        .from(employerContacts)
-        .where(
-          and(
-            eq(employerContacts.employerId, data.employerId),
-            eq(employerContacts.contactId, data.contactId)
-          )
-        )
-        .limit(1);
-
-      if (existingLink) {
-        throw new Error("This contact is already linked to this employer");
-      }
-
-      const [employerContact] = await client
-        .insert(employerContacts)
-        .values({
-          employerId: data.employerId,
-          contactId: data.contactId,
-          contactTypeId: data.contactTypeId || null,
-        })
-        .returning();
-
-      return employerContact;
-    },
-
     async getByUserEmail(email: string): Promise<EmployerContact | null> {
       const client = getClient();
       const [result] = await client
@@ -428,10 +325,10 @@ export const employerContactLoggingConfig: StorageLoggingConfig<EmployerContactS
   methods: {
     create: {
       enabled: true,
-      getEntityId: (args) => args[0]?.employerId || 'new employer contact',
-      getHostEntityId: (args, result) => result?.employerId || args[0]?.employerId, // Employer ID is the host
+      getEntityId: (args) => args[0]?.contactId || 'new employer contact',
+      getHostEntityId: (args, result) => result?.employerId || args[0]?.employerId,
       after: async (args, result, storage) => {
-        return result;
+        return await storage.get(result.id);
       },
       getDescription: (args, result, beforeState, afterState) => {
         const contactName = afterState?.contact?.displayName || 'Unknown Contact';
