@@ -39,6 +39,7 @@ _Populate as you build_
 -   **Metadata-driven Configuration**: Configurable settings use a unified, metadata-driven system to dynamically render forms and tables.
 -   **Entity-based Access Control**: A modular, entity-based policy architecture with server-side LRU caching ensures fine-grained access control.
 -   **Charge Plugin Idempotency**: Charge plugin executions are idempotent via `chargePluginKey` upsert, preventing duplicate ledger entries.
+-   **VDB Pension Reconciliation via Cron (not cascade)**: SLA contribution-percent and share-based variable contribution ledger entries are produced by two cron jobs (`gbhet-pension-sla-reconcile`, `gbhet-pension-shares-reconcile`) calling `reconcileContributionPctYears` / `reconcileVariableContributionForAllWorkers` in `server/services/gbhet-pension-sla.ts`. Each batch tracks the `chargePluginKey`s it produces and uses `storage.ledger.entries.deleteOrphansByChargePluginAndKnownKeys` for self-healing orphan cleanup. The previous LEDGER_ENTRY_SAVED-driven cascade plugins and event plumbing have been removed.
 
 ## Product
 

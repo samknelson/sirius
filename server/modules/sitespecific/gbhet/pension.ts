@@ -13,9 +13,8 @@ import {
   insertGbhetPensionEarlyRetirementFactorSchema,
   insertGbhetPensionInterestRateSchema,
 } from "../../../../shared/schema/sitespecific/gbhet-pension/schema";
-import { computeSlaForWorker, computeSlaForAllWorkers, SLA_ACCOUNT_VARIABLE, SLA_TRIGGER_ACCOUNT_VARIABLE, clearAccountCache, SlaConfigError } from "../../../services/gbhet-pension-sla";
+import { computeSlaForWorker, computeSlaForAllWorkers, SLA_ACCOUNT_VARIABLE, SLA_TRIGGER_ACCOUNT_VARIABLE, clearAccountCache, SlaConfigError, VAR_CONTRIB_SOURCE_ACCOUNT_VARIABLE, VAR_CONTRIB_TARGET_ACCOUNT_VARIABLE } from "../../../services/gbhet-pension-sla";
 import { computePayout, computeAllPayouts, getWorkerPensionSummary } from "../../../services/gbhet-pension-payout-calculator";
-import { VAR_CONTRIB_SOURCE_ACCOUNT_VARIABLE, VAR_CONTRIB_TARGET_ACCOUNT_VARIABLE, clearVarContribAccountCache } from "../../../charge-plugins/plugins/gbhetPensionVariableContribution";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -711,7 +710,6 @@ export function registerGbhetPensionRoutes(
           return res.status(400).json({ message: "Source ledger account not found" });
         }
         await upsertVariable(VAR_CONTRIB_SOURCE_ACCOUNT_VARIABLE, sourceAccountId);
-        clearVarContribAccountCache();
       }
 
       if (targetAccountId) {
@@ -720,7 +718,6 @@ export function registerGbhetPensionRoutes(
           return res.status(400).json({ message: "Target ledger account not found" });
         }
         await upsertVariable(VAR_CONTRIB_TARGET_ACCOUNT_VARIABLE, targetAccountId);
-        clearVarContribAccountCache();
       }
 
       res.json({ success: true });

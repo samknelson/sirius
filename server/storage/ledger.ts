@@ -17,39 +17,10 @@ import type {
   Ledger,
   InsertLedger
 } from "@shared/schema";
-import { eq, and, desc, or, isNull, asc, sql as sqlRaw, sum, min, max, count, inArray, gte, lte } from "drizzle-orm";
+import { eq, and, desc, or, isNull, asc, sql as sqlRaw, sum, min, max, count, inArray, notInArray, gte, lte } from "drizzle-orm";
 import { alias as pgAlias } from "drizzle-orm/pg-core";
 import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
 import { formatAmount, getCurrency } from "@shared/currency";
-import { eventBus, EventType } from "../services/event-bus";
-
-async function emitLedgerEntrySaved(entry: Ledger, changeType: "create" | "update" | "delete"): Promise<void> {
-  try {
-    const client = getClient();
-    const [ea] = await client.select().from(ledgerEa).where(eq(ledgerEa.id, entry.eaId)).limit(1);
-    if (!ea) return;
-    await eventBus.emit(EventType.LEDGER_ENTRY_SAVED, {
-      entryId: entry.id,
-      chargePlugin: entry.chargePlugin,
-      chargePluginConfigId: entry.chargePluginConfigId,
-      accountId: ea.accountId,
-      entityType: ea.entityType,
-      entityId: ea.entityId,
-      amount: entry.amount,
-      date: entry.date,
-      referenceType: entry.referenceType,
-      referenceId: entry.referenceId,
-      changeType,
-      data: entry.data,
-    });
-  } catch (err) {
-    logger.error("Failed to emit LEDGER_ENTRY_SAVED event", {
-      service: "ledger-storage",
-      entryId: entry.id,
-      error: err instanceof Error ? err.message : String(err),
-    });
-  }
-}
 
 /**
  * Stub validator - add validation logic here when needed
@@ -147,6 +118,7 @@ export interface LedgerEntryStorage {
   delete(id: string): Promise<boolean>;
   deleteByReference(referenceType: string, referenceId: string): Promise<number>;
   deleteByChargePluginKey(chargePlugin: string, chargePluginKey: string): Promise<boolean>;
+  deleteOrphansByChargePluginAndKnownKeys(chargePlugin: string, accountId: string, knownKeys: Set<string>): Promise<number>;
   findByAccountEntityDatePlugin(accountId: string, entityId: string, date: Date, chargePlugin: string, chargePluginConfigId?: string, amount?: string): Promise<Ledger | undefined>;
 }
 
@@ -1324,7 +1296,6 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
           service: "ledger-storage",
           entryId: entry.id,
         });
-        await emitLedgerEntrySaved(entry, "create");
         return entry;
       } catch (error) {
         logger.error("Failed to insert ledger entry", {
@@ -1353,18 +1324,14 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
         .set(safeUpdate)
         .where(eq(ledger.id, id))
         .returning();
-      if (entry) await emitLedgerEntrySaved(entry, "update");
       return entry || undefined;
     },
 
     async delete(id: string): Promise<boolean> {
       const client = getClient();
-      const [existing] = await client.select().from(ledger).where(eq(ledger.id, id)).limit(1);
       const result = await client.delete(ledger)
         .where(eq(ledger.id, id));
-      const deleted = result.rowCount ? result.rowCount > 0 : false;
-      if (deleted && existing) await emitLedgerEntrySaved(existing, "delete");
-      return deleted;
+      return result.rowCount ? result.rowCount > 0 : false;
     },
 
     async deleteByReference(referenceType: string, referenceId: string): Promise<number> {
@@ -1432,6 +1399,34 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
           eq(ledger.chargePluginKey, chargePluginKey)
         ));
       return result.rowCount ? result.rowCount > 0 : false;
+    },
+
+    async deleteOrphansByChargePluginAndKnownKeys(
+      chargePlugin: string,
+      accountId: string,
+      knownKeys: Set<string>,
+    ): Promise<number> {
+      if (knownKeys.size === 0) {
+        logger.warn(
+          "deleteOrphansByChargePluginAndKnownKeys called with empty knownKeys; refusing to delete account-wide",
+          { service: "ledger-storage", chargePlugin, accountId },
+        );
+        return 0;
+      }
+      const client = getClient();
+      const eaRows = await client
+        .select({ id: ledgerEa.id })
+        .from(ledgerEa)
+        .where(eq(ledgerEa.accountId, accountId));
+      const eaIds = eaRows.map(r => r.id);
+      if (eaIds.length === 0) return 0;
+
+      const result = await client.delete(ledger).where(and(
+        eq(ledger.chargePlugin, chargePlugin),
+        inArray(ledger.eaId, eaIds),
+        notInArray(ledger.chargePluginKey, Array.from(knownKeys)),
+      ));
+      return result.rowCount || 0;
     },
 
     async findByAccountEntityDatePlugin(accountId: string, entityId: string, date: Date, chargePluginId: string, chargePluginConfigId?: string, amount?: string): Promise<Ledger | undefined> {

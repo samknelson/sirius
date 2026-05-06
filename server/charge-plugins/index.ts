@@ -10,8 +10,6 @@ export * from "./listener";
 import "./plugins/gbhetLegalBenefit";
 import "./plugins/gbheHourlyCharge";
 import "./plugins/gbhetPensionSlaHourly";
-import "./plugins/gbhetPensionSlaContribution";
-import "./plugins/gbhetPensionVariableContribution";
 import "./plugins/paymentSimpleAllocation";
 import "./plugins/btuStewardAttendance";
 import "./plugins/btuDuesAllocation";

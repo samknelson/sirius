@@ -1,4 +1,4 @@
-import { eventBus, EventType, HoursSavedPayload, PaymentSavedPayload, WmbSavedPayload, ParticipantSavedPayload, CronPayload, LedgerEntrySavedPayload } from "../services/event-bus";
+import { eventBus, EventType, HoursSavedPayload, PaymentSavedPayload, WmbSavedPayload, ParticipantSavedPayload, CronPayload } from "../services/event-bus";
 import { executeChargePlugins } from "./executor";
 import { TriggerType } from "./types";
 import { logger } from "../logger";
@@ -118,29 +118,6 @@ export function registerChargePluginListeners(): void {
       logger.error("Failed to process CRON event in charge plugins", {
         service: "charge-plugin-listener",
         jobId: payload.jobId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-  });
-
-  eventBus.on(EventType.LEDGER_ENTRY_SAVED, async (payload: LedgerEntrySavedPayload) => {
-    try {
-      const result = await executeChargePlugins({
-        trigger: TriggerType.LEDGER_ENTRY_SAVED,
-        ...payload,
-      });
-
-      if (result.totalTransactions.length > 0) {
-        logger.debug("Charge plugins processed LEDGER_ENTRY_SAVED event", {
-          service: "charge-plugin-listener",
-          entryId: payload.entryId,
-          transactionCount: result.totalTransactions.length,
-        });
-      }
-    } catch (error) {
-      logger.error("Failed to process LEDGER_ENTRY_SAVED event in charge plugins", {
-        service: "charge-plugin-listener",
-        entryId: payload.entryId,
         error: error instanceof Error ? error.message : String(error),
       });
     }

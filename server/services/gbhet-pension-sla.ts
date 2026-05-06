@@ -324,6 +324,8 @@ export interface ContributionBatchResult {
   errors: number;
   results: ContributionReconcileResult[];
   errorDetails: string[];
+  producedKeys?: string[];
+  orphansDeleted?: number;
 }
 
 const CONTRIBUTION_PLUGIN_ID = "gbhet-pension-sla-contribution";
@@ -459,6 +461,7 @@ async function processContributionEntry(
     const triggerAmount = parseFloat(entry.amount);
     const slaAmount = (triggerAmount * (contributionPct / 100)).toFixed(2);
     const chargePluginKey = `${ctx.effectiveConfigId}:sla-contrib:${entry.id}`;
+    (result.producedKeys ||= []).push(chargePluginKey);
     const pctLabel = isSpecial ? "special" : "regular";
     const description = `VDB SLA Contribution ${year}: $${entry.amount} × ${contributionPct}% (${pctLabel}) = $${slaAmount}`;
 
@@ -608,6 +611,34 @@ export async function reconcileContributionPctYears(
     await processContributionEntry(entry, ctx, result);
   }
 
+  if (result.errors > 0) {
+    logger.warn("Skipping SLA contribution orphan sweep due to processing errors", {
+      service: "gbhet-pension-sla",
+      errors: result.errors,
+    });
+  } else {
+    try {
+      const knownKeys = new Set(result.producedKeys || []);
+      const orphansDeleted = await storage.ledger.entries.deleteOrphansByChargePluginAndKnownKeys(
+        CONTRIBUTION_PLUGIN_ID,
+        ctx.outputAccountId,
+        knownKeys,
+      );
+      result.orphansDeleted = orphansDeleted;
+      if (orphansDeleted > 0) {
+        logger.info("SLA contribution orphan sweep removed entries", {
+          service: "gbhet-pension-sla",
+          orphansDeleted,
+          knownKeyCount: knownKeys.size,
+        });
+      }
+    } catch (error) {
+      const msg = `Error during SLA contribution orphan sweep: ${error instanceof Error ? error.message : String(error)}`;
+      result.errorDetails.push(msg);
+      logger.error(msg, { service: "gbhet-pension-sla" });
+    }
+  }
+
   logger.info("Contribution % reconciliation completed", {
     service: "gbhet-pension-sla",
     processed: result.processed,
@@ -686,9 +717,10 @@ export async function computeSlaForAllWorkers(
 export const SLA_PLUGIN_ID = PLUGIN_ID;
 
 const VAR_CONTRIB_PLUGIN_ID = "gbhet-pension-variable-contribution";
+export const VAR_CONTRIB_PLUGIN_ID_EXPORT = VAR_CONTRIB_PLUGIN_ID;
 const VAR_CONTRIB_REFERENCE_TYPE = "pension_variable_contribution";
-const VAR_CONTRIB_SOURCE_ACCOUNT_VARIABLE = "gbhet_pension_var_contrib_source_account_id";
-const VAR_CONTRIB_TARGET_ACCOUNT_VARIABLE = "gbhet_pension_var_contrib_target_account_id";
+export const VAR_CONTRIB_SOURCE_ACCOUNT_VARIABLE = "gbhet_pension_var_contrib_source_account_id";
+export const VAR_CONTRIB_TARGET_ACCOUNT_VARIABLE = "gbhet_pension_var_contrib_target_account_id";
 
 export interface VarContribReconcileResult {
   processed: number;
@@ -697,6 +729,8 @@ export interface VarContribReconcileResult {
   skipped: number;
   errors: number;
   errorDetails: string[];
+  producedKeys?: string[];
+  orphansDeleted?: number;
 }
 
 async function resolveVarContribAccounts(): Promise<{ sourceAccountId: string; targetAccountId: string } | null> {
@@ -772,6 +806,7 @@ export async function reconcileVariableContributionForWorker(
       const sharesStr = shares.toFixed(6);
 
       const chargePluginKey = `${configId}:var-contrib:${slaEntry.id}`;
+      (result.producedKeys ||= []).push(chargePluginKey);
       const description = `VDB Shares ${year}: $${slaEntry.amount} ÷ $${shareValue.toFixed(2)}/share = ${sharesStr} shares`;
 
       const existingEntry = await storage.ledger.entries.getByChargePluginKey(
@@ -869,6 +904,7 @@ export async function reconcileVariableContributionForAllWorkers(): Promise<VarC
 
   const allWorkers = await storage.workers.getAllWorkers();
 
+  const aggregatedKeys: string[] = [];
   for (const worker of allWorkers) {
     try {
       const workerResult = await reconcileVariableContributionForWorker(worker.id);
@@ -878,9 +914,39 @@ export async function reconcileVariableContributionForAllWorkers(): Promise<VarC
       result.skipped += workerResult.skipped;
       result.errors += workerResult.errors;
       result.errorDetails.push(...workerResult.errorDetails);
+      if (workerResult.producedKeys) aggregatedKeys.push(...workerResult.producedKeys);
     } catch (error) {
       result.errors++;
       const msg = `Error reconciling variable contribution for worker ${worker.id}: ${error instanceof Error ? error.message : String(error)}`;
+      result.errorDetails.push(msg);
+      logger.error(msg, { service: "gbhet-pension-sla" });
+    }
+  }
+  result.producedKeys = aggregatedKeys;
+
+  if (result.errors > 0) {
+    logger.warn("Skipping variable contribution orphan sweep due to per-worker errors", {
+      service: "gbhet-pension-sla",
+      errors: result.errors,
+    });
+  } else {
+    try {
+      const knownKeys = new Set(aggregatedKeys);
+      const orphansDeleted = await storage.ledger.entries.deleteOrphansByChargePluginAndKnownKeys(
+        VAR_CONTRIB_PLUGIN_ID,
+        accounts.targetAccountId,
+        knownKeys,
+      );
+      result.orphansDeleted = orphansDeleted;
+      if (orphansDeleted > 0) {
+        logger.info("Variable contribution orphan sweep removed entries", {
+          service: "gbhet-pension-sla",
+          orphansDeleted,
+          knownKeyCount: knownKeys.size,
+        });
+      }
+    } catch (error) {
+      const msg = `Error during variable contribution orphan sweep: ${error instanceof Error ? error.message : String(error)}`;
       result.errorDetails.push(msg);
       logger.error(msg, { service: "gbhet-pension-sla" });
     }
