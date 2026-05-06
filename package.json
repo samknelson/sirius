@@ -12,8 +12,7 @@
     "db:push": "tsx scripts/db-push.ts",
     "db:push:component": "tsx scripts/db-push-component.ts",
     "demo:snapshot": "tsx scripts/demo-snapshot.ts",
-    "demo:reset": "tsx scripts/demo-reset.ts",
-    "reset:production": "tsx scripts/reset-production-data.ts"
+    "demo:reset": "tsx scripts/demo-reset.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.928.0",
