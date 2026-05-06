@@ -5,6 +5,7 @@ import { type EmployerStorage, createEmployerStorage, employerLoggingConfig } fr
 import { type ContactsStorage, createContactsStorage, type AddressStorage, type PhoneNumberStorage, contactLoggingConfig, addressLoggingConfig, phoneNumberLoggingConfig } from "./contacts";
 import { type TrustBenefitStorage, createTrustBenefitStorage, trustBenefitLoggingConfig } from "./trust/benefits";
 import { type TrustProviderStorage, createTrustProviderStorage } from "./trust/providers";
+import { type TrustWmbStorage, createTrustWmbStorage } from "./trust/wmb";
 import { type TrustProviderContactStorage, createTrustProviderContactStorage, trustProviderContactLoggingConfig } from "./trust/provider/contacts";
 import { type WorkerIdStorage, createWorkerIdStorage, workerIdLoggingConfig } from "./worker-ids";
 import { type BookmarkStorage, createBookmarkStorage } from "./bookmarks";
@@ -117,6 +118,7 @@ export interface IStorage {
   trustBenefits: TrustBenefitStorage;
   trustProviders: TrustProviderStorage;
   trustProviderContacts: TrustProviderContactStorage;
+  trust: { wmb: TrustWmbStorage };
   workerIds: WorkerIdStorage;
   bookmarks: BookmarkStorage;
   ledger: LedgerStorage;
@@ -196,6 +198,7 @@ export class DatabaseStorage implements IStorage {
   trustBenefits: TrustBenefitStorage;
   trustProviders: TrustProviderStorage;
   trustProviderContacts: TrustProviderContactStorage;
+  trust: { wmb: TrustWmbStorage };
   workerIds: WorkerIdStorage;
   bookmarks: BookmarkStorage;
   ledger: LedgerStorage;
@@ -291,6 +294,9 @@ export class DatabaseStorage implements IStorage {
       trustBenefitLoggingConfig,
     );
     this.trustProviders = createTrustProviderStorage();
+    this.trust = {
+      wmb: createTrustWmbStorage(),
+    };
     this.trustProviderContacts = withStorageLogging(
       createTrustProviderContactStorage(this.contacts),
       trustProviderContactLoggingConfig,

@@ -35,7 +35,13 @@ export interface WorkerDenormData {
   jobTitle: string | null;
 }
 
+export interface EmployerWorkerCount {
+  employerId: string;
+  workerCount: number;
+}
+
 export interface WorkerHoursStorage {
+  getDistinctWorkerCountsByEmployer(): Promise<EmployerWorkerCount[]>;
   getDenormData(workerId: string): Promise<WorkerDenormData>;
   getWorkerHoursById(id: string): Promise<any | undefined>;
   getWorkerHours(workerId: string): Promise<any[]>;
@@ -63,6 +69,20 @@ export function createWorkerHoursStorage(
   }
 
   const storage: WorkerHoursStorage = {
+    async getDistinctWorkerCountsByEmployer(): Promise<EmployerWorkerCount[]> {
+      const client = getClient();
+      const result = await client.execute(sql`
+        SELECT employer_id, COUNT(DISTINCT worker_id)::int AS worker_count
+        FROM worker_hours
+        WHERE employer_id IS NOT NULL
+        GROUP BY employer_id
+      `);
+      return (result.rows as Array<{ employer_id: string; worker_count: number }>).map(row => ({
+        employerId: row.employer_id,
+        workerCount: Number(row.worker_count) || 0,
+      }));
+    },
+
     async getDenormData(workerId: string): Promise<WorkerDenormData> {
       const client = getClient();
       

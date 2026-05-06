@@ -1,11 +1,9 @@
 import type { Express, Request, Response } from "express";
 import { storage } from "../../storage";
-import { insertLedgerEaSchema, ledger as ledgerTable, ledgerPayments, optionsLedgerPaymentType } from "@shared/schema";
+import { insertLedgerEaSchema } from "@shared/schema";
 import { requireAccess, checkAccessInline } from "../../services/access-policy-evaluator";
 import { requireComponent } from "../components";
 import { generateInvoicePdf } from "../../utils/pdfGenerator";
-import { getClient } from "../../storage/transaction-context";
-import { eq, and, asc, inArray } from "drizzle-orm";
 
 async function checkEaAccessInline(req: Request, res: Response, ea: { entityType: string; entityId: string }, policyId: string): Promise<boolean> {
   const result = await checkAccessInline(req, policyId, ea.entityId, { entityType: ea.entityType, entityId: ea.entityId });
@@ -369,22 +367,25 @@ export function registerLedgerEaRoutes(app: Express) {
       const account = await storage.ledger.accounts.get(ea.accountId);
       const currencyCode = account?.currencyCode || "USD";
 
-      const client = getClient();
-
-      const entries = await client.select({
-        id: ledgerTable.id,
-        amount: ledgerTable.amount,
-        date: ledgerTable.date,
-        statementYmd: ledgerTable.statementYmd,
-        chargePlugin: ledgerTable.chargePlugin,
-        referenceType: ledgerTable.referenceType,
-        referenceId: ledgerTable.referenceId,
-        memo: ledgerTable.memo,
-        data: ledgerTable.data,
-      })
-      .from(ledgerTable)
-      .where(eq(ledgerTable.eaId, id))
-      .orderBy(asc(ledgerTable.date));
+      const allEntries = await storage.ledger.entries.getByEaId(id);
+      const entries = allEntries
+        .slice()
+        .sort((a, b) => {
+          const ad = a.date ? new Date(a.date).getTime() : 0;
+          const bd = b.date ? new Date(b.date).getTime() : 0;
+          return ad - bd;
+        })
+        .map(e => ({
+          id: e.id,
+          amount: e.amount,
+          date: e.date,
+          statementYmd: e.statementYmd,
+          chargePlugin: e.chargePlugin,
+          referenceType: e.referenceType,
+          referenceId: e.referenceId,
+          memo: e.memo,
+          data: e.data,
+        }));
 
       const paymentRefIds = [...new Set(
         entries
@@ -394,29 +395,21 @@ export function registerLedgerEaRoutes(app: Express) {
 
       const paymentMap = new Map<string, { id: string; paymentType: string; dateReceived: Date | null; details: unknown; }>();
       if (paymentRefIds.length > 0) {
-        const paymentRows = await client.select({
-          id: ledgerPayments.id,
-          paymentType: ledgerPayments.paymentType,
-          dateReceived: ledgerPayments.dateReceived,
-          details: ledgerPayments.details,
-        })
-        .from(ledgerPayments)
-        .where(inArray(ledgerPayments.id, paymentRefIds));
+        const paymentRows = await storage.ledger.payments.getByIds(paymentRefIds);
         for (const p of paymentRows) {
-          paymentMap.set(p.id, p);
+          paymentMap.set(p.id, {
+            id: p.id,
+            paymentType: p.paymentType,
+            dateReceived: p.dateReceived,
+            details: p.details,
+          });
         }
       }
 
       const paymentTypeIds = [...new Set([...paymentMap.values()].map(p => p.paymentType))];
       let paymentTypeMap = new Map<string, { name: string; category: string }>();
       if (paymentTypeIds.length > 0) {
-        const ptRows = await client.select({
-          id: optionsLedgerPaymentType.id,
-          name: optionsLedgerPaymentType.name,
-          category: optionsLedgerPaymentType.category,
-        })
-        .from(optionsLedgerPaymentType)
-        .where(inArray(optionsLedgerPaymentType.id, paymentTypeIds));
+        const ptRows = await storage.ledger.paymentTypes.getByIds(paymentTypeIds);
         for (const pt of ptRows) {
           paymentTypeMap.set(pt.id, { name: pt.name, category: pt.category });
         }

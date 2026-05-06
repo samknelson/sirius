@@ -89,9 +89,20 @@ export interface LedgerEaStorage {
   delete(id: string): Promise<boolean>;
 }
 
+export interface LedgerPaymentTypeRow {
+  id: string;
+  name: string;
+  category: string;
+}
+
+export interface LedgerPaymentTypeStorage {
+  getByIds(ids: string[]): Promise<LedgerPaymentTypeRow[]>;
+}
+
 export interface LedgerPaymentStorage {
   getAll(): Promise<LedgerPayment[]>;
   get(id: string): Promise<LedgerPayment | undefined>;
+  getByIds(ids: string[]): Promise<LedgerPayment[]>;
   getByLedgerEaId(ledgerEaId: string): Promise<LedgerPayment[]>;
   getByAccountIdWithEntity(accountId: string): Promise<LedgerPaymentWithEntity[]>;
   getByAccountIdWithEntityPaginated(
@@ -229,9 +240,28 @@ export interface LedgerStorage {
   stripePaymentMethods: StripePaymentMethodStorage;
   ea: LedgerEaStorage;
   payments: LedgerPaymentStorage;
+  paymentTypes: LedgerPaymentTypeStorage;
   entries: LedgerEntryStorage;
   invoices: LedgerInvoiceStorage;
   paymentBatches: LedgerPaymentBatchStorage;
+}
+
+export function createLedgerPaymentTypeStorage(): LedgerPaymentTypeStorage {
+  return {
+    async getByIds(ids: string[]): Promise<LedgerPaymentTypeRow[]> {
+      if (ids.length === 0) return [];
+      const client = getClient();
+      const rows = await client
+        .select({
+          id: optionsLedgerPaymentType.id,
+          name: optionsLedgerPaymentType.name,
+          category: optionsLedgerPaymentType.category,
+        })
+        .from(optionsLedgerPaymentType)
+        .where(inArray(optionsLedgerPaymentType.id, ids));
+      return rows.map(r => ({ id: r.id, name: r.name, category: r.category }));
+    },
+  };
 }
 
 export function createLedgerAccountStorage(): LedgerAccountStorage {
@@ -624,6 +654,13 @@ export function createLedgerPaymentStorage(): LedgerPaymentStorage {
       const [payment] = await client.select().from(ledgerPayments)
         .where(eq(ledgerPayments.id, id));
       return payment || undefined;
+    },
+
+    async getByIds(ids: string[]): Promise<LedgerPayment[]> {
+      if (ids.length === 0) return [];
+      const client = getClient();
+      return await client.select().from(ledgerPayments)
+        .where(inArray(ledgerPayments.id, ids));
     },
 
     async getByLedgerEaId(ledgerEaId: string): Promise<LedgerPayment[]> {
@@ -1873,11 +1910,14 @@ export function createLedgerStorage(
     ? withStorageLogging(createLedgerPaymentBatchStorage(), paymentBatchLoggingConfig)
     : createLedgerPaymentBatchStorage();
   
+  const paymentTypeStorage = createLedgerPaymentTypeStorage();
+
   return {
     accounts: accountStorage,
     stripePaymentMethods: stripePaymentMethodStorage,
     ea: eaStorage,
     payments: paymentStorage,
+    paymentTypes: paymentTypeStorage,
     entries: entryStorage,
     invoices: invoiceStorage,
     paymentBatches: paymentBatchStorage,

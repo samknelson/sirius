@@ -101,53 +101,21 @@ export function registerEmployerRoutes(
 
   app.get("/api/employers/counts", requireAuth, requireAccess('staff'), async (_req, res) => {
     try {
-      const { sql } = await import("drizzle-orm");
-      const { getClient } = await import("../storage/transaction-context");
-      const client = getClient();
-
-      const workerCountsResult = await client.execute(sql`
-        SELECT employer_id, COUNT(DISTINCT worker_id)::int AS worker_count
-        FROM worker_hours
-        WHERE employer_id IS NOT NULL
-        GROUP BY employer_id
-      `);
-
+      const workerCountRows = await storage.workerHours.getDistinctWorkerCountsByEmployer();
       const workerCounts: Record<string, number> = {};
-      for (const row of workerCountsResult.rows as Array<{ employer_id: string; worker_count: number }>) {
-        workerCounts[row.employer_id] = Number(row.worker_count) || 0;
+      for (const row of workerCountRows) {
+        workerCounts[row.employerId] = row.workerCount;
       }
 
       const trustBenefitsEnabled = await isComponentEnabled("trust.benefits");
       let benefitCounts: Record<string, Record<string, number>> | undefined;
 
       if (trustBenefitsEnabled) {
-        const benefitCountsResult = await client.execute(sql`
-          WITH latest_period AS (
-            SELECT
-              employer_id,
-              benefit_id,
-              MAX(year * 12 + month) AS period_key
-            FROM trust_wmb
-            GROUP BY employer_id, benefit_id
-          )
-          SELECT
-            wmb.employer_id,
-            wmb.benefit_id,
-            COUNT(DISTINCT wmb.worker_id)::int AS worker_count
-          FROM trust_wmb wmb
-          INNER JOIN latest_period lp
-            ON lp.employer_id = wmb.employer_id
-           AND lp.benefit_id = wmb.benefit_id
-           AND (wmb.year * 12 + wmb.month) = lp.period_key
-          INNER JOIN trust_benefits tb ON tb.id = wmb.benefit_id
-          WHERE tb.is_active = true
-          GROUP BY wmb.employer_id, wmb.benefit_id
-        `);
-
+        const benefitCountRows = await storage.trust.wmb.getActiveBenefitWorkerCountsByEmployerLatestPeriod();
         benefitCounts = {};
-        for (const row of benefitCountsResult.rows as Array<{ employer_id: string; benefit_id: string; worker_count: number }>) {
-          if (!benefitCounts[row.employer_id]) benefitCounts[row.employer_id] = {};
-          benefitCounts[row.employer_id][row.benefit_id] = Number(row.worker_count) || 0;
+        for (const row of benefitCountRows) {
+          if (!benefitCounts[row.employerId]) benefitCounts[row.employerId] = {};
+          benefitCounts[row.employerId][row.benefitId] = row.workerCount;
         }
       }
 
