@@ -199,7 +199,7 @@ export function registerLedgerPaymentBatchRoutes(app: Express) {
         type AttachError = { status: number; message: string };
 
         // Single transaction: create payment (if needed) + assignment must succeed together,
-        // or both roll back. createdPaymentCharge plugins fire only after the transaction commits.
+        // or both roll back. Charge plugins fire only after the transaction commits.
         let outcome: AttachOutcome | AttachError;
         try {
           outcome = await runInTransaction(async (): Promise<AttachOutcome | AttachError> => {

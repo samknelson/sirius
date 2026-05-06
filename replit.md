@@ -1,95 +1,73 @@
-# Overview
+# Sirius
 
-Sirius is a full-stack web application for comprehensive worker management. Its purpose is to streamline administration, enhance user experience, and deliver business value through efficient operations. Key capabilities include robust CRUD operations, configurable organizational settings, legal compliance reporting, benefit charge billing, detailed worker contact management, and a powerful dispatch system. The project aims to provide a reliable, efficient, and user-friendly platform for all aspects of worker administration.
+Sirius is a full-stack web application designed for comprehensive worker management, streamlining administration, enhancing user experience, and delivering business value through efficient operations.
 
-# User Preferences
+## Run & Operate
+
+_Populate as you build_
+
+## Stack
+
+-   **Frontend**: React 18, TypeScript, Vite, Wouter, TanStack Query, React Hook Form, Shadcn/ui (Radix UI), Tailwind CSS ("new-york" theme)
+-   **Backend**: Express.js, TypeScript
+-   **ORM**: Drizzle ORM
+-   **Validation**: Zod, libphonenumber-js
+-   **Database**: PostgreSQL (Neon Database)
+-   **Object Storage**: Replit Object Storage (Google Cloud Storage)
+-   **Auth**: Multi-provider (Replit Auth, Okta, SAML/OAuth, Clerk, local)
+-   **Logging**: Winston with PostgreSQL backend
+-   **Real-time**: WebSockets
+-   **Task Scheduling**: node-cron
+
+## Where things live
+
+-   **Database Schema**: `server/schema.ts` (implied by Drizzle ORM usage)
+-   **API Routes**: `server/modules/` (feature-based modules)
+-   **Frontend Pages**: `client/src/pages/` (lazy-loaded)
+-   **UI Components**: `client/src/components/`
+-   **Access Control Policies**: `server/modules/*/access.ts` (implied by entity-based policy architecture)
+-   **UI Theme**: `tailwind.config.ts` (implied by Tailwind CSS with "new-york" theme)
+-   **Wizards**: `server/wizards/types/`, `client/src/components/wizards/steps/`
+-   **Dispatch System**: `server/modules/dispatch/`, `client/src/pages/dispatch/`
+-   **Ledger System**: `server/modules/ledger/`, `client/src/pages/ledger/`
+-   **SFTP Client Destinations**: `server/modules/sftp-client-destination/`, `client/src/pages/config/sftp-client-destinations/`
+
+## Architecture decisions
+
+-   **Centralized Database Access**: All DB interactions are routed through a single storage layer for audit logging, access control, and validation.
+-   **Feature-based Module Structure**: Both frontend and backend are organized by feature modules for better maintainability and scalability.
+-   **Metadata-driven Configuration**: Configurable settings use a unified, metadata-driven system to dynamically render forms and tables.
+-   **Entity-based Access Control**: A modular, entity-based policy architecture with server-side LRU caching ensures fine-grained access control.
+-   **Charge Plugin Idempotency**: Charge plugin reruns are idempotent via `chargePluginKey` upsert, preventing duplicate ledger entries.
+
+## Product
+
+-   **Worker Management**: Comprehensive CRUD operations for workers, contacts, and benefits, with search, filtering, and pagination.
+-   **Organizational Settings**: Configurable settings for dynamic UI rendering.
+-   **Legal Compliance Reporting**: Supports legal compliance through features like employment status mapping in wizards.
+-   **Benefit Charge Billing**: Manages financial transactions, including accounts and payments, with entity-specific access.
+-   **Dispatch System**: Manages dispatch jobs, types, listings, and detail pages, with a plugin system for worker eligibility.
+-   **Multi-Provider Authentication**: Supports various authentication methods including Replit Auth, Okta, and SAML/OAuth.
+-   **Wizards**: Flexible workflow state management for multi-step processes and report generation (e.g., Employer Onboarding, GBHET Legal).
+-   **Bulk Messaging**: Infrastructure for managing and sending bulk messages across multiple mediums (email, SMS, postal, in-app).
+
+## User preferences
 
 Preferred communication style: Simple, everyday language.
 
-# System Architecture
+## Gotchas
 
-## UI/UX Decisions
-The frontend uses React 18 with TypeScript, Vite, Shadcn/ui (built on Radix UI), and Tailwind CSS with a "new-york" theme, ensuring a modern, accessible, and responsive user experience.
+-   **Charge Plugin Rerun**: Always ensure you understand the implications of replaying charge plugin events, as it recalculates ledger entries.
+-   **Facility Contact Sync**: Renaming a facility must go through `storage.facilities.updateContactName` to keep the facility and its associated contact in sync.
+-   **Wizard Access Control**: While `/wizards/:id` only requires authentication, the API endpoints enforce granular authorization.
+-   **T631 Facility Sync**: The `sitespecific-t631-facility-fetch` cron job is disabled by default and gated by the `sitespecific.t631.client` component. It only syncs `name` and `sirius_id` and does not delete local-only rows or write arbitrary `data` jsonb.
 
-## Technical Implementations
--   **Frontend**: React 18, TypeScript, Vite, Wouter for routing, TanStack Query for server state management, and React Hook Form with Zod for form handling. Pages are lazy-loaded.
--   **Backend**: Express.js with TypeScript, implementing a RESTful API with a feature-based module structure.
--   **Authentication**: Supports multi-provider authentication (Replit Auth, Okta, SAML/OAuth, Clerk, local username/password) with environment-driven configuration and masquerade support.
--   **Access Control**: Modular, entity-based policy architecture with server-side LRU caching.
--   **Logging**: Winston logging integrated with a PostgreSQL backend for audit trails.
--   **Data Storage**: PostgreSQL (Neon Database) managed with Drizzle ORM.
--   **Object Storage**: Replit Object Storage (Google Cloud Storage backend).
--   **Real-time Notifications**: WebSocket-based push notification system.
--   **Event Bus System**: Typed publish/subscribe event bus.
--   **Cron Job System**: Framework for scheduling periodic tasks.
--   **Migration Framework**: Versioned database migration system.
+## Pointers
 
-## System Design Choices
--   **Database Access Architecture**: All database interactions are channeled through a centralized storage layer to enforce audit logging, access control, validation, and separation of concerns.
--   **Data Validation**: Robust validation using Zod schemas and `libphonenumber-js`.
--   **Worker Management**: Comprehensive CRUD for workers, contacts, and benefits, with server-side pagination, search, and advanced filtering.
--   **Configurable Settings**: Unified, metadata-driven options system for dynamic form and table rendering.
--   **User Provisioning**: Email-based provisioning integrated with Replit accounts and automatic contact synchronization.
--   **Employer & Policy Management**: Manages employer records, contacts, and historical policy assignments.
--   **Bookmarks**: User-specific, entity-agnostic bookmarking.
--   **Dashboard Plugin System**: Extensible architecture for customizable widgets.
--   **Components Feature Flag System**: Centralized registry for managing application features with dependency management and access control.
--   **Payment Batches**: `ledger_payment_batches` is a reconciliation unit that groups individual payments via `ledger_payment_batch_assignments` (unique on `paymentId`). Batches carry optional `batchTotal` (numeric, expected dollar total), `expectedPaymentCount` (integer), and `attachmentFileId` (image/PDF stored via the standard `/api/files` upload endpoint with `entityType=ledger_payment_batch`). The batch details page (`/ledger/payment-batch/:id`) renders a Reconciliation card comparing actual vs expected totals/counts. The Payments tab (`/ledger/payment-batch/:id/payments`) is a two-pane UI: left = vertical list of payments in the batch with an "Add" button; right = either the shared `client/src/components/ledger/PaymentForm.tsx` in create mode (full-featured: multi-participant allocations, allocation rows, charge-plugin notifications) or the selected payment's summary header (Unassign / Delete) plus the same `PaymentForm` in edit mode. The standalone `/ledger/payment/new` and `/ledger/payment/:id/edit` pages are now thin wrappers around the same `PaymentForm` so create/edit behavior is identical inside and outside the batch tab. The create form posts to `POST /api/ledger-payment-batches/:id/payments` (with `{payment}`) when `batchId` is set, which atomically creates the payment and the batch assignment in a single transaction (charge plugins fire only after commit). `DELETE /api/ledger-payment-batches/:id/payments/:paymentId` removes the assignment, and `?deletePayment=true` also deletes the underlying payment + its ledger entries. `GET /api/ledger-payment-batches/:id` returns `paymentsCount` and `paymentsTotal` alongside the batch row, and `GET /api/ledger-payment-batches/:id/payments` returns `LedgerPaymentWithEntity` rows (entity info + `allocatedEntities`) matching the shape used by `/api/ledger/accounts/:id/payments`. Frontend invalidation across batch screens uses string-form query keys (`/api/ledger-payment-batches/${id}` and `/api/ledger-payment-batches/${id}/payments`) so totals/counts refresh live as payments are added, edited, or removed. The Reconciliation card on the batch details page surfaces an explicit overall badge with one of `Unset`, `Balanced`, `Over by $X`, or `Under by $X` (count mismatch is shown as a separate badge alongside the count).
--   **Ledger System**: Manages financial transactions including accounts, payments, and integrity reports, with entity-specific access policies. Ledger entries have a `statement_ymd` date column (YYYY-MM-DD) for statement period tracking, and `date` is an immutable creation timestamp (always `now()`, never externally settable). Payment allocations are stored as `proposedAllocation` in the payment's `details` JSON field (array of `{eaId, amount, statementYmd}`), not in a separate table. When `proposedAllocation` entries exist, charge plugins fire once per allocation; otherwise backward-compatible single-EA behavior applies. The `payment-simple-allocation` charge plugin reads `proposedAllocation` from the payment's details to resolve `statementYmd` for each ledger entry it creates. Payment creation uses a dedicated page (`/ledger/accounts/:accountId/payments/new`) opened in a new browser tab from the account payments list. Both create and edit pages use `ParticipantAllocationBox` components with `StatementPicker` for per-participant statement-based allocation. Field order: Payment Type, Amount, category-specific fields, Date Received, Date Cleared, Memo, then Participant Allocation section. **Account Summary**: EA detail pages include an "Account Summary" tab (`/ea/:id/summary`) showing a spreadsheet-style grid of financial data across 6 months (configurable up to 36 via `?months=N`). Rows: Incoming Balance, Charges, Adjustments, Interest & Penalties, Payments Credited, Unpaid Amount, Statement Balance. Payment/adjustment amounts are derived from `payment-simple-allocation` ledger entries for consistency with the ledger balance. Payment details (check #, date received) come from the payments table. The `unpaidStatementAmount` formula includes all components: charges + adjustments + interest/penalties + payment credits (credits are negative).
--   **Charge Plugin Rerun Tool**: Admin UI at `/config/ledger/charge-plugin-rerun` for replaying charge plugin events from completed wizards. Selects a wizard, then re-fires `WMB_SAVED` and/or `HOURS_SAVED` events for the wizard's employer/year/month, causing charge plugins to recalculate ledger entries using current rate configuration. Idempotent via `chargePluginKey` upsert. Server routes in `server/modules/charge-plugins.ts`, client page in `client/src/pages/config/ledger/charge-plugin-rerun.tsx`.
--   **Wizards**: Flexible workflow state management for multi-step processes and report generation. Access control: all wizard endpoints (CRUD, step navigation, type metadata, file uploads) support both admin and employer access. Non-admin access uses `employer.mine` policy (entity-scoped, requires entityId) for instance-specific operations (create, view, edit, delete, step nav) and the `employer` permission for metadata endpoints (wizard-types list, steps, statuses, fields, launch-arguments). The `checkWizardAccess` middleware handles file upload authorization. Frontend `/wizards/:id` route requires only authentication; the API enforces authorization. Includes an Employer Onboarding Wizard (`employer_onboarding` type) with 5 steps: employer name, attributes (type/industry/benefits/ledger accounts), contacts (with promote-to-user toggle for Clerk provisioning), worker load (creates employer then optionally spawns child GBHET Legal wizard), and review. Processing endpoint: `POST /api/wizards/:id/employer-onboarding/process`. Backend: `server/wizards/types/employer_onboarding.ts`, `server/modules/employer-onboarding-wizard.ts`. Frontend steps: `client/src/components/wizards/steps/employer-onboarding/`.
-    -   **Employment Status Mapping**: GBHET Legal wizards support mapping unrecognized employment statuses from uploaded files to system statuses. When validation finds statuses that don't match any system employment status, they are collected as `unmappedStatuses` in the validation results. The UI presents an amber mapping card with dropdowns allowing users to map each unrecognized status to a system status. Mappings are persisted per-employer in the `wizard_employment_status_mappings` table (unique constraint on employerId+sourceStatus) and reused across future uploads. Endpoints: `POST /api/wizards/:id/status-mappings` (save mappings, requires auth + wizard access), `GET /api/wizards/:id/status-mappings` (fetch existing mappings), `GET /api/employment-status-options` (system status dropdown options). The validate step blocks completion while unmapped statuses remain. Storage: `server/storage/wizard-employment-status-mappings.ts`. Frontend: `client/src/components/wizards/steps/gbhet-legal-workers/ValidateStep.tsx`.
--   **File Storage System**: Comprehensive file management with metadata and access control.
--   **Worker Hours & Employment Views**: Tracks worker hours and employment history.
--   **Trust Eligibility Plugin System**: Registry-based architecture for worker eligibility determination.
--   **Events Management**: Full CRUD for events, occurrences, and scheduling.
--   **Database Quickstarts**: Admin-only feature for database snapshot export/import.
--   **System Mode**: Application-wide environment mode setting.
--   **Staff Alert Configuration & Sending System**: Reusable system for configuring and dispatching multi-media alerts.
--   **Terminology Framework**: Provides site-specific terminology customization.
--   **Dispatch System**: Manages dispatch jobs, types, listings, and detail pages, featuring a plugin system for worker eligibility filtering. Includes Dispatch Job Groups for grouping jobs with date ranges and external system linkage, with data managed programmatically by backend sync processes.
--   **Worker Bans**: Tracks worker restrictions and dynamically calculates active status.
--   **Worker Member Status History**: Tracks worker member statuses per industry over time.
--   **HTA Union/Apprentice Import**: Site-specific feed wizard for importing worker data from spreadsheets.
--   **Worker Certifications**: Manages worker certifications with automatic skill synchronization.
--   **EDLS (Employer Day Labor Scheduler)**: Manages day labor scheduling with sheets, crews, department-based task assignment, supervisor tracking, and audit logging.
--   **Web Services Framework**: Server-side API framework for exposing services to external clients with client credential authentication and optional IP allowlisting.
--   **SFTP Client Destinations**: Manages SFTP client configurations with CRUD API and UI, including connection diagnostics.
--   **Trust Provider EDI**: Manages trust provider data interchange records with SFTP client destination integration.
--   **Contact Links Resolution**: Utility to resolve a `contactId` to its canonical page URLs across different entity types (worker, employer, provider contacts).
--   **Teamsters 631 Client Fetch**: Backend module for communicating with the Teamsters 631 server, supporting actions like service ping, worker lists, dispatch group search, and facility dropdowns. Includes a cron job for syncing T631 Dispatch Job Groups into the local `dispatch_job_group` table, and a separate `sitespecific-t631-facility-fetch` cron job (daily, disabled by default, gated by the `sitespecific.t631.client` component) that pulls `sirius_dispatch_facility_dropdown` and reconciles each `{siriusId, name}` entry against the local `facilities` table via `syncFacilities` in `server/modules/sitespecific/t631/client/sync-facilities.ts`. The facility sync uses only existing `FacilityStorage` methods (`getBySiriusId`, `create`, `updateContactName`), processes one row at a time, never deletes locally-only rows, never writes the `data` jsonb (the feed only carries a name), and skips the write entirely when the local name already matches — so re-runs are idempotent and don't generate audit-log churn.
--   **Facilities** (`facility` component): Each facility owns a `contacts` row (FK `contacts_id`, ON DELETE RESTRICT) and the facility's name is stored on that contact; renaming the facility goes through `storage.facilities.updateContactName` so contact and facility stay in sync. Optional unique `sirius_id` and `data` jsonb are populated programmatically by sync processes (never via the UI). REST API at `/api/facilities` (`server/modules/facility/facilities.ts`) uses `facility.view` (authenticated) for list/detail and `facility.edit` (staff) for create/update; PATCH accepts `{name?, nameComponents?, email?}` and delegates name + email to the contacts storage. Detail UI lives at `/facility/:id` with tabs Details / Edit / Contact (parent of Email, Addresses, Phone Numbers) / Logs, declared in `shared/tabRegistry.ts`'s `facilityTabTree` and rendered by `FacilityLayout`. Contact sub-tabs reuse the shared `EntityEmailManagement`, `AddressManagement`, and `PhoneNumberManagement` components against `facility.contactId`; the address/phone GET routes in `server/modules/contact-postal.ts` and `server/modules/phone-numbers.ts` recognize facility-owned contacts and gate read access with `facility.view` so non-staff can view but not modify. Logs are served through the shared `/api/logs/by-entity` endpoint, which now resolves worker / facility / employer entities and aggregates the parent id with its associated contact id(s) so contact-side activity (email/address/phone/name changes) shows up alongside the parent entity's own audit trail.
--   **Bulk Messaging**: Infrastructure for bulk message management with multi-medium support. Main table `bulk_messages` with `medium` as `text[]` array (email/sms/postal/inapp) and status enum (draft/queued/sent). A single bulk message campaign can target multiple channels simultaneously. Four medium-specific content tables (`bulk_messages_email`, `bulk_messages_sms`, `bulk_messages_postal`, `bulk_messages_inapp`) with FK cascade to parent. `bulk_participants` table links messages to contacts with a `medium` varchar column indicating the delivery channel; unique constraint on `(messageId, contactId, medium)` allows one participant row per contact per medium. Participant `status` enum (pending/send_failed/see_comm) tracks delivery outcome per medium. POST participants fans out one row per medium in the message's medium array (returns `{created, skipped}`). GET `/message` without `?medium` returns `{media, records}` dict of all medium content; with `?medium=` returns single medium. PUT `/message?medium=` saves content for a specific medium. PATCH updates use add/remove logic for medium-specific content tables when the medium array changes. `delivery-stats` returns `byMedium` breakdown alongside totals. `resolve-address` and `deliver-test` accept `medium` in request body (defaults to first medium). Delivery engine in `server/modules/bulk/deliver.ts` uses `resolveAddressForMedium(storage, medium, contactId)` and `deliverToParticipant` reads `participant.medium`. Cron job (`bulkDeliver.ts`) uses per-participant medium for batch sizing. Frontend: create/edit pages use checkbox multi-select for media; Message tab shows sub-tabs per selected medium; Recipients list includes Medium column; Test tab has medium selector dropdown; Deliver tab shows per-medium progress stats. Protected by the `bulk.edit` access policy (requires `bulk` component + either `admin` or `staff.bulk` permission). Tab registry entity type `bulk_message`.
-
-# External Dependencies
-
-## Database Services
--   **Neon Database**: Serverless PostgreSQL hosting.
-
-## UI and Styling
--   **Radix UI**: Accessible UI primitives.
--   **Tailwind CSS**: Utility-first CSS framework.
--   **Lucide React**: Icon library.
-
-## Validation and Type Safety
--   **Zod**: Runtime type validation.
--   **TypeScript**: Static type checking.
--   **Drizzle Zod**: Drizzle ORM and Zod integration.
--   **libphonenumber-js**: Phone number parsing, validation, and formatting.
-
-## File Transfer
--   **ssh2-sftp-client**: SFTP client library.
--   **basic-ftp**: FTP client library.
-
-## Third-Party Integrations
--   **Twilio**: Phone number lookup, validation, and SMS messaging.
-
-## API and State Management
--   **TanStack Query**: Server state management.
--   **Date-fns**: Date utility functions.
-
-## Task Scheduling
--   **node-cron**: Task scheduling and cron job execution.
-
-## Security
--   **DOMPurify**: HTML sanitization.
+-   **React Documentation**: [https://react.dev/](https://react.dev/)
+-   **Tailwind CSS Documentation**: [https://tailwindcss.com/docs](https://tailwindcss.com/docs)
+-   **Zod Documentation**: [https://zod.dev/](https://zod.dev/)
+-   **Drizzle ORM Documentation**: [https://orm.drizzle.team/](https://orm.drizzle.team/)
+-   **TanStack Query Documentation**: [https://tanstack.com/query/latest](https://tanstack.com/query/latest)
+-   **Express.js Documentation**: [https://expressjs.com/](https://expressjs.com/)
+-   **PostgreSQL Documentation**: [https://www.postgresql.org/docs/](https://www.postgresql.org/docs/)
