@@ -1406,13 +1406,6 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
       accountId: string,
       knownKeys: Set<string>,
     ): Promise<number> {
-      if (knownKeys.size === 0) {
-        logger.warn(
-          "deleteOrphansByChargePluginAndKnownKeys called with empty knownKeys; refusing to delete account-wide",
-          { service: "ledger-storage", chargePlugin, accountId },
-        );
-        return 0;
-      }
       const client = getClient();
       const eaRows = await client
         .select({ id: ledgerEa.id })
@@ -1421,11 +1414,14 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
       const eaIds = eaRows.map(r => r.id);
       if (eaIds.length === 0) return 0;
 
-      const result = await client.delete(ledger).where(and(
+      const conditions = [
         eq(ledger.chargePlugin, chargePlugin),
         inArray(ledger.eaId, eaIds),
-        notInArray(ledger.chargePluginKey, Array.from(knownKeys)),
-      ));
+      ];
+      if (knownKeys.size > 0) {
+        conditions.push(notInArray(ledger.chargePluginKey, Array.from(knownKeys)));
+      }
+      const result = await client.delete(ledger).where(and(...conditions));
       return result.rowCount || 0;
     },
 

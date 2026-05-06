@@ -8,9 +8,17 @@ const settingsSchema = z.object({});
 const CONTRIBUTION_PLUGIN_ID = "gbhet-pension-sla-contribution";
 
 async function resolveConfigId(): Promise<string> {
-  const configs = await storage.chargePluginConfigs.getByPluginId(CONTRIBUTION_PLUGIN_ID);
-  const globalConfig = configs.find(c => c.scope === "global");
-  return globalConfig?.id || "batch";
+  const globalConfig = await storage.chargePluginConfigs.getByPluginIdAndScope(
+    CONTRIBUTION_PLUGIN_ID,
+    "global",
+  );
+  if (globalConfig?.id) return globalConfig.id;
+  const batchConfig = await storage.chargePluginConfigs.getByPluginIdAndScope(
+    CONTRIBUTION_PLUGIN_ID,
+    "batch",
+  );
+  if (batchConfig?.id) return batchConfig.id;
+  return "batch";
 }
 
 export const gbhetPensionSlaReconcileHandler: CronJobHandler = {
