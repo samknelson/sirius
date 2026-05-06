@@ -38,7 +38,7 @@ _Populate as you build_
 -   **Feature-based Module Structure**: Both frontend and backend are organized by feature modules for better maintainability and scalability.
 -   **Metadata-driven Configuration**: Configurable settings use a unified, metadata-driven system to dynamically render forms and tables.
 -   **Entity-based Access Control**: A modular, entity-based policy architecture with server-side LRU caching ensures fine-grained access control.
--   **Charge Plugin Idempotency**: Charge plugin reruns are idempotent via `chargePluginKey` upsert, preventing duplicate ledger entries.
+-   **Charge Plugin Idempotency**: Charge plugin executions are idempotent via `chargePluginKey` upsert, preventing duplicate ledger entries.
 
 ## Product
 
@@ -57,7 +57,6 @@ Preferred communication style: Simple, everyday language.
 
 ## Gotchas
 
--   **Charge Plugin Rerun**: Always ensure you understand the implications of replaying charge plugin events, as it recalculates ledger entries.
 -   **Facility Contact Sync**: Renaming a facility must go through `storage.facilities.updateContactName` to keep the facility and its associated contact in sync.
 -   **Wizard Access Control**: While `/wizards/:id` only requires authentication, the API endpoints enforce granular authorization.
 -   **T631 Facility Sync**: The `sitespecific-t631-facility-fetch` cron job is disabled by default and gated by the `sitespecific.t631.client` component. It only syncs `name` and `sirius_id` and does not delete local-only rows or write arbitrary `data` jsonb.
