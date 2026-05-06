@@ -2,17 +2,6 @@ import type { Express, Request, Response } from "express";
 import { storage } from "../storage";
 import { requireAccess } from "../services/access-policy-evaluator";
 import { requireComponent } from "./components";
-import { getClient } from "../storage/transaction-context";
-import {
-  ledgerEa,
-  ledger,
-  employerContacts,
-  contacts,
-  employers,
-  employerCompanies,
-  companies,
-} from "@shared/schema";
-import { and, eq, inArray, sum, sql } from "drizzle-orm";
 import { createBulkParticipantStorage } from "../storage/bulk/participants";
 import { insertBulkMessageSchema } from "@shared/schema/bulk/schema";
 
@@ -103,26 +92,12 @@ export function registerEmployerComplianceRoutes(
         const allActiveEmployers = employersWithUploads.filter((e) => e.employer.isActive);
         const initialEmployerIds = allActiveEmployers.map((e) => e.employer.id);
 
-        const db = getClient();
-
-        let companyMap = new Map<string, { id: string; name: string }>();
-        if (initialEmployerIds.length > 0) {
-          const companyRows = await db
-            .select({
-              employerId: employerCompanies.employerId,
-              companyId: companies.id,
-              companyName: companies.name,
-            })
-            .from(employerCompanies)
-            .innerJoin(companies, eq(employerCompanies.companyId, companies.id))
-            .where(inArray(employerCompanies.employerId, initialEmployerIds));
-          for (const row of companyRows) {
-            companyMap.set(row.employerId, {
-              id: row.companyId,
-              name: row.companyName,
-            });
-          }
-        }
+        const companyByEmployer =
+          await storage.employerCompanies.getByEmployerIdsWithCompanyName(initialEmployerIds);
+        const companyMap = new Map<string, { id: string; name: string }>();
+        companyByEmployer.forEach((c, employerId) => {
+          companyMap.set(employerId, { id: c.companyId, name: c.companyName });
+        });
 
         const companyFilter = typeof companyId === "string" ? companyId : null;
         const activeEmployers = companyFilter
@@ -135,64 +110,33 @@ export function registerEmployerComplianceRoutes(
         const employerIds = activeEmployers.map((e) => e.employer.id);
 
         const balanceMap = new Map<string, Map<string, string>>();
-        if (employerIds.length > 0 && ledgerAccountIds.length > 0) {
-          const balanceRows = await db
-            .select({
-              entityId: ledgerEa.entityId,
-              accountId: ledgerEa.accountId,
-              total: sum(ledger.amount),
-            })
-            .from(ledgerEa)
-            .leftJoin(ledger, eq(ledger.eaId, ledgerEa.id))
-            .where(
-              and(
-                eq(ledgerEa.entityType, "employer"),
-                inArray(ledgerEa.entityId, employerIds),
-                inArray(ledgerEa.accountId, ledgerAccountIds),
-              ),
-            )
-            .groupBy(ledgerEa.entityId, ledgerEa.accountId);
-
-          for (const r of balanceRows) {
-            if (!balanceMap.has(r.entityId)) {
-              balanceMap.set(r.entityId, new Map());
-            }
-            balanceMap.get(r.entityId)!.set(r.accountId, r.total ? String(r.total) : "0.00");
+        const balanceRows = await storage.ledger.entries.getBalancesByEntityAndAccount(
+          "employer",
+          employerIds,
+          ledgerAccountIds,
+        );
+        for (const r of balanceRows) {
+          if (!balanceMap.has(r.entityId)) {
+            balanceMap.set(r.entityId, new Map());
           }
+          balanceMap.get(r.entityId)!.set(r.accountId, r.total);
         }
 
         const monthlyDeltaMap = new Map<string, Map<string, number>>();
-        if (employerIds.length > 0 && ledgerAccountIds.length > 0) {
-          const monthKeys = monthPeriods.map(
-            (p) => `${p.year}-${String(p.month).padStart(2, "0")}`,
-          );
-          const ymExpr = sql<string>`substring(${ledger.statementYmd}, 1, 7)`;
-          const monthlyRows = await db
-            .select({
-              entityId: ledgerEa.entityId,
-              ym: ymExpr,
-              total: sum(ledger.amount),
-            })
-            .from(ledger)
-            .innerJoin(ledgerEa, eq(ledger.eaId, ledgerEa.id))
-            .where(
-              and(
-                eq(ledgerEa.entityType, "employer"),
-                inArray(ledgerEa.entityId, employerIds),
-                inArray(ledgerEa.accountId, ledgerAccountIds),
-                inArray(ymExpr, monthKeys),
-              ),
-            )
-            .groupBy(ledgerEa.entityId, ymExpr);
-
-          for (const r of monthlyRows) {
-            if (!monthlyDeltaMap.has(r.entityId)) {
-              monthlyDeltaMap.set(r.entityId, new Map());
-            }
-            monthlyDeltaMap
-              .get(r.entityId)!
-              .set(r.ym, r.total ? Number(r.total) : 0);
+        const monthKeys = monthPeriods.map(
+          (p) => `${p.year}-${String(p.month).padStart(2, "0")}`,
+        );
+        const monthlyRows = await storage.ledger.entries.getMonthlyDeltasByEntityAndAccount(
+          "employer",
+          employerIds,
+          ledgerAccountIds,
+          monthKeys,
+        );
+        for (const r of monthlyRows) {
+          if (!monthlyDeltaMap.has(r.entityId)) {
+            monthlyDeltaMap.set(r.entityId, new Map());
           }
+          monthlyDeltaMap.get(r.entityId)!.set(r.ym, Number(r.total));
         }
 
         const rows: ComplianceRow[] = activeEmployers.map(({ employer, uploads }) => {
@@ -278,24 +222,10 @@ export function registerEmployerComplianceRoutes(
           ? contactTypeIds.filter((v): v is string => typeof v === "string" && v.length > 0)
           : [];
 
-        const db = getClient();
-        const conditions = [inArray(employerContacts.employerId, employerIdList)];
-        if (typeIdList.length > 0) {
-          conditions.push(inArray(employerContacts.contactTypeId, typeIdList));
-        }
-
-        const rows = await db
-          .select({
-            employerContactId: employerContacts.id,
-            employerId: employerContacts.employerId,
-            contactId: employerContacts.contactId,
-            contactTypeId: employerContacts.contactTypeId,
-            displayName: contacts.displayName,
-            email: contacts.email,
-          })
-          .from(employerContacts)
-          .innerJoin(contacts, eq(employerContacts.contactId, contacts.id))
-          .where(and(...conditions));
+        const rows = await storage.employerContacts.getByEmployerIds(
+          employerIdList,
+          typeIdList.length > 0 ? typeIdList : undefined,
+        );
 
         const seen = new Set<string>();
         const dedupedContactIds: string[] = [];
@@ -359,18 +289,10 @@ export function registerEmployerComplianceRoutes(
           ? contactTypeIds.filter((v): v is string => typeof v === "string" && v.length > 0)
           : [];
 
-        const db = getClient();
-        const conditions = [inArray(employerContacts.employerId, employerIdList)];
-        if (typeIdList.length > 0) {
-          conditions.push(inArray(employerContacts.contactTypeId, typeIdList));
-        }
-        const rows = await db
-          .select({
-            employerId: employerContacts.employerId,
-            contactId: employerContacts.contactId,
-          })
-          .from(employerContacts)
-          .where(and(...conditions));
+        const rows = await storage.employerContacts.getByEmployerIds(
+          employerIdList,
+          typeIdList.length > 0 ? typeIdList : undefined,
+        );
 
         const seen = new Set<string>();
         const contactIds: string[] = [];

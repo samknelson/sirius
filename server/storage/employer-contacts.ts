@@ -9,6 +9,7 @@ export interface EmployerContactStorage {
   listByEmployer(employerId: string): Promise<Array<EmployerContact & { contact: Contact; contactType?: { id: string; name: string; description: string | null } | null }>>;
   listByContactId(contactId: string): Promise<Array<EmployerContact & { contact: Contact; employer: Employer; contactType?: { id: string; name: string; description: string | null } | null }>>;
   getAll(filters?: { employerId?: string; contactName?: string; contactTypeId?: string }): Promise<Array<EmployerContact & { contact: Contact; employer: Employer; contactType?: { id: string; name: string; description: string | null } | null }>>;
+  getByEmployerIds(employerIds: string[], contactTypeIds?: string[]): Promise<Array<{ employerContactId: string; employerId: string; contactId: string; contactTypeId: string | null; displayName: string | null; email: string | null }>>;
   get(id: string): Promise<(EmployerContact & { contact: Contact; contactType?: { id: string; name: string; description: string | null } | null }) | null>;
   update(id: string, data: { contactTypeId?: string | null }): Promise<(EmployerContact & { contact: Contact; contactType?: { id: string; name: string; description: string | null } | null }) | null>;
   updateContactEmail(id: string, email: string | null): Promise<(EmployerContact & { contact: Contact; contactType?: { id: string; name: string; description: string | null } | null }) | null>;
@@ -148,6 +149,28 @@ export function createEmployerContactStorage(contactsStorage: ContactsStorage): 
         employer: row.employer,
         contactType: row.contactType,
       }));
+    },
+
+    async getByEmployerIds(employerIds: string[], contactTypeIds?: string[]): Promise<Array<{ employerContactId: string; employerId: string; contactId: string; contactTypeId: string | null; displayName: string | null; email: string | null }>> {
+      if (employerIds.length === 0) return [];
+      const client = getClient();
+      const conditions = [inArray(employerContacts.employerId, employerIds)];
+      if (contactTypeIds && contactTypeIds.length > 0) {
+        conditions.push(inArray(employerContacts.contactTypeId, contactTypeIds));
+      }
+      const rows = await client
+        .select({
+          employerContactId: employerContacts.id,
+          employerId: employerContacts.employerId,
+          contactId: employerContacts.contactId,
+          contactTypeId: employerContacts.contactTypeId,
+          displayName: contacts.displayName,
+          email: contacts.email,
+        })
+        .from(employerContacts)
+        .innerJoin(contacts, eq(employerContacts.contactId, contacts.id))
+        .where(and(...conditions));
+      return rows;
     },
 
     async get(id: string): Promise<(EmployerContact & { contact: Contact; contactType?: { id: string; name: string; description: string | null } | null }) | null> {

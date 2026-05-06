@@ -1,7 +1,7 @@
 import { getClient } from './transaction-context';
 import { companies, type Company, type InsertCompany, employerCompanies, type EmployerCompany, type InsertEmployerCompany } from "@shared/schema/employer/company-schema";
 import { employers } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { type StorageLoggingConfig } from "./middleware/logging";
 
 export interface CompanyStorage {
@@ -17,6 +17,7 @@ export interface EmployerCompanyStorage {
   getByCompanyId(companyId: string): Promise<EmployerCompany[]>;
   getByEmployerId(employerId: string): Promise<EmployerCompany | undefined>;
   getAllWithCompanyName(): Promise<Map<string, { companyId: string; companyName: string }>>;
+  getByEmployerIdsWithCompanyName(employerIds: string[]): Promise<Map<string, { companyId: string; companyName: string }>>;
   getEmployersByCompanyId(companyId: string): Promise<{ id: string; name: string }[]>;
   create(ec: InsertEmployerCompany): Promise<EmployerCompany>;
   delete(id: string): Promise<boolean>;
@@ -85,6 +86,25 @@ export function createEmployerCompanyStorage(): EmployerCompanyStorage {
         .from(employerCompanies)
         .innerJoin(companies, eq(employerCompanies.companyId, companies.id));
       const map = new Map<string, { companyId: string; companyName: string }>();
+      for (const row of rows) {
+        map.set(row.employerId, { companyId: row.companyId, companyName: row.companyName });
+      }
+      return map;
+    },
+
+    async getByEmployerIdsWithCompanyName(employerIds: string[]): Promise<Map<string, { companyId: string; companyName: string }>> {
+      const map = new Map<string, { companyId: string; companyName: string }>();
+      if (employerIds.length === 0) return map;
+      const client = getClient();
+      const rows = await client
+        .select({
+          employerId: employerCompanies.employerId,
+          companyId: employerCompanies.companyId,
+          companyName: companies.name,
+        })
+        .from(employerCompanies)
+        .innerJoin(companies, eq(employerCompanies.companyId, companies.id))
+        .where(inArray(employerCompanies.employerId, employerIds));
       for (const row of rows) {
         map.set(row.employerId, { companyId: row.companyId, companyName: row.companyName });
       }

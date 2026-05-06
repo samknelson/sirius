@@ -120,6 +120,8 @@ export interface LedgerEntryStorage {
   get(id: string): Promise<Ledger | undefined>;
   getByEaId(eaId: string): Promise<Ledger[]>;
   getBalancesByEaIds(eaIds: string[]): Promise<Map<string, string>>;
+  getBalancesByEntityAndAccount(entityType: string, entityIds: string[], accountIds: string[]): Promise<Array<{ entityId: string; accountId: string; total: string }>>;
+  getMonthlyDeltasByEntityAndAccount(entityType: string, entityIds: string[], accountIds: string[], monthKeys: string[]): Promise<Array<{ entityId: string; ym: string; total: string }>>;
   getByReference(referenceType: string, referenceId: string): Promise<Ledger[]>;
   getByChargePluginKey(chargePlugin: string, chargePluginKey: string): Promise<Ledger | undefined>;
   getByReferenceAndConfig(referenceId: string, chargePluginConfigId: string): Promise<Ledger[]>;
@@ -828,6 +830,60 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
         balances.set(row.eaId, row.total ?? "0.00");
       }
       return balances;
+    },
+
+    async getBalancesByEntityAndAccount(entityType: string, entityIds: string[], accountIds: string[]): Promise<Array<{ entityId: string; accountId: string; total: string }>> {
+      if (entityIds.length === 0 || accountIds.length === 0) return [];
+      const client = getClient();
+      const rows = await client
+        .select({
+          entityId: ledgerEa.entityId,
+          accountId: ledgerEa.accountId,
+          total: sum(ledger.amount),
+        })
+        .from(ledgerEa)
+        .leftJoin(ledger, eq(ledger.eaId, ledgerEa.id))
+        .where(
+          and(
+            eq(ledgerEa.entityType, entityType),
+            inArray(ledgerEa.entityId, entityIds),
+            inArray(ledgerEa.accountId, accountIds),
+          ),
+        )
+        .groupBy(ledgerEa.entityId, ledgerEa.accountId);
+      return rows.map(r => ({
+        entityId: r.entityId,
+        accountId: r.accountId,
+        total: r.total ? String(r.total) : "0.00",
+      }));
+    },
+
+    async getMonthlyDeltasByEntityAndAccount(entityType: string, entityIds: string[], accountIds: string[], monthKeys: string[]): Promise<Array<{ entityId: string; ym: string; total: string }>> {
+      if (entityIds.length === 0 || accountIds.length === 0 || monthKeys.length === 0) return [];
+      const client = getClient();
+      const ymExpr = sqlRaw<string>`substring(${ledger.statementYmd}, 1, 7)`;
+      const rows = await client
+        .select({
+          entityId: ledgerEa.entityId,
+          ym: ymExpr,
+          total: sum(ledger.amount),
+        })
+        .from(ledger)
+        .innerJoin(ledgerEa, eq(ledger.eaId, ledgerEa.id))
+        .where(
+          and(
+            eq(ledgerEa.entityType, entityType),
+            inArray(ledgerEa.entityId, entityIds),
+            inArray(ledgerEa.accountId, accountIds),
+            inArray(ymExpr, monthKeys),
+          ),
+        )
+        .groupBy(ledgerEa.entityId, ymExpr);
+      return rows.map(r => ({
+        entityId: r.entityId,
+        ym: r.ym,
+        total: r.total ? String(r.total) : "0.00",
+      }));
     },
 
     async getByReference(referenceType: string, referenceId: string): Promise<Ledger[]> {
