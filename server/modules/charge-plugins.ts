@@ -299,232 +299,170 @@ export function registerChargePluginRoutes(
 
   app.post("/api/charge-plugin-rerun/execute", requireAuth, requireComponent("ledger"), requireAccess('admin'), async (req, res) => {
     try {
-      const { wizardIds, triggers } = req.body as {
-        wizardIds: string[];
+      const { wizardId, triggers } = req.body as {
+        wizardId: string;
         triggers?: string[];
       };
 
-      if (!wizardIds || !Array.isArray(wizardIds) || wizardIds.length === 0) {
-        return res.status(400).json({ message: "wizardIds array is required" });
+      if (!wizardId) {
+        return res.status(400).json({ message: "wizardId is required" });
+      }
+
+      const wizard = await storage.wizards.getById(wizardId);
+      if (!wizard) {
+        return res.status(404).json({ message: "Wizard not found" });
+      }
+
+      if (wizard.status !== "complete" && wizard.status !== "completed") {
+        return res.status(400).json({
+          message: `Wizard status is "${wizard.status}" — only completed wizards can be rerun`,
+        });
+      }
+
+      const data = wizard.data as Record<string, unknown> | null;
+      const la = (data?.launchArguments ?? {}) as Record<string, unknown>;
+      const year = la.year as number | undefined;
+      const month = la.month as number | undefined;
+
+      if (!wizard.entityId || !year || !month) {
+        return res.status(400).json({
+          message: "Wizard is missing employer, year, or month information",
+        });
       }
 
       const enabledTriggers = new Set(triggers ?? ["wmb_saved", "hours_saved"]);
       const db = getClient();
 
-      const results: Array<{
-        wizardId: string;
-        employerId: string;
-        employerName: string | null;
-        year: number;
-        month: number;
-        wmbProcessed: number;
-        wmbErrors: number;
-        hoursProcessed: number;
-        hoursErrors: number;
-        totalTransactions: number;
-        error?: string;
-      }> = [];
+      let wmbProcessed = 0;
+      let wmbErrors = 0;
+      let hoursProcessed = 0;
+      let hoursErrors = 0;
+      let totalTransactions = 0;
+      let entriesDeleted = 0;
 
-      for (const wizardId of wizardIds) {
-        const wizard = await storage.wizards.getById(wizardId);
-        if (!wizard) {
-          results.push({
-            wizardId,
-            employerId: "",
-            employerName: null,
-            year: 0,
-            month: 0,
-            wmbProcessed: 0,
-            wmbErrors: 0,
-            hoursProcessed: 0,
-            hoursErrors: 0,
-            totalTransactions: 0,
-            error: "Wizard not found",
-          });
-          continue;
-        }
+      if (enabledTriggers.has("wmb_saved")) {
+        const wmbMonth = ((month - 1 + 3) % 12) + 1;
+        const wmbYear = year + Math.floor((month - 1 + 3) / 12);
+        const wmbs = await db
+          .select()
+          .from(trustWmb)
+          .where(
+            and(
+              eq(trustWmb.employerId, wizard.entityId),
+              eq(trustWmb.year, wmbYear),
+              eq(trustWmb.month, wmbMonth)
+            )
+          );
 
-        if (wizard.status !== "complete" && wizard.status !== "completed") {
-          results.push({
-            wizardId,
-            employerId: wizard.entityId ?? "",
-            employerName: null,
-            year: 0,
-            month: 0,
-            wmbProcessed: 0,
-            wmbErrors: 0,
-            hoursProcessed: 0,
-            hoursErrors: 0,
-            totalTransactions: 0,
-            error: `Wizard status is "${wizard.status}" — only completed wizards can be rerun`,
-          });
-          continue;
-        }
-
-        const data = wizard.data as Record<string, unknown> | null;
-        const la = (data?.launchArguments ?? {}) as Record<string, unknown>;
-        const year = la.year as number | undefined;
-        const month = la.month as number | undefined;
-
-        if (!wizard.entityId || !year || !month) {
-          results.push({
-            wizardId,
-            employerId: wizard.entityId ?? "",
-            employerName: null,
-            year: year ?? 0,
-            month: month ?? 0,
-            wmbProcessed: 0,
-            wmbErrors: 0,
-            hoursProcessed: 0,
-            hoursErrors: 0,
-            totalTransactions: 0,
-            error: "Wizard is missing employer, year, or month information",
-          });
-          continue;
-        }
-
-        let employerName: string | null = null;
-        try {
-          const employer = await storage.employers.getEmployer(wizard.entityId);
-          employerName = employer?.name ?? null;
-        } catch {
-          // ignore
-        }
-
-        let wmbProcessed = 0;
-        let wmbErrors = 0;
-        let hoursProcessed = 0;
-        let hoursErrors = 0;
-        let totalTransactions = 0;
-        let entriesDeleted = 0;
-
-        if (enabledTriggers.has("wmb_saved")) {
-          const wmbMonth = ((month - 1 + 3) % 12) + 1;
-          const wmbYear = year + Math.floor((month - 1 + 3) / 12);
-          const wmbs = await db
-            .select()
-            .from(trustWmb)
+        if (wmbs.length > 0) {
+          const wmbIds = wmbs.map((w) => w.id);
+          const deleted = await db
+            .delete(ledger)
             .where(
               and(
-                eq(trustWmb.employerId, wizard.entityId),
-                eq(trustWmb.year, wmbYear),
-                eq(trustWmb.month, wmbMonth)
+                eq(ledger.referenceType, "wmb"),
+                inArray(ledger.referenceId, wmbIds)
               )
             );
-
-          if (wmbs.length > 0) {
-            const wmbIds = wmbs.map((w) => w.id);
-            const deleted = await db
-              .delete(ledger)
-              .where(
-                and(
-                  eq(ledger.referenceType, "wmb"),
-                  inArray(ledger.referenceId, wmbIds)
-                )
-              );
-            entriesDeleted += deleted.rowCount ?? 0;
-            logger.info("Deleted existing WMB ledger entries before rerun", {
-              wizardId,
-              count: deleted.rowCount ?? 0,
-              wmbCount: wmbs.length,
-            });
-          }
-
-          for (const wmb of wmbs) {
-            try {
-              const result = await executeChargePlugins({
-                trigger: TriggerType.WMB_SAVED,
-                wmbId: wmb.id,
-                workerId: wmb.workerId,
-                employerId: wmb.employerId,
-                benefitId: wmb.benefitId,
-                year: wmb.year,
-                month: wmb.month,
-              });
-              totalTransactions += result.totalTransactions.length;
-              wmbProcessed++;
-            } catch (err) {
-              wmbErrors++;
-              logger.error("Charge plugin rerun WMB error", {
-                wmbId: wmb.id,
-                error: err instanceof Error ? err.message : String(err),
-              });
-            }
-          }
+          entriesDeleted += deleted.rowCount ?? 0;
+          logger.info("Deleted existing WMB ledger entries before rerun", {
+            wizardId,
+            count: deleted.rowCount ?? 0,
+            wmbCount: wmbs.length,
+          });
         }
 
-        if (enabledTriggers.has("hours_saved")) {
-          const hours = await db
-            .select()
-            .from(workerHours)
-            .where(
-              and(
-                eq(workerHours.employerId, wizard.entityId),
-                eq(workerHours.year, year),
-                eq(workerHours.month, month)
-              )
-            );
-
-          if (hours.length > 0) {
-            const hoursIds = hours.map((h) => h.id);
-            const deletedHours = await db
-              .delete(ledger)
-              .where(
-                and(
-                  inArray(ledger.referenceType, ["hours", "hour"]),
-                  inArray(ledger.referenceId, hoursIds)
-                )
-              );
-            entriesDeleted += deletedHours.rowCount ?? 0;
-            logger.info("Deleted existing hours ledger entries before rerun", {
-              wizardId,
-              count: deletedHours.rowCount ?? 0,
-              hoursCount: hours.length,
+        for (const wmb of wmbs) {
+          try {
+            const result = await executeChargePlugins({
+              trigger: TriggerType.WMB_SAVED,
+              wmbId: wmb.id,
+              workerId: wmb.workerId,
+              employerId: wmb.employerId,
+              benefitId: wmb.benefitId,
+              year: wmb.year,
+              month: wmb.month,
+            });
+            totalTransactions += result.totalTransactions.length;
+            wmbProcessed++;
+          } catch (err) {
+            wmbErrors++;
+            logger.error("Charge plugin rerun WMB error", {
+              wmbId: wmb.id,
+              error: err instanceof Error ? err.message : String(err),
             });
           }
-
-          for (const h of hours) {
-            try {
-              const result = await executeChargePlugins({
-                trigger: TriggerType.HOURS_SAVED,
-                hoursId: h.id,
-                workerId: h.workerId,
-                employerId: h.employerId,
-                year: h.year,
-                month: h.month,
-                day: h.day,
-                hours: h.hours || 0,
-                employmentStatusId: h.employmentStatusId,
-                home: h.home,
-              });
-              totalTransactions += result.totalTransactions.length;
-              hoursProcessed++;
-            } catch (err) {
-              hoursErrors++;
-              logger.error("Charge plugin rerun hours error", {
-                hoursId: h.id,
-                error: err instanceof Error ? err.message : String(err),
-              });
-            }
-          }
         }
-
-        results.push({
-          wizardId,
-          employerId: wizard.entityId,
-          employerName,
-          year,
-          month,
-          wmbProcessed,
-          wmbErrors,
-          hoursProcessed,
-          hoursErrors,
-          totalTransactions,
-          entriesDeleted,
-        });
       }
 
-      res.json({ results });
+      if (enabledTriggers.has("hours_saved")) {
+        const hours = await db
+          .select()
+          .from(workerHours)
+          .where(
+            and(
+              eq(workerHours.employerId, wizard.entityId),
+              eq(workerHours.year, year),
+              eq(workerHours.month, month)
+            )
+          );
+
+        if (hours.length > 0) {
+          const hoursIds = hours.map((h) => h.id);
+          const deletedHours = await db
+            .delete(ledger)
+            .where(
+              and(
+                inArray(ledger.referenceType, ["hours", "hour"]),
+                inArray(ledger.referenceId, hoursIds)
+              )
+            );
+          entriesDeleted += deletedHours.rowCount ?? 0;
+          logger.info("Deleted existing hours ledger entries before rerun", {
+            wizardId,
+            count: deletedHours.rowCount ?? 0,
+            hoursCount: hours.length,
+          });
+        }
+
+        for (const h of hours) {
+          try {
+            const result = await executeChargePlugins({
+              trigger: TriggerType.HOURS_SAVED,
+              hoursId: h.id,
+              workerId: h.workerId,
+              employerId: h.employerId,
+              year: h.year,
+              month: h.month,
+              day: h.day,
+              hours: h.hours || 0,
+              employmentStatusId: h.employmentStatusId,
+              home: h.home,
+            });
+            totalTransactions += result.totalTransactions.length;
+            hoursProcessed++;
+          } catch (err) {
+            hoursErrors++;
+            logger.error("Charge plugin rerun hours error", {
+              hoursId: h.id,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+        }
+      }
+
+      res.json({
+        wizardId,
+        employerId: wizard.entityId,
+        year,
+        month,
+        wmbProcessed,
+        wmbErrors,
+        hoursProcessed,
+        hoursErrors,
+        totalTransactions,
+        entriesDeleted,
+      });
     } catch (error) {
       logger.error("Charge plugin rerun failed", {
         error: error instanceof Error ? error.message : String(error),
