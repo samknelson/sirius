@@ -111,6 +111,13 @@ export interface WorkerAssignmentDetails {
   next: WorkerAssignmentDetail | null;
 }
 
+export interface MemberStatusSummaryRow {
+  memberStatus: string;
+  msSequence: number | null;
+  sheetStatus: string;
+  workerCount: number;
+}
+
 export interface EdlsAssignmentsStorage {
   getByCrewId(crewId: string): Promise<EdlsAssignmentWithWorker[]>;
   getBySheetId(sheetId: string): Promise<EdlsAssignmentWithWorker[]>;
@@ -121,6 +128,7 @@ export interface EdlsAssignmentsStorage {
   updateData(id: string, data: Record<string, unknown>): Promise<EdlsAssignment | undefined>;
   getAvailableWorkersForSheet(sheetYmd: string, industryId: string | null, ratingId?: string): Promise<AvailableWorkerForSheet[]>;
   getWorkerAssignmentDetails(workerId: string, sheetYmd: string): Promise<WorkerAssignmentDetails | null>;
+  getMemberStatusSummaryByYmd(ymd: string): Promise<MemberStatusSummaryRow[]>;
 }
 
 async function sortAssignmentsByClassification(
@@ -441,6 +449,35 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
         current,
         next,
       };
+    },
+
+    async getMemberStatusSummaryByYmd(ymd: string): Promise<MemberStatusSummaryRow[]> {
+      const client = getClient();
+      const result = await client.execute(sql`
+        SELECT
+          COALESCE(oms.name, 'Unassigned') AS "memberStatus",
+          oms.sequence AS "msSequence",
+          s.status AS "sheetStatus",
+          COUNT(DISTINCT a.worker_id)::int AS "workerCount"
+        FROM edls_assignments a
+        JOIN edls_crews c ON c.id = a.crew_id
+        JOIN edls_sheets s ON s.id = c.sheet_id
+        JOIN workers w ON w.id = a.worker_id
+        LEFT JOIN LATERAL (
+          SELECT oms2.name, oms2.sequence
+          FROM options_worker_ms oms2
+          JOIN employers emp ON emp.id = s.employer_id
+          WHERE oms2.industry_id = emp.industry_id
+            AND oms2.id = ANY(w.denorm_ms_ids)
+          ORDER BY oms2.sequence ASC NULLS LAST, oms2.name
+          LIMIT 1
+        ) oms ON true
+        WHERE a.ymd = ${ymd}
+          AND s.status != 'trash'
+        GROUP BY oms.name, oms.sequence, s.status
+        ORDER BY oms.sequence NULLS LAST, oms.name
+      `);
+      return result.rows as unknown as MemberStatusSummaryRow[];
     },
   };
 }

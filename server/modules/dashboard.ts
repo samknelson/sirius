@@ -5,7 +5,6 @@ import { requireComponent } from "./components";
 import { employerMonthlyPluginConfigSchema } from "@shared/schema";
 import { getPluginMetadata } from "@shared/pluginMetadata";
 import { getEffectiveUser } from "./masquerade";
-import { sql } from "drizzle-orm";
 import { isComponentEnabledSync } from "../services/component-cache";
 
 // Content resolver context passed to each plugin's content resolver
@@ -686,42 +685,16 @@ export function registerDashboardRoutes(
           return;
         }
 
-        const result = await storage.readOnly.query(async (client) => {
-          const rows = await client.execute(sql`
-            SELECT
-              COALESCE(oms.name, 'Unassigned') AS member_status,
-              oms.sequence AS ms_sequence,
-              s.status AS sheet_status,
-              COUNT(DISTINCT a.worker_id)::int AS worker_count
-            FROM edls_assignments a
-            JOIN edls_crews c ON c.id = a.crew_id
-            JOIN edls_sheets s ON s.id = c.sheet_id
-            JOIN workers w ON w.id = a.worker_id
-            LEFT JOIN LATERAL (
-              SELECT oms2.name, oms2.sequence
-              FROM options_worker_ms oms2
-              JOIN employers emp ON emp.id = s.employer_id
-              WHERE oms2.industry_id = emp.industry_id
-                AND oms2.id = ANY(w.denorm_ms_ids)
-              ORDER BY oms2.sequence ASC NULLS LAST, oms2.name
-              LIMIT 1
-            ) oms ON true
-            WHERE a.ymd = ${ymd}
-              AND s.status != 'trash'
-            GROUP BY oms.name, oms.sequence, s.status
-            ORDER BY oms.sequence NULLS LAST, oms.name
-          `);
-          return rows.rows;
-        });
+        const rows = await storage.edlsAssignments.getMemberStatusSummaryByYmd(ymd);
 
         const memberStatuses: string[] = [];
         const seenStatuses = new Set<string>();
         const grid: Record<string, Record<string, number>> = {};
 
-        for (const row of result as any[]) {
-          const ms = row.member_status as string;
-          const sheetStatus = row.sheet_status as string;
-          const count = row.worker_count as number;
+        for (const row of rows) {
+          const ms = row.memberStatus;
+          const sheetStatus = row.sheetStatus;
+          const count = row.workerCount;
 
           if (!seenStatuses.has(ms)) {
             seenStatuses.add(ms);
