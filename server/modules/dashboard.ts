@@ -2,11 +2,10 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 import { requireAccess, getAccessStorage } from "../services/access-policy-evaluator";
 import { requireComponent } from "./components";
-import { employerMonthlyPluginConfigSchema, workers, bargainingUnits, workerHours, optionsEmploymentStatus } from "@shared/schema";
-import { cardchecks } from "@shared/schema/cardcheck/schema";
+import { employerMonthlyPluginConfigSchema } from "@shared/schema";
 import { getPluginMetadata } from "@shared/pluginMetadata";
 import { getEffectiveUser } from "./masquerade";
-import { sql, countDistinct } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { isComponentEnabledSync } from "../services/component-cache";
 
 // Content resolver context passed to each plugin's content resolver
@@ -590,14 +589,6 @@ export function registerDashboardRoutes(
 
   app.get("/api/dashboard-plugins/btu-bu-summary/data", requireAuth, requireComponent('sitespecific.btu'), async (req, res) => {
     try {
-      const employedWorkerFilter = sql`${workers.id} IN (
-            SELECT DISTINCT ON (wh.worker_id) wh.worker_id
-            FROM ${workerHours} wh
-            JOIN ${optionsEmploymentStatus} es ON es.id = wh.employment_status_id
-            WHERE es.employed = true
-            ORDER BY wh.worker_id, wh.year DESC, wh.month DESC, wh.day DESC
-          )`;
-
       const allBargainingUnits = await storage.bargainingUnits.getAllBargainingUnits();
       const buMinRateMap = new Map<string, number>();
       for (const bu of allBargainingUnits) {
@@ -620,43 +611,13 @@ export function registerDashboardRoutes(
         }
       }
 
-      const { buResults, unassignedResults } = await storage.readOnly.query(async (client) => {
-        const buResults = await client
-          .select({
-            bargainingUnitId: bargainingUnits.id,
-            bargainingUnitName: bargainingUnits.name,
-            workerCount: countDistinct(workers.id).as('worker_count'),
-            signedWorkerCount: sql<number>`count(distinct case when ${cardchecks.id} is not null then ${workers.id} end)`.as('signed_worker_count'),
-          })
-          .from(bargainingUnits)
-          .leftJoin(workers, sql`${workers.bargainingUnitId} = ${bargainingUnits.id} AND ${employedWorkerFilter}`)
-          .leftJoin(
-            cardchecks,
-            sql`${cardchecks.workerId} = ${workers.id} AND ${cardchecks.status} = 'signed'`
-          )
-          .groupBy(bargainingUnits.id, bargainingUnits.name)
-          .orderBy(bargainingUnits.name);
+      const { unitsByBu: buResults, unassigned } = await storage.bargainingUnits.getCardcheckSignedSummary();
 
-        const [unassignedResults] = await client
-          .select({
-            workerCount: countDistinct(workers.id).as('worker_count'),
-            signedWorkerCount: sql<number>`count(distinct case when ${cardchecks.id} is not null then ${workers.id} end)`.as('signed_worker_count'),
-          })
-          .from(workers)
-          .leftJoin(
-            cardchecks,
-            sql`${cardchecks.workerId} = ${workers.id} AND ${cardchecks.status} = 'signed'`
-          )
-          .where(sql`${workers.bargainingUnitId} is null AND ${employedWorkerFilter}`);
+      const unassignedWorkerCount = unassigned.workerCount;
+      const unassignedSignedCount = unassigned.signedWorkerCount;
 
-        return { buResults, unassignedResults };
-      });
-
-      const unassignedWorkerCount = Number(unassignedResults?.workerCount ?? 0);
-      const unassignedSignedCount = Number(unassignedResults?.signedWorkerCount ?? 0);
-
-      const buWorkers = buResults.reduce((sum, r) => sum + Number(r.workerCount), 0);
-      const buSigned = buResults.reduce((sum, r) => sum + Number(r.signedWorkerCount), 0);
+      const buWorkers = buResults.reduce((sum, r) => sum + r.workerCount, 0);
+      const buSigned = buResults.reduce((sum, r) => sum + r.signedWorkerCount, 0);
       const totalWorkers = buWorkers + unassignedWorkerCount;
       const totalSigned = buSigned + unassignedSignedCount;
 
