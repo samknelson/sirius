@@ -389,11 +389,16 @@ async function resolveContributionContext(): Promise<ContributionContext | null>
 
   const contribYearsByYear = new Map(contribYears.map(py => [py.year, py]));
 
-  const pluginConfigs = await storage.chargePluginConfigs.getByPluginId(CONTRIBUTION_PLUGIN_ID);
-  const globalConfig = pluginConfigs.find(c => c.scope === "global");
-
-  const effectiveConfigId = globalConfig?.id || "batch";
-  const settings = (globalConfig?.settings || {}) as { specialDesignationMemberStatusIds?: string[] };
+  const globalConfig = await storage.chargePluginConfigs.getByPluginIdAndScope(
+    CONTRIBUTION_PLUGIN_ID,
+    "global",
+  );
+  const batchConfig = globalConfig
+    ? undefined
+    : await storage.chargePluginConfigs.getByPluginIdAndScope(CONTRIBUTION_PLUGIN_ID, "batch");
+  const effectiveConfig = globalConfig || batchConfig;
+  const effectiveConfigId = effectiveConfig?.id || "batch";
+  const settings = (effectiveConfig?.settings || {}) as { specialDesignationMemberStatusIds?: string[] };
   const specialDesignationIds = settings.specialDesignationMemberStatusIds || [];
 
   return { contribYearsByYear, effectiveConfigId, specialDesignationIds, outputAccountId };
@@ -717,7 +722,6 @@ export async function computeSlaForAllWorkers(
 export const SLA_PLUGIN_ID = PLUGIN_ID;
 
 const VAR_CONTRIB_PLUGIN_ID = "gbhet-pension-variable-contribution";
-export const VAR_CONTRIB_PLUGIN_ID_EXPORT = VAR_CONTRIB_PLUGIN_ID;
 const VAR_CONTRIB_REFERENCE_TYPE = "pension_variable_contribution";
 export const VAR_CONTRIB_SOURCE_ACCOUNT_VARIABLE = "gbhet_pension_var_contrib_source_account_id";
 export const VAR_CONTRIB_TARGET_ACCOUNT_VARIABLE = "gbhet_pension_var_contrib_target_account_id";
@@ -747,9 +751,16 @@ async function resolveVarContribAccounts(): Promise<{ sourceAccountId: string; t
 }
 
 async function resolveVarContribConfigId(): Promise<string> {
-  const pluginConfigs = await storage.chargePluginConfigs.getByPluginId(VAR_CONTRIB_PLUGIN_ID);
-  const globalConfig = pluginConfigs.find(c => c.scope === "global");
-  return globalConfig?.id || "batch";
+  const globalConfig = await storage.chargePluginConfigs.getByPluginIdAndScope(
+    VAR_CONTRIB_PLUGIN_ID,
+    "global",
+  );
+  if (globalConfig?.id) return globalConfig.id;
+  const batchConfig = await storage.chargePluginConfigs.getByPluginIdAndScope(
+    VAR_CONTRIB_PLUGIN_ID,
+    "batch",
+  );
+  return batchConfig?.id || "batch";
 }
 
 export async function reconcileVariableContributionForWorker(
