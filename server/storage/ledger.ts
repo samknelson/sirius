@@ -68,10 +68,18 @@ export interface StripePaymentMethodStorage {
 
 export type LedgerEaWithBalance = SelectLedgerEa & { balance: string };
 
+export interface LedgerEaWithAccount {
+  eaId: string;
+  entityId: string;
+  accountId: string;
+  accountName: string | null;
+}
+
 export interface LedgerEaStorage {
   getAll(): Promise<SelectLedgerEa[]>;
   get(id: string): Promise<SelectLedgerEa | undefined>;
   getByEntity(entityType: string, entityId: string): Promise<SelectLedgerEa[]>;
+  getByEntityIdsWithAccount(entityType: string, entityIds: string[]): Promise<LedgerEaWithAccount[]>;
   getByEntityWithBalance(entityType: string, entityId: string): Promise<LedgerEaWithBalance[]>;
   getByEntityAndAccount(entityType: string, entityId: string, accountId: string): Promise<SelectLedgerEa | undefined>;
   getOrCreate(entityType: string, entityId: string, accountId: string): Promise<SelectLedgerEa>;
@@ -111,6 +119,7 @@ export interface LedgerEntryStorage {
   getAll(): Promise<Ledger[]>;
   get(id: string): Promise<Ledger | undefined>;
   getByEaId(eaId: string): Promise<Ledger[]>;
+  getBalancesByEaIds(eaIds: string[]): Promise<Map<string, string>>;
   getByReference(referenceType: string, referenceId: string): Promise<Ledger[]>;
   getByChargePluginKey(chargePlugin: string, chargePluginKey: string): Promise<Ledger | undefined>;
   getByReferenceAndConfig(referenceId: string, chargePluginConfigId: string): Promise<Ledger[]>;
@@ -453,6 +462,24 @@ export function createLedgerEaStorage(): LedgerEaStorage {
         ));
     },
 
+    async getByEntityIdsWithAccount(entityType: string, entityIds: string[]): Promise<LedgerEaWithAccount[]> {
+      if (entityIds.length === 0) return [];
+      const client = getClient();
+      return await client
+        .select({
+          eaId: ledgerEa.id,
+          entityId: ledgerEa.entityId,
+          accountId: ledgerEa.accountId,
+          accountName: ledgerAccounts.name,
+        })
+        .from(ledgerEa)
+        .innerJoin(ledgerAccounts, eq(ledgerEa.accountId, ledgerAccounts.id))
+        .where(and(
+          eq(ledgerEa.entityType, entityType),
+          inArray(ledgerEa.entityId, entityIds)
+        ));
+    },
+
     async getByEntityWithBalance(entityType: string, entityId: string): Promise<LedgerEaWithBalance[]> {
       const client = getClient();
       const entries = await client
@@ -783,6 +810,24 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
       const client = getClient();
       return await client.select().from(ledger)
         .where(eq(ledger.eaId, eaId));
+    },
+
+    async getBalancesByEaIds(eaIds: string[]): Promise<Map<string, string>> {
+      const balances = new Map<string, string>();
+      if (eaIds.length === 0) return balances;
+      const client = getClient();
+      const rows = await client
+        .select({
+          eaId: ledger.eaId,
+          total: sum(ledger.amount),
+        })
+        .from(ledger)
+        .where(inArray(ledger.eaId, eaIds))
+        .groupBy(ledger.eaId);
+      for (const row of rows) {
+        balances.set(row.eaId, row.total ?? "0.00");
+      }
+      return balances;
     },
 
     async getByReference(referenceType: string, referenceId: string): Promise<Ledger[]> {

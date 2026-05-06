@@ -6,9 +6,7 @@ import { employerMonthlyPluginConfigSchema, workers, bargainingUnits, workerHour
 import { cardchecks } from "@shared/schema/cardcheck/schema";
 import { getPluginMetadata } from "@shared/pluginMetadata";
 import { getEffectiveUser } from "./masquerade";
-import { wizardEmployerMonthly, wizards, ledgerEa, ledger, ledgerAccounts } from "@shared/schema";
-import { eq, and, or, desc, sql, sum, inArray, countDistinct } from "drizzle-orm";
-import { getClient } from "../storage/transaction-context";
+import { sql, countDistinct } from "drizzle-orm";
 import { isComponentEnabledSync } from "../services/component-cache";
 
 // Content resolver context passed to each plugin's content resolver
@@ -478,35 +476,18 @@ export function registerDashboardRoutes(
         return;
       }
 
-      const client = getClient();
       const activeIds = activeEmployers.map(e => e.id);
 
       const gbhetLegalTypes = ["gbhet_legal_workers_monthly", "gbhet_legal_workers_corrections"];
 
-      const latestWizards = await client
-        .select({
-          employerId: wizardEmployerMonthly.employerId,
-          year: wizardEmployerMonthly.year,
-          month: wizardEmployerMonthly.month,
-          wizardType: wizards.type,
-          wizardDate: wizards.date,
-        })
-        .from(wizardEmployerMonthly)
-        .innerJoin(wizards, eq(wizardEmployerMonthly.wizardId, wizards.id))
-        .where(
-          and(
-            inArray(wizardEmployerMonthly.employerId, activeIds),
-            or(eq(wizards.status, "complete"), eq(wizards.status, "completed")),
-            inArray(wizards.type, gbhetLegalTypes)
-          )
-        )
-        .orderBy(desc(wizardEmployerMonthly.year), desc(wizardEmployerMonthly.month), desc(wizards.date));
+      const latestWizards = await storage.wizardEmployerMonthly.getLatestCompletedByEmployers(
+        activeIds,
+        gbhetLegalTypes
+      );
 
       const latestByEmployer = new Map<string, typeof latestWizards[0]>();
       for (const row of latestWizards) {
-        if (!latestByEmployer.has(row.employerId)) {
-          latestByEmployer.set(row.employerId, row);
-        }
+        latestByEmployer.set(row.employerId, row);
       }
 
       const ledgerEnabled = isComponentEnabledSync("ledger");
@@ -514,38 +495,9 @@ export function registerDashboardRoutes(
       let balanceMap = new Map<string, string>();
 
       if (ledgerEnabled) {
-        eaRows = await client
-          .select({
-            eaId: ledgerEa.id,
-            entityId: ledgerEa.entityId,
-            accountId: ledgerEa.accountId,
-            accountName: ledgerAccounts.name,
-          })
-          .from(ledgerEa)
-          .innerJoin(ledgerAccounts, eq(ledgerEa.accountId, ledgerAccounts.id))
-          .where(
-            and(
-              eq(ledgerEa.entityType, "employer"),
-              inArray(ledgerEa.entityId, activeIds)
-            )
-          );
-
+        eaRows = await storage.ledger.ea.getByEntityIdsWithAccount("employer", activeIds);
         const eaIds = eaRows.map(r => r.eaId);
-
-        if (eaIds.length > 0) {
-          const balances = await client
-            .select({
-              eaId: ledger.eaId,
-              total: sum(ledger.amount),
-            })
-            .from(ledger)
-            .where(inArray(ledger.eaId, eaIds))
-            .groupBy(ledger.eaId);
-
-          for (const b of balances) {
-            balanceMap.set(b.eaId, b.total ?? "0.00");
-          }
-        }
+        balanceMap = await storage.ledger.entries.getBalancesByEaIds(eaIds);
       }
 
       const result = activeEmployers.map(emp => {
@@ -560,7 +512,7 @@ export function registerDashboardRoutes(
                 type: latestWiz.wizardType,
                 year: latestWiz.year,
                 month: latestWiz.month,
-                completedAt: latestWiz.wizardDate?.toISOString() ?? null,
+                completedAt: latestWiz.completedAt?.toISOString() ?? null,
               }
             : null,
           accounts: empEaRows.map(ea => ({
