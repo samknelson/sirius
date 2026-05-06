@@ -134,6 +134,79 @@ export function validateProposedAllocation(
   return { valid: true, allocations };
 }
 
+export type CreatePaymentResult =
+  | { ok: true; payment: LedgerPayment }
+  | { ok: false; status: number; message: string };
+
+/**
+ * Shared payment-creation flow used by both `POST /api/ledger/payments` and
+ * `POST /api/ledger-payment-batches/:id/payments`. Performs date coercion,
+ * schema parsing (via `insertLedgerPaymentSchema.parse` — `ZodError` is
+ * intentionally allowed to propagate so callers retain their existing 400
+ * mapping), allocation validation, EA existence checks, and finally
+ * `storage.ledger.payments.create`.
+ *
+ * If `requireAccountId` is set, both the primary EA and every allocation EA
+ * must belong to that account; mismatch yields a 400 with a context-specific
+ * message.
+ */
+export async function createPaymentFromRequestBody(
+  rawBody: unknown,
+  opts?: { requireAccountId?: string }
+): Promise<CreatePaymentResult> {
+  const raw = (rawBody ?? {}) as Record<string, unknown>;
+  const processed = {
+    ...raw,
+    dateReceived: new Date(raw.dateReceived as string),
+    dateCleared: raw.dateCleared ? new Date(raw.dateCleared as string) : undefined,
+  };
+
+  const validated = insertLedgerPaymentSchema.parse(processed);
+
+  const allocValidation = validateProposedAllocation(
+    validated.details as Record<string, unknown> | null,
+    validated.amount,
+  );
+  if (!allocValidation.valid) {
+    return { ok: false, status: 400, message: allocValidation.error || "Invalid allocation" };
+  }
+
+  const primaryEa = await storage.ledger.ea.get(validated.ledgerEaId);
+  if (!primaryEa) {
+    return { ok: false, status: 404, message: "EA entry not found" };
+  }
+  if (opts?.requireAccountId && primaryEa.accountId !== opts.requireAccountId) {
+    return {
+      ok: false,
+      status: 400,
+      message: "Selected participant belongs to a different account than this batch",
+    };
+  }
+
+  if (allocValidation.allocations) {
+    for (const alloc of allocValidation.allocations) {
+      const allocEa = await storage.ledger.ea.get(alloc.eaId);
+      if (!allocEa) {
+        return {
+          ok: false,
+          status: 400,
+          message: `Allocation references non-existent EA: ${alloc.eaId}`,
+        };
+      }
+      if (opts?.requireAccountId && allocEa.accountId !== opts.requireAccountId) {
+        return {
+          ok: false,
+          status: 400,
+          message: "Allocation participant belongs to a different account than this batch",
+        };
+      }
+    }
+  }
+
+  const payment = await storage.ledger.payments.create(validated);
+  return { ok: true, payment };
+}
+
 // Helper to check EA access inline after fetching the EA
 async function checkPaymentEaAccessInline(req: Request, res: Response, ea: { entityType: string; entityId: string }, policyId: string): Promise<boolean> {
   const result = await checkAccessInline(req, policyId, ea.entityId, { entityType: ea.entityType, entityId: ea.entityId });
@@ -400,47 +473,16 @@ export function registerLedgerPaymentRoutes(app: Express) {
   // POST /api/ledger/payments - Create a new payment (staff only)
   app.post("/api/ledger/payments", requireComponent("ledger"), requireAccess('staff'), async (req, res) => {
     try {
-      const rawBody = req.body;
-
-      const processedBody = {
-        ...rawBody,
-        dateReceived: new Date(rawBody.dateReceived),
-        dateCleared: rawBody.dateCleared ? new Date(rawBody.dateCleared) : undefined,
-      };
-      
-      const validatedData = insertLedgerPaymentSchema.parse(processedBody);
-
-      const allocValidation = validateProposedAllocation(
-        validatedData.details as Record<string, unknown> | null,
-        validatedData.amount
-      );
-      if (!allocValidation.valid) {
-        res.status(400).json({ message: allocValidation.error });
-        return;
-      }
-      
-      const ea = await storage.ledger.ea.get(validatedData.ledgerEaId);
-      if (!ea) {
-        res.status(404).json({ message: "EA entry not found" });
+      const result = await createPaymentFromRequestBody(req.body);
+      if (!result.ok) {
+        res.status(result.status).json({ message: result.message });
         return;
       }
 
-      if (allocValidation.allocations) {
-        for (const alloc of allocValidation.allocations) {
-          const allocEa = await storage.ledger.ea.get(alloc.eaId);
-          if (!allocEa) {
-            res.status(400).json({ message: `Allocation references non-existent EA: ${alloc.eaId}` });
-            return;
-          }
-        }
-      }
-      
-      const payment = await storage.ledger.payments.create(validatedData);
-      
-      const notifications = await triggerPaymentChargePlugins(payment);
-      
+      const notifications = await triggerPaymentChargePlugins(result.payment);
+
       res.status(201).json({
-        ...payment,
+        ...result.payment,
         ledgerNotifications: notifications,
       });
     } catch (error) {

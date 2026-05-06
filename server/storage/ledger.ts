@@ -2,8 +2,8 @@ import { createNoopValidator } from './utils/validation';
 import { getClient } from './transaction-context';
 import { logger } from "../logger";
 import { ledgerAccounts, ledgerStripePaymentMethods, ledgerEa, ledgerPayments, ledger, employers, workers, contacts, trustProviders, optionsLedgerPaymentType } from "@shared/schema";
-import { ledgerPaymentBatches } from "@shared/schema/ledger/payment-batch/schema";
-import type { LedgerPaymentBatch, InsertLedgerPaymentBatch } from "@shared/schema/ledger/payment-batch/schema";
+import { ledgerPaymentBatches, ledgerPaymentBatchAssignments } from "@shared/schema/ledger/payment-batch/schema";
+import type { LedgerPaymentBatch, InsertLedgerPaymentBatch, LedgerPaymentBatchAssignment } from "@shared/schema/ledger/payment-batch/schema";
 import type { 
   LedgerAccount, 
   InsertLedgerAccount,
@@ -235,6 +235,19 @@ export interface LedgerPaymentBatchStorage {
   delete(id: string): Promise<boolean>;
 }
 
+export type LedgerPaymentWithAssignment = LedgerPaymentWithEntity & { _assignmentId: string };
+
+export type AssignPaymentResult =
+  | { kind: "created"; assignment: LedgerPaymentBatchAssignment }
+  | { kind: "conflict"; assignment: LedgerPaymentBatchAssignment };
+
+export interface LedgerPaymentBatchAssignmentStorage {
+  getSummaryByBatchId(batchId: string): Promise<{ paymentsCount: number; paymentsTotal: string }>;
+  getPaymentsByBatchId(batchId: string): Promise<LedgerPaymentWithAssignment[]>;
+  assignPayment(batchId: string, paymentId: string): Promise<AssignPaymentResult>;
+  unassign(batchId: string, paymentId: string): Promise<boolean>;
+}
+
 export interface LedgerStorage {
   accounts: LedgerAccountStorage;
   stripePaymentMethods: StripePaymentMethodStorage;
@@ -244,6 +257,7 @@ export interface LedgerStorage {
   entries: LedgerEntryStorage;
   invoices: LedgerInvoiceStorage;
   paymentBatches: LedgerPaymentBatchStorage;
+  paymentBatchAssignments: LedgerPaymentBatchAssignmentStorage;
 }
 
 export function createLedgerPaymentTypeStorage(): LedgerPaymentTypeStorage {
@@ -1875,6 +1889,95 @@ export function createLedgerPaymentBatchStorage(): LedgerPaymentBatchStorage {
   };
 }
 
+export function createLedgerPaymentBatchAssignmentStorage(): LedgerPaymentBatchAssignmentStorage {
+  return {
+    async getSummaryByBatchId(batchId: string): Promise<{ paymentsCount: number; paymentsTotal: string }> {
+      const client = getClient();
+      const rows = await client
+        .select({
+          paymentId: ledgerPaymentBatchAssignments.paymentId,
+          amount: ledgerPayments.amount,
+          status: ledgerPayments.status,
+        })
+        .from(ledgerPaymentBatchAssignments)
+        .innerJoin(ledgerPayments, eq(ledgerPaymentBatchAssignments.paymentId, ledgerPayments.id))
+        .where(eq(ledgerPaymentBatchAssignments.batchId, batchId));
+
+      const paymentsCount = rows.length;
+      const paymentsTotal = rows.reduce((sum, r) => sum + parseFloat(r.amount || "0"), 0);
+      return {
+        paymentsCount,
+        paymentsTotal: paymentsTotal.toFixed(2),
+      };
+    },
+
+    async getPaymentsByBatchId(batchId: string): Promise<LedgerPaymentWithAssignment[]> {
+      const client = getClient();
+      const rows = await client
+        .select({
+          payment: ledgerPayments,
+          ea: ledgerEa,
+          employer: employers,
+          assignmentId: ledgerPaymentBatchAssignments.id,
+        })
+        .from(ledgerPaymentBatchAssignments)
+        .innerJoin(ledgerPayments, eq(ledgerPaymentBatchAssignments.paymentId, ledgerPayments.id))
+        .innerJoin(ledgerEa, eq(ledgerPayments.ledgerEaId, ledgerEa.id))
+        .leftJoin(
+          employers,
+          and(eq(ledgerEa.entityType, "employer"), eq(ledgerEa.entityId, employers.id)),
+        )
+        .where(eq(ledgerPaymentBatchAssignments.batchId, batchId))
+        .orderBy(sqlRaw`${ledgerPayments.dateReceived} DESC NULLS LAST`);
+
+      return rows.map((r) => ({
+        ...(r.payment as LedgerPayment),
+        entityType: r.ea.entityType,
+        entityId: r.ea.entityId,
+        entityName: r.employer?.name ?? null,
+        allocatedEntities: [],
+        _assignmentId: r.assignmentId,
+      }));
+    },
+
+    async assignPayment(batchId: string, paymentId: string): Promise<AssignPaymentResult> {
+      const client = getClient();
+      try {
+        const [assignment] = await client
+          .insert(ledgerPaymentBatchAssignments)
+          .values({ batchId, paymentId })
+          .returning();
+        return { kind: "created", assignment };
+      } catch (insertErr) {
+        const code = (insertErr as { code?: string } | null)?.code;
+        if (code === "23505") {
+          const [existingAssignment] = await client
+            .select()
+            .from(ledgerPaymentBatchAssignments)
+            .where(eq(ledgerPaymentBatchAssignments.paymentId, paymentId));
+          if (existingAssignment) {
+            return { kind: "conflict", assignment: existingAssignment };
+          }
+        }
+        throw insertErr;
+      }
+    },
+
+    async unassign(batchId: string, paymentId: string): Promise<boolean> {
+      const client = getClient();
+      const result = await client
+        .delete(ledgerPaymentBatchAssignments)
+        .where(
+          and(
+            eq(ledgerPaymentBatchAssignments.batchId, batchId),
+            eq(ledgerPaymentBatchAssignments.paymentId, paymentId),
+          ),
+        );
+      return result.rowCount ? result.rowCount > 0 : false;
+    },
+  };
+}
+
 export function createLedgerStorage(
   accountLoggingConfig?: StorageLoggingConfig<LedgerAccountStorage>,
   stripePaymentMethodLoggingConfig?: StorageLoggingConfig<StripePaymentMethodStorage>,
@@ -1921,6 +2024,7 @@ export function createLedgerStorage(
     entries: entryStorage,
     invoices: invoiceStorage,
     paymentBatches: paymentBatchStorage,
+    paymentBatchAssignments: createLedgerPaymentBatchAssignmentStorage(),
   };
 }
 
