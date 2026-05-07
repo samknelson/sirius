@@ -154,6 +154,76 @@ async function checkUserAccess(
     });
 
     await storage.users.updateUserLastLogin(user.id);
+
+    // Backfill: if an existing Okta identity is not yet tagged with a
+    // workerId, try to discover the worker by IdP email (single match
+    // only) and persist the link. This handles users who signed in with
+    // Okta before worker self-provisioning existed, and admin-created
+    // accounts that were later assigned the worker role.
+    if (
+      isWorkerSelfRegistrationEnabled() &&
+      email &&
+      !(identity.metadata as any)?.workerId
+    ) {
+      try {
+        const matches = await storage.workers.getWorkersByContactEmail(email);
+        if (matches.length === 1) {
+          const worker = matches[0];
+          const workerRole = await storage.users.getRoleByName("worker");
+          if (workerRole) {
+            const currentRoles = await storage.users.getUserRoles(user.id);
+            if (!currentRoles.some((r: any) => r.id === workerRole.id)) {
+              await storage.users.assignRoleToUser({
+                userId: user.id,
+                roleId: workerRole.id,
+              });
+            }
+          }
+          const requiredVariable = await storage.variables.getByName(
+            "worker_user_roles_required"
+          );
+          const requiredRoleIds: string[] = (
+            Array.isArray(requiredVariable?.value)
+              ? requiredVariable!.value
+              : []
+          ) as string[];
+          if (requiredRoleIds.length > 0) {
+            const currentRoles = await storage.users.getUserRoles(user.id);
+            const currentRoleIds = currentRoles.map((r: any) => r.id);
+            for (const roleId of requiredRoleIds) {
+              if (!currentRoleIds.includes(roleId)) {
+                await storage.users.assignRoleToUser({
+                  userId: user.id,
+                  roleId,
+                });
+              }
+            }
+          }
+          await storage.authIdentities.update(identity.id, {
+            metadata: {
+              ...((identity.metadata as any) || {}),
+              workerId: worker.id,
+            },
+          });
+          logger.info("Backfilled workerId on existing Okta identity", {
+            identityId: identity.id,
+            workerId: worker.id,
+            userId: user.id,
+          });
+        } else if (matches.length > 1) {
+          logger.warn(
+            "Existing-identity worker backfill skipped: multiple workers share contact email",
+            { email, workerCount: matches.length }
+          );
+        }
+      } catch (err) {
+        logger.warn("Existing-identity worker backfill failed", {
+          identityId: identity.id,
+          error: err,
+        });
+      }
+    }
+
     logLoginEvent(updatedUser, externalId, false);
 
     return { allowed: true, user: updatedUser };

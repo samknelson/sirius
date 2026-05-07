@@ -202,9 +202,13 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       const userPermissions = await storage.users.getUserPermissions(dbUser.id);
       const enabledComponents = await getEnabledComponentIds();
       
-      // Get user's associated worker if they have one
-      let workerId: string | null = null;
-      if (dbUser.email) {
+      // Get user's associated worker. Prefer auth_identities.metadata.workerId
+      // (the durable link written when an Okta/Clerk identity is bound to a
+      // worker) and fall back to a contact-email match for legacy users that
+      // were linked before metadata was tracked.
+      let workerId: string | null =
+        await storage.authIdentities.getWorkerIdForUser(dbUser.id);
+      if (!workerId && dbUser.email) {
         const worker = await storage.workers.getWorkerByContactEmail(dbUser.email);
         if (worker) {
           workerId = worker.id;

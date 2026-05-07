@@ -21,6 +21,14 @@ export interface AuthIdentitiesStorage {
 
   getByUserId(userId: string): Promise<AuthIdentity[]>;
 
+  /**
+   * Returns the first `metadata.workerId` found across the user's auth
+   * identities (any provider), or null if none of them are tagged with a
+   * worker. This is the source of truth for whether a logged-in user is
+   * linked to a worker record.
+   */
+  getWorkerIdForUser(userId: string): Promise<string | null>;
+
   getByUserIdAndProvider(
     userId: string,
     providerType: AuthProviderType
@@ -63,6 +71,18 @@ export function createAuthIdentitiesStorage(): AuthIdentitiesStorage {
       return client.query.authIdentities.findMany({
         where: eq(authIdentities.userId, userId),
       });
+    },
+
+    async getWorkerIdForUser(userId: string): Promise<string | null> {
+      const client = getClient();
+      const rows = await client.query.authIdentities.findMany({
+        where: eq(authIdentities.userId, userId),
+      });
+      for (const r of rows) {
+        const wid = (r.metadata as any)?.workerId;
+        if (wid && typeof wid === "string") return wid;
+      }
+      return null;
     },
 
     async getByUserIdAndProvider(
