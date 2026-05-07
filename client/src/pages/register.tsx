@@ -549,30 +549,64 @@ function OktaRegisterFlow() {
     e.preventDefault();
     setError(null);
     setIsSubmitting(true);
+    let response: Response | null = null;
     try {
-      const response = await fetch("/api/auth/complete-registration", {
+      response = await fetch("/api/auth/complete-registration", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({ email: email.trim() }),
       });
-      const data = await response.json();
+      const rawText = await response.text();
+      let data: any = null;
+      if (rawText) {
+        try {
+          data = JSON.parse(rawText);
+        } catch {
+          data = null;
+        }
+      }
       if (!response.ok) {
-        if (response.status === 400 && data.message?.includes("verification has expired")) {
+        if (
+          response.status === 400 &&
+          data?.message?.includes("verification has expired")
+        ) {
           setError("Your verification has expired. Please verify your identity again.");
           setStep("verify");
           setIsSubmitting(false);
           return;
         }
-        setError(data.message || "We couldn't create your Okta account. Please try again.");
+        setError(
+          data?.message ||
+            `We couldn't create your Okta account (HTTP ${response.status}). Please try again.`,
+        );
+        setIsSubmitting(false);
+        return;
+      }
+      if (!data || !data.success) {
+        console.error(
+          "complete-registration: 200 OK but unexpected body",
+          { status: response.status, rawText },
+        );
+        setError(
+          "The server returned an unexpected response. Please try again or contact your administrator.",
+        );
         setIsSubmitting(false);
         return;
       }
       setSentToEmail(data.email || email.trim());
       setStep("sent");
       setIsSubmitting(false);
-    } catch {
-      setError("An unexpected error occurred. Please try again.");
+    } catch (err) {
+      console.error("complete-registration: request failed", {
+        err,
+        responseStatus: response?.status,
+      });
+      setError(
+        err instanceof Error
+          ? `Request failed: ${err.message}`
+          : "An unexpected error occurred. Please try again.",
+      );
       setIsSubmitting(false);
     }
   };
