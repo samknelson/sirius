@@ -278,7 +278,21 @@ export function createProvider(config: OktaProviderConfig): AuthProvider {
         }
       };
 
-      const strategy = new Strategy(
+      class OktaStrategy extends Strategy {
+        authorizationRequestParams(req: any, options: any) {
+          const base = super.authorizationRequestParams(req, options);
+          const params =
+            base instanceof URLSearchParams
+              ? base
+              : new URLSearchParams(base as Record<string, string> | undefined);
+          if (!params.has("state")) {
+            params.set("state", client.randomState());
+          }
+          return params;
+        }
+      }
+
+      const strategy = new OktaStrategy(
         {
           name: STRATEGY_NAME,
           config: oidcConfig,
