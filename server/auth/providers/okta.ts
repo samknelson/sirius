@@ -291,13 +291,35 @@ export function createProvider(config: OktaProviderConfig): AuthProvider {
       passport.use(strategy);
 
       app.get(callbackPath, (req, res, next) => {
+        if (req.query.error) {
+          logger.error("Okta returned error on callback", {
+            error: req.query.error,
+            error_description: req.query.error_description,
+          });
+          const params = new URLSearchParams({
+            provider: "okta",
+            error: String(req.query.error),
+            ...(req.query.error_description
+              ? { description: String(req.query.error_description) }
+              : {}),
+          });
+          return res.redirect(`/login?${params.toString()}`);
+        }
         passport.authenticate(STRATEGY_NAME, {
           successReturnToOrRedirect: "/",
-          failureRedirect: "/auth-error?error=okta_failed",
+          failureRedirect: "/login?provider=okta&error=okta_failed",
         })(req, res, (err: any) => {
           if (err) {
-            logger.error("Okta callback error", { error: err?.message });
-            return res.redirect("/auth-error?error=okta_callback_failed");
+            logger.error("Okta callback error", {
+              error: err?.message,
+              code: err?.code,
+            });
+            const params = new URLSearchParams({
+              provider: "okta",
+              error: "okta_callback_failed",
+              description: err?.message || "Authentication failed",
+            });
+            return res.redirect(`/login?${params.toString()}`);
           }
           next();
         });

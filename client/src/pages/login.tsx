@@ -72,6 +72,10 @@ export default function LoginPage() {
   const replitEnabled = providers.some((p) => p.type === 'replit');
   const samlEnabled = providers.some((p) => p.type === 'saml');
 
+  const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+  const errorCode = params?.get('error');
+  const errorDescription = params?.get('description');
+
   useEffect(() => {
     if (isAuthenticated && !isLoading) {
       const redirectTo = sessionStorage.getItem('redirectAfterLogin');
@@ -110,6 +114,15 @@ export default function LoginPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {errorCode && (
+            <div
+              className="p-3 bg-destructive/10 border border-destructive/30 rounded-md text-sm text-destructive"
+              data-testid="text-login-error"
+            >
+              <div className="font-medium">Sign-in failed: {errorCode}</div>
+              {errorDescription && <div className="mt-1 text-xs">{errorDescription}</div>}
+            </div>
+          )}
           {CLERK_ENABLED ? (
             <>
               <SignedOut>
