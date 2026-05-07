@@ -175,6 +175,7 @@ export interface WorkerStorage {
   getWorker(id: string): Promise<Worker | undefined>;
   getWorkerBySSN(ssn: string): Promise<Worker | undefined>;
   getWorkerByContactEmail(email: string): Promise<Worker | undefined>;
+  getWorkersByContactEmail(email: string): Promise<Worker[]>;
   getWorkerByContactId(contactId: string): Promise<Worker | undefined>;
   getWorkersByHomeEmployerId(employerId: string): Promise<Array<{
     id: string;
@@ -798,6 +799,28 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         .where(sql`LOWER(${contacts.email}) = LOWER(${email})`);
       
       return result || undefined;
+    },
+
+    async getWorkersByContactEmail(email: string): Promise<Worker[]> {
+      const client = getClient();
+      const results = await client
+        .select({
+          id: workers.id,
+          siriusId: workers.siriusId,
+          contactId: workers.contactId,
+          ssn: workers.ssn,
+          denormWsId: workers.denormWsId,
+          denormMsIds: workers.denormMsIds,
+          denormJobTitle: workers.denormJobTitle,
+          denormHomeEmployerId: workers.denormHomeEmployerId,
+          denormEmployerIds: workers.denormEmployerIds,
+          bargainingUnitId: workers.bargainingUnitId,
+        })
+        .from(workers)
+        .innerJoin(contacts, eq(workers.contactId, contacts.id))
+        .where(sql`LOWER(${contacts.email}) = LOWER(${email})`);
+
+      return results;
     },
 
     async getWorkerByContactId(contactId: string): Promise<Worker | undefined> {

@@ -204,9 +204,27 @@ async function checkUserAccess(
     }
 
     // No verified-worker session — try to discover a worker by contact email.
+    // Only link when EXACTLY ONE worker matches; otherwise fall through to
+    // the admin email-link path. Multi-match would be ambiguous and could
+    // mis-associate the auth identity with the wrong worker.
     try {
-      const worker = await storage.workers.getWorkerByContactEmail(email);
-      if (worker) {
+      const matchingWorkers =
+        await storage.workers.getWorkersByContactEmail(email);
+      if (matchingWorkers.length === 0) {
+        logger.info("Okta email-based worker linking: no worker match", {
+          email,
+        });
+      } else if (matchingWorkers.length > 1) {
+        logger.warn(
+          "Okta email-based worker linking skipped: multiple workers share contact email",
+          {
+            email,
+            workerCount: matchingWorkers.length,
+            workerIds: matchingWorkers.map((w) => w.id),
+          }
+        );
+      } else {
+        const worker = matchingWorkers[0];
         const result = await linkWorkerToAuthIdentity({
           providerType: "okta",
           externalId,
