@@ -516,9 +516,15 @@ export function createProvider(config: OktaProviderConfig): AuthProvider {
 
     getLoginHandler(): RequestHandler {
       return (req, res, next) => {
+        // When the worker self-registration flow forwards the user here
+        // (after SSN/DOB pre-verification), it sets `intent=signup` so we
+        // ask Okta to show its hosted Self-Service Registration screen
+        // (prompt=create) instead of the login form (prompt=login).
+        const intent = String((req.query as any)?.intent || "").toLowerCase();
+        const prompt = intent === "signup" ? "create" : "login";
         passport.authenticate(STRATEGY_NAME, {
           scope: ["openid", "email", "profile", "offline_access"],
-          prompt: "login",
+          prompt,
         } as any)(req, res, next);
       };
     },

@@ -544,7 +544,7 @@ function OktaRegisterFlow() {
 
   const handleContinueToOkta = () => {
     setStep("completing");
-    window.location.href = "/api/login?provider=okta";
+    window.location.href = "/api/login?provider=okta&intent=signup";
   };
 
   if (isAuthenticated) return null;
