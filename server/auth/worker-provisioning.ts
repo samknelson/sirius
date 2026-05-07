@@ -335,6 +335,7 @@ export function registerPreVerifyWorkerRoute(
         success: true,
         verified: true,
         workerName: `${contact.given || ""} ${contact.family || ""}`.trim(),
+        contactEmail: contact.email || "",
       });
     } catch (error) {
       logger.error("Worker pre-verification error", { error });

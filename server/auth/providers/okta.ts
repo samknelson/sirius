@@ -21,6 +21,7 @@ import {
   getVerifiedWorker,
   clearVerifiedWorker,
 } from "../worker-provisioning";
+import { createOktaUserAndSendActivation } from "../okta-admin";
 
 const STRATEGY_NAME = "okta";
 
@@ -473,6 +474,133 @@ export function createProvider(config: OktaProviderConfig): AuthProvider {
 
       registerPreVerifyWorkerRoute(app, { providerType: "okta" });
 
+      app.post("/api/auth/complete-registration", async (req, res) => {
+        if (!isWorkerSelfRegistrationEnabled()) {
+          return res.status(403).json({
+            message:
+              "Worker self-registration is not enabled. Please contact your administrator.",
+          });
+        }
+        try {
+          const verified = getVerifiedWorker(req);
+          if (!verified) {
+            return res.status(400).json({
+              message:
+                "Your verification has expired. Please verify your identity again.",
+            });
+          }
+
+          const worker = await storage.workers.getWorker(verified.workerId);
+          if (!worker) {
+            return res.status(404).json({ message: "Worker record not found." });
+          }
+
+          const contact = await storage.contacts.getContact(worker.contactId);
+          if (!contact) {
+            return res.status(404).json({ message: "Contact record not found." });
+          }
+
+          const requestedEmail = (req.body?.email || "").toString().trim();
+          const contactEmail = (contact.email || "").trim();
+          const email = requestedEmail || contactEmail;
+          if (!email) {
+            return res.status(400).json({
+              message:
+                "An email address is required. Please enter the email you'd like to use for your Okta account.",
+            });
+          }
+
+          const firstName = contact.given || "";
+          const lastName = contact.family || "";
+          if (!firstName || !lastName) {
+            return res.status(400).json({
+              message:
+                "Worker name is incomplete on file. Please contact your administrator.",
+            });
+          }
+
+          if (
+            requestedEmail &&
+            requestedEmail.toLowerCase() !== contactEmail.toLowerCase()
+          ) {
+            try {
+              await storage.contacts.updateEmail(worker.contactId, requestedEmail);
+              logger.info(
+                "Updated worker contact email to match Okta registration email",
+                {
+                  workerId: worker.id,
+                  contactId: worker.contactId,
+                }
+              );
+            } catch (err) {
+              logger.warn(
+                "Failed to update contact email before Okta user creation",
+                { workerId: worker.id, error: err }
+              );
+            }
+          }
+
+          let created;
+          try {
+            created = await createOktaUserAndSendActivation({
+              issuerUrl: config.issuerUrl,
+              email,
+              firstName,
+              lastName,
+            });
+          } catch (err: any) {
+            const data = err?.data;
+            const errorCode =
+              data && typeof data === "object" ? data.errorCode : undefined;
+            // E0000001 = "Api validation failed" — typically duplicate login.
+            if (
+              errorCode === "E0000001" ||
+              (typeof data === "object" &&
+                JSON.stringify(data?.errorCauses || []).includes(
+                  "already exists"
+                ))
+            ) {
+              return res.status(409).json({
+                message:
+                  "An Okta account already exists for this email. Please use Sign In instead, or contact your administrator.",
+              });
+            }
+            logger.error("Okta user creation failed", {
+              workerId: worker.id,
+              status: err?.status,
+              error: err?.message,
+              data,
+            });
+            return res.status(500).json({
+              message:
+                "Failed to create your Okta account. Please try again or contact your administrator.",
+            });
+          }
+
+          clearVerifiedWorker(req);
+
+          logger.info(
+            "Created Okta user for worker; activation email dispatched by Okta",
+            {
+              workerId: worker.id,
+              oktaUserId: created.id,
+              email: created.email,
+            }
+          );
+
+          res.json({
+            success: true,
+            activationEmailSent: true,
+            email: created.email,
+          });
+        } catch (error) {
+          logger.error("Okta worker registration completion error", { error });
+          res
+            .status(500)
+            .json({ message: "An unexpected error occurred. Please try again." });
+        }
+      });
+
       app.get(callbackPath, (req, res, next) => {
         if (req.query.error) {
           logger.error("Okta returned error on callback", {
@@ -516,15 +644,9 @@ export function createProvider(config: OktaProviderConfig): AuthProvider {
 
     getLoginHandler(): RequestHandler {
       return (req, res, next) => {
-        // When the worker self-registration flow forwards the user here
-        // (after SSN/DOB pre-verification), it sets `intent=signup` so we
-        // ask Okta to show its hosted Self-Service Registration screen
-        // (prompt=create) instead of the login form (prompt=login).
-        const intent = String((req.query as any)?.intent || "").toLowerCase();
-        const prompt = intent === "signup" ? "create" : "login";
         passport.authenticate(STRATEGY_NAME, {
           scope: ["openid", "email", "profile", "offline_access"],
-          prompt,
+          prompt: "login",
         } as any)(req, res, next);
       };
     },

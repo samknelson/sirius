@@ -7,12 +7,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Loader2, ShieldCheck, AlertCircle, ArrowLeft, UserPlus, CheckCircle2, Eye, EyeOff, LogIn } from "lucide-react";
+import { Loader2, ShieldCheck, AlertCircle, ArrowLeft, UserPlus, CheckCircle2, Eye, EyeOff, Mail } from "lucide-react";
 import { SignUp, useUser } from "@clerk/clerk-react";
 
 const CLERK_ENABLED = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
-type Step = "verify" | "signup" | "completing";
+type Step = "verify" | "signup" | "completing" | "sent";
 type ProviderInfo = { type: string; isDefault: boolean };
 
 function useRegistrationContext() {
@@ -504,6 +504,8 @@ function OktaRegisterFlow() {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [verifiedName, setVerifiedName] = useState("");
+  const [email, setEmail] = useState("");
+  const [sentToEmail, setSentToEmail] = useState("");
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -534,6 +536,7 @@ function OktaRegisterFlow() {
         return;
       }
       setVerifiedName(data.workerName || `${verify.firstName} ${verify.lastName}`);
+      setEmail(data.contactEmail || "");
       setStep("signup");
       setIsSubmitting(false);
     } catch {
@@ -542,9 +545,36 @@ function OktaRegisterFlow() {
     }
   };
 
-  const handleContinueToOkta = () => {
-    setStep("completing");
-    window.location.href = "/api/login?provider=okta&intent=signup";
+  const handleSendActivation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setIsSubmitting(true);
+    try {
+      const response = await fetch("/api/auth/complete-registration", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ email: email.trim() }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        if (response.status === 400 && data.message?.includes("verification has expired")) {
+          setError("Your verification has expired. Please verify your identity again.");
+          setStep("verify");
+          setIsSubmitting(false);
+          return;
+        }
+        setError(data.message || "We couldn't create your Okta account. Please try again.");
+        setIsSubmitting(false);
+        return;
+      }
+      setSentToEmail(data.email || email.trim());
+      setStep("sent");
+      setIsSubmitting(false);
+    } catch {
+      setError("An unexpected error occurred. Please try again.");
+      setIsSubmitting(false);
+    }
   };
 
   if (isAuthenticated) return null;
@@ -579,51 +609,114 @@ function OktaRegisterFlow() {
               Identity Verified
             </CardTitle>
             <CardDescription>
-              Welcome, {verifiedName}! Step 2 of 2: Sign in or create your account with Okta to finish linking it.
+              Welcome, {verifiedName}! Step 2 of 2: Confirm your email and we'll
+              create your Okta account and send you an activation email.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            {error && (
-              <Alert variant="destructive" data-testid="text-register-signup-error">
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
+          <CardContent>
+            <form onSubmit={handleSendActivation} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="email">Email Address</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  required
+                  disabled={isSubmitting}
+                  data-testid="input-register-email"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Okta will send your account activation link to this address.
+                </p>
+              </div>
 
-            <Button
-              type="button"
-              className="w-full"
-              size="lg"
-              onClick={handleContinueToOkta}
-              data-testid="button-register-continue-okta"
-            >
-              <LogIn className="mr-2 h-5 w-5" />
-              Continue with Okta
-            </Button>
+              {error && (
+                <Alert variant="destructive" data-testid="text-register-signup-error">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
 
-            <p className="text-xs text-muted-foreground text-center">
-              You'll be redirected to Okta to sign in or create your Okta
-              account, then sent back here to finish setup.
-            </p>
+              <Button
+                type="submit"
+                className="w-full"
+                size="lg"
+                disabled={isSubmitting || !email.trim()}
+                data-testid="button-register-send-activation"
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Creating Your Account...
+                  </>
+                ) : (
+                  <>
+                    <Mail className="mr-2 h-5 w-5" />
+                    Send Activation Email
+                  </>
+                )}
+              </Button>
 
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full"
-              onClick={() => {
-                setStep("verify");
-                setError(null);
-              }}
-              data-testid="button-register-back-to-verify"
-            >
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Back to Identity Verification
-            </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                onClick={() => {
+                  setStep("verify");
+                  setError(null);
+                }}
+                disabled={isSubmitting}
+                data-testid="button-register-back-to-verify"
+              >
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Back to Identity Verification
+              </Button>
+            </form>
           </CardContent>
         </Card>
       )}
 
       {step === "completing" && <CompletingCard />}
+
+      {step === "sent" && (
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <div className="flex justify-center mb-2">
+              <div className="p-3 bg-green-100 dark:bg-green-900/30 rounded-full">
+                <Mail className="h-6 w-6 text-green-600 dark:text-green-400" />
+              </div>
+            </div>
+            <CardTitle className="text-2xl font-bold" data-testid="text-register-sent-title">
+              Check Your Email
+            </CardTitle>
+            <CardDescription>
+              We've created your Okta account and sent an activation link to{" "}
+              <span className="font-medium" data-testid="text-register-sent-email">
+                {sentToEmail}
+              </span>
+              . Open the email, follow the link to set your password, then come
+              back here to sign in.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <Button
+              type="button"
+              className="w-full"
+              size="lg"
+              onClick={() => setLocation("/login")}
+              data-testid="button-register-go-to-signin"
+            >
+              Go to Sign In
+            </Button>
+            <p className="text-xs text-muted-foreground text-center">
+              Don't see the email? Check your spam folder, or contact your
+              administrator if it doesn't arrive within a few minutes.
+            </p>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
