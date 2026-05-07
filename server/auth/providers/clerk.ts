@@ -6,6 +6,11 @@ import { storageLogger, logger } from "../../logger";
 import { getRequestContext } from "../../middleware/request-context";
 import { parseSSN } from "@shared/utils/ssn";
 import { z } from "zod";
+import {
+  registerPreVerifyWorkerRoute,
+  linkWorkerToAuthIdentity,
+  isWorkerSelfRegistrationEnabled,
+} from "../worker-provisioning";
 
 function logLoginEvent(user: any, externalId: string, accountLinked: boolean) {
   const userName =
@@ -292,115 +297,14 @@ export function createProvider(config: ClerkProviderConfig): AuthProvider {
         }
       });
 
-      const verifyWorkerSchema = z.object({
-        firstName: z.string().min(1, "First name is required"),
-        lastName: z.string().min(1, "Last name is required"),
-        ssn: z.string().min(1, "SSN is required"),
-        dateOfBirth: z.string().min(1, "Date of birth is required"),
-      });
-
-      app.post("/api/auth/pre-verify-worker", async (req, res) => {
-        try {
-          if (req.isAuthenticated?.() && req.user) {
-            return res.status(400).json({ message: "Already provisioned" });
-          }
-
-          const validation = verifyWorkerSchema.safeParse(req.body);
-          if (!validation.success) {
-            return res.status(400).json({
-              message: "Invalid input",
-              errors: validation.error.errors.map((e) => e.message),
-            });
-          }
-
-          const { firstName, lastName, ssn, dateOfBirth } = validation.data;
-
-          let normalizedSSN: string;
-          try {
-            normalizedSSN = parseSSN(ssn);
-          } catch {
-            return res.status(400).json({ message: "Invalid SSN format" });
-          }
-
-          const worker = await storage.workers.getWorkerBySSN(normalizedSSN);
-          if (!worker) {
-            logger.info("Worker pre-verification failed: no worker found for SSN");
-            return res.status(404).json({
-              message: "We could not verify your identity. Please check your information and try again, or contact your administrator.",
-            });
-          }
-
-          const contact = await storage.contacts.getContact(worker.contactId);
-          if (!contact) {
-            logger.warn("Worker pre-verification failed: contact not found", {
-              workerId: worker.id,
-              contactId: worker.contactId,
-            });
-            return res.status(404).json({
-              message: "We could not verify your identity. Please contact your administrator.",
-            });
-          }
-
-          const fnMatch = (contact.given || "").toLowerCase().trim() === firstName.toLowerCase().trim();
-          const lnMatch = (contact.family || "").toLowerCase().trim() === lastName.toLowerCase().trim();
-          const dobMatch = contact.birthDate === dateOfBirth;
-
-          if (!fnMatch || !lnMatch || !dobMatch) {
-            logger.info("Worker pre-verification failed: field mismatch", {
-              workerId: worker.id,
-              fnMatch,
-              lnMatch,
-              dobMatch,
-            });
-            return res.status(404).json({
-              message: "We could not verify your identity. Please check your information and try again, or contact your administrator.",
-            });
-          }
-
-          const existingIdentities = contact.email
-            ? await storage.users.getUserByEmail(contact.email)
-            : null;
-          if (existingIdentities) {
-            const identities = await storage.authIdentities.getByUserId(existingIdentities.id);
-            if (identities.some((i) => i.providerType === "clerk")) {
-              logger.info("Worker pre-verification blocked: already registered", {
-                workerId: worker.id,
-              });
-              return res.status(409).json({
-                message: "This worker already has an account. Please use the Sign In button instead.",
-              });
-            }
-          }
-
-          (req.session as any).verifiedWorker = {
-            workerId: worker.id,
-            contactId: worker.contactId,
-            verifiedAt: Date.now(),
-          };
-
-          await new Promise<void>((resolve, reject) => {
-            req.session.save((err) => {
-              if (err) reject(err);
-              else resolve();
-            });
-          });
-
-          logger.info("Worker pre-verification successful", {
-            workerId: worker.id,
-          });
-
-          res.json({
-            success: true,
-            verified: true,
-            workerName: `${contact.given || ""} ${contact.family || ""}`.trim(),
-          });
-        } catch (error) {
-          logger.error("Worker pre-verification error", { error });
-          res.status(500).json({ message: "An unexpected error occurred. Please try again." });
-        }
-      });
+      registerPreVerifyWorkerRoute(app, { providerType: "clerk" });
 
       app.post("/api/auth/complete-registration", async (req, res) => {
+        if (!isWorkerSelfRegistrationEnabled()) {
+          return res.status(403).json({
+            message: "Worker self-registration is not enabled. Please contact your administrator.",
+          });
+        }
         try {
           const auth = getAuth(req);
           if (!auth?.userId) {
@@ -529,80 +433,29 @@ export function createProvider(config: ClerkProviderConfig): AuthProvider {
               (p: any) => p.id === clerkUser.primaryPhoneNumberId
             )?.phoneNumber;
 
-          let user = await storage.users.getUserByEmail(primaryEmail || "");
-
-          if (!user && contact.email) {
-            user = await storage.users.getUserByEmail(contact.email);
-          }
-
-          if (!user) {
-            user = await storage.users.createUser({
-              email: primaryEmail || contact.email || "",
-              firstName: contact.given || clerkUser.firstName || "",
-              lastName: contact.family || clerkUser.lastName || "",
-              isActive: true,
-              accountStatus: "active",
+          let linkedUser: any;
+          let user: any;
+          try {
+            const linkResult = await linkWorkerToAuthIdentity({
+              providerType: "clerk",
+              externalId: auth.userId,
+              workerId: worker.id,
+              email: primaryEmail || contact.email || undefined,
+              firstName: clerkUser.firstName || undefined,
+              lastName: clerkUser.lastName || undefined,
+              profileImageUrl: clerkUser.imageUrl || undefined,
             });
-          } else if (!user.isActive) {
-            return res.status(403).json({
-              message: "Your account has been deactivated. Please contact your administrator.",
-            });
-          }
-
-          const workerRole = await storage.users.getRoleByName("worker");
-          if (workerRole) {
-            const currentRoles = await storage.users.getUserRoles(user.id);
-            if (!currentRoles.some((r) => r.id === workerRole.id)) {
-              await storage.users.assignRoleToUser({
-                userId: user.id,
-                roleId: workerRole.id,
+            linkedUser = linkResult.user;
+            user = linkResult.user;
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            if (message.includes("deactivated")) {
+              return res.status(403).json({
+                message: "Your account has been deactivated. Please contact your administrator.",
               });
             }
-          }
-
-          const requiredVariable = await storage.variables.getByName("worker_user_roles_required");
-          const requiredRoleIds: string[] = (
-            Array.isArray(requiredVariable?.value) ? requiredVariable.value : []
-          ) as string[];
-          const currentRoles = await storage.users.getUserRoles(user.id);
-          const currentRoleIds = currentRoles.map((r) => r.id);
-          for (const roleId of requiredRoleIds) {
-            if (!currentRoleIds.includes(roleId)) {
-              await storage.users.assignRoleToUser({ userId: user.id, roleId });
-            }
-          }
-
-          await storage.authIdentities.create({
-            userId: user.id,
-            providerType: "clerk",
-            externalId: auth.userId,
-            email: primaryEmail || contact.email || undefined,
-            displayName:
-              `${clerkUser.firstName || ""} ${clerkUser.lastName || ""}`.trim() || undefined,
-            profileImageUrl: clerkUser.imageUrl || undefined,
-            metadata: { workerId: worker.id },
-          });
-
-          const linkedUser = await storage.users.updateUser(user.id, {
-            email: primaryEmail || contact.email || undefined,
-            firstName: contact.given || clerkUser.firstName || "",
-            lastName: contact.family || clerkUser.lastName || "",
-            profileImageUrl: clerkUser.imageUrl || undefined,
-            accountStatus: "linked",
-          });
-
-          if (primaryEmail && primaryEmail !== contact.email) {
-            try {
-              await storage.contacts.updateEmail(worker.contactId, primaryEmail);
-              logger.info("Synced Clerk email to worker contact", {
-                workerId: worker.id,
-                contactId: worker.contactId,
-                previousEmail: contact.email || "(none)",
-                newEmail: primaryEmail,
-              });
-            } catch (emailErr) {
-              logger.warn("Failed to sync email to worker contact", { error: emailErr });
-            }
+            logger.error("Worker registration linking failed", { error: err });
+            return res.status(500).json({ message: "An unexpected error occurred. Please try again." });
           }
 
           if (primaryPhone) {
@@ -628,8 +481,6 @@ export function createProvider(config: ClerkProviderConfig): AuthProvider {
               logger.warn("Failed to sync phone to worker contact", { error: phoneErr });
             }
           }
-
-          await storage.users.updateUserLastLogin(user.id);
 
           delete (req.session as any).verifiedWorker;
           unlinkedUserCache.delete(auth.userId);

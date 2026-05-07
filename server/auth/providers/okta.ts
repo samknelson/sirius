@@ -1,7 +1,10 @@
 import * as client from "openid-client";
-import { Strategy, type VerifyFunction } from "openid-client/passport";
+import {
+  Strategy,
+  type VerifyFunctionWithRequest,
+} from "openid-client/passport";
 import passport from "passport";
-import type { Express, RequestHandler } from "express";
+import type { Express, Request, RequestHandler } from "express";
 import memoize from "memoizee";
 import type {
   AuthProvider,
@@ -11,6 +14,13 @@ import type {
 import { storage } from "../../storage";
 import { storageLogger, logger } from "../../logger";
 import { getRequestContext } from "../../middleware/request-context";
+import {
+  registerPreVerifyWorkerRoute,
+  linkWorkerToAuthIdentity,
+  isWorkerSelfRegistrationEnabled,
+  getVerifiedWorker,
+  clearVerifiedWorker,
+} from "../worker-provisioning";
 
 const STRATEGY_NAME = "okta";
 
@@ -85,7 +95,8 @@ function updateUserSession(
 }
 
 async function checkUserAccess(
-  claims: any
+  claims: any,
+  req?: Request
 ): Promise<{ allowed: boolean; user?: any }> {
   const externalId = claims["sub"];
   const email = claims["email"];
@@ -108,7 +119,7 @@ async function checkUserAccess(
     return { allowed: false };
   }
 
-  let identity = await storage.authIdentities.getByProviderAndExternalId(
+  const identity = await storage.authIdentities.getByProviderAndExternalId(
     "okta",
     externalId
   );
@@ -153,6 +164,72 @@ async function checkUserAccess(
       externalId,
     });
     return { allowed: false };
+  }
+
+  // Worker self-registration linking paths.
+  if (req && isWorkerSelfRegistrationEnabled()) {
+    const verified = getVerifiedWorker(req);
+    if (verified) {
+      try {
+        const result = await linkWorkerToAuthIdentity({
+          providerType: "okta",
+          externalId,
+          workerId: verified.workerId,
+          email,
+          firstName,
+          lastName,
+          profileImageUrl,
+        });
+        clearVerifiedWorker(req);
+        logger.info("Linked Okta identity to verified worker", {
+          workerId: verified.workerId,
+          userId: result.user.id,
+        });
+        logLoginEvent(result.user, externalId, true);
+        return { allowed: true, user: result.user };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (message.includes("deactivated")) {
+          logger.info("Okta verified-worker linking blocked: user deactivated", {
+            workerId: verified.workerId,
+          });
+          return { allowed: false };
+        }
+        logger.error("Okta verified-worker linking failed", {
+          workerId: verified.workerId,
+          error: err,
+        });
+        return { allowed: false };
+      }
+    }
+
+    // No verified-worker session — try to discover a worker by contact email.
+    try {
+      const worker = await storage.workers.getWorkerByContactEmail(email);
+      if (worker) {
+        const result = await linkWorkerToAuthIdentity({
+          providerType: "okta",
+          externalId,
+          workerId: worker.id,
+          email,
+          firstName,
+          lastName,
+          profileImageUrl,
+        });
+        logger.info("Linked Okta identity to worker via contact email match", {
+          workerId: worker.id,
+          userId: result.user.id,
+        });
+        logLoginEvent(result.user, externalId, true);
+        return { allowed: true, user: result.user };
+      }
+    } catch (err) {
+      logger.error("Okta email-based worker linking failed", {
+        email,
+        error: err,
+      });
+      // Fall through to admin-email path; do not block.
+    }
   }
 
   const user = await storage.users.getUserByEmail(email);
@@ -250,7 +327,8 @@ export function createProvider(config: OktaProviderConfig): AuthProvider {
 
       callbackUrl = getCallbackUrl(callbackPath);
 
-      const verify: VerifyFunction = async (
+      const verify: VerifyFunctionWithRequest = async (
+        req: Request,
         tokens: client.TokenEndpointResponse &
           client.TokenEndpointResponseHelpers,
         verified: passport.AuthenticateCallback
@@ -259,7 +337,7 @@ export function createProvider(config: OktaProviderConfig): AuthProvider {
           const user: any = {};
           updateUserSession(user, tokens);
 
-          const accessCheck = await checkUserAccess(tokens.claims());
+          const accessCheck = await checkUserAccess(tokens.claims(), req);
 
           if (!accessCheck.allowed) {
             return verified(
@@ -298,11 +376,14 @@ export function createProvider(config: OktaProviderConfig): AuthProvider {
           config: oidcConfig,
           scope: "openid email profile offline_access",
           callbackURL: callbackUrl,
+          passReqToCallback: true,
         },
         verify
       );
 
       passport.use(strategy);
+
+      registerPreVerifyWorkerRoute(app, { providerType: "okta" });
 
       app.get(callbackPath, (req, res, next) => {
         if (req.query.error) {

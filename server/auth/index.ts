@@ -13,6 +13,7 @@ import type {
 import type { AuthProviderType } from "@shared/schema";
 import { logger } from "../logger";
 import { loadProvider } from "./provider-loader";
+import { isWorkerSelfRegistrationEnabled } from "./worker-provisioning";
 
 const getStorage = () => require("../storage").storage;
 
@@ -213,7 +214,11 @@ export async function setupAuth(app: Express): Promise<void> {
       type: p.type,
       isDefault: providerRegistry.getDefault()?.type === p.type,
     }));
-    res.json({ providers, defaultProvider: config.defaultProvider });
+    res.json({
+      providers,
+      defaultProvider: config.defaultProvider,
+      workerRegistrationEnabled: isWorkerSelfRegistrationEnabled(),
+    });
   });
 
   logger.info("Auth system initialized", {

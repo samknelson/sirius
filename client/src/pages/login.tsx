@@ -10,23 +10,30 @@ const CLERK_ENABLED = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
 type ProviderInfo = { type: string; isDefault: boolean };
 
-function useEnabledProviders() {
+function useAuthProviders() {
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
+  const [workerRegistrationEnabled, setWorkerRegistrationEnabled] = useState(false);
   useEffect(() => {
     let cancelled = false;
     fetch('/api/auth/providers', { credentials: 'include' })
-      .then((r) => (r.ok ? r.json() : { providers: [] }))
+      .then((r) => (r.ok ? r.json() : { providers: [], workerRegistrationEnabled: false }))
       .then((data) => {
-        if (!cancelled) setProviders(data.providers || []);
+        if (!cancelled) {
+          setProviders(data.providers || []);
+          setWorkerRegistrationEnabled(!!data.workerRegistrationEnabled);
+        }
       })
       .catch(() => {
-        if (!cancelled) setProviders([]);
+        if (!cancelled) {
+          setProviders([]);
+          setWorkerRegistrationEnabled(false);
+        }
       });
     return () => {
       cancelled = true;
     };
   }, []);
-  return providers;
+  return { providers, workerRegistrationEnabled };
 }
 
 function ClerkNotProvisionedMessage() {
@@ -67,7 +74,7 @@ function ClerkNotProvisionedMessage() {
 export default function LoginPage() {
   const [, setLocation] = useLocation();
   const { login, isAuthenticated, isLoading } = useAuth();
-  const providers = useEnabledProviders();
+  const { providers, workerRegistrationEnabled } = useAuthProviders();
   const oktaEnabled = providers.some((p) => p.type === 'okta');
   const replitEnabled = providers.some((p) => p.type === 'replit');
   const samlEnabled = providers.some((p) => p.type === 'saml');
@@ -205,6 +212,28 @@ export default function LoginPage() {
                   <LogIn className="mr-2 h-5 w-5" />
                   Sign in with SAML
                 </Button>
+              )}
+              {oktaEnabled && workerRegistrationEnabled && (
+                <>
+                  <div className="relative">
+                    <div className="absolute inset-0 flex items-center">
+                      <span className="w-full border-t" />
+                    </div>
+                    <div className="relative flex justify-center text-xs uppercase">
+                      <span className="bg-card px-2 text-muted-foreground">or</span>
+                    </div>
+                  </div>
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    size="lg"
+                    onClick={() => setLocation('/register')}
+                    data-testid="button-login-register"
+                  >
+                    <UserPlus className="mr-2 h-5 w-5" />
+                    Register as a Worker
+                  </Button>
+                </>
               )}
             </>
           )}
