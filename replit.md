@@ -71,7 +71,7 @@ The frontend is built with React 18, TypeScript, Vite, Shadcn/ui (based on Radix
 ## Technical Implementations
 -   **Frontend**: React 18, TypeScript, Vite, Wouter for routing, TanStack Query for server state management, and React Hook Form with Zod for form validation. Pages are lazy-loaded for performance.
 -   **Backend**: Express.js with TypeScript, providing a RESTful API structured with feature-based modules.
--   **Authentication**: Supports multi-provider authentication (Replit Auth, Okta, SAML/OAuth, Clerk, local username/password) with environment-driven configuration and masquerade capabilities.
+-   **Authentication**: Supports multi-provider authentication (Replit Auth, Okta OIDC, SAML/OAuth, Clerk, local username/password) with environment-driven configuration and masquerade capabilities. Providers are listed in `AUTH_PROVIDER` (comma-separated). If a listed provider is missing required env vars, startup fails loudly — no silent fallback. Each external provider uses an explicit per-provider callback path (`/api/auth/<provider>/callback`, e.g. `/api/auth/okta/callback`, `/api/auth/saml/callback`) registered with the IdP; `/api/login?provider=<type>` initiates the flow and `/api/logout` honors the active provider's end-session URL. The login UI is fully provider-driven from `GET /api/auth/providers` — only enabled providers are surfaced.
 -   **Access Control**: Implements a modular, entity-based policy architecture with server-side LRU caching.
 -   **Logging**: Winston logging is integrated with a PostgreSQL backend to maintain audit trails.
 -   **Data Storage**: PostgreSQL (Neon Database) is managed using Drizzle ORM.

@@ -92,15 +92,21 @@ function parseProviderFromEnv(type: AuthProviderType): ProviderConfig | null {
       const issuerUrl = process.env.OKTA_ISSUER_URL;
       const clientId = process.env.OKTA_CLIENT_ID;
       const clientSecret = process.env.OKTA_CLIENT_SECRET;
-      if (!issuerUrl || !clientId || !clientSecret) {
-        return null;
+      const missing: string[] = [];
+      if (!issuerUrl) missing.push("OKTA_ISSUER_URL");
+      if (!clientId) missing.push("OKTA_CLIENT_ID");
+      if (!clientSecret) missing.push("OKTA_CLIENT_SECRET");
+      if (missing.length > 0) {
+        throw new Error(
+          `Auth provider "okta" is enabled in AUTH_PROVIDER but required environment variables are missing: ${missing.join(", ")}`
+        );
       }
       const config: OktaProviderConfig = {
         type: "okta",
         enabled: true,
-        issuerUrl,
-        clientId,
-        clientSecret,
+        issuerUrl: issuerUrl!,
+        clientId: clientId!,
+        clientSecret: clientSecret!,
         callbackPath: process.env.OKTA_CALLBACK_PATH,
       };
       return config;

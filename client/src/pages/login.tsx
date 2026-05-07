@@ -69,6 +69,8 @@ export default function LoginPage() {
   const { login, isAuthenticated, isLoading } = useAuth();
   const providers = useEnabledProviders();
   const oktaEnabled = providers.some((p) => p.type === 'okta');
+  const replitEnabled = providers.some((p) => p.type === 'replit');
+  const samlEnabled = providers.some((p) => p.type === 'saml');
 
   useEffect(() => {
     if (isAuthenticated && !isLoading) {
@@ -147,27 +149,48 @@ export default function LoginPage() {
             </>
           ) : (
             <>
-              <Button
-                onClick={login}
-                className="w-full"
-                size="lg"
-                data-testid="button-login"
-              >
-                <LogIn className="mr-2 h-5 w-5" />
-                Sign in with Replit
-              </Button>
+              {providers.length === 0 && (
+                <div className="p-4 bg-muted rounded-lg text-sm text-center text-muted-foreground" data-testid="text-no-providers">
+                  No sign-in providers are configured. Please contact your administrator.
+                </div>
+              )}
+              {replitEnabled && (
+                <Button
+                  onClick={login}
+                  className="w-full"
+                  size="lg"
+                  data-testid="button-login"
+                >
+                  <LogIn className="mr-2 h-5 w-5" />
+                  Sign in with Replit
+                </Button>
+              )}
               {oktaEnabled && (
                 <Button
                   onClick={() => {
                     window.location.href = '/api/login?provider=okta';
                   }}
-                  variant="outline"
+                  variant={replitEnabled ? 'outline' : 'default'}
                   className="w-full"
                   size="lg"
                   data-testid="button-login-okta"
                 >
                   <LogIn className="mr-2 h-5 w-5" />
                   Sign in with Okta
+                </Button>
+              )}
+              {samlEnabled && (
+                <Button
+                  onClick={() => {
+                    window.location.href = '/api/login?provider=saml';
+                  }}
+                  variant="outline"
+                  className="w-full"
+                  size="lg"
+                  data-testid="button-login-saml"
+                >
+                  <LogIn className="mr-2 h-5 w-5" />
+                  Sign in with SAML
                 </Button>
               )}
             </>
