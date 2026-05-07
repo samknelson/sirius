@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useLocation } from 'wouter';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -7,6 +7,27 @@ import { Loader2, LogIn, LogOut, UserPlus } from 'lucide-react';
 import { SignIn, SignedIn, SignedOut, useClerk } from '@clerk/clerk-react';
 
 const CLERK_ENABLED = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+
+type ProviderInfo = { type: string; isDefault: boolean };
+
+function useEnabledProviders() {
+  const [providers, setProviders] = useState<ProviderInfo[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/auth/providers', { credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : { providers: [] }))
+      .then((data) => {
+        if (!cancelled) setProviders(data.providers || []);
+      })
+      .catch(() => {
+        if (!cancelled) setProviders([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  return providers;
+}
 
 function ClerkNotProvisionedMessage() {
   const [, setLocation] = useLocation();
@@ -46,6 +67,8 @@ function ClerkNotProvisionedMessage() {
 export default function LoginPage() {
   const [, setLocation] = useLocation();
   const { login, isAuthenticated, isLoading } = useAuth();
+  const providers = useEnabledProviders();
+  const oktaEnabled = providers.some((p) => p.type === 'okta');
 
   useEffect(() => {
     if (isAuthenticated && !isLoading) {
@@ -123,15 +146,31 @@ export default function LoginPage() {
               </SignedIn>
             </>
           ) : (
-            <Button
-              onClick={login}
-              className="w-full"
-              size="lg"
-              data-testid="button-login"
-            >
-              <LogIn className="mr-2 h-5 w-5" />
-              Sign in with Replit
-            </Button>
+            <>
+              <Button
+                onClick={login}
+                className="w-full"
+                size="lg"
+                data-testid="button-login"
+              >
+                <LogIn className="mr-2 h-5 w-5" />
+                Sign in with Replit
+              </Button>
+              {oktaEnabled && (
+                <Button
+                  onClick={() => {
+                    window.location.href = '/api/login?provider=okta';
+                  }}
+                  variant="outline"
+                  className="w-full"
+                  size="lg"
+                  data-testid="button-login-okta"
+                >
+                  <LogIn className="mr-2 h-5 w-5" />
+                  Sign in with Okta
+                </Button>
+              )}
+            </>
           )}
 
           <div className="mt-4 p-4 bg-muted rounded-lg">

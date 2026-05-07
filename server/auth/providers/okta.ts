@@ -1,0 +1,439 @@
+import * as client from "openid-client";
+import { Strategy, type VerifyFunction } from "openid-client/passport";
+import passport from "passport";
+import type { Express, RequestHandler } from "express";
+import memoize from "memoizee";
+import type {
+  AuthProvider,
+  OktaProviderConfig,
+  AuthenticatedUser,
+} from "../types";
+import { storage } from "../../storage";
+import { storageLogger, logger } from "../../logger";
+import { getRequestContext } from "../../middleware/request-context";
+
+const STRATEGY_NAME = "okta";
+
+const getOidcConfig = memoize(
+  async (issuerUrl: string, clientId: string, clientSecret: string) => {
+    return await client.discovery(
+      new URL(issuerUrl),
+      clientId,
+      clientSecret
+    );
+  },
+  { maxAge: 3600 * 1000 }
+);
+
+function getCallbackUrl(callbackPath: string): string {
+  const explicit = process.env.OKTA_CALLBACK_URL;
+  if (explicit) return explicit;
+
+  const host =
+    process.env.REPLIT_DEV_DOMAIN ||
+    (process.env.REPLIT_DOMAINS
+      ? process.env.REPLIT_DOMAINS.split(",")[0].trim()
+      : undefined);
+
+  if (!host) {
+    throw new Error(
+      "Okta provider: cannot determine callback URL. Set OKTA_CALLBACK_URL or run in a Replit environment with REPLIT_DEV_DOMAIN/REPLIT_DOMAINS."
+    );
+  }
+
+  return `https://${host}${callbackPath}`;
+}
+
+function updateUserSession(
+  user: any,
+  tokens: client.TokenEndpointResponse & client.TokenEndpointResponseHelpers
+) {
+  user.claims = tokens.claims();
+  user.access_token = tokens.access_token;
+  user.refresh_token = tokens.refresh_token;
+  user.id_token = (tokens as any).id_token;
+  user.expires_at = user.claims?.exp;
+  user.providerType = "okta";
+}
+
+async function checkUserAccess(
+  claims: any
+): Promise<{ allowed: boolean; user?: any }> {
+  const externalId = claims["sub"];
+  const email = claims["email"];
+  const firstName =
+    claims["given_name"] || claims["first_name"] || undefined;
+  const lastName =
+    claims["family_name"] || claims["last_name"] || undefined;
+  const profileImageUrl =
+    claims["picture"] || claims["profile_image_url"] || undefined;
+
+  logger.info("Okta auth attempt", {
+    externalId,
+    email,
+    firstName,
+    lastName,
+  });
+
+  if (!externalId) {
+    logger.warn("Okta token missing sub claim");
+    return { allowed: false };
+  }
+
+  let identity = await storage.authIdentities.getByProviderAndExternalId(
+    "okta",
+    externalId
+  );
+
+  if (identity) {
+    const user = await storage.users.getUser(identity.userId);
+    if (!user) {
+      logger.warn("Okta auth identity found but user missing", {
+        identityId: identity.id,
+      });
+      return { allowed: false };
+    }
+
+    if (!user.isActive) {
+      logger.info("User account is inactive", { userId: user.id });
+      return { allowed: false };
+    }
+
+    await storage.authIdentities.update(identity.id, {
+      email,
+      displayName:
+        `${firstName || ""} ${lastName || ""}`.trim() || undefined,
+      profileImageUrl,
+    });
+    await storage.authIdentities.updateLastUsed(identity.id);
+
+    const updatedUser = await storage.users.updateUser(user.id, {
+      email,
+      firstName,
+      lastName,
+      profileImageUrl,
+    });
+
+    await storage.users.updateUserLastLogin(user.id);
+    logLoginEvent(updatedUser, externalId, false);
+
+    return { allowed: true, user: updatedUser };
+  }
+
+  if (!email) {
+    logger.info("Okta token missing email; cannot link account", {
+      externalId,
+    });
+    return { allowed: false };
+  }
+
+  const user = await storage.users.getUserByEmail(email);
+
+  if (!user) {
+    logger.info("No provisioned account found for Okta email", { email });
+    return { allowed: false };
+  }
+
+  if (!user.isActive) {
+    logger.info("User account is inactive", { userId: user.id });
+    return { allowed: false };
+  }
+
+  logger.info("Linking Okta account to provisioned user", {
+    userId: user.id,
+    email,
+  });
+
+  await storage.authIdentities.create({
+    userId: user.id,
+    providerType: "okta",
+    externalId,
+    email,
+    displayName:
+      `${firstName || ""} ${lastName || ""}`.trim() || undefined,
+    profileImageUrl,
+  });
+
+  const linkedUser = await storage.users.updateUser(user.id, {
+    email,
+    firstName,
+    lastName,
+    profileImageUrl,
+    accountStatus: "linked",
+  });
+
+  await storage.users.updateUserLastLogin(user.id);
+  logLoginEvent(linkedUser, externalId, true);
+
+  return { allowed: true, user: linkedUser };
+}
+
+function logLoginEvent(user: any, externalId: string, accountLinked: boolean) {
+  const userName =
+    user.firstName && user.lastName
+      ? `${user.firstName} ${user.lastName}`
+      : user.email;
+
+  setImmediate(() => {
+    const context = getRequestContext();
+    storageLogger.info("Authentication event: login", {
+      module: "auth",
+      operation: "login",
+      entity_id: user.id,
+      description: accountLinked
+        ? `User logged in (account linked): ${userName}`
+        : `User logged in: ${userName}`,
+      user_id: user.id,
+      user_email: user.email,
+      ip_address: context?.ipAddress,
+      meta: {
+        userId: user.id,
+        email: user.email,
+        externalId,
+        accountLinked,
+        provider: "okta",
+      },
+    });
+  });
+}
+
+export function createProvider(config: OktaProviderConfig): AuthProvider {
+  const callbackPath = config.callbackPath || "/api/auth/okta/callback";
+  let oidcConfig: Awaited<ReturnType<typeof getOidcConfig>> | null = null;
+  let callbackUrl: string = "";
+
+  return {
+    type: "okta",
+
+    async setup(app: Express): Promise<void> {
+      try {
+        oidcConfig = await getOidcConfig(
+          config.issuerUrl,
+          config.clientId,
+          config.clientSecret
+        );
+      } catch (err) {
+        logger.error("Failed to discover Okta OIDC issuer", {
+          issuerUrl: config.issuerUrl,
+          error: err,
+        });
+        throw err;
+      }
+
+      callbackUrl = getCallbackUrl(callbackPath);
+
+      const verify: VerifyFunction = async (
+        tokens: client.TokenEndpointResponse &
+          client.TokenEndpointResponseHelpers,
+        verified: passport.AuthenticateCallback
+      ) => {
+        try {
+          const user: any = {};
+          updateUserSession(user, tokens);
+
+          const accessCheck = await checkUserAccess(tokens.claims());
+
+          if (!accessCheck.allowed) {
+            return verified(
+              new Error(
+                "Access denied. Please contact an administrator to set up your account."
+              ),
+              false
+            );
+          }
+
+          user.dbUser = accessCheck.user;
+          verified(null, user);
+        } catch (err) {
+          logger.error("Okta verify callback error", { error: err });
+          verified(err as Error);
+        }
+      };
+
+      const strategy = new Strategy(
+        {
+          name: STRATEGY_NAME,
+          config: oidcConfig,
+          scope: "openid email profile offline_access",
+          callbackURL: callbackUrl,
+        },
+        verify
+      );
+
+      passport.use(strategy);
+
+      app.get(callbackPath, (req, res, next) => {
+        passport.authenticate(STRATEGY_NAME, {
+          successReturnToOrRedirect: "/",
+          failureRedirect: "/auth-error?error=okta_failed",
+        })(req, res, (err: any) => {
+          if (err) {
+            logger.error("Okta callback error", { error: err?.message });
+            return res.redirect("/auth-error?error=okta_callback_failed");
+          }
+          next();
+        });
+      });
+
+      logger.info("Okta auth provider initialized", {
+        issuerUrl: config.issuerUrl,
+        callbackUrl,
+      });
+    },
+
+    getLoginHandler(): RequestHandler {
+      return (req, res, next) => {
+        passport.authenticate(STRATEGY_NAME, {
+          scope: ["openid", "email", "profile", "offline_access"],
+          prompt: "login",
+        } as any)(req, res, next);
+      };
+    },
+
+    getCallbackHandler(): RequestHandler {
+      return (req, res, next) => {
+        passport.authenticate(STRATEGY_NAME, {
+          successReturnToOrRedirect: "/",
+          failureRedirect: "/auth-error?error=okta_failed",
+        })(req, res, (err: any) => {
+          if (err) {
+            logger.error("Okta callback error", { error: err?.message });
+            return res.redirect("/auth-error?error=okta_callback_failed");
+          }
+          next();
+        });
+      };
+    },
+
+    getLogoutHandler(): RequestHandler {
+      return async (req, res) => {
+        const user = req.user as AuthenticatedUser | undefined;
+        const session = req.session as any;
+        let logData: {
+          userId?: string;
+          email?: string;
+          firstName?: string;
+          lastName?: string;
+          wasMasquerading?: boolean;
+        } | null = null;
+        const idToken = (user as any)?.id_token;
+
+        if (user?.claims?.sub) {
+          try {
+            const externalId = user.claims.sub;
+            const wasMasquerading = !!session?.masqueradeUserId;
+
+            let dbUser = user.dbUser;
+            if (session?.masqueradeUserId) {
+              dbUser = await storage.users.getUser(session.masqueradeUserId);
+            } else if (!dbUser) {
+              const identity =
+                await storage.authIdentities.getByProviderAndExternalId(
+                  "okta",
+                  externalId
+                );
+              if (identity) {
+                dbUser = await storage.users.getUser(identity.userId);
+              }
+            }
+
+            if (dbUser) {
+              logData = {
+                userId: dbUser.id,
+                email: dbUser.email,
+                firstName: dbUser.firstName || undefined,
+                lastName: dbUser.lastName || undefined,
+                wasMasquerading,
+              };
+            }
+          } catch (error) {
+            logger.error("Error capturing Okta logout user info", { error });
+          }
+        }
+
+        req.logout(() => {
+          if (logData) {
+            setImmediate(() => {
+              const name =
+                logData!.firstName && logData!.lastName
+                  ? `${logData!.firstName} ${logData!.lastName}`
+                  : logData!.email;
+              const context = getRequestContext();
+              storageLogger.info("Authentication event: logout", {
+                module: "auth",
+                operation: "logout",
+                entity_id: logData!.userId,
+                description: `User logged out: ${name}`,
+                user_id: logData!.userId,
+                user_email: logData!.email,
+                ip_address: context?.ipAddress,
+                meta: {
+                  userId: logData!.userId,
+                  email: logData!.email,
+                  wasMasquerading: logData!.wasMasquerading,
+                  provider: "okta",
+                },
+              });
+            });
+          }
+
+          const destroy = () => {
+            if (req.session) {
+              req.session.destroy(() => {
+                redirectAfterLogout();
+              });
+            } else {
+              redirectAfterLogout();
+            }
+          };
+
+          const redirectAfterLogout = () => {
+            if (oidcConfig) {
+              try {
+                const postLogoutRedirectUri = `${req.protocol}://${req.hostname}`;
+                const endSessionUrl = client.buildEndSessionUrl(oidcConfig, {
+                  client_id: config.clientId,
+                  post_logout_redirect_uri: postLogoutRedirectUri,
+                  ...(idToken ? { id_token_hint: idToken } : {}),
+                });
+                return res.redirect(endSessionUrl.href);
+              } catch (err) {
+                logger.warn(
+                  "Okta end-session URL build failed; redirecting locally",
+                  { error: err }
+                );
+              }
+            }
+            res.redirect("/");
+          };
+
+          destroy();
+        });
+      };
+    },
+
+    async refreshToken(
+      user: AuthenticatedUser
+    ): Promise<AuthenticatedUser | null> {
+      if (!user.refresh_token || !oidcConfig) {
+        return null;
+      }
+      try {
+        const tokenResponse = await client.refreshTokenGrant(
+          oidcConfig,
+          user.refresh_token
+        );
+        return {
+          ...user,
+          claims: tokenResponse.claims() as AuthenticatedUser["claims"],
+          access_token: tokenResponse.access_token,
+          refresh_token: tokenResponse.refresh_token || user.refresh_token,
+          expires_at: tokenResponse.claims()?.exp,
+        };
+      } catch (error) {
+        logger.error("Failed to refresh Okta token", { error });
+        return null;
+      }
+    },
+  };
+}

@@ -12,6 +12,11 @@ const loadSamlProvider = async (): Promise<ProviderModule> => {
   return samlProvider as ProviderModule;
 };
 
+const loadOktaProvider = async (): Promise<ProviderModule> => {
+  const oktaProvider = await import("./providers/okta");
+  return oktaProvider as ProviderModule;
+};
+
 const loadClerkProvider = async (): Promise<ProviderModule> => {
   const clerkProvider = await import("./providers/clerk");
   return clerkProvider as ProviderModule;
@@ -21,8 +26,13 @@ export async function loadProvider(config: AuthProviderConfig): Promise<AuthProv
   if (config.type === "replit") {
     return (replitProvider as ProviderModule).createProvider(config);
   }
-  
-  if (config.type === "saml" || config.type === "okta" || config.type === "oauth") {
+
+  if (config.type === "okta") {
+    const oktaProvider = await loadOktaProvider();
+    return oktaProvider.createProvider(config);
+  }
+
+  if (config.type === "saml" || config.type === "oauth") {
     const samlProvider = await loadSamlProvider();
     return samlProvider.createProvider(config);
   }
