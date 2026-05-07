@@ -25,10 +25,16 @@ const getOidcConfig = memoize(
   { maxAge: 3600 * 1000 }
 );
 
-function getCallbackUrl(callbackPath: string): string {
+function getCanonicalOrigin(): string {
   const explicit = process.env.OKTA_CALLBACK_URL;
-  if (explicit) return explicit;
-
+  if (explicit) {
+    try {
+      const u = new URL(explicit);
+      return `${u.protocol}//${u.host}`;
+    } catch {
+      // fall through
+    }
+  }
   const host =
     process.env.REPLIT_DEV_DOMAIN ||
     (process.env.REPLIT_DOMAINS
@@ -37,11 +43,33 @@ function getCallbackUrl(callbackPath: string): string {
 
   if (!host) {
     throw new Error(
-      "Okta provider: cannot determine callback URL. Set OKTA_CALLBACK_URL or run in a Replit environment with REPLIT_DEV_DOMAIN/REPLIT_DOMAINS."
+      "Okta provider: cannot determine canonical origin. Set OKTA_CALLBACK_URL or run in a Replit environment with REPLIT_DEV_DOMAIN/REPLIT_DOMAINS."
     );
   }
+  return `https://${host}`;
+}
 
-  return `https://${host}${callbackPath}`;
+function getCallbackUrl(callbackPath: string): string {
+  const explicit = process.env.OKTA_CALLBACK_URL;
+  if (explicit) {
+    try {
+      const u = new URL(explicit);
+      if (u.pathname !== callbackPath) {
+        throw new Error(
+          `Okta provider: OKTA_CALLBACK_URL path "${u.pathname}" does not match configured callbackPath "${callbackPath}". Set OKTA_CALLBACK_PATH to match, or remove OKTA_CALLBACK_URL.`
+        );
+      }
+      return explicit;
+    } catch (err) {
+      if (err instanceof Error && err.message.startsWith("Okta provider:")) {
+        throw err;
+      }
+      throw new Error(
+        `Okta provider: OKTA_CALLBACK_URL is not a valid URL: ${explicit}`
+      );
+    }
+  }
+  return `${getCanonicalOrigin()}${callbackPath}`;
 }
 
 function updateUserSession(
@@ -390,7 +418,7 @@ export function createProvider(config: OktaProviderConfig): AuthProvider {
           const redirectAfterLogout = () => {
             if (oidcConfig) {
               try {
-                const postLogoutRedirectUri = `${req.protocol}://${req.hostname}`;
+                const postLogoutRedirectUri = getCanonicalOrigin();
                 const endSessionUrl = client.buildEndSessionUrl(oidcConfig, {
                   client_id: config.clientId,
                   post_logout_redirect_uri: postLogoutRedirectUri,
