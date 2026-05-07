@@ -34,6 +34,14 @@ export function clearVerifiedWorker(req: Request): void {
   }
 }
 
+export async function clearVerifiedWorkerAndSave(req: Request): Promise<void> {
+  if (!req.session) return;
+  delete (req.session as any).verifiedWorker;
+  await new Promise<void>((resolve, reject) => {
+    req.session.save((err) => (err ? reject(err) : resolve()));
+  });
+}
+
 export interface LinkWorkerArgs {
   providerType: AuthProviderType;
   externalId: string;

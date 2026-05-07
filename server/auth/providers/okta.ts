@@ -20,6 +20,7 @@ import {
   isWorkerSelfRegistrationEnabled,
   getVerifiedWorker,
   clearVerifiedWorker,
+  clearVerifiedWorkerAndSave,
 } from "../worker-provisioning";
 import { createOktaUserAndSendActivation } from "../okta-admin";
 
@@ -482,6 +483,10 @@ export function createProvider(config: OktaProviderConfig): AuthProvider {
           });
         }
         try {
+          logger.info("Okta worker registration: complete-registration called", {
+            hasVerifiedWorker: !!getVerifiedWorker(req),
+            hasEmailInBody: !!req.body?.email,
+          });
           const verified = getVerifiedWorker(req);
           if (!verified) {
             return res.status(400).json({
@@ -577,7 +582,7 @@ export function createProvider(config: OktaProviderConfig): AuthProvider {
             });
           }
 
-          clearVerifiedWorker(req);
+          await clearVerifiedWorkerAndSave(req);
 
           logger.info(
             "Created Okta user for worker; activation email dispatched by Okta",
