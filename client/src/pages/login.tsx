@@ -143,25 +143,29 @@ export default function LoginPage() {
                   }}
                 />
 
-                <div className="relative">
-                  <div className="absolute inset-0 flex items-center">
-                    <span className="w-full border-t" />
-                  </div>
-                  <div className="relative flex justify-center text-xs uppercase">
-                    <span className="bg-card px-2 text-muted-foreground">or</span>
-                  </div>
-                </div>
+                {workerRegistrationEnabled && (
+                  <>
+                    <div className="relative">
+                      <div className="absolute inset-0 flex items-center">
+                        <span className="w-full border-t" />
+                      </div>
+                      <div className="relative flex justify-center text-xs uppercase">
+                        <span className="bg-card px-2 text-muted-foreground">or</span>
+                      </div>
+                    </div>
 
-                <Button
-                  variant="outline"
-                  className="w-full"
-                  size="lg"
-                  onClick={() => setLocation("/register")}
-                  data-testid="button-login-register"
-                >
-                  <UserPlus className="mr-2 h-5 w-5" />
-                  Register as a Worker
-                </Button>
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      size="lg"
+                      onClick={() => setLocation("/register")}
+                      data-testid="button-login-register"
+                    >
+                      <UserPlus className="mr-2 h-5 w-5" />
+                      Register as a Worker
+                    </Button>
+                  </>
+                )}
               </SignedOut>
               <SignedIn>
                 <ClerkNotProvisionedMessage />

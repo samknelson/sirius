@@ -54,18 +54,85 @@ export default function RegisterPage() {
     );
   }
 
-  const oktaEnabled = providers.some((p) => p.type === "okta");
+  // Pick active provider from /api/auth/providers (default first, else first listed).
+  const activeProvider =
+    providers.find((p) => p.isDefault)?.type || providers[0]?.type || null;
 
-  if (!workerRegistrationEnabled || (!CLERK_ENABLED && !oktaEnabled)) {
-    setTimeout(() => setLocation("/login"), 0);
-    return null;
+  if (!workerRegistrationEnabled) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-900 p-4">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <div className="flex justify-center mb-2">
+              <div className="p-3 bg-muted rounded-full">
+                <AlertCircle className="h-6 w-6 text-muted-foreground" />
+              </div>
+            </div>
+            <CardTitle className="text-2xl font-bold" data-testid="text-register-disabled-title">
+              Registration Unavailable
+            </CardTitle>
+            <CardDescription>
+              Worker self-registration is currently disabled. Please contact
+              your administrator for help getting an account.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              onClick={() => setLocation("/login")}
+              data-testid="button-register-back"
+            >
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back to Sign In
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
   }
 
-  if (CLERK_ENABLED) {
+  if (activeProvider === "clerk" && CLERK_ENABLED) {
     return <ClerkRegisterFlow />;
   }
 
-  return <OktaRegisterFlow />;
+  if (activeProvider === "okta") {
+    return <OktaRegisterFlow />;
+  }
+
+  return (
+    <div className="flex items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-900 p-4">
+      <Card className="w-full max-w-md">
+        <CardHeader className="text-center">
+          <div className="flex justify-center mb-2">
+            <div className="p-3 bg-muted rounded-full">
+              <AlertCircle className="h-6 w-6 text-muted-foreground" />
+            </div>
+          </div>
+          <CardTitle className="text-2xl font-bold" data-testid="text-register-unsupported-title">
+            Registration Unavailable
+          </CardTitle>
+          <CardDescription>
+            The active sign-in provider does not support worker
+            self-registration. Please contact your administrator.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full"
+            onClick={() => setLocation("/login")}
+            data-testid="button-register-back"
+          >
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to Sign In
+          </Button>
+        </CardContent>
+      </Card>
+    </div>
+  );
 }
 
 function VerifyForm({
