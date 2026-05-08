@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { Plus, Loader2, ArrowUpDown, ArrowUp, ArrowDown, Search, ExternalLink } from 'lucide-react';
+import { Plus, Loader2, ArrowUpDown, ArrowUp, ArrowDown, Search, ExternalLink, KeyRound } from 'lucide-react';
 import { Link } from 'wouter';
 import { Role } from '@/lib/entity-types';
 import { User } from '@/lib/user-types';
@@ -41,6 +41,33 @@ export default function UsersManagement() {
 
   const { data: allRoles = [] } = useQuery<Role[]>({
     queryKey: ['/api/admin/roles'],
+  });
+
+  const { data: providersData } = useQuery<{ providers: { type: string }[] }>({
+    queryKey: ['/api/auth/providers'],
+  });
+  const oktaActive = !!providersData?.providers?.some((p) => p.type === 'okta');
+
+  const credentialOktaMutation = useMutation({
+    mutationFn: async (userId: string) => {
+      return await apiRequest('POST', `/api/admin/users/${userId}/credential-okta`);
+    },
+    onSuccess: (resp: any) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/users'] });
+      toast({
+        title: 'Okta Credentialing',
+        description: resp?.message || 'Okta credentialing complete.',
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Okta Credentialing Failed',
+        description:
+          error?.message?.replace(/^\d+:\s*/, '') ||
+          'Failed to credential user in Okta.',
+        variant: 'destructive',
+      });
+    },
   });
 
   // Filter and sort users
@@ -394,16 +421,33 @@ export default function UsersManagement() {
                   {user.lastLogin ? new Date(user.lastLogin).toLocaleDateString() : 'Never'}
                 </TableCell>
                 <TableCell className="text-right">
-                  <Link to={`/users/${user.id}`}>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      data-testid={`button-view-account-${user.id}`}
-                    >
-                      <ExternalLink className="h-4 w-4 mr-2" />
-                      View Account
-                    </Button>
-                  </Link>
+                  <div className="flex justify-end gap-2">
+                    {oktaActive && user.email && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => credentialOktaMutation.mutate(user.id)}
+                        disabled={
+                          credentialOktaMutation.isPending &&
+                          credentialOktaMutation.variables === user.id
+                        }
+                        data-testid={`button-credential-okta-${user.id}`}
+                      >
+                        <KeyRound className="h-4 w-4 mr-2" />
+                        Credential in Okta
+                      </Button>
+                    )}
+                    <Link to={`/users/${user.id}`}>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        data-testid={`button-view-account-${user.id}`}
+                      >
+                        <ExternalLink className="h-4 w-4 mr-2" />
+                        View Account
+                      </Button>
+                    </Link>
+                  </div>
                 </TableCell>
               </TableRow>
             ))}

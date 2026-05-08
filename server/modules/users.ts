@@ -8,6 +8,11 @@ import {
 } from "@shared/schema";
 import { requireAccess, clearAccessCache } from "../services/access-policy-evaluator";
 import { checkClerkConflict, provisionClerkAccount } from "../services/clerk-provisioning";
+import {
+  credentialUserInOkta,
+  OktaCredentialingError,
+} from "../services/okta-credentialing";
+import { isOktaProviderActive } from "../auth/okta-admin";
 
 // Type for middleware functions that we'll accept from the main routes
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -185,6 +190,41 @@ export function registerUserRoutes(
       });
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch user details" });
+    }
+  });
+
+  // POST /api/admin/users/:id/credential-okta - Admin-driven Okta credentialing for a Sirius user
+  app.post("/api/admin/users/:id/credential-okta", requireAccess('admin'), async (req, res) => {
+    try {
+      if (!isOktaProviderActive()) {
+        return res.status(400).json({
+          message: "Okta is not the active authentication provider for this tenant.",
+        });
+      }
+      const { id } = req.params;
+      const user = await storage.users.getUser(id);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      if (!user.email) {
+        return res.status(400).json({
+          message: "User must have an email address before credentialing in Okta.",
+        });
+      }
+      const result = await credentialUserInOkta({
+        userId: user.id,
+        persona: "staff",
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+      });
+      res.json(result);
+    } catch (error) {
+      if (error instanceof OktaCredentialingError) {
+        return res.status(error.status).json({ message: error.message });
+      }
+      console.error("Error credentialing user in Okta:", error);
+      res.status(500).json({ message: "Failed to credential user in Okta" });
     }
   });
 

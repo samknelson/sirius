@@ -3,6 +3,11 @@ import { storage } from "../storage";
 import { insertContactSchema, type InsertContact } from "@shared/schema";
 import { requireAccess } from "../services/access-policy-evaluator";
 import { checkClerkConflict, provisionClerkAccount } from "../services/clerk-provisioning";
+import {
+  credentialUserInOkta,
+  OktaCredentialingError,
+} from "../services/okta-credentialing";
+import { isOktaProviderActive } from "../auth/okta-admin";
 import { z } from "zod";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -450,6 +455,52 @@ export function registerEmployerContactRoutes(
     } catch (error) {
       console.error("Error creating/updating employer contact user:", error);
       res.status(500).json({ message: "Failed to create or update user" });
+    }
+  });
+
+  // POST /api/employer-contacts/:contactId/credential-okta - Admin-driven Okta credentialing
+  app.post("/api/employer-contacts/:contactId/credential-okta", requireAccess('employer.manage', getEmployerIdFromContactId), async (req, res) => {
+    try {
+      if (!isOktaProviderActive()) {
+        return res.status(400).json({
+          message: "Okta is not the active authentication provider for this tenant.",
+        });
+      }
+
+      const { contactId } = req.params;
+      const employerContact = await storage.employerContacts.get(contactId);
+      if (!employerContact) {
+        return res.status(404).json({ message: "Employer contact not found" });
+      }
+      const email = employerContact.contact.email?.trim();
+      if (!email) {
+        return res.status(400).json({
+          message: "Contact must have an email address before credentialing in Okta.",
+        });
+      }
+
+      const user = await storage.users.getUserByEmail(email);
+      if (!user) {
+        return res.status(400).json({
+          message: "Create the Sirius user account first, then credential it in Okta.",
+        });
+      }
+
+      const result = await credentialUserInOkta({
+        userId: user.id,
+        persona: "employer",
+        email,
+        firstName: user.firstName || employerContact.contact.given,
+        lastName: user.lastName || employerContact.contact.family,
+      });
+
+      res.json(result);
+    } catch (error) {
+      if (error instanceof OktaCredentialingError) {
+        return res.status(error.status).json({ message: error.message });
+      }
+      console.error("Error credentialing employer contact in Okta:", error);
+      res.status(500).json({ message: "Failed to credential user in Okta" });
     }
   });
 

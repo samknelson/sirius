@@ -12,7 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { UserPlus, Save, AlertCircle, CheckCircle2 } from "lucide-react";
+import { UserPlus, Save, AlertCircle, CheckCircle2, KeyRound } from "lucide-react";
 import { Role } from "@/lib/entity-types";
 
 interface EmployerContactUserResponse {
@@ -50,6 +50,39 @@ function EmployerContactUserContent() {
   // Fetch all roles to display names
   const { data: allRoles = [] } = useQuery<Role[]>({
     queryKey: ["/api/admin/roles"],
+  });
+
+  // Active auth providers (used to gate the Okta credentialing button)
+  const { data: providersData } = useQuery<{ providers: { type: string }[] }>({
+    queryKey: ["/api/auth/providers"],
+  });
+  const oktaActive = !!providersData?.providers?.some((p) => p.type === "okta");
+
+  const credentialOktaMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest(
+        "POST",
+        `/api/employer-contacts/${employerContact.id}/credential-okta`,
+      );
+    },
+    onSuccess: (resp: any) => {
+      queryClient.invalidateQueries({
+        queryKey: ["/api/employer-contacts", employerContact.id, "user"],
+      });
+      toast({
+        title: "Okta Credentialing",
+        description: resp?.message || "Okta credentialing complete.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Okta Credentialing Failed",
+        description:
+          error?.message?.replace(/^\d+:\s*/, "") ||
+          "Failed to credential user in Okta.",
+        variant: "destructive",
+      });
+    },
   });
 
   // Initialize form when data loads
@@ -291,6 +324,24 @@ function EmployerContactUserContent() {
 
           {/* Submit Button */}
           <div className="flex justify-end gap-2">
+            {oktaActive && data.hasUser && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => credentialOktaMutation.mutate()}
+                disabled={credentialOktaMutation.isPending}
+                data-testid="button-credential-okta"
+              >
+                {credentialOktaMutation.isPending ? (
+                  "Credentialing..."
+                ) : (
+                  <>
+                    <KeyRound size={16} className="mr-2" />
+                    Credential in Okta
+                  </>
+                )}
+              </Button>
+            )}
             <Button
               type="submit"
               disabled={saveUserMutation.isPending}

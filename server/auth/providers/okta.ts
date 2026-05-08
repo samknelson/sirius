@@ -549,6 +549,7 @@ export function createProvider(config: OktaProviderConfig): AuthProvider {
           try {
             created = await createOktaUserAndSendActivation({
               issuerUrl: config.issuerUrl,
+              persona: "member",
               email,
               firstName,
               lastName,
