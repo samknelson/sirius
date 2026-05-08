@@ -146,25 +146,33 @@ export interface OktaUserSummary {
 }
 
 /**
- * Look up an Okta user by login (email). Returns null on 404.
+ * Look up Okta users that match the given email on either `profile.email`
+ * or `profile.login`. Returns an array (possibly empty, possibly >1).
+ *
+ * We deliberately do NOT use `GET /users/{login}`: that endpoint only
+ * matches against `login` (not `email`) and returns 404 when there are
+ * multiple matches, which silently hides duplicate-email scenarios and
+ * leads us to create yet another duplicate.
  */
-export async function findOktaUserByLogin(
+export async function findOktaUsersByEmail(
   issuerUrl: string,
-  login: string
-): Promise<OktaUserSummary | null> {
+  email: string
+): Promise<OktaUserSummary[]> {
   const cfg = getOktaApiConfig(issuerUrl);
-  try {
-    const user = await oktaApi(cfg, `/users/${encodeURIComponent(login)}`);
-    if (!user?.id) return null;
-    return {
-      id: user.id,
-      status: user.status,
-      email: user.profile?.email || login,
-    };
-  } catch (err: any) {
-    if (err?.status === 404) return null;
-    throw err;
-  }
+  const escaped = email.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  const filter = `profile.email eq "${escaped}" or profile.login eq "${escaped}"`;
+  const results: any[] = await oktaApi(
+    cfg,
+    `/users?search=${encodeURIComponent(filter)}&limit=10`
+  );
+  if (!Array.isArray(results)) return [];
+  return results
+    .filter((u) => u && typeof u.id === "string")
+    .map((u) => ({
+      id: u.id,
+      status: u.status,
+      email: u.profile?.email || u.profile?.login || email,
+    }));
 }
 
 export interface CreateOktaUserArgs {
@@ -269,8 +277,17 @@ export async function lookupOrCreateOktaUserForPersona(args: {
   firstName: string;
   lastName: string;
 }): Promise<LookupOrCreateResult> {
-  const existing = await findOktaUserByLogin(args.issuerUrl, args.email);
-  if (existing) {
+  const matches = await findOktaUsersByEmail(args.issuerUrl, args.email);
+  if (matches.length > 1) {
+    const ids = matches.map((m) => m.id).join(", ");
+    const err: any = new Error(
+      `Multiple Okta users (${matches.length}) match email ${args.email}: ${ids}. Resolve duplicates in Okta before credentialing.`
+    );
+    err.status = 409;
+    throw err;
+  }
+  if (matches.length === 1) {
+    const existing = matches[0];
     return {
       outcome: "linked_existing",
       oktaUserId: existing.id,

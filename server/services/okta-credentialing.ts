@@ -2,7 +2,7 @@ import { storage } from "../storage";
 import { logger } from "../logger";
 import {
   createOktaUserAndSendActivation,
-  findOktaUserByLogin,
+  findOktaUsersByEmail,
   getActiveOktaIssuerUrl,
   getPersonaConfig,
   type OktaPersona,
@@ -56,7 +56,7 @@ function wrapOktaError(err: any, userId: string, persona: OktaPersona): OktaCred
   if (status === 401 || status === 403) {
     return new OktaCredentialingError(
       502,
-      "Okta rejected the request. Check that OKTA_API_TOKEN has create-user and group-membership permissions."
+      "Okta rejected the request. Check that OKTA_API_TOKEN has the required permissions: read users (for lookup), create users, and manage group membership (for activation)."
     );
   }
   return new OktaCredentialingError(
@@ -155,13 +155,29 @@ export async function credentialUserInOkta(
   }
 
   // Step 2: lookup-existing Okta user (no create-only preconditions).
-  let existingOktaUser;
+  let matches;
   try {
-    existingOktaUser = await findOktaUserByLogin(issuerUrl, email);
+    matches = await findOktaUsersByEmail(issuerUrl, email);
   } catch (err: any) {
     throw wrapOktaError(err, args.userId, args.persona);
   }
-  if (existingOktaUser) {
+
+  if (matches.length > 1) {
+    const ids = matches.map((m) => `${m.id} (${m.status})`).join(", ");
+    logger.warn("Multiple Okta users match email; refusing to credential", {
+      userId: args.userId,
+      persona: args.persona,
+      email,
+      matches: matches.map((m) => ({ id: m.id, status: m.status })),
+    });
+    throw new OktaCredentialingError(
+      409,
+      `Multiple Okta accounts (${matches.length}) already exist for ${email}: ${ids}. Resolve the duplicates in Okta (delete or merge), then try again.`
+    );
+  }
+
+  if (matches.length === 1) {
+    const existingOktaUser = matches[0];
     const firstName = (args.firstName || user.firstName || "").trim();
     const lastName = (args.lastName || user.lastName || "").trim();
     const displayName = `${firstName} ${lastName}`.trim() || undefined;
