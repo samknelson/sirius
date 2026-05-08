@@ -1,9 +1,10 @@
 import { storage } from "../storage";
 import { logger } from "../logger";
 import {
+  createOktaUserAndSendActivation,
+  findOktaUserByLogin,
   getActiveOktaIssuerUrl,
   getPersonaConfig,
-  lookupOrCreateOktaUserForPersona,
   type OktaPersona,
   type OktaProvisionOutcome,
 } from "../auth/okta-admin";
@@ -43,13 +44,68 @@ export class OktaCredentialingError extends Error {
   }
 }
 
+function wrapOktaError(err: any, userId: string, persona: OktaPersona): OktaCredentialingError {
+  const status = err?.status;
+  logger.error("Okta admin call failed", {
+    userId,
+    persona,
+    status,
+    error: err?.message,
+    data: err?.data,
+  });
+  if (status === 401 || status === 403) {
+    return new OktaCredentialingError(
+      502,
+      "Okta rejected the request. Check that OKTA_API_TOKEN has create-user and group-membership permissions."
+    );
+  }
+  return new OktaCredentialingError(
+    502,
+    `Okta request failed: ${err?.message || "unknown error"}`
+  );
+}
+
+async function linkAuthIdentity(
+  userId: string,
+  oktaUserId: string,
+  email: string,
+  displayName: string | undefined
+): Promise<void> {
+  const conflict = await storage.authIdentities.getByProviderAndExternalId(
+    "okta",
+    oktaUserId
+  );
+  if (conflict && conflict.userId !== userId) {
+    throw new OktaCredentialingError(
+      409,
+      "This Okta account is already linked to a different Sirius user."
+    );
+  }
+  if (!conflict) {
+    await storage.authIdentities.create({
+      userId,
+      providerType: "okta",
+      externalId: oktaUserId,
+      email,
+      displayName: displayName || undefined,
+    });
+  }
+  await storage.users.updateUser(userId, { accountStatus: "linked" });
+}
+
 /**
  * Admin-driven credentialing: ensure the given Sirius user is linked to an
- * Okta account. If an Okta user already exists for the email, link to it
- * silently (no activation email). Otherwise create the Okta account in the
- * persona's group / user type and trigger Okta's activation email. The Sirius
- * `auth_identities` row is written immediately so the linkage is deterministic
- * regardless of when the user first signs in.
+ * Okta account.
+ *
+ * Order matters here: the link-existing path must NOT require create-only
+ * preconditions (persona group config, complete first/last name). We therefore:
+ *   1. Validate the smallest set of inputs needed to look anything up
+ *      (issuer URL, API token, target user, email).
+ *   2. Short-circuit if Sirius already has an Okta auth_identity for the user.
+ *   3. Look up the Okta user by email — if it exists, link silently with no
+ *      activation email and no requirement for persona group config or names.
+ *   4. Only when we must CREATE a new Okta user do we require persona group
+ *      configuration and first/last name.
  */
 export async function credentialUserInOkta(
   args: CredentialOktaArgs
@@ -71,17 +127,6 @@ export async function credentialUserInOkta(
     );
   }
 
-  const personaCfg = getPersonaConfig(args.persona);
-  if (!personaCfg.groupId) {
-    const upper = args.persona.toUpperCase();
-    const fallbackHint =
-      args.persona === "member" ? ` (or its alias OKTA_NEW_USER_GROUP_ID)` : "";
-    throw new OktaCredentialingError(
-      400,
-      `Okta group is not configured for the ${args.persona} persona. Set OKTA_${upper}_GROUP_ID${fallbackHint} so credentialed users land in the correct app group.`
-    );
-  }
-
   const user = await storage.users.getUser(args.userId);
   if (!user) {
     throw new OktaCredentialingError(404, "User not found");
@@ -95,6 +140,7 @@ export async function credentialUserInOkta(
     );
   }
 
+  // Step 1: already linked in Sirius?
   const existingForUser = await storage.authIdentities.getByUserIdAndProvider(
     args.userId,
     "okta"
@@ -108,18 +154,63 @@ export async function credentialUserInOkta(
     };
   }
 
+  // Step 2: lookup-existing Okta user (no create-only preconditions).
+  let existingOktaUser;
+  try {
+    existingOktaUser = await findOktaUserByLogin(issuerUrl, email);
+  } catch (err: any) {
+    throw wrapOktaError(err, args.userId, args.persona);
+  }
+  if (existingOktaUser) {
+    const firstName = (args.firstName || user.firstName || "").trim();
+    const lastName = (args.lastName || user.lastName || "").trim();
+    const displayName = `${firstName} ${lastName}`.trim() || undefined;
+
+    await linkAuthIdentity(
+      args.userId,
+      existingOktaUser.id,
+      existingOktaUser.email,
+      displayName
+    );
+
+    logger.info("Linked Sirius user to existing Okta account", {
+      userId: args.userId,
+      persona: args.persona,
+      oktaUserId: existingOktaUser.id,
+    });
+
+    return {
+      outcome: "linked_existing",
+      oktaUserId: existingOktaUser.id,
+      email: existingOktaUser.email,
+      message: OUTCOME_MESSAGES.linked_existing,
+    };
+  }
+
+  // Step 3: must CREATE a new Okta user — now enforce create-only requirements.
+  const personaCfg = getPersonaConfig(args.persona);
+  if (!personaCfg.groupId) {
+    const upper = args.persona.toUpperCase();
+    const fallbackHint =
+      args.persona === "member" ? ` (or its alias OKTA_NEW_USER_GROUP_ID)` : "";
+    throw new OktaCredentialingError(
+      400,
+      `Okta group is not configured for the ${args.persona} persona. Set OKTA_${upper}_GROUP_ID${fallbackHint} so newly-created users land in the correct app group.`
+    );
+  }
+
   const firstName = (args.firstName || user.firstName || "").trim();
   const lastName = (args.lastName || user.lastName || "").trim();
   if (!firstName || !lastName) {
     throw new OktaCredentialingError(
       400,
-      "First and last name are required to create an Okta account."
+      "First and last name are required to create a new Okta account."
     );
   }
 
-  let result;
+  let created;
   try {
-    result = await lookupOrCreateOktaUserForPersona({
+    created = await createOktaUserAndSendActivation({
       issuerUrl,
       persona: args.persona,
       email,
@@ -127,63 +218,26 @@ export async function credentialUserInOkta(
       lastName,
     });
   } catch (err: any) {
-    const data = err?.data;
-    const status = err?.status;
-    logger.error("Okta lookup-or-create failed", {
-      userId: args.userId,
-      persona: args.persona,
-      status,
-      error: err?.message,
-      data,
-    });
-    if (status === 401 || status === 403) {
-      throw new OktaCredentialingError(
-        502,
-        "Okta rejected the request. Check that OKTA_API_TOKEN has create-user and group-membership permissions."
-      );
-    }
-    throw new OktaCredentialingError(
-      502,
-      `Okta request failed: ${err?.message || "unknown error"}`
-    );
+    throw wrapOktaError(err, args.userId, args.persona);
   }
 
-  const conflict = await storage.authIdentities.getByProviderAndExternalId(
-    "okta",
-    result.oktaUserId
+  await linkAuthIdentity(
+    args.userId,
+    created.id,
+    created.email,
+    `${firstName} ${lastName}`.trim()
   );
-  if (conflict && conflict.userId !== args.userId) {
-    throw new OktaCredentialingError(
-      409,
-      "This Okta account is already linked to a different Sirius user."
-    );
-  }
 
-  if (!conflict) {
-    await storage.authIdentities.create({
-      userId: args.userId,
-      providerType: "okta",
-      externalId: result.oktaUserId,
-      email: result.email,
-      displayName: `${firstName} ${lastName}`.trim() || undefined,
-    });
-  }
-
-  await storage.users.updateUser(args.userId, {
-    accountStatus: "linked",
-  });
-
-  logger.info("Credentialed Sirius user in Okta", {
+  logger.info("Created Okta account and linked Sirius user", {
     userId: args.userId,
     persona: args.persona,
-    outcome: result.outcome,
-    oktaUserId: result.oktaUserId,
+    oktaUserId: created.id,
   });
 
   return {
-    outcome: result.outcome,
-    oktaUserId: result.oktaUserId,
-    email: result.email,
-    message: OUTCOME_MESSAGES[result.outcome],
+    outcome: "created_and_activated",
+    oktaUserId: created.id,
+    email: created.email,
+    message: OUTCOME_MESSAGES.created_and_activated,
   };
 }
