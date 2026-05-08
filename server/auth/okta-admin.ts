@@ -4,6 +4,7 @@ interface OktaApiConfig {
   apiToken: string;
   issuerOrigin: string;
   newUserGroupId?: string;
+  newUserType?: string;
 }
 
 function getOktaApiConfig(issuerUrl: string): OktaApiConfig {
@@ -18,7 +19,45 @@ function getOktaApiConfig(issuerUrl: string): OktaApiConfig {
     apiToken,
     issuerOrigin: `${u.protocol}//${u.host}`,
     newUserGroupId: process.env.OKTA_NEW_USER_GROUP_ID || undefined,
+    newUserType: process.env.OKTA_NEW_USER_TYPE?.trim() || undefined,
   };
+}
+
+const userTypeIdCache = new Map<string, string>();
+
+/**
+ * Resolves an Okta user type to its id. Accepts either the id directly
+ * (recognized by the `oty` prefix) or a name/displayName lookup against
+ * /api/v1/meta/types/user. Results are cached per (issuerOrigin, value).
+ */
+async function resolveUserTypeId(
+  cfg: OktaApiConfig,
+  value: string
+): Promise<string> {
+  const trimmed = value.trim();
+  if (trimmed.startsWith("oty")) {
+    return trimmed;
+  }
+  const cacheKey = `${cfg.issuerOrigin}|${trimmed.toLowerCase()}`;
+  const cached = userTypeIdCache.get(cacheKey);
+  if (cached) return cached;
+
+  const types: any[] = await oktaApi(cfg, "/meta/types/user");
+  const needle = trimmed.toLowerCase();
+  const match = types.find(
+    (t) =>
+      typeof t?.name === "string" && t.name.toLowerCase() === needle ||
+      typeof t?.displayName === "string" && t.displayName.toLowerCase() === needle
+  );
+  if (!match?.id) {
+    throw new Error(
+      `Okta user type "${trimmed}" not found. Available: ${types
+        .map((t) => `${t.displayName} (${t.name})`)
+        .join(", ")}`
+    );
+  }
+  userTypeIdCache.set(cacheKey, match.id);
+  return match.id;
 }
 
 async function oktaApi(
@@ -88,16 +127,31 @@ export async function createOktaUserAndSendActivation(
 ): Promise<CreatedOktaUser> {
   const cfg = getOktaApiConfig(args.issuerUrl);
 
+  const body: any = {
+    profile: {
+      firstName: args.firstName,
+      lastName: args.lastName,
+      email: args.email,
+      login: args.email,
+    },
+  };
+
+  if (cfg.newUserType) {
+    try {
+      const typeId = await resolveUserTypeId(cfg, cfg.newUserType);
+      body.type = { id: typeId };
+    } catch (err) {
+      logger.error("Failed to resolve OKTA_NEW_USER_TYPE", {
+        value: cfg.newUserType,
+        error: err,
+      });
+      throw err;
+    }
+  }
+
   const created = await oktaApi(cfg, "/users?activate=true", {
     method: "POST",
-    body: {
-      profile: {
-        firstName: args.firstName,
-        lastName: args.lastName,
-        email: args.email,
-        login: args.email,
-      },
-    },
+    body,
   });
 
   const oktaUserId: string = created?.id;
