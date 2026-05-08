@@ -2,6 +2,7 @@ import { storage } from "../storage";
 import { logger } from "../logger";
 import {
   getActiveOktaIssuerUrl,
+  getPersonaConfig,
   lookupOrCreateOktaUserForPersona,
   type OktaPersona,
   type OktaProvisionOutcome,
@@ -53,7 +54,33 @@ export class OktaCredentialingError extends Error {
 export async function credentialUserInOkta(
   args: CredentialOktaArgs
 ): Promise<CredentialOktaResult> {
-  const issuerUrl = getActiveOktaIssuerUrl();
+  let issuerUrl: string;
+  try {
+    issuerUrl = getActiveOktaIssuerUrl();
+  } catch (err: any) {
+    throw new OktaCredentialingError(
+      400,
+      err?.message ||
+        "Okta is not configured. Set OKTA_ISSUER_URL before credentialing users."
+    );
+  }
+  if (!process.env.OKTA_API_TOKEN) {
+    throw new OktaCredentialingError(
+      400,
+      "OKTA_API_TOKEN is not configured. It is required to create or link Okta users from Sirius."
+    );
+  }
+
+  const personaCfg = getPersonaConfig(args.persona);
+  if (!personaCfg.groupId) {
+    const upper = args.persona.toUpperCase();
+    const fallbackHint =
+      args.persona === "member" ? ` (or its alias OKTA_NEW_USER_GROUP_ID)` : "";
+    throw new OktaCredentialingError(
+      400,
+      `Okta group is not configured for the ${args.persona} persona. Set OKTA_${upper}_GROUP_ID${fallbackHint} so credentialed users land in the correct app group.`
+    );
+  }
 
   const user = await storage.users.getUser(args.userId);
   if (!user) {

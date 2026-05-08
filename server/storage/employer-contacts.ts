@@ -48,6 +48,12 @@ export interface EmployerContactStorage {
   }): Promise<(EmployerContact & { contact: Contact; contactType?: { id: string; name: string; description: string | null } | null }) | null>;
   delete(id: string): Promise<boolean>;
   getUserAccountStatuses(employerContactIds: string[]): Promise<Array<{ employerContactId: string; userId: string | null; hasUser: boolean; accountStatus: string | null }>>;
+  /**
+   * Returns true if the given user's email matches the email on at least one
+   * employer-contact (i.e. this user is acting as an employer contact). Used
+   * by admin tooling to derive the appropriate persona for credentialing.
+   */
+  isLinkedToEmployerContact(userId: string): Promise<boolean>;
 }
 
 export function createEmployerContactStorage(contactsStorage: ContactsStorage): EmployerContactStorage {
@@ -290,6 +296,18 @@ export function createEmployerContactStorage(contactsStorage: ContactsStorage): 
           accountStatus: null,
         }
       );
+    },
+
+    async isLinkedToEmployerContact(userId: string): Promise<boolean> {
+      const client = getClient();
+      const rows = await client
+        .select({ id: employerContacts.id })
+        .from(employerContacts)
+        .innerJoin(contacts, eq(employerContacts.contactId, contacts.id))
+        .innerJoin(users, sql`lower(${contacts.email}) = lower(${users.email})`)
+        .where(eq(users.id, userId))
+        .limit(1);
+      return rows.length > 0;
     },
   };
 }

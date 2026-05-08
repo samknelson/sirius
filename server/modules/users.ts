@@ -12,7 +12,15 @@ import {
   credentialUserInOkta,
   OktaCredentialingError,
 } from "../services/okta-credentialing";
-import { isOktaProviderActive } from "../auth/okta-admin";
+import { isOktaProviderActive, type OktaPersona } from "../auth/okta-admin";
+
+async function derivePersonaForUser(userId: string): Promise<OktaPersona> {
+  const workerId = await storage.authIdentities.getWorkerIdForUser(userId);
+  if (workerId) return "member";
+  const isEmployerContact = await storage.employerContacts.isLinkedToEmployerContact(userId);
+  if (isEmployerContact) return "employer";
+  return "staff";
+}
 
 // Type for middleware functions that we'll accept from the main routes
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -211,14 +219,15 @@ export function registerUserRoutes(
           message: "User must have an email address before credentialing in Okta.",
         });
       }
+      const persona = await derivePersonaForUser(user.id);
       const result = await credentialUserInOkta({
         userId: user.id,
-        persona: "staff",
+        persona,
         email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,
       });
-      res.json(result);
+      res.json({ ...result, persona });
     } catch (error) {
       if (error instanceof OktaCredentialingError) {
         return res.status(error.status).json({ message: error.message });
