@@ -49,6 +49,7 @@ const child = pgTable(
       .references(() => parent.id, { onDelete: "cascade", onUpdate: "cascade" }),
     altParent: uuid("alt_parent"),
     color: colorEnum("color").notNull().default("red"),
+    palette: colorEnum("palette").array(),
     qty: integer("qty").notNull().default(0),
     price: numeric("price", { precision: 10, scale: 2 }),
     ymd: date("ymd").notNull(),
@@ -136,6 +137,13 @@ await check_("child: array column", () => {
   assertContains(sql, [`"tags" text[]`], "child array");
 });
 
+await check_("child: enum array column with CREATE TYPE emitted once", () => {
+  const sql = childStmts.find((s) => s.kind === "create_table")!.sql;
+  assertContains(sql, [`"palette" smoke_color[]`], "enum array column");
+  const enumStmts = childStmts.filter((s) => s.kind === "create_type" && s.key === "smoke_color");
+  if (enumStmts.length !== 1) throw new Error(`expected exactly 1 CREATE TYPE for smoke_color, got ${enumStmts.length}`);
+});
+
 await check_("child: defaults rendered (sql + scalar)", () => {
   const sql = childStmts.find((s) => s.kind === "create_table")!.sql;
   assertContains(sql, [`DEFAULT now()`, `DEFAULT 0`, `DEFAULT true`, `DEFAULT 'red'`], "defaults");
@@ -203,9 +211,13 @@ await check_("unknown column type throws", () => {
   if (!threw) throw new Error("expected throw on unknown column type");
 });
 
-// For drift-path tests, use a real table that exists in the DB ("workers" with column "id").
-const REAL_TABLE = "workers";
+// For drift-path tests, create a self-contained temp table so the script
+// doesn't depend on any pre-existing app table.
+const REAL_TABLE = "smoke_drift_temp";
 const REAL_COL = "id";
+const { storage } = await import("../server/storage");
+await storage.rawSql.execute(`DROP TABLE IF EXISTS ${REAL_TABLE} CASCADE`);
+await storage.rawSql.execute(`CREATE TABLE ${REAL_TABLE} ("id" varchar PRIMARY KEY)`);
 const colsSym = Object.getOwnPropertySymbols(parent).find((s) => s.description === "drizzle:Columns")!;
 const nameSym = Object.getOwnPropertySymbols(parent).find((s) => s.description === "drizzle:Name")!;
 
@@ -240,6 +252,8 @@ await check_("drift: unknown extra-config builder throws", async () => {
   }
   if (!threw) throw new Error("expected drift to throw on unknown extra-config builder");
 });
+
+await storage.rawSql.execute(`DROP TABLE IF EXISTS ${REAL_TABLE} CASCADE`);
 
 if (failed > 0) {
   console.error(`\n${failed} smoke test(s) FAILED`);

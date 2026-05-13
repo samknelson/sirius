@@ -470,7 +470,7 @@ export async function detectSchemaDrift(tableSchema: any, tableName: string): Pr
   }
 
   // Compare FKs/uniques/checks structurally (Drizzle's auto-names rarely match Postgres' auto-names).
-  interface ExpectedFk { cols: string[]; ftable: string; fcols: string[]; name?: string }
+  interface ExpectedFk { cols: string[]; ftable: string; fcols: string[]; name?: string; onDelete?: string; onUpdate?: string }
   interface ExpectedUnique { cols: string[]; name?: string }
   const expectedFks: ExpectedFk[] = [];
   const expectedUniques: ExpectedUnique[] = [];
@@ -486,6 +486,8 @@ export async function detectSchemaDrift(tableSchema: any, tableName: string): Pr
       ftable: ftName,
       fcols: ref.foreignColumns.map((c: any) => c.name as string),
       name: fk.name ?? ref.name,
+      onDelete: fk.onDelete,
+      onUpdate: fk.onUpdate,
     });
   }
 
@@ -514,6 +516,8 @@ export async function detectSchemaDrift(tableSchema: any, tableName: string): Pr
             ftable: ftName,
             fcols: ref.foreignColumns.map((c: any) => c.name as string),
             name: built.name ?? ref.name,
+            onDelete: built.onDelete,
+            onUpdate: built.onUpdate,
           });
         }
       } else if (ctor === "CheckBuilder") {
@@ -545,14 +549,42 @@ export async function detectSchemaDrift(tableSchema: any, tableName: string): Pr
 
   const sigFk = (cols: string[], ftable: string, fcols: string[]) =>
     `${cols.join(",")}->${ftable}(${fcols.join(",")})`;
-  const actualFkSigs = new Set(actualFks.map((c) => sigFk(c.columns, c.foreignTable ?? "", c.foreignColumns)));
+  const actualFkBySig = new Map(
+    actualFks.map((c) => [sigFk(c.columns, c.foreignTable ?? "", c.foreignColumns), c] as const),
+  );
   const actualUniqueSigs = new Set(actualUniques.map((c) => c.columns.slice().sort().join(",")));
+
+  const parseFkActions = (def: string): { onDelete: string; onUpdate: string } => {
+    const onDel = /ON DELETE\s+([A-Z ]+?)(?:\s+ON UPDATE|\s*$)/i.exec(def);
+    const onUpd = /ON UPDATE\s+([A-Z ]+?)(?:\s+ON DELETE|\s*$)/i.exec(def);
+    return {
+      onDelete: (onDel?.[1] ?? "NO ACTION").trim().toUpperCase(),
+      onUpdate: (onUpd?.[1] ?? "NO ACTION").trim().toUpperCase(),
+    };
+  };
+  const normAction = (a?: string) => (a ?? "no action").trim().toUpperCase().replace(/_/g, " ");
 
   const missingConstraints: string[] = [];
   for (const fk of expectedFks) {
-    if (!actualFkSigs.has(sigFk(fk.cols, fk.ftable, fk.fcols))) {
+    const sig = sigFk(fk.cols, fk.ftable, fk.fcols);
+    const actual = actualFkBySig.get(sig);
+    if (!actual) {
       missingConstraints.push(
         `FK ${fk.name ?? "(unnamed)"}: ${fk.cols.join(",")} -> ${fk.ftable}(${fk.fcols.join(",")})`,
+      );
+      continue;
+    }
+    const expectedDel = normAction(fk.onDelete);
+    const expectedUpd = normAction(fk.onUpdate);
+    const actualActions = parseFkActions(actual.definition);
+    if (expectedDel !== actualActions.onDelete) {
+      missingConstraints.push(
+        `FK ${actual.name} action mismatch: expected ON DELETE ${expectedDel}, found ${actualActions.onDelete}`,
+      );
+    }
+    if (expectedUpd !== actualActions.onUpdate) {
+      missingConstraints.push(
+        `FK ${actual.name} action mismatch: expected ON UPDATE ${expectedUpd}, found ${actualActions.onUpdate}`,
       );
     }
   }
@@ -567,14 +599,44 @@ export async function detectSchemaDrift(tableSchema: any, tableName: string): Pr
     }
   }
 
+  // Index drift: compare existence by name AND definition (uniqueness + columns + where + method).
+  const expectedIndexDefs = new Map<string, string>();
+  if (ebSym && typeof tableSchema[ebSym] === "function") {
+    const ecCols = ecSym ? tableSchema[ecSym] : expectedCols;
+    const cfg = tableSchema[ebSym](ecCols);
+    const items: any[] = Array.isArray(cfg) ? cfg : Object.values(cfg ?? {});
+    for (const item of items) {
+      const ctor = item?.constructor?.name;
+      if ((ctor === "IndexBuilder" || ctor === "UniqueIndexBuilder") && item.config?.name) {
+        expectedIndexDefs.set(item.config.name, normalizeIndexDef(renderIndex(item, tableName)));
+      }
+    }
+  }
   const actualIndexes = await getTableIndexInfo(tableName);
-  const actualIndexNames = new Set(actualIndexes.map((i) => i.name));
+  const actualIndexByName = new Map(actualIndexes.map((i) => [i.name, i] as const));
   const missingIndexes: string[] = [];
-  for (const name of expectedIndexNames) {
-    if (!actualIndexNames.has(name)) missingIndexes.push(name);
+  for (const [name, expectedDef] of expectedIndexDefs) {
+    const actual = actualIndexByName.get(name);
+    if (!actual) {
+      missingIndexes.push(name);
+      continue;
+    }
+    const actualDef = normalizeIndexDef(actual.definition);
+    if (actualDef !== expectedDef) {
+      missingIndexes.push(`${name} definition mismatch (expected: ${expectedDef} | found: ${actualDef})`);
+    }
   }
 
   return { tableName, missingColumns, typeMismatches, missingConstraints, missingIndexes };
+}
+
+function normalizeIndexDef(def: string): string {
+  return def
+    .toLowerCase()
+    .replace(/\bpublic\.|"/g, "")
+    .replace(/if not exists\s+/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 export async function dropComponentSchema(componentId: string): Promise<void> {
