@@ -547,8 +547,9 @@ export async function detectSchemaDrift(tableSchema: any, tableName: string): Pr
   const actualUniques = actualConstraints.filter((c) => c.type === "u");
   const actualNamedConstraints = new Set(actualConstraints.map((c) => c.name));
 
+  const stripSchema = (t: string) => t.replace(/^"?public"?\./, "").replace(/^"|"$/g, "");
   const sigFk = (cols: string[], ftable: string, fcols: string[]) =>
-    `${cols.join(",")}->${ftable}(${fcols.join(",")})`;
+    `${cols.join(",")}->${stripSchema(ftable)}(${fcols.join(",")})`;
   const actualFkBySig = new Map(
     actualFks.map((c) => [sigFk(c.columns, c.foreignTable ?? "", c.foreignColumns), c] as const),
   );
