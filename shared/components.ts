@@ -311,7 +311,7 @@ export const componentRegistry: ComponentDefinition[] = [
     schemaManifest: {
       version: 1,
       schemaPath: "./shared/schema/worker/relations/schema.ts",
-      tables: ["options_worker_relation_type"]
+      tables: ["options_worker_relation_type", "worker_relations"]
     }
   },
   {

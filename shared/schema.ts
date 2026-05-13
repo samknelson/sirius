@@ -842,6 +842,10 @@ export {
   insertOptionsWorkerRelationTypeSchema,
   type OptionsWorkerRelationType,
   type InsertOptionsWorkerRelationType,
+  workerRelations,
+  insertWorkerRelationSchema,
+  type WorkerRelation,
+  type InsertWorkerRelation,
 } from "./schema/worker/relations/schema";
 
 export {
