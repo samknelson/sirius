@@ -302,6 +302,13 @@ export const componentRegistry: ComponentDefinition[] = [
     }
   },
   {
+    id: "worker.relations",
+    name: "Worker Relations",
+    description: "Management of relationships between workers",
+    enabledByDefault: false,
+    category: "core"
+  },
+  {
     id: "trust.providers.login",
     name: "Trust Provider Login",
     description: "Ability for trust provider contacts to log in",
