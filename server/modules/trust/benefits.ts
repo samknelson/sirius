@@ -7,8 +7,8 @@ export function registerTrustBenefitsRoutes(
   requireAuth: any,
   requirePermission: any
 ) {
-  // GET /api/trust-benefits - Get all trust benefits (requires workers.view permission)
-  app.get("/api/trust-benefits", requireAuth, requirePermission("staff"), async (req, res) => {
+  // GET /api/trust-benefits - List trust benefits (any authenticated user; needed by employer-facing wizards)
+  app.get("/api/trust-benefits", requireAuth, async (req, res) => {
     try {
       const includeInactive = req.query.includeInactive === 'true';
       const allBenefits = await storage.trustBenefits.getAllTrustBenefits();

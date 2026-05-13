@@ -83,6 +83,24 @@ export function BenefitsStep({ wizardId, wizardType, data, onDataChange }: Benef
     }
   }, [data?.benefitConfig]);
 
+  useEffect(() => {
+    if (benefitsLoading || trustBenefits.length === 0 || mappedBenefitFields.length === 0) return;
+    const firstActive = trustBenefits.find(b => b.isActive);
+    if (!firstActive) return;
+    const missing = mappedBenefitFields.filter(
+      f => !benefitConfig.some(c => c.fieldId === f.id),
+    );
+    if (missing.length === 0) return;
+    setBenefitConfig(prev => [
+      ...prev,
+      ...missing.map(f => ({
+        fieldId: f.id,
+        benefitId: firstActive.id,
+        benefitName: firstActive.name,
+      })),
+    ]);
+  }, [benefitsLoading, trustBenefits, mappedBenefitFields, benefitConfig]);
+
   const saveMutation = useMutation({
     mutationFn: async (config: BenefitFieldConfig[]) => {
       return apiRequest("PATCH", `/api/wizards/${wizardId}`, {
