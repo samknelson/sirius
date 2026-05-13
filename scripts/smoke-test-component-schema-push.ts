@@ -278,6 +278,34 @@ await check_("drift: composite PK reports missing PK when actual PK differs", as
   }
 });
 
+await check_("drift: idempotency - generated SQL produces no drift on re-check", async () => {
+  // Drop, then create the smoke_child table from the generator's own SQL,
+  // then run detectSchemaDrift and assert there is no drift.
+  await storage.rawSql.execute(`DROP TABLE IF EXISTS smoke_child CASCADE`);
+  await storage.rawSql.execute(`DROP TABLE IF EXISTS smoke_parent CASCADE`);
+  await storage.rawSql.execute(`DROP TYPE IF EXISTS smoke_color CASCADE`);
+  for (const stmt of generateCreateStatements(parent, "smoke_parent", enums, new Set())) {
+    await storage.rawSql.execute(stmt.sql);
+  }
+  const childEmitted = new Set<string>();
+  for (const stmt of generateCreateStatements(child, "smoke_child", enums, childEmitted)) {
+    await storage.rawSql.execute(stmt.sql);
+  }
+  const parentReport = await detectSchemaDrift(parent, "smoke_parent");
+  const childReport = await detectSchemaDrift(child, "smoke_child");
+  await storage.rawSql.execute(`DROP TABLE IF EXISTS smoke_child CASCADE`);
+  await storage.rawSql.execute(`DROP TABLE IF EXISTS smoke_parent CASCADE`);
+  await storage.rawSql.execute(`DROP TYPE IF EXISTS smoke_color CASCADE`);
+  const totalDrift = (r: any) =>
+    r.missingColumns.length + r.typeMismatches.length + r.missingConstraints.length + r.missingIndexes.length;
+  if (totalDrift(parentReport) !== 0) {
+    throw new Error(`parent drift not idempotent: ${JSON.stringify(parentReport)}`);
+  }
+  if (totalDrift(childReport) !== 0) {
+    throw new Error(`child drift not idempotent: ${JSON.stringify(childReport)}`);
+  }
+});
+
 await storage.rawSql.execute(`DROP TABLE IF EXISTS ${REAL_TABLE} CASCADE`);
 
 if (failed > 0) {

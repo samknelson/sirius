@@ -92,17 +92,38 @@ export async function getTableConstraintInfo(tableName: string): Promise<DbConst
 export interface DbIndexInfo {
   name: string;
   definition: string;
+  isUnique: boolean;
+  method: string;
+  columns: string[];
+  predicate: string | null;
 }
 
 export async function getTableIndexInfo(tableName: string): Promise<DbIndexInfo[]> {
   const client = getClient();
   const result = await client.execute(sql`
-    SELECT indexname, indexdef
-    FROM pg_indexes
-    WHERE schemaname = 'public' AND tablename = ${tableName}
+    SELECT
+      ic.relname AS indexname,
+      pg_get_indexdef(i.indexrelid) AS indexdef,
+      i.indisunique AS is_unique,
+      am.amname AS method,
+      pg_get_expr(i.indpred, i.indrelid) AS predicate,
+      (
+        SELECT array_agg(pg_get_indexdef(i.indexrelid, ord::int, true) ORDER BY ord)
+        FROM unnest(i.indkey) WITH ORDINALITY AS u(k, ord)
+      ) AS cols
+    FROM pg_index i
+    JOIN pg_class ic ON ic.oid = i.indexrelid
+    JOIN pg_class tc ON tc.oid = i.indrelid
+    JOIN pg_namespace n ON n.oid = tc.relnamespace
+    JOIN pg_am am ON am.oid = ic.relam
+    WHERE n.nspname = 'public' AND tc.relname = ${tableName}
   `);
   return result.rows.map((r: any) => ({
     name: r.indexname as string,
     definition: r.indexdef as string,
+    isUnique: r.is_unique === true,
+    method: r.method as string,
+    columns: ((r.cols ?? []) as string[]).filter((c) => c && c !== "0"),
+    predicate: (r.predicate as string | null) ?? null,
   }));
 }

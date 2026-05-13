@@ -540,6 +540,10 @@ export async function detectSchemaDrift(tableSchema: any, tableName: string): Pr
       const dbName = col.name || key;
       expectedUniques.push({ cols: [dbName], name: col.uniqueName });
     }
+    if (col.primary) {
+      const dbName = col.name || key;
+      expectedPks.push({ cols: [dbName] });
+    }
   }
 
   const actualConstraints = await getTableConstraintInfo(tableName);
@@ -609,8 +613,15 @@ export async function detectSchemaDrift(tableSchema: any, tableName: string): Pr
     }
   }
 
-  // Index drift: compare existence by name AND definition (uniqueness + columns + where + method).
-  const expectedIndexDefs = new Map<string, string>();
+  // Index drift: compare structurally (uniqueness, method, columns, predicate) - NOT by SQL string.
+  interface ExpectedIndex {
+    name: string;
+    isUnique: boolean;
+    method: string;
+    columns: string[];
+    predicate: string | null;
+  }
+  const expectedIndexes: ExpectedIndex[] = [];
   if (ebSym && typeof tableSchema[ebSym] === "function") {
     const ecCols = ecSym ? tableSchema[ecSym] : expectedCols;
     const cfg = tableSchema[ebSym](ecCols);
@@ -618,35 +629,80 @@ export async function detectSchemaDrift(tableSchema: any, tableName: string): Pr
     for (const item of items) {
       const ctor = item?.constructor?.name;
       if ((ctor === "IndexBuilder" || ctor === "UniqueIndexBuilder") && item.config?.name) {
-        expectedIndexDefs.set(item.config.name, normalizeIndexDef(renderIndex(item, tableName)));
+        const c = item.config;
+        const cols: string[] = (c.columns ?? []).map((col: any) => {
+          if (col?.name) return col.name as string;
+          if (is(col, SQL)) return normalizeIndexExpr(renderSql(col, `index column on ${tableName}`));
+          throw new Error(`[component-schema-push] Unsupported index column on ${tableName}`);
+        });
+        expectedIndexes.push({
+          name: c.name,
+          isUnique: ctor === "UniqueIndexBuilder" || !!c.unique,
+          method: (c.method ?? "btree").toLowerCase(),
+          columns: cols,
+          predicate: c.where ? normalizeIndexExpr(renderSql(c.where, `index WHERE on ${tableName}`)) : null,
+        });
       }
     }
   }
   const actualIndexes = await getTableIndexInfo(tableName);
   const actualIndexByName = new Map(actualIndexes.map((i) => [i.name, i] as const));
   const missingIndexes: string[] = [];
-  for (const [name, expectedDef] of expectedIndexDefs) {
-    const actual = actualIndexByName.get(name);
+  for (const exp of expectedIndexes) {
+    const actual = actualIndexByName.get(exp.name);
     if (!actual) {
-      missingIndexes.push(name);
+      missingIndexes.push(exp.name);
       continue;
     }
-    const actualDef = normalizeIndexDef(actual.definition);
-    if (actualDef !== expectedDef) {
-      missingIndexes.push(`${name} definition mismatch (expected: ${expectedDef} | found: ${actualDef})`);
+    const mismatches: string[] = [];
+    if (exp.isUnique !== actual.isUnique) {
+      mismatches.push(`unique: expected ${exp.isUnique}, found ${actual.isUnique}`);
+    }
+    if (exp.method !== actual.method.toLowerCase()) {
+      mismatches.push(`method: expected ${exp.method}, found ${actual.method}`);
+    }
+    const actualCols = actual.columns.map((c) => normalizeIndexExpr(c));
+    if (exp.columns.length !== actualCols.length || exp.columns.some((c, i) => c !== actualCols[i])) {
+      mismatches.push(`columns: expected [${exp.columns.join(", ")}], found [${actualCols.join(", ")}]`);
+    }
+    const expPred = exp.predicate;
+    const actPred = actual.predicate ? normalizeIndexExpr(actual.predicate) : null;
+    if ((expPred ?? "") !== (actPred ?? "")) {
+      mismatches.push(`predicate: expected ${expPred ?? "(none)"}, found ${actPred ?? "(none)"}`);
+    }
+    if (mismatches.length) {
+      missingIndexes.push(`${exp.name} mismatch: ${mismatches.join("; ")}`);
     }
   }
 
   return { tableName, missingColumns, typeMismatches, missingConstraints, missingIndexes };
 }
 
-function normalizeIndexDef(def: string): string {
-  return def
-    .toLowerCase()
-    .replace(/\bpublic\.|"/g, "")
-    .replace(/if not exists\s+/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
+function normalizeIndexExpr(s: string): string {
+  // Normalize for comparison: strip schema/table qualification, surrounding quotes,
+  // outer parentheses, and collapse whitespace. Keep semantic content (column names,
+  // operator classes, expression bodies).
+  let out = s.toLowerCase().trim();
+  out = out.replace(/\bpublic\./g, "");
+  // Strip "tablename"."col" or tablename.col qualifications - keep just the column name
+  out = out.replace(/"([a-z_][a-z0-9_]*)"\."([a-z_][a-z0-9_]*)"/g, "$2");
+  out = out.replace(/\b([a-z_][a-z0-9_]*)\.([a-z_][a-z0-9_]*)\b/g, "$2");
+  out = out.replace(/\s+/g, " ");
+  // Strip leading/trailing parens that pg_get_indexdef wraps expressions in
+  while (out.startsWith("(") && out.endsWith(")")) {
+    let depth = 0, balanced = true;
+    for (let i = 0; i < out.length; i++) {
+      if (out[i] === "(") depth++;
+      else if (out[i] === ")") { depth--; if (depth === 0 && i < out.length - 1) { balanced = false; break; } }
+    }
+    if (!balanced) break;
+    out = out.slice(1, -1).trim();
+  }
+  // Strip surrounding double quotes
+  if (out.startsWith('"') && out.endsWith('"') && !out.slice(1, -1).includes('"')) {
+    out = out.slice(1, -1);
+  }
+  return out;
 }
 
 export async function dropComponentSchema(componentId: string): Promise<void> {
