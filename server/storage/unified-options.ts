@@ -22,6 +22,7 @@ import {
   optionsClassifications,
   optionsIndustry,
   optionsWorkerMs,
+  optionsWorkerRelationType,
 } from "@shared/schema";
 import { type StorageLoggingConfig } from "./middleware/logging";
 
@@ -49,7 +50,8 @@ export type OptionsTypeName =
   | "worker-rating"
   | "classification"
   | "industry"
-  | "worker-ms";
+  | "worker-ms"
+  | "worker-relation-type";
 
 /**
  * Field definition for dynamic form and table rendering
@@ -424,6 +426,25 @@ const optionsMetadata: Record<OptionsTypeName, OptionsTableMetadata<any>> = {
     fields: [
       { name: "name", label: "Name", inputType: "text", required: true, placeholder: "Industry name", showInTable: true, columnHeader: "Name" },
       { name: "code", label: "Code", inputType: "text", required: false, placeholder: "Short code", showInTable: true, columnHeader: "Code" },
+      { name: "siriusId", label: "Sirius ID", inputType: "text", required: false, placeholder: "External ID", showInTable: true, columnHeader: "Sirius ID" },
+    ],
+  },
+  "worker-relation-type": {
+    table: optionsWorkerRelationType,
+    displayName: "Relationship Types",
+    description: "Manage relationship types used between workers (e.g. spouse, parent, sibling).",
+    singularName: "Relationship Type",
+    pluralName: "Relationship Types",
+    orderByColumn: "name" as const,
+    loggingModule: "options.workerRelationType",
+    requiredFields: ["name"],
+    optionalFields: ["siriusId", "description", "data"],
+    requiredComponent: "worker.relations",
+    supportsSequencing: false,
+    fields: [
+      { name: "name", label: "Name", inputType: "text", required: true, placeholder: "e.g., Spouse, Parent, Sibling", showInTable: true, columnHeader: "Name" },
+      { name: "icon", label: "Icon", inputType: "icon", required: false, placeholder: "Select an icon", showInTable: true, columnHeader: "Icon", columnWidth: "80px", dataField: true },
+      { name: "description", label: "Description", inputType: "text", required: false, placeholder: "Short description of this relationship type", showInTable: true, columnHeader: "Description" },
       { name: "siriusId", label: "Sirius ID", inputType: "text", required: false, placeholder: "External ID", showInTable: true, columnHeader: "Sirius ID" },
     ],
   },

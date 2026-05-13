@@ -838,6 +838,13 @@ export {
 } from "./schema/worker/tos/schema";
 
 export {
+  optionsWorkerRelationType,
+  insertOptionsWorkerRelationTypeSchema,
+  type OptionsWorkerRelationType,
+  type InsertOptionsWorkerRelationType,
+} from "./schema/worker/relations/schema";
+
+export {
   edlsSheets,
   edlsSheetStatusEnum,
   insertEdlsSheetsSchema,
