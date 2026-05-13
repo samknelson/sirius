@@ -33,27 +33,36 @@ async function getDisabledComponentTables(pool: Pool): Promise<string[]> {
     if ((err as PgError).code !== POSTGRES_TABLE_MISSING) throw err;
   }
 
-  const candidates: string[] = [];
-  for (const component of getSchemaManagingComponents()) {
-    const enabled = componentMap[component.id] ?? component.enabledByDefault;
-    if (!enabled && component.schemaManifest) {
-      candidates.push(...component.schemaManifest.tables);
-    }
-  }
-  if (candidates.length === 0) return [];
+  const disabledComponents = getSchemaManagingComponents().filter(c => {
+    const enabled = componentMap[c.id] ?? c.enabledByDefault;
+    return !enabled && c.schemaManifest;
+  });
+  if (disabledComponents.length === 0) return [];
 
-  // Only exclude tables that don't yet exist in the DB. If the table is
-  // already present (e.g. created by a previous push or before the component
-  // was manifest-managed), keep it in the schema so drizzle doesn't try to
-  // drop it. This makes disabled components prevent CREATION without ever
-  // forcing a destructive drop.
+  const allCandidates = disabledComponents.flatMap(
+    c => c.schemaManifest!.tables,
+  );
   const existing = await pool.query<{ table_name: string }>(
     `SELECT table_name FROM information_schema.tables
        WHERE table_schema = 'public' AND table_name = ANY($1)`,
-    [candidates],
+    [allCandidates],
   );
   const existingSet = new Set(existing.rows.map(r => r.table_name));
-  return candidates.filter(t => !existingSet.has(t));
+
+  // All-or-nothing per component: if ANY manifest table for a disabled
+  // component already exists in the DB, keep them ALL in the schema.
+  // Otherwise drizzle would see an orphaned FK reference (kept table
+  // pointing at an excluded target) and emit broken DROP CONSTRAINT
+  // statements. This makes disabled components prevent CREATION of
+  // greenfield component schemas without ever forcing a destructive drop
+  // on partially-created ones.
+  const disabled: string[] = [];
+  for (const component of disabledComponents) {
+    const tables = component.schemaManifest!.tables;
+    const anyExists = tables.some(t => existingSet.has(t));
+    if (!anyExists) disabled.push(...tables);
+  }
+  return disabled;
 }
 
 const DRIZZLE_NAME_SYMBOL_DESC = "drizzle:Name";
