@@ -463,13 +463,9 @@ export async function detectSchemaDrift(tableSchema: any, tableName: string): Pr
       missingColumns.push(dbName);
       continue;
     }
-    try {
-      const expectedType = resolveSqlType(col, tableName, key);
-      if (!dbTypeMatches(expectedType, actual.dataType, actual.udtName)) {
-        typeMismatches.push(`${dbName} expected ${expectedType}, found ${actual.dataType}`);
-      }
-    } catch {
-      // Type can't be resolved - skip mismatch check, generation will throw on next push
+    const expectedType = resolveSqlType(col, tableName, key);
+    if (!dbTypeMatches(expectedType, actual.dataType, actual.udtName)) {
+      typeMismatches.push(`${dbName} expected ${expectedType}, found ${actual.dataType}`);
     }
   }
 
@@ -527,6 +523,11 @@ export async function detectSchemaDrift(tableSchema: any, tableName: string): Pr
         }
       } else if (ctor === "IndexBuilder" || ctor === "UniqueIndexBuilder") {
         if (item.config?.name) expectedIndexNames.add(item.config.name);
+      } else {
+        throw new Error(
+          `[component-schema-push] Unrecognized extra-config builder "${ctor}" on table ${tableName} ` +
+          `during drift check. Please add support for it in component-schema-push.ts.`,
+        );
       }
     }
   }

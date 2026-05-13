@@ -31,7 +31,7 @@ import {
   check,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import { generateCreateStatements } from "../server/services/component-schema-push";
+import { generateCreateStatements, detectSchemaDrift } from "../server/services/component-schema-push";
 
 const colorEnum = pgEnum("smoke_color", ["red", "green", "blue"]);
 
@@ -95,9 +95,9 @@ function assertContains(haystack: string, needles: string[], context: string) {
 
 let failed = 0;
 
-function check_(name: string, fn: () => void) {
+async function check_(name: string, fn: () => void | Promise<void>) {
   try {
-    fn();
+    await fn();
     console.log(`  ok  ${name}`);
   } catch (e: any) {
     console.error(`  FAIL ${name}: ${e.message}`);
@@ -105,6 +105,7 @@ function check_(name: string, fn: () => void) {
   }
 }
 
+(async () => {
 console.log("Smoke testing component schema push generator...\n");
 
 const parentStmts = generateCreateStatements(parent, "smoke_parent", enums, emitted);
@@ -113,71 +114,71 @@ const compStmts = generateCreateStatements(composite, "smoke_composite", enums, 
 
 const childAll = childStmts.map((s) => s.sql).join("\n;\n");
 
-check_("parent: uuid PK with default", () => {
+await check_("parent: uuid PK with default", () => {
   const sql = parentStmts.find((s) => s.kind === "create_table")!.sql;
   assertContains(sql, [`"id" uuid PRIMARY KEY`, `"name" varchar(100) NOT NULL`], "parent");
 });
 
-check_("child: pgEnum CREATE TYPE emitted before table", () => {
+await check_("child: pgEnum CREATE TYPE emitted before table", () => {
   const idx = childStmts.findIndex((s) => s.kind === "create_type" && s.key === "smoke_color");
   const tableIdx = childStmts.findIndex((s) => s.kind === "create_table");
   if (idx < 0) throw new Error("no create_type");
   if (idx >= tableIdx) throw new Error("create_type after create_table");
 });
 
-check_("child: date/time/numeric SQL types correct", () => {
+await check_("child: date/time/numeric SQL types correct", () => {
   const sql = childStmts.find((s) => s.kind === "create_table")!.sql;
   assertContains(sql, [`"ymd" date NOT NULL`, `"start_time" time`, `"price" numeric(10, 2)`], "child types");
 });
 
-check_("child: array column", () => {
+await check_("child: array column", () => {
   const sql = childStmts.find((s) => s.kind === "create_table")!.sql;
   assertContains(sql, [`"tags" text[]`], "child array");
 });
 
-check_("child: defaults rendered (sql + scalar)", () => {
+await check_("child: defaults rendered (sql + scalar)", () => {
   const sql = childStmts.find((s) => s.kind === "create_table")!.sql;
   assertContains(sql, [`DEFAULT now()`, `DEFAULT 0`, `DEFAULT true`, `DEFAULT 'red'`], "defaults");
 });
 
-check_("child: inline FK with ON DELETE CASCADE ON UPDATE CASCADE", () => {
+await check_("child: inline FK with ON DELETE CASCADE ON UPDATE CASCADE", () => {
   const sql = childStmts.find((s) => s.kind === "create_table")!.sql;
   assertContains(sql, [`FOREIGN KEY ("parent_id") REFERENCES "smoke_parent" ("id") ON DELETE CASCADE ON UPDATE CASCADE`], "inline FK");
 });
 
-check_("child: table-level FK with name and ON DELETE SET NULL", () => {
+await check_("child: table-level FK with name and ON DELETE SET NULL", () => {
   const sql = childStmts.find((s) => s.kind === "create_table")!.sql;
   assertContains(sql, [`CONSTRAINT "fk_smoke_child_alt" FOREIGN KEY ("alt_parent") REFERENCES "smoke_parent" ("id") ON DELETE SET NULL`], "table FK");
 });
 
-check_("child: unique constraint", () => {
+await check_("child: unique constraint", () => {
   const sql = childStmts.find((s) => s.kind === "create_table")!.sql;
   assertContains(sql, [`CONSTRAINT "uq_smoke_child_parent_color" UNIQUE ("parent_id", "color")`], "unique");
 });
 
-check_("child: check constraint", () => {
+await check_("child: check constraint", () => {
   const sql = childStmts.find((s) => s.kind === "create_table")!.sql;
   assertContains(sql, [`CONSTRAINT "smoke_child_qty_nonneg" CHECK (`, `>= 0`], "check");
 });
 
-check_("child: plain index emitted as separate CREATE INDEX", () => {
+await check_("child: plain index emitted as separate CREATE INDEX", () => {
   const idx = childStmts.find((s) => s.kind === "create_index" && s.sql.includes("idx_smoke_child_color"));
   if (!idx) throw new Error("missing index");
   assertContains(idx.sql, [`CREATE INDEX IF NOT EXISTS "idx_smoke_child_color" ON "smoke_child" ("color")`], "index");
 });
 
-check_("child: partial unique index with WHERE clause", () => {
+await check_("child: partial unique index with WHERE clause", () => {
   const idx = childStmts.find((s) => s.kind === "create_index" && s.sql.includes("uidx_smoke_child_active_parent"));
   if (!idx) throw new Error("missing partial index");
   assertContains(idx.sql, [`CREATE UNIQUE INDEX IF NOT EXISTS "uidx_smoke_child_active_parent"`, `WHERE`, `= true`], "partial");
 });
 
-check_("composite: composite primary key constraint", () => {
+await check_("composite: composite primary key constraint", () => {
   const sql = compStmts.find((s) => s.kind === "create_table")!.sql;
   assertContains(sql, [`CONSTRAINT "smoke_composite_pk" PRIMARY KEY ("a", "b")`], "composite PK");
 });
 
-check_("unknown column type throws", () => {
+await check_("unknown column type throws", () => {
   const fakeCol: any = { columnType: "PgFakeType", name: "x", getSQLType: () => "" };
   const fakeTable: any = {};
   const cs: any = Symbol("drizzle:Columns");
@@ -202,9 +203,48 @@ check_("unknown column type throws", () => {
   if (!threw) throw new Error("expected throw on unknown column type");
 });
 
+// For drift-path tests, use a real table that exists in the DB ("workers" with column "id").
+const REAL_TABLE = "workers";
+const REAL_COL = "id";
+const colsSym = Object.getOwnPropertySymbols(parent).find((s) => s.description === "drizzle:Columns")!;
+const nameSym = Object.getOwnPropertySymbols(parent).find((s) => s.description === "drizzle:Name")!;
+
+await check_("drift: unknown column type throws (existing-table path)", async () => {
+  const fakeCol: any = { columnType: "PgFakeType", name: REAL_COL, getSQLType: () => "" };
+  const realTable: any = {};
+  realTable[colsSym] = { id: fakeCol };
+  realTable[nameSym] = REAL_TABLE;
+  let threw = false;
+  try {
+    await detectSchemaDrift(realTable, REAL_TABLE);
+  } catch (e: any) {
+    threw = e.message.includes("Cannot determine SQL type");
+  }
+  if (!threw) throw new Error("expected drift to throw on unknown column type");
+});
+
+await check_("drift: unknown extra-config builder throws", async () => {
+  const realEbSym = Object.getOwnPropertySymbols(child).find((s) => s.description === "drizzle:ExtraConfigBuilder")!;
+  const realEcSym = Object.getOwnPropertySymbols(child).find((s) => s.description === "drizzle:ExtraConfigColumns")!;
+  const realTable: any = {};
+  realTable[colsSym] = { id: { name: REAL_COL, getSQLType: () => "varchar", columnType: "PgVarchar" } };
+  realTable[nameSym] = REAL_TABLE;
+  class WeirdBuilder { name = "weird"; }
+  realTable[realEbSym] = () => [new WeirdBuilder()];
+  realTable[realEcSym] = realTable[colsSym];
+  let threw = false;
+  try {
+    await detectSchemaDrift(realTable, REAL_TABLE);
+  } catch (e: any) {
+    threw = e.message.includes("Unrecognized extra-config builder");
+  }
+  if (!threw) throw new Error("expected drift to throw on unknown extra-config builder");
+});
+
 if (failed > 0) {
   console.error(`\n${failed} smoke test(s) FAILED`);
   process.exit(1);
 }
 console.log(`\nAll smoke tests passed.`);
 process.exit(0);
+})();
