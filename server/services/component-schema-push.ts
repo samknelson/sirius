@@ -344,13 +344,27 @@ function renderSql(value: any, context: string): string {
     throw new Error(`[component-schema-push] Expected a Drizzle SQL expression for ${context}`);
   }
   const q = dialect.sqlToQuery(value as SQL);
-  if (q.params && q.params.length > 0) {
-    throw new Error(
-      `[component-schema-push] SQL expression for ${context} contains bound parameters; ` +
-      `inline literal values instead.`,
-    );
+  if (!q.params || q.params.length === 0) return q.sql;
+  // Inline parameters as SQL literals so the rendered DDL is self-contained.
+  // Postgres uses $1, $2, ... placeholders.
+  let out = q.sql;
+  for (let i = q.params.length - 1; i >= 0; i--) {
+    const literal = sqlLiteral(q.params[i], `${context} param $${i + 1}`);
+    out = out.replace(new RegExp(`\\$${i + 1}\\b`, "g"), () => literal);
   }
-  return q.sql;
+  return out;
+}
+
+function sqlLiteral(v: unknown, context: string): string {
+  if (v === null || v === undefined) return "NULL";
+  if (typeof v === "string") return `'${v.replace(/'/g, "''")}'`;
+  if (typeof v === "number" || typeof v === "bigint") return String(v);
+  if (typeof v === "boolean") return v ? "TRUE" : "FALSE";
+  if (v instanceof Date) return `'${v.toISOString()}'`;
+  throw new Error(
+    `[component-schema-push] Unsupported parameter type ${typeof v} for ${context}; ` +
+    `inline a primitive literal in your sql\`...\` expression instead.`,
+  );
 }
 
 function renderCreateEnumType(name: string, values: string[]): string {

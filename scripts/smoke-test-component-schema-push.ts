@@ -278,6 +278,36 @@ await check_("drift: composite PK reports missing PK when actual PK differs", as
   }
 });
 
+await check_("renderSql inlines bound parameters in check / partial-index / default expressions", async () => {
+  // Sanity: even when a Drizzle SQL expression contains $1-style params, the renderer
+  // should inline them as literals (numbers, booleans, strings) rather than throw.
+  const tableWithParams = pgTable(
+    "smoke_params",
+    {
+      id: integer("id").primaryKey(),
+      name: text("name").notNull().default(sql`'unset'`),
+      qty: integer("qty").notNull(),
+      active: boolean("active").notNull(),
+    },
+    (t) => [
+      check("smoke_params_qty_pos", sql`${t.qty} >= ${0}`),
+      uniqueIndex("uidx_smoke_params_active").on(t.id).where(sql`${t.active} = ${true}`),
+    ],
+  );
+  const stmts = generateCreateStatements(tableWithParams, "smoke_params", new Map(), new Set());
+  const tableSql = stmts.find((s) => s.kind === "create_table")!.sql;
+  const idxSql = stmts.find((s) => s.kind === "create_index")!.sql;
+  if (tableSql.includes("$1") || idxSql.includes("$1")) {
+    throw new Error(`bound params not inlined:\n${tableSql}\n${idxSql}`);
+  }
+  if (!/CHECK \(.*qty.*>=\s*0\)/.test(tableSql)) {
+    throw new Error(`check constraint param not inlined:\n${tableSql}`);
+  }
+  if (!/WHERE\s+.*active.*=\s*TRUE/i.test(idxSql)) {
+    throw new Error(`partial-index predicate param not inlined:\n${idxSql}`);
+  }
+});
+
 await check_("drift: idempotency - generated SQL produces no drift on re-check", async () => {
   // Drop, then create the smoke_child table from the generator's own SQL,
   // then run detectSchemaDrift and assert there is no drift.
