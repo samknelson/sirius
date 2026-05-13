@@ -475,7 +475,7 @@ export async function detectSchemaDrift(tableSchema: any, tableName: string): Pr
   const expectedFks: ExpectedFk[] = [];
   const expectedUniques: ExpectedUnique[] = [];
   const expectedCheckNames = new Set<string>();
-  const expectedNamedConstraints = new Set<string>();
+  const expectedPks: { cols: string[]; name?: string }[] = [];
 
   for (const fk of getInlineForeignKeys(tableSchema)) {
     const ref = fk.reference();
@@ -493,7 +493,6 @@ export async function detectSchemaDrift(tableSchema: any, tableName: string): Pr
 
   const ebSym = getSym(tableSchema, EXTRA_CONFIG_BUILDER_SYM);
   const ecSym = getSym(tableSchema, EXTRA_CONFIG_COLS_SYM);
-  const expectedIndexNames = new Set<string>();
   if (ebSym && typeof tableSchema[ebSym] === "function") {
     const ecCols = ecSym ? tableSchema[ecSym] : expectedCols;
     const cfg = tableSchema[ebSym](ecCols);
@@ -505,7 +504,11 @@ export async function detectSchemaDrift(tableSchema: any, tableName: string): Pr
           cols: (item.columns ?? []).map((c: any) => c.name as string),
           name: item.name,
         });
-        if (item.name) expectedNamedConstraints.add(item.name);
+      } else if (ctor === "PrimaryKeyBuilder") {
+        expectedPks.push({
+          cols: (item.columns ?? []).map((c: any) => c.name as string),
+          name: item.name,
+        });
       } else if (ctor === "ForeignKeyBuilder") {
         const built = item.build(tableSchema);
         const ref = built.reference();
@@ -521,12 +524,9 @@ export async function detectSchemaDrift(tableSchema: any, tableName: string): Pr
           });
         }
       } else if (ctor === "CheckBuilder") {
-        if (item.name) {
-          expectedCheckNames.add(item.name);
-          expectedNamedConstraints.add(item.name);
-        }
+        if (item.name) expectedCheckNames.add(item.name);
       } else if (ctor === "IndexBuilder" || ctor === "UniqueIndexBuilder") {
-        if (item.config?.name) expectedIndexNames.add(item.config.name);
+        // handled in the index-drift block below
       } else {
         throw new Error(
           `[component-schema-push] Unrecognized extra-config builder "${ctor}" on table ${tableName} ` +
@@ -597,6 +597,15 @@ export async function detectSchemaDrift(tableSchema: any, tableName: string): Pr
   for (const name of expectedCheckNames) {
     if (!actualNamedConstraints.has(name)) {
       missingConstraints.push(`CHECK ${name}`);
+    }
+  }
+
+  // Primary key drift: compare by column set (PK names rarely match Drizzle's auto-names).
+  const actualPks = actualConstraints.filter((c) => c.type === "p");
+  const actualPkColSets = new Set(actualPks.map((c) => c.columns.slice().sort().join(",")));
+  for (const pk of expectedPks) {
+    if (!actualPkColSets.has(pk.cols.slice().sort().join(","))) {
+      missingConstraints.push(`PRIMARY KEY ${pk.name ?? "(unnamed)"}: (${pk.cols.join(",")})`);
     }
   }
 

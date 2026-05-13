@@ -253,6 +253,31 @@ await check_("drift: unknown extra-config builder throws", async () => {
   if (!threw) throw new Error("expected drift to throw on unknown extra-config builder");
 });
 
+await check_("drift: composite PK reports missing PK when actual PK differs", async () => {
+  const tbl = "smoke_drift_composite";
+  await storage.rawSql.execute(`DROP TABLE IF EXISTS ${tbl} CASCADE`);
+  // Create with WRONG primary key (just "a") to force drift against expected (a, b)
+  await storage.rawSql.execute(`CREATE TABLE ${tbl} ("a" varchar PRIMARY KEY, "b" varchar NOT NULL)`);
+  const realCompositeStmts = generateCreateStatements(composite, tbl, enums, new Set());
+  // Build a synthetic table mirroring `composite` but pointing at our drift table name
+  const compColsSym = Object.getOwnPropertySymbols(composite).find((s) => s.description === "drizzle:Columns")!;
+  const compNameSym = Object.getOwnPropertySymbols(composite).find((s) => s.description === "drizzle:Name")!;
+  const compEbSym = Object.getOwnPropertySymbols(composite).find((s) => s.description === "drizzle:ExtraConfigBuilder")!;
+  const compEcSym = Object.getOwnPropertySymbols(composite).find((s) => s.description === "drizzle:ExtraConfigColumns")!;
+  const proxy: any = {};
+  proxy[compColsSym] = composite[compColsSym as any];
+  proxy[compNameSym] = tbl;
+  proxy[compEbSym] = composite[compEbSym as any];
+  proxy[compEcSym] = composite[compEcSym as any];
+  const report = await detectSchemaDrift(proxy, tbl);
+  await storage.rawSql.execute(`DROP TABLE IF EXISTS ${tbl} CASCADE`);
+  void realCompositeStmts;
+  const hasPkDrift = report.missingConstraints.some((c) => c.startsWith("PRIMARY KEY"));
+  if (!hasPkDrift) {
+    throw new Error(`expected PRIMARY KEY drift but got: ${JSON.stringify(report.missingConstraints)}`);
+  }
+});
+
 await storage.rawSql.execute(`DROP TABLE IF EXISTS ${REAL_TABLE} CASCADE`);
 
 if (failed > 0) {
