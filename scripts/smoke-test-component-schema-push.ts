@@ -15,6 +15,12 @@ import {
   varchar,
   text,
   integer,
+  bigint,
+  smallint,
+  real,
+  doublePrecision,
+  interval,
+  customType,
   numeric,
   date,
   time,
@@ -275,6 +281,26 @@ await check_("drift: composite PK reports missing PK when actual PK differs", as
   const hasPkDrift = report.missingConstraints.some((c) => c.startsWith("PRIMARY KEY"));
   if (!hasPkDrift) {
     throw new Error(`expected PRIMARY KEY drift but got: ${JSON.stringify(report.missingConstraints)}`);
+  }
+});
+
+await check_("extended types: bigint/smallint/real/double precision/interval/bytea emit correct SQL", async () => {
+  const bytea = customType<{ data: Buffer; driverData: Buffer }>({ dataType: () => "bytea" });
+  const t = pgTable("smoke_types", {
+    id: integer("id").primaryKey(),
+    big: bigint("big", { mode: "number" }).notNull(),
+    small: smallint("small").notNull(),
+    r: real("r").notNull(),
+    dp: doublePrecision("dp").notNull(),
+    iv: interval("iv").notNull(),
+    blob: bytea("blob").notNull(),
+  });
+  const stmts = generateCreateStatements(t, "smoke_types", new Map(), new Set());
+  const tableSql = stmts.find((s) => s.kind === "create_table")!.sql;
+  for (const expected of ['"big" bigint', '"small" smallint', '"r" real', '"dp" double precision', '"iv" interval', '"blob" bytea']) {
+    if (!tableSql.includes(expected)) {
+      throw new Error(`expected SQL to contain \`${expected}\` but got:\n${tableSql}`);
+    }
   }
 });
 

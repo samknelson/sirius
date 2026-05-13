@@ -406,6 +406,12 @@ function formatDefault(defaultValue: any, tableName: string, colKey: string): st
   );
 }
 
+// Drift comparison normalizes types to their base name (precision/scale and
+// length modifiers stripped). For example, `numeric(10,2)` and `numeric(12,2)`
+// are treated as equivalent, as are `varchar(50)` and `varchar(100)`. This is
+// intentional: width-only changes are not currently flagged as drift. If
+// stricter precision/scale enforcement is required later, extend `parseTypeBase`
+// to retain the modifier and compare it.
 const PG_TYPE_ALIASES: Record<string, string[]> = {
   varchar: ["character varying", "varchar"],
   "character varying": ["character varying", "varchar"],
