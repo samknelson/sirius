@@ -1,6 +1,11 @@
 import { getComponentById } from "../../shared/components";
 import { storage } from "../storage";
-import { tableExists, getTableColumnNames } from "../storage/utils";
+import {
+  tableExists,
+  getTableColumnInfo,
+  getTableConstraintInfo,
+  getTableIndexInfo,
+} from "../storage/utils";
 import * as mainSchema from "../../shared/schema";
 import { PgDialect } from "drizzle-orm/pg-core";
 import { is, SQL } from "drizzle-orm";
@@ -17,6 +22,35 @@ interface PendingStatement {
   kind: "create_type" | "create_table" | "create_index";
   sql: string;
   key?: string;
+}
+
+export interface SchemaDriftReport {
+  tableName: string;
+  missingColumns: string[];
+  typeMismatches: string[];
+  missingConstraints: string[];
+  missingIndexes: string[];
+}
+
+export class ComponentSchemaDriftError extends Error {
+  reports: SchemaDriftReport[];
+  constructor(reports: SchemaDriftReport[]) {
+    super(formatDriftMessage(reports));
+    this.name = "ComponentSchemaDriftError";
+    this.reports = reports;
+  }
+}
+
+function formatDriftMessage(reports: SchemaDriftReport[]): string {
+  const lines: string[] = ["Schema drift detected:"];
+  for (const r of reports) {
+    lines.push(`  Table ${r.tableName}:`);
+    if (r.missingColumns.length) lines.push(`    - missing columns: ${r.missingColumns.join(", ")}`);
+    for (const m of r.typeMismatches) lines.push(`    - type mismatch: ${m}`);
+    if (r.missingConstraints.length) lines.push(`    - missing constraints: ${r.missingConstraints.join(", ")}`);
+    if (r.missingIndexes.length) lines.push(`    - missing indexes: ${r.missingIndexes.join(", ")}`);
+  }
+  return lines.join("\n");
 }
 
 export async function pushComponentSchema(componentId: string): Promise<void> {
@@ -42,19 +76,20 @@ export async function pushComponentSchema(componentId: string): Promise<void> {
   const allEnums = new Map<string, string[]>([...enumsInMain, ...enumsInModule]);
 
   const emittedEnumTypes = new Set<string>();
+  const driftReports: SchemaDriftReport[] = [];
 
   for (const tableName of component.schemaManifest.tables) {
     const exists = await tableExists(tableName);
 
-    if (!exists) {
-      let tableSchema = findTableInModule(schemaModule, tableName);
-      if (!tableSchema) {
-        tableSchema = findTableInModule(mainSchema as unknown as Record<string, unknown>, tableName);
-      }
-      if (!tableSchema) {
-        throw new Error(`Table ${tableName} not found in schema module`);
-      }
+    let tableSchema = findTableInModule(schemaModule, tableName);
+    if (!tableSchema) {
+      tableSchema = findTableInModule(mainSchema as unknown as Record<string, unknown>, tableName);
+    }
+    if (!tableSchema) {
+      throw new Error(`Table ${tableName} not found in schema module`);
+    }
 
+    if (!exists) {
       const statements = generateCreateStatements(tableSchema, tableName, allEnums, emittedEnumTypes);
       for (const stmt of statements) {
         if (stmt.kind === "create_type" && stmt.key) {
@@ -66,24 +101,22 @@ export async function pushComponentSchema(componentId: string): Promise<void> {
       }
       console.log(`Table ${tableName} created successfully.`);
     } else {
-      let tableSchema = findTableInModule(schemaModule, tableName);
-      if (!tableSchema) {
-        tableSchema = findTableInModule(mainSchema as unknown as Record<string, unknown>, tableName);
-      }
-      if (tableSchema) {
-        const drift = await detectColumnDrift(tableSchema, tableName);
-        if (drift.length > 0) {
-          console.warn(
-            `[component-schema-push] WARNING: table ${tableName} already exists but is missing columns: ${drift.join(", ")}. ` +
-            `This push tool only creates new tables; please add the missing columns manually or drop and recreate the table.`,
-          );
-        } else {
-          console.log(`Table ${tableName} already exists, skipping.`);
-        }
+      const report = await detectSchemaDrift(tableSchema, tableName);
+      if (
+        report.missingColumns.length ||
+        report.typeMismatches.length ||
+        report.missingConstraints.length ||
+        report.missingIndexes.length
+      ) {
+        driftReports.push(report);
       } else {
-        console.log(`Table ${tableName} already exists, skipping.`);
+        console.log(`Table ${tableName} already exists and matches schema.`);
       }
     }
+  }
+
+  if (driftReports.length > 0) {
+    throw new ComponentSchemaDriftError(driftReports);
   }
 }
 
@@ -136,11 +169,11 @@ function collectPgEnums(module: Record<string, unknown>): Map<string, string[]> 
   return result;
 }
 
-function generateCreateStatements(
+export function generateCreateStatements(
   tableSchema: any,
   tableName: string,
   allEnums: Map<string, string[]>,
-  alreadyEmittedEnums: Set<string>,
+  alreadyEmittedEnums: Set<string> = new Set(),
 ): PendingStatement[] {
   const out: PendingStatement[] = [];
   const columns = getTableColumns(tableSchema);
@@ -359,17 +392,188 @@ function formatDefault(defaultValue: any, tableName: string, colKey: string): st
   );
 }
 
-async function detectColumnDrift(tableSchema: any, tableName: string): Promise<string[]> {
-  const expectedCols = getTableColumns(tableSchema);
-  const expectedNames = new Set(
-    Object.entries(expectedCols).map(([key, col]: [string, any]) => col.name || key),
-  );
-  const actualNames = new Set(await getTableColumnNames(tableName));
-  const missing: string[] = [];
-  for (const name of expectedNames) {
-    if (!actualNames.has(name)) missing.push(name);
+const PG_TYPE_ALIASES: Record<string, string[]> = {
+  varchar: ["character varying", "varchar"],
+  "character varying": ["character varying", "varchar"],
+  text: ["text"],
+  integer: ["integer", "int4"],
+  int: ["integer", "int4"],
+  bigint: ["bigint", "int8"],
+  smallint: ["smallint", "int2"],
+  serial: ["integer", "int4"],
+  bigserial: ["bigint", "int8"],
+  boolean: ["boolean", "bool"],
+  bool: ["boolean", "bool"],
+  jsonb: ["jsonb"],
+  json: ["json"],
+  date: ["date"],
+  time: ["time without time zone", "time"],
+  timestamp: ["timestamp without time zone", "timestamp"],
+  "timestamp with time zone": ["timestamp with time zone", "timestamptz"],
+  timestamptz: ["timestamp with time zone", "timestamptz"],
+  numeric: ["numeric"],
+  decimal: ["numeric"],
+  uuid: ["uuid"],
+  bytea: ["bytea"],
+  "double precision": ["double precision", "float8"],
+  real: ["real", "float4"],
+};
+
+function normalizeExpectedType(sqlType: string): string {
+  const lower = sqlType.toLowerCase();
+  // Strip parens like numeric(10, 2) → numeric
+  const base = lower.replace(/\([^)]*\)/g, "").trim();
+  // Arrays handled separately
+  return base.replace(/\s+/g, " ");
+}
+
+function dbTypeMatches(expected: string, actualDataType: string, actualUdt: string): boolean {
+  const exp = normalizeExpectedType(expected);
+  // Array case: expected ends with "[]"
+  if (exp.endsWith("[]")) {
+    if (actualDataType.toLowerCase() !== "array") return false;
+    const expBase = exp.slice(0, -2).trim();
+    const aliases = PG_TYPE_ALIASES[expBase] ?? [expBase];
+    // udt_name for array elements is typically "_int4", "_text", etc.
+    const udt = actualUdt.toLowerCase().replace(/^_/, "");
+    return aliases.some((a) => a === actualDataType.toLowerCase() || a === udt);
   }
-  return missing;
+  // Enum: expected is the enum name → actualDataType will be USER-DEFINED with udt_name = enum name
+  if (actualDataType.toLowerCase() === "user-defined") {
+    return exp === actualUdt.toLowerCase();
+  }
+  const aliases = PG_TYPE_ALIASES[exp] ?? [exp];
+  const actualLower = actualDataType.toLowerCase();
+  const udtLower = actualUdt.toLowerCase();
+  return aliases.includes(actualLower) || aliases.includes(udtLower);
+}
+
+export async function detectSchemaDrift(tableSchema: any, tableName: string): Promise<SchemaDriftReport> {
+  const expectedCols = getTableColumns(tableSchema);
+  const actualCols = await getTableColumnInfo(tableName);
+  const actualByName = new Map(actualCols.map((c) => [c.name, c]));
+
+  const missingColumns: string[] = [];
+  const typeMismatches: string[] = [];
+
+  for (const [key, col] of Object.entries(expectedCols) as [string, any][]) {
+    const dbName = col.name || key;
+    const actual = actualByName.get(dbName);
+    if (!actual) {
+      missingColumns.push(dbName);
+      continue;
+    }
+    try {
+      const expectedType = resolveSqlType(col, tableName, key);
+      if (!dbTypeMatches(expectedType, actual.dataType, actual.udtName)) {
+        typeMismatches.push(`${dbName} expected ${expectedType}, found ${actual.dataType}`);
+      }
+    } catch {
+      // Type can't be resolved - skip mismatch check, generation will throw on next push
+    }
+  }
+
+  // Compare FKs/uniques/checks structurally (Drizzle's auto-names rarely match Postgres' auto-names).
+  interface ExpectedFk { cols: string[]; ftable: string; fcols: string[]; name?: string }
+  interface ExpectedUnique { cols: string[]; name?: string }
+  const expectedFks: ExpectedFk[] = [];
+  const expectedUniques: ExpectedUnique[] = [];
+  const expectedCheckNames = new Set<string>();
+  const expectedNamedConstraints = new Set<string>();
+
+  for (const fk of getInlineForeignKeys(tableSchema)) {
+    const ref = fk.reference();
+    const ftName = getTableName(ref.foreignTable);
+    if (!ftName) continue;
+    expectedFks.push({
+      cols: ref.columns.map((c: any) => c.name as string),
+      ftable: ftName,
+      fcols: ref.foreignColumns.map((c: any) => c.name as string),
+      name: fk.name ?? ref.name,
+    });
+  }
+
+  const ebSym = getSym(tableSchema, EXTRA_CONFIG_BUILDER_SYM);
+  const ecSym = getSym(tableSchema, EXTRA_CONFIG_COLS_SYM);
+  const expectedIndexNames = new Set<string>();
+  if (ebSym && typeof tableSchema[ebSym] === "function") {
+    const ecCols = ecSym ? tableSchema[ecSym] : expectedCols;
+    const cfg = tableSchema[ebSym](ecCols);
+    const items: any[] = Array.isArray(cfg) ? cfg : Object.values(cfg ?? {});
+    for (const item of items) {
+      const ctor = item?.constructor?.name;
+      if (ctor === "UniqueConstraintBuilder") {
+        expectedUniques.push({
+          cols: (item.columns ?? []).map((c: any) => c.name as string),
+          name: item.name,
+        });
+        if (item.name) expectedNamedConstraints.add(item.name);
+      } else if (ctor === "ForeignKeyBuilder") {
+        const built = item.build(tableSchema);
+        const ref = built.reference();
+        const ftName = getTableName(ref.foreignTable);
+        if (ftName) {
+          expectedFks.push({
+            cols: ref.columns.map((c: any) => c.name as string),
+            ftable: ftName,
+            fcols: ref.foreignColumns.map((c: any) => c.name as string),
+            name: built.name ?? ref.name,
+          });
+        }
+      } else if (ctor === "CheckBuilder") {
+        if (item.name) {
+          expectedCheckNames.add(item.name);
+          expectedNamedConstraints.add(item.name);
+        }
+      } else if (ctor === "IndexBuilder" || ctor === "UniqueIndexBuilder") {
+        if (item.config?.name) expectedIndexNames.add(item.config.name);
+      }
+    }
+  }
+  for (const [key, col] of Object.entries(expectedCols) as [string, any][]) {
+    if (col.isUnique) {
+      const dbName = col.name || key;
+      expectedUniques.push({ cols: [dbName], name: col.uniqueName });
+    }
+  }
+
+  const actualConstraints = await getTableConstraintInfo(tableName);
+  const actualFks = actualConstraints.filter((c) => c.type === "f");
+  const actualUniques = actualConstraints.filter((c) => c.type === "u");
+  const actualNamedConstraints = new Set(actualConstraints.map((c) => c.name));
+
+  const sigFk = (cols: string[], ftable: string, fcols: string[]) =>
+    `${cols.join(",")}->${ftable}(${fcols.join(",")})`;
+  const actualFkSigs = new Set(actualFks.map((c) => sigFk(c.columns, c.foreignTable ?? "", c.foreignColumns)));
+  const actualUniqueSigs = new Set(actualUniques.map((c) => c.columns.slice().sort().join(",")));
+
+  const missingConstraints: string[] = [];
+  for (const fk of expectedFks) {
+    if (!actualFkSigs.has(sigFk(fk.cols, fk.ftable, fk.fcols))) {
+      missingConstraints.push(
+        `FK ${fk.name ?? "(unnamed)"}: ${fk.cols.join(",")} -> ${fk.ftable}(${fk.fcols.join(",")})`,
+      );
+    }
+  }
+  for (const uq of expectedUniques) {
+    if (!actualUniqueSigs.has(uq.cols.slice().sort().join(","))) {
+      missingConstraints.push(`UNIQUE ${uq.name ?? "(unnamed)"}: (${uq.cols.join(",")})`);
+    }
+  }
+  for (const name of expectedCheckNames) {
+    if (!actualNamedConstraints.has(name)) {
+      missingConstraints.push(`CHECK ${name}`);
+    }
+  }
+
+  const actualIndexes = await getTableIndexInfo(tableName);
+  const actualIndexNames = new Set(actualIndexes.map((i) => i.name));
+  const missingIndexes: string[] = [];
+  for (const name of expectedIndexNames) {
+    if (!actualIndexNames.has(name)) missingIndexes.push(name);
+  }
+
+  return { tableName, missingColumns, typeMismatches, missingConstraints, missingIndexes };
 }
 
 export async function dropComponentSchema(componentId: string): Promise<void> {

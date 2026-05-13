@@ -1,0 +1,210 @@
+#!/usr/bin/env npx tsx
+/**
+ * Smoke test for the component schema push generator.
+ *
+ * Builds an in-memory schema covering every supported feature
+ * (date/time/numeric/uuid/enum/array, FK with cascade, table-level FK,
+ * unique constraint, partial unique index, plain index, check, composite PK,
+ * SQL defaults, scalar defaults) and asserts the generated SQL contains
+ * the expected keywords. Also asserts that unknown column types throw.
+ *
+ * Run: npx tsx scripts/smoke-test-component-schema-push.ts
+ */
+import {
+  pgTable,
+  varchar,
+  text,
+  integer,
+  numeric,
+  date,
+  time,
+  timestamp,
+  boolean,
+  uuid,
+  jsonb,
+  pgEnum,
+  index,
+  uniqueIndex,
+  unique,
+  primaryKey,
+  foreignKey,
+  check,
+} from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { generateCreateStatements } from "../server/services/component-schema-push";
+
+const colorEnum = pgEnum("smoke_color", ["red", "green", "blue"]);
+
+const parent = pgTable("smoke_parent", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: varchar("name", { length: 100 }).notNull(),
+});
+
+const child = pgTable(
+  "smoke_child",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    parentId: uuid("parent_id")
+      .notNull()
+      .references(() => parent.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    altParent: uuid("alt_parent"),
+    color: colorEnum("color").notNull().default("red"),
+    qty: integer("qty").notNull().default(0),
+    price: numeric("price", { precision: 10, scale: 2 }),
+    ymd: date("ymd").notNull(),
+    startTime: time("start_time"),
+    createdAt: timestamp("created_at").notNull().default(sql`now()`),
+    active: boolean("active").notNull().default(true),
+    tags: text("tags").array(),
+    data: jsonb("data"),
+  },
+  (t) => [
+    index("idx_smoke_child_color").on(t.color),
+    uniqueIndex("uidx_smoke_child_active_parent").on(t.parentId).where(sql`${t.active} = true`),
+    unique("uq_smoke_child_parent_color").on(t.parentId, t.color),
+    foreignKey({
+      columns: [t.altParent],
+      foreignColumns: [parent.id],
+      name: "fk_smoke_child_alt",
+    }).onDelete("set null"),
+    check("smoke_child_qty_nonneg", sql`${t.qty} >= 0`),
+  ],
+);
+
+const composite = pgTable(
+  "smoke_composite",
+  {
+    a: varchar("a").notNull(),
+    b: varchar("b").notNull(),
+    note: text("note"),
+  },
+  (t) => [primaryKey({ columns: [t.a, t.b], name: "smoke_composite_pk" })],
+);
+
+const enums = new Map<string, string[]>([["smoke_color", ["red", "green", "blue"]]]);
+const emitted = new Set<string>();
+
+function assertContains(haystack: string, needles: string[], context: string) {
+  for (const n of needles) {
+    if (!haystack.includes(n)) {
+      console.error(`FAIL [${context}]: expected to contain ${JSON.stringify(n)}\n--SQL--\n${haystack}\n-------`);
+      process.exit(1);
+    }
+  }
+}
+
+let failed = 0;
+
+function check_(name: string, fn: () => void) {
+  try {
+    fn();
+    console.log(`  ok  ${name}`);
+  } catch (e: any) {
+    console.error(`  FAIL ${name}: ${e.message}`);
+    failed++;
+  }
+}
+
+console.log("Smoke testing component schema push generator...\n");
+
+const parentStmts = generateCreateStatements(parent, "smoke_parent", enums, emitted);
+const childStmts = generateCreateStatements(child, "smoke_child", enums, emitted);
+const compStmts = generateCreateStatements(composite, "smoke_composite", enums, new Set());
+
+const childAll = childStmts.map((s) => s.sql).join("\n;\n");
+
+check_("parent: uuid PK with default", () => {
+  const sql = parentStmts.find((s) => s.kind === "create_table")!.sql;
+  assertContains(sql, [`"id" uuid PRIMARY KEY`, `"name" varchar(100) NOT NULL`], "parent");
+});
+
+check_("child: pgEnum CREATE TYPE emitted before table", () => {
+  const idx = childStmts.findIndex((s) => s.kind === "create_type" && s.key === "smoke_color");
+  const tableIdx = childStmts.findIndex((s) => s.kind === "create_table");
+  if (idx < 0) throw new Error("no create_type");
+  if (idx >= tableIdx) throw new Error("create_type after create_table");
+});
+
+check_("child: date/time/numeric SQL types correct", () => {
+  const sql = childStmts.find((s) => s.kind === "create_table")!.sql;
+  assertContains(sql, [`"ymd" date NOT NULL`, `"start_time" time`, `"price" numeric(10, 2)`], "child types");
+});
+
+check_("child: array column", () => {
+  const sql = childStmts.find((s) => s.kind === "create_table")!.sql;
+  assertContains(sql, [`"tags" text[]`], "child array");
+});
+
+check_("child: defaults rendered (sql + scalar)", () => {
+  const sql = childStmts.find((s) => s.kind === "create_table")!.sql;
+  assertContains(sql, [`DEFAULT now()`, `DEFAULT 0`, `DEFAULT true`, `DEFAULT 'red'`], "defaults");
+});
+
+check_("child: inline FK with ON DELETE CASCADE ON UPDATE CASCADE", () => {
+  const sql = childStmts.find((s) => s.kind === "create_table")!.sql;
+  assertContains(sql, [`FOREIGN KEY ("parent_id") REFERENCES "smoke_parent" ("id") ON DELETE CASCADE ON UPDATE CASCADE`], "inline FK");
+});
+
+check_("child: table-level FK with name and ON DELETE SET NULL", () => {
+  const sql = childStmts.find((s) => s.kind === "create_table")!.sql;
+  assertContains(sql, [`CONSTRAINT "fk_smoke_child_alt" FOREIGN KEY ("alt_parent") REFERENCES "smoke_parent" ("id") ON DELETE SET NULL`], "table FK");
+});
+
+check_("child: unique constraint", () => {
+  const sql = childStmts.find((s) => s.kind === "create_table")!.sql;
+  assertContains(sql, [`CONSTRAINT "uq_smoke_child_parent_color" UNIQUE ("parent_id", "color")`], "unique");
+});
+
+check_("child: check constraint", () => {
+  const sql = childStmts.find((s) => s.kind === "create_table")!.sql;
+  assertContains(sql, [`CONSTRAINT "smoke_child_qty_nonneg" CHECK (`, `>= 0`], "check");
+});
+
+check_("child: plain index emitted as separate CREATE INDEX", () => {
+  const idx = childStmts.find((s) => s.kind === "create_index" && s.sql.includes("idx_smoke_child_color"));
+  if (!idx) throw new Error("missing index");
+  assertContains(idx.sql, [`CREATE INDEX IF NOT EXISTS "idx_smoke_child_color" ON "smoke_child" ("color")`], "index");
+});
+
+check_("child: partial unique index with WHERE clause", () => {
+  const idx = childStmts.find((s) => s.kind === "create_index" && s.sql.includes("uidx_smoke_child_active_parent"));
+  if (!idx) throw new Error("missing partial index");
+  assertContains(idx.sql, [`CREATE UNIQUE INDEX IF NOT EXISTS "uidx_smoke_child_active_parent"`, `WHERE`, `= true`], "partial");
+});
+
+check_("composite: composite primary key constraint", () => {
+  const sql = compStmts.find((s) => s.kind === "create_table")!.sql;
+  assertContains(sql, [`CONSTRAINT "smoke_composite_pk" PRIMARY KEY ("a", "b")`], "composite PK");
+});
+
+check_("unknown column type throws", () => {
+  const fakeCol: any = { columnType: "PgFakeType", name: "x", getSQLType: () => "" };
+  const fakeTable: any = {};
+  const cs: any = Symbol("drizzle:Columns");
+  const ns: any = Symbol("drizzle:Name");
+  Object.defineProperty(fakeTable, cs, { value: { x: fakeCol } });
+  Object.defineProperty(fakeTable, ns, { value: "smoke_unknown" });
+  // Use raw symbol descriptions matching what generator looks for
+  const tbl: any = {};
+  Object.defineProperty(tbl, Symbol.for("nope"), { value: 1 });
+  // Build an actual table with a synthetic column that won't return SQL type
+  const realTable: any = {};
+  const colsSym = Object.getOwnPropertySymbols(parent).find((s) => s.description === "drizzle:Columns")!;
+  const nameSym = Object.getOwnPropertySymbols(parent).find((s) => s.description === "drizzle:Name")!;
+  realTable[colsSym] = { x: fakeCol };
+  realTable[nameSym] = "smoke_unknown";
+  let threw = false;
+  try {
+    generateCreateStatements(realTable, "smoke_unknown", enums, new Set());
+  } catch (e: any) {
+    threw = e.message.includes("Cannot determine SQL type");
+  }
+  if (!threw) throw new Error("expected throw on unknown column type");
+});
+
+if (failed > 0) {
+  console.error(`\n${failed} smoke test(s) FAILED`);
+  process.exit(1);
+}
+console.log(`\nAll smoke tests passed.`);
+process.exit(0);
