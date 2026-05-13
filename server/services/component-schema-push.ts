@@ -186,9 +186,7 @@ export function generateCreateStatements(
     const colDbName = col.name || colKey;
     const sqlType = resolveSqlType(col, tableName, colKey);
 
-    if (col.columnType === "PgEnumColumn" && col.enum?.enumName) {
-      enumsNeeded.add(col.enum.enumName);
-    }
+    collectEnumsFromColumn(col, enumsNeeded);
 
     let colDef = `"${colDbName}" ${sqlType}`;
 
@@ -337,6 +335,16 @@ function renderIndex(builder: any, tableName: string): string {
     stmt += ` WHERE ${renderSql(cfg.where, `index WHERE on ${tableName}`)}`;
   }
   return stmt;
+}
+
+function collectEnumsFromColumn(col: any, enumsNeeded: Set<string>): void {
+  if (!col) return;
+  if (col.columnType === "PgEnumColumn" && col.enum?.enumName) {
+    enumsNeeded.add(col.enum.enumName);
+  }
+  if (col.baseColumn) {
+    collectEnumsFromColumn(col.baseColumn, enumsNeeded);
+  }
 }
 
 function renderSql(value: any, context: string): string {

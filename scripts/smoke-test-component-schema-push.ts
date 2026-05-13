@@ -284,6 +284,22 @@ await check_("drift: composite PK reports missing PK when actual PK differs", as
   }
 });
 
+await check_("enum-array-only table: CREATE TYPE is still emitted before table", async () => {
+  const onlyArrayEnum = pgEnum("smoke_only_arr_enum", ["a", "b"]);
+  const t = pgTable("smoke_only_arr", {
+    id: integer("id").primaryKey(),
+    tags: onlyArrayEnum("tags").array().notNull(),
+  });
+  const stmts = generateCreateStatements(t, "smoke_only_arr", new Map([["smoke_only_arr_enum", ["a", "b"]]]), new Set());
+  const kinds = stmts.map((s) => s.kind);
+  const typeIdx = kinds.indexOf("create_type");
+  const tableIdx = kinds.indexOf("create_table");
+  if (typeIdx === -1) throw new Error(`expected create_type stmt for enum-array-only table, got ${JSON.stringify(kinds)}`);
+  if (tableIdx === -1 || typeIdx >= tableIdx) throw new Error(`create_type must precede create_table; got ${JSON.stringify(kinds)}`);
+  const typeSql = stmts[typeIdx].sql;
+  if (!typeSql.includes("smoke_only_arr_enum")) throw new Error(`create_type SQL missing enum name:\n${typeSql}`);
+});
+
 await check_("extended types: bigint/smallint/real/double precision/interval/bytea emit correct SQL", async () => {
   const bytea = customType<{ data: Buffer; driverData: Buffer }>({ dataType: () => "bytea" });
   const t = pgTable("smoke_types", {
