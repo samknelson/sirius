@@ -296,7 +296,7 @@ export const componentRegistry: ComponentDefinition[] = [
     schemaManifest: {
       version: 1,
       schemaPath: "./shared/schema/worker/certifications/schema.ts",
-      tables: ["options_certifications"]
+      tables: ["options_certifications", "worker_certifications"]
     }
   },
   {
@@ -309,7 +309,7 @@ export const componentRegistry: ComponentDefinition[] = [
     schemaManifest: {
       version: 1,
       schemaPath: "./shared/schema/worker/ratings/schema.ts",
-      tables: ["options_worker_ratings"]
+      tables: ["options_worker_ratings", "worker_ratings"]
     }
   },
   {
