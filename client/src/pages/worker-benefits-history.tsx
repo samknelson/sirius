@@ -225,7 +225,7 @@ function WorkerBenefitsContent() {
                       <SelectValue placeholder="Select employer" />
                     </SelectTrigger>
                     <SelectContent>
-                      {employers.filter(e => e.isActive).map((employer) => (
+                      {employers.map((employer) => (
                         <SelectItem key={employer.id} value={employer.id}>
                           {employer.name}
                         </SelectItem>
