@@ -203,6 +203,22 @@ interface ElectionBeforeState {
   election: WorkerTrustElection | undefined;
 }
 
+async function describeElection(
+  workerId: string | null | undefined,
+  startYmd: string | null | undefined,
+): Promise<string> {
+  const startPart = startYmd ? ` (start ${startYmd})` : '';
+  if (!workerId) return `unknown worker${startPart}`;
+  try {
+    const { storage } = await import('../index');
+    const name = await storage.workers.getWorkerDisplayName(workerId);
+    if (name) return `${name}${startPart}`;
+  } catch {
+    // fall through to id-based fallback
+  }
+  return `worker ${workerId}${startPart}`;
+}
+
 export const workerTrustElectionsLoggingConfig: StorageLoggingConfig<WorkerTrustElectionsStorage> = {
   module: 'worker-trust-elections',
   methods: {
@@ -211,7 +227,7 @@ export const workerTrustElectionsLoggingConfig: StorageLoggingConfig<WorkerTrust
       getEntityId: (_args, result) => result?.id || 'new election',
       getHostEntityId: (args, result) => result?.workerId ?? args[0],
       getDescription: async (_args, result) =>
-        `Created trust election for worker ${result?.workerId} (start ${result?.startYmd})`,
+        `Created trust election for ${await describeElection(result?.workerId, result?.startYmd)}`,
       after: async (_args, result) => ({ election: result }),
     },
     update: {
@@ -221,7 +237,7 @@ export const workerTrustElectionsLoggingConfig: StorageLoggingConfig<WorkerTrust
         (beforeState as ElectionBeforeState | undefined)?.election?.workerId,
       getDescription: async (_args, result, beforeState) => {
         const r = result || (beforeState as ElectionBeforeState | undefined)?.election;
-        return `Updated trust election ${r?.id} (worker ${r?.workerId})`;
+        return `Updated trust election for ${await describeElection(r?.workerId, r?.startYmd)}`;
       },
       before: async (args, storage) => ({ election: await storage.getById(args[0]) }),
       after: async (_args, result) => ({ election: result }),
@@ -233,7 +249,8 @@ export const workerTrustElectionsLoggingConfig: StorageLoggingConfig<WorkerTrust
         (beforeState as ElectionBeforeState | undefined)?.election?.workerId,
       getDescription: async (_args, _result, beforeState) => {
         const r = (beforeState as ElectionBeforeState | undefined)?.election;
-        return r ? `Deleted trust election ${r.id} (worker ${r.workerId})` : 'Deleted trust election';
+        if (!r) return 'Deleted trust election';
+        return `Deleted trust election for ${await describeElection(r.workerId, r.startYmd)}`;
       },
       before: async (args, storage) => ({ election: await storage.getById(args[0]) }),
     },
