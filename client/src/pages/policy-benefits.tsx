@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import Ajv, { type ValidateFunction } from "ajv";
-import addFormats from "ajv-formats";
+import { customizeValidator } from "@rjsf/validator-ajv8";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -33,7 +32,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { PolicyLayout, usePolicyLayout } from "@/components/layouts/PolicyLayout";
 import { TrustBenefit } from "@shared/schema";
 import type { JsonSchema } from "@shared/json-schema-form";
-import { SchemaForm } from "@/components/json-schema-form";
+import { SchemaFormDialog } from "@/components/json-schema-form/SchemaFormDialog";
 import { Save, Loader2, ChevronDown, ChevronRight, Plus, Trash2, Settings } from "lucide-react";
 
 interface EligibilityRule {
@@ -67,26 +66,31 @@ function hasConfigProps(schema: JsonSchema | undefined): boolean {
 
 function EligibilityRuleEditor({
   rule,
+  ruleIndex,
   plugins,
   onUpdate,
   onRemove,
 }: {
   rule: EligibilityRule;
+  ruleIndex: number;
   plugins: EligibilityPlugin[];
   onUpdate: (updatedRule: EligibilityRule) => void;
   onRemove: () => void;
 }) {
   const plugin = plugins.find((p) => p.id === rule.pluginKey);
   const configSchema = plugin?.configSchema;
+  const hasConfig = hasConfigProps(configSchema);
+  const [configOpen, setConfigOpen] = useState(false);
 
   const handleAppliesToChange = (scanType: "start" | "continue", checked: boolean) => {
     const nextAppliesTo = checked
       ? [...rule.appliesTo, scanType]
       : rule.appliesTo.filter((t) => t !== scanType);
-    const finalAppliesTo = nextAppliesTo.length > 0 ? nextAppliesTo : ["start"];
+    const finalAppliesTo: ("start" | "continue")[] =
+      nextAppliesTo.length > 0 ? nextAppliesTo : ["start"];
     // Mirror into rule.config so any code path that reads
     // config.appliesTo (legacy validators, persisted shape) stays in
-    // lockstep with the top-level rule.appliesTo. They were drifting.
+    // lockstep with the top-level rule.appliesTo.
     onUpdate({
       ...rule,
       appliesTo: finalAppliesTo,
@@ -94,8 +98,14 @@ function EligibilityRuleEditor({
     });
   };
 
-  const handleConfigChange = (newConfig: Record<string, unknown>) => {
-    onUpdate({ ...rule, config: newConfig });
+  const handleConfigSave = (newConfig: Record<string, unknown>) => {
+    // Preserve the rule-level appliesTo inside config (mirrored shape)
+    // so partial dialog edits don't drop it.
+    onUpdate({
+      ...rule,
+      config: { ...newConfig, appliesTo: rule.appliesTo },
+    });
+    setConfigOpen(false);
   };
 
   return (
@@ -105,14 +115,26 @@ function EligibilityRuleEditor({
           <Settings className="h-4 w-4 text-muted-foreground" />
           <span className="font-medium">{plugin?.name || rule.pluginKey}</span>
         </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={onRemove}
-          data-testid={`button-remove-rule-${rule.pluginKey}`}
-        >
-          <Trash2 className="h-4 w-4 text-destructive" />
-        </Button>
+        <div className="flex items-center gap-1">
+          {hasConfig && configSchema && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setConfigOpen(true)}
+              data-testid={`button-configure-rule-${rule.pluginKey}-${ruleIndex}`}
+            >
+              Configure
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onRemove}
+            data-testid={`button-remove-rule-${rule.pluginKey}-${ruleIndex}`}
+          >
+            <Trash2 className="h-4 w-4 text-destructive" />
+          </Button>
+        </div>
       </div>
 
       <p className="text-sm text-muted-foreground">{plugin?.description}</p>
@@ -122,34 +144,37 @@ function EligibilityRuleEditor({
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
             <Checkbox
-              id={`rule-start-${rule.pluginKey}`}
+              id={`rule-start-${rule.pluginKey}-${ruleIndex}`}
               checked={rule.appliesTo.includes("start")}
               onCheckedChange={(checked) => handleAppliesToChange("start", checked === true)}
             />
-            <label htmlFor={`rule-start-${rule.pluginKey}`} className="text-sm">
+            <label htmlFor={`rule-start-${rule.pluginKey}-${ruleIndex}`} className="text-sm">
               Start
             </label>
           </div>
           <div className="flex items-center gap-2">
             <Checkbox
-              id={`rule-continue-${rule.pluginKey}`}
+              id={`rule-continue-${rule.pluginKey}-${ruleIndex}`}
               checked={rule.appliesTo.includes("continue")}
               onCheckedChange={(checked) => handleAppliesToChange("continue", checked === true)}
             />
-            <label htmlFor={`rule-continue-${rule.pluginKey}`} className="text-sm">
+            <label htmlFor={`rule-continue-${rule.pluginKey}-${ruleIndex}`} className="text-sm">
               Continue
             </label>
           </div>
         </div>
       </div>
 
-      {hasConfigProps(configSchema) && configSchema && (
-        <SchemaForm
+      {hasConfig && configSchema && (
+        <SchemaFormDialog
+          open={configOpen}
+          onOpenChange={setConfigOpen}
+          title={`Configure ${plugin?.name ?? rule.pluginKey}`}
+          description={plugin?.description}
           schema={configSchema}
-          formData={rule.config}
-          onChange={(e) => handleConfigChange(e.formData as Record<string, unknown>)}
-          // Suppress the built-in submit button — saves happen via the page-level Save action.
-          uiSchema={{ "ui:submitButtonOptions": { norender: true } }}
+          initialData={rule.config}
+          onSave={handleConfigSave}
+          testId={`dialog-configure-${rule.pluginKey}-${ruleIndex}`}
         />
       )}
     </div>
@@ -234,6 +259,7 @@ function BenefitEligibilityConfig({
                   <EligibilityRuleEditor
                     key={`${rule.pluginKey}-${index}`}
                     rule={rule}
+                    ruleIndex={index}
                     plugins={plugins}
                     onUpdate={(updatedRule) => handleUpdateRule(index, updatedRule)}
                     onRemove={() => handleRemoveRule(index)}
@@ -373,24 +399,11 @@ function PolicyBenefitsContent() {
     }));
   };
 
-  // AJV validator cache, keyed by pluginKey, so each rule's config can
-  // be validated against its own JSON Schema before saving. The page
-  // doesn't render an in-form submit button (saves happen at the page
-  // level), so this is the gate that enforces schema validity.
-  const validators = useMemo(() => {
-    const ajv = new Ajv({ allErrors: true, useDefaults: true, strict: false });
-    addFormats(ajv);
-    const out = new Map<string, ValidateFunction>();
-    for (const p of plugins) {
-      if (!p.configSchema) continue;
-      try {
-        out.set(p.id, ajv.compile(p.configSchema as object));
-      } catch {
-        // Bad schema from server — skip; save will surface a generic error.
-      }
-    }
-    return out;
-  }, [plugins]);
+  // Use the same AJV-backed validator that rjsf uses inside the
+  // SchemaForm so pre-save validation matches what the modal already
+  // enforces. Avoids any AJV ESM/default-export issues from
+  // hand-constructing AJV in the browser bundle.
+  const rjsfValidator = useMemo(() => customizeValidator(), []);
 
   const handleSave = () => {
     const filteredRules: Record<string, EligibilityRule[]> = {};
@@ -404,15 +417,17 @@ function PolicyBenefitsContent() {
         activeBenefits.find((b) => b.id === benefitId)?.name ?? benefitId;
 
       rules.forEach((rule, idx) => {
-        const validate = validators.get(rule.pluginKey);
-        if (!validate) return;
-        const ok = validate(rule.config);
-        if (!ok && validate.errors) {
-          const pluginName =
-            plugins.find((p) => p.id === rule.pluginKey)?.name ?? rule.pluginKey;
-          for (const e of validate.errors) {
+        const plugin = plugins.find((p) => p.id === rule.pluginKey);
+        if (!plugin?.configSchema || !hasConfigProps(plugin.configSchema)) return;
+        const result = rjsfValidator.validateFormData(
+          rule.config,
+          plugin.configSchema as object,
+        );
+        if (result.errors && result.errors.length > 0) {
+          const pluginName = plugin.name ?? rule.pluginKey;
+          for (const e of result.errors) {
             errors.push(
-              `${benefitName} → ${pluginName} (rule ${idx + 1}): ${e.instancePath || "/"} ${e.message ?? "is invalid"}`,
+              `${benefitName} → ${pluginName} (rule ${idx + 1}): ${e.property || "/"} ${e.message ?? "is invalid"}`,
             );
           }
         }
