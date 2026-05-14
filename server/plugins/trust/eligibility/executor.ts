@@ -99,12 +99,6 @@ function asOfDate(asOfYear: number, asOfMonth: number): Date {
 }
 
 /**
- * Resolves the input into the per-evaluation accessors and the
- * (optional) dependent relationship context. Validates the relationship
- * up-front against `worker_relations`; throws
- * `EligibilityRelationshipError` if the row is missing/expired.
- */
-/**
  * Public hook for routes that need to hard-validate a supplied
  * `relationship` before short-circuiting on "no rules configured".
  * Throws `EligibilityRelationshipError` (→ 400) when the
@@ -136,6 +130,12 @@ export async function validateEligibilityRelationship(
   }
 }
 
+/**
+ * Resolves the input into the per-evaluation accessors and the
+ * (optional) dependent relationship context. Validates the relationship
+ * up-front against `worker_relations`; throws
+ * `EligibilityRelationshipError` if the row is missing/expired.
+ */
 async function buildContextParts(
   input: EligibilityEvaluationInput,
   asOfMonth: number,
