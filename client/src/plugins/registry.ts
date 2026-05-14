@@ -1,11 +1,8 @@
 import { DashboardPlugin } from "./types";
 import { WelcomeMessagesPlugin } from "./welcomeMessages/WelcomeMessagesPlugin";
-import { WelcomeMessagesSettings } from "./welcomeMessages/WelcomeMessagesSettings";
 import { BookmarksPlugin } from "./bookmarks/BookmarksPlugin";
 import { EmployerMonthlyUploadsPlugin } from "./employerMonthlyUploads/EmployerMonthlyUploadsPlugin";
-import { EmployerMonthlySettings } from "./employerMonthlyUploads/EmployerMonthlySettings";
 import { ReportsPlugin } from "./reports/ReportsPlugin";
-import { ReportsSettings } from "./reports/ReportsSettings";
 import { WmbScanStatusPlugin } from "./wmbScanStatus/WmbScanStatusPlugin";
 import { ActiveSessionsPlugin } from "./activeSessions/ActiveSessionsPlugin";
 import { MyStewardPlugin } from "./mySteward/MyStewardPlugin";
@@ -21,7 +18,7 @@ export const pluginRegistry: DashboardPlugin[] = [
     order: 1,
     component: WelcomeMessagesPlugin,
     enabledByDefault: true,
-    settingsComponent: WelcomeMessagesSettings,
+    hasSettings: true,
   },
   {
     id: "bookmarks",
@@ -40,7 +37,7 @@ export const pluginRegistry: DashboardPlugin[] = [
     component: ReportsPlugin,
     requiredPermissions: ["admin"],
     enabledByDefault: true,
-    settingsComponent: ReportsSettings,
+    hasSettings: true,
   },
   {
     id: "employer-monthly-uploads",
@@ -50,7 +47,7 @@ export const pluginRegistry: DashboardPlugin[] = [
     component: EmployerMonthlyUploadsPlugin,
     requiredPermissions: ["admin"],
     enabledByDefault: true,
-    settingsComponent: EmployerMonthlySettings,
+    hasSettings: true,
   },
   {
     id: "wmb-scan-status",

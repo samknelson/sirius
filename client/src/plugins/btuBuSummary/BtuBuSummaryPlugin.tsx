@@ -49,7 +49,7 @@ export function BtuBuSummaryPlugin({ userPermissions, enabledComponents }: Dashb
   const hasComponent = enabledComponents?.includes("sitespecific.btu") ?? false;
 
   const { data, isLoading } = useQuery<BuSummaryData>({
-    queryKey: ["/api/dashboard-plugins/btu-bu-summary/data"],
+    queryKey: ["/api/dashboard-plugins/btu-bu-summary/content/data"],
     enabled: hasPermission && hasComponent,
   });
 

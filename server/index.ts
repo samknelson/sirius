@@ -39,6 +39,7 @@ import { initLogNotifier } from "./modules/log-notifier";
 
 // Import dispatch eligibility plugins system
 import { initializeDispatchEligSystem } from "./plugins/dispatch/eligibility";
+import { initializeDashboardPluginSystem } from "./plugins/dashboard";
 
 // Import worker ban notifications
 import { initWorkerBanNotifications } from "./services/worker-ban-notifications";
@@ -261,6 +262,10 @@ server.listen({
   // Initialize dispatch eligibility plugin system
   await initializeDispatchEligSystem();
   logger.info("Dispatch eligibility system initialized", { source: "startup" });
+
+  // Initialize dashboard plugin system (registration + legacy migrations)
+  await initializeDashboardPluginSystem();
+  logger.info("Dashboard plugin system initialized", { source: "startup" });
 
   // Initialize worker ban notifications
   initWorkerBanNotifications();

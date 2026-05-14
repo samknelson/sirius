@@ -23,6 +23,7 @@ import "./services/providers";
 import { registerFloodEvents, loadFloodConfigFromVariables } from "./flood";
 import { initLogNotifier } from "./modules/log-notifier";
 import { initializeDispatchEligSystem } from "./plugins/dispatch/eligibility";
+import { initializeDashboardPluginSystem } from "./plugins/dashboard";
 import { initWorkerBanNotifications } from "./services/worker-ban-notifications";
 import { initDispatchNotifications } from "./services/dispatch-notifications";
 import "@shared/access-policies/loader";
@@ -154,6 +155,9 @@ export async function startApp(app: Express, server: Server, onReady: () => void
 
   await initializeDispatchEligSystem();
   logger.info("Dispatch eligibility system initialized", { source: "startup" });
+
+  await initializeDashboardPluginSystem();
+  logger.info("Dashboard plugin system initialized", { source: "startup" });
 
   initWorkerBanNotifications();
   logger.info("Worker ban notifications initialized", { source: "startup" });

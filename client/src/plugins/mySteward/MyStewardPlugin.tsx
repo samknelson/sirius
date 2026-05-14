@@ -25,7 +25,7 @@ export function MyStewardPlugin({ enabledComponents }: DashboardPluginProps) {
   const hasAccess = enabledComponents?.includes("worker.steward");
 
   const { data, isLoading, error } = useQuery<MyStewardData>({
-    queryKey: ["/api/dashboard-plugins/my-steward"],
+    queryKey: ["/api/dashboard-plugins/my-steward/content"],
     enabled: hasAccess,
   });
 

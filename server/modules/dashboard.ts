@@ -1,614 +1,127 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 import { requireAccess } from "../services/access-policy-evaluator";
-import { requireComponent } from "./components";
-import { employerMonthlyPluginConfigSchema } from "@shared/schema";
-import { getPluginMetadata } from "@shared/pluginMetadata";
-import { getEffectiveUser } from "./masquerade";
-
-// Content resolver context passed to each plugin's content resolver
-interface ContentResolverContext {
-  userId: string;
-  userRoles: Array<{ id: string; name: string }>;
-}
-
-// Content resolver function type
-type ContentResolver = (ctx: ContentResolverContext) => Promise<any>;
-
-// Registry of content resolvers for each plugin
-const contentResolvers: Record<string, ContentResolver> = {
-  "welcome-messages": async (ctx) => {
-    // Get welcome messages settings
-    const variableName = "dashboard_plugin_welcome-messages_settings";
-    let variable = await storage.variables.getByName(variableName);
-    
-    // If unified settings don't exist, try to migrate from legacy format
-    if (!variable) {
-      const roles = await storage.users.getAllRoles();
-      const migratedSettings: Record<string, string> = {};
-      
-      for (const role of roles) {
-        const legacyVarName = `welcome_message_${role.id}`;
-        const legacyVar = await storage.variables.getByName(legacyVarName);
-        if (legacyVar) {
-          migratedSettings[role.id] = legacyVar.value as string;
-        }
-      }
-      
-      // Save migrated settings to new unified variable
-      if (Object.keys(migratedSettings).length > 0) {
-        await storage.variables.create({ 
-          name: variableName, 
-          value: migratedSettings 
-        });
-        variable = await storage.variables.getByName(variableName);
-      }
-    }
-    
-    const allMessages = variable ? (variable.value as Record<string, string>) : {};
-    
-    // Filter messages to only include those for the user's roles
-    const userRoleIds = new Set(ctx.userRoles.map(r => r.id));
-    const userMessages: Array<{ roleId: string; roleName: string; message: string }> = [];
-    
-    for (const role of ctx.userRoles) {
-      const message = allMessages[role.id];
-      if (message) {
-        userMessages.push({
-          roleId: role.id,
-          roleName: role.name,
-          message,
-        });
-      }
-    }
-    
-    return { messages: userMessages };
-  },
-};
+import { dashboardPluginRegistry } from "../plugins/dashboard";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
-type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
+type PermissionMiddleware = (
+  permissionKey: string,
+) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 
 export function registerDashboardRoutes(
-  app: Express, 
-  requireAuth: AuthMiddleware, 
-  requirePermission: PermissionMiddleware
+  app: Express,
+  requireAuth: AuthMiddleware,
+  _requirePermission: PermissionMiddleware,
 ) {
-  // Dashboard Plugins routes - Manage dashboard plugin configurations
-  
-  // GET /api/dashboard-plugins/config - Get all plugin configurations
-  app.get("/api/dashboard-plugins/config", requireAuth, async (req, res) => {
+  // List enabled flags for all plugin configs (per-plugin enable/disable toggle).
+  app.get("/api/dashboard-plugins/config", requireAuth, async (_req, res) => {
     try {
       const allVariables = await storage.variables.getAll();
       const pluginConfigs = allVariables
-        .filter(v => v.name.startsWith('dashboard_plugin_'))
-        .map(v => ({
-          pluginId: v.name.replace('dashboard_plugin_', ''),
+        .filter((v) => v.name.startsWith("dashboard_plugin_") && !v.name.endsWith("_settings"))
+        .map((v) => ({
+          pluginId: v.name.replace("dashboard_plugin_", ""),
           enabled: v.value as boolean,
         }));
-      
       res.json(pluginConfigs);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch plugin configurations" });
     }
   });
 
-  // PUT /api/dashboard-plugins/config/:pluginId - Update a plugin's configuration
-  app.put("/api/dashboard-plugins/config/:pluginId", requireAccess('admin'), async (req, res) => {
+  // Toggle a plugin's enabled flag (admin).
+  app.put("/api/dashboard-plugins/config/:pluginId", requireAccess("admin"), async (req, res) => {
     try {
       const { pluginId } = req.params;
       const { enabled } = req.body;
-      
       if (typeof enabled !== "boolean") {
         res.status(400).json({ message: "Invalid enabled value" });
         return;
       }
-      
       const variableName = `dashboard_plugin_${pluginId}`;
-      const existingVariable = await storage.variables.getByName(variableName);
-      
-      if (existingVariable) {
-        await storage.variables.update(existingVariable.id, { value: enabled });
+      const existing = await storage.variables.getByName(variableName);
+      if (existing) {
+        await storage.variables.update(existing.id, { value: enabled });
       } else {
         await storage.variables.create({ name: variableName, value: enabled });
       }
-      
       res.json({ pluginId, enabled });
     } catch (error) {
       res.status(500).json({ message: "Failed to update plugin configuration" });
     }
   });
 
-  // GET /api/dashboard-plugins/:pluginId/settings - Get plugin settings
-  app.get("/api/dashboard-plugins/:pluginId/settings", requireAccess('admin'), async (req, res) => {
-    try {
-      const { pluginId } = req.params;
-      
-      // Get plugin metadata to validate plugin exists
-      const metadata = getPluginMetadata(pluginId);
-      if (!metadata) {
-        res.status(404).json({ message: "Plugin not found" });
-        return;
-      }
-      
-      const variableName = `dashboard_plugin_${pluginId}_settings`;
-      const variable = await storage.variables.getByName(variableName);
-      
-      // If unified settings don't exist, try to migrate from legacy format
-      if (!variable && pluginId === "welcome-messages") {
-        // Migrate welcome messages from individual role variables
-        const roles = await storage.users.getAllRoles();
-        const migratedSettings: Record<string, string> = {};
-        
-        for (const role of roles) {
-          const legacyVarName = `welcome_message_${role.id}`;
-          const legacyVar = await storage.variables.getByName(legacyVarName);
-          if (legacyVar) {
-            migratedSettings[role.id] = legacyVar.value as string;
-          }
-        }
-        
-        // Save migrated settings to new unified variable
-        if (Object.keys(migratedSettings).length > 0) {
-          await storage.variables.create({ 
-            name: variableName, 
-            value: migratedSettings 
-          });
-          res.json(migratedSettings);
-          return;
-        }
-      } else if (!variable && pluginId === "employer-monthly-uploads") {
-        // Migrate employer monthly config from legacy variable
-        const legacyVar = await storage.variables.getByName('employer_monthly_plugin_config');
-        if (legacyVar) {
-          const migratedSettings = legacyVar.value as Record<string, string[]>;
-          await storage.variables.create({ 
-            name: variableName, 
-            value: migratedSettings 
-          });
-          res.json(migratedSettings);
-          return;
-        }
-      }
-      
-      res.json(variable ? variable.value : {});
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch plugin settings" });
-    }
-  });
-
-  // PUT /api/dashboard-plugins/:pluginId/settings - Update plugin settings
-  app.put("/api/dashboard-plugins/:pluginId/settings", requireAccess('admin'), async (req, res) => {
-    try {
-      const { pluginId } = req.params;
-      const settings = req.body;
-      
-      // Get plugin metadata to validate schema
-      const metadata = getPluginMetadata(pluginId);
-      if (!metadata) {
-        res.status(404).json({ message: "Plugin not found" });
-        return;
-      }
-      
-      // Validate settings against schema if provided
-      if (metadata.settingsSchema) {
-        const result = metadata.settingsSchema.safeParse(settings);
-        if (!result.success) {
-          res.status(400).json({ 
-            message: "Invalid settings format",
-            errors: result.error.errors,
-          });
-          return;
-        }
-      }
-      
-      const variableName = `dashboard_plugin_${pluginId}_settings`;
-      const existingVariable = await storage.variables.getByName(variableName);
-      
-      if (existingVariable) {
-        await storage.variables.update(existingVariable.id, { value: settings });
-      } else {
-        await storage.variables.create({ name: variableName, value: settings });
-      }
-      
-      res.json({ success: true, settings });
-    } catch (error) {
-      res.status(500).json({ message: "Failed to update plugin settings" });
-    }
-  });
-
-  // GET /api/dashboard-plugins/:pluginId/content - Get user-specific plugin content
-  app.get("/api/dashboard-plugins/:pluginId/content", requireAuth, async (req, res) => {
-    try {
-      const { pluginId } = req.params;
-      
-      // Check if a content resolver exists for this plugin
-      const resolver = contentResolvers[pluginId];
-      if (!resolver) {
-        res.status(404).json({ message: `No content resolver for plugin '${pluginId}'` });
-        return;
-      }
-      
-      // Get effective user
-      const user = req.user as any;
-      const session = req.session as any;
-      const { dbUser } = await getEffectiveUser(session, user);
-      
-      if (!dbUser) {
-        res.status(401).json({ message: "User not found" });
-        return;
-      }
-      
-      // Get user's roles
-      const userRoles = await storage.users.getUserRoles(dbUser.id);
-      
-      // Build resolver context
-      const ctx: ContentResolverContext = {
-        userId: dbUser.id,
-        userRoles: userRoles.map(r => ({ id: r.id, name: r.name })),
-      };
-      
-      // Execute the resolver
-      const content = await resolver(ctx);
-      res.json(content);
-    } catch (error) {
-      console.error("Error fetching plugin content:", error);
-      res.status(500).json({ message: "Failed to fetch plugin content" });
-    }
-  });
-
-  // Employer Monthly Plugin routes - Manage employer monthly upload statistics and configuration
-  
-  // GET /api/dashboard-plugins/employer-monthly/stats - Get employer upload statistics for a specific month
-  app.get("/api/dashboard-plugins/employer-monthly/stats", requireAuth, async (req, res) => {
-    try {
-      const { year, month, wizardType } = req.query;
-      const user = req.user as any;
-      const session = req.session as any;
-      const { dbUser } = await getEffectiveUser(session, user);
-      
-      if (!dbUser) {
-        res.status(401).json({ message: "User not found" });
-        return;
-      }
-      
-      // Default to current month if not provided
-      const now = new Date();
-      const yearNum = year ? Number(year) : now.getFullYear();
-      const monthNum = month ? Number(month) : now.getMonth() + 1;
-      
-      if (!wizardType || typeof wizardType !== 'string') {
-        res.status(400).json({ message: "Wizard type is required" });
-        return;
-      }
-      
-      if (!Number.isInteger(yearNum) || yearNum < 1900 || yearNum > 2100) {
-        res.status(400).json({ message: "Year must be a valid integer between 1900 and 2100" });
-        return;
-      }
-      
-      if (!Number.isInteger(monthNum) || monthNum < 1 || monthNum > 12) {
-        res.status(400).json({ message: "Month must be a valid integer between 1 and 12" });
-        return;
-      }
-      
-      // Verify user has access to this wizard type
-      const userRoles = await storage.users.getUserRoles(dbUser.id);
-      const variable = await storage.variables.getByName('dashboard_plugin_employer-monthly-uploads_settings');
-      const config = variable ? (variable.value as Record<string, string[]>) : {};
-      
-      const allowedWizardTypes = new Set<string>();
-      for (const role of userRoles) {
-        const roleTypes = config[role.id] || [];
-        roleTypes.forEach(type => allowedWizardTypes.add(type));
-      }
-      
-      if (!allowedWizardTypes.has(wizardType)) {
-        res.status(403).json({ message: "Access denied: You do not have permission to view statistics for this wizard type" });
-        return;
-      }
-      
-      const stats = await storage.wizardEmployerMonthly.getMonthlyStats(
-        yearNum,
-        monthNum,
-        wizardType
-      );
-      
-      res.json(stats);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch employer monthly stats" });
-    }
-  });
-
-  // GET /api/dashboard-plugins/employer-monthly/my-wizard-types - Get wizard types for current user's roles
-  app.get("/api/dashboard-plugins/employer-monthly/my-wizard-types", requireAuth, async (req, res) => {
-    try {
-      const user = req.user as any;
-      const session = req.session as any;
-      const { dbUser } = await getEffectiveUser(session, user);
-      
-      if (!dbUser) {
-        res.status(401).json({ message: "User not found" });
-        return;
-      }
-
-      const userRoles = await storage.users.getUserRoles(dbUser.id);
-      const variable = await storage.variables.getByName('dashboard_plugin_employer-monthly-uploads_settings');
-      const config = variable ? (variable.value as Record<string, string[]>) : {};
-      
-      const wizardTypesSet = new Set<string>();
-      for (const role of userRoles) {
-        const roleTypes = config[role.id] || [];
-        roleTypes.forEach(type => wizardTypesSet.add(type));
-      }
-      
-      res.json(Array.from(wizardTypesSet));
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch wizard types for user" });
-    }
-  });
-
-  // GET /api/dashboard-plugins/my-steward - Get stewards for current user's home employer and bargaining unit
-  app.get("/api/dashboard-plugins/my-steward", requireAuth, requireComponent("worker.steward"), async (req, res) => {
-    try {
-      const user = req.user as any;
-      const session = req.session as any;
-      
-      // Use getEffectiveUser to respect masquerading
-      const { dbUser } = await getEffectiveUser(session, user);
-      
-      if (!dbUser || !dbUser.email) {
-        res.json({ stewards: [], worker: null });
-        return;
-      }
-
-      // Find the worker linked to this user's email
-      const worker = await storage.workers.getWorkerByContactEmail(dbUser.email);
-      if (!worker) {
-        res.json({ stewards: [], worker: null });
-        return;
-      }
-
-      // Get employer and bargaining unit names for display (if available)
-      const employer = worker.denormHomeEmployerId 
-        ? await storage.employers.getEmployer(worker.denormHomeEmployerId)
-        : null;
-      const bargainingUnit = worker.bargainingUnitId
-        ? await storage.bargainingUnits.getBargainingUnitById(worker.bargainingUnitId)
-        : null;
-
-      // Check if worker has home employer and bargaining unit
-      if (!worker.denormHomeEmployerId || !worker.bargainingUnitId) {
-        res.json({ 
-          stewards: [], 
-          worker: { id: worker.id },
-          employer: employer ? { id: employer.id, name: employer.name } : null,
-          bargainingUnit: bargainingUnit ? { id: bargainingUnit.id, name: bargainingUnit.name } : null,
-        });
-        return;
-      }
-
-      // Get steward assignments for this employer + bargaining unit combination
-      const stewardAssignments = await storage.workerStewardAssignments.getStewardsByEmployerAndBargainingUnit(
-        worker.denormHomeEmployerId,
-        worker.bargainingUnitId
-      );
-
-      // Fetch phone numbers for each steward's contact
-      const stewardsWithPhones = await Promise.all(
-        stewardAssignments.map(async (steward) => {
-          // Get the steward's worker record to get their contactId
-          const stewardWorker = await storage.workers.getWorker(steward.workerId);
-          if (!stewardWorker) {
-            return steward;
-          }
-
-          // Get phone numbers for the contact
-          const phoneNumbers = await storage.contacts.phoneNumbers.getPhoneNumbersByContact(stewardWorker.contactId);
-          const primaryPhone = phoneNumbers.find(p => p.isPrimary)?.phoneNumber || phoneNumbers[0]?.phoneNumber || null;
-
-          return {
-            ...steward,
-            phone: primaryPhone,
-          };
-        })
-      );
-
-      res.json({
-        stewards: stewardsWithPhones,
-        worker: { id: worker.id },
-        employer: employer ? { id: employer.id, name: employer.name } : null,
-        bargainingUnit: bargainingUnit ? { id: bargainingUnit.id, name: bargainingUnit.name } : null,
-      });
-    } catch (error) {
-      console.error("Error fetching my steward data:", error);
-      res.status(500).json({ message: "Failed to fetch steward data" });
-    }
-  });
-
-  app.get("/api/dashboard-plugins/btu-dues-status/summary", requireAuth, requireComponent('sitespecific.btu'), async (req, res) => {
-    try {
-      const wizards = await storage.wizards.list({ type: 'btu_dues_allocation' });
-      
-      if (wizards.length === 0) {
-        res.json({ hasData: false });
-        return;
-      }
-
-      const latest = wizards[0];
-      const data = latest.data as Record<string, any> | null;
-      const processResults = data?.processResults as {
-        totalRows?: number;
-        createdCount?: number;
-        successCount?: number;
-        failureCount?: number;
-        completedAt?: string;
-      } | null;
-      const skippedDuplicateCount = data?.skippedDuplicateCount as number | undefined;
-      const transactionDates = data?.transactionDates as string[] | undefined;
-      const comparisonReport = data?.cardCheckComparisonReport as {
-        matchingRate?: any[];
-        mismatchingRate?: any[];
-        noCardCheck?: any[];
-        cardCheckMissingRate?: any[];
-        cardCheckNoAllocation?: any[];
-        workerNotFound?: any[];
-      } | null;
-
-      res.json({
-        hasData: true,
-        wizardId: latest.id,
-        wizardName: (data?.wizardName as string) || latest.type,
-        status: latest.status,
-        date: latest.date,
-        processResults: processResults ? {
-          totalRows: processResults.totalRows ?? 0,
-          successCount: processResults.successCount ?? 0,
-          failureCount: processResults.failureCount ?? 0,
-          completedAt: processResults.completedAt ?? null,
-        } : null,
-        skippedDuplicateCount: skippedDuplicateCount ?? 0,
-        transactionDates: transactionDates || [],
-        comparisonReport: comparisonReport ? {
-          matchingRate: comparisonReport.matchingRate?.length ?? 0,
-          mismatchingRate: comparisonReport.mismatchingRate?.length ?? 0,
-          noCardCheck: comparisonReport.noCardCheck?.length ?? 0,
-          cardCheckMissingRate: comparisonReport.cardCheckMissingRate?.length ?? 0,
-          cardCheckNoAllocation: comparisonReport.cardCheckNoAllocation?.length ?? 0,
-          workerNotFound: comparisonReport.workerNotFound?.length ?? 0,
-        } : null,
-      });
-    } catch (error) {
-      console.error("Error fetching BTU dues status summary:", error);
-      res.status(500).json({ message: "Failed to fetch BTU dues status summary" });
-    }
-  });
-
-  app.get("/api/dashboard-plugins/btu-bu-summary/data", requireAuth, requireComponent('sitespecific.btu'), async (req, res) => {
-    try {
-      const allBargainingUnits = await storage.bargainingUnits.getAllBargainingUnits();
-      const buMinRateMap = new Map<string, number>();
-      for (const bu of allBargainingUnits) {
-        const buData = bu.data as { accountRates?: Record<string, unknown> } | null;
-        if (!buData?.accountRates) continue;
-        let minRate: number | null = null;
-        for (const value of Object.values(buData.accountRates)) {
-          if (typeof value === 'number' && value > 0) {
-            if (minRate === null || value < minRate) minRate = value;
-          } else if (Array.isArray(value)) {
-            for (const entry of value) {
-              const r = typeof entry === 'object' && entry !== null && 'rate' in entry
-                ? (entry as { rate: number }).rate : null;
-              if (typeof r === 'number' && r > 0 && (minRate === null || r < minRate)) minRate = r;
-            }
-          }
-        }
-        if (minRate !== null) {
-          buMinRateMap.set(bu.id, minRate);
-        }
-      }
-
-      const { units: buResults, unassigned: unassignedResults } = await storage.bargainingUnits.getCardcheckSummary();
-
-      const unassignedWorkerCount = unassignedResults.workerCount;
-      const unassignedSignedCount = unassignedResults.signedWorkerCount;
-
-      const buWorkers = buResults.reduce((sum, r) => sum + r.workerCount, 0);
-      const buSigned = buResults.reduce((sum, r) => sum + r.signedWorkerCount, 0);
-      const totalWorkers = buWorkers + unassignedWorkerCount;
-      const totalSigned = buSigned + unassignedSignedCount;
-
-      const duesBuVar = await storage.variables.getByName("organizing_dues_bu_ids");
-      const duesBuIds: string[] = duesBuVar && Array.isArray(duesBuVar.value) ? duesBuVar.value as string[] : [];
-      const duesBuIdSet = duesBuIds.length > 0 ? new Set(duesBuIds) : null;
-
-      let totalMissingDuesRevenue = 0;
-      let hasDuesRates = false;
-
-      const unitsMapped = buResults.map(r => {
-        const wc = Number(r.workerCount);
-        const sc = Number(r.signedWorkerCount);
-        const duesRate = buMinRateMap.get(r.bargainingUnitId) ?? null;
-        const missingWorkers = wc - sc;
-        const includedInDues = !duesBuIdSet || duesBuIdSet.has(r.bargainingUnitId);
-        const missingRevenue = includedInDues && duesRate && missingWorkers > 0 ? missingWorkers * duesRate : null;
-        if (duesRate) hasDuesRates = true;
-        if (missingRevenue) totalMissingDuesRevenue += missingRevenue;
-        return {
-          id: r.bargainingUnitId,
-          name: r.bargainingUnitName,
-          workerCount: wc,
-          signedCount: sc,
-          percentage: wc > 0
-            ? Math.round((sc / wc) * 1000) / 10
-            : 0,
-          duesRate,
-          missingRevenue,
-        };
-      });
-
-      res.json({
-        units: unitsMapped,
-        unassigned: unassignedWorkerCount > 0 ? {
-          workerCount: unassignedWorkerCount,
-          signedCount: unassignedSignedCount,
-          percentage: unassignedWorkerCount > 0
-            ? Math.round((unassignedSignedCount / unassignedWorkerCount) * 1000) / 10
-            : 0,
-        } : null,
-        totals: {
-          workerCount: totalWorkers,
-          signedCount: totalSigned,
-          percentage: totalWorkers > 0
-            ? Math.round((totalSigned / totalWorkers) * 1000) / 10
-            : 0,
-          missingDuesRevenue: hasDuesRates ? totalMissingDuesRevenue : null,
-        },
-      });
-    } catch (error) {
-      console.error("Error fetching BTU BU summary:", error);
-      res.status(500).json({ message: "Failed to fetch bargaining unit summary" });
-    }
-  });
+  // Returns { schema, uiSchema, value } for the generic settings UI.
   app.get(
-    "/api/dashboard-plugins/edls-summary",
-    requireAuth,
-    requireComponent("edls"),
-    requireAccess('edls.coordinator'),
+    "/api/dashboard-plugins/:pluginId/settings",
+    requireAccess("admin"),
     async (req, res) => {
       try {
-        const { ymd } = req.query;
-        if (!ymd || typeof ymd !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(ymd)) {
-          res.status(400).json({ message: "ymd query parameter required in YYYY-MM-DD format" });
+        const plugin = dashboardPluginRegistry.get(req.params.pluginId);
+        if (!plugin) {
+          res.status(404).json({ message: "Plugin not found" });
           return;
         }
-
-        const result = await storage.edlsAssignments.getDailySummaryByMemberStatus(ymd);
-
-        const memberStatuses: string[] = [];
-        const seenStatuses = new Set<string>();
-        const grid: Record<string, Record<string, number>> = {};
-
-        for (const row of result) {
-          const ms = row.memberStatus;
-          const sheetStatus = row.sheetStatus;
-          const count = row.workerCount;
-
-          if (!seenStatuses.has(ms)) {
-            seenStatuses.add(ms);
-            memberStatuses.push(ms);
-          }
-
-          if (!grid[ms]) grid[ms] = {};
-          grid[ms][sheetStatus] = count;
+        const schema = await dashboardPluginRegistry.resolveSchema(plugin);
+        if (!schema) {
+          res.status(404).json({ message: "Plugin has no settings schema" });
+          return;
         }
-
-        res.json({ memberStatuses, grid });
+        const uiSchema = (await dashboardPluginRegistry.resolveUiSchema(plugin)) ?? {};
+        const value = await dashboardPluginRegistry.getSettingsValue(plugin);
+        res.json({ schema, uiSchema, value });
       } catch (error) {
-        console.error("Error fetching EDLS summary:", error);
-        res.status(500).json({ message: "Failed to fetch EDLS summary data" });
+        res.status(500).json({ message: "Failed to fetch plugin settings" });
       }
-    }
+    },
   );
 
+  // Validate against the plugin's JSON Schema (AJV) and persist.
+  app.put(
+    "/api/dashboard-plugins/:pluginId/settings",
+    requireAccess("admin"),
+    async (req, res) => {
+      try {
+        const plugin = dashboardPluginRegistry.get(req.params.pluginId);
+        if (!plugin) {
+          res.status(404).json({ message: "Plugin not found" });
+          return;
+        }
+        const result = await dashboardPluginRegistry.validateSettings(plugin, req.body);
+        if (!result.valid) {
+          res.status(400).json({ message: "Invalid settings format", errors: result.errors });
+          return;
+        }
+        await dashboardPluginRegistry.saveSettings(plugin, req.body);
+        res.json({ success: true, settings: req.body });
+      } catch (error) {
+        res.status(500).json({ message: "Failed to update plugin settings" });
+      }
+    },
+  );
+
+  const contentHandler = async (req: Request, res: Response) => {
+    try {
+      const plugin = dashboardPluginRegistry.get(req.params.pluginId);
+      if (!plugin) {
+        res.status(404).json({ message: `Plugin '${req.params.pluginId}' not found` });
+        return;
+      }
+      await dashboardPluginRegistry.runContent(plugin, req.params.action, req, res);
+    } catch (error) {
+      const status =
+        error && typeof error === "object" && "status" in error
+          ? Number((error as any).status) || 500
+          : 500;
+      const message =
+        error instanceof Error ? error.message : "Failed to fetch plugin content";
+      if (status >= 500) {
+        console.error("Error fetching plugin content:", error);
+      }
+      res.status(status).json({ message });
+    }
+  };
+
+  app.get("/api/dashboard-plugins/:pluginId/content", requireAuth, contentHandler);
+  app.get("/api/dashboard-plugins/:pluginId/content/:action", requireAuth, contentHandler);
 }
