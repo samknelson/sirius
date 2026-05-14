@@ -9,3 +9,5 @@ import "./plugins/manual";
 import "./plugins/always";
 import "./plugins/ageout";
 import "./plugins/cardcheck";
+import "./plugins/priorMonth";
+import "./plugins/linked";

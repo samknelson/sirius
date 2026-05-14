@@ -62,6 +62,22 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
     },
   );
 
+  // Special-case: trust benefits exposed as a remote-options source for
+  // the trust eligibility "linked" plugin's multi-select. Read-only.
+  // Register BEFORE the generic `/api/options/:type` so it matches first.
+  app.get(
+    "/api/options/trust-benefit",
+    requireAccess('authenticated'),
+    async (_req: Request, res: Response) => {
+      try {
+        const benefits = await storage.trustBenefits.getActiveTrustBenefitOptions();
+        res.json(benefits);
+      } catch (error) {
+        res.status(500).json({ message: "Failed to fetch trust benefits" });
+      }
+    },
+  );
+
   // GET /api/options/:type - List all items of a specific options type
   app.get("/api/options/:type", requireAccess('authenticated'), async (req: Request, res: Response) => {
     try {

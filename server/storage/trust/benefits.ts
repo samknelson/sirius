@@ -1,7 +1,7 @@
 import { createNoopValidator } from '../utils/validation';
 import { getClient } from '../transaction-context';
 import { trustBenefits, optionsTrustBenefitType, type TrustBenefit, type InsertTrustBenefit } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { eq, asc } from "drizzle-orm";
 import { type StorageLoggingConfig } from "../middleware/logging";
 
 /**
@@ -11,6 +11,7 @@ export const validate = createNoopValidator();
 
 export interface TrustBenefitStorage {
   getAllTrustBenefits(): Promise<any[]>;
+  getActiveTrustBenefitOptions(): Promise<{ id: string; name: string }[]>;
   getTrustBenefit(id: string): Promise<any | undefined>;
   createTrustBenefit(benefit: InsertTrustBenefit): Promise<TrustBenefit>;
   updateTrustBenefit(id: string, benefit: Partial<InsertTrustBenefit>): Promise<TrustBenefit | undefined>;
@@ -39,6 +40,16 @@ export function createTrustBenefitStorage(): TrustBenefitStorage {
         benefitTypeIcon: (r.benefitTypeData as any)?.icon || null,
         benefitTypeData: undefined,
       }));
+    },
+
+    async getActiveTrustBenefitOptions(): Promise<{ id: string; name: string }[]> {
+      const client = getClient();
+      const results = await client
+        .select({ id: trustBenefits.id, name: trustBenefits.name })
+        .from(trustBenefits)
+        .where(eq(trustBenefits.isActive, true))
+        .orderBy(asc(trustBenefits.name));
+      return results;
     },
 
     async getTrustBenefit(id: string): Promise<any | undefined> {
