@@ -47,6 +47,17 @@ export interface SearchWorkerRelationsParams {
 
 export interface WorkerRelationsStorage {
   searchWorkerRelations(params: SearchWorkerRelationsParams): Promise<WorkerRelationWithDetails[]>;
+  /**
+   * Find an active worker_relations row linking a specific subscriber
+   * (`worker_1`) to a specific dependent (`worker_2`) on the given
+   * as-of date. "Active" means `start_ymd <= asOf` AND (`end_ymd IS
+   * NULL` OR `end_ymd >= asOf`). Returns the row or null.
+   */
+  findActiveBetween(
+    subscriberWorkerId: string,
+    dependentWorkerId: string,
+    asOfDate: Date,
+  ): Promise<WorkerRelation | null>;
   get(id: string): Promise<WorkerRelation | undefined>;
   create(data: InsertWorkerRelation): Promise<WorkerRelation>;
   update(id: string, data: Partial<InsertWorkerRelation>): Promise<WorkerRelation | undefined>;
@@ -279,6 +290,30 @@ export function createWorkerRelationsStorage(): WorkerRelationsStorage {
           relationTypeName: r.relationTypeName ?? null,
         };
       });
+    },
+
+    async findActiveBetween(
+      subscriberWorkerId: string,
+      dependentWorkerId: string,
+      asOfDate: Date,
+    ): Promise<WorkerRelation | null> {
+      const ymd = toYmd(asOfDate);
+      if (!ymd) return null;
+      const client = getClient();
+      const endOk = or(isNull(workerRelations.endYmd), gte(workerRelations.endYmd, ymd));
+      const where = and(
+        eq(workerRelations.worker1, subscriberWorkerId),
+        eq(workerRelations.worker2, dependentWorkerId),
+        lte(workerRelations.startYmd, ymd),
+        ...(endOk ? [endOk] : []),
+      );
+      const [row] = await client
+        .select()
+        .from(workerRelations)
+        .where(where)
+        .orderBy(desc(workerRelations.startYmd))
+        .limit(1);
+      return row ?? null;
     },
 
     async get(id: string): Promise<WorkerRelation | undefined> {

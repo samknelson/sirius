@@ -6,7 +6,11 @@ import {
   getEligibilityPlugin,
   eligibilityPluginRegistry,
 } from "../plugins/trust/eligibility/registry";
-import { evaluateBenefitEligibility } from "../plugins/trust/eligibility/executor";
+import {
+  evaluateBenefitEligibility,
+  validateEligibilityRelationship,
+  EligibilityRelationshipError,
+} from "../plugins/trust/eligibility/executor";
 import type { EligibilityRule } from "../plugins/trust/eligibility/types";
 import { z } from "zod";
 import { getEnabledComponentIds } from "./components";
@@ -19,6 +23,11 @@ const evaluateEligibilitySchema = z.object({
   asOfMonth: z.number().int().min(1).max(12).optional(),
   asOfYear: z.number().int().min(2000).max(2100).optional(),
   stopAfterIneligible: z.boolean().optional(),
+  relationship: z
+    .object({
+      dependentWorkerId: z.string().uuid(),
+    })
+    .optional(),
 });
 
 export function registerEligibilityPluginRoutes(
@@ -93,6 +102,16 @@ export function registerEligibilityPluginRoutes(
       const benefitRules = eligibilityRules[input.benefitId] || [];
 
       if (benefitRules.length === 0) {
+        // Even when no rules exist, hard-validate any supplied
+        // relationship so bad inputs surface as 400 instead of a
+        // misleading "eligible" response.
+        const now = new Date();
+        await validateEligibilityRelationship(
+          input.workerId,
+          input.relationship,
+          input.asOfMonth ?? now.getMonth() + 1,
+          input.asOfYear ?? now.getFullYear(),
+        );
         return res.json({
           benefitId: input.benefitId,
           eligible: true,
@@ -110,6 +129,7 @@ export function registerEligibilityPluginRoutes(
           asOfMonth: input.asOfMonth,
           asOfYear: input.asOfYear,
           stopAfterIneligible: input.stopAfterIneligible,
+          relationship: input.relationship,
         }
       );
 
@@ -117,6 +137,9 @@ export function registerEligibilityPluginRoutes(
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: "Invalid request data", errors: error.errors });
+      }
+      if (error instanceof EligibilityRelationshipError) {
+        return res.status(400).json({ message: error.message });
       }
       console.error("Failed to evaluate eligibility:", error);
       res.status(500).json({ message: "Failed to evaluate eligibility" });

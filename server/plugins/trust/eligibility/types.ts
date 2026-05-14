@@ -15,14 +15,51 @@ export const baseEligibilityConfigSchema = z.object({
 
 export type BaseEligibilityConfig = z.infer<typeof baseEligibilityConfigSchema>;
 
+/**
+ * Optional subscriber→dependent relationship attached to an
+ * EligibilityContext. When present, evaluation is happening from the
+ * subscriber's point of view (the URL worker / `context.workerId`) for
+ * a specific dependent worker. Plugins choose which side to read:
+ *
+ * - Plugins that care about the subscriber (cardcheck, work status,
+ *   hours, etc.) keep reading `context.workerId` / `context.getWorker()`
+ *   / `context.getContact()` — these always point at the subscriber, so
+ *   no plugin change is needed for back-compat.
+ * - Plugins that care about the dependent (e.g. ageout reads
+ *   birth date) should opt in by reaching for
+ *   `context.relationship?.getDependentContact() ?? context.getContact()`.
+ *
+ * When `relationship` is undefined (no relationship picked), the
+ * subscriber and dependent are the same worker — today's behavior.
+ */
+export interface EligibilityRelationshipContext {
+  subscriberWorkerId: string;
+  dependentWorkerId: string;
+  relationType: string;
+  getSubscriberWorker: () => Promise<Worker>;
+  getSubscriberContact: () => Promise<Contact | null>;
+  getDependentWorker: () => Promise<Worker>;
+  getDependentContact: () => Promise<Contact | null>;
+}
+
 export interface EligibilityContext {
   scanType: ScanType;
+  /**
+   * The subscriber's worker id. When no relationship is supplied this
+   * is the worker being tested as an individual. When a relationship is
+   * supplied, this is `relationship.subscriberWorkerId` — the URL
+   * worker on the eligibility test page.
+   */
   workerId: string;
+  /** Returns the subscriber worker (= `workerId`). */
   getWorker: () => Promise<Worker>;
+  /** Returns the subscriber's contact record. */
   getContact: () => Promise<Contact | null>;
   asOfMonth: number;
   asOfYear: number;
   benefitId?: string;
+  /** Present when testing a dependent under this subscriber. */
+  relationship?: EligibilityRelationshipContext;
 }
 
 export interface EligibilityResult {
