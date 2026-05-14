@@ -210,12 +210,9 @@ export async function evaluateEligibilityRules(
         service: 'eligibility-executor',
       });
       results.push({
-        eligible: false,
-        reason: `Plugin disabled: Required component "${componentId}" is not enabled`
+        eligible: true,
+        reason: `Component not enabled: ${componentId}`,
       });
-      if (input.stopAfterIneligible !== false) {
-        break;
-      }
       continue;
     }
 
@@ -287,15 +284,14 @@ export async function evaluateBenefitEligibility(
     const isPluginEnabled = eligibilityPluginRegistry.isPluginEnabled(rule.pluginKey, enabledComponents);
     if (!isPluginEnabled) {
       const componentId = plugin.metadata.requiresComponent || 'unknown';
+      logger.warn(`Eligibility plugin disabled: ${rule.pluginKey} (requires component: ${componentId})`, {
+        service: 'eligibility-executor',
+      });
       pluginResults.push({
         pluginKey: rule.pluginKey,
-        eligible: false,
-        reason: `Plugin disabled: Required component "${componentId}" is not enabled`,
+        eligible: true,
+        reason: `Component not enabled: ${componentId}`,
       });
-      overallEligible = false;
-      if (input.stopAfterIneligible !== false) {
-        break;
-      }
       continue;
     }
 

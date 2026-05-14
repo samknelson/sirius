@@ -12,7 +12,7 @@ import {
   type WorkerTrustElection,
   type WorkerTrustElectionView,
 } from '@shared/schema';
-import { eq, and, asc, desc, isNull, lt, ne, inArray, type SQL } from 'drizzle-orm';
+import { eq, and, asc, desc, isNull, lt, lte, gte, or, ne, inArray, type SQL } from 'drizzle-orm';
 import { type StorageLoggingConfig } from '../middleware/logging';
 import { normalizeToDateOnly, getTodayDateOnly } from '@shared/utils';
 
@@ -31,6 +31,7 @@ export interface WorkerTrustElectionsStorage {
   getById(id: string): Promise<WorkerTrustElection | undefined>;
   listByWorker(workerId: string): Promise<WorkerTrustElection[]>;
   getActiveByWorker(workerId: string): Promise<WorkerTrustElection | undefined>;
+  getActiveByWorkerAsOf(workerId: string, asOfYmd: string): Promise<WorkerTrustElection | undefined>;
   searchViews(params: WorkerTrustElectionSearchParams): Promise<WorkerTrustElectionView[]>;
   getViewById(id: string): Promise<WorkerTrustElectionView | undefined>;
   getActiveViewByWorker(workerId: string): Promise<WorkerTrustElectionView | undefined>;
@@ -273,6 +274,26 @@ export function createWorkerTrustElectionsStorage(): WorkerTrustElectionsStorage
 
     async getActiveByWorker(workerId) {
       const rows = await storage.search({ workerId, activeOnly: true, sort: 'startDesc', limit: 1 });
+      return rows[0];
+    },
+
+    async getActiveByWorkerAsOf(workerId, asOfYmd) {
+      const client = getClient();
+      const rows = await client
+        .select()
+        .from(workerTrustElections)
+        .where(
+          and(
+            eq(workerTrustElections.workerId, workerId),
+            lte(workerTrustElections.startYmd, asOfYmd),
+            or(
+              isNull(workerTrustElections.endYmd),
+              gte(workerTrustElections.endYmd, asOfYmd),
+            ),
+          ),
+        )
+        .orderBy(desc(workerTrustElections.startYmd))
+        .limit(1);
       return rows[0];
     },
 
