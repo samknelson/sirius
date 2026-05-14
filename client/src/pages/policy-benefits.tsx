@@ -88,6 +88,14 @@ function hydrateConfigDefaults(
     sharedValidator,
     schema as RJSFSchema,
     initial as Record<string, unknown>,
+    undefined,
+    false,
+    // Match SchemaForm's behavior: don't pad arrays up to `minItems`
+    // with undefined fillers. Otherwise a fresh rule's array field
+    // (e.g. allowedStatusIds with minItems:1) starts as `[undefined]`
+    // and the first AJV check fails with "must be string" even after
+    // the user picks values.
+    { arrayMinItems: { populate: "never" } },
   );
   if (result && typeof result === "object" && !Array.isArray(result)) {
     return result as Record<string, unknown>;

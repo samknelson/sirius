@@ -118,6 +118,16 @@ export function SchemaForm({
       widgets={widgets}
       liveValidate={false}
       showErrorList={false}
+      // Don't pre-pad arrays to satisfy `minItems`. By default rjsf
+      // fills the array with `computeDefaults(items)` entries, which
+      // for `items: { type: "string" }` (no default) yields
+      // `[undefined]`. That undefined sits at index 0 and later AJV
+      // submit-time validation rejects it as "must be string", even
+      // after the user has appended real values. Start arrays empty
+      // and let user actions / explicit defaults populate them.
+      experimental_defaultFormStateBehavior={{
+        arrayMinItems: { populate: "never" },
+      }}
       {...rest}
     />
   );
