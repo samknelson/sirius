@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { customizeValidator } from "@rjsf/validator-ajv8";
 import { getDefaultFormState } from "@rjsf/utils";
@@ -106,43 +106,6 @@ function hydrateConfigDefaults(
   return initial;
 }
 
-/**
- * One-shot in-place migration for plugin configs whose stored shape
- * has evolved since they were last saved. Returns the migrated config
- * (and the keys that changed) when migration applied, otherwise null.
- *
- * Currently handles ageout's whole-year `{minAge, maxAge}` → years +
- * months (`{minYears, maxYears}`) so legacy rules render correctly in
- * the Configure dialog and SchemaView, and don't get silently dropped
- * when the dialog rewrites config.
- */
-function migrateLegacyPluginConfig(
-  pluginKey: string,
-  config: Record<string, unknown>,
-): Record<string, unknown> | null {
-  if (pluginKey !== "ageout") return null;
-  const hasLegacyMin =
-    typeof config.minAge === "number" && config.minYears == null;
-  const hasLegacyMax =
-    typeof config.maxAge === "number" && config.maxYears == null;
-  if (!hasLegacyMin && !hasLegacyMax) return null;
-  const next = { ...config };
-  if (hasLegacyMin) {
-    next.minYears = config.minAge as number;
-    next.minMonths = 0;
-    delete next.minAge;
-  }
-  if (hasLegacyMax) {
-    next.maxYears = config.maxAge as number;
-    // Legacy `maxAge: N` was a whole-year floor (workers through N
-    // years 11 months were eligible). Preserve that as 11 months on
-    // the upper bound when migrating to fractional storage.
-    next.maxMonths = 11;
-    delete next.maxAge;
-  }
-  return next;
-}
-
 function EligibilityRuleEditor({
   rule,
   ruleIndex,
@@ -160,19 +123,6 @@ function EligibilityRuleEditor({
   const configSchema = plugin?.configSchema;
   const hasConfig = hasConfigProps(configSchema);
   const [configOpen, setConfigOpen] = useState(false);
-
-  // If the stored config is in a legacy shape, migrate it once so the
-  // form/view reflect real values and a subsequent save persists the
-  // current shape. Guarded so we only fire onUpdate once per legacy
-  // rule instance.
-  const migratedRef = useRef(false);
-  useEffect(() => {
-    if (migratedRef.current) return;
-    const migrated = migrateLegacyPluginConfig(rule.pluginKey, rule.config);
-    if (!migrated) return;
-    migratedRef.current = true;
-    onUpdate({ ...rule, config: { ...migrated, appliesTo: rule.appliesTo } });
-  }, [rule, onUpdate]);
 
   const handleAppliesToChange = (scanType: "start" | "continue", checked: boolean) => {
     const nextAppliesTo = checked
@@ -522,7 +472,20 @@ function PolicyBenefitsContent() {
       const benefitName =
         activeBenefits.find((b) => b.id === benefitId)?.name ?? benefitId;
 
-      rules.forEach((rule, idx) => {
+      // Strip any leftover legacy ageout keys (`minAge`/`maxAge`) from
+      // persisted configs so policies originally saved in the legacy
+      // shape are cleaned up the next time the page is saved.
+      const cleanedRules = rules.map((rule) => {
+        if (rule.pluginKey !== "ageout") return rule;
+        const cfg = rule.config as Record<string, unknown>;
+        if (!("minAge" in cfg) && !("maxAge" in cfg)) return rule;
+        const { minAge: _minAge, maxAge: _maxAge, ...rest } = cfg;
+        void _minAge;
+        void _maxAge;
+        return { ...rule, config: rest };
+      });
+
+      cleanedRules.forEach((rule, idx) => {
         const plugin = plugins.find((p) => p.id === rule.pluginKey);
         if (!plugin?.configSchema || !hasConfigProps(plugin.configSchema)) return;
         const result = rjsfValidator.validateFormData(
@@ -539,7 +502,7 @@ function PolicyBenefitsContent() {
         }
       });
 
-      filteredRules[benefitId] = rules;
+      filteredRules[benefitId] = cleanedRules;
     });
 
     if (errors.length > 0) {

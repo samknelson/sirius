@@ -1,10 +1,9 @@
 #!/usr/bin/env npx tsx
 /**
- * Smoke test for the ageout eligibility plugin's backward-compat handling
- * of legacy `{ minAge, maxAge }` configs and the new fractional
- * `{ minYears, minMonths, maxYears, maxMonths, warn* }` shape.
+ * Smoke test for the ageout eligibility plugin's new fractional shape
+ * (`{ minYears, minMonths, maxYears, maxMonths, warn* }`).
  *
- * Run: npx tsx scripts/smoke-test-ageout-legacy.ts
+ * Run: npx tsx scripts/smoke-test-ageout.ts
  */
 import { AgeoutPlugin } from "../server/plugins/trust/eligibility/plugins/ageout";
 import type { EligibilityContext } from "../server/plugins/trust/eligibility/types";
@@ -43,24 +42,15 @@ function evalAt(
 }
 
 async function run() {
-  console.log("Legacy minAge: 18");
+  console.log("New fractional bounds");
   {
-    const c = { minAge: 18 };
-    const r1 = await evalAt(c, "2008-05-15", 2026, 5);
-    check("18y0m worker is eligible", r1.eligible === true && !r1.warning, r1);
-    const r2 = await evalAt(c, "2008-06-01", 2026, 5);
-    check("17y11m worker is NOT eligible", r2.eligible === false, r2);
-  }
-
-  console.log("Legacy maxAge: 65");
-  {
-    const c = { maxAge: 65 };
-    const r1 = await evalAt(c, "1960-06-01", 2026, 5);
-    check("65y11m worker is eligible (legacy floor)", r1.eligible === true, r1);
-    const r2 = await evalAt(c, "1960-05-15", 2026, 5);
-    check("66y0m worker is NOT eligible", r2.eligible === false, r2);
-    const r3 = await evalAt(c, "1961-05-15", 2026, 5);
-    check("65y0m worker is eligible", r3.eligible === true, r3);
+    const c = { minYears: 18, minMonths: 6, maxYears: 65, maxMonths: 0 };
+    const below = await evalAt(c, "2007-12-15", 2026, 5);
+    check("18y5m below min is NOT eligible", below.eligible === false, below);
+    const atMin = await evalAt(c, "2007-11-15", 2026, 5);
+    check("18y6m at min is eligible", atMin.eligible === true, atMin);
+    const above = await evalAt(c, "1961-04-01", 2026, 5);
+    check("65y1m above max is NOT eligible", above.eligible === false, above);
   }
 
   console.log("Day-of-month is ignored");
@@ -74,17 +64,6 @@ async function run() {
         dayFirst.reason === dayLast.reason,
       { dayFirst, dayLast },
     );
-  }
-
-  console.log("New fractional bounds");
-  {
-    const c = { minYears: 18, minMonths: 6, maxYears: 65, maxMonths: 0 };
-    const below = await evalAt(c, "2007-12-15", 2026, 5);
-    check("18y5m below min is NOT eligible", below.eligible === false, below);
-    const atMin = await evalAt(c, "2007-11-15", 2026, 5);
-    check("18y6m at min is eligible", atMin.eligible === true, atMin);
-    const above = await evalAt(c, "1961-04-01", 2026, 5);
-    check("65y1m above max is NOT eligible", above.eligible === false, above);
   }
 
   console.log("Inner warning band");
@@ -120,6 +99,33 @@ async function run() {
       "30y0m is eligible with no warning",
       middle.eligible === true && !middle.warning,
       middle,
+    );
+  }
+
+  console.log("Repro: max 60y, warn-max 55y10m, 56y2m worker");
+  {
+    const c = {
+      maxYears: 60,
+      maxMonths: 0,
+      warnMaxYears: 55,
+      warnMaxMonths: 10,
+    };
+    const r = await evalAt(c, "1970-03-15", 2026, 5);
+    check(
+      "56y2m worker is eligible (passed)",
+      r.eligible === true,
+      r,
+    );
+    check(
+      "warning mentions approaching maximum age of 60 years",
+      typeof r.warning === "string" &&
+        r.warning.includes("approaching maximum age of 60 years"),
+      r,
+    );
+    check(
+      "reason shows upper bound of 60 years",
+      typeof r.reason === "string" && r.reason.includes("60 years"),
+      r,
     );
   }
 
@@ -162,7 +168,7 @@ async function run() {
     console.error(`\n${failures} check(s) failed`);
     process.exit(1);
   }
-  console.log("\nAll ageout legacy/fractional smoke checks passed.");
+  console.log("\nAll ageout smoke checks passed.");
 }
 
 run().catch((err) => {

@@ -8,7 +8,7 @@ import {
 import { registerEligibilityPlugin } from "../registry";
 
 interface AgeoutConfig extends BaseEligibilityConfig {
-  // New fractional-year shape (years + months 0..11). Each pair is
+  // Fractional-year shape (years + months 0..11). Each pair is
   // independent: a bound is "set" iff its `*Years` field is an integer.
   minYears?: number | null;
   minMonths?: number | null;
@@ -20,10 +20,6 @@ interface AgeoutConfig extends BaseEligibilityConfig {
   warnMinMonths?: number | null;
   warnMaxYears?: number | null;
   warnMaxMonths?: number | null;
-  // Legacy whole-year shape (preserved for back-compat on existing
-  // saved configs; treated as years with months=0 when present).
-  minAge?: number | null;
-  maxAge?: number | null;
 }
 
 function computeAgeInMonths(
@@ -51,22 +47,11 @@ function toMonths(years: number | null, months: number | null): number | null {
 }
 
 function effectiveMinMonths(c: AgeoutConfig): number | null {
-  const fromNew = toMonths(c.minYears ?? null, c.minMonths ?? null);
-  if (fromNew !== null) return fromNew;
-  if (c.minAge !== null && c.minAge !== undefined) return c.minAge * 12;
-  return null;
+  return toMonths(c.minYears ?? null, c.minMonths ?? null);
 }
 
 function effectiveMaxMonths(c: AgeoutConfig): number | null {
-  const fromNew = toMonths(c.maxYears ?? null, c.maxMonths ?? null);
-  if (fromNew !== null) return fromNew;
-  // Legacy `maxAge: N` was a whole-year floor comparison: workers
-  // through the end of their Nth year were still eligible. Translate
-  // that to months by treating the legacy ceiling as N years 11 months
-  // inclusive, so a stored `maxAge: 65` keeps allowing a 65y11m worker
-  // through (preserving pre-fractional behavior).
-  if (c.maxAge !== null && c.maxAge !== undefined) return c.maxAge * 12 + 11;
-  return null;
+  return toMonths(c.maxYears ?? null, c.maxMonths ?? null);
 }
 
 function formatYM(totalMonths: number): string {
