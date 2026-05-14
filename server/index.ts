@@ -19,12 +19,12 @@ import { initializeWebSocket } from "./services/websocket";
 import { getSession } from "./auth";
 
 // Import charge plugins module to trigger registration
-// Note: Individual plugins are registered in ./charge-plugins/index.ts
+// Note: Individual plugins are registered in ./plugins/ledger/charge/index.ts
 import "./plugins/ledger/charge";
 import { registerChargePluginListeners } from "./plugins/ledger/charge";
 
 // Import eligibility plugins module to trigger registration
-// Note: Individual plugins are registered in ./eligibility-plugins/index.ts
+// Note: Individual plugins are registered in ./plugins/trust/eligibility/index.ts
 import "./plugins/trust/eligibility";
 
 // Import service providers module to trigger registration
