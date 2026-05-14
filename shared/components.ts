@@ -374,7 +374,13 @@ export const componentRegistry: ComponentDefinition[] = [
     name: "Trust Elections",
     description: "Worker elections (stub)",
     enabledByDefault: false,
-    category: "core"
+    category: "core",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/trust/elections-schema.ts",
+      tables: ["worker_trust_elections"]
+    }
   },
   {
     id: "event",
