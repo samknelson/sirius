@@ -39,7 +39,7 @@ class ManualPlugin extends EligibilityPlugin<ManualConfig> {
     }
 
     const exists = await storage.workers.workerBenefitExists(
-      context.workerId,
+      context.subscriberWorker.id,
       context.benefitId,
       context.asOfMonth,
       context.asOfYear,

@@ -16,50 +16,48 @@ export const baseEligibilityConfigSchema = z.object({
 export type BaseEligibilityConfig = z.infer<typeof baseEligibilityConfigSchema>;
 
 /**
- * Optional subscriber→dependent relationship attached to an
- * EligibilityContext. When present, evaluation is happening from the
- * subscriber's point of view (the URL worker / `context.workerId`) for
- * a specific dependent worker. Plugins choose which side to read:
+ * Context passed to every eligibility plugin. Both subscriber and
+ * dependent worker + contact records are eagerly loaded by the executor
+ * before plugins run, so plugins read them as plain fields rather than
+ * via accessor functions. When no relationship is supplied, the
+ * dependent fields are the same references as the subscriber fields.
  *
+ * Each plugin must consciously choose which side it cares about:
  * - Plugins that care about the subscriber (cardcheck, work status,
- *   hours, etc.) keep reading `context.workerId` / `context.getWorker()`
- *   / `context.getContact()` — these always point at the subscriber, so
- *   no plugin change is needed for back-compat.
- * - Plugins that care about the dependent (e.g. ageout reads
- *   birth date) should opt in by reaching for
- *   `context.relationship?.getDependentContact() ?? context.getContact()`.
- *
- * When `relationship` is undefined (no relationship picked), the
- * subscriber and dependent are the same worker — today's behavior.
+ *   hours, manual, gbhet legal) read `subscriberWorker.id`.
+ * - Plugins that care about the dependent (ageout reads birth date)
+ *   read `dependentContact` and reference the dependent in their
+ *   reasons when `relationship` is set.
  */
-export interface EligibilityRelationshipContext {
-  subscriberWorkerId: string;
-  dependentWorkerId: string;
-  relationType: string;
-  getSubscriberWorker: () => Promise<Worker>;
-  getSubscriberContact: () => Promise<Contact | null>;
-  getDependentWorker: () => Promise<Worker>;
-  getDependentContact: () => Promise<Contact | null>;
-}
-
 export interface EligibilityContext {
   scanType: ScanType;
-  /**
-   * The subscriber's worker id. When no relationship is supplied this
-   * is the worker being tested as an individual. When a relationship is
-   * supplied, this is `relationship.subscriberWorkerId` — the URL
-   * worker on the eligibility test page.
-   */
-  workerId: string;
-  /** Returns the subscriber worker (= `workerId`). */
-  getWorker: () => Promise<Worker>;
-  /** Returns the subscriber's contact record. */
-  getContact: () => Promise<Contact | null>;
   asOfMonth: number;
   asOfYear: number;
   benefitId?: string;
-  /** Present when testing a dependent under this subscriber. */
-  relationship?: EligibilityRelationshipContext;
+  /** Subscriber worker (the URL worker on the eligibility test page). */
+  subscriberWorker: Worker;
+  /** Subscriber's contact record, or null if the worker has no linked contact. */
+  subscriberContact: Contact | null;
+  /**
+   * Dependent worker. Equal by reference to `subscriberWorker` when
+   * `relationship` is undefined.
+   */
+  dependentWorker: Worker;
+  /**
+   * Dependent's contact record. Equal by reference to
+   * `subscriberContact` when `relationship` is undefined.
+   */
+  dependentContact: Contact | null;
+  /**
+   * Present only when evaluating a dependent under a subscriber. Carries
+   * the resolved relationship type from the active `worker_relations`
+   * row on the as-of date.
+   */
+  relationship?: {
+    subscriberWorkerId: string;
+    dependentWorkerId: string;
+    relationType: string;
+  };
 }
 
 export interface EligibilityResult {

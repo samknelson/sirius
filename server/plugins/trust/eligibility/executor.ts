@@ -1,7 +1,6 @@
 import { eligibilityPluginRegistry } from "./registry";
 import type {
   EligibilityContext,
-  EligibilityRelationshipContext,
   EligibilityResult,
   EligibilityRule,
   ScanType,
@@ -55,40 +54,19 @@ export interface BenefitEligibilityResult {
   }>;
 }
 
-function createWorkerAccessor(workerId: string, cachedWorker?: Worker): () => Promise<Worker> {
-  let worker: Worker | undefined = cachedWorker;
-  
-  return async (): Promise<Worker> => {
-    if (worker) return worker;
-    
-    const fetchedWorker = await storage.workers.getWorker(workerId);
-    if (!fetchedWorker) {
-      throw new Error(`Worker not found: ${workerId}`);
-    }
-    worker = fetchedWorker;
-    return worker;
-  };
+async function loadWorker(workerId: string, cached?: Worker): Promise<Worker> {
+  if (cached) return cached;
+  const fetched = await storage.workers.getWorker(workerId);
+  if (!fetched) {
+    throw new Error(`Worker not found: ${workerId}`);
+  }
+  return fetched;
 }
 
-function createContactAccessor(getWorker: () => Promise<Worker>): () => Promise<Contact | null> {
-  let cached = false;
-  let contact: Contact | null = null;
-
-  return async (): Promise<Contact | null> => {
-    if (cached) return contact;
-
-    const worker = await getWorker();
-    if (!worker.contactId) {
-      cached = true;
-      contact = null;
-      return contact;
-    }
-
-    const fetched = await storage.contacts.getContact(worker.contactId);
-    contact = fetched ?? null;
-    cached = true;
-    return contact;
-  };
+async function loadContactFor(worker: Worker): Promise<Contact | null> {
+  if (!worker.contactId) return null;
+  const fetched = await storage.contacts.getContact(worker.contactId);
+  return fetched ?? null;
 }
 
 function asOfDate(asOfYear: number, asOfMonth: number): Date {
@@ -131,25 +109,33 @@ export async function validateEligibilityRelationship(
 }
 
 /**
- * Resolves the input into the per-evaluation accessors and the
- * (optional) dependent relationship context. Validates the relationship
- * up-front against `worker_relations`; throws
- * `EligibilityRelationshipError` if the row is missing/expired.
+ * Eagerly resolves subscriber + dependent worker/contact records.
+ * Validates the relationship up-front against `worker_relations`;
+ * throws `EligibilityRelationshipError` if the row is missing/expired.
+ * When no relationship is supplied, dependent fields are the same
+ * references as the subscriber fields.
  */
 async function buildContextParts(
   input: EligibilityEvaluationInput,
   asOfMonth: number,
   asOfYear: number,
 ): Promise<{
-  getWorker: () => Promise<Worker>;
-  getContact: () => Promise<Contact | null>;
-  relationship?: EligibilityRelationshipContext;
+  subscriberWorker: Worker;
+  subscriberContact: Contact | null;
+  dependentWorker: Worker;
+  dependentContact: Contact | null;
+  relationship?: EligibilityContext["relationship"];
 }> {
-  const getWorker = createWorkerAccessor(input.workerId, input.worker);
-  const getContact = createContactAccessor(getWorker);
+  const subscriberWorker = await loadWorker(input.workerId, input.worker);
+  const subscriberContact = await loadContactFor(subscriberWorker);
 
   if (!input.relationship) {
-    return { getWorker, getContact };
+    return {
+      subscriberWorker,
+      subscriberContact,
+      dependentWorker: subscriberWorker,
+      dependentContact: subscriberContact,
+    };
   }
 
   const dependentWorkerId = input.relationship.dependentWorkerId;
@@ -170,20 +156,20 @@ async function buildContextParts(
     );
   }
 
-  const getDependentWorker = createWorkerAccessor(dependentWorkerId);
-  const getDependentContact = createContactAccessor(getDependentWorker);
+  const dependentWorker = await loadWorker(dependentWorkerId);
+  const dependentContact = await loadContactFor(dependentWorker);
 
-  const relationship: EligibilityRelationshipContext = {
-    subscriberWorkerId: input.workerId,
-    dependentWorkerId,
-    relationType: row.relationType,
-    getSubscriberWorker: getWorker,
-    getSubscriberContact: getContact,
-    getDependentWorker,
-    getDependentContact,
+  return {
+    subscriberWorker,
+    subscriberContact,
+    dependentWorker,
+    dependentContact,
+    relationship: {
+      subscriberWorkerId: input.workerId,
+      dependentWorkerId,
+      relationType: row.relationType,
+    },
   };
-
-  return { getWorker, getContact, relationship };
 }
 
 export async function evaluateEligibilityRules(
@@ -194,29 +180,25 @@ export async function evaluateEligibilityRules(
   const asOfMonth = input.asOfMonth ?? (now.getMonth() + 1);
   const asOfYear = input.asOfYear ?? now.getFullYear();
 
-  const { getWorker, getContact, relationship } = await buildContextParts(
-    input,
-    asOfMonth,
-    asOfYear,
-  );
+  const parts = await buildContextParts(input, asOfMonth, asOfYear);
 
   const results: EligibilityResult[] = [];
-  
+
   const enabledComponents = await getEnabledComponentIds();
-  
+
   for (const rule of rules) {
     if (!rule.appliesTo.includes(input.scanType)) {
       continue;
     }
-    
+
     const plugin = eligibilityPluginRegistry.get(rule.pluginKey);
     if (!plugin) {
       logger.warn(`Eligibility plugin not found: ${rule.pluginKey}`, {
         service: 'eligibility-executor',
       });
-      results.push({ 
-        eligible: false, 
-        reason: `Plugin not found: ${rule.pluginKey}` 
+      results.push({
+        eligible: false,
+        reason: `Plugin not found: ${rule.pluginKey}`
       });
       continue;
     }
@@ -227,31 +209,28 @@ export async function evaluateEligibilityRules(
       logger.warn(`Eligibility plugin disabled: ${rule.pluginKey} (requires component: ${componentId})`, {
         service: 'eligibility-executor',
       });
-      results.push({ 
-        eligible: false, 
-        reason: `Plugin disabled: Required component "${componentId}" is not enabled` 
+      results.push({
+        eligible: false,
+        reason: `Plugin disabled: Required component "${componentId}" is not enabled`
       });
       if (input.stopAfterIneligible !== false) {
         break;
       }
       continue;
     }
-    
+
     const context: EligibilityContext = {
       scanType: input.scanType,
-      workerId: input.workerId,
-      getWorker,
-      getContact,
       asOfMonth,
       asOfYear,
       benefitId: input.benefitId,
-      relationship,
+      ...parts,
     };
-    
+
     try {
       const result = await plugin.evaluate(context, rule.config as any);
       results.push(result);
-      
+
       if (!result.eligible && input.stopAfterIneligible !== false) {
         break;
       }
@@ -260,16 +239,16 @@ export async function evaluateEligibilityRules(
         service: 'eligibility-executor',
         error: error instanceof Error ? error.message : String(error),
       });
-      results.push({ 
-        eligible: false, 
-        reason: `Plugin error: ${error instanceof Error ? error.message : 'Unknown error'}` 
+      results.push({
+        eligible: false,
+        reason: `Plugin error: ${error instanceof Error ? error.message : 'Unknown error'}`
       });
       if (input.stopAfterIneligible !== false) {
         break;
       }
     }
   }
-  
+
   return results;
 }
 
@@ -282,22 +261,18 @@ export async function evaluateBenefitEligibility(
   const asOfMonth = input.asOfMonth ?? (now.getMonth() + 1);
   const asOfYear = input.asOfYear ?? now.getFullYear();
 
-  const { getWorker, getContact, relationship } = await buildContextParts(
-    input,
-    asOfMonth,
-    asOfYear,
-  );
+  const parts = await buildContextParts(input, asOfMonth, asOfYear);
 
   const pluginResults: BenefitEligibilityResult['results'] = [];
   let overallEligible = true;
-  
+
   const enabledComponents = await getEnabledComponentIds();
-  
+
   for (const rule of rules) {
     if (!rule.appliesTo.includes(input.scanType)) {
       continue;
     }
-    
+
     const plugin = eligibilityPluginRegistry.get(rule.pluginKey);
     if (!plugin) {
       pluginResults.push({
@@ -323,18 +298,15 @@ export async function evaluateBenefitEligibility(
       }
       continue;
     }
-    
+
     const context: EligibilityContext = {
       scanType: input.scanType,
-      workerId: input.workerId,
-      getWorker,
-      getContact,
       asOfMonth,
       asOfYear,
       benefitId,
-      relationship,
+      ...parts,
     };
-    
+
     try {
       const result = await plugin.evaluate(context, rule.config as any);
       pluginResults.push({
@@ -343,7 +315,7 @@ export async function evaluateBenefitEligibility(
         reason: result.reason,
         warning: result.warning,
       });
-      
+
       if (!result.eligible) {
         overallEligible = false;
         if (input.stopAfterIneligible !== false) {
@@ -362,7 +334,7 @@ export async function evaluateBenefitEligibility(
       }
     }
   }
-  
+
   return {
     benefitId,
     eligible: overallEligible,

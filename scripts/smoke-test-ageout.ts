@@ -22,13 +22,16 @@ function check(label: string, ok: boolean, detail?: unknown) {
 }
 
 function ctx(birthDate: string, asOfYear: number, asOfMonth: number): EligibilityContext {
+  const worker = { id: "smoke-worker" } as never;
+  const contact = { birthDate } as never;
   return {
     scanType: "start",
-    workerId: "smoke-worker",
     asOfYear,
     asOfMonth,
-    getWorker: async () => ({ id: "smoke-worker" }) as never,
-    getContact: async () => ({ birthDate }) as never,
+    subscriberWorker: worker,
+    subscriberContact: contact,
+    dependentWorker: worker,
+    dependentContact: contact,
   } as EligibilityContext;
 }
 

@@ -50,7 +50,7 @@ class GbhetLegalPlugin extends EligibilityPlugin<GbhetLegalConfig> {
     }
 
     const totalHours = await storage.workerHours.getWorkerMonthlyHoursAllEmployers(
-      context.workerId,
+      context.subscriberWorker.id,
       targetYear,
       targetMonth,
     );

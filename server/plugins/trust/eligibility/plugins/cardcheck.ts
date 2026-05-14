@@ -69,7 +69,7 @@ class CardcheckPlugin extends EligibilityPlugin<CardcheckConfig> {
     }
 
     const hasSigned = await storage.cardchecks.hasSignedCardcheckOfDefinition(
-      context.workerId,
+      context.subscriberWorker.id,
       config.cardcheckDefinitionId,
     );
 

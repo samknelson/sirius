@@ -47,7 +47,7 @@ class WorkStatusPlugin extends EligibilityPlugin<WorkStatusConfig> {
       { month: "long" },
     );
 
-    const statusHistory = await storage.workerWsh.getWorkerWsh(context.workerId);
+    const statusHistory = await storage.workerWsh.getWorkerWsh(context.subscriberWorker.id);
 
     const asOfDate = new Date(context.asOfYear, context.asOfMonth - 1, 1);
     asOfDate.setMonth(asOfDate.getMonth() + 1);

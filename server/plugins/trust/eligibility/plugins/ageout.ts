@@ -231,6 +231,22 @@ class AgeoutPlugin extends EligibilityPlugin<AgeoutConfig> {
     const wMin = toMonths(config.warnMinYears ?? null, config.warnMinMonths ?? null);
     const wMax = toMonths(config.warnMaxYears ?? null, config.warnMaxMonths ?? null);
 
+    // Ageout always evaluates the dependent's date of birth. When no
+    // relationship is supplied, `dependentContact` is the same reference
+    // as `subscriberContact`, so this reduces to the worker's own DOB.
+    // When a relationship IS supplied, reasons are prefixed with the
+    // dependent's name so the audit trail makes the subject clear.
+    const subject = context.dependentContact;
+    const subjectWorker = context.dependentWorker;
+    const isDependent = context.relationship !== undefined;
+    const dependentName = isDependent
+      ? (subject?.displayName?.trim()
+          || [subject?.given, subject?.family].filter(Boolean).join(" ").trim()
+          || subjectWorker.id)
+      : null;
+    const prefix = (msg: string): string =>
+      dependentName ? `Dependent ${dependentName}: ${msg}` : msg;
+
     // Defense-in-depth: re-check every cross-bound constraint at
     // evaluate time so a persisted-but-invalid config (e.g. one that
     // bypassed save-time validation) fails closed instead of silently
@@ -279,11 +295,11 @@ class AgeoutPlugin extends EligibilityPlugin<AgeoutConfig> {
       };
     }
 
-    const contact = await context.getContact();
+    const contact = context.dependentContact;
     if (!contact || !contact.birthDate) {
       return {
         eligible: false,
-        reason: "Worker has no date of birth on file",
+        reason: prefix("Worker has no date of birth on file"),
       };
     }
 
@@ -297,7 +313,7 @@ class AgeoutPlugin extends EligibilityPlugin<AgeoutConfig> {
     if (ageMonths === null) {
       return {
         eligible: false,
-        reason: `Worker has an unparseable date of birth: ${contact.birthDate}`,
+        reason: prefix(`Worker has an unparseable date of birth: ${contact.birthDate}`),
       };
     }
 
@@ -306,14 +322,14 @@ class AgeoutPlugin extends EligibilityPlugin<AgeoutConfig> {
     if (min !== null && ageMonths < min) {
       return {
         eligible: false,
-        reason: `Worker is ${ageLabel} old, below minimum age of ${formatYM(min)}`,
+        reason: prefix(`Worker is ${ageLabel} old, below minimum age of ${formatYM(min)}`),
       };
     }
 
     if (max !== null && ageMonths > max) {
       return {
         eligible: false,
-        reason: `Worker is ${ageLabel} old, above maximum age of ${formatYM(max)}`,
+        reason: prefix(`Worker is ${ageLabel} old, above maximum age of ${formatYM(max)}`),
       };
     }
 
@@ -326,18 +342,18 @@ class AgeoutPlugin extends EligibilityPlugin<AgeoutConfig> {
 
     let warning: string | undefined;
     if (wMin !== null && ageMonths < wMin && min !== null) {
-      warning = `Worker is ${ageLabel} old; approaching minimum age of ${formatYM(min)}`;
+      warning = prefix(`Worker is ${ageLabel} old; approaching minimum age of ${formatYM(min)}`);
     } else if (wMin !== null && ageMonths < wMin) {
-      warning = `Worker is ${ageLabel} old; below the warning minimum of ${formatYM(wMin)}`;
+      warning = prefix(`Worker is ${ageLabel} old; below the warning minimum of ${formatYM(wMin)}`);
     } else if (wMax !== null && ageMonths > wMax && max !== null) {
-      warning = `Worker is ${ageLabel} old; approaching maximum age of ${formatYM(max)}`;
+      warning = prefix(`Worker is ${ageLabel} old; approaching maximum age of ${formatYM(max)}`);
     } else if (wMax !== null && ageMonths > wMax) {
-      warning = `Worker is ${ageLabel} old; above the warning maximum of ${formatYM(wMax)}`;
+      warning = prefix(`Worker is ${ageLabel} old; above the warning maximum of ${formatYM(wMax)}`);
     }
 
     return {
       eligible: true,
-      reason: `Worker is ${ageLabel} old, ${rangeLabel}`,
+      reason: prefix(`Worker is ${ageLabel} old, ${rangeLabel}`),
       warning,
     };
   }
