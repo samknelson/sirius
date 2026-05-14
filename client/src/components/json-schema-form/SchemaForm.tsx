@@ -8,6 +8,7 @@ import { RemoteOptionsWidget } from "./widgets/RemoteOptionsWidget";
 import { SelfOptionsWidget } from "./widgets/SelfOptionsWidget";
 import { IconWidget } from "./widgets/IconWidget";
 import { ColorWidget } from "./widgets/ColorWidget";
+import { EnumSelectWidget } from "./widgets/EnumSelectWidget";
 
 /**
  * Form context payload that custom widgets can read. Pass anything
@@ -80,6 +81,15 @@ function buildVendorUiSchema(
 }
 
 const baseWidgets = {
+  // Override rjsf-shadcn's default single-enum widget. Its FancySelect
+  // popover isn't portaled, so inside SchemaFormDialog it triggers a
+  // phantom scrollbar that, when clicked, blurs the popover closed.
+  // Our EnumSelectWidget uses Radix Select (portal -> document.body)
+  // and matches the rjsf encode/decode contract. Multi-select still
+  // falls through to rjsf-shadcn's FancyMultiSelect since Radix
+  // Select is single-value only — none of the current Configure
+  // modals use array-of-enum.
+  SelectWidget: EnumSelectWidget,
   remoteOptions: RemoteOptionsWidget,
   remoteOptionsMulti: RemoteOptionsWidget,
   selfOptions: SelfOptionsWidget,
