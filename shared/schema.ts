@@ -850,8 +850,12 @@ export {
 export {
   workerTrustElections,
   insertWorkerTrustElectionSchema,
+  createWorkerTrustElectionRequestSchema,
+  updateWorkerTrustElectionRequestSchema,
   type WorkerTrustElection,
   type InsertWorkerTrustElection,
+  type CreateWorkerTrustElectionRequest,
+  type UpdateWorkerTrustElectionRequest,
 } from "./schema/trust/elections-schema";
 
 export {

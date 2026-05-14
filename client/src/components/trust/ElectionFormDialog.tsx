@@ -21,7 +21,11 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import type { WorkerTrustElection } from "@shared/schema";
+import type {
+  WorkerTrustElection,
+  CreateWorkerTrustElectionRequest,
+  UpdateWorkerTrustElectionRequest,
+} from "@shared/schema";
 
 interface PolicyOption {
   id: string;
@@ -97,7 +101,8 @@ export function ElectionFormDialog({ open, onOpenChange, mode, workerId, electio
   });
 
   const createMutation = useMutation({
-    mutationFn: async (body: any) => apiRequest("POST", `/api/workers/${workerId}/trust-elections`, body),
+    mutationFn: async (body: CreateWorkerTrustElectionRequest) =>
+      apiRequest("POST", `/api/workers/${workerId}/trust-elections`, body),
     onSuccess: async (res) => {
       const saved = (await res.json()) as WorkerTrustElection;
       toast({ title: "Election created" });
@@ -111,7 +116,8 @@ export function ElectionFormDialog({ open, onOpenChange, mode, workerId, electio
   });
 
   const updateMutation = useMutation({
-    mutationFn: async (body: any) => apiRequest("PATCH", `/api/trust-elections/${election!.id}`, body),
+    mutationFn: async (body: UpdateWorkerTrustElectionRequest) =>
+      apiRequest("PATCH", `/api/trust-elections/${election!.id}`, body),
     onSuccess: async (res) => {
       const saved = (await res.json()) as WorkerTrustElection;
       toast({ title: "Election updated" });
@@ -140,15 +146,25 @@ export function ElectionFormDialog({ open, onOpenChange, mode, workerId, electio
       toast({ title: "Validation", description: "Start date is required.", variant: "destructive" });
       return;
     }
-    const body = {
-      policyId,
-      startYmd,
-      endYmd: endYmd || null,
-      benefitIds,
-      relationshipIds,
-    };
-    if (mode === "create") createMutation.mutate(body);
-    else updateMutation.mutate(body);
+    if (mode === "create") {
+      const body: CreateWorkerTrustElectionRequest = {
+        policyId,
+        startYmd,
+        endYmd: endYmd || null,
+        benefitIds,
+        relationshipIds,
+      };
+      createMutation.mutate(body);
+    } else {
+      const body: UpdateWorkerTrustElectionRequest = {
+        policyId,
+        startYmd,
+        endYmd: endYmd || null,
+        benefitIds,
+        relationshipIds,
+      };
+      updateMutation.mutate(body);
+    }
   }
 
   function relationLabel(r: RelationOption): string {

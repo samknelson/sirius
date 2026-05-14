@@ -259,10 +259,13 @@ async function endDatePreviousActive(
     .select()
     .from(workerTrustElections)
     .where(and(...conds));
+  const newEnd = ymdMinusOneDay(newStartYmd);
   for (const prior of others) {
-    let newEnd = ymdMinusOneDay(newStartYmd);
     if (prior.startYmd && prior.startYmd > newEnd) {
-      newEnd = prior.startYmd;
+      throw new WorkerTrustElectionValidationError(
+        'startYmd',
+        `Cannot create an active election starting ${newStartYmd}: an existing active election starts on ${prior.startYmd} (after the new end-date of ${newEnd}).`,
+      );
     }
     await client
       .update(workerTrustElections)

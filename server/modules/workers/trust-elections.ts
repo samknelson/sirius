@@ -1,9 +1,9 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../../storage";
 import {
-  insertWorkerTrustElectionSchema,
+  createWorkerTrustElectionRequestSchema,
+  updateWorkerTrustElectionRequestSchema,
   type WorkerTrustElection,
-  type InsertWorkerTrustElection,
 } from "@shared/schema";
 import { z } from "zod";
 import { requireComponent } from "../components";
@@ -20,28 +20,6 @@ declare module "express-serve-static-core" {
     workerTrustElectionEntry?: Readonly<WorkerTrustElection>;
   }
 }
-
-const ymdOrDate = z.union([z.string(), z.coerce.date()]);
-
-const createBodySchema = insertWorkerTrustElectionSchema
-  .omit({ workerId: true })
-  .extend({
-    policyId: z.string().min(1),
-    startYmd: ymdOrDate,
-    endYmd: ymdOrDate.nullable().optional(),
-    benefitIds: z.array(z.string()).nullable().optional(),
-    relationshipIds: z.array(z.string()).nullable().optional(),
-    data: z.unknown().optional(),
-  });
-
-const updateBodySchema = z.object({
-  policyId: z.string().min(1).optional(),
-  startYmd: ymdOrDate.optional(),
-  endYmd: ymdOrDate.nullable().optional(),
-  benefitIds: z.array(z.string()).nullable().optional(),
-  relationshipIds: z.array(z.string()).nullable().optional(),
-  data: z.unknown().optional(),
-});
 
 function handleError(res: Response, error: unknown, fallback: string) {
   if (error instanceof z.ZodError) {
@@ -64,12 +42,12 @@ export function registerWorkerTrustElectionsRoutes(
 ) {
   const electionsComponent = requireComponent("trust.elections");
 
-  // List elections for a worker
+  // List elections for a worker (staff-only)
   app.get(
     "/api/workers/:id/trust-elections",
     requireAuth,
     electionsComponent,
-    requireAccess('worker.view', (req) => req.params.id),
+    requireAccess('staff'),
     async (req: Request, res: Response) => {
       try {
         const activeOnly = req.query.activeOnly === 'true' || req.query.activeOnly === '1';
@@ -89,7 +67,7 @@ export function registerWorkerTrustElectionsRoutes(
     },
   );
 
-  // Get current (active) election for a worker
+  // Get current (active) election for a worker — visible to anyone with worker.view
   app.get(
     "/api/workers/:id/trust-elections/current",
     requireAuth,
@@ -105,24 +83,20 @@ export function registerWorkerTrustElectionsRoutes(
     },
   );
 
-  // Get one election (fetch then policy on workerId)
+  // Get one election (staff-only)
   app.get(
     "/api/trust-elections/:id",
     requireAuth,
     electionsComponent,
-    async (req: Request, res: Response, next: NextFunction) => {
+    requireAccess('staff'),
+    async (req: Request, res: Response) => {
       try {
         const row = await storage.workerTrustElections.getById(req.params.id);
         if (!row) return res.status(404).json({ error: "Trust election not found" });
-        req.workerTrustElectionEntry = Object.freeze({ ...row });
-        next();
+        res.json(row);
       } catch (error) {
         handleError(res, error, "Failed to fetch trust election");
       }
-    },
-    requireAccess('worker.view', (req) => req.workerTrustElectionEntry?.workerId),
-    async (req: Request, res: Response) => {
-      res.json(req.workerTrustElectionEntry);
     },
   );
 
@@ -134,17 +108,16 @@ export function registerWorkerTrustElectionsRoutes(
     requireAccess('staff'),
     async (req: Request, res: Response) => {
       try {
-        const parsed = createBodySchema.parse(req.body);
-        const insert: InsertWorkerTrustElection = {
+        const parsed = createWorkerTrustElectionRequestSchema.parse(req.body);
+        const created = await storage.workerTrustElections.create({
           workerId: req.params.id,
           policyId: parsed.policyId,
-          startYmd: parsed.startYmd as InsertWorkerTrustElection["startYmd"],
-          endYmd: (parsed.endYmd ?? null) as InsertWorkerTrustElection["endYmd"],
+          startYmd: parsed.startYmd as never,
+          endYmd: (parsed.endYmd ?? null) as never,
           benefitIds: parsed.benefitIds ?? null,
           relationshipIds: parsed.relationshipIds ?? null,
-          data: parsed.data as InsertWorkerTrustElection["data"],
-        };
-        const created = await storage.workerTrustElections.create(insert);
+          data: parsed.data as never,
+        });
         res.status(201).json(created);
       } catch (error) {
         handleError(res, error, "Failed to create trust election");
@@ -160,15 +133,15 @@ export function registerWorkerTrustElectionsRoutes(
     requireAccess('staff'),
     async (req: Request, res: Response) => {
       try {
-        const parsed = updateBodySchema.parse(req.body);
-        const patch: Partial<Omit<InsertWorkerTrustElection, 'workerId'>> = {};
+        const parsed = updateWorkerTrustElectionRequestSchema.parse(req.body);
+        const patch: Record<string, unknown> = {};
         if (parsed.policyId !== undefined) patch.policyId = parsed.policyId;
-        if (parsed.startYmd !== undefined) patch.startYmd = parsed.startYmd as InsertWorkerTrustElection["startYmd"];
-        if (parsed.endYmd !== undefined) patch.endYmd = parsed.endYmd as InsertWorkerTrustElection["endYmd"];
+        if (parsed.startYmd !== undefined) patch.startYmd = parsed.startYmd;
+        if (parsed.endYmd !== undefined) patch.endYmd = parsed.endYmd;
         if (parsed.benefitIds !== undefined) patch.benefitIds = parsed.benefitIds;
         if (parsed.relationshipIds !== undefined) patch.relationshipIds = parsed.relationshipIds;
-        if (parsed.data !== undefined) patch.data = parsed.data as InsertWorkerTrustElection["data"];
-        const updated = await storage.workerTrustElections.update(req.params.id, patch);
+        if (parsed.data !== undefined) patch.data = parsed.data;
+        const updated = await storage.workerTrustElections.update(req.params.id, patch as never);
         if (!updated) return res.status(404).json({ error: "Trust election not found" });
         res.json(updated);
       } catch (error) {

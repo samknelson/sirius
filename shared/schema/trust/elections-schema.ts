@@ -21,3 +21,26 @@ export const insertWorkerTrustElectionSchema = createInsertSchema(workerTrustEle
 
 export type WorkerTrustElection = typeof workerTrustElections.$inferSelect;
 export type InsertWorkerTrustElection = z.infer<typeof insertWorkerTrustElectionSchema>;
+
+const ymdOrDate = z.union([z.string(), z.coerce.date()]);
+
+export const createWorkerTrustElectionRequestSchema = z.object({
+  policyId: z.string().min(1),
+  startYmd: ymdOrDate,
+  endYmd: ymdOrDate.nullable().optional(),
+  benefitIds: z.array(z.string()).nullable().optional(),
+  relationshipIds: z.array(z.string()).nullable().optional(),
+  data: z.unknown().optional(),
+});
+
+export const updateWorkerTrustElectionRequestSchema = z.object({
+  policyId: z.string().min(1).optional(),
+  startYmd: ymdOrDate.optional(),
+  endYmd: ymdOrDate.nullable().optional(),
+  benefitIds: z.array(z.string()).nullable().optional(),
+  relationshipIds: z.array(z.string()).nullable().optional(),
+  data: z.unknown().optional(),
+});
+
+export type CreateWorkerTrustElectionRequest = z.infer<typeof createWorkerTrustElectionRequestSchema>;
+export type UpdateWorkerTrustElectionRequest = z.infer<typeof updateWorkerTrustElectionRequestSchema>;
