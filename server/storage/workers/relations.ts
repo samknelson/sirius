@@ -206,9 +206,9 @@ export function createWorkerRelationsStorage(): WorkerRelationsStorage {
       }
       if (params.activeAt !== undefined && params.activeAt !== null) {
         const ymd = toYmd(params.activeAt)!;
-        const startOk = or(isNull(workerRelations.startYmd), lte(workerRelations.startYmd, ymd));
+        // Active = start_ymd is set AND start_ymd <= ymd AND (end_ymd IS NULL OR end_ymd >= ymd)
+        conds.push(lte(workerRelations.startYmd, ymd));
         const endOk = or(isNull(workerRelations.endYmd), gte(workerRelations.endYmd, ymd));
-        if (startOk) conds.push(startOk);
         if (endOk) conds.push(endOk);
       }
 

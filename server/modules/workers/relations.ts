@@ -27,7 +27,6 @@ const updateApiSchema = z.object({
   relationType: z.string().min(1).optional(),
   startYmd: ymdOrDate.optional(),
   endYmd: ymdOrDate.nullable().optional(),
-  data: z.unknown().optional(),
 });
 
 const createBodySchema = insertWorkerRelationSchema
@@ -170,9 +169,6 @@ export function registerWorkerRelationsRoutes(
         }
         if (parsed.endYmd !== undefined) {
           patch.endYmd = parsed.endYmd as InsertWorkerRelation["endYmd"];
-        }
-        if (parsed.data !== undefined) {
-          patch.data = parsed.data as InsertWorkerRelation["data"];
         }
         const updated = await storage.workerRelations.update(req.params.id, patch);
         if (!updated) {
