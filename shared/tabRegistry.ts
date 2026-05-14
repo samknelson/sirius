@@ -71,7 +71,8 @@ export type TabEntityType =
   | 'trust_provider_edi'
   | 'bulk_message'
   | 'ledger_payment_batch'
-  | 'facility';
+  | 'facility'
+  | 'trust_election';
 
 /**
  * Tab check request for batch access evaluation
@@ -401,6 +402,13 @@ export const ledgerPaymentTabTree: HierarchicalTab[] = [
 ];
 
 /**
+ * Trust election entity tab tree
+ */
+export const trustElectionTabTree: HierarchicalTab[] = [
+  { id: 'details', label: 'Details', hrefTemplate: '/trust/election/{id}', permission: 'staff', component: 'trust.elections' },
+];
+
+/**
  * Trust benefit entity tab tree
  */
 export const trustBenefitTabTree: HierarchicalTab[] = [
@@ -583,6 +591,7 @@ export const tabTreeRegistry: Record<TabEntityType, HierarchicalTab[]> = {
   bulk_message: bulkMessageTabTree,
   ledger_payment_batch: ledgerPaymentBatchTabTree,
   facility: facilityTabTree,
+  trust_election: trustElectionTabTree,
 };
 
 /**

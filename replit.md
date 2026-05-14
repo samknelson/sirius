@@ -95,6 +95,62 @@ to add a new storage method instead. See the **Database Access
 Architecture** entry under System Design Choices for the rationale
 (audit logging, access control, validation, separation of concerns).
 
+## Entity / page navigation MUST use the shared tab registry
+
+Every entity detail page and any persistent page-level navigation in
+the app must be driven by the shared tab registry (`shared/tabRegistry.ts`)
+plus a dedicated entity Layout under `client/src/components/layouts/`.
+The registry is the single source of truth for which tabs exist,
+which access policy / component / capability gates them, and what
+URLs they live at — and the matching backend evaluator
+(`server/modules/access-policies.ts`) is what makes per-user tab
+filtering work.
+
+**Forbidden for entity / page navigation:** importing
+`Tabs`, `TabsList`, `TabsTrigger`, or `TabsContent` from
+`@/components/ui/tabs` to build the top-level navigation of an entity
+detail page (Worker, Employer, Trust Provider, Trust Benefit, Trust
+Election, Dispatch Job, Bulk Message, etc.) or any other persistent
+page-level navigation. If you find yourself reaching for ad-hoc Radix
+Tabs to switch between "views" of an entity, stop and add a tab to
+the registry instead.
+
+**Required pattern when adding or modifying an entity detail page:**
+
+1. Add (or extend) a `TabEntityType` and `*TabTree` in
+   `shared/tabRegistry.ts` and register it in `tabTreeRegistry`.
+2. Wire the entity into the batch tab access endpoint in
+   `server/modules/access-policies.ts` (`entityPolicyMap` plus any
+   entity-specific ID resolution).
+3. Add a thin `use<Entity>TabAccess` wrapper in
+   `client/src/hooks/useTabAccess.ts`.
+4. Add a `<Entity>Layout.tsx` under `client/src/components/layouts/`
+   modeled on `TrustBenefitLayout.tsx` or `WorkerLayout.tsx` (the
+   canonical examples to copy from). The layout owns the header, the
+   back button, `usePageTitle`, and the registry-driven tab strip.
+5. Wrap each page in `<EntityLayout activeTab="...">` and render only
+   the body content.
+
+**Narrow exception — intra-page widget tabs:** Radix `Tabs` from
+`@/components/ui/tabs` are still allowed for clearly intra-page widget
+tabs that are not entity / page navigation. The current legitimate
+usages are:
+
+- `client/src/pages/admin.tsx`
+- `client/src/pages/config/users.tsx`
+- `client/src/pages/wizard-view.tsx`
+- `client/src/pages/flood-events*`
+- `client/src/components/SignatureModal.tsx`
+- `client/src/components/btu-dues-allocation/ResultsStep.tsx`
+
+These are widget-level tab strips inside a single page (e.g. a modal
+or a results panel) and are explicitly out of scope of the
+prohibition. Adding new such usages should be rare and well-justified.
+
+If your tab strip switches the route, gates by access policy /
+component, or names a persistent "view" of an entity, it belongs in
+the registry — not in `@/components/ui/tabs`.
+
 # System Architecture
 
 ## UI/UX Decisions
