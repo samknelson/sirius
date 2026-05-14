@@ -22,6 +22,7 @@ import {
   TrustElectionLayout,
   useTrustElectionLayout,
 } from "@/components/layouts/TrustElectionLayout";
+import { formatYmd } from "@shared/utils";
 
 function ElectionDetailsContent() {
   const { election } = useTrustElectionLayout();
@@ -68,12 +69,10 @@ function ElectionDetailsContent() {
             <dd data-testid="text-policy">{policyName}</dd>
           </div>
           <div>
-            <dt className="text-muted-foreground">Start</dt>
-            <dd data-testid="text-start">{election.startYmd}</dd>
-          </div>
-          <div>
-            <dt className="text-muted-foreground">End</dt>
-            <dd data-testid="text-end">{election.endYmd ?? "—"}</dd>
+            <dt className="text-muted-foreground">Date</dt>
+            <dd data-testid="text-date">
+              {formatYmd(election.startYmd)} – {election.endYmd ? formatYmd(election.endYmd) : "ongoing"}
+            </dd>
           </div>
           <div>
             <dt className="text-muted-foreground">Benefits</dt>

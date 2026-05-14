@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/contexts/AuthContext";
 import { queryClient } from "@/lib/queryClient";
 import { ElectionFormDialog } from "@/components/trust/ElectionFormDialog";
+import { formatYmd } from "@shared/utils";
 import type { WorkerTrustElectionView } from "@shared/schema";
 
 function ElectionsCurrentContent() {
@@ -75,12 +76,10 @@ function ElectionsCurrentContent() {
                 <dd data-testid="text-current-policy">{current.policyName ?? "Unknown policy"}</dd>
               </div>
               <div>
-                <dt className="text-muted-foreground">Start</dt>
-                <dd data-testid="text-current-start">{current.startYmd}</dd>
-              </div>
-              <div>
-                <dt className="text-muted-foreground">End</dt>
-                <dd data-testid="text-current-end">{current.endYmd ?? "—"}</dd>
+                <dt className="text-muted-foreground">Date</dt>
+                <dd data-testid="text-current-date">
+                  {formatYmd(current.startYmd)} – {current.endYmd ? formatYmd(current.endYmd) : "ongoing"}
+                </dd>
               </div>
               <div>
                 <dt className="text-muted-foreground">Benefits</dt>
