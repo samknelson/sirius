@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { customizeValidator } from "@rjsf/validator-ajv8";
+import { getDefaultFormState } from "@rjsf/utils";
+import type { RJSFSchema } from "@rjsf/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -62,6 +64,35 @@ function hasConfigProps(schema: JsonSchema | undefined): boolean {
   if (!schema) return false;
   const props = (schema as { properties?: Record<string, unknown> }).properties;
   return !!props && Object.keys(props).length > 0;
+}
+
+/**
+ * Validator instance shared by both pre-save validation and default
+ * hydration so the two stay in lockstep with the form's runtime
+ * behavior.
+ */
+const sharedValidator = customizeValidator();
+
+/**
+ * Hydrate JSON-Schema defaults for a freshly created rule's config.
+ * Mirrors what rjsf does on first form mount, so a newly added rule
+ * with required defaulted fields can be saved at the page level
+ * without first opening the Configure dialog.
+ */
+function hydrateConfigDefaults(
+  schema: JsonSchema | undefined,
+  initial: Record<string, unknown>,
+): Record<string, unknown> {
+  if (!schema) return initial;
+  const result = getDefaultFormState(
+    sharedValidator,
+    schema as RJSFSchema,
+    initial as Record<string, unknown>,
+  );
+  if (result && typeof result === "object" && !Array.isArray(result)) {
+    return result as Record<string, unknown>;
+  }
+  return initial;
 }
 
 function EligibilityRuleEditor({
@@ -199,13 +230,19 @@ function BenefitEligibilityConfig({
   const handleAddRule = () => {
     if (!selectedPlugin) return;
 
-    // Defaults now live in the plugin's JSON Schema (via AJV's
-    // useDefaults), so we start with an empty config and let the
-    // SchemaForm hydrate defaults on first render.
+    const pluginMeta = plugins.find((p) => p.id === selectedPlugin);
+    const appliesTo: ("start" | "continue")[] = ["start", "continue"];
+    // Hydrate JSON-Schema defaults at creation time so the rule is
+    // saveable at the page level even if the user never opens
+    // Configure (e.g. plugins whose required fields all have defaults).
+    const hydratedConfig = hydrateConfigDefaults(pluginMeta?.configSchema, {
+      appliesTo,
+    });
+
     const newRule: EligibilityRule = {
       pluginKey: selectedPlugin,
-      appliesTo: ["start", "continue"],
-      config: { appliesTo: ["start", "continue"] },
+      appliesTo,
+      config: { ...hydratedConfig, appliesTo },
     };
 
     onUpdateRules([...rules, newRule]);
@@ -399,11 +436,9 @@ function PolicyBenefitsContent() {
     }));
   };
 
-  // Use the same AJV-backed validator that rjsf uses inside the
-  // SchemaForm so pre-save validation matches what the modal already
-  // enforces. Avoids any AJV ESM/default-export issues from
-  // hand-constructing AJV in the browser bundle.
-  const rjsfValidator = useMemo(() => customizeValidator(), []);
+  // Reuse the shared rjsf validator so pre-save validation matches
+  // what the modal form already enforces.
+  const rjsfValidator = sharedValidator;
 
   const handleSave = () => {
     const filteredRules: Record<string, EligibilityRule[]> = {};
