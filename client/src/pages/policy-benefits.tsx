@@ -405,6 +405,11 @@ function PolicyBenefitsContent() {
 
   const { data: plugins = [] } = useQuery<EligibilityPlugin[]>({
     queryKey: ["/api/eligibility-plugins"],
+    // The default queryClient has staleTime: Infinity, which would let an
+    // out-of-date plugin list (e.g. cached before a new plugin was added on
+    // the server) stick around for the entire session. Force a refetch on
+    // mount so newly registered plugins appear without a hard refresh.
+    staleTime: 0,
   });
 
   const updateMutation = useMutation({
