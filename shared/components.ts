@@ -370,6 +370,13 @@ export const componentRegistry: ComponentDefinition[] = [
     category: "trust.benefits"
   },
   {
+    id: "trust.elections",
+    name: "Trust Elections",
+    description: "Worker elections (stub)",
+    enabledByDefault: false,
+    category: "core"
+  },
+  {
     id: "event",
     name: "Events",
     description: "In-person and virtual events that contacts can register for",
