@@ -104,13 +104,20 @@ export function SchemaFormDialog<T extends Record<string, unknown> = Record<stri
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className={contentClassName ?? "sm:max-w-lg"}>
+      <DialogContent
+        className={`flex flex-col max-h-[85vh] ${contentClassName ?? "sm:max-w-2xl"}`}
+      >
         <DialogHeader>
           <DialogTitle data-testid={tid("title")}>{title}</DialogTitle>
           {description && <DialogDescription>{description}</DialogDescription>}
         </DialogHeader>
 
-        <div className="py-2 max-h-[60vh] overflow-y-auto pr-1">
+        {/*
+          Scroll lives on the body (flex-1 + min-h-0) so long forms
+          scroll inside the dialog while the header/footer stay
+          pinned. Short forms don't show a scrollbar.
+        */}
+        <div className="py-2 flex-1 min-h-0 overflow-y-auto pr-1">
           <SchemaForm
             schema={schema}
             uiSchema={uiSchema}
