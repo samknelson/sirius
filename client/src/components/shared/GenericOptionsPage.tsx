@@ -152,8 +152,12 @@ function rowToFormData(
 
 /**
  * Take a flat form payload and split it into top-level columns + a
- * `data` JSONB blob using the schema's `x-data-field` markers. Empty
- * strings are dropped so the server's "use defaults" path can fire.
+ * `data` JSONB blob using the schema's `x-data-field` markers.
+ *
+ * Behavioral parity with the old inline-edit form: optional text
+ * fields cleared in the UI must be persisted as explicit `null` so the
+ * server actually clears the column on update (dropping the key would
+ * leave the previous value in place).
  */
 function formDataToPayload(
   formData: Record<string, unknown>,
@@ -162,8 +166,11 @@ function formDataToPayload(
   const { columnFields, dataFields } = splitPayloadByDataField(schema, formData);
   const payload: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(columnFields)) {
-    if (typeof v === "string" && v.trim() === "") continue;
-    payload[k] = v;
+    if (typeof v === "string" && v.trim() === "") {
+      payload[k] = null;
+    } else {
+      payload[k] = v;
+    }
   }
   if (Object.keys(dataFields).length > 0) {
     payload.data = dataFields;

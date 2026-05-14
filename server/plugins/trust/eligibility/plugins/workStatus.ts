@@ -33,7 +33,7 @@ class WorkStatusPlugin extends EligibilityPlugin<WorkStatusConfig> {
           uniqueItems: true,
           default: [],
           "x-options-resource": "worker-ws",
-        } as never,
+        },
       },
     },
   };

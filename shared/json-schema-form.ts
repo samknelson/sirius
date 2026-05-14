@@ -61,6 +61,8 @@ export type JsonSchema = {
   format?: string;
   pattern?: string;
   uniqueItems?: boolean;
+  minItems?: number;
+  maxItems?: number;
   additionalProperties?: boolean | JsonSchema;
   oneOf?: JsonSchema[];
   anyOf?: JsonSchema[];

@@ -1,5 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import Ajv, { type ValidateFunction } from "ajv";
+import addFormats from "ajv-formats";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -363,13 +365,62 @@ function PolicyBenefitsContent() {
     }));
   };
 
+  // AJV validator cache, keyed by pluginKey, so each rule's config can
+  // be validated against its own JSON Schema before saving. The page
+  // doesn't render an in-form submit button (saves happen at the page
+  // level), so this is the gate that enforces schema validity.
+  const validators = useMemo(() => {
+    const ajv = new Ajv({ allErrors: true, useDefaults: true, strict: false });
+    addFormats(ajv);
+    const out = new Map<string, ValidateFunction>();
+    for (const p of plugins) {
+      if (!p.configSchema) continue;
+      try {
+        out.set(p.id, ajv.compile(p.configSchema as object));
+      } catch {
+        // Bad schema from server — skip; save will surface a generic error.
+      }
+    }
+    return out;
+  }, [plugins]);
+
   const handleSave = () => {
     const filteredRules: Record<string, EligibilityRule[]> = {};
+    const errors: string[] = [];
+
     selectedBenefits.forEach((benefitId) => {
-      if (eligibilityRules[benefitId] && eligibilityRules[benefitId].length > 0) {
-        filteredRules[benefitId] = eligibilityRules[benefitId];
-      }
+      const rules = eligibilityRules[benefitId];
+      if (!rules || rules.length === 0) return;
+
+      const benefitName =
+        activeBenefits.find((b) => b.id === benefitId)?.name ?? benefitId;
+
+      rules.forEach((rule, idx) => {
+        const validate = validators.get(rule.pluginKey);
+        if (!validate) return;
+        const ok = validate(rule.config);
+        if (!ok && validate.errors) {
+          const pluginName =
+            plugins.find((p) => p.id === rule.pluginKey)?.name ?? rule.pluginKey;
+          for (const e of validate.errors) {
+            errors.push(
+              `${benefitName} → ${pluginName} (rule ${idx + 1}): ${e.instancePath || "/"} ${e.message ?? "is invalid"}`,
+            );
+          }
+        }
+      });
+
+      filteredRules[benefitId] = rules;
     });
+
+    if (errors.length > 0) {
+      toast({
+        title: "Cannot save: invalid eligibility rules",
+        description: errors.slice(0, 5).join("\n"),
+        variant: "destructive",
+      });
+      return;
+    }
 
     updateMutation.mutate({
       benefitIds: Array.from(selectedBenefits),
