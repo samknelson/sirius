@@ -100,13 +100,20 @@ export function ElectionFormDialog({ open, onOpenChange, mode, workerId, electio
     enabled: open,
   });
 
+  function invalidateElectionQueries(electionId?: string) {
+    queryClient.invalidateQueries({ queryKey: ["/api/workers", workerId, "trust-elections"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/workers", workerId, "trust-elections", "current"] });
+    if (electionId) {
+      queryClient.invalidateQueries({ queryKey: ["/api/trust-elections", electionId] });
+    }
+  }
+
   const createMutation = useMutation({
-    mutationFn: async (body: CreateWorkerTrustElectionRequest) =>
-      apiRequest("POST", `/api/workers/${workerId}/trust-elections`, body),
-    onSuccess: async (res) => {
-      const saved = (await res.json()) as WorkerTrustElection;
+    mutationFn: async (body: CreateWorkerTrustElectionRequest): Promise<WorkerTrustElection> =>
+      (await apiRequest("POST", `/api/workers/${workerId}/trust-elections`, body)) as WorkerTrustElection,
+    onSuccess: (saved) => {
       toast({ title: "Election created" });
-      queryClient.invalidateQueries({ queryKey: ["/api/workers", workerId, "trust-elections"] });
+      invalidateElectionQueries(saved?.id);
       onSaved?.(saved);
       onOpenChange(false);
     },
@@ -116,13 +123,11 @@ export function ElectionFormDialog({ open, onOpenChange, mode, workerId, electio
   });
 
   const updateMutation = useMutation({
-    mutationFn: async (body: UpdateWorkerTrustElectionRequest) =>
-      apiRequest("PATCH", `/api/trust-elections/${election!.id}`, body),
-    onSuccess: async (res) => {
-      const saved = (await res.json()) as WorkerTrustElection;
+    mutationFn: async (body: UpdateWorkerTrustElectionRequest): Promise<WorkerTrustElection> =>
+      (await apiRequest("PATCH", `/api/trust-elections/${election!.id}`, body)) as WorkerTrustElection,
+    onSuccess: (saved) => {
       toast({ title: "Election updated" });
-      queryClient.invalidateQueries({ queryKey: ["/api/workers", workerId, "trust-elections"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/trust-elections", election!.id] });
+      invalidateElectionQueries(saved?.id ?? election?.id);
       onSaved?.(saved);
       onOpenChange(false);
     },

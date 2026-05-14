@@ -44,6 +44,7 @@ export default function ElectionDetailPage() {
       toast({ title: "Election deleted" });
       if (election) {
         queryClient.invalidateQueries({ queryKey: ["/api/workers", election.workerId, "trust-elections"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/workers", election.workerId, "trust-elections", "current"] });
       }
     },
     onError: () => toast({ title: "Error", description: "Failed to delete", variant: "destructive" }),
