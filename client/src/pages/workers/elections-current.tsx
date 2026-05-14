@@ -59,13 +59,15 @@ function ElectionsCurrentContent() {
           <div className="space-y-3" data-testid="card-current-election">
             <div className="flex items-center gap-2">
               <Badge variant="default">Active</Badge>
-              <Link
-                href={`/trust/election/${current.id}`}
-                className="text-primary underline-offset-2 hover:underline"
-                data-testid="link-current-election-detail"
-              >
-                View detail
-              </Link>
+              {canEdit && (
+                <Link
+                  href={`/trust/election/${current.id}`}
+                  className="text-primary underline-offset-2 hover:underline"
+                  data-testid="link-current-election-detail"
+                >
+                  View detail
+                </Link>
+              )}
             </div>
             <dl className="grid grid-cols-2 gap-3 text-sm">
               <div>

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link, useParams } from "wouter";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { ArrowLeft } from "lucide-react";
@@ -37,6 +37,44 @@ export default function ElectionDetailPage() {
       return res.json();
     },
   });
+
+  const { data: policies = [] } = useQuery<{ id: string; name: string }[]>({
+    queryKey: ["/api/policies"],
+    enabled: !!election,
+  });
+  const { data: benefits = [] } = useQuery<{ id: string; name: string }[]>({
+    queryKey: ["/api/trust-benefits"],
+    enabled: !!election,
+  });
+  const { data: relations = [] } = useQuery<
+    { id: string; relationTypeName: string | null; otherWorker: { displayName: string | null; given: string | null; family: string | null } | null }[]
+  >({
+    queryKey: ["/api/workers", election?.workerId, "relations"],
+    enabled: !!election,
+  });
+
+  const policyName = useMemo(
+    () => policies.find((p) => p.id === election?.policyId)?.name ?? election?.policyId ?? "",
+    [policies, election],
+  );
+  const benefitLabels = useMemo(() => {
+    const map = new Map(benefits.map((b) => [b.id, b.name]));
+    return (election?.benefitIds ?? []).map((id) => map.get(id) ?? id);
+  }, [benefits, election]);
+  const relationLabels = useMemo(() => {
+    const map = new Map(
+      relations.map((r) => {
+        const name = r.otherWorker
+          ? [r.otherWorker.given, r.otherWorker.family].filter(Boolean).join(" ").trim() ||
+            r.otherWorker.displayName ||
+            r.id
+          : r.id;
+        const label = `${name}${r.relationTypeName ? ` (${r.relationTypeName})` : ""}`;
+        return [r.id, label];
+      }),
+    );
+    return (election?.relationshipIds ?? []).map((id) => map.get(id) ?? id);
+  }, [relations, election]);
 
   const deleteMutation = useMutation({
     mutationFn: async () => apiRequest("DELETE", `/api/trust-elections/${id}`),
@@ -114,7 +152,7 @@ export default function ElectionDetailPage() {
                 <dl className="grid grid-cols-2 gap-4 text-sm">
                   <div>
                     <dt className="text-muted-foreground">Policy</dt>
-                    <dd data-testid="text-policy">{election.policyId}</dd>
+                    <dd data-testid="text-policy">{policyName}</dd>
                   </div>
                   <div>
                     <dt className="text-muted-foreground">Start</dt>
@@ -127,17 +165,33 @@ export default function ElectionDetailPage() {
                   <div>
                     <dt className="text-muted-foreground">Benefits</dt>
                     <dd data-testid="text-benefits">
-                      {election.benefitIds && election.benefitIds.length > 0
-                        ? election.benefitIds.join(", ")
-                        : "—"}
+                      {benefitLabels.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {benefitLabels.map((label, i) => (
+                            <Badge key={i} variant="secondary" data-testid={`chip-benefit-${i}`}>
+                              {label}
+                            </Badge>
+                          ))}
+                        </div>
+                      ) : (
+                        "—"
+                      )}
                     </dd>
                   </div>
                   <div className="col-span-2">
                     <dt className="text-muted-foreground">Covered relationships</dt>
                     <dd data-testid="text-relationships">
-                      {election.relationshipIds && election.relationshipIds.length > 0
-                        ? election.relationshipIds.join(", ")
-                        : "—"}
+                      {relationLabels.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {relationLabels.map((label, i) => (
+                            <Badge key={i} variant="secondary" data-testid={`chip-relation-${i}`}>
+                              {label}
+                            </Badge>
+                          ))}
+                        </div>
+                      ) : (
+                        "—"
+                      )}
                     </dd>
                   </div>
                 </dl>
