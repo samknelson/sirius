@@ -8,3 +8,4 @@ import "./plugins/workStatus";
 import "./plugins/manual";
 import "./plugins/always";
 import "./plugins/ageout";
+import "./plugins/cardcheck";

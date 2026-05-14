@@ -21,7 +21,7 @@ export abstract class EligibilityPlugin<TConfig extends BaseEligibilityConfig = 
     config: TConfig
   ): Promise<EligibilityResult>;
 
-  validateConfig(config: unknown): { valid: boolean; errors?: string[] } {
+  async validateConfig(config: unknown): Promise<{ valid: boolean; errors?: string[] }> {
     const baseResult = baseEligibilityConfigSchema.safeParse(config);
     if (!baseResult.success) {
       return {

@@ -194,8 +194,8 @@ class AgeoutPlugin extends EligibilityPlugin<AgeoutConfig> {
     },
   };
 
-  validateConfig(config: unknown): { valid: boolean; errors?: string[] } {
-    const base = super.validateConfig(config);
+  async validateConfig(config: unknown): Promise<{ valid: boolean; errors?: string[] }> {
+    const base = await super.validateConfig(config);
     if (!base.valid) return base;
     const c = (config ?? {}) as AgeoutConfig;
     const errors: string[] = [];

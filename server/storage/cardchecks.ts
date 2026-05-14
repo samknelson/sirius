@@ -227,6 +227,7 @@ export interface CardcheckStorage {
   getOrganizingDistinctStats(primaryStatusIds: string[]): Promise<OrganizingDistinctStat[]>;
   getOrganizingNewMembers(days: number): Promise<OrganizingNewMember[]>;
   getMissingCardchecksForEmployer(employerId: string, primaryStatusIds: string[]): Promise<MissingCardcheckWorkerRow[]>;
+  hasSignedCardcheckOfDefinition(workerId: string, cardcheckDefinitionId: string): Promise<boolean>;
 }
 
 let storedDeps: CardcheckStorageDependencies | null = null;
@@ -782,6 +783,20 @@ export function createCardcheckStorage(): CardcheckStorage {
       }
 
       return { esig: newEsig, cardcheck: updatedCardcheck };
+    },
+
+    async hasSignedCardcheckOfDefinition(workerId: string, cardcheckDefinitionId: string): Promise<boolean> {
+      const client = getClient();
+      const [row] = await client
+        .select({ id: cardchecks.id })
+        .from(cardchecks)
+        .where(and(
+          eq(cardchecks.workerId, workerId),
+          eq(cardchecks.cardcheckDefinitionId, cardcheckDefinitionId),
+          eq(cardchecks.status, "signed"),
+        ))
+        .limit(1);
+      return !!row;
     },
 
     async getOrganizingEmployerList(): Promise<OrganizingEmployerRow[]> {

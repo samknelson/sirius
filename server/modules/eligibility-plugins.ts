@@ -159,7 +159,7 @@ export function registerEligibilityPluginRoutes(
         return res.status(404).json({ message: `Plugin not found: ${pluginKey}` });
       }
 
-      const validation = plugin.validateConfig(config);
+      const validation = await plugin.validateConfig(config);
       res.json(validation);
     } catch (error) {
       console.error("Failed to validate config:", error);
