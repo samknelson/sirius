@@ -28,6 +28,14 @@ export interface EligibilityContext {
 export interface EligibilityResult {
   eligible: boolean;
   reason?: string;
+  /**
+   * Optional non-blocking warning. A plugin may return `eligible: true`
+   * together with a `warning` string to indicate the worker passes the
+   * rule but is in a flagged region (e.g. inside an inner band of the
+   * eligible range). Consumers (UI, reports) should surface warnings
+   * distinctly from outright failures.
+   */
+  warning?: string;
 }
 
 /**

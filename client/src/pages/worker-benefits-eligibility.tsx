@@ -13,7 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, CheckCircle2, XCircle, AlertCircle, Play } from "lucide-react";
+import { Loader2, CheckCircle2, XCircle, AlertCircle, AlertTriangle, Play } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 
 interface PolicyData {
@@ -31,6 +31,7 @@ interface EligibilityPluginResult {
   pluginKey: string;
   eligible: boolean;
   reason?: string;
+  warning?: string;
 }
 
 interface BenefitEligibilityResult {
@@ -346,17 +347,39 @@ function WorkerBenefitsEligibilityContent() {
           <CardHeader>
             <div className="flex items-center justify-between gap-2">
               <CardTitle>Evaluation Results</CardTitle>
-              {eligibilityResult.eligible ? (
-                <Badge className="bg-green-500 hover:bg-green-600">
-                  <CheckCircle2 className="h-4 w-4 mr-1" />
-                  Eligible
-                </Badge>
-              ) : (
-                <Badge variant="destructive">
-                  <XCircle className="h-4 w-4 mr-1" />
-                  Not Eligible
-                </Badge>
-              )}
+              {(() => {
+                const hasWarnings = eligibilityResult.results.some(
+                  (r) => r.eligible && r.warning,
+                );
+                if (!eligibilityResult.eligible) {
+                  return (
+                    <Badge variant="destructive" data-testid="badge-overall-status">
+                      <XCircle className="h-4 w-4 mr-1" />
+                      Not Eligible
+                    </Badge>
+                  );
+                }
+                if (hasWarnings) {
+                  return (
+                    <Badge
+                      className="bg-yellow-500 hover:bg-yellow-600 text-black"
+                      data-testid="badge-overall-status"
+                    >
+                      <AlertTriangle className="h-4 w-4 mr-1" />
+                      Eligible with warnings
+                    </Badge>
+                  );
+                }
+                return (
+                  <Badge
+                    className="bg-green-500 hover:bg-green-600"
+                    data-testid="badge-overall-status"
+                  >
+                    <CheckCircle2 className="h-4 w-4 mr-1" />
+                    Eligible
+                  </Badge>
+                );
+              })()}
             </div>
           </CardHeader>
           <CardContent>
@@ -370,32 +393,59 @@ function WorkerBenefitsEligibilityContent() {
                 <p className="text-sm text-muted-foreground">
                   {eligibilityResult.results.length} rule(s) were evaluated.
                 </p>
-                {eligibilityResult.results.map((result, index) => (
-                  <div
-                    key={index}
-                    className={`p-4 border rounded-md ${
-                      result.eligible 
-                        ? "border-green-500/50 bg-green-500/10" 
-                        : "border-destructive/50 bg-destructive/10"
-                    }`}
-                    data-testid={`result-plugin-${result.pluginKey}`}
-                  >
-                    <div className="flex items-center gap-2 mb-2">
-                      {result.eligible ? (
-                        <CheckCircle2 className="h-5 w-5 text-green-500" />
-                      ) : (
-                        <XCircle className="h-5 w-5 text-destructive" />
+                {eligibilityResult.results.map((result, index) => {
+                  const hasWarning = result.eligible && !!result.warning;
+                  const containerClass = !result.eligible
+                    ? "border-destructive/50 bg-destructive/10"
+                    : hasWarning
+                    ? "border-yellow-500/50 bg-yellow-500/10"
+                    : "border-green-500/50 bg-green-500/10";
+                  return (
+                    <div
+                      key={index}
+                      className={`p-4 border rounded-md ${containerClass}`}
+                      data-testid={`result-plugin-${result.pluginKey}`}
+                      data-state={
+                        !result.eligible
+                          ? "failed"
+                          : hasWarning
+                          ? "warning"
+                          : "passed"
+                      }
+                    >
+                      <div className="flex items-center gap-2 mb-2">
+                        {!result.eligible ? (
+                          <XCircle className="h-5 w-5 text-destructive" />
+                        ) : hasWarning ? (
+                          <AlertTriangle className="h-5 w-5 text-yellow-500" />
+                        ) : (
+                          <CheckCircle2 className="h-5 w-5 text-green-500" />
+                        )}
+                        <span className="font-medium">{getPluginName(result.pluginKey)}</span>
+                        {!result.eligible ? (
+                          <Badge variant="destructive">Failed</Badge>
+                        ) : hasWarning ? (
+                          <Badge className="bg-yellow-500 hover:bg-yellow-600 text-black">
+                            Warning
+                          </Badge>
+                        ) : (
+                          <Badge variant="secondary">Passed</Badge>
+                        )}
+                      </div>
+                      {result.reason && (
+                        <p className="text-sm ml-7">{result.reason}</p>
                       )}
-                      <span className="font-medium">{getPluginName(result.pluginKey)}</span>
-                      <Badge variant={result.eligible ? "secondary" : "destructive"}>
-                        {result.eligible ? "Passed" : "Failed"}
-                      </Badge>
+                      {hasWarning && (
+                        <p
+                          className="text-sm ml-7 mt-1 text-yellow-700 dark:text-yellow-400"
+                          data-testid={`text-warning-${result.pluginKey}`}
+                        >
+                          {result.warning}
+                        </p>
+                      )}
                     </div>
-                    {result.reason && (
-                      <p className="text-sm ml-7">{result.reason}</p>
-                    )}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </CardContent>

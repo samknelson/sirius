@@ -8,26 +8,93 @@ import {
 import { registerEligibilityPlugin } from "../registry";
 
 interface AgeoutConfig extends BaseEligibilityConfig {
+  // New fractional-year shape (years + months 0..11). Each pair is
+  // independent: a bound is "set" iff its `*Years` field is an integer.
+  minYears?: number | null;
+  minMonths?: number | null;
+  maxYears?: number | null;
+  maxMonths?: number | null;
+  // Inner warning band. A worker whose age falls outside [warnMin, warnMax]
+  // but still inside [min, max] is eligible-with-warning.
+  warnMinYears?: number | null;
+  warnMinMonths?: number | null;
+  warnMaxYears?: number | null;
+  warnMaxMonths?: number | null;
+  // Legacy whole-year shape (preserved for back-compat on existing
+  // saved configs; treated as years with months=0 when present).
   minAge?: number | null;
   maxAge?: number | null;
 }
 
-function computeAgeInYears(birthDate: string, asOf: Date): number | null {
+function computeAgeInMonths(
+  birthDate: string,
+  asOfYear: number,
+  asOfMonth: number,
+): number | null {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(birthDate);
   if (!match) return null;
   const year = Number(match[1]);
   const month = Number(match[2]);
-  const day = Number(match[3]);
-  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) {
+  if (!Number.isFinite(year) || !Number.isFinite(month)) {
     return null;
   }
+  // Day-of-month is intentionally ignored: the eligibility scan window
+  // is month-grained (asOfYear/asOfMonth only — no day component), so
+  // a worker is "age N months" during asOfMonth iff
+  // (asOfYear - birthYear) * 12 + (asOfMonth - birthMonth) >= N.
+  return (asOfYear - year) * 12 + (asOfMonth - month);
+}
 
-  let age = asOf.getFullYear() - year;
-  const beforeBirthday =
-    asOf.getMonth() + 1 < month ||
-    (asOf.getMonth() + 1 === month && asOf.getDate() < day);
-  if (beforeBirthday) age -= 1;
-  return age;
+function toMonths(years: number | null, months: number | null): number | null {
+  if (years === null || years === undefined) return null;
+  return years * 12 + (months ?? 0);
+}
+
+function effectiveMinMonths(c: AgeoutConfig): number | null {
+  const fromNew = toMonths(c.minYears ?? null, c.minMonths ?? null);
+  if (fromNew !== null) return fromNew;
+  if (c.minAge !== null && c.minAge !== undefined) return c.minAge * 12;
+  return null;
+}
+
+function effectiveMaxMonths(c: AgeoutConfig): number | null {
+  const fromNew = toMonths(c.maxYears ?? null, c.maxMonths ?? null);
+  if (fromNew !== null) return fromNew;
+  // Legacy `maxAge: N` was a whole-year floor comparison: workers
+  // through the end of their Nth year were still eligible. Translate
+  // that to months by treating the legacy ceiling as N years 11 months
+  // inclusive, so a stored `maxAge: 65` keeps allowing a 65y11m worker
+  // through (preserving pre-fractional behavior).
+  if (c.maxAge !== null && c.maxAge !== undefined) return c.maxAge * 12 + 11;
+  return null;
+}
+
+function formatYM(totalMonths: number): string {
+  const y = Math.floor(totalMonths / 12);
+  const m = totalMonths - y * 12;
+  if (m === 0) return `${y}y`;
+  return `${y}y ${m}m`;
+}
+
+function makeYearsField(title: string, description: string): Record<string, unknown> {
+  return {
+    type: ["integer", "null"],
+    title,
+    description,
+    minimum: 0,
+    default: null,
+  };
+}
+
+function makeMonthsField(title: string): Record<string, unknown> {
+  return {
+    type: ["integer", "null"],
+    title,
+    description: "Months portion (0–11). Defaults to 0 when the years field is set.",
+    minimum: 0,
+    maximum: 11,
+    default: null,
+  };
 }
 
 class AgeoutPlugin extends EligibilityPlugin<AgeoutConfig> {
@@ -35,41 +102,89 @@ class AgeoutPlugin extends EligibilityPlugin<AgeoutConfig> {
     id: "ageout",
     name: "Ageout",
     description:
-      "Worker must be within an inclusive age range (in whole years, computed from date of birth as of today) to be eligible. Either bound can be left blank to mean 'no limit on that side'.",
+      "Worker must be within an inclusive age range (years + months precision) to be eligible. Optional inner warning band marks workers as eligible-with-warning when they're inside the range but near a configured edge. Any bound left blank means 'no limit on that side'.",
     configSchema: {
       type: "object",
       properties: {
-        minAge: {
-          type: ["integer", "null"],
-          title: "Minimum age (years)",
-          description:
-            "Workers younger than this (in whole years) are ineligible. Inclusive. Leave blank for no minimum.",
-          minimum: 0,
-          default: null,
-        },
-        maxAge: {
-          type: ["integer", "null"],
-          title: "Maximum age (years)",
-          description:
-            "Workers older than this (in whole years) are ineligible. Inclusive. Leave blank for no maximum.",
-          minimum: 0,
-          default: null,
-        },
+        minYears: makeYearsField(
+          "Minimum age — years",
+          "Workers younger than this are ineligible. Inclusive. Leave blank for no minimum.",
+        ),
+        minMonths: makeMonthsField("Minimum age — months"),
+        maxYears: makeYearsField(
+          "Maximum age — years",
+          "Workers older than this are ineligible. Inclusive. Leave blank for no maximum.",
+        ),
+        maxMonths: makeMonthsField("Maximum age — months"),
+        warnMinYears: makeYearsField(
+          "Warning band — minimum years",
+          "Workers between [min, warnMin) are eligible but flagged with a warning. Leave blank for no lower warning.",
+        ),
+        warnMinMonths: makeMonthsField("Warning band — minimum months"),
+        warnMaxYears: makeYearsField(
+          "Warning band — maximum years",
+          "Workers between (warnMax, max] are eligible but flagged with a warning. Leave blank for no upper warning.",
+        ),
+        warnMaxMonths: makeMonthsField("Warning band — maximum months"),
       },
+      // Year-level cross-bound checks (inexpensive AJV $data refs).
+      // Precise month-level cross-bound validation lives in
+      // `validateConfig` below so the server rejects mismatched pairs
+      // even when year-level ordering happens to pass.
       allOf: [
         {
           if: {
             properties: {
-              minAge: { type: "integer" },
-              maxAge: { type: "integer" },
+              minYears: { type: "integer" },
+              maxYears: { type: "integer" },
             },
-            required: ["minAge", "maxAge"],
+            required: ["minYears", "maxYears"],
           },
           then: {
             properties: {
-              minAge: {
-                maximum: { $data: "1/maxAge" },
-              },
+              minYears: { maximum: { $data: "1/maxYears" } },
+            },
+          },
+        },
+        {
+          if: {
+            properties: {
+              warnMinYears: { type: "integer" },
+              warnMaxYears: { type: "integer" },
+            },
+            required: ["warnMinYears", "warnMaxYears"],
+          },
+          then: {
+            properties: {
+              warnMinYears: { maximum: { $data: "1/warnMaxYears" } },
+            },
+          },
+        },
+        {
+          if: {
+            properties: {
+              minYears: { type: "integer" },
+              warnMinYears: { type: "integer" },
+            },
+            required: ["minYears", "warnMinYears"],
+          },
+          then: {
+            properties: {
+              warnMinYears: { minimum: { $data: "1/minYears" } },
+            },
+          },
+        },
+        {
+          if: {
+            properties: {
+              maxYears: { type: "integer" },
+              warnMaxYears: { type: "integer" },
+            },
+            required: ["maxYears", "warnMaxYears"],
+          },
+          then: {
+            properties: {
+              warnMaxYears: { maximum: { $data: "1/maxYears" } },
             },
           },
         },
@@ -77,21 +192,66 @@ class AgeoutPlugin extends EligibilityPlugin<AgeoutConfig> {
     },
   };
 
+  validateConfig(config: unknown): { valid: boolean; errors?: string[] } {
+    const base = super.validateConfig(config);
+    if (!base.valid) return base;
+    const c = (config ?? {}) as AgeoutConfig;
+    const errors: string[] = [];
+    const min = effectiveMinMonths(c);
+    const max = effectiveMaxMonths(c);
+    const wMin = toMonths(c.warnMinYears ?? null, c.warnMinMonths ?? null);
+    const wMax = toMonths(c.warnMaxYears ?? null, c.warnMaxMonths ?? null);
+    if (min !== null && max !== null && min > max) {
+      errors.push(
+        `Minimum age (${formatYM(min)}) must be less than or equal to maximum age (${formatYM(max)}).`,
+      );
+    }
+    if (wMin !== null && wMax !== null && wMin > wMax) {
+      errors.push(
+        `Warning minimum (${formatYM(wMin)}) must be less than or equal to warning maximum (${formatYM(wMax)}).`,
+      );
+    }
+    if (wMin !== null && min !== null && wMin < min) {
+      errors.push(
+        `Warning minimum (${formatYM(wMin)}) must be at or above the eligible minimum (${formatYM(min)}).`,
+      );
+    }
+    if (wMin !== null && max !== null && wMin > max) {
+      errors.push(
+        `Warning minimum (${formatYM(wMin)}) must be at or below the eligible maximum (${formatYM(max)}).`,
+      );
+    }
+    if (wMax !== null && max !== null && wMax > max) {
+      errors.push(
+        `Warning maximum (${formatYM(wMax)}) must be at or below the eligible maximum (${formatYM(max)}).`,
+      );
+    }
+    if (wMax !== null && min !== null && wMax < min) {
+      errors.push(
+        `Warning maximum (${formatYM(wMax)}) must be at or above the eligible minimum (${formatYM(min)}).`,
+      );
+    }
+    if (errors.length > 0) return { valid: false, errors };
+    return { valid: true };
+  }
+
   async evaluate(
     context: EligibilityContext,
-    config: AgeoutConfig
+    config: AgeoutConfig,
   ): Promise<EligibilityResult> {
-    const minAge = config.minAge ?? null;
-    const maxAge = config.maxAge ?? null;
+    const min = effectiveMinMonths(config);
+    const max = effectiveMaxMonths(config);
+    const wMin = toMonths(config.warnMinYears ?? null, config.warnMinMonths ?? null);
+    const wMax = toMonths(config.warnMaxYears ?? null, config.warnMaxMonths ?? null);
 
-    if (minAge !== null && maxAge !== null && minAge > maxAge) {
+    if (min !== null && max !== null && min > max) {
       return {
         eligible: false,
-        reason: `Invalid ageout config: minAge (${minAge}) is greater than maxAge (${maxAge})`,
+        reason: `Invalid ageout config: minimum age (${formatYM(min)}) is greater than maximum age (${formatYM(max)})`,
       };
     }
 
-    if (minAge === null && maxAge === null) {
+    if (min === null && max === null) {
       return {
         eligible: true,
         reason: "Ageout has no minimum or maximum configured (no age restriction)",
@@ -106,38 +266,54 @@ class AgeoutPlugin extends EligibilityPlugin<AgeoutConfig> {
       };
     }
 
-    const age = computeAgeInYears(contact.birthDate, new Date());
-    if (age === null) {
+    // Use the rule's asOf month/year (day-of-month not tracked) so
+    // ageout is reproducible for back-dated evaluation.
+    const ageMonths = computeAgeInMonths(
+      contact.birthDate,
+      context.asOfYear,
+      context.asOfMonth,
+    );
+    if (ageMonths === null) {
       return {
         eligible: false,
         reason: `Worker has an unparseable date of birth: ${contact.birthDate}`,
       };
     }
 
-    if (minAge !== null && age < minAge) {
+    const ageLabel = formatYM(Math.max(0, ageMonths));
+
+    if (min !== null && ageMonths < min) {
       return {
         eligible: false,
-        reason: `Worker is ${age} years old, below minimum age of ${minAge}`,
+        reason: `Worker is ${ageLabel} old, below minimum age of ${formatYM(min)}`,
       };
     }
 
-    if (maxAge !== null && age > maxAge) {
+    if (max !== null && ageMonths > max) {
       return {
         eligible: false,
-        reason: `Worker is ${age} years old, above maximum age of ${maxAge}`,
+        reason: `Worker is ${ageLabel} old, above maximum age of ${formatYM(max)}`,
       };
     }
 
     const rangeLabel =
-      minAge !== null && maxAge !== null
-        ? `within range [${minAge}, ${maxAge}]`
-        : minAge !== null
-        ? `at or above minimum age of ${minAge}`
-        : `at or below maximum age of ${maxAge}`;
+      min !== null && max !== null
+        ? `within range [${formatYM(min)}, ${formatYM(max)}]`
+        : min !== null
+        ? `at or above minimum age of ${formatYM(min)}`
+        : `at or below maximum age of ${formatYM(max!)}`;
+
+    let warning: string | undefined;
+    if (wMin !== null && ageMonths < wMin) {
+      warning = `Worker is ${ageLabel} old, below the warning minimum of ${formatYM(wMin)}`;
+    } else if (wMax !== null && ageMonths > wMax) {
+      warning = `Worker is ${ageLabel} old, above the warning maximum of ${formatYM(wMax)}`;
+    }
 
     return {
       eligible: true,
-      reason: `Worker is ${age} years old, ${rangeLabel}`,
+      reason: `Worker is ${ageLabel} old, ${rangeLabel}`,
+      warning,
     };
   }
 }

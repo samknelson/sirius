@@ -27,6 +27,7 @@ export interface BenefitEligibilityResult {
     pluginKey: string;
     eligible: boolean;
     reason?: string;
+    warning?: string;
   }>;
 }
 
@@ -213,6 +214,7 @@ export async function evaluateBenefitEligibility(
         pluginKey: rule.pluginKey,
         eligible: result.eligible,
         reason: result.reason,
+        warning: result.warning,
       });
       
       if (!result.eligible) {
