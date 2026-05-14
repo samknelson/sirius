@@ -9,10 +9,11 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
-import type { RJSFSchema, UiSchema } from "@rjsf/utils";
+import type { RJSFSchema, RJSFValidationError, UiSchema } from "@rjsf/utils";
 import type { JsonSchema } from "@shared/json-schema-form";
 import type { IChangeEvent } from "@rjsf/core";
 import { SchemaForm, type SchemaFormContext } from "./SchemaForm";
+import { useToast } from "@/hooks/use-toast";
 
 /**
  * The dialog's footer Save button is OUTSIDE the rjsf form, so it
@@ -59,10 +60,30 @@ export function SchemaFormDialog<T extends Record<string, unknown> = Record<stri
 }: SchemaFormDialogProps<T>) {
   const [formData, setFormData] = useState<T>(initialData);
   const submitBtnRef = useRef<HTMLButtonElement>(null);
+  const { toast } = useToast();
 
   useEffect(() => {
     if (open) setFormData(initialData);
   }, [open, initialData]);
+
+  /**
+   * RJSF silently swallows submits when AJV validation fails. Without
+   * this hook the user clicks Save and nothing happens. Surface the
+   * first few errors as a destructive toast; the inline error list
+   * (showErrorList="top") covers the rest visually inside the form.
+   */
+  const handleError = (errors: RJSFValidationError[]) => {
+    if (!errors || errors.length === 0) return;
+    const summary = errors
+      .slice(0, 3)
+      .map((e) => `${e.property || "/"} ${e.message ?? "is invalid"}`)
+      .join("\n");
+    toast({
+      title: "Please fix the highlighted fields",
+      description: summary,
+      variant: "destructive",
+    });
+  };
 
   const tid = useMemo(
     () => (suffix: string) => (testId ? `${testId}-${suffix}` : suffix),
@@ -83,8 +104,10 @@ export function SchemaFormDialog<T extends Record<string, unknown> = Record<stri
             uiSchema={uiSchema}
             formData={formData}
             formContext={formContext}
+            showErrorList="top"
             onChange={(e: IChangeEvent) => setFormData(e.formData as T)}
             onSubmit={(e: IChangeEvent) => onSave(e.formData as T)}
+            onError={handleError}
           >
             {/*
               Hidden submit-trigger; the visible Save button in the
