@@ -853,6 +853,7 @@ export {
   createWorkerTrustElectionRequestSchema,
   updateWorkerTrustElectionRequestSchema,
   type WorkerTrustElection,
+  type WorkerTrustElectionView,
   type InsertWorkerTrustElection,
   type CreateWorkerTrustElectionRequest,
   type UpdateWorkerTrustElectionRequest,

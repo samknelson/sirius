@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Link, useParams, useLocation } from "wouter";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { ArrowLeft } from "lucide-react";
@@ -21,7 +21,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { ElectionFormDialog } from "@/components/trust/ElectionFormDialog";
-import type { WorkerTrustElection } from "@shared/schema";
+import type { WorkerTrustElectionView } from "@shared/schema";
 
 export default function ElectionDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -30,7 +30,7 @@ export default function ElectionDetailPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [tab, setTab] = useState<"view" | "edit">("view");
 
-  const { data: election, isLoading, isError } = useQuery<WorkerTrustElection>({
+  const { data: election, isLoading, isError } = useQuery<WorkerTrustElectionView>({
     queryKey: ["/api/trust-elections", id],
     queryFn: async () => {
       const res = await fetch(`/api/trust-elections/${id}`);
@@ -39,43 +39,9 @@ export default function ElectionDetailPage() {
     },
   });
 
-  const { data: policies = [] } = useQuery<{ id: string; name: string }[]>({
-    queryKey: ["/api/policies"],
-    enabled: !!election,
-  });
-  const { data: benefits = [] } = useQuery<{ id: string; name: string }[]>({
-    queryKey: ["/api/trust-benefits"],
-    enabled: !!election,
-  });
-  const { data: relations = [] } = useQuery<
-    { id: string; relationTypeName: string | null; otherWorker: { displayName: string | null; given: string | null; family: string | null } | null }[]
-  >({
-    queryKey: ["/api/workers", election?.workerId, "relations"],
-    enabled: !!election,
-  });
-
-  const policyName = useMemo(
-    () => policies.find((p) => p.id === election?.policyId)?.name ?? election?.policyId ?? "",
-    [policies, election],
-  );
-  const benefitLabels = useMemo(() => {
-    const map = new Map(benefits.map((b) => [b.id, b.name]));
-    return (election?.benefitIds ?? []).map((id) => map.get(id) ?? id);
-  }, [benefits, election]);
-  const relationLabels = useMemo(() => {
-    const map = new Map(
-      relations.map((r) => {
-        const name = r.otherWorker
-          ? [r.otherWorker.given, r.otherWorker.family].filter(Boolean).join(" ").trim() ||
-            r.otherWorker.displayName ||
-            r.id
-          : r.id;
-        const label = `${name}${r.relationTypeName ? ` (${r.relationTypeName})` : ""}`;
-        return [r.id, label];
-      }),
-    );
-    return (election?.relationshipIds ?? []).map((id) => map.get(id) ?? id);
-  }, [relations, election]);
+  const policyName = election?.policyName ?? election?.policyId ?? "";
+  const benefitLabels = (election?.benefits ?? []).map((b) => b.name);
+  const relationLabels = (election?.relationships ?? []).map((r) => r.label);
 
   const deleteMutation = useMutation({
     mutationFn: async () => apiRequest("DELETE", `/api/trust-elections/${id}`),

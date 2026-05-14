@@ -22,6 +22,12 @@ export const insertWorkerTrustElectionSchema = createInsertSchema(workerTrustEle
 export type WorkerTrustElection = typeof workerTrustElections.$inferSelect;
 export type InsertWorkerTrustElection = z.infer<typeof insertWorkerTrustElectionSchema>;
 
+export interface WorkerTrustElectionView extends WorkerTrustElection {
+  policyName: string | null;
+  benefits: { id: string; name: string }[];
+  relationships: { id: string; label: string }[];
+}
+
 function toYmdString(value: string | Date): string {
   if (value instanceof Date) {
     const yr = value.getFullYear();

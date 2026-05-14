@@ -9,7 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/contexts/AuthContext";
 import { queryClient } from "@/lib/queryClient";
 import { ElectionFormDialog } from "@/components/trust/ElectionFormDialog";
-import type { WorkerTrustElection } from "@shared/schema";
+import type { WorkerTrustElectionView } from "@shared/schema";
 
 function ElectionsCurrentContent() {
   const { worker } = useWorkerLayout();
@@ -17,7 +17,7 @@ function ElectionsCurrentContent() {
   const canEdit = hasPermission("staff");
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  const { data: current, isLoading } = useQuery<WorkerTrustElection | null>({
+  const { data: current, isLoading } = useQuery<WorkerTrustElectionView | null>({
     queryKey: ["/api/workers", worker.id, "trust-elections", "current"],
     queryFn: async () => {
       const res = await fetch(`/api/workers/${worker.id}/trust-elections/current`);
@@ -72,7 +72,7 @@ function ElectionsCurrentContent() {
             <dl className="grid grid-cols-2 gap-3 text-sm">
               <div>
                 <dt className="text-muted-foreground">Policy</dt>
-                <dd data-testid="text-current-policy">{current.policyId}</dd>
+                <dd data-testid="text-current-policy">{current.policyName ?? current.policyId}</dd>
               </div>
               <div>
                 <dt className="text-muted-foreground">Start</dt>
@@ -85,16 +85,16 @@ function ElectionsCurrentContent() {
               <div>
                 <dt className="text-muted-foreground">Benefits</dt>
                 <dd data-testid="text-current-benefits">
-                  {current.benefitIds && current.benefitIds.length > 0
-                    ? current.benefitIds.join(", ")
+                  {current.benefits && current.benefits.length > 0
+                    ? current.benefits.map((b) => b.name).join(", ")
                     : "—"}
                 </dd>
               </div>
               <div>
                 <dt className="text-muted-foreground">Relationships</dt>
                 <dd data-testid="text-current-relationships">
-                  {current.relationshipIds && current.relationshipIds.length > 0
-                    ? current.relationshipIds.join(", ")
+                  {current.relationships && current.relationships.length > 0
+                    ? current.relationships.map((r) => r.label).join(", ")
                     : "—"}
                 </dd>
               </div>

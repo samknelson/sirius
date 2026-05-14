@@ -43,7 +43,7 @@ export function registerWorkerTrustElectionsRoutes(
         const policyId = (req.query.policyId as string | undefined) || undefined;
         const sortRaw = (req.query.sort as string | undefined) || 'startDesc';
         const sort = sortRaw === 'startAsc' ? 'startAsc' : 'startDesc';
-        const rows = await storage.workerTrustElections.search({
+        const rows = await storage.workerTrustElections.searchViews({
           workerId: req.params.id,
           activeOnly,
           policyId,
@@ -64,7 +64,7 @@ export function registerWorkerTrustElectionsRoutes(
     requireAccess('worker.view', (req) => req.params.id),
     async (req: Request, res: Response) => {
       try {
-        const row = await storage.workerTrustElections.getActiveByWorker(req.params.id);
+        const row = await storage.workerTrustElections.getActiveViewByWorker(req.params.id);
         res.json(row ?? null);
       } catch (error) {
         handleError(res, error, "Failed to fetch current trust election");
@@ -80,7 +80,7 @@ export function registerWorkerTrustElectionsRoutes(
     requireAccess('staff'),
     async (req: Request, res: Response) => {
       try {
-        const row = await storage.workerTrustElections.getById(req.params.id);
+        const row = await storage.workerTrustElections.getViewById(req.params.id);
         if (!row) return res.status(404).json({ error: "Trust election not found" });
         res.json(row);
       } catch (error) {

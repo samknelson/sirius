@@ -3,11 +3,16 @@ import {
   workerTrustElections,
   workers,
   policies,
+  contacts,
+  trustBenefits,
+  workerRelations,
+  optionsWorkerRelationType,
   createWorkerTrustElectionRequestSchema,
   updateWorkerTrustElectionRequestSchema,
   type WorkerTrustElection,
+  type WorkerTrustElectionView,
 } from '@shared/schema';
-import { eq, and, asc, desc, isNull, lt, ne, type SQL } from 'drizzle-orm';
+import { eq, and, asc, desc, isNull, lt, ne, inArray, type SQL } from 'drizzle-orm';
 import { type StorageLoggingConfig } from '../middleware/logging';
 import { normalizeToDateOnly, getTodayDateOnly } from '@shared/utils';
 
@@ -26,9 +31,106 @@ export interface WorkerTrustElectionsStorage {
   getById(id: string): Promise<WorkerTrustElection | undefined>;
   listByWorker(workerId: string): Promise<WorkerTrustElection[]>;
   getActiveByWorker(workerId: string): Promise<WorkerTrustElection | undefined>;
+  searchViews(params: WorkerTrustElectionSearchParams): Promise<WorkerTrustElectionView[]>;
+  getViewById(id: string): Promise<WorkerTrustElectionView | undefined>;
+  getActiveViewByWorker(workerId: string): Promise<WorkerTrustElectionView | undefined>;
   create(workerId: string, input: unknown): Promise<WorkerTrustElection>;
   update(id: string, input: unknown): Promise<WorkerTrustElection | undefined>;
   delete(id: string): Promise<boolean>;
+}
+
+async function hydrateElections(rows: WorkerTrustElection[]): Promise<WorkerTrustElectionView[]> {
+  if (rows.length === 0) return [];
+  const client = getClient();
+
+  const policyIdSet = new Set<string>();
+  const benefitIdSet = new Set<string>();
+  const relIdSet = new Set<string>();
+  for (const row of rows) {
+    if (row.policyId) policyIdSet.add(row.policyId);
+    for (const id of row.benefitIds ?? []) benefitIdSet.add(id);
+    for (const id of row.relationshipIds ?? []) relIdSet.add(id);
+  }
+
+  const [policyRows, benefitRows, relRows] = await Promise.all([
+    policyIdSet.size
+      ? client
+          .select({ id: policies.id, name: policies.name })
+          .from(policies)
+          .where(inArray(policies.id, Array.from(policyIdSet)))
+      : Promise.resolve([] as { id: string; name: string | null }[]),
+    benefitIdSet.size
+      ? client
+          .select({ id: trustBenefits.id, name: trustBenefits.name })
+          .from(trustBenefits)
+          .where(inArray(trustBenefits.id, Array.from(benefitIdSet)))
+      : Promise.resolve([] as { id: string; name: string | null }[]),
+    relIdSet.size
+      ? client
+          .select({
+            id: workerRelations.id,
+            worker1: workerRelations.worker1,
+            worker2: workerRelations.worker2,
+            relationTypeName: optionsWorkerRelationType.name,
+          })
+          .from(workerRelations)
+          .leftJoin(
+            optionsWorkerRelationType,
+            eq(workerRelations.relationType, optionsWorkerRelationType.id),
+          )
+          .where(inArray(workerRelations.id, Array.from(relIdSet)))
+      : Promise.resolve(
+          [] as { id: string; worker1: string; worker2: string; relationTypeName: string | null }[],
+        ),
+  ]);
+
+  const otherWorkerIds = new Set<string>();
+  for (const r of relRows) {
+    otherWorkerIds.add(r.worker1);
+    otherWorkerIds.add(r.worker2);
+  }
+
+  const workerNameRows = otherWorkerIds.size
+    ? await client
+        .select({
+          id: workers.id,
+          displayName: contacts.displayName,
+          given: contacts.given,
+          family: contacts.family,
+        })
+        .from(workers)
+        .leftJoin(contacts, eq(workers.contactId, contacts.id))
+        .where(inArray(workers.id, Array.from(otherWorkerIds)))
+    : [];
+
+  const policyMap = new Map(policyRows.map((p) => [p.id, p.name ?? null]));
+  const benefitMap = new Map(benefitRows.map((b) => [b.id, b.name ?? b.id]));
+  const relMap = new Map(relRows.map((r) => [r.id, r]));
+  const workerNameMap = new Map(workerNameRows.map((w) => [w.id, w]));
+
+  return rows.map((election): WorkerTrustElectionView => {
+    const benefits = (election.benefitIds ?? []).map((id) => ({
+      id,
+      name: benefitMap.get(id) ?? id,
+    }));
+    const relationships = (election.relationshipIds ?? []).map((id) => {
+      const rel = relMap.get(id);
+      if (!rel) return { id, label: id };
+      const otherId = rel.worker1 === election.workerId ? rel.worker2 : rel.worker1;
+      const w = workerNameMap.get(otherId);
+      const name = w
+        ? [w.given, w.family].filter(Boolean).join(' ').trim() || w.displayName || otherId
+        : otherId;
+      const type = rel.relationTypeName || 'relation';
+      return { id, label: `${name} (${type})` };
+    });
+    return {
+      ...election,
+      policyName: policyMap.get(election.policyId) ?? null,
+      benefits,
+      relationships,
+    };
+  });
 }
 
 export class WorkerTrustElectionValidationError extends Error {
@@ -172,6 +274,25 @@ export function createWorkerTrustElectionsStorage(): WorkerTrustElectionsStorage
     async getActiveByWorker(workerId) {
       const rows = await storage.search({ workerId, activeOnly: true, sort: 'startDesc', limit: 1 });
       return rows[0];
+    },
+
+    async searchViews(params) {
+      const rows = await storage.search(params);
+      return await hydrateElections(rows);
+    },
+
+    async getViewById(id) {
+      const row = await storage.getById(id);
+      if (!row) return undefined;
+      const [view] = await hydrateElections([row]);
+      return view;
+    },
+
+    async getActiveViewByWorker(workerId) {
+      const row = await storage.getActiveByWorker(workerId);
+      if (!row) return undefined;
+      const [view] = await hydrateElections([row]);
+      return view;
     },
 
     async create(workerId, input) {

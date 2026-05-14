@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useAuth } from "@/contexts/AuthContext";
 import { queryClient } from "@/lib/queryClient";
 import { ElectionFormDialog } from "@/components/trust/ElectionFormDialog";
-import type { WorkerTrustElection } from "@shared/schema";
+import type { WorkerTrustElectionView } from "@shared/schema";
 
 function ElectionsListContent() {
   const { worker } = useWorkerLayout();
@@ -18,7 +18,7 @@ function ElectionsListContent() {
   const canEdit = hasPermission("staff");
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  const { data: rows = [], isLoading } = useQuery<WorkerTrustElection[]>({
+  const { data: rows = [], isLoading } = useQuery<WorkerTrustElectionView[]>({
     queryKey: ["/api/workers", worker.id, "trust-elections"],
     queryFn: async () => {
       const res = await fetch(`/api/workers/${worker.id}/trust-elections?sort=startDesc`);
@@ -67,11 +67,13 @@ function ElectionsListContent() {
                       {row.endYmd ? "Ended" : "Active"}
                     </Badge>
                   </TableCell>
-                  <TableCell data-testid={`text-policy-${row.id}`}>{row.policyId}</TableCell>
+                  <TableCell data-testid={`text-policy-${row.id}`}>{row.policyName ?? row.policyId}</TableCell>
                   <TableCell data-testid={`text-start-${row.id}`}>{row.startYmd}</TableCell>
                   <TableCell data-testid={`text-end-${row.id}`}>{row.endYmd ?? "—"}</TableCell>
-                  <TableCell data-testid={`text-benefits-${row.id}`}>
-                    {row.benefitIds && row.benefitIds.length > 0 ? row.benefitIds.length : "—"}
+                  <TableCell data-testid={`text-benefits-${row.id}`} title={row.benefits?.map((b) => b.name).join(", ")}>
+                    {row.benefits && row.benefits.length > 0
+                      ? row.benefits.map((b) => b.name).join(", ")
+                      : "—"}
                   </TableCell>
                   <TableCell>
                     <Link
