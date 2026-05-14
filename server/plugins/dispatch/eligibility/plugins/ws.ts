@@ -26,17 +26,21 @@ export const dispatchWsPlugin: DispatchEligPlugin = {
     },
   ],
 
-  configFields: [
-    {
-      name: "eligibleWorkStatuses",
-      label: "Eligible Work Statuses",
-      inputType: "select-options",
-      required: false,
-      helperText: "Work statuses eligible for jobs of this type (leave empty for all)",
-      selectOptionsType: "worker-ws",
-      multiSelect: true,
+  configSchema: {
+    type: "object",
+    properties: {
+      eligibleWorkStatuses: {
+        type: "array",
+        title: "Eligible Work Statuses",
+        description:
+          "Work statuses eligible for jobs of this type (leave empty for all).",
+        items: { type: "string", format: "uuid" },
+        uniqueItems: true,
+        default: [],
+        "x-options-resource": "worker-ws",
+      } as never,
     },
-  ],
+  },
 
   async getEligibilityCondition(_context: EligibilityQueryContext, config: Record<string, unknown>): Promise<EligibilityCondition | null> {
     const pluginConfig = config as WsPluginConfig;

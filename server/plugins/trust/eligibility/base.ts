@@ -1,11 +1,18 @@
-import type { 
-  EligibilityContext, 
-  EligibilityResult, 
+import type {
+  EligibilityContext,
+  EligibilityResult,
   EligibilityPluginMetadata,
   BaseEligibilityConfig,
 } from "./types";
 import { baseEligibilityConfigSchema } from "./types";
+import { validateAgainstSchema } from "../../../lib/json-schema-validator";
 
+/**
+ * Base class for trust eligibility plugins. Each subclass declares its
+ * own JSON Schema-typed metadata; `validateConfig` checks both the
+ * rule-level shape (appliesTo) and the plugin-specific config against
+ * the metadata's JSON Schema via AJV.
+ */
 export abstract class EligibilityPlugin<TConfig extends BaseEligibilityConfig = BaseEligibilityConfig> {
   abstract readonly metadata: EligibilityPluginMetadata;
 
@@ -19,18 +26,13 @@ export abstract class EligibilityPlugin<TConfig extends BaseEligibilityConfig = 
     if (!baseResult.success) {
       return {
         valid: false,
-        errors: baseResult.error.errors.map((e) => `${e.path.join('.')}: ${e.message}`),
+        errors: baseResult.error.errors.map((e) => `${e.path.join(".")}: ${e.message}`),
       };
     }
-
-    const pluginResult = this.metadata.configSchema.safeParse(config);
-    if (!pluginResult.success) {
-      return {
-        valid: false,
-        errors: pluginResult.error.errors.map((e: any) => `${e.path.join('.')}: ${e.message}`),
-      };
+    const pluginResult = validateAgainstSchema(this.metadata.configSchema, config);
+    if (!pluginResult.valid) {
+      return { valid: false, errors: pluginResult.errors };
     }
-
     return { valid: true };
   }
 

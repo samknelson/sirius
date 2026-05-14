@@ -30,8 +30,8 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { PolicyLayout, usePolicyLayout } from "@/components/layouts/PolicyLayout";
 import { TrustBenefit } from "@shared/schema";
-import type { PluginConfigField } from "@shared/plugin-config";
-import { PluginConfigForm } from "@/components/plugin-config";
+import type { JsonSchema } from "@shared/json-schema-form";
+import { SchemaForm } from "@/components/json-schema-form";
 import { Save, Loader2, ChevronDown, ChevronRight, Plus, Trash2, Settings } from "lucide-react";
 
 interface EligibilityRule {
@@ -49,8 +49,18 @@ interface EligibilityPlugin {
   id: string;
   name: string;
   description: string;
-  configFields?: PluginConfigField[];
-  defaultConfig?: Record<string, unknown>;
+  configSchema?: JsonSchema;
+}
+
+/**
+ * True when the plugin schema has at least one configurable property.
+ * Plugins like "always-eligible" emit an empty-object schema and we
+ * skip rendering an empty form for them.
+ */
+function hasConfigProps(schema: JsonSchema | undefined): boolean {
+  if (!schema) return false;
+  const props = (schema as { properties?: Record<string, unknown> }).properties;
+  return !!props && Object.keys(props).length > 0;
 }
 
 function EligibilityRuleEditor({
@@ -65,7 +75,7 @@ function EligibilityRuleEditor({
   onRemove: () => void;
 }) {
   const plugin = plugins.find((p) => p.id === rule.pluginKey);
-  const configFields = plugin?.configFields ?? [];
+  const configSchema = plugin?.configSchema;
 
   const handleAppliesToChange = (scanType: "start" | "continue", checked: boolean) => {
     const newAppliesTo = checked
@@ -123,12 +133,13 @@ function EligibilityRuleEditor({
         </div>
       </div>
 
-      {configFields.length > 0 && (
-        <PluginConfigForm
-          fields={configFields}
-          value={rule.config}
-          onChange={handleConfigChange}
-          testIdPrefix={`rule-${rule.pluginKey}`}
+      {hasConfigProps(configSchema) && configSchema && (
+        <SchemaForm
+          schema={configSchema as Parameters<typeof SchemaForm>[0]["schema"]}
+          formData={rule.config}
+          onChange={(e) => handleConfigChange(e.formData as Record<string, unknown>)}
+          // Suppress the built-in submit button — saves happen via the page-level Save action.
+          uiSchema={{ "ui:submitButtonOptions": { norender: true } }}
         />
       )}
     </div>
@@ -153,16 +164,13 @@ function BenefitEligibilityConfig({
   const handleAddRule = () => {
     if (!selectedPlugin) return;
 
-    const plugin = plugins.find((p) => p.id === selectedPlugin);
-    const defaultConfig: Record<string, unknown> = {
-      appliesTo: ["start", "continue"],
-      ...(plugin?.defaultConfig ?? {}),
-    };
-
+    // Defaults now live in the plugin's JSON Schema (via AJV's
+    // useDefaults), so we start with an empty config and let the
+    // SchemaForm hydrate defaults on first render.
     const newRule: EligibilityRule = {
       pluginKey: selectedPlugin,
       appliesTo: ["start", "continue"],
-      config: defaultConfig,
+      config: { appliesTo: ["start", "continue"] },
     };
 
     onUpdateRules([...rules, newRule]);

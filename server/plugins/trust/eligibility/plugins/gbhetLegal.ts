@@ -1,39 +1,37 @@
 import { EligibilityPlugin } from "../base";
-import { 
-  EligibilityContext, 
-  EligibilityResult, 
+import {
+  EligibilityContext,
+  EligibilityResult,
   EligibilityPluginMetadata,
-  baseEligibilityConfigSchema,
+  BaseEligibilityConfig,
 } from "../types";
 import { registerEligibilityPlugin } from "../registry";
 import { storage } from "../../../../storage/database";
-import { z } from "zod";
 
-const gbhetLegalConfigSchema = baseEligibilityConfigSchema.extend({
-  monthsOffset: z.number().int().min(1).default(4),
-});
-
-type GbhetLegalConfig = z.infer<typeof gbhetLegalConfigSchema>;
+interface GbhetLegalConfig extends BaseEligibilityConfig {
+  monthsOffset: number;
+}
 
 class GbhetLegalPlugin extends EligibilityPlugin<GbhetLegalConfig> {
   readonly metadata: EligibilityPluginMetadata = {
     id: "gbhet-legal",
     name: "GBHET Legal",
-    description: "Worker must have nonzero hours in the month that is a specified number of months prior (default: 4 months).",
-    configSchema: gbhetLegalConfigSchema,
+    description:
+      "Worker must have nonzero hours in the month that is a specified number of months prior (default: 4 months).",
     requiresComponent: "sitespecific.gbhet.legal",
-    configFields: [
-      {
-        name: "monthsOffset",
-        label: "Months offset",
-        inputType: "number",
-        required: true,
-        helperText: "How many months prior to the scan month to check for nonzero hours.",
+    configSchema: {
+      type: "object",
+      required: ["monthsOffset"],
+      properties: {
+        monthsOffset: {
+          type: "integer",
+          title: "Months offset",
+          description:
+            "How many months prior to the scan month to check for nonzero hours.",
+          minimum: 1,
+          default: 4,
+        },
       },
-    ],
-    defaultConfig: {
-      appliesTo: ["start", "continue"],
-      monthsOffset: 4,
     },
   };
 
@@ -42,10 +40,10 @@ class GbhetLegalPlugin extends EligibilityPlugin<GbhetLegalConfig> {
     config: GbhetLegalConfig
   ): Promise<EligibilityResult> {
     const monthsOffset = config.monthsOffset ?? 4;
-    
+
     let targetYear = context.asOfYear;
     let targetMonth = context.asOfMonth - monthsOffset;
-    
+
     while (targetMonth <= 0) {
       targetMonth += 12;
       targetYear -= 1;
@@ -54,21 +52,23 @@ class GbhetLegalPlugin extends EligibilityPlugin<GbhetLegalConfig> {
     const totalHours = await storage.workerHours.getWorkerMonthlyHoursAllEmployers(
       context.workerId,
       targetYear,
-      targetMonth
+      targetMonth,
     );
 
+    const monthName = new Date(targetYear, targetMonth - 1, 1).toLocaleString("default", {
+      month: "long",
+    });
+
     if (totalHours > 0) {
-      const monthName = new Date(targetYear, targetMonth - 1, 1).toLocaleString('default', { month: 'long' });
-      return { 
+      return {
         eligible: true,
-        reason: `Worker had ${totalHours} hours in ${monthName} ${targetYear}`
+        reason: `Worker had ${totalHours} hours in ${monthName} ${targetYear}`,
       };
     }
 
-    const monthName = new Date(targetYear, targetMonth - 1, 1).toLocaleString('default', { month: 'long' });
-    return { 
-      eligible: false, 
-      reason: `Worker had no hours in ${monthName} ${targetYear} (${monthsOffset} months prior)` 
+    return {
+      eligible: false,
+      reason: `Worker had no hours in ${monthName} ${targetYear} (${monthsOffset} months prior)`,
     };
   }
 }

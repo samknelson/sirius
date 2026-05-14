@@ -1,7 +1,5 @@
 import { z } from "zod";
-import type { PluginConfigField } from "../../plugin-config";
-
-export { type PluginConfigField } from "../../plugin-config";
+import type { JsonSchema } from "../../json-schema-form";
 
 export const eligibilityPluginConfigSchema = z.object({
   pluginId: z.string(),
@@ -22,7 +20,7 @@ export interface EligibilityPluginMetadata {
   description: string;
   componentId: string;
   componentEnabled: boolean;
-  configFields?: PluginConfigField[];
+  configSchema?: JsonSchema;
 }
 
 export type NotificationMedia = 'email' | 'sms' | 'in-app';

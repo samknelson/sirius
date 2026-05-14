@@ -1,43 +1,40 @@
 import { EligibilityPlugin } from "../base";
-import { 
-  EligibilityContext, 
-  EligibilityResult, 
+import {
+  EligibilityContext,
+  EligibilityResult,
   EligibilityPluginMetadata,
-  baseEligibilityConfigSchema,
+  BaseEligibilityConfig,
 } from "../types";
 import { registerEligibilityPlugin } from "../registry";
 import { storage } from "../../../../storage/database";
 import { createUnifiedOptionsStorage } from "../../../../storage/unified-options";
-import { z } from "zod";
 
 const unifiedOptionsStorage = createUnifiedOptionsStorage();
 
-const workStatusConfigSchema = baseEligibilityConfigSchema.extend({
-  allowedStatusIds: z.array(z.string().uuid()).min(1, "At least one allowed status is required"),
-});
-
-type WorkStatusConfig = z.infer<typeof workStatusConfigSchema>;
+interface WorkStatusConfig extends BaseEligibilityConfig {
+  allowedStatusIds: string[];
+}
 
 class WorkStatusPlugin extends EligibilityPlugin<WorkStatusConfig> {
   readonly metadata: EligibilityPluginMetadata = {
     id: "work-status",
     name: "Work Status",
     description: "Worker must have one of the specified work statuses to be eligible.",
-    configSchema: workStatusConfigSchema,
-    configFields: [
-      {
-        name: "allowedStatusIds",
-        label: "Allowed work statuses",
-        inputType: "select-options",
-        required: true,
-        helperText: "Workers must have one of these work statuses to be eligible.",
-        selectOptionsType: "worker-ws",
-        multiSelect: true,
+    configSchema: {
+      type: "object",
+      required: ["allowedStatusIds"],
+      properties: {
+        allowedStatusIds: {
+          type: "array",
+          title: "Allowed work statuses",
+          description: "Workers must have one of these work statuses to be eligible.",
+          minItems: 1,
+          items: { type: "string", format: "uuid" },
+          uniqueItems: true,
+          default: [],
+          "x-options-resource": "worker-ws",
+        } as never,
       },
-    ],
-    defaultConfig: {
-      appliesTo: ["start", "continue"],
-      allowedStatusIds: [],
     },
   };
 
@@ -45,48 +42,49 @@ class WorkStatusPlugin extends EligibilityPlugin<WorkStatusConfig> {
     context: EligibilityContext,
     config: WorkStatusConfig
   ): Promise<EligibilityResult> {
-    const monthName = new Date(context.asOfYear, context.asOfMonth - 1, 1).toLocaleString('default', { month: 'long' });
-    
+    const monthName = new Date(context.asOfYear, context.asOfMonth - 1, 1).toLocaleString(
+      "default",
+      { month: "long" },
+    );
+
     const statusHistory = await storage.workerWsh.getWorkerWsh(context.workerId);
-    
+
     const asOfDate = new Date(context.asOfYear, context.asOfMonth - 1, 1);
     asOfDate.setMonth(asOfDate.getMonth() + 1);
     asOfDate.setDate(0);
-    const asOfDateStr = asOfDate.toISOString().split('T')[0];
-    
-    const effectiveEntry = statusHistory.find(entry => {
-      return entry.date <= asOfDateStr;
-    });
-    
+    const asOfDateStr = asOfDate.toISOString().split("T")[0];
+
+    const effectiveEntry = statusHistory.find((entry) => entry.date <= asOfDateStr);
+
     if (!effectiveEntry) {
-      return { 
-        eligible: false, 
-        reason: `Worker had no work status assigned as of ${monthName} ${context.asOfYear}` 
+      return {
+        eligible: false,
+        reason: `Worker had no work status assigned as of ${monthName} ${context.asOfYear}`,
       };
     }
 
     const statusId = effectiveEntry.wsId;
     const statusName = effectiveEntry.ws?.name || "Unknown";
     const isAllowed = config.allowedStatusIds.includes(statusId);
-    
+
     if (isAllowed) {
-      return { 
+      return {
         eligible: true,
-        reason: `Worker had status "${statusName}" as of ${monthName} ${context.asOfYear}`
+        reason: `Worker had status "${statusName}" as of ${monthName} ${context.asOfYear}`,
       };
     }
 
     const allowedStatuses = await Promise.all(
-      config.allowedStatusIds.map(id => unifiedOptionsStorage.get("worker-ws", id))
+      config.allowedStatusIds.map((id) => unifiedOptionsStorage.get("worker-ws", id)),
     );
     const allowedNames = allowedStatuses
       .filter((s): s is NonNullable<typeof s> => s !== undefined && s !== null)
-      .map(s => s.name)
+      .map((s) => s.name)
       .join(", ");
 
-    return { 
-      eligible: false, 
-      reason: `Worker had status "${statusName}" as of ${monthName} ${context.asOfYear}, but allowed statuses are: ${allowedNames}` 
+    return {
+      eligible: false,
+      reason: `Worker had status "${statusName}" as of ${monthName} ${context.asOfYear}, but allowed statuses are: ${allowedNames}`,
     };
   }
 }

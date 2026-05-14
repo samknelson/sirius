@@ -77,7 +77,6 @@ export {
   type EligibilityPluginMetadata,
   type JobTypeData,
   type DispatchJobData,
-  type PluginConfigField,
   type NotificationMedia,
   type PollPhaseStatus,
   type PollPhaseResult,

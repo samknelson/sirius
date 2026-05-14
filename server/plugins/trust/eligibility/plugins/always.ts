@@ -3,39 +3,33 @@ import {
   EligibilityContext,
   EligibilityResult,
   EligibilityPluginMetadata,
-  baseEligibilityConfigSchema,
+  BaseEligibilityConfig,
 } from "../types";
 import { registerEligibilityPlugin } from "../registry";
-import { z } from "zod";
 
-const alwaysConfigSchema = baseEligibilityConfigSchema.extend({
-  mode: z.enum(["allow", "deny"]),
-});
-
-type AlwaysConfig = z.infer<typeof alwaysConfigSchema>;
+interface AlwaysConfig extends BaseEligibilityConfig {
+  mode: "allow" | "deny";
+}
 
 class AlwaysPlugin extends EligibilityPlugin<AlwaysConfig> {
   readonly metadata: EligibilityPluginMetadata = {
     id: "always",
     name: "Always",
-    description: "Testing plugin: always returns eligible when mode=allow, always returns ineligible when mode=deny.",
-    configSchema: alwaysConfigSchema,
-    configFields: [
-      {
-        name: "mode",
-        label: "Mode",
-        inputType: "select-options",
-        required: true,
-        helperText: "Allow: every worker is eligible. Deny: no worker is eligible.",
-        options: [
-          { value: "allow", label: "Allow (always eligible)" },
-          { value: "deny", label: "Deny (never eligible)" },
-        ],
+    description:
+      "Testing plugin: always returns eligible when mode=allow, always returns ineligible when mode=deny.",
+    configSchema: {
+      type: "object",
+      required: ["mode"],
+      properties: {
+        mode: {
+          type: "string",
+          title: "Mode",
+          description: "Allow: every worker is eligible. Deny: no worker is eligible.",
+          enum: ["allow", "deny"],
+          enumNames: ["Allow (always eligible)", "Deny (never eligible)"],
+          default: "deny",
+        },
       },
-    ],
-    defaultConfig: {
-      appliesTo: ["start", "continue"],
-      mode: "deny",
     },
   };
 

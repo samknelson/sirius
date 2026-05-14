@@ -1,9 +1,14 @@
 import { z } from "zod";
 import type { Worker } from "@shared/schema";
-import type { PluginConfigField } from "@shared/plugin-config";
+import type { JsonSchema } from "@shared/json-schema-form";
 
 export type ScanType = "start" | "continue";
 
+/**
+ * Rule-level shape (the editor's outer panel) — `appliesTo` is set on
+ * each rule via the rule editor UI, not via the plugin config form,
+ * so it stays out of the per-plugin JSON Schema.
+ */
 export const baseEligibilityConfigSchema = z.object({
   appliesTo: z.array(z.enum(["start", "continue"])).min(1, "Must apply to at least one scan type"),
 });
@@ -24,14 +29,19 @@ export interface EligibilityResult {
   reason?: string;
 }
 
+/**
+ * Per-plugin metadata returned to the UI. `configSchema` is a JSON
+ * Schema describing the plugin-specific config object (without the
+ * rule-level `appliesTo` field, which is edited separately). Defaults
+ * come from `default` on each property and are applied automatically
+ * by both the form renderer and the AJV validator.
+ */
 export interface EligibilityPluginMetadata {
   id: string;
   name: string;
   description: string;
-  configSchema: z.ZodSchema;
+  configSchema: JsonSchema;
   requiresComponent?: string;
-  configFields?: PluginConfigField[];
-  defaultConfig?: Record<string, unknown>;
 }
 
 export interface EligibilityRule {

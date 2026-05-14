@@ -36,8 +36,7 @@ export function registerEligibilityPluginRoutes(
         id: p.metadata.id,
         name: p.metadata.name,
         description: p.metadata.description,
-        configFields: p.metadata.configFields ?? [],
-        defaultConfig: p.metadata.defaultConfig ?? {},
+        configSchema: p.metadata.configSchema,
       }));
       
       plugins.sort((a, b) => a.id.localeCompare(b.id));
@@ -72,8 +71,7 @@ export function registerEligibilityPluginRoutes(
         id: plugin.metadata.id,
         name: plugin.metadata.name,
         description: plugin.metadata.description,
-        configFields: plugin.metadata.configFields ?? [],
-        defaultConfig: plugin.metadata.defaultConfig ?? {},
+        configSchema: plugin.metadata.configSchema,
       });
     } catch (error) {
       console.error("Failed to fetch eligibility plugin:", error);

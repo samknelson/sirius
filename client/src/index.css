@@ -88,6 +88,10 @@
   --font-serif: Georgia, serif;
   --font-mono: Menlo, monospace;
   --radius: 8px;
+  /* Tailwind v4 compatibility shim for @rjsf/shadcn (we run v3.4.x).
+     Mirrors v4's default --spacing token used in expressions like
+     calc(var(--spacing)*4). Safe to remove when we move to Tailwind v4. */
+  --spacing: 0.25rem;
 }
 
 @layer base {
@@ -97,6 +101,22 @@
 
   body {
     @apply font-sans antialiased bg-background text-foreground;
+  }
+}
+
+/* Tailwind v4-only utilities used by @rjsf/shadcn but absent from v3.
+   Defined as plain utilities so PurgeCSS keeps them whenever the class
+   appears in source, including third-party deps. */
+@layer utilities {
+  .shadow-xs {
+    box-shadow: 0 1px rgb(0 0 0 / 0.05);
+  }
+  .rounded-xs {
+    border-radius: 0.125rem;
+  }
+  .outline-hidden {
+    outline: 2px solid transparent;
+    outline-offset: 2px;
   }
 }
 
