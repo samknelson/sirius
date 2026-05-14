@@ -432,16 +432,17 @@ function WorkerBenefitsEligibilityContent() {
                           <Badge variant="secondary">Passed</Badge>
                         )}
                       </div>
-                      {result.reason && (
-                        <p className="text-sm ml-7">{result.reason}</p>
-                      )}
-                      {hasWarning && (
+                      {hasWarning ? (
                         <p
-                          className="text-sm ml-7 mt-1 text-yellow-700 dark:text-yellow-400"
+                          className="text-sm ml-7 text-yellow-700 dark:text-yellow-400"
                           data-testid={`text-warning-${result.pluginKey}`}
                         >
                           {result.warning}
                         </p>
+                      ) : (
+                        result.reason && (
+                          <p className="text-sm ml-7">{result.reason}</p>
+                        )
                       )}
                     </div>
                   );

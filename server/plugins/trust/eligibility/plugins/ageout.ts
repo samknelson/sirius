@@ -72,8 +72,10 @@ function effectiveMaxMonths(c: AgeoutConfig): number | null {
 function formatYM(totalMonths: number): string {
   const y = Math.floor(totalMonths / 12);
   const m = totalMonths - y * 12;
-  if (m === 0) return `${y}y`;
-  return `${y}y ${m}m`;
+  const yLabel = `${y} ${y === 1 ? "year" : "years"}`;
+  if (m === 0) return yLabel;
+  const mLabel = `${m} ${m === 1 ? "month" : "months"}`;
+  return `${yLabel} ${mLabel}`;
 }
 
 function makeYearsField(title: string, description: string): Record<string, unknown> {
@@ -244,10 +246,44 @@ class AgeoutPlugin extends EligibilityPlugin<AgeoutConfig> {
     const wMin = toMonths(config.warnMinYears ?? null, config.warnMinMonths ?? null);
     const wMax = toMonths(config.warnMaxYears ?? null, config.warnMaxMonths ?? null);
 
+    // Defense-in-depth: re-check every cross-bound constraint at
+    // evaluate time so a persisted-but-invalid config (e.g. one that
+    // bypassed save-time validation) fails closed instead of silently
+    // producing misleading pass/warning verdicts.
     if (min !== null && max !== null && min > max) {
       return {
         eligible: false,
         reason: `Invalid ageout config: minimum age (${formatYM(min)}) is greater than maximum age (${formatYM(max)})`,
+      };
+    }
+    if (wMin !== null && wMax !== null && wMin > wMax) {
+      return {
+        eligible: false,
+        reason: `Invalid ageout config: warning minimum (${formatYM(wMin)}) is greater than warning maximum (${formatYM(wMax)})`,
+      };
+    }
+    if (wMin !== null && min !== null && wMin < min) {
+      return {
+        eligible: false,
+        reason: `Invalid ageout config: warning minimum (${formatYM(wMin)}) is below the eligible minimum (${formatYM(min)})`,
+      };
+    }
+    if (wMin !== null && max !== null && wMin > max) {
+      return {
+        eligible: false,
+        reason: `Invalid ageout config: warning minimum (${formatYM(wMin)}) is above the eligible maximum (${formatYM(max)})`,
+      };
+    }
+    if (wMax !== null && max !== null && wMax > max) {
+      return {
+        eligible: false,
+        reason: `Invalid ageout config: warning maximum (${formatYM(wMax)}) is above the eligible maximum (${formatYM(max)})`,
+      };
+    }
+    if (wMax !== null && min !== null && wMax < min) {
+      return {
+        eligible: false,
+        reason: `Invalid ageout config: warning maximum (${formatYM(wMax)}) is below the eligible minimum (${formatYM(min)})`,
       };
     }
 
@@ -304,10 +340,14 @@ class AgeoutPlugin extends EligibilityPlugin<AgeoutConfig> {
         : `at or below maximum age of ${formatYM(max!)}`;
 
     let warning: string | undefined;
-    if (wMin !== null && ageMonths < wMin) {
-      warning = `Worker is ${ageLabel} old, below the warning minimum of ${formatYM(wMin)}`;
+    if (wMin !== null && ageMonths < wMin && min !== null) {
+      warning = `Worker is ${ageLabel} old; approaching minimum age of ${formatYM(min)}`;
+    } else if (wMin !== null && ageMonths < wMin) {
+      warning = `Worker is ${ageLabel} old; below the warning minimum of ${formatYM(wMin)}`;
+    } else if (wMax !== null && ageMonths > wMax && max !== null) {
+      warning = `Worker is ${ageLabel} old; approaching maximum age of ${formatYM(max)}`;
     } else if (wMax !== null && ageMonths > wMax) {
-      warning = `Worker is ${ageLabel} old, above the warning maximum of ${formatYM(wMax)}`;
+      warning = `Worker is ${ageLabel} old; above the warning maximum of ${formatYM(wMax)}`;
     }
 
     return {
