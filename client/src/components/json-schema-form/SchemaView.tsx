@@ -23,8 +23,6 @@ export interface SchemaViewProps {
   hideEmpty?: boolean;
   /** Test id prefix applied to each row's <dd>. */
   testIdPrefix?: string;
-  /** Internal: nesting depth, controls indent. */
-  depth?: number;
 }
 
 const EMPTY = "—";
@@ -38,14 +36,22 @@ const EMPTY = "—";
  * Pure client component. Reuses the `["/api/options", type]` query
  * key so option lookups share cache with `RemoteOptionsWidget`.
  */
-export function SchemaView({
+export function SchemaView(props: SchemaViewProps) {
+  return <SchemaViewInner {...props} depth={0} />;
+}
+
+interface SchemaViewInnerProps extends SchemaViewProps {
+  depth: number;
+}
+
+function SchemaViewInner({
   schema,
   value,
   omitKeys = [],
   hideEmpty = false,
   testIdPrefix,
-  depth = 0,
-}: SchemaViewProps) {
+  depth,
+}: SchemaViewInnerProps) {
   const props = (schema as { properties?: Record<string, RJSFSchema> })
     .properties;
   if (!props) return null;
@@ -95,6 +101,30 @@ export function SchemaView({
   );
 }
 
+/**
+ * True when at least one property of a nested object would render a
+ * row given the current `hideEmpty` setting. Used to suppress empty
+ * inner <dl>s that would otherwise leave a blank value cell.
+ */
+function hasRenderableChildren(
+  schema: RJSFSchema,
+  value: unknown,
+  hideEmpty: boolean,
+): boolean {
+  if (!hideEmpty) return true;
+  const props = (schema as { properties?: Record<string, RJSFSchema> })
+    .properties;
+  if (!props) return false;
+  const obj = (value && typeof value === "object" ? value : {}) as Record<
+    string,
+    unknown
+  >;
+  for (const key of Object.keys(props)) {
+    if (!isEmpty(obj[key])) return true;
+  }
+  return false;
+}
+
 function isEmpty(v: unknown): boolean {
   if (v === undefined || v === null) return true;
   if (typeof v === "string" && v === "") return true;
@@ -133,11 +163,14 @@ function ValueRenderer({
     );
   }
 
-  // Nested object: recurse into another <dl>.
+  // Nested object: recurse into another <dl>. If hideEmpty drops every
+  // child row the inner <dl> renders nothing — fall back to em-dash so
+  // the value cell isn't visibly blank.
   if ((schema as { type?: string }).type === "object") {
-    if (isEmpty(value)) return <span>{EMPTY}</span>;
+    if (isEmpty(value) || !hasRenderableChildren(schema, value, hideEmpty))
+      return <span>{EMPTY}</span>;
     return (
-      <SchemaView
+      <SchemaViewInner
         schema={schema}
         value={value}
         hideEmpty={hideEmpty}
