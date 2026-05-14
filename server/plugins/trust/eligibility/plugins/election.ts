@@ -82,15 +82,31 @@ class ElectionPlugin extends EligibilityPlugin<ElectionConfig> {
           break;
         }
       }
+      let dependentLabel = dependentId;
+      try {
+        const contactId = context.dependentWorker.contactId;
+        const contact = contactId
+          ? await storage.contacts.getContact(contactId)
+          : undefined;
+        if (contact) {
+          const fullName = [contact.given, contact.family]
+            .filter(Boolean)
+            .join(" ")
+            .trim();
+          dependentLabel = fullName || contact.displayName || dependentId;
+        }
+      } catch {
+        // fall back to UUID
+      }
       if (!covered) {
         return {
           eligible: false,
-          reason: `Active election does not cover dependent ${dependentId}`,
+          reason: `Active election does not cover dependent ${dependentLabel}`,
         };
       }
       return {
         eligible: true,
-        reason: `Active election covers benefit and dependent ${dependentId}`,
+        reason: `Active election covers benefit and dependent ${dependentLabel}`,
       };
     }
 
