@@ -82,22 +82,12 @@ class ElectionPlugin extends EligibilityPlugin<ElectionConfig> {
           break;
         }
       }
-      let dependentLabel = dependentId;
-      try {
-        const contactId = context.dependentWorker.contactId;
-        const contact = contactId
-          ? await storage.contacts.getContact(contactId)
-          : undefined;
-        if (contact) {
-          const fullName = [contact.given, contact.family]
-            .filter(Boolean)
-            .join(" ")
-            .trim();
-          dependentLabel = fullName || contact.displayName || dependentId;
-        }
-      } catch {
-        // fall back to UUID
-      }
+      const contact = context.dependentContact;
+      const fullName = contact
+        ? [contact.given, contact.family].filter(Boolean).join(" ").trim()
+        : "";
+      const dependentLabel =
+        fullName || contact?.displayName || dependentId;
       if (!covered) {
         return {
           eligible: false,
