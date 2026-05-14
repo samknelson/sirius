@@ -57,6 +57,7 @@ const WorkerRelations = lazy(() => import("@/pages/workers/relations"));
 const WorkerElectionsCurrent = lazy(() => import("@/pages/workers/elections-current"));
 const WorkerElectionsList = lazy(() => import("@/pages/workers/elections-list"));
 const TrustElectionDetail = lazy(() => import("@/pages/trust/election-detail"));
+const TrustElectionEdit = lazy(() => import("@/pages/trust/election-edit"));
 const WorkerTos = lazy(() => import("@/pages/worker-tos"));
 const WorkerCertifications = lazy(() => import("@/pages/worker-certifications"));
 const WorkerCertificationView = lazy(() => import("@/pages/worker-certification-view"));
@@ -606,6 +607,14 @@ function Router() {
         <ProtectedRoute permission="staff" component="trust.elections">
           <AuthenticatedLayout>
             <TrustElectionDetail />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/trust/election/:id/edit">
+        <ProtectedRoute permission="staff" component="trust.elections">
+          <AuthenticatedLayout>
+            <TrustElectionEdit />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

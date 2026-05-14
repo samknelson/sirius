@@ -406,6 +406,7 @@ export const ledgerPaymentTabTree: HierarchicalTab[] = [
  */
 export const trustElectionTabTree: HierarchicalTab[] = [
   { id: 'details', label: 'Details', hrefTemplate: '/trust/election/{id}', permission: 'staff', component: 'trust.elections' },
+  { id: 'edit', label: 'Edit', hrefTemplate: '/trust/election/{id}/edit', permission: 'staff', component: 'trust.elections' },
 ];
 
 /**

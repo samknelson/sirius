@@ -1,23 +1,6 @@
-import { useState } from "react";
-import { Link, useLocation } from "wouter";
-import { useMutation } from "@tanstack/react-query";
+import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
-import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
-import { ElectionFormDialog } from "@/components/trust/ElectionFormDialog";
 import {
   TrustElectionLayout,
   useTrustElectionLayout,
@@ -26,26 +9,10 @@ import { formatYmd } from "@shared/utils";
 
 function ElectionDetailsContent() {
   const { election } = useTrustElectionLayout();
-  const { toast } = useToast();
-  const [, setLocation] = useLocation();
-  const [editOpen, setEditOpen] = useState(false);
 
   const policyName = election.policyName ?? "Unknown policy";
   const benefitLabels = (election.benefits ?? []).map((b) => b.name);
   const relationLabels = (election.relationships ?? []).map((r) => r.label);
-
-  const deleteMutation = useMutation({
-    mutationFn: async () => apiRequest("DELETE", `/api/trust-elections/${election.id}`),
-    onSuccess: () => {
-      toast({ title: "Election deleted" });
-      queryClient.invalidateQueries({ queryKey: ["/api/workers", election.workerId, "trust-elections"] });
-      queryClient.invalidateQueries({
-        queryKey: ["/api/workers", election.workerId, "trust-elections", "current"],
-      });
-      setLocation(`/workers/${election.workerId}/elections/list`);
-    },
-    onError: () => toast({ title: "Error", description: "Failed to delete", variant: "destructive" }),
-  });
 
   return (
     <Card>
@@ -107,48 +74,7 @@ function ElectionDetailsContent() {
             </dd>
           </div>
         </dl>
-
-        <div className="mt-6 flex items-center gap-2">
-          <Button onClick={() => setEditOpen(true)} data-testid="button-open-edit">
-            Edit
-          </Button>
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button variant="destructive" data-testid="button-delete">
-                Delete
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Delete election?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  This permanently removes the election. This cannot be undone.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={() => deleteMutation.mutate()}
-                  data-testid="button-confirm-delete"
-                >
-                  Delete
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-        </div>
       </CardContent>
-
-      <ElectionFormDialog
-        open={editOpen}
-        onOpenChange={setEditOpen}
-        mode="edit"
-        workerId={election.workerId}
-        election={election}
-        onSaved={() => {
-          queryClient.invalidateQueries({ queryKey: ["/api/trust-elections", election.id] });
-        }}
-      />
     </Card>
   );
 }
