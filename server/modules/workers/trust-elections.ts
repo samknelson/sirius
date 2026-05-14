@@ -1,11 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
-import { storage } from "../../storage";
-import {
-  createWorkerTrustElectionRequestSchema,
-  updateWorkerTrustElectionRequestSchema,
-  type WorkerTrustElection,
-} from "@shared/schema";
 import { z } from "zod";
+import { storage } from "../../storage";
 import { requireComponent } from "../components";
 import { WorkerTrustElectionValidationError } from "../../storage/trust/elections";
 
@@ -14,12 +9,6 @@ type RequireAccess = (
   getEntityId?: (req: Request) => string | Promise<string | undefined> | undefined,
 ) => (req: Request, res: Response, next: NextFunction) => void;
 type RequireAuth = (req: Request, res: Response, next: NextFunction) => void;
-
-declare module "express-serve-static-core" {
-  interface Request {
-    workerTrustElectionEntry?: Readonly<WorkerTrustElection>;
-  }
-}
 
 function handleError(res: Response, error: unknown, fallback: string) {
   if (error instanceof z.ZodError) {
@@ -108,16 +97,7 @@ export function registerWorkerTrustElectionsRoutes(
     requireAccess('staff'),
     async (req: Request, res: Response) => {
       try {
-        const parsed = createWorkerTrustElectionRequestSchema.parse(req.body);
-        const created = await storage.workerTrustElections.create({
-          workerId: req.params.id,
-          policyId: parsed.policyId,
-          startYmd: parsed.startYmd as never,
-          endYmd: (parsed.endYmd ?? null) as never,
-          benefitIds: parsed.benefitIds ?? null,
-          relationshipIds: parsed.relationshipIds ?? null,
-          data: parsed.data as never,
-        });
+        const created = await storage.workerTrustElections.create(req.params.id, req.body);
         res.status(201).json(created);
       } catch (error) {
         handleError(res, error, "Failed to create trust election");
@@ -133,15 +113,7 @@ export function registerWorkerTrustElectionsRoutes(
     requireAccess('staff'),
     async (req: Request, res: Response) => {
       try {
-        const parsed = updateWorkerTrustElectionRequestSchema.parse(req.body);
-        const patch: Record<string, unknown> = {};
-        if (parsed.policyId !== undefined) patch.policyId = parsed.policyId;
-        if (parsed.startYmd !== undefined) patch.startYmd = parsed.startYmd;
-        if (parsed.endYmd !== undefined) patch.endYmd = parsed.endYmd;
-        if (parsed.benefitIds !== undefined) patch.benefitIds = parsed.benefitIds;
-        if (parsed.relationshipIds !== undefined) patch.relationshipIds = parsed.relationshipIds;
-        if (parsed.data !== undefined) patch.data = parsed.data;
-        const updated = await storage.workerTrustElections.update(req.params.id, patch as never);
+        const updated = await storage.workerTrustElections.update(req.params.id, req.body);
         if (!updated) return res.status(404).json({ error: "Trust election not found" });
         res.json(updated);
       } catch (error) {

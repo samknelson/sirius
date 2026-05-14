@@ -3,8 +3,9 @@ import {
   workerTrustElections,
   workers,
   policies,
+  createWorkerTrustElectionRequestSchema,
+  updateWorkerTrustElectionRequestSchema,
   type WorkerTrustElection,
-  type InsertWorkerTrustElection,
 } from '@shared/schema';
 import { eq, and, asc, desc, isNull, lt, ne, type SQL } from 'drizzle-orm';
 import { type StorageLoggingConfig } from '../middleware/logging';
@@ -26,11 +27,8 @@ export interface WorkerTrustElectionsStorage {
   getById(id: string): Promise<WorkerTrustElection | undefined>;
   listByWorker(workerId: string): Promise<WorkerTrustElection[]>;
   getActiveByWorker(workerId: string): Promise<WorkerTrustElection | undefined>;
-  create(data: InsertWorkerTrustElection): Promise<WorkerTrustElection>;
-  update(
-    id: string,
-    data: Partial<Omit<InsertWorkerTrustElection, 'workerId'>>,
-  ): Promise<WorkerTrustElection | undefined>;
+  create(workerId: string, input: unknown): Promise<WorkerTrustElection>;
+  update(id: string, input: unknown): Promise<WorkerTrustElection | undefined>;
   delete(id: string): Promise<boolean>;
 }
 
@@ -109,7 +107,7 @@ export const workerTrustElectionsLoggingConfig: StorageLoggingConfig<WorkerTrust
     create: {
       enabled: true,
       getEntityId: (_args, result) => result?.id || 'new election',
-      getHostEntityId: (args, result) => result?.workerId ?? args[0]?.workerId,
+      getHostEntityId: (args, result) => result?.workerId ?? args[0],
       getDescription: async (_args, result) =>
         `Created trust election for worker ${result?.workerId} (start ${result?.startYmd})`,
       after: async (_args, result) => ({ election: result }),
@@ -177,8 +175,9 @@ export function createWorkerTrustElectionsStorage(): WorkerTrustElectionsStorage
       return rows[0];
     },
 
-    async create(data) {
-      const validated = await validateElection(data);
+    async create(workerId, input) {
+      const parsed = createWorkerTrustElectionRequestSchema.parse(input);
+      const validated = await validateElection({ workerId, ...parsed });
       return await runInTransaction(async () => {
         const client = getClient();
         if (!validated.endYmd) {
@@ -191,16 +190,17 @@ export function createWorkerTrustElectionsStorage(): WorkerTrustElectionsStorage
             policyId: validated.policyId,
             startYmd: validated.startYmd,
             endYmd: validated.endYmd,
-            benefitIds: data.benefitIds ?? null,
-            relationshipIds: data.relationshipIds ?? null,
-            data: data.data ?? null,
+            benefitIds: parsed.benefitIds ?? null,
+            relationshipIds: parsed.relationshipIds ?? null,
+            data: (parsed.data ?? null) as WorkerTrustElection['data'],
           })
           .returning();
         return created;
       });
     },
 
-    async update(id, data) {
+    async update(id, input) {
+      const parsed = updateWorkerTrustElectionRequestSchema.parse(input);
       return await runInTransaction(async () => {
         const client = getClient();
         const [existing] = await client
@@ -209,19 +209,19 @@ export function createWorkerTrustElectionsStorage(): WorkerTrustElectionsStorage
           .where(eq(workerTrustElections.id, id));
         if (!existing) return undefined;
 
-        const validated = await validateElection(data, existing);
+        const validated = await validateElection(parsed, existing);
         if (!validated.endYmd) {
           await endDatePreviousActive(client, existing.workerId, validated.startYmd, id);
         }
 
-        const updateValues: Partial<InsertWorkerTrustElection> = {
+        const updateValues: Record<string, unknown> = {
           policyId: validated.policyId,
           startYmd: validated.startYmd,
           endYmd: validated.endYmd,
         };
-        if (data.benefitIds !== undefined) updateValues.benefitIds = data.benefitIds;
-        if (data.relationshipIds !== undefined) updateValues.relationshipIds = data.relationshipIds;
-        if (data.data !== undefined) updateValues.data = data.data;
+        if (parsed.benefitIds !== undefined) updateValues.benefitIds = parsed.benefitIds;
+        if (parsed.relationshipIds !== undefined) updateValues.relationshipIds = parsed.relationshipIds;
+        if (parsed.data !== undefined) updateValues.data = parsed.data;
 
         const [updated] = await client
           .update(workerTrustElections)
