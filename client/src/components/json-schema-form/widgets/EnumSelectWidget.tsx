@@ -1,3 +1,4 @@
+import type { FocusEvent } from "react";
 import type { WidgetProps } from "@rjsf/utils";
 import {
   ariaDescribedByIds,
@@ -16,13 +17,15 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
-// Original rjsf-shadcn SelectWidget (FancySelect for single, FancyMultiSelect
-// for multiple). We only override the single case; the multiple case still
-// needs the original because Radix Select is single-value only.
+// Original rjsf-shadcn SelectWidget (FancySelect for single,
+// FancyMultiSelect for multiple). Captured at module-load time so
+// our registry override of `SelectWidget` cannot create a recursive
+// fallback when we delegate the multi-select case below.
 const RjsfShadcnSelectWidget = ShadcnWidgets.SelectWidget;
 
 /**
- * Drop-in replacement for `@rjsf/shadcn`'s default `SelectWidget`.
+ * Drop-in replacement for `@rjsf/shadcn`'s default single-enum
+ * `SelectWidget`.
  *
  * The vendored rjsf-shadcn widget renders its dropdown with a plain
  * absolutely-positioned `<div>` (no portal). When that widget lives
@@ -39,11 +42,13 @@ const RjsfShadcnSelectWidget = ShadcnWidgets.SelectWidget;
  * encode/decode contract so consumers see the exact same `onChange`
  * payload they already expect.
  *
- * Multi-select (`multiple: true`) still falls through to rjsf-shadcn's
- * `FancyMultiSelect` for now — none of the current plugin Configure
- * modals use array-of-enum, and Radix Select is single-select only.
+ * Multi-select (`multiple: true`) delegates to the captured
+ * rjsf-shadcn original because Radix Select is single-value only.
  */
 
+// Radix Select forbids empty-string item values. We use a sentinel
+// for the optional "None" entry and translate both directions.
+// Picked to be unambiguous against any realistic enum value.
 const NONE_SENTINEL = "__rjsf_none__";
 
 export function EnumSelectWidget(props: WidgetProps) {
@@ -60,6 +65,7 @@ export function EnumSelectWidget(props: WidgetProps) {
     onFocus,
     placeholder,
     rawErrors = [],
+    className,
   } = props;
 
   const { enumOptions, enumDisabled, emptyValue: optEmptyValue } = options as {
@@ -93,12 +99,22 @@ export function EnumSelectWidget(props: WidgetProps) {
     "",
   );
 
-  // Radix Select disallows empty string item values, so when the
-  // field is optional we expose a "None" entry under a sentinel
-  // string and translate both directions.
-  const radixValue =
-    typeof selectedEncoded === "string" && selectedEncoded.length > 0
-      ? selectedEncoded
+  // Controlled value for Radix:
+  // - real selection -> the encoded enum string
+  // - optional + no selection -> the None sentinel (so the trigger
+  //   shows the "None" item label rather than the placeholder)
+  // - required + no selection -> "" (Radix treats both "" and
+  //   undefined as placeholder triggers, but only "" keeps the
+  //   component controlled. Passing undefined would flip Radix into
+  //   uncontrolled mode and let stale UI persist after an external
+  //   clear). We never render a <SelectItem value=""> -- Radix
+  //   forbids that -- so the empty value just paints the placeholder.
+  const hasSelection =
+    typeof selectedEncoded === "string" && selectedEncoded.length > 0;
+  const radixValue = hasSelection
+    ? selectedEncoded
+    : required
+      ? ""
       : NONE_SENTINEL;
 
   const handleValueChange = (next: string) => {
@@ -113,12 +129,25 @@ export function EnumSelectWidget(props: WidgetProps) {
     );
   };
 
-  // rjsf-shadcn's original SelectWidget passes `value` (the raw form
-  // value, already decoded) straight through `enumOptionValueDecoder`
-  // for its onFocus/onBlur callbacks. We mirror that exactly so
-  // subscribers see the same payload they did before.
-  const decodedForCallback = () =>
-    enumOptionValueDecoder(value, enumOptions, optionValueFormat, optEmptyValue);
+  // rjsf passes (id, decodedValue) to onFocus/onBlur. The upstream
+  // rjsf-shadcn widget computes the decoded value from `props.value`
+  // at the moment focus/blur fires; we do the same here so the
+  // payload matches what subscribers received before. We attach to
+  // the SelectTrigger (not Radix's onOpenChange) so keyboard tab
+  // traversal still produces focus/blur events even when the menu
+  // never opens.
+  const handleFocus = (_e: FocusEvent<HTMLButtonElement>) => {
+    onFocus?.(
+      id,
+      enumOptionValueDecoder(value, enumOptions, optionValueFormat, optEmptyValue),
+    );
+  };
+  const handleBlur = (_e: FocusEvent<HTMLButtonElement>) => {
+    onBlur?.(
+      id,
+      enumOptionValueDecoder(value, enumOptions, optionValueFormat, optEmptyValue),
+    );
+  };
 
   return (
     <div className="p-0.5">
@@ -126,18 +155,17 @@ export function EnumSelectWidget(props: WidgetProps) {
         value={radixValue}
         onValueChange={handleValueChange}
         disabled={disabled || readonly}
-        // rjsf passes (id, value) to onFocus/onBlur; Radix gives us
-        // an open-state boolean, so we synthesize the decoded value.
-        onOpenChange={(open) => {
-          if (open) onFocus?.(id, decodedForCallback());
-          else onBlur?.(id, decodedForCallback());
-        }}
       >
         <SelectTrigger
           id={id}
           aria-describedby={ariaDescribedByIds(id)}
           aria-required={required || undefined}
-          className={cn(rawErrors.length > 0 && "border-destructive")}
+          // Mirror the upstream widget's class merge: incoming
+          // `className` from RJSF (or wrapper widgets) wins over
+          // base styling, and rawErrors paint the destructive border.
+          className={cn(rawErrors.length > 0 && "border-destructive", className)}
+          onFocus={handleFocus}
+          onBlur={handleBlur}
           data-testid={`select-${id}`}
         >
           <SelectValue placeholder={placeholder || "Select..."} />
