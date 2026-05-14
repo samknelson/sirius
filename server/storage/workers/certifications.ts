@@ -16,7 +16,7 @@ import {
 } from "../utils/validation";
 import { calculateDenormActive } from "../utils/denorm-active";
 import { normalizeToDateOnly } from "@shared/utils";
-import { type WorkerSkillStorage } from "../worker-skills";
+import { type WorkerSkillStorage } from "./skills";
 
 /**
  * Interface for certification option data that may contain skill associations

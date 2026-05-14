@@ -17,7 +17,7 @@ import { registerTrustProvidersRoutes } from "./modules/trust/providers";
 import { registerTrustProviderContactRoutes } from "./modules/trust/provider/contacts";
 import { registerConsolidatedOptionsRoutes } from "./modules/options-routes";
 import { getOptionsType } from "./modules/options-registry";
-import { registerWorkerIdsRoutes } from "./modules/worker-ids";
+import { registerWorkerIdsRoutes } from "./modules/workers/ids";
 import { registerAddressValidationRoutes } from "./modules/address-validation";
 import {
   registerMasqueradeRoutes,
@@ -82,7 +82,7 @@ import { registerWorkerDispatchDncRoutes } from "./modules/worker-dispatch-dnc";
 import { registerWorkerDispatchHfeRoutes } from "./modules/worker-dispatch-hfe";
 import { registerWorkerDispatchEbaRoutes } from "./modules/worker-dispatch-eba";
 import { registerWorkerBansRoutes } from "./modules/worker-bans";
-import { registerWorkerSkillsRoutes } from "./modules/worker-skills";
+import { registerWorkerSkillsRoutes } from "./modules/workers/skills";
 import { registerWorkerRelationsRoutes } from "./modules/workers/relations";
 import { registerWorkerTosRoutes } from "./modules/worker-tos";
 import { registerWorkerCertificationsRoutes } from "./modules/workers/certifications";

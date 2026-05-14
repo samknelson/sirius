@@ -1,8 +1,8 @@
 import type { Express, Request, Response } from "express";
-import { storage } from "../storage";
-import { createUnifiedOptionsStorage } from "../storage/unified-options";
+import { storage } from "../../storage";
+import { createUnifiedOptionsStorage } from "../../storage/unified-options";
 import { z } from "zod";
-import { requireComponent } from "./components";
+import { requireComponent } from "../components";
 
 const unifiedOptionsStorage = createUnifiedOptionsStorage();
 

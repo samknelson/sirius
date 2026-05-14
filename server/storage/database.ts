@@ -6,7 +6,7 @@ import { type ContactsStorage, createContactsStorage, type AddressStorage, type 
 import { type TrustBenefitStorage, createTrustBenefitStorage, trustBenefitLoggingConfig } from "./trust/benefits";
 import { type TrustProviderStorage, createTrustProviderStorage } from "./trust/providers";
 import { type TrustProviderContactStorage, createTrustProviderContactStorage, trustProviderContactLoggingConfig } from "./trust/provider/contacts";
-import { type WorkerIdStorage, createWorkerIdStorage, workerIdLoggingConfig } from "./worker-ids";
+import { type WorkerIdStorage, createWorkerIdStorage, workerIdLoggingConfig } from "./workers/ids";
 import { type BookmarkStorage, createBookmarkStorage } from "./bookmarks";
 import {
   type LedgerStorage,
@@ -84,7 +84,7 @@ import { type BtuRegionsStorage, createBtuRegionsStorage } from "./sitespecific/
 import { type BtuSchoolAttributesStorage, createBtuSchoolAttributesStorage } from "./sitespecific/btu/school-attributes";
 import { type WorkerBanStorage, createWorkerBanStorage, workerBanLoggingConfig } from "./worker-bans";
 import { type WorkerDispatchDncStorage, createWorkerDispatchDncStorage, workerDispatchDncLoggingConfig } from "./worker-dispatch-dnc";
-import { type WorkerSkillStorage, createWorkerSkillStorage, workerSkillLoggingConfig } from "./worker-skills";
+import { type WorkerSkillStorage, createWorkerSkillStorage, workerSkillLoggingConfig } from "./workers/skills";
 import { type WorkerTosStorage, createWorkerTosStorage, workerTosLoggingConfig } from "./worker-tos";
 import { type WorkerCertificationStorage, createWorkerCertificationStorage, workerCertificationLoggingConfig } from "./workers/certifications";
 import { type WorkerRatingStorage, createWorkerRatingStorage, workerRatingLoggingConfig } from "./worker-ratings";
