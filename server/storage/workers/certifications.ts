@@ -1,4 +1,4 @@
-import { getClient, runInTransaction } from './transaction-context';
+import { getClient, runInTransaction } from '../transaction-context';
 import { 
   workerCertifications,
   optionsCertifications,
@@ -9,14 +9,14 @@ import {
   type OptionsCertification
 } from "@shared/schema";
 import { eq } from "drizzle-orm";
-import { type StorageLoggingConfig } from "./middleware/logging";
+import { type StorageLoggingConfig } from "../middleware/logging";
 import { 
   type ValidationError,
   createStorageValidator
-} from "./utils/validation";
-import { calculateDenormActive } from "./utils/denorm-active";
+} from "../utils/validation";
+import { calculateDenormActive } from "../utils/denorm-active";
 import { normalizeToDateOnly } from "@shared/utils";
-import { type WorkerSkillStorage } from "./worker-skills";
+import { type WorkerSkillStorage } from "../worker-skills";
 
 /**
  * Interface for certification option data that may contain skill associations

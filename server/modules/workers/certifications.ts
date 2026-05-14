@@ -1,7 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
-import { storage } from "../storage";
+import { storage } from "../../storage";
 import { z } from "zod";
-import { requireComponent } from "./components";
+import { requireComponent } from "../components";
 
 type RequireAccess = (policy: string, getEntityId?: (req: Request) => string | Promise<string | undefined> | undefined) => (req: Request, res: Response, next: () => void) => void;
 type RequireAuth = (req: Request, res: Response, next: () => void) => void;

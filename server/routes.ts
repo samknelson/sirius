@@ -85,7 +85,7 @@ import { registerWorkerBansRoutes } from "./modules/worker-bans";
 import { registerWorkerSkillsRoutes } from "./modules/worker-skills";
 import { registerWorkerRelationsRoutes } from "./modules/workers/relations";
 import { registerWorkerTosRoutes } from "./modules/worker-tos";
-import { registerWorkerCertificationsRoutes } from "./modules/worker-certifications";
+import { registerWorkerCertificationsRoutes } from "./modules/workers/certifications";
 import { registerWorkerRatingsRoutes } from "./modules/worker-ratings";
 import { requireComponent } from "./modules/components";
 import { registerWorkerStewardAssignmentRoutes } from "./modules/worker-steward-assignments";

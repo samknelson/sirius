@@ -86,7 +86,7 @@ import { type WorkerBanStorage, createWorkerBanStorage, workerBanLoggingConfig }
 import { type WorkerDispatchDncStorage, createWorkerDispatchDncStorage, workerDispatchDncLoggingConfig } from "./worker-dispatch-dnc";
 import { type WorkerSkillStorage, createWorkerSkillStorage, workerSkillLoggingConfig } from "./worker-skills";
 import { type WorkerTosStorage, createWorkerTosStorage, workerTosLoggingConfig } from "./worker-tos";
-import { type WorkerCertificationStorage, createWorkerCertificationStorage, workerCertificationLoggingConfig } from "./worker-certifications";
+import { type WorkerCertificationStorage, createWorkerCertificationStorage, workerCertificationLoggingConfig } from "./workers/certifications";
 import { type WorkerRatingStorage, createWorkerRatingStorage, workerRatingLoggingConfig } from "./worker-ratings";
 import { type WorkerRelationsStorage, createWorkerRelationsStorage, workerRelationsLoggingConfig } from "./workers/relations";
 import { type EdlsSheetsStorage, createEdlsSheetsStorage, edlsSheetsLoggingConfig } from "./edls/sheets";
