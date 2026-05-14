@@ -14,6 +14,15 @@ import type { JsonSchema } from "@shared/json-schema-form";
 import type { IChangeEvent } from "@rjsf/core";
 import { SchemaForm, type SchemaFormContext } from "./SchemaForm";
 
+/**
+ * The dialog's footer Save button is OUTSIDE the rjsf form, so it
+ * cannot be `type="submit"`. Instead we render a hidden submit button
+ * INSIDE the form (rjsf renders form children below the fields) and
+ * `.click()` it from the footer button. This is the standard
+ * RJSF-with-external-trigger pattern and avoids any imperative ref
+ * dance against the rjsf Form component.
+ */
+
 export interface SchemaFormDialogProps<T extends Record<string, unknown> = Record<string, unknown>> {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -49,7 +58,7 @@ export function SchemaFormDialog<T extends Record<string, unknown> = Record<stri
   contentClassName,
 }: SchemaFormDialogProps<T>) {
   const [formData, setFormData] = useState<T>(initialData);
-  const formRef = useRef<HTMLFormElement>(null);
+  const submitBtnRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (open) setFormData(initialData);
@@ -70,16 +79,25 @@ export function SchemaFormDialog<T extends Record<string, unknown> = Record<stri
 
         <div className="py-2 max-h-[60vh] overflow-y-auto pr-1">
           <SchemaForm
-            ref={formRef}
-            schema={schema as RJSFSchema}
+            schema={schema}
             uiSchema={uiSchema}
             formData={formData}
             formContext={formContext}
             onChange={(e: IChangeEvent) => setFormData(e.formData as T)}
             onSubmit={(e: IChangeEvent) => onSave(e.formData as T)}
           >
-            {/* Hide the default submit button — we drive it from the dialog footer. */}
-            <button type="submit" hidden aria-hidden="true" />
+            {/*
+              Hidden submit-trigger; the visible Save button in the
+              dialog footer clicks this via ref to fire rjsf's
+              onSubmit (which runs AJV validation first).
+            */}
+            <button
+              ref={submitBtnRef}
+              type="submit"
+              hidden
+              aria-hidden="true"
+              tabIndex={-1}
+            />
           </SchemaForm>
         </div>
 
@@ -93,7 +111,7 @@ export function SchemaFormDialog<T extends Record<string, unknown> = Record<stri
             Cancel
           </Button>
           <Button
-            onClick={() => formRef.current?.requestSubmit()}
+            onClick={() => submitBtnRef.current?.click()}
             disabled={isSaving}
             data-testid={tid("button-save")}
           >

@@ -1,8 +1,9 @@
-import { forwardRef, useMemo } from "react";
+import { useMemo } from "react";
 import { Form as RjsfForm } from "@rjsf/shadcn";
 import validator from "@rjsf/validator-ajv8";
 import type { FormProps, IChangeEvent } from "@rjsf/core";
 import type { RJSFSchema, UiSchema, RegistryWidgetsType } from "@rjsf/utils";
+import type { JsonSchema } from "@shared/json-schema-form";
 import { RemoteOptionsWidget } from "./widgets/RemoteOptionsWidget";
 import { SelfOptionsWidget } from "./widgets/SelfOptionsWidget";
 import { IconWidget } from "./widgets/IconWidget";
@@ -21,7 +22,17 @@ export interface SchemaFormContext {
 }
 
 export interface SchemaFormProps<T = Record<string, unknown>>
-  extends Omit<FormProps<T, RJSFSchema, SchemaFormContext>, "validator" | "widgets"> {
+  extends Omit<
+    FormProps<T, RJSFSchema, SchemaFormContext>,
+    "validator" | "widgets" | "schema"
+  > {
+  /**
+   * Accept either our project-internal `JsonSchema` (with vendor
+   * extension keys) or RJSF's own `RJSFSchema`. Both are structurally
+   * compatible at runtime; we cast to RJSFSchema before handing to the
+   * underlying form.
+   */
+  schema: JsonSchema | RJSFSchema;
   /**
    * Extra widgets to merge on top of the default registry. Use this
    * when a single page needs an additional bespoke widget; vendor-key
@@ -84,26 +95,32 @@ const baseWidgets = {
  * inferred from vendor keys), the current form data, and onChange/
  * onSubmit handlers — same shape as a normal RJSF Form.
  */
-export const SchemaForm = forwardRef<HTMLFormElement, SchemaFormProps>(
-  function SchemaForm({ schema, uiSchema, extraWidgets, ...rest }, ref) {
-    const inferred = useMemo(() => buildVendorUiSchema(schema, uiSchema ?? {}), [schema, uiSchema]);
-    const widgets = useMemo<RegistryWidgetsType>(
-      () => ({ ...baseWidgets, ...(extraWidgets ?? {}) }),
-      [extraWidgets],
-    );
-    return (
-      <RjsfForm
-        ref={ref as never}
-        schema={schema}
-        uiSchema={inferred}
-        validator={validator}
-        widgets={widgets}
-        liveValidate={false}
-        showErrorList={false}
-        {...rest}
-      />
-    );
-  },
-);
+export function SchemaForm({
+  schema,
+  uiSchema,
+  extraWidgets,
+  ...rest
+}: SchemaFormProps) {
+  const rjsfSchema = schema as RJSFSchema;
+  const inferred = useMemo(
+    () => buildVendorUiSchema(rjsfSchema, uiSchema ?? {}),
+    [rjsfSchema, uiSchema],
+  );
+  const widgets = useMemo<RegistryWidgetsType>(
+    () => ({ ...baseWidgets, ...(extraWidgets ?? {}) }),
+    [extraWidgets],
+  );
+  return (
+    <RjsfForm
+      schema={rjsfSchema}
+      uiSchema={inferred}
+      validator={validator}
+      widgets={widgets}
+      liveValidate={false}
+      showErrorList={false}
+      {...rest}
+    />
+  );
+}
 
 export type { IChangeEvent };

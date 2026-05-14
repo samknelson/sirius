@@ -135,7 +135,7 @@ function EligibilityRuleEditor({
 
       {hasConfigProps(configSchema) && configSchema && (
         <SchemaForm
-          schema={configSchema as Parameters<typeof SchemaForm>[0]["schema"]}
+          schema={configSchema}
           formData={rule.config}
           onChange={(e) => handleConfigChange(e.formData as Record<string, unknown>)}
           // Suppress the built-in submit button — saves happen via the page-level Save action.

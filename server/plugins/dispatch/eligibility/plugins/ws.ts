@@ -38,7 +38,7 @@ export const dispatchWsPlugin: DispatchEligPlugin = {
         uniqueItems: true,
         default: [],
         "x-options-resource": "worker-ws",
-      } as never,
+      },
     },
   },
 

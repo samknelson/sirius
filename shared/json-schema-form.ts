@@ -28,9 +28,24 @@ export const VendorExtensions = {
   dataField: "x-data-field",
 } as const;
 
+/** Allowed JSON Schema primitive type names. */
+export type JsonSchemaTypeName =
+  | "object"
+  | "string"
+  | "number"
+  | "integer"
+  | "boolean"
+  | "array"
+  | "null";
+
 /** Minimal JSON Schema type we use throughout the app. */
 export type JsonSchema = {
-  type?: "object" | "string" | "number" | "integer" | "boolean" | "array" | "null";
+  /**
+   * Single type or a union of types (`["string", "null"]` is the
+   * standard JSON-Schema way to express a nullable string). RJSF and
+   * AJV both accept either form.
+   */
+  type?: JsonSchemaTypeName | JsonSchemaTypeName[];
   title?: string;
   description?: string;
   properties?: Record<string, JsonSchema>;
