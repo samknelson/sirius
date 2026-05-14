@@ -1,5 +1,7 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { createServer } from "http";
+import { existsSync, rmSync } from "fs";
+import { resolve } from "path";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { initializePermissions } from "@shared/permissions";
@@ -51,6 +53,28 @@ import { initDispatchNotifications } from "./services/dispatch-notifications";
 import "@shared/access-policies/loader";
 import { registerEntityAccessModule } from "./modules/entity-access";
 import { isComponentEnabled } from "./modules/components";
+
+// Dev-only guardrail: remove any stale `dist/` build before booting.
+// `npm run dev` (tsx server/index.ts) loads source directly and never
+// imports from `dist/`. However, an old `dist/` directory left behind
+// by a previous `npm run build` can be served accidentally if anyone
+// runs `npm run start` (production-entry) against the same workspace,
+// producing confusing "stale code" bugs (see task #138 — dashboard
+// plugin /content endpoints returning the old 404 wording from a
+// months-old bundle). Removing it here ensures dev never coexists
+// with stale compiled artifacts. Production deploys run `npm run build`
+// before `npm run start`, so this has no effect on production.
+if (process.env.NODE_ENV !== "production") {
+  const distDir = resolve(import.meta.dirname, "..", "dist");
+  if (existsSync(distDir)) {
+    try {
+      rmSync(distDir, { recursive: true, force: true });
+      log(`Removed stale dist/ directory at ${distDir} (dev guardrail)`);
+    } catch (err) {
+      log(`Warning: failed to remove stale dist/: ${(err as Error).message}`);
+    }
+  }
+}
 
 // Helper function to redact sensitive data from responses before logging
 function redactSensitiveData(data: any): any {
