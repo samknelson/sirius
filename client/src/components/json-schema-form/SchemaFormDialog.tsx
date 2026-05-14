@@ -72,11 +72,23 @@ export function SchemaFormDialog<T extends Record<string, unknown> = Record<stri
    * first few errors as a destructive toast; the inline error list
    * (showErrorList="top") covers the rest visually inside the form.
    */
+  /**
+   * Turn an rjsf property path like "/foo/bar" into a friendlier
+   * "foo → bar" label for the toast. Empty/root paths fall back to
+   * "This form" so the message still reads naturally.
+   */
+  const formatPath = (raw: string | undefined): string => {
+    if (!raw) return "This form";
+    const trimmed = raw.replace(/^\.?\/?/, "").replace(/^\./, "");
+    if (!trimmed) return "This form";
+    return trimmed.split(/[./]/).filter(Boolean).join(" → ");
+  };
+
   const handleError = (errors: RJSFValidationError[]) => {
     if (!errors || errors.length === 0) return;
     const summary = errors
       .slice(0, 3)
-      .map((e) => `${e.property || "/"} ${e.message ?? "is invalid"}`)
+      .map((e) => `${formatPath(e.property)}: ${e.message ?? "is invalid"}`)
       .join("\n");
     toast({
       title: "Please fix the highlighted fields",
