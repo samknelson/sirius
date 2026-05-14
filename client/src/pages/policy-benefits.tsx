@@ -35,6 +35,7 @@ import { PolicyLayout, usePolicyLayout } from "@/components/layouts/PolicyLayout
 import { TrustBenefit } from "@shared/schema";
 import type { JsonSchema } from "@shared/json-schema-form";
 import { SchemaFormDialog } from "@/components/json-schema-form/SchemaFormDialog";
+import { SchemaView } from "@/components/json-schema-form/SchemaView";
 import { Save, Loader2, ChevronDown, ChevronRight, Plus, Trash2, Settings } from "lucide-react";
 
 interface EligibilityRule {
@@ -177,6 +178,16 @@ function EligibilityRuleEditor({
       </div>
 
       <p className="text-sm text-muted-foreground">{plugin?.description}</p>
+
+      {hasConfig && configSchema && (
+        <SchemaView
+          schema={configSchema}
+          value={rule.config}
+          omitKeys={["appliesTo"]}
+          hideEmpty
+          testIdPrefix={`view-rule-${rule.pluginKey}-${ruleIndex}`}
+        />
+      )}
 
       <div className="space-y-2">
         <Label className="text-sm font-medium">Applies to scan types:</Label>
