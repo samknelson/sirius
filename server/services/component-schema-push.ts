@@ -43,13 +43,24 @@ export class ComponentSchemaDriftError extends Error {
 }
 
 function formatDriftMessage(reports: SchemaDriftReport[]): string {
+  // Always render every drift category (with "(none)" when empty) so a future
+  // debugger can tell at a glance that a "missing column didn't auto-apply"
+  // failure has no hidden constraint/index drift behind it.
   const lines: string[] = ["Schema drift detected:"];
   for (const r of reports) {
     lines.push(`  Table ${r.tableName}:`);
-    if (r.missingColumns.length) lines.push(`    - missing columns: ${r.missingColumns.join(", ")}`);
-    for (const m of r.typeMismatches) lines.push(`    - type mismatch: ${m}`);
-    if (r.missingConstraints.length) lines.push(`    - missing constraints: ${r.missingConstraints.join(", ")}`);
-    if (r.missingIndexes.length) lines.push(`    - missing indexes: ${r.missingIndexes.join(", ")}`);
+    lines.push(
+      `    - missing columns: ${r.missingColumns.length ? r.missingColumns.join(", ") : "(none)"}`,
+    );
+    lines.push(
+      `    - type mismatches: ${r.typeMismatches.length ? r.typeMismatches.join("; ") : "(none)"}`,
+    );
+    lines.push(
+      `    - missing constraints: ${r.missingConstraints.length ? r.missingConstraints.join("; ") : "(none)"}`,
+    );
+    lines.push(
+      `    - missing indexes: ${r.missingIndexes.length ? r.missingIndexes.join("; ") : "(none)"}`,
+    );
   }
   return lines.join("\n");
 }
