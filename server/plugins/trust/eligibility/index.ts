@@ -6,3 +6,4 @@ export * from "./executor";
 import "./plugins/workStatus";
 // import "./plugins/gbhetLegal"; // Commented out - no longer needed
 import "./plugins/manual";
+import "./plugins/always";
