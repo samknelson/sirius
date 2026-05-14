@@ -49,7 +49,12 @@ export function registerEligibilityPluginRoutes(
       }));
       
       plugins.sort((a, b) => a.id.localeCompare(b.id));
-      
+
+      // Plugin availability changes whenever a plugin is registered/removed
+      // or its required component is toggled. Disable HTTP caching so any
+      // client that bypasses the React Query layer (curl, other pages,
+      // proxies) always sees a fresh list.
+      res.setHeader("Cache-Control", "no-store");
       res.json(plugins);
     } catch (error) {
       console.error("Failed to fetch eligibility plugins:", error);
