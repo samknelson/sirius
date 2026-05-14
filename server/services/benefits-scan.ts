@@ -1,5 +1,5 @@
-import { evaluateBenefitEligibility, type BenefitEligibilityResult } from "../eligibility-plugins/executor";
-import type { EligibilityRule, ScanType } from "../eligibility-plugins/types";
+import { evaluateBenefitEligibility, type BenefitEligibilityResult } from "../plugins/trust/eligibility/executor";
+import type { EligibilityRule, ScanType } from "../plugins/trust/eligibility/types";
 import type { IStorage } from "../storage";
 import type { Worker, Policy, TrustBenefit } from "@shared/schema";
 import { logger } from "../logger";

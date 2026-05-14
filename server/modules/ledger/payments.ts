@@ -4,7 +4,7 @@ import { createUnifiedOptionsStorage } from "../../storage/unified-options";
 import { insertLedgerPaymentSchema, LedgerPayment } from "@shared/schema";
 import { requireAccess, checkAccessInline } from "../../services/access-policy-evaluator";
 import { requireComponent } from "../components";
-import { executeChargePlugins, TriggerType, PaymentSavedContext, LedgerNotification } from "../../charge-plugins";
+import { executeChargePlugins, TriggerType, PaymentSavedContext, LedgerNotification } from "../../plugins/ledger/charge";
 import { logger } from "../../logger";
 import { eventBus, EventType } from "../../services/event-bus";
 

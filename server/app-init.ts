@@ -16,13 +16,13 @@ import { runMigrations } from "../scripts/migrate";
 import { initializeWebSocket } from "./services/websocket";
 import { getSession } from "./auth";
 
-import "./charge-plugins";
-import "./eligibility-plugins";
+import "./plugins/ledger/charge";
+import "./plugins/trust/eligibility";
 import "./services/providers";
 
 import { registerFloodEvents, loadFloodConfigFromVariables } from "./flood";
 import { initLogNotifier } from "./modules/log-notifier";
-import { initializeDispatchEligSystem } from "./services/dispatch-elig-plugins";
+import { initializeDispatchEligSystem } from "./plugins/dispatch/eligibility";
 import { initWorkerBanNotifications } from "./services/worker-ban-notifications";
 import { initDispatchNotifications } from "./services/dispatch-notifications";
 import "@shared/access-policies/loader";

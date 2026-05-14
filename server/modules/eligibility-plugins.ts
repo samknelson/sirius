@@ -5,9 +5,9 @@ import {
   getAllEligibilityPlugins, 
   getEligibilityPlugin,
   eligibilityPluginRegistry,
-} from "../eligibility-plugins/registry";
-import { evaluateBenefitEligibility } from "../eligibility-plugins/executor";
-import type { EligibilityRule } from "../eligibility-plugins/types";
+} from "../plugins/trust/eligibility/registry";
+import { evaluateBenefitEligibility } from "../plugins/trust/eligibility/executor";
+import type { EligibilityRule } from "../plugins/trust/eligibility/types";
 import { z } from "zod";
 import { getEnabledComponentIds } from "./components";
 

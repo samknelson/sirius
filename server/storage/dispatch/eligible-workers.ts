@@ -8,7 +8,7 @@ import {
   dispatchEligPluginRegistry, 
   type EligibilityCondition, 
   type EligibilityQueryContext 
-} from "../../services/dispatch-elig-plugin-registry";
+} from "../../plugins/dispatch/eligibility/registry";
 import { createDispatchJobStorage } from "./jobs";
 import { createUnifiedOptionsStorage, type OptionsTypeName } from "../unified-options";
 

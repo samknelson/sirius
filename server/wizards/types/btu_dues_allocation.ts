@@ -4,7 +4,7 @@ import { storage } from '../../storage/index.js';
 import { createBtuWorkerImportStorage } from '../../storage/sitespecific/btu/worker-import.js';
 import { createCardcheckStorage, SignedCardcheckWithDetails } from '../../storage/cardchecks.js';
 import { createBargainingUnitStorage, type BargainingUnitData } from '../../storage/bargaining-units.js';
-import { executeChargePlugins, TriggerType, DuesImportSavedContext } from '../../charge-plugins/index.js';
+import { executeChargePlugins, TriggerType, DuesImportSavedContext } from '../../plugins/ledger/charge/index.js';
 import { scanWorkerMemberStatus } from '../../services/member-status-scan.js';
 import { sql } from 'drizzle-orm';
 import { parse as parseCSV } from 'csv-parse/sync';

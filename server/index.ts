@@ -20,12 +20,12 @@ import { getSession } from "./auth";
 
 // Import charge plugins module to trigger registration
 // Note: Individual plugins are registered in ./charge-plugins/index.ts
-import "./charge-plugins";
-import { registerChargePluginListeners } from "./charge-plugins";
+import "./plugins/ledger/charge";
+import { registerChargePluginListeners } from "./plugins/ledger/charge";
 
 // Import eligibility plugins module to trigger registration
 // Note: Individual plugins are registered in ./eligibility-plugins/index.ts
-import "./eligibility-plugins";
+import "./plugins/trust/eligibility";
 
 // Import service providers module to trigger registration
 // Note: SMS, Email, and other providers are registered here
@@ -38,7 +38,7 @@ import { registerFloodEvents, loadFloodConfigFromVariables } from "./flood";
 import { initLogNotifier } from "./modules/log-notifier";
 
 // Import dispatch eligibility plugins system
-import { initializeDispatchEligSystem } from "./services/dispatch-elig-plugins";
+import { initializeDispatchEligSystem } from "./plugins/dispatch/eligibility";
 
 // Import worker ban notifications
 import { initWorkerBanNotifications } from "./services/worker-ban-notifications";

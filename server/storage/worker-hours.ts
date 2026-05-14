@@ -10,7 +10,7 @@ import {
 import { eq, sql, and, desc } from "drizzle-orm";
 import { type StorageLoggingConfig } from "./middleware/logging";
 import { storageLogger as logger } from "../logger";
-import type { LedgerNotification } from "../charge-plugins/types";
+import type { LedgerNotification } from "../plugins/ledger/charge/types";
 import { eventBus, EventType } from "../services/event-bus";
 
 /**
@@ -431,7 +431,7 @@ export function createWorkerHoursStorage(
 
         // Execute charge plugins directly (for backwards compatibility with notifications)
         try {
-          const { executeChargePlugins, TriggerType } = await import("../charge-plugins");
+          const { executeChargePlugins, TriggerType } = await import("../plugins/ledger/charge");
           const result = await executeChargePlugins({
             trigger: TriggerType.HOURS_SAVED,
             ...payload,
@@ -488,7 +488,7 @@ export function createWorkerHoursStorage(
 
       // Execute charge plugins directly (for backwards compatibility with notifications)
       try {
-        const { executeChargePlugins, TriggerType } = await import("../charge-plugins");
+        const { executeChargePlugins, TriggerType } = await import("../plugins/ledger/charge");
         const result = await executeChargePlugins({
           trigger: TriggerType.HOURS_SAVED,
           ...payload,
@@ -540,7 +540,7 @@ export function createWorkerHoursStorage(
 
         // Execute charge plugins directly (for backwards compatibility with notifications)
         try {
-          const { executeChargePlugins, TriggerType } = await import("../charge-plugins");
+          const { executeChargePlugins, TriggerType } = await import("../plugins/ledger/charge");
           const pluginResult = await executeChargePlugins({
             trigger: TriggerType.HOURS_SAVED,
             ...payload,
@@ -606,7 +606,7 @@ export function createWorkerHoursStorage(
 
         // Execute charge plugins directly (for backwards compatibility with notifications)
         try {
-          const { executeChargePlugins, TriggerType } = await import("../charge-plugins");
+          const { executeChargePlugins, TriggerType } = await import("../plugins/ledger/charge");
           const result = await executeChargePlugins({
             trigger: TriggerType.HOURS_SAVED,
             ...payload,

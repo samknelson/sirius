@@ -1075,7 +1075,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
 
         // Execute charge plugins directly (for backwards compatibility)
         try {
-          const { executeChargePlugins, TriggerType } = await import("../charge-plugins");
+          const { executeChargePlugins, TriggerType } = await import("../plugins/ledger/charge");
           await executeChargePlugins({
             trigger: TriggerType.WMB_SAVED,
             ...payload,
@@ -1123,7 +1123,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
 
         // Execute charge plugins directly (for backwards compatibility)
         try {
-          const { executeChargePlugins, TriggerType } = await import("../charge-plugins");
+          const { executeChargePlugins, TriggerType } = await import("../plugins/ledger/charge");
           await executeChargePlugins({
             trigger: TriggerType.WMB_SAVED,
             ...payload,
