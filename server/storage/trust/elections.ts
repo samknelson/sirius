@@ -16,7 +16,6 @@ export interface WorkerTrustElectionSearchParams {
   workerId?: string;
   policyId?: string;
   activeOnly?: boolean;
-  asOf?: Date | string;
   sort?: 'startAsc' | 'startDesc';
   limit?: number;
   offset?: number;
