@@ -1,4 +1,4 @@
-import type { DashboardPlugin } from "../../types";
+import type { DashboardPlugin } from "../types";
 
 export const btuDuesStatusPlugin: DashboardPlugin = {
   id: "btu-dues-status",

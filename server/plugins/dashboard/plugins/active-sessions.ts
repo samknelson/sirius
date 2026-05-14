@@ -1,4 +1,4 @@
-import type { DashboardPlugin } from "../../types";
+import type { DashboardPlugin } from "../types";
 
 export const activeSessionsPlugin: DashboardPlugin = {
   id: "active-sessions",

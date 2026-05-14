@@ -1,6 +1,6 @@
-import { storage } from "../../../../storage";
+import { storage } from "../../../storage";
 import type { JsonSchema } from "@shared/json-schema-form";
-import type { DashboardPlugin } from "../../types";
+import type { DashboardPlugin } from "../types";
 
 async function buildSchema(): Promise<JsonSchema> {
   const roles = await storage.users.getAllRoles();
