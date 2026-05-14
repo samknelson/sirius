@@ -93,7 +93,7 @@ function ymdFromDate(value: string | null): string {
 }
 
 function RelationsContent() {
-  const { worker } = useWorkerLayout();
+  const { worker, contact } = useWorkerLayout();
   const { toast } = useToast();
   const { hasPermission } = useAuth();
   const canEdit = hasPermission("staff");
@@ -105,7 +105,14 @@ function RelationsContent() {
   const [formEndYmd, setFormEndYmd] = useState<string>("");
   const [formOtherWorkerId, setFormOtherWorkerId] = useState<string>("");
   const [formOtherWorkerLabel, setFormOtherWorkerLabel] = useState<string>("");
+  const [editWorker1Label, setEditWorker1Label] = useState<string>("");
+  const [editWorker2Label, setEditWorker2Label] = useState<string>("");
   const [workerSearch, setWorkerSearch] = useState<string>("");
+
+  const currentWorkerLabel =
+    [contact?.given, contact?.family].filter(Boolean).join(" ").trim() ||
+    contact?.displayName ||
+    (worker.siriusId ? `Worker #${worker.siriusId}` : worker.id);
 
   const { data: relations = [], isLoading } = useQuery<WorkerRelationRow[]>({
     queryKey: ["/api/workers", worker.id, "relations"],
@@ -191,6 +198,8 @@ function RelationsContent() {
     setFormEndYmd("");
     setFormOtherWorkerId("");
     setFormOtherWorkerLabel("");
+    setEditWorker1Label("");
+    setEditWorker2Label("");
     setWorkerSearch("");
     setIsModalOpen(true);
   }
@@ -202,6 +211,14 @@ function RelationsContent() {
     setFormEndYmd(ymdFromDate(row.endYmd));
     setFormOtherWorkerId(row.otherWorker?.id ?? "");
     setFormOtherWorkerLabel(formatWorkerName(row.otherWorker));
+    // worker_1 and worker_2 are derived from the actual relation row, not the page worker
+    if (row.role === 'worker_1') {
+      setEditWorker1Label(currentWorkerLabel);
+      setEditWorker2Label(formatWorkerName(row.otherWorker));
+    } else {
+      setEditWorker1Label(formatWorkerName(row.otherWorker));
+      setEditWorker2Label(currentWorkerLabel);
+    }
     setWorkerSearch("");
     setIsModalOpen(true);
   }
@@ -214,6 +231,8 @@ function RelationsContent() {
     setFormEndYmd("");
     setFormOtherWorkerId("");
     setFormOtherWorkerLabel("");
+    setEditWorker1Label("");
+    setEditWorker2Label("");
     setWorkerSearch("");
   }
 
@@ -435,17 +454,17 @@ function RelationsContent() {
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label>From worker</Label>
-              <div className="text-sm rounded-md border bg-muted px-3 py-2" data-testid="text-from-worker">
-                {worker.id}
+              <Label>Worker 1 (from)</Label>
+              <div className="text-sm rounded-md border bg-muted px-3 py-2" data-testid="text-worker1">
+                {editing ? editWorker1Label : currentWorkerLabel}
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label>To worker</Label>
+              <Label>Worker 2 (to)</Label>
               {editing ? (
-                <div className="text-sm rounded-md border bg-muted px-3 py-2" data-testid="text-to-worker-readonly">
-                  {formOtherWorkerLabel || formOtherWorkerId}
+                <div className="text-sm rounded-md border bg-muted px-3 py-2" data-testid="text-worker2-readonly">
+                  {editWorker2Label}
                 </div>
               ) : (
                 <div className="space-y-2">
