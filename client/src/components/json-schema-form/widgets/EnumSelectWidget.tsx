@@ -101,21 +101,21 @@ export function EnumSelectWidget(props: WidgetProps) {
 
   // Controlled value for Radix:
   // - real selection -> the encoded enum string
-  // - optional + no selection -> the None sentinel (so the trigger
-  //   shows the "None" item label rather than the placeholder)
-  // - required + no selection -> "" (Radix treats both "" and
-  //   undefined as placeholder triggers, but only "" keeps the
-  //   component controlled. Passing undefined would flip Radix into
-  //   uncontrolled mode and let stale UI persist after an external
-  //   clear). We never render a <SelectItem value=""> -- Radix
-  //   forbids that -- so the empty value just paints the placeholder.
+  // - no selection (required OR optional) -> "" so the trigger
+  //   paints the placeholder via [data-placeholder]. Radix treats
+  //   "" as "no selection" while still keeping the component
+  //   controlled (passing undefined would flip it to uncontrolled
+  //   and let stale UI persist after an external clear). We never
+  //   render a <SelectItem value=""> -- Radix forbids that.
+  //
+  // Optional fields still render a NONE_SENTINEL item below so the
+  // user can explicitly clear a previously chosen value; selecting
+  // it round-trips through onChange as `emptyValue` (typically
+  // undefined), at which point selectedEncoded falls back to "" and
+  // the placeholder reappears.
   const hasSelection =
     typeof selectedEncoded === "string" && selectedEncoded.length > 0;
-  const radixValue = hasSelection
-    ? selectedEncoded
-    : required
-      ? ""
-      : NONE_SENTINEL;
+  const radixValue = hasSelection ? selectedEncoded : "";
 
   const handleValueChange = (next: string) => {
     const encoded = next === NONE_SENTINEL ? "" : next;
