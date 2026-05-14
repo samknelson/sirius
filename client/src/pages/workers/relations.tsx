@@ -284,6 +284,7 @@ function RelationsContent() {
           <TableRow>
             <TableHead>Other Worker</TableHead>
             <TableHead>Type</TableHead>
+            <TableHead>Status</TableHead>
             <TableHead>Start</TableHead>
             <TableHead>End</TableHead>
             {canEdit && <TableHead className="w-[120px]">Actions</TableHead>}
@@ -306,6 +307,14 @@ function RelationsContent() {
                 )}
               </TableCell>
               <TableCell data-testid={`text-relation-type-${row.id}`}>{row.relationTypeName ?? row.relationType}</TableCell>
+              <TableCell>
+                <Badge
+                  variant={row.isActive ? "default" : "secondary"}
+                  data-testid={`badge-status-${row.id}`}
+                >
+                  {row.isActive ? "Active" : "Inactive"}
+                </Badge>
+              </TableCell>
               <TableCell data-testid={`text-start-${row.id}`}>{row.startYmd ?? "—"}</TableCell>
               <TableCell data-testid={`text-end-${row.id}`}>{row.endYmd ?? "—"}</TableCell>
               {canEdit && (

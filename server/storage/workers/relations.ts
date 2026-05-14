@@ -7,7 +7,17 @@ import {
   type WorkerRelation,
   type InsertWorkerRelation,
 } from '@shared/schema';
-import { eq, and, or, sql, desc, lte, gte, isNull, ne, inArray } from 'drizzle-orm';
+import {
+  eq,
+  and,
+  or,
+  desc,
+  lte,
+  gte,
+  isNull,
+  inArray,
+  type SQL,
+} from 'drizzle-orm';
 import { type StorageLoggingConfig } from '../middleware/logging';
 import { normalizeToDateOnly, getTodayDateOnly } from '@shared/utils';
 
@@ -51,8 +61,8 @@ export class WorkerRelationValidationError extends Error {
 }
 
 function toYmd(value: Date | string | null | undefined): string | null {
-  if (!value) return null;
-  const d = normalizeToDateOnly(value as any);
+  if (value === null || value === undefined) return null;
+  const d = normalizeToDateOnly(value);
   if (!d) return null;
   const yr = d.getFullYear();
   const mo = String(d.getMonth() + 1).padStart(2, '0');
@@ -60,15 +70,25 @@ function toYmd(value: Date | string | null | undefined): string | null {
   return `${yr}-${mo}-${dy}`;
 }
 
+interface ValidationInput {
+  worker1?: string | null;
+  worker2?: string | null;
+  relationType?: string | null;
+  startYmd?: Date | string | null;
+  endYmd?: Date | string | null;
+}
+
 async function validateRelation(
-  data: { worker1?: string | null; worker2?: string | null; relationType?: string | null; startYmd?: any; endYmd?: any },
+  data: ValidationInput,
   existing?: WorkerRelation,
-): Promise<{ worker1: string; worker2: string; relationType: string; startYmd: string | null; endYmd: string | null }> {
-  const worker1 = (data.worker1 ?? existing?.worker1) as string | undefined;
-  const worker2 = (data.worker2 ?? existing?.worker2) as string | undefined;
-  const relationType = (data.relationType ?? existing?.relationType) as string | undefined;
-  const startYmd = toYmd(data.startYmd !== undefined ? data.startYmd : existing?.startYmd);
-  const endYmd = toYmd(data.endYmd !== undefined ? data.endYmd : existing?.endYmd);
+): Promise<{ worker1: string; worker2: string; relationType: string; startYmd: string; endYmd: string | null }> {
+  const worker1 = data.worker1 ?? existing?.worker1 ?? undefined;
+  const worker2 = data.worker2 ?? existing?.worker2 ?? undefined;
+  const relationType = data.relationType ?? existing?.relationType ?? undefined;
+  const startSource = data.startYmd !== undefined ? data.startYmd : existing?.startYmd ?? null;
+  const endSource = data.endYmd !== undefined ? data.endYmd : existing?.endYmd ?? null;
+  const startYmd = toYmd(startSource);
+  const endYmd = toYmd(endSource);
 
   if (!worker1) throw new WorkerRelationValidationError('worker1', 'worker_1 is required');
   if (!worker2) throw new WorkerRelationValidationError('worker2', 'worker_2 is required');
@@ -113,6 +133,10 @@ async function validateRelation(
   return { worker1, worker2, relationType, startYmd, endYmd };
 }
 
+interface WorkerRelationsBeforeState {
+  relation: WorkerRelation | undefined;
+}
+
 export const workerRelationsLoggingConfig: StorageLoggingConfig<WorkerRelationsStorage> = {
   module: 'worker-relations',
   methods: {
@@ -120,7 +144,7 @@ export const workerRelationsLoggingConfig: StorageLoggingConfig<WorkerRelationsS
       enabled: true,
       getEntityId: (_args, result) => result?.id || 'new worker relation',
       getHostEntityId: (args, result) => result?.worker1 ?? args[0]?.worker1,
-      getDescription: async (args, result) => {
+      getDescription: async (_args, result) => {
         return `Created worker relation (${result?.worker1} → ${result?.worker2})`;
       },
       after: async (_args, result) => ({ relation: result }),
@@ -128,9 +152,10 @@ export const workerRelationsLoggingConfig: StorageLoggingConfig<WorkerRelationsS
     update: {
       enabled: true,
       getEntityId: (args) => args[0],
-      getHostEntityId: async (_args, _result, beforeState) => beforeState?.relation?.worker1,
+      getHostEntityId: async (_args, _result, beforeState) =>
+        (beforeState as WorkerRelationsBeforeState | undefined)?.relation?.worker1,
       getDescription: async (_args, result, beforeState) => {
-        const r = result || beforeState?.relation;
+        const r = result || (beforeState as WorkerRelationsBeforeState | undefined)?.relation;
         return `Updated worker relation (${r?.worker1} → ${r?.worker2})`;
       },
       before: async (args, storage) => {
@@ -142,9 +167,10 @@ export const workerRelationsLoggingConfig: StorageLoggingConfig<WorkerRelationsS
     delete: {
       enabled: true,
       getEntityId: (args) => args[0],
-      getHostEntityId: async (_args, _result, beforeState) => beforeState?.relation?.worker1,
+      getHostEntityId: async (_args, _result, beforeState) =>
+        (beforeState as WorkerRelationsBeforeState | undefined)?.relation?.worker1,
       getDescription: async (_args, _result, beforeState) => {
-        const r = beforeState?.relation;
+        const r = (beforeState as WorkerRelationsBeforeState | undefined)?.relation;
         return r ? `Deleted worker relation (${r.worker1} → ${r.worker2})` : 'Deleted worker relation';
       },
       before: async (args, storage) => {
@@ -161,37 +187,48 @@ export function createWorkerRelationsStorage(): WorkerRelationsStorage {
       const client = getClient();
       const role = params.role ?? 'either';
 
-      const conds: any[] = [];
+      const conds: SQL[] = [];
       if (params.workerId) {
-        if (role === 'worker_1') conds.push(eq(workerRelations.worker1, params.workerId));
-        else if (role === 'worker_2') conds.push(eq(workerRelations.worker2, params.workerId));
-        else conds.push(or(eq(workerRelations.worker1, params.workerId), eq(workerRelations.worker2, params.workerId)));
+        if (role === 'worker_1') {
+          conds.push(eq(workerRelations.worker1, params.workerId));
+        } else if (role === 'worker_2') {
+          conds.push(eq(workerRelations.worker2, params.workerId));
+        } else {
+          const eitherSide = or(
+            eq(workerRelations.worker1, params.workerId),
+            eq(workerRelations.worker2, params.workerId),
+          );
+          if (eitherSide) conds.push(eitherSide);
+        }
       }
       if (params.relationTypeId) {
         conds.push(eq(workerRelations.relationType, params.relationTypeId));
       }
       if (params.activeAt !== undefined && params.activeAt !== null) {
         const ymd = toYmd(params.activeAt)!;
-        conds.push(or(isNull(workerRelations.startYmd), lte(workerRelations.startYmd, ymd)) as any);
-        conds.push(or(isNull(workerRelations.endYmd), gte(workerRelations.endYmd, ymd)) as any);
+        const startOk = or(isNull(workerRelations.startYmd), lte(workerRelations.startYmd, ymd));
+        const endOk = or(isNull(workerRelations.endYmd), gte(workerRelations.endYmd, ymd));
+        if (startOk) conds.push(startOk);
+        if (endOk) conds.push(endOk);
       }
 
       const where = conds.length > 0 ? and(...conds) : undefined;
 
-      let query = client
+      const baseQuery = client
         .select({
           relation: workerRelations,
           relationTypeName: optionsWorkerRelationType.name,
         })
         .from(workerRelations)
         .leftJoin(optionsWorkerRelationType, eq(workerRelations.relationType, optionsWorkerRelationType.id))
-        .orderBy(desc(workerRelations.startYmd));
+        .$dynamic();
 
-      if (where) query = (query as any).where(where);
-      if (params.limit !== undefined) query = (query as any).limit(params.limit);
-      if (params.offset !== undefined) query = (query as any).offset(params.offset);
+      const filtered = where ? baseQuery.where(where) : baseQuery;
+      const ordered = filtered.orderBy(desc(workerRelations.startYmd));
+      const limited = params.limit !== undefined ? ordered.limit(params.limit) : ordered;
+      const final = params.offset !== undefined ? limited.offset(params.offset) : limited;
 
-      const rows = await query;
+      const rows = await final;
 
       // Resolve "other" worker info in one batch
       const otherIds = new Set<string>();
@@ -206,7 +243,7 @@ export function createWorkerRelationsStorage(): WorkerRelationsStorage {
         }
       }
 
-      const otherWorkers = otherIds.size
+      const otherWorkers: WorkerRelationOtherWorker[] = otherIds.size
         ? await client
             .select({
               id: workers.id,
@@ -219,7 +256,7 @@ export function createWorkerRelationsStorage(): WorkerRelationsStorage {
             .leftJoin(contacts, eq(workers.contactId, contacts.id))
             .where(inArray(workers.id, Array.from(otherIds)))
         : [];
-      const byId = new Map(otherWorkers.map((w) => [w.id, w]));
+      const byId = new Map<string, WorkerRelationOtherWorker>(otherWorkers.map((w) => [w.id, w]));
 
       const today = toYmd(getTodayDateOnly())!;
       return rows.map((r) => {
@@ -238,7 +275,7 @@ export function createWorkerRelationsStorage(): WorkerRelationsStorage {
           ...rel,
           role: myRole,
           isActive,
-          otherWorker: (byId.get(otherId) as WorkerRelationOtherWorker | undefined) ?? null,
+          otherWorker: byId.get(otherId) ?? null,
           relationTypeName: r.relationTypeName ?? null,
         };
       });
@@ -261,7 +298,7 @@ export function createWorkerRelationsStorage(): WorkerRelationsStorage {
           relationType: validated.relationType,
           startYmd: validated.startYmd,
           endYmd: validated.endYmd,
-          data: (data.data ?? null) as any,
+          data: data.data ?? null,
         })
         .returning();
       return created;
@@ -281,12 +318,12 @@ export function createWorkerRelationsStorage(): WorkerRelationsStorage {
       }
 
       const validated = await validateRelation(data, existing);
-      const updateValues: Record<string, any> = {
+      const updateValues: Partial<InsertWorkerRelation> = {
         relationType: validated.relationType,
         startYmd: validated.startYmd,
         endYmd: validated.endYmd,
       };
-      if (data.data !== undefined) updateValues.data = data.data as any;
+      if (data.data !== undefined) updateValues.data = data.data;
 
       const [updated] = await client
         .update(workerRelations)

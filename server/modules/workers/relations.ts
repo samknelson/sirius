@@ -1,6 +1,10 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../../storage";
-import { insertWorkerRelationSchema } from "@shared/schema";
+import {
+  insertWorkerRelationSchema,
+  type WorkerRelation,
+  type InsertWorkerRelation,
+} from "@shared/schema";
 import { z } from "zod";
 import { requireComponent } from "../components";
 import { WorkerRelationValidationError } from "../../storage/workers/relations";
@@ -11,20 +15,31 @@ type RequireAccess = (
 ) => (req: Request, res: Response, next: NextFunction) => void;
 type RequireAuth = (req: Request, res: Response, next: NextFunction) => void;
 
-const createApiSchema = insertWorkerRelationSchema.extend({
-  worker1: z.string().min(1),
-  worker2: z.string().min(1),
-  relationType: z.string().min(1),
-  startYmd: z.union([z.string(), z.coerce.date()]),
-  endYmd: z.union([z.string(), z.coerce.date()]).nullable().optional(),
-});
+declare module "express-serve-static-core" {
+  interface Request {
+    workerRelationEntry?: Readonly<WorkerRelation>;
+  }
+}
+
+const ymdOrDate = z.union([z.string(), z.coerce.date()]);
 
 const updateApiSchema = z.object({
   relationType: z.string().min(1).optional(),
-  startYmd: z.union([z.string(), z.coerce.date()]).optional(),
-  endYmd: z.union([z.string(), z.coerce.date()]).nullable().optional(),
-  data: z.any().optional(),
+  startYmd: ymdOrDate.optional(),
+  endYmd: ymdOrDate.nullable().optional(),
+  data: z.unknown().optional(),
 });
+
+const createBodySchema = insertWorkerRelationSchema
+  .omit({ worker1: true })
+  .extend({
+    worker1: z.string().min(1).optional(),
+    worker2: z.string().min(1),
+    relationType: z.string().min(1),
+    startYmd: ymdOrDate,
+    endYmd: ymdOrDate.nullable().optional(),
+    data: z.unknown().optional(),
+  });
 
 function handleError(res: Response, error: unknown, fallback: string) {
   if (error instanceof z.ZodError) {
@@ -85,26 +100,30 @@ export function registerWorkerRelationsRoutes(
     },
   );
 
-  // Get a specific relation by id
+  // Get a specific relation by id (fetch-then-policy on worker_1)
   app.get(
     "/api/worker-relations/:id",
     requireAuth,
     relationsComponent,
     async (req: Request, res: Response, next: NextFunction) => {
-      const relation = await storage.workerRelations.get(req.params.id);
-      if (!relation) {
-        return res.status(404).json({ error: "Worker relation not found" });
+      try {
+        const relation = await storage.workerRelations.get(req.params.id);
+        if (!relation) {
+          return res.status(404).json({ error: "Worker relation not found" });
+        }
+        req.workerRelationEntry = Object.freeze({ ...relation });
+        next();
+      } catch (error) {
+        handleError(res, error, "Failed to fetch worker relation");
       }
-      (req as any).relationEntry = Object.freeze({ ...relation });
-      next();
     },
-    requireAccess('worker.view', (req) => (req as any).relationEntry?.worker1),
+    requireAccess('worker.view', (req) => req.workerRelationEntry?.worker1),
     async (req: Request, res: Response) => {
-      res.json((req as any).relationEntry);
+      res.json(req.workerRelationEntry);
     },
   );
 
-  // Create
+  // Create — worker1 is always the URL-scoped worker
   app.post(
     "/api/workers/:id/relations",
     requireAuth,
@@ -112,9 +131,22 @@ export function registerWorkerRelationsRoutes(
     requireAccess('staff'),
     async (req: Request, res: Response) => {
       try {
-        const body = { ...req.body, worker1: req.body.worker1 ?? req.params.id };
-        const validated = createApiSchema.parse(body);
-        const created = await storage.workerRelations.create(validated as any);
+        const parsed = createBodySchema.parse(req.body);
+        if (parsed.worker1 !== undefined && parsed.worker1 !== req.params.id) {
+          return res.status(400).json({
+            error: "worker1 in body must match the URL worker id",
+            field: "worker1",
+          });
+        }
+        const insert: InsertWorkerRelation = {
+          worker1: req.params.id,
+          worker2: parsed.worker2,
+          relationType: parsed.relationType,
+          startYmd: parsed.startYmd as InsertWorkerRelation["startYmd"],
+          endYmd: parsed.endYmd as InsertWorkerRelation["endYmd"],
+          data: parsed.data as InsertWorkerRelation["data"],
+        };
+        const created = await storage.workerRelations.create(insert);
         res.status(201).json(created);
       } catch (error) {
         handleError(res, error, "Failed to create worker relation");
@@ -130,8 +162,19 @@ export function registerWorkerRelationsRoutes(
     requireAccess('staff'),
     async (req: Request, res: Response) => {
       try {
-        const validated = updateApiSchema.parse(req.body);
-        const updated = await storage.workerRelations.update(req.params.id, validated as any);
+        const parsed = updateApiSchema.parse(req.body);
+        const patch: Partial<InsertWorkerRelation> = {};
+        if (parsed.relationType !== undefined) patch.relationType = parsed.relationType;
+        if (parsed.startYmd !== undefined) {
+          patch.startYmd = parsed.startYmd as InsertWorkerRelation["startYmd"];
+        }
+        if (parsed.endYmd !== undefined) {
+          patch.endYmd = parsed.endYmd as InsertWorkerRelation["endYmd"];
+        }
+        if (parsed.data !== undefined) {
+          patch.data = parsed.data as InsertWorkerRelation["data"];
+        }
+        const updated = await storage.workerRelations.update(req.params.id, patch);
         if (!updated) {
           return res.status(404).json({ error: "Worker relation not found" });
         }
