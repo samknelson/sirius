@@ -848,6 +848,13 @@ export {
 } from "./schema/worker/relations/schema";
 
 export {
+  workerTrustElections,
+  insertWorkerTrustElectionSchema,
+  type WorkerTrustElection,
+  type InsertWorkerTrustElection,
+} from "./schema/trust/elections-schema";
+
+export {
   edlsSheets,
   edlsSheetStatusEnum,
   insertEdlsSheetsSchema,

@@ -54,6 +54,9 @@ const WorkerEdls = lazy(() => import("@/pages/worker-edls"));
 const WorkerSecondShift = lazy(() => import("@/pages/worker-sitespecific-freeman-2shift"));
 const WorkerSkills = lazy(() => import("@/pages/worker-skills"));
 const WorkerRelations = lazy(() => import("@/pages/workers/relations"));
+const WorkerElectionsCurrent = lazy(() => import("@/pages/workers/elections-current"));
+const WorkerElectionsList = lazy(() => import("@/pages/workers/elections-list"));
+const TrustElectionDetail = lazy(() => import("@/pages/trust/election-detail"));
 const WorkerTos = lazy(() => import("@/pages/worker-tos"));
 const WorkerCertifications = lazy(() => import("@/pages/worker-certifications"));
 const WorkerCertificationView = lazy(() => import("@/pages/worker-certification-view"));
@@ -579,6 +582,30 @@ function Router() {
         <ProtectedRoute tabId="relations" entityType="worker">
           <AuthenticatedLayout>
             <WorkerRelations />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/workers/:id/elections/current">
+        <ProtectedRoute tabId="elections-current" entityType="worker">
+          <AuthenticatedLayout>
+            <WorkerElectionsCurrent />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/workers/:id/elections/list">
+        <ProtectedRoute tabId="elections-list" entityType="worker">
+          <AuthenticatedLayout>
+            <WorkerElectionsList />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/trust/election/:id">
+        <ProtectedRoute permission="staff" component="trust.elections">
+          <AuthenticatedLayout>
+            <TrustElectionDetail />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

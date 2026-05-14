@@ -84,6 +84,7 @@ import { registerWorkerDispatchEbaRoutes } from "./modules/worker-dispatch-eba";
 import { registerWorkerBansRoutes } from "./modules/worker-bans";
 import { registerWorkerSkillsRoutes } from "./modules/workers/skills";
 import { registerWorkerRelationsRoutes } from "./modules/workers/relations";
+import { registerWorkerTrustElectionsRoutes } from "./modules/workers/trust-elections";
 import { registerWorkerTosRoutes } from "./modules/worker-tos";
 import { registerWorkerCertificationsRoutes } from "./modules/workers/certifications";
 import { registerWorkerRatingsRoutes } from "./modules/worker-ratings";
@@ -1711,6 +1712,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register worker relations routes (handles all access control internally)
   registerWorkerRelationsRoutes(app, requireAuth, requireAccess);
+
+  // Register worker trust elections routes (handles all access control internally)
+  registerWorkerTrustElectionsRoutes(app, requireAuth, requireAccess);
 
   // Register worker time-off-sick (TOS) routes
   registerWorkerTosRoutes(app, requireAuth, requireAccess);

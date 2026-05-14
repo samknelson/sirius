@@ -89,6 +89,7 @@ import { type WorkerTosStorage, createWorkerTosStorage, workerTosLoggingConfig }
 import { type WorkerCertificationStorage, createWorkerCertificationStorage, workerCertificationLoggingConfig } from "./workers/certifications";
 import { type WorkerRatingStorage, createWorkerRatingStorage, workerRatingLoggingConfig } from "./worker-ratings";
 import { type WorkerRelationsStorage, createWorkerRelationsStorage, workerRelationsLoggingConfig } from "./workers/relations";
+import { type WorkerTrustElectionsStorage, createWorkerTrustElectionsStorage, workerTrustElectionsLoggingConfig } from "./trust/elections";
 import { type EdlsSheetsStorage, createEdlsSheetsStorage, edlsSheetsLoggingConfig } from "./edls/sheets";
 import { type EdlsCrewsStorage, createEdlsCrewsStorage, edlsCrewsLoggingConfig } from "./edls/crews";
 import { type EdlsAssignmentsStorage, createEdlsAssignmentsStorage, edlsAssignmentsLoggingConfig } from "./edls/assignments";
@@ -159,6 +160,7 @@ export interface IStorage {
   workerCertifications: WorkerCertificationStorage;
   workerRatings: WorkerRatingStorage;
   workerRelations: WorkerRelationsStorage;
+  workerTrustElections: WorkerTrustElectionsStorage;
   edlsSheets: EdlsSheetsStorage;
   edlsCrews: EdlsCrewsStorage;
   edlsAssignments: EdlsAssignmentsStorage;
@@ -239,6 +241,7 @@ export class DatabaseStorage implements IStorage {
   workerCertifications: WorkerCertificationStorage;
   workerRatings: WorkerRatingStorage;
   workerRelations: WorkerRelationsStorage;
+  workerTrustElections: WorkerTrustElectionsStorage;
   edlsSheets: EdlsSheetsStorage;
   edlsCrews: EdlsCrewsStorage;
   edlsAssignments: EdlsAssignmentsStorage;
@@ -420,6 +423,7 @@ export class DatabaseStorage implements IStorage {
     );
     this.workerRatings = withStorageLogging(createWorkerRatingStorage(), workerRatingLoggingConfig);
     this.workerRelations = withStorageLogging(createWorkerRelationsStorage(), workerRelationsLoggingConfig);
+    this.workerTrustElections = withStorageLogging(createWorkerTrustElectionsStorage(), workerTrustElectionsLoggingConfig);
     this.edlsSheets = withStorageLogging(createEdlsSheetsStorage(), edlsSheetsLoggingConfig);
     this.edlsCrews = withStorageLogging(createEdlsCrewsStorage(), edlsCrewsLoggingConfig);
     this.edlsAssignments = withStorageLogging(createEdlsAssignmentsStorage(), edlsAssignmentsLoggingConfig);
