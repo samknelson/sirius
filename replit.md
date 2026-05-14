@@ -6,6 +6,38 @@ Sirius is a comprehensive full-stack web application designed for efficient work
 
 Preferred communication style: Simple, everyday language.
 
+## Always restart the `Start application` workflow after server-side or shared changes
+
+The dev server runs under `tsx` and **does not hot-reload** changes to
+files outside the Vite client bundle. Vite HMR only refreshes the
+browser-side code under `client/`. Anything the Node process holds in
+memory (Express routes, middleware, registries, schemas, the access
+policy/component caches) keeps the old version until the workflow is
+explicitly restarted.
+
+**Rule of thumb:** if your edit touches any of the following, restart
+the `Start application` workflow as the **last step before telling the
+user to verify**:
+
+- `server/**` — routes, modules, services, storage, plugins, crons,
+  middleware, app-init, etc.
+- `shared/**` — tab registry, components registry, schema, access
+  policies, terminology, anything imported by the server.
+- New API endpoints, new tabs, new components, new policies, new
+  storage namespaces, new cron jobs, new feature flags.
+- Anything that mutates a server-held cache (component cache, access
+  policy cache, modular policy registry, terminology cache).
+
+Pure client-only changes under `client/src/**` (components, pages,
+hooks, styles) do **not** require a workflow restart — Vite HMR
+handles them.
+
+When in doubt, restart. It is cheap, and it avoids the
+"why-don't-I-see-the-new-tab" loop. After restarting, also remind the
+user that a hard refresh may be needed if a TanStack Query cache
+(default 5 min staleTime, e.g. `/api/access/tabs`) is holding the
+previous result.
+
 # Non-Negotiable Rules
 
 ## All database access MUST go through the storage layer

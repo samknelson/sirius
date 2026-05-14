@@ -324,10 +324,6 @@ export function registerAccessPolicyRoutes(app: Express) {
         });
       }
 
-      if (entityType === 'worker') {
-        const electionsResults = results.filter(r => r.tabId.includes('election'));
-        console.log('[DIAG access/tabs worker] elections results:', JSON.stringify(electionsResults), 'totalTabs:', results.length);
-      }
       res.json({ tabs: results });
     } catch (error) {
       console.error('Error checking tab access:', error);
