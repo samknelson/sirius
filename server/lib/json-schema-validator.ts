@@ -15,6 +15,7 @@ const ajv = new Ajv({
   strict: false,
   useDefaults: true,
   removeAdditional: false,
+  $data: true,
 });
 addFormats(ajv);
 

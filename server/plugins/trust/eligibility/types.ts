@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { Worker } from "@shared/schema";
+import type { Worker, Contact } from "@shared/schema";
 import type { JsonSchema } from "@shared/json-schema-form";
 
 export type ScanType = "start" | "continue";
@@ -19,6 +19,7 @@ export interface EligibilityContext {
   scanType: ScanType;
   workerId: string;
   getWorker: () => Promise<Worker>;
+  getContact: () => Promise<Contact | null>;
   asOfMonth: number;
   asOfYear: number;
   benefitId?: string;

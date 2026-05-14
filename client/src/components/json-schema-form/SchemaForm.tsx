@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { Form as RjsfForm } from "@rjsf/shadcn";
-import validator from "@rjsf/validator-ajv8";
+import { customizeValidator } from "@rjsf/validator-ajv8";
 import type { FormProps, IChangeEvent } from "@rjsf/core";
 import type { RJSFSchema, UiSchema, RegistryWidgetsType } from "@rjsf/utils";
 import type { JsonSchema } from "@shared/json-schema-form";
@@ -9,6 +9,10 @@ import { SelfOptionsWidget } from "./widgets/SelfOptionsWidget";
 import { IconWidget } from "./widgets/IconWidget";
 import { ColorWidget } from "./widgets/ColorWidget";
 import { EnumSelectWidget } from "./widgets/EnumSelectWidget";
+
+const validator = customizeValidator({
+  ajvOptionsOverrides: { $data: true },
+});
 
 /**
  * Form context payload that custom widgets can read. Pass anything

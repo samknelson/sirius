@@ -5,7 +5,7 @@ import type {
   EligibilityRule,
   ScanType,
 } from "./types";
-import type { Worker } from "@shared/schema";
+import type { Worker, Contact } from "@shared/schema";
 import { storage } from "../../../storage/database";
 import { logger } from "../../../logger";
 import { getEnabledComponentIds } from "../../../modules/components";
@@ -45,6 +45,27 @@ function createWorkerAccessor(workerId: string, cachedWorker?: Worker): () => Pr
   };
 }
 
+function createContactAccessor(getWorker: () => Promise<Worker>): () => Promise<Contact | null> {
+  let cached = false;
+  let contact: Contact | null = null;
+
+  return async (): Promise<Contact | null> => {
+    if (cached) return contact;
+
+    const worker = await getWorker();
+    if (!worker.contactId) {
+      cached = true;
+      contact = null;
+      return contact;
+    }
+
+    const fetched = await storage.contacts.getContact(worker.contactId);
+    contact = fetched ?? null;
+    cached = true;
+    return contact;
+  };
+}
+
 export async function evaluateEligibilityRules(
   rules: EligibilityRule[],
   input: EligibilityEvaluationInput
@@ -54,6 +75,7 @@ export async function evaluateEligibilityRules(
   const asOfYear = input.asOfYear ?? now.getFullYear();
   
   const getWorker = createWorkerAccessor(input.workerId, input.worker);
+  const getContact = createContactAccessor(getWorker);
   
   const results: EligibilityResult[] = [];
   
@@ -96,6 +118,7 @@ export async function evaluateEligibilityRules(
       scanType: input.scanType,
       workerId: input.workerId,
       getWorker,
+      getContact,
       asOfMonth,
       asOfYear,
       benefitId: input.benefitId,
@@ -136,6 +159,7 @@ export async function evaluateBenefitEligibility(
   const asOfYear = input.asOfYear ?? now.getFullYear();
   
   const getWorker = createWorkerAccessor(input.workerId, input.worker);
+  const getContact = createContactAccessor(getWorker);
   
   const pluginResults: BenefitEligibilityResult['results'] = [];
   let overallEligible = true;
@@ -177,6 +201,7 @@ export async function evaluateBenefitEligibility(
       scanType: input.scanType,
       workerId: input.workerId,
       getWorker,
+      getContact,
       asOfMonth,
       asOfYear,
       benefitId,

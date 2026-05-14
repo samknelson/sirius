@@ -72,7 +72,9 @@ function hasConfigProps(schema: JsonSchema | undefined): boolean {
  * hydration so the two stay in lockstep with the form's runtime
  * behavior.
  */
-const sharedValidator = customizeValidator();
+const sharedValidator = customizeValidator({
+  ajvOptionsOverrides: { $data: true },
+});
 
 /**
  * Hydrate JSON-Schema defaults for a freshly created rule's config.

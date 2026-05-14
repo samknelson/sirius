@@ -54,8 +54,8 @@ export type JsonSchema = {
   enumNames?: string[];
   items?: JsonSchema;
   default?: unknown;
-  minimum?: number;
-  maximum?: number;
+  minimum?: number | { $data: string };
+  maximum?: number | { $data: string };
   minLength?: number;
   maxLength?: number;
   format?: string;
@@ -67,6 +67,9 @@ export type JsonSchema = {
   oneOf?: JsonSchema[];
   anyOf?: JsonSchema[];
   allOf?: JsonSchema[];
+  if?: JsonSchema;
+  then?: JsonSchema;
+  else?: JsonSchema;
   $ref?: string;
   /** Vendor extension keys (see VendorExtensions). */
   [key: `x-${string}`]: unknown;
