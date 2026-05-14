@@ -80,10 +80,18 @@ function EligibilityRuleEditor({
   const configSchema = plugin?.configSchema;
 
   const handleAppliesToChange = (scanType: "start" | "continue", checked: boolean) => {
-    const newAppliesTo = checked
+    const nextAppliesTo = checked
       ? [...rule.appliesTo, scanType]
       : rule.appliesTo.filter((t) => t !== scanType);
-    onUpdate({ ...rule, appliesTo: newAppliesTo.length > 0 ? newAppliesTo : ["start"] });
+    const finalAppliesTo = nextAppliesTo.length > 0 ? nextAppliesTo : ["start"];
+    // Mirror into rule.config so any code path that reads
+    // config.appliesTo (legacy validators, persisted shape) stays in
+    // lockstep with the top-level rule.appliesTo. They were drifting.
+    onUpdate({
+      ...rule,
+      appliesTo: finalAppliesTo,
+      config: { ...rule.config, appliesTo: finalAppliesTo },
+    });
   };
 
   const handleConfigChange = (newConfig: Record<string, unknown>) => {
