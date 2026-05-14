@@ -8,7 +8,7 @@ import {
 import { formatYmd } from "@shared/utils";
 
 function ElectionDetailsContent() {
-  const { election } = useTrustElectionLayout();
+  const { election, workerName, isWorkerLoading } = useTrustElectionLayout();
 
   const policyName = election.policyName ?? "Unknown policy";
   const benefitLabels = (election.benefits ?? []).map((b) => b.name);
@@ -25,7 +25,7 @@ function ElectionDetailsContent() {
             className="text-primary underline-offset-2 hover:underline"
             data-testid="link-worker"
           >
-            {election.workerId}
+            {workerName || (isWorkerLoading ? "Loading…" : election.workerId)}
           </Link>
         </CardDescription>
       </CardHeader>

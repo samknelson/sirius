@@ -9,9 +9,20 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { useTrustElectionTabAccess } from "@/hooks/useTabAccess";
 import { usePageTitle } from "@/contexts/PageTitleContext";
+import { formatYmd } from "@shared/utils";
+
+interface WorkerWithName {
+  id: string;
+  contactId: string;
+  firstName: string | null;
+  lastName: string | null;
+  displayName: string | null;
+}
 
 interface TrustElectionLayoutContextValue {
   election: WorkerTrustElectionView;
+  workerName: string | null;
+  isWorkerLoading: boolean;
   isLoading: boolean;
   isError: boolean;
 }
@@ -45,9 +56,27 @@ export function TrustElectionLayout({ activeTab, children }: TrustElectionLayout
     },
   });
 
+  const { data: worker, isLoading: workerLoading } = useQuery<WorkerWithName>({
+    queryKey: ["/api/workers", election?.workerId],
+    enabled: !!election?.workerId,
+  });
+
+  const workerName = worker
+    ? worker.displayName ||
+      `${worker.firstName || ""} ${worker.lastName || ""}`.trim() ||
+      null
+    : null;
+
   const { tabs } = useTrustElectionTabAccess(id || "");
 
-  usePageTitle(election ? `Trust Election` : undefined);
+  const headerTitle =
+    election && workerName
+      ? `Election - ${workerName} - ${formatYmd(election.startYmd)}`
+      : election
+        ? "Trust Election"
+        : undefined;
+
+  usePageTitle(headerTitle);
 
   const backHref = election
     ? `/workers/${election.workerId}/elections/list`
@@ -126,6 +155,8 @@ export function TrustElectionLayout({ activeTab, children }: TrustElectionLayout
 
   const contextValue: TrustElectionLayoutContextValue = {
     election,
+    workerName,
+    isWorkerLoading: workerLoading,
     isLoading: false,
     isError: false,
   };
@@ -144,7 +175,9 @@ export function TrustElectionLayout({ activeTab, children }: TrustElectionLayout
                   className="text-xl font-semibold text-foreground"
                   data-testid={`text-election-title-${election.id}`}
                 >
-                  Trust Election
+                  {workerName
+                    ? `Election - ${workerName} - ${formatYmd(election.startYmd)}`
+                    : "Trust Election"}
                 </h1>
                 <Badge
                   variant={election.endYmd ? "secondary" : "default"}
