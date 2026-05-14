@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Link, useParams } from "wouter";
+import { Link, useParams, useLocation } from "wouter";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { ArrowLeft } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -26,6 +26,7 @@ import type { WorkerTrustElection } from "@shared/schema";
 export default function ElectionDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
   const [editOpen, setEditOpen] = useState(false);
   const [tab, setTab] = useState<"view" | "edit">("view");
 
@@ -83,6 +84,7 @@ export default function ElectionDetailPage() {
       if (election) {
         queryClient.invalidateQueries({ queryKey: ["/api/workers", election.workerId, "trust-elections"] });
         queryClient.invalidateQueries({ queryKey: ["/api/workers", election.workerId, "trust-elections", "current"] });
+        setLocation(`/workers/${election.workerId}/elections/list`);
       }
     },
     onError: () => toast({ title: "Error", description: "Failed to delete", variant: "destructive" }),
