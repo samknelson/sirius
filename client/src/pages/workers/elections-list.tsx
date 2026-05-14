@@ -67,7 +67,7 @@ function ElectionsListContent() {
                       {row.endYmd ? "Ended" : "Active"}
                     </Badge>
                   </TableCell>
-                  <TableCell data-testid={`text-policy-${row.id}`}>{row.policyName ?? row.policyId}</TableCell>
+                  <TableCell data-testid={`text-policy-${row.id}`}>{row.policyName ?? "Unknown policy"}</TableCell>
                   <TableCell data-testid={`text-start-${row.id}`}>{row.startYmd}</TableCell>
                   <TableCell data-testid={`text-end-${row.id}`}>{row.endYmd ?? "—"}</TableCell>
                   <TableCell data-testid={`text-benefits-${row.id}`} title={row.benefits?.map((b) => b.name).join(", ")}>

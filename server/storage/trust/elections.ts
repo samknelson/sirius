@@ -111,16 +111,16 @@ async function hydrateElections(rows: WorkerTrustElection[]): Promise<WorkerTrus
   return rows.map((election): WorkerTrustElectionView => {
     const benefits = (election.benefitIds ?? []).map((id) => ({
       id,
-      name: benefitMap.get(id) ?? id,
+      name: benefitMap.get(id) ?? 'Unknown benefit',
     }));
     const relationships = (election.relationshipIds ?? []).map((id) => {
       const rel = relMap.get(id);
-      if (!rel) return { id, label: id };
+      if (!rel) return { id, label: 'Unknown relationship' };
       const otherId = rel.worker1 === election.workerId ? rel.worker2 : rel.worker1;
       const w = workerNameMap.get(otherId);
       const name = w
-        ? [w.given, w.family].filter(Boolean).join(' ').trim() || w.displayName || otherId
-        : otherId;
+        ? [w.given, w.family].filter(Boolean).join(' ').trim() || w.displayName || 'Unknown worker'
+        : 'Unknown worker';
       const type = rel.relationTypeName || 'relation';
       return { id, label: `${name} (${type})` };
     });

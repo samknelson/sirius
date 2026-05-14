@@ -39,7 +39,7 @@ export default function ElectionDetailPage() {
     },
   });
 
-  const policyName = election?.policyName ?? election?.policyId ?? "";
+  const policyName = election?.policyName ?? "Unknown policy";
   const benefitLabels = (election?.benefits ?? []).map((b) => b.name);
   const relationLabels = (election?.relationships ?? []).map((r) => r.label);
 
