@@ -9,7 +9,7 @@ import { DispatchJobTypeLayout, useDispatchJobTypeLayout } from "@/components/la
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Loader2, Shield, Settings } from "lucide-react";
-import { PluginConfigModal } from "@/components/dispatch/PluginConfigModal";
+import { PluginConfigDialog } from "@/components/plugin-config";
 import type { EligibilityPluginMetadata, EligibilityPluginConfig, JobTypeData } from "@shared/schema";
 
 function DispatchJobTypePluginsContent() {
@@ -198,10 +198,12 @@ function DispatchJobTypePluginsContent() {
       </CardContent>
 
       {selectedPlugin && (
-        <PluginConfigModal
+        <PluginConfigDialog
           open={configModalOpen}
           onOpenChange={setConfigModalOpen}
-          plugin={selectedPlugin}
+          title={selectedPlugin.name}
+          description={selectedPlugin.description}
+          fields={selectedPlugin.configFields || []}
           currentConfig={getPluginConfig(selectedPlugin.id)}
           onSave={handleSavePluginConfig}
           isSaving={saveEligibilityMutation.isPending}

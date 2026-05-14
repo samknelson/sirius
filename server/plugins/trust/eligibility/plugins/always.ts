@@ -20,6 +20,23 @@ class AlwaysPlugin extends EligibilityPlugin<AlwaysConfig> {
     name: "Always",
     description: "Testing plugin: always returns eligible when mode=allow, always returns ineligible when mode=deny.",
     configSchema: alwaysConfigSchema,
+    configFields: [
+      {
+        name: "mode",
+        label: "Mode",
+        inputType: "select-options",
+        required: true,
+        helperText: "Allow: every worker is eligible. Deny: no worker is eligible.",
+        options: [
+          { value: "allow", label: "Allow (always eligible)" },
+          { value: "deny", label: "Deny (never eligible)" },
+        ],
+      },
+    ],
+    defaultConfig: {
+      appliesTo: ["start", "continue"],
+      mode: "deny",
+    },
   };
 
   async evaluate(

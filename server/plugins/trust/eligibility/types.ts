@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { Worker } from "@shared/schema";
+import type { PluginConfigField } from "@shared/plugin-config";
 
 export type ScanType = "start" | "continue";
 
@@ -29,6 +30,8 @@ export interface EligibilityPluginMetadata {
   description: string;
   configSchema: z.ZodSchema;
   requiresComponent?: string;
+  configFields?: PluginConfigField[];
+  defaultConfig?: Record<string, unknown>;
 }
 
 export interface EligibilityRule {

@@ -24,6 +24,21 @@ class WorkStatusPlugin extends EligibilityPlugin<WorkStatusConfig> {
     name: "Work Status",
     description: "Worker must have one of the specified work statuses to be eligible.",
     configSchema: workStatusConfigSchema,
+    configFields: [
+      {
+        name: "allowedStatusIds",
+        label: "Allowed work statuses",
+        inputType: "select-options",
+        required: true,
+        helperText: "Workers must have one of these work statuses to be eligible.",
+        selectOptionsType: "worker-ws",
+        multiSelect: true,
+      },
+    ],
+    defaultConfig: {
+      appliesTo: ["start", "continue"],
+      allowedStatusIds: [],
+    },
   };
 
   async evaluate(

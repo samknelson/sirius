@@ -1,4 +1,7 @@
 import { z } from "zod";
+import type { PluginConfigField } from "../../plugin-config";
+
+export { type PluginConfigField } from "../../plugin-config";
 
 export const eligibilityPluginConfigSchema = z.object({
   pluginId: z.string(),
@@ -12,16 +15,6 @@ export const jobTypeEligibilitySchema = z.object({
 
 export type EligibilityPluginConfig = z.infer<typeof eligibilityPluginConfigSchema>;
 export type JobTypeEligibility = z.infer<typeof jobTypeEligibilitySchema>;
-
-export interface PluginConfigField {
-  name: string;
-  label: string;
-  inputType: "select-options" | "text" | "number" | "checkbox";
-  required: boolean;
-  helperText?: string;
-  selectOptionsType?: string;
-  multiSelect?: boolean;
-}
 
 export interface EligibilityPluginMetadata {
   id: string;

@@ -19,6 +19,10 @@ class ManualPlugin extends EligibilityPlugin<ManualConfig> {
     name: "Manual",
     description: "Returns eligible if the WMB record already exists, ineligible if it doesn't. Use this to mark benefits as manually managed - the scan won't create or delete them.",
     configSchema: manualConfigSchema,
+    configFields: [],
+    defaultConfig: {
+      appliesTo: ["start", "continue"],
+    },
   };
 
   async evaluate(

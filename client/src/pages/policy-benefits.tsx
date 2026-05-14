@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -31,6 +30,8 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { PolicyLayout, usePolicyLayout } from "@/components/layouts/PolicyLayout";
 import { TrustBenefit } from "@shared/schema";
+import type { PluginConfigField } from "@shared/plugin-config";
+import { PluginConfigForm } from "@/components/plugin-config";
 import { Save, Loader2, ChevronDown, ChevronRight, Plus, Trash2, Settings } from "lucide-react";
 
 interface EligibilityRule {
@@ -48,28 +49,23 @@ interface EligibilityPlugin {
   id: string;
   name: string;
   description: string;
-}
-
-interface WorkerWs {
-  id: string;
-  name: string;
-  description: string | null;
+  configFields?: PluginConfigField[];
+  defaultConfig?: Record<string, unknown>;
 }
 
 function EligibilityRuleEditor({
   rule,
   plugins,
-  workStatuses,
   onUpdate,
   onRemove,
 }: {
   rule: EligibilityRule;
   plugins: EligibilityPlugin[];
-  workStatuses: WorkerWs[];
   onUpdate: (updatedRule: EligibilityRule) => void;
   onRemove: () => void;
 }) {
   const plugin = plugins.find((p) => p.id === rule.pluginKey);
+  const configFields = plugin?.configFields ?? [];
 
   const handleAppliesToChange = (scanType: "start" | "continue", checked: boolean) => {
     const newAppliesTo = checked
@@ -78,19 +74,8 @@ function EligibilityRuleEditor({
     onUpdate({ ...rule, appliesTo: newAppliesTo.length > 0 ? newAppliesTo : ["start"] });
   };
 
-  const handleStatusToggle = (statusId: string, checked: boolean) => {
-    const currentStatuses = (rule.config.allowedStatusIds as string[]) || [];
-    const newStatuses = checked
-      ? [...currentStatuses, statusId]
-      : currentStatuses.filter((id) => id !== statusId);
-    onUpdate({ ...rule, config: { ...rule.config, allowedStatusIds: newStatuses } });
-  };
-
-  const handleMonthsOffsetChange = (value: string) => {
-    const months = parseInt(value, 10);
-    if (!isNaN(months) && months >= 1) {
-      onUpdate({ ...rule, config: { ...rule.config, monthsOffset: months } });
-    }
+  const handleConfigChange = (newConfig: Record<string, unknown>) => {
+    onUpdate({ ...rule, config: newConfig });
   };
 
   return (
@@ -138,43 +123,13 @@ function EligibilityRuleEditor({
         </div>
       </div>
 
-      {rule.pluginKey === "work-status" && (
-        <div className="space-y-2">
-          <Label className="text-sm font-medium">Allowed work statuses:</Label>
-          <div className="grid grid-cols-2 gap-2">
-            {workStatuses.map((ws) => (
-              <div key={ws.id} className="flex items-center gap-2">
-                <Checkbox
-                  id={`ws-${ws.id}`}
-                  checked={((rule.config.allowedStatusIds as string[]) || []).includes(ws.id)}
-                  onCheckedChange={(checked) => handleStatusToggle(ws.id, checked === true)}
-                />
-                <label htmlFor={`ws-${ws.id}`} className="text-sm">
-                  {ws.name}
-                </label>
-              </div>
-            ))}
-          </div>
-          {workStatuses.length === 0 && (
-            <p className="text-sm text-muted-foreground">No work statuses configured.</p>
-          )}
-        </div>
-      )}
-
-      {rule.pluginKey === "gbhet-legal" && (
-        <div className="space-y-2">
-          <Label htmlFor="months-offset" className="text-sm font-medium">
-            Months offset (how many months prior to check):
-          </Label>
-          <Input
-            id="months-offset"
-            type="number"
-            min={1}
-            value={(rule.config.monthsOffset as number) || 4}
-            onChange={(e) => handleMonthsOffsetChange(e.target.value)}
-            className="w-24"
-          />
-        </div>
+      {configFields.length > 0 && (
+        <PluginConfigForm
+          fields={configFields}
+          value={rule.config}
+          onChange={handleConfigChange}
+          testIdPrefix={`rule-${rule.pluginKey}`}
+        />
       )}
     </div>
   );
@@ -184,13 +139,11 @@ function BenefitEligibilityConfig({
   benefit,
   rules,
   plugins,
-  workStatuses,
   onUpdateRules,
 }: {
   benefit: TrustBenefit;
   rules: EligibilityRule[];
   plugins: EligibilityPlugin[];
-  workStatuses: WorkerWs[];
   onUpdateRules: (newRules: EligibilityRule[]) => void;
 }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -200,12 +153,11 @@ function BenefitEligibilityConfig({
   const handleAddRule = () => {
     if (!selectedPlugin) return;
 
-    const defaultConfig: Record<string, unknown> = { appliesTo: ["start", "continue"] };
-    if (selectedPlugin === "work-status") {
-      defaultConfig.allowedStatusIds = [];
-    } else if (selectedPlugin === "gbhet-legal") {
-      defaultConfig.monthsOffset = 4;
-    }
+    const plugin = plugins.find((p) => p.id === selectedPlugin);
+    const defaultConfig: Record<string, unknown> = {
+      appliesTo: ["start", "continue"],
+      ...(plugin?.defaultConfig ?? {}),
+    };
 
     const newRule: EligibilityRule = {
       pluginKey: selectedPlugin,
@@ -265,7 +217,6 @@ function BenefitEligibilityConfig({
                     key={`${rule.pluginKey}-${index}`}
                     rule={rule}
                     plugins={plugins}
-                    workStatuses={workStatuses}
                     onUpdate={(updatedRule) => handleUpdateRule(index, updatedRule)}
                     onRemove={() => handleRemoveRule(index)}
                   />
@@ -352,10 +303,6 @@ function PolicyBenefitsContent() {
 
   const { data: plugins = [] } = useQuery<EligibilityPlugin[]>({
     queryKey: ["/api/eligibility-plugins"],
-  });
-
-  const { data: workStatuses = [] } = useQuery<WorkerWs[]>({
-    queryKey: ["/api/options/worker-ws"],
   });
 
   const updateMutation = useMutation({
@@ -519,7 +466,6 @@ function PolicyBenefitsContent() {
                   benefit={benefit}
                   rules={eligibilityRules[benefit.id] || []}
                   plugins={plugins}
-                  workStatuses={workStatuses}
                   onUpdateRules={(newRules) => handleUpdateRulesForBenefit(benefit.id, newRules)}
                 />
               ))}
