@@ -13,6 +13,14 @@ export async function tableExists(tableName: string): Promise<boolean> {
   return result.rows[0]?.exists === true;
 }
 
+export async function tableHasRows(tableName: string): Promise<boolean> {
+  const client = getClient();
+  const result = await client.execute(
+    sql.raw(`SELECT 1 FROM "${tableName.replace(/"/g, '""')}" LIMIT 1`)
+  );
+  return result.rows.length > 0;
+}
+
 export async function getTableColumnNames(tableName: string): Promise<string[]> {
   const client = getClient();
   const result = await client.execute(sql`

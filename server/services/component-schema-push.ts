@@ -2,6 +2,7 @@ import { getComponentById } from "../../shared/components";
 import { storage } from "../storage";
 import {
   tableExists,
+  tableHasRows,
   getTableColumnInfo,
   getTableConstraintInfo,
   getTableIndexInfo,
@@ -101,8 +102,46 @@ export async function pushComponentSchema(componentId: string): Promise<void> {
       }
       console.log(`Table ${tableName} created successfully.`);
     } else {
-      const report = await detectSchemaDrift(tableSchema, tableName);
-      if (
+      let report = await detectSchemaDrift(tableSchema, tableName);
+      const impliedConstraints = impliedAdditiveConstraintStrings(tableSchema, report.missingColumns);
+      const impliedSet = new Set(impliedConstraints);
+      const remainingConstraints = report.missingConstraints.filter((c) => !impliedSet.has(c));
+      const onlyAdditiveDrift =
+        report.missingColumns.length > 0 &&
+        report.typeMismatches.length === 0 &&
+        remainingConstraints.length === 0 &&
+        report.missingIndexes.length === 0;
+
+      if (onlyAdditiveDrift) {
+        const applyResult = await applyMissingColumns(
+          tableSchema,
+          tableName,
+          report.missingColumns,
+          allEnums,
+          emittedEnumTypes,
+        );
+        if (applyResult.unsafe.length > 0) {
+          driftReports.push({
+            tableName,
+            missingColumns: applyResult.unsafe,
+            typeMismatches: [],
+            missingConstraints: [],
+            missingIndexes: [],
+          });
+          continue;
+        }
+        report = await detectSchemaDrift(tableSchema, tableName);
+        if (
+          report.missingColumns.length ||
+          report.typeMismatches.length ||
+          report.missingConstraints.length ||
+          report.missingIndexes.length
+        ) {
+          driftReports.push(report);
+        } else {
+          console.log(`Table ${tableName} updated with missing columns and matches schema.`);
+        }
+      } else if (
         report.missingColumns.length ||
         report.typeMismatches.length ||
         report.missingConstraints.length ||
@@ -183,29 +222,11 @@ export function generateCreateStatements(
   const enumsNeeded = new Set<string>();
 
   for (const [colKey, col] of Object.entries(columns) as [string, any][]) {
-    const colDbName = col.name || colKey;
-    const sqlType = resolveSqlType(col, tableName, colKey);
-
-    collectEnumsFromColumn(col, enumsNeeded);
-
-    let colDef = `"${colDbName}" ${sqlType}`;
-
-    if (col.primary) {
-      colDef += " PRIMARY KEY";
+    const fragment = buildColumnFragment(col, colKey, tableName, enumsNeeded);
+    columnDefs.push(fragment.def);
+    if (fragment.uniqueConstraint) {
+      tableConstraints.push(fragment.uniqueConstraint);
     }
-    if (col.notNull) {
-      colDef += " NOT NULL";
-    }
-    if (col.hasDefault && col.default !== undefined) {
-      const defaultVal = formatDefault(col.default, tableName, colKey);
-      colDef += ` DEFAULT ${defaultVal}`;
-    }
-    if (col.isUnique) {
-      const ucName = col.uniqueName || `${tableName}_${colDbName}_unique`;
-      tableConstraints.push(`CONSTRAINT "${ucName}" UNIQUE ("${colDbName}")`);
-    }
-
-    columnDefs.push(colDef);
   }
 
   for (const fk of getInlineForeignKeys(tableSchema)) {
@@ -284,6 +305,148 @@ export function generateCreateStatements(
   out.push(...postStatements);
 
   return out;
+}
+
+function impliedAdditiveConstraintStrings(tableSchema: any, missingColumns: string[]): string[] {
+  const columns = getTableColumns(tableSchema);
+  const missingSet = new Set(missingColumns);
+  const out: string[] = [];
+  for (const [key, col] of Object.entries(columns) as [string, any][]) {
+    const dbName = col.name || key;
+    if (!missingSet.has(dbName)) continue;
+    if (col.isUnique) {
+      const name = col.uniqueName ?? "(unnamed)";
+      out.push(`UNIQUE ${name}: (${dbName})`);
+    }
+    if (col.primary) {
+      out.push(`PRIMARY KEY (unnamed): (${dbName})`);
+    }
+  }
+  return out;
+}
+
+async function applyMissingColumns(
+  tableSchema: any,
+  tableName: string,
+  missingColumnNames: string[],
+  allEnums: Map<string, string[]>,
+  emittedEnumTypes: Set<string>,
+): Promise<{ unsafe: string[] }> {
+  const columns = getTableColumns(tableSchema);
+  const missingSet = new Set(missingColumnNames);
+  const unsafe: string[] = [];
+  const toApply: {
+    colDbName: string;
+    def: string;
+    uniqueConstraint?: string;
+    enumsNeeded: Set<string>;
+  }[] = [];
+
+  let hasRows: boolean | null = null;
+  const ensureHasRows = async (): Promise<boolean> => {
+    if (hasRows === null) {
+      hasRows = await tableHasRows(tableName);
+    }
+    return hasRows;
+  };
+
+  for (const [colKey, col] of Object.entries(columns) as [string, any][]) {
+    const colDbName = col.name || colKey;
+    if (!missingSet.has(colDbName)) continue;
+
+    const enumsForCol = new Set<string>();
+    const fragment = buildColumnFragment(col, colKey, tableName, enumsForCol);
+
+    const requiresDefault =
+      col.notNull && !(col.hasDefault && col.default !== undefined);
+    if (requiresDefault) {
+      const populated = await ensureHasRows();
+      if (populated) {
+        unsafe.push(
+          `${colDbName} is NOT NULL with no default and table is non-empty; add a default or run a manual migration`,
+        );
+        continue;
+      }
+    }
+
+    toApply.push({
+      colDbName,
+      def: fragment.def,
+      uniqueConstraint: fragment.uniqueConstraint,
+      enumsNeeded: enumsForCol,
+    });
+  }
+
+  if (unsafe.length > 0) {
+    return { unsafe };
+  }
+
+  const enumsAcrossAdds = new Set<string>();
+  for (const item of toApply) {
+    for (const e of item.enumsNeeded) enumsAcrossAdds.add(e);
+  }
+  for (const enumName of enumsAcrossAdds) {
+    if (emittedEnumTypes.has(enumName)) continue;
+    const values = allEnums.get(enumName);
+    if (!values) {
+      throw new Error(
+        `[component-schema-push] Column on table ${tableName} references pgEnum "${enumName}" which was not found in the schema module.`,
+      );
+    }
+    emittedEnumTypes.add(enumName);
+    console.log(`[component-schema-push] create_type for ${tableName} (enum ${enumName})`);
+    await storage.rawSql.execute(renderCreateEnumType(enumName, values));
+  }
+
+  for (const item of toApply) {
+    console.log(`[component-schema-push] alter table add column ${tableName}.${item.colDbName}`);
+    await storage.rawSql.execute(`ALTER TABLE "${tableName}" ADD COLUMN ${item.def}`);
+  }
+
+  for (const item of toApply) {
+    if (!item.uniqueConstraint) continue;
+    console.log(
+      `[component-schema-push] alter table add unique constraint ${tableName}.${item.colDbName}`,
+    );
+    await storage.rawSql.execute(
+      `ALTER TABLE "${tableName}" ADD ${item.uniqueConstraint}`,
+    );
+  }
+
+  return { unsafe: [] };
+}
+
+function buildColumnFragment(
+  col: any,
+  colKey: string,
+  tableName: string,
+  enumsNeeded: Set<string>,
+): { def: string; uniqueConstraint?: string; colDbName: string } {
+  const colDbName = col.name || colKey;
+  const sqlType = resolveSqlType(col, tableName, colKey);
+
+  collectEnumsFromColumn(col, enumsNeeded);
+
+  let colDef = `"${colDbName}" ${sqlType}`;
+
+  if (col.primary) {
+    colDef += " PRIMARY KEY";
+  }
+  if (col.notNull) {
+    colDef += " NOT NULL";
+  }
+  if (col.hasDefault && col.default !== undefined) {
+    const defaultVal = formatDefault(col.default, tableName, colKey);
+    colDef += ` DEFAULT ${defaultVal}`;
+  }
+
+  let uniqueConstraint: string | undefined;
+  if (col.isUnique) {
+    const ucName = col.uniqueName || `${tableName}_${colDbName}_unique`;
+    uniqueConstraint = `CONSTRAINT "${ucName}" UNIQUE ("${colDbName}")`;
+  }
+
+  return { def: colDef, uniqueConstraint, colDbName };
 }
 
 function resolveSqlType(col: any, tableName: string, colKey: string): string {
