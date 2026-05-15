@@ -1,5 +1,5 @@
 import { CronJobHandler, CronJobContext, CronJobResult } from "../registry";
-import { createWorkerDispatchEbaStorage, workerDispatchEbaLoggingConfig } from "../../storage/worker-dispatch-eba";
+import { createWorkerDispatchEbaStorage, workerDispatchEbaLoggingConfig } from "../../storage/dispatch/worker-eba";
 import { withStorageLogging } from "../../storage/middleware/logging";
 
 export const dispatchEbaCleanupHandler: CronJobHandler = {

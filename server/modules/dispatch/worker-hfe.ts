@@ -1,10 +1,10 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { insertWorkerDispatchHfeSchema } from "@shared/schema";
-import { createWorkerDispatchHfeStorage, workerDispatchHfeLoggingConfig } from "../storage/worker-dispatch-hfe";
-import { withStorageLogging } from "../storage/middleware/logging";
-import { storage as mainStorage } from "../storage";
+import { createWorkerDispatchHfeStorage, workerDispatchHfeLoggingConfig } from "../../storage/dispatch/worker-hfe";
+import { withStorageLogging } from "../../storage/middleware/logging";
+import { storage as mainStorage } from "../../storage";
 import { z } from "zod";
-import { requireComponent } from "./components";
+import { requireComponent } from "../components";
 
 type RequireAccess = (policy: string, getEntityId?: (req: Request) => string | Promise<string | undefined> | undefined) => (req: Request, res: Response, next: () => void) => void;
 type RequireAuth = (req: Request, res: Response, next: () => void) => void;

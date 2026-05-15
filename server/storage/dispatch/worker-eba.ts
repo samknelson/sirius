@@ -1,5 +1,5 @@
-import { createNoopValidator } from './utils/validation';
-import { getClient } from './transaction-context';
+import { createNoopValidator } from '../utils/validation';
+import { getClient } from '../transaction-context';
 import { 
   workerDispatchEba,
   workers,
@@ -8,8 +8,8 @@ import {
   type InsertWorkerDispatchEba
 } from "@shared/schema";
 import { eq, and, inArray, lt } from "drizzle-orm";
-import { type StorageLoggingConfig } from "./middleware/logging";
-import { eventBus, EventType } from "../services/event-bus";
+import { type StorageLoggingConfig } from "../middleware/logging";
+import { eventBus, EventType } from "../../services/event-bus";
 
 export const validate = createNoopValidator();
 

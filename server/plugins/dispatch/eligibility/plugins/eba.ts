@@ -1,6 +1,6 @@
 import { logger } from "../../../../logger";
-import { createWorkerDispatchEbaStorage } from "../../../../storage/worker-dispatch-eba";
-import { createWorkerDispatchEligDenormStorage } from "../../../../storage/worker-dispatch-elig-denorm";
+import { createWorkerDispatchEbaStorage } from "../../../../storage/dispatch/worker-eba";
+import { createWorkerDispatchEligDenormStorage } from "../../../../storage/dispatch/worker-elig-denorm";
 import { createDispatchJobStorage } from "../../../../storage/dispatch/jobs";
 import type { DispatchEligPlugin, EligibilityCondition, EligibilityQueryContext } from "../registry";
 import { EventType } from "../../../../services/event-bus";

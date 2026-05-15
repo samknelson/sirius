@@ -1,5 +1,5 @@
 import { CronJobHandler, CronJobContext, CronJobResult } from "../registry";
-import { createWorkerDispatchHfeStorage, workerDispatchHfeLoggingConfig } from "../../storage/worker-dispatch-hfe";
+import { createWorkerDispatchHfeStorage, workerDispatchHfeLoggingConfig } from "../../storage/dispatch/worker-hfe";
 import { withStorageLogging } from "../../storage/middleware/logging";
 
 export const deleteExpiredHfeHandler: CronJobHandler = {

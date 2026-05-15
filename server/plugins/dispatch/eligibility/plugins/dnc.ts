@@ -1,6 +1,6 @@
 import { logger } from "../../../../logger";
-import { createWorkerDispatchDncStorage } from "../../../../storage/worker-dispatch-dnc";
-import { createWorkerDispatchEligDenormStorage } from "../../../../storage/worker-dispatch-elig-denorm";
+import { createWorkerDispatchDncStorage } from "../../../../storage/dispatch/worker-dnc";
+import { createWorkerDispatchEligDenormStorage } from "../../../../storage/dispatch/worker-elig-denorm";
 import type { DispatchEligPlugin, EligibilityCondition, EligibilityQueryContext } from "../registry";
 import { EventType } from "../../../../services/event-bus";
 

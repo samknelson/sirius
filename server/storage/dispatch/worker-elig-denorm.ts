@@ -1,5 +1,5 @@
-import { createNoopValidator } from './utils/validation';
-import { getClient } from './transaction-context';
+import { createNoopValidator } from '../utils/validation';
+import { getClient } from '../transaction-context';
 import { workerDispatchEligDenorm, type InsertWorkerDispatchEligDenorm, type WorkerDispatchEligDenorm } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 

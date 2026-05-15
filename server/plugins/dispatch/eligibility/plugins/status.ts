@@ -1,6 +1,6 @@
 import { logger } from "../../../../logger";
-import { createWorkerDispatchStatusStorage } from "../../../../storage/worker-dispatch-status";
-import { createWorkerDispatchEligDenormStorage } from "../../../../storage/worker-dispatch-elig-denorm";
+import { createWorkerDispatchStatusStorage } from "../../../../storage/dispatch/worker-status";
+import { createWorkerDispatchEligDenormStorage } from "../../../../storage/dispatch/worker-elig-denorm";
 import type { DispatchEligPlugin, EligibilityCondition, EligibilityQueryContext } from "../registry";
 import { EventType } from "../../../../services/event-bus";
 import { isComponentEnabledSync, isCacheInitialized } from "../../../../services/component-cache";

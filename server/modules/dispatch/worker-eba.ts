@@ -1,10 +1,10 @@
 import type { Express, Request, Response } from "express";
-import { createWorkerDispatchEbaStorage, workerDispatchEbaLoggingConfig } from "../storage/worker-dispatch-eba";
-import { withStorageLogging } from "../storage/middleware/logging";
+import { createWorkerDispatchEbaStorage, workerDispatchEbaLoggingConfig } from "../../storage/dispatch/worker-eba";
+import { withStorageLogging } from "../../storage/middleware/logging";
 import { z } from "zod";
-import { requireComponent } from "./components";
-import { getEbaSettings } from "./dispatch/eba-config";
-import { storage as appStorage } from "../storage";
+import { requireComponent } from "../components";
+import { getEbaSettings } from "./eba-config";
+import { storage as appStorage } from "../../storage";
 
 type RequireAccess = (policy: string, getEntityId?: (req: Request) => string | Promise<string | undefined> | undefined) => (req: Request, res: Response, next: () => void) => void;
 type RequireAuth = (req: Request, res: Response, next: () => void) => void;

@@ -1,7 +1,7 @@
 import { logger } from "../../../../logger";
 import { createDispatchStorage } from "../../../../storage/dispatch/dispatches";
 import { createDispatchJobStorage } from "../../../../storage/dispatch/jobs";
-import { createWorkerDispatchEligDenormStorage } from "../../../../storage/worker-dispatch-elig-denorm";
+import { createWorkerDispatchEligDenormStorage } from "../../../../storage/dispatch/worker-elig-denorm";
 import type { DispatchEligPlugin, EligibilityCondition, EligibilityQueryContext } from "../registry";
 import { EventType } from "../../../../services/event-bus";
 import { isComponentEnabledSync, isCacheInitialized } from "../../../../services/component-cache";

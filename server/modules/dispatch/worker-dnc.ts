@@ -1,11 +1,11 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { insertWorkerDispatchDncSchema } from "@shared/schema";
-import { createWorkerDispatchDncStorage, workerDispatchDncLoggingConfig } from "../storage/worker-dispatch-dnc";
-import { withStorageLogging } from "../storage/middleware/logging";
-import { storage as mainStorage } from "../storage";
+import { createWorkerDispatchDncStorage, workerDispatchDncLoggingConfig } from "../../storage/dispatch/worker-dnc";
+import { withStorageLogging } from "../../storage/middleware/logging";
+import { storage as mainStorage } from "../../storage";
 import { z } from "zod";
-import { requireComponent } from "./components";
-import type { RequireAccessOptions } from "../services/access-policy-evaluator";
+import { requireComponent } from "../components";
+import type { RequireAccessOptions } from "../../services/access-policy-evaluator";
 
 type RequireAccess = (
   policy: string,

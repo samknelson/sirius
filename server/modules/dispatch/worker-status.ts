@@ -1,8 +1,8 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { insertWorkerDispatchStatusSchema, workerDispatchStatusEnum } from "@shared/schema";
-import { createWorkerDispatchStatusStorage, workerDispatchStatusLoggingConfig } from "../storage/worker-dispatch-status";
-import { withStorageLogging } from "../storage/middleware/logging";
-import { requireComponent } from "./components";
+import { createWorkerDispatchStatusStorage, workerDispatchStatusLoggingConfig } from "../../storage/dispatch/worker-status";
+import { withStorageLogging } from "../../storage/middleware/logging";
+import { requireComponent } from "../components";
 import { z } from "zod";
 
 type RequireAccess = (policy: string, getEntityId?: (req: Request) => string | Promise<string | undefined> | undefined) => (req: Request, res: Response, next: () => void) => void;
