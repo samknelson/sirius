@@ -1,6 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
-import type { DatabaseStorage } from "../storage";
-import { requireAccess } from "../services/access-policy-evaluator";
+import type { DatabaseStorage } from "../../storage";
+import { requireAccess } from "../../services/access-policy-evaluator";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 

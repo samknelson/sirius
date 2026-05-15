@@ -1,5 +1,5 @@
 import type { Express } from "express";
-import { storage } from "../storage";
+import { storage } from "../../storage";
 
 export function registerBootstrapRoutes(app: Express) {
   // GET /api/bootstrap/needed - Check if bootstrap is needed (no users in database)

@@ -1,5 +1,5 @@
 import type { Express } from "express";
-import { storage } from "../storage";
+import { storage } from "../../storage";
 import { z } from "zod";
 
 const logsQuerySchema = z.object({
