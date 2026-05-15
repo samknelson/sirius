@@ -931,6 +931,13 @@ export {
 export * from "./schema/sitespecific/gbhet-pension/schema";
 
 export {
+  sitespecificFreemanCrewleads,
+  insertFreemanCrewleadSchema,
+  type FreemanCrewlead,
+  type InsertFreemanCrewlead,
+} from "./schema/sitespecific/freeman/schema";
+
+export {
   optionsSkills,
   insertOptionsSkillsSchema,
   type OptionsSkill,
