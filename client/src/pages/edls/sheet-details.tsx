@@ -359,7 +359,7 @@ function EdlsSheetDetailsContent() {
                             data-testid={`crew-lead-${crew.id}`}
                           >
                             <UserCheck className="h-4 w-4" />
-                            Crew Lead: {lead ? lead.name : `Unknown (${leadId})`}
+                            Crew Lead: {lead ? lead.name : "Unknown"}
                           </div>
                         );
                       })()}
