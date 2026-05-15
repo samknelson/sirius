@@ -11,7 +11,7 @@ import { registerVariableRoutes } from "./modules/variables";
 import { registerContactPostalRoutes } from "./modules/contact-postal";
 import { registerPhoneNumberRoutes } from "./modules/phone-numbers";
 import { registerCommRoutes } from "./modules/comm";
-import { registerEmployerContactRoutes } from "./modules/employer-contacts";
+import { registerEmployerContactRoutes } from "./modules/employers/contacts";
 import { registerTrustBenefitsRoutes } from "./modules/trust/benefits";
 import { registerTrustProvidersRoutes } from "./modules/trust/providers";
 import { registerTrustProviderContactRoutes } from "./modules/trust/provider/contacts";
@@ -29,10 +29,10 @@ import {
   registerComponentRoutes,
   getEnabledComponentIds,
 } from "./modules/components";
-import { registerEmployerUserSettingsRoutes } from "./modules/employer-user-settings";
+import { registerEmployerUserSettingsRoutes } from "./modules/employers/user-settings";
 import { registerTrustProviderUserSettingsRoutes } from "./modules/trust/provider/user-settings";
 import { registerWorkerUserSettingsRoutes } from "./modules/worker-user-settings";
-import { registerWorkerUsersRoutes } from "./modules/workers/users";
+import { registerWorkerUsersRoutes } from "./modules/worker-users";
 import { registerWizardRoutes } from "./modules/wizards";
 import { registerEmployerOnboardingWizardRoutes } from "./modules/employer-onboarding-wizard";
 import { registerFileRoutes } from "./modules/files";
@@ -61,8 +61,8 @@ import { registerSftpClientDestinationRoutes } from "./modules/sftp-client-desti
 import { registerTrustProviderEdiRoutes } from "./modules/trust/provider/edi";
 import { registerBulkMessageRoutes } from "./modules/bulk/messages";
 import { registerEmployerComplianceRoutes } from "./modules/employer-compliance";
-import { registerEmployerRoutes } from "./modules/employers";
-import { registerEmployerPolicyHistoryRoutes } from "./modules/employer-policy-history";
+import { registerEmployerRoutes } from "./modules/employers/employers";
+import { registerEmployerPolicyHistoryRoutes } from "./modules/employers/policy-history";
 import { registerWorkerBenefitsScanRoutes } from "./modules/worker-benefits-scan";
 import { registerWmbScanQueueRoutes } from "./modules/wmb-scan-queue";
 import { registerStaffAlertRoutes } from "./modules/staff-alerts";
@@ -79,17 +79,17 @@ import { registerDispatchJobsRoutes } from "./modules/dispatch/jobs";
 import { registerDispatchJobGroupsRoutes } from "./modules/dispatch/job-groups";
 import { registerFacilityRoutes } from "./modules/facility/facilities";
 import { registerDispatchesRoutes } from "./modules/dispatch/dispatches";
-import { registerWorkerDispatchStatusRoutes } from "./modules/dispatch/worker-status";
-import { registerWorkerDispatchDncRoutes } from "./modules/dispatch/worker-dnc";
-import { registerWorkerDispatchHfeRoutes } from "./modules/dispatch/worker-hfe";
-import { registerWorkerDispatchEbaRoutes } from "./modules/dispatch/worker-eba";
+import { registerWorkerDispatchStatusRoutes } from "./modules/worker-dispatch-status";
+import { registerWorkerDispatchDncRoutes } from "./modules/worker-dispatch-dnc";
+import { registerWorkerDispatchHfeRoutes } from "./modules/worker-dispatch-hfe";
+import { registerWorkerDispatchEbaRoutes } from "./modules/worker-dispatch-eba";
 import { registerWorkerBansRoutes } from "./modules/worker-bans";
 import { registerWorkerSkillsRoutes } from "./modules/workers/skills";
 import { registerWorkerRelationsRoutes } from "./modules/workers/relations";
-import { registerWorkerTrustElectionsRoutes } from "./modules/trust/elections";
-import { registerWorkerTosRoutes } from "./modules/workers/tos";
+import { registerWorkerTrustElectionsRoutes } from "./modules/workers/trust-elections";
+import { registerWorkerTosRoutes } from "./modules/worker-tos";
 import { registerWorkerCertificationsRoutes } from "./modules/workers/certifications";
-import { registerWorkerRatingsRoutes } from "./modules/workers/ratings";
+import { registerWorkerRatingsRoutes } from "./modules/worker-ratings";
 import { requireComponent } from "./modules/components";
 import { registerWorkerStewardAssignmentRoutes } from "./modules/worker-steward-assignments";
 import { registerBtuCsgRoutes } from "./modules/sitespecific/btu/csg";
@@ -103,7 +103,6 @@ import { registerBtuBuildingRepImportRoutes } from "./modules/sitespecific/btu/b
 import { registerBtuPoliticalRoutes } from "./modules/sitespecific/btu/political";
 import { registerT631ClientFetchRoutes } from "./modules/sitespecific/t631/client/fetch";
 import { registerFreemanSecondShiftRoutes } from "./modules/sitespecific/freeman/second-shift";
-import { registerFreemanCrewleadsRoutes } from "./modules/sitespecific/freeman/crewleads";
 import { registerEdlsSheetsRoutes } from "./modules/edls/sheets";
 import { registerEdlsTosRoutes } from "./modules/edls/tos";
 import { registerEdlsTasksRoutes } from "./modules/edls/tasks";
@@ -112,7 +111,7 @@ import { registerWebServiceBundle } from "./modules/webservices";
 import { setupEdlsRoutes, EDLS_BUNDLE_CODE } from "./modules/webservices/edls";
 import { registerWebServiceAdminRoutes } from "./modules/webservices/admin";
 import { registerTerminologyRoutes } from "./modules/terminology";
-import { registerCompaniesRoutes } from "./modules/companies";
+import { registerCompaniesRoutes } from "./modules/employers/companies";
 import { registerPoliciesRoutes } from "./modules/policies";
 import { requireAccess } from "./services/access-policy-evaluator";
 import { addressValidationService } from "./services/address-validation";
@@ -1755,7 +1754,6 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register Freeman Second Shift routes
   registerFreemanSecondShiftRoutes(app, requireAuth, requireAccess);
-  registerFreemanCrewleadsRoutes(app, requireAuth, requirePermission, requireAccess);
 
   // Register HTA routes
   registerHtaRoutes(app, requireAuth, requirePermission);

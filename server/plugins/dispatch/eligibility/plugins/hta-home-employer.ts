@@ -2,7 +2,7 @@ import { logger } from "../../../../logger";
 import { createWorkerDispatchEligDenormStorage } from "../../../../storage/dispatch/worker-elig-denorm";
 import { createVariableStorage } from "../../../../storage/variables";
 import { createDispatchJobStorage } from "../../../../storage/dispatch/jobs";
-import { createEmployerCompanyStorage } from "../../../../storage/companies";
+import { createEmployerCompanyStorage } from "../../../../storage/employers/companies";
 import type { DispatchEligPlugin, EligibilityCondition, EligibilityQueryContext } from "../registry";
 import { EventType } from "../../../../services/event-bus";
 import { isComponentEnabledSync, isCacheInitialized } from "../../../../services/component-cache";

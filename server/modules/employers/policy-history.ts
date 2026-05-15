@@ -1,5 +1,5 @@
 import type { Express, Request, Response } from "express";
-import { IStorage } from "../storage";
+import { IStorage } from "../../storage";
 import { insertEmployerPolicyHistorySchema } from "@shared/schema";
 import { z } from "zod";
 

@@ -1,8 +1,8 @@
-import { getClient } from './transaction-context';
+import { getClient } from '../transaction-context';
 import { companies, type Company, type InsertCompany, employerCompanies, type EmployerCompany, type InsertEmployerCompany } from "@shared/schema/employer/company-schema";
 import { employers } from "@shared/schema";
 import { eq, inArray } from "drizzle-orm";
-import { type StorageLoggingConfig } from "./middleware/logging";
+import { type StorageLoggingConfig } from "../middleware/logging";
 
 export interface CompanyStorage {
   getAll(): Promise<Company[]>;

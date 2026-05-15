@@ -1,8 +1,8 @@
 import type { Express, Request, Response, NextFunction } from "express";
-import { storage } from "../storage";
+import { storage } from "../../storage";
 import { insertCompanySchema } from "@shared/schema/employer/company-schema";
-import { requireComponent } from "./components";
-import { requireAccess } from "../services/access-policy-evaluator";
+import { requireComponent } from "../components";
+import { requireAccess } from "../../services/access-policy-evaluator";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 

@@ -1,8 +1,8 @@
-import { getClient } from './transaction-context';
+import { getClient } from '../transaction-context';
 import { employerContacts, contacts, optionsEmployerContactType, employers, users, type EmployerContact, type InsertEmployerContact, type Contact, type Employer } from "@shared/schema";
 import { eq, and, or, like, ilike, sql, inArray } from "drizzle-orm";
-import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
-import type { ContactsStorage } from "./contacts";
+import { withStorageLogging, type StorageLoggingConfig } from "../middleware/logging";
+import type { ContactsStorage } from "../contacts";
 
 export interface EmployerContactStorage {
   create(data: { contactId: string; employerId: string; contactTypeId?: string | null }): Promise<EmployerContact>;
