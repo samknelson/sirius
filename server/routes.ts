@@ -86,7 +86,7 @@ import { registerWorkerDispatchEbaRoutes } from "./modules/dispatch/worker-eba";
 import { registerWorkerBansRoutes } from "./modules/worker-bans";
 import { registerWorkerSkillsRoutes } from "./modules/workers/skills";
 import { registerWorkerRelationsRoutes } from "./modules/workers/relations";
-import { registerWorkerTrustElectionsRoutes } from "./modules/workers/trust-elections";
+import { registerWorkerTrustElectionsRoutes } from "./modules/trust/elections";
 import { registerWorkerTosRoutes } from "./modules/worker-tos";
 import { registerWorkerCertificationsRoutes } from "./modules/workers/certifications";
 import { registerWorkerRatingsRoutes } from "./modules/worker-ratings";
