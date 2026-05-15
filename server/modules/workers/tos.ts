@@ -1,8 +1,8 @@
 import type { Express, Request, Response } from "express";
 import { z } from "zod";
-import { storage } from "../storage";
-import { requireComponent } from "./components";
-import { WorkerTosValidationError, WorkerTosConflictError } from "../storage/worker-tos";
+import { storage } from "../../storage";
+import { requireComponent } from "../components";
+import { WorkerTosValidationError, WorkerTosConflictError } from "../../storage/workers/tos";
 
 type RequireAccess = (policy: string, getEntityId?: (req: Request) => string | Promise<string | undefined> | undefined) => (req: Request, res: Response, next: () => void) => void;
 type RequireAuth = (req: Request, res: Response, next: () => void) => void;

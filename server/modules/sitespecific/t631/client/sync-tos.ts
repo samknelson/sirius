@@ -3,7 +3,7 @@ import { logger } from "../../../../logger";
 import { optionsWorkerIdType } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { db } from "../../../../storage/db";
-import { WorkerTosConflictError } from "../../../../storage/worker-tos";
+import { WorkerTosConflictError } from "../../../../storage/workers/tos";
 
 interface T631TosNode {
   nid?: unknown;

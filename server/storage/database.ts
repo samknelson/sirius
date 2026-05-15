@@ -92,9 +92,9 @@ import { type BtuSchoolAttributesStorage, createBtuSchoolAttributesStorage } fro
 import { type WorkerBanStorage, createWorkerBanStorage, workerBanLoggingConfig } from "./worker-bans";
 import { type WorkerDispatchDncStorage, createWorkerDispatchDncStorage, workerDispatchDncLoggingConfig } from "./dispatch/worker-dnc";
 import { type WorkerSkillStorage, createWorkerSkillStorage, workerSkillLoggingConfig } from "./workers/skills";
-import { type WorkerTosStorage, createWorkerTosStorage, workerTosLoggingConfig } from "./worker-tos";
+import { type WorkerTosStorage, createWorkerTosStorage, workerTosLoggingConfig } from "./workers/tos";
 import { type WorkerCertificationStorage, createWorkerCertificationStorage, workerCertificationLoggingConfig } from "./workers/certifications";
-import { type WorkerRatingStorage, createWorkerRatingStorage, workerRatingLoggingConfig } from "./worker-ratings";
+import { type WorkerRatingStorage, createWorkerRatingStorage, workerRatingLoggingConfig } from "./workers/ratings";
 import { type WorkerRelationsStorage, createWorkerRelationsStorage, workerRelationsLoggingConfig } from "./workers/relations";
 import { type WorkerTrustElectionsStorage, createWorkerTrustElectionsStorage, workerTrustElectionsLoggingConfig } from "./trust/elections";
 import { type EdlsSheetsStorage, createEdlsSheetsStorage, edlsSheetsLoggingConfig } from "./edls/sheets";

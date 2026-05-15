@@ -1,4 +1,4 @@
-import { getClient } from './transaction-context';
+import { getClient } from '../transaction-context';
 import {
   workerTos,
   workers,
@@ -7,7 +7,7 @@ import {
   type InsertWorkerTos,
 } from "@shared/schema";
 import { eq, and, desc, isNull, ne } from "drizzle-orm";
-import { type StorageLoggingConfig } from "./middleware/logging";
+import { type StorageLoggingConfig } from "../middleware/logging";
 
 export class WorkerTosValidationError extends Error {
   constructor(message: string) {

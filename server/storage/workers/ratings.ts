@@ -1,4 +1,4 @@
-import { getClient } from './transaction-context';
+import { getClient } from '../transaction-context';
 import { 
   workerRatings,
   optionsWorkerRatings,
@@ -9,7 +9,7 @@ import {
   type OptionsWorkerRating
 } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
-import { type StorageLoggingConfig } from "./middleware/logging";
+import { type StorageLoggingConfig } from "../middleware/logging";
 
 export interface WorkerRatingWithDetails extends WorkerRating {
   ratingType?: OptionsWorkerRating | null;
