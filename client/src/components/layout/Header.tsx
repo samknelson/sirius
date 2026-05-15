@@ -478,6 +478,18 @@ export default function Header() {
                         </Button>
                       </Link>
                     )}
+                    {hasComponent("sitespecific.freeman") && edlsAnyPolicy?.access?.granted && (
+                      <Link href="/edls/freeman/crewleads" onClick={() => setMobileMenuOpen(false)}>
+                        <Button
+                          variant={location === "/edls/freeman/crewleads" ? "default" : "ghost"}
+                          className="w-full justify-start pl-8"
+                          data-testid="mobile-nav-edls-freeman-crewleads"
+                        >
+                          <UserCog className="h-4 w-4 mr-2" />
+                          Crew Leads
+                        </Button>
+                      </Link>
+                    )}
                   </>
                 )}
 
@@ -1322,6 +1334,16 @@ export default function Header() {
                         <div className="flex items-center cursor-pointer" data-testid="menu-edls-tos">
                           <Stethoscope className="h-4 w-4 mr-2" />
                           Absences
+                        </div>
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
+                  {hasComponent("sitespecific.freeman") && edlsAnyPolicy?.access?.granted && (
+                    <DropdownMenuItem asChild>
+                      <Link href="/edls/freeman/crewleads" className="w-full">
+                        <div className="flex items-center cursor-pointer" data-testid="menu-edls-freeman-crewleads">
+                          <UserCog className="h-4 w-4 mr-2" />
+                          Crew Leads
                         </div>
                       </Link>
                     </DropdownMenuItem>
