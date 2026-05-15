@@ -1,5 +1,5 @@
 import { formatYmd } from "@shared/utils/date";
-import { Calendar, Users, FileText, Clock, MapPin, Lock, User, UserX, Building, ClipboardList, Layers, Factory } from "lucide-react";
+import { Calendar, Users, FileText, Clock, MapPin, Lock, User, UserX, Building, ClipboardList, Layers, Factory, UserCheck } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -10,7 +10,9 @@ import { Label } from "@/components/ui/label";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { useSearch, useLocation } from "wouter";
+import { useAuth } from "@/contexts/AuthContext";
 import type { EdlsSheetStatus, EdlsCrew, AssignmentExtra } from "@shared/schema";
+import type { FreemanCrewlead } from "@shared/schema/sitespecific/freeman/schema";
 
 interface EdlsCrewWithRelations extends EdlsCrew {
   supervisorUser?: UserInfo;
@@ -97,6 +99,8 @@ function EdlsSheetDetailsContent() {
   const { sheet } = useEdlsSheetLayout();
   const sheetData = (sheet.data as Record<string, any>) || {};
   const hasTrashLock = !!sheetData.trashLock;
+  const { hasComponent } = useAuth();
+  const freemanEnabled = hasComponent("sitespecific.freeman");
   const search = useSearch();
   const [location, navigate] = useLocation();
   const selectedCrewId = new URLSearchParams(search).get("crew") || "all";
@@ -111,6 +115,16 @@ function EdlsSheetDetailsContent() {
     const qs = params.toString();
     navigate(qs ? `${location}?${qs}` : location, { replace: false });
   };
+
+  const { data: freemanCrewLeads = [] } = useQuery<FreemanCrewlead[]>({
+    queryKey: ["/api/sitespecific/freeman/crewleads"],
+    enabled: freemanEnabled,
+  });
+
+  const freemanCrewLeadMap = useMemo(
+    () => new Map(freemanCrewLeads.map((cl) => [cl.id, cl])),
+    [freemanCrewLeads],
+  );
 
   const { data: crews = [], isLoading: crewsLoading } = useQuery<EdlsCrewWithRelations[]>({
     queryKey: ["/api/edls/sheets", sheet.id, "crews"],
@@ -334,6 +348,21 @@ function EdlsSheetDetailsContent() {
                           Task: {crew.task.name}
                         </div>
                       )}
+                      {freemanEnabled && (() => {
+                        const leadId = (crew.data as Record<string, unknown> | null | undefined)
+                          ?.freemanCrewLeadId as string | undefined;
+                        if (!leadId) return null;
+                        const lead = freemanCrewLeadMap.get(leadId);
+                        return (
+                          <div
+                            className="flex items-center gap-1"
+                            data-testid={`crew-lead-${crew.id}`}
+                          >
+                            <UserCheck className="h-4 w-4" />
+                            Crew Lead: {lead ? lead.name : `Unknown (${leadId})`}
+                          </div>
+                        );
+                      })()}
                     </div>
                     {crew.workerCount > 0 && (() => {
                       const leftCount = Math.ceil(crew.workerCount / 2);
