@@ -131,7 +131,8 @@ function runDrizzleKit(extraArgs: string[]): Promise<number> {
 }
 
 async function main() {
-  if (!process.env.DATABASE_URL) {
+  const databaseUrl = process.env.NEON_DATABASE_URL ?? process.env.DATABASE_URL;
+  if (!databaseUrl) {
     throw new Error("DATABASE_URL is not set");
   }
 
@@ -140,7 +141,7 @@ async function main() {
   cleanupRuntimeFiles();
 
   const extraArgs = process.argv.slice(2);
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  const pool = new Pool({ connectionString: databaseUrl });
 
   let disabledTables: string[] = [];
   try {
