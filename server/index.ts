@@ -1,5 +1,7 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { createServer } from "http";
+import { existsSync, rmSync } from "fs";
+import { resolve } from "path";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { initializePermissions } from "@shared/permissions";
@@ -9,7 +11,7 @@ import { setupAuth } from "./auth";
 import { initAccessControl, registerEntityLoader } from "./services/access-policy-evaluator";
 import { storage } from "./storage";
 import { captureRequestContext } from "./middleware/request-context";
-import { registerCronJob, bootstrapCronJobs, cronScheduler, deleteExpiredReportsHandler, deleteOldCronLogsHandler, processWmbBatchHandler, deleteExpiredFloodEventsHandler, deleteExpiredHfeHandler, sweepExpiredBanEligHandler, workerBanActiveScanHandler, workerCertificationActiveScanHandler, logCleanupHandler, dispatchEbaCleanupHandler, dispatchJobPollHandler, bulkDeliverHandler, t631DispatchJobGroupFetchHandler, t631FacilityFetchHandler, gbhetPensionSlaReconcileHandler, gbhetPensionSharesReconcileHandler } from "./cron";
+import { registerCronJob, bootstrapCronJobs, cronScheduler, deleteExpiredReportsHandler, deleteOldCronLogsHandler, processWmbBatchHandler, deleteExpiredFloodEventsHandler, deleteExpiredHfeHandler, sweepExpiredBanEligHandler, workerBanActiveScanHandler, workerCertificationActiveScanHandler, logCleanupHandler, dispatchEbaCleanupHandler, dispatchJobPollHandler, bulkDeliverHandler, t631DispatchJobGroupFetchHandler, t631FacilityFetchHandler, t631TosFetchHandler, gbhetPensionSlaReconcileHandler, gbhetPensionSharesReconcileHandler } from "./cron";
 import { initDispatchSeniorityReset } from "./services/dispatch-seniority-reset";
 import { memberStatusScanHandler } from "./cron/jobs/memberStatusScan";
 import { loadComponentCache } from "./services/component-cache";
@@ -19,13 +21,13 @@ import { initializeWebSocket } from "./services/websocket";
 import { getSession } from "./auth";
 
 // Import charge plugins module to trigger registration
-// Note: Individual plugins are registered in ./charge-plugins/index.ts
-import "./charge-plugins";
-import { registerChargePluginListeners } from "./charge-plugins";
+// Note: Individual plugins are registered in ./plugins/ledger/charge/index.ts
+import "./plugins/ledger/charge";
+import { registerChargePluginListeners } from "./plugins/ledger/charge";
 
 // Import eligibility plugins module to trigger registration
-// Note: Individual plugins are registered in ./eligibility-plugins/index.ts
-import "./eligibility-plugins";
+// Note: Individual plugins are registered in ./plugins/trust/eligibility/index.ts
+import "./plugins/trust/eligibility";
 
 // Import service providers module to trigger registration
 // Note: SMS, Email, and other providers are registered here
@@ -38,7 +40,8 @@ import { registerFloodEvents, loadFloodConfigFromVariables } from "./flood";
 import { initLogNotifier } from "./modules/log-notifier";
 
 // Import dispatch eligibility plugins system
-import { initializeDispatchEligSystem } from "./services/dispatch-elig-plugins";
+import { initializeDispatchEligSystem } from "./plugins/dispatch/eligibility";
+import { initializeDashboardPluginSystem } from "./plugins/dashboard";
 
 // Import worker ban notifications
 import { initWorkerBanNotifications } from "./services/worker-ban-notifications";
@@ -50,6 +53,28 @@ import { initDispatchNotifications } from "./services/dispatch-notifications";
 import "@shared/access-policies/loader";
 import { registerEntityAccessModule } from "./modules/entity-access";
 import { isComponentEnabled } from "./modules/components";
+
+// Dev-only guardrail: remove any stale `dist/` build before booting.
+// `npm run dev` (tsx server/index.ts) loads source directly and never
+// imports from `dist/`. However, an old `dist/` directory left behind
+// by a previous `npm run build` can be served accidentally if anyone
+// runs `npm run start` (production-entry) against the same workspace,
+// producing confusing "stale code" bugs (see task #138 — dashboard
+// plugin /content endpoints returning the old 404 wording from a
+// months-old bundle). Removing it here ensures dev never coexists
+// with stale compiled artifacts. Production deploys run `npm run build`
+// before `npm run start`, so this has no effect on production.
+if (process.env.NODE_ENV !== "production") {
+  const distDir = resolve(import.meta.dirname, "..", "dist");
+  if (existsSync(distDir)) {
+    try {
+      rmSync(distDir, { recursive: true, force: true });
+      log(`Removed stale dist/ directory at ${distDir} (dev guardrail)`);
+    } catch (err) {
+      log(`Warning: failed to remove stale dist/: ${(err as Error).message}`);
+    }
+  }
+}
 
 // Helper function to redact sensitive data from responses before logging
 function redactSensitiveData(data: any): any {
@@ -262,6 +287,10 @@ server.listen({
   await initializeDispatchEligSystem();
   logger.info("Dispatch eligibility system initialized", { source: "startup" });
 
+  // Initialize dashboard plugin system (registration + legacy migrations)
+  await initializeDashboardPluginSystem();
+  logger.info("Dashboard plugin system initialized", { source: "startup" });
+
   // Initialize worker ban notifications
   initWorkerBanNotifications();
   logger.info("Worker ban notifications initialized", { source: "startup" });
@@ -291,6 +320,7 @@ server.listen({
   registerCronJob('bulk-deliver', bulkDeliverHandler);
   registerCronJob('sitespecific-t631-dispatch-job-group-fetch', t631DispatchJobGroupFetchHandler);
   registerCronJob('sitespecific-t631-facility-fetch', t631FacilityFetchHandler);
+  registerCronJob('sitespecific-t631-tos-fetch', t631TosFetchHandler);
   registerCronJob('gbhet-pension-sla-reconcile', gbhetPensionSlaReconcileHandler);
   registerCronJob('gbhet-pension-shares-reconcile', gbhetPensionSharesReconcileHandler);
   logger.info("Cron job handlers registered", { source: "startup" });

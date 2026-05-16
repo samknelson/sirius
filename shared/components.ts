@@ -313,6 +313,32 @@ export const componentRegistry: ComponentDefinition[] = [
     }
   },
   {
+    id: "worker.tos",
+    name: "Time Off Sick",
+    description: "Tracking of worker unplanned absences (Time Off Sick)",
+    enabledByDefault: false,
+    category: "core",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/worker/tos/schema.ts",
+      tables: ["worker_tos"]
+    }
+  },
+  {
+    id: "worker.relations",
+    name: "Worker Relations",
+    description: "Management of relationships between workers",
+    enabledByDefault: false,
+    category: "core",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/worker/relations/schema.ts",
+      tables: ["options_worker_relation_type", "worker_relations"]
+    }
+  },
+  {
     id: "trust.providers.login",
     name: "Trust Provider Login",
     description: "Ability for trust provider contacts to log in",
@@ -366,6 +392,19 @@ export const componentRegistry: ComponentDefinition[] = [
     description: "Automated scanning for worker benefit eligibility",
     enabledByDefault: false,
     category: "trust.benefits"
+  },
+  {
+    id: "trust.elections",
+    name: "Trust Elections",
+    description: "Worker elections (stub)",
+    enabledByDefault: false,
+    category: "core",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/trust/elections-schema.ts",
+      tables: ["worker_trust_elections"]
+    }
   },
   {
     id: "event",

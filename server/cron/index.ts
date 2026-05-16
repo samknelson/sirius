@@ -18,5 +18,6 @@ export { dispatchJobPollHandler } from './jobs/dispatchJobPoll';
 export { bulkDeliverHandler } from './jobs/bulkDeliver';
 export { t631DispatchJobGroupFetchHandler } from './jobs/t631DispatchJobGroupFetch';
 export { t631FacilityFetchHandler } from './jobs/t631FacilityFetch';
+export { t631TosFetchHandler } from './jobs/t631TosFetch';
 export { gbhetPensionSlaReconcileHandler } from './jobs/gbhetPensionSlaReconcile';
 export { gbhetPensionSharesReconcileHandler } from './jobs/gbhetPensionSharesReconcile';

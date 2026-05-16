@@ -2,8 +2,6 @@ import type { Express } from "express";
 import { storage } from "../storage";
 import { insertCardcheckSchema } from "@shared/schema";
 import { requireComponent } from "./components";
-import { db } from "../db";
-import { sql, SQL } from "drizzle-orm";
 import { sendCardcheckRevocationNotification } from "../services/cardcheck-revocation-notifications";
 
 export function registerCardchecksRoutes(
@@ -332,10 +330,6 @@ export function registerCardchecksRoutes(
     isPrimary: boolean;
   }
 
-  function sqlInList(ids: string[]): SQL {
-    return sql.join(ids.map(id => sql`${id}`), sql`, `);
-  }
-
   async function getOrganizingStatusGroups(): Promise<StatusGroup[]> {
     const variable = await storage.variables.getByName(ORGANIZING_STATUS_GROUPS_VAR);
     if (variable && Array.isArray(variable.value)) {
@@ -485,193 +479,37 @@ export function registerCardchecksRoutes(
       const primaryGroup = statusGroups.find(g => g.isPrimary);
       const secondaryGroups = statusGroups.filter(g => !g.isPrimary && g.statusIds.length > 0);
       const primaryStatusIds = primaryGroup?.statusIds || [];
-      const hasPrimaryFilter = primaryStatusIds.length > 0;
 
       // Get all active employers with their type info, school types, and region
-      const employersResult = await db.execute(sql`
-        SELECT 
-          e.id,
-          e.name,
-          e.type_id as "typeId",
-          et.name as "typeName",
-          et.data->>'icon' as "typeIcon",
-          sa.school_type_ids as "schoolTypeIds",
-          sa.region_id as "regionId",
-          r.name as "regionName",
-          sa.grade_start as "gradeStart",
-          sa.grade_end as "gradeEnd"
-        FROM employers e
-        LEFT JOIN options_employer_type et ON e.type_id = et.id
-        LEFT JOIN sitespecific_btu_school_attributes sa ON sa.employer_id = e.id
-        LEFT JOIN sitespecific_btu_regions r ON r.id = sa.region_id
-        WHERE e.is_active = true
-        ORDER BY e.name
-      `);
-
-      const employers = employersResult.rows as any[];
+      const employers = await storage.cardchecks.getOrganizingEmployerList();
 
       // Get all school types for mapping IDs to names/icons
-      let schoolTypesMap = new Map<string, { id: string; name: string; icon: string | null }>();
-      try {
-        const schoolTypesResult = await db.execute(sql`
-          SELECT id, name, data->>'icon' as icon
-          FROM sitespecific_btu_school_types
-        `);
-        for (const st of schoolTypesResult.rows as any[]) {
-          schoolTypesMap.set(st.id, { id: st.id, name: st.name, icon: st.icon || null });
-        }
-      } catch {
-        // Table may not exist in non-BTU installations
+      const schoolTypesList = await storage.cardchecks.getOrganizingSchoolTypes();
+      const schoolTypesMap = new Map<string, { id: string; name: string; icon: string | null }>();
+      for (const st of schoolTypesList) {
+        schoolTypesMap.set(st.id, st);
       }
 
-      // Get all employment statuses for reference
-      const allStatusesResult = await db.execute(sql`
-        SELECT id, name, code, employed FROM options_employment_status ORDER BY sequence
-      `);
-      const allStatuses = allStatusesResult.rows as any[];
-
-      // Build WHERE filter for primary group status IDs
-      // If primary group has status IDs, only count those; otherwise fall back to employed=true
-      const statsResult = await db.execute(sql`
-        WITH latest_employment AS (
-          SELECT DISTINCT ON (wh.worker_id, wh.employer_id)
-            wh.worker_id,
-            wh.employer_id,
-            wh.employment_status_id,
-            es.name as status_name,
-            es.employed as is_employed
-          FROM worker_hours wh
-          LEFT JOIN options_employment_status es ON wh.employment_status_id = es.id
-          ORDER BY wh.worker_id, wh.employer_id, wh.year DESC, wh.month DESC, wh.day DESC
-        ),
-        active_workers AS (
-          SELECT 
-            le.worker_id,
-            le.employer_id,
-            w.bargaining_unit_id
-          FROM latest_employment le
-          INNER JOIN workers w ON w.id = le.worker_id
-          WHERE ${hasPrimaryFilter
-            ? sql`le.employment_status_id IN (${sqlInList(primaryStatusIds)})`
-            : sql`le.is_employed = true`}
-        ),
-        worker_cardchecks AS (
-          SELECT 
-            aw.employer_id,
-            aw.bargaining_unit_id,
-            COUNT(DISTINCT aw.worker_id) as total_workers,
-            COUNT(DISTINCT CASE WHEN cc.status = 'signed' THEN aw.worker_id END) as signed_workers
-          FROM active_workers aw
-          LEFT JOIN cardchecks cc ON cc.worker_id = aw.worker_id AND cc.status = 'signed'
-          GROUP BY aw.employer_id, aw.bargaining_unit_id
-        )
-        SELECT 
-          wc.employer_id as "employerId",
-          wc.bargaining_unit_id as "bargainingUnitId",
-          bu.name as "bargainingUnitName",
-          wc.total_workers as "totalWorkers",
-          wc.signed_workers as "signedWorkers"
-        FROM worker_cardchecks wc
-        LEFT JOIN bargaining_units bu ON bu.id = wc.bargaining_unit_id
-      `);
-
-      const stats = statsResult.rows as any[];
+      // Build stats for primary group status IDs
+      const stats = await storage.cardchecks.getOrganizingEmployerStats(primaryStatusIds);
 
       // Get workers for each secondary status group (e.g., On Leave)
       const secondaryGroupsData: any[] = [];
       for (const group of secondaryGroups) {
         if (group.statusIds.length === 0) continue;
-        const groupWorkersResult = await db.execute(sql`
-          WITH latest_employment AS (
-            SELECT DISTINCT ON (wh.worker_id, wh.employer_id)
-              wh.worker_id,
-              wh.employer_id,
-              wh.employment_status_id,
-              es.name as status_name,
-              make_date(wh.year, wh.month, wh.day) as status_date
-            FROM worker_hours wh
-            LEFT JOIN options_employment_status es ON wh.employment_status_id = es.id
-            ORDER BY wh.worker_id, wh.employer_id, wh.year DESC, wh.month DESC, wh.day DESC
-          )
-          SELECT 
-            le.worker_id as "workerId",
-            le.employer_id as "employerId",
-            e.name as "employerName",
-            c.display_name as "displayName",
-            le.status_name as "statusName",
-            le.status_date as "statusDate"
-          FROM latest_employment le
-          INNER JOIN workers w ON w.id = le.worker_id
-          INNER JOIN contacts c ON c.id = w.contact_id
-          INNER JOIN employers e ON e.id = le.employer_id
-          WHERE le.employment_status_id IN (${sqlInList(group.statusIds)})
-            AND e.is_active = true
-          ORDER BY e.name, c.display_name
-        `);
+        const groupWorkers = await storage.cardchecks.getOrganizingSecondaryGroupWorkers(group.statusIds);
         secondaryGroupsData.push({
           id: group.id,
           name: group.name,
-          workers: groupWorkersResult.rows.map((row: any) => ({
-            workerId: row.workerId,
-            employerId: row.employerId,
-            employerName: row.employerName,
-            displayName: row.displayName,
-            statusName: row.statusName,
-            statusDate: row.statusDate,
-          }))
+          workers: groupWorkers,
         });
       }
 
       // Get stewards for each employer (table may not exist in all installations)
-      let stewards: any[] = [];
-      try {
-        const stewardsResult = await db.execute(sql`
-          SELECT 
-            wsa.employer_id as "employerId",
-            wsa.worker_id as "workerId",
-            wsa.bargaining_unit_id as "bargainingUnitId",
-            c.display_name as "displayName",
-            c.email,
-            bu.name as "bargainingUnitName",
-            (
-              SELECT cp.phone_number 
-              FROM contact_phone cp 
-              WHERE cp.contact_id = c.id AND cp.is_active = true
-              ORDER BY cp.is_primary DESC NULLS LAST
-              LIMIT 1
-            ) as "phone"
-          FROM worker_steward_assignments wsa
-          INNER JOIN workers w ON w.id = wsa.worker_id
-          INNER JOIN contacts c ON c.id = w.contact_id
-          LEFT JOIN bargaining_units bu ON bu.id = wsa.bargaining_unit_id
-          ORDER BY c.display_name
-        `);
-        stewards = stewardsResult.rows as any[];
-      } catch (stewardError: any) {
-        console.log("Steward assignments table not available, skipping steward data");
-      }
+      const stewards = await storage.cardchecks.getOrganizingStewards();
 
       // Get principal contacts for each employer
-      const principalsResult = await db.execute(sql`
-        SELECT 
-          ec.employer_id as "employerId",
-          c.id as "contactId",
-          c.display_name as "displayName",
-          c.email,
-          (
-            SELECT cp.phone_number 
-            FROM contact_phone cp 
-            WHERE cp.contact_id = c.id AND cp.is_active = true
-            ORDER BY cp.is_primary DESC NULLS LAST
-            LIMIT 1
-          ) as "phone"
-        FROM employer_contacts ec
-        INNER JOIN contacts c ON c.id = ec.contact_id
-        INNER JOIN options_employer_contact_type ect ON ec.contact_type_id = ect.id
-        WHERE ect.name = 'Principal'
-        ORDER BY c.display_name
-      `);
-      const principals = principalsResult.rows as any[];
+      const principals = await storage.cardchecks.getOrganizingPrincipals();
 
       // Build response with aggregated data
       const employerMap = new Map<string, any>();
@@ -772,34 +610,7 @@ export function registerCardchecksRoutes(
       }
 
       // Compute distinct worker totals per BU (using same filter as primary group)
-      const distinctResult = await db.execute(sql`
-        WITH latest_employment AS (
-          SELECT DISTINCT ON (wh.worker_id, wh.employer_id)
-            wh.worker_id,
-            wh.employer_id,
-            wh.employment_status_id,
-            es.employed as is_employed
-          FROM worker_hours wh
-          LEFT JOIN options_employment_status es ON wh.employment_status_id = es.id
-          ORDER BY wh.worker_id, wh.employer_id, wh.year DESC, wh.month DESC, wh.day DESC
-        ),
-        active_workers AS (
-          SELECT DISTINCT le.worker_id
-          FROM latest_employment le
-          WHERE ${hasPrimaryFilter
-            ? sql`le.employment_status_id IN (${sqlInList(primaryStatusIds)})`
-            : sql`le.is_employed = true`}
-        )
-        SELECT 
-          w.bargaining_unit_id as "bargainingUnitId",
-          COUNT(DISTINCT aw.worker_id) as "totalDistinctWorkers",
-          COUNT(DISTINCT CASE WHEN cc.status = 'signed' THEN aw.worker_id END) as "signedDistinctWorkers"
-        FROM active_workers aw
-        INNER JOIN workers w ON w.id = aw.worker_id
-        LEFT JOIN cardchecks cc ON cc.worker_id = aw.worker_id AND cc.status = 'signed'
-        GROUP BY w.bargaining_unit_id
-      `);
-      const distinctRows = distinctResult.rows as any[];
+      const distinctRows = await storage.cardchecks.getOrganizingDistinctStats(primaryStatusIds);
       const duesBuIds = await getDuesBuIds();
       const duesBuIdSet = duesBuIds.length > 0 ? new Set(duesBuIds) : null;
 
@@ -826,59 +637,10 @@ export function registerCardchecksRoutes(
 
       // Query new members: workers whose earliest signed card check is within the last X days
       const newMemberDays = await getNewMemberDays();
-      const newMembersResult = await db.execute(sql`
-        WITH first_signed AS (
-          SELECT 
-            cc.worker_id,
-            MIN(cc.signed_date) as first_signed_date,
-            (ARRAY_AGG(cc.bargaining_unit_id ORDER BY cc.signed_date ASC))[1] as bargaining_unit_id
-          FROM cardchecks cc
-          WHERE cc.status = 'signed'
-          GROUP BY cc.worker_id
-          HAVING MIN(cc.signed_date) >= CURRENT_DATE - ${newMemberDays}::integer
-        )
-        SELECT 
-          fs.worker_id as "workerId",
-          c.display_name as "displayName",
-          fs.first_signed_date as "signedDate",
-          bu.name as "bargainingUnitName",
-          bu.id as "bargainingUnitId",
-          COALESCE(
-            (
-              SELECT e.name 
-              FROM worker_hours wh
-              INNER JOIN employers e ON e.id = wh.employer_id
-              WHERE wh.worker_id = fs.worker_id
-              ORDER BY wh.year DESC, wh.month DESC, wh.day DESC
-              LIMIT 1
-            ),
-            'Unknown'
-          ) as "employerName",
-          COALESCE(
-            (
-              SELECT wh.employer_id
-              FROM worker_hours wh
-              WHERE wh.worker_id = fs.worker_id
-              ORDER BY wh.year DESC, wh.month DESC, wh.day DESC
-              LIMIT 1
-            ),
-            NULL
-          ) as "employerId"
-        FROM first_signed fs
-        INNER JOIN workers w ON w.id = fs.worker_id
-        INNER JOIN contacts c ON c.id = w.contact_id
-        LEFT JOIN bargaining_units bu ON bu.id = fs.bargaining_unit_id
-        ORDER BY fs.first_signed_date DESC, c.display_name
-      `);
-
-      const newMembers = newMembersResult.rows.map((row: any) => ({
-        workerId: row.workerId,
-        displayName: row.displayName,
-        signedDate: row.signedDate,
+      const newMembersRaw = await storage.cardchecks.getOrganizingNewMembers(newMemberDays);
+      const newMembers = newMembersRaw.map(row => ({
+        ...row,
         bargainingUnitName: row.bargainingUnitName || 'Unknown',
-        bargainingUnitId: row.bargainingUnitId,
-        employerName: row.employerName,
-        employerId: row.employerId,
       }));
 
       res.json({
@@ -905,137 +667,17 @@ export function registerCardchecksRoutes(
       const statusGroups = await getOrganizingStatusGroups();
       const primaryGroup = statusGroups.find(g => g.isPrimary);
       const primaryStatusIds = primaryGroup?.statusIds || [];
-      const hasPrimaryFilter = primaryStatusIds.length > 0;
 
       // Get employer info
-      const employerResult = await db.execute(sql`
-        SELECT id, name FROM employers WHERE id = ${employerId}
-      `);
+      const employer = await storage.employers.getEmployer(employerId);
 
-      if (employerResult.rows.length === 0) {
+      if (!employer) {
         return res.status(404).json({ message: "Employer not found" });
       }
 
-      const employer = employerResult.rows[0] as any;
+      const workerRows = await storage.cardchecks.getMissingCardchecksForEmployer(employerId, primaryStatusIds);
 
-      const workersResult = await db.execute(sql`
-        WITH latest_employment AS (
-          SELECT DISTINCT ON (wh.worker_id)
-            wh.worker_id,
-            wh.employment_status_id,
-            es.name as status_name,
-            es.employed as is_employed,
-            make_date(wh.year, wh.month, wh.day) as status_date
-          FROM worker_hours wh
-          LEFT JOIN options_employment_status es ON wh.employment_status_id = es.id
-          WHERE wh.employer_id = ${employerId}
-          ORDER BY wh.worker_id, wh.year DESC, wh.month DESC, wh.day DESC
-        ),
-        active_workers AS (
-          SELECT le.worker_id, le.status_date as current_active_date, le.status_name
-          FROM latest_employment le
-          WHERE ${hasPrimaryFilter
-            ? sql`le.employment_status_id IN (${sqlInList(primaryStatusIds)})`
-            : sql`le.is_employed = true`}
-        ),
-        -- Get the latest signed cardcheck for each worker (if any)
-        latest_signed_cardcheck AS (
-          SELECT DISTINCT ON (cc.worker_id)
-            cc.worker_id,
-            cc.bargaining_unit_id,
-            cc.signed_date
-          FROM cardchecks cc
-          WHERE cc.status = 'signed'
-          ORDER BY cc.worker_id, cc.signed_date DESC NULLS LAST
-        ),
-        -- Use window functions to identify termination periods
-        -- For each status record, use LEAD() to find when they returned to active
-        -- A termination period requiring new cardcheck is when:
-        -- 1. Status is 'Terminated'
-        -- 2. Next status is 'Active' or 'Active - Secondary'
-        -- 3. Gap between termination date and next active date >= 30 days
-        status_with_next AS (
-          SELECT 
-            wh.worker_id,
-            es.name as status_name,
-            es.employed as is_employed,
-            make_date(wh.year, wh.month, wh.day) as status_date,
-            LEAD(es.employed) OVER (PARTITION BY wh.worker_id ORDER BY wh.year, wh.month, wh.day) as next_employed,
-            LEAD(make_date(wh.year, wh.month, wh.day)) OVER (PARTITION BY wh.worker_id ORDER BY wh.year, wh.month, wh.day) as next_date
-          FROM worker_hours wh
-          LEFT JOIN options_employment_status es ON wh.employment_status_id = es.id
-          WHERE wh.employer_id = ${employerId}
-        ),
-        -- Find termination periods where worker was not employed for 30+ days before returning to employed
-        -- Only consider the period immediately preceding the current employed period
-        termination_requiring_new_cardcheck AS (
-          SELECT DISTINCT ON (aw.worker_id)
-            aw.worker_id,
-            swn.status_date as termination_date,
-            swn.next_date as return_active_date
-          FROM active_workers aw
-          INNER JOIN status_with_next swn ON swn.worker_id = aw.worker_id
-          WHERE swn.is_employed = false
-            AND swn.next_employed = true
-            AND swn.next_date = aw.current_active_date
-            AND (swn.next_date - swn.status_date) >= 30
-          ORDER BY aw.worker_id, swn.status_date DESC
-        ),
-        -- Determine invalid reason for each active worker (prioritized, one per worker)
-        worker_invalid_reasons AS (
-          SELECT DISTINCT ON (aw.worker_id)
-            aw.worker_id,
-            CASE
-              -- Priority 1: No signed cardcheck at all
-              WHEN lsc.worker_id IS NULL THEN 'Missing'
-              -- Priority 2: Termination expired (had 30+ day gap, cardcheck signed before termination)
-              WHEN trn.worker_id IS NOT NULL 
-                   AND (lsc.signed_date IS NULL OR lsc.signed_date < trn.termination_date) 
-              THEN 'Termination Expired'
-              -- Priority 3: BU Mismatch
-              WHEN w.bargaining_unit_id IS NOT NULL 
-                   AND lsc.bargaining_unit_id IS NOT NULL
-                   AND w.bargaining_unit_id != lsc.bargaining_unit_id 
-              THEN 'BU Mismatch'
-              ELSE NULL
-            END as invalid_reason
-          FROM active_workers aw
-          INNER JOIN workers w ON w.id = aw.worker_id
-          LEFT JOIN latest_signed_cardcheck lsc ON lsc.worker_id = aw.worker_id
-          LEFT JOIN termination_requiring_new_cardcheck trn ON trn.worker_id = aw.worker_id
-          ORDER BY aw.worker_id
-        )
-        SELECT 
-          w.id as "workerId",
-          c.display_name as "displayName",
-          c.email,
-          bu.id as "bargainingUnitId",
-          bu.name as "bargainingUnitName",
-          wir.invalid_reason as "invalidReason",
-          aw.status_name as "employmentStatus",
-          (
-            SELECT cp.phone_number 
-            FROM contact_phone cp 
-            WHERE cp.contact_id = c.id AND cp.is_active = true
-            ORDER BY cp.is_primary DESC NULLS LAST
-            LIMIT 1
-          ) as phone
-        FROM worker_invalid_reasons wir
-        INNER JOIN workers w ON w.id = wir.worker_id
-        INNER JOIN contacts c ON c.id = w.contact_id
-        INNER JOIN active_workers aw ON aw.worker_id = w.id
-        LEFT JOIN bargaining_units bu ON bu.id = w.bargaining_unit_id
-        WHERE wir.invalid_reason IS NOT NULL
-        ORDER BY 
-          CASE wir.invalid_reason 
-            WHEN 'Missing' THEN 1 
-            WHEN 'Termination Expired' THEN 2
-            WHEN 'BU Mismatch' THEN 3 
-          END,
-          c.display_name
-      `);
-
-      const workers = workersResult.rows.map((row: any) => ({
+      const workers = workerRows.map(row => ({
         workerId: row.workerId,
         displayName: row.displayName,
         email: row.email || null,

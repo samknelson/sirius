@@ -9,20 +9,21 @@ import { setupAuth } from "./auth";
 import { initAccessControl, registerEntityLoader } from "./services/access-policy-evaluator";
 import { storage } from "./storage";
 import { captureRequestContext } from "./middleware/request-context";
-import { registerCronJob, bootstrapCronJobs, cronScheduler, deleteExpiredReportsHandler, deleteOldCronLogsHandler, processWmbBatchHandler, deleteExpiredFloodEventsHandler, deleteExpiredHfeHandler, sweepExpiredBanEligHandler, workerBanActiveScanHandler, workerCertificationActiveScanHandler, logCleanupHandler, memberStatusScanHandler, t631DispatchJobGroupFetchHandler, gbhetPensionSlaReconcileHandler, gbhetPensionSharesReconcileHandler } from "./cron";
+import { registerCronJob, bootstrapCronJobs, cronScheduler, deleteExpiredReportsHandler, deleteOldCronLogsHandler, processWmbBatchHandler, deleteExpiredFloodEventsHandler, deleteExpiredHfeHandler, sweepExpiredBanEligHandler, workerBanActiveScanHandler, workerCertificationActiveScanHandler, logCleanupHandler, memberStatusScanHandler, dispatchEbaCleanupHandler, dispatchJobPollHandler, bulkDeliverHandler, t631DispatchJobGroupFetchHandler, t631FacilityFetchHandler, t631TosFetchHandler, gbhetPensionSlaReconcileHandler, gbhetPensionSharesReconcileHandler } from "./cron";
 import { loadComponentCache } from "./services/component-cache";
 import { syncComponentPermissions } from "./services/component-permissions";
 import { runMigrations } from "../scripts/migrate";
 import { initializeWebSocket } from "./services/websocket";
 import { getSession } from "./auth";
 
-import "./charge-plugins";
-import "./eligibility-plugins";
+import "./plugins/ledger/charge";
+import "./plugins/trust/eligibility";
 import "./services/providers";
 
 import { registerFloodEvents, loadFloodConfigFromVariables } from "./flood";
 import { initLogNotifier } from "./modules/log-notifier";
-import { initializeDispatchEligSystem } from "./services/dispatch-elig-plugins";
+import { initializeDispatchEligSystem } from "./plugins/dispatch/eligibility";
+import { initializeDashboardPluginSystem } from "./plugins/dashboard";
 import { initWorkerBanNotifications } from "./services/worker-ban-notifications";
 import { initDispatchNotifications } from "./services/dispatch-notifications";
 import "@shared/access-policies/loader";
@@ -155,6 +156,9 @@ export async function startApp(app: Express, server: Server, onReady: () => void
   await initializeDispatchEligSystem();
   logger.info("Dispatch eligibility system initialized", { source: "startup" });
 
+  await initializeDashboardPluginSystem();
+  logger.info("Dashboard plugin system initialized", { source: "startup" });
+
   initWorkerBanNotifications();
   logger.info("Worker ban notifications initialized", { source: "startup" });
 
@@ -171,7 +175,12 @@ export async function startApp(app: Express, server: Server, onReady: () => void
   registerCronJob('worker-certification-active-scan', workerCertificationActiveScanHandler);
   registerCronJob('log-cleanup', logCleanupHandler);
   registerCronJob('member-status-scan', memberStatusScanHandler);
+  registerCronJob('dispatch-eba-cleanup', dispatchEbaCleanupHandler);
+  registerCronJob('dispatch-job-poll', dispatchJobPollHandler);
+  registerCronJob('bulk-deliver', bulkDeliverHandler);
   registerCronJob('sitespecific-t631-dispatch-job-group-fetch', t631DispatchJobGroupFetchHandler);
+  registerCronJob('sitespecific-t631-facility-fetch', t631FacilityFetchHandler);
+  registerCronJob('sitespecific-t631-tos-fetch', t631TosFetchHandler);
   registerCronJob('gbhet-pension-sla-reconcile', gbhetPensionSlaReconcileHandler);
   registerCronJob('gbhet-pension-shares-reconcile', gbhetPensionSharesReconcileHandler);
   logger.info("Cron job handlers registered", { source: "startup" });

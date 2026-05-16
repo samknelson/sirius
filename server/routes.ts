@@ -17,7 +17,7 @@ import { registerTrustProvidersRoutes } from "./modules/trust/providers";
 import { registerTrustProviderContactRoutes } from "./modules/trust/provider/contacts";
 import { registerConsolidatedOptionsRoutes } from "./modules/options-routes";
 import { getOptionsType } from "./modules/options-registry";
-import { registerWorkerIdsRoutes } from "./modules/worker-ids";
+import { registerWorkerIdsRoutes } from "./modules/workers/ids";
 import { registerAddressValidationRoutes } from "./modules/address-validation";
 import {
   registerMasqueradeRoutes,
@@ -84,8 +84,11 @@ import { registerWorkerDispatchDncRoutes } from "./modules/worker-dispatch-dnc";
 import { registerWorkerDispatchHfeRoutes } from "./modules/worker-dispatch-hfe";
 import { registerWorkerDispatchEbaRoutes } from "./modules/worker-dispatch-eba";
 import { registerWorkerBansRoutes } from "./modules/worker-bans";
-import { registerWorkerSkillsRoutes } from "./modules/worker-skills";
-import { registerWorkerCertificationsRoutes } from "./modules/worker-certifications";
+import { registerWorkerSkillsRoutes } from "./modules/workers/skills";
+import { registerWorkerRelationsRoutes } from "./modules/workers/relations";
+import { registerWorkerTrustElectionsRoutes } from "./modules/workers/trust-elections";
+import { registerWorkerTosRoutes } from "./modules/worker-tos";
+import { registerWorkerCertificationsRoutes } from "./modules/workers/certifications";
 import { registerWorkerRatingsRoutes } from "./modules/worker-ratings";
 import { requireComponent } from "./modules/components";
 import { registerWorkerStewardAssignmentRoutes } from "./modules/worker-steward-assignments";
@@ -101,6 +104,7 @@ import { registerBtuPoliticalRoutes } from "./modules/sitespecific/btu/political
 import { registerT631ClientFetchRoutes } from "./modules/sitespecific/t631/client/fetch";
 import { registerFreemanSecondShiftRoutes } from "./modules/sitespecific/freeman/second-shift";
 import { registerEdlsSheetsRoutes } from "./modules/edls/sheets";
+import { registerEdlsTosRoutes } from "./modules/edls/tos";
 import { registerEdlsTasksRoutes } from "./modules/edls/tasks";
 import { registerWorkerEdlsRoutes } from "./modules/edls/workers";
 import { registerWebServiceBundle } from "./modules/webservices";
@@ -1719,6 +1723,15 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Register worker skills routes (handles all access control internally)
   registerWorkerSkillsRoutes(app, requireAuth, requireAccess);
 
+  // Register worker relations routes (handles all access control internally)
+  registerWorkerRelationsRoutes(app, requireAuth, requireAccess);
+
+  // Register worker trust elections routes (handles all access control internally)
+  registerWorkerTrustElectionsRoutes(app, requireAuth, requireAccess);
+
+  // Register worker time-off-sick (TOS) routes
+  registerWorkerTosRoutes(app, requireAuth, requireAccess);
+
   // Register worker certifications routes (handles all access control internally)
   registerWorkerCertificationsRoutes(app, requireAuth, requireAccess, requirePermission);
 
@@ -1748,6 +1761,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register EDLS routes
   registerEdlsSheetsRoutes(app, requireAuth, requirePermission);
+  registerEdlsTosRoutes(app, requireAuth);
   registerEdlsTasksRoutes(app, requireAuth, requirePermission);
   registerWorkerEdlsRoutes(app, requireAuth);
 

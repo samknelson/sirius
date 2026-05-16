@@ -7,7 +7,7 @@ import { type TrustBenefitStorage, createTrustBenefitStorage, trustBenefitLoggin
 import { type TrustProviderStorage, createTrustProviderStorage } from "./trust/providers";
 import { type TrustWmbStorage, createTrustWmbStorage } from "./trust/wmb";
 import { type TrustProviderContactStorage, createTrustProviderContactStorage, trustProviderContactLoggingConfig } from "./trust/provider/contacts";
-import { type WorkerIdStorage, createWorkerIdStorage, workerIdLoggingConfig } from "./worker-ids";
+import { type WorkerIdStorage, createWorkerIdStorage, workerIdLoggingConfig } from "./workers/ids";
 import { type BookmarkStorage, createBookmarkStorage } from "./bookmarks";
 import {
   type LedgerStorage,
@@ -90,9 +90,12 @@ import { type BtuRegionsStorage, createBtuRegionsStorage } from "./sitespecific/
 import { type BtuSchoolAttributesStorage, createBtuSchoolAttributesStorage } from "./sitespecific/btu/school-attributes";
 import { type WorkerBanStorage, createWorkerBanStorage, workerBanLoggingConfig } from "./worker-bans";
 import { type WorkerDispatchDncStorage, createWorkerDispatchDncStorage, workerDispatchDncLoggingConfig } from "./worker-dispatch-dnc";
-import { type WorkerSkillStorage, createWorkerSkillStorage, workerSkillLoggingConfig } from "./worker-skills";
-import { type WorkerCertificationStorage, createWorkerCertificationStorage, workerCertificationLoggingConfig } from "./worker-certifications";
+import { type WorkerSkillStorage, createWorkerSkillStorage, workerSkillLoggingConfig } from "./workers/skills";
+import { type WorkerTosStorage, createWorkerTosStorage, workerTosLoggingConfig } from "./worker-tos";
+import { type WorkerCertificationStorage, createWorkerCertificationStorage, workerCertificationLoggingConfig } from "./workers/certifications";
 import { type WorkerRatingStorage, createWorkerRatingStorage, workerRatingLoggingConfig } from "./worker-ratings";
+import { type WorkerRelationsStorage, createWorkerRelationsStorage, workerRelationsLoggingConfig } from "./workers/relations";
+import { type WorkerTrustElectionsStorage, createWorkerTrustElectionsStorage, workerTrustElectionsLoggingConfig } from "./trust/elections";
 import { type EdlsSheetsStorage, createEdlsSheetsStorage, edlsSheetsLoggingConfig } from "./edls/sheets";
 import { type EdlsCrewsStorage, createEdlsCrewsStorage, edlsCrewsLoggingConfig } from "./edls/crews";
 import { type EdlsAssignmentsStorage, createEdlsAssignmentsStorage, edlsAssignmentsLoggingConfig } from "./edls/assignments";
@@ -104,6 +107,7 @@ import { type ReadOnlyStorage, createReadOnlyStorage } from "./read-only";
 import { type BtuPoliticalStorage, createBtuPoliticalStorage, btuPoliticalLoggingConfig } from "./sitespecific/btu/political";
 import { type WsBundleStorage, type WsClientStorage, type WsClientCredentialStorage, type WsClientIpRuleStorage, createWsBundleStorage, createWsClientStorage, createWsClientCredentialStorage, createWsClientIpRuleStorage } from "./webservices";
 import { type CompanyStorage, createCompanyStorage, companyLoggingConfig, type EmployerCompanyStorage, createEmployerCompanyStorage, employerCompanyLoggingConfig } from "./companies";
+import { type ContactLinkStorage, createContactLinkStorage } from "./contact-links";
 import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
 import { db } from "./db";
 import { employers, workers, contacts } from "@shared/schema";
@@ -160,8 +164,11 @@ export interface IStorage {
   workerBans: WorkerBanStorage;
   workerDispatchDnc: WorkerDispatchDncStorage;
   workerSkills: WorkerSkillStorage;
+  workerTos: WorkerTosStorage;
   workerCertifications: WorkerCertificationStorage;
   workerRatings: WorkerRatingStorage;
+  workerRelations: WorkerRelationsStorage;
+  workerTrustElections: WorkerTrustElectionsStorage;
   edlsSheets: EdlsSheetsStorage;
   edlsCrews: EdlsCrewsStorage;
   edlsAssignments: EdlsAssignmentsStorage;
@@ -187,6 +194,7 @@ export interface IStorage {
   bulkParticipants: BulkParticipantStorage;
   facilities: FacilityStorage;
   gbhetPension: GbhetPensionStorage;
+  contactLinks: ContactLinkStorage;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -240,8 +248,11 @@ export class DatabaseStorage implements IStorage {
   workerBans: WorkerBanStorage;
   workerDispatchDnc: WorkerDispatchDncStorage;
   workerSkills: WorkerSkillStorage;
+  workerTos: WorkerTosStorage;
   workerCertifications: WorkerCertificationStorage;
   workerRatings: WorkerRatingStorage;
+  workerRelations: WorkerRelationsStorage;
+  workerTrustElections: WorkerTrustElectionsStorage;
   edlsSheets: EdlsSheetsStorage;
   edlsCrews: EdlsCrewsStorage;
   edlsAssignments: EdlsAssignmentsStorage;
@@ -267,6 +278,7 @@ export class DatabaseStorage implements IStorage {
   bulkParticipants: BulkParticipantStorage;
   facilities: FacilityStorage;
   gbhetPension: GbhetPensionStorage;
+  contactLinks: ContactLinkStorage;
 
   constructor() {
     this.variables = withStorageLogging(
@@ -420,11 +432,14 @@ export class DatabaseStorage implements IStorage {
     this.workerBans = withStorageLogging(createWorkerBanStorage(), workerBanLoggingConfig);
     this.workerDispatchDnc = withStorageLogging(createWorkerDispatchDncStorage(), workerDispatchDncLoggingConfig);
     this.workerSkills = withStorageLogging(createWorkerSkillStorage(), workerSkillLoggingConfig);
+    this.workerTos = withStorageLogging(createWorkerTosStorage(), workerTosLoggingConfig);
     this.workerCertifications = withStorageLogging(
       createWorkerCertificationStorage({ workerSkills: this.workerSkills }), 
       workerCertificationLoggingConfig
     );
     this.workerRatings = withStorageLogging(createWorkerRatingStorage(), workerRatingLoggingConfig);
+    this.workerRelations = withStorageLogging(createWorkerRelationsStorage(), workerRelationsLoggingConfig);
+    this.workerTrustElections = withStorageLogging(createWorkerTrustElectionsStorage(), workerTrustElectionsLoggingConfig);
     this.edlsSheets = withStorageLogging(createEdlsSheetsStorage(), edlsSheetsLoggingConfig);
     this.edlsCrews = withStorageLogging(createEdlsCrewsStorage(), edlsCrewsLoggingConfig);
     this.edlsAssignments = withStorageLogging(createEdlsAssignmentsStorage(), edlsAssignmentsLoggingConfig);
@@ -474,6 +489,7 @@ export class DatabaseStorage implements IStorage {
     );
     this.facilities = withStorageLogging(createFacilityStorage(this.contacts), facilityLoggingConfig);
     this.gbhetPension = createGbhetPensionStorage();
+    this.contactLinks = createContactLinkStorage();
   }
 }
 

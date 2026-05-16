@@ -77,7 +77,6 @@ export {
   type EligibilityPluginMetadata,
   type JobTypeData,
   type DispatchJobData,
-  type PluginConfigField,
   type NotificationMedia,
   type PollPhaseStatus,
   type PollPhaseResult,
@@ -964,6 +963,36 @@ export {
   type WorkerRating,
   type InsertWorkerRating,
 } from "./schema/worker/ratings/schema";
+
+export {
+  workerTos,
+  insertWorkerTosSchema,
+  type WorkerTos,
+  type InsertWorkerTos,
+} from "./schema/worker/tos/schema";
+
+export {
+  optionsWorkerRelationType,
+  insertOptionsWorkerRelationTypeSchema,
+  type OptionsWorkerRelationType,
+  type InsertOptionsWorkerRelationType,
+  workerRelations,
+  insertWorkerRelationSchema,
+  type WorkerRelation,
+  type InsertWorkerRelation,
+} from "./schema/worker/relations/schema";
+
+export {
+  workerTrustElections,
+  insertWorkerTrustElectionSchema,
+  createWorkerTrustElectionRequestSchema,
+  updateWorkerTrustElectionRequestSchema,
+  type WorkerTrustElection,
+  type WorkerTrustElectionView,
+  type InsertWorkerTrustElection,
+  type CreateWorkerTrustElectionRequest,
+  type UpdateWorkerTrustElectionRequest,
+} from "./schema/trust/elections-schema";
 
 export {
   edlsSheets,

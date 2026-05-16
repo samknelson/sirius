@@ -1,6 +1,6 @@
 import { getClient } from './transaction-context';
 import { contacts, contactPostal, phoneNumbers, optionsGender, trustProviderContacts, employerContacts, type Contact, type InsertContact, type ContactPostal, type InsertContactPostal, type PhoneNumber, type InsertPhoneNumber } from "@shared/schema";
-import { eq, and, desc, sql } from "drizzle-orm";
+import { eq, and, desc, sql, or, ilike, inArray } from "drizzle-orm";
 import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
 import { 
   type ValidationError,
@@ -188,10 +188,21 @@ export interface PhoneNumberStorage {
   setPhoneNumberAsPrimary(phoneNumberId: string, contactId: string): Promise<PhoneNumber | undefined>;
 }
 
+export interface ContactSearchResult {
+  id: string;
+  displayName: string | null;
+  email: string | null;
+  given: string | null;
+  family: string | null;
+  primaryPhone: string | null;
+  primaryAddress: string | null;
+}
+
 // Contact Storage Interface
 export interface ContactStorage {
   getContact(id: string): Promise<Contact | undefined>;
   getContactByEmail(email: string): Promise<Contact | undefined>;
+  searchWithPrimaryContactInfo(query: string, limit: number): Promise<ContactSearchResult[]>;
   createContact(contact: InsertContact): Promise<Contact>;
   updateName(contactId: string, name: string): Promise<Contact | undefined>;
   updateNameComponents(contactId: string, components: {
@@ -212,6 +223,7 @@ export interface ContactStorage {
 export interface ContactsStorage {
   getContact(id: string): Promise<Contact | undefined>;
   getContactByEmail(email: string): Promise<Contact | undefined>;
+  searchWithPrimaryContactInfo(query: string, limit: number): Promise<ContactSearchResult[]>;
   createContact(contact: InsertContact): Promise<Contact>;
   updateName(contactId: string, name: string): Promise<Contact | undefined>;
   updateNameComponents(contactId: string, components: {
@@ -676,6 +688,82 @@ export function createContactStorage(): ContactStorage {
       return contact || undefined;
     },
 
+    async searchWithPrimaryContactInfo(query: string, limit: number): Promise<ContactSearchResult[]> {
+      const client = getClient();
+      const term = `%${query}%`;
+
+      const rows = await client
+        .select({
+          id: contacts.id,
+          displayName: contacts.displayName,
+          email: contacts.email,
+          given: contacts.given,
+          family: contacts.family,
+        })
+        .from(contacts)
+        .where(
+          or(
+            ilike(contacts.displayName, term),
+            ilike(contacts.email, term),
+            ilike(contacts.given, term),
+            ilike(contacts.family, term),
+          )
+        )
+        .limit(limit);
+
+      const contactIds = rows.map((r) => r.id).filter(Boolean);
+      if (contactIds.length === 0) {
+        return rows.map((r) => ({ ...r, primaryPhone: null, primaryAddress: null }));
+      }
+
+      let phones: { contactId: string; number: string; isPrimary: boolean }[] = [];
+      let addrs: { contactId: string; street: string; city: string; state: string; isPrimary: boolean }[] = [];
+
+      try {
+        phones = await client
+          .select({
+            contactId: phoneNumbers.contactId,
+            number: phoneNumbers.phoneNumber,
+            isPrimary: phoneNumbers.isPrimary,
+          })
+          .from(phoneNumbers)
+          .where(and(inArray(phoneNumbers.contactId, contactIds), eq(phoneNumbers.isActive, true)));
+      } catch (_e) {}
+
+      try {
+        addrs = await client
+          .select({
+            contactId: contactPostal.contactId,
+            street: contactPostal.street,
+            city: contactPostal.city,
+            state: contactPostal.state,
+            isPrimary: contactPostal.isPrimary,
+          })
+          .from(contactPostal)
+          .where(and(inArray(contactPostal.contactId, contactIds), eq(contactPostal.isActive, true)));
+      } catch (_e) {}
+
+      const phoneMap = new Map<string, string>();
+      for (const p of phones) {
+        if (!phoneMap.has(p.contactId) || p.isPrimary) {
+          phoneMap.set(p.contactId, p.number);
+        }
+      }
+
+      const addrMap = new Map<string, string>();
+      for (const a of addrs) {
+        if (!addrMap.has(a.contactId) || a.isPrimary) {
+          addrMap.set(a.contactId, [a.street, a.city, a.state].filter(Boolean).join(", "));
+        }
+      }
+
+      return rows.map((r) => ({
+        ...r,
+        primaryPhone: phoneMap.get(r.id) || null,
+        primaryAddress: addrMap.get(r.id) || null,
+      }));
+    },
+
     async createContact(insertContact: InsertContact): Promise<Contact> {
       const client = getClient();
       // Import the generateDisplayName function
@@ -893,6 +981,7 @@ export function createContactsStorage(
   return {
     getContact: contactStorage.getContact,
     getContactByEmail: contactStorage.getContactByEmail,
+    searchWithPrimaryContactInfo: contactStorage.searchWithPrimaryContactInfo,
     createContact: contactStorage.createContact,
     updateName: contactStorage.updateName,
     updateNameComponents: contactStorage.updateNameComponents,

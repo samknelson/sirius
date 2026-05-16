@@ -14,7 +14,7 @@ import {
   validateParticipantStatus
 } from "./event-categories";
 import { insertEventParticipantSchema } from "@shared/schema";
-import { executeChargePlugins, TriggerType, type ParticipantSavedContext } from "../charge-plugins";
+import { executeChargePlugins, TriggerType, type ParticipantSavedContext } from "../plugins/ledger/charge";
 import { logger } from "../logger";
 import { eventBus, EventType } from "../services/event-bus";
 

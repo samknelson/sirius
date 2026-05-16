@@ -5,7 +5,7 @@ import {
   type DispatchJobGroup,
   type InsertDispatchJobGroup
 } from "@shared/schema";
-import { eq, desc, asc, sql, SQL, and, ilike } from "drizzle-orm";
+import { eq, desc, asc, sql, SQL, and, ilike, or, isNull, lte, gte } from "drizzle-orm";
 import { type StorageLoggingConfig } from "../middleware/logging";
 
 export const validate = createNoopValidator<InsertDispatchJobGroup, DispatchJobGroup>();
@@ -31,6 +31,7 @@ export interface DispatchJobGroupStorage {
   get(id: string): Promise<DispatchJobGroup | undefined>;
   getBySiriusId(siriusId: string): Promise<DispatchJobGroup | undefined>;
   getByName(name: string): Promise<DispatchJobGroup | undefined>;
+  getActiveOnDate(ymd: string): Promise<{ id: string; name: string }[]>;
   create(group: InsertDispatchJobGroup): Promise<DispatchJobGroup>;
   update(id: string, group: Partial<InsertDispatchJobGroup>): Promise<DispatchJobGroup | undefined>;
   delete(id: string): Promise<boolean>;
@@ -158,6 +159,20 @@ export function createDispatchJobGroupStorage(): DispatchJobGroupStorage {
       const client = getClient();
       const [group] = await client.select().from(dispatchJobGroups).where(ilike(dispatchJobGroups.name, name));
       return group || undefined;
+    },
+
+    async getActiveOnDate(ymd: string): Promise<{ id: string; name: string }[]> {
+      const client = getClient();
+      return await client
+        .select({ id: dispatchJobGroups.id, name: dispatchJobGroups.name })
+        .from(dispatchJobGroups)
+        .where(
+          and(
+            or(isNull(dispatchJobGroups.startYmd), lte(dispatchJobGroups.startYmd, ymd)),
+            or(isNull(dispatchJobGroups.endYmd), gte(dispatchJobGroups.endYmd, ymd))
+          )
+        )
+        .orderBy(dispatchJobGroups.name);
     },
 
     async create(insertGroup: InsertDispatchJobGroup): Promise<DispatchJobGroup> {

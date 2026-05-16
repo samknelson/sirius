@@ -8,14 +8,18 @@ import {
   edlsSheets,
   workers,
   contacts,
+  users,
+  facilities,
+  dispatchJobGroups,
   type EdlsAssignment, 
   type InsertEdlsAssignment
 } from "@shared/schema";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, gte, lte, asc, inArray, ne } from "drizzle-orm";
 import { StorageLoggingConfig } from "../middleware/logging";
 import { getClient, runInTransaction } from "../transaction-context";
 import { createUnifiedOptionsStorage } from "../unified-options";
 import { createEdlsCrewsStorage } from "./crews";
+import { createReadOnlyStorage } from "../read-only";
 
 export const validate = createAsyncStorageValidator<InsertEdlsAssignment, EdlsAssignment, {}>(
   async (data, existing) => {
@@ -69,6 +73,9 @@ export interface EdlsAssignmentWithWorker extends EdlsAssignment {
     displayName: string | null;
     given: string | null;
     family: string | null;
+    memberStatusId: string | null;
+    memberStatusCode: string | null;
+    memberStatusName: string | null;
   };
 }
 
@@ -111,16 +118,43 @@ export interface WorkerAssignmentDetails {
   next: WorkerAssignmentDetail | null;
 }
 
-export interface MemberStatusSummaryRow {
+export interface AssignmentForWorkerFilters {
+  startYmd?: string;
+  endYmd?: string;
+  supervisorId?: string;
+  facilityId?: string;
+  jobGroupId?: string;
+}
+
+export interface AssignmentForWorker {
+  assignmentId: string;
+  ymd: string;
+  sheetId: string;
+  sheetTitle: string;
+  sheetStatus: string;
+  crewId: string;
+  crewTitle: string;
+  startTime: string | null;
+  endTime: string | null;
+  supervisor: { id: string; firstName: string | null; lastName: string | null; email: string } | null;
+  facility: { id: string; name: string } | null;
+  jobGroup: { id: string; name: string } | null;
+  data: Record<string, unknown> | null;
+}
+
+export interface DailySummaryByMemberStatusRow {
   memberStatus: string;
   msSequence: number | null;
   sheetStatus: string;
   workerCount: number;
 }
 
+export type MemberStatusSummaryRow = DailySummaryByMemberStatusRow;
+
 export interface EdlsAssignmentsStorage {
+  getDailySummaryByMemberStatus(ymd: string): Promise<DailySummaryByMemberStatusRow[]>;
   getByCrewId(crewId: string): Promise<EdlsAssignmentWithWorker[]>;
-  getBySheetId(sheetId: string): Promise<EdlsAssignmentWithWorker[]>;
+  getBySheetId(sheetId: string, industryId?: string | null): Promise<EdlsAssignmentWithWorker[]>;
   get(id: string): Promise<EdlsAssignment | undefined>;
   create(assignment: InsertEdlsAssignment): Promise<EdlsAssignment>;
   delete(id: string): Promise<boolean>;
@@ -129,6 +163,8 @@ export interface EdlsAssignmentsStorage {
   getAvailableWorkersForSheet(sheetYmd: string, industryId: string | null, ratingId?: string): Promise<AvailableWorkerForSheet[]>;
   getWorkerAssignmentDetails(workerId: string, sheetYmd: string): Promise<WorkerAssignmentDetails | null>;
   getMemberStatusSummaryByYmd(ymd: string): Promise<MemberStatusSummaryRow[]>;
+  getAssignmentsForWorker(workerId: string, filters?: AssignmentForWorkerFilters): Promise<AssignmentForWorker[]>;
+  getAssignmentsForWorkerIds(workerIds: string[], filters?: AssignmentForWorkerFilters): Promise<Map<string, AssignmentForWorker[]>>;
 }
 
 async function sortAssignmentsByClassification(
@@ -173,6 +209,42 @@ async function sortAssignmentsByClassification(
 
 export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
   return {
+    async getDailySummaryByMemberStatus(ymd: string): Promise<DailySummaryByMemberStatusRow[]> {
+      const readOnly = createReadOnlyStorage();
+      return readOnly.query(async (client) => {
+        const result = await client.execute(sql`
+          SELECT
+            COALESCE(oms.name, 'Unassigned') AS member_status,
+            oms.sequence AS ms_sequence,
+            s.status AS sheet_status,
+            COUNT(DISTINCT a.worker_id)::int AS worker_count
+          FROM edls_assignments a
+          JOIN edls_crews c ON c.id = a.crew_id
+          JOIN edls_sheets s ON s.id = c.sheet_id
+          JOIN workers w ON w.id = a.worker_id
+          LEFT JOIN LATERAL (
+            SELECT oms2.name, oms2.sequence
+            FROM options_worker_ms oms2
+            JOIN employers emp ON emp.id = s.employer_id
+            WHERE oms2.industry_id = emp.industry_id
+              AND oms2.id = ANY(w.denorm_ms_ids)
+            ORDER BY oms2.sequence ASC NULLS LAST, oms2.name
+            LIMIT 1
+          ) oms ON true
+          WHERE a.ymd = ${ymd}
+            AND s.status != 'trash'
+          GROUP BY oms.name, oms.sequence, s.status
+          ORDER BY oms.sequence NULLS LAST, oms.name
+        `);
+        return (result.rows as Array<Record<string, unknown>>).map((row) => ({
+          memberStatus: row.member_status as string,
+          msSequence: row.ms_sequence === null ? null : Number(row.ms_sequence),
+          sheetStatus: row.sheet_status as string,
+          workerCount: Number(row.worker_count ?? 0),
+        }));
+      });
+    },
+
     async getByCrewId(crewId: string): Promise<EdlsAssignmentWithWorker[]> {
       const client = getClient();
       const rows = await client
@@ -193,34 +265,88 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
 
       const unsortedAssignments = rows.map(row => ({
         ...row.assignment,
-        worker: row.worker,
+        worker: {
+          ...row.worker,
+          memberStatusId: null,
+          memberStatusCode: null,
+          memberStatusName: null,
+        },
       }));
 
       return sortAssignmentsByClassification(unsortedAssignments);
     },
 
-    async getBySheetId(sheetId: string): Promise<EdlsAssignmentWithWorker[]> {
+    async getBySheetId(sheetId: string, industryId?: string | null): Promise<EdlsAssignmentWithWorker[]> {
       const client = getClient();
-      const rows = await client
-        .select({
-          assignment: edlsAssignments,
-          worker: {
-            id: workers.id,
-            siriusId: workers.siriusId,
-            displayName: contacts.displayName,
-            given: contacts.given,
-            family: contacts.family,
-          },
-        })
-        .from(edlsAssignments)
-        .innerJoin(edlsCrews, eq(edlsAssignments.crewId, edlsCrews.id))
-        .innerJoin(workers, eq(edlsAssignments.workerId, workers.id))
-        .innerJoin(contacts, eq(workers.contactId, contacts.id))
-        .where(eq(edlsCrews.sheetId, sheetId));
 
-      const unsortedAssignments = rows.map(row => ({
-        ...row.assignment,
-        worker: row.worker,
+      // Lateral join to find the worker's member status for the sheet's industry,
+      // mirroring the join used by getAvailableWorkersForSheet.
+      const memberStatusJoin = industryId
+        ? sql`LEFT JOIN LATERAL (
+          SELECT ms.id, ms.code, ms.name
+          FROM UNNEST(w.denorm_ms_ids) AS ms_id
+          INNER JOIN options_worker_ms ms ON ms.id = ms_id AND ms.industry_id = ${industryId}
+          LIMIT 1
+        ) member_status ON true`
+        : sql``;
+      const memberStatusSelect = industryId
+        ? sql`member_status.id as "memberStatusId", member_status.code as "memberStatusCode", member_status.name as "memberStatusName"`
+        : sql`NULL::varchar as "memberStatusId", NULL::varchar as "memberStatusCode", NULL::varchar as "memberStatusName"`;
+
+      interface RawSheetAssignmentRow {
+        id: string;
+        ymd: string;
+        workerId: string;
+        crewId: string;
+        data: unknown;
+        workerRowId: string;
+        siriusId: number | null;
+        displayName: string | null;
+        given: string | null;
+        family: string | null;
+        memberStatusId: string | null;
+        memberStatusCode: string | null;
+        memberStatusName: string | null;
+      }
+
+      const result = await client.execute(sql`
+        SELECT
+          ea.id,
+          ea.ymd,
+          ea.worker_id as "workerId",
+          ea.crew_id as "crewId",
+          ea.data,
+          w.id as "workerRowId",
+          w.sirius_id as "siriusId",
+          c.display_name as "displayName",
+          c.given,
+          c.family,
+          ${memberStatusSelect}
+        FROM edls_assignments ea
+        INNER JOIN edls_crews ec ON ea.crew_id = ec.id
+        INNER JOIN workers w ON ea.worker_id = w.id
+        INNER JOIN contacts c ON w.contact_id = c.id
+        ${memberStatusJoin}
+        WHERE ec.sheet_id = ${sheetId}
+      `);
+
+      const rows = result.rows as unknown as RawSheetAssignmentRow[];
+      const unsortedAssignments: EdlsAssignmentWithWorker[] = rows.map((row) => ({
+        id: row.id,
+        ymd: row.ymd,
+        workerId: row.workerId,
+        crewId: row.crewId,
+        data: row.data,
+        worker: {
+          id: row.workerRowId,
+          siriusId: row.siriusId,
+          displayName: row.displayName,
+          given: row.given,
+          family: row.family,
+          memberStatusId: row.memberStatusId,
+          memberStatusCode: row.memberStatusCode,
+          memberStatusName: row.memberStatusName,
+        },
       }));
 
       return sortAssignmentsByClassification(unsortedAssignments);
@@ -348,6 +474,154 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
         ${orderBy}
       `);
       return result.rows as unknown as AvailableWorkerForSheet[];
+    },
+
+    async getAssignmentsForWorker(
+      workerId: string,
+      filters?: AssignmentForWorkerFilters
+    ): Promise<AssignmentForWorker[]> {
+      const client = getClient();
+      const conditions = [
+        eq(edlsAssignments.workerId, workerId),
+        ne(edlsSheets.status, 'trash'),
+      ];
+      if (filters?.startYmd) conditions.push(gte(edlsSheets.ymd, filters.startYmd));
+      if (filters?.endYmd) conditions.push(lte(edlsSheets.ymd, filters.endYmd));
+      if (filters?.supervisorId) conditions.push(eq(edlsSheets.supervisor, filters.supervisorId));
+      if (filters?.facilityId) conditions.push(eq(edlsSheets.facilityId, filters.facilityId));
+      if (filters?.jobGroupId) conditions.push(eq(edlsSheets.jobGroupId, filters.jobGroupId));
+
+      const rows = await client
+        .select({
+          assignmentId: edlsAssignments.id,
+          assignmentData: edlsAssignments.data,
+          ymd: edlsSheets.ymd,
+          sheetId: edlsSheets.id,
+          sheetTitle: edlsSheets.title,
+          sheetStatus: edlsSheets.status,
+          crewId: edlsCrews.id,
+          crewTitle: edlsCrews.title,
+          startTime: edlsCrews.startTime,
+          endTime: edlsCrews.endTime,
+          supervisorId: users.id,
+          supervisorFirstName: users.firstName,
+          supervisorLastName: users.lastName,
+          supervisorEmail: users.email,
+          facilityId: facilities.id,
+          facilityName: facilities.name,
+          jobGroupId: dispatchJobGroups.id,
+          jobGroupName: dispatchJobGroups.name,
+        })
+        .from(edlsAssignments)
+        .innerJoin(edlsCrews, eq(edlsAssignments.crewId, edlsCrews.id))
+        .innerJoin(edlsSheets, eq(edlsCrews.sheetId, edlsSheets.id))
+        .leftJoin(users, eq(edlsSheets.supervisor, users.id))
+        .leftJoin(facilities, eq(edlsSheets.facilityId, facilities.id))
+        .leftJoin(dispatchJobGroups, eq(edlsSheets.jobGroupId, dispatchJobGroups.id))
+        .where(and(...conditions))
+        .orderBy(asc(edlsSheets.ymd), asc(edlsCrews.startTime));
+
+      return rows.map((r) => ({
+        assignmentId: r.assignmentId,
+        ymd: r.ymd,
+        sheetId: r.sheetId,
+        sheetTitle: r.sheetTitle,
+        sheetStatus: r.sheetStatus,
+        crewId: r.crewId,
+        crewTitle: r.crewTitle,
+        startTime: r.startTime,
+        endTime: r.endTime,
+        supervisor: r.supervisorId
+          ? {
+              id: r.supervisorId,
+              firstName: r.supervisorFirstName,
+              lastName: r.supervisorLastName,
+              email: r.supervisorEmail!,
+            }
+          : null,
+        facility: r.facilityId ? { id: r.facilityId, name: r.facilityName! } : null,
+        jobGroup: r.jobGroupId ? { id: r.jobGroupId, name: r.jobGroupName! } : null,
+        data: (r.assignmentData as Record<string, unknown> | null) ?? null,
+      }));
+    },
+
+    async getAssignmentsForWorkerIds(
+      workerIds: string[],
+      filters?: AssignmentForWorkerFilters
+    ): Promise<Map<string, AssignmentForWorker[]>> {
+      const result = new Map<string, AssignmentForWorker[]>();
+      for (const id of workerIds) result.set(id, []);
+      if (workerIds.length === 0) return result;
+
+      const client = getClient();
+      const conditions = [
+        inArray(edlsAssignments.workerId, workerIds),
+        ne(edlsSheets.status, 'trash'),
+      ];
+      if (filters?.startYmd) conditions.push(gte(edlsSheets.ymd, filters.startYmd));
+      if (filters?.endYmd) conditions.push(lte(edlsSheets.ymd, filters.endYmd));
+      if (filters?.supervisorId) conditions.push(eq(edlsSheets.supervisor, filters.supervisorId));
+      if (filters?.facilityId) conditions.push(eq(edlsSheets.facilityId, filters.facilityId));
+      if (filters?.jobGroupId) conditions.push(eq(edlsSheets.jobGroupId, filters.jobGroupId));
+
+      const rows = await client
+        .select({
+          workerId: edlsAssignments.workerId,
+          assignmentId: edlsAssignments.id,
+          assignmentData: edlsAssignments.data,
+          ymd: edlsSheets.ymd,
+          sheetId: edlsSheets.id,
+          sheetTitle: edlsSheets.title,
+          sheetStatus: edlsSheets.status,
+          crewId: edlsCrews.id,
+          crewTitle: edlsCrews.title,
+          startTime: edlsCrews.startTime,
+          endTime: edlsCrews.endTime,
+          supervisorId: users.id,
+          supervisorFirstName: users.firstName,
+          supervisorLastName: users.lastName,
+          supervisorEmail: users.email,
+          facilityId: facilities.id,
+          facilityName: facilities.name,
+          jobGroupId: dispatchJobGroups.id,
+          jobGroupName: dispatchJobGroups.name,
+        })
+        .from(edlsAssignments)
+        .innerJoin(edlsCrews, eq(edlsAssignments.crewId, edlsCrews.id))
+        .innerJoin(edlsSheets, eq(edlsCrews.sheetId, edlsSheets.id))
+        .leftJoin(users, eq(edlsSheets.supervisor, users.id))
+        .leftJoin(facilities, eq(edlsSheets.facilityId, facilities.id))
+        .leftJoin(dispatchJobGroups, eq(edlsSheets.jobGroupId, dispatchJobGroups.id))
+        .where(and(...conditions))
+        .orderBy(asc(edlsSheets.ymd), asc(edlsCrews.startTime));
+
+      for (const r of rows) {
+        const item: AssignmentForWorker = {
+          assignmentId: r.assignmentId,
+          ymd: r.ymd,
+          sheetId: r.sheetId,
+          sheetTitle: r.sheetTitle,
+          sheetStatus: r.sheetStatus,
+          crewId: r.crewId,
+          crewTitle: r.crewTitle,
+          startTime: r.startTime,
+          endTime: r.endTime,
+          supervisor: r.supervisorId
+            ? {
+                id: r.supervisorId,
+                firstName: r.supervisorFirstName,
+                lastName: r.supervisorLastName,
+                email: r.supervisorEmail!,
+              }
+            : null,
+          facility: r.facilityId ? { id: r.facilityId, name: r.facilityName! } : null,
+          jobGroup: r.jobGroupId ? { id: r.jobGroupId, name: r.jobGroupName! } : null,
+          data: (r.assignmentData as Record<string, unknown> | null) ?? null,
+        };
+        const list = result.get(r.workerId);
+        if (list) list.push(item);
+      }
+      return result;
     },
 
     async getWorkerAssignmentDetails(workerId: string, sheetYmd: string): Promise<WorkerAssignmentDetails | null> {

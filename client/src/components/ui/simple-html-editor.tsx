@@ -37,6 +37,7 @@ interface SimpleHtmlEditorProps {
   className?: string;
   enableTokens?: boolean;
   minHeight?: number;
+  disabled?: boolean;
   "data-testid"?: string;
 }
 
@@ -175,6 +176,7 @@ export function SimpleHtmlEditor({
   className,
   enableTokens = false,
   minHeight = 120,
+  disabled = false,
   "data-testid": testId,
 }: SimpleHtmlEditorProps) {
   const editorRef = useRef<HTMLDivElement>(null);
@@ -630,12 +632,13 @@ export function SimpleHtmlEditor({
           placeholder="Enter raw HTML here..."
           className="p-3 font-mono text-sm border-0 rounded-none focus-visible:ring-0 resize-none"
           style={{ minHeight }}
+          disabled={disabled}
           data-testid={testId ? `${testId}-raw` : undefined}
         />
       ) : (
         <div
           ref={editorRef}
-          contentEditable
+          contentEditable={!disabled}
           className={cn(
             "p-3 outline-none prose prose-sm max-w-none",
             "focus:ring-2 focus:ring-ring focus:ring-offset-0",

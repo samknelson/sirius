@@ -12,6 +12,75 @@
  */
 import express from "express";
 import { createServer } from "http";
+import { existsSync, readdirSync, statSync } from "fs";
+import { resolve, join } from "path";
+
+/**
+ * Stale-build guardrail (see task #138).
+ *
+ * The dashboard plugin /content endpoints once returned a 404 with the
+ * old wording `"No content resolver for plugin '<id>'"`. That wording
+ * only ever existed in compiled `dist/` artifacts — the current source
+ * uses different wording. The cause was someone running `npm run start`
+ * (which executes `node dist/production-entry.js` and lazy-imports
+ * `dist/app-init.js`) against a stale `dist/` directory that had not
+ * been rebuilt to match the current `server/` source.
+ *
+ * This guardrail compares the newest mtime under `server/` to the
+ * mtime of this compiled bundle (the file currently executing). If
+ * source is newer than the build, we exit immediately with a clear
+ * error instead of silently serving stale code.
+ *
+ * The check is skipped in deployed environments (REPLIT_DEPLOYMENT=1)
+ * because the deploy pipeline always runs `npm run build` immediately
+ * before `npm run start`, and the source tree may not be present in
+ * the deployed container at all.
+ */
+function assertBuildIsFresh(): void {
+  if (process.env.REPLIT_DEPLOYMENT === "1") return;
+  if (process.env.SKIP_DIST_FRESHNESS_CHECK === "1") return;
+
+  try {
+    const projectRoot = resolve(import.meta.dirname, "..");
+    const sourceDir = join(projectRoot, "server");
+    const selfPath = new URL(import.meta.url).pathname;
+    if (!existsSync(sourceDir) || !existsSync(selfPath)) return;
+
+    const buildMtime = statSync(selfPath).mtimeMs;
+    let newestSourceMtime = 0;
+    let newestSourcePath = "";
+    const walk = (dir: string) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        if (entry.name === "node_modules" || entry.name.startsWith(".")) continue;
+        const full = join(dir, entry.name);
+        if (entry.isDirectory()) {
+          walk(full);
+        } else if (entry.isFile()) {
+          const m = statSync(full).mtimeMs;
+          if (m > newestSourceMtime) {
+            newestSourceMtime = m;
+            newestSourcePath = full;
+          }
+        }
+      }
+    };
+    walk(sourceDir);
+
+    if (newestSourceMtime > buildMtime + 1000) {
+      console.error(
+        `[stale-build] dist/ is older than server/ source — refusing to start.\n` +
+          `  build mtime:  ${new Date(buildMtime).toISOString()} (${selfPath})\n` +
+          `  source mtime: ${new Date(newestSourceMtime).toISOString()} (${newestSourcePath})\n` +
+          `Run \`npm run build\` before \`npm run start\`, or use \`npm run dev\` for source-mode development.`,
+      );
+      process.exit(1);
+    }
+  } catch (err) {
+    console.warn(`[stale-build] freshness check skipped: ${(err as Error).message}`);
+  }
+}
+
+assertBuildIsFresh();
 
 const app = express();
 const server = createServer(app);

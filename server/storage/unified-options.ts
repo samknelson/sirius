@@ -22,8 +22,10 @@ import {
   optionsClassifications,
   optionsIndustry,
   optionsWorkerMs,
+  optionsWorkerRelationType,
 } from "@shared/schema";
 import { type StorageLoggingConfig } from "./middleware/logging";
+import type { JsonSchema, UiSchema } from "@shared/json-schema-form";
 
 /**
  * Stub validator - add validation logic here when needed
@@ -49,7 +51,8 @@ export type OptionsTypeName =
   | "worker-rating"
   | "classification"
   | "industry"
-  | "worker-ms";
+  | "worker-ms"
+  | "worker-relation-type";
 
 /**
  * Field definition for dynamic form and table rendering
@@ -69,7 +72,12 @@ export interface FieldDefinition {
 }
 
 /**
- * Complete options resource definition for frontend consumption
+ * Complete options resource definition for frontend consumption.
+ *
+ * `fields` drives the table (column headers, cell rendering); `schema`
+ * + `uiSchema` drive the create/edit form via SchemaFormDialog. The
+ * two are derived from the same source-of-truth `FieldDefinition[]`
+ * inside `optionsMetadata`.
  */
 export interface OptionsResourceDefinition {
   type: OptionsTypeName;
@@ -78,9 +86,97 @@ export interface OptionsResourceDefinition {
   singularName: string;
   pluralName: string;
   fields: FieldDefinition[];
+  schema: JsonSchema;
+  uiSchema: UiSchema;
   supportsSequencing: boolean;
   supportsParent: boolean;
   requiredComponent?: string;
+}
+
+/**
+ * Convert a list of FieldDefinition descriptors to a JSON Schema +
+ * uiSchema pair suitable for `SchemaFormDialog`. Field semantics:
+ *   - text/textarea → string (textarea via uiSchema)
+ *   - number        → integer
+ *   - checkbox      → boolean (default false)
+ *   - icon/color    → string + `x-widget` vendor key
+ *   - select-options→ string + `x-options-resource` vendor key
+ *   - select-self   → string (nullable) + `x-options-self` vendor key
+ *   - dataField:true→ adds `x-data-field: true` so the storage layer
+ *                     splits it into the JSONB `data` column.
+ */
+export function fieldsToJsonSchema(
+  fields: FieldDefinition[],
+): { schema: JsonSchema; uiSchema: UiSchema } {
+  const properties: Record<string, JsonSchema> = {};
+  const required: string[] = [];
+  const uiSchema: UiSchema = {};
+
+  for (const f of fields) {
+    let prop: JsonSchema = { title: f.label };
+    if (f.helperText) prop.description = f.helperText;
+
+    switch (f.inputType) {
+      case "text":
+        prop.type = "string";
+        if (f.required) prop.minLength = 1;
+        break;
+      case "textarea":
+        prop.type = "string";
+        if (f.required) prop.minLength = 1;
+        uiSchema[f.name] = { ...(uiSchema[f.name] as object), "ui:widget": "textarea" };
+        break;
+      case "number":
+        prop.type = "integer";
+        break;
+      case "checkbox":
+        prop.type = "boolean";
+        prop.default = false;
+        break;
+      case "icon":
+        prop.type = "string";
+        (prop as Record<string, unknown>)["x-widget"] = "icon";
+        break;
+      case "color":
+        prop.type = "string";
+        (prop as Record<string, unknown>)["x-widget"] = "color";
+        break;
+      case "select-options":
+        prop.type = "string";
+        if (f.selectOptionsType) {
+          (prop as Record<string, unknown>)["x-options-resource"] = f.selectOptionsType;
+        }
+        if (f.required) prop.minLength = 1;
+        break;
+      case "select-self":
+        // Nullable: SelfOptionsWidget sends `null` for the "no parent"
+        // sentinel, so the schema must accept null in addition to string.
+        prop.type = ["string", "null"];
+        (prop as Record<string, unknown>)["x-options-self"] = true;
+        break;
+    }
+
+    if (f.placeholder) {
+      uiSchema[f.name] = {
+        ...(uiSchema[f.name] as object),
+        "ui:placeholder": f.placeholder,
+      };
+    }
+
+    if (f.dataField) {
+      (prop as Record<string, unknown>)["x-data-field"] = true;
+    }
+
+    properties[f.name] = prop;
+    if (f.required) required.push(f.name);
+  }
+
+  const schema: JsonSchema = {
+    type: "object",
+    properties,
+    ...(required.length > 0 ? { required } : {}),
+  };
+  return { schema, uiSchema };
 }
 
 interface OptionsTableMetadata<T extends PgTable<TableConfig>> {
@@ -427,6 +523,25 @@ const optionsMetadata: Record<OptionsTypeName, OptionsTableMetadata<any>> = {
       { name: "siriusId", label: "Sirius ID", inputType: "text", required: false, placeholder: "External ID", showInTable: true, columnHeader: "Sirius ID" },
     ],
   },
+  "worker-relation-type": {
+    table: optionsWorkerRelationType,
+    displayName: "Relationship Types",
+    description: "Manage relationship types used between workers (e.g. spouse, parent, sibling).",
+    singularName: "Relationship Type",
+    pluralName: "Relationship Types",
+    orderByColumn: "name" as const,
+    loggingModule: "options.workerRelationType",
+    requiredFields: ["name"],
+    optionalFields: ["siriusId", "description", "data"],
+    requiredComponent: "worker.relations",
+    supportsSequencing: false,
+    fields: [
+      { name: "name", label: "Name", inputType: "text", required: true, placeholder: "e.g., Spouse, Parent, Sibling", showInTable: true, columnHeader: "Name" },
+      { name: "icon", label: "Icon", inputType: "icon", required: false, placeholder: "Select an icon", showInTable: true, columnHeader: "Icon", columnWidth: "80px", dataField: true },
+      { name: "description", label: "Description", inputType: "text", required: false, placeholder: "Short description of this relationship type", showInTable: true, columnHeader: "Description" },
+      { name: "siriusId", label: "Sirius ID", inputType: "text", required: false, placeholder: "External ID", showInTable: true, columnHeader: "Sirius ID" },
+    ],
+  },
 };
 
 export type OptionsMetadataMap = typeof optionsMetadata;
@@ -554,7 +669,7 @@ function createUnifiedOptionsStorageImpl(): UnifiedOptionsStorage {
     getDefinition(type: OptionsTypeName): OptionsResourceDefinition | undefined {
       const metadata = optionsMetadata[type];
       if (!metadata) return undefined;
-      
+      const { schema, uiSchema } = fieldsToJsonSchema(metadata.fields);
       return {
         type,
         displayName: metadata.displayName,
@@ -562,6 +677,8 @@ function createUnifiedOptionsStorageImpl(): UnifiedOptionsStorage {
         singularName: metadata.singularName,
         pluralName: metadata.pluralName,
         fields: metadata.fields,
+        schema,
+        uiSchema,
         supportsSequencing: metadata.supportsSequencing ?? false,
         supportsParent: metadata.supportsParent ?? false,
         requiredComponent: metadata.requiredComponent,
@@ -571,6 +688,7 @@ function createUnifiedOptionsStorageImpl(): UnifiedOptionsStorage {
     getAllDefinitions(): OptionsResourceDefinition[] {
       return (Object.keys(optionsMetadata) as OptionsTypeName[]).map(type => {
         const metadata = optionsMetadata[type];
+        const { schema, uiSchema } = fieldsToJsonSchema(metadata.fields);
         return {
           type,
           displayName: metadata.displayName,
@@ -578,6 +696,8 @@ function createUnifiedOptionsStorageImpl(): UnifiedOptionsStorage {
           singularName: metadata.singularName,
           pluralName: metadata.pluralName,
           fields: metadata.fields,
+          schema,
+          uiSchema,
           supportsSequencing: metadata.supportsSequencing ?? false,
           supportsParent: metadata.supportsParent ?? false,
           requiredComponent: metadata.requiredComponent,

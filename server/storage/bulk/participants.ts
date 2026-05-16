@@ -1,15 +1,40 @@
 import { createNoopValidator } from '../utils/validation';
 import { getClient } from '../transaction-context';
 import { bulkParticipants, type BulkParticipant, type InsertBulkParticipant } from "../../../shared/schema/bulk/schema";
+import { contacts, workers, comm } from "../../../shared/schema";
 import { eq, and } from "drizzle-orm";
 import type { StorageLoggingConfig } from "../middleware/logging";
 
 export const validate = createNoopValidator<InsertBulkParticipant, BulkParticipant>();
 
+export interface BulkParticipantWithRelations {
+  id: string;
+  messageId: string;
+  contactId: string;
+  medium: string;
+  commId: string | null;
+  data: unknown;
+  contactDisplayName: string | null;
+  contactGiven: string | null;
+  contactFamily: string | null;
+  workerId: string | null;
+  workerSiriusId: number | null;
+  commStatus: string | null;
+}
+
+export interface BulkParticipantDeliveryStatRow {
+  participantStatus: string;
+  medium: string;
+  commId: string | null;
+  commStatus: string | null;
+}
+
 export interface BulkParticipantStorage {
   getById(id: string): Promise<BulkParticipant | undefined>;
   getByMessageId(messageId: string): Promise<BulkParticipant[]>;
   getPendingByMessageId(messageId: string, limit: number): Promise<BulkParticipant[]>;
+  listForMessageWithRelations(messageId: string): Promise<BulkParticipantWithRelations[]>;
+  getDeliveryStats(messageId: string): Promise<BulkParticipantDeliveryStatRow[]>;
   create(data: InsertBulkParticipant): Promise<BulkParticipant>;
   update(id: string, data: Partial<InsertBulkParticipant>): Promise<BulkParticipant | undefined>;
   delete(id: string): Promise<boolean>;
@@ -45,6 +70,54 @@ export function createBulkParticipantStorage(): BulkParticipantStorage {
           eq(bulkParticipants.status, "pending"),
         ))
         .limit(limit);
+    },
+
+    async listForMessageWithRelations(messageId: string): Promise<BulkParticipantWithRelations[]> {
+      const client = getClient();
+      const workerSub = client
+        .selectDistinctOn([workers.contactId], {
+          contactId: workers.contactId,
+          id: workers.id,
+          siriusId: workers.siriusId,
+        })
+        .from(workers)
+        .as("w");
+      const rows = await client
+        .select({
+          id: bulkParticipants.id,
+          messageId: bulkParticipants.messageId,
+          contactId: bulkParticipants.contactId,
+          medium: bulkParticipants.medium,
+          commId: bulkParticipants.commId,
+          data: bulkParticipants.data,
+          contactDisplayName: contacts.displayName,
+          contactGiven: contacts.given,
+          contactFamily: contacts.family,
+          workerId: workerSub.id,
+          workerSiriusId: workerSub.siriusId,
+          commStatus: comm.status,
+        })
+        .from(bulkParticipants)
+        .innerJoin(contacts, eq(bulkParticipants.contactId, contacts.id))
+        .leftJoin(workerSub, eq(workerSub.contactId, contacts.id))
+        .leftJoin(comm, eq(bulkParticipants.commId, comm.id))
+        .where(eq(bulkParticipants.messageId, messageId));
+      return rows;
+    },
+
+    async getDeliveryStats(messageId: string): Promise<BulkParticipantDeliveryStatRow[]> {
+      const client = getClient();
+      const rows = await client
+        .select({
+          participantStatus: bulkParticipants.status,
+          medium: bulkParticipants.medium,
+          commId: bulkParticipants.commId,
+          commStatus: comm.status,
+        })
+        .from(bulkParticipants)
+        .leftJoin(comm, eq(bulkParticipants.commId, comm.id))
+        .where(eq(bulkParticipants.messageId, messageId));
+      return rows;
     },
 
     async create(data: InsertBulkParticipant): Promise<BulkParticipant> {

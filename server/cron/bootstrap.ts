@@ -95,6 +95,12 @@ const DEFAULT_CRON_JOBS: DefaultCronJob[] = [
     isEnabled: false, // Disabled by default - requires sitespecific.t631.client component
   },
   {
+    name: 'sitespecific-t631-tos-fetch',
+    description: 'Fetches active Time Off Sick records from the T631 server and syncs them into the local worker_tos table',
+    schedule: '0 10 * * *', // Daily at 10 AM
+    isEnabled: false, // Disabled by default - requires sitespecific.t631.client component
+  },
+  {
     name: 'gbhet-pension-sla-reconcile',
     description: 'Reconciles GBHET VDB pension SLA contribution-percent ledger entries (replaces former cascade plugin)',
     schedule: '30 2 * * *', // Daily at 2:30 AM

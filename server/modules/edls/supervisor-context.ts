@@ -19,23 +19,25 @@ export interface SupervisorContext {
 export interface EdlsSettings {
   supervisor_role: string | null;
   employer: string | null;
+  worker_id_type: string | null;
 }
 
 export async function getEdlsSettings(): Promise<EdlsSettings> {
   const variable = await storage.variables.getByName("edls_settings");
   if (!variable?.value) {
-    return { supervisor_role: null, employer: null };
+    return { supervisor_role: null, employer: null, worker_id_type: null };
   }
   try {
     const parsed = typeof variable.value === 'string' 
       ? JSON.parse(variable.value) 
       : variable.value;
     return { 
-      supervisor_role: parsed.supervisor_role || null,
-      employer: parsed.employer || null,
+      supervisor_role: typeof parsed.supervisor_role === 'string' ? parsed.supervisor_role : null,
+      employer: typeof parsed.employer === 'string' ? parsed.employer : null,
+      worker_id_type: typeof parsed.worker_id_type === 'string' ? parsed.worker_id_type : null,
     };
   } catch {
-    return { supervisor_role: null, employer: null };
+    return { supervisor_role: null, employer: null, worker_id_type: null };
   }
 }
 

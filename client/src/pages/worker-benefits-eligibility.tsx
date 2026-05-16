@@ -13,7 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, CheckCircle2, XCircle, AlertCircle, Play } from "lucide-react";
+import { Loader2, CheckCircle2, XCircle, AlertCircle, AlertTriangle, Play } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 
 interface PolicyData {
@@ -31,6 +31,7 @@ interface EligibilityPluginResult {
   pluginKey: string;
   eligible: boolean;
   reason?: string;
+  warning?: string;
 }
 
 interface BenefitEligibilityResult {
@@ -50,14 +51,95 @@ interface WorkerWs {
   name: string;
 }
 
+interface WorkerRelationOption {
+  id: string;
+  worker1: string;
+  worker2: string;
+  role: "worker_1" | "worker_2";
+  isActive: boolean;
+  startYmd: string | null;
+  endYmd: string | null;
+  relationType: string;
+  relationTypeName: string | null;
+  otherWorker: {
+    id: string;
+    siriusId: number | null;
+    displayName: string | null;
+    given: string | null;
+    family: string | null;
+  } | null;
+}
+
+const NO_DEPENDENT = "__none__";
+
+function lastDayOfMonthIso(year: number, month: number): string {
+  const d = new Date(year, month, 0);
+  const yr = d.getFullYear();
+  const mo = String(d.getMonth() + 1).padStart(2, "0");
+  const dy = String(d.getDate()).padStart(2, "0");
+  return `${yr}-${mo}-${dy}`;
+}
+
+function workerLabel(other: WorkerRelationOption["otherWorker"]): string {
+  if (!other) return "(unknown worker)";
+  return (
+    other.displayName ||
+    [other.given, other.family].filter(Boolean).join(" ") ||
+    other.id
+  );
+}
+
 function WorkerBenefitsEligibilityContent() {
-  const { worker } = useWorkerLayout();
+  const { worker, contact } = useWorkerLayout();
   const [selectedPolicyId, setSelectedPolicyId] = useState<string>("");
   const [selectedYear, setSelectedYear] = useState<string>(new Date().getFullYear().toString());
   const [selectedMonth, setSelectedMonth] = useState<string>((new Date().getMonth() + 1).toString());
   const [selectedBenefitId, setSelectedBenefitId] = useState<string>("");
   const [selectedScanType, setSelectedScanType] = useState<"start" | "continue">("start");
+  const [selectedDependentId, setSelectedDependentId] = useState<string>(NO_DEPENDENT);
+  const [evaluatedSubscriberName, setEvaluatedSubscriberName] = useState<string | null>(null);
+  const [evaluatedDependentName, setEvaluatedDependentName] = useState<string | null>(null);
   const [eligibilityResult, setEligibilityResult] = useState<BenefitEligibilityResult | null>(null);
+
+  const asOfDateIso = lastDayOfMonthIso(parseInt(selectedYear), parseInt(selectedMonth));
+
+  const subscriberName =
+    contact?.displayName ||
+    [contact?.given, contact?.family].filter(Boolean).join(" ") ||
+    worker.id;
+
+  const { data: dependentRelations = [] } = useQuery<WorkerRelationOption[]>({
+    queryKey: [
+      "/api/workers",
+      worker.id,
+      "relations",
+      { role: "worker_1", activeAt: asOfDateIso },
+    ],
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        role: "worker_1",
+        activeAt: asOfDateIso,
+      });
+      const res = await fetch(
+        `/api/workers/${worker.id}/relations?${params.toString()}`,
+      );
+      if (!res.ok) throw new Error("Failed to fetch relations");
+      return res.json();
+    },
+  });
+
+  // Drop the picked dependent if the new as-of date no longer has an
+  // active relationship for them — keeps the picker honest.
+  useEffect(() => {
+    if (selectedDependentId === NO_DEPENDENT) return;
+    const stillValid = dependentRelations.some(
+      (r) => r.otherWorker?.id === selectedDependentId,
+    );
+    if (!stillValid) {
+      setSelectedDependentId(NO_DEPENDENT);
+      setEligibilityResult(null);
+    }
+  }, [dependentRelations, selectedDependentId]);
 
   const { data: policies = [] } = useQuery<Policy[]>({
     queryKey: ["/api/policies"],
@@ -118,7 +200,7 @@ function WorkerBenefitsEligibilityContent() {
 
   const evaluateMutation = useMutation({
     mutationFn: async () => {
-      const response = await apiRequest("POST", "/api/eligibility/evaluate", {
+      const body: Record<string, unknown> = {
         workerId: worker.id,
         benefitId: selectedBenefitId,
         policyId: selectedPolicyId,
@@ -126,11 +208,25 @@ function WorkerBenefitsEligibilityContent() {
         asOfMonth: parseInt(selectedMonth),
         asOfYear: parseInt(selectedYear),
         stopAfterIneligible: false,
-      });
-      return response;
+      };
+      if (selectedDependentId !== NO_DEPENDENT) {
+        body.relationship = { dependentWorkerId: selectedDependentId };
+      }
+      return apiRequest("POST", "/api/eligibility/evaluate", body);
     },
     onSuccess: (data) => {
       setEligibilityResult(data as BenefitEligibilityResult);
+      setEvaluatedSubscriberName(subscriberName);
+      if (selectedDependentId === NO_DEPENDENT) {
+        setEvaluatedDependentName(null);
+      } else {
+        const rel = dependentRelations.find(
+          (r) => r.otherWorker?.id === selectedDependentId,
+        );
+        setEvaluatedDependentName(
+          rel ? workerLabel(rel.otherWorker) : selectedDependentId,
+        );
+      }
     },
   });
 
@@ -191,8 +287,10 @@ function WorkerBenefitsEligibilityContent() {
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            Test whether this worker is eligible for a benefit under a specific policy. Select the
-            policy, benefit, date, and scan type to evaluate eligibility rules.
+            Test eligibility from <span className="font-medium">{subscriberName}</span>'s point of
+            view as the subscriber. Leave the dependent picker on "None" to test this worker's own
+            eligibility, or pick one of their dependents to test that dependent under this
+            subscriber.
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -280,6 +378,44 @@ function WorkerBenefitsEligibilityContent() {
               </Select>
             </div>
 
+            <div className="space-y-2 md:col-span-2">
+              <Label htmlFor="dependent">Dependent (optional)</Label>
+              <Select
+                value={selectedDependentId}
+                onValueChange={(value) => {
+                  setSelectedDependentId(value);
+                  setEligibilityResult(null);
+                }}
+              >
+                <SelectTrigger id="dependent" data-testid="select-dependent">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_DEPENDENT}>
+                    None (test {subscriberName} themselves)
+                  </SelectItem>
+                  {dependentRelations
+                    .filter((r) => r.otherWorker)
+                    .map((r) => (
+                      <SelectItem
+                        key={r.id}
+                        value={r.otherWorker!.id}
+                        data-testid={`option-dependent-${r.otherWorker!.id}`}
+                      >
+                        {workerLabel(r.otherWorker)}
+                        {r.relationTypeName ? ` — ${r.relationTypeName}` : ""}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Only dependents with an active relationship as of {selectedMonth}/
+                {selectedYear} are listed.
+                {dependentRelations.length === 0 &&
+                  " This worker has no active dependents on that date."}
+              </p>
+            </div>
+
             <div className="space-y-2">
               <Label htmlFor="scan-type">Scan Type</Label>
               <Select
@@ -345,18 +481,59 @@ function WorkerBenefitsEligibilityContent() {
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between gap-2">
-              <CardTitle>Evaluation Results</CardTitle>
-              {eligibilityResult.eligible ? (
-                <Badge className="bg-green-500 hover:bg-green-600">
-                  <CheckCircle2 className="h-4 w-4 mr-1" />
-                  Eligible
-                </Badge>
-              ) : (
-                <Badge variant="destructive">
-                  <XCircle className="h-4 w-4 mr-1" />
-                  Not Eligible
-                </Badge>
-              )}
+              <div>
+                <CardTitle>Evaluation Results</CardTitle>
+                <p
+                  className="text-xs text-muted-foreground mt-1"
+                  data-testid="text-evaluated-context"
+                >
+                  Tested with{" "}
+                  <span className="font-medium">
+                    {evaluatedSubscriberName ?? subscriberName}
+                  </span>{" "}
+                  as subscriber
+                  {evaluatedDependentName && (
+                    <>
+                      {" "}for dependent{" "}
+                      <span className="font-medium">{evaluatedDependentName}</span>
+                    </>
+                  )}
+                  .
+                </p>
+              </div>
+              {(() => {
+                const hasWarnings = eligibilityResult.results.some(
+                  (r) => r.eligible && r.warning,
+                );
+                if (!eligibilityResult.eligible) {
+                  return (
+                    <Badge variant="destructive" data-testid="badge-overall-status">
+                      <XCircle className="h-4 w-4 mr-1" />
+                      Not Eligible
+                    </Badge>
+                  );
+                }
+                if (hasWarnings) {
+                  return (
+                    <Badge
+                      className="bg-yellow-500 hover:bg-yellow-600 text-black"
+                      data-testid="badge-overall-status"
+                    >
+                      <AlertTriangle className="h-4 w-4 mr-1" />
+                      Eligible with warnings
+                    </Badge>
+                  );
+                }
+                return (
+                  <Badge
+                    className="bg-green-500 hover:bg-green-600"
+                    data-testid="badge-overall-status"
+                  >
+                    <CheckCircle2 className="h-4 w-4 mr-1" />
+                    Eligible
+                  </Badge>
+                );
+              })()}
             </div>
           </CardHeader>
           <CardContent>
@@ -370,32 +547,60 @@ function WorkerBenefitsEligibilityContent() {
                 <p className="text-sm text-muted-foreground">
                   {eligibilityResult.results.length} rule(s) were evaluated.
                 </p>
-                {eligibilityResult.results.map((result, index) => (
-                  <div
-                    key={index}
-                    className={`p-4 border rounded-md ${
-                      result.eligible 
-                        ? "border-green-500/50 bg-green-500/10" 
-                        : "border-destructive/50 bg-destructive/10"
-                    }`}
-                    data-testid={`result-plugin-${result.pluginKey}`}
-                  >
-                    <div className="flex items-center gap-2 mb-2">
-                      {result.eligible ? (
-                        <CheckCircle2 className="h-5 w-5 text-green-500" />
+                {eligibilityResult.results.map((result, index) => {
+                  const hasWarning = result.eligible && !!result.warning;
+                  const containerClass = !result.eligible
+                    ? "border-destructive/50 bg-destructive/10"
+                    : hasWarning
+                    ? "border-yellow-500/50 bg-yellow-500/10"
+                    : "border-green-500/50 bg-green-500/10";
+                  return (
+                    <div
+                      key={index}
+                      className={`p-4 border rounded-md ${containerClass}`}
+                      data-testid={`result-plugin-${result.pluginKey}`}
+                      data-state={
+                        !result.eligible
+                          ? "failed"
+                          : hasWarning
+                          ? "warning"
+                          : "passed"
+                      }
+                    >
+                      <div className="flex items-center gap-2 mb-2">
+                        {!result.eligible ? (
+                          <XCircle className="h-5 w-5 text-destructive" />
+                        ) : hasWarning ? (
+                          <AlertTriangle className="h-5 w-5 text-yellow-500" />
+                        ) : (
+                          <CheckCircle2 className="h-5 w-5 text-green-500" />
+                        )}
+                        <span className="font-medium">{getPluginName(result.pluginKey)}</span>
+                        {!result.eligible ? (
+                          <Badge variant="destructive">Failed</Badge>
+                        ) : hasWarning ? (
+                          <Badge className="bg-yellow-500 hover:bg-yellow-600 text-black">
+                            Warning
+                          </Badge>
+                        ) : (
+                          <Badge variant="secondary">Passed</Badge>
+                        )}
+                      </div>
+                      {hasWarning ? (
+                        <p
+                          className="text-sm ml-7 text-yellow-700 dark:text-yellow-400"
+                          data-testid={`text-warning-${result.pluginKey}`}
+                        >
+                          {result.warning}
+                        </p>
                       ) : (
-                        <XCircle className="h-5 w-5 text-destructive" />
+                        result.reason && (
+                          <p className="text-sm ml-7">{result.reason}</p>
+                        )
                       )}
-                      <span className="font-medium">{getPluginName(result.pluginKey)}</span>
-                      <Badge variant={result.eligible ? "secondary" : "destructive"}>
-                        {result.eligible ? "Passed" : "Failed"}
-                      </Badge>
                     </div>
-                    {result.reason && (
-                      <p className="text-sm ml-7">{result.reason}</p>
-                    )}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </CardContent>

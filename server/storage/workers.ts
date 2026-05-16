@@ -211,6 +211,7 @@ export interface WorkerStorage {
   createWorkerBenefit(data: { workerId: string; month: number; year: number; employerId: string; benefitId: string }): Promise<TrustWmb>;
   deleteWorkerBenefit(id: string): Promise<boolean>;
   workerBenefitExists(workerId: string, benefitId: string, month: number, year: number): Promise<boolean>;
+  getMemberStatusCodesByIndustry(industryId: string, workerIdsList: string[]): Promise<Array<{ workerId: string; code: string }>>;
 }
 
 interface InternalSearchParams {
@@ -1074,7 +1075,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
 
         // Execute charge plugins directly (for backwards compatibility)
         try {
-          const { executeChargePlugins, TriggerType } = await import("../charge-plugins");
+          const { executeChargePlugins, TriggerType } = await import("../plugins/ledger/charge");
           await executeChargePlugins({
             trigger: TriggerType.WMB_SAVED,
             ...payload,
@@ -1122,7 +1123,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
 
         // Execute charge plugins directly (for backwards compatibility)
         try {
-          const { executeChargePlugins, TriggerType } = await import("../charge-plugins");
+          const { executeChargePlugins, TriggerType } = await import("../plugins/ledger/charge");
           await executeChargePlugins({
             trigger: TriggerType.WMB_SAVED,
             ...payload,
@@ -1137,6 +1138,26 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       }
       
       return result.length > 0;
+    },
+
+    async getMemberStatusCodesByIndustry(industryId: string, workerIdsList: string[]): Promise<Array<{ workerId: string; code: string }>> {
+      if (workerIdsList.length === 0) return [];
+      const client = getClient();
+      const result = await client.execute(sql`
+        SELECT w.id AS "workerId", ms.code AS "code"
+        FROM workers w
+        CROSS JOIN LATERAL (
+          SELECT ms.code
+          FROM UNNEST(w.denorm_ms_ids) AS ms_id
+          INNER JOIN options_worker_ms ms ON ms.id = ms_id AND ms.industry_id = ${industryId}
+          LIMIT 1
+        ) ms
+        WHERE w.id IN (${sql.join(workerIdsList.map((id) => sql`${id}`), sql`, `)})
+      `);
+      const rows = result.rows as unknown as Array<{ workerId: string; code: string | null }>;
+      return rows
+        .filter((r): r is { workerId: string; code: string } => r.code !== null)
+        .map((r) => ({ workerId: r.workerId, code: r.code }));
     },
 
     async workerBenefitExists(workerId: string, benefitId: string, month: number, year: number): Promise<boolean> {

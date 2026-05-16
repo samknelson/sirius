@@ -37,6 +37,7 @@ import {
   Landmark,
   Megaphone,
   Layers,
+  Stethoscope,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useQuery } from "@tanstack/react-query";
@@ -96,6 +97,11 @@ export default function Header() {
 
   const { data: bulkEditPolicy } = useQuery<PolicyAccessResponse>({
     queryKey: ["/api/access/policies/bulk.edit"],
+    staleTime: 30000,
+  });
+
+  const { data: edlsAnyPolicy } = useQuery<PolicyAccessResponse>({
+    queryKey: ["/api/access/policies/edls.any"],
     staleTime: 30000,
   });
 
@@ -448,12 +454,25 @@ export default function Header() {
                 {hasComponent("edls") && staffPolicy?.access?.granted && (
                   <Link href="/edls/sheets" onClick={() => setMobileMenuOpen(false)}>
                     <Button
-                      variant={location.startsWith("/edls") ? "default" : "ghost"}
+                      variant={location === "/edls/sheets" ? "default" : "ghost"}
                       className="w-full justify-start"
                       data-testid="mobile-nav-edls-sheets"
                     >
                       <FileSpreadsheet className="h-4 w-4 mr-2" />
                       Day Labor Sheets
+                    </Button>
+                  </Link>
+                )}
+
+                {hasComponent("edls") && hasComponent("worker.tos") && edlsAnyPolicy?.access?.granted && (
+                  <Link href="/edls/tos" onClick={() => setMobileMenuOpen(false)}>
+                    <Button
+                      variant={location === "/edls/tos" ? "default" : "ghost"}
+                      className="w-full justify-start"
+                      data-testid="mobile-nav-edls-tos"
+                    >
+                      <Stethoscope className="h-4 w-4 mr-2" />
+                      Absences
                     </Button>
                   </Link>
                 )}
@@ -1283,6 +1302,16 @@ export default function Header() {
                         <div className="flex items-center cursor-pointer" data-testid="menu-edls-sheets">
                           <FileSpreadsheet className="h-4 w-4 mr-2" />
                           Day Labor Sheets
+                        </div>
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
+                  {hasComponent("edls") && hasComponent("worker.tos") && edlsAnyPolicy?.access?.granted && (
+                    <DropdownMenuItem asChild>
+                      <Link href="/edls/tos" className="w-full">
+                        <div className="flex items-center cursor-pointer" data-testid="menu-edls-tos">
+                          <Stethoscope className="h-4 w-4 mr-2" />
+                          Absences
                         </div>
                       </Link>
                     </DropdownMenuItem>

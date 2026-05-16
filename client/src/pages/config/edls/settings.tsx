@@ -24,14 +24,21 @@ interface Employer {
   name: string;
 }
 
+interface WorkerIdTypeOption {
+  id: string;
+  name: string;
+}
+
 interface EdlsSettings {
   supervisor_role: string | null;
   employer: string | null;
+  worker_id_type: string | null;
 }
 
 const DEFAULT_SETTINGS: EdlsSettings = {
   supervisor_role: null,
   employer: null,
+  worker_id_type: null,
 };
 
 export default function EdlsSettingsPage() {
@@ -46,6 +53,10 @@ export default function EdlsSettingsPage() {
 
   const { data: employers = [], isLoading: employersLoading } = useQuery<Employer[]>({
     queryKey: ["/api/employers"],
+  });
+
+  const { data: workerIdTypes = [], isLoading: workerIdTypesLoading } = useQuery<WorkerIdTypeOption[]>({
+    queryKey: ["/api/options/worker-id-type"],
   });
 
   const { data: settingsVariable, isLoading: variableLoading } = useQuery<Variable | null>({
@@ -73,12 +84,15 @@ export default function EdlsSettingsPage() {
           ? JSON.parse(settingsVariable.value) 
           : settingsVariable.value;
         setSettings({
-          supervisor_role: parsed.supervisor_role || null,
-          employer: parsed.employer || null,
+          supervisor_role: typeof parsed.supervisor_role === 'string' ? parsed.supervisor_role : null,
+          employer: typeof parsed.employer === 'string' ? parsed.employer : null,
+          worker_id_type: typeof parsed.worker_id_type === 'string' ? parsed.worker_id_type : null,
         });
       } catch {
         setSettings(DEFAULT_SETTINGS);
       }
+    } else {
+      setSettings(DEFAULT_SETTINGS);
     }
   }, [settingsVariable]);
 
@@ -123,8 +137,9 @@ export default function EdlsSettingsPage() {
           ? JSON.parse(settingsVariable.value)
           : settingsVariable.value;
         return {
-          supervisor_role: parsed.supervisor_role || null,
-          employer: parsed.employer || null,
+          supervisor_role: typeof parsed.supervisor_role === 'string' ? parsed.supervisor_role : null,
+          employer: typeof parsed.employer === 'string' ? parsed.employer : null,
+          worker_id_type: typeof parsed.worker_id_type === 'string' ? parsed.worker_id_type : null,
         };
       } catch {
         return DEFAULT_SETTINGS;
@@ -135,7 +150,7 @@ export default function EdlsSettingsPage() {
 
   const hasChanges = JSON.stringify(settings) !== JSON.stringify(getCurrentSettings());
 
-  const isLoading = rolesLoading || employersLoading || variableLoading;
+  const isLoading = rolesLoading || employersLoading || workerIdTypesLoading || variableLoading;
 
   if (isLoading) {
     return (
@@ -206,6 +221,25 @@ export default function EdlsSettingsPage() {
                 {employers.map((employer) => (
                   <SelectItem key={employer.id} value={employer.id} data-testid={`option-employer-${employer.id}`}>
                     {employer.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="worker-id-type">Worker ID Type</Label>
+            <Select
+              value={settings.worker_id_type || ""}
+              onValueChange={(value) => setSettings({ ...settings, worker_id_type: value || null })}
+            >
+              <SelectTrigger id="worker-id-type" data-testid="select-worker-id-type">
+                <SelectValue placeholder="Select a worker ID type..." />
+              </SelectTrigger>
+              <SelectContent>
+                {workerIdTypes.map((type) => (
+                  <SelectItem key={type.id} value={type.id} data-testid={`option-worker-id-type-${type.id}`}>
+                    {type.name}
                   </SelectItem>
                 ))}
               </SelectContent>

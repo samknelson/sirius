@@ -275,6 +275,7 @@ export function registerAccessPolicyRoutes(app: Express) {
         bulk_message: 'bulk.edit',
         ledger_payment_batch: 'staff',
         dispatch_job_group: 'staff',
+        trust_election: 'staff',
       };
       const basePolicy = entityPolicyMap[entityType] || 'authenticated';
       const baseAccessResult = await checkAccess(basePolicy, context.user, resolvedEntityId);

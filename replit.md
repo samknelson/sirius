@@ -71,3 +71,225 @@ Preferred communication style: Simple, everyday language.
 -   **TanStack Query Documentation**: [https://tanstack.com/query/latest](https://tanstack.com/query/latest)
 -   **Express.js Documentation**: [https://expressjs.com/](https://expressjs.com/)
 -   **PostgreSQL Documentation**: [https://www.postgresql.org/docs/](https://www.postgresql.org/docs/)
+
+## Always restart the `Start application` workflow after server-side or shared changes
+
+The dev server runs under `tsx` and **does not hot-reload** changes to
+files outside the Vite client bundle. Vite HMR only refreshes the
+browser-side code under `client/`. Anything the Node process holds in
+memory (Express routes, middleware, registries, schemas, the access
+policy/component caches) keeps the old version until the workflow is
+explicitly restarted.
+
+**Rule of thumb:** if your edit touches any of the following, restart
+the `Start application` workflow as the **last step before telling the
+user to verify**:
+
+- `server/**` — routes, modules, services, storage, plugins, crons,
+  middleware, app-init, etc.
+- `shared/**` — tab registry, components registry, schema, access
+  policies, terminology, anything imported by the server.
+- New API endpoints, new tabs, new components, new policies, new
+  storage namespaces, new cron jobs, new feature flags.
+- Anything that mutates a server-held cache (component cache, access
+  policy cache, modular policy registry, terminology cache).
+
+Pure client-only changes under `client/src/**` (components, pages,
+hooks, styles) do **not** require a workflow restart — Vite HMR
+handles them.
+
+When in doubt, restart. It is cheap, and it avoids the
+"why-don't-I-see-the-new-tab" loop. After restarting, also remind the
+user that a hard refresh may be needed if a TanStack Query cache
+(default 5 min staleTime, e.g. `/api/access/tabs`) is holding the
+previous result.
+
+# Non-Negotiable Rules
+
+## All database access MUST go through the storage layer
+
+This is a hard, project-wide rule with **no exceptions**. Every database
+query — read or write, one row or one million — must be issued from a
+method on a storage module under `server/storage/`. Anything else is a
+bug.
+
+**Forbidden anywhere outside `server/storage/`** (this includes every
+file under `server/modules/`, `server/services/`, `server/routes/`,
+cron handlers, dashboard plugins, eligibility/charge plugins, web
+service handlers, scripts, seeders, and any other server-side code):
+
+-   Importing `db` from `server/db.ts`.
+-   Calling `getClient()` from `server/storage/transaction-context`.
+-   Embedding `sql\`...\`` template literals.
+-   Calling `db.execute(...)`, `db.select(...)`, `db.insert(...)`,
+    `db.update(...)`, `db.delete(...)`, `db.transaction(...)`, or any
+    direct Drizzle query builder method on a database client.
+-   Importing schema tables from `@shared/schema` for the purpose of
+    building a query (importing types is fine).
+
+**Required pattern:** Add or extend a method on the appropriate
+`*Storage` interface (e.g. `storage.workers.foo(...)`,
+`storage.cardchecks.bar(...)`) and call it from your route/service.
+Routes stay thin; all SQL lives in storage.
+
+**Read-only escape hatch:** `storage.readOnly.query(async (client) =>
+…)` exists for cross-cutting reports that don't fit a single domain.
+It is acceptable **only inside a storage method**, never inside a
+route handler, service, plugin, or cron job.
+
+**Cross-domain query helpers:** When a feature needs to query several
+unrelated tables (for example, contact-link resolution touches
+`workers`, `employer_contacts`, and `trust_provider_contacts`), do
+**not** put those queries in a service file. Add a dedicated storage
+namespace (e.g. `storage.contactLinks`) that exposes one focused method
+per query, and have the service compose the results in pure
+TypeScript.
+
+**Service files stay query-free:** Files under `server/modules/` and
+`server/services/` may orchestrate, transform, and aggregate data
+returned by `storage.*` calls, but they must not import schema tables,
+`db`, `getClient`, or `drizzle-orm` operators (`eq`, `and`, `ilike`,
+`sql`, `inArray`, etc.) for query construction. If you reach for any
+of those imports, the work belongs in a storage method.
+
+**Routes stay thin:** Route handlers should call one or more
+`storage.*` methods, perform request validation, and shape the
+response. They must contain zero query logic.
+
+If you find yourself wanting to break this rule, the answer is always
+to add a new storage method instead. See the **Database Access
+Architecture** entry under System Design Choices for the rationale
+(audit logging, access control, validation, separation of concerns).
+
+## Entity / page navigation MUST use the shared tab registry
+
+Every entity detail page and any persistent page-level navigation in
+the app must be driven by the shared tab registry (`shared/tabRegistry.ts`)
+plus a dedicated entity Layout under `client/src/components/layouts/`.
+The registry is the single source of truth for which tabs exist,
+which access policy / component / capability gates them, and what
+URLs they live at — and the matching backend evaluator
+(`server/modules/access-policies.ts`) is what makes per-user tab
+filtering work.
+
+**Forbidden for entity / page navigation:** importing
+`Tabs`, `TabsList`, `TabsTrigger`, or `TabsContent` from
+`@/components/ui/tabs` to build the top-level navigation of an entity
+detail page (Worker, Employer, Trust Provider, Trust Benefit, Trust
+Election, Dispatch Job, Bulk Message, etc.) or any other persistent
+page-level navigation. If you find yourself reaching for ad-hoc Radix
+Tabs to switch between "views" of an entity, stop and add a tab to
+the registry instead.
+
+**Required pattern when adding or modifying an entity detail page:**
+
+1. Add (or extend) a `TabEntityType` and `*TabTree` in
+   `shared/tabRegistry.ts` and register it in `tabTreeRegistry`.
+2. Wire the entity into the batch tab access endpoint in
+   `server/modules/access-policies.ts` (`entityPolicyMap` plus any
+   entity-specific ID resolution).
+3. Add a thin `use<Entity>TabAccess` wrapper in
+   `client/src/hooks/useTabAccess.ts`.
+4. Add a `<Entity>Layout.tsx` under `client/src/components/layouts/`
+   modeled on `TrustBenefitLayout.tsx` or `WorkerLayout.tsx` (the
+   canonical examples to copy from). The layout owns the header, the
+   back button, `usePageTitle`, and the registry-driven tab strip.
+5. Wrap each page in `<EntityLayout activeTab="...">` and render only
+   the body content.
+
+**Narrow exception — intra-page widget tabs:** Radix `Tabs` from
+`@/components/ui/tabs` are still allowed for clearly intra-page widget
+tabs that are not entity / page navigation. The current legitimate
+usages are:
+
+- `client/src/pages/admin.tsx`
+- `client/src/pages/config/users.tsx`
+- `client/src/pages/wizard-view.tsx`
+- `client/src/pages/flood-events*`
+- `client/src/components/SignatureModal.tsx`
+- `client/src/components/btu-dues-allocation/ResultsStep.tsx`
+
+These are widget-level tab strips inside a single page (e.g. a modal
+or a results panel) and are explicitly out of scope of the
+prohibition. Adding new such usages should be rare and well-justified.
+
+If your tab strip switches the route, gates by access policy /
+component, or names a persistent "view" of an entity, it belongs in
+the registry — not in `@/components/ui/tabs`.
+
+# System Architecture
+
+## UI/UX Decisions
+The frontend is built with React 18, TypeScript, Vite, Shadcn/ui (based on Radix UI), and Tailwind CSS with a "new-york" theme, ensuring a modern, accessible, and responsive user interface.
+
+## Technical Implementations
+-   **Frontend**: React 18, TypeScript, Vite, Wouter for routing, TanStack Query for server state management, and React Hook Form with Zod for form validation. Pages are lazy-loaded for performance.
+-   **Backend**: Express.js with TypeScript, providing a RESTful API structured with feature-based modules.
+-   **Authentication**: Supports multi-provider authentication (Replit Auth, Okta, SAML/OAuth, Clerk, local username/password) with environment-driven configuration and masquerade capabilities.
+-   **Access Control**: Implements a modular, entity-based policy architecture with server-side LRU caching.
+-   **Logging**: Winston logging is integrated with a PostgreSQL backend to maintain audit trails.
+-   **Data Storage**: PostgreSQL (Neon Database) is managed using Drizzle ORM.
+-   **Object Storage**: Utilizes Replit Object Storage, backed by Google Cloud Storage.
+-   **Real-time Notifications**: Features a WebSocket-based push notification system.
+-   **Event Bus System**: A typed publish/subscribe event bus facilitates inter-service communication.
+-   **Cron Job System**: Provides a framework for scheduling periodic tasks.
+-   **Migration Framework**: Manages database schema changes with a versioned migration system.
+
+## System Design Choices
+-   **Database Access Architecture**: All database interactions are centralized through a storage layer for audit logging, access control, validation, and separation of concerns. **This is enforced as a hard rule — see the "All database access MUST go through the storage layer" section under Non-Negotiable Rules above.**
+-   **Data Validation**: Utilizes Zod schemas and `libphonenumber-js` for robust data validation.
+-   **Worker Management**: Comprehensive CRUD operations for workers, contacts, and benefits, with server-side pagination, search, and advanced filtering.
+-   **Configurable Settings**: A unified, metadata-driven options system supports dynamic form and table rendering.
+-   **User Provisioning**: Email-based provisioning integrated with Replit accounts and automatic contact synchronization.
+-   **Employer & Policy Management**: Manages employer records, contacts, and historical policy assignments.
+-   **Bookmarks**: Provides user-specific, entity-agnostic bookmarking functionality.
+-   **Dashboard Plugin System**: An extensible architecture allows for customizable widgets.
+-   **Components Feature Flag System**: A centralized system for managing application features, including dependencies and access control.
+-   **Ledger System**: Manages financial transactions, accounts, payments, and integrity reports, including payment batches.
+-   **Wizards**: Offers flexible workflow state management for multi-step processes.
+-   **File Storage System**: Comprehensive file management with metadata and access control.
+-   **Worker Hours & Employment Views**: Tracks worker hours and employment history.
+-   **Trust Eligibility Plugin System**: A registry-based architecture determines worker eligibility.
+-   **Events Management**: Full CRUD for events, occurrences, and scheduling.
+-   **Dispatch System**: Manages dispatch jobs, types, listings, and detail pages, including a plugin system for worker eligibility filtering. Supports Dispatch Job Groups for grouping jobs with date ranges and external system linkage.
+-   **Worker Bans**: Tracks worker restrictions and dynamically calculates active status.
+-   **Worker Member Status History**: Tracks worker member statuses per industry over time.
+-   **Worker Certifications**: Manages worker certifications with automatic skill synchronization.
+-   **EDLS (Employer Day Labor Scheduler)**: Manages day labor scheduling with sheets, crews, department-based task assignment, supervisor tracking, and audit logging. Includes a TOS view at `/edls/tos` that lists every worker on active Time Off Sick alongside their upcoming day-labor assignments, with filters for supervisor, facility, and job group.
+-   **Web Services Framework**: A server-side API framework for exposing services to external clients with client credential authentication and optional IP allowlisting.
+-   **SFTP Client Destinations**: Manages SFTP client configurations with CRUD API and UI, including connection diagnostics.
+-   **Trust Provider EDI**: Manages trust provider data interchange records with SFTP client destination integration.
+-   **Bulk Messaging**: Infrastructure for bulk message management with multi-medium support (email, SMS, postal, in-app).
+
+# External Dependencies
+
+## Database Services
+-   **Neon Database**: Serverless PostgreSQL hosting.
+
+## UI and Styling
+-   **Radix UI**: Accessible UI primitives.
+-   **Tailwind CSS**: Utility-first CSS framework.
+-   **Lucide React**: Icon library.
+
+## Validation and Type Safety
+-   **Zod**: Runtime type validation.
+-   **TypeScript**: Static type checking.
+-   **Drizzle Zod**: Integration between Drizzle ORM and Zod.
+-   **libphonenumber-js**: Phone number parsing, validation, and formatting.
+
+## File Transfer
+-   **ssh2-sftp-client**: SFTP client library.
+-   **basic-ftp**: FTP client library.
+
+## Third-Party Integrations
+-   **Twilio**: Phone number lookup, validation, and SMS messaging.
+
+## API and State Management
+-   **TanStack Query**: Server state management.
+-   **Date-fns**: Date utility functions.
+
+## Task Scheduling
+-   **node-cron**: Task scheduling and cron job execution.
+
+## Security
+-   **DOMPurify**: HTML sanitization.

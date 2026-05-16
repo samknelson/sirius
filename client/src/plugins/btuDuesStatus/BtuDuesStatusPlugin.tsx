@@ -70,7 +70,7 @@ export function BtuDuesStatusPlugin({ userPermissions, enabledComponents }: Dash
   const hasComponent = enabledComponents?.includes("sitespecific.btu") ?? false;
 
   const { data: summary, isLoading } = useQuery<DuesSummary>({
-    queryKey: ["/api/dashboard-plugins/btu-dues-status/summary"],
+    queryKey: ["/api/dashboard-plugins/btu-dues-status/content/summary"],
     enabled: hasPermission && hasComponent,
   });
 

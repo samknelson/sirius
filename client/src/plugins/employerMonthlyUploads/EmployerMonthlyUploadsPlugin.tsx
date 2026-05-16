@@ -52,7 +52,7 @@ export function EmployerMonthlyUploadsPlugin({ userId, userRoles }: DashboardPlu
   });
 
   const { data: myWizardTypeNames = [] } = useQuery<string[]>({
-    queryKey: ["/api/dashboard-plugins/employer-monthly/my-wizard-types"],
+    queryKey: ["/api/dashboard-plugins/employer-monthly-uploads/content/my-wizard-types"],
   });
 
   const monthlyWizardTypes = wizardTypes.filter(wt => wt.isMonthly === true);
@@ -115,14 +115,14 @@ function StatsCard({ wizardType, year, month }: StatsCardProps) {
   const [, setLocation] = useLocation();
 
   const { data: stats, isLoading } = useQuery<EmployerMonthlyStats>({
-    queryKey: ["/api/dashboard-plugins/employer-monthly/stats", { year, month, wizardType: wizardType.name }],
+    queryKey: ["/api/dashboard-plugins/employer-monthly-uploads/content/stats", { year, month, wizardType: wizardType.name }],
     queryFn: async () => {
       const params = new URLSearchParams({
         year: year.toString(),
         month: month.toString(),
         wizardType: wizardType.name,
       });
-      const response = await fetch(`/api/dashboard-plugins/employer-monthly/stats?${params}`);
+      const response = await fetch(`/api/dashboard-plugins/employer-monthly-uploads/content/stats?${params}`);
       if (!response.ok) {
         throw new Error('Failed to fetch stats');
       }

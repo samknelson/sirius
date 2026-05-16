@@ -1,0 +1,39 @@
+Auto-merging client/src/App.tsx
+Auto-merging client/src/components/layout/Header.tsx
+Auto-merging client/src/index.css
+CONFLICT (content): Merge conflict in client/src/index.css
+Auto-merging client/src/plugins/registry.ts
+Auto-merging package-lock.json
+Auto-merging package.json
+Auto-merging replit.md
+CONFLICT (content): Merge conflict in replit.md
+Auto-merging server/app-init.ts
+CONFLICT (content): Merge conflict in server/app-init.ts
+Auto-merging server/cron/bootstrap.ts
+CONFLICT (content): Merge conflict in server/cron/bootstrap.ts
+Auto-merging server/cron/index.ts
+CONFLICT (content): Merge conflict in server/cron/index.ts
+Auto-merging server/index.ts
+CONFLICT (content): Merge conflict in server/index.ts
+Auto-merging server/modules/access-policies.ts
+Auto-merging server/modules/dashboard.ts
+CONFLICT (content): Merge conflict in server/modules/dashboard.ts
+Auto-merging server/modules/ledger/payments.ts
+Auto-merging server/plugins/ledger/charge/executor.ts
+CONFLICT (file location): server/charge-plugins/plugins/gbheHourlyCharge.ts added in HEAD inside a directory that was renamed in origin/main, suggesting it should perhaps be moved to server/plugins/ledger/charge/plugins/gbheHourlyCharge.ts.
+Auto-merging server/plugins/ledger/charge/plugins/gbhetLegalBenefit.ts
+CONFLICT (file location): server/charge-plugins/plugins/gbhetPensionSlaHourly.ts added in HEAD inside a directory that was renamed in origin/main, suggesting it should perhaps be moved to server/plugins/ledger/charge/plugins/gbhetPensionSlaHourly.ts.
+Auto-merging server/plugins/ledger/charge/plugins/paymentSimpleAllocation.ts
+Auto-merging server/routes.ts
+Auto-merging server/storage/bargaining-units.ts
+CONFLICT (content): Merge conflict in server/storage/bargaining-units.ts
+Auto-merging server/storage/contacts.ts
+Auto-merging server/storage/database.ts
+CONFLICT (content): Merge conflict in server/storage/database.ts
+Auto-merging server/storage/edls/assignments.ts
+CONFLICT (content): Merge conflict in server/storage/edls/assignments.ts
+Auto-merging server/storage/worker-hours.ts
+Auto-merging shared/components.ts
+Auto-merging shared/schema.ts
+Auto-merging shared/tabRegistry.ts
+Automatic merge failed; fix conflicts and then commit the result.

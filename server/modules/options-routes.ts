@@ -2,6 +2,8 @@ import type { Express, Request, Response } from "express";
 import { getOptionsType, getAllOptionsTypes, getOptionsStorage } from "./options-registry";
 import { requireAccess } from "../services/access-policy-evaluator";
 import { OptionsTypeName } from "../storage/unified-options";
+import { storage } from "../storage";
+import { requireComponent } from "./components";
 
 export function registerConsolidatedOptionsRoutes(app: Express) {
   // GET /api/options - List all available options types
@@ -41,6 +43,40 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
       res.status(500).json({ message: "Failed to fetch options definition" });
     }
   });
+
+  // Special-case: cardcheck definitions are not unified-options, but the
+  // trust eligibility "cardcheck" plugin needs them as a remote-options
+  // source. Register this BEFORE the generic `/api/options/:type` so it
+  // matches first.
+  app.get(
+    "/api/options/cardcheck-definition",
+    requireAccess('authenticated'),
+    requireComponent("cardcheck"),
+    async (_req: Request, res: Response) => {
+      try {
+        const definitions = await storage.cardcheckDefinitions.getAllCardcheckDefinitions();
+        res.json(definitions.map((d) => ({ id: d.id, name: d.name })));
+      } catch (error) {
+        res.status(500).json({ message: "Failed to fetch cardcheck definitions" });
+      }
+    },
+  );
+
+  // Special-case: trust benefits exposed as a remote-options source for
+  // the trust eligibility "linked" plugin's multi-select. Read-only.
+  // Register BEFORE the generic `/api/options/:type` so it matches first.
+  app.get(
+    "/api/options/trust-benefit",
+    requireAccess('authenticated'),
+    async (_req: Request, res: Response) => {
+      try {
+        const benefits = await storage.trustBenefits.getActiveTrustBenefitOptions();
+        res.json(benefits);
+      } catch (error) {
+        res.status(500).json({ message: "Failed to fetch trust benefits" });
+      }
+    },
+  );
 
   // GET /api/options/:type - List all items of a specific options type
   app.get("/api/options/:type", requireAccess('authenticated'), async (req: Request, res: Response) => {

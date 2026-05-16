@@ -53,6 +53,12 @@ const WorkerBans = lazy(() => import("@/pages/workers/bans"));
 const WorkerEdls = lazy(() => import("@/pages/worker-edls"));
 const WorkerSecondShift = lazy(() => import("@/pages/worker-sitespecific-freeman-2shift"));
 const WorkerSkills = lazy(() => import("@/pages/worker-skills"));
+const WorkerRelations = lazy(() => import("@/pages/workers/relations"));
+const WorkerElectionsCurrent = lazy(() => import("@/pages/workers/elections-current"));
+const WorkerElectionsList = lazy(() => import("@/pages/workers/elections-list"));
+const TrustElectionDetail = lazy(() => import("@/pages/trust/election-detail"));
+const TrustElectionEdit = lazy(() => import("@/pages/trust/election-edit"));
+const WorkerTos = lazy(() => import("@/pages/worker-tos"));
 const WorkerCertifications = lazy(() => import("@/pages/worker-certifications"));
 const WorkerCertificationView = lazy(() => import("@/pages/worker-certification-view"));
 const WorkerRatings = lazy(() => import("@/pages/worker-ratings"));
@@ -321,6 +327,7 @@ const BtuBuildingRepImportPage = lazy(() => import("@/pages/sitespecific/btu/bui
 const WorkerPoliticalProfile = lazy(() => import("@/pages/worker-political-profile"));
 const PoliticalProfilesReport = lazy(() => import("@/pages/political-profiles-report"));
 const EdlsSheetsPage = lazy(() => import("@/pages/edls/sheets"));
+const EdlsTosPage = lazy(() => import("@/pages/edls/tos"));
 const EdlsSheetDetailsPage = lazy(() => import("@/pages/edls/sheet-details"));
 const EdlsSheetAssignmentsPage = lazy(() => import("@/pages/edls/sheet-assignments"));
 const EdlsSheetManagePage = lazy(() => import("@/pages/edls/sheet-manage"));
@@ -590,6 +597,46 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/workers/:id/relations">
+        <ProtectedRoute tabId="relations" entityType="worker">
+          <AuthenticatedLayout>
+            <WorkerRelations />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/workers/:id/elections/current">
+        <ProtectedRoute tabId="elections-current" entityType="worker">
+          <AuthenticatedLayout>
+            <WorkerElectionsCurrent />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/workers/:id/elections/list">
+        <ProtectedRoute tabId="elections-list" entityType="worker">
+          <AuthenticatedLayout>
+            <WorkerElectionsList />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/trust/election/:id">
+        <ProtectedRoute permission="staff" component="trust.elections">
+          <AuthenticatedLayout>
+            <TrustElectionDetail />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/trust/election/:id/edit">
+        <ProtectedRoute permission="staff" component="trust.elections">
+          <AuthenticatedLayout>
+            <TrustElectionEdit />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/workers/:id/certifications">
         <ProtectedRoute tabId="certifications" entityType="worker">
           <AuthenticatedLayout>
@@ -818,6 +865,14 @@ function Router() {
         <ProtectedRoute tabId="daily" entityType="worker">
           <AuthenticatedLayout>
             <WorkerHoursDaily />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/workers/:id/employment/tos">
+        <ProtectedRoute tabId="tos" entityType="worker">
+          <AuthenticatedLayout>
+            <WorkerTos />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -2613,6 +2668,14 @@ function Router() {
         <ProtectedRoute policy="edls.any" component="edls">
           <AuthenticatedLayout>
             <EdlsSheetsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/edls/tos">
+        <ProtectedRoute policy="edls.any" component="worker.tos">
+          <AuthenticatedLayout>
+            <EdlsTosPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

@@ -5,9 +5,13 @@ import {
   getAllEligibilityPlugins, 
   getEligibilityPlugin,
   eligibilityPluginRegistry,
-} from "../eligibility-plugins/registry";
-import { evaluateBenefitEligibility } from "../eligibility-plugins/executor";
-import type { EligibilityRule } from "../eligibility-plugins/types";
+} from "../plugins/trust/eligibility/registry";
+import {
+  evaluateBenefitEligibility,
+  validateEligibilityRelationship,
+  EligibilityRelationshipError,
+} from "../plugins/trust/eligibility/executor";
+import type { EligibilityRule } from "../plugins/trust/eligibility/types";
 import { z } from "zod";
 import { getEnabledComponentIds } from "./components";
 
@@ -19,6 +23,11 @@ const evaluateEligibilitySchema = z.object({
   asOfMonth: z.number().int().min(1).max(12).optional(),
   asOfYear: z.number().int().min(2000).max(2100).optional(),
   stopAfterIneligible: z.boolean().optional(),
+  relationship: z
+    .object({
+      dependentWorkerId: z.string().uuid(),
+    })
+    .optional(),
 });
 
 export function registerEligibilityPluginRoutes(
@@ -36,10 +45,16 @@ export function registerEligibilityPluginRoutes(
         id: p.metadata.id,
         name: p.metadata.name,
         description: p.metadata.description,
+        configSchema: p.metadata.configSchema,
       }));
       
       plugins.sort((a, b) => a.id.localeCompare(b.id));
-      
+
+      // Plugin availability changes whenever a plugin is registered/removed
+      // or its required component is toggled. Disable HTTP caching so any
+      // client that bypasses the React Query layer (curl, other pages,
+      // proxies) always sees a fresh list.
+      res.setHeader("Cache-Control", "no-store");
       res.json(plugins);
     } catch (error) {
       console.error("Failed to fetch eligibility plugins:", error);
@@ -70,6 +85,7 @@ export function registerEligibilityPluginRoutes(
         id: plugin.metadata.id,
         name: plugin.metadata.name,
         description: plugin.metadata.description,
+        configSchema: plugin.metadata.configSchema,
       });
     } catch (error) {
       console.error("Failed to fetch eligibility plugin:", error);
@@ -91,6 +107,16 @@ export function registerEligibilityPluginRoutes(
       const benefitRules = eligibilityRules[input.benefitId] || [];
 
       if (benefitRules.length === 0) {
+        // Even when no rules exist, hard-validate any supplied
+        // relationship so bad inputs surface as 400 instead of a
+        // misleading "eligible" response.
+        const now = new Date();
+        await validateEligibilityRelationship(
+          input.workerId,
+          input.relationship,
+          input.asOfMonth ?? now.getMonth() + 1,
+          input.asOfYear ?? now.getFullYear(),
+        );
         return res.json({
           benefitId: input.benefitId,
           eligible: true,
@@ -108,6 +134,7 @@ export function registerEligibilityPluginRoutes(
           asOfMonth: input.asOfMonth,
           asOfYear: input.asOfYear,
           stopAfterIneligible: input.stopAfterIneligible,
+          relationship: input.relationship,
         }
       );
 
@@ -115,6 +142,9 @@ export function registerEligibilityPluginRoutes(
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: "Invalid request data", errors: error.errors });
+      }
+      if (error instanceof EligibilityRelationshipError) {
+        return res.status(400).json({ message: error.message });
       }
       console.error("Failed to evaluate eligibility:", error);
       res.status(500).json({ message: "Failed to evaluate eligibility" });
@@ -134,7 +164,7 @@ export function registerEligibilityPluginRoutes(
         return res.status(404).json({ message: `Plugin not found: ${pluginKey}` });
       }
 
-      const validation = plugin.validateConfig(config);
+      const validation = await plugin.validateConfig(config);
       res.json(validation);
     } catch (error) {
       console.error("Failed to validate config:", error);
