@@ -13,7 +13,7 @@ import {
   type WorkerTrustElectionView,
 } from '@shared/schema';
 import { eq, and, asc, desc, isNull, lt, lte, gte, or, ne, inArray, type SQL } from 'drizzle-orm';
-import { type StorageLoggingConfig } from '../middleware/logging';
+import { defineLoggingConfig, type StorageLoggingConfig } from '../middleware/logging';
 import { normalizeToDateOnly, getTodayDateOnly } from '@shared/utils';
 
 export interface WorkerTrustElectionSearchParams {
@@ -214,43 +214,35 @@ async function describeElection(
   return `${name}${startPart}`;
 }
 
-export const workerTrustElectionsLoggingConfig: StorageLoggingConfig<WorkerTrustElectionsStorage> = {
+export const workerTrustElectionsLoggingConfig = defineLoggingConfig<WorkerTrustElectionsStorage>({
   module: 'worker-trust-elections',
+  stateKey: 'election',
+  getter: 'getById',
+  hostEntityId: (args, result, before) =>
+    (before as ElectionBeforeState | undefined)?.election?.workerId
+    ?? result?.workerId
+    ?? args[0],
   methods: {
     create: {
-      enabled: true,
       getEntityId: (_args, result) => result?.id || 'new election',
-      getHostEntityId: (args, result) => result?.workerId ?? args[0],
       getDescription: async (_args, result) =>
         `Created trust election for ${await describeElection(result?.workerId, result?.startYmd)}`,
-      after: async (_args, result) => ({ election: result }),
     },
     update: {
-      enabled: true,
-      getEntityId: (args) => args[0],
-      getHostEntityId: async (_args, _result, beforeState) =>
-        (beforeState as ElectionBeforeState | undefined)?.election?.workerId,
       getDescription: async (_args, result, beforeState) => {
         const r = result || (beforeState as ElectionBeforeState | undefined)?.election;
         return `Updated trust election for ${await describeElection(r?.workerId, r?.startYmd)}`;
       },
-      before: async (args, storage) => ({ election: await storage.getById(args[0]) }),
-      after: async (_args, result) => ({ election: result }),
     },
     delete: {
-      enabled: true,
-      getEntityId: (args) => args[0],
-      getHostEntityId: async (_args, _result, beforeState) =>
-        (beforeState as ElectionBeforeState | undefined)?.election?.workerId,
       getDescription: async (_args, _result, beforeState) => {
         const r = (beforeState as ElectionBeforeState | undefined)?.election;
         if (!r) return 'Deleted trust election';
         return `Deleted trust election for ${await describeElection(r.workerId, r.startYmd)}`;
       },
-      before: async (args, storage) => ({ election: await storage.getById(args[0]) }),
     },
   },
-};
+});
 
 export function createWorkerTrustElectionsStorage(): WorkerTrustElectionsStorage {
   const storage: WorkerTrustElectionsStorage = {

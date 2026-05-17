@@ -13,7 +13,7 @@ import {
   type InsertEventParticipant
 } from "@shared/schema";
 import { eq, and, gte, lte, desc } from "drizzle-orm";
-import { type StorageLoggingConfig } from "./middleware/logging";
+import { defineLoggingConfig, type StorageLoggingConfig } from "./middleware/logging";
 
 /**
  * Stub validator - add validation logic here when needed
@@ -28,27 +28,14 @@ export interface EventStorage {
   delete(id: string): Promise<boolean>;
 }
 
-export const eventLoggingConfig: StorageLoggingConfig<EventStorage> = {
+export const eventLoggingConfig = defineLoggingConfig<EventStorage>({
   module: 'events',
   methods: {
-    create: {
-      enabled: true,
-      getEntityId: (args) => args[0]?.title || 'new event',
-      after: async (args, result) => result
-    },
-    update: {
-      enabled: true,
-      getEntityId: (args) => args[0],
-      before: async (args, storage) => await storage.get(args[0]),
-      after: async (args, result) => result
-    },
-    delete: {
-      enabled: true,
-      getEntityId: (args) => args[0],
-      before: async (args, storage) => await storage.get(args[0])
-    }
-  }
-};
+    create: { getEntityId: (args) => args[0]?.title || 'new event' },
+    update: {},
+    delete: {},
+  },
+});
 
 export interface EventOccurrenceStorage {
   getAll(eventId: string): Promise<EventOccurrence[]>;
@@ -61,39 +48,26 @@ export interface EventOccurrenceStorage {
   deleteByEventId(eventId: string): Promise<number>;
 }
 
-export const eventOccurrenceLoggingConfig: StorageLoggingConfig<EventOccurrenceStorage> = {
+export const eventOccurrenceLoggingConfig = defineLoggingConfig<EventOccurrenceStorage>({
   module: 'eventOccurrences',
   methods: {
     create: {
-      enabled: true,
       getEntityId: (args) => args[0]?.eventId || 'new occurrence',
       getHostEntityId: (args) => args[0]?.eventId,
-      after: async (args, result) => result
     },
     createMany: {
-      enabled: true,
       getEntityId: (args) => `batch of ${args[0]?.length || 0} occurrences`,
       getHostEntityId: (args) => args[0]?.[0]?.eventId,
-      after: async (args, result) => ({ count: result?.length || 0 })
+      after: async (args, result) => ({ count: result?.length || 0 }),
     },
-    update: {
-      enabled: true,
-      getEntityId: (args) => args[0],
-      before: async (args, storage) => await storage.get(args[0]),
-      after: async (args, result) => result
-    },
-    delete: {
-      enabled: true,
-      getEntityId: (args) => args[0],
-      before: async (args, storage) => await storage.get(args[0])
-    },
+    update: {},
+    delete: {},
     deleteByEventId: {
-      enabled: true,
       getEntityId: (args) => args[0],
-      after: async (args, result) => ({ deletedCount: result })
-    }
-  }
-};
+      after: async (args, result) => ({ deletedCount: result }),
+    },
+  },
+});
 
 export function createEventStorage(): EventStorage {
   return {
@@ -213,28 +187,17 @@ export interface EventParticipantStorage {
   delete(id: string): Promise<boolean>;
 }
 
-export const eventParticipantLoggingConfig: StorageLoggingConfig<EventParticipantStorage> = {
+export const eventParticipantLoggingConfig = defineLoggingConfig<EventParticipantStorage>({
   module: 'eventParticipants',
   methods: {
     create: {
-      enabled: true,
       getEntityId: (args) => args[0]?.eventId || 'new participant',
       getHostEntityId: (args) => args[0]?.eventId,
-      after: async (args, result) => result
     },
-    update: {
-      enabled: true,
-      getEntityId: (args) => args[0],
-      before: async (args, storage) => await storage.get(args[0]),
-      after: async (args, result) => result
-    },
-    delete: {
-      enabled: true,
-      getEntityId: (args) => args[0],
-      before: async (args, storage) => await storage.get(args[0])
-    }
-  }
-};
+    update: {},
+    delete: {},
+  },
+});
 
 export function createEventParticipantStorage(): EventParticipantStorage {
   return {

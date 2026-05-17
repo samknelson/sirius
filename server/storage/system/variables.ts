@@ -2,7 +2,7 @@ import { createNoopValidator } from '../utils/validation';
 import { getClient } from '../transaction-context';
 import { variables, type Variable, type InsertVariable } from "@shared/schema";
 import { eq } from "drizzle-orm";
-import { type StorageLoggingConfig } from "../middleware/logging";
+import { defineLoggingConfig, type StorageLoggingConfig } from "../middleware/logging";
 
 /**
  * Stub validator - add validation logic here when needed
@@ -68,32 +68,11 @@ export function createVariableStorage(): VariableStorage {
   };
 }
 
-export const variableLoggingConfig: StorageLoggingConfig<VariableStorage> = {
+export const variableLoggingConfig = defineLoggingConfig<VariableStorage>({
   module: 'variables',
   methods: {
-    create: {
-      enabled: true,
-      getEntityId: (args) => args[0]?.name,
-      after: async (args, result, storage) => {
-        return result;
-      }
-    },
-    update: {
-      enabled: true,
-      getEntityId: (args) => args[0],
-      before: async (args, storage) => {
-        return await storage.get(args[0]);
-      },
-      after: async (args, result, storage) => {
-        return result;
-      }
-    },
-    delete: {
-      enabled: true,
-      getEntityId: (args) => args[0],
-      before: async (args, storage) => {
-        return await storage.get(args[0]);
-      }
-    }
-  }
-};
+    create: { getEntityId: (args) => args[0]?.name },
+    update: {},
+    delete: {},
+  },
+});

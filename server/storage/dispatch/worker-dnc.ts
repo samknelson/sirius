@@ -7,7 +7,7 @@ import {
   type InsertWorkerDispatchDnc
 } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
-import { type StorageLoggingConfig } from "../middleware/logging";
+import { defineLoggingConfig, type StorageLoggingConfig } from "../middleware/logging";
 import { eventBus, EventType } from "../../services/event-bus";
 
 /**
@@ -52,49 +52,30 @@ async function getEmployerName(employerId: string): Promise<string> {
   return employer?.name || 'Unknown Employer';
 }
 
-export const workerDispatchDncLoggingConfig: StorageLoggingConfig<WorkerDispatchDncStorage> = {
+export const workerDispatchDncLoggingConfig = defineLoggingConfig<WorkerDispatchDncStorage>({
   module: 'worker-dispatch-dnc',
+  stateKey: 'dnc',
+  hostEntityId: (args, result, before) =>
+    result?.workerId ?? before?.dnc?.workerId ?? args[0]?.workerId,
   methods: {
     create: {
-      enabled: true,
       getEntityId: (args, result) => result?.id || 'new dispatch worker dnc',
-      getHostEntityId: (args, result) => result?.workerId || args[0]?.workerId,
       getDescription: async (args, result) => {
         const { storage } = await import('../index');
         const workerName = await storage.workers.getWorkerDisplayName(result?.workerId || args[0]?.workerId);
         const employerName = await getEmployerName(result?.employerId || args[0]?.employerId);
         return `Created DNC entry (${result?.type}) for ${workerName} at ${employerName}`;
       },
-      after: async (args, result) => {
-        return { dnc: result };
-      }
     },
     update: {
-      enabled: true,
-      getEntityId: (args) => args[0],
-      getHostEntityId: async (args, result, beforeState) => {
-        return result?.workerId || beforeState?.dnc?.workerId;
-      },
       getDescription: async (args, result, beforeState) => {
         const { storage } = await import('../index');
         const workerName = await storage.workers.getWorkerDisplayName(result?.workerId || beforeState?.dnc?.workerId);
         const employerName = await getEmployerName(result?.employerId || beforeState?.dnc?.employerId);
         return `Updated DNC entry for ${workerName} at ${employerName}`;
       },
-      before: async (args, storage) => {
-        const dnc = await storage.get(args[0]);
-        return { dnc };
-      },
-      after: async (args, result) => {
-        return { dnc: result };
-      }
     },
     delete: {
-      enabled: true,
-      getEntityId: (args) => args[0],
-      getHostEntityId: async (args, result, beforeState) => {
-        return beforeState?.dnc?.workerId;
-      },
       getDescription: async (args, result, beforeState) => {
         if (beforeState?.dnc) {
           const { storage } = await import('../index');
@@ -104,13 +85,9 @@ export const workerDispatchDncLoggingConfig: StorageLoggingConfig<WorkerDispatch
         }
         return 'Deleted dispatch worker DNC entry';
       },
-      before: async (args, storage) => {
-        const dnc = await storage.get(args[0]);
-        return { dnc };
-      }
-    }
-  }
-};
+    },
+  },
+});
 
 export function createWorkerDispatchDncStorage(): WorkerDispatchDncStorage {
   return {

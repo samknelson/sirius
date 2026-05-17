@@ -8,7 +8,7 @@ import {
   type OptionsSkill
 } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
-import { type StorageLoggingConfig } from "../middleware/logging";
+import { defineLoggingConfig, type StorageLoggingConfig } from "../middleware/logging";
 import { eventBus, EventType } from "../../services/event-bus";
 
 /**
@@ -38,13 +38,14 @@ async function getSkillName(skillId: string): Promise<string> {
   return skill?.name || 'Unknown Skill';
 }
 
-export const workerSkillLoggingConfig: StorageLoggingConfig<WorkerSkillStorage> = {
+export const workerSkillLoggingConfig = defineLoggingConfig<WorkerSkillStorage>({
   module: 'worker-skills',
+  stateKey: 'workerSkill',
+  hostEntityId: (args, result, before) =>
+    before?.workerSkill?.workerId ?? result?.workerId ?? args[0]?.workerId,
   methods: {
     create: {
-      enabled: true,
       getEntityId: (args, result) => result?.id || 'new worker skill',
-      getHostEntityId: (args, result) => result?.workerId || args[0]?.workerId,
       getDescription: async (args, result) => {
         const { storage } = await import('../index');
         const workerName = await storage.workers.getWorkerDisplayName(result?.workerId || args[0]?.workerId);
@@ -53,16 +54,8 @@ export const workerSkillLoggingConfig: StorageLoggingConfig<WorkerSkillStorage> 
         const baseDesc = `Added skill "${skillName}" to ${workerName}`;
         return message ? `${baseDesc}: ${message}` : baseDesc;
       },
-      after: async (args, result) => {
-        return { workerSkill: result };
-      }
     },
     delete: {
-      enabled: true,
-      getEntityId: (args) => args[0],
-      getHostEntityId: async (args, result, beforeState) => {
-        return beforeState?.workerSkill?.workerId;
-      },
       getDescription: async (args, result, beforeState) => {
         const { storage } = await import('../index');
         const workerName = await storage.workers.getWorkerDisplayName(beforeState?.workerSkill?.workerId);
@@ -71,13 +64,9 @@ export const workerSkillLoggingConfig: StorageLoggingConfig<WorkerSkillStorage> 
         const baseDesc = `Removed skill "${skillName}" from ${workerName}`;
         return message ? `${baseDesc}: ${message}` : baseDesc;
       },
-      before: async (args, storage) => {
-        const workerSkill = await storage.get(args[0]);
-        return { workerSkill };
-      }
-    }
-  }
-};
+    },
+  },
+});
 
 export function createWorkerSkillStorage(): WorkerSkillStorage {
   return {

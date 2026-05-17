@@ -2,7 +2,7 @@ import { getClient } from '../transaction-context';
 import { companies, type Company, type InsertCompany, employerCompanies, type EmployerCompany, type InsertEmployerCompany } from "@shared/schema/employer/company-schema";
 import { employers } from "@shared/schema";
 import { eq, inArray } from "drizzle-orm";
-import { type StorageLoggingConfig } from "../middleware/logging";
+import { defineLoggingConfig, type StorageLoggingConfig } from "../middleware/logging";
 
 export interface CompanyStorage {
   getAll(): Promise<Company[]>;
@@ -148,30 +148,15 @@ async function lookupNames(employerId: string, companyId: string): Promise<{ emp
   };
 }
 
-export const companyLoggingConfig: StorageLoggingConfig<CompanyStorage> = {
+export const companyLoggingConfig = defineLoggingConfig<CompanyStorage>({
   module: 'companies',
+  hostEntityId: (args, result, before) => result?.id ?? before?.id ?? args[0],
   methods: {
-    create: {
-      enabled: true,
-      getEntityId: (args, result) => result?.id || args[0]?.name || 'new company',
-      getHostEntityId: (args, result) => result?.id,
-      after: async (args, result) => result,
-    },
-    update: {
-      enabled: true,
-      getEntityId: (args) => args[0],
-      getHostEntityId: (args) => args[0],
-      before: async (args, storage) => await storage.get(args[0]),
-      after: async (args, result) => result,
-    },
-    delete: {
-      enabled: true,
-      getEntityId: (args) => args[0],
-      getHostEntityId: (args, result, beforeState) => beforeState?.id || args[0],
-      before: async (args, storage) => await storage.get(args[0]),
-    },
+    create: { getEntityId: (args, result) => result?.id || args[0]?.name || 'new company' },
+    update: {},
+    delete: {},
   },
-};
+});
 
 export const employerCompanyLoggingConfig: StorageLoggingConfig<EmployerCompanyStorage> = {
   module: 'employer-companies',

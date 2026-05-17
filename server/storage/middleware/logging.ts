@@ -71,10 +71,194 @@ export interface MethodLoggingConfig<T = any> {
 export interface StorageLoggingConfig<T> {
   /** Module name for log identification (e.g., 'variables', 'workers', 'contacts.addresses') */
   module: string;
-  
+
   /** Per-method logging configurations */
   methods: {
     [K in keyof T]?: MethodLoggingConfig<T>;
+  };
+
+  /**
+   * Opt-in flag (set by `defineLoggingConfig`) that asks the middleware to
+   * fill in `getEntityId` / `before` / `after` for any method config that
+   * omits them, using the conventions described on `defineLoggingConfig`.
+   * Existing hand-written configs that do not set this keep the legacy
+   * "missing means undefined" behavior, so their log shapes do not drift.
+   */
+  useDefaults?: boolean;
+
+  /**
+   * Wrapper key used by the default `before` / `after` hooks. When set, the
+   * defaults wrap the fetched row / returned result as `{ [stateKey]: value }`.
+   * When undefined the defaults pass the raw value through. Only consulted
+   * when `useDefaults` is true.
+   */
+  stateKey?: string;
+
+  /**
+   * Name of the storage method used by the default `before` hook to load
+   * the pre-mutation state. Defaults to `'get'`. Only consulted when
+   * `useDefaults` is true.
+   */
+  getter?: string;
+
+  /**
+   * Module-level default for `getHostEntityId`. Per-method values still win.
+   * Only consulted when `useDefaults` is true.
+   */
+  hostEntityId?: (args: any[], result?: any, beforeState?: any) => string | undefined | Promise<string | undefined>;
+}
+
+/**
+ * Per-method shape accepted by `defineLoggingConfig`. Identical to
+ * `MethodLoggingConfig` except every field is optional — anything left out
+ * is filled in by the middleware defaults when `useDefaults` is true.
+ */
+export interface DefineMethodConfig<T> extends Partial<MethodLoggingConfig<T>> {}
+
+/**
+ * Ergonomic factory for "simple" storage logging configs. Produces a regular
+ * `StorageLoggingConfig<T>` with `useDefaults: true` so the middleware fills
+ * in the boilerplate hooks.
+ *
+ * Conventions provided by the middleware for any method whose config omits
+ * a hook (and only when `useDefaults` is true):
+ *
+ * - `getEntityId`:
+ *     - methods whose name (case-insensitive) starts with `create` →
+ *       `result?.id`
+ *     - everything else → `args[0]`
+ * - `before`: for non-`create` methods, if the storage exposes the configured
+ *   `getter` (default `'get'`), call it with `args[0]` and either return the
+ *   raw row (when no `stateKey`) or wrap it as `{ [stateKey]: row }`.
+ * - `after`: for non-`delete` methods, return the raw `result` (when no
+ *   `stateKey`) or wrap it as `{ [stateKey]: result }`.
+ * - `getHostEntityId`: falls back to the module-level `hostEntityId` if a
+ *   method does not specify its own.
+ *
+ * Defaults are conservative — anything explicitly set on the method wins, and
+ * defaults that don't apply (e.g. no `get` method on the storage) are safe
+ * no-ops. All methods produced by this helper are `enabled: true`.
+ */
+export interface DefineLoggingConfigOptions<T> {
+  module: string;
+  stateKey?: string;
+  getter?: string;
+  hostEntityId?: (args: any[], result?: any, beforeState?: any) => string | undefined | Promise<string | undefined>;
+  methods: {
+    [K in keyof T]?: DefineMethodConfig<T>;
+  };
+}
+
+export function defineLoggingConfig<T>(
+  opts: DefineLoggingConfigOptions<T>
+): StorageLoggingConfig<T> {
+  const methods: { [K in keyof T]?: MethodLoggingConfig<T> } = {};
+  for (const key of Object.keys(opts.methods) as (keyof T)[]) {
+    const m = opts.methods[key] || {};
+    methods[key] = { enabled: true, ...m } as MethodLoggingConfig<T>;
+  }
+  return {
+    module: opts.module,
+    useDefaults: true,
+    stateKey: opts.stateKey,
+    getter: opts.getter,
+    hostEntityId: opts.hostEntityId,
+    methods,
+  };
+}
+
+interface ResolvedHooks {
+  getEntityId?: MethodLoggingConfig<any>['getEntityId'];
+  getHostEntityId?: MethodLoggingConfig<any>['getHostEntityId'];
+  before?: MethodLoggingConfig<any>['before'];
+  after?: MethodLoggingConfig<any>['after'];
+  getDescription?: MethodLoggingConfig<any>['getDescription'];
+}
+
+function resolveHooks<T extends Record<string, any>>(
+  key: string,
+  methodConfig: MethodLoggingConfig<T>,
+  config: StorageLoggingConfig<T>,
+  storage: T,
+): ResolvedHooks {
+  if (!config.useDefaults) {
+    return {
+      getEntityId: methodConfig.getEntityId,
+      getHostEntityId: methodConfig.getHostEntityId,
+      before: methodConfig.before,
+      after: methodConfig.after,
+      getDescription: methodConfig.getDescription,
+    };
+  }
+
+  const has = (k: string) =>
+    Object.prototype.hasOwnProperty.call(methodConfig, k);
+
+  const lower = key.toLowerCase();
+  // Bulk patterns (createMany, updateMany, deleteMany, bulkCreate, bulkUpdate,
+  // bulkDelete) work on arrays, not a single row id. They get bulk-friendly
+  // defaults: a "batch of N" entity id, no auto before-fetch (the helper
+  // can't look up many rows generically), and a `{ count: N }` after for
+  // non-delete operations.
+  const isBulkCreate = /^(bulkCreate|createMany)/i.test(key);
+  const isBulkUpdate = /^(bulkUpdate|updateMany)/i.test(key);
+  const isBulkDelete = /^(bulkDelete|deleteMany)/i.test(key);
+  const isBulk = isBulkCreate || isBulkUpdate || isBulkDelete;
+
+  // Single-row CRUD: defaults assume args[0] is the row id.
+  const isCreate = !isBulk && lower.startsWith('create');
+  const isUpdate = !isBulk && lower.startsWith('update');
+  const isDelete = !isBulk && lower.startsWith('delete');
+  const isSingle = isCreate || isUpdate || isDelete;
+
+  // Anything else (upsert, deleteByEventId, setAsX, …) gets no defaults;
+  // the config must spell out hooks explicitly. This avoids wrong
+  // assumptions about what args[0] is.
+  const isConventional = isSingle || isBulk;
+
+  const stateKey = config.stateKey;
+  const getterName = config.getter || 'get';
+  const getterFn =
+    typeof (storage as any)[getterName] === 'function'
+      ? (storage as any)[getterName].bind(storage)
+      : null;
+  const wrap = (value: any) => (stateKey ? { [stateKey]: value } : value);
+
+  let defaultGetEntityId: ((args: any[], result?: any) => any) | undefined;
+  let defaultBefore: ((args: any[]) => Promise<any>) | undefined;
+  let defaultAfter: ((args: any[], result: any) => Promise<any>) | undefined;
+
+  if (isSingle) {
+    defaultGetEntityId = (args: any[], result?: any) =>
+      isCreate ? result?.id : args[0];
+    if (!isCreate && getterFn) {
+      defaultBefore = async (args: any[]) => wrap(await getterFn(args[0]));
+    }
+    if (!isDelete) {
+      defaultAfter = async (_args: any[], result: any) => wrap(result);
+    }
+  } else if (isBulk) {
+    defaultGetEntityId = (args: any[], result?: any) => {
+      const items = isBulkCreate ? result : args[0];
+      const count = Array.isArray(items) ? items.length : 0;
+      return `batch of ${count}`;
+    };
+    if (!isBulkDelete) {
+      defaultAfter = async (_args: any[], result: any) => ({
+        count: Array.isArray(result) ? result.length : (result ?? 0),
+      });
+    }
+  }
+  void isConventional;
+
+  return {
+    getEntityId: has('getEntityId') ? methodConfig.getEntityId : defaultGetEntityId,
+    getHostEntityId: has('getHostEntityId')
+      ? methodConfig.getHostEntityId
+      : config.hostEntityId,
+    before: has('before') ? methodConfig.before : defaultBefore,
+    after: has('after') ? methodConfig.after : defaultAfter,
+    getDescription: methodConfig.getDescription,
   };
 }
 
@@ -111,6 +295,8 @@ export function withStorageLogging<T extends Record<string, any>>(
       continue;
     }
 
+    const hooks = resolveHooks(key, methodConfig, config, storage);
+
     wrappedStorage[key] = async function(...args: any[]) {
       let beforeState: any;
       let afterState: any;
@@ -118,14 +304,14 @@ export function withStorageLogging<T extends Record<string, any>>(
       let error: any;
 
       try {
-        if (methodConfig.before) {
-          beforeState = await methodConfig.before(args, storage);
+        if (hooks.before) {
+          beforeState = await hooks.before(args, storage);
         }
 
         result = await method.apply(storage, args);
 
-        if (methodConfig.after) {
-          afterState = await methodConfig.after(args, result, storage, beforeState);
+        if (hooks.after) {
+          afterState = await hooks.after(args, result, storage, beforeState);
         }
 
         const details: Record<string, any> = {
@@ -154,19 +340,19 @@ export function withStorageLogging<T extends Record<string, any>>(
             const context = getRequestContext();
             
             // Resolve entity ID asynchronously after the main operation has returned
-            const entityId = methodConfig.getEntityId 
-              ? await methodConfig.getEntityId(args, result, beforeState)
+            const entityId = hooks.getEntityId
+              ? await hooks.getEntityId(args, result, beforeState)
               : undefined;
 
             // Resolve host entity ID asynchronously
-            const hostEntityId = methodConfig.getHostEntityId
-              ? await methodConfig.getHostEntityId(args, result, beforeState)
+            const hostEntityId = hooks.getHostEntityId
+              ? await hooks.getHostEntityId(args, result, beforeState)
               : undefined;
 
             // Resolve description asynchronously
             let description: string;
-            if (methodConfig.getDescription) {
-              description = await methodConfig.getDescription(args, result, beforeState, afterState, storage);
+            if (hooks.getDescription) {
+              description = await hooks.getDescription(args, result, beforeState, afterState, storage);
             } else {
               description = generateDescription(
                 config.module,
@@ -218,13 +404,13 @@ export function withStorageLogging<T extends Record<string, any>>(
             const context = getRequestContext();
             
             // Resolve entity ID asynchronously
-            const entityId = methodConfig.getEntityId
-              ? await methodConfig.getEntityId(args, undefined, beforeState)
+            const entityId = hooks.getEntityId
+              ? await hooks.getEntityId(args, undefined, beforeState)
               : undefined;
 
             // Resolve host entity ID asynchronously
-            const hostEntityId = methodConfig.getHostEntityId
-              ? await methodConfig.getHostEntityId(args, undefined, beforeState)
+            const hostEntityId = hooks.getHostEntityId
+              ? await hooks.getHostEntityId(args, undefined, beforeState)
               : undefined;
 
             const description = `Failed to ${String(key)} on ${config.module} "${entityId || 'unknown'}"`;

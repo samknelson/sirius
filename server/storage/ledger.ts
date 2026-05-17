@@ -19,7 +19,7 @@ import type {
 } from "@shared/schema";
 import { eq, and, desc, or, isNull, asc, sql as sqlRaw, sum, min, max, count, inArray, notInArray, gte, lte } from "drizzle-orm";
 import { alias as pgAlias } from "drizzle-orm/pg-core";
-import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
+import { defineLoggingConfig, withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
 import { formatAmount, getCurrency } from "@shared/currency";
 
 /**
@@ -2047,80 +2047,33 @@ export function createLedgerStorage(
  * 
  * Logs all ledger account mutations with full argument capture and change tracking.
  */
-export const ledgerAccountLoggingConfig: StorageLoggingConfig<LedgerAccountStorage> = {
+export const ledgerAccountLoggingConfig = defineLoggingConfig<LedgerAccountStorage>({
   module: 'ledger.accounts',
   methods: {
-    create: {
-      enabled: true,
-      getEntityId: (args, result) => result?.id || args[0]?.name || 'new account',
-      after: async (args, result, storage) => {
-        return result; // Capture created account
-      }
-    },
-    update: {
-      enabled: true,
-      getEntityId: (args) => args[0], // Account ID
-      before: async (args, storage) => {
-        return await storage.get(args[0]); // Current state
-      },
-      after: async (args, result, storage) => {
-        return result; // New state (diff auto-calculated)
-      }
-    },
-    delete: {
-      enabled: true,
-      getEntityId: (args) => args[0], // Account ID
-      before: async (args, storage) => {
-        return await storage.get(args[0]); // Capture what's being deleted
-      }
-    }
-  }
-};
+    create: { getEntityId: (args, result) => result?.id || args[0]?.name || 'new account' },
+    update: {},
+    delete: {},
+  },
+});
 
 /**
  * Logging configuration for Stripe payment method storage operations
  * 
  * Logs all Stripe payment method mutations with full argument capture and change tracking.
  */
-export const stripePaymentMethodLoggingConfig: StorageLoggingConfig<StripePaymentMethodStorage> = {
+export const stripePaymentMethodLoggingConfig = defineLoggingConfig<StripePaymentMethodStorage>({
   module: 'ledger.stripePaymentMethods',
   methods: {
-    create: {
-      enabled: true,
-      getEntityId: (args, result) => result?.id || 'new payment method',
-      after: async (args, result, storage) => {
-        return result; // Capture created payment method
-      }
-    },
-    update: {
-      enabled: true,
-      getEntityId: (args) => args[0], // Payment method ID
-      before: async (args, storage) => {
-        return await storage.get(args[0]); // Current state
-      },
-      after: async (args, result, storage) => {
-        return result; // New state (diff auto-calculated)
-      }
-    },
-    delete: {
-      enabled: true,
-      getEntityId: (args) => args[0], // Payment method ID
-      before: async (args, storage) => {
-        return await storage.get(args[0]); // Capture what's being deleted
-      }
-    },
+    create: { getEntityId: (args, result) => result?.id || 'new payment method' },
+    update: {},
+    delete: {},
     setAsDefault: {
-      enabled: true,
-      getEntityId: (args) => args[0], // Payment method ID
-      before: async (args, storage) => {
-        return await storage.get(args[0]); // Current state
-      },
-      after: async (args, result, storage) => {
-        return result; // New state (diff auto-calculated)
-      }
-    }
-  }
-};
+      getEntityId: (args) => args[0],
+      before: async (args, storage) => await storage.get(args[0]),
+      after: async (args, result) => result,
+    },
+  },
+});
 
 /**
  * Helper to format a payment for logging display
@@ -2132,30 +2085,15 @@ function formatPaymentForLog(payment: LedgerPayment | undefined): string {
   return amount ? `${amount} payment${memo}` : 'payment';
 }
 
-export const ledgerPaymentBatchLoggingConfig: StorageLoggingConfig<LedgerPaymentBatchStorage> = {
+export const ledgerPaymentBatchLoggingConfig = defineLoggingConfig<LedgerPaymentBatchStorage>({
   module: 'ledger.paymentBatches',
+  hostEntityId: (args, result) => result?.id ?? args[0],
   methods: {
-    create: {
-      enabled: true,
-      getEntityId: (args, result) => result?.id || args[0]?.name || 'new batch',
-      getHostEntityId: (args, result) => result?.id,
-      after: async (args, result) => result,
-    },
-    update: {
-      enabled: true,
-      getEntityId: (args) => args[0],
-      getHostEntityId: (args) => args[0],
-      before: async (args, storage) => await storage.get(args[0]),
-      after: async (args, result) => result,
-    },
-    delete: {
-      enabled: true,
-      getEntityId: (args) => args[0],
-      getHostEntityId: (args) => args[0],
-      before: async (args, storage) => await storage.get(args[0]),
-    },
+    create: { getEntityId: (args, result) => result?.id || args[0]?.name || 'new batch' },
+    update: {},
+    delete: {},
   },
-};
+});
 
 /**
  * Logging configuration for ledger payment storage operations

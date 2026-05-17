@@ -7,7 +7,7 @@ import {
   type OptionsWorkerRating
 } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
-import { type StorageLoggingConfig } from "../middleware/logging";
+import { defineLoggingConfig, type StorageLoggingConfig } from "../middleware/logging";
 
 export interface WorkerRatingWithDetails extends WorkerRating {
   ratingType?: OptionsWorkerRating | null;
@@ -32,13 +32,14 @@ async function getRatingTypeName(ratingId: string): Promise<string> {
   return rating?.name || 'Unknown Rating Type';
 }
 
-export const workerRatingLoggingConfig: StorageLoggingConfig<WorkerRatingStorage> = {
+export const workerRatingLoggingConfig = defineLoggingConfig<WorkerRatingStorage>({
   module: 'worker-ratings',
+  stateKey: 'workerRating',
+  hostEntityId: (args, result, before) =>
+    before?.workerRating?.workerId ?? result?.workerId ?? args[0]?.workerId,
   methods: {
     create: {
-      enabled: true,
       getEntityId: (args, result) => result?.id || 'new worker rating',
-      getHostEntityId: (args, result) => result?.workerId || args[0]?.workerId,
       getDescription: async (args, result) => {
         const { storage } = await import('../index');
         const workerName = await storage.workers.getWorkerDisplayName(result?.workerId || args[0]?.workerId);
@@ -46,16 +47,9 @@ export const workerRatingLoggingConfig: StorageLoggingConfig<WorkerRatingStorage
         const value = result?.value ?? args[0]?.value;
         return `Set rating "${ratingName}" to ${value} for ${workerName}`;
       },
-      after: async (args, result) => {
-        return { workerRating: result };
-      }
     },
     update: {
-      enabled: true,
-      getEntityId: (args) => args[0],
-      getHostEntityId: async (args, result, beforeState) => {
-        return beforeState?.workerRating?.workerId || result?.workerId;
-      },
+      after: undefined,
       getDescription: async (args, result, beforeState) => {
         const { storage } = await import('../index');
         const workerName = await storage.workers.getWorkerDisplayName(beforeState?.workerRating?.workerId || result?.workerId);
@@ -64,30 +58,16 @@ export const workerRatingLoggingConfig: StorageLoggingConfig<WorkerRatingStorage
         const newValue = result?.value ?? args[1]?.value;
         return `Changed rating "${ratingName}" from ${oldValue} to ${newValue} for ${workerName}`;
       },
-      before: async (args, storage) => {
-        const workerRating = await storage.get(args[0]);
-        return { workerRating };
-      }
     },
     delete: {
-      enabled: true,
-      getEntityId: (args) => args[0],
-      getHostEntityId: async (args, result, beforeState) => {
-        return beforeState?.workerRating?.workerId;
-      },
       getDescription: async (args, result, beforeState) => {
         const { storage } = await import('../index');
         const workerName = await storage.workers.getWorkerDisplayName(beforeState?.workerRating?.workerId);
         const ratingName = await getRatingTypeName(beforeState?.workerRating?.ratingId || '');
         return `Removed rating "${ratingName}" from ${workerName}`;
       },
-      before: async (args, storage) => {
-        const workerRating = await storage.get(args[0]);
-        return { workerRating };
-      }
     },
     upsert: {
-      enabled: true,
       getEntityId: (args, result) => {
         const [workerId, ratingId] = args;
         return result?.id || `${workerId}:${ratingId}`;
@@ -105,10 +85,10 @@ export const workerRatingLoggingConfig: StorageLoggingConfig<WorkerRatingStorage
           return `Removed rating "${ratingName}" from ${workerName}`;
         }
         return `Set rating "${ratingName}" to ${value} for ${workerName}`;
-      }
-    }
-  }
-};
+      },
+    },
+  },
+});
 
 export function createWorkerRatingStorage(): WorkerRatingStorage {
   return {

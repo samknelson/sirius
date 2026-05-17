@@ -7,7 +7,7 @@ import {
   type InsertWorkerTos,
 } from "@shared/schema";
 import { eq, and, desc, isNull, ne } from "drizzle-orm";
-import { type StorageLoggingConfig } from "../middleware/logging";
+import { defineLoggingConfig, type StorageLoggingConfig } from "../middleware/logging";
 
 export class WorkerTosValidationError extends Error {
   constructor(message: string) {
@@ -105,13 +105,16 @@ interface BeforeState {
   record?: WorkerTos;
 }
 
-export const workerTosLoggingConfig: StorageLoggingConfig<WorkerTosStorage> = {
+export const workerTosLoggingConfig = defineLoggingConfig<WorkerTosStorage>({
   module: 'worker-tos',
+  stateKey: 'record',
+  hostEntityId: (args, result, before) =>
+    (before as BeforeState | undefined)?.record?.workerId
+    ?? result?.workerId
+    ?? args[0]?.workerId,
   methods: {
     create: {
-      enabled: true,
       getEntityId: (args, result) => result?.id || 'new worker tos',
-      getHostEntityId: (args, result) => result?.workerId || args[0]?.workerId,
       getDescription: async (args, result) => {
         const { storage } = await import('../index');
         const workerName = await storage.workers.getWorkerDisplayName(result?.workerId || args[0]?.workerId);
@@ -119,14 +122,8 @@ export const workerTosLoggingConfig: StorageLoggingConfig<WorkerTosStorage> = {
           ? `Recorded absence for ${workerName}`
           : `Started absence for ${workerName}`;
       },
-      after: async (args, result) => ({ record: result }),
     },
     update: {
-      enabled: true,
-      getEntityId: (args) => args[0],
-      getHostEntityId: async (args, result, beforeState: BeforeState | undefined) => {
-        return result?.workerId || beforeState?.record?.workerId;
-      },
       getDescription: async (args, result, beforeState: BeforeState | undefined) => {
         const workerId = result?.workerId || beforeState?.record?.workerId || '';
         const { storage } = await import('../index');
@@ -139,18 +136,8 @@ export const workerTosLoggingConfig: StorageLoggingConfig<WorkerTosStorage> = {
         }
         return `Updated absence for ${workerName}`;
       },
-      before: async (args, storage) => {
-        const record = await storage.get(args[0]);
-        return { record };
-      },
-      after: async (args, result) => ({ record: result }),
     },
     delete: {
-      enabled: true,
-      getEntityId: (args) => args[0],
-      getHostEntityId: async (args, result, beforeState: BeforeState | undefined) => {
-        return beforeState?.record?.workerId;
-      },
       getDescription: async (args, result, beforeState: BeforeState | undefined) => {
         const { storage } = await import('../index');
         const workerName = await storage.workers.getWorkerDisplayName(beforeState?.record?.workerId);
@@ -158,13 +145,9 @@ export const workerTosLoggingConfig: StorageLoggingConfig<WorkerTosStorage> = {
         const base = `Deleted absence for ${workerName}`;
         return message ? `${base}: ${message}` : base;
       },
-      before: async (args, storage) => {
-        const record = await storage.get(args[0]);
-        return { record };
-      },
     },
   },
-};
+});
 
 export function createWorkerTosStorage(): WorkerTosStorage {
   return {
