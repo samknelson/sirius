@@ -101,8 +101,10 @@ export interface MethodLoggingConfig<T = any> {
    * `name` / `id` are field paths read off the resolved state row
    * (`result` for create/update with create falling back to `args[0]`,
    * `beforeState?.[state.key]` — or `beforeState` when no wrapper — for
-   * delete and the "previous" half of update). Brackets around the id are
-   * omitted when the id is empty.
+   * delete and the "previous" half of update). Field lookups use falsy
+   * fallback (`||`, so empty string is treated as missing). When `id` is
+   * configured the `[<id>]` bracket is always rendered, even if the
+   * resolved id is empty — matching legacy hand-written descriptions.
    */
   describe?: DescribeShortcut;
 }
