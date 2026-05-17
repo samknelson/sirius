@@ -9,7 +9,7 @@ import {
   type InsertDispatchJob
 } from "@shared/schema";
 import { eq, desc, and, gte, lte, sql, SQL, inArray } from "drizzle-orm";
-import { type StorageLoggingConfig } from "../middleware/logging";
+import { defineLoggingConfig } from "../middleware/logging";
 
 /**
  * Stub validator - add validation logic here when needed
@@ -68,40 +68,51 @@ async function getJobTypeName(jobTypeId: string | null | undefined): Promise<str
   return jobType?.name || '';
 }
 
-export const dispatchJobLoggingConfig: StorageLoggingConfig<DispatchJobStorage> = {
+export const dispatchJobLoggingConfig = defineLoggingConfig<DispatchJobStorage>({
   module: 'dispatchJobs',
+  stateKey: 'job',
+  hostEntityIdField: 'employerId',
   methods: {
     create: {
-      enabled: true,
-      getEntityId: (args, result) => result?.id || 'new dispatch job',
+      entityIdFallback: 'new dispatch job',
+      // Legacy semantics: fall back to the insert payload's employerId on the
+      // error path (when result is undefined). The create shortcut only reads
+      // result, so override here.
       getHostEntityId: (args, result) => result?.employerId || args[0]?.employerId,
+      metadata: async (_args, result) => ({
+        jobId: result?.id,
+        employerId: result?.employerId,
+        title: result?.title,
+        jobTypeName: await getJobTypeName(result?.jobTypeId),
+        status: result?.status,
+      }),
       getDescription: async (args, result) => {
         const title = result?.title || args[0]?.title || 'Unnamed';
         const jobTypeName = await getJobTypeName(result?.jobTypeId || args[0]?.jobTypeId);
         const typeLabel = jobTypeName ? ` (${jobTypeName})` : '';
         return `Created Dispatch Job "${title}"${typeLabel}`;
       },
-      after: async (args, result) => {
-        const jobTypeName = await getJobTypeName(result?.jobTypeId);
-        return {
-          job: result,
-          metadata: {
-            jobId: result?.id,
-            employerId: result?.employerId,
-            title: result?.title,
-            jobTypeName,
-            status: result?.status,
-          }
-        };
-      }
     },
     update: {
-      enabled: true,
-      getEntityId: (args) => args[0],
-      getHostEntityId: async (args, result, beforeState) => {
-        return result?.employerId || beforeState?.job?.employerId;
+      // Custom before: also caches jobTypeName so the delete-style description
+      // path has it available without an extra query. The default before would
+      // only return `{ job }`.
+      before: async (args, storage) => {
+        const job = await storage.get(args[0]);
+        if (!job) return null;
+        const jobTypeName = await getJobTypeName(job.jobTypeId);
+        return { job, jobTypeName };
       },
-      getDescription: async (args, result, beforeState) => {
+      previousStateKey: 'previousState',
+      metadata: async (_args, result, beforeState) => ({
+        jobId: result?.id,
+        employerId: result?.employerId,
+        title: result?.title,
+        jobTypeName: await getJobTypeName(result?.jobTypeId),
+        status: result?.status,
+        previousStatus: beforeState?.job?.status,
+      }),
+      getDescription: async (_args, result, beforeState) => {
         const title = result?.title || beforeState?.job?.title || 'Unnamed';
         const jobTypeName = await getJobTypeName(result?.jobTypeId || beforeState?.job?.jobTypeId);
         const typeLabel = jobTypeName ? ` (${jobTypeName})` : '';
@@ -112,47 +123,23 @@ export const dispatchJobLoggingConfig: StorageLoggingConfig<DispatchJobStorage> 
         }
         return `Updated Dispatch Job "${title}"${typeLabel}`;
       },
+    },
+    delete: {
       before: async (args, storage) => {
         const job = await storage.get(args[0]);
         if (!job) return null;
         const jobTypeName = await getJobTypeName(job.jobTypeId);
         return { job, jobTypeName };
       },
-      after: async (args, result, storage, beforeState) => {
-        const jobTypeName = await getJobTypeName(result?.jobTypeId);
-        return {
-          job: result,
-          previousState: beforeState?.job,
-          metadata: {
-            jobId: result?.id,
-            employerId: result?.employerId,
-            title: result?.title,
-            jobTypeName,
-            status: result?.status,
-            previousStatus: beforeState?.job?.status,
-          }
-        };
-      }
-    },
-    delete: {
-      enabled: true,
-      getEntityId: (args) => args[0],
-      getHostEntityId: (args, result, beforeState) => beforeState?.job?.employerId,
-      getDescription: async (args, result, beforeState) => {
+      getDescription: async (_args, _result, beforeState) => {
         const title = beforeState?.job?.title || 'Unknown';
         const jobTypeName = beforeState?.jobTypeName || '';
         const typeLabel = jobTypeName ? ` (${jobTypeName})` : '';
         return `Deleted Dispatch Job "${title}"${typeLabel}`;
       },
-      before: async (args, storage) => {
-        const job = await storage.get(args[0]);
-        if (!job) return null;
-        const jobTypeName = await getJobTypeName(job.jobTypeId);
-        return { job, jobTypeName };
-      }
-    }
-  }
-};
+    },
+  },
+});
 
 export function createDispatchJobStorage(): DispatchJobStorage {
   return {

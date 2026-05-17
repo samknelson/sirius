@@ -14,7 +14,7 @@ import {
 } from "@shared/schema";
 import { eq, desc, and, inArray, ne, arrayContains } from "drizzle-orm";
 import { eventBus, EventType } from "../../services/event-bus";
-import { type StorageLoggingConfig } from "../middleware/logging";
+import { defineLoggingConfig } from "../middleware/logging";
 
 /**
  * Stub validator - add validation logic here when needed
@@ -188,42 +188,43 @@ async function searchDispatches(criteria: SearchDispatchesCriteria): Promise<Dis
   }));
 }
 
-export const dispatchLoggingConfig: StorageLoggingConfig<DispatchStorage> = {
+export const dispatchLoggingConfig = defineLoggingConfig<DispatchStorage>({
   module: 'dispatches',
+  stateKey: 'dispatch',
   methods: {
     create: {
-      enabled: true,
-      getEntityId: (args, result) => result?.id || 'new dispatch',
+      entityIdFallback: 'new dispatch',
       getHostEntityId: async (args, result) => {
         const jobId = result?.jobId || args[0]?.jobId;
         return jobId ? await getJobEmployerId(jobId) : undefined;
       },
+      metadata: (_args, result) => ({
+        dispatchId: result?.id,
+        jobId: result?.jobId,
+        workerId: result?.workerId,
+        status: result?.status,
+      }),
       getDescription: async (args, result) => {
         const { storage } = await import('../index');
         const workerName = await storage.workers.getWorkerDisplayName(result?.workerId || args[0]?.workerId);
         const jobTitle = await getJobTitle(result?.jobId || args[0]?.jobId);
         return `Created Dispatch for ${workerName} to "${jobTitle}"`;
       },
-      after: async (args, result) => {
-        return {
-          dispatch: result,
-          metadata: {
-            dispatchId: result?.id,
-            jobId: result?.jobId,
-            workerId: result?.workerId,
-            status: result?.status,
-          }
-        };
-      }
     },
     update: {
-      enabled: true,
-      getEntityId: (args) => args[0],
-      getHostEntityId: async (args, result, beforeState) => {
+      getHostEntityId: async (_args, result, beforeState) => {
         const jobId = result?.jobId || beforeState?.dispatch?.jobId;
         return jobId ? await getJobEmployerId(jobId) : undefined;
       },
-      getDescription: async (args, result, beforeState) => {
+      previousStateKey: 'previousState',
+      metadata: (_args, result, beforeState) => ({
+        dispatchId: result?.id,
+        jobId: result?.jobId,
+        workerId: result?.workerId,
+        status: result?.status,
+        previousStatus: beforeState?.dispatch?.status,
+      }),
+      getDescription: async (_args, result, beforeState) => {
         const { storage } = await import('../index');
         const workerName = await storage.workers.getWorkerDisplayName(result?.workerId || beforeState?.dispatch?.workerId);
         const jobTitle = await getJobTitle(result?.jobId || beforeState?.dispatch?.jobId);
@@ -234,45 +235,22 @@ export const dispatchLoggingConfig: StorageLoggingConfig<DispatchStorage> = {
         }
         return `Updated Dispatch for ${workerName} to "${jobTitle}"`;
       },
-      before: async (args, storage) => {
-        const dispatch = await storage.get(args[0]);
-        return { dispatch };
-      },
-      after: async (args, result, storage, beforeState) => {
-        return {
-          dispatch: result,
-          previousState: beforeState?.dispatch,
-          metadata: {
-            dispatchId: result?.id,
-            jobId: result?.jobId,
-            workerId: result?.workerId,
-            status: result?.status,
-            previousStatus: beforeState?.dispatch?.status,
-          }
-        };
-      }
     },
     delete: {
-      enabled: true,
-      getEntityId: (args) => args[0],
-      getHostEntityId: async (args, result, beforeState) => {
+      getHostEntityId: async (_args, _result, beforeState) => {
         const jobId = beforeState?.dispatch?.jobId;
         return jobId ? await getJobEmployerId(jobId) : undefined;
       },
-      getDescription: async (args, result, beforeState) => {
+      getDescription: async (_args, _result, beforeState) => {
         if (!beforeState?.dispatch) return 'Deleted Dispatch';
         const { storage } = await import('../index');
         const workerName = await storage.workers.getWorkerDisplayName(beforeState.dispatch.workerId);
         const jobTitle = await getJobTitle(beforeState.dispatch.jobId);
         return `Deleted Dispatch for ${workerName} from "${jobTitle}"`;
       },
-      before: async (args, storage) => {
-        const dispatch = await storage.get(args[0]);
-        return { dispatch };
-      }
-    }
-  }
-};
+    },
+  },
+});
 
 export function createDispatchStorage(): DispatchStorage {
   return {

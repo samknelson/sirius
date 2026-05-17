@@ -69,9 +69,11 @@ export interface MethodLoggingConfig<T = any> {
   /**
    * Per-method metadata sidecar. When the default `after`/`before` hook is
    * synthesized (because the method config does not set its own), the returned
-   * value is included as `metadata` alongside the `[stateKey]` wrapper.
+   * value is included as `metadata` alongside the `[stateKey]` wrapper. The
+   * function may return a value or a Promise; the middleware awaits the
+   * result so configs can perform async related-entity lookups.
    */
-  metadata?: (args: any[], result: any, beforeState?: any) => any;
+  metadata?: (args: any[], result: any, beforeState?: any) => any | Promise<any>;
 
   /**
    * Shortcut for `getHostEntityId`: extract `result?.[field]`,
@@ -294,18 +296,20 @@ function resolveHooks<T extends Record<string, any>>(
   // Build an after-hook that wraps the result with `[stateKey]` and merges in
   // metadata / previousState when those hints are configured. Reused for
   // create/update and for delete when includeAfterOnDelete is set.
-  const wrapAfterWithExtras = (
+  // `metadataFn` may return a value or a Promise — the result is awaited so
+  // configs can perform async related-entity lookups.
+  const wrapAfterWithExtras = async (
     args: any[],
     result: any,
     beforeState: any,
     base: Record<string, any>,
-  ): Record<string, any> => {
+  ): Promise<Record<string, any>> => {
     const out: Record<string, any> = { ...base };
     if (previousStateKey && stateKey && beforeState && stateKey in beforeState) {
       out[previousStateKey] = beforeState[stateKey];
     }
     if (metadataFn) {
-      out.metadata = metadataFn(args, result, beforeState);
+      out.metadata = await metadataFn(args, result, beforeState);
     }
     return out;
   };
