@@ -861,7 +861,7 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
       const client = getClient();
       const result = await client.execute(sqlRaw`
         SELECT DISTINCT ON (ea.entity_id)
-          ea.entity_id as worker_id,
+          ea.entity_id,
           l.amount,
           l.date
         FROM ledger_ea ea
@@ -871,8 +871,8 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
           AND ea.entity_id = ANY(${entityIds})
         ORDER BY ea.entity_id, l.date DESC
       `);
-      return (result.rows as Array<{ worker_id: string; amount: string; date: string }>).map(row => ({
-        entityId: row.worker_id,
+      return (result.rows as Array<{ entity_id: string; amount: string; date: string }>).map(row => ({
+        entityId: row.entity_id,
         amount: row.amount,
         date: row.date,
       }));

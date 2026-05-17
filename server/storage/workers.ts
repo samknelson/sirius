@@ -698,7 +698,31 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         INNER JOIN contacts c ON w.contact_id = c.id
         WHERE w.id = ANY(${workerIdsList})
       `);
-      return result.rows as unknown as WorkerContactExportRow[];
+      return (result.rows as Array<{
+        id: string;
+        given: string | null;
+        family: string | null;
+        email: string | null;
+        denorm_ms_ids: string[] | null;
+        denorm_employer_ids: string[] | null;
+        phone_number: string | null;
+        address_street: string | null;
+        address_city: string | null;
+        address_state: string | null;
+        address_postal_code: string | null;
+      }>).map(row => ({
+        id: row.id,
+        given: row.given,
+        family: row.family,
+        email: row.email,
+        denorm_ms_ids: row.denorm_ms_ids,
+        denorm_employer_ids: row.denorm_employer_ids,
+        phone_number: row.phone_number,
+        address_street: row.address_street,
+        address_city: row.address_city,
+        address_state: row.address_state,
+        address_postal_code: row.address_postal_code,
+      }));
     },
 
     async getWorkersEmployersSummary(): Promise<WorkerEmployerSummary[]> {
