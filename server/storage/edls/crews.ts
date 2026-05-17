@@ -12,7 +12,7 @@ import {
 } from "@shared/schema";
 import { eq, sql, asc } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import { StorageLoggingConfig } from "../middleware/logging";
+import { defineLoggingConfig } from "../middleware/logging";
 import { getClient, runInTransaction } from "../transaction-context";
 
 export const validate = createAsyncStorageValidator<InsertEdlsCrew, EdlsCrew, {}>(
@@ -181,89 +181,70 @@ export function createEdlsCrewsStorage(): EdlsCrewsStorage {
   };
 }
 
-export const edlsCrewsLoggingConfig: StorageLoggingConfig<EdlsCrewsStorage> = {
+export const edlsCrewsLoggingConfig = defineLoggingConfig<EdlsCrewsStorage>({
   module: 'edls-crews',
+  // No module-level stateKey — update/delete `before` is the raw crew row
+  // (legacy shape) and the create/createMany `after` hooks wrap the result
+  // explicitly so the emitted log payloads stay byte-identical.
   methods: {
     create: {
-      enabled: true,
-      getEntityId: (args, result) => result?.id || 'new crew',
+      entityIdFallback: 'new crew',
       getHostEntityId: (args, result) => result?.sheetId || args[0]?.sheetId,
       getDescription: async (args, result) => {
         const title = result?.title || args[0]?.title || 'Untitled';
         return `Created crew [${title}]`;
       },
-      after: async (args, result) => {
-        return {
-          crew: result,
-          metadata: {
-            crewId: result?.id,
-            sheetId: result?.sheetId,
-            title: result?.title,
-            workerCount: result?.workerCount,
-          }
-        };
-      }
+      after: async (_args, result) => ({
+        crew: result,
+        metadata: {
+          crewId: result?.id,
+          sheetId: result?.sheetId,
+          title: result?.title,
+          workerCount: result?.workerCount,
+        },
+      }),
     },
     createMany: {
-      enabled: true,
-      getEntityId: (args, result) => 'bulk create',
+      getEntityId: () => 'bulk create',
       getHostEntityId: (args, result) => result?.[0]?.sheetId || args[0]?.[0]?.sheetId,
       getDescription: async (args, result) => {
         const count = result?.length || args[0]?.length || 0;
         const titles = (result || args[0] || []).map((c: any) => c.title || 'Untitled').join(', ');
         return `Created ${count} crew(s) [${titles}]`;
       },
-      after: async (args, result) => {
-        return {
-          crews: result,
-          metadata: {
-            count: result?.length,
-            sheetId: result?.[0]?.sheetId,
-          }
-        };
-      }
+      after: async (_args, result) => ({
+        crews: result,
+        metadata: {
+          count: result?.length,
+          sheetId: result?.[0]?.sheetId,
+        },
+      }),
     },
     update: {
-      enabled: true,
-      getEntityId: (args) => args[0],
-      getHostEntityId: async (args, result, beforeState) => {
-        return result?.sheetId || beforeState?.sheetId;
-      },
-      before: async (args, storage) => {
-        return await storage.get(args[0]);
-      },
-      getDescription: async (args, result, beforeState) => {
+      getHostEntityId: async (_args, result, beforeState) => result?.sheetId || beforeState?.sheetId,
+      getDescription: async (_args, result, beforeState) => {
         const title = result?.title || beforeState?.title || 'Untitled';
         return `Updated crew [${title}]`;
       },
-      after: async (args, result) => {
-        return result;
-      }
+      after: async (_args, result) => result,
     },
     delete: {
-      enabled: true,
-      getEntityId: (args) => args[0],
-      getHostEntityId: async (args, result, beforeState) => {
-        return beforeState?.sheetId;
-      },
-      before: async (args, storage) => {
-        return await storage.get(args[0]);
-      },
-      getDescription: async (args, result, beforeState) => {
+      getHostEntityId: async (_args, _result, beforeState) => beforeState?.sheetId,
+      getDescription: async (_args, _result, beforeState) => {
         const title = beforeState?.title || 'Untitled';
         return `Deleted crew [${title}]`;
-      }
+      },
     },
     deleteBySheetId: {
-      enabled: true,
-      getEntityId: (args) => 'bulk delete',
+      // args[0] is a sheetId here, not a crew id — explicitly suppress the
+      // default `storage.get(args[0])` before-fetch and the default
+      // delete getEntityId.
+      getEntityId: () => 'bulk delete',
       getHostEntityId: (args) => args[0],
-      getDescription: async (args, result) => {
-        return `Deleted all crews for sheet (${result} crews removed)`;
-      },
-      after: async (args, result) => {
-        return { deletedCount: result };
-      }
-    }
-  }
-};
+      before: undefined,
+      getDescription: async (_args, result) =>
+        `Deleted all crews for sheet (${result} crews removed)`,
+      after: async (_args, result) => ({ deletedCount: result }),
+    },
+  },
+});

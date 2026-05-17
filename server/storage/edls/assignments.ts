@@ -15,7 +15,7 @@ import {
   type InsertEdlsAssignment
 } from "@shared/schema";
 import { eq, and, sql, gte, lte, asc, inArray, ne } from "drizzle-orm";
-import { StorageLoggingConfig } from "../middleware/logging";
+import { defineLoggingConfig } from "../middleware/logging";
 import { getClient, runInTransaction } from "../transaction-context";
 import { createUnifiedOptionsStorage } from "../unified-options";
 import { createEdlsCrewsStorage } from "./crews";
@@ -784,12 +784,15 @@ async function getWorkerDescription(workerId: string): Promise<string> {
   return row.siriusId ? `${name} (${row.siriusId})` : name;
 }
 
-export const edlsAssignmentsLoggingConfig: StorageLoggingConfig<EdlsAssignmentsStorage> = {
+export const edlsAssignmentsLoggingConfig = defineLoggingConfig<EdlsAssignmentsStorage>({
   module: 'edls-assignments',
+  // No module-level stateKey — `before` for delete/updateData augments the
+  // raw assignment row with a `workerDesc` lookup, and `after` is suppressed
+  // (set explicitly to undefined) so legacy logs stay byte-identical.
   methods: {
     create: {
-      enabled: true,
-      getEntityId: (args, result) => result?.id || 'new',
+      entityIdFallback: 'new',
+      after: undefined,
       getHostEntityId: async (args) => {
         const crewId = args[0]?.crewId;
         if (!crewId) return undefined;
@@ -803,42 +806,39 @@ export const edlsAssignmentsLoggingConfig: StorageLoggingConfig<EdlsAssignmentsS
       },
     },
     delete: {
-      enabled: true,
-      getEntityId: (args) => args[0],
       before: async (args, storage) => {
         const assignment = await storage.get(args[0]);
         if (!assignment) return undefined;
         const workerDesc = await getWorkerDescription(assignment.workerId);
         return { ...assignment, workerDesc };
       },
-      getHostEntityId: async (args, result, beforeState) => {
+      getHostEntityId: async (_args, _result, beforeState) => {
         const crewId = beforeState?.crewId;
         if (!crewId) return undefined;
         return getSheetIdFromCrewId(crewId);
       },
-      getDescription: async (args, result, beforeState) => {
+      getDescription: async (_args, _result, beforeState) => {
         const workerDesc = beforeState?.workerDesc || 'unknown worker';
         return `Deleted assignment for ${workerDesc}`;
       },
     },
     updateData: {
-      enabled: true,
-      getEntityId: (args) => args[0],
       before: async (args, storage) => {
         const assignment = await storage.get(args[0]);
         if (!assignment) return undefined;
         const workerDesc = await getWorkerDescription(assignment.workerId);
         return { ...assignment, workerDesc };
       },
-      getHostEntityId: async (args, result, beforeState) => {
+      after: undefined,
+      getHostEntityId: async (_args, result, beforeState) => {
         const crewId = beforeState?.crewId || result?.crewId;
         if (!crewId) return undefined;
         return getSheetIdFromCrewId(crewId);
       },
-      getDescription: async (args, result, beforeState) => {
+      getDescription: async (_args, _result, beforeState) => {
         const workerDesc = beforeState?.workerDesc || 'unknown worker';
         return `Updated assignment for ${workerDesc}`;
       },
     },
   },
-};
+});
