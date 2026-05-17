@@ -83,6 +83,20 @@ export interface WorkerEmployerSummary {
   employers: Array<{ id: string; name: string; isHome: boolean }>;
 }
 
+export interface WorkerContactExportRow {
+  id: string;
+  given: string | null;
+  family: string | null;
+  email: string | null;
+  denorm_ms_ids: string[] | null;
+  denorm_employer_ids: string[] | null;
+  phone_number: string | null;
+  address_street: string | null;
+  address_city: string | null;
+  address_state: string | null;
+  address_postal_code: string | null;
+}
+
 export interface WorkerCurrentBenefits {
   workerId: string;
   benefits: Array<{ id: string; name: string; typeName: string | null; typeIcon: string | null; employerName: string | null }>;
@@ -171,6 +185,7 @@ export interface WorkerStorage {
   getWorkersForExport(params: WorkersExportParams): Promise<WorkerWithDetails[]>;
   getAllMatchingContactIds(params: Omit<WorkersPaginationParams, 'page' | 'pageSize' | 'sortField'>): Promise<string[]>;
   getWorkersEmployersSummary(): Promise<WorkerEmployerSummary[]>;
+  getContactExportDataByIds(workerIdsList: string[]): Promise<WorkerContactExportRow[]>;
   getWorkersCurrentBenefits(month?: number, year?: number): Promise<WorkerCurrentBenefits[]>;
   getWorker(id: string): Promise<Worker | undefined>;
   getWorkerDisplayName(id: string | undefined | null): Promise<string>;
@@ -661,6 +676,29 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         }
       }
       return ordered;
+    },
+
+    async getContactExportDataByIds(workerIdsList: string[]): Promise<WorkerContactExportRow[]> {
+      if (workerIdsList.length === 0) return [];
+      const client = getClient();
+      const result = await client.execute(sql`
+        SELECT
+          w.id,
+          c.given,
+          c.family,
+          c.email,
+          w.denorm_ms_ids,
+          w.denorm_employer_ids,
+          (SELECT cp2.phone_number FROM contact_phone cp2 WHERE cp2.contact_id = c.id AND cp2.is_active = true ORDER BY cp2.is_primary DESC NULLS LAST LIMIT 1) as phone_number,
+          (SELECT cpo.street FROM contact_postal cpo WHERE cpo.contact_id = c.id AND cpo.is_active = true ORDER BY cpo.is_primary DESC NULLS LAST LIMIT 1) as address_street,
+          (SELECT cpo.city FROM contact_postal cpo WHERE cpo.contact_id = c.id AND cpo.is_active = true ORDER BY cpo.is_primary DESC NULLS LAST LIMIT 1) as address_city,
+          (SELECT cpo.state FROM contact_postal cpo WHERE cpo.contact_id = c.id AND cpo.is_active = true ORDER BY cpo.is_primary DESC NULLS LAST LIMIT 1) as address_state,
+          (SELECT cpo.postal_code FROM contact_postal cpo WHERE cpo.contact_id = c.id AND cpo.is_active = true ORDER BY cpo.is_primary DESC NULLS LAST LIMIT 1) as address_postal_code
+        FROM workers w
+        INNER JOIN contacts c ON w.contact_id = c.id
+        WHERE w.id = ANY(${workerIdsList})
+      `);
+      return result.rows as unknown as WorkerContactExportRow[];
     },
 
     async getWorkersEmployersSummary(): Promise<WorkerEmployerSummary[]> {

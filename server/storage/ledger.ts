@@ -120,6 +120,7 @@ export interface LedgerEntryStorage {
   deleteByChargePluginKey(chargePlugin: string, chargePluginKey: string): Promise<boolean>;
   deleteOrphansByChargePluginAndKnownKeys(chargePlugin: string, accountId: string, knownKeys: Set<string>): Promise<number>;
   findByAccountEntityDatePlugin(accountId: string, entityId: string, date: Date, chargePlugin: string, chargePluginConfigId?: string, amount?: string): Promise<Ledger | undefined>;
+  getLatestByAccountAndEntities(accountId: string, entityType: string, entityIds: string[]): Promise<Array<{ entityId: string; amount: string; date: string }>>;
 }
 
 export interface LedgerEntryWithDetails extends Ledger {
@@ -853,6 +854,28 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
         balances.set(row.eaId, row.total ?? "0.00");
       }
       return balances;
+    },
+
+    async getLatestByAccountAndEntities(accountId: string, entityType: string, entityIds: string[]): Promise<Array<{ entityId: string; amount: string; date: string }>> {
+      if (entityIds.length === 0) return [];
+      const client = getClient();
+      const result = await client.execute(sqlRaw`
+        SELECT DISTINCT ON (ea.entity_id)
+          ea.entity_id as worker_id,
+          l.amount,
+          l.date
+        FROM ledger_ea ea
+        INNER JOIN ledger l ON l.ea_id = ea.id
+        WHERE ea.entity_type = ${entityType}
+          AND ea.account_id = ${accountId}
+          AND ea.entity_id = ANY(${entityIds})
+        ORDER BY ea.entity_id, l.date DESC
+      `);
+      return (result.rows as Array<{ worker_id: string; amount: string; date: string }>).map(row => ({
+        entityId: row.worker_id,
+        amount: row.amount,
+        date: row.date,
+      }));
     },
 
     async getBalancesByEntityAndAccount(entityType: string, entityIds: string[], accountIds: string[]): Promise<Array<{ entityId: string; accountId: string; total: string }>> {

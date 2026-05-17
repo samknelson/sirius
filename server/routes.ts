@@ -1,7 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { stringify } from "csv-stringify/sync";
-import { sql } from "drizzle-orm";
 import multer from "multer";
 import { storage } from "./storage";
 import { insertWorkerSchema, insertWorkerDispatchHfeSchema, type WorkerId, type ContactPostal, type PhoneNumber } from "@shared/schema";
@@ -535,37 +534,16 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         return res.json({});
       }
       const limitedWorkerIds = workerIds.slice(0, 100);
-      const duesMap = await storage.readOnly.query(async (client) => {
-        const configResult = await client.execute(sql`
-          SELECT settings FROM charge_plugin_configs WHERE plugin_id = 'btu-dues-allocation' AND enabled = true LIMIT 1
-        `);
-        if (configResult.rows.length === 0) {
-          return {};
+      const config = await storage.chargePluginConfigs.getFirstEnabledByPluginId('btu-dues-allocation');
+      const settings = (config?.settings ?? null) as { accountIds?: string[] } | null;
+      const duesAccountId = settings?.accountIds?.[0];
+      const duesMap: Record<string, { amount: string; date: string }> = {};
+      if (duesAccountId) {
+        const latest = await storage.ledger.entries.getLatestByAccountAndEntities(duesAccountId, 'worker', limitedWorkerIds);
+        for (const row of latest) {
+          duesMap[row.entityId] = { amount: row.amount, date: row.date };
         }
-        const settings = (configResult.rows[0] as any).settings as { accountIds?: string[] } | null;
-        const duesAccountId = settings?.accountIds?.[0];
-        if (!duesAccountId) {
-          return {};
-        }
-        const workerIdArray = sql`ARRAY[${sql.join(limitedWorkerIds.map(id => sql`${id}`), sql`, `)}]::varchar[]`;
-        const result = await client.execute(sql`
-          SELECT DISTINCT ON (ea.entity_id)
-            ea.entity_id as worker_id,
-            l.amount,
-            l.date
-          FROM ledger_ea ea
-          INNER JOIN ledger l ON l.ea_id = ea.id
-          WHERE ea.entity_type = 'worker'
-            AND ea.account_id = ${duesAccountId}
-            AND ea.entity_id = ANY(${workerIdArray})
-          ORDER BY ea.entity_id, l.date DESC
-        `);
-        const map: Record<string, { amount: string; date: string }> = {};
-        for (const row of result.rows as any[]) {
-          map[row.worker_id] = { amount: row.amount, date: row.date };
-        }
-        return map;
-      });
+      }
       res.json(duesMap);
     } catch (error) {
       console.error("Failed to fetch latest dues:", error);
@@ -764,19 +742,11 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         return res.status(400).json({ message: "File contains more than 10,000 IDs. Please split into smaller batches." });
       }
 
-      const workerIdRecords = await storage.readOnly.query(async (queryClient: any) => {
-        const result = await queryClient.execute(sql`
-          SELECT wi.value, wi.worker_id
-          FROM worker_ids wi
-          WHERE wi.type_id = ${typeId}
-            AND wi.value = ANY(ARRAY[${sql.join(rawIds.map((id: string) => sql`${id}`), sql`, `)}]::text[])
-        `);
-        return result.rows as Array<{ value: string; worker_id: string }>;
-      });
+      const workerIdRecords = await storage.workerIds.getByTypeAndValues(typeId, rawIds);
 
       const idToWorkerMap = new Map<string, string>();
       for (const rec of workerIdRecords) {
-        idToWorkerMap.set(rec.value, rec.worker_id);
+        idToWorkerMap.set(rec.value, rec.workerId);
       }
 
       const matchedIds: string[] = [];
@@ -804,38 +774,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         });
       }
 
-      const workerData = await storage.readOnly.query(async (queryClient: any) => {
-        const result = await queryClient.execute(sql`
-          SELECT
-            w.id,
-            c.given,
-            c.family,
-            c.email,
-            w.denorm_ms_ids,
-            w.denorm_employer_ids,
-            (SELECT cp2.phone_number FROM contact_phone cp2 WHERE cp2.contact_id = c.id AND cp2.is_active = true ORDER BY cp2.is_primary DESC NULLS LAST LIMIT 1) as phone_number,
-            (SELECT cpo.street FROM contact_postal cpo WHERE cpo.contact_id = c.id AND cpo.is_active = true ORDER BY cpo.is_primary DESC NULLS LAST LIMIT 1) as address_street,
-            (SELECT cpo.city FROM contact_postal cpo WHERE cpo.contact_id = c.id AND cpo.is_active = true ORDER BY cpo.is_primary DESC NULLS LAST LIMIT 1) as address_city,
-            (SELECT cpo.state FROM contact_postal cpo WHERE cpo.contact_id = c.id AND cpo.is_active = true ORDER BY cpo.is_primary DESC NULLS LAST LIMIT 1) as address_state,
-            (SELECT cpo.postal_code FROM contact_postal cpo WHERE cpo.contact_id = c.id AND cpo.is_active = true ORDER BY cpo.is_primary DESC NULLS LAST LIMIT 1) as address_postal_code
-          FROM workers w
-          INNER JOIN contacts c ON w.contact_id = c.id
-          WHERE w.id = ANY(ARRAY[${sql.join(workerIds.map((id: string) => sql`${id}`), sql`, `)}]::varchar[])
-        `);
-        return result.rows as Array<{
-          id: string;
-          given: string | null;
-          family: string | null;
-          email: string | null;
-          denorm_ms_ids: string[] | null;
-          denorm_employer_ids: string[] | null;
-          phone_number: string | null;
-          address_street: string | null;
-          address_city: string | null;
-          address_state: string | null;
-          address_postal_code: string | null;
-        }>;
-      });
+      const workerData = await storage.workers.getContactExportDataByIds(workerIds);
 
       const workerMap = new Map<string, (typeof workerData)[0]>();
       for (const w of workerData) {
@@ -1244,54 +1183,23 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // trust.benefits component is enabled) latest-period worker counts per employer x benefit.
   app.get("/api/employers/counts", requireAuth, requireAccess('staff'), async (_req, res) => {
     try {
-      const { sql } = await import("drizzle-orm");
-      const { getClient } = await import("./storage/transaction-context");
       const { isComponentEnabled } = await import("./modules/components");
-      const client = getClient();
 
-      const workerCountsResult = await client.execute(sql`
-        SELECT employer_id, COUNT(DISTINCT worker_id)::int AS worker_count
-        FROM worker_hours
-        WHERE employer_id IS NOT NULL
-        GROUP BY employer_id
-      `);
-
+      const workerCountRows = await storage.workerHours.getDistinctWorkerCountsByEmployer();
       const workerCounts: Record<string, number> = {};
-      for (const row of workerCountsResult.rows as Array<{ employer_id: string; worker_count: number }>) {
-        workerCounts[row.employer_id] = Number(row.worker_count) || 0;
+      for (const row of workerCountRows) {
+        workerCounts[row.employerId] = row.workerCount;
       }
 
       const trustBenefitsEnabled = await isComponentEnabled("trust.benefits");
       let benefitCounts: Record<string, Record<string, number>> | undefined;
 
       if (trustBenefitsEnabled) {
-        const benefitCountsResult = await client.execute(sql`
-          WITH latest_period AS (
-            SELECT
-              employer_id,
-              benefit_id,
-              MAX(year * 12 + month) AS period_key
-            FROM trust_wmb
-            GROUP BY employer_id, benefit_id
-          )
-          SELECT
-            wmb.employer_id,
-            wmb.benefit_id,
-            COUNT(DISTINCT wmb.worker_id)::int AS worker_count
-          FROM trust_wmb wmb
-          INNER JOIN latest_period lp
-            ON lp.employer_id = wmb.employer_id
-           AND lp.benefit_id = wmb.benefit_id
-           AND (wmb.year * 12 + wmb.month) = lp.period_key
-          INNER JOIN trust_benefits tb ON tb.id = wmb.benefit_id
-          WHERE tb.is_active = true
-          GROUP BY wmb.employer_id, wmb.benefit_id
-        `);
-
+        const benefitCountRows = await storage.trust.wmb.getActiveBenefitWorkerCountsByEmployerLatestPeriod();
         benefitCounts = {};
-        for (const row of benefitCountsResult.rows as Array<{ employer_id: string; benefit_id: string; worker_count: number }>) {
-          if (!benefitCounts[row.employer_id]) benefitCounts[row.employer_id] = {};
-          benefitCounts[row.employer_id][row.benefit_id] = Number(row.worker_count) || 0;
+        for (const row of benefitCountRows) {
+          if (!benefitCounts[row.employerId]) benefitCounts[row.employerId] = {};
+          benefitCounts[row.employerId][row.benefitId] = row.workerCount;
         }
       }
 
