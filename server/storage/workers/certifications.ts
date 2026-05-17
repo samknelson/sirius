@@ -183,7 +183,7 @@ async function getCertificationName(certificationId: string): Promise<string> {
 
 export const workerCertificationLoggingConfig = defineLoggingConfig<WorkerCertificationStorage>({
   module: 'worker-certifications',
-  stateKey: 'workerCertification',
+  state: { key: 'workerCertification' },
   hostEntityId: (args, result, before) =>
     before?.workerCertification?.workerId ?? result?.workerId ?? args[0]?.workerId,
   methods: {

@@ -111,7 +111,7 @@ function describeCrewlead(record?: {
 
 export const freemanCrewleadsLoggingConfig = defineLoggingConfig<FreemanCrewleadsStorage>({
   module: "sitespecific.freeman.crewleads",
-  stateKey: "crewlead",
+  state: { key: "crewlead" },
   methods: {
     create: {
       after: async (_args, result) => result,

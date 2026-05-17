@@ -69,7 +69,7 @@ export interface MethodLoggingConfig<T = any> {
   /**
    * Per-method metadata sidecar. When the default `after`/`before` hook is
    * synthesized (because the method config does not set its own), the returned
-   * value is included as `metadata` alongside the `[stateKey]` wrapper. The
+   * value is included as `metadata` alongside the `[state.key]` wrapper. The
    * function may return a value or a Promise; the middleware awaits the
    * result so configs can perform async related-entity lookups.
    */
@@ -77,33 +77,64 @@ export interface MethodLoggingConfig<T = any> {
 
   /**
    * Shortcut for `getHostEntityId`: extract `result?.[field]`,
-   * falling back to `args[0]?.[field]` and finally
-   * `beforeState?.[stateKey]?.[field]`. Per-method value wins over the
-   * module-level `hostEntityIdField`.
+   * falling back to `args[0]?.[field]` and then either
+   * `beforeState?.[state.key]?.[field]` (when a wrapper key is configured)
+   * or `beforeState?.[field]` (when the before state is the raw row).
+   * Per-method value wins over the module-level `hostEntityIdField`.
    */
   hostEntityIdField?: string;
 
   /**
-   * Update-only: when set, the synthesized `after` hook copies
-   * `beforeState?.[stateKey]` into the after state under this key
-   * (e.g. `'previousState'`, `'previousBulkMessage'`).
+   * Per-method state descriptor. See `StateDescriptor`. The relevant fields
+   * depend on the method kind: `previousKey` for update, `fallbackId` for
+   * create, `includeOnDelete` for delete.
    */
-  previousStateKey?: string;
+  state?: StateDescriptor;
 
   /**
-   * Create-only: fallback returned by the synthesized `getEntityId` when
-   * `result?.id` is unavailable (typically the error path before the row
-   * exists). Preserves the legacy `result?.id || 'new …'` convention.
+   * Declarative description shortcut. When set (and `getDescription` is not),
+   * the middleware synthesizes:
+   *   - create → `Created <Label> [<id>] <name>`
+   *   - update → `Updated <Label> [<id>] <oldName> → <newName>` when names
+   *              differ, otherwise `Updated <Label> [<id>] <name>`
+   *   - delete → `Deleted <Label> [<id>] <name>`
+   * `name` / `id` are field paths read off the resolved state row
+   * (`result` for create/update with create falling back to `args[0]`,
+   * `beforeState?.[state.key]` — or `beforeState` when no wrapper — for
+   * delete and the "previous" half of update). Brackets around the id are
+   * omitted when the id is empty.
    */
-  entityIdFallback?: string;
+  describe?: DescribeShortcut;
+}
 
-  /**
-   * Delete-only: when true, the synthesized `after` hook returns
-   * `{ deleted: result, [stateKey]: beforeState?.[stateKey], metadata? }`
-   * instead of being omitted. Matches configs that want to capture the
-   * deletion outcome plus the prior row.
-   */
-  includeAfterOnDelete?: boolean;
+/**
+ * Unified state descriptor shared by `StorageLoggingConfig.state` (module
+ * level) and `MethodLoggingConfig.state` (per-method). Each field is only
+ * meaningful at one level:
+ *
+ * - `key` — module level. Wrapper key for before/after state (e.g. `'policy'`
+ *   means the synthesized hooks emit `{ policy: row }`).
+ * - `previousKey` — per-method update only. Copies `beforeState?.[key]`
+ *   into the after state under this key.
+ * - `fallbackId` — per-method create only. Returned by the synthesized
+ *   `getEntityId` when `result?.id` is unavailable (error path).
+ * - `includeOnDelete` — per-method delete only. When true, the synthesized
+ *   `after` returns `{ deleted: result, [key]: beforeState?.[key], metadata? }`
+ *   instead of being omitted.
+ */
+export interface StateDescriptor {
+  key?: string;
+  previousKey?: string;
+  fallbackId?: string;
+  includeOnDelete?: boolean;
+}
+
+export interface DescribeShortcut {
+  label: string;
+  name?: string;
+  id?: string;
+  /** Fallback used when the resolved row has no value at `name`. Defaults to `'Unknown'`. */
+  defaultName?: string;
 }
 
 /**
@@ -128,12 +159,12 @@ export interface StorageLoggingConfig<T> {
   useDefaults?: boolean;
 
   /**
-   * Wrapper key used by the default `before` / `after` hooks. When set, the
-   * defaults wrap the fetched row / returned result as `{ [stateKey]: value }`.
-   * When undefined the defaults pass the raw value through. Only consulted
-   * when `useDefaults` is true.
+   * Module-level state descriptor. `state.key` is the wrapper key used by
+   * the default `before` / `after` hooks (so `{ [state.key]: row }`); when
+   * unset the defaults pass the raw value through. Only consulted when
+   * `useDefaults` is true.
    */
-  stateKey?: string;
+  state?: StateDescriptor;
 
   /**
    * Name of the storage method used by the default `before` hook to load
@@ -190,7 +221,8 @@ export interface DefineMethodConfig<T> extends Partial<MethodLoggingConfig<T>> {
  */
 export interface DefineLoggingConfigOptions<T> {
   module: string;
-  stateKey?: string;
+  /** Module-level state descriptor. Only `state.key` is meaningful here. */
+  state?: StateDescriptor;
   getter?: string;
   hostEntityId?: (args: any[], result?: any, beforeState?: any) => string | undefined | Promise<string | undefined>;
   /** Module-level shortcut — see `StorageLoggingConfig.hostEntityIdField`. */
@@ -211,7 +243,7 @@ export function defineLoggingConfig<T>(
   return {
     module: opts.module,
     useDefaults: true,
-    stateKey: opts.stateKey,
+    state: opts.state,
     getter: opts.getter,
     hostEntityId: opts.hostEntityId,
     hostEntityIdField: opts.hostEntityIdField,
@@ -268,7 +300,7 @@ function resolveHooks<T extends Record<string, any>>(
   // assumptions about what args[0] is.
   const isConventional = isSingle || isBulk;
 
-  const stateKey = config.stateKey;
+  const stateKey = config.state?.key;
   const getterName = config.getter || 'get';
   const getterFn =
     typeof (storage as any)[getterName] === 'function'
@@ -282,15 +314,16 @@ function resolveHooks<T extends Record<string, any>>(
     | ((args: any[], result: any, _storage: T, beforeState?: any) => Promise<any>)
     | undefined;
 
-  // Helper-hint shortcuts. metadata/previousStateKey/includeAfterOnDelete are
-  // wired through the synthesized after-hook; entityIdFallback through the
+  // Helper-hint shortcuts. metadata/state.previousKey/state.includeOnDelete
+  // are wired through the synthesized after-hook; state.fallbackId through the
   // synthesized create getEntityId; hostEntityIdField (per-method or module)
   // through the synthesized getHostEntityId.
   const metadataFn = methodConfig.metadata;
+  const state = methodConfig.state;
   const previousStateKey =
-    isUpdate && methodConfig.previousStateKey ? methodConfig.previousStateKey : undefined;
-  const includeAfterOnDelete = isDelete && methodConfig.includeAfterOnDelete === true;
-  const entityIdFallback = isCreate ? methodConfig.entityIdFallback : undefined;
+    isUpdate && state?.previousKey ? state.previousKey : undefined;
+  const includeAfterOnDelete = isDelete && state?.includeOnDelete === true;
+  const entityIdFallback = isCreate ? state?.fallbackId : undefined;
   const hostField = methodConfig.hostEntityIdField ?? config.hostEntityIdField;
 
   // Build an after-hook that wraps the result with `[stateKey]` and merges in
@@ -374,8 +407,46 @@ function resolveHooks<T extends Record<string, any>>(
       defaultGetHostEntityId = (args: any[], result?: any, beforeState?: any) =>
         result?.[hostField] ??
         args[0]?.[hostField] ??
-        (stateKey ? beforeState?.[stateKey]?.[hostField] : undefined);
+        (stateKey ? beforeState?.[stateKey]?.[hostField] : beforeState?.[hostField]);
     }
+  }
+
+  // Synthesize getDescription from the `describe` shortcut (only when the
+  // method config does not provide its own getDescription).
+  let defaultGetDescription: MethodLoggingConfig<T>['getDescription'] | undefined;
+  if (methodConfig.describe && (isCreate || isUpdate || isDelete)) {
+    const d = methodConfig.describe;
+    const defaultName = d.defaultName ?? 'Unknown';
+    const readBefore = (beforeState: any) =>
+      stateKey ? beforeState?.[stateKey] : beforeState;
+    defaultGetDescription = async (args: any[], result: any, beforeState: any) => {
+      const beforeRow = readBefore(beforeState);
+      const stateRow = isCreate
+        ? (result ?? args[0])
+        : isDelete
+        ? beforeRow
+        : (result ?? beforeRow);
+      const previousRow = isUpdate ? beforeRow : undefined;
+      // Legacy semantics: use `||` (falsy fallback, treats empty string as
+      // missing) and always render the `[id]` bracket when `d.id` is
+      // configured — even when the id is empty — to match hand-written
+      // configs like policies.ts.
+      const idPart = d.id
+        ? `[${(stateRow?.[d.id] || previousRow?.[d.id] || '')}] `
+        : '';
+      const name = d.name
+        ? (stateRow?.[d.name] || previousRow?.[d.name] || defaultName)
+        : defaultName;
+      if (isCreate) return `Created ${d.label} ${idPart}${name}`;
+      if (isDelete) return `Deleted ${d.label} ${idPart}${name}`;
+      const oldName = d.name
+        ? (previousRow?.[d.name] || defaultName)
+        : defaultName;
+      if (oldName !== name) {
+        return `Updated ${d.label} ${idPart}${oldName} → ${name}`;
+      }
+      return `Updated ${d.label} ${idPart}${name}`;
+    };
   }
 
   return {
@@ -385,7 +456,7 @@ function resolveHooks<T extends Record<string, any>>(
       : (defaultGetHostEntityId ?? config.hostEntityId),
     before: has('before') ? methodConfig.before : defaultBefore,
     after: has('after') ? methodConfig.after : defaultAfter,
-    getDescription: methodConfig.getDescription,
+    getDescription: methodConfig.getDescription ?? defaultGetDescription,
   };
 }
 

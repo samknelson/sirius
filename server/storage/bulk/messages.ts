@@ -78,11 +78,11 @@ export function createBulkMessageStorage(): BulkMessageStorage {
 
 export const bulkMessageLoggingConfig = defineLoggingConfig<BulkMessageStorage>({
   module: 'bulkMessages',
-  stateKey: 'bulkMessage',
+  state: { key: 'bulkMessage' },
   getter: 'getById',
   methods: {
     create: {
-      entityIdFallback: 'new bulk message',
+      state: { fallbackId: 'new bulk message' },
       getHostEntityId: (_args, result) => result?.id,
       metadata: (_args, result) => ({
         bulkMessageId: result?.id,
@@ -97,7 +97,7 @@ export const bulkMessageLoggingConfig = defineLoggingConfig<BulkMessageStorage>(
     },
     update: {
       getHostEntityId: (args) => args[0],
-      previousStateKey: 'previousBulkMessage',
+      state: { previousKey: 'previousBulkMessage' },
       metadata: (_args, result) => ({
         bulkMessageId: result?.id,
         name: result?.name,
@@ -115,7 +115,7 @@ export const bulkMessageLoggingConfig = defineLoggingConfig<BulkMessageStorage>(
     },
     delete: {
       getHostEntityId: (args) => args[0],
-      includeAfterOnDelete: true,
+      state: { includeOnDelete: true },
       metadata: (args, _result, beforeState) => ({
         bulkMessageId: args[0],
         name: beforeState?.bulkMessage?.name,

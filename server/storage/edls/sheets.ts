@@ -424,7 +424,7 @@ export const edlsSheetsLoggingConfig = defineLoggingConfig<EdlsSheetsStorage>({
   // log payloads.
   methods: {
     create: {
-      entityIdFallback: 'new sheet',
+      state: { fallbackId: 'new sheet' },
       getHostEntityId: (_args, result) => result?.id,
       getDescription: async (args, result) => {
         const title = result?.title || args[0]?.title || 'Untitled';

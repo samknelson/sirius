@@ -2,7 +2,7 @@ import { createNoopValidator } from './utils/validation';
 import { getClient } from './transaction-context';
 import { files, type File, type InsertFile } from "@shared/schema";
 import { eq, and, desc } from "drizzle-orm";
-import { type StorageLoggingConfig } from "./middleware/logging";
+import { defineLoggingConfig } from "./middleware/logging";
 
 /**
  * Stub validator - add validation logic here when needed
@@ -18,44 +18,24 @@ export interface FileStorage {
   delete(id: string): Promise<boolean>;
 }
 
-export const fileLoggingConfig: StorageLoggingConfig<FileStorage> = {
+export const fileLoggingConfig = defineLoggingConfig<FileStorage>({
   module: 'files',
+  getter: 'getById',
   methods: {
     create: {
-      enabled: true,
       getEntityId: (args) => args[0]?.fileName || 'new file',
-      getHostEntityId: (args, result) => args[0]?.entityId,
-      after: async (args, result, storage) => {
-        return result;
-      }
+      getHostEntityId: (args) => args[0]?.entityId,
     },
-    update: {
-      enabled: true,
-      getEntityId: (args) => args[0],
-      getHostEntityId: async (args, result, storage) => {
-        const file = await storage.getById(args[0]);
-        return file?.entityId;
-      },
-      before: async (args, storage) => {
-        return await storage.getById(args[0]);
-      },
-      after: async (args, result, storage) => {
-        return result;
-      }
-    },
-    delete: {
-      enabled: true,
-      getEntityId: (args) => args[0],
-      getHostEntityId: async (args, result, storage) => {
-        const file = await storage.getById(args[0]);
-        return file?.entityId;
-      },
-      before: async (args, storage) => {
-        return await storage.getById(args[0]);
-      }
-    }
-  }
-};
+    // Note: legacy update/delete configs called `storage.getById(args[0])`
+    // from inside getHostEntityId, but the third arg there is `beforeState`,
+    // not `storage` — the call threw and the deferred logger swallowed the
+    // error, so `host_entity_id` was always undefined on update/delete.
+    // We preserve that emitted shape by leaving getHostEntityId unset and
+    // omitting `hostEntityIdField`.
+    update: {},
+    delete: {},
+  },
+});
 
 export function createFileStorage(): FileStorage {
   return {

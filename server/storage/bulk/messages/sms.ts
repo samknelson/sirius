@@ -69,12 +69,12 @@ export function createBulkMessagesSmsStorage(): BulkMessagesSmsStorage {
 
 export const bulkMessagesSmsLoggingConfig = defineLoggingConfig<BulkMessagesSmsStorage>({
   module: 'bulkMessagesSms',
-  stateKey: 'bulkMessagesSms',
+  state: { key: 'bulkMessagesSms' },
   getter: 'getById',
   hostEntityIdField: 'bulkId',
   methods: {
     create: {
-      entityIdFallback: 'new bulk sms',
+      state: { fallbackId: 'new bulk sms' },
       metadata: (_args, result) => ({ bulkId: result?.bulkId }),
       getDescription: async () => `Created bulk SMS message content`,
     },

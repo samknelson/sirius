@@ -24,7 +24,7 @@ import {
   optionsWorkerMs,
   optionsWorkerRelationType,
 } from "@shared/schema";
-import { type StorageLoggingConfig } from "./middleware/logging";
+import { defineLoggingConfig } from "./middleware/logging";
 import type { JsonSchema, UiSchema } from "@shared/json-schema-form";
 
 /**
@@ -711,31 +711,24 @@ function createUnifiedOptionsStorageImpl(): UnifiedOptionsStorage {
   };
 }
 
-export const unifiedOptionsLoggingConfig: StorageLoggingConfig<UnifiedOptionsStorage> = {
+export const unifiedOptionsLoggingConfig = defineLoggingConfig<UnifiedOptionsStorage>({
   module: "options",
   methods: {
     create: {
-      enabled: true,
-      getEntityId: (args: any[]) => args[1]?.name || `new ${args[0]}`,
-      after: async (args: any[], result: any) => result,
+      getEntityId: (args) => args[1]?.name || `new ${args[0]}`,
     },
     update: {
-      enabled: true,
-      getEntityId: (args: any[]) => args[1],
-      before: async (args: any[], storage: UnifiedOptionsStorage) => {
-        return await storage.get(args[0] as OptionsTypeName, args[1] as string);
-      },
-      after: async (args: any[], result: any) => result,
+      getEntityId: (args) => args[1],
+      before: async (args, storage) =>
+        storage.get(args[0] as OptionsTypeName, args[1] as string),
     },
     delete: {
-      enabled: true,
-      getEntityId: (args: any[]) => args[1],
-      before: async (args: any[], storage: UnifiedOptionsStorage) => {
-        return await storage.get(args[0] as OptionsTypeName, args[1] as string);
-      },
+      getEntityId: (args) => args[1],
+      before: async (args, storage) =>
+        storage.get(args[0] as OptionsTypeName, args[1] as string),
     },
   },
-};
+});
 
 export function createUnifiedOptionsStorage(): UnifiedOptionsStorage {
   return createUnifiedOptionsStorageImpl();

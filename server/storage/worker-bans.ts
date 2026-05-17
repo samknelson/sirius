@@ -85,7 +85,7 @@ export const validate = createStorageValidator<InsertWorkerBan, WorkerBan, { den
 
 export const workerBanLoggingConfig = defineLoggingConfig<WorkerBanStorage>({
   module: 'worker-bans',
-  stateKey: 'ban',
+  state: { key: 'ban' },
   hostEntityId: (args, result, before) =>
     result?.workerId ?? before?.ban?.workerId ?? args[0]?.workerId,
   methods: {

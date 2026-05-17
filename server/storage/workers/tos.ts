@@ -107,7 +107,7 @@ interface BeforeState {
 
 export const workerTosLoggingConfig = defineLoggingConfig<WorkerTosStorage>({
   module: 'worker-tos',
-  stateKey: 'record',
+  state: { key: 'record' },
   hostEntityId: (args, result, before) =>
     (before as BeforeState | undefined)?.record?.workerId
     ?? result?.workerId

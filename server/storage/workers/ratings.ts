@@ -34,7 +34,7 @@ async function getRatingTypeName(ratingId: string): Promise<string> {
 
 export const workerRatingLoggingConfig = defineLoggingConfig<WorkerRatingStorage>({
   module: 'worker-ratings',
-  stateKey: 'workerRating',
+  state: { key: 'workerRating' },
   hostEntityId: (args, result, before) =>
     before?.workerRating?.workerId ?? result?.workerId ?? args[0]?.workerId,
   methods: {

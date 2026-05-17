@@ -39,13 +39,13 @@ export interface DispatchJobGroupStorage {
 
 export const dispatchJobGroupLoggingConfig = defineLoggingConfig<DispatchJobGroupStorage>({
   module: 'dispatchJobGroups',
-  stateKey: 'group',
+  state: { key: 'group' },
   // Legacy: before-state for update/delete is `null` when row missing, not
   // `{ group: undefined }`. Keep the explicit before hooks below to preserve
   // byte-identical logs.
   methods: {
     create: {
-      entityIdFallback: 'new dispatch job group',
+      state: { fallbackId: 'new dispatch job group' },
       getHostEntityId: (_args, result) => result?.id,
       metadata: (_args, result) => ({ groupId: result?.id, name: result?.name }),
       getDescription: async (args, result) => {
@@ -59,7 +59,7 @@ export const dispatchJobGroupLoggingConfig = defineLoggingConfig<DispatchJobGrou
         const group = await storage.get(args[0]);
         return group ? { group } : null;
       },
-      previousStateKey: 'previousState',
+      state: { previousKey: 'previousState' },
       metadata: (_args, result) => ({ groupId: result?.id, name: result?.name }),
       getDescription: async (_args, result, beforeState) => {
         const name = result?.name || beforeState?.group?.name || 'Unknown';

@@ -791,7 +791,7 @@ export const edlsAssignmentsLoggingConfig = defineLoggingConfig<EdlsAssignmentsS
   // (set explicitly to undefined) so legacy logs stay byte-identical.
   methods: {
     create: {
-      entityIdFallback: 'new',
+      state: { fallbackId: 'new' },
       after: undefined,
       getHostEntityId: async (args) => {
         const crewId = args[0]?.crewId;

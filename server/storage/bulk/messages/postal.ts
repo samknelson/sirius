@@ -69,12 +69,12 @@ export function createBulkMessagesPostalStorage(): BulkMessagesPostalStorage {
 
 export const bulkMessagesPostalLoggingConfig = defineLoggingConfig<BulkMessagesPostalStorage>({
   module: 'bulkMessagesPostal',
-  stateKey: 'bulkMessagesPostal',
+  state: { key: 'bulkMessagesPostal' },
   getter: 'getById',
   hostEntityIdField: 'bulkId',
   methods: {
     create: {
-      entityIdFallback: 'new bulk postal',
+      state: { fallbackId: 'new bulk postal' },
       metadata: (_args, result) => ({ bulkId: result?.bulkId }),
       getDescription: async () => `Created bulk postal message content`,
     },

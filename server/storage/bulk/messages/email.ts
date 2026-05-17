@@ -69,12 +69,12 @@ export function createBulkMessagesEmailStorage(): BulkMessagesEmailStorage {
 
 export const bulkMessagesEmailLoggingConfig = defineLoggingConfig<BulkMessagesEmailStorage>({
   module: 'bulkMessagesEmail',
-  stateKey: 'bulkMessagesEmail',
+  state: { key: 'bulkMessagesEmail' },
   getter: 'getById',
   hostEntityIdField: 'bulkId',
   methods: {
     create: {
-      entityIdFallback: 'new bulk email',
+      state: { fallbackId: 'new bulk email' },
       metadata: (_args, result) => ({ bulkId: result?.bulkId, subject: result?.subject }),
       getDescription: async () => `Created bulk email message content`,
     },

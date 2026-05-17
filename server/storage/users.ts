@@ -17,7 +17,7 @@ import {
 } from "@shared/schema";
 import { permissionRegistry, type PermissionDefinition } from "@shared/permissions";
 import { eq, and, sql, inArray } from "drizzle-orm";
-import { type StorageLoggingConfig } from "./middleware/logging";
+import { defineLoggingConfig } from "./middleware/logging";
 import type { ContactsStorage } from "./contacts";
 import { createUserContactSyncService } from "../services/user-contact-sync";
 
@@ -538,27 +538,16 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
  * 
  * Logs all user, role, and permission management operations with full argument capture and change tracking.
  */
-export const userLoggingConfig: StorageLoggingConfig<UserStorage> = {
+export const userLoggingConfig = defineLoggingConfig<UserStorage>({
   module: 'users',
   methods: {
     createUser: {
-      enabled: true,
       getEntityId: (args) => args[0]?.email || 'new user',
-      getHostEntityId: (args, result) => result?.id, // User ID is the host
-      after: async (args, result, storage) => {
-        return result; // Capture created user
-      }
+      getHostEntityId: (_args, result) => result?.id, // User ID is the host
     },
     updateUser: {
-      enabled: true,
-      getEntityId: (args) => args[0], // User ID
       getHostEntityId: (args) => args[0], // User ID is the host
-      before: async (args, storage) => {
-        return await storage.getUser(args[0]); // Current state
-      },
-      after: async (args, result, storage) => {
-        return result; // New state (diff auto-calculated)
-      },
+      before: async (args, storage) => storage.getUser(args[0]),
       getDescription: async (args, result, beforeState, afterState) => {
         const user = afterState || beforeState;
         if (!user) return `Updated user ${args[0]}`;
@@ -585,12 +574,8 @@ export const userLoggingConfig: StorageLoggingConfig<UserStorage> = {
       }
     },
     deleteUser: {
-      enabled: true,
-      getEntityId: (args) => args[0], // User ID
-      getHostEntityId: (args, result, beforeState) => beforeState?.id || args[0], // User ID is the host
-      before: async (args, storage) => {
-        return await storage.getUser(args[0]); // Capture what's being deleted
-      },
+      getHostEntityId: (args, _result, beforeState) => beforeState?.id || args[0],
+      before: async (args, storage) => storage.getUser(args[0]),
       getDescription: async (args, result, beforeState) => {
         const user = beforeState;
         if (!user) return `Deleted user ${args[0]}`;
@@ -699,4 +684,4 @@ export const userLoggingConfig: StorageLoggingConfig<UserStorage> = {
       }
     }
   }
-};
+});

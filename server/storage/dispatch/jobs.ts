@@ -70,11 +70,11 @@ async function getJobTypeName(jobTypeId: string | null | undefined): Promise<str
 
 export const dispatchJobLoggingConfig = defineLoggingConfig<DispatchJobStorage>({
   module: 'dispatchJobs',
-  stateKey: 'job',
+  state: { key: 'job' },
   hostEntityIdField: 'employerId',
   methods: {
     create: {
-      entityIdFallback: 'new dispatch job',
+      state: { fallbackId: 'new dispatch job' },
       // Legacy semantics: fall back to the insert payload's employerId on the
       // error path (when result is undefined). The create shortcut only reads
       // result, so override here.
@@ -103,7 +103,7 @@ export const dispatchJobLoggingConfig = defineLoggingConfig<DispatchJobStorage>(
         const jobTypeName = await getJobTypeName(job.jobTypeId);
         return { job, jobTypeName };
       },
-      previousStateKey: 'previousState',
+      state: { previousKey: 'previousState' },
       metadata: async (_args, result, beforeState) => ({
         jobId: result?.id,
         employerId: result?.employerId,

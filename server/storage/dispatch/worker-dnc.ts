@@ -54,7 +54,7 @@ async function getEmployerName(employerId: string): Promise<string> {
 
 export const workerDispatchDncLoggingConfig = defineLoggingConfig<WorkerDispatchDncStorage>({
   module: 'worker-dispatch-dnc',
-  stateKey: 'dnc',
+  state: { key: 'dnc' },
   hostEntityId: (args, result, before) =>
     result?.workerId ?? before?.dnc?.workerId ?? args[0]?.workerId,
   methods: {

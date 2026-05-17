@@ -190,10 +190,10 @@ async function searchDispatches(criteria: SearchDispatchesCriteria): Promise<Dis
 
 export const dispatchLoggingConfig = defineLoggingConfig<DispatchStorage>({
   module: 'dispatches',
-  stateKey: 'dispatch',
+  state: { key: 'dispatch' },
   methods: {
     create: {
-      entityIdFallback: 'new dispatch',
+      state: { fallbackId: 'new dispatch' },
       getHostEntityId: async (args, result) => {
         const jobId = result?.jobId || args[0]?.jobId;
         return jobId ? await getJobEmployerId(jobId) : undefined;
@@ -216,7 +216,7 @@ export const dispatchLoggingConfig = defineLoggingConfig<DispatchStorage>({
         const jobId = result?.jobId || beforeState?.dispatch?.jobId;
         return jobId ? await getJobEmployerId(jobId) : undefined;
       },
-      previousStateKey: 'previousState',
+      state: { previousKey: 'previousState' },
       metadata: (_args, result, beforeState) => ({
         dispatchId: result?.id,
         jobId: result?.jobId,

@@ -188,7 +188,7 @@ export const edlsCrewsLoggingConfig = defineLoggingConfig<EdlsCrewsStorage>({
   // explicitly so the emitted log payloads stay byte-identical.
   methods: {
     create: {
-      entityIdFallback: 'new crew',
+      state: { fallbackId: 'new crew' },
       getHostEntityId: (args, result) => result?.sheetId || args[0]?.sheetId,
       getDescription: async (args, result) => {
         const title = result?.title || args[0]?.title || 'Untitled';
