@@ -64,6 +64,7 @@ export interface WorkerHoursStorage {
     statusIds: string[],
     months: Array<{ year: number; month: number }>,
   ): Promise<Array<{ year: number; month: number; employerId: string }>>;
+  getCurrentlyEmployedWorkerIds(): Promise<Set<string>>;
 }
 
 export function createWorkerHoursStorage(
@@ -713,6 +714,21 @@ export function createWorkerHoursStorage(
           ),
         );
       return rows as Array<{ year: number; month: number; employerId: string }>;
+    },
+
+    async getCurrentlyEmployedWorkerIds(): Promise<Set<string>> {
+      const client = getClient();
+      const result = await client.execute(sql`
+        SELECT latest.worker_id
+        FROM (
+          SELECT DISTINCT ON (wh.worker_id) wh.worker_id, wh.employment_status_id
+          FROM worker_hours wh
+          ORDER BY wh.worker_id, wh.year DESC, wh.month DESC, wh.day DESC
+        ) latest
+        JOIN options_employment_status es ON es.id = latest.employment_status_id
+        WHERE es.employed = true
+      `);
+      return new Set((result.rows as Array<{ worker_id: string }>).map(r => r.worker_id));
     },
   };
 
