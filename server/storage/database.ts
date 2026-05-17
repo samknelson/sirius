@@ -68,6 +68,7 @@ import { type BulkMessagesSmsStorage, createBulkMessagesSmsStorage, bulkMessages
 import { type BulkMessagesPostalStorage, createBulkMessagesPostalStorage, bulkMessagesPostalLoggingConfig } from "./bulk/messages/postal";
 import { type BulkMessagesInappStorage, createBulkMessagesInappStorage, bulkMessagesInappLoggingConfig } from "./bulk/messages/inapp";
 import { type BulkParticipantStorage, createBulkParticipantStorage, bulkParticipantLoggingConfig } from "./bulk/participants";
+import { type BulkTokensStorage, createBulkTokensStorage } from "./bulk/tokens";
 import { type EmployerPolicyHistoryStorage, createEmployerPolicyHistoryStorage, employerPolicyHistoryLoggingConfig } from "./employers/policy-history";
 import { type WmbScanQueueStorage, createWmbScanQueueStorage } from "./wmb-scan-queue";
 import { type CardcheckDefinitionStorage, createCardcheckDefinitionStorage, cardcheckDefinitionLoggingConfig } from "./cardcheck-definitions";
@@ -194,6 +195,7 @@ export interface IStorage {
   bulkMessagesPostal: BulkMessagesPostalStorage;
   bulkMessagesInapp: BulkMessagesInappStorage;
   bulkParticipants: BulkParticipantStorage;
+  bulkTokens: BulkTokensStorage;
   facilities: FacilityStorage;
   gbhetPension: GbhetPensionStorage;
   contactLinks: ContactLinkStorage;
@@ -279,6 +281,7 @@ export class DatabaseStorage implements IStorage {
   bulkMessagesPostal: BulkMessagesPostalStorage;
   bulkMessagesInapp: BulkMessagesInappStorage;
   bulkParticipants: BulkParticipantStorage;
+  bulkTokens: BulkTokensStorage;
   facilities: FacilityStorage;
   gbhetPension: GbhetPensionStorage;
   contactLinks: ContactLinkStorage;
@@ -494,6 +497,7 @@ export class DatabaseStorage implements IStorage {
       createBulkParticipantStorage(),
       bulkParticipantLoggingConfig
     );
+    this.bulkTokens = createBulkTokensStorage();
     this.facilities = withStorageLogging(createFacilityStorage(this.contacts), facilityLoggingConfig);
     this.gbhetPension = createGbhetPensionStorage();
     this.contactLinks = createContactLinkStorage();

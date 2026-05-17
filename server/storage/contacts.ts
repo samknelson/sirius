@@ -203,6 +203,7 @@ export interface ContactStorage {
   getContact(id: string): Promise<Contact | undefined>;
   getContactByEmail(email: string): Promise<Contact | undefined>;
   searchWithPrimaryContactInfo(query: string, limit: number): Promise<ContactSearchResult[]>;
+  getExistingIds(ids: string[]): Promise<string[]>;
   createContact(contact: InsertContact): Promise<Contact>;
   updateName(contactId: string, name: string): Promise<Contact | undefined>;
   updateNameComponents(contactId: string, components: {
@@ -224,6 +225,7 @@ export interface ContactsStorage {
   getContact(id: string): Promise<Contact | undefined>;
   getContactByEmail(email: string): Promise<Contact | undefined>;
   searchWithPrimaryContactInfo(query: string, limit: number): Promise<ContactSearchResult[]>;
+  getExistingIds(ids: string[]): Promise<string[]>;
   createContact(contact: InsertContact): Promise<Contact>;
   updateName(contactId: string, name: string): Promise<Contact | undefined>;
   updateNameComponents(contactId: string, components: {
@@ -688,6 +690,16 @@ export function createContactStorage(): ContactStorage {
       return contact || undefined;
     },
 
+    async getExistingIds(ids: string[]): Promise<string[]> {
+      if (ids.length === 0) return [];
+      const client = getClient();
+      const rows = await client
+        .select({ id: contacts.id })
+        .from(contacts)
+        .where(inArray(contacts.id, ids));
+      return rows.map((r) => r.id);
+    },
+
     async searchWithPrimaryContactInfo(query: string, limit: number): Promise<ContactSearchResult[]> {
       const client = getClient();
       const term = `%${query}%`;
@@ -982,6 +994,7 @@ export function createContactsStorage(
     getContact: contactStorage.getContact,
     getContactByEmail: contactStorage.getContactByEmail,
     searchWithPrimaryContactInfo: contactStorage.searchWithPrimaryContactInfo,
+    getExistingIds: contactStorage.getExistingIds,
     createContact: contactStorage.createContact,
     updateName: contactStorage.updateName,
     updateNameComponents: contactStorage.updateNameComponents,

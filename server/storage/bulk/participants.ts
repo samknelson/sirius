@@ -39,6 +39,7 @@ export interface BulkParticipantStorage {
   update(id: string, data: Partial<InsertBulkParticipant>): Promise<BulkParticipant | undefined>;
   delete(id: string): Promise<boolean>;
   deleteByMessageAndMedium(messageId: string, medium: string): Promise<number>;
+  existsForMessageAndContact(messageId: string, contactId: string): Promise<boolean>;
 }
 
 export function createBulkParticipantStorage(): BulkParticipantStorage {
@@ -147,6 +148,19 @@ export function createBulkParticipantStorage(): BulkParticipantStorage {
         .where(eq(bulkParticipants.id, id))
         .returning();
       return result.length > 0;
+    },
+
+    async existsForMessageAndContact(messageId: string, contactId: string): Promise<boolean> {
+      const client = getClient();
+      const rows = await client
+        .select({ id: bulkParticipants.id })
+        .from(bulkParticipants)
+        .where(and(
+          eq(bulkParticipants.messageId, messageId),
+          eq(bulkParticipants.contactId, contactId),
+        ))
+        .limit(1);
+      return rows.length > 0;
     },
 
     async deleteByMessageAndMedium(messageId: string, medium: string): Promise<number> {
