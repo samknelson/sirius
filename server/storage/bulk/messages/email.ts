@@ -2,7 +2,7 @@ import { createNoopValidator } from '../../utils/validation';
 import { getClient } from '../../transaction-context';
 import { bulkMessagesEmail, type BulkMessagesEmail, type InsertBulkMessagesEmail } from "../../../../shared/schema/bulk/schema";
 import { eq } from "drizzle-orm";
-import type { StorageLoggingConfig } from "../../middleware/logging";
+import { defineLoggingConfig } from "../../middleware/logging";
 
 export const validate = createNoopValidator<InsertBulkMessagesEmail, BulkMessagesEmail>();
 
@@ -67,50 +67,31 @@ export function createBulkMessagesEmailStorage(): BulkMessagesEmailStorage {
   return storage;
 }
 
-export const bulkMessagesEmailLoggingConfig: StorageLoggingConfig<BulkMessagesEmailStorage> = {
+export const bulkMessagesEmailLoggingConfig = defineLoggingConfig<BulkMessagesEmailStorage>({
   module: 'bulkMessagesEmail',
+  stateKey: 'bulkMessagesEmail',
+  getter: 'getById',
+  hostEntityIdField: 'bulkId',
   methods: {
     create: {
-      enabled: true,
-      getEntityId: (args, result) => result?.id || 'new bulk email',
-      getHostEntityId: (args, result) => result?.bulkId,
-      getDescription: async (args, result) => {
-        return `Created bulk email message content`;
-      },
-      after: async (args, result) => {
-        return {
-          bulkMessagesEmail: result,
-          metadata: { bulkId: result?.bulkId, subject: result?.subject }
-        };
-      }
+      entityIdFallback: 'new bulk email',
+      metadata: (_args, result) => ({ bulkId: result?.bulkId, subject: result?.subject }),
+      getDescription: async () => `Created bulk email message content`,
     },
     update: {
-      enabled: true,
-      getEntityId: (args) => args[0],
-      getHostEntityId: (args, result) => result?.bulkId,
+      // Legacy quirk: empty before-state object (recorded as `details.before = {}`).
+      before: async () => ({}),
+      metadata: (_args, result) => ({ bulkId: result?.bulkId, subject: result?.subject }),
       getDescription: async () => `Updated bulk email message content`,
-      before: async (args, storage) => {
-        return {};
-      },
-      after: async (args, result) => {
-        return {
-          bulkMessagesEmail: result,
-          metadata: { bulkId: result?.bulkId, subject: result?.subject }
-        };
-      }
     },
     delete: {
-      enabled: true,
-      getEntityId: (args) => args[0],
+      before: async (args, storage) => ({ record: await storage.getById(args[0]) }),
       getHostEntityId: (_args, _result, beforeState) => beforeState?.record?.bulkId,
+      after: async (_args, result, _storage, beforeState) => ({
+        deleted: result,
+        metadata: { bulkId: beforeState?.record?.bulkId },
+      }),
       getDescription: async () => `Deleted bulk email message content`,
-      before: async (args, storage) => {
-        const record = await storage.getById(args[0]);
-        return { record };
-      },
-      after: async (args, result, _storage, beforeState) => {
-        return { deleted: result, metadata: { bulkId: beforeState?.record?.bulkId } };
-      }
     },
-  }
-};
+  },
+});

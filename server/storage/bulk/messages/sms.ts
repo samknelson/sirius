@@ -2,7 +2,7 @@ import { createNoopValidator } from '../../utils/validation';
 import { getClient } from '../../transaction-context';
 import { bulkMessagesSms, type BulkMessagesSms, type InsertBulkMessagesSms } from "../../../../shared/schema/bulk/schema";
 import { eq } from "drizzle-orm";
-import type { StorageLoggingConfig } from "../../middleware/logging";
+import { defineLoggingConfig } from "../../middleware/logging";
 
 export const validate = createNoopValidator<InsertBulkMessagesSms, BulkMessagesSms>();
 
@@ -67,45 +67,32 @@ export function createBulkMessagesSmsStorage(): BulkMessagesSmsStorage {
   return storage;
 }
 
-export const bulkMessagesSmsLoggingConfig: StorageLoggingConfig<BulkMessagesSmsStorage> = {
+export const bulkMessagesSmsLoggingConfig = defineLoggingConfig<BulkMessagesSmsStorage>({
   module: 'bulkMessagesSms',
+  stateKey: 'bulkMessagesSms',
+  getter: 'getById',
+  hostEntityIdField: 'bulkId',
   methods: {
     create: {
-      enabled: true,
-      getEntityId: (args, result) => result?.id || 'new bulk sms',
-      getHostEntityId: (args, result) => result?.bulkId,
+      entityIdFallback: 'new bulk sms',
+      metadata: (_args, result) => ({ bulkId: result?.bulkId }),
       getDescription: async () => `Created bulk SMS message content`,
-      after: async (args, result) => {
-        return {
-          bulkMessagesSms: result,
-          metadata: { bulkId: result?.bulkId }
-        };
-      }
     },
     update: {
-      enabled: true,
-      getEntityId: (args) => args[0],
-      getHostEntityId: (args, result) => result?.bulkId,
+      // Preserve legacy shape (no before-state read on update).
+      before: async () => undefined,
+      metadata: (_args, result) => ({ bulkId: result?.bulkId }),
       getDescription: async () => `Updated bulk SMS message content`,
-      after: async (args, result) => {
-        return {
-          bulkMessagesSms: result,
-          metadata: { bulkId: result?.bulkId }
-        };
-      }
     },
     delete: {
-      enabled: true,
-      getEntityId: (args) => args[0],
+      // Legacy used a `record` wrapper key; keep it intact.
+      before: async (args, storage) => ({ record: await storage.getById(args[0]) }),
       getHostEntityId: (_args, _result, beforeState) => beforeState?.record?.bulkId,
+      after: async (_args, result, _storage, beforeState) => ({
+        deleted: result,
+        metadata: { bulkId: beforeState?.record?.bulkId },
+      }),
       getDescription: async () => `Deleted bulk SMS message content`,
-      before: async (args, storage) => {
-        const record = await storage.getById(args[0]);
-        return { record };
-      },
-      after: async (args, result, _storage, beforeState) => {
-        return { deleted: result, metadata: { bulkId: beforeState?.record?.bulkId } };
-      }
     },
-  }
-};
+  },
+});

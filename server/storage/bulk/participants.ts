@@ -3,7 +3,7 @@ import { getClient } from '../transaction-context';
 import { bulkParticipants, type BulkParticipant, type InsertBulkParticipant } from "../../../shared/schema/bulk/schema";
 import { contacts, workers, comm } from "../../../shared/schema";
 import { eq, and } from "drizzle-orm";
-import type { StorageLoggingConfig } from "../middleware/logging";
+import { defineLoggingConfig } from "../middleware/logging";
 
 export const validate = createNoopValidator<InsertBulkParticipant, BulkParticipant>();
 
@@ -179,55 +179,39 @@ export function createBulkParticipantStorage(): BulkParticipantStorage {
   return storage;
 }
 
-export const bulkParticipantLoggingConfig: StorageLoggingConfig<BulkParticipantStorage> = {
+export const bulkParticipantLoggingConfig = defineLoggingConfig<BulkParticipantStorage>({
   module: 'bulkParticipants',
+  stateKey: 'bulkParticipant',
+  getter: 'getById',
+  hostEntityIdField: 'messageId',
   methods: {
     create: {
-      enabled: true,
-      getEntityId: (args, result) => result?.id || 'new bulk participant',
-      getHostEntityId: (args, result) => result?.messageId,
-      getDescription: async (args, result) => {
-        return `Added participant (contact ${result?.contactId}) to bulk message ${result?.messageId}`;
-      },
-      after: async (args, result) => {
-        return {
-          bulkParticipant: result,
-          metadata: {
-            messageId: result?.messageId,
-            contactId: result?.contactId,
-            commId: result?.commId,
-          }
-        };
-      }
+      entityIdFallback: 'new bulk participant',
+      metadata: (_args, result) => ({
+        messageId: result?.messageId,
+        contactId: result?.contactId,
+        commId: result?.commId,
+      }),
+      getDescription: async (_args, result) =>
+        `Added participant (contact ${result?.contactId}) to bulk message ${result?.messageId}`,
     },
     update: {
-      enabled: true,
-      getEntityId: (args) => args[0],
-      getHostEntityId: (args, result) => result?.messageId,
+      before: async () => undefined,
+      metadata: (_args, result) => ({
+        messageId: result?.messageId,
+        contactId: result?.contactId,
+        commId: result?.commId,
+      }),
       getDescription: async () => `Updated bulk participant`,
-      after: async (args, result) => {
-        return {
-          bulkParticipant: result,
-          metadata: {
-            messageId: result?.messageId,
-            contactId: result?.contactId,
-            commId: result?.commId,
-          }
-        };
-      }
     },
     delete: {
-      enabled: true,
-      getEntityId: (args) => args[0],
+      before: async (args, storage) => ({ record: await storage.getById(args[0]) }),
       getHostEntityId: (_args, _result, beforeState) => beforeState?.record?.messageId,
+      after: async (_args, result, _storage, beforeState) => ({
+        deleted: result,
+        metadata: { messageId: beforeState?.record?.messageId },
+      }),
       getDescription: async () => `Deleted bulk participant`,
-      before: async (args, storage) => {
-        const record = await storage.getById(args[0]);
-        return { record };
-      },
-      after: async (args, result, _storage, beforeState) => {
-        return { deleted: result, metadata: { messageId: beforeState?.record?.messageId } };
-      }
     },
-  }
-};
+  },
+});

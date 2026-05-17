@@ -6,7 +6,7 @@ import {
   type InsertDispatchJobGroup
 } from "@shared/schema";
 import { eq, desc, asc, sql, SQL, and, ilike, or, isNull, lte, gte } from "drizzle-orm";
-import { type StorageLoggingConfig } from "../middleware/logging";
+import { defineLoggingConfig } from "../middleware/logging";
 
 export const validate = createNoopValidator<InsertDispatchJobGroup, DispatchJobGroup>();
 
@@ -37,55 +37,48 @@ export interface DispatchJobGroupStorage {
   delete(id: string): Promise<boolean>;
 }
 
-export const dispatchJobGroupLoggingConfig: StorageLoggingConfig<DispatchJobGroupStorage> = {
+export const dispatchJobGroupLoggingConfig = defineLoggingConfig<DispatchJobGroupStorage>({
   module: 'dispatchJobGroups',
+  stateKey: 'group',
+  // Legacy: before-state for update/delete is `null` when row missing, not
+  // `{ group: undefined }`. Keep the explicit before hooks below to preserve
+  // byte-identical logs.
   methods: {
     create: {
-      enabled: true,
-      getEntityId: (args, result) => result?.id || 'new dispatch job group',
-      getHostEntityId: (args, result) => result?.id,
+      entityIdFallback: 'new dispatch job group',
+      getHostEntityId: (_args, result) => result?.id,
+      metadata: (_args, result) => ({ groupId: result?.id, name: result?.name }),
       getDescription: async (args, result) => {
         const name = result?.name || args[0]?.name || 'Unnamed';
         return `Created Dispatch Job Group "${name}"`;
       },
-      after: async (args, result) => ({
-        group: result,
-        metadata: { groupId: result?.id, name: result?.name }
-      })
     },
     update: {
-      enabled: true,
-      getEntityId: (args) => args[0],
       getHostEntityId: (args) => args[0],
-      getDescription: async (args, result, beforeState) => {
+      before: async (args, storage) => {
+        const group = await storage.get(args[0]);
+        return group ? { group } : null;
+      },
+      previousStateKey: 'previousState',
+      metadata: (_args, result) => ({ groupId: result?.id, name: result?.name }),
+      getDescription: async (_args, result, beforeState) => {
         const name = result?.name || beforeState?.group?.name || 'Unknown';
         return `Updated Dispatch Job Group "${name}"`;
       },
+    },
+    delete: {
+      getHostEntityId: (args) => args[0],
       before: async (args, storage) => {
         const group = await storage.get(args[0]);
         return group ? { group } : null;
       },
-      after: async (args, result, storage, beforeState) => ({
-        group: result,
-        previousState: beforeState?.group,
-        metadata: { groupId: result?.id, name: result?.name }
-      })
-    },
-    delete: {
-      enabled: true,
-      getEntityId: (args) => args[0],
-      getHostEntityId: (args) => args[0],
-      getDescription: async (args, result, beforeState) => {
+      getDescription: async (_args, _result, beforeState) => {
         const name = beforeState?.group?.name || 'Unknown';
         return `Deleted Dispatch Job Group "${name}"`;
       },
-      before: async (args, storage) => {
-        const group = await storage.get(args[0]);
-        return group ? { group } : null;
-      }
-    }
-  }
-};
+    },
+  },
+});
 
 export function createDispatchJobGroupStorage(): DispatchJobGroupStorage {
   return {
