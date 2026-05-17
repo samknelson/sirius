@@ -31,6 +31,7 @@ export interface WorkerIdStorage {
   getWorkerIdsByTypeForWorkerIds(typeId: string, workerIdsList: string[]): Promise<{ workerId: string; value: string }[]>;
   getWorkerIdByTypeAndValue(typeId: string, value: string): Promise<WorkerId | undefined>;
   getByTypeAndValues(typeId: string, values: string[]): Promise<Array<{ value: string; workerId: string }>>;
+  getTypeIdBySiriusId(siriusId: string): Promise<string | null>;
 }
 
 export function createWorkerIdStorage(): WorkerIdStorage {
@@ -81,6 +82,16 @@ export function createWorkerIdStorage(): WorkerIdStorage {
         .from(workerIds)
         .where(and(eq(workerIds.typeId, typeId), inArray(workerIds.value, values)));
       return results;
+    },
+
+    async getTypeIdBySiriusId(siriusId: string): Promise<string | null> {
+      const client = getClient();
+      const [row] = await client
+        .select({ id: optionsWorkerIdType.id })
+        .from(optionsWorkerIdType)
+        .where(eq(optionsWorkerIdType.siriusId, siriusId))
+        .limit(1);
+      return row?.id ?? null;
     },
 
     async getWorkerIdByTypeAndValue(typeId: string, value: string): Promise<WorkerId | undefined> {

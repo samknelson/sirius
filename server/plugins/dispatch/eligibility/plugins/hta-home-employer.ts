@@ -3,12 +3,10 @@ import { createWorkerDispatchEligDenormStorage } from "../../../../storage/dispa
 import { createVariableStorage } from "../../../../storage/system/variables";
 import { createDispatchJobStorage } from "../../../../storage/dispatch/jobs";
 import { createEmployerCompanyStorage } from "../../../../storage/employers/companies";
+import { createWorkerHoursStorage } from "../../../../storage/worker-hours";
 import type { DispatchEligPlugin, EligibilityCondition, EligibilityQueryContext } from "../registry";
 import { EventType } from "../../../../services/event-bus";
 import { isComponentEnabledSync, isCacheInitialized } from "../../../../services/component-cache";
-import { getClient } from "../../../../storage/transaction-context";
-import { workerHours } from "@shared/schema";
-import { eq, and, inArray, sql } from "drizzle-orm";
 
 const HTA_HOME_EMPLOYER_CATEGORY = "sitespecific:hta:home-employer";
 const HTA_HOME_COMPANY_CATEGORY = "sitespecific:hta:home-company";
@@ -87,23 +85,11 @@ export const dispatchHtaHomeEmployerPlugin: DispatchEligPlugin = {
     }
 
     const window = getCurrentThreeMonthWindow();
-    const client = getClient();
-
-    const monthConditions = window.map(
-      ({ year, month }) => sql`(${workerHours.year} = ${year} AND ${workerHours.month} = ${month})`
+    const hoursStorage = createWorkerHoursStorage();
+    const workerIds = await hoursStorage.getDistinctWorkerIdsByStatusAndMonths(
+      statusIds,
+      window.map(({ year, month }) => ({ year, month })),
     );
-
-    const workerRows = await client
-      .selectDistinct({ workerId: workerHours.workerId })
-      .from(workerHours)
-      .where(
-        and(
-          inArray(workerHours.employmentStatusId, statusIds),
-          sql`(${sql.join(monthConditions, sql` OR `)})`
-        )
-      );
-
-    const workerIds = workerRows.map((r) => r.workerId);
 
     if (workerIds.length === 0) {
       logger.info("No workers with qualifying hours found for HTA home employer backfill", {
@@ -223,26 +209,12 @@ export const dispatchHtaHomeEmployerPlugin: DispatchEligPlugin = {
     }
 
     const window = getCurrentThreeMonthWindow();
-    const client = getClient();
-
-    const monthConditions = window.map(
-      ({ year, month }) => sql`(${workerHours.year} = ${year} AND ${workerHours.month} = ${month})`
+    const hoursStorage = createWorkerHoursStorage();
+    const rows = await hoursStorage.getEmployerMonthRowsByWorkerStatusAndMonths(
+      workerId,
+      statusIds,
+      window.map(({ year, month }) => ({ year, month })),
     );
-
-    const rows = await client
-      .select({
-        year: workerHours.year,
-        month: workerHours.month,
-        employerId: workerHours.employerId,
-      })
-      .from(workerHours)
-      .where(
-        and(
-          eq(workerHours.workerId, workerId),
-          inArray(workerHours.employmentStatusId, statusIds),
-          sql`(${sql.join(monthConditions, sql` OR `)})`
-        )
-      );
 
     const uniquePairs = new Map<string, { year: number; month: number; employerId: string }>();
     for (const row of rows) {
