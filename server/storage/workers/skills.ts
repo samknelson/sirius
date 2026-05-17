@@ -3,8 +3,6 @@ import { getClient } from '../transaction-context';
 import { 
   workerSkills,
   optionsSkills,
-  workers,
-  contacts,
   type WorkerSkill, 
   type InsertWorkerSkill,
   type OptionsSkill
@@ -31,23 +29,6 @@ export interface WorkerSkillStorage {
   delete(id: string, message?: string): Promise<boolean>;
 }
 
-async function getWorkerName(workerId: string): Promise<string> {
-  const client = getClient();
-  const [worker] = await client
-    .select({ contactId: workers.contactId, siriusId: workers.siriusId })
-    .from(workers)
-    .where(eq(workers.id, workerId));
-  if (!worker) return 'Unknown Worker';
-  
-  const [contact] = await client
-    .select({ given: contacts.given, family: contacts.family, displayName: contacts.displayName })
-    .from(contacts)
-    .where(eq(contacts.id, worker.contactId));
-  
-  const name = contact ? `${contact.given || ''} ${contact.family || ''}`.trim() : '';
-  return name || contact?.displayName || `Worker #${worker.siriusId}`;
-}
-
 async function getSkillName(skillId: string): Promise<string> {
   const client = getClient();
   const [skill] = await client
@@ -65,7 +46,8 @@ export const workerSkillLoggingConfig: StorageLoggingConfig<WorkerSkillStorage> 
       getEntityId: (args, result) => result?.id || 'new worker skill',
       getHostEntityId: (args, result) => result?.workerId || args[0]?.workerId,
       getDescription: async (args, result) => {
-        const workerName = await getWorkerName(result?.workerId || args[0]?.workerId);
+        const { storage } = await import('../index');
+        const workerName = await storage.workers.getWorkerDisplayName(result?.workerId || args[0]?.workerId);
         const skillName = await getSkillName(result?.skillId || args[0]?.skillId);
         const message = args[0]?.message;
         const baseDesc = `Added skill "${skillName}" to ${workerName}`;
@@ -82,7 +64,8 @@ export const workerSkillLoggingConfig: StorageLoggingConfig<WorkerSkillStorage> 
         return beforeState?.workerSkill?.workerId;
       },
       getDescription: async (args, result, beforeState) => {
-        const workerName = await getWorkerName(beforeState?.workerSkill?.workerId || '');
+        const { storage } = await import('../index');
+        const workerName = await storage.workers.getWorkerDisplayName(beforeState?.workerSkill?.workerId);
         const skillName = await getSkillName(beforeState?.workerSkill?.skillId || '');
         const message = args[1];
         const baseDesc = `Removed skill "${skillName}" from ${workerName}`;

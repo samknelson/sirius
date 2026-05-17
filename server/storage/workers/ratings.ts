@@ -2,8 +2,6 @@ import { getClient } from '../transaction-context';
 import { 
   workerRatings,
   optionsWorkerRatings,
-  workers,
-  contacts,
   type WorkerRating, 
   type InsertWorkerRating,
   type OptionsWorkerRating
@@ -25,28 +23,6 @@ export interface WorkerRatingStorage {
   upsert(workerId: string, ratingId: string, value: number | null): Promise<WorkerRating | null>;
 }
 
-async function getWorkerName(workerId: string | undefined): Promise<string> {
-  if (!workerId) return 'Unknown Worker';
-  const client = getClient();
-  const [worker] = await client
-    .select({ siriusId: workers.siriusId, contactId: workers.contactId })
-    .from(workers)
-    .where(eq(workers.id, workerId));
-  if (!worker) return 'Unknown Worker';
-  
-  if (worker.contactId) {
-    const [contact] = await client
-      .select({ given: contacts.given, family: contacts.family, displayName: contacts.displayName })
-      .from(contacts)
-      .where(eq(contacts.id, worker.contactId));
-    if (contact) {
-      const name = `${contact.given || ''} ${contact.family || ''}`.trim();
-      return name || contact.displayName || `Worker #${worker.siriusId}`;
-    }
-  }
-  return `Worker #${worker.siriusId}`;
-}
-
 async function getRatingTypeName(ratingId: string): Promise<string> {
   const client = getClient();
   const [rating] = await client
@@ -64,7 +40,8 @@ export const workerRatingLoggingConfig: StorageLoggingConfig<WorkerRatingStorage
       getEntityId: (args, result) => result?.id || 'new worker rating',
       getHostEntityId: (args, result) => result?.workerId || args[0]?.workerId,
       getDescription: async (args, result) => {
-        const workerName = await getWorkerName(result?.workerId || args[0]?.workerId);
+        const { storage } = await import('../index');
+        const workerName = await storage.workers.getWorkerDisplayName(result?.workerId || args[0]?.workerId);
         const ratingName = await getRatingTypeName(result?.ratingId || args[0]?.ratingId);
         const value = result?.value ?? args[0]?.value;
         return `Set rating "${ratingName}" to ${value} for ${workerName}`;
@@ -80,7 +57,8 @@ export const workerRatingLoggingConfig: StorageLoggingConfig<WorkerRatingStorage
         return beforeState?.workerRating?.workerId || result?.workerId;
       },
       getDescription: async (args, result, beforeState) => {
-        const workerName = await getWorkerName(beforeState?.workerRating?.workerId || result?.workerId || '');
+        const { storage } = await import('../index');
+        const workerName = await storage.workers.getWorkerDisplayName(beforeState?.workerRating?.workerId || result?.workerId);
         const ratingName = await getRatingTypeName(beforeState?.workerRating?.ratingId || result?.ratingId || '');
         const oldValue = beforeState?.workerRating?.value;
         const newValue = result?.value ?? args[1]?.value;
@@ -98,7 +76,8 @@ export const workerRatingLoggingConfig: StorageLoggingConfig<WorkerRatingStorage
         return beforeState?.workerRating?.workerId;
       },
       getDescription: async (args, result, beforeState) => {
-        const workerName = await getWorkerName(beforeState?.workerRating?.workerId || '');
+        const { storage } = await import('../index');
+        const workerName = await storage.workers.getWorkerDisplayName(beforeState?.workerRating?.workerId);
         const ratingName = await getRatingTypeName(beforeState?.workerRating?.ratingId || '');
         return `Removed rating "${ratingName}" from ${workerName}`;
       },
@@ -119,7 +98,8 @@ export const workerRatingLoggingConfig: StorageLoggingConfig<WorkerRatingStorage
       },
       getDescription: async (args, result) => {
         const [workerId, ratingId, value] = args;
-        const workerName = await getWorkerName(workerId);
+        const { storage } = await import('../index');
+        const workerName = await storage.workers.getWorkerDisplayName(workerId);
         const ratingName = await getRatingTypeName(ratingId);
         if (value === null) {
           return `Removed rating "${ratingName}" from ${workerName}`;

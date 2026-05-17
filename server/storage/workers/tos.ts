@@ -55,23 +55,6 @@ export interface WorkerTosStorage {
   delete(id: string, message?: string): Promise<boolean>;
 }
 
-async function getWorkerName(workerId: string): Promise<string> {
-  const client = getClient();
-  const [worker] = await client
-    .select({ contactId: workers.contactId, siriusId: workers.siriusId })
-    .from(workers)
-    .where(eq(workers.id, workerId));
-  if (!worker) return 'Unknown Worker';
-
-  const [contact] = await client
-    .select({ given: contacts.given, family: contacts.family, displayName: contacts.displayName })
-    .from(contacts)
-    .where(eq(contacts.id, worker.contactId));
-
-  const name = contact ? `${contact.given || ''} ${contact.family || ''}`.trim() : '';
-  return name || contact?.displayName || `Worker #${worker.siriusId}`;
-}
-
 function formatDuration(start: Date, end: Date): string {
   const ms = end.getTime() - start.getTime();
   if (ms < 0) return '0m';
@@ -130,7 +113,8 @@ export const workerTosLoggingConfig: StorageLoggingConfig<WorkerTosStorage> = {
       getEntityId: (args, result) => result?.id || 'new worker tos',
       getHostEntityId: (args, result) => result?.workerId || args[0]?.workerId,
       getDescription: async (args, result) => {
-        const workerName = await getWorkerName(result?.workerId || args[0]?.workerId);
+        const { storage } = await import('../index');
+        const workerName = await storage.workers.getWorkerDisplayName(result?.workerId || args[0]?.workerId);
         return result?.endDate
           ? `Recorded absence for ${workerName}`
           : `Started absence for ${workerName}`;
@@ -145,7 +129,8 @@ export const workerTosLoggingConfig: StorageLoggingConfig<WorkerTosStorage> = {
       },
       getDescription: async (args, result, beforeState: BeforeState | undefined) => {
         const workerId = result?.workerId || beforeState?.record?.workerId || '';
-        const workerName = await getWorkerName(workerId);
+        const { storage } = await import('../index');
+        const workerName = await storage.workers.getWorkerDisplayName(workerId);
         const before = beforeState?.record;
         // Detect "stop" transition: was active, now ended
         if (before && !before.endDate && result?.endDate) {
@@ -167,7 +152,8 @@ export const workerTosLoggingConfig: StorageLoggingConfig<WorkerTosStorage> = {
         return beforeState?.record?.workerId;
       },
       getDescription: async (args, result, beforeState: BeforeState | undefined) => {
-        const workerName = await getWorkerName(beforeState?.record?.workerId || '');
+        const { storage } = await import('../index');
+        const workerName = await storage.workers.getWorkerDisplayName(beforeState?.record?.workerId);
         const message = args[1];
         const base = `Deleted absence for ${workerName}`;
         return message ? `${base}: ${message}` : base;

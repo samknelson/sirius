@@ -2,8 +2,6 @@ import { createNoopValidator } from '../utils/validation';
 import { getClient } from '../transaction-context';
 import { 
   workerDispatchDnc,
-  workers,
-  contacts,
   employers,
   type WorkerDispatchDnc, 
   type InsertWorkerDispatchDnc
@@ -45,23 +43,6 @@ export interface WorkerDispatchDncStorage {
   delete(id: string): Promise<boolean>;
 }
 
-async function getWorkerName(workerId: string): Promise<string> {
-  const client = getClient();
-  const [worker] = await client
-    .select({ contactId: workers.contactId, siriusId: workers.siriusId })
-    .from(workers)
-    .where(eq(workers.id, workerId));
-  if (!worker) return 'Unknown Worker';
-  
-  const [contact] = await client
-    .select({ given: contacts.given, family: contacts.family, displayName: contacts.displayName })
-    .from(contacts)
-    .where(eq(contacts.id, worker.contactId));
-  
-  const name = contact ? `${contact.given || ''} ${contact.family || ''}`.trim() : '';
-  return name || contact?.displayName || `Worker #${worker.siriusId}`;
-}
-
 async function getEmployerName(employerId: string): Promise<string> {
   const client = getClient();
   const [employer] = await client
@@ -79,7 +60,8 @@ export const workerDispatchDncLoggingConfig: StorageLoggingConfig<WorkerDispatch
       getEntityId: (args, result) => result?.id || 'new dispatch worker dnc',
       getHostEntityId: (args, result) => result?.workerId || args[0]?.workerId,
       getDescription: async (args, result) => {
-        const workerName = await getWorkerName(result?.workerId || args[0]?.workerId);
+        const { storage } = await import('../index');
+        const workerName = await storage.workers.getWorkerDisplayName(result?.workerId || args[0]?.workerId);
         const employerName = await getEmployerName(result?.employerId || args[0]?.employerId);
         return `Created DNC entry (${result?.type}) for ${workerName} at ${employerName}`;
       },
@@ -94,7 +76,8 @@ export const workerDispatchDncLoggingConfig: StorageLoggingConfig<WorkerDispatch
         return result?.workerId || beforeState?.dnc?.workerId;
       },
       getDescription: async (args, result, beforeState) => {
-        const workerName = await getWorkerName(result?.workerId || beforeState?.dnc?.workerId);
+        const { storage } = await import('../index');
+        const workerName = await storage.workers.getWorkerDisplayName(result?.workerId || beforeState?.dnc?.workerId);
         const employerName = await getEmployerName(result?.employerId || beforeState?.dnc?.employerId);
         return `Updated DNC entry for ${workerName} at ${employerName}`;
       },
@@ -114,7 +97,8 @@ export const workerDispatchDncLoggingConfig: StorageLoggingConfig<WorkerDispatch
       },
       getDescription: async (args, result, beforeState) => {
         if (beforeState?.dnc) {
-          const workerName = await getWorkerName(beforeState.dnc.workerId);
+          const { storage } = await import('../index');
+          const workerName = await storage.workers.getWorkerDisplayName(beforeState.dnc.workerId);
           const employerName = await getEmployerName(beforeState.dnc.employerId);
           return `Deleted DNC entry (${beforeState.dnc.type}) for ${workerName} at ${employerName}`;
         }

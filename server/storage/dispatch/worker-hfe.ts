@@ -2,8 +2,6 @@ import { createNoopValidator } from '../utils/validation';
 import { getClient } from '../transaction-context';
 import { 
   workerDispatchHfe,
-  workers,
-  contacts,
   employers,
   type WorkerDispatchHfe, 
   type InsertWorkerDispatchHfe
@@ -45,23 +43,6 @@ export interface WorkerDispatchHfeStorage {
   findExpired(): Promise<WorkerDispatchHfe[]>;
 }
 
-async function getWorkerName(workerId: string): Promise<string> {
-  const client = getClient();
-  const [worker] = await client
-    .select({ contactId: workers.contactId, siriusId: workers.siriusId })
-    .from(workers)
-    .where(eq(workers.id, workerId));
-  if (!worker) return 'Unknown Worker';
-  
-  const [contact] = await client
-    .select({ given: contacts.given, family: contacts.family, displayName: contacts.displayName })
-    .from(contacts)
-    .where(eq(contacts.id, worker.contactId));
-  
-  const name = contact ? `${contact.given || ''} ${contact.family || ''}`.trim() : '';
-  return name || contact?.displayName || `Worker #${worker.siriusId}`;
-}
-
 async function getEmployerName(employerId: string): Promise<string> {
   const client = getClient();
   const [employer] = await client
@@ -79,7 +60,8 @@ export const workerDispatchHfeLoggingConfig: StorageLoggingConfig<WorkerDispatch
       getEntityId: (args: any[], result?: any) => result?.id || 'new dispatch worker hfe',
       getHostEntityId: (args: any[], result?: any) => result?.workerId || args[0]?.workerId,
       getDescription: async (args, result) => {
-        const workerName = await getWorkerName(result?.workerId || args[0]?.workerId);
+        const { storage } = await import('../index');
+        const workerName = await storage.workers.getWorkerDisplayName(result?.workerId || args[0]?.workerId);
         const employerName = await getEmployerName(result?.employerId || args[0]?.employerId);
         const holdUntil = result?.holdUntil ? new Date(result.holdUntil).toLocaleDateString() : 'unspecified';
         return `Created Hold for Employer entry for ${workerName} at ${employerName} until ${holdUntil}`;
@@ -95,7 +77,8 @@ export const workerDispatchHfeLoggingConfig: StorageLoggingConfig<WorkerDispatch
         return result?.workerId || beforeState?.hfe?.workerId;
       },
       getDescription: async (args, result, beforeState) => {
-        const workerName = await getWorkerName(result?.workerId || beforeState?.hfe?.workerId);
+        const { storage } = await import('../index');
+        const workerName = await storage.workers.getWorkerDisplayName(result?.workerId || beforeState?.hfe?.workerId);
         const employerName = await getEmployerName(result?.employerId || beforeState?.hfe?.employerId);
         const holdUntil = result?.holdUntil ? new Date(result.holdUntil).toLocaleDateString() : 'unspecified';
         return `Updated Hold for Employer entry for ${workerName} at ${employerName} until ${holdUntil}`;
@@ -116,7 +99,8 @@ export const workerDispatchHfeLoggingConfig: StorageLoggingConfig<WorkerDispatch
       },
       getDescription: async (args, result, beforeState) => {
         if (beforeState?.hfe) {
-          const workerName = await getWorkerName(beforeState.hfe.workerId);
+          const { storage } = await import('../index');
+          const workerName = await storage.workers.getWorkerDisplayName(beforeState.hfe.workerId);
           const employerName = await getEmployerName(beforeState.hfe.employerId);
           return `Deleted Hold for Employer entry for ${workerName} at ${employerName}`;
         }

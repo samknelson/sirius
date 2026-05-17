@@ -2,8 +2,6 @@ import { getClient, runInTransaction } from '../transaction-context';
 import { 
   workerCertifications,
   optionsCertifications,
-  workers,
-  contacts,
   type WorkerCertification, 
   type InsertWorkerCertification,
   type OptionsCertification
@@ -174,23 +172,6 @@ export interface WorkerCertificationStorage {
   findNotExpiredButInactive(): Promise<WorkerCertification[]>;
 }
 
-async function getWorkerName(workerId: string): Promise<string> {
-  const client = getClient();
-  const [worker] = await client
-    .select({ contactId: workers.contactId, siriusId: workers.siriusId })
-    .from(workers)
-    .where(eq(workers.id, workerId));
-  if (!worker) return 'Unknown Worker';
-  
-  const [contact] = await client
-    .select({ given: contacts.given, family: contacts.family, displayName: contacts.displayName })
-    .from(contacts)
-    .where(eq(contacts.id, worker.contactId));
-  
-  const name = contact ? `${contact.given || ''} ${contact.family || ''}`.trim() : '';
-  return name || contact?.displayName || `Worker #${worker.siriusId}`;
-}
-
 async function getCertificationName(certificationId: string): Promise<string> {
   const client = getClient();
   const [cert] = await client
@@ -208,7 +189,8 @@ export const workerCertificationLoggingConfig: StorageLoggingConfig<WorkerCertif
       getEntityId: (args, result) => result?.id || 'new worker certification',
       getHostEntityId: (args, result) => result?.workerId || args[0]?.workerId,
       getDescription: async (args, result) => {
-        const workerName = await getWorkerName(result?.workerId || args[0]?.workerId);
+        const { storage } = await import('../index');
+        const workerName = await storage.workers.getWorkerDisplayName(result?.workerId || args[0]?.workerId);
         const certName = await getCertificationName(result?.certificationId || args[0]?.certificationId);
         const message = args[0]?.message;
         const baseDesc = `Added certification "${certName}" to ${workerName}`;
@@ -225,7 +207,8 @@ export const workerCertificationLoggingConfig: StorageLoggingConfig<WorkerCertif
         return beforeState?.workerCertification?.workerId || result?.workerId;
       },
       getDescription: async (args, result, beforeState) => {
-        const workerName = await getWorkerName(beforeState?.workerCertification?.workerId || result?.workerId || '');
+        const { storage } = await import('../index');
+        const workerName = await storage.workers.getWorkerDisplayName(beforeState?.workerCertification?.workerId || result?.workerId);
         const certName = await getCertificationName(beforeState?.workerCertification?.certificationId || result?.certificationId || '');
         const message = args[1]?.message;
         const baseDesc = `Updated certification "${certName}" for ${workerName}`;
@@ -243,7 +226,8 @@ export const workerCertificationLoggingConfig: StorageLoggingConfig<WorkerCertif
         return beforeState?.workerCertification?.workerId;
       },
       getDescription: async (args, result, beforeState) => {
-        const workerName = await getWorkerName(beforeState?.workerCertification?.workerId || '');
+        const { storage } = await import('../index');
+        const workerName = await storage.workers.getWorkerDisplayName(beforeState?.workerCertification?.workerId);
         const certName = await getCertificationName(beforeState?.workerCertification?.certificationId || '');
         const message = args[1];
         const baseDesc = `Removed certification "${certName}" from ${workerName}`;

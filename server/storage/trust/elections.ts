@@ -209,14 +209,9 @@ async function describeElection(
 ): Promise<string> {
   const startPart = startYmd ? ` (start ${startYmd})` : '';
   if (!workerId) return `unknown worker${startPart}`;
-  try {
-    const { storage } = await import('../index');
-    const name = await storage.workers.getWorkerDisplayName(workerId);
-    if (name) return `${name}${startPart}`;
-  } catch {
-    // fall through to id-based fallback
-  }
-  return `worker ${workerId}${startPart}`;
+  const { storage } = await import('../index');
+  const name = await storage.workers.getWorkerDisplayName(workerId);
+  return `${name}${startPart}`;
 }
 
 export const workerTrustElectionsLoggingConfig: StorageLoggingConfig<WorkerTrustElectionsStorage> = {

@@ -173,7 +173,7 @@ export interface WorkerStorage {
   getWorkersEmployersSummary(): Promise<WorkerEmployerSummary[]>;
   getWorkersCurrentBenefits(month?: number, year?: number): Promise<WorkerCurrentBenefits[]>;
   getWorker(id: string): Promise<Worker | undefined>;
-  getWorkerDisplayName(id: string): Promise<string | undefined>;
+  getWorkerDisplayName(id: string | undefined | null): Promise<string>;
   getWorkerBySSN(ssn: string): Promise<Worker | undefined>;
   getWorkerByContactEmail(email: string): Promise<Worker | undefined>;
   getWorkerByContactId(contactId: string): Promise<Worker | undefined>;
@@ -757,7 +757,8 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       return worker || undefined;
     },
 
-    async getWorkerDisplayName(id: string): Promise<string | undefined> {
+    async getWorkerDisplayName(id: string | undefined | null): Promise<string> {
+      if (!id) return '';
       const client = getClient();
       const [row] = await client
         .select({
@@ -768,9 +769,9 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         .from(workers)
         .leftJoin(contacts, eq(workers.contactId, contacts.id))
         .where(eq(workers.id, id));
-      if (!row) return undefined;
+      if (!row) return id;
       const composed = [row.given, row.family].filter(Boolean).join(' ').trim();
-      return composed || row.displayName || undefined;
+      return composed || row.displayName || id;
     },
 
     async getWorkerBySSN(ssn: string): Promise<Worker | undefined> {
