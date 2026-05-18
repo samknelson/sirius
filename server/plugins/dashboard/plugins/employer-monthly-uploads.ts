@@ -68,67 +68,55 @@ export const employerMonthlyUploadsPlugin: DashboardPlugin = {
     return legacy.value as Record<string, string[]>;
   },
 
-  content: {
-    // Default action — what the widget itself needs to render. Returns the
-    // monthly wizard types this user can see (driven by role-based plugin
-    // settings), so the widget never has to call /api/wizard-types directly.
-    "": async (ctx) => {
-      const config = (ctx.settings ?? {}) as Record<string, string[]>;
-      const allowed = collectAllowedWizardTypes(
-        config,
-        ctx.userRoles.map((r) => r.id),
-      );
-      const wizardTypes = wizardRegistry
-        .getAll()
-        .filter((t) => t.isMonthly && allowed.has(t.name))
-        .map((t) => ({
-          name: t.name,
-          displayName: t.displayName || t.name,
-          isMonthly: true,
-        }));
-      return { wizardTypes };
-    },
+  // Single content payload: one /content call returns every wizard type the
+  // user can see plus per-type stats for the selected month. Pass `year` and
+  // `month` as query params; defaults to the current month if omitted.
+  async content(ctx) {
+    const { year, month } = ctx.query as Record<string, string | undefined>;
+    const now = new Date();
+    const yearNum = year ? Number(year) : now.getFullYear();
+    const monthNum = month ? Number(month) : now.getMonth() + 1;
 
-    stats: async (ctx) => {
-      const { year, month, wizardType } = ctx.query as Record<string, string | undefined>;
-      const now = new Date();
-      const yearNum = year ? Number(year) : now.getFullYear();
-      const monthNum = month ? Number(month) : now.getMonth() + 1;
+    if (!Number.isInteger(yearNum) || yearNum < 1900 || yearNum > 2100) {
+      throw Object.assign(new Error("Year must be a valid integer between 1900 and 2100"), {
+        status: 400,
+      });
+    }
+    if (!Number.isInteger(monthNum) || monthNum < 1 || monthNum > 12) {
+      throw Object.assign(new Error("Month must be a valid integer between 1 and 12"), {
+        status: 400,
+      });
+    }
 
-      if (!wizardType || typeof wizardType !== "string") {
-        throw Object.assign(new Error("Wizard type is required"), { status: 400 });
-      }
-      if (!Number.isInteger(yearNum) || yearNum < 1900 || yearNum > 2100) {
-        throw Object.assign(new Error("Year must be a valid integer between 1900 and 2100"), {
-          status: 400,
-        });
-      }
-      if (!Number.isInteger(monthNum) || monthNum < 1 || monthNum > 12) {
-        throw Object.assign(new Error("Month must be a valid integer between 1 and 12"), {
-          status: 400,
-        });
-      }
+    const config = (ctx.settings ?? {}) as Record<string, string[]>;
+    const allowed = collectAllowedWizardTypes(
+      config,
+      ctx.userRoles.map((r) => r.id),
+    );
+    const wizardTypes = wizardRegistry
+      .getAll()
+      .filter((t) => t.isMonthly && allowed.has(t.name))
+      .map((t) => ({
+        name: t.name,
+        displayName: t.displayName || t.name,
+        isMonthly: true,
+      }));
 
-      const config = (ctx.settings ?? {}) as Record<string, string[]>;
-      const allowed = collectAllowedWizardTypes(
-        config,
-        ctx.userRoles.map((r) => r.id),
-      );
-      if (!allowed.has(wizardType)) {
-        throw Object.assign(
-          new Error(
-            "Access denied: You do not have permission to view statistics for this wizard type",
-          ),
-          { status: 403 },
+    const statsByType: Record<
+      string,
+      { totalActiveEmployers: number; byStatus: Record<string, number> }
+    > = {};
+    await Promise.all(
+      wizardTypes.map(async (wt) => {
+        statsByType[wt.name] = await ctx.storage.wizardEmployerMonthly.getMonthlyStats(
+          yearNum,
+          monthNum,
+          wt.name,
         );
-      }
+      }),
+    );
 
-      return await ctx.storage.wizardEmployerMonthly.getMonthlyStats(
-        yearNum,
-        monthNum,
-        wizardType,
-      );
-    },
+    return { year: yearNum, month: monthNum, wizardTypes, statsByType };
   },
 
   client: {

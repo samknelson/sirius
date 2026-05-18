@@ -13,13 +13,16 @@ interface MyWizardType {
   isMonthly: boolean;
 }
 
-interface DefaultContent {
-  wizardTypes: MyWizardType[];
-}
-
 interface EmployerMonthlyStats {
   totalActiveEmployers: number;
   byStatus: Record<string, number>;
+}
+
+interface EmployerMonthlyContent {
+  year: number;
+  month: number;
+  wizardTypes: MyWizardType[];
+  statsByType: Record<string, EmployerMonthlyStats>;
 }
 
 function generateMonthOptions() {
@@ -51,13 +54,18 @@ export function EmployerMonthlyUploads(_props: DashboardPluginProps) {
 
   const monthOptions = generateMonthOptions();
   const selectedOption = monthOptions.find((opt) => opt.value === selectedMonth);
+  const year = selectedOption?.year ?? now.getFullYear();
+  const month = selectedOption?.month ?? now.getMonth() + 1;
 
-  const { data } = useDashboardContent<DefaultContent>("employer-monthly-uploads");
+  // One /content call returns wizard types + per-type stats for the selected month.
+  const { data } = useDashboardContent<EmployerMonthlyContent>(
+    "employer-monthly-uploads",
+    { params: { year, month } },
+  );
   const wizardTypes = data?.wizardTypes ?? [];
+  const statsByType = data?.statsByType ?? {};
 
-  if (wizardTypes.length === 0) {
-    return null;
-  }
+  if (wizardTypes.length === 0) return null;
 
   return (
     <Card data-testid="plugin-employer-monthly-uploads" className="md:col-span-2 lg:col-span-3">
@@ -66,9 +74,7 @@ export function EmployerMonthlyUploads(_props: DashboardPluginProps) {
           <Building2 className="h-5 w-5" />
           Employer Monthly Uploads
         </CardTitle>
-        <CardDescription>
-          Active employer upload statistics by status
-        </CardDescription>
+        <CardDescription>Active employer upload statistics by status</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex items-center gap-2">
@@ -92,8 +98,9 @@ export function EmployerMonthlyUploads(_props: DashboardPluginProps) {
             <StatsCard
               key={wizardType.name}
               wizardType={wizardType}
-              year={selectedOption?.year || now.getFullYear()}
-              month={selectedOption?.month || now.getMonth() + 1}
+              stats={statsByType[wizardType.name]}
+              year={year}
+              month={month}
             />
           ))}
         </div>
@@ -104,20 +111,13 @@ export function EmployerMonthlyUploads(_props: DashboardPluginProps) {
 
 interface StatsCardProps {
   wizardType: MyWizardType;
+  stats: EmployerMonthlyStats | undefined;
   year: number;
   month: number;
 }
 
-function StatsCard({ wizardType, year, month }: StatsCardProps) {
+function StatsCard({ wizardType, stats, year, month }: StatsCardProps) {
   const [, setLocation] = useLocation();
-
-  const { data: stats, isLoading } = useDashboardContent<EmployerMonthlyStats>(
-    "employer-monthly-uploads",
-    {
-      action: "stats",
-      params: { year, month, wizardType: wizardType.name },
-    },
-  );
 
   const handleNavigate = (status?: string) => {
     const params = new URLSearchParams({
@@ -128,19 +128,6 @@ function StatsCard({ wizardType, year, month }: StatsCardProps) {
     if (status) params.set("status", status);
     setLocation(`/employers/monthly-uploads?${params.toString()}`);
   };
-
-  if (isLoading) {
-    return (
-      <Card data-testid={`stats-card-${wizardType.name}-loading`}>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium">{wizardType.displayName}</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="text-sm text-muted-foreground">Loading...</div>
-        </CardContent>
-      </Card>
-    );
-  }
 
   if (!stats) return null;
 

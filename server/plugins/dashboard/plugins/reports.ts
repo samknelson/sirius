@@ -64,6 +64,21 @@ export const reportsPlugin: DashboardPlugin = {
         .map((t) => [t.name, t]),
     );
 
+    interface ReportMeta {
+      generatedAt?: string;
+      recordCount?: number;
+    }
+    const readReportMeta = (data: unknown): ReportMeta | null => {
+      if (!data || typeof data !== "object") return null;
+      const maybeMeta = (data as { reportMeta?: unknown }).reportMeta;
+      if (!maybeMeta || typeof maybeMeta !== "object") return null;
+      const m = maybeMeta as Record<string, unknown>;
+      return {
+        generatedAt: typeof m.generatedAt === "string" ? m.generatedAt : undefined,
+        recordCount: typeof m.recordCount === "number" ? m.recordCount : undefined,
+      };
+    };
+
     const reports: Array<{
       type: string;
       displayName: string;
@@ -78,12 +93,12 @@ export const reportsPlugin: DashboardPlugin = {
       const wizards = await ctx.storage.wizards.list({ type: typeName });
       if (wizards.length === 0) continue;
       const sorted = [...wizards].sort((a, b) => {
-        const aDate = (a.data as any)?.reportMeta?.generatedAt ?? "";
-        const bDate = (b.data as any)?.reportMeta?.generatedAt ?? "";
-        return String(bDate).localeCompare(String(aDate));
+        const aDate = readReportMeta(a.data)?.generatedAt ?? "";
+        const bDate = readReportMeta(b.data)?.generatedAt ?? "";
+        return bDate.localeCompare(aDate);
       });
       const w = sorted[0];
-      const meta = (w.data as any)?.reportMeta;
+      const meta = readReportMeta(w.data);
       reports.push({
         type: typeName,
         displayName: reportType.displayName || typeName,
