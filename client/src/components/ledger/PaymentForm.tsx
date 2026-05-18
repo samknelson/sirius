@@ -18,7 +18,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Plus } from "lucide-react";
 import { type StatementSelection } from "@/components/ledger/StatementPicker";
 import { ParticipantAllocationBox, type ParticipantBoxState } from "@/components/ledger/ParticipantAllocationBox";
-import { isValidYmd, ymdToDateForPicker } from "@shared/utils/date";
+import { isValidYmd, ymdToDateForPicker, dateToYmd } from "@shared/utils/date";
 
 const EMPTY_PARTICIPANT_BOX: ParticipantBoxState = {
   eaId: "",
@@ -478,7 +478,7 @@ export function PaymentForm({
     for (const b of participantBoxes) {
       if (b.statementSelections.length > 1) {
         for (const sel of b.statementSelections) {
-          const ymd = `${sel.year}-${String(sel.month).padStart(2, "0")}-01`;
+          const ymd = dateToYmd(new Date(sel.year, sel.month - 1, 1));
           proposedAllocation.push({
             eaId: b.eaId,
             amount: sel.amount ? String(parseFloat(sel.amount).toFixed(2)) : b.amount,
@@ -495,7 +495,7 @@ export function PaymentForm({
           month = parseInt(b.manualMonth, 10);
           year = b.manualYear ? parseInt(b.manualYear, 10) : undefined;
         }
-        const ymd = month && year ? `${year}-${String(month).padStart(2, "0")}-01` : "";
+        const ymd = month && year ? dateToYmd(new Date(year, month - 1, 1)) : "";
         proposedAllocation.push({ eaId: b.eaId, amount: b.amount, statementYmd: ymd });
       }
     }

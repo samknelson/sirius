@@ -16,6 +16,7 @@ import { useState, useEffect } from "react";
 import type { z } from "zod";
 import { useAuth } from "@/contexts/AuthContext";
 import { StatementPicker, type StatementSelection } from "@/components/ledger/StatementPicker";
+import { dateToYmd } from "@shared/utils/date";
 
 type PaymentCategory = "financial" | "adjustment";
 
@@ -229,7 +230,7 @@ function EAPaymentCreateContent() {
     const proposedAllocation: Array<{ eaId: string; amount: string; statementYmd: string }> = [];
     if (statementSelections.length > 1) {
       for (const sel of statementSelections) {
-        const ymd = `${sel.year}-${String(sel.month).padStart(2, "0")}-01`;
+        const ymd = dateToYmd(new Date(sel.year, sel.month - 1, 1));
         proposedAllocation.push({
           eaId: eaId,
           amount: sel.amount ? String(parseFloat(sel.amount).toFixed(2)) : data.amount,
@@ -239,7 +240,7 @@ function EAPaymentCreateContent() {
     } else {
       const stmtInfo = getStatementInfo();
       const ymd = stmtInfo.month && stmtInfo.year
-        ? `${stmtInfo.year}-${String(stmtInfo.month).padStart(2, "0")}-01`
+        ? dateToYmd(new Date(stmtInfo.year, stmtInfo.month - 1, 1))
         : "";
       proposedAllocation.push({
         eaId: eaId,

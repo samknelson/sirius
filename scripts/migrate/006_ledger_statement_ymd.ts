@@ -35,11 +35,15 @@ async function up(): Promise<void> {
     WHERE statement_ymd IS NULL AND date IS NOT NULL
   `);
 
-  await db.execute(sql`
-    UPDATE ledger
-    SET statement_ymd = CURRENT_DATE
-    WHERE statement_ymd IS NULL
+  const nullCheck = await db.execute(sql`
+    SELECT count(*)::int AS n FROM ledger WHERE statement_ymd IS NULL
   `);
+  const remainingNulls = (nullCheck.rows[0]?.n as number | undefined) ?? 0;
+  if (remainingNulls > 0) {
+    throw new Error(
+      `Cannot enforce NOT NULL on ledger.statement_ymd: ${remainingNulls} rows have NULL statement_ymd and NULL date; resolve manually before re-running migration 006.`,
+    );
+  }
 
   await db.execute(sql`
     ALTER TABLE ledger ALTER COLUMN statement_ymd SET NOT NULL

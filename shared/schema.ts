@@ -2,6 +2,7 @@ import { sql, relations } from "drizzle-orm";
 import { pgTable, pgEnum, text, varchar, boolean, timestamp, date, primaryKey, jsonb, doublePrecision, integer, unique, serial, index, uniqueIndex, numeric, check } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+import { isValidYmd, type Ymd } from "./utils/date";
 
 export {
   optionsDispatchJobType,
@@ -1192,7 +1193,7 @@ export const insertLedgerSchema = createInsertSchema(ledger, {
   id: true,
 }).extend({
   // statementYmd may be derived from `date` by the storage layer when omitted.
-  statementYmd: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "statementYmd must be YYYY-MM-DD").optional(),
+  statementYmd: z.string().refine(isValidYmd, { message: "statementYmd must be YYYY-MM-DD" }).optional() as z.ZodType<Ymd | undefined>,
 });
 
 export type InsertLedger = z.infer<typeof insertLedgerSchema>;
