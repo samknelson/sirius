@@ -55,9 +55,9 @@ export default function GbhetLegalBenefitConfigFormPage() {
   const isEditMode = !!configId;
 
   const { data: existingConfig, isLoading: isLoadingConfig } = useQuery<ChargePluginConfig>({
-    queryKey: ["/api/charge-plugin-configs", configId],
+    queryKey: ["/api/plugins/charge/configs", configId],
     queryFn: async () => {
-      const response = await fetch(`/api/charge-plugin-configs/${configId}`);
+      const response = await fetch(`/api/plugins/charge/configs/${configId}`);
       if (!response.ok) throw new Error("Failed to fetch configuration");
       return response.json();
     },
@@ -99,7 +99,7 @@ export default function GbhetLegalBenefitConfigFormPage() {
 
   const createMutation = useMutation({
     mutationFn: async (data: FormData) => {
-      return apiRequest("POST", "/api/charge-plugin-configs", {
+      return apiRequest("POST", "/api/plugins/charge/configs", {
         pluginId,
         scope: "global",
         enabled: true,
@@ -112,7 +112,7 @@ export default function GbhetLegalBenefitConfigFormPage() {
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/charge-plugin-configs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plugins/charge/configs"] });
       toast({
         title: "Success",
         description: "Configuration created successfully.",
@@ -130,7 +130,7 @@ export default function GbhetLegalBenefitConfigFormPage() {
 
   const updateMutation = useMutation({
     mutationFn: async (data: FormData) => {
-      return apiRequest("PUT", `/api/charge-plugin-configs/${configId}`, {
+      return apiRequest("PUT", `/api/plugins/charge/configs/${configId}`, {
         settings: {
           accountId: data.accountId,
           benefitId: data.benefitId,
@@ -140,7 +140,7 @@ export default function GbhetLegalBenefitConfigFormPage() {
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/charge-plugin-configs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plugins/charge/configs"] });
       toast({
         title: "Success",
         description: "Configuration updated successfully.",

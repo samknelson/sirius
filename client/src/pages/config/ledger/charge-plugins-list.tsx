@@ -38,15 +38,15 @@ export default function ChargePluginsListPage() {
 
   // Fetch all plugin configurations
   const { data: configs = [], isLoading: isLoadingConfigs } = useQuery<ChargePluginConfig[]>({
-    queryKey: ["/api/charge-plugin-configs"],
+    queryKey: ["/api/plugins/charge/configs"],
   });
 
   const toggleEnabledMutation = useMutation({
     mutationFn: async ({ id, enabled }: { id: string; enabled: boolean }) => {
-      return apiRequest("PUT", `/api/charge-plugin-configs/${id}`, { enabled });
+      return apiRequest("PUT", `/api/plugins/charge/configs/${id}`, { enabled });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/charge-plugin-configs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plugins/charge/configs"] });
       toast({
         title: "Success",
         description: "Plugin status updated successfully.",

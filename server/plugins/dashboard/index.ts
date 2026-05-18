@@ -60,6 +60,46 @@ function registerDashboardKind(): void {
       );
       return enriched;
     },
+    // Per-plugin enable list / toggle. Backs
+    // GET /api/plugins/dashboard/enabled and
+    // PUT /api/plugins/dashboard/:id/enabled.
+    listEnabled: async () => {
+      const { storage } = await import("../../storage");
+      const all = await storage.variables.getAll();
+      return all
+        .filter((v) => v.name.startsWith("dashboard_plugin_") && !v.name.endsWith("_settings"))
+        .map((v) => ({
+          pluginId: v.name.replace("dashboard_plugin_", ""),
+          enabled: Boolean(v.value),
+        }));
+    },
+    setEnabled: async (plugin, enabled) => {
+      const { storage } = await import("../../storage");
+      const name = `dashboard_plugin_${plugin.id}`;
+      const existing = await storage.variables.getByName(name);
+      if (existing) {
+        await storage.variables.update(existing.id, { value: enabled });
+      } else {
+        await storage.variables.create({ name, value: enabled });
+      }
+    },
+    // Schema-driven settings for the per-plugin settings page. Backs
+    // GET / PUT /api/plugins/dashboard/:id/settings.
+    getSettings: async (plugin) => {
+      const schema = await dashboardPluginRegistry.resolveSchema(plugin);
+      if (!schema) return null;
+      const uiSchema = (await dashboardPluginRegistry.resolveUiSchema(plugin)) ?? {};
+      const value = await dashboardPluginRegistry.getSettingsValue(plugin);
+      return { schema, uiSchema, value };
+    },
+    saveSettings: async (plugin, value) => {
+      const result = await dashboardPluginRegistry.validateSettings(plugin, value);
+      if (!result.valid) {
+        return { valid: false, errors: result.errors };
+      }
+      await dashboardPluginRegistry.saveSettings(plugin, value);
+      return { valid: true };
+    },
   });
   kindRegistered = true;
 }

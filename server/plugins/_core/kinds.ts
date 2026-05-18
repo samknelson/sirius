@@ -1,5 +1,24 @@
 import type { Request } from "express";
+import type { JsonSchema } from "@shared/json-schema-form";
 import type { PluginRegistry } from "./registry";
+
+/** Result shape returned by validate / save admin callbacks. */
+export type PluginValidationResult =
+  | { valid: true }
+  | { valid: false; errors?: string[] };
+
+/** Settings payload returned by `getSettings`. */
+export interface PluginSettingsPayload {
+  schema: JsonSchema;
+  uiSchema: Record<string, unknown>;
+  value: unknown;
+}
+
+/** Per-plugin enabled snapshot returned by `listEnabled`. */
+export interface PluginEnabledEntry {
+  pluginId: string;
+  enabled: boolean;
+}
 
 /**
  * Registry of plugin kinds. The unified `/api/plugins/:kind/manifest`
@@ -38,6 +57,34 @@ export interface PluginKindRegistration<TPlugin = unknown, TEntry = unknown> {
    * inject runtime fields like "enabled" pulled from variables).
    */
   decorateEntries?: (entries: TEntry[], req: Request) => Promise<TEntry[]> | TEntry[];
+  /**
+   * Optional admin capabilities. Each is wired up by the generic
+   * `/api/plugins/:kind/...` admin endpoints in
+   * `server/modules/plugins-admin.ts`. The endpoint 404s when the
+   * corresponding callback is not provided. All callbacks run AFTER
+   * the same kind-level component + access-policy gating as the
+   * manifest endpoint, and (where a single plugin is targeted) AFTER
+   * per-plugin component gating.
+   *
+   * - `validateConfig`  → POST /api/plugins/:kind/:id/validate-config
+   * - `listEnabled`     → GET  /api/plugins/:kind/enabled
+   * - `setEnabled`      → PUT  /api/plugins/:kind/:id/enabled
+   * - `getSettings`     → GET  /api/plugins/:kind/:id/settings
+   * - `saveSettings`    → PUT  /api/plugins/:kind/:id/settings
+   */
+  validateConfig?: (
+    plugin: TPlugin,
+    config: unknown,
+  ) => Promise<PluginValidationResult> | PluginValidationResult;
+  listEnabled?: () => Promise<PluginEnabledEntry[]> | PluginEnabledEntry[];
+  setEnabled?: (plugin: TPlugin, enabled: boolean) => Promise<void> | void;
+  getSettings?: (
+    plugin: TPlugin,
+  ) => Promise<PluginSettingsPayload | null> | PluginSettingsPayload | null;
+  saveSettings?: (
+    plugin: TPlugin,
+    value: unknown,
+  ) => Promise<PluginValidationResult | void> | PluginValidationResult | void;
 }
 
 const KINDS = new Map<string, PluginKindRegistration<any, any>>();

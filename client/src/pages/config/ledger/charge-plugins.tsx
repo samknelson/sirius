@@ -51,7 +51,7 @@ export default function ChargePluginsPage() {
 
   // Fetch all plugin configurations
   const { data: configs = [], isLoading: isLoadingConfigs } = useQuery<ChargePluginConfig[]>({
-    queryKey: ["/api/charge-plugin-configs"],
+    queryKey: ["/api/plugins/charge/configs"],
   });
 
   // Fetch employers for employer-scoped configs
@@ -61,10 +61,10 @@ export default function ChargePluginsPage() {
 
   const createMutation = useMutation({
     mutationFn: async (data: { pluginId: string; scope: string; employerId?: string; enabled: boolean; settings: Record<string, any> }) => {
-      return apiRequest("POST", "/api/charge-plugin-configs", data);
+      return apiRequest("POST", "/api/plugins/charge/configs", data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/charge-plugin-configs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plugins/charge/configs"] });
       setIsAddDialogOpen(false);
       resetForm();
       toast({
@@ -83,10 +83,10 @@ export default function ChargePluginsPage() {
 
   const toggleEnabledMutation = useMutation({
     mutationFn: async ({ id, enabled }: { id: string; enabled: boolean }) => {
-      return apiRequest("PUT", `/api/charge-plugin-configs/${id}`, { enabled });
+      return apiRequest("PUT", `/api/plugins/charge/configs/${id}`, { enabled });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/charge-plugin-configs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plugins/charge/configs"] });
       toast({
         title: "Success",
         description: "Plugin status updated successfully.",
@@ -103,10 +103,10 @@ export default function ChargePluginsPage() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      return apiRequest("DELETE", `/api/charge-plugin-configs/${id}`);
+      return apiRequest("DELETE", `/api/plugins/charge/configs/${id}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/charge-plugin-configs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plugins/charge/configs"] });
       toast({
         title: "Success",
         description: "Plugin configuration deleted successfully.",

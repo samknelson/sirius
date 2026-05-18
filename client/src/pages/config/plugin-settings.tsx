@@ -43,9 +43,9 @@ export default function PluginSettingsPage() {
   const plugin = pluginId ? manifest.find((p) => p.id === pluginId) : undefined;
 
   const { data, isLoading, isError } = useQuery<PluginSettingsResponse>({
-    queryKey: ["/api/dashboard-plugins", pluginId, "settings"],
+    queryKey: ["/api/plugins/dashboard", pluginId, "settings"],
     queryFn: async () => {
-      const res = await fetch(`/api/dashboard-plugins/${pluginId}/settings`);
+      const res = await fetch(`/api/plugins/dashboard/${pluginId}/settings`);
       if (!res.ok) throw new Error("Failed to load plugin settings");
       return res.json();
     },
@@ -59,10 +59,10 @@ export default function PluginSettingsPage() {
 
   const saveMutation = useMutation({
     mutationFn: async (value: any) => {
-      await apiRequest("PUT", `/api/dashboard-plugins/${pluginId}/settings`, value);
+      await apiRequest("PUT", `/api/plugins/dashboard/${pluginId}/settings`, value);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard-plugins", pluginId, "settings"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plugins/dashboard", pluginId, "settings"] });
       queryClient.invalidateQueries({ queryKey: pluginManifestQueryKey("dashboard") });
       toast({ title: "Settings Saved", description: `${plugin?.name ?? "Plugin"} settings have been updated.` });
     },

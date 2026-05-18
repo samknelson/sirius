@@ -2,9 +2,6 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 import { requireAccess } from "../services/access-policy-evaluator";
 import {
-  getEligibilityPlugin,
-} from "../plugins/trust/eligibility/registry";
-import {
   evaluateBenefitEligibility,
   validateEligibilityRelationship,
   EligibilityRelationshipError,
@@ -38,6 +35,10 @@ export function registerEligibilityPluginRoutes(
   // now served by the unified endpoint at
   // GET /api/plugins/trust-eligibility/manifest. Per-plugin detail lookups
   // simply read the matching entry from that manifest on the client.
+  //
+  // POST /api/eligibility/validate-config was removed in Task #209 and
+  // replaced by the generic POST /api/plugins/trust-eligibility/:id/validate-config
+  // (see `server/modules/plugins-admin.ts`).
 
   app.post("/api/eligibility/evaluate", requireAuth, requireAccess('admin'), async (req, res) => {
     try {
@@ -97,24 +98,4 @@ export function registerEligibilityPluginRoutes(
     }
   });
 
-  app.post("/api/eligibility/validate-config", requireAuth, requireAccess('admin'), async (req, res) => {
-    try {
-      const { pluginKey, config } = req.body;
-      
-      if (!pluginKey || typeof pluginKey !== 'string') {
-        return res.status(400).json({ message: "pluginKey is required" });
-      }
-      
-      const plugin = getEligibilityPlugin(pluginKey);
-      if (!plugin) {
-        return res.status(404).json({ message: `Plugin not found: ${pluginKey}` });
-      }
-
-      const validation = await plugin.validateConfig(config);
-      res.json(validation);
-    } catch (error) {
-      console.error("Failed to validate config:", error);
-      res.status(500).json({ message: "Failed to validate configuration" });
-    }
-  });
 }

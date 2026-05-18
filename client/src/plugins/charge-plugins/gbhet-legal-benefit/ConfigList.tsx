@@ -43,9 +43,9 @@ export default function GbhetLegalBenefitConfigList({ pluginId }: ChargePluginCo
   const { toast } = useToast();
 
   const { data: configs = [], isLoading: isLoadingConfigs } = useQuery<ChargePluginConfig[]>({
-    queryKey: ["/api/charge-plugin-configs/by-plugin", pluginId],
+    queryKey: ["/api/plugins/charge/configs/by-plugin", pluginId],
     queryFn: async () => {
-      const response = await fetch(`/api/charge-plugin-configs/by-plugin/${pluginId}`);
+      const response = await fetch(`/api/plugins/charge/configs/by-plugin/${pluginId}`);
       if (!response.ok) throw new Error("Failed to fetch configurations");
       return response.json();
     },
@@ -61,10 +61,10 @@ export default function GbhetLegalBenefitConfigList({ pluginId }: ChargePluginCo
 
   const toggleEnabledMutation = useMutation({
     mutationFn: async ({ id, enabled }: { id: string; enabled: boolean }) => {
-      return apiRequest("PUT", `/api/charge-plugin-configs/${id}`, { enabled });
+      return apiRequest("PUT", `/api/plugins/charge/configs/${id}`, { enabled });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/charge-plugin-configs/by-plugin", pluginId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plugins/charge/configs/by-plugin", pluginId] });
       toast({
         title: "Success",
         description: "Configuration status updated.",
@@ -81,10 +81,10 @@ export default function GbhetLegalBenefitConfigList({ pluginId }: ChargePluginCo
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      return apiRequest("DELETE", `/api/charge-plugin-configs/${id}`);
+      return apiRequest("DELETE", `/api/plugins/charge/configs/${id}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/charge-plugin-configs/by-plugin", pluginId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plugins/charge/configs/by-plugin", pluginId] });
       toast({
         title: "Success",
         description: "Configuration deleted.",

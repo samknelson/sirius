@@ -19,8 +19,8 @@ export function registerChargePluginRoutes(
   // plugin manifest is now served by the unified endpoint at
   // GET /api/plugins/charge/manifest.
 
-  // GET /api/charge-plugin-configs - Get all plugin configurations
-  app.get("/api/charge-plugin-configs", requireAuth, requireComponent("ledger"), requireAccess('admin'), async (req, res) => {
+  // GET /api/plugins/charge/configs - Get all plugin configurations
+  app.get("/api/plugins/charge/configs", requireAuth, requireComponent("ledger"), requireAccess('admin'), async (req, res) => {
     try {
       const configs = await storage.chargePluginConfigs.getAll();
       res.json(configs);
@@ -30,8 +30,8 @@ export function registerChargePluginRoutes(
     }
   });
 
-  // GET /api/charge-plugin-configs/:id - Get a specific plugin configuration
-  app.get("/api/charge-plugin-configs/:id", requireAuth, requireComponent("ledger"), requireAccess('admin'), async (req, res) => {
+  // GET /api/plugins/charge/configs/:id - Get a specific plugin configuration
+  app.get("/api/plugins/charge/configs/:id", requireAuth, requireComponent("ledger"), requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
       const config = await storage.chargePluginConfigs.get(id);
@@ -47,8 +47,8 @@ export function registerChargePluginRoutes(
     }
   });
 
-  // GET /api/charge-plugin-configs/by-plugin/:pluginId - Get all configurations for a specific plugin
-  app.get("/api/charge-plugin-configs/by-plugin/:pluginId", requireAuth, requireComponent("ledger"), requireAccess('admin'), async (req, res) => {
+  // GET /api/plugins/charge/configs/by-plugin/:pluginId - Get all configurations for a specific plugin
+  app.get("/api/plugins/charge/configs/by-plugin/:pluginId", requireAuth, requireComponent("ledger"), requireAccess('admin'), async (req, res) => {
     try {
       const { pluginId } = req.params;
       
@@ -66,8 +66,8 @@ export function registerChargePluginRoutes(
     }
   });
 
-  // POST /api/charge-plugin-configs - Create a new plugin configuration
-  app.post("/api/charge-plugin-configs", requireAuth, requireComponent("ledger"), requireAccess('admin'), async (req, res) => {
+  // POST /api/plugins/charge/configs - Create a new plugin configuration
+  app.post("/api/plugins/charge/configs", requireAuth, requireComponent("ledger"), requireAccess('admin'), async (req, res) => {
     try {
       // Validate request body
       const configData = insertChargePluginConfigSchema.parse(req.body);
@@ -114,8 +114,8 @@ export function registerChargePluginRoutes(
     }
   });
 
-  // PUT /api/charge-plugin-configs/:id - Update a plugin configuration
-  app.put("/api/charge-plugin-configs/:id", requireAuth, requireComponent("ledger"), requireAccess('admin'), async (req, res) => {
+  // PUT /api/plugins/charge/configs/:id - Update a plugin configuration
+  app.put("/api/plugins/charge/configs/:id", requireAuth, requireComponent("ledger"), requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
       
@@ -163,8 +163,8 @@ export function registerChargePluginRoutes(
     }
   });
 
-  // DELETE /api/charge-plugin-configs/:id - Delete a plugin configuration
-  app.delete("/api/charge-plugin-configs/:id", requireAuth, requireComponent("ledger"), requireAccess('admin'), async (req, res) => {
+  // DELETE /api/plugins/charge/configs/:id - Delete a plugin configuration
+  app.delete("/api/plugins/charge/configs/:id", requireAuth, requireComponent("ledger"), requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
       

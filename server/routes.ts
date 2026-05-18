@@ -322,6 +322,12 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   const { registerPluginsManifestRoutes } = await import("./modules/plugins-manifest");
   registerPluginsManifestRoutes(app, requireAuth);
 
+  // Generic plugin admin endpoints (Task #209) — replaces the per-kind
+  // enable / settings / validate-config endpoints across dashboard,
+  // charge, trust-eligibility, and dispatch-eligibility.
+  const { registerPluginsAdminRoutes } = await import("./modules/plugins-admin");
+  registerPluginsAdminRoutes(app, requireAuth);
+
   // Register bookmark routes
   registerBookmarkRoutes(app, requireAuth, requirePermission);
 

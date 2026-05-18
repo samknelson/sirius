@@ -48,7 +48,7 @@ export default function DashboardPluginsConfigPage() {
 
   const updatePluginMutation = useMutation({
     mutationFn: async ({ pluginId, enabled }: { pluginId: string; enabled: boolean }) => {
-      return apiRequest("PUT", `/api/dashboard-plugins/config/${pluginId}`, { enabled });
+      return apiRequest("PUT", `/api/plugins/dashboard/${pluginId}/enabled`, { enabled });
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: pluginManifestQueryKey("dashboard") });

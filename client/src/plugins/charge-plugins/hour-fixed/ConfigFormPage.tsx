@@ -79,9 +79,9 @@ export default function HourFixedConfigFormPage() {
 
   // Fetch existing config if editing
   const { data: existingConfig, isLoading: isLoadingConfig } = useQuery<ChargePluginConfig>({
-    queryKey: ["/api/charge-plugin-configs", configId],
+    queryKey: ["/api/plugins/charge/configs", configId],
     queryFn: async () => {
-      const response = await fetch(`/api/charge-plugin-configs/${configId}`);
+      const response = await fetch(`/api/plugins/charge/configs/${configId}`);
       if (!response.ok) throw new Error("Failed to fetch configuration");
       return response.json();
     },
@@ -166,18 +166,18 @@ export default function HourFixedConfigFormPage() {
           updateSettings.employmentStatusIds = data.employmentStatusIds;
         }
         
-        return apiRequest("PUT", `/api/charge-plugin-configs/${configId}`, {
+        return apiRequest("PUT", `/api/plugins/charge/configs/${configId}`, {
           enabled: data.enabled,
           settings: updateSettings,
         });
       } else {
         // Create new config
-        return apiRequest("POST", "/api/charge-plugin-configs", payload);
+        return apiRequest("POST", "/api/plugins/charge/configs", payload);
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/charge-plugin-configs/by-plugin", pluginId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/charge-plugin-configs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plugins/charge/configs/by-plugin", pluginId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plugins/charge/configs"] });
       toast({
         title: "Success",
         description: `Configuration ${isEditMode ? 'updated' : 'created'} successfully.`,
@@ -195,11 +195,11 @@ export default function HourFixedConfigFormPage() {
 
   const deleteMutation = useMutation({
     mutationFn: async () => {
-      return apiRequest("DELETE", `/api/charge-plugin-configs/${configId}`);
+      return apiRequest("DELETE", `/api/plugins/charge/configs/${configId}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/charge-plugin-configs/by-plugin", pluginId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/charge-plugin-configs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plugins/charge/configs/by-plugin", pluginId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plugins/charge/configs"] });
       toast({
         title: "Success",
         description: "Configuration deleted successfully.",

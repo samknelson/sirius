@@ -70,9 +70,9 @@ export default function HourFixedConfigForm({ pluginId }: ChargePluginConfigProp
 
   // Fetch existing configurations for this plugin
   const { data: configs = [], isLoading: isLoadingConfigs } = useQuery<ChargePluginConfig[]>({
-    queryKey: ["/api/charge-plugin-configs/by-plugin", pluginId],
+    queryKey: ["/api/plugins/charge/configs/by-plugin", pluginId],
     queryFn: async () => {
-      const response = await fetch(`/api/charge-plugin-configs/by-plugin/${pluginId}`);
+      const response = await fetch(`/api/plugins/charge/configs/by-plugin/${pluginId}`);
       if (!response.ok) throw new Error("Failed to fetch configurations");
       return response.json();
     },
@@ -158,18 +158,18 @@ export default function HourFixedConfigForm({ pluginId }: ChargePluginConfigProp
 
       if (selectedConfigId) {
         // Update existing config
-        return apiRequest("PUT", `/api/charge-plugin-configs/${selectedConfigId}`, {
+        return apiRequest("PUT", `/api/plugins/charge/configs/${selectedConfigId}`, {
           enabled: payload.enabled,
           settings: payload.settings,
         });
       } else {
         // Create new config
-        return apiRequest("POST", "/api/charge-plugin-configs", payload);
+        return apiRequest("POST", "/api/plugins/charge/configs", payload);
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/charge-plugin-configs/by-plugin", pluginId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/charge-plugin-configs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plugins/charge/configs/by-plugin", pluginId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plugins/charge/configs"] });
       toast({
         title: "Success",
         description: selectedConfigId ? "Configuration updated successfully." : "Configuration created successfully.",
@@ -186,11 +186,11 @@ export default function HourFixedConfigForm({ pluginId }: ChargePluginConfigProp
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      return apiRequest("DELETE", `/api/charge-plugin-configs/${id}`);
+      return apiRequest("DELETE", `/api/plugins/charge/configs/${id}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/charge-plugin-configs/by-plugin", pluginId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/charge-plugin-configs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plugins/charge/configs/by-plugin", pluginId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plugins/charge/configs"] });
       loadConfig(null);
       toast({
         title: "Success",

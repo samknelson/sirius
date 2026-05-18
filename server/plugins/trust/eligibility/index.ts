@@ -15,6 +15,11 @@ export function registerTrustEligibilityKind(): void {
     // Mirror legacy auth on /api/eligibility-plugins: requireAccess("admin").
     requiredPolicy: "admin",
     sortEntries: (a, b) => a.id.localeCompare(b.id),
+    // Backs POST /api/plugins/trust-eligibility/:id/validate-config
+    // (replaces the legacy POST /api/eligibility/validate-config).
+    validateConfig: async (plugin, config) => {
+      return plugin.validateConfig(config);
+    },
   });
   kindRegistered = true;
 }

@@ -26,9 +26,9 @@ interface ChargePluginConfig {
 export default function HourFixedConfigList({ pluginId }: ChargePluginConfigProps) {
   // Fetch existing configurations for this plugin
   const { data: configs = [], isLoading: isLoadingConfigs } = useQuery<ChargePluginConfig[]>({
-    queryKey: ["/api/charge-plugin-configs/by-plugin", pluginId],
+    queryKey: ["/api/plugins/charge/configs/by-plugin", pluginId],
     queryFn: async () => {
-      const response = await fetch(`/api/charge-plugin-configs/by-plugin/${pluginId}`);
+      const response = await fetch(`/api/plugins/charge/configs/by-plugin/${pluginId}`);
       if (!response.ok) throw new Error("Failed to fetch configurations");
       return response.json();
     },
