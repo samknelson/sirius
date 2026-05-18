@@ -12,17 +12,17 @@ import { DashboardPluginProps } from "../registry";
 import { useDashboardContent } from "../useDashboardContent";
 import { formatDistanceToNow } from "date-fns";
 
-interface SessionWithUser {
+interface RecentUser {
   sid: string;
-  expire: string;
   userId: string | null;
-  userEmail: string | null;
-  userFirstName: string | null;
-  userLastName: string | null;
+  expire: string;
+  displayName: string;
 }
 
 interface ActiveSessionsContent {
-  sessions: SessionWithUser[];
+  activeUserCount: number;
+  totalSessionCount: number;
+  recentUsers: RecentUser[];
 }
 
 export function ActiveSessions(_props: DashboardPluginProps) {
@@ -30,27 +30,7 @@ export function ActiveSessions(_props: DashboardPluginProps) {
 
   if (isLoading || !data) return null;
 
-  const sessions = data.sessions;
-  const activeSessions = sessions.filter((s) => new Date(s.expire) > new Date());
-  const uniqueUsers = new Map<string, SessionWithUser>();
-
-  activeSessions.forEach((session) => {
-    if (session.userId && !uniqueUsers.has(session.userId)) {
-      uniqueUsers.set(session.userId, session);
-    }
-  });
-
-  const activeUserCount = uniqueUsers.size;
-  const recentSessions = Array.from(uniqueUsers.values())
-    .sort((a, b) => new Date(b.expire).getTime() - new Date(a.expire).getTime())
-    .slice(0, 5);
-
-  const getUserName = (session: SessionWithUser) => {
-    if (session.userFirstName || session.userLastName) {
-      return `${session.userFirstName || ""} ${session.userLastName || ""}`.trim();
-    }
-    return session.userEmail || "Unknown User";
-  };
+  const { activeUserCount, totalSessionCount, recentUsers } = data;
 
   return (
     <Card data-testid="plugin-active-sessions">
@@ -75,26 +55,26 @@ export function ActiveSessions(_props: DashboardPluginProps) {
               {activeUserCount === 1 ? "User" : "Users"} with active sessions
             </p>
             <p className="text-xs text-muted-foreground">
-              {activeSessions.length} total{" "}
-              {activeSessions.length === 1 ? "session" : "sessions"}
+              {totalSessionCount} total{" "}
+              {totalSessionCount === 1 ? "session" : "sessions"}
             </p>
           </div>
         </div>
 
-        {recentSessions.length > 0 && (
+        {recentUsers.length > 0 && (
           <div className="space-y-2">
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
               Recent Active Users
             </p>
             <div className="space-y-1">
-              {recentSessions.map((session) => (
+              {recentUsers.map((session) => (
                 <div
                   key={session.sid}
                   className="flex items-center gap-2 py-1 px-2 rounded-md text-sm hover-elevate"
                   data-testid={`session-user-${session.userId?.substring(0, 8)}`}
                 >
                   <User className="h-3 w-3 text-muted-foreground" />
-                  <span className="flex-1 truncate">{getUserName(session)}</span>
+                  <span className="flex-1 truncate">{session.displayName}</span>
                   <span className="text-xs text-muted-foreground">
                     <Clock className="h-3 w-3 inline mr-1" />
                     {formatDistanceToNow(new Date(session.expire), {
