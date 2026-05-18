@@ -46,6 +46,56 @@ export const reportsPlugin: DashboardPlugin = {
   settingsSchema: buildSchema,
   uiSchema: buildUiSchema,
   defaultSettings: {},
+  requiredPolicy: "admin",
+
+  async content(ctx) {
+    const config = (ctx.settings ?? {}) as Record<string, string[]>;
+
+    const userReportTypeNames = new Set<string>();
+    for (const role of ctx.userRoles) {
+      for (const name of config[role.id] ?? []) userReportTypeNames.add(name);
+    }
+    if (userReportTypeNames.size === 0) return { reports: [] };
+
+    const allReportTypes = new Map(
+      wizardRegistry
+        .getAll()
+        .filter((t) => t.isReport)
+        .map((t) => [t.name, t]),
+    );
+
+    const reports: Array<{
+      type: string;
+      displayName: string;
+      wizardId: string;
+      generatedAt: string | null;
+      recordCount: number;
+    }> = [];
+
+    for (const typeName of Array.from(userReportTypeNames)) {
+      const reportType = allReportTypes.get(typeName);
+      if (!reportType) continue;
+      const wizards = await ctx.storage.wizards.list({ type: typeName });
+      if (wizards.length === 0) continue;
+      const sorted = [...wizards].sort((a, b) => {
+        const aDate = (a.data as any)?.reportMeta?.generatedAt ?? "";
+        const bDate = (b.data as any)?.reportMeta?.generatedAt ?? "";
+        return String(bDate).localeCompare(String(aDate));
+      });
+      const w = sorted[0];
+      const meta = (w.data as any)?.reportMeta;
+      reports.push({
+        type: typeName,
+        displayName: reportType.displayName || typeName,
+        wizardId: w.id,
+        generatedAt: meta?.generatedAt ?? null,
+        recordCount: meta?.recordCount ?? 0,
+      });
+    }
+
+    return { reports };
+  },
+
   client: {
     component: "reports:Reports",
     order: 3,

@@ -1,38 +1,32 @@
-import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Bookmark, User, Building, ArrowRight } from "lucide-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { DashboardPluginProps } from "../registry";
+import { useDashboardContent } from "../useDashboardContent";
 import type { Bookmark as BookmarkType } from "@shared/schema";
 
 interface EnrichedBookmark extends BookmarkType {
   displayName: string;
 }
 
-export function Bookmarks({ userPermissions }: DashboardPluginProps) {
-  const hasBookmarkPermission = userPermissions.includes('bookmark') || userPermissions.includes('admin');
+interface BookmarksContent {
+  bookmarks: EnrichedBookmark[];
+}
 
-  const { data: bookmarks = [], isLoading } = useQuery<EnrichedBookmark[]>({
-    queryKey: ["/api/bookmarks/enriched"],
-    enabled: hasBookmarkPermission,
-  });
+export function Bookmarks(_props: DashboardPluginProps) {
+  const { data, isLoading } = useDashboardContent<BookmarksContent>("bookmarks");
 
-  if (!hasBookmarkPermission || isLoading) {
-    return null;
-  }
+  if (isLoading || !data) return null;
 
-  const recentBookmarks = bookmarks.slice(0, 15);
-
-  if (recentBookmarks.length === 0) {
-    return null;
-  }
+  const recentBookmarks = data.bookmarks.slice(0, 15);
+  if (recentBookmarks.length === 0) return null;
 
   const getBookmarkIcon = (entityType: string) => {
     switch (entityType) {
-      case 'worker':
+      case "worker":
         return User;
-      case 'employer':
+      case "employer":
         return Building;
       default:
         return Bookmark;
@@ -41,9 +35,9 @@ export function Bookmarks({ userPermissions }: DashboardPluginProps) {
 
   const getBookmarkLink = (bookmark: EnrichedBookmark) => {
     switch (bookmark.entityType) {
-      case 'worker':
+      case "worker":
         return `/workers/${bookmark.entityId}`;
-      case 'employer':
+      case "employer":
         return `/employers/${bookmark.entityId}`;
       default:
         return null;
@@ -63,7 +57,7 @@ export function Bookmarks({ userPermissions }: DashboardPluginProps) {
           {recentBookmarks.map((bookmark) => {
             const link = getBookmarkLink(bookmark);
             const Icon = getBookmarkIcon(bookmark.entityType);
-            
+
             if (link) {
               return (
                 <Link
@@ -100,9 +94,9 @@ export function Bookmarks({ userPermissions }: DashboardPluginProps) {
       </CardContent>
       <CardFooter className="pt-0">
         <Link href="/bookmarks" className="w-full">
-          <Button 
-            variant="ghost" 
-            className="w-full justify-between" 
+          <Button
+            variant="ghost"
+            className="w-full justify-between"
             data-testid="button-view-all-bookmarks"
           >
             <span>View All Bookmarks</span>

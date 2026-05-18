@@ -1,8 +1,8 @@
-import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { MessageSquare } from "lucide-react";
 import DOMPurify from "isomorphic-dompurify";
 import { DashboardPluginProps } from "../registry";
+import { useDashboardContent } from "../useDashboardContent";
 
 interface WelcomeMessageContent {
   messages: Array<{
@@ -12,20 +12,12 @@ interface WelcomeMessageContent {
   }>;
 }
 
-export function WelcomeMessages({ userRoles }: DashboardPluginProps) {
-  const { data, isLoading } = useQuery<WelcomeMessageContent>({
-    queryKey: ["/api/dashboard-plugins/welcome-messages/content"],
-  });
+export function WelcomeMessages(_props: DashboardPluginProps) {
+  const { data, isLoading } = useDashboardContent<WelcomeMessageContent>("welcome-messages");
 
-  if (isLoading) {
-    return null;
-  }
-
+  if (isLoading) return null;
   const messages = data?.messages ?? [];
-
-  if (messages.length === 0) {
-    return null;
-  }
+  if (messages.length === 0) return null;
 
   return (
     <Card data-testid="plugin-welcome-messages">
@@ -41,7 +33,6 @@ export function WelcomeMessages({ userRoles }: DashboardPluginProps) {
             ALLOWED_TAGS: ['b', 'i', 'em', 'strong', 'u', 'p', 'br', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'a', 'span', 'div'],
             ALLOWED_ATTR: ['href', 'target', 'rel', 'class'],
           });
-
           return (
             <div key={roleId} className="space-y-2">
               {messages.length > 1 && (
@@ -49,7 +40,7 @@ export function WelcomeMessages({ userRoles }: DashboardPluginProps) {
                   {roleName}
                 </div>
               )}
-              <div 
+              <div
                 className="prose prose-sm max-w-none dark:prose-invert"
                 dangerouslySetInnerHTML={{ __html: sanitizedMessage }}
                 data-testid={`welcome-message-${roleId}`}

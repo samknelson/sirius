@@ -1,4 +1,3 @@
-import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,6 +13,7 @@ import {
   FileCheck,
 } from "lucide-react";
 import { DashboardPluginProps } from "../registry";
+import { useDashboardContent } from "../useDashboardContent";
 import { format } from "date-fns";
 
 interface DuesSummary {
@@ -48,7 +48,6 @@ function StatusBadge({ status }: { status: string }) {
     in_progress: { variant: "secondary", label: "In Progress" },
     failed: { variant: "destructive", label: "Failed" },
   };
-
   const c = config[status] || { variant: "outline", label: status };
   return <Badge variant={c.variant}>{c.label}</Badge>;
 }
@@ -65,16 +64,12 @@ function StatRow({ icon, label, value, muted }: { icon: JSX.Element; label: stri
   );
 }
 
-export function BtuDuesStatus({ userPermissions, enabledComponents }: DashboardPluginProps) {
-  const hasPermission = userPermissions.includes("admin");
-  const hasComponent = enabledComponents?.includes("sitespecific.btu") ?? false;
+export function BtuDuesStatus(_props: DashboardPluginProps) {
+  const { data: summary, isLoading } = useDashboardContent<DuesSummary>(
+    "btu-dues-status",
+    { action: "summary" },
+  );
 
-  const { data: summary, isLoading } = useQuery<DuesSummary>({
-    queryKey: ["/api/dashboard-plugins/btu-dues-status/content/summary"],
-    enabled: hasPermission && hasComponent,
-  });
-
-  if (!hasPermission || !hasComponent) return null;
   if (isLoading) return null;
   if (!summary?.hasData) return null;
 

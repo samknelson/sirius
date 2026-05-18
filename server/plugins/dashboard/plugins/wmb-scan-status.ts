@@ -5,6 +5,14 @@ export const wmbScanStatusPlugin: DashboardPlugin = {
   name: "Benefits Scan Status",
   description:
     "Display running and upcoming monthly benefits scans with links to details",
+  componentId: "trust.benefits.scan",
+  requiredPolicy: "admin",
+
+  async content(ctx) {
+    const statuses = await ctx.storage.wmbScanQueue.getAllMonthStatuses();
+    return { statuses };
+  },
+
   client: {
     component: "wmb-scan-status:WmbScanStatus",
     order: 5,

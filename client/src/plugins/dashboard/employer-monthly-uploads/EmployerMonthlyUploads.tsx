@@ -1,12 +1,21 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Building2, Calendar, ExternalLink } from "lucide-react";
 import { DashboardPluginProps } from "../registry";
+import { useDashboardContent } from "../useDashboardContent";
 import { format, subMonths } from "date-fns";
-import { WizardType } from "@/lib/wizard-types";
+
+interface MyWizardType {
+  name: string;
+  displayName: string;
+  isMonthly: boolean;
+}
+
+interface DefaultContent {
+  wizardTypes: MyWizardType[];
+}
 
 interface EmployerMonthlyStats {
   totalActiveEmployers: number;
@@ -16,49 +25,37 @@ interface EmployerMonthlyStats {
 function generateMonthOptions() {
   const options: Array<{ value: string; label: string; year: number; month: number }> = [];
   const now = new Date();
-  
   for (let i = 0; i < 6; i++) {
     const date = subMonths(now, i);
     const year = date.getFullYear();
     const month = date.getMonth() + 1;
-    
     options.push({
       value: `${year}-${month}`,
-      label: format(date, 'MMMM yyyy'),
+      label: format(date, "MMMM yyyy"),
       year,
       month,
     });
   }
-  
   return options;
 }
 
 function formatStatusName(status: string): string {
-  if (status === 'no_upload') return 'No Upload';
-  if (status === 'in_progress') return 'In Progress';
-  
+  if (status === "no_upload") return "No Upload";
+  if (status === "in_progress") return "In Progress";
   return status.charAt(0).toUpperCase() + status.slice(1);
 }
 
-export function EmployerMonthlyUploads({ userId, userRoles }: DashboardPluginProps) {
+export function EmployerMonthlyUploads(_props: DashboardPluginProps) {
   const now = new Date();
   const [selectedMonth, setSelectedMonth] = useState(`${now.getFullYear()}-${now.getMonth() + 1}`);
-  
+
   const monthOptions = generateMonthOptions();
-  const selectedOption = monthOptions.find(opt => opt.value === selectedMonth);
-  
-  const { data: wizardTypes = [] } = useQuery<WizardType[]>({
-    queryKey: ["/api/wizard-types"],
-  });
+  const selectedOption = monthOptions.find((opt) => opt.value === selectedMonth);
 
-  const { data: myWizardTypeNames = [] } = useQuery<string[]>({
-    queryKey: ["/api/dashboard-plugins/employer-monthly-uploads/content/my-wizard-types"],
-  });
+  const { data } = useDashboardContent<DefaultContent>("employer-monthly-uploads");
+  const wizardTypes = data?.wizardTypes ?? [];
 
-  const monthlyWizardTypes = wizardTypes.filter(wt => wt.isMonthly === true);
-  const displayWizardTypes = monthlyWizardTypes.filter(wt => myWizardTypeNames.includes(wt.name));
-  
-  if (displayWizardTypes.length === 0) {
+  if (wizardTypes.length === 0) {
     return null;
   }
 
@@ -91,7 +88,7 @@ export function EmployerMonthlyUploads({ userId, userRoles }: DashboardPluginPro
         </div>
 
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {displayWizardTypes.map((wizardType) => (
+          {wizardTypes.map((wizardType) => (
             <StatsCard
               key={wizardType.name}
               wizardType={wizardType}
@@ -106,7 +103,7 @@ export function EmployerMonthlyUploads({ userId, userRoles }: DashboardPluginPro
 }
 
 interface StatsCardProps {
-  wizardType: WizardType;
+  wizardType: MyWizardType;
   year: number;
   month: number;
 }
@@ -114,21 +111,13 @@ interface StatsCardProps {
 function StatsCard({ wizardType, year, month }: StatsCardProps) {
   const [, setLocation] = useLocation();
 
-  const { data: stats, isLoading } = useQuery<EmployerMonthlyStats>({
-    queryKey: ["/api/dashboard-plugins/employer-monthly-uploads/content/stats", { year, month, wizardType: wizardType.name }],
-    queryFn: async () => {
-      const params = new URLSearchParams({
-        year: year.toString(),
-        month: month.toString(),
-        wizardType: wizardType.name,
-      });
-      const response = await fetch(`/api/dashboard-plugins/employer-monthly-uploads/content/stats?${params}`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch stats');
-      }
-      return response.json();
+  const { data: stats, isLoading } = useDashboardContent<EmployerMonthlyStats>(
+    "employer-monthly-uploads",
+    {
+      action: "stats",
+      params: { year, month, wizardType: wizardType.name },
     },
-  });
+  );
 
   const handleNavigate = (status?: string) => {
     const params = new URLSearchParams({
@@ -136,9 +125,7 @@ function StatsCard({ wizardType, year, month }: StatsCardProps) {
       month: month.toString(),
       wizardType: wizardType.name,
     });
-    if (status) {
-      params.set('status', status);
-    }
+    if (status) params.set("status", status);
     setLocation(`/employers/monthly-uploads?${params.toString()}`);
   };
 
@@ -155,17 +142,15 @@ function StatsCard({ wizardType, year, month }: StatsCardProps) {
     );
   }
 
-  if (!stats) {
-    return null;
-  }
+  if (!stats) return null;
 
-  const statusOrder = ['completed', 'in_progress', 'draft', 'no_upload', 'error', 'cancelled'];
-  const displayStatuses = statusOrder.filter(status => (stats.byStatus[status] || 0) > 0);
+  const statusOrder = ["completed", "in_progress", "draft", "no_upload", "error", "cancelled"];
+  const displayStatuses = statusOrder.filter((status) => (stats.byStatus[status] || 0) > 0);
 
   return (
     <Card data-testid={`stats-card-${wizardType.name}`}>
       <CardHeader className="pb-2">
-        <CardTitle 
+        <CardTitle
           className="text-sm font-medium cursor-pointer hover:underline flex items-center gap-1"
           onClick={() => handleNavigate()}
           data-testid={`card-title-${wizardType.name}`}
@@ -181,13 +166,12 @@ function StatsCard({ wizardType, year, month }: StatsCardProps) {
         <div className="space-y-2">
           {displayStatuses.map((status) => {
             const count = stats.byStatus[status] || 0;
-            const percentage = stats.totalActiveEmployers > 0 
+            const percentage = stats.totalActiveEmployers > 0
               ? ((count / stats.totalActiveEmployers) * 100).toFixed(0)
-              : '0';
-            
+              : "0";
             return (
-              <div 
-                key={status} 
+              <div
+                key={status}
                 className="flex items-center justify-between text-sm cursor-pointer hover:bg-accent rounded px-2 py-1 -mx-2"
                 onClick={() => handleNavigate(status)}
                 data-testid={`stat-${wizardType.name}-${status}`}

@@ -1,11 +1,20 @@
 import type { ComponentType } from "react";
 import type { Role } from "@shared/schema";
 
+/**
+ * Props passed to every dashboard widget. Intentionally narrow: widgets must
+ * NOT receive `userPermissions` / `enabledComponents` and must NOT re-check
+ * gating on the client. Component + policy gating is enforced server-side by
+ * the framework on `GET /api/dashboard-plugins/:pluginId/content` (the same
+ * endpoint `useDashboardContent` reads from).
+ *
+ * If a widget needs the current user identity (e.g. for navigation), it
+ * receives `userId` and `userRoles`. Anything else should come from the
+ * widget's own `/content` resolver.
+ */
 export interface DashboardPluginProps {
   userId: string;
   userRoles: Role[];
-  userPermissions: string[];
-  enabledComponents?: string[];
   componentProps?: Record<string, unknown>;
 }
 
@@ -45,4 +54,3 @@ export function resolveDashboardComponent(
   }
   return component;
 }
-

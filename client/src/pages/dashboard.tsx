@@ -137,8 +137,6 @@ export default function Dashboard() {
         <PluginComponent
           userId={user?.id || ""}
           userRoles={userRoles}
-          userPermissions={permissions}
-          enabledComponents={components}
           componentProps={plugin.componentProps ?? undefined}
         />
       </PluginErrorBoundary>

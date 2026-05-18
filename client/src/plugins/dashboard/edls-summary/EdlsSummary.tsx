@@ -1,10 +1,10 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { CalendarDays, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import type { DashboardPluginProps } from "../registry";
+import { useDashboardContent } from "../useDashboardContent";
 
 interface EdlsSummaryData {
   memberStatuses: string[];
@@ -47,19 +47,13 @@ function formatYmdDisplay(ymd: string): string {
   return `${days[date.getDay()]}, ${months[date.getMonth()]} ${d}, ${y}`;
 }
 
-export function EdlsSummary({ enabledComponents }: DashboardPluginProps) {
+export function EdlsSummary(_props: DashboardPluginProps) {
   const [selectedDate, setSelectedDate] = useState(getTodayYmd());
 
-  if (!enabledComponents?.includes("edls")) return null;
-
-  const { data, isLoading, isError } = useQuery<EdlsSummaryData>({
-    queryKey: ["/api/dashboard-plugins/edls-summary/content", selectedDate],
-    queryFn: async () => {
-      const res = await fetch(`/api/dashboard-plugins/edls-summary/content?ymd=${selectedDate}`);
-      if (!res.ok) throw new Error("Failed to fetch EDLS summary");
-      return res.json();
-    },
-  });
+  const { data, isLoading, isError } = useDashboardContent<EdlsSummaryData>(
+    "edls-summary",
+    { params: { ymd: selectedDate } },
+  );
 
   const hasData = data && data.memberStatuses.length > 0;
 
@@ -68,7 +62,7 @@ export function EdlsSummary({ enabledComponents }: DashboardPluginProps) {
     for (const col of sheetStatusColumns) {
       columnTotals[col.key] = data.memberStatuses.reduce(
         (sum, ms) => sum + (data.grid[ms]?.[col.key] || 0),
-        0
+        0,
       );
     }
   }
@@ -167,7 +161,7 @@ export function EdlsSummary({ enabledComponents }: DashboardPluginProps) {
                 {data.memberStatuses.map((ms, idx) => {
                   const rowTotal = sheetStatusColumns.reduce(
                     (sum, col) => sum + (data.grid[ms]?.[col.key] || 0),
-                    0
+                    0,
                   );
                   return (
                     <tr

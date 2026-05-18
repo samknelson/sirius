@@ -1,8 +1,8 @@
-import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Users } from "lucide-react";
 import { DashboardPluginProps } from "../registry";
+import { useDashboardContent } from "../useDashboardContent";
 
 interface BuSummaryUnit {
   id: string;
@@ -44,16 +44,12 @@ function formatCurrency(value: number): string {
   return value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-export function BtuBuSummary({ userPermissions, enabledComponents }: DashboardPluginProps) {
-  const hasPermission = userPermissions.includes("admin");
-  const hasComponent = enabledComponents?.includes("sitespecific.btu") ?? false;
+export function BtuBuSummary(_props: DashboardPluginProps) {
+  const { data, isLoading } = useDashboardContent<BuSummaryData>(
+    "btu-bu-summary",
+    { action: "data" },
+  );
 
-  const { data, isLoading } = useQuery<BuSummaryData>({
-    queryKey: ["/api/dashboard-plugins/btu-bu-summary/content/data"],
-    enabled: hasPermission && hasComponent,
-  });
-
-  if (!hasPermission || !hasComponent) return null;
   if (isLoading) return null;
   if (!data || data.units.length === 0) return null;
 

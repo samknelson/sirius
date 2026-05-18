@@ -1,4 +1,3 @@
-import { useQuery } from "@tanstack/react-query";
 import {
   Card,
   CardContent,
@@ -10,6 +9,7 @@ import { Users, ArrowRight, Clock, User } from "lucide-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { DashboardPluginProps } from "../registry";
+import { useDashboardContent } from "../useDashboardContent";
 import { formatDistanceToNow } from "date-fns";
 
 interface SessionWithUser {
@@ -21,23 +21,17 @@ interface SessionWithUser {
   userLastName: string | null;
 }
 
-export function ActiveSessions({
-  userPermissions,
-}: DashboardPluginProps) {
-  const hasAdminPermission = userPermissions.includes("admin");
+interface ActiveSessionsContent {
+  sessions: SessionWithUser[];
+}
 
-  const { data: sessions = [], isLoading } = useQuery<SessionWithUser[]>({
-    queryKey: ["/api/sessions"],
-    enabled: hasAdminPermission,
-  });
+export function ActiveSessions(_props: DashboardPluginProps) {
+  const { data, isLoading } = useDashboardContent<ActiveSessionsContent>("active-sessions");
 
-  if (!hasAdminPermission || isLoading) {
-    return null;
-  }
+  if (isLoading || !data) return null;
 
-  const activeSessions = sessions.filter(
-    (s) => new Date(s.expire) > new Date(),
-  );
+  const sessions = data.sessions;
+  const activeSessions = sessions.filter((s) => new Date(s.expire) > new Date());
   const uniqueUsers = new Map<string, SessionWithUser>();
 
   activeSessions.forEach((session) => {
@@ -100,9 +94,7 @@ export function ActiveSessions({
                   data-testid={`session-user-${session.userId?.substring(0, 8)}`}
                 >
                   <User className="h-3 w-3 text-muted-foreground" />
-                  <span className="flex-1 truncate">
-                    {getUserName(session)}
-                  </span>
+                  <span className="flex-1 truncate">{getUserName(session)}</span>
                   <span className="text-xs text-muted-foreground">
                     <Clock className="h-3 w-3 inline mr-1" />
                     {formatDistanceToNow(new Date(session.expire), {

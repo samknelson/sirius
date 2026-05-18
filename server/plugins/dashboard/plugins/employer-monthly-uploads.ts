@@ -60,6 +60,8 @@ export const employerMonthlyUploadsPlugin: DashboardPlugin = {
   uiSchema: buildUiSchema,
   defaultSettings: {},
 
+  requiredPolicy: "admin",
+
   async migrateLegacySettings() {
     const legacy = await storage.variables.getByName("employer_monthly_plugin_config");
     if (!legacy) return null;
@@ -67,13 +69,24 @@ export const employerMonthlyUploadsPlugin: DashboardPlugin = {
   },
 
   content: {
-    "my-wizard-types": async (ctx) => {
+    // Default action — what the widget itself needs to render. Returns the
+    // monthly wizard types this user can see (driven by role-based plugin
+    // settings), so the widget never has to call /api/wizard-types directly.
+    "": async (ctx) => {
       const config = (ctx.settings ?? {}) as Record<string, string[]>;
       const allowed = collectAllowedWizardTypes(
         config,
         ctx.userRoles.map((r) => r.id),
       );
-      return Array.from(allowed);
+      const wizardTypes = wizardRegistry
+        .getAll()
+        .filter((t) => t.isMonthly && allowed.has(t.name))
+        .map((t) => ({
+          name: t.name,
+          displayName: t.displayName || t.name,
+          isMonthly: true,
+        }));
+      return { wizardTypes };
     },
 
     stats: async (ctx) => {

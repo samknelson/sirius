@@ -786,7 +786,7 @@ function StatusGroupsDialog({ isAdmin }: { isAdmin: boolean }) {
       queryClient.invalidateQueries({ queryKey: ["/api/organizing/new-member-days"] });
       queryClient.invalidateQueries({ queryKey: ["/api/organizing/dues-bu-ids"] });
       queryClient.invalidateQueries({ queryKey: ["/api/employers/organizing"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard-plugins/btu-bu-summary/content/data"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard-plugins", "btu-bu-summary", "content"] });
       toast({ title: "Settings saved" });
       setOpen(false);
     },

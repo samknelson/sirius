@@ -6,6 +6,7 @@ export const btuDuesStatusPlugin: DashboardPlugin = {
   description:
     "Display summary of most recent BTU dues allocation import with card check comparison",
   componentId: "sitespecific.btu",
+  requiredPolicy: "admin",
 
   content: {
     summary: async (ctx) => {

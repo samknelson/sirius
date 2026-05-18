@@ -1,21 +1,20 @@
-import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Link } from "wouter";
-import { 
-  Activity, 
-  ArrowRight, 
-  Calendar, 
-  CheckCircle2, 
-  Clock, 
+import {
+  Activity,
+  ArrowRight,
+  Calendar,
+  Clock,
   Loader2,
   TrendingUp,
   TrendingDown,
-  Minus
+  Minus,
 } from "lucide-react";
 import { DashboardPluginProps } from "../registry";
+import { useDashboardContent } from "../useDashboardContent";
 
 interface MonthStatus {
   id: string;
@@ -33,6 +32,10 @@ interface MonthStatus {
   completedAt: string | null;
 }
 
+interface WmbScanStatusContent {
+  statuses: MonthStatus[];
+}
+
 function MonthName(month: number): string {
   const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   return months[month - 1] || String(month);
@@ -46,25 +49,14 @@ function StatusBadge({ status }: { status: string }) {
     failed: { variant: "destructive", label: "Failed" },
     canceled: { variant: "secondary", label: "Canceled" },
   };
-  
   const c = config[status] || { variant: "outline", label: status };
   return <Badge variant={c.variant}>{c.label}</Badge>;
 }
 
-export function WmbScanStatus({ userPermissions, enabledComponents }: DashboardPluginProps) {
-  const hasPermission = userPermissions.includes("admin");
-  const hasComponent = enabledComponents?.includes("trust.benefits.scan") ?? false;
+export function WmbScanStatus(_props: DashboardPluginProps) {
+  const { data, isLoading } = useDashboardContent<WmbScanStatusContent>("wmb-scan-status");
 
-  const { data: statuses = [], isLoading } = useQuery<MonthStatus[]>({
-    queryKey: ["/api/wmb-scan/status"],
-    enabled: hasPermission && hasComponent,
-  });
-
-  if (!hasPermission || !hasComponent) {
-    return null;
-  }
-
-  if (isLoading) {
+  if (!data && isLoading) {
     return (
       <Card data-testid="plugin-wmb-scan-status">
         <CardHeader>
@@ -82,21 +74,26 @@ export function WmbScanStatus({ userPermissions, enabledComponents }: DashboardP
     );
   }
 
+  if (!data) return null;
+  const statuses = data.statuses;
+
   const now = new Date();
   const currentMonth = now.getMonth() + 1;
   const currentYear = now.getFullYear();
 
-  const runningScans = statuses.filter(s => s.status === "running");
-  
-  const currentAndFutureScans = statuses.filter(s => {
+  const runningScans = statuses.filter((s) => s.status === "running");
+
+  const currentAndFutureScans = statuses.filter((s) => {
     if (s.year > currentYear) return true;
     if (s.year === currentYear && s.month >= currentMonth) return true;
     return false;
   });
 
-  const relevantScans = Array.from(new Map(
-    [...runningScans, ...currentAndFutureScans].map(s => [s.id, s] as [string, MonthStatus])
-  ).values()).sort((a, b) => {
+  const relevantScans = Array.from(
+    new Map(
+      [...runningScans, ...currentAndFutureScans].map((s) => [s.id, s] as [string, MonthStatus]),
+    ).values(),
+  ).sort((a, b) => {
     if (a.status === "running" && b.status !== "running") return -1;
     if (b.status === "running" && a.status !== "running") return 1;
     if (a.year !== b.year) return a.year - b.year;
@@ -119,9 +116,9 @@ export function WmbScanStatus({ userPermissions, enabledComponents }: DashboardP
         </CardContent>
         <CardFooter className="pt-0">
           <Link href="/admin/wmb-scan-queue" className="w-full">
-            <Button 
-              variant="ghost" 
-              className="w-full justify-between" 
+            <Button
+              variant="ghost"
+              className="w-full justify-between"
               data-testid="button-manage-scans"
             >
               <span>Manage Scans</span>
@@ -149,8 +146,8 @@ export function WmbScanStatus({ userPermissions, enabledComponents }: DashboardP
             const isRunning = scan.status === "running";
 
             return (
-              <Link 
-                key={scan.id} 
+              <Link
+                key={scan.id}
                 href={`/admin/wmb-scan-detail/${scan.id}`}
                 data-testid={`scan-link-${scan.id}`}
               >
@@ -206,9 +203,9 @@ export function WmbScanStatus({ userPermissions, enabledComponents }: DashboardP
       </CardContent>
       <CardFooter className="pt-0">
         <Link href="/admin/wmb-scan-queue" className="w-full">
-          <Button 
-            variant="ghost" 
-            className="w-full justify-between" 
+          <Button
+            variant="ghost"
+            className="w-full justify-between"
             data-testid="button-manage-scans"
           >
             <span>Manage All Scans</span>

@@ -1,9 +1,7 @@
-import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Users, Phone, Mail, ArrowRight } from "lucide-react";
-import { Link } from "wouter";
-import { Button } from "@/components/ui/button";
+import { Users, Phone, Mail } from "lucide-react";
 import { DashboardPluginProps } from "../registry";
+import { useDashboardContent } from "../useDashboardContent";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useTerm } from "@/contexts/TerminologyContext";
 
@@ -20,18 +18,9 @@ interface MyStewardData {
   bargainingUnit: { id: string; name: string } | null;
 }
 
-export function MySteward({ enabledComponents }: DashboardPluginProps) {
+export function MySteward(_props: DashboardPluginProps) {
   const term = useTerm();
-  const hasAccess = enabledComponents?.includes("worker.steward");
-
-  const { data, isLoading, error } = useQuery<MyStewardData>({
-    queryKey: ["/api/dashboard-plugins/my-steward/content"],
-    enabled: hasAccess,
-  });
-
-  if (!hasAccess) {
-    return null;
-  }
+  const { data, isLoading, error } = useDashboardContent<MyStewardData>("my-steward");
 
   if (isLoading) {
     return (
@@ -52,11 +41,7 @@ export function MySteward({ enabledComponents }: DashboardPluginProps) {
     );
   }
 
-  if (error || !data) {
-    return null;
-  }
-
-  // Hide plugin if no steward can be determined
+  if (error || !data) return null;
   if (!data.worker || !data.employer || !data.bargainingUnit || data.stewards.length === 0) {
     return null;
   }

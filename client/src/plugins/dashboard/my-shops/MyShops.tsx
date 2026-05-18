@@ -1,8 +1,8 @@
-import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Building2, CalendarCheck, DollarSign, ArrowRight } from "lucide-react";
 import { Link } from "wouter";
 import { DashboardPluginProps } from "../registry";
+import { useDashboardContent } from "../useDashboardContent";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 
@@ -34,15 +34,8 @@ function formatBalance(balance: string): string {
   return `${sign}$${Math.abs(num).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-export function MyShops({ userPermissions }: DashboardPluginProps) {
-  const hasAccess = userPermissions.includes("employer");
-
-  const { data: shops, isLoading, error } = useQuery<ShopSummary[]>({
-    queryKey: ["/api/dashboard-plugins/my-shops/content"],
-    enabled: hasAccess,
-  });
-
-  if (!hasAccess) return null;
+export function MyShops(_props: DashboardPluginProps) {
+  const { data: shops, isLoading, error } = useDashboardContent<ShopSummary[]>("my-shops");
 
   if (isLoading) {
     return (
@@ -78,7 +71,7 @@ export function MyShops({ userPermissions }: DashboardPluginProps) {
           {shops.map((shop) => {
             const totalBalance = shop.accounts.reduce(
               (sum, a) => sum + parseFloat(a.balance || "0"),
-              0
+              0,
             );
             return (
               <div

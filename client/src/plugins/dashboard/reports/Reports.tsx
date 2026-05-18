@@ -1,129 +1,59 @@
-import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { FileText, Calendar, Hash, ExternalLink } from "lucide-react";
 import { DashboardPluginProps } from "../registry";
+import { useDashboardContent } from "../useDashboardContent";
 import { Link } from "wouter";
 import { format } from "date-fns";
 
-interface Wizard {
-  id: string;
+interface ReportSummary {
   type: string;
-  name: string;
-  status: string;
-  data?: {
-    reportMeta?: {
-      generatedAt: string;
-      recordCount: number;
-    };
-  };
-}
-
-interface ReportType {
-  name: string;
   displayName: string;
-  description: string;
-  isReport?: boolean;
+  wizardId: string;
+  generatedAt: string | null;
+  recordCount: number;
 }
 
-export function Reports({ userRoles }: DashboardPluginProps) {
-  const { data: settingsResponse, isLoading: settingsLoading } = useQuery<{
-    schema: any;
-    uiSchema: any;
-    value: Record<string, string[]>;
-  }>({
-    queryKey: ["/api/dashboard-plugins/reports/settings"],
-  });
-  const reportsSettings: Record<string, string[]> = settingsResponse?.value ?? {};
+interface ReportsContent {
+  reports: ReportSummary[];
+}
 
-  // Fetch wizard types to get display names
-  const { data: wizardTypes = [], isLoading: typesLoading } = useQuery<ReportType[]>({
-    queryKey: ["/api/wizard-types"],
-  });
+export function Reports(_props: DashboardPluginProps) {
+  const { data, isLoading } = useDashboardContent<ReportsContent>("reports");
 
-  // Get all report types the user should see based on their roles
-  const userReportTypes = new Set<string>();
-  userRoles.forEach(role => {
-    const roleReports = reportsSettings[role.id] || [];
-    roleReports.forEach(reportType => userReportTypes.add(reportType));
-  });
-
-  // Fetch all wizards that match the user's report types
-  const { data: allWizards = [], isLoading: wizardsLoading } = useQuery<Wizard[]>({
-    queryKey: ["/api/wizards"],
-    enabled: userReportTypes.size > 0
-  });
-
-  if (settingsLoading || wizardsLoading || typesLoading) {
-    return null;
-  }
-
-  // Create a map of report type names to display names
-  const reportTypeMap = new Map<string, string>();
-  wizardTypes
-    .filter(type => type.isReport)
-    .forEach(type => reportTypeMap.set(type.name, type.displayName));
-
-  // If no reports configured, don't render
-  if (userReportTypes.size === 0) {
-    return null;
-  }
-
-  // Find the most recent wizard for each report type
-  const reportWizards = new Map<string, Wizard>();
-  Array.from(userReportTypes).forEach(reportType => {
-    const wizardsOfType = allWizards
-      .filter(w => w.type === reportType)
-      .sort((a, b) => {
-        const aDate = a.data?.reportMeta?.generatedAt || '';
-        const bDate = b.data?.reportMeta?.generatedAt || '';
-        return bDate.localeCompare(aDate); // Most recent first
-      });
-    
-    if (wizardsOfType.length > 0) {
-      reportWizards.set(reportType, wizardsOfType[0]);
-    }
-  });
-
-  // If no reports have been run, don't render
-  if (reportWizards.size === 0) {
-    return null;
-  }
+  if (isLoading || !data) return null;
+  if (data.reports.length === 0) return null;
 
   return (
     <>
-      {Array.from(reportWizards.entries()).map(([reportType, wizard]) => {
-        const displayName = reportTypeMap.get(reportType) || reportType;
-        const reportMeta = wizard.data?.reportMeta;
-        const generatedAt = reportMeta?.generatedAt ? new Date(reportMeta.generatedAt) : null;
-        const recordCount = reportMeta?.recordCount ?? 0;
-
+      {data.reports.map((report) => {
+        const generatedAt = report.generatedAt ? new Date(report.generatedAt) : null;
         return (
-          <Card key={reportType} data-testid={`plugin-reports-${reportType}`}>
+          <Card key={report.type} data-testid={`plugin-reports-${report.type}`}>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <FileText className="h-5 w-5" />
-                {displayName}
+                {report.displayName}
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <Link 
-                href={`/wizards/${wizard.id}`}
-                data-testid={`report-link-${reportType}`}
+              <Link
+                href={`/wizards/${report.wizardId}`}
+                data-testid={`report-link-${report.type}`}
                 className="group block"
               >
                 <div className="space-y-2 text-sm">
                   {generatedAt && (
                     <div className="flex items-center gap-2 text-muted-foreground">
                       <Calendar className="h-4 w-4" />
-                      <span data-testid={`report-date-${reportType}`}>
-                        Last run: {format(generatedAt, 'MMM d, yyyy h:mm a')}
+                      <span data-testid={`report-date-${report.type}`}>
+                        Last run: {format(generatedAt, "MMM d, yyyy h:mm a")}
                       </span>
                     </div>
                   )}
                   <div className="flex items-center gap-2 text-muted-foreground">
                     <Hash className="h-4 w-4" />
-                    <span data-testid={`report-count-${reportType}`}>
-                      {recordCount} {recordCount === 1 ? 'record' : 'records'}
+                    <span data-testid={`report-count-${report.type}`}>
+                      {report.recordCount} {report.recordCount === 1 ? "record" : "records"}
                     </span>
                   </div>
                   <div className="flex items-center gap-2 text-sm font-medium text-primary group-hover:underline">
