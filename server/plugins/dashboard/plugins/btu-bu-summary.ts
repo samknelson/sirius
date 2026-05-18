@@ -95,4 +95,10 @@ export const btuBuSummaryPlugin: DashboardPlugin = {
       };
     },
   },
+
+  client: {
+    component: "btu-bu-summary:BtuBuSummary",
+    order: 10,
+    requiredPermissions: ["admin"],
+  },
 };

@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { CalendarDays, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
-import type { DashboardPluginProps } from "../types";
+import type { DashboardPluginProps } from "../registry";
 
 interface EdlsSummaryData {
   memberStatuses: string[];
@@ -47,7 +47,7 @@ function formatYmdDisplay(ymd: string): string {
   return `${days[date.getDay()]}, ${months[date.getMonth()]} ${d}, ${y}`;
 }
 
-export function EdlsSummaryPlugin({ enabledComponents }: DashboardPluginProps) {
+export function EdlsSummary({ enabledComponents }: DashboardPluginProps) {
   const [selectedDate, setSelectedDate] = useState(getTodayYmd());
 
   if (!enabledComponents?.includes("edls")) return null;

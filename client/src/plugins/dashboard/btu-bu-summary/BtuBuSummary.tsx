@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Users } from "lucide-react";
-import { DashboardPluginProps } from "../types";
+import { DashboardPluginProps } from "../registry";
 
 interface BuSummaryUnit {
   id: string;
@@ -44,7 +44,7 @@ function formatCurrency(value: number): string {
   return value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-export function BtuBuSummaryPlugin({ userPermissions, enabledComponents }: DashboardPluginProps) {
+export function BtuBuSummary({ userPermissions, enabledComponents }: DashboardPluginProps) {
   const hasPermission = userPermissions.includes("admin");
   const hasComponent = enabledComponents?.includes("sitespecific.btu") ?? false;
 

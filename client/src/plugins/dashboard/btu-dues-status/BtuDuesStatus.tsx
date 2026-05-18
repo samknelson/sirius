@@ -13,7 +13,7 @@ import {
   SkipForward,
   FileCheck,
 } from "lucide-react";
-import { DashboardPluginProps } from "../types";
+import { DashboardPluginProps } from "../registry";
 import { format } from "date-fns";
 
 interface DuesSummary {
@@ -65,7 +65,7 @@ function StatRow({ icon, label, value, muted }: { icon: JSX.Element; label: stri
   );
 }
 
-export function BtuDuesStatusPlugin({ userPermissions, enabledComponents }: DashboardPluginProps) {
+export function BtuDuesStatus({ userPermissions, enabledComponents }: DashboardPluginProps) {
   const hasPermission = userPermissions.includes("admin");
   const hasComponent = enabledComponents?.includes("sitespecific.btu") ?? false;
 

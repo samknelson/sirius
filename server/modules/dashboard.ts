@@ -13,6 +13,55 @@ export function registerDashboardRoutes(
   requireAuth: AuthMiddleware,
   _requirePermission: PermissionMiddleware,
 ) {
+  // Plugin manifest for the dashboard / config UIs. Returns the declarative
+  // metadata for every plugin that has a `client` block. Gating is *not*
+  // evaluated here — the client filters on requiredPermissions / requiredPolicy
+  // / requiredComponent as UI hints, and /content remains the authoritative
+  // enforcement point (mirrors Task #195's wizard framework stance).
+  app.get("/api/dashboard-plugins/manifest", requireAuth, async (_req, res) => {
+    try {
+      const allVariables = await storage.variables.getAll();
+      const enabledByVar = new Map<string, boolean>();
+      for (const v of allVariables) {
+        if (v.name.startsWith("dashboard_plugin_") && !v.name.endsWith("_settings")) {
+          enabledByVar.set(v.name.replace("dashboard_plugin_", ""), v.value as boolean);
+        }
+      }
+
+      const entries = dashboardPluginRegistry
+        .getAll()
+        .filter((p) => !!p.client)
+        .map((p) => {
+          const client = p.client!;
+          const variableValue = enabledByVar.get(p.id);
+          const enabled =
+            variableValue !== undefined
+              ? variableValue
+              : client.enabledByDefault !== false;
+          return {
+            id: p.id,
+            name: p.name,
+            description: p.description,
+            componentId: client.component,
+            componentProps: client.componentProps ?? null,
+            order: client.order,
+            fullWidth: client.fullWidth === true,
+            requiredPermissions: client.requiredPermissions ?? [],
+            requiredPolicy: p.requiredPolicy,
+            requiredComponent: p.componentId,
+            hasSettings: !!p.settingsSchema,
+            enabledByDefault: client.enabledByDefault !== false,
+            enabled,
+          };
+        })
+        .sort((a, b) => a.order - b.order);
+
+      res.json(entries);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch plugin manifest" });
+    }
+  });
+
   // List enabled flags for all plugin configs (per-plugin enable/disable toggle).
   app.get("/api/dashboard-plugins/config", requireAuth, async (_req, res) => {
     try {

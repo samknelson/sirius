@@ -21,6 +21,34 @@ export interface DashboardPluginUiSchema {
   [key: string]: any;
 }
 
+/**
+ * Client-side rendering metadata for a dashboard plugin. Plugins without a
+ * `client` block do not appear on the dashboard but may still expose
+ * /content endpoints (headless data feeds).
+ */
+export interface DashboardPluginClient {
+  /**
+   * Component identifier resolved by client/src/plugins/dashboard/registry.ts.
+   * Format: `<plugin-id>:<ComponentName>` (e.g. `"welcome-messages:WelcomeMessages"`)
+   * or `"generic:<Name>"` for stock components.
+   */
+  component: string;
+  /** JSON-serializable props passed through to the component. */
+  componentProps?: Record<string, unknown>;
+  /** Sort order on the dashboard (lowest first). */
+  order: number;
+  /** When true, the widget renders full-width above the grid. */
+  fullWidth?: boolean;
+  /**
+   * UI-hint permission gate. The user must hold at least one of these
+   * permissions for the widget to be shown. /content remains the
+   * authoritative enforcement point.
+   */
+  requiredPermissions?: string[];
+  /** Defaults to true when omitted. */
+  enabledByDefault?: boolean;
+}
+
 export interface DashboardPlugin {
   id: string;
   name: string;
@@ -47,4 +75,9 @@ export interface DashboardPlugin {
    * Plugins with no server-side content (e.g. bookmarks) may omit this.
    */
   content?: DashboardContentResolver | Record<string, DashboardContentResolver>;
+  /**
+   * Client rendering metadata. Plugins without this block do not appear on
+   * the dashboard (headless plugins).
+   */
+  client?: DashboardPluginClient;
 }

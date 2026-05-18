@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { FileText, Calendar, Hash, ExternalLink } from "lucide-react";
-import { DashboardPluginProps } from "../types";
+import { DashboardPluginProps } from "../registry";
 import { Link } from "wouter";
 import { format } from "date-fns";
 
@@ -25,7 +25,7 @@ interface ReportType {
   isReport?: boolean;
 }
 
-export function ReportsPlugin({ userRoles }: DashboardPluginProps) {
+export function Reports({ userRoles }: DashboardPluginProps) {
   const { data: settingsResponse, isLoading: settingsLoading } = useQuery<{
     schema: any;
     uiSchema: any;

@@ -117,4 +117,10 @@ export const employerMonthlyUploadsPlugin: DashboardPlugin = {
       );
     },
   },
+
+  client: {
+    component: "employer-monthly-uploads:EmployerMonthlyUploads",
+    order: 4,
+    requiredPermissions: ["admin"],
+  },
 };

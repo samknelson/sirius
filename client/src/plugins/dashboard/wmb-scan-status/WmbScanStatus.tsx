@@ -15,7 +15,7 @@ import {
   TrendingDown,
   Minus
 } from "lucide-react";
-import { DashboardPluginProps } from "../types";
+import { DashboardPluginProps } from "../registry";
 
 interface MonthStatus {
   id: string;
@@ -51,7 +51,7 @@ function StatusBadge({ status }: { status: string }) {
   return <Badge variant={c.variant}>{c.label}</Badge>;
 }
 
-export function WmbScanStatusPlugin({ userPermissions, enabledComponents }: DashboardPluginProps) {
+export function WmbScanStatus({ userPermissions, enabledComponents }: DashboardPluginProps) {
   const hasPermission = userPermissions.includes("admin");
   const hasComponent = enabledComponents?.includes("trust.benefits.scan") ?? false;
 

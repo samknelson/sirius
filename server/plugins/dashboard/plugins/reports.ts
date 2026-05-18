@@ -46,4 +46,9 @@ export const reportsPlugin: DashboardPlugin = {
   settingsSchema: buildSchema,
   uiSchema: buildUiSchema,
   defaultSettings: {},
+  client: {
+    component: "reports:Reports",
+    order: 3,
+    requiredPermissions: ["admin"],
+  },
 };

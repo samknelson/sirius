@@ -350,7 +350,7 @@ The frontend is built with React 18, TypeScript, Vite, Shadcn/ui (based on Radix
 -   **User Provisioning**: Email-based provisioning integrated with Replit accounts and automatic contact synchronization.
 -   **Employer & Policy Management**: Manages employer records, contacts, and historical policy assignments.
 -   **Bookmarks**: Provides user-specific, entity-agnostic bookmarking functionality.
--   **Dashboard Plugin System**: An extensible architecture allows for customizable widgets.
+-   **Dashboard Plugin System**: An extensible architecture allows for customizable widgets. The server-side plugin manifest under `server/plugins/dashboard/plugins/*.ts` declares the client component as a string id (`<plugin-id>:<ComponentName>`) on an optional `client` block; the client auto-discovers components via `import.meta.glob('./*/*.tsx', { eager: true })` in `client/src/plugins/dashboard/registry.ts`. The dashboard and config pages consume `GET /api/dashboard-plugins/manifest` (no client-side static registry to maintain). Mirrors the Task #195 wizard framework conventions.
 -   **Components Feature Flag System**: A centralized system for managing application features, including dependencies and access control.
 -   **Ledger System**: Manages financial transactions, accounts, payments, and integrity reports, including payment batches.
 -   **Wizards**: Offers flexible workflow state management for multi-step processes.

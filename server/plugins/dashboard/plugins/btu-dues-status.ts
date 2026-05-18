@@ -67,4 +67,10 @@ export const btuDuesStatusPlugin: DashboardPlugin = {
       };
     },
   },
+
+  client: {
+    component: "btu-dues-status:BtuDuesStatus",
+    order: 9,
+    requiredPermissions: ["admin"],
+  },
 };

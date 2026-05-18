@@ -36,4 +36,10 @@ export const edlsSummaryPlugin: DashboardPlugin = {
 
     return { memberStatuses, grid };
   },
+
+  client: {
+    component: "edls-summary:EdlsSummary",
+    order: 11,
+    fullWidth: true,
+  },
 };

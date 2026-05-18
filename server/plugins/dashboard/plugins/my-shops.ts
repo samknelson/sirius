@@ -95,4 +95,10 @@ export const myShopsPlugin: DashboardPlugin = {
       };
     });
   },
+
+  client: {
+    component: "my-shops:MyShops",
+    order: 8,
+    requiredPermissions: ["employer"],
+  },
 };

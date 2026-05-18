@@ -5,12 +5,18 @@ import { usePageTitle } from "@/contexts/PageTitleContext";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle, ChevronLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { getPluginById } from "@/plugins/registry";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { SchemaForm, type IChangeEvent } from "@/components/json-schema-form";
 import { HtmlEditorWidget } from "@/components/json-schema-form/widgets/HtmlEditorWidget";
 import type { RegistryWidgetsType } from "@rjsf/utils";
+
+interface PluginManifestEntry {
+  id: string;
+  name: string;
+  description: string;
+  hasSettings: boolean;
+}
 
 interface PluginSettingsResponse {
   schema: any;
@@ -29,7 +35,11 @@ export default function PluginSettingsPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  const plugin = pluginId ? getPluginById(pluginId) : undefined;
+  const { data: manifest = [], isLoading: manifestLoading } = useQuery<PluginManifestEntry[]>({
+    queryKey: ["/api/dashboard-plugins/manifest"],
+  });
+
+  const plugin = pluginId ? manifest.find((p) => p.id === pluginId) : undefined;
 
   const { data, isLoading, isError } = useQuery<PluginSettingsResponse>({
     queryKey: ["/api/dashboard-plugins", pluginId, "settings"],
@@ -52,8 +62,7 @@ export default function PluginSettingsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard-plugins", pluginId, "settings"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard-plugins"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard-plugins/config"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard-plugins/manifest"] });
       toast({ title: "Settings Saved", description: `${plugin?.name ?? "Plugin"} settings have been updated.` });
     },
     onError: (err: any) => {
@@ -76,6 +85,15 @@ export default function PluginSettingsPage() {
       Back to Dashboard Plugins
     </Button>
   );
+
+  if (manifestLoading) {
+    return (
+      <div className="space-y-6">
+        {backButton}
+        <p className="text-muted-foreground">Loading...</p>
+      </div>
+    );
+  }
 
   if (!pluginId || !plugin) {
     return (

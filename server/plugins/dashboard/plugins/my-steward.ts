@@ -65,4 +65,9 @@ export const myStewardPlugin: DashboardPlugin = {
         : null,
     };
   },
+
+  client: {
+    component: "my-steward:MySteward",
+    order: 7,
+  },
 };

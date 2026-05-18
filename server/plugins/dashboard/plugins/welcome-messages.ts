@@ -61,4 +61,9 @@ export const welcomeMessagesPlugin: DashboardPlugin = {
     }
     return { messages };
   },
+
+  client: {
+    component: "welcome-messages:WelcomeMessages",
+    order: 1,
+  },
 };

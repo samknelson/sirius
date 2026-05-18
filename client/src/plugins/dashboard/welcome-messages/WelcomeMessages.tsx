@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { MessageSquare } from "lucide-react";
 import DOMPurify from "isomorphic-dompurify";
-import { DashboardPluginProps } from "../types";
+import { DashboardPluginProps } from "../registry";
 
 interface WelcomeMessageContent {
   messages: Array<{
@@ -12,7 +12,7 @@ interface WelcomeMessageContent {
   }>;
 }
 
-export function WelcomeMessagesPlugin({ userRoles }: DashboardPluginProps) {
+export function WelcomeMessages({ userRoles }: DashboardPluginProps) {
   const { data, isLoading } = useQuery<WelcomeMessageContent>({
     queryKey: ["/api/dashboard-plugins/welcome-messages/content"],
   });

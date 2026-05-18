@@ -9,7 +9,7 @@ import {
 import { Users, ArrowRight, Clock, User } from "lucide-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
-import { DashboardPluginProps } from "../types";
+import { DashboardPluginProps } from "../registry";
 import { formatDistanceToNow } from "date-fns";
 
 interface SessionWithUser {
@@ -21,7 +21,7 @@ interface SessionWithUser {
   userLastName: string | null;
 }
 
-export function ActiveSessionsPlugin({
+export function ActiveSessions({
   userPermissions,
 }: DashboardPluginProps) {
   const hasAdminPermission = userPermissions.includes("admin");

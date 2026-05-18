@@ -3,14 +3,14 @@ import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/componen
 import { Bookmark, User, Building, ArrowRight } from "lucide-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
-import { DashboardPluginProps } from "../types";
+import { DashboardPluginProps } from "../registry";
 import type { Bookmark as BookmarkType } from "@shared/schema";
 
 interface EnrichedBookmark extends BookmarkType {
   displayName: string;
 }
 
-export function BookmarksPlugin({ userPermissions }: DashboardPluginProps) {
+export function Bookmarks({ userPermissions }: DashboardPluginProps) {
   const hasBookmarkPermission = userPermissions.includes('bookmark') || userPermissions.includes('admin');
 
   const { data: bookmarks = [], isLoading } = useQuery<EnrichedBookmark[]>({

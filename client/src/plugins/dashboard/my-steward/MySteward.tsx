@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Users, Phone, Mail, ArrowRight } from "lucide-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
-import { DashboardPluginProps } from "../types";
+import { DashboardPluginProps } from "../registry";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useTerm } from "@/contexts/TerminologyContext";
 
@@ -20,7 +20,7 @@ interface MyStewardData {
   bargainingUnit: { id: string; name: string } | null;
 }
 
-export function MyStewardPlugin({ enabledComponents }: DashboardPluginProps) {
+export function MySteward({ enabledComponents }: DashboardPluginProps) {
   const term = useTerm();
   const hasAccess = enabledComponents?.includes("worker.steward");
 

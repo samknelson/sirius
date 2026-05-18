@@ -4,7 +4,7 @@ import { useLocation } from "wouter";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Building2, Calendar, ExternalLink } from "lucide-react";
-import { DashboardPluginProps } from "../types";
+import { DashboardPluginProps } from "../registry";
 import { format, subMonths } from "date-fns";
 import { WizardType } from "@/lib/wizard-types";
 
@@ -40,7 +40,7 @@ function formatStatusName(status: string): string {
   return status.charAt(0).toUpperCase() + status.slice(1);
 }
 
-export function EmployerMonthlyUploadsPlugin({ userId, userRoles }: DashboardPluginProps) {
+export function EmployerMonthlyUploads({ userId, userRoles }: DashboardPluginProps) {
   const now = new Date();
   const [selectedMonth, setSelectedMonth] = useState(`${now.getFullYear()}-${now.getMonth() + 1}`);
   

@@ -10,39 +10,48 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 import { Puzzle, Info, Settings } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
-import { getAllPlugins } from "@/plugins/registry";
-import { PluginConfig } from "@/plugins/types";
+
+interface PluginManifestEntry {
+  id: string;
+  name: string;
+  description: string;
+  componentId: string;
+  order: number;
+  fullWidth: boolean;
+  requiredPermissions: string[];
+  requiredPolicy?: string;
+  requiredComponent?: string;
+  hasSettings: boolean;
+  enabledByDefault: boolean;
+  enabled: boolean;
+}
 
 export default function DashboardPluginsConfigPage() {
   usePageTitle("Dashboard Plugins");
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  
-  const allPlugins = getAllPlugins();
 
-  const { data: pluginConfigs = [], isLoading } = useQuery<PluginConfig[]>({
-    queryKey: ["/api/dashboard-plugins/config"],
+  const { data: manifest = [], isLoading } = useQuery<PluginManifestEntry[]>({
+    queryKey: ["/api/dashboard-plugins/manifest"],
   });
 
   const [localStates, setLocalStates] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
-    // Initialize local states from configs or defaults
     const states: Record<string, boolean> = {};
-    allPlugins.forEach(plugin => {
-      const config = pluginConfigs.find(c => c.pluginId === plugin.id);
-      states[plugin.id] = config ? config.enabled : plugin.enabledByDefault;
+    manifest.forEach((plugin) => {
+      states[plugin.id] = plugin.enabled;
     });
     setLocalStates(states);
-  }, [pluginConfigs]);
+  }, [manifest]);
 
   const updatePluginMutation = useMutation({
     mutationFn: async ({ pluginId, enabled }: { pluginId: string; enabled: boolean }) => {
       return apiRequest("PUT", `/api/dashboard-plugins/config/${pluginId}`, { enabled });
     },
     onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard-plugins/manifest"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard-plugins/config"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard-plugins"] });
       toast({
         title: "Plugin Updated",
         description: `Plugin ${variables.enabled ? "enabled" : "disabled"} successfully.`,
@@ -55,8 +64,7 @@ export default function DashboardPluginsConfigPage() {
         description: error?.message || "Failed to update plugin configuration. Please try again.",
         variant: "destructive",
       });
-      // Revert local state on error
-      setLocalStates(prev => ({
+      setLocalStates((prev) => ({
         ...prev,
         [variables.pluginId]: !variables.enabled,
       }));
@@ -64,12 +72,10 @@ export default function DashboardPluginsConfigPage() {
   });
 
   const handleToggle = (pluginId: string, enabled: boolean) => {
-    // Optimistic update
-    setLocalStates(prev => ({
+    setLocalStates((prev) => ({
       ...prev,
       [pluginId]: enabled,
     }));
-    
     updatePluginMutation.mutate({ pluginId, enabled });
   };
 
@@ -105,7 +111,7 @@ export default function DashboardPluginsConfigPage() {
       </Alert>
 
       <div className="space-y-4">
-        {allPlugins.map((plugin) => (
+        {manifest.map((plugin) => (
           <Card key={plugin.id} data-testid={`card-plugin-${plugin.id}`}>
             <CardHeader>
               <CardTitle className="flex items-center justify-between">
@@ -131,7 +137,7 @@ export default function DashboardPluginsConfigPage() {
               <div>
                 <span className="font-medium">Order:</span> {plugin.order}
               </div>
-              {plugin.requiredPermissions && plugin.requiredPermissions.length > 0 && (
+              {plugin.requiredPermissions.length > 0 && (
                 <div>
                   <span className="font-medium">Required Permissions:</span>{" "}
                   {plugin.requiredPermissions.join(", ")}
@@ -152,7 +158,7 @@ export default function DashboardPluginsConfigPage() {
         ))}
       </div>
 
-      {allPlugins.length === 0 && (
+      {manifest.length === 0 && (
         <Alert>
           <Info className="h-4 w-4" />
           <AlertDescription>

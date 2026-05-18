@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Building2, CalendarCheck, DollarSign, ArrowRight } from "lucide-react";
 import { Link } from "wouter";
-import { DashboardPluginProps } from "../types";
+import { DashboardPluginProps } from "../registry";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 
@@ -34,7 +34,7 @@ function formatBalance(balance: string): string {
   return `${sign}$${Math.abs(num).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-export function MyShopsPlugin({ userPermissions }: DashboardPluginProps) {
+export function MyShops({ userPermissions }: DashboardPluginProps) {
   const hasAccess = userPermissions.includes("employer");
 
   const { data: shops, isLoading, error } = useQuery<ShopSummary[]>({
