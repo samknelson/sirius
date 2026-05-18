@@ -14,6 +14,7 @@ import { loadComponentCache } from "./services/component-cache";
 import { syncComponentPermissions } from "./services/component-permissions";
 import { runMigrations } from "../scripts/migrate";
 import { enforceStartupSchemaDrift } from "./services/schema-drift-check";
+import { runPendingComponentMigrationsAtStartup } from "./services/migration-runner";
 import { initializeWebSocket } from "./services/websocket";
 import { getSession } from "./auth";
 
@@ -150,6 +151,11 @@ export async function startApp(app: Express, server: Server, onReady: () => void
 
   await loadComponentCache();
   logger.info("Component cache initialized", { source: "startup" });
+
+  // Run any pending per-component migrations for components that are already
+  // enabled. Without this, a new component migration would never run for
+  // already-enabled components, and the drift gate would then block boot.
+  await runPendingComponentMigrationsAtStartup();
 
   // Refuse to boot if the live database has drifted from the expected schema
   // (core + every enabled schema-managing component). See

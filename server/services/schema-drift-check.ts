@@ -23,7 +23,7 @@ import { getAllComponents } from "../../shared/components";
 import { isComponentEnabledSync } from "./component-cache";
 import { detectSchemaDrift, type SchemaDriftReport } from "./component-schema-push";
 import * as mainSchema from "../../shared/schema";
-import { tableExists } from "../storage/utils";
+import { tableExists, listAllPublicTables } from "../storage/utils";
 import { logger } from "../logger";
 
 const NAME_SYM_DESC = "drizzle:Name";
@@ -56,6 +56,8 @@ export interface AggregateDriftReport {
   perTable: SchemaDriftReport[];
   /** Tables expected by the schema (for enabled components + core) that are missing from the DB. */
   missingTables: string[];
+  /** Tables in the live DB that aren't owned by core or any (enabled OR disabled) component manifest. */
+  extraTables: string[];
   /** Component IDs whose schemas were checked. */
   checkedComponents: string[];
   /** Core tables checked (sample size for logging). */
@@ -65,11 +67,21 @@ export interface AggregateDriftReport {
 function reportIsEmpty(r: SchemaDriftReport): boolean {
   return (
     r.missingColumns.length === 0 &&
+    r.extraColumns.length === 0 &&
     r.typeMismatches.length === 0 &&
     r.missingConstraints.length === 0 &&
     r.missingIndexes.length === 0
   );
 }
+
+/**
+ * Tables that legitimately live in the public schema but are not modeled in
+ * Drizzle (infrastructure / framework bookkeeping). Adding to this list is a
+ * conscious decision — prefer modeling tables in Drizzle whenever possible.
+ */
+const EXTRA_TABLE_ALLOWLIST = new Set<string>([
+  "session", // express-session connect-pg-simple
+]);
 
 /**
  * Build the set of table names that belong to a DISABLED component. These
@@ -124,6 +136,7 @@ export async function checkAggregateSchemaDrift(): Promise<AggregateDriftReport>
         perTable.push({
           tableName,
           missingColumns: [],
+          extraColumns: [],
           typeMismatches: [`No Drizzle table definition found for "${tableName}" in component ${component.id}`],
           missingConstraints: [],
           missingIndexes: [],
@@ -154,10 +167,27 @@ export async function checkAggregateSchemaDrift(): Promise<AggregateDriftReport>
     if (!reportIsEmpty(report)) perTable.push(report);
   }
 
+  // ----- Extra tables (live tables not owned by any manifest, not in core
+  //       schema, and not in the infrastructure allowlist) -----
+  const allKnownTables = new Set<string>();
+  for (const name of mainIndex.keys()) allKnownTables.add(name);
+  for (const c of getAllComponents()) {
+    if (!c.managesSchema || !c.schemaManifest) continue;
+    for (const t of c.schemaManifest.tables) allKnownTables.add(t);
+  }
+  const liveTables = await listAllPublicTables();
+  const extraTables: string[] = [];
+  for (const t of liveTables) {
+    if (allKnownTables.has(t)) continue;
+    if (EXTRA_TABLE_ALLOWLIST.has(t)) continue;
+    extraTables.push(t);
+  }
+
   return {
-    hasDrift: perTable.length > 0 || missingTables.length > 0,
+    hasDrift: perTable.length > 0 || missingTables.length > 0 || extraTables.length > 0,
     perTable,
     missingTables,
+    extraTables,
     checkedComponents,
     coreTableCount,
   };
@@ -183,12 +213,18 @@ function formatAggregate(r: AggregateDriftReport): string {
     lines.push("Missing tables (expected by schema, not in DB):");
     for (const t of r.missingTables) lines.push(`  - ${t}`);
   }
+  if (r.extraTables.length > 0) {
+    lines.push("");
+    lines.push("Extra tables (in DB, not owned by core or any component manifest):");
+    for (const t of r.extraTables) lines.push(`  - ${t}`);
+  }
   if (r.perTable.length > 0) {
     lines.push("");
     lines.push("Per-table drift:");
     for (const t of r.perTable) {
       lines.push(`  Table ${t.tableName}:`);
       if (t.missingColumns.length) lines.push(`    - missing columns: ${t.missingColumns.join(", ")}`);
+      if (t.extraColumns.length) lines.push(`    - extra columns: ${t.extraColumns.join(", ")}`);
       if (t.typeMismatches.length) lines.push(`    - type mismatches: ${t.typeMismatches.join("; ")}`);
       if (t.missingConstraints.length) lines.push(`    - missing constraints: ${t.missingConstraints.join("; ")}`);
       if (t.missingIndexes.length) lines.push(`    - missing indexes: ${t.missingIndexes.join("; ")}`);

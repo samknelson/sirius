@@ -27,6 +27,8 @@ interface PendingStatement {
 export interface SchemaDriftReport {
   tableName: string;
   missingColumns: string[];
+  /** Columns present in the live DB but not in the Drizzle schema. */
+  extraColumns: string[];
   typeMismatches: string[];
   missingConstraints: string[];
   missingIndexes: string[];
@@ -50,6 +52,9 @@ function formatDriftMessage(reports: SchemaDriftReport[]): string {
     lines.push(`  Table ${r.tableName}:`);
     lines.push(
       `    - missing columns: ${r.missingColumns.length ? r.missingColumns.join(", ") : "(none)"}`,
+    );
+    lines.push(
+      `    - extra columns: ${r.extraColumns.length ? r.extraColumns.join(", ") : "(none)"}`,
     );
     lines.push(
       `    - type mismatches: ${r.typeMismatches.length ? r.typeMismatches.join("; ") : "(none)"}`,
@@ -515,9 +520,11 @@ export async function detectSchemaDrift(tableSchema: any, tableName: string): Pr
 
   const missingColumns: string[] = [];
   const typeMismatches: string[] = [];
+  const expectedColNames = new Set<string>();
 
   for (const [key, col] of Object.entries(expectedCols) as [string, any][]) {
     const dbName = col.name || key;
+    expectedColNames.add(dbName);
     const actual = actualByName.get(dbName);
     if (!actual) {
       missingColumns.push(dbName);
@@ -527,6 +534,14 @@ export async function detectSchemaDrift(tableSchema: any, tableName: string): Pr
     if (!dbTypeMatches(expectedType, actual.dataType, actual.udtName)) {
       typeMismatches.push(`${dbName} expected ${expectedType}, found ${actual.dataType}`);
     }
+  }
+
+  // Columns present in the live DB but not in the Drizzle schema. Reported
+  // (and gated on at boot) but never auto-dropped — drops are destructive
+  // and must be authored as an explicit migration.
+  const extraColumns: string[] = [];
+  for (const actual of actualCols) {
+    if (!expectedColNames.has(actual.name)) extraColumns.push(actual.name);
   }
 
   // Compare FKs/uniques/checks structurally (Drizzle's auto-names rarely match Postgres' auto-names).
@@ -741,7 +756,7 @@ export async function detectSchemaDrift(tableSchema: any, tableName: string): Pr
     }
   }
 
-  return { tableName, missingColumns, typeMismatches, missingConstraints, missingIndexes };
+  return { tableName, missingColumns, extraColumns, typeMismatches, missingConstraints, missingIndexes };
 }
 
 function normalizeIndexExpr(s: string): string {
