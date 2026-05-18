@@ -1,3 +1,4 @@
+import { pluginManifestQueryKey } from "@/plugins/_core";
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Policy, TrustBenefit, Employer, Variable } from "@shared/schema";
@@ -150,7 +151,7 @@ function WorkerBenefitsEligibilityContent() {
   });
 
   const { data: plugins = [] } = useQuery<EligibilityPlugin[]>({
-    queryKey: ["/api/eligibility-plugins"],
+    queryKey: pluginManifestQueryKey("trust-eligibility"),
   });
 
   const { data: workStatuses = [] } = useQuery<WorkerWs[]>({

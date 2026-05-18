@@ -1,4 +1,5 @@
 import { logger } from "../../logger";
+import { registerPluginKind } from "../_core";
 import { dashboardPluginRegistry } from "./registry";
 import { welcomeMessagesPlugin } from "./plugins/welcome-messages";
 import { bookmarksPlugin } from "./plugins/bookmarks";
@@ -33,7 +34,38 @@ export function registerDashboardPlugins(): void {
   });
 }
 
+let kindRegistered = false;
+function registerDashboardKind(): void {
+  if (kindRegistered) return;
+  registerPluginKind({
+    kind: "dashboard",
+    registry: dashboardPluginRegistry,
+    sortEntries: (a, b) =>
+      a.order - b.order || a.id.localeCompare(b.id),
+    // Per-plugin enable toggle lives in a `dashboard_plugin_<id>` variable
+    // (independent of the schema-driven settings variable). Apply it here
+    // so the manifest reflects the operator's current selection.
+    decorateEntries: async (entries) => {
+      const enriched = await Promise.all(
+        entries.map(async (entry) => {
+          const variable = await (
+            await import("../../storage")
+          ).storage.variables.getByName(`dashboard_plugin_${entry.id}`);
+          const enabled =
+            variable !== undefined && variable !== null
+              ? Boolean(variable.value)
+              : entry.enabledByDefault;
+          return { ...entry, enabled };
+        }),
+      );
+      return enriched;
+    },
+  });
+  kindRegistered = true;
+}
+
 export async function initializeDashboardPluginSystem(): Promise<void> {
   registerDashboardPlugins();
+  registerDashboardKind();
   await dashboardPluginRegistry.runLegacyMigrations();
 }

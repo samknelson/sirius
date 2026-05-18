@@ -1,3 +1,4 @@
+import { pluginManifestQueryKey } from "@/plugins/_core";
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { usePageTitle } from "@/contexts/PageTitleContext";
@@ -45,7 +46,7 @@ export default function ChargePluginsPage() {
 
   // Fetch all registered plugins
   const { data: plugins = [], isLoading: isLoadingPlugins } = useQuery<ChargePluginMetadata[]>({
-    queryKey: ["/api/charge-plugins"],
+    queryKey: pluginManifestQueryKey("charge"),
   });
 
   // Fetch all plugin configurations

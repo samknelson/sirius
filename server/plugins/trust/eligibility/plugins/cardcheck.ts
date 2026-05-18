@@ -18,7 +18,7 @@ class CardcheckPlugin extends EligibilityPlugin<CardcheckConfig> {
     name: "Cardcheck",
     description:
       "Worker must have a signed cardcheck of the specified definition to be eligible.",
-    requiresComponent: "cardcheck",
+    requiredComponent: "cardcheck",
     configSchema: {
       type: "object",
       required: ["cardcheckDefinitionId"],

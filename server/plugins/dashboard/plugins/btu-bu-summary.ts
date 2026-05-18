@@ -4,7 +4,7 @@ export const btuBuSummaryPlugin: DashboardPlugin = {
   id: "btu-bu-summary",
   name: "BTU Bargaining Unit Summary",
   description: "Display workers per bargaining unit with signed card check percentages",
-  componentId: "sitespecific.btu",
+  requiredComponent: "sitespecific.btu",
   requiredPolicy: "admin",
 
   content: {

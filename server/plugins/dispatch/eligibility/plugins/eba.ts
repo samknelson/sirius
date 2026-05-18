@@ -13,7 +13,7 @@ export const dispatchEbaPlugin: DispatchEligPlugin = {
   id: "dispatch_eba",
   name: "Employed but Available",
   description: "Requires workers to have marked themselves available for the job's start date",
-  componentId: COMPONENT_ID,
+  requiredComponent: COMPONENT_ID,
   backfill: () => backfillDispatchEbaEligibility(),
 
   eventHandlers: [

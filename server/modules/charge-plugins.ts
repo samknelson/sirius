@@ -1,8 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 import { requireAccess } from "../services/access-policy-evaluator";
-import { chargePluginRegistry, getAllEnabledChargePlugins, isChargePluginEnabled } from "../plugins/ledger/charge/registry";
-import { type ChargePluginMetadata } from "../plugins/ledger/charge/types";
+import { chargePluginRegistry, isChargePluginEnabled } from "../plugins/ledger/charge/registry";
 import { z } from "zod";
 import { insertChargePluginConfigSchema } from "@shared/schema";
 import { requireComponent } from "./components";
@@ -16,22 +15,9 @@ export function registerChargePluginRoutes(
   requirePermission: (permission: string) => (req: Request, res: Response, next: NextFunction) => void
 ) {
   
-  // GET /api/charge-plugins - Get all registered charge plugins (filtered by component status)
-  app.get("/api/charge-plugins", requireAuth, requireComponent("ledger"), requireAccess('admin'), async (req, res) => {
-    try {
-      // Get only plugins whose required components are enabled
-      const registeredPlugins = await getAllEnabledChargePlugins();
-      const plugins: ChargePluginMetadata[] = registeredPlugins.map(p => p.metadata);
-      
-      // Sort by ID for consistent ordering
-      plugins.sort((a, b) => a.id.localeCompare(b.id));
-      
-      res.json(plugins);
-    } catch (error) {
-      console.error("Failed to fetch charge plugins:", error);
-      res.status(500).json({ message: "Failed to fetch charge plugins" });
-    }
-  });
+  // NOTE: GET /api/charge-plugins was removed in Task #208. The charge
+  // plugin manifest is now served by the unified endpoint at
+  // GET /api/plugins/charge/manifest.
 
   // GET /api/charge-plugin-configs - Get all plugin configurations
   app.get("/api/charge-plugin-configs", requireAuth, requireComponent("ledger"), requireAccess('admin'), async (req, res) => {

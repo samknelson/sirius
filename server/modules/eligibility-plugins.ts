@@ -1,10 +1,8 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 import { requireAccess } from "../services/access-policy-evaluator";
-import { 
-  getAllEligibilityPlugins, 
+import {
   getEligibilityPlugin,
-  eligibilityPluginRegistry,
 } from "../plugins/trust/eligibility/registry";
 import {
   evaluateBenefitEligibility,
@@ -13,7 +11,6 @@ import {
 } from "../plugins/trust/eligibility/executor";
 import type { EligibilityRule } from "../plugins/trust/eligibility/types";
 import { z } from "zod";
-import { getEnabledComponentIds } from "./components";
 
 const evaluateEligibilitySchema = z.object({
   benefitId: z.string().uuid(),
@@ -36,62 +33,11 @@ export function registerEligibilityPluginRoutes(
   requirePermission: (permission: string) => (req: Request, res: Response, next: NextFunction) => void
 ) {
   
-  app.get("/api/eligibility-plugins", requireAuth, requireAccess('admin'), async (req, res) => {
-    try {
-      const enabledComponents = await getEnabledComponentIds();
-      const registeredPlugins = eligibilityPluginRegistry.getAllFiltered(enabledComponents);
-      
-      const plugins = registeredPlugins.map(p => ({
-        id: p.metadata.id,
-        name: p.metadata.name,
-        description: p.metadata.description,
-        configSchema: p.metadata.configSchema,
-      }));
-      
-      plugins.sort((a, b) => a.id.localeCompare(b.id));
-
-      // Plugin availability changes whenever a plugin is registered/removed
-      // or its required component is toggled. Disable HTTP caching so any
-      // client that bypasses the React Query layer (curl, other pages,
-      // proxies) always sees a fresh list.
-      res.setHeader("Cache-Control", "no-store");
-      res.json(plugins);
-    } catch (error) {
-      console.error("Failed to fetch eligibility plugins:", error);
-      res.status(500).json({ message: "Failed to fetch eligibility plugins" });
-    }
-  });
-
-  app.get("/api/eligibility-plugins/:id", requireAuth, requireAccess('admin'), async (req, res) => {
-    try {
-      const { id } = req.params;
-      const plugin = getEligibilityPlugin(id);
-      
-      if (!plugin) {
-        return res.status(404).json({ message: "Eligibility plugin not found" });
-      }
-
-      const enabledComponents = await getEnabledComponentIds();
-      const isEnabled = eligibilityPluginRegistry.isPluginEnabled(id, enabledComponents);
-      
-      if (!isEnabled) {
-        return res.status(404).json({ 
-          message: "Eligibility plugin not available",
-          reason: "Required component is disabled"
-        });
-      }
-      
-      res.json({
-        id: plugin.metadata.id,
-        name: plugin.metadata.name,
-        description: plugin.metadata.description,
-        configSchema: plugin.metadata.configSchema,
-      });
-    } catch (error) {
-      console.error("Failed to fetch eligibility plugin:", error);
-      res.status(500).json({ message: "Failed to fetch eligibility plugin" });
-    }
-  });
+  // NOTE: GET /api/eligibility-plugins and GET /api/eligibility-plugins/:id
+  // were removed in Task #208. The trust eligibility plugin manifest is
+  // now served by the unified endpoint at
+  // GET /api/plugins/trust-eligibility/manifest. Per-plugin detail lookups
+  // simply read the matching entry from that manifest on the client.
 
   app.post("/api/eligibility/evaluate", requireAuth, requireAccess('admin'), async (req, res) => {
     try {

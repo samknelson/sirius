@@ -336,21 +336,9 @@ export function registerDispatchJobsRoutes(
     },
   );
 
-  app.get(
-    "/api/dispatch-eligibility-plugins",
-    dispatchComponent,
-    requireAccess("admin"),
-    async (req, res) => {
-      try {
-        const plugins = dispatchEligPluginRegistry.getAllPluginsMetadata();
-        res.json(plugins);
-      } catch (error) {
-        res
-          .status(500)
-          .json({ message: "Failed to fetch eligibility plugins" });
-      }
-    },
-  );
+  // NOTE: GET /api/dispatch-eligibility-plugins was removed in Task #208.
+  // The dispatch eligibility plugin manifest is now served by the unified
+  // endpoint at GET /api/plugins/dispatch-eligibility/manifest.
 
   app.post(
     "/api/admin/dispatch-elig-plugins/:pluginId/backfill",

@@ -54,7 +54,7 @@ export interface DashboardPlugin {
   name: string;
   description: string;
   /** Component gating - if set, plugin is only enabled when this component is on. */
-  componentId?: string;
+  requiredComponent?: string;
   /** Policy gating - if set, the user must satisfy this policy on /content. */
   requiredPolicy?: string;
   /** JSON Schema for plugin settings. May be sync or async (e.g. dynamic, role-based). */

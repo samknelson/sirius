@@ -13,54 +13,12 @@ export function registerDashboardRoutes(
   requireAuth: AuthMiddleware,
   _requirePermission: PermissionMiddleware,
 ) {
-  // Plugin manifest for the dashboard / config UIs. Returns the declarative
-  // metadata for every plugin that has a `client` block. Gating is *not*
-  // evaluated here — the client filters on requiredPermissions / requiredPolicy
-  // / requiredComponent as UI hints, and /content remains the authoritative
-  // enforcement point (mirrors Task #195's wizard framework stance).
-  app.get("/api/dashboard-plugins/manifest", requireAuth, async (_req, res) => {
-    try {
-      const allVariables = await storage.variables.getAll();
-      const enabledByVar = new Map<string, boolean>();
-      for (const v of allVariables) {
-        if (v.name.startsWith("dashboard_plugin_") && !v.name.endsWith("_settings")) {
-          enabledByVar.set(v.name.replace("dashboard_plugin_", ""), v.value as boolean);
-        }
-      }
-
-      const entries = dashboardPluginRegistry
-        .getAll()
-        .filter((p) => !!p.client)
-        .map((p) => {
-          const client = p.client!;
-          const variableValue = enabledByVar.get(p.id);
-          const enabled =
-            variableValue !== undefined
-              ? variableValue
-              : client.enabledByDefault !== false;
-          return {
-            id: p.id,
-            name: p.name,
-            description: p.description,
-            componentId: client.component,
-            componentProps: client.componentProps ?? null,
-            order: client.order,
-            fullWidth: client.fullWidth === true,
-            requiredPermissions: client.requiredPermissions ?? [],
-            requiredPolicy: p.requiredPolicy,
-            requiredComponent: p.componentId,
-            hasSettings: !!p.settingsSchema,
-            enabledByDefault: client.enabledByDefault !== false,
-            enabled,
-          };
-        })
-        .sort((a, b) => a.order - b.order);
-
-      res.json(entries);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch plugin manifest" });
-    }
-  });
+  // NOTE: The dashboard manifest endpoint was unified in Task #208 and
+  // now lives at `GET /api/plugins/dashboard/manifest` (see
+  // `server/modules/plugins-manifest.ts`). The four legacy plugin
+  // manifest endpoints — dashboard, dispatch eligibility, charge,
+  // trust eligibility — were removed in the same task; all callers
+  // were ported to the unified URL.
 
   // List enabled flags for all plugin configs (per-plugin enable/disable toggle).
   app.get("/api/dashboard-plugins/config", requireAuth, async (_req, res) => {
@@ -100,8 +58,6 @@ export function registerDashboardRoutes(
     }
   });
 
-  // GET /api/dashboard-plugins/:pluginId/settings - Returns { schema, uiSchema, value }
-  // for the generic settings UI.
   app.get("/api/dashboard-plugins/:pluginId/settings", requireAccess("admin"), async (req, res) => {
     try {
       const plugin = dashboardPluginRegistry.get(req.params.pluginId);
@@ -122,8 +78,6 @@ export function registerDashboardRoutes(
     }
   });
 
-  // PUT /api/dashboard-plugins/:pluginId/settings - Validate via the plugin's JSON Schema
-  // (AJV) and persist.
   app.put("/api/dashboard-plugins/:pluginId/settings", requireAccess("admin"), async (req, res) => {
     try {
       const plugin = dashboardPluginRegistry.get(req.params.pluginId);
@@ -143,9 +97,9 @@ export function registerDashboardRoutes(
     }
   });
 
-  // Single registry-backed content handler. Serves both /content (no action) and
-  // /content/:action by deferring to dashboardPluginRegistry.runContent. Component
-  // and access-policy gating live on the plugin manifest itself.
+  // Single registry-backed content handler. Component + access-policy
+  // gating is enforced inside dashboardPluginRegistry.runContent via the
+  // shared `enforcePluginGating` helper.
   const contentHandler = async (req: Request, res: Response) => {
     try {
       const plugin = dashboardPluginRegistry.get(req.params.pluginId);

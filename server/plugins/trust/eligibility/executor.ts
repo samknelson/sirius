@@ -205,7 +205,7 @@ export async function evaluateEligibilityRules(
 
     const isPluginEnabled = eligibilityPluginRegistry.isPluginEnabled(rule.pluginKey, enabledComponents);
     if (!isPluginEnabled) {
-      const componentId = plugin.metadata.requiresComponent || 'unknown';
+      const componentId = plugin.metadata.requiredComponent || 'unknown';
       logger.warn(`Eligibility plugin disabled: ${rule.pluginKey} (requires component: ${componentId})`, {
         service: 'eligibility-executor',
       });
@@ -283,7 +283,7 @@ export async function evaluateBenefitEligibility(
 
     const isPluginEnabled = eligibilityPluginRegistry.isPluginEnabled(rule.pluginKey, enabledComponents);
     if (!isPluginEnabled) {
-      const componentId = plugin.metadata.requiresComponent || 'unknown';
+      const componentId = plugin.metadata.requiredComponent || 'unknown';
       logger.warn(`Eligibility plugin disabled: ${rule.pluginKey} (requires component: ${componentId})`, {
         service: 'eligibility-executor',
       });

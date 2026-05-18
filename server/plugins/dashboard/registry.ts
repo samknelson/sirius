@@ -1,11 +1,11 @@
 import type { Request, Response } from "express";
 import { logger } from "../../logger";
 import { storage } from "../../storage";
-import { isComponentEnabled } from "../../modules/components";
-import { checkAccessInline } from "../../services/access-policy-evaluator";
 import { getEffectiveUser } from "../../modules/masquerade";
 import { validateAgainstSchema } from "../../lib/json-schema-validator";
 import type { JsonSchema } from "@shared/json-schema-form";
+import { PluginRegistry, enforcePluginGating } from "../_core";
+import type { BasePluginMetadata } from "../_core";
 import type {
   DashboardPlugin,
   DashboardContentContext,
@@ -15,22 +15,91 @@ import type {
 
 const SERVICE = "dashboard-plugin-registry";
 
-class DashboardPluginRegistry {
-  private plugins = new Map<string, DashboardPlugin>();
+/**
+ * Manifest entry shape for dashboard plugins. Matches the legacy
+ * `/api/dashboard-plugins/manifest` response shape so the dashboard /
+ * config UIs need no payload changes — only the URL changes.
+ */
+export interface DashboardManifestEntry {
+  id: string;
+  name: string;
+  description: string;
+  componentId: string;
+  componentProps: Record<string, unknown> | null;
+  order: number;
+  fullWidth: boolean;
+  requiredPermissions: string[];
+  requiredPolicy?: string;
+  requiredComponent?: string;
+  hasSettings: boolean;
+  enabledByDefault: boolean;
+  enabled: boolean;
+  hidden?: boolean;
+}
 
-  register(plugin: DashboardPlugin): void {
-    if (this.plugins.has(plugin.id)) {
-      logger.warn(`Dashboard plugin ${plugin.id} already registered, overwriting`, { service: SERVICE });
-    }
-    this.plugins.set(plugin.id, plugin);
+function pluginToMetadata(p: DashboardPlugin): BasePluginMetadata {
+  return {
+    id: p.id,
+    name: p.name,
+    description: p.description,
+    requiredComponent: p.requiredComponent,
+    requiredPolicy: p.requiredPolicy,
+    hidden: !p.client, // headless plugins never appear on the manifest
+  };
+}
+
+function pluginToManifestEntry(p: DashboardPlugin): DashboardManifestEntry {
+  const client = p.client;
+  if (!client) {
+    // Headless plugins are filtered out by `hidden: true` from
+    // pluginToMetadata, but TS still needs a value. Return a stub.
+    return {
+      id: p.id,
+      name: p.name,
+      description: p.description,
+      componentId: "",
+      componentProps: null,
+      order: 0,
+      fullWidth: false,
+      requiredPermissions: [],
+      requiredPolicy: p.requiredPolicy,
+      requiredComponent: p.requiredComponent,
+      hasSettings: !!p.settingsSchema,
+      enabledByDefault: false,
+      enabled: false,
+      hidden: true,
+    };
+  }
+  return {
+    id: p.id,
+    name: p.name,
+    description: p.description,
+    componentId: client.component,
+    componentProps: client.componentProps ?? null,
+    order: client.order,
+    fullWidth: client.fullWidth === true,
+    requiredPermissions: client.requiredPermissions ?? [],
+    requiredPolicy: p.requiredPolicy,
+    requiredComponent: p.requiredComponent,
+    hasSettings: !!p.settingsSchema,
+    enabledByDefault: client.enabledByDefault !== false,
+    enabled: client.enabledByDefault !== false, // overridden in decorateEntries
+  };
+}
+
+class DashboardPluginRegistry extends PluginRegistry<DashboardPlugin, DashboardManifestEntry> {
+  constructor() {
+    super({
+      kind: "dashboard",
+      getMetadata: pluginToMetadata,
+      toManifestEntry: pluginToManifestEntry,
+      allowOverwrite: true,
+    });
   }
 
-  get(id: string): DashboardPlugin | undefined {
-    return this.plugins.get(id);
-  }
-
+  // Backwards-compatible aliases for legacy call sites.
   getAll(): DashboardPlugin[] {
-    return Array.from(this.plugins.values());
+    return this.list();
   }
 
   variableName(pluginId: string): string {
@@ -66,7 +135,7 @@ class DashboardPluginRegistry {
   }
 
   async runLegacyMigrations(): Promise<void> {
-    for (const plugin of this.plugins.values()) {
+    for (const plugin of this.list()) {
       if (!plugin.migrateLegacySettings) continue;
       try {
         const existing = await storage.variables.getByName(this.variableName(plugin.id));
@@ -85,25 +154,11 @@ class DashboardPluginRegistry {
     }
   }
 
-  async checkGating(
-    plugin: DashboardPlugin,
-    req: Request,
-  ): Promise<{ ok: true } | { ok: false; status: number; message: string }> {
-    if (plugin.componentId) {
-      const enabled = await isComponentEnabled(plugin.componentId);
-      if (!enabled) {
-        return { ok: false, status: 403, message: `Component '${plugin.componentId}' not enabled` };
-      }
-    }
-    if (plugin.requiredPolicy) {
-      const result = await checkAccessInline(req, plugin.requiredPolicy);
-      if (!result.granted) {
-        return { ok: false, status: 403, message: result.reason || "Access denied" };
-      }
-    }
-    return { ok: true };
-  }
-
+  /**
+   * Dashboard `/content` front-door. Authoritative enforcement point for
+   * component + access-policy gating, expressed via the shared helpers
+   * in `server/plugins/_core/gating.ts`.
+   */
   async runContent(
     plugin: DashboardPlugin,
     action: string | undefined,
@@ -135,7 +190,7 @@ class DashboardPluginRegistry {
       }
     }
 
-    const gating = await this.checkGating(plugin, req);
+    const gating = await enforcePluginGating(pluginToMetadata(plugin), req);
     if (!gating.ok) {
       res.status(gating.status).json({ message: gating.message });
       return;

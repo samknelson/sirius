@@ -17,7 +17,7 @@ export const dispatchSkillPlugin: DispatchEligPlugin = {
   id: "dispatch_skill",
   name: "Required Skills",
   description: "Filters workers based on required skills for the job",
-  componentId: "worker.skills",
+  requiredComponent: "worker.skills",
   backfill: () => backfillDispatchSkillEligibility(),
 
   eventHandlers: [

@@ -1,3 +1,4 @@
+import { pluginManifestQueryKey } from "@/plugins/_core";
 import { useParams, Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { usePageTitle } from "@/contexts/PageTitleContext";
@@ -24,7 +25,7 @@ export default function ChargePluginFormPage() {
   const { pluginId } = useParams<{ pluginId: string }>();
 
   const { data: plugins = [], isLoading } = useQuery<ChargePluginMetadata[]>({
-    queryKey: ["/api/charge-plugins"],
+    queryKey: pluginManifestQueryKey("charge"),
   });
 
   const plugin = plugins.find(p => p.id === pluginId);

@@ -14,7 +14,7 @@ export const dispatchSingleshiftPlugin: DispatchEligPlugin = {
   id: "dispatch_singleshift",
   name: "Single Shift Dispatch",
   description: "Prevents a worker from accepting two dispatches that start on the same date",
-  componentId: COMPONENT_ID,
+  requiredComponent: COMPONENT_ID,
   backfill: () => backfillDispatchSingleshiftEligibility(),
   backfillOrder: 10,
 

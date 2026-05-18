@@ -1,3 +1,4 @@
+import { pluginManifestQueryKey } from "@/plugins/_core";
 import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, useEffect } from "react";
@@ -36,7 +37,7 @@ export default function PluginSettingsPage() {
   const { toast } = useToast();
 
   const { data: manifest = [], isLoading: manifestLoading } = useQuery<PluginManifestEntry[]>({
-    queryKey: ["/api/dashboard-plugins/manifest"],
+    queryKey: pluginManifestQueryKey("dashboard"),
   });
 
   const plugin = pluginId ? manifest.find((p) => p.id === pluginId) : undefined;
@@ -62,7 +63,7 @@ export default function PluginSettingsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard-plugins", pluginId, "settings"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard-plugins/manifest"] });
+      queryClient.invalidateQueries({ queryKey: pluginManifestQueryKey("dashboard") });
       toast({ title: "Settings Saved", description: `${plugin?.name ?? "Plugin"} settings have been updated.` });
     },
     onError: (err: any) => {

@@ -1,4 +1,5 @@
 import { logger } from "../../../logger";
+import { registerPluginKind } from "../../_core";
 import { dispatchEligPluginRegistry } from "./registry";
 import { dispatchBanPlugin } from "./plugins/ban";
 import { dispatchDncPlugin } from "./plugins/dnc";
@@ -28,8 +29,24 @@ export function registerDispatchEligPlugins(): void {
   });
 }
 
+let kindRegistered = false;
+function registerDispatchEligKind(): void {
+  if (kindRegistered) return;
+  registerPluginKind({
+    kind: "dispatch-eligibility",
+    registry: dispatchEligPluginRegistry,
+    // Mirror legacy auth on /api/dispatch-eligibility-plugins:
+    // requireComponent("dispatch") + requireAccess("admin").
+    requiredComponent: "dispatch",
+    requiredPolicy: "admin",
+    sortEntries: (a, b) => a.id.localeCompare(b.id),
+  });
+  kindRegistered = true;
+}
+
 export async function initializeDispatchEligSystem(): Promise<void> {
   registerDispatchEligPlugins();
+  registerDispatchEligKind();
 
   const plugins = dispatchEligPluginRegistry.getAllPlugins()
     .filter(p => p.backfill)

@@ -1,3 +1,4 @@
+import { pluginManifestQueryKey } from "@/plugins/_core";
 import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { customizeValidator } from "@rjsf/validator-ajv8";
@@ -404,7 +405,7 @@ function PolicyBenefitsContent() {
   });
 
   const { data: plugins = [] } = useQuery<EligibilityPlugin[]>({
-    queryKey: ["/api/eligibility-plugins"],
+    queryKey: pluginManifestQueryKey("trust-eligibility"),
     // The default queryClient has staleTime: Infinity, which would let an
     // out-of-date plugin list (e.g. cached before a new plugin was added on
     // the server) stick around for the entire session. Force a refetch on

@@ -305,6 +305,13 @@ server.listen({
   await initializeDashboardPluginSystem();
   logger.info("Dashboard plugin system initialized", { source: "startup" });
 
+  // Register charge + trust eligibility kinds with the unified
+  // /api/plugins/:kind/manifest endpoint (Task #208).
+  const { registerChargePluginKind } = await import("./plugins/ledger/charge");
+  const { registerTrustEligibilityKind } = await import("./plugins/trust/eligibility");
+  registerChargePluginKind();
+  registerTrustEligibilityKind();
+
   // Initialize worker ban notifications
   initWorkerBanNotifications();
   logger.info("Worker ban notifications initialized", { source: "startup" });

@@ -1,3 +1,4 @@
+import { pluginManifestQueryKey } from "@/plugins/_core";
 import { useState, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { usePageTitle } from "@/contexts/PageTitleContext";
@@ -32,7 +33,7 @@ export default function DashboardPluginsConfigPage() {
   const queryClient = useQueryClient();
 
   const { data: manifest = [], isLoading } = useQuery<PluginManifestEntry[]>({
-    queryKey: ["/api/dashboard-plugins/manifest"],
+    queryKey: pluginManifestQueryKey("dashboard"),
   });
 
   const [localStates, setLocalStates] = useState<Record<string, boolean>>({});
@@ -50,7 +51,7 @@ export default function DashboardPluginsConfigPage() {
       return apiRequest("PUT", `/api/dashboard-plugins/config/${pluginId}`, { enabled });
     },
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard-plugins/manifest"] });
+      queryClient.invalidateQueries({ queryKey: pluginManifestQueryKey("dashboard") });
       toast({
         title: "Plugin Updated",
         description: `Plugin ${variables.enabled ? "enabled" : "disabled"} successfully.`,

@@ -1,3 +1,4 @@
+import { pluginManifestQueryKey } from "@/plugins/_core";
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { usePageTitle } from "@/contexts/PageTitleContext";
@@ -88,7 +89,7 @@ export default function DispatchJobTypesPage() {
   });
   
   const { data: eligibilityPlugins = [] } = useQuery<EligibilityPluginMetadata[]>({
-    queryKey: ["/api/dispatch-eligibility-plugins"],
+    queryKey: pluginManifestQueryKey("dispatch-eligibility"),
   });
 
   const addForm = useForm<InsertDispatchJobType>({

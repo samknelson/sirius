@@ -1,6 +1,8 @@
 import { logger } from "../../../logger";
 import { isComponentEnabledSync, isCacheInitialized } from "../../../services/component-cache";
 import { eventBus, EventType } from "../../../services/event-bus";
+import { PluginRegistry } from "../../_core";
+import type { BasePluginMetadata } from "../../_core";
 import type { EligibilityPluginMetadata, EligibilityPluginConfig } from "@shared/schema";
 import type { JsonSchema } from "@shared/json-schema-form";
 
@@ -9,68 +11,26 @@ import type { JsonSchema } from "@shared/json-schema-form";
  * Each condition specifies how to check the worker_dispatch_elig_denorm table.
  */
 export interface EligibilityCondition {
-  /** The category to check in the denorm table */
   category: string;
-  /** 
-   * The type of check to perform:
-   * - "exists": Worker must have a row with this category and value
-   * - "not_exists": Worker must NOT have a row with this category and value
-   * - "exists_or_none": Worker must either have no rows with this category, OR have one matching the value
-   * - "not_exists_category": Worker must NOT have ANY row with this category (value is ignored in query but used for documentation)
-   * - "exists_all": Worker must have rows with this category for ALL values in the array
-   * - "not_exists_unless_exists": Worker must NOT have a row with this category+value, UNLESS they have a row with unlessCategory+unlessValue.
-   *   This allows a blocking condition to be overridden by a separate "exemption" entry.
-   *   Example: singleshift blocks workers with an accepted dispatch on the same date, but exempts the worker if they already accepted THIS specific job.
-   */
   type: "exists" | "not_exists" | "exists_or_none" | "not_exists_category" | "exists_all" | "not_exists_unless_exists";
-  /** The value to check. Can be a static value or derived from job context. For not_exists_category, this is informational only. For exists_all, this is a comma-separated list of values. */
   value: string;
-  /** For exists_all: array of values that must all exist. */
   values?: string[];
-  /** For not_exists_unless_exists: the category that provides the exemption override */
   unlessCategory?: string;
-  /** For not_exists_unless_exists: the value in the unless category that grants exemption */
   unlessValue?: string;
 }
 
-/**
- * Context provided to plugins when building eligibility conditions.
- * Contains information about the job being queried.
- */
 export interface EligibilityQueryContext {
   jobId: string;
   employerId: string;
   jobTypeId: string | null;
 }
 
-/**
- * Base interface for event payloads that can trigger eligibility recomputation.
- * All eligible event types must include a workerId field.
- */
 export interface WorkerEventPayload {
   workerId: string;
 }
 
-/**
- * Describes an event handler that a plugin wants to subscribe to.
- * The handler will be called when the specified event is emitted.
- * 
- * IMPORTANT: Only subscribe to events whose payloads include a `workerId` field.
- * The registry validates this at runtime and will log errors for invalid payloads.
- * 
- * Supported events:
- * - DISPATCH_DNC_SAVED
- * - DISPATCH_HFE_SAVED
- * - DISPATCH_STATUS_SAVED
- * - WORKER_BAN_SAVED
- */
 export interface PluginEventHandler {
-  /** The event type to listen for. Must be an event with a workerId in its payload. */
   event: EventType;
-  /** 
-   * Handler function that receives the event payload and returns the worker ID to recompute.
-   * The payload is guaranteed to have a workerId field at runtime.
-   */
   getWorkerId: (payload: WorkerEventPayload) => string;
 }
 
@@ -78,43 +38,62 @@ export interface DispatchEligPlugin {
   id: string;
   name: string;
   description: string;
-  componentId?: string;
-  /** If true, this plugin is hidden from the job type configuration UI. Useful for infrastructure plugins that maintain denorm data but don't contribute conditions. */
+  /** Canonical component-gate field (renamed from `componentId` in Task #208). */
+  requiredComponent?: string;
+  /** Hide from the job-type-config UI (infrastructure plugins). */
   hidden?: boolean;
-  /** Optional event handlers this plugin wants to subscribe to */
   eventHandlers?: PluginEventHandler[];
-  /** Optional JSON Schema describing per-job-type configuration. */
   configSchema?: JsonSchema;
   recomputeWorker(workerId: string): Promise<void>;
-  /**
-   * Returns the eligibility condition(s) this plugin contributes to the query.
-   * Called when building the eligible workers query for a job.
-   * @param context - Information about the job being queried
-   * @param config - Per-plugin configuration from the job type
-   * @returns The condition(s) to add to the query, or null if no condition needed.
-   *          Can return a single condition or an array of conditions (all ANDed together).
-   */
-  getEligibilityCondition(context: EligibilityQueryContext, config: EligibilityPluginConfig["config"]): EligibilityCondition | EligibilityCondition[] | null | Promise<EligibilityCondition | EligibilityCondition[] | null>;
+  getEligibilityCondition(
+    context: EligibilityQueryContext,
+    config: EligibilityPluginConfig["config"],
+  ): EligibilityCondition | EligibilityCondition[] | null | Promise<EligibilityCondition | EligibilityCondition[] | null>;
   backfill?(): Promise<{ workersProcessed: number; entriesCreated: number }>;
   backfillOrder?: number;
 }
 
-class DispatchEligPluginRegistry {
-  private plugins = new Map<string, DispatchEligPlugin>();
+function pluginToMetadata(p: DispatchEligPlugin): BasePluginMetadata {
+  return {
+    id: p.id,
+    name: p.name,
+    description: p.description,
+    requiredComponent: p.requiredComponent,
+    hidden: p.hidden,
+  };
+}
+
+function pluginToManifestEntry(p: DispatchEligPlugin): EligibilityPluginMetadata {
+  return {
+    id: p.id,
+    name: p.name,
+    description: p.description,
+    componentId: p.requiredComponent ?? "",
+    componentEnabled: !p.requiredComponent || isComponentEnabledSync(p.requiredComponent),
+    configSchema: p.configSchema,
+  };
+}
+
+class DispatchEligPluginRegistry extends PluginRegistry<DispatchEligPlugin, EligibilityPluginMetadata> {
   private subscribedHandlerIds = new Map<string, string[]>();
 
+  constructor() {
+    super({
+      kind: "dispatch-eligibility",
+      getMetadata: pluginToMetadata,
+      toManifestEntry: pluginToManifestEntry,
+      allowOverwrite: true,
+    });
+  }
+
   register(plugin: DispatchEligPlugin): void {
-    if (this.plugins.has(plugin.id)) {
-      logger.warn(`Dispatch eligibility plugin ${plugin.id} already registered, overwriting`, {
-        service: "dispatch-elig-registry",
-      });
+    if (this.has(plugin.id)) {
       this.unsubscribePluginHandlers(plugin.id);
     }
-    this.plugins.set(plugin.id, plugin);
+    super.register(plugin);
     logger.info(`Dispatch eligibility plugin registered: ${plugin.id}`, {
       service: "dispatch-elig-registry",
     });
-
     if (plugin.eventHandlers && plugin.eventHandlers.length > 0) {
       this.subscribePluginHandlers(plugin);
     }
@@ -122,9 +101,7 @@ class DispatchEligPluginRegistry {
 
   private subscribePluginHandlers(plugin: DispatchEligPlugin): void {
     if (!plugin.eventHandlers) return;
-
     const handlerIds: string[] = [];
-
     for (const eventHandler of plugin.eventHandlers) {
       const handlerId = eventBus.on(eventHandler.event, async (payload) => {
         if (!isCacheInitialized()) {
@@ -134,16 +111,13 @@ class DispatchEligPluginRegistry {
           });
           return;
         }
-
-        if (plugin.componentId && !isComponentEnabledSync(plugin.componentId)) {
-          logger.debug(`${plugin.componentId} component not enabled, skipping recompute`, {
+        if (plugin.requiredComponent && !isComponentEnabledSync(plugin.requiredComponent)) {
+          logger.debug(`${plugin.requiredComponent} component not enabled, skipping recompute`, {
             service: "dispatch-elig-registry",
             pluginId: plugin.id,
           });
           return;
         }
-
-        // Runtime validation: ensure payload contains workerId
         if (!payload || typeof payload !== "object" || !("workerId" in payload)) {
           logger.error(`Event payload missing workerId for plugin ${plugin.id}`, {
             service: "dispatch-elig-registry",
@@ -152,7 +126,6 @@ class DispatchEligPluginRegistry {
           });
           return;
         }
-
         try {
           const workerId = eventHandler.getWorkerId(payload as WorkerEventPayload);
           if (!workerId || typeof workerId !== "string") {
@@ -174,13 +147,7 @@ class DispatchEligPluginRegistry {
       });
       handlerIds.push(handlerId);
     }
-
     this.subscribedHandlerIds.set(plugin.id, handlerIds);
-    logger.debug(`Subscribed ${handlerIds.length} event handler(s) for plugin ${plugin.id}`, {
-      service: "dispatch-elig-registry",
-      pluginId: plugin.id,
-      handlerCount: handlerIds.length,
-    });
   }
 
   private unsubscribePluginHandlers(pluginId: string): void {
@@ -190,43 +157,34 @@ class DispatchEligPluginRegistry {
         eventBus.off(handlerId);
       }
       this.subscribedHandlerIds.delete(pluginId);
-      logger.debug(`Unsubscribed ${handlerIds.length} event handler(s) for plugin ${pluginId}`, {
-        service: "dispatch-elig-registry",
-        pluginId,
-      });
     }
   }
 
-  unregister(pluginId: string): boolean {
-    this.unsubscribePluginHandlers(pluginId);
-    const removed = this.plugins.delete(pluginId);
-    if (removed) {
-      logger.info(`Dispatch eligibility plugin unregistered: ${pluginId}`, {
-        service: "dispatch-elig-registry",
-      });
-    }
-    return removed;
-  }
-
+  // Backwards-compatible aliases for legacy call sites.
   getPlugin(pluginId: string): DispatchEligPlugin | undefined {
-    return this.plugins.get(pluginId);
+    return this.get(pluginId);
   }
 
   getEnabledPlugins(): DispatchEligPlugin[] {
-    const enabledPlugins: DispatchEligPlugin[] = [];
-    const allPlugins = Array.from(this.plugins.values());
-    for (const plugin of allPlugins) {
-      const enabled = !plugin.componentId || isComponentEnabledSync(plugin.componentId);
-      if (enabled) {
-        enabledPlugins.push(plugin);
-      }
-    }
-    return enabledPlugins;
+    return this.listEnabledSync();
+  }
+
+  getAllPlugins(): DispatchEligPlugin[] {
+    return this.list();
+  }
+
+  getAllPluginIds(): string[] {
+    return this.listIds();
+  }
+
+  getAllPluginsMetadata(): EligibilityPluginMetadata[] {
+    return this.list()
+      .filter((p) => !p.hidden)
+      .map((p) => this.toManifestEntry(p));
   }
 
   async recomputeWorkerForAllPlugins(workerId: string): Promise<void> {
-    const enabledPlugins = this.getEnabledPlugins();
-    for (const plugin of enabledPlugins) {
+    for (const plugin of this.getEnabledPlugins()) {
       try {
         await plugin.recomputeWorker(workerId);
       } catch (error) {
@@ -238,27 +196,6 @@ class DispatchEligPluginRegistry {
         });
       }
     }
-  }
-
-  getAllPluginIds(): string[] {
-    return Array.from(this.plugins.keys());
-  }
-
-  getAllPlugins(): DispatchEligPlugin[] {
-    return Array.from(this.plugins.values());
-  }
-
-  getAllPluginsMetadata(): EligibilityPluginMetadata[] {
-    return Array.from(this.plugins.values())
-      .filter(plugin => !plugin.hidden)
-      .map(plugin => ({
-        id: plugin.id,
-        name: plugin.name,
-        description: plugin.description,
-        componentId: plugin.componentId ?? "",
-        componentEnabled: !plugin.componentId || isComponentEnabledSync(plugin.componentId),
-        configSchema: plugin.configSchema,
-      }));
   }
 }
 

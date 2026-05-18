@@ -317,6 +317,11 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Register dashboard routes
   registerDashboardRoutes(app, requireAuth, requirePermission);
 
+  // Unified plugin manifest endpoint (Task #208) — replaces the four
+  // legacy per-kind manifest URLs.
+  const { registerPluginsManifestRoutes } = await import("./modules/plugins-manifest");
+  registerPluginsManifestRoutes(app, requireAuth);
+
   // Register bookmark routes
   registerBookmarkRoutes(app, requireAuth, requirePermission);
 

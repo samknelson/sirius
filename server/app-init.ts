@@ -172,6 +172,14 @@ export async function startApp(app: Express, server: Server, onReady: () => void
   await initializeDashboardPluginSystem();
   logger.info("Dashboard plugin system initialized", { source: "startup" });
 
+  // Register charge + trust eligibility kinds with the unified
+  // /api/plugins/:kind/manifest endpoint (Task #208). Dashboard +
+  // dispatch eligibility register themselves inside their init fns above.
+  const { registerChargePluginKind } = await import("./plugins/ledger/charge");
+  const { registerTrustEligibilityKind } = await import("./plugins/trust/eligibility");
+  registerChargePluginKind();
+  registerTrustEligibilityKind();
+
   initWorkerBanNotifications();
   logger.info("Worker ban notifications initialized", { source: "startup" });
 

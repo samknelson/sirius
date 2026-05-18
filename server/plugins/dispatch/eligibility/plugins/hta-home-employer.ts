@@ -50,7 +50,7 @@ export const dispatchHtaHomeEmployerPlugin: DispatchEligPlugin = {
   id: "dispatch_hta_home_employer",
   name: "HTA Home Employer",
   description: "Prevents workers from being dispatched to their home employer",
-  componentId: COMPONENT_ID,
+  requiredComponent: COMPONENT_ID,
 
   async backfill(): Promise<{ workersProcessed: number; entriesCreated: number }> {
     if (!isCacheInitialized()) {

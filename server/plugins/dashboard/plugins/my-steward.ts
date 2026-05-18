@@ -4,7 +4,7 @@ export const myStewardPlugin: DashboardPlugin = {
   id: "my-steward",
   name: "My Steward",
   description: "Display stewards assigned to your home employer and bargaining unit",
-  componentId: "worker.steward",
+  requiredComponent: "worker.steward",
 
   async content(ctx) {
     const dbUser = ctx.dbUser;

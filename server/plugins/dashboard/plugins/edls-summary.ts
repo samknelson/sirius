@@ -5,7 +5,7 @@ export const edlsSummaryPlugin: DashboardPlugin = {
   name: "EDLS Daily Summary",
   description:
     "Worker assignment counts by member status and sheet status for a selected day",
-  componentId: "edls",
+  requiredComponent: "edls",
   requiredPolicy: "edls.coordinator",
 
   async content(ctx) {

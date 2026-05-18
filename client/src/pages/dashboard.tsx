@@ -1,3 +1,4 @@
+import { pluginManifestQueryKey } from "@/plugins/_core";
 import { Component, useMemo, type ErrorInfo, type ReactNode } from "react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Home, User, Building2, AlertCircle } from "lucide-react";
@@ -36,7 +37,7 @@ export default function Dashboard() {
   });
 
   const { data: manifest = [], isLoading: manifestLoading } = useQuery<PluginManifestEntry[]>({
-    queryKey: ["/api/dashboard-plugins/manifest"],
+    queryKey: pluginManifestQueryKey("dashboard"),
   });
 
   const policiesNeeded = useMemo(

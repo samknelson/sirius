@@ -1,3 +1,4 @@
+import { pluginManifestQueryKey } from "@/plugins/_core";
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { usePageTitle } from "@/contexts/PageTitleContext";
@@ -30,7 +31,7 @@ function DispatchJobTypePluginsContent() {
   const [selectedPlugin, setSelectedPlugin] = useState<EligibilityPluginMetadata | null>(null);
 
   const { data: eligibilityPlugins = [], isLoading: pluginsLoading } = useQuery<EligibilityPluginMetadata[]>({
-    queryKey: ["/api/dispatch-eligibility-plugins"],
+    queryKey: pluginManifestQueryKey("dispatch-eligibility"),
   });
 
   const saveEligibilityMutation = useMutation({

@@ -5,7 +5,7 @@ export const wmbScanStatusPlugin: DashboardPlugin = {
   name: "Benefits Scan Status",
   description:
     "Display running and upcoming monthly benefits scans with links to details",
-  componentId: "trust.benefits.scan",
+  requiredComponent: "trust.benefits.scan",
   requiredPolicy: "admin",
 
   async content(ctx) {

@@ -85,7 +85,7 @@ export interface EligibilityPluginMetadata {
   name: string;
   description: string;
   configSchema: JsonSchema;
-  requiresComponent?: string;
+  requiredComponent?: string;
 }
 
 export interface EligibilityRule {

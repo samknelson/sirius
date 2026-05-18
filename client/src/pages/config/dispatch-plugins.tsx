@@ -1,3 +1,4 @@
+import { pluginManifestQueryKey } from "@/plugins/_core";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import { useState } from "react";
@@ -16,7 +17,7 @@ export default function DispatchPluginsPage() {
   const [backfillingPlugin, setBackfillingPlugin] = useState<string | null>(null);
 
   const { data: plugins, isLoading } = useQuery<EligibilityPluginMetadata[]>({
-    queryKey: ["/api/dispatch-eligibility-plugins"],
+    queryKey: pluginManifestQueryKey("dispatch-eligibility"),
   });
 
   const backfillMutation = useMutation({

@@ -10,7 +10,7 @@ export const dispatchDncPlugin: DispatchEligPlugin = {
   id: "dispatch_dnc",
   name: "Do Not Call",
   description: "Excludes workers who have a Do Not Call entry for the job's employer",
-  componentId: "dispatch.dnc",
+  requiredComponent: "dispatch.dnc",
 
   eventHandlers: [
     {
