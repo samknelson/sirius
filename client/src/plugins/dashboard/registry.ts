@@ -27,6 +27,10 @@ for (const [path, mod] of Object.entries(modules)) {
   registry.set(`${namespace}:${file}`, component);
 }
 
+export function hasDashboardComponent(id: string): boolean {
+  return registry.has(id);
+}
+
 export function resolveDashboardComponent(
   id: string,
 ): ComponentType<DashboardPluginProps> {

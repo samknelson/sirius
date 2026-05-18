@@ -1,10 +1,13 @@
-import { useMemo } from "react";
+import { Component, useMemo, type ErrorInfo, type ReactNode } from "react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Home, User, Building2, AlertCircle } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { Role } from "@shared/schema";
-import { resolveDashboardComponent } from "@/plugins/dashboard/registry";
+import {
+  hasDashboardComponent,
+  resolveDashboardComponent,
+} from "@/plugins/dashboard/registry";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 
@@ -113,16 +116,32 @@ export default function Dashboard() {
   const gridPlugins = enabledPlugins.filter((p) => !p.fullWidth);
 
   const renderPlugin = (plugin: PluginManifestEntry) => {
+    if (!hasDashboardComponent(plugin.componentId)) {
+      return (
+        <MissingPluginCard
+          key={plugin.id}
+          pluginId={plugin.id}
+          pluginName={plugin.name}
+          componentId={plugin.componentId}
+        />
+      );
+    }
     const PluginComponent = resolveDashboardComponent(plugin.componentId);
     return (
-      <PluginComponent
+      <PluginErrorBoundary
         key={plugin.id}
-        userId={user?.id || ""}
-        userRoles={userRoles}
-        userPermissions={permissions}
-        enabledComponents={components}
-        componentProps={plugin.componentProps ?? undefined}
-      />
+        pluginId={plugin.id}
+        pluginName={plugin.name}
+        componentId={plugin.componentId}
+      >
+        <PluginComponent
+          userId={user?.id || ""}
+          userRoles={userRoles}
+          userPermissions={permissions}
+          enabledComponents={components}
+          componentProps={plugin.componentProps ?? undefined}
+        />
+      </PluginErrorBoundary>
     );
   };
 
@@ -200,4 +219,88 @@ export default function Dashboard() {
       </main>
     </div>
   );
+}
+
+interface MissingPluginCardProps {
+  pluginId: string;
+  pluginName: string;
+  componentId: string;
+}
+
+function MissingPluginCard({ pluginId, pluginName, componentId }: MissingPluginCardProps) {
+  return (
+    <Card data-testid={`card-plugin-unavailable-${pluginId}`}>
+      <CardHeader className="pb-2">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <AlertCircle className="h-4 w-4" />
+          {pluginName}
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <Alert>
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Widget unavailable</AlertTitle>
+          <AlertDescription>
+            Component <code className="font-mono text-xs">{componentId}</code> is
+            unavailable in this build. Plugin id:{" "}
+            <code className="font-mono text-xs">{pluginId}</code>.
+          </AlertDescription>
+        </Alert>
+      </CardContent>
+    </Card>
+  );
+}
+
+interface PluginErrorBoundaryProps {
+  pluginId: string;
+  pluginName: string;
+  componentId: string;
+  children: ReactNode;
+}
+
+interface PluginErrorBoundaryState {
+  error: Error | null;
+}
+
+class PluginErrorBoundary extends Component<PluginErrorBoundaryProps, PluginErrorBoundaryState> {
+  state: PluginErrorBoundaryState = { error: null };
+
+  static getDerivedStateFromError(error: Error): PluginErrorBoundaryState {
+    return { error };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error(
+      `Dashboard plugin "${this.props.pluginId}" (${this.props.componentId}) failed to render:`,
+      error,
+      info,
+    );
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <Card data-testid={`card-plugin-error-${this.props.pluginId}`}>
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <AlertCircle className="h-4 w-4" />
+              {this.props.pluginName}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>Widget failed to render</AlertTitle>
+              <AlertDescription>
+                Component <code className="font-mono text-xs">{this.props.componentId}</code>{" "}
+                threw an error. Plugin id:{" "}
+                <code className="font-mono text-xs">{this.props.pluginId}</code>.
+              </AlertDescription>
+            </Alert>
+          </CardContent>
+        </Card>
+      );
+    }
+    return this.props.children;
+  }
 }
