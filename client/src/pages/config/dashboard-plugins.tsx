@@ -51,7 +51,6 @@ export default function DashboardPluginsConfigPage() {
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard-plugins/manifest"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard-plugins/config"] });
       toast({
         title: "Plugin Updated",
         description: `Plugin ${variables.enabled ? "enabled" : "disabled"} successfully.`,

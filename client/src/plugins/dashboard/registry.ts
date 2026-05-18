@@ -42,6 +42,3 @@ export function resolveDashboardComponent(
   return component;
 }
 
-export function hasDashboardComponent(id: string): boolean {
-  return registry.has(id);
-}
