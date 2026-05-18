@@ -669,7 +669,7 @@ export const ledger = pgTable("ledger", {
   date: timestamp("date"),
   memo: text("memo"),
   data: jsonb("data"),
-  statementYmd: varchar("statement_ymd", { length: 10 }).notNull(),
+  statementYmd: date("statement_ymd").notNull(),
 }, (table) => ({
   uniqueChargePluginKey: unique().on(table.chargePlugin, table.chargePluginKey),
 }));
@@ -1192,7 +1192,7 @@ export const insertLedgerSchema = createInsertSchema(ledger, {
   id: true,
 }).extend({
   // statementYmd may be derived from `date` by the storage layer when omitted.
-  statementYmd: z.string().length(10).optional(),
+  statementYmd: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "statementYmd must be YYYY-MM-DD").optional(),
 });
 
 export type InsertLedger = z.infer<typeof insertLedgerSchema>;

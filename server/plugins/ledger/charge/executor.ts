@@ -7,6 +7,7 @@ import {
 } from "./types";
 import { getEnabledChargePluginsByTrigger } from "./registry";
 import { storage } from "../../../storage";
+import { dateToYmd } from "@shared/utils/date";
 
 export interface PluginExecutionSummary {
   pluginId: string;
@@ -188,7 +189,7 @@ async function createLedgerEntries(transactions: LedgerTransaction[]): Promise<v
         eaId: ea.id,
         referenceType: transaction.referenceType || "charge_plugin",
         referenceId: transaction.referenceId,
-        statementYmd: transaction.statementYmd || transaction.transactionDate.toISOString().split('T')[0],
+        statementYmd: transaction.statementYmd || dateToYmd(transaction.transactionDate),
         memo: transaction.memo !== undefined ? transaction.memo : transaction.description,
         data: transaction.metadata,
       });

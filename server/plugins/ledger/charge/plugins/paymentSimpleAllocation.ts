@@ -15,6 +15,7 @@ import { storage } from "../../../../storage";
 import { createUnifiedOptionsStorage } from "../../../../storage/unified-options";
 import type { Ledger, ChargePluginConfig } from "@shared/schema";
 import { getCurrency } from "@shared/currency";
+import { dateToYmd } from "@shared/utils/date";
 
 const unifiedOptionsStorage = createUnifiedOptionsStorage();
 
@@ -75,7 +76,7 @@ class PaymentSimpleAllocationPlugin extends ChargePlugin {
       description,
       memo: paymentContext.memo || null,
       transactionDate,
-      statementYmd: statementYmd || transactionDate.toISOString().split('T')[0],
+      statementYmd: statementYmd || dateToYmd(transactionDate),
       eaId: paymentContext.ledgerEaId,
       referenceType: "payment",
       referenceId: paymentContext.paymentId,

@@ -21,6 +21,7 @@ import { eq, and, desc, or, isNull, asc, sql as sqlRaw, sum, min, max, count, in
 import { alias as pgAlias } from "drizzle-orm/pg-core";
 import { defineLoggingConfig, withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
 import { formatAmount, getCurrency } from "@shared/currency";
+import { dateToYmd, ymdToDateForPicker, isValidYmd } from "@shared/utils/date";
 
 /**
  * Stub validator - add validation logic here when needed
@@ -907,7 +908,7 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
     async getMonthlyDeltasByEntityAndAccount(entityType: string, entityIds: string[], accountIds: string[], monthKeys: string[]): Promise<Array<{ entityId: string; ym: string; total: string }>> {
       if (entityIds.length === 0 || accountIds.length === 0 || monthKeys.length === 0) return [];
       const client = getClient();
-      const ymExpr = sqlRaw<string>`substring(${ledger.statementYmd}, 1, 7)`;
+      const ymExpr = sqlRaw<string>`to_char(${ledger.statementYmd}, 'YYYY-MM')`;
       const rows = await client
         .select({
           entityId: ledgerEa.entityId,
@@ -1296,9 +1297,8 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
         : insertEntry.date
           ? new Date(insertEntry.date)
           : new Date();
-      const statementYmd = insertEntry.statementYmd
-        ?? `${resolvedDate.getFullYear()}-${String(resolvedDate.getMonth() + 1).padStart(2, "0")}-${String(resolvedDate.getDate()).padStart(2, "0")}`;
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(statementYmd)) {
+      const statementYmd = insertEntry.statementYmd ?? dateToYmd(resolvedDate);
+      if (!isValidYmd(statementYmd)) {
         throw new Error("statementYmd must be in YYYY-MM-DD format");
       }
       const client = getClient();
@@ -1514,7 +1514,7 @@ function classifyEntriesForPeriod(
       const payInfo = paymentInfoMap.get(entry.referenceId);
       if (payInfo?.category !== 'adjustment') {
         const stmtYmd = entry.statementYmd;
-        const stmtDate = stmtYmd ? new Date(stmtYmd) : null;
+        const stmtDate = stmtYmd && isValidYmd(stmtYmd) ? ymdToDateForPicker(stmtYmd) : null;
         const entryInPeriod = stmtDate &&
           stmtDate.getMonth() + 1 === month &&
           stmtDate.getFullYear() === year;
@@ -1537,7 +1537,7 @@ function classifyEntriesForPeriod(
       if (!payInfo) continue;
 
       const stmtYmd = entry.statementYmd;
-      const stmtDate = stmtYmd ? new Date(stmtYmd) : null;
+      const stmtDate = stmtYmd && isValidYmd(stmtYmd) ? ymdToDateForPicker(stmtYmd) : null;
       const stmtMonth = stmtDate ? stmtDate.getMonth() + 1 : null;
       const stmtYear = stmtDate ? stmtDate.getFullYear() : null;
 
@@ -1573,8 +1573,8 @@ function buildInvoicesForEa(entries: SimpleLedgerEntry[]): Map<string, InvoiceBu
   const invoiceMap = new Map<string, InvoiceBucket>();
   
   const sortedEntries = [...entries].sort((a, b) => {
-    const aYmd = a.statementYmd || (a.date ? new Date(a.date).toISOString().split('T')[0] : null);
-    const bYmd = b.statementYmd || (b.date ? new Date(b.date).toISOString().split('T')[0] : null);
+    const aYmd = a.statementYmd || (a.date ? dateToYmd(new Date(a.date)) : null);
+    const bYmd = b.statementYmd || (b.date ? dateToYmd(new Date(b.date)) : null);
     if (!aYmd && !bYmd) return a.id.localeCompare(b.id);
     if (!aYmd) return 1;
     if (!bYmd) return -1;
@@ -1586,10 +1586,10 @@ function buildInvoicesForEa(entries: SimpleLedgerEntry[]): Map<string, InvoiceBu
   let runningBalanceCents = BigInt(0);
 
   for (const entry of sortedEntries) {
-    const ymd = entry.statementYmd || (entry.date ? new Date(entry.date).toISOString().split('T')[0] : null);
-    if (!ymd) continue;
+    const ymd = entry.statementYmd || (entry.date ? dateToYmd(new Date(entry.date)) : null);
+    if (!ymd || !isValidYmd(ymd)) continue;
 
-    const d = new Date(ymd);
+    const d = ymdToDateForPicker(ymd);
     const month = d.getMonth() + 1;
     const year = d.getFullYear();
     const key = `${year}-${month}`;
@@ -1766,7 +1766,7 @@ function createLedgerInvoiceStorage(): LedgerInvoiceStorage {
         if (entry.referenceType === 'payment' && entry.referenceId) {
           const payInfo = paymentInfoMap.get(entry.referenceId);
           const stmtYmd = entry.statementYmd;
-          const stmtDate = stmtYmd ? new Date(stmtYmd) : null;
+          const stmtDate = stmtYmd && isValidYmd(stmtYmd) ? ymdToDateForPicker(stmtYmd) : null;
           const sectionEntry: InvoiceSectionEntry = {
             ...entry,
             paymentTypeCategory: payInfo?.category ?? 'financial',
@@ -1798,7 +1798,7 @@ function createLedgerInvoiceStorage(): LedgerInvoiceStorage {
           if (!payInfo) continue;
 
           const stmtYmd = entry.statementYmd;
-          const stmtDate = stmtYmd ? new Date(stmtYmd) : null;
+          const stmtDate = stmtYmd && isValidYmd(stmtYmd) ? ymdToDateForPicker(stmtYmd) : null;
           const stmtMonth = stmtDate ? stmtDate.getMonth() + 1 : null;
           const stmtYear = stmtDate ? stmtDate.getFullYear() : null;
 

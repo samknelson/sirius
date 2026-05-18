@@ -18,6 +18,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Plus } from "lucide-react";
 import { type StatementSelection } from "@/components/ledger/StatementPicker";
 import { ParticipantAllocationBox, type ParticipantBoxState } from "@/components/ledger/ParticipantAllocationBox";
+import { isValidYmd, ymdToDateForPicker } from "@shared/utils/date";
 
 const EMPTY_PARTICIPANT_BOX: ParticipantBoxState = {
   eaId: "",
@@ -264,10 +265,9 @@ export function PaymentForm({
       for (const alloc of proposedAllocation) {
         const existing = grouped.get(alloc.eaId);
         const sel: StatementSelection | null = (() => {
-          if (!alloc.statementYmd) return null;
-          const [y, m] = alloc.statementYmd.split("-").map(Number);
-          if (!y || !m) return null;
-          return { month: m, year: y, amount: alloc.amount };
+          if (!alloc.statementYmd || !isValidYmd(alloc.statementYmd)) return null;
+          const d = ymdToDateForPicker(alloc.statementYmd);
+          return { month: d.getMonth() + 1, year: d.getFullYear(), amount: alloc.amount };
         })();
         if (existing) {
           existing.totalAmount += parseFloat(alloc.amount);
