@@ -10,6 +10,7 @@ import { myStewardPlugin } from "./plugins/my-steward";
 import { btuDuesStatusPlugin } from "./plugins/btu-dues-status";
 import { btuBuSummaryPlugin } from "./plugins/btu-bu-summary";
 import { edlsSummaryPlugin } from "./plugins/edls-summary";
+import { myShopsPlugin } from "./plugins/my-shops";
 
 export { dashboardPluginRegistry } from "./registry";
 export type * from "./types";
@@ -25,6 +26,7 @@ export function registerDashboardPlugins(): void {
   dashboardPluginRegistry.register(btuDuesStatusPlugin);
   dashboardPluginRegistry.register(btuBuSummaryPlugin);
   dashboardPluginRegistry.register(edlsSummaryPlugin);
+  dashboardPluginRegistry.register(myShopsPlugin);
   logger.info("Dashboard plugins registered", {
     service: "dashboard-plugins",
     plugins: dashboardPluginRegistry.getAll().map((p) => p.id),

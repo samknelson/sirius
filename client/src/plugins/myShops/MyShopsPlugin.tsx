@@ -38,7 +38,7 @@ export function MyShopsPlugin({ userPermissions }: DashboardPluginProps) {
   const hasAccess = userPermissions.includes("employer");
 
   const { data: shops, isLoading, error } = useQuery<ShopSummary[]>({
-    queryKey: ["/api/dashboard-plugins/my-shops"],
+    queryKey: ["/api/dashboard-plugins/my-shops/content"],
     enabled: hasAccess,
   });
 
