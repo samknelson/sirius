@@ -16,6 +16,8 @@ import { initDispatchSeniorityReset } from "./services/dispatch-seniority-reset"
 import { memberStatusScanHandler } from "./cron/jobs/memberStatusScan";
 import { loadComponentCache } from "./services/component-cache";
 import { syncComponentPermissions } from "./services/component-permissions";
+import { enforceStartupSchemaDrift } from "./services/schema-drift-check";
+import { runPendingComponentMigrationsAtStartup } from "./services/migration-runner";
 import { runMigrations } from "../scripts/migrate";
 import { initializeWebSocket } from "./services/websocket";
 import { getSession } from "./auth";
@@ -278,6 +280,18 @@ server.listen({
   // Load component cache
   await loadComponentCache();
   logger.info("Component cache initialized", { source: "startup" });
+
+  // Run any pending per-component migrations for components that are already
+  // enabled. Without this, a new component migration would never run for
+  // already-enabled components, and the startup drift gate below would refuse
+  // to boot. New components still run migrations via the enable flow.
+  await runPendingComponentMigrationsAtStartup();
+
+  // Refuse to boot if the live database has drifted from the expected schema
+  // (core + every enabled schema-managing component). See
+  // `server/services/schema-drift-check.ts` for the rationale and the
+  // SKIP_SCHEMA_DRIFT_CHECK=1 dev escape hatch.
+  await enforceStartupSchemaDrift();
 
   // Register permissions from enabled components
   syncComponentPermissions();

@@ -73,6 +73,23 @@ export interface ComponentSchemaState {
   lastSyncedAt: string;
   tables: ComponentTableState[];
   drift: ComponentSchemaDrift | null;
+  /**
+   * Highest per-component migration version that has been applied to this
+   * deployment. Missing/absent is treated as 0. This counter PERSISTS across
+   * component disable/enable cycles, so re-enabling a component whose tables
+   * were retained will not re-run migrations it has already applied.
+   *
+   * Per-component migrations live under
+   * `scripts/migrate/components/<component-id>/` and are registered via
+   * `registerComponentMigration(componentId, migration)`.
+   */
+  migrationVersion?: number;
+  /**
+   * Optional audit trail of applied per-component migrations. Each entry is
+   * appended after a successful `up()`. Older deployments will not have this
+   * field; downstream consumers must treat it as optional.
+   */
+  migrationsApplied?: { version: number; name: string; appliedAt: string }[];
 }
 
 // Central registry of all available components

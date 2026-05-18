@@ -2,7 +2,6 @@ import { getComponentById } from "../../shared/components";
 import { storage } from "../storage";
 import {
   tableExists,
-  tableHasRows,
   getTableColumnInfo,
   getTableConstraintInfo,
   getTableIndexInfo,
@@ -102,6 +101,12 @@ export async function pushComponentSchema(componentId: string): Promise<void> {
     }
 
     if (!exists) {
+      // First-time table creation from the Drizzle definition. This is the
+      // ONLY remaining write path in this module — schema changes to
+      // existing tables MUST be expressed as per-component migrations under
+      // `scripts/migrate/components/<componentId>/`. The previous additive
+      // ALTER path (auto-adding missing columns) has been intentionally
+      // retired; any drift on an existing table now throws.
       const statements = generateCreateStatements(tableSchema, tableName, allEnums, emittedEnumTypes);
       for (const stmt of statements) {
         if (stmt.kind === "create_type" && stmt.key) {
@@ -113,46 +118,8 @@ export async function pushComponentSchema(componentId: string): Promise<void> {
       }
       console.log(`Table ${tableName} created successfully.`);
     } else {
-      let report = await detectSchemaDrift(tableSchema, tableName);
-      const impliedConstraints = impliedAdditiveConstraintStrings(tableSchema, report.missingColumns);
-      const impliedSet = new Set(impliedConstraints);
-      const remainingConstraints = report.missingConstraints.filter((c) => !impliedSet.has(c));
-      const onlyAdditiveDrift =
-        report.missingColumns.length > 0 &&
-        report.typeMismatches.length === 0 &&
-        remainingConstraints.length === 0 &&
-        report.missingIndexes.length === 0;
-
-      if (onlyAdditiveDrift) {
-        const applyResult = await applyMissingColumns(
-          tableSchema,
-          tableName,
-          report.missingColumns,
-          allEnums,
-          emittedEnumTypes,
-        );
-        if (applyResult.unsafe.length > 0) {
-          driftReports.push({
-            tableName,
-            missingColumns: applyResult.unsafe,
-            typeMismatches: [],
-            missingConstraints: [],
-            missingIndexes: [],
-          });
-          continue;
-        }
-        report = await detectSchemaDrift(tableSchema, tableName);
-        if (
-          report.missingColumns.length ||
-          report.typeMismatches.length ||
-          report.missingConstraints.length ||
-          report.missingIndexes.length
-        ) {
-          driftReports.push(report);
-        } else {
-          console.log(`Table ${tableName} updated with missing columns and matches schema.`);
-        }
-      } else if (
+      const report = await detectSchemaDrift(tableSchema, tableName);
+      if (
         report.missingColumns.length ||
         report.typeMismatches.length ||
         report.missingConstraints.length ||
@@ -316,115 +283,6 @@ export function generateCreateStatements(
   out.push(...postStatements);
 
   return out;
-}
-
-function impliedAdditiveConstraintStrings(tableSchema: any, missingColumns: string[]): string[] {
-  const columns = getTableColumns(tableSchema);
-  const missingSet = new Set(missingColumns);
-  const out: string[] = [];
-  for (const [key, col] of Object.entries(columns) as [string, any][]) {
-    const dbName = col.name || key;
-    if (!missingSet.has(dbName)) continue;
-    if (col.isUnique) {
-      const name = col.uniqueName ?? "(unnamed)";
-      out.push(`UNIQUE ${name}: (${dbName})`);
-    }
-    if (col.primary) {
-      out.push(`PRIMARY KEY (unnamed): (${dbName})`);
-    }
-  }
-  return out;
-}
-
-async function applyMissingColumns(
-  tableSchema: any,
-  tableName: string,
-  missingColumnNames: string[],
-  allEnums: Map<string, string[]>,
-  emittedEnumTypes: Set<string>,
-): Promise<{ unsafe: string[] }> {
-  const columns = getTableColumns(tableSchema);
-  const missingSet = new Set(missingColumnNames);
-  const unsafe: string[] = [];
-  const toApply: {
-    colDbName: string;
-    def: string;
-    uniqueConstraint?: string;
-    enumsNeeded: Set<string>;
-  }[] = [];
-
-  let hasRows: boolean | null = null;
-  const ensureHasRows = async (): Promise<boolean> => {
-    if (hasRows === null) {
-      hasRows = await tableHasRows(tableName);
-    }
-    return hasRows;
-  };
-
-  for (const [colKey, col] of Object.entries(columns) as [string, any][]) {
-    const colDbName = col.name || colKey;
-    if (!missingSet.has(colDbName)) continue;
-
-    const enumsForCol = new Set<string>();
-    const fragment = buildColumnFragment(col, colKey, tableName, enumsForCol);
-
-    const requiresDefault =
-      col.notNull && !(col.hasDefault && col.default !== undefined);
-    if (requiresDefault) {
-      const populated = await ensureHasRows();
-      if (populated) {
-        unsafe.push(
-          `${colDbName} is NOT NULL with no default and table is non-empty; add a default or run a manual migration`,
-        );
-        continue;
-      }
-    }
-
-    toApply.push({
-      colDbName,
-      def: fragment.def,
-      uniqueConstraint: fragment.uniqueConstraint,
-      enumsNeeded: enumsForCol,
-    });
-  }
-
-  if (unsafe.length > 0) {
-    return { unsafe };
-  }
-
-  const enumsAcrossAdds = new Set<string>();
-  for (const item of toApply) {
-    for (const e of item.enumsNeeded) enumsAcrossAdds.add(e);
-  }
-  for (const enumName of enumsAcrossAdds) {
-    if (emittedEnumTypes.has(enumName)) continue;
-    const values = allEnums.get(enumName);
-    if (!values) {
-      throw new Error(
-        `[component-schema-push] Column on table ${tableName} references pgEnum "${enumName}" which was not found in the schema module.`,
-      );
-    }
-    emittedEnumTypes.add(enumName);
-    console.log(`[component-schema-push] create_type for ${tableName} (enum ${enumName})`);
-    await storage.rawSql.execute(renderCreateEnumType(enumName, values));
-  }
-
-  for (const item of toApply) {
-    console.log(`[component-schema-push] alter table add column ${tableName}.${item.colDbName}`);
-    await storage.rawSql.execute(`ALTER TABLE "${tableName}" ADD COLUMN ${item.def}`);
-  }
-
-  for (const item of toApply) {
-    if (!item.uniqueConstraint) continue;
-    console.log(
-      `[component-schema-push] alter table add unique constraint ${tableName}.${item.colDbName}`,
-    );
-    await storage.rawSql.execute(
-      `ALTER TABLE "${tableName}" ADD ${item.uniqueConstraint}`,
-    );
-  }
-
-  return { unsafe: [] };
 }
 
 function buildColumnFragment(
@@ -776,6 +634,12 @@ export async function detectSchemaDrift(tableSchema: any, tableName: string): Pr
     const sig = sigFk(fk.cols, fk.ftable, fk.fcols);
     const actual = actualFkBySig.get(sig);
     if (!actual) {
+      // Skip FKs whose target table isn't present in the live DB. The owning
+      // component is presumably not enabled on this deployment; if it gets
+      // enabled later, its tables will be created and a follow-up baseline /
+      // migration can install the FK. Without this, a perpetually-disabled
+      // dependency would block the drift gate forever.
+      if (!(await tableExists(fk.ftable))) continue;
       missingConstraints.push(
         `FK ${fk.name ?? "(unnamed)"}: ${fk.cols.join(",")} -> ${fk.ftable}(${fk.fcols.join(",")})`,
       );
@@ -905,6 +769,150 @@ function normalizeIndexExpr(s: string): string {
     out = out.slice(1, -1);
   }
   return out;
+}
+
+/**
+ * Generate idempotent ALTER TABLE / CREATE INDEX statements that, when run
+ * in order against the live DB, will fix any structural drift between the
+ * given Drizzle table definition and the actual table. The drift is
+ * detected via `detectSchemaDrift`; this helper then synthesizes DDL to
+ * close each gap.
+ *
+ * Constraint adds are wrapped in DO/EXCEPTION blocks so a duplicate name
+ * (e.g. from a prior partial baseline run) is silently tolerated.
+ * Index creates and column adds use native IF NOT EXISTS.
+ *
+ * Intended for use by baseline scripts — NOT for normal schema management.
+ */
+export async function generateDriftFixStatements(
+  tableSchema: any,
+  tableName: string,
+): Promise<string[]> {
+  const stmts: string[] = [];
+  const drift = await detectSchemaDrift(tableSchema, tableName);
+
+  // ----- Type mismatches -----
+  const expectedCols = getTableColumns(tableSchema);
+  for (const entry of drift.typeMismatches) {
+    // Entries look like: `<colName> expected <expectedType>, found <actualType>`
+    const m = /^(\S+)\s+expected\s+(.+?),\s+found\s+/.exec(entry);
+    if (!m) continue;
+    const [, colName, expectedType] = m;
+    let col: any;
+    for (const [k, c] of Object.entries(expectedCols) as [string, any][]) {
+      if ((c.name || k) === colName) { col = c; break; }
+    }
+    if (!col) continue;
+    // USING clause: cast via text to safely coerce most types.
+    stmts.push(
+      `ALTER TABLE "${tableName}" ALTER COLUMN "${colName}" TYPE ${expectedType} USING "${colName}"::text::${expectedType}`,
+    );
+  }
+
+  // ----- Missing columns -----
+  const enumsNeeded = new Set<string>();
+  for (const colName of drift.missingColumns) {
+    let key: string | undefined;
+    let col: any;
+    for (const [k, c] of Object.entries(expectedCols) as [string, any][]) {
+      if ((c.name || k) === colName) { key = k; col = c; break; }
+    }
+    if (!key) continue;
+    const frag = buildColumnFragment(col, key, tableName, enumsNeeded);
+    stmts.push(`ALTER TABLE "${tableName}" ADD COLUMN IF NOT EXISTS ${frag.def}`);
+  }
+
+  // ----- Build name maps for missing-constraint synthesis -----
+  const missingSet = new Set(drift.missingConstraints);
+  const wrapDo = (sql: string) =>
+    `DO $$ BEGIN ${sql}; EXCEPTION WHEN duplicate_object THEN NULL; WHEN duplicate_table THEN NULL; END $$`;
+
+  // ----- Column-level FKs and uniques -----
+  for (const fk of getInlineForeignKeys(tableSchema)) {
+    const ref = fk.reference();
+    const ftName = getTableName(ref.foreignTable);
+    if (!ftName) continue;
+    const cols = ref.columns.map((c: any) => c.name as string);
+    const fcols = ref.foreignColumns.map((c: any) => c.name as string);
+    const tag = `FK ${fk.name ?? ref.name ?? "(unnamed)"}: ${cols.join(",")} -> ${ftName}(${fcols.join(",")})`;
+    if (!missingSet.has(tag)) continue;
+    const name = fk.name ?? ref.name ?? `${tableName}_${cols.join("_")}_fkey`;
+    const colsQ = cols.map((c) => `"${c}"`).join(", ");
+    const fcolsQ = fcols.map((c) => `"${c}"`).join(", ");
+    let s = `ALTER TABLE "${tableName}" ADD CONSTRAINT "${name}" FOREIGN KEY (${colsQ}) REFERENCES "${ftName}" (${fcolsQ})`;
+    if (fk.onDelete) s += ` ON DELETE ${fk.onDelete.toUpperCase()}`;
+    if (fk.onUpdate) s += ` ON UPDATE ${fk.onUpdate.toUpperCase()}`;
+    stmts.push(wrapDo(s));
+  }
+  for (const [colKey, col] of Object.entries(expectedCols) as [string, any][]) {
+    if (!col.isUnique) continue;
+    const dbName = col.name || colKey;
+    const ucName = col.uniqueName || `${tableName}_${dbName}_unique`;
+    const tag = `UNIQUE ${ucName}: (${dbName})`;
+    if (!missingSet.has(tag)) continue;
+    stmts.push(wrapDo(`ALTER TABLE "${tableName}" ADD CONSTRAINT "${ucName}" UNIQUE ("${dbName}")`));
+  }
+
+  // ----- Table-level FKs, uniques, checks (from extra-config builder) -----
+  const ebSym = getSym(tableSchema, EXTRA_CONFIG_BUILDER_SYM);
+  const ecSym = getSym(tableSchema, EXTRA_CONFIG_COLS_SYM);
+  if (ebSym && typeof tableSchema[ebSym] === "function") {
+    const ecCols = ecSym ? tableSchema[ecSym] : expectedCols;
+    const cfg = tableSchema[ebSym](ecCols);
+    const items: any[] = Array.isArray(cfg) ? cfg : Object.values(cfg ?? {});
+    for (const item of items) {
+      if (!item) continue;
+      const ctor = item.constructor?.name;
+      if (ctor === "UniqueConstraintBuilder") {
+        const cols = (item.columns ?? []).map((c: any) => c.name as string);
+        const name = item.name ?? `${tableName}_${cols.join("_")}_unique`;
+        const tag = `UNIQUE ${item.name ?? "(unnamed)"}: (${cols.join(",")})`;
+        if (!missingSet.has(tag)) continue;
+        const colsQ = cols.map((c) => `"${c}"`).join(", ");
+        let s = `ALTER TABLE "${tableName}" ADD CONSTRAINT "${name}" UNIQUE`;
+        if (item.nullsNotDistinctConfig) s += " NULLS NOT DISTINCT";
+        s += ` (${colsQ})`;
+        stmts.push(wrapDo(s));
+      } else if (ctor === "ForeignKeyBuilder") {
+        const built = item.build(tableSchema);
+        const ref = built.reference();
+        const ftName = getTableName(ref.foreignTable);
+        if (!ftName) continue;
+        const cols = ref.columns.map((c: any) => c.name as string);
+        const fcols = ref.foreignColumns.map((c: any) => c.name as string);
+        const tag = `FK ${built.name ?? ref.name ?? "(unnamed)"}: ${cols.join(",")} -> ${ftName}(${fcols.join(",")})`;
+        if (!missingSet.has(tag)) continue;
+        const name = built.name ?? ref.name ?? `${tableName}_${cols.join("_")}_fkey`;
+        const colsQ = cols.map((c) => `"${c}"`).join(", ");
+        const fcolsQ = fcols.map((c) => `"${c}"`).join(", ");
+        let s = `ALTER TABLE "${tableName}" ADD CONSTRAINT "${name}" FOREIGN KEY (${colsQ}) REFERENCES "${ftName}" (${fcolsQ})`;
+        if (built.onDelete) s += ` ON DELETE ${built.onDelete.toUpperCase()}`;
+        if (built.onUpdate) s += ` ON UPDATE ${built.onUpdate.toUpperCase()}`;
+        stmts.push(wrapDo(s));
+      } else if (ctor === "CheckBuilder") {
+        if (!item.name) continue;
+        const tag = `CHECK ${item.name}`;
+        if (!missingSet.has(tag)) continue;
+        const expr = renderSql(item.value, `check ${item.name} on ${tableName}`);
+        stmts.push(wrapDo(`ALTER TABLE "${tableName}" ADD CONSTRAINT "${item.name}" CHECK (${expr})`));
+      } else if (ctor === "PrimaryKeyBuilder") {
+        const cols = (item.columns ?? []).map((c: any) => c.name as string);
+        const tag = `PRIMARY KEY ${item.name ?? "(unnamed)"}: (${cols.join(",")})`;
+        if (!missingSet.has(tag)) continue;
+        const name = item.name ?? `${tableName}_pk`;
+        const colsQ = cols.map((c) => `"${c}"`).join(", ");
+        stmts.push(wrapDo(`ALTER TABLE "${tableName}" ADD CONSTRAINT "${name}" PRIMARY KEY (${colsQ})`));
+      } else if (ctor === "IndexBuilder" || ctor === "UniqueIndexBuilder") {
+        const name = item.config?.name;
+        if (!name) continue;
+        // missingIndexes entries are either the bare name or "<name> mismatch: ..."
+        if (!drift.missingIndexes.some((e) => e === name || e.startsWith(`${name} `))) continue;
+        stmts.push(renderIndex(item, tableName));
+      }
+    }
+  }
+
+  return stmts;
 }
 
 export async function dropComponentSchema(componentId: string): Promise<void> {

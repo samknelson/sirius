@@ -1,9 +1,23 @@
-import { db } from "../../server/db";
+import { db } from "../../../server/db";
 import { sql } from "drizzle-orm";
-import { registerMigration, type Migration } from "../../server/services/migration-runner";
-import { logger } from "../../server/logger";
+import { registerMigration, type Migration } from "../../../server/services/migration-runner";
+import { logger } from "../../../server/logger";
 
 async function up(): Promise<void> {
+  const tableCheck = await db.execute(sql`
+    SELECT EXISTS (
+      SELECT 1 FROM information_schema.tables
+      WHERE table_schema='public' AND table_name='ledger'
+    ) AS exists
+  `);
+  const hasTable = tableCheck.rows[0]?.exists === true || tableCheck.rows[0]?.exists === 't';
+  if (!hasTable) {
+    logger.info("ledger table does not exist; ledger component not enabled, skipping", {
+      service: "migration-006",
+    });
+    return;
+  }
+
   const colCheck = await db.execute(sql`
     SELECT data_type
     FROM information_schema.columns

@@ -107,6 +107,112 @@ previous result.
 
 # Non-Negotiable Rules
 
+## All schema changes MUST ship with a migration
+
+There is exactly one way to change the database shape: write a migration
+file under `scripts/migrate/` and register it from
+`scripts/migrate/index.ts`. The startup drift gate (`server/services/
+schema-drift-check.ts`) reflects the live database, compares it to the
+expected Drizzle schema for the core plus every currently-enabled
+schema-managing component, and refuses to boot the server if anything is
+missing, extra, or mistyped.
+
+**File layout:**
+
+-   `scripts/migrate/core/<NNN>_<name>.ts` — global migrations (anything
+    in `shared/schema.ts` that is not owned by a component manifest).
+    Tracked by the `migrations_version` variable.
+-   `scripts/migrate/components/<componentId>/<NNN>_<name>.ts` —
+    per-component migrations. Tracked by the
+    `component_schema_state_<componentId>.migrationVersion` field inside
+    the existing component-state variable (no new bookkeeping table).
+    The counter persists across disable/enable cycles, so re-enabling a
+    component whose tables were retained does NOT replay migrations it
+    has already applied.
+-   `scripts/migrate/baseline/<replit-name>-<YYYYMMDD>.ts` — one-off,
+    per-deployment scripts that bring a database into sync at a known
+    point in time. Baselines are registered as core migrations at version
+    `>= 1000` and run exactly once like any other migration. They MUST be
+    idempotent on re-run.
+
+**Forbidden:**
+
+-   `drizzle-kit push` (and `npm run db:push`) outside the dev-loop
+    escape hatch — `scripts/db-push.ts` now refuses to run unless
+    `ALLOW_DB_PUSH=1` is set. Never set it in production. Never invoke it
+    from automation. Its only legitimate use is "I want to peek at the
+    DDL drizzle-kit would generate so I can paste it into a migration I'm
+    writing."
+-   Reflective additive ALTERs from `component-schema-push.ts`. The
+    `applyMissingColumns` path has been retired. `pushComponentSchema`
+    now only creates missing tables on first enable; any drift against
+    an existing table throws `ComponentSchemaDriftError` and the
+    operator must author a migration.
+-   Editing `shared/schema*` without adding a matching migration file.
+    The author-time check at `scripts/check-migrations.ts` enforces this:
+
+    ```
+    npx tsx scripts/check-migrations.ts
+    # or, against a base ref:
+    npx tsx scripts/check-migrations.ts --base=origin/main
+    ```
+
+    The escape hatch for pure type/comment refactors is the
+    `[skip-migration-check]` marker in the commit message or the
+    `--skip` flag — use it sparingly and explain why in the PR.
+
+**Dev-only escape hatch for the startup gate:** setting
+`SKIP_SCHEMA_DRIFT_CHECK=1` skips the check at boot. This exists so a
+developer can get into the app to inspect a broken state. It is NEVER
+acceptable in production or in any deployment configuration.
+
+## Baselining a deployment
+
+When a new deployment (a fresh Repl, a clone, a production cutover) has
+a database whose shape predates the per-component migration framework,
+its tables almost certainly do not exactly match `shared/schema*` and
+the startup drift gate will refuse to boot. The fix is to write a
+one-off baseline script that brings that specific database into sync.
+
+**Procedure** (give the prompt below to an agent on the affected Repl):
+
+> Build mode. Baseline this Repl's database for the per-component
+> migration framework.
+>
+> 1. Read `replit.md` → "Baselining a deployment".
+> 2. Start the server once with `SKIP_SCHEMA_DRIFT_CHECK=1` set so it
+>    boots. Then unset it and start again; copy the full drift report
+>    that `StartupSchemaDriftError` prints to the workflow logs.
+> 3. For every item in the report:
+>    - Missing column → ALTER TABLE ADD COLUMN with the right type and
+>      a safe default for any non-empty table.
+>    - Type mismatch → ALTER TABLE ALTER COLUMN ... TYPE ... with an
+>      explicit USING clause if a cast is needed.
+>    - Missing index → CREATE INDEX IF NOT EXISTS.
+>    - Missing constraint → ALTER TABLE ADD CONSTRAINT IF NOT EXISTS.
+>    - Missing table → CREATE TABLE — but check first whether the
+>      component should actually be enabled; an unexpected missing
+>      table usually means a component was enabled by default but
+>      never went through the enable flow.
+> 4. Create `scripts/migrate/baseline/<this-replit-name>-<YYYYMMDD>.ts`
+>    that performs every fix-up above using guards
+>    (`IF NOT EXISTS` / column existence checks) so re-running is a
+>    no-op. Register it via `registerMigration` with a version `>= 1000`
+>    and import it from `scripts/migrate/index.ts`.
+> 5. For every `component_schema_state_<id>` variable that lacks
+>    `migrationVersion`, stamp it to `0` so the per-component runner
+>    has a defined starting point. (See
+>    `scripts/migrate/baseline/sirius-dev-20260518.ts` for an example.)
+> 6. Restart the workflow without `SKIP_SCHEMA_DRIFT_CHECK`. Verify
+>    "Schema drift check passed" appears in the logs.
+> 7. Commit the baseline file. Done.
+
+The baseline for THIS Repl is
+`scripts/migrate/baseline/sirius-dev-20260518.ts` — there were no DDL
+fix-ups to apply (the dev DB was already in sync via the retired
+reflective auto-push), so the baseline is a pure
+`migrationVersion`-stamping script.
+
 ## All database access MUST go through the storage layer
 
 This is a hard, project-wide rule with **no exceptions**. Every database

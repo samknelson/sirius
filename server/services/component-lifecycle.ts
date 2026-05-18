@@ -8,6 +8,7 @@ import {
   ComponentSchemaDrift,
   ComponentDefinition,
 } from "../../shared/components";
+import { runComponentMigrations, getComponentMigrations } from "./migration-runner";
 
 export interface SchemaOperationResult {
   success: boolean;
@@ -140,19 +141,44 @@ export async function enableComponentSchema(componentId: string): Promise<Compon
   const allSuccessful = !hasError;
   
   if (allSuccessful) {
+    // Preserve any existing migrationVersion / migrationsApplied across
+    // disable→enable cycles. The state variable is only deleted by an
+    // explicit non-retain disable; otherwise it remains, and we must not
+    // reset its migration bookkeeping just because the user toggled the
+    // component off and back on.
+    const existingState = await getSchemaState(componentId);
     const schemaState: ComponentSchemaState = {
       manifestVersion: component.schemaManifest.version ?? 1,
       lastSyncedAt: now,
       tables: tableStates,
       drift: null,
+      migrationVersion: existingState?.migrationVersion ?? 0,
+      migrationsApplied: existingState?.migrationsApplied,
     };
     await saveSchemaState(componentId, schemaState);
-    
+
+    // Run any per-component migrations that have been registered but not yet
+    // applied to this deployment. The runner reads/updates the same
+    // component_schema_state_<id> variable we just wrote.
+    if (getComponentMigrations(componentId).length > 0) {
+      const result = await runComponentMigrations(componentId);
+      if (result.errors.length > 0) {
+        return {
+          success: false,
+          componentId,
+          schemaOperations: operations,
+          schemaState: null,
+          error: `Component schema created, but migrations failed: ${result.errors.join("; ")}`,
+        };
+      }
+    }
+
+    const finalState = (await getSchemaState(componentId)) ?? schemaState;
     return {
       success: true,
       componentId,
       schemaOperations: operations,
-      schemaState,
+      schemaState: finalState,
     };
   }
 

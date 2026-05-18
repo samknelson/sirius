@@ -1,9 +1,23 @@
-import { db } from "../../server/db";
+import { db } from "../../../server/db";
 import { sql } from "drizzle-orm";
-import { registerMigration, type Migration } from "../../server/services/migration-runner";
-import { logger } from "../../server/logger";
+import { registerMigration, type Migration } from "../../../server/services/migration-runner";
+import { logger } from "../../../server/logger";
 
 async function up(): Promise<void> {
+  const tableCheck = await db.execute(sql`
+    SELECT EXISTS (
+      SELECT 1 FROM information_schema.tables
+      WHERE table_schema = 'public' AND table_name = 'cardchecks'
+    ) AS exists
+  `);
+  const hasTable = tableCheck.rows[0]?.exists === true || tableCheck.rows[0]?.exists === 't';
+  if (!hasTable) {
+    logger.info("cardchecks table does not exist; cardcheck component not enabled, skipping", {
+      service: "migration-003",
+    });
+    return;
+  }
+
   const columnCheck = await db.execute(sql`
     SELECT EXISTS (
       SELECT 1 FROM information_schema.columns 
@@ -15,10 +29,27 @@ async function up(): Promise<void> {
 
   const hasOldColumn = columnCheck.rows[0]?.exists === true || columnCheck.rows[0]?.exists === 't';
 
+  const newColCheck = await db.execute(sql`
+    SELECT EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'cardchecks'
+        AND column_name = 'external_id'
+    ) AS exists
+  `);
+  const hasNewColumn = newColCheck.rows[0]?.exists === true || newColCheck.rows[0]?.exists === 't';
+
   if (!hasOldColumn) {
     logger.info("Column source_nid already renamed or does not exist, skipping rename", {
       service: "migration-003",
     });
+
+    if (!hasNewColumn) {
+      logger.info("Column external_id does not exist either; skipping index creation", {
+        service: "migration-003",
+      });
+      return;
+    }
 
     await db.execute(sql`
       CREATE UNIQUE INDEX IF NOT EXISTS idx_cardchecks_external_id 

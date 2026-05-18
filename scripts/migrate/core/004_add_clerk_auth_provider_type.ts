@@ -1,7 +1,7 @@
-import { db } from "../../server/db";
+import { db } from "../../../server/db";
 import { sql } from "drizzle-orm";
-import { registerMigration, type Migration } from "../../server/services/migration-runner";
-import { logger } from "../../server/logger";
+import { registerMigration, type Migration } from "../../../server/services/migration-runner";
+import { logger } from "../../../server/logger";
 
 async function up(): Promise<void> {
   const enumCheck = await db.execute(sql`

@@ -13,6 +13,7 @@ import { registerCronJob, bootstrapCronJobs, cronScheduler, deleteExpiredReports
 import { loadComponentCache } from "./services/component-cache";
 import { syncComponentPermissions } from "./services/component-permissions";
 import { runMigrations } from "../scripts/migrate";
+import { enforceStartupSchemaDrift } from "./services/schema-drift-check";
 import { initializeWebSocket } from "./services/websocket";
 import { getSession } from "./auth";
 
@@ -149,6 +150,12 @@ export async function startApp(app: Express, server: Server, onReady: () => void
 
   await loadComponentCache();
   logger.info("Component cache initialized", { source: "startup" });
+
+  // Refuse to boot if the live database has drifted from the expected schema
+  // (core + every enabled schema-managing component). See
+  // `server/services/schema-drift-check.ts` for the rationale and the
+  // SKIP_SCHEMA_DRIFT_CHECK=1 dev escape hatch.
+  await enforceStartupSchemaDrift();
 
   syncComponentPermissions();
   logger.info("Component permissions synced", { source: "startup" });
