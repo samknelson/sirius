@@ -30,6 +30,86 @@ This document covers two scenarios:
 
 ---
 
+## URL surface (shared across every kind)
+
+Every kind speaks the same generic HTTP surface. The dispatcher lives
+in `server/modules/plugins-manifest.ts` (manifest) and
+`server/modules/plugins-admin.ts` (admin). A kind opts in to each
+admin capability by providing the matching callback on
+`PluginKindRegistration`; routes whose callback is not supplied
+return 404.
+
+| Method | URL                                              | Backing callback     | Notes                                                                 |
+| ------ | ------------------------------------------------ | -------------------- | --------------------------------------------------------------------- |
+| GET    | `/api/plugins/:kind/manifest`                    | (always present)     | Always-on. Filters via `listVisibleTo` + `decorateEntries` + sort.    |
+| POST   | `/api/plugins/:kind/:id/validate-config`         | `validateConfig`     | Pre-save config check. Returns `{ valid, errors? }`.                  |
+| GET    | `/api/plugins/:kind/enabled`                     | `listEnabled`        | Per-plugin enabled snapshot (`{ pluginId, enabled }[]`).              |
+| PUT    | `/api/plugins/:kind/:id/enabled`                 | `setEnabled`         | Body `{ enabled: boolean }`. Toggle a single plugin on/off.           |
+| GET    | `/api/plugins/:kind/:id/settings`                | `getSettings`        | Returns `{ schema, uiSchema, value }` or 404 if no schema.            |
+| PUT    | `/api/plugins/:kind/:id/settings`                | `saveSettings`       | Body is the new value. May return `{ valid: false, errors }` → 400.   |
+
+All admin routes require authentication, then run the kind-level
+gate (`requiredComponent` + `requiredPolicy`), then — for any
+single-plugin route — run the per-plugin gate (`requiredComponent`
++ `requiredPolicy` on the plugin's metadata).
+
+### Which kind implements which today
+
+| Kind                   | Kind-level component | Kind-level policy | `validateConfig` | `listEnabled` / `setEnabled` | `getSettings` / `saveSettings` |
+| ---------------------- | -------------------- | ----------------- | ---------------- | ---------------------------- | ------------------------------ |
+| `dashboard`            | —                    | —                 | —                | yes                          | yes                            |
+| `dispatch-eligibility` | `dispatch`           | `admin`           | yes              | —                            | —                              |
+| `charge`               | `ledger`             | `admin`           | yes              | —                            | —                              |
+| `trust-eligibility`    | —                    | `admin`           | yes              | —                            | —                              |
+
+`dashboard` intentionally omits a kind-level policy so every
+authenticated user can list their widgets; per-plugin
+`requiredPolicy` still filters the list per user. The other three
+kinds are admin-only end-to-end because their manifests describe
+configurable infrastructure, not per-user content.
+
+If you want a new admin capability that doesn't fit one of these
+five callbacks, add it to `PluginKindRegistration` in
+`server/plugins/_core/kinds.ts` AND wire the matching route in
+`server/modules/plugins-admin.ts` — don't bolt a kind-specific
+admin endpoint onto a kind's own module file. The whole point of
+the framework is that every kind speaks the same URL surface.
+
+---
+
+## Manifest contract
+
+`GET /api/plugins/:kind/manifest` returns a JSON array. Each entry's
+shape is the per-kind `TEntry` produced by `toManifestEntry`. Across
+kinds, callers can rely on:
+
+- `id` (string) — always present, stable, kebab-case.
+- `name`, `description` (string) — always present.
+- `requiredComponent`, `requiredPolicy`, `hidden` — present when set
+  on the underlying plugin's `BasePluginMetadata`. `hidden: true`
+  entries are filtered out of the manifest by the dispatcher itself
+  (the registry checks base metadata, not the manifest entry, so
+  this is enforced even for kinds that don't surface `hidden` on
+  `TEntry`).
+
+Anything beyond the base fields is kind-specific:
+
+- `dashboard` adds `componentId`, `order`, `defaultColumnSpan`,
+  `componentProps`, `enabledByDefault`, and an `enabled` flag
+  injected by the kind's `decorateEntries`.
+- `dispatch-eligibility` adds `configSchema`, `defaultConfig`.
+- `charge` adds `category`, plus the plugin's settings UI metadata.
+- `trust-eligibility` adds `configSchema`, `eligibilityType`.
+
+Inspect each kind's `toManifestEntry` to see the exact shape; the
+shared dispatcher does not transform it.
+
+The response is served with `Cache-Control: no-store` so callers
+that bypass TanStack Query don't see stale availability after a
+component toggle or settings change.
+
+---
+
 ## 1. Adding a plugin to an existing kind
 
 Find the kind's directory under `server/plugins/` and follow the
@@ -145,6 +225,13 @@ Steps:
        requiredPolicy: "admin",         // optional kind-level gate
        sortEntries: (a, b) => a.id.localeCompare(b.id),
        // decorateEntries: async (entries, req) => { ... },
+       // Optional admin capabilities — each opts the matching URL in.
+       // Omit a callback to leave the matching route as a 404.
+       // validateConfig: (plugin, config) => plugin.validateSettings(config),
+       // listEnabled:    async () => [...],
+       // setEnabled:     async (plugin, enabled) => {...},
+       // getSettings:    async (plugin) => ({ schema, uiSchema, value }),
+       // saveSettings:   async (plugin, value) => ({ valid: true }),
      });
      kindRegistered = true;
    }
@@ -153,6 +240,12 @@ Steps:
    `decorateEntries` is the right place to inject runtime fields
    like a per-plugin `enabled` flag pulled from a variable — see
    `server/plugins/dashboard/index.ts` for the canonical example.
+
+   The admin callbacks are documented on `PluginKindRegistration`
+   in `server/plugins/_core/kinds.ts` and surfaced via the URL
+   table at the top of this doc. Pick the subset that makes sense
+   for your kind — `dashboard` uses all of them, the three
+   admin-only kinds use just `validateConfig` today.
 
 4. **Add the kind string** to the `PluginKind` unions in both
    `server/plugins/_core/types.ts` and
