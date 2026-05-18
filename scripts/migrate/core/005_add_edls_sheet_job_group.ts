@@ -9,9 +9,9 @@ async function up(): Promise<void> {
       EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='edls_sheets') AS has_edls,
       EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='dispatch_job_group') AS has_djg
   `);
-  const row = tableCheck.rows[0] as any;
-  const hasEdls = row?.has_edls === true || row?.has_edls === 't';
-  const hasDjg = row?.has_djg === true || row?.has_djg === 't';
+  const row: { has_edls?: boolean | string; has_djg?: boolean | string } = tableCheck.rows[0] ?? {};
+  const hasEdls = row.has_edls === true || row.has_edls === 't';
+  const hasDjg = row.has_djg === true || row.has_djg === 't';
   if (!hasEdls || !hasDjg) {
     logger.info("Required tables missing (edls or dispatch_job_group); component not enabled, skipping", {
       service: "migration-005",
