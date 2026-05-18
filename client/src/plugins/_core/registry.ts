@@ -10,11 +10,12 @@ import type { ComponentType } from "react";
  *
  * `glob` must be the result of `import.meta.glob(...)` evaluated at the
  * caller's site. Vite resolves glob patterns at build time and rejects
- * dynamic strings — passing `kind` here and trying to glob `./<kind>/*/*.tsx`
- * internally would fail at build time. So the caller owns the glob call
- * and we own the registration shape. Please don't "simplify" this by
- * trying to derive the glob from `kind` inside this helper; that path
- * has been tried and Vite will refuse to compile it.
+ * dynamic strings — passing `kind` here and trying to glob a pattern
+ * like `./KIND-SLASH-STAR-SLASH-STAR.tsx` internally would fail at
+ * build time. So the caller owns the glob call and we own the
+ * registration shape. Please don't "simplify" this by trying to derive
+ * the glob from `kind` inside this helper; that path has been tried
+ * and Vite will refuse to compile it.
  */
 export function createPluginComponentRegistry<TProps>(opts: {
   kind: string;
