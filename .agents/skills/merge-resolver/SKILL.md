@@ -9,26 +9,28 @@ Pull the latest changes from `origin/main` into the current branch and resolve m
 
 ## IMPORTANT: Platform git restrictions on this project
 
-On this Replit, the platform allows `git pull` and `git fetch` from the main agent, but blocks almost every other git write — `git config`, `git add`, `git checkout --theirs`, `git commit`, `git rebase --continue|--abort`, `rm` on `.git/*.lock`, etc. — with the message: **"Destructive git operations are not allowed in the main agent."**
+On this Replit, the platform blocks **every** git operation that writes anywhere inside `.git/` — including `git pull` (which writes `.git/ORIG_HEAD.lock`), `git fetch` (which writes `.git/objects/maintenance.lock`), `git config`, `git add`, `git checkout --theirs`, `git commit`, `git rebase --continue|--abort`, and `rm` on `.git/*.lock`. All are rejected with: **"Destructive git operations are not allowed in the main agent."**
 
-Routing through a project task does NOT help: the task-agent environment has the same restrictions on this project, and a failed attempt there leaves behind stale `.git/*.lock` files that the user has to clean up manually. **Do not propose a project task for the pull.** Run it directly from the main agent.
+Routing through a project task does NOT help: the task-agent environment has the same restrictions and leaves behind stale `.git/*.lock` files the user has to clean up. **Do not propose a project task for the pull.**
 
-What this means in practice:
+What the agent CAN do:
 
-- **You CAN** run `git pull --no-rebase origin main` directly from the main agent. Read-only checks (`git status`, `git log`, `git diff`) also work. If the pull is a clean fast-forward / auto-merge, git creates the merge commit itself and there is nothing further to stage.
-- **You CANNOT** auto-resolve conflicts in this skill. The moment `git pull` reports conflicts, stop. You cannot `git add` resolved files, you cannot `git checkout --theirs <lockfile>`, you cannot `git rebase --abort`, you cannot `git config`, and you cannot remove a stale `.git/*.lock`. List the conflicted files to the user and hand off — they resolve via Replit's git pane or their own shell.
+- Read-only inspection: `git --no-optional-locks status`, `git --no-optional-locks log`, `git --no-optional-locks diff`, `git --no-optional-locks rev-list --count HEAD..origin/main` (these read `origin/main` from the existing tracking ref without fetching). `git --no-optional-locks fetch` SOMETIMES works depending on the maintenance lock state; if it fails, fall back to using whatever the tracking ref already points at.
+- Run `npm run db:push` and restart the `Start application` workflow AFTER the user has completed the merge themselves.
 
-Pre-flight (read-only, from the main agent):
-- `git --no-optional-locks status` — confirm working tree is clean and see divergence.
-- `git --no-optional-locks fetch origin main` — refresh the remote tracking ref.
-- `git --no-optional-locks rev-list --count HEAD..origin/main` — count incoming commits.
-- `git --no-optional-locks rev-list --count origin/main..HEAD` — count local-ahead commits.
+What the agent must ask the USER to do (in the Replit shell or git pane):
 
-Then describe the divergence to the user before pulling. Pass an explicit reconciliation flag: `git pull --no-rebase origin main`. Replit runners typically have no `pull.rebase` default, so a bare `git pull` will fail with "Need to specify how to reconcile divergent branches."
+1. `rm .git/*.lock` if any stale locks exist.
+2. `git pull --no-rebase origin main`.
+3. Resolve any conflicts and create the merge commit.
+4. Paste the pull output back to the agent so the agent can classify conflicts (if any) and run the post-merge steps.
 
-If the working tree is **not** clean (mid-rebase, mid-merge, staged changes, unmerged paths), STOP before touching anything. Report the state to the user and ask them to resolve it in Replit's git pane / shell — you cannot abort a rebase, stage files, or commit from here.
+## Agent workflow on this project
 
-**Check for stale `.git/*.lock` files BEFORE attempting the pull.** Even from prior aborted attempts, files like `.git/ORIG_HEAD.lock`, `.git/index.lock`, `.git/config.lock`, or `.git/objects/maintenance.lock` will cause `git pull` to fail with "Another git process seems to be running in this repository." You cannot remove these files yourself — any `rm` under `.git/` is blocked. If `ls .git/*.lock` shows anything, ask the user to run `rm .git/*.lock` in their shell before you proceed.
+1. **Pre-flight (read-only):** run the read-only commands above. Report divergence (incoming commits, local-ahead commits, working-tree cleanliness) to the user. If the working tree is dirty or mid-rebase/mid-merge, STOP and tell the user.
+2. **Hand off the pull:** ask the user to clear stale `.git/*.lock` files and run `git pull --no-rebase origin main` themselves, then paste the output back. Explicitly say `--no-rebase` — Replit runners typically have no `pull.rebase` default and a bare `git pull` errors with "Need to specify how to reconcile divergent branches."
+3. **Classify conflicts (if any):** from the pasted output, list conflicted files and classify each as additive / modification / structural / generated-lockfile / sensitive with a recommendation. Do NOT try to edit conflicted files via the file tools — the user is resolving them in their shell or the git pane.
+4. **After the user confirms the merge commit is in:** run Steps 3 and 5 below (`npm run check`, optional test suite, `npm run db:push`, workflow restart).
 
 ## Step 1: Pull and inventory
 
