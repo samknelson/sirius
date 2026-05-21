@@ -58,12 +58,17 @@ export function createAuthIdentitiesStorage(): AuthIdentitiesStorage {
       externalId: string
     ): Promise<AuthIdentity | undefined> {
       const client = getClient();
-      return client.query.authIdentities.findFirst({
-        where: and(
-          eq(authIdentities.providerType, providerType),
-          eq(authIdentities.externalId, externalId)
-        ),
-      });
+      const rows = await client
+        .select()
+        .from(authIdentities)
+        .where(
+          and(
+            eq(authIdentities.providerType, providerType),
+            eq(authIdentities.externalId, externalId)
+          )
+        )
+        .limit(1);
+      return rows[0];
     },
 
     async getByUserId(userId: string): Promise<AuthIdentity[]> {
