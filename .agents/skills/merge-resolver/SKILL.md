@@ -7,21 +7,28 @@ description: Pull from origin/main and resolve merge conflicts with a triage-fir
 
 Pull the latest changes from `origin/main` into the current branch and resolve merge conflicts with a triage-first approach. Do not auto-resolve everything — surface what's risky. After the merge succeeds and verification passes, push any incoming database schema changes and restart the app so the running environment matches the merged code.
 
-## IMPORTANT: Run this work in a project task
+## IMPORTANT: Platform git restrictions on this project
 
-`git pull`, `git checkout --theirs`, `git add`, and other write-side git operations are blocked in the main agent environment on Replit. Do not try to run them directly from the main agent — the system will reject them with "Destructive git operations are not allowed in the main agent."
+On this Replit, the platform allows `git pull` and `git fetch` from the main agent, but blocks almost every other git write — `git config`, `git add`, `git checkout --theirs`, `git commit`, `git rebase --continue|--abort`, `rm` on `.git/*.lock`, etc. — with the message: **"Destructive git operations are not allowed in the main agent."**
 
-Workflow:
+Routing through a project task does NOT help: the task-agent environment has the same restrictions on this project, and a failed attempt there leaves behind stale `.git/*.lock` files that the user has to clean up manually. **Do not propose a project task for the pull.** Run it directly from the main agent.
 
-1. From the main agent in Build mode, do a quick read-only check (`git status`, `git log --oneline -5`) so you can describe the divergence to the user.
-2. Write a plan file at `.local/tasks/pull-and-triage-merge.md` that contains the steps below.
-3. Create and propose a single project task using `bulkCreateProjectTasks` + `proposeProjectTasks` (see `.local/skills/project_tasks/SKILL.md`). Title it something like "Pull origin/main and triage conflicts".
-4. The user approves it; the task agent runs in an isolated environment that IS allowed to perform git writes. The task agent's branch is auto-merged back to main when it finishes.
+What this means in practice:
 
-When you (the task agent) start executing the task, you may also need to:
-- Clear a stale `.git/index.lock` if one exists from a prior aborted operation: `rm -f .git/index.lock`.
-- Set a repo-local committer identity if none is configured: `git config user.email "agent@replit.local" && git config user.name "Replit Agent"`. Repo-local only — never `--global`.
-- Pass an explicit reconciliation flag: `git pull --no-rebase origin main`. Replit runners typically have no `pull.rebase` default, so a bare `git pull` will fail with "Need to specify how to reconcile divergent branches."
+- **You CAN** run `git pull --no-rebase origin main` directly from the main agent. Read-only checks (`git status`, `git log`, `git diff`) also work. If the pull is a clean fast-forward / auto-merge, git creates the merge commit itself and there is nothing further to stage.
+- **You CANNOT** auto-resolve conflicts in this skill. The moment `git pull` reports conflicts, stop. You cannot `git add` resolved files, you cannot `git checkout --theirs <lockfile>`, you cannot `git rebase --abort`, you cannot `git config`, and you cannot remove a stale `.git/*.lock`. List the conflicted files to the user and hand off — they resolve via Replit's git pane or their own shell.
+
+Pre-flight (read-only, from the main agent):
+- `git --no-optional-locks status` — confirm working tree is clean and see divergence.
+- `git --no-optional-locks fetch origin main` — refresh the remote tracking ref.
+- `git --no-optional-locks rev-list --count HEAD..origin/main` — count incoming commits.
+- `git --no-optional-locks rev-list --count origin/main..HEAD` — count local-ahead commits.
+
+Then describe the divergence to the user before pulling. Pass an explicit reconciliation flag: `git pull --no-rebase origin main`. Replit runners typically have no `pull.rebase` default, so a bare `git pull` will fail with "Need to specify how to reconcile divergent branches."
+
+If the working tree is **not** clean (mid-rebase, mid-merge, staged changes, unmerged paths), STOP before touching anything. Report the state to the user and ask them to resolve it in Replit's git pane / shell — you cannot abort a rebase, stage files, or commit from here.
+
+**Check for stale `.git/*.lock` files BEFORE attempting the pull.** Even from prior aborted attempts, files like `.git/ORIG_HEAD.lock`, `.git/index.lock`, `.git/config.lock`, or `.git/objects/maintenance.lock` will cause `git pull` to fail with "Another git process seems to be running in this repository." You cannot remove these files yourself — any `rm` under `.git/` is blocked. If `ls .git/*.lock` shows anything, ask the user to run `rm .git/*.lock` in their shell before you proceed.
 
 ## Step 1: Pull and inventory
 
@@ -43,24 +50,14 @@ If there are conflicts, **DO NOT start editing files yet.** First, list every co
 
 Report this classification table to the user before proceeding.
 
-## Step 2: Auto-resolve only the safe category
+## Step 2: Hand conflicts back to the user
 
-For **additive** conflicts only: remove the markers, keep both sides, ensure the result is syntactically valid (no duplicate imports, signatures, or closing braces).
+On this project you cannot resolve conflicts yourself — `git add`, `git checkout --theirs`, and `git commit` are all blocked. If `git pull` reports any conflicts, do this and stop:
 
-For **modification** and **structural** conflicts: stop and ask the user. Show both sides and a recommendation. Do not guess.
-
-For **generated/lockfile** conflicts: do not edit the file. Take the incoming version (`git checkout --theirs <file>`) and regenerate it with the appropriate command:
-- npm: `npm install`
-- pnpm: `pnpm install`
-- yarn: `yarn install`
-- cargo: `cargo update`
-- poetry: `poetry lock --no-update`
-- pipenv: `pipenv lock`
-- go modules: `go mod tidy`
-
-Tell the user which command was run.
-
-For **sensitive** conflicts: stop and ask the user, always. No exceptions.
+1. List conflicted files: `git --no-optional-locks diff --name-only --diff-filter=U`.
+2. Classify each one for the user's benefit (additive / modification / structural / generated-lockfile / sensitive) and include a short recommendation per file.
+3. Tell the user the merge is paused in their working tree and they need to resolve it in Replit's git pane or their own shell, then complete the merge commit themselves.
+4. Do NOT continue to Step 3, 4, or 5. Do not run db:push or restart the workflow until the user confirms the merge commit is in.
 
 ## Step 3: Verify
 
@@ -76,15 +73,13 @@ After resolving the safe set, run in order:
 
 If either fails, stop and report the failure verbatim. Do not try to fix test failures by further editing the merge — that's the user's call.
 
-## Step 4: Stage but do not commit
+## Step 4: Skipped on this project
 
-Stage the resolved files with `git add <file>`, but **leave the merge commit for the user to create after they review the diff. Do not run `git commit`.**
-
-This step only applies when there were actual conflicts to resolve. On a clean fast-forward or auto-merge, git already created the commit in Step 1; flag this clearly to the user.
+Staging and committing are blocked here. On a clean fast-forward / auto-merge, git already created the commit in Step 1 — flag this clearly to the user. On a conflicted merge, you already stopped in Step 2 and handed off; the user creates the merge commit themselves.
 
 ## Step 5: Post-merge sync (DB push + app restart)
 
-Run this step on **both** clean auto-merges (after Step 1) and conflict resolutions (after staging in Step 4 and verification in Step 3 has passed). Do not run it if verification failed or if there are still unresolved conflicts.
+Run this step ONLY after a clean auto-merge (Step 1) AND Step 3 verification passed. Do not run it if there were conflicts — wait for the user to confirm they've completed the merge commit.
 
 1. **Push DB schema changes.** Use the project's existing Drizzle push script — do not invent a command. In this repo that is `npm run db:push` (check `package.json` scripts to confirm; if the project uses a different script name like `pnpm db:push` or `yarn db:push`, use that instead).
    - Run `npm run db:push` first, without `--force`.
