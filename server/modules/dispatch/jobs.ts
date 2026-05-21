@@ -5,7 +5,7 @@ import { insertDispatchJobSchema, dispatchJobStatusEnum } from "@shared/schema";
 import { requireAccess } from "../../services/access-policy-evaluator";
 import { requireComponent } from "../components";
 import type { DispatchJobFilters } from "../../storage/dispatch/jobs";
-import { dispatchEligPluginRegistry } from "../../services/dispatch-elig-plugin-registry";
+import { dispatchEligPluginRegistry } from "../../plugins/dispatch/eligibility/registry";
 import { createDispatchEligibleWorkersStorage } from "../../storage/dispatch/eligible-workers";
 import { isComponentEnabledSync } from "../../services/component-cache";
 import { runPoll } from "../../services/dispatch-poll";

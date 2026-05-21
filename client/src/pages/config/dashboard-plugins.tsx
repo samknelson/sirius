@@ -137,7 +137,7 @@ export default function DashboardPluginsConfigPage() {
                   {plugin.requiredPermissions.join(", ")}
                 </div>
               )}
-              {plugin.settingsComponent && (
+              {plugin.hasSettings && (
                 <div className="pt-2">
                   <Link href={`/config/dashboard-plugins/${plugin.id}`}>
                     <Button variant="outline" size="sm" data-testid={`button-settings-${plugin.id}`}>

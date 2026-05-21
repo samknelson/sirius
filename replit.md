@@ -1,10 +1,109 @@
-# Overview
+# Sirius
 
-Sirius is a comprehensive full-stack web application designed for efficient worker management. Its primary goal is to streamline administrative tasks, improve user experience, and deliver significant business value through features like robust CRUD operations, configurable organizational settings, legal compliance reporting, benefit charge billing, detailed worker contact management, and an advanced dispatch system. The project aims to provide a reliable, efficient, and user-friendly platform for all aspects of worker administration.
+Sirius is a full-stack web application designed for comprehensive worker management, streamlining administration, enhancing user experience, and delivering business value through efficient operations.
 
-# User Preferences
+## Run & Operate
+
+_Populate as you build_
+
+## Stack
+
+-   **Frontend**: React 18, TypeScript, Vite, Wouter, TanStack Query, React Hook Form, Shadcn/ui (Radix UI), Tailwind CSS ("new-york" theme)
+-   **Backend**: Express.js, TypeScript
+-   **ORM**: Drizzle ORM
+-   **Validation**: Zod, libphonenumber-js
+-   **Database**: PostgreSQL (Neon Database)
+-   **Object Storage**: Replit Object Storage (Google Cloud Storage)
+-   **Auth**: Multi-provider (Replit Auth, Okta, SAML/OAuth, Clerk, local)
+-   **Logging**: Winston with PostgreSQL backend
+-   **Real-time**: WebSockets
+-   **Task Scheduling**: node-cron
+
+## Where things live
+
+-   **Database Schema**: `server/schema.ts` (implied by Drizzle ORM usage)
+-   **API Routes**: `server/modules/` (feature-based modules)
+-   **Frontend Pages**: `client/src/pages/` (lazy-loaded)
+-   **UI Components**: `client/src/components/`
+-   **Access Control Policies**: `server/modules/*/access.ts` (implied by entity-based policy architecture)
+-   **UI Theme**: `tailwind.config.ts` (implied by Tailwind CSS with "new-york" theme)
+-   **Wizards**: `server/wizards/types/`, `client/src/components/wizards/steps/`
+-   **Dispatch System**: `server/modules/dispatch/`, `client/src/pages/dispatch/`
+-   **Ledger System**: `server/modules/ledger/`, `client/src/pages/ledger/`
+-   **SFTP Client Destinations**: `server/modules/sftp-client-destination/`, `client/src/pages/config/sftp-client-destinations/`
+
+## Architecture decisions
+
+-   **Centralized Database Access**: All DB interactions are routed through a single storage layer for audit logging, access control, and validation.
+-   **Feature-based Module Structure**: Both frontend and backend are organized by feature modules for better maintainability and scalability.
+-   **Metadata-driven Configuration**: Configurable settings use a unified, metadata-driven system to dynamically render forms and tables.
+-   **Entity-based Access Control**: A modular, entity-based policy architecture with server-side LRU caching ensures fine-grained access control.
+-   **Charge Plugin Idempotency**: Charge plugin executions are idempotent via `chargePluginKey` upsert, preventing duplicate ledger entries.
+-   **YMD Date Convention**: Date-only fields (those representing a calendar day with no time component, e.g. `ledger.statement_ymd`) use Postgres `date` columns in `shared/schema.ts` and a `Ymd` string type (`"YYYY-MM-DD"`) in TypeScript. NEVER pass a `Ymd` through `new Date(ymd)` — that introduces UTC drift. Always go through helpers in `shared/utils/date.ts`: `dateToYmd`, `ymdToDateForPicker`, `formatYmd`, `isValidYmd`, `assertYmd`. In SQL, use `to_char(col, 'YYYY-MM')` (not `substring`) to bucket dates by month.
+-   **VDB Pension Reconciliation via Cron (not cascade)**: SLA contribution-percent and share-based variable contribution ledger entries are produced by two cron jobs (`gbhet-pension-sla-reconcile`, `gbhet-pension-shares-reconcile`) calling `reconcileContributionPctYears` / `reconcileVariableContributionForAllWorkers` in `server/services/gbhet-pension-sla.ts`. Each batch tracks the `chargePluginKey`s it produces and uses `storage.ledger.entries.deleteOrphansByChargePluginAndKnownKeys` for self-healing orphan cleanup. The previous ledger-entry-saved event-driven cascade plugins and event plumbing have been fully removed.
+
+## Product
+
+-   **Worker Management**: Comprehensive CRUD operations for workers, contacts, and benefits, with search, filtering, and pagination.
+-   **Organizational Settings**: Configurable settings for dynamic UI rendering.
+-   **Legal Compliance Reporting**: Supports legal compliance through features like employment status mapping in wizards.
+-   **Benefit Charge Billing**: Manages financial transactions, including accounts and payments, with entity-specific access.
+-   **Dispatch System**: Manages dispatch jobs, types, listings, and detail pages, with a plugin system for worker eligibility.
+-   **Multi-Provider Authentication**: Supports various authentication methods including Replit Auth, Okta, and SAML/OAuth.
+-   **Wizards**: Flexible workflow state management for multi-step processes and report generation (e.g., Employer Onboarding, GBHET Legal).
+-   **Bulk Messaging**: Infrastructure for managing and sending bulk messages across multiple mediums (email, SMS, postal, in-app).
+
+## User preferences
 
 Preferred communication style: Simple, everyday language.
+
+## Gotchas
+
+-   **Facility Contact Sync**: Renaming a facility must go through `storage.facilities.updateContactName` to keep the facility and its associated contact in sync.
+-   **Wizard Access Control**: While `/wizards/:id` only requires authentication, the API endpoints enforce granular authorization.
+-   **T631 Facility Sync**: The `sitespecific-t631-facility-fetch` cron job is disabled by default and gated by the `sitespecific.t631.client` component. It only syncs `name` and `sirius_id` and does not delete local-only rows or write arbitrary `data` jsonb.
+
+## Pointers
+
+-   **React Documentation**: [https://react.dev/](https://react.dev/)
+-   **Tailwind CSS Documentation**: [https://tailwindcss.com/docs](https://tailwindcss.com/docs)
+-   **Zod Documentation**: [https://zod.dev/](https://zod.dev/)
+-   **Drizzle ORM Documentation**: [https://orm.drizzle.team/](https://orm.drizzle.team/)
+-   **TanStack Query Documentation**: [https://tanstack.com/query/latest](https://tanstack.com/query/latest)
+-   **Express.js Documentation**: [https://expressjs.com/](https://expressjs.com/)
+-   **PostgreSQL Documentation**: [https://www.postgresql.org/docs/](https://www.postgresql.org/docs/)
+
+## Always restart the `Start application` workflow after server-side or shared changes
+
+The dev server runs under `tsx` and **does not hot-reload** changes to
+files outside the Vite client bundle. Vite HMR only refreshes the
+browser-side code under `client/`. Anything the Node process holds in
+memory (Express routes, middleware, registries, schemas, the access
+policy/component caches) keeps the old version until the workflow is
+explicitly restarted.
+
+**Rule of thumb:** if your edit touches any of the following, restart
+the `Start application` workflow as the **last step before telling the
+user to verify**:
+
+- `server/**` — routes, modules, services, storage, plugins, crons,
+  middleware, app-init, etc.
+- `shared/**` — tab registry, components registry, schema, access
+  policies, terminology, anything imported by the server.
+- New API endpoints, new tabs, new components, new policies, new
+  storage namespaces, new cron jobs, new feature flags.
+- Anything that mutates a server-held cache (component cache, access
+  policy cache, modular policy registry, terminology cache).
+
+Pure client-only changes under `client/src/**` (components, pages,
+hooks, styles) do **not** require a workflow restart — Vite HMR
+handles them.
+
+When in doubt, restart. It is cheap, and it avoids the
+"why-don't-I-see-the-new-tab" loop. After restarting, also remind the
+user that a hard refresh may be needed if a TanStack Query cache
+(default 5 min staleTime, e.g. `/api/access/tabs`) is holding the
+previous result.
 
 # Non-Negotiable Rules
 
@@ -62,6 +161,62 @@ If you find yourself wanting to break this rule, the answer is always
 to add a new storage method instead. See the **Database Access
 Architecture** entry under System Design Choices for the rationale
 (audit logging, access control, validation, separation of concerns).
+
+## Entity / page navigation MUST use the shared tab registry
+
+Every entity detail page and any persistent page-level navigation in
+the app must be driven by the shared tab registry (`shared/tabRegistry.ts`)
+plus a dedicated entity Layout under `client/src/components/layouts/`.
+The registry is the single source of truth for which tabs exist,
+which access policy / component / capability gates them, and what
+URLs they live at — and the matching backend evaluator
+(`server/modules/access-policies.ts`) is what makes per-user tab
+filtering work.
+
+**Forbidden for entity / page navigation:** importing
+`Tabs`, `TabsList`, `TabsTrigger`, or `TabsContent` from
+`@/components/ui/tabs` to build the top-level navigation of an entity
+detail page (Worker, Employer, Trust Provider, Trust Benefit, Trust
+Election, Dispatch Job, Bulk Message, etc.) or any other persistent
+page-level navigation. If you find yourself reaching for ad-hoc Radix
+Tabs to switch between "views" of an entity, stop and add a tab to
+the registry instead.
+
+**Required pattern when adding or modifying an entity detail page:**
+
+1. Add (or extend) a `TabEntityType` and `*TabTree` in
+   `shared/tabRegistry.ts` and register it in `tabTreeRegistry`.
+2. Wire the entity into the batch tab access endpoint in
+   `server/modules/access-policies.ts` (`entityPolicyMap` plus any
+   entity-specific ID resolution).
+3. Add a thin `use<Entity>TabAccess` wrapper in
+   `client/src/hooks/useTabAccess.ts`.
+4. Add a `<Entity>Layout.tsx` under `client/src/components/layouts/`
+   modeled on `TrustBenefitLayout.tsx` or `WorkerLayout.tsx` (the
+   canonical examples to copy from). The layout owns the header, the
+   back button, `usePageTitle`, and the registry-driven tab strip.
+5. Wrap each page in `<EntityLayout activeTab="...">` and render only
+   the body content.
+
+**Narrow exception — intra-page widget tabs:** Radix `Tabs` from
+`@/components/ui/tabs` are still allowed for clearly intra-page widget
+tabs that are not entity / page navigation. The current legitimate
+usages are:
+
+- `client/src/pages/admin.tsx`
+- `client/src/pages/config/users.tsx`
+- `client/src/pages/wizard-view.tsx`
+- `client/src/pages/flood-events*`
+- `client/src/components/SignatureModal.tsx`
+- `client/src/components/btu-dues-allocation/ResultsStep.tsx`
+
+These are widget-level tab strips inside a single page (e.g. a modal
+or a results panel) and are explicitly out of scope of the
+prohibition. Adding new such usages should be rare and well-justified.
+
+If your tab strip switches the route, gates by access policy /
+component, or names a persistent "view" of an entity, it belongs in
+the registry — not in `@/components/ui/tabs`.
 
 # System Architecture
 

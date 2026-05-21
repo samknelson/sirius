@@ -53,9 +53,9 @@ export function EdlsSummaryPlugin({ enabledComponents }: DashboardPluginProps) {
   if (!enabledComponents?.includes("edls")) return null;
 
   const { data, isLoading, isError } = useQuery<EdlsSummaryData>({
-    queryKey: ["/api/dashboard-plugins/edls-summary", selectedDate],
+    queryKey: ["/api/dashboard-plugins/edls-summary/content", selectedDate],
     queryFn: async () => {
-      const res = await fetch(`/api/dashboard-plugins/edls-summary?ymd=${selectedDate}`);
+      const res = await fetch(`/api/dashboard-plugins/edls-summary/content?ymd=${selectedDate}`);
       if (!res.ok) throw new Error("Failed to fetch EDLS summary");
       return res.json();
     },

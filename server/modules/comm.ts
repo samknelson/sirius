@@ -8,6 +8,7 @@ import { sendInapp, markInappAsRead, markAllInappAsRead } from "../services/inap
 import { handleStatusCallback } from "../services/comm-status/handler";
 import { serviceRegistry } from "../services/service-registry";
 import type { PostalTransport, PostalAddress } from "../services/providers/postal";
+import { mapVerificationToDeliverabilityStatus, isTerminalDeliverabilityStatus } from "../services/address-validation";
 import { broadcastAlertUpdate } from "../services/websocket";
 import { getEffectiveUser } from "./masquerade";
 
@@ -543,7 +544,8 @@ export function registerCommRoutes(
 
   app.post("/api/postal/verify-address", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
-      const parsed = addressVerificationSchema.safeParse(req.body);
+      const { addressId, ...addressBody } = req.body || {};
+      const parsed = addressVerificationSchema.safeParse(addressBody);
       if (!parsed.success) {
         return res.status(400).json({ 
           message: "Invalid address data", 
@@ -563,6 +565,28 @@ export function registerCommRoutes(
 
       const address: PostalAddress = parsed.data;
       const result = await postalProvider.verifyAddress(address);
+
+      // If addressId was provided AND verification succeeded, update deliverability_status
+      // and apply terminal-status side-effect (markUndeliverable) so primary auto-promotion runs.
+      if (typeof addressId === "string" && addressId && result.valid) {
+        const status = mapVerificationToDeliverabilityStatus({
+          valid: result.valid,
+          deliverable: result.deliverable,
+          deliverabilityAnalysis: result.deliverabilityAnalysis as { dpvVacant?: string } | undefined,
+        });
+        try {
+          if (isTerminalDeliverabilityStatus(status)) {
+            // markUndeliverable handles status set + primary demotion + auto-promotion
+            await storage.contacts.addresses.markUndeliverable(addressId);
+            // Then explicitly set the precise terminal status (vacant vs undeliverable)
+            await storage.contacts.addresses.updateDeliverabilityStatus(addressId, status, new Date());
+          } else {
+            await storage.contacts.addresses.updateDeliverabilityStatus(addressId, status, new Date());
+          }
+        } catch (sideEffectError) {
+          console.error("Failed to apply verify-address side-effect:", sideEffectError);
+        }
+      }
 
       if (!result.valid) {
         return res.status(400).json({

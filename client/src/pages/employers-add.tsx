@@ -2,19 +2,15 @@ import { Building2 } from "lucide-react";
 import { AddEmployerForm } from "@/components/employers/add-employer-form";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
-import { useQuery } from "@tanstack/react-query";
-import { Employer } from "@shared/schema";
 import { PageHeader } from "@/components/layout/PageHeader";
 
 export default function EmployersAdd() {
   const [location] = useLocation();
-  const { data: employers = [] } = useQuery<Employer[]>({
-    queryKey: ["/api/employers"],
-  });
 
   const tabs = [
     { id: "list", label: "List", href: "/employers" },
     { id: "add", label: "Add", href: "/employers/add" },
+    { id: "onboarding", label: "Onboarding", href: "/employers/onboarding" },
   ];
 
   return (

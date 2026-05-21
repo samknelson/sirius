@@ -83,6 +83,20 @@ export interface WorkerEmployerSummary {
   employers: Array<{ id: string; name: string; isHome: boolean }>;
 }
 
+export interface WorkerContactExportRow {
+  id: string;
+  given: string | null;
+  family: string | null;
+  email: string | null;
+  denorm_ms_ids: string[] | null;
+  denorm_employer_ids: string[] | null;
+  phone_number: string | null;
+  address_street: string | null;
+  address_city: string | null;
+  address_state: string | null;
+  address_postal_code: string | null;
+}
+
 export interface WorkerCurrentBenefits {
   workerId: string;
   benefits: Array<{ id: string; name: string; typeName: string | null; typeIcon: string | null; employerName: string | null }>;
@@ -171,8 +185,10 @@ export interface WorkerStorage {
   getWorkersForExport(params: WorkersExportParams): Promise<WorkerWithDetails[]>;
   getAllMatchingContactIds(params: Omit<WorkersPaginationParams, 'page' | 'pageSize' | 'sortField'>): Promise<string[]>;
   getWorkersEmployersSummary(): Promise<WorkerEmployerSummary[]>;
+  getContactExportDataByIds(workerIdsList: string[]): Promise<WorkerContactExportRow[]>;
   getWorkersCurrentBenefits(month?: number, year?: number): Promise<WorkerCurrentBenefits[]>;
   getWorker(id: string): Promise<Worker | undefined>;
+  getWorkerDisplayName(id: string | undefined | null): Promise<string>;
   getWorkerBySSN(ssn: string): Promise<Worker | undefined>;
   getWorkerByContactEmail(email: string): Promise<Worker | undefined>;
   getWorkersByContactEmail(email: string): Promise<Worker[]>;
@@ -663,6 +679,53 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       return ordered;
     },
 
+    async getContactExportDataByIds(workerIdsList: string[]): Promise<WorkerContactExportRow[]> {
+      if (workerIdsList.length === 0) return [];
+      const client = getClient();
+      const result = await client.execute(sql`
+        SELECT
+          w.id,
+          c.given,
+          c.family,
+          c.email,
+          w.denorm_ms_ids,
+          w.denorm_employer_ids,
+          (SELECT cp2.phone_number FROM contact_phone cp2 WHERE cp2.contact_id = c.id AND cp2.is_active = true ORDER BY cp2.is_primary DESC NULLS LAST LIMIT 1) as phone_number,
+          (SELECT cpo.street FROM contact_postal cpo WHERE cpo.contact_id = c.id AND cpo.is_active = true ORDER BY cpo.is_primary DESC NULLS LAST LIMIT 1) as address_street,
+          (SELECT cpo.city FROM contact_postal cpo WHERE cpo.contact_id = c.id AND cpo.is_active = true ORDER BY cpo.is_primary DESC NULLS LAST LIMIT 1) as address_city,
+          (SELECT cpo.state FROM contact_postal cpo WHERE cpo.contact_id = c.id AND cpo.is_active = true ORDER BY cpo.is_primary DESC NULLS LAST LIMIT 1) as address_state,
+          (SELECT cpo.postal_code FROM contact_postal cpo WHERE cpo.contact_id = c.id AND cpo.is_active = true ORDER BY cpo.is_primary DESC NULLS LAST LIMIT 1) as address_postal_code
+        FROM workers w
+        INNER JOIN contacts c ON w.contact_id = c.id
+        WHERE w.id = ANY(${workerIdsList})
+      `);
+      return (result.rows as Array<{
+        id: string;
+        given: string | null;
+        family: string | null;
+        email: string | null;
+        denorm_ms_ids: string[] | null;
+        denorm_employer_ids: string[] | null;
+        phone_number: string | null;
+        address_street: string | null;
+        address_city: string | null;
+        address_state: string | null;
+        address_postal_code: string | null;
+      }>).map(row => ({
+        id: row.id,
+        given: row.given,
+        family: row.family,
+        email: row.email,
+        denorm_ms_ids: row.denorm_ms_ids,
+        denorm_employer_ids: row.denorm_employer_ids,
+        phone_number: row.phone_number,
+        address_street: row.address_street,
+        address_city: row.address_city,
+        address_state: row.address_state,
+        address_postal_code: row.address_postal_code,
+      }));
+    },
+
     async getWorkersEmployersSummary(): Promise<WorkerEmployerSummary[]> {
       const client = getClient();
       const result = await client.execute(sql`
@@ -755,6 +818,23 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       const client = getClient();
       const [worker] = await client.select().from(workers).where(eq(workers.id, id));
       return worker || undefined;
+    },
+
+    async getWorkerDisplayName(id: string | undefined | null): Promise<string> {
+      if (!id) return '';
+      const client = getClient();
+      const [row] = await client
+        .select({
+          displayName: contacts.displayName,
+          given: contacts.given,
+          family: contacts.family,
+        })
+        .from(workers)
+        .leftJoin(contacts, eq(workers.contactId, contacts.id))
+        .where(eq(workers.id, id));
+      if (!row) return id;
+      const composed = [row.given, row.family].filter(Boolean).join(' ').trim();
+      return composed || row.displayName || id;
     },
 
     async getWorkerBySSN(ssn: string): Promise<Worker | undefined> {
@@ -1098,7 +1178,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
 
         // Execute charge plugins directly (for backwards compatibility)
         try {
-          const { executeChargePlugins, TriggerType } = await import("../charge-plugins");
+          const { executeChargePlugins, TriggerType } = await import("../plugins/ledger/charge");
           await executeChargePlugins({
             trigger: TriggerType.WMB_SAVED,
             ...payload,
@@ -1146,7 +1226,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
 
         // Execute charge plugins directly (for backwards compatibility)
         try {
-          const { executeChargePlugins, TriggerType } = await import("../charge-plugins");
+          const { executeChargePlugins, TriggerType } = await import("../plugins/ledger/charge");
           await executeChargePlugins({
             trigger: TriggerType.WMB_SAVED,
             ...payload,

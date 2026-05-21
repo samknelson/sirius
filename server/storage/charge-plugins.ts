@@ -12,6 +12,7 @@ export interface ChargePluginConfigStorage {
   getAll(): Promise<ChargePluginConfig[]>;
   get(id: string): Promise<ChargePluginConfig | undefined>;
   getByPluginId(pluginId: string): Promise<ChargePluginConfig[]>;
+  getFirstEnabledByPluginId(pluginId: string): Promise<ChargePluginConfig | undefined>;
   getByPluginIdAndScope(pluginId: string, scope: string, employerId?: string): Promise<ChargePluginConfig | undefined>;
   getEnabledForPlugin(pluginId: string, employerId: string | null): Promise<ChargePluginConfig[]>;
   create(config: InsertChargePluginConfig): Promise<ChargePluginConfig>;
@@ -37,6 +38,16 @@ export function createChargePluginConfigStorage(): ChargePluginConfigStorage {
       const client = getClient();
       const configs = await client.select().from(chargePluginConfigs).where(eq(chargePluginConfigs.pluginId, pluginId));
       return configs;
+    },
+
+    async getFirstEnabledByPluginId(pluginId: string): Promise<ChargePluginConfig | undefined> {
+      const client = getClient();
+      const [config] = await client
+        .select()
+        .from(chargePluginConfigs)
+        .where(and(eq(chargePluginConfigs.pluginId, pluginId), eq(chargePluginConfigs.enabled, true)))
+        .limit(1);
+      return config || undefined;
     },
 
     async getByPluginIdAndScope(pluginId: string, scope: string, employerId?: string): Promise<ChargePluginConfig | undefined> {

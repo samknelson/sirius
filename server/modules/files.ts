@@ -47,6 +47,7 @@ export function registerFileRoutes(
             'cardcheck': 'cardcheck.edit',
             'worker': 'worker.edit',
             'employer': 'employer.view',
+            'ledger_payment_batch': 'staff',
             // Add more entity types as needed
           };
           
@@ -74,6 +75,18 @@ export function registerFileRoutes(
             });
             return res.status(403).json({ message: "Insufficient permissions to upload to this entity" });
           }
+
+          // Per-entity MIME whitelist. Batch attachments are deposit slips / check
+          // images / wire confirmations, so we only allow images and PDFs.
+          const entityMimeWhitelist: Record<string, RegExp> = {
+            ledger_payment_batch: /^(image\/.+|application\/pdf)$/,
+          };
+          const allowedMime = entityMimeWhitelist[entityType];
+          if (allowedMime && !allowedMime.test(req.file.mimetype)) {
+            return res.status(400).json({
+              message: `File type ${req.file.mimetype} is not allowed for ${entityType}. Allowed: image/* or application/pdf.`,
+            });
+          }
         } else if (entityType || entityId) {
           // Partial entity context provided - require both
           return res.status(400).json({ message: "Both entityType and entityId are required for entity-scoped uploads" });
@@ -97,7 +110,7 @@ export function registerFileRoutes(
           storagePath: uploadResult.storagePath,
           mimeType: req.file.mimetype,
           size: uploadResult.size,
-          uploadedBy: (req.user as any).id,
+          uploadedBy: context.user?.id,
           entityType: entityType || null,
           entityId: entityId || null,
           accessLevel: accessLevel,
@@ -148,7 +161,7 @@ export function registerFileRoutes(
     }
   });
 
-  app.get("/api/files/:id", requireAccess('file.read'), async (req, res) => {
+  app.get("/api/files/:id", requireAccess('file.read', (req) => req.params.id), async (req, res) => {
     try {
       const { id } = req.params;
       const file = await storage.files.getById(id);
@@ -174,8 +187,12 @@ export function registerFileRoutes(
 
       const fileContent = await objectStorageService.downloadFile(file.storagePath);
       
-      res.setHeader('Content-Type', file.mimeType || 'application/octet-stream');
-      res.setHeader('Content-Disposition', `attachment; filename="${file.fileName}"`);
+      const safeName = file.fileName.replace(/"/g, '');
+      const mime = file.mimeType || 'application/octet-stream';
+      const inlineEligible = mime.startsWith('image/') || mime === 'application/pdf';
+      const disposition = req.query.download === '1' || !inlineEligible ? 'attachment' : 'inline';
+      res.setHeader('Content-Type', mime);
+      res.setHeader('Content-Disposition', `${disposition}; filename="${safeName}"`);
       res.setHeader('Content-Length', file.size);
       res.send(fileContent);
     } catch (error) {

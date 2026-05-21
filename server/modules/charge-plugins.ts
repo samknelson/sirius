@@ -1,8 +1,8 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 import { requireAccess } from "../services/access-policy-evaluator";
-import { chargePluginRegistry, getAllEnabledChargePlugins, isChargePluginEnabled } from "../charge-plugins/registry";
-import { type ChargePluginMetadata } from "../charge-plugins/types";
+import { chargePluginRegistry, getAllEnabledChargePlugins, isChargePluginEnabled } from "../plugins/ledger/charge/registry";
+import { type ChargePluginMetadata } from "../plugins/ledger/charge/types";
 import { z } from "zod";
 import { insertChargePluginConfigSchema } from "@shared/schema";
 import { requireComponent } from "./components";

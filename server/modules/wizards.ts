@@ -2,9 +2,10 @@ import type { Express, Request, Response, NextFunction } from "express";
 import multer from "multer";
 import { storage } from "../storage";
 import { insertWizardSchema, wizardDataSchema, type WizardData } from "@shared/schema";
-import { requireAccess, buildContext, checkAccess } from "../services/access-policy-evaluator";
+import { requireAccess, buildContext, checkAccess, getAccessStorage } from "../services/access-policy-evaluator";
 import { wizardRegistry } from "../wizards/index.js";
 import { FeedWizard } from "../wizards/feed.js";
+import { createUnifiedOptionsStorage } from "../storage/unified-options.js";
 import { BtuWorkerImportWizard } from "../wizards/types/btu_worker_import.js";
 import { BtuDuesAllocationWizard } from "../wizards/types/btu_dues_allocation.js";
 import { objectStorageService } from "../services/objectStorage.js";
@@ -38,8 +39,19 @@ export function registerWizardRoutes(
   requireAuth: AuthMiddleware, 
   requirePermission: PermissionMiddleware
 ) {
-  app.get("/api/wizard-types", requireAccess('admin'), async (req, res) => {
+  app.get("/api/wizard-types", requireAuth, async (req, res) => {
     try {
+      const context = await buildContext(req as any);
+      const adminAccess = await checkAccess('admin', context.user);
+
+      if (!adminAccess.granted) {
+        const accessStorage = getAccessStorage();
+        if (!context.user || !accessStorage || !await accessStorage.hasPermission(context.user.id, 'employer')) {
+          res.status(403).json({ message: "Access denied" });
+          return;
+        }
+      }
+
       const { isComponentEnabled } = await import('./components.js');
       const allTypes = wizardRegistry.getAll();
       
@@ -69,8 +81,15 @@ export function registerWizardRoutes(
     }
   });
 
-  app.get("/api/wizard-types/:typeName/steps", requireAccess('admin'), async (req, res) => {
+  app.get("/api/wizard-types/:typeName/steps", requireAuth, async (req, res) => {
     try {
+      const ctx = await buildContext(req as any);
+      const isAdmin = await checkAccess('admin', ctx.user);
+      if (!isAdmin.granted) {
+        if (!ctx.user || !await getAccessStorage()!.hasPermission(ctx.user.id, 'employer')) {
+          return res.status(403).json({ message: "Access denied" });
+        }
+      }
       const { typeName } = req.params;
       const steps = await wizardRegistry.getStepsForType(typeName);
       res.json(steps);
@@ -79,8 +98,15 @@ export function registerWizardRoutes(
     }
   });
 
-  app.get("/api/wizard-types/:typeName/statuses", requireAccess('admin'), async (req, res) => {
+  app.get("/api/wizard-types/:typeName/statuses", requireAuth, async (req, res) => {
     try {
+      const ctx = await buildContext(req as any);
+      const isAdmin = await checkAccess('admin', ctx.user);
+      if (!isAdmin.granted) {
+        if (!ctx.user || !await getAccessStorage()!.hasPermission(ctx.user.id, 'employer')) {
+          return res.status(403).json({ message: "Access denied" });
+        }
+      }
       const { typeName } = req.params;
       const statuses = await wizardRegistry.getStatusesForType(typeName);
       res.json(statuses);
@@ -89,8 +115,15 @@ export function registerWizardRoutes(
     }
   });
 
-  app.get("/api/wizard-types/:typeName/fields", requireAccess('admin'), async (req, res) => {
+  app.get("/api/wizard-types/:typeName/fields", requireAuth, async (req, res) => {
     try {
+      const ctx = await buildContext(req as any);
+      const isAdmin = await checkAccess('admin', ctx.user);
+      if (!isAdmin.granted) {
+        if (!ctx.user || !await getAccessStorage()!.hasPermission(ctx.user.id, 'employer')) {
+          return res.status(403).json({ message: "Access denied" });
+        }
+      }
       const { typeName } = req.params;
       const fields = await wizardRegistry.getFieldsForType(typeName);
       res.json(fields);
@@ -102,8 +135,17 @@ export function registerWizardRoutes(
     }
   });
 
-  app.get("/api/wizard-types/:typeName/launch-arguments", requireAccess('admin'), async (req, res) => {
+  app.get("/api/wizard-types/:typeName/launch-arguments", requireAuth, async (req, res) => {
     try {
+      const laCtx = await buildContext(req as any);
+      const laAdmin = await checkAccess('admin', laCtx.user);
+      if (!laAdmin.granted) {
+        if (!laCtx.user || !await getAccessStorage()!.hasPermission(laCtx.user.id, 'employer')) {
+          res.status(403).json({ message: "Access denied" });
+          return;
+        }
+      }
+
       const { typeName } = req.params;
       const launchArguments = await wizardRegistry.getLaunchArgumentsForType(typeName);
       res.json(launchArguments);
@@ -112,10 +154,25 @@ export function registerWizardRoutes(
     }
   });
 
-  app.get("/api/wizards", requireAccess('admin'), async (req, res) => {
+  app.get("/api/wizards", requireAuth, async (req, res) => {
     try {
       const { type, status, entityId } = req.query;
       
+      const context = await buildContext(req as any);
+      const adminAccess = await checkAccess('admin', context.user);
+
+      if (!adminAccess.granted) {
+        if (!entityId) {
+          res.status(403).json({ message: "Access denied" });
+          return;
+        }
+        const employerAccess = await checkAccess('employer.mine', context.user, entityId as string);
+        if (!employerAccess.granted) {
+          res.status(403).json({ message: "Access denied" });
+          return;
+        }
+      }
+
       const filters: { type?: string; status?: string; entityId?: string } = {};
       if (type) filters.type = type as string;
       if (status) filters.status = status as string;
@@ -182,7 +239,7 @@ export function registerWizardRoutes(
     }
   });
 
-  app.get("/api/wizards/:id", requireAccess('admin'), async (req, res) => {
+  app.get("/api/wizards/:id", requireAuth, async (req, res) => {
     try {
       const { id } = req.params;
       const wizard = await storage.wizards.getById(id);
@@ -191,15 +248,45 @@ export function registerWizardRoutes(
         return res.status(404).json({ message: "Wizard not found" });
       }
 
+      const context = await buildContext(req as any);
+      const adminAccess = await checkAccess('admin', context.user);
+
+      if (!adminAccess.granted) {
+        if (!wizard.entityId) {
+          return res.status(403).json({ message: "Access denied" });
+        }
+        const employerAccess = await checkAccess('employer.mine', context.user, wizard.entityId);
+        if (!employerAccess.granted) {
+          return res.status(403).json({ message: "Access denied" });
+        }
+      }
+
       res.json(wizard);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch wizard" });
     }
   });
 
-  app.post("/api/wizards", requireAccess('admin'), async (req, res) => {
+  app.post("/api/wizards", requireAuth, async (req, res) => {
     try {
       const validatedData = insertWizardSchema.parse(req.body);
+
+      const context = await buildContext(req as any);
+      const adminAccess = await checkAccess('admin', context.user);
+
+      if (!adminAccess.granted) {
+        if (!validatedData.entityId) {
+          return res.status(403).json({ message: "Access denied" });
+        }
+        const employerAccess = await checkAccess('employer.mine', context.user, validatedData.entityId);
+        if (!employerAccess.granted) {
+          return res.status(403).json({ message: "Access denied" });
+        }
+        const wizardType = wizardRegistry.get(validatedData.type);
+        if (!wizardType || wizardType.entityType !== 'employer') {
+          return res.status(403).json({ message: "Access denied: wizard type not available" });
+        }
+      }
       
       const typeValidation = await wizardRegistry.validateType(validatedData.type);
       if (!typeValidation.valid) {
@@ -390,13 +477,25 @@ export function registerWizardRoutes(
     }
   });
 
-  app.patch("/api/wizards/:id", requireAccess('admin'), async (req, res) => {
+  app.patch("/api/wizards/:id", requireAuth, async (req, res) => {
     try {
       const { id } = req.params;
       
       const existing = await storage.wizards.getById(id);
       if (!existing) {
         return res.status(404).json({ message: "Wizard not found" });
+      }
+
+      const patchCtx = await buildContext(req as any);
+      const patchAdmin = await checkAccess('admin', patchCtx.user);
+      if (!patchAdmin.granted) {
+        if (!existing.entityId) {
+          return res.status(403).json({ message: "Access denied" });
+        }
+        const empAccess = await checkAccess('employer.mine', patchCtx.user, existing.entityId);
+        if (!empAccess.granted) {
+          return res.status(403).json({ message: "Access denied" });
+        }
       }
 
       const validatedData = insertWizardSchema.partial().parse(req.body);
@@ -427,15 +526,27 @@ export function registerWizardRoutes(
         const existingData = (existing.data || {}) as any;
         const incomingData = validatedData.data as any;
         
-        // Validate column mapping for duplicate field IDs
         if (incomingData.columnMapping) {
-          const fieldIds = Object.values(incomingData.columnMapping).filter(id => id && id !== '_unmapped');
-          const duplicates = fieldIds.filter((id, index) => fieldIds.indexOf(id) !== index);
-          if (duplicates.length > 0) {
-            const uniqueDuplicates = Array.from(new Set(duplicates));
-            return res.status(400).json({ 
-              message: `Duplicate field mappings detected: ${uniqueDuplicates.join(', ')}. Each field can only be mapped once.` 
-            });
+          const cmKeys = Object.keys(incomingData.columnMapping);
+          const isOldFormat = cmKeys.length > 0 && cmKeys.every((k: string) => k.startsWith('col_'));
+          if (isOldFormat) {
+            const fieldIds = Object.values(incomingData.columnMapping).filter((id: any) => id && id !== '_unmapped');
+            const duplicates = fieldIds.filter((id: any, index: number) => fieldIds.indexOf(id) !== index);
+            if (duplicates.length > 0) {
+              const uniqueDuplicates = Array.from(new Set(duplicates));
+              return res.status(400).json({ 
+                message: `Duplicate field mappings detected: ${uniqueDuplicates.join(', ')}. Each field can only be mapped once.` 
+              });
+            }
+          } else {
+            const colValues = Object.values(incomingData.columnMapping).filter((v: any) => v && v !== '_unmapped');
+            const duplicates = colValues.filter((v: any, index: number) => colValues.indexOf(v) !== index);
+            if (duplicates.length > 0) {
+              const uniqueDuplicates = Array.from(new Set(duplicates));
+              return res.status(400).json({ 
+                message: `Duplicate column mappings detected: ${uniqueDuplicates.join(', ')}. Each column can only be mapped once.` 
+              });
+            }
           }
         }
         
@@ -500,13 +611,25 @@ export function registerWizardRoutes(
     }
   });
 
-  app.delete("/api/wizards/:id", requireAccess('admin'), async (req, res) => {
+  app.delete("/api/wizards/:id", requireAuth, async (req, res) => {
     try {
       const { id } = req.params;
       
       const existing = await storage.wizards.getById(id);
       if (!existing) {
         return res.status(404).json({ message: "Wizard not found" });
+      }
+
+      const delCtx = await buildContext(req as any);
+      const delAdmin = await checkAccess('admin', delCtx.user);
+      if (!delAdmin.granted) {
+        if (!existing.entityId) {
+          return res.status(403).json({ message: "Access denied" });
+        }
+        const empAccess = await checkAccess('employer.mine', delCtx.user, existing.entityId);
+        if (!empAccess.granted) {
+          return res.status(403).json({ message: "Access denied" });
+        }
       }
 
       // Delete all associated files from object storage
@@ -568,10 +691,19 @@ export function registerWizardRoutes(
         // If no required fields, step is complete
         if (requiredFields.length === 0) return true;
         
-        // Check if all required fields are mapped
-        const mappedValues = Object.values(columnMapping).filter(v => v && v !== '_unmapped');
-        const mappedRequiredFields = requiredFields.filter((f: any) => mappedValues.includes(f.id));
-        
+        const keys = Object.keys(columnMapping);
+        const isOldFormat = keys.length > 0 && keys.every((k: string) => k.startsWith('col_'));
+
+        if (isOldFormat) {
+          const mappedFieldIds = Object.values(columnMapping).filter((v: any) => v && v !== '_unmapped');
+          const mappedRequiredFields = requiredFields.filter((f: any) => mappedFieldIds.includes(f.id));
+          return requiredFields.length === mappedRequiredFields.length;
+        }
+
+        const mappedRequiredFields = requiredFields.filter((f: any) => {
+          const colValue = columnMapping[f.id];
+          return colValue && colValue !== '_unmapped';
+        });
         return requiredFields.length === mappedRequiredFields.length;
       } catch (error) {
         // If fields aren't available (not a feed wizard), consider step complete
@@ -586,15 +718,17 @@ export function registerWizardRoutes(
       // Validation must have been run
       if (!validationResults) return false;
       
-      // All rows must be valid (no invalid rows)
-      return validationResults.invalidRows === 0;
+      // All rows must be valid (no invalid rows) and no unmapped statuses pending
+      if (validationResults.invalidRows !== 0) return false;
+      if (validationResults.unmappedStatuses && validationResults.unmappedStatuses.length > 0) return false;
+      return true;
     }
     
     // Other steps are always considered complete
     return true;
   }
 
-  app.post("/api/wizards/:id/steps/next", requireAccess('admin'), async (req, res) => {
+  app.post("/api/wizards/:id/steps/next", requireAuth, async (req, res) => {
     try {
       const { id } = req.params;
       const { payload } = req.body;
@@ -602,6 +736,18 @@ export function registerWizardRoutes(
       const wizard = await storage.wizards.getById(id);
       if (!wizard) {
         return res.status(404).json({ message: "Wizard not found" });
+      }
+
+      const nextCtx = await buildContext(req as any);
+      const nextAdmin = await checkAccess('admin', nextCtx.user);
+      if (!nextAdmin.granted) {
+        if (!wizard.entityId) {
+          return res.status(403).json({ message: "Access denied" });
+        }
+        const empAccess = await checkAccess('employer.mine', nextCtx.user, wizard.entityId);
+        if (!empAccess.granted) {
+          return res.status(403).json({ message: "Access denied" });
+        }
       }
 
       const steps = await wizardRegistry.getStepsForType(wizard.type);
@@ -655,13 +801,25 @@ export function registerWizardRoutes(
     }
   });
 
-  app.post("/api/wizards/:id/steps/previous", requireAccess('admin'), async (req, res) => {
+  app.post("/api/wizards/:id/steps/previous", requireAuth, async (req, res) => {
     try {
       const { id } = req.params;
       
       const wizard = await storage.wizards.getById(id);
       if (!wizard) {
         return res.status(404).json({ message: "Wizard not found" });
+      }
+
+      const prevCtx = await buildContext(req as any);
+      const prevAdmin = await checkAccess('admin', prevCtx.user);
+      if (!prevAdmin.granted) {
+        if (!wizard.entityId) {
+          return res.status(403).json({ message: "Access denied" });
+        }
+        const empAccess = await checkAccess('employer.mine', prevCtx.user, wizard.entityId);
+        if (!empAccess.granted) {
+          return res.status(403).json({ message: "Access denied" });
+        }
       }
 
       const steps = await wizardRegistry.getStepsForType(wizard.type);
@@ -1103,6 +1261,78 @@ export function registerWizardRoutes(
       } catch (error) {
         console.error("Error saving mapping:", error);
         res.status(500).json({ message: error instanceof Error ? error.message : "Failed to save mapping" });
+      }
+    }
+  );
+
+  app.post("/api/wizards/:id/status-mappings",
+    requireAuth,
+    checkWizardAccess,
+    async (req, res) => {
+      try {
+        const wizard = (req as any).wizard;
+        const employerId = wizard.entityId;
+        if (!employerId) {
+          return res.status(400).json({ message: "Wizard is not linked to an employer" });
+        }
+
+        const { mappings } = req.body;
+        if (!Array.isArray(mappings) || mappings.length === 0) {
+          return res.status(400).json({ message: "mappings array is required" });
+        }
+
+        for (const m of mappings) {
+          if (!m.sourceStatus || !m.targetStatusId) {
+            return res.status(400).json({ message: "Each mapping must have sourceStatus and targetStatusId" });
+          }
+        }
+
+        const validStatuses = await optionsStorage.list("employment-status");
+        const validStatusIds = new Set(validStatuses.map(s => s.id));
+        for (const m of mappings) {
+          if (!validStatusIds.has(m.targetStatusId)) {
+            return res.status(400).json({ message: `Invalid target status ID: ${m.targetStatusId}` });
+          }
+        }
+
+        const results = await storage.wizardEmploymentStatusMappings.upsertBatch(employerId, mappings);
+        res.json({ saved: results.length, mappings: results });
+      } catch (error) {
+        console.error("Error saving status mappings:", error);
+        res.status(500).json({ message: error instanceof Error ? error.message : "Failed to save status mappings" });
+      }
+    }
+  );
+
+  app.get("/api/wizards/:id/status-mappings",
+    requireAuth,
+    checkWizardAccess,
+    async (req, res) => {
+      try {
+        const wizard = (req as any).wizard;
+        const employerId = wizard.entityId;
+        if (!employerId) {
+          return res.status(400).json({ message: "Wizard is not linked to an employer" });
+        }
+        const mappings = await storage.wizardEmploymentStatusMappings.getByEmployer(employerId);
+        res.json(mappings);
+      } catch (error) {
+        console.error("Error fetching status mappings:", error);
+        res.status(500).json({ message: error instanceof Error ? error.message : "Failed to fetch status mappings" });
+      }
+    }
+  );
+
+  const optionsStorage = createUnifiedOptionsStorage();
+  app.get("/api/employment-status-options",
+    requireAuth,
+    async (req, res) => {
+      try {
+        const statuses = await optionsStorage.list("employment-status");
+        res.json(statuses.map(s => ({ id: s.id, name: s.name, code: s.code, employed: s.employed })));
+      } catch (error) {
+        console.error("Error fetching employment status options:", error);
+        res.status(500).json({ message: error instanceof Error ? error.message : "Failed to fetch employment status options" });
       }
     }
   );

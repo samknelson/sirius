@@ -24,8 +24,10 @@ import {
   Truck, 
   HardHat, 
   Users,
+  Download,
   type LucideIcon 
 } from "lucide-react";
+import { stringify } from "csv-stringify/browser/esm/sync";
 import type { Employer, Contact, EmployerContact, EmployerContactType } from "@shared/schema";
 
 const iconMap: Record<string, LucideIcon> = {
@@ -103,6 +105,80 @@ export default function AllEmployerContacts() {
     setSelectedIds(new Set());
   };
 
+  const downloadCsv = (csvString: string, filename: string) => {
+    const blob = new Blob([csvString], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleExportCSV = () => {
+    if (!employerContacts?.length) return;
+
+    const csvData = employerContacts.map(ec => ({
+      "Employer": ec.employer.name,
+      "Contact Type": ec.contactType?.name || "",
+      "Display Name": ec.contact.displayName || "",
+      "Title": ec.contact.title || "",
+      "First Name": ec.contact.given || "",
+      "Middle Name": ec.contact.middle || "",
+      "Last Name": ec.contact.family || "",
+      "Generational": ec.contact.generational || "",
+      "Credentials": ec.contact.credentials || "",
+      "Email": ec.contact.email || "",
+    }));
+
+    const csv = stringify(csvData, { header: true });
+    downloadCsv(csv, `employer-contacts-${new Date().toISOString().split("T")[0]}.csv`);
+  };
+
+  const handleExportByContact = () => {
+    if (!employerContacts?.length) return;
+
+    const grouped = new Map<string, {
+      contact: EmployerContactWithDetails["contact"];
+      contactTypes: Set<string>;
+      employers: string[];
+    }>();
+
+    for (const ec of employerContacts) {
+      const key = ec.contact.id;
+      if (!grouped.has(key)) {
+        grouped.set(key, {
+          contact: ec.contact,
+          contactTypes: new Set(),
+          employers: [],
+        });
+      }
+      const entry = grouped.get(key)!;
+      entry.employers.push(ec.employer.name);
+      if (ec.contactType?.name) {
+        entry.contactTypes.add(ec.contactType.name);
+      }
+    }
+
+    const csvData = Array.from(grouped.values()).map(({ contact, contactTypes, employers }) => ({
+      "Display Name": contact.displayName || "",
+      "Title": contact.title || "",
+      "First Name": contact.given || "",
+      "Middle Name": contact.middle || "",
+      "Last Name": contact.family || "",
+      "Generational": contact.generational || "",
+      "Credentials": contact.credentials || "",
+      "Email": contact.email || "",
+      "Contact Types": Array.from(contactTypes).join(", "),
+      "Employers": employers.join(", "),
+    }));
+
+    const csv = stringify(csvData, { header: true });
+    downloadCsv(csv, `contacts-by-employer-${new Date().toISOString().split("T")[0]}.csv`);
+  };
+
   const visibleContactIds = useMemo(
     () => (employerContacts ?? []).map(ec => ec.contact.id).filter((id): id is string => !!id),
     [employerContacts],
@@ -167,15 +243,35 @@ export default function AllEmployerContacts() {
             View and manage all employer contact relationships
           </p>
         </div>
-        <ListBulkAction
-          selectedContactIds={Array.from(selectedIds)}
-          totalMatching={totalMatching}
-          visibleSelectedCount={visibleSelectedCount}
-          onSelectAllMatching={handleSelectAllMatching}
-          isSelectingAllMatching={isSelectingAll}
-          sourceLabel="Employer Contacts"
-          testIdPrefix="employer-contacts-bulk-action"
-        />
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            variant="outline"
+            onClick={handleExportByContact}
+            disabled={!employerContacts?.length}
+            data-testid="button-export-by-contact"
+          >
+            <Download className="h-4 w-4 mr-2" />
+            Export by Contact
+          </Button>
+          <Button
+            variant="outline"
+            onClick={handleExportCSV}
+            disabled={!employerContacts?.length}
+            data-testid="button-export-csv"
+          >
+            <Download className="h-4 w-4 mr-2" />
+            Export CSV
+          </Button>
+          <ListBulkAction
+            selectedContactIds={Array.from(selectedIds)}
+            totalMatching={totalMatching}
+            visibleSelectedCount={visibleSelectedCount}
+            onSelectAllMatching={handleSelectAllMatching}
+            isSelectingAllMatching={isSelectingAll}
+            sourceLabel="Employer Contacts"
+            testIdPrefix="employer-contacts-bulk-action"
+          />
+        </div>
       </div>
 
       <Card>

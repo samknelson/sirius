@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { ArrowUpDown, Building2, Eye, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -9,13 +9,14 @@ import { Label } from "@/components/ui/label";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Employer } from "@shared/schema";
+import { Employer, TrustBenefit } from "@shared/schema";
 import { Company } from "@shared/schema/employer/company-schema";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { renderIcon } from "@/components/ui/icon-picker";
 
 type EmployerWithCompany = Employer & { companyId?: string | null; companyName?: string | null };
+type BenefitWithIcon = TrustBenefit & { benefitTypeIcon?: string | null };
 
 interface EmployersTableProps {
   employers: EmployerWithCompany[];
@@ -24,6 +25,14 @@ interface EmployersTableProps {
   onToggleInactive: () => void;
   showCompany?: boolean;
   companies?: Company[];
+  selectable?: boolean;
+  selectedIds?: Set<string>;
+  onSelectionChange?: (selectedIds: Set<string>) => void;
+  workerCounts?: Record<string, number>;
+  benefitCounts?: Record<string, Record<string, number>>;
+  countsLoading?: boolean;
+  showBenefits?: boolean;
+  benefits?: BenefitWithIcon[];
 }
 
 const avatarColors = [
@@ -40,7 +49,7 @@ interface EmployerType {
   data?: { icon?: string } | null;
 }
 
-export function EmployersTable({ employers, isLoading, includeInactive, onToggleInactive, showCompany, companies = [] }: EmployersTableProps) {
+export function EmployersTable({ employers, isLoading, includeInactive, onToggleInactive, showCompany, companies = [], selectable = false, selectedIds, onSelectionChange, workerCounts, benefitCounts, countsLoading = false, showBenefits = false, benefits = [] }: EmployersTableProps) {
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedTypeId, setSelectedTypeId] = useState<string>("all");
@@ -101,6 +110,27 @@ export function EmployersTable({ employers, isLoading, includeInactive, onToggle
     return b.name.localeCompare(a.name);
   });
 
+  // Prune selection to currently visible (filtered) rows whenever the visible set changes.
+  const visibleIdsKey = sortedEmployers.map((e) => e.id).join(",");
+  useEffect(() => {
+    if (!selectable || !selectedIds || !onSelectionChange) return;
+    if (selectedIds.size === 0) return;
+    const visible = new Set(sortedEmployers.map((e) => e.id));
+    let changed = false;
+    const pruned = new Set<string>();
+    selectedIds.forEach((id) => {
+      if (visible.has(id)) {
+        pruned.add(id);
+      } else {
+        changed = true;
+      }
+    });
+    if (changed) {
+      onSelectionChange(pruned);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleIdsKey, selectable]);
+
   const toggleSort = () => {
     setSortOrder(sortOrder === "asc" ? "desc" : "asc");
   };
@@ -148,7 +178,7 @@ export function EmployersTable({ employers, isLoading, includeInactive, onToggle
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" size={16} />
             <Input
               type="text"
-              placeholder="Search by Sirius ID, Record ID, or name..."
+              placeholder="Search by Record ID or name..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-10"
@@ -221,11 +251,33 @@ export function EmployersTable({ employers, isLoading, includeInactive, onToggle
           <table className="w-full">
             <thead className="bg-muted/20">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  <div className="flex items-center space-x-2">
-                    <span>Sirius ID</span>
-                  </div>
-                </th>
+                {selectable && (
+                  <th className="px-6 py-3 text-left w-10">
+                    <Checkbox
+                      checked={
+                        sortedEmployers.length > 0 &&
+                        sortedEmployers.every((e) => selectedIds?.has(e.id))
+                      }
+                      onCheckedChange={(checked) => {
+                        if (!onSelectionChange) return;
+                        const next = new Set(selectedIds ?? []);
+                        if (checked) {
+                          sortedEmployers.forEach((e) => next.add(e.id));
+                        } else {
+                          sortedEmployers.forEach((e) => next.delete(e.id));
+                        }
+                        onSelectionChange(next);
+                      }}
+                      data-testid="checkbox-select-all-employers"
+                      aria-label="Select all visible employers"
+                    />
+                  </th>
+                )}
+                {showCompany && (
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    <span>Company</span>
+                  </th>
+                )}
                 <th 
                   className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider cursor-pointer hover:text-foreground transition-colors"
                   onClick={toggleSort}
@@ -236,14 +288,22 @@ export function EmployersTable({ employers, isLoading, includeInactive, onToggle
                     <ArrowUpDown size={12} />
                   </div>
                 </th>
-                {showCompany && (
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                    <span>Company</span>
-                  </th>
-                )}
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   <span>Status</span>
                 </th>
+                <th className="px-6 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider whitespace-nowrap">
+                  <span>Workers</span>
+                </th>
+                {showBenefits && benefits.map((b) => (
+                  <th
+                    key={b.id}
+                    className="px-4 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider whitespace-nowrap"
+                    title={b.name}
+                    data-testid={`th-benefit-${b.id}`}
+                  >
+                    <span>{b.name}</span>
+                  </th>
+                ))}
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   <span>Actions</span>
                 </th>
@@ -252,43 +312,25 @@ export function EmployersTable({ employers, isLoading, includeInactive, onToggle
             <tbody className="bg-background divide-y divide-border">
               {sortedEmployers.map((employer, index) => (
                 <tr key={employer.id} className="hover:bg-muted/30 transition-colors" data-testid={`row-employer-${employer.id}`}>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span 
-                      className="text-sm font-medium text-muted-foreground"
-                      data-testid={`text-employer-sirius-id-${employer.id}`}
-                    >
-                      {employer.siriusId}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center space-x-3">
-                      {employer.typeId && employerTypeMap.has(employer.typeId) ? (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <div 
-                              className={`w-8 h-8 ${avatarColors[index % avatarColors.length]} rounded-full flex items-center justify-center cursor-help`}
-                              data-testid={`icon-employer-type-${employer.id}`}
-                            >
-                              {renderIcon(employerTypeMap.get(employer.typeId)!.icon, "w-4 h-4")}
-                            </div>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>{employerTypeMap.get(employer.typeId)!.name}</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      ) : (
-                        <div className={`w-8 h-8 ${avatarColors[index % avatarColors.length]} rounded-full flex items-center justify-center`}>
-                          <Building2 size={12} />
-                        </div>
-                      )}
-                      <span 
-                        className="text-sm font-medium text-foreground"
-                        data-testid={`text-employer-name-${employer.id}`}
-                      >
-                        {employer.name}
-                      </span>
-                    </div>
-                  </td>
+                  {selectable && (
+                    <td className="px-6 py-4 whitespace-nowrap w-10">
+                      <Checkbox
+                        checked={selectedIds?.has(employer.id) ?? false}
+                        onCheckedChange={(checked) => {
+                          if (!onSelectionChange) return;
+                          const next = new Set(selectedIds ?? []);
+                          if (checked) {
+                            next.add(employer.id);
+                          } else {
+                            next.delete(employer.id);
+                          }
+                          onSelectionChange(next);
+                        }}
+                        data-testid={`checkbox-select-employer-${employer.id}`}
+                        aria-label={`Select ${employer.name}`}
+                      />
+                    </td>
+                  )}
                   {showCompany && (
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span
@@ -299,6 +341,14 @@ export function EmployersTable({ employers, isLoading, includeInactive, onToggle
                       </span>
                     </td>
                   )}
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <span
+                      className="text-sm font-medium text-foreground"
+                      data-testid={`text-employer-name-${employer.id}`}
+                    >
+                      {employer.name}
+                    </span>
+                  </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span 
                       className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
@@ -311,6 +361,33 @@ export function EmployersTable({ employers, isLoading, includeInactive, onToggle
                       {employer.isActive ? 'Active' : 'Inactive'}
                     </span>
                   </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm" data-testid={`text-employer-worker-count-${employer.id}`}>
+                    {countsLoading && !workerCounts ? (
+                      <Skeleton className="h-4 w-8 ml-auto" />
+                    ) : (workerCounts?.[employer.id] ?? 0) > 0 ? (
+                      <span className="font-medium tabular-nums">{workerCounts?.[employer.id]}</span>
+                    ) : (
+                      <span className="text-muted-foreground tabular-nums">0</span>
+                    )}
+                  </td>
+                  {showBenefits && benefits.map((b) => {
+                    const count = benefitCounts?.[employer.id]?.[b.id] ?? 0;
+                    return (
+                      <td
+                        key={b.id}
+                        className="px-4 py-4 whitespace-nowrap text-right text-sm"
+                        data-testid={`text-employer-benefit-count-${employer.id}-${b.id}`}
+                      >
+                        {countsLoading && !benefitCounts ? (
+                          <Skeleton className="h-4 w-6 ml-auto" />
+                        ) : count > 0 ? (
+                          <span className="font-medium tabular-nums">{count}</span>
+                        ) : (
+                          <span className="text-muted-foreground tabular-nums">0</span>
+                        )}
+                      </td>
+                    );
+                  })}
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
                     <div className="flex items-center space-x-2">
                       <Link href={`/employers/${employer.id}`}>

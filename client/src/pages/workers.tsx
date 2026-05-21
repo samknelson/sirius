@@ -5,6 +5,7 @@ import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { useAuth } from "@/contexts/AuthContext";
 import { ListBulkAction } from "@/components/bulk/list-bulk-action";
 import { apiRequest, serializeQueryKey } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -19,6 +20,7 @@ interface PaginatedWorkersResponse {
 
 export default function Workers() {
   const [location] = useLocation();
+  const { hasPermission } = useAuth();
   const { toast } = useToast();
   const [page, setPage] = useState(1);
   const [pageSize] = useState(50);
@@ -125,7 +127,7 @@ export default function Workers() {
 
   const tabs = [
     { id: "list", label: "List", href: "/workers" },
-    { id: "add", label: "Add", href: "/workers/add" },
+    ...(hasPermission("staff") ? [{ id: "add", label: "Add", href: "/workers/add" }] : []),
   ];
 
   return (

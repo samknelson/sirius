@@ -48,11 +48,15 @@ export function BenefitsStep({ wizardId, wizardType, data, onDataChange }: Benef
   const columnMapping = data?.columnMapping || {};
 
   const mappedBenefitFields = useMemo(() => {
-    const mappedValues = Object.values(columnMapping).filter(v => v && v !== '_unmapped');
+    const keys = Object.keys(columnMapping);
+    const isOldFormat = keys.length > 0 && keys.every(k => k.startsWith('col_'));
+    const mappedFieldIds = isOldFormat
+      ? Object.values(columnMapping).filter((v: any) => v && v !== '_unmapped')
+      : keys.filter(k => columnMapping[k] && columnMapping[k] !== '_unmapped');
     return fields.filter(f => 
       f.type === 'benefit' && 
       f.isBenefitEligibility && 
-      mappedValues.includes(f.id)
+      mappedFieldIds.includes(f.id)
     );
   }, [fields, columnMapping]);
 
@@ -78,6 +82,24 @@ export function BenefitsStep({ wizardId, wizardType, data, onDataChange }: Benef
       setBenefitConfig(data.benefitConfig);
     }
   }, [data?.benefitConfig]);
+
+  useEffect(() => {
+    if (benefitsLoading || trustBenefits.length === 0 || mappedBenefitFields.length === 0) return;
+    const firstActive = trustBenefits.find(b => b.isActive);
+    if (!firstActive) return;
+    const missing = mappedBenefitFields.filter(
+      f => !benefitConfig.some(c => c.fieldId === f.id),
+    );
+    if (missing.length === 0) return;
+    setBenefitConfig(prev => [
+      ...prev,
+      ...missing.map(f => ({
+        fieldId: f.id,
+        benefitId: firstActive.id,
+        benefitName: firstActive.name,
+      })),
+    ]);
+  }, [benefitsLoading, trustBenefits, mappedBenefitFields, benefitConfig]);
 
   const saveMutation = useMutation({
     mutationFn: async (config: BenefitFieldConfig[]) => {

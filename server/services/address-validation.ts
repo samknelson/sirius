@@ -894,3 +894,25 @@ class AddressValidationService {
 }
 
 export const addressValidationService = new AddressValidationService();
+export type DeliverabilityStatusResult = "unknown" | "verified" | "undeliverable" | "vacant" | "returned_mail";
+
+export function mapVerificationToDeliverabilityStatus(result: {
+  valid: boolean;
+  deliverable: boolean;
+  deliverabilityAnalysis?: { dpvVacant?: string };
+}): DeliverabilityStatusResult {
+  if (!result.valid) {
+    return "unknown";
+  }
+  if (result.deliverable) {
+    return "verified";
+  }
+  if (result.deliverabilityAnalysis?.dpvVacant === "Y") {
+    return "vacant";
+  }
+  return "undeliverable";
+}
+
+export function isTerminalDeliverabilityStatus(status: string): boolean {
+  return ["undeliverable", "vacant", "returned_mail"].includes(status);
+}

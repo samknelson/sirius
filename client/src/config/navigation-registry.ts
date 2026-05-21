@@ -111,6 +111,7 @@ export const configSections: NavSection[] = [
       { path: "/config/options/classification", label: "Classifications", icon: List, testId: "nav-config-classification-options", permission: "admin" },
       { path: "/config/options/industry", label: "Industries", icon: List, testId: "nav-config-industry-options", permission: "admin" },
       { path: "/config/options/worker-rating", label: "Rating Types", icon: List, testId: "nav-config-rating-options", permission: "admin", requiresComponent: "worker.ratings" },
+      { path: "/config/options/worker-relation-type", label: "Relationship Types", icon: List, testId: "nav-config-worker-relation-types", permission: "admin", requiresComponent: "worker.relations" },
       { path: "/config/options/employment-status", label: "Employment Statuses", icon: List, testId: "nav-config-employment-statuses", permission: "admin" },
       { path: "/config/steward-settings", label: "Steward", icon: Users, testId: "nav-config-steward-settings", permission: "admin", requiresComponent: "worker.steward" },
       { path: "/config/workers/ban", label: "Ban Notifications", icon: Shield, testId: "nav-config-workers-ban", permission: "admin", requiresComponent: "worker.ban" },

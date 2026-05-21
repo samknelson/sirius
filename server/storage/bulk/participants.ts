@@ -3,7 +3,7 @@ import { getClient } from '../transaction-context';
 import { bulkParticipants, type BulkParticipant, type InsertBulkParticipant } from "../../../shared/schema/bulk/schema";
 import { contacts, workers, comm } from "../../../shared/schema";
 import { eq, and } from "drizzle-orm";
-import type { StorageLoggingConfig } from "../middleware/logging";
+import { defineLoggingConfig } from "../middleware/logging";
 
 export const validate = createNoopValidator<InsertBulkParticipant, BulkParticipant>();
 
@@ -39,6 +39,7 @@ export interface BulkParticipantStorage {
   update(id: string, data: Partial<InsertBulkParticipant>): Promise<BulkParticipant | undefined>;
   delete(id: string): Promise<boolean>;
   deleteByMessageAndMedium(messageId: string, medium: string): Promise<number>;
+  existsForMessageAndContact(messageId: string, contactId: string): Promise<boolean>;
 }
 
 export function createBulkParticipantStorage(): BulkParticipantStorage {
@@ -149,6 +150,19 @@ export function createBulkParticipantStorage(): BulkParticipantStorage {
       return result.length > 0;
     },
 
+    async existsForMessageAndContact(messageId: string, contactId: string): Promise<boolean> {
+      const client = getClient();
+      const rows = await client
+        .select({ id: bulkParticipants.id })
+        .from(bulkParticipants)
+        .where(and(
+          eq(bulkParticipants.messageId, messageId),
+          eq(bulkParticipants.contactId, contactId),
+        ))
+        .limit(1);
+      return rows.length > 0;
+    },
+
     async deleteByMessageAndMedium(messageId: string, medium: string): Promise<number> {
       const client = getClient();
       const result = await client
@@ -165,55 +179,39 @@ export function createBulkParticipantStorage(): BulkParticipantStorage {
   return storage;
 }
 
-export const bulkParticipantLoggingConfig: StorageLoggingConfig<BulkParticipantStorage> = {
+export const bulkParticipantLoggingConfig = defineLoggingConfig<BulkParticipantStorage>({
   module: 'bulkParticipants',
+  state: { key: 'bulkParticipant' },
+  getter: 'getById',
+  hostEntityIdField: 'messageId',
   methods: {
     create: {
-      enabled: true,
-      getEntityId: (args, result) => result?.id || 'new bulk participant',
-      getHostEntityId: (args, result) => result?.messageId,
-      getDescription: async (args, result) => {
-        return `Added participant (contact ${result?.contactId}) to bulk message ${result?.messageId}`;
-      },
-      after: async (args, result) => {
-        return {
-          bulkParticipant: result,
-          metadata: {
-            messageId: result?.messageId,
-            contactId: result?.contactId,
-            commId: result?.commId,
-          }
-        };
-      }
+      state: { fallbackId: 'new bulk participant' },
+      metadata: (_args, result) => ({
+        messageId: result?.messageId,
+        contactId: result?.contactId,
+        commId: result?.commId,
+      }),
+      getDescription: async (_args, result) =>
+        `Added participant (contact ${result?.contactId}) to bulk message ${result?.messageId}`,
     },
     update: {
-      enabled: true,
-      getEntityId: (args) => args[0],
-      getHostEntityId: (args, result) => result?.messageId,
+      before: async () => undefined,
+      metadata: (_args, result) => ({
+        messageId: result?.messageId,
+        contactId: result?.contactId,
+        commId: result?.commId,
+      }),
       getDescription: async () => `Updated bulk participant`,
-      after: async (args, result) => {
-        return {
-          bulkParticipant: result,
-          metadata: {
-            messageId: result?.messageId,
-            contactId: result?.contactId,
-            commId: result?.commId,
-          }
-        };
-      }
     },
     delete: {
-      enabled: true,
-      getEntityId: (args) => args[0],
+      before: async (args, storage) => ({ record: await storage.getById(args[0]) }),
       getHostEntityId: (_args, _result, beforeState) => beforeState?.record?.messageId,
+      after: async (_args, result, _storage, beforeState) => ({
+        deleted: result,
+        metadata: { messageId: beforeState?.record?.messageId },
+      }),
       getDescription: async () => `Deleted bulk participant`,
-      before: async (args, storage) => {
-        const record = await storage.getById(args[0]);
-        return { record };
-      },
-      after: async (args, result, _storage, beforeState) => {
-        return { deleted: result, metadata: { messageId: beforeState?.record?.messageId } };
-      }
     },
-  }
-};
+  },
+});

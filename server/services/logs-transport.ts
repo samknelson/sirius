@@ -1,5 +1,5 @@
 import Transport from "winston-transport";
-import { createLogsStorage, type LogInsertData } from "../storage/logs";
+import { createLogsStorage, type LogInsertData } from "../storage/system/logs";
 
 interface LogsTransportInfo {
   level: string;

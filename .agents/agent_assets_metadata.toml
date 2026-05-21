@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "VzSJuf7rPOFZRNff6EQEn"
+uri = "file://exports/wizard-plugin-framework-spike.pdf"
+type = "pdf"
+title = "Wizard plugin framework spike — plan"

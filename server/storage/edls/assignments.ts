@@ -15,7 +15,7 @@ import {
   type InsertEdlsAssignment
 } from "@shared/schema";
 import { eq, and, sql, gte, lte, asc, inArray, ne } from "drizzle-orm";
-import { StorageLoggingConfig } from "../middleware/logging";
+import { defineLoggingConfig } from "../middleware/logging";
 import { getClient, runInTransaction } from "../transaction-context";
 import { createUnifiedOptionsStorage } from "../unified-options";
 import { createEdlsCrewsStorage } from "./crews";
@@ -149,6 +149,8 @@ export interface DailySummaryByMemberStatusRow {
   workerCount: number;
 }
 
+export type MemberStatusSummaryRow = DailySummaryByMemberStatusRow;
+
 export interface EdlsAssignmentsStorage {
   getDailySummaryByMemberStatus(ymd: string): Promise<DailySummaryByMemberStatusRow[]>;
   getByCrewId(crewId: string): Promise<EdlsAssignmentWithWorker[]>;
@@ -160,6 +162,7 @@ export interface EdlsAssignmentsStorage {
   updateData(id: string, data: Record<string, unknown>): Promise<EdlsAssignment | undefined>;
   getAvailableWorkersForSheet(sheetYmd: string, industryId: string | null, ratingId?: string): Promise<AvailableWorkerForSheet[]>;
   getWorkerAssignmentDetails(workerId: string, sheetYmd: string): Promise<WorkerAssignmentDetails | null>;
+  getMemberStatusSummaryByYmd(ymd: string): Promise<MemberStatusSummaryRow[]>;
   getAssignmentsForWorker(workerId: string, filters?: AssignmentForWorkerFilters): Promise<AssignmentForWorker[]>;
   getAssignmentsForWorkerIds(workerIds: string[], filters?: AssignmentForWorkerFilters): Promise<Map<string, AssignmentForWorker[]>>;
 }
@@ -721,6 +724,35 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
         next,
       };
     },
+
+    async getMemberStatusSummaryByYmd(ymd: string): Promise<MemberStatusSummaryRow[]> {
+      const client = getClient();
+      const result = await client.execute(sql`
+        SELECT
+          COALESCE(oms.name, 'Unassigned') AS "memberStatus",
+          oms.sequence AS "msSequence",
+          s.status AS "sheetStatus",
+          COUNT(DISTINCT a.worker_id)::int AS "workerCount"
+        FROM edls_assignments a
+        JOIN edls_crews c ON c.id = a.crew_id
+        JOIN edls_sheets s ON s.id = c.sheet_id
+        JOIN workers w ON w.id = a.worker_id
+        LEFT JOIN LATERAL (
+          SELECT oms2.name, oms2.sequence
+          FROM options_worker_ms oms2
+          JOIN employers emp ON emp.id = s.employer_id
+          WHERE oms2.industry_id = emp.industry_id
+            AND oms2.id = ANY(w.denorm_ms_ids)
+          ORDER BY oms2.sequence ASC NULLS LAST, oms2.name
+          LIMIT 1
+        ) oms ON true
+        WHERE a.ymd = ${ymd}
+          AND s.status != 'trash'
+        GROUP BY oms.name, oms.sequence, s.status
+        ORDER BY oms.sequence NULLS LAST, oms.name
+      `);
+      return result.rows as unknown as MemberStatusSummaryRow[];
+    },
   };
 }
 
@@ -752,12 +784,15 @@ async function getWorkerDescription(workerId: string): Promise<string> {
   return row.siriusId ? `${name} (${row.siriusId})` : name;
 }
 
-export const edlsAssignmentsLoggingConfig: StorageLoggingConfig<EdlsAssignmentsStorage> = {
+export const edlsAssignmentsLoggingConfig = defineLoggingConfig<EdlsAssignmentsStorage>({
   module: 'edls-assignments',
+  // No module-level stateKey — `before` for delete/updateData augments the
+  // raw assignment row with a `workerDesc` lookup, and `after` is suppressed
+  // (set explicitly to undefined) so legacy logs stay byte-identical.
   methods: {
     create: {
-      enabled: true,
-      getEntityId: (args, result) => result?.id || 'new',
+      state: { fallbackId: 'new' },
+      after: undefined,
       getHostEntityId: async (args) => {
         const crewId = args[0]?.crewId;
         if (!crewId) return undefined;
@@ -771,42 +806,39 @@ export const edlsAssignmentsLoggingConfig: StorageLoggingConfig<EdlsAssignmentsS
       },
     },
     delete: {
-      enabled: true,
-      getEntityId: (args) => args[0],
       before: async (args, storage) => {
         const assignment = await storage.get(args[0]);
         if (!assignment) return undefined;
         const workerDesc = await getWorkerDescription(assignment.workerId);
         return { ...assignment, workerDesc };
       },
-      getHostEntityId: async (args, result, beforeState) => {
+      getHostEntityId: async (_args, _result, beforeState) => {
         const crewId = beforeState?.crewId;
         if (!crewId) return undefined;
         return getSheetIdFromCrewId(crewId);
       },
-      getDescription: async (args, result, beforeState) => {
+      getDescription: async (_args, _result, beforeState) => {
         const workerDesc = beforeState?.workerDesc || 'unknown worker';
         return `Deleted assignment for ${workerDesc}`;
       },
     },
     updateData: {
-      enabled: true,
-      getEntityId: (args) => args[0],
       before: async (args, storage) => {
         const assignment = await storage.get(args[0]);
         if (!assignment) return undefined;
         const workerDesc = await getWorkerDescription(assignment.workerId);
         return { ...assignment, workerDesc };
       },
-      getHostEntityId: async (args, result, beforeState) => {
+      after: undefined,
+      getHostEntityId: async (_args, result, beforeState) => {
         const crewId = beforeState?.crewId || result?.crewId;
         if (!crewId) return undefined;
         return getSheetIdFromCrewId(crewId);
       },
-      getDescription: async (args, result, beforeState) => {
+      getDescription: async (_args, _result, beforeState) => {
         const workerDesc = beforeState?.workerDesc || 'unknown worker';
         return `Updated assignment for ${workerDesc}`;
       },
     },
   },
-};
+});

@@ -7,10 +7,10 @@ import {
   optionsEmploymentStatus,
   type WorkerHours,
 } from "@shared/schema";
-import { eq, sql, and, desc } from "drizzle-orm";
+import { eq, sql, and, desc, inArray } from "drizzle-orm";
 import { type StorageLoggingConfig } from "./middleware/logging";
 import { storageLogger as logger } from "../logger";
-import type { LedgerNotification } from "../charge-plugins/types";
+import type { LedgerNotification } from "../plugins/ledger/charge/types";
 import { eventBus, EventType } from "../services/event-bus";
 
 /**
@@ -35,7 +35,13 @@ export interface WorkerDenormData {
   jobTitle: string | null;
 }
 
+export interface EmployerWorkerCount {
+  employerId: string;
+  workerCount: number;
+}
+
 export interface WorkerHoursStorage {
+  getDistinctWorkerCountsByEmployer(): Promise<EmployerWorkerCount[]>;
   getDenormData(workerId: string): Promise<WorkerDenormData>;
   getWorkerHoursById(id: string): Promise<any | undefined>;
   getWorkerHours(workerId: string): Promise<any[]>;
@@ -44,10 +50,21 @@ export interface WorkerHoursStorage {
   getWorkerHoursMonthly(workerId: string): Promise<any[]>;
   getMonthlyHoursTotal(workerId: string, employerId: string, year: number, month: number, employmentStatusIds?: string[]): Promise<number>;
   getWorkerMonthlyHoursAllEmployers(workerId: string, year: number, month: number): Promise<number>;
+  getWorkerYearlyHoursTotal(workerId: string, year: number): Promise<number>;
   createWorkerHours(data: { workerId: string; month: number; year: number; day: number; employerId: string; employmentStatusId: string; hours: number | null; home?: boolean; jobTitle?: string | null }): Promise<WorkerHoursResult>;
   updateWorkerHours(id: string, data: { year?: number; month?: number; day?: number; employerId?: string; employmentStatusId?: string; hours?: number | null; home?: boolean; jobTitle?: string | null }): Promise<WorkerHoursResult | undefined>;
   deleteWorkerHours(id: string): Promise<WorkerHoursDeleteResult>;
   upsertWorkerHours(data: { workerId: string; month: number; year: number; employerId: string; employmentStatusId: string; hours: number | null; home?: boolean; jobTitle?: string | null }): Promise<WorkerHoursResult>;
+  getDistinctWorkerIdsByStatusAndMonths(
+    statusIds: string[],
+    months: Array<{ year: number; month: number }>,
+  ): Promise<string[]>;
+  getEmployerMonthRowsByWorkerStatusAndMonths(
+    workerId: string,
+    statusIds: string[],
+    months: Array<{ year: number; month: number }>,
+  ): Promise<Array<{ year: number; month: number; employerId: string }>>;
+  getCurrentlyEmployedWorkerIds(): Promise<Set<string>>;
 }
 
 export function createWorkerHoursStorage(
@@ -62,6 +79,20 @@ export function createWorkerHoursStorage(
   }
 
   const storage: WorkerHoursStorage = {
+    async getDistinctWorkerCountsByEmployer(): Promise<EmployerWorkerCount[]> {
+      const client = getClient();
+      const result = await client.execute(sql`
+        SELECT employer_id, COUNT(DISTINCT worker_id)::int AS worker_count
+        FROM worker_hours
+        WHERE employer_id IS NOT NULL
+        GROUP BY employer_id
+      `);
+      return (result.rows as Array<{ employer_id: string; worker_count: number }>).map(row => ({
+        employerId: row.employer_id,
+        workerCount: Number(row.worker_count) || 0,
+      }));
+    },
+
     async getDenormData(workerId: string): Promise<WorkerDenormData> {
       const client = getClient();
       
@@ -397,6 +428,18 @@ export function createWorkerHoursStorage(
       return Number(result?.totalHours || 0);
     },
 
+    async getWorkerYearlyHoursTotal(workerId: string, year: number): Promise<number> {
+      const client = getClient();
+      const [result] = await client
+        .select({ totalHours: sql<number>`COALESCE(SUM(${workerHours.hours}), 0)` })
+        .from(workerHours)
+        .where(and(
+          eq(workerHours.workerId, workerId),
+          eq(workerHours.year, year)
+        ));
+      return Number(result?.totalHours || 0);
+    },
+
     async createWorkerHours(data: { workerId: string; month: number; year: number; day: number; employerId: string; employmentStatusId: string; hours: number | null; home?: boolean }): Promise<WorkerHoursResult> {
       validate.validateOrThrow(data);
       const client = getClient();
@@ -431,7 +474,7 @@ export function createWorkerHoursStorage(
 
         // Execute charge plugins directly (for backwards compatibility with notifications)
         try {
-          const { executeChargePlugins, TriggerType } = await import("../charge-plugins");
+          const { executeChargePlugins, TriggerType } = await import("../plugins/ledger/charge");
           const result = await executeChargePlugins({
             trigger: TriggerType.HOURS_SAVED,
             ...payload,
@@ -488,7 +531,7 @@ export function createWorkerHoursStorage(
 
       // Execute charge plugins directly (for backwards compatibility with notifications)
       try {
-        const { executeChargePlugins, TriggerType } = await import("../charge-plugins");
+        const { executeChargePlugins, TriggerType } = await import("../plugins/ledger/charge");
         const result = await executeChargePlugins({
           trigger: TriggerType.HOURS_SAVED,
           ...payload,
@@ -540,7 +583,7 @@ export function createWorkerHoursStorage(
 
         // Execute charge plugins directly (for backwards compatibility with notifications)
         try {
-          const { executeChargePlugins, TriggerType } = await import("../charge-plugins");
+          const { executeChargePlugins, TriggerType } = await import("../plugins/ledger/charge");
           const pluginResult = await executeChargePlugins({
             trigger: TriggerType.HOURS_SAVED,
             ...payload,
@@ -561,12 +604,12 @@ export function createWorkerHoursStorage(
 
     async upsertWorkerHours(data: { workerId: string; month: number; year: number; employerId: string; employmentStatusId: string; hours: number | null; home?: boolean; jobTitle?: string | null }): Promise<WorkerHoursResult> {
       const client = getClient();
-      const updateSet: any = {
+      const setFields: Record<string, unknown> = {
         employmentStatusId: data.employmentStatusId,
         hours: data.hours,
       };
       if (data.jobTitle !== undefined) {
-        updateSet.jobTitle = data.jobTitle;
+        setFields.jobTitle = data.jobTitle;
       }
       const [savedHours] = await client
         .insert(workerHours)
@@ -576,7 +619,7 @@ export function createWorkerHoursStorage(
         })
         .onConflictDoUpdate({
           target: [workerHours.workerId, workerHours.employerId, workerHours.year, workerHours.month, workerHours.day],
-          set: updateSet,
+          set: setFields,
         })
         .returning();
 
@@ -606,7 +649,7 @@ export function createWorkerHoursStorage(
 
         // Execute charge plugins directly (for backwards compatibility with notifications)
         try {
-          const { executeChargePlugins, TriggerType } = await import("../charge-plugins");
+          const { executeChargePlugins, TriggerType } = await import("../plugins/ledger/charge");
           const result = await executeChargePlugins({
             trigger: TriggerType.HOURS_SAVED,
             ...payload,
@@ -623,6 +666,69 @@ export function createWorkerHoursStorage(
 
       await notifyWorkerDataChanged(savedHours.workerId);
       return { data: savedHours, notifications };
+    },
+
+    async getDistinctWorkerIdsByStatusAndMonths(
+      statusIds: string[],
+      months: Array<{ year: number; month: number }>,
+    ): Promise<string[]> {
+      if (statusIds.length === 0 || months.length === 0) return [];
+      const client = getClient();
+      const monthConditions = months.map(
+        ({ year, month }) => sql`(${workerHours.year} = ${year} AND ${workerHours.month} = ${month})`,
+      );
+      const rows = await client
+        .selectDistinct({ workerId: workerHours.workerId })
+        .from(workerHours)
+        .where(
+          and(
+            inArray(workerHours.employmentStatusId, statusIds),
+            sql`(${sql.join(monthConditions, sql` OR `)})`,
+          ),
+        );
+      return rows.map((r) => r.workerId);
+    },
+
+    async getEmployerMonthRowsByWorkerStatusAndMonths(
+      workerId: string,
+      statusIds: string[],
+      months: Array<{ year: number; month: number }>,
+    ): Promise<Array<{ year: number; month: number; employerId: string }>> {
+      if (statusIds.length === 0 || months.length === 0) return [];
+      const client = getClient();
+      const monthConditions = months.map(
+        ({ year, month }) => sql`(${workerHours.year} = ${year} AND ${workerHours.month} = ${month})`,
+      );
+      const rows = await client
+        .select({
+          year: workerHours.year,
+          month: workerHours.month,
+          employerId: workerHours.employerId,
+        })
+        .from(workerHours)
+        .where(
+          and(
+            eq(workerHours.workerId, workerId),
+            inArray(workerHours.employmentStatusId, statusIds),
+            sql`(${sql.join(monthConditions, sql` OR `)})`,
+          ),
+        );
+      return rows as Array<{ year: number; month: number; employerId: string }>;
+    },
+
+    async getCurrentlyEmployedWorkerIds(): Promise<Set<string>> {
+      const client = getClient();
+      const result = await client.execute(sql`
+        SELECT latest.worker_id
+        FROM (
+          SELECT DISTINCT ON (wh.worker_id) wh.worker_id, wh.employment_status_id
+          FROM worker_hours wh
+          ORDER BY wh.worker_id, wh.year DESC, wh.month DESC, wh.day DESC
+        ) latest
+        JOIN options_employment_status es ON es.id = latest.employment_status_id
+        WHERE es.employed = true
+      `);
+      return new Set((result.rows as Array<{ worker_id: string }>).map(r => r.worker_id));
     },
   };
 

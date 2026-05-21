@@ -2,8 +2,8 @@ import { createNoopValidator } from './utils/validation';
 import { getClient } from './transaction-context';
 import { logger } from "../logger";
 import { ledgerAccounts, ledgerStripePaymentMethods, ledgerEa, ledgerPayments, ledger, employers, workers, contacts, trustProviders, optionsLedgerPaymentType } from "@shared/schema";
-import { ledgerPaymentBatches } from "@shared/schema/ledger/payment-batch/schema";
-import type { LedgerPaymentBatch, InsertLedgerPaymentBatch } from "@shared/schema/ledger/payment-batch/schema";
+import { ledgerPaymentBatches, ledgerPaymentBatchAssignments } from "@shared/schema/ledger/payment-batch/schema";
+import type { LedgerPaymentBatch, InsertLedgerPaymentBatch, LedgerPaymentBatchAssignment } from "@shared/schema/ledger/payment-batch/schema";
 import type { 
   LedgerAccount, 
   InsertLedgerAccount,
@@ -17,10 +17,11 @@ import type {
   Ledger,
   InsertLedger
 } from "@shared/schema";
-import { eq, and, desc, or, isNull, asc, sql as sqlRaw, sum, min, max, count, inArray, gte, lte } from "drizzle-orm";
+import { eq, and, desc, or, isNull, asc, sql as sqlRaw, sum, min, max, count, inArray, notInArray, gte, lte } from "drizzle-orm";
 import { alias as pgAlias } from "drizzle-orm/pg-core";
-import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
+import { defineLoggingConfig, withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
 import { formatAmount, getCurrency } from "@shared/currency";
+import { dateToYmd, ymdToDateForPicker, isValidYmd } from "@shared/utils/date";
 
 /**
  * Stub validator - add validation logic here when needed
@@ -39,10 +40,18 @@ export interface StripePaymentMethodStorage {
 
 export type LedgerEaWithBalance = SelectLedgerEa & { balance: string };
 
+export interface LedgerEaWithAccount {
+  eaId: string;
+  entityId: string;
+  accountId: string;
+  accountName: string | null;
+}
+
 export interface LedgerEaStorage {
   getAll(): Promise<SelectLedgerEa[]>;
   get(id: string): Promise<SelectLedgerEa | undefined>;
   getByEntity(entityType: string, entityId: string): Promise<SelectLedgerEa[]>;
+  getByEntityIdsWithAccount(entityType: string, entityIds: string[]): Promise<LedgerEaWithAccount[]>;
   getByEntityWithBalance(entityType: string, entityId: string): Promise<LedgerEaWithBalance[]>;
   getByEntityAndAccount(entityType: string, entityId: string, accountId: string): Promise<SelectLedgerEa | undefined>;
   getOrCreate(entityType: string, entityId: string, accountId: string): Promise<SelectLedgerEa>;
@@ -52,9 +61,20 @@ export interface LedgerEaStorage {
   delete(id: string): Promise<boolean>;
 }
 
+export interface LedgerPaymentTypeRow {
+  id: string;
+  name: string;
+  category: string;
+}
+
+export interface LedgerPaymentTypeStorage {
+  getByIds(ids: string[]): Promise<LedgerPaymentTypeRow[]>;
+}
+
 export interface LedgerPaymentStorage {
   getAll(): Promise<LedgerPayment[]>;
   get(id: string): Promise<LedgerPayment | undefined>;
+  getByIds(ids: string[]): Promise<LedgerPayment[]>;
   getByLedgerEaId(ledgerEaId: string): Promise<LedgerPayment[]>;
   getByAccountIdWithEntity(accountId: string): Promise<LedgerPaymentWithEntity[]>;
   getByAccountIdWithEntityPaginated(
@@ -82,6 +102,9 @@ export interface LedgerEntryStorage {
   getAll(): Promise<Ledger[]>;
   get(id: string): Promise<Ledger | undefined>;
   getByEaId(eaId: string): Promise<Ledger[]>;
+  getBalancesByEaIds(eaIds: string[]): Promise<Map<string, string>>;
+  getBalancesByEntityAndAccount(entityType: string, entityIds: string[], accountIds: string[]): Promise<Array<{ entityId: string; accountId: string; total: string }>>;
+  getMonthlyDeltasByEntityAndAccount(entityType: string, entityIds: string[], accountIds: string[], monthKeys: string[]): Promise<Array<{ entityId: string; ym: string; total: string }>>;
   getByReference(referenceType: string, referenceId: string): Promise<Ledger[]>;
   getByChargePluginKey(chargePlugin: string, chargePluginKey: string): Promise<Ledger | undefined>;
   getByReferenceAndConfig(referenceId: string, chargePluginConfigId: string): Promise<Ledger[]>;
@@ -89,13 +112,16 @@ export interface LedgerEntryStorage {
   getTransactions(filter: TransactionFilter): Promise<LedgerEntryWithDetails[]>;
   getTransactionsPaginated(filter: TransactionFilter, limit: number, offset: number): Promise<{ data: LedgerEntryWithDetails[]; total: number }>;
   getByAccountId(accountId: string): Promise<LedgerEntryWithDetails[]>;
+  getRawByAccountId(accountId: string): Promise<RawLedgerEntryWithEntity[]>;
   getByAccountIdPaginated(accountId: string, limit: number, offset: number): Promise<{ data: LedgerEntryWithDetails[]; total: number }>;
   create(entry: InsertLedger): Promise<Ledger>;
   update(id: string, entry: Partial<InsertLedger>): Promise<Ledger | undefined>;
   delete(id: string): Promise<boolean>;
   deleteByReference(referenceType: string, referenceId: string): Promise<number>;
   deleteByChargePluginKey(chargePlugin: string, chargePluginKey: string): Promise<boolean>;
+  deleteOrphansByChargePluginAndKnownKeys(chargePlugin: string, accountId: string, knownKeys: Set<string>): Promise<number>;
   findByAccountEntityDatePlugin(accountId: string, entityId: string, date: Date, chargePlugin: string, chargePluginConfigId?: string, amount?: string): Promise<Ledger | undefined>;
+  getLatestByAccountAndEntities(accountId: string, entityType: string, entityIds: string[]): Promise<Array<{ entityId: string; amount: string; date: string }>>;
 }
 
 export interface LedgerEntryWithDetails extends Ledger {
@@ -107,6 +133,11 @@ export interface LedgerEntryWithDetails extends Ledger {
   referenceName: string | null;
 }
 
+export interface RawLedgerEntryWithEntity extends Ledger {
+  entityType: string;
+  entityId: string;
+}
+
 export interface InvoiceSummary {
   month: number;
   year: number;
@@ -115,10 +146,31 @@ export interface InvoiceSummary {
   incomingBalance: string;
   invoiceBalance: string;
   outgoingBalance: string;
+  chargesSubtotal: string;
+  adjustmentsSubtotal: string;
+  paymentsReceivedSubtotal: string;
+  paymentsAppliedSubtotal: string;
+}
+
+export interface InvoiceSectionEntry extends LedgerEntryWithDetails {
+  paymentTypeCategory?: string | null;
+  paymentStatementMonth?: number | null;
+  paymentStatementYear?: number | null;
+}
+
+export interface InvoiceSection {
+  entries: InvoiceSectionEntry[];
+  subtotal: string;
 }
 
 export interface InvoiceDetails extends InvoiceSummary {
   entries: LedgerEntryWithDetails[];
+  sections: {
+    charges: InvoiceSection;
+    adjustments: InvoiceSection;
+    paymentsReceived: InvoiceSection;
+    paymentsApplied: InvoiceSection;
+  };
   invoiceHeader?: string | null;
   invoiceFooter?: string | null;
 }
@@ -157,14 +209,47 @@ export interface LedgerPaymentBatchStorage {
   delete(id: string): Promise<boolean>;
 }
 
+export type LedgerPaymentWithAssignment = LedgerPaymentWithEntity & { _assignmentId: string };
+
+export type AssignPaymentResult =
+  | { kind: "created"; assignment: LedgerPaymentBatchAssignment }
+  | { kind: "conflict"; assignment: LedgerPaymentBatchAssignment };
+
+export interface LedgerPaymentBatchAssignmentStorage {
+  getSummaryByBatchId(batchId: string): Promise<{ paymentsCount: number; paymentsTotal: string }>;
+  getPaymentsByBatchId(batchId: string): Promise<LedgerPaymentWithAssignment[]>;
+  assignPayment(batchId: string, paymentId: string): Promise<AssignPaymentResult>;
+  unassign(batchId: string, paymentId: string): Promise<boolean>;
+}
+
 export interface LedgerStorage {
   accounts: LedgerAccountStorage;
   stripePaymentMethods: StripePaymentMethodStorage;
   ea: LedgerEaStorage;
   payments: LedgerPaymentStorage;
+  paymentTypes: LedgerPaymentTypeStorage;
   entries: LedgerEntryStorage;
   invoices: LedgerInvoiceStorage;
   paymentBatches: LedgerPaymentBatchStorage;
+  paymentBatchAssignments: LedgerPaymentBatchAssignmentStorage;
+}
+
+export function createLedgerPaymentTypeStorage(): LedgerPaymentTypeStorage {
+  return {
+    async getByIds(ids: string[]): Promise<LedgerPaymentTypeRow[]> {
+      if (ids.length === 0) return [];
+      const client = getClient();
+      const rows = await client
+        .select({
+          id: optionsLedgerPaymentType.id,
+          name: optionsLedgerPaymentType.name,
+          category: optionsLedgerPaymentType.category,
+        })
+        .from(optionsLedgerPaymentType)
+        .where(inArray(optionsLedgerPaymentType.id, ids));
+      return rows.map(r => ({ id: r.id, name: r.name, category: r.category }));
+    },
+  };
 }
 
 export function createLedgerAccountStorage(): LedgerAccountStorage {
@@ -397,6 +482,24 @@ export function createLedgerEaStorage(): LedgerEaStorage {
         ));
     },
 
+    async getByEntityIdsWithAccount(entityType: string, entityIds: string[]): Promise<LedgerEaWithAccount[]> {
+      if (entityIds.length === 0) return [];
+      const client = getClient();
+      return await client
+        .select({
+          eaId: ledgerEa.id,
+          entityId: ledgerEa.entityId,
+          accountId: ledgerEa.accountId,
+          accountName: ledgerAccounts.name,
+        })
+        .from(ledgerEa)
+        .innerJoin(ledgerAccounts, eq(ledgerEa.accountId, ledgerAccounts.id))
+        .where(and(
+          eq(ledgerEa.entityType, entityType),
+          inArray(ledgerEa.entityId, entityIds)
+        ));
+    },
+
     async getByEntityWithBalance(entityType: string, entityId: string): Promise<LedgerEaWithBalance[]> {
       const client = getClient();
       const entries = await client
@@ -539,6 +642,13 @@ export function createLedgerPaymentStorage(): LedgerPaymentStorage {
       const [payment] = await client.select().from(ledgerPayments)
         .where(eq(ledgerPayments.id, id));
       return payment || undefined;
+    },
+
+    async getByIds(ids: string[]): Promise<LedgerPayment[]> {
+      if (ids.length === 0) return [];
+      const client = getClient();
+      return await client.select().from(ledgerPayments)
+        .where(inArray(ledgerPayments.id, ids));
     },
 
     async getByLedgerEaId(ledgerEaId: string): Promise<LedgerPayment[]> {
@@ -690,6 +800,19 @@ export function createLedgerPaymentStorage(): LedgerPaymentStorage {
 
     async delete(id: string): Promise<boolean> {
       const client = getClient();
+      const entriesResult = await client.delete(ledger)
+        .where(and(
+          eq(ledger.referenceType, "payment"),
+          eq(ledger.referenceId, id)
+        ));
+      const deletedEntriesCount = entriesResult.rowCount || 0;
+      if (deletedEntriesCount > 0) {
+        logger.info("Deleted ledger entries when deleting payment", {
+          service: "ledger-payments",
+          paymentId: id,
+          deletedCount: deletedEntriesCount,
+        });
+      }
       const result = await client.delete(ledgerPayments)
         .where(eq(ledgerPayments.id, id));
       return result.rowCount ? result.rowCount > 0 : false;
@@ -714,6 +837,100 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
       const client = getClient();
       return await client.select().from(ledger)
         .where(eq(ledger.eaId, eaId));
+    },
+
+    async getBalancesByEaIds(eaIds: string[]): Promise<Map<string, string>> {
+      const balances = new Map<string, string>();
+      if (eaIds.length === 0) return balances;
+      const client = getClient();
+      const rows = await client
+        .select({
+          eaId: ledger.eaId,
+          total: sum(ledger.amount),
+        })
+        .from(ledger)
+        .where(inArray(ledger.eaId, eaIds))
+        .groupBy(ledger.eaId);
+      for (const row of rows) {
+        balances.set(row.eaId, row.total ?? "0.00");
+      }
+      return balances;
+    },
+
+    async getLatestByAccountAndEntities(accountId: string, entityType: string, entityIds: string[]): Promise<Array<{ entityId: string; amount: string; date: string }>> {
+      if (entityIds.length === 0) return [];
+      const client = getClient();
+      const result = await client.execute(sqlRaw`
+        SELECT DISTINCT ON (ea.entity_id)
+          ea.entity_id,
+          l.amount,
+          l.date
+        FROM ledger_ea ea
+        INNER JOIN ledger l ON l.ea_id = ea.id
+        WHERE ea.entity_type = ${entityType}
+          AND ea.account_id = ${accountId}
+          AND ea.entity_id = ANY(${entityIds})
+        ORDER BY ea.entity_id, l.date DESC
+      `);
+      return (result.rows as Array<{ entity_id: string; amount: string; date: string }>).map(row => ({
+        entityId: row.entity_id,
+        amount: row.amount,
+        date: row.date,
+      }));
+    },
+
+    async getBalancesByEntityAndAccount(entityType: string, entityIds: string[], accountIds: string[]): Promise<Array<{ entityId: string; accountId: string; total: string }>> {
+      if (entityIds.length === 0 || accountIds.length === 0) return [];
+      const client = getClient();
+      const rows = await client
+        .select({
+          entityId: ledgerEa.entityId,
+          accountId: ledgerEa.accountId,
+          total: sum(ledger.amount),
+        })
+        .from(ledgerEa)
+        .leftJoin(ledger, eq(ledger.eaId, ledgerEa.id))
+        .where(
+          and(
+            eq(ledgerEa.entityType, entityType),
+            inArray(ledgerEa.entityId, entityIds),
+            inArray(ledgerEa.accountId, accountIds),
+          ),
+        )
+        .groupBy(ledgerEa.entityId, ledgerEa.accountId);
+      return rows.map(r => ({
+        entityId: r.entityId,
+        accountId: r.accountId,
+        total: r.total ? String(r.total) : "0.00",
+      }));
+    },
+
+    async getMonthlyDeltasByEntityAndAccount(entityType: string, entityIds: string[], accountIds: string[], monthKeys: string[]): Promise<Array<{ entityId: string; ym: string; total: string }>> {
+      if (entityIds.length === 0 || accountIds.length === 0 || monthKeys.length === 0) return [];
+      const client = getClient();
+      const ymExpr = sqlRaw<string>`to_char(${ledger.statementYmd}, 'YYYY-MM')`;
+      const rows = await client
+        .select({
+          entityId: ledgerEa.entityId,
+          ym: ymExpr,
+          total: sum(ledger.amount),
+        })
+        .from(ledger)
+        .innerJoin(ledgerEa, eq(ledger.eaId, ledgerEa.id))
+        .where(
+          and(
+            eq(ledgerEa.entityType, entityType),
+            inArray(ledgerEa.entityId, entityIds),
+            inArray(ledgerEa.accountId, accountIds),
+            inArray(ymExpr, monthKeys),
+          ),
+        )
+        .groupBy(ledgerEa.entityId, ymExpr);
+      return rows.map(r => ({
+        entityId: r.entityId,
+        ym: r.ym,
+        total: r.total ? String(r.total) : "0.00",
+      }));
     },
 
     async getByReference(referenceType: string, referenceId: string): Promise<Ledger[]> {
@@ -864,9 +1081,9 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
             const formattedAmount = formatAmount(parseFloat(row.payment.amount), currencyCode);
             
             if (row.payment.memo) {
-              referenceName = `${currencyLabel} Adjustment: ${formattedAmount} - ${row.payment.memo}`;
+              referenceName = `${currencyLabel} Payment: ${formattedAmount} - ${row.payment.memo}`;
             } else {
-              referenceName = `${currencyLabel} Adjustment: ${formattedAmount}`;
+              referenceName = `${currencyLabel} Payment: ${formattedAmount}`;
             }
           } else if (row.entry.referenceType === 'employer' && row.refEmployer) {
             referenceName = `Employer: ${row.refEmployer.name}`;
@@ -1054,16 +1271,49 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
       return this.getTransactionsPaginated({ accountId }, limit, offset);
     },
 
+    async getRawByAccountId(accountId: string): Promise<RawLedgerEntryWithEntity[]> {
+      const client = getClient();
+      const rows = await client
+        .select({
+          entry: ledger,
+          entityType: ledgerEa.entityType,
+          entityId: ledgerEa.entityId,
+        })
+        .from(ledger)
+        .innerJoin(ledgerEa, eq(ledger.eaId, ledgerEa.id))
+        .where(eq(ledgerEa.accountId, accountId))
+        .orderBy(desc(ledger.date));
+      return rows.map(row => ({
+        ...row.entry,
+        entityType: row.entityType,
+        entityId: row.entityId,
+      }));
+    },
+
     async create(insertEntry: InsertLedger): Promise<Ledger> {
       validate.validateOrThrow(insertEntry);
+      const resolvedDate: Date = insertEntry.date instanceof Date
+        ? insertEntry.date
+        : insertEntry.date
+          ? new Date(insertEntry.date)
+          : new Date();
+      const statementYmd = insertEntry.statementYmd ?? dateToYmd(resolvedDate);
+      if (!isValidYmd(statementYmd)) {
+        throw new Error("statementYmd must be in YYYY-MM-DD format");
+      }
       const client = getClient();
       logger.debug("Creating ledger entry", {
         service: "ledger-storage",
         insertEntry,
       });
       try {
+        const values: typeof ledger.$inferInsert = {
+          ...insertEntry,
+          date: resolvedDate,
+          statementYmd,
+        };
         const [entry] = await client.insert(ledger)
-          .values(insertEntry as any)
+          .values(values)
           .returning();
         logger.debug("Created ledger entry successfully", {
           service: "ledger-storage",
@@ -1083,9 +1333,18 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
 
     async update(id: string, entryUpdate: Partial<InsertLedger>): Promise<Ledger | undefined> {
       validate.validateOrThrow(id);
+      const { date, ...rest } = entryUpdate;
+      const safeUpdate: Partial<typeof ledger.$inferInsert> = { ...rest };
+      if (date !== undefined) {
+        safeUpdate.date = date === null
+          ? null
+          : date instanceof Date
+            ? date
+            : new Date(date);
+      }
       const client = getClient();
       const [entry] = await client.update(ledger)
-        .set(entryUpdate as any)
+        .set(safeUpdate)
         .where(eq(ledger.id, id))
         .returning();
       return entry || undefined;
@@ -1165,6 +1424,30 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
       return result.rowCount ? result.rowCount > 0 : false;
     },
 
+    async deleteOrphansByChargePluginAndKnownKeys(
+      chargePlugin: string,
+      accountId: string,
+      knownKeys: Set<string>,
+    ): Promise<number> {
+      const client = getClient();
+      const eaRows = await client
+        .select({ id: ledgerEa.id })
+        .from(ledgerEa)
+        .where(eq(ledgerEa.accountId, accountId));
+      const eaIds = eaRows.map(r => r.id);
+      if (eaIds.length === 0) return 0;
+
+      const conditions = [
+        eq(ledger.chargePlugin, chargePlugin),
+        inArray(ledger.eaId, eaIds),
+      ];
+      if (knownKeys.size > 0) {
+        conditions.push(notInArray(ledger.chargePluginKey, Array.from(knownKeys)));
+      }
+      const result = await client.delete(ledger).where(and(...conditions));
+      return result.rowCount || 0;
+    },
+
     async findByAccountEntityDatePlugin(accountId: string, entityId: string, date: Date, chargePluginId: string, chargePluginConfigId?: string, amount?: string): Promise<Ledger | undefined> {
       const client = getClient();
       const dayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0);
@@ -1203,8 +1486,82 @@ function fromCents(cents: bigint): string {
   return dollars.toFixed(2);
 }
 
-// Build invoices with running balances for an EA
-type SimpleLedgerEntry = { id: string; amount: string; date: Date | null };
+type PaymentInfo = { category: string };
+
+interface SectionSubtotals {
+  chargesCents: bigint;
+  adjustmentsCents: bigint;
+  paymentsReceivedCents: bigint;
+  paymentsAppliedCents: bigint;
+}
+
+function classifyEntriesForPeriod(
+  monthEntryIds: Set<string>,
+  allEntries: { id: string; amount: string; date: Date | null; statementYmd: string | null; referenceType: string | null; referenceId: string | null }[],
+  paymentInfoMap: Map<string, PaymentInfo>,
+  month: number,
+  year: number,
+): SectionSubtotals {
+  let chargesCents = BigInt(0);
+  let adjustmentsCents = BigInt(0);
+  let paymentsReceivedCents = BigInt(0);
+  let paymentsAppliedCents = BigInt(0);
+
+  for (const entry of allEntries) {
+    if (!monthEntryIds.has(entry.id)) continue;
+
+    if (entry.referenceType === 'payment' && entry.referenceId) {
+      const payInfo = paymentInfoMap.get(entry.referenceId);
+      if (payInfo?.category !== 'adjustment') {
+        const stmtYmd = entry.statementYmd;
+        const stmtDate = stmtYmd && isValidYmd(stmtYmd) ? ymdToDateForPicker(stmtYmd) : null;
+        const entryInPeriod = stmtDate &&
+          stmtDate.getMonth() + 1 === month &&
+          stmtDate.getFullYear() === year;
+        if (entryInPeriod) {
+          paymentsReceivedCents += toCents(entry.amount);
+        }
+      }
+    } else {
+      const amt = parseFloat(entry.amount);
+      if (amt > 0) {
+        chargesCents += toCents(entry.amount);
+      }
+    }
+  }
+
+  const sectionedIds = new Set<string>();
+  for (const entry of allEntries) {
+    if (entry.referenceType === 'payment' && entry.referenceId) {
+      const payInfo = paymentInfoMap.get(entry.referenceId);
+      if (!payInfo) continue;
+
+      const stmtYmd = entry.statementYmd;
+      const stmtDate = stmtYmd && isValidYmd(stmtYmd) ? ymdToDateForPicker(stmtYmd) : null;
+      const stmtMonth = stmtDate ? stmtDate.getMonth() + 1 : null;
+      const stmtYear = stmtDate ? stmtDate.getFullYear() : null;
+
+      if (payInfo.category === 'adjustment' &&
+          stmtMonth === month && stmtYear === year) {
+        if (!sectionedIds.has(entry.id)) {
+          sectionedIds.add(entry.id);
+          adjustmentsCents += toCents(entry.amount);
+        }
+      } else if (payInfo.category !== 'adjustment' &&
+          stmtMonth === month && stmtYear === year) {
+        if (!sectionedIds.has(entry.id)) {
+          sectionedIds.add(entry.id);
+          paymentsAppliedCents += toCents(entry.amount);
+        }
+      }
+    }
+  }
+
+  return { chargesCents, adjustmentsCents, paymentsReceivedCents, paymentsAppliedCents };
+}
+
+type SimpleLedgerEntry = { id: string; amount: string; date: Date | null; statementYmd: string | null };
+type ExtendedSimpleLedgerEntry = SimpleLedgerEntry & { referenceType: string | null; referenceId: string | null };
 interface InvoiceBucket {
   month: number;
   year: number;
@@ -1215,12 +1572,13 @@ interface InvoiceBucket {
 function buildInvoicesForEa(entries: SimpleLedgerEntry[]): Map<string, InvoiceBucket> {
   const invoiceMap = new Map<string, InvoiceBucket>();
   
-  // Sort entries by date (nulls last), then by id for deterministic ordering
   const sortedEntries = [...entries].sort((a, b) => {
-    if (!a.date && !b.date) return a.id.localeCompare(b.id);
-    if (!a.date) return 1;
-    if (!b.date) return -1;
-    const dateCompare = a.date.getTime() - b.date.getTime();
+    const aYmd = a.statementYmd || (a.date ? dateToYmd(new Date(a.date)) : null);
+    const bYmd = b.statementYmd || (b.date ? dateToYmd(new Date(b.date)) : null);
+    if (!aYmd && !bYmd) return a.id.localeCompare(b.id);
+    if (!aYmd) return 1;
+    if (!bYmd) return -1;
+    const dateCompare = aYmd.localeCompare(bYmd);
     if (dateCompare !== 0) return dateCompare;
     return a.id.localeCompare(b.id);
   });
@@ -1228,15 +1586,14 @@ function buildInvoicesForEa(entries: SimpleLedgerEntry[]): Map<string, InvoiceBu
   let runningBalanceCents = BigInt(0);
 
   for (const entry of sortedEntries) {
-    // Skip null-dated entries (can't be assigned to a month)
-    if (!entry.date) continue;
+    const ymd = entry.statementYmd || (entry.date ? dateToYmd(new Date(entry.date)) : null);
+    if (!ymd || !isValidYmd(ymd)) continue;
 
-    const date = new Date(entry.date);
-    const month = date.getMonth() + 1; // 1-12
-    const year = date.getFullYear();
+    const d = ymdToDateForPicker(ymd);
+    const month = d.getMonth() + 1;
+    const year = d.getFullYear();
     const key = `${year}-${month}`;
 
-    // Create bucket if it doesn't exist
     if (!invoiceMap.has(key)) {
       invoiceMap.set(key, {
         month,
@@ -1246,11 +1603,9 @@ function buildInvoicesForEa(entries: SimpleLedgerEntry[]): Map<string, InvoiceBu
       });
     }
 
-    // Add entry to bucket
     const bucket = invoiceMap.get(key)!;
     bucket.entries.push(entry);
 
-    // Update running balance
     runningBalanceCents += toCents(entry.amount);
   }
 
@@ -1261,11 +1616,13 @@ function createLedgerInvoiceStorage(): LedgerInvoiceStorage {
   return {
     async listForEa(eaId: string): Promise<InvoiceSummary[]> {
       const client = getClient();
-      // Get all ledger entries for this EA
       const entries = await client.select({
         id: ledger.id,
         amount: ledger.amount,
         date: ledger.date,
+        statementYmd: ledger.statementYmd,
+        referenceType: ledger.referenceType,
+        referenceId: ledger.referenceId,
       })
       .from(ledger)
       .where(eq(ledger.eaId, eaId))
@@ -1275,10 +1632,32 @@ function createLedgerInvoiceStorage(): LedgerInvoiceStorage {
         return [];
       }
 
-      // Build invoices with running balances
       const invoiceMap = buildInvoicesForEa(entries);
 
-      // Convert to summaries
+      const allPaymentIds = [...new Set(
+        entries
+          .filter(e => e.referenceType === 'payment' && e.referenceId)
+          .map(e => e.referenceId!)
+      )];
+
+      const paymentInfoMap = new Map<string, PaymentInfo>();
+      if (allPaymentIds.length > 0) {
+        const paymentRows = await client
+          .select({
+            paymentId: ledgerPayments.id,
+            category: optionsLedgerPaymentType.category,
+          })
+          .from(ledgerPayments)
+          .innerJoin(optionsLedgerPaymentType, eq(ledgerPayments.paymentType, optionsLedgerPaymentType.id))
+          .where(inArray(ledgerPayments.id, allPaymentIds));
+
+        for (const row of paymentRows) {
+          paymentInfoMap.set(row.paymentId, {
+            category: row.category ?? 'financial',
+          });
+        }
+      }
+
       const summaries: InvoiceSummary[] = [];
       for (const bucket of Array.from(invoiceMap.values())) {
         const invoiceBalanceCents = bucket.entries.reduce(
@@ -1287,6 +1666,11 @@ function createLedgerInvoiceStorage(): LedgerInvoiceStorage {
         );
         const outgoingBalanceCents = bucket.incomingBalanceCents + invoiceBalanceCents;
 
+        const monthEntryIds = new Set(bucket.entries.map(e => e.id));
+        const sectionTotals = classifyEntriesForPeriod(
+          monthEntryIds, entries, paymentInfoMap, bucket.month, bucket.year
+        );
+
         summaries.push({
           month: bucket.month,
           year: bucket.year,
@@ -1294,11 +1678,14 @@ function createLedgerInvoiceStorage(): LedgerInvoiceStorage {
           entryCount: bucket.entries.length,
           incomingBalance: fromCents(bucket.incomingBalanceCents),
           invoiceBalance: fromCents(invoiceBalanceCents),
-          outgoingBalance: fromCents(outgoingBalanceCents)
+          outgoingBalance: fromCents(outgoingBalanceCents),
+          chargesSubtotal: fromCents(sectionTotals.chargesCents),
+          adjustmentsSubtotal: fromCents(sectionTotals.adjustmentsCents),
+          paymentsReceivedSubtotal: fromCents(sectionTotals.paymentsReceivedCents),
+          paymentsAppliedSubtotal: fromCents(sectionTotals.paymentsAppliedCents),
         });
       }
 
-      // Sort by year desc, month desc (most recent first)
       summaries.sort((a, b) => {
         if (a.year !== b.year) return b.year - a.year;
         return b.month - a.month;
@@ -1309,23 +1696,21 @@ function createLedgerInvoiceStorage(): LedgerInvoiceStorage {
 
     async getDetails(eaId: string, month: number, year: number): Promise<InvoiceDetails | undefined> {
       const client = getClient();
-      // Get EA to fetch accountId
       const ea = await client.select().from(ledgerEa).where(eq(ledgerEa.id, eaId)).limit(1);
       if (ea.length === 0) {
         return undefined;
       }
 
-      // Get account to fetch invoice header/footer
       const account = await client.select().from(ledgerAccounts).where(eq(ledgerAccounts.id, ea[0].accountId)).limit(1);
       const accountData = (account.length > 0 && account[0]?.data) 
         ? account[0].data as { invoiceHeader?: string; invoiceFooter?: string } 
         : null;
 
-      // Get all ledger entries for this EA (need all for running balance)
       const simpleEntries = await client.select({
         id: ledger.id,
         amount: ledger.amount,
         date: ledger.date,
+        statementYmd: ledger.statementYmd,
       })
       .from(ledger)
       .where(eq(ledger.eaId, eaId))
@@ -1335,7 +1720,6 @@ function createLedgerInvoiceStorage(): LedgerInvoiceStorage {
         return undefined;
       }
 
-      // Build invoices with running balances
       const invoiceMap = buildInvoicesForEa(simpleEntries);
       const key = `${year}-${month}`;
       const bucket = invoiceMap.get(key);
@@ -1344,13 +1728,108 @@ function createLedgerInvoiceStorage(): LedgerInvoiceStorage {
         return undefined;
       }
 
-      // Get detailed entries for this month
       const entryStorage = createLedgerEntryStorage();
       const allDetailedEntries = await entryStorage.getTransactions({ eaId });
       
-      // Filter to specific month/year and match the entry IDs
       const entryIds = new Set(bucket.entries.map(e => e.id));
       const monthEntries = allDetailedEntries.filter(entry => entryIds.has(entry.id));
+
+      const allPaymentIds = allDetailedEntries
+        .filter(e => e.referenceType === 'payment' && e.referenceId)
+        .map(e => e.referenceId!);
+
+      let paymentInfoMap = new Map<string, PaymentInfo>();
+      if (allPaymentIds.length > 0) {
+        const uniquePaymentIds = [...new Set(allPaymentIds)];
+        const paymentRows = await client
+          .select({
+            paymentId: ledgerPayments.id,
+            category: optionsLedgerPaymentType.category,
+          })
+          .from(ledgerPayments)
+          .innerJoin(optionsLedgerPaymentType, eq(ledgerPayments.paymentType, optionsLedgerPaymentType.id))
+          .where(inArray(ledgerPayments.id, uniquePaymentIds));
+
+        for (const row of paymentRows) {
+          paymentInfoMap.set(row.paymentId, {
+            category: row.category ?? 'financial',
+          });
+        }
+      }
+
+      const charges: InvoiceSectionEntry[] = [];
+      const adjustments: InvoiceSectionEntry[] = [];
+      const paymentsReceived: InvoiceSectionEntry[] = [];
+      const paymentsApplied: InvoiceSectionEntry[] = [];
+
+      for (const entry of monthEntries) {
+        if (entry.referenceType === 'payment' && entry.referenceId) {
+          const payInfo = paymentInfoMap.get(entry.referenceId);
+          const stmtYmd = entry.statementYmd;
+          const stmtDate = stmtYmd && isValidYmd(stmtYmd) ? ymdToDateForPicker(stmtYmd) : null;
+          const sectionEntry: InvoiceSectionEntry = {
+            ...entry,
+            paymentTypeCategory: payInfo?.category ?? 'financial',
+            paymentStatementMonth: stmtDate ? stmtDate.getMonth() + 1 : null,
+            paymentStatementYear: stmtDate ? stmtDate.getFullYear() : null,
+          };
+
+          if (payInfo?.category !== 'adjustment') {
+            const entryInPeriod = stmtDate &&
+              stmtDate.getMonth() + 1 === month &&
+              stmtDate.getFullYear() === year;
+
+            if (entryInPeriod) {
+              paymentsReceived.push(sectionEntry);
+            }
+          }
+        } else {
+          const amt = parseFloat(entry.amount);
+          if (amt > 0) {
+            charges.push({ ...entry, paymentTypeCategory: null, paymentStatementMonth: null, paymentStatementYear: null });
+          }
+        }
+      }
+
+      const sectionedEntryIds = new Set<string>();
+      for (const entry of allDetailedEntries) {
+        if (entry.referenceType === 'payment' && entry.referenceId) {
+          const payInfo = paymentInfoMap.get(entry.referenceId);
+          if (!payInfo) continue;
+
+          const stmtYmd = entry.statementYmd;
+          const stmtDate = stmtYmd && isValidYmd(stmtYmd) ? ymdToDateForPicker(stmtYmd) : null;
+          const stmtMonth = stmtDate ? stmtDate.getMonth() + 1 : null;
+          const stmtYear = stmtDate ? stmtDate.getFullYear() : null;
+
+          if (payInfo.category === 'adjustment' &&
+              stmtMonth === month && stmtYear === year) {
+            if (!sectionedEntryIds.has(entry.id)) {
+              sectionedEntryIds.add(entry.id);
+              adjustments.push({
+                ...entry,
+                paymentTypeCategory: payInfo.category,
+                paymentStatementMonth: stmtMonth,
+                paymentStatementYear: stmtYear,
+              });
+            }
+          } else if (payInfo.category !== 'adjustment' &&
+              stmtMonth === month && stmtYear === year) {
+            if (!sectionedEntryIds.has(entry.id)) {
+              sectionedEntryIds.add(entry.id);
+              paymentsApplied.push({
+                ...entry,
+                paymentTypeCategory: payInfo.category,
+                paymentStatementMonth: stmtMonth,
+                paymentStatementYear: stmtYear,
+              });
+            }
+          }
+        }
+      }
+
+      const calcSubtotal = (entries: InvoiceSectionEntry[]) =>
+        fromCents(entries.reduce((sum, e) => sum + toCents(e.amount), BigInt(0)));
 
       const invoiceBalanceCents = bucket.entries.reduce(
         (sum, e) => sum + toCents(e.amount),
@@ -1367,6 +1846,12 @@ function createLedgerInvoiceStorage(): LedgerInvoiceStorage {
         invoiceBalance: fromCents(invoiceBalanceCents),
         outgoingBalance: fromCents(outgoingBalanceCents),
         entries: monthEntries,
+        sections: {
+          charges: { entries: charges, subtotal: calcSubtotal(charges) },
+          adjustments: { entries: adjustments, subtotal: calcSubtotal(adjustments) },
+          paymentsReceived: { entries: paymentsReceived, subtotal: calcSubtotal(paymentsReceived) },
+          paymentsApplied: { entries: paymentsApplied, subtotal: calcSubtotal(paymentsApplied) },
+        },
         invoiceHeader: accountData?.invoiceHeader ?? null,
         invoiceFooter: accountData?.invoiceFooter ?? null,
       };
@@ -1418,6 +1903,95 @@ export function createLedgerPaymentBatchStorage(): LedgerPaymentBatchStorage {
   };
 }
 
+export function createLedgerPaymentBatchAssignmentStorage(): LedgerPaymentBatchAssignmentStorage {
+  return {
+    async getSummaryByBatchId(batchId: string): Promise<{ paymentsCount: number; paymentsTotal: string }> {
+      const client = getClient();
+      const rows = await client
+        .select({
+          paymentId: ledgerPaymentBatchAssignments.paymentId,
+          amount: ledgerPayments.amount,
+          status: ledgerPayments.status,
+        })
+        .from(ledgerPaymentBatchAssignments)
+        .innerJoin(ledgerPayments, eq(ledgerPaymentBatchAssignments.paymentId, ledgerPayments.id))
+        .where(eq(ledgerPaymentBatchAssignments.batchId, batchId));
+
+      const paymentsCount = rows.length;
+      const paymentsTotal = rows.reduce((sum, r) => sum + parseFloat(r.amount || "0"), 0);
+      return {
+        paymentsCount,
+        paymentsTotal: paymentsTotal.toFixed(2),
+      };
+    },
+
+    async getPaymentsByBatchId(batchId: string): Promise<LedgerPaymentWithAssignment[]> {
+      const client = getClient();
+      const rows = await client
+        .select({
+          payment: ledgerPayments,
+          ea: ledgerEa,
+          employer: employers,
+          assignmentId: ledgerPaymentBatchAssignments.id,
+        })
+        .from(ledgerPaymentBatchAssignments)
+        .innerJoin(ledgerPayments, eq(ledgerPaymentBatchAssignments.paymentId, ledgerPayments.id))
+        .innerJoin(ledgerEa, eq(ledgerPayments.ledgerEaId, ledgerEa.id))
+        .leftJoin(
+          employers,
+          and(eq(ledgerEa.entityType, "employer"), eq(ledgerEa.entityId, employers.id)),
+        )
+        .where(eq(ledgerPaymentBatchAssignments.batchId, batchId))
+        .orderBy(sqlRaw`${ledgerPayments.dateReceived} DESC NULLS LAST`);
+
+      return rows.map((r) => ({
+        ...(r.payment as LedgerPayment),
+        entityType: r.ea.entityType,
+        entityId: r.ea.entityId,
+        entityName: r.employer?.name ?? null,
+        allocatedEntities: [],
+        _assignmentId: r.assignmentId,
+      }));
+    },
+
+    async assignPayment(batchId: string, paymentId: string): Promise<AssignPaymentResult> {
+      const client = getClient();
+      try {
+        const [assignment] = await client
+          .insert(ledgerPaymentBatchAssignments)
+          .values({ batchId, paymentId })
+          .returning();
+        return { kind: "created", assignment };
+      } catch (insertErr) {
+        const code = (insertErr as { code?: string } | null)?.code;
+        if (code === "23505") {
+          const [existingAssignment] = await client
+            .select()
+            .from(ledgerPaymentBatchAssignments)
+            .where(eq(ledgerPaymentBatchAssignments.paymentId, paymentId));
+          if (existingAssignment) {
+            return { kind: "conflict", assignment: existingAssignment };
+          }
+        }
+        throw insertErr;
+      }
+    },
+
+    async unassign(batchId: string, paymentId: string): Promise<boolean> {
+      const client = getClient();
+      const result = await client
+        .delete(ledgerPaymentBatchAssignments)
+        .where(
+          and(
+            eq(ledgerPaymentBatchAssignments.batchId, batchId),
+            eq(ledgerPaymentBatchAssignments.paymentId, paymentId),
+          ),
+        );
+      return result.rowCount ? result.rowCount > 0 : false;
+    },
+  };
+}
+
 export function createLedgerStorage(
   accountLoggingConfig?: StorageLoggingConfig<LedgerAccountStorage>,
   stripePaymentMethodLoggingConfig?: StorageLoggingConfig<StripePaymentMethodStorage>,
@@ -1453,14 +2027,18 @@ export function createLedgerStorage(
     ? withStorageLogging(createLedgerPaymentBatchStorage(), paymentBatchLoggingConfig)
     : createLedgerPaymentBatchStorage();
   
+  const paymentTypeStorage = createLedgerPaymentTypeStorage();
+
   return {
     accounts: accountStorage,
     stripePaymentMethods: stripePaymentMethodStorage,
     ea: eaStorage,
     payments: paymentStorage,
+    paymentTypes: paymentTypeStorage,
     entries: entryStorage,
     invoices: invoiceStorage,
     paymentBatches: paymentBatchStorage,
+    paymentBatchAssignments: createLedgerPaymentBatchAssignmentStorage(),
   };
 }
 
@@ -1469,92 +2047,33 @@ export function createLedgerStorage(
  * 
  * Logs all ledger account mutations with full argument capture and change tracking.
  */
-export const ledgerAccountLoggingConfig: StorageLoggingConfig<LedgerAccountStorage> = {
+export const ledgerAccountLoggingConfig = defineLoggingConfig<LedgerAccountStorage>({
   module: 'ledger.accounts',
   methods: {
-    create: {
-      enabled: true,
-      getEntityId: (args, result) => result?.id || args[0]?.name || 'new account',
-      after: async (args, result, storage) => {
-        return result; // Capture created account
-      }
-    },
-    update: {
-      enabled: true,
-      getEntityId: (args) => args[0], // Account ID
-      before: async (args, storage) => {
-        return await storage.get(args[0]); // Current state
-      },
-      after: async (args, result, storage) => {
-        return result; // New state (diff auto-calculated)
-      }
-    },
-    delete: {
-      enabled: true,
-      getEntityId: (args) => args[0], // Account ID
-      before: async (args, storage) => {
-        return await storage.get(args[0]); // Capture what's being deleted
-      }
-    }
-  }
-};
+    create: { getEntityId: (args, result) => result?.id || args[0]?.name || 'new account' },
+    update: {},
+    delete: {},
+  },
+});
 
 /**
  * Logging configuration for Stripe payment method storage operations
  * 
  * Logs all Stripe payment method mutations with full argument capture and change tracking.
  */
-export const stripePaymentMethodLoggingConfig: StorageLoggingConfig<StripePaymentMethodStorage> = {
+export const stripePaymentMethodLoggingConfig = defineLoggingConfig<StripePaymentMethodStorage>({
   module: 'ledger.stripePaymentMethods',
   methods: {
-    create: {
-      enabled: true,
-      getEntityId: (args, result) => result?.id || 'new payment method',
-      after: async (args, result, storage) => {
-        return result; // Capture created payment method
-      }
-    },
-    update: {
-      enabled: true,
-      getEntityId: (args) => args[0], // Payment method ID
-      before: async (args, storage) => {
-        return await storage.get(args[0]); // Current state
-      },
-      after: async (args, result, storage) => {
-        return result; // New state (diff auto-calculated)
-      }
-    },
-    delete: {
-      enabled: true,
-      getEntityId: (args) => args[0], // Payment method ID
-      before: async (args, storage) => {
-        return await storage.get(args[0]); // Capture what's being deleted
-      }
-    },
+    create: { getEntityId: (args, result) => result?.id || 'new payment method' },
+    update: {},
+    delete: {},
     setAsDefault: {
-      enabled: true,
-      getEntityId: (args) => args[0], // Payment method ID
-      before: async (args, storage) => {
-        return await storage.get(args[0]); // Current state
-      },
-      after: async (args, result, storage) => {
-        return result; // New state (diff auto-calculated)
-      }
-    }
-  }
-};
-
-/**
- * Helper to resolve worker ID from an EA
- */
-async function getWorkerIdFromEaId(eaId: string): Promise<string | undefined> {
-  const eaStorage = createLedgerEaStorage();
-  const ea = await eaStorage.get(eaId);
-  if (ea && ea.entityType === 'worker') {
-    return ea.entityId;
-  }
-  return undefined;
-}
+      getEntityId: (args) => args[0],
+      before: async (args, storage) => await storage.get(args[0]),
+      after: async (args, result) => result,
+    },
+  },
+});
 
 /**
  * Helper to format a payment for logging display
@@ -1566,31 +2085,22 @@ function formatPaymentForLog(payment: LedgerPayment | undefined): string {
   return amount ? `${amount} payment${memo}` : 'payment';
 }
 
-export const ledgerPaymentBatchLoggingConfig: StorageLoggingConfig<LedgerPaymentBatchStorage> = {
+export const ledgerPaymentBatchLoggingConfig = defineLoggingConfig<LedgerPaymentBatchStorage>({
   module: 'ledger.paymentBatches',
+  hostEntityId: (args, result) => result?.id ?? args[0],
   methods: {
-    create: {
-      enabled: true,
-      getEntityId: (args, result) => result?.id || args[0]?.name || 'new batch',
-      getHostEntityId: (args, result) => result?.id,
-      after: async (args, result) => result,
-    },
-    update: {
-      enabled: true,
-      getEntityId: (args) => args[0],
-      getHostEntityId: (args) => args[0],
-      before: async (args, storage) => await storage.get(args[0]),
-      after: async (args, result) => result,
-    },
-    delete: {
-      enabled: true,
-      getEntityId: (args) => args[0],
-      getHostEntityId: (args) => args[0],
-      before: async (args, storage) => await storage.get(args[0]),
-    },
+    create: { getEntityId: (args, result) => result?.id || args[0]?.name || 'new batch' },
+    update: {},
+    delete: {},
   },
-};
+});
 
+/**
+ * Logging configuration for ledger payment storage operations
+ * 
+ * Logs all payment mutations with full argument capture and change tracking.
+ * Links to the payment entity via host_entity_id for per-payment log viewing.
+ */
 export const ledgerPaymentLoggingConfig: StorageLoggingConfig<LedgerPaymentStorage> = {
   module: 'ledger.payments',
   methods: {
@@ -1598,43 +2108,33 @@ export const ledgerPaymentLoggingConfig: StorageLoggingConfig<LedgerPaymentStora
       enabled: true,
       getEntityId: (args, result) => formatPaymentForLog(result),
       getHostEntityId: async (args, result) => {
-        if (result?.ledgerEaId) {
-          return await getWorkerIdFromEaId(result.ledgerEaId);
-        }
-        return undefined;
+        return result?.id;
       },
       after: async (args, result, storage) => {
-        return result; // Capture created payment
+        return result;
       }
     },
     update: {
       enabled: true,
       getEntityId: (args, result, beforeState) => formatPaymentForLog(result || beforeState),
       getHostEntityId: async (args, result, beforeState) => {
-        const eaId = result?.ledgerEaId || beforeState?.ledgerEaId;
-        if (eaId) {
-          return await getWorkerIdFromEaId(eaId);
-        }
-        return undefined;
+        return result?.id || beforeState?.id || args[0];
       },
       before: async (args, storage) => {
-        return await storage.get(args[0]); // Current state
+        return await storage.get(args[0]);
       },
       after: async (args, result, storage) => {
-        return result; // New state (diff auto-calculated)
+        return result;
       }
     },
     delete: {
       enabled: true,
       getEntityId: (args, result, beforeState) => formatPaymentForLog(beforeState),
       getHostEntityId: async (args, result, beforeState) => {
-        if (beforeState?.ledgerEaId) {
-          return await getWorkerIdFromEaId(beforeState.ledgerEaId);
-        }
-        return undefined;
+        return beforeState?.id || args[0];
       },
       before: async (args, storage) => {
-        return await storage.get(args[0]); // Capture what's being deleted
+        return await storage.get(args[0]);
       }
     }
   }

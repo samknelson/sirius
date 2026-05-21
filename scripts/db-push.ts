@@ -33,12 +33,34 @@ async function getDisabledComponentTables(pool: Pool): Promise<string[]> {
     if ((err as PgError).code !== POSTGRES_TABLE_MISSING) throw err;
   }
 
+  const disabledComponents = getSchemaManagingComponents().filter(c => {
+    const enabled = componentMap[c.id] ?? c.enabledByDefault;
+    return !enabled && c.schemaManifest;
+  });
+  if (disabledComponents.length === 0) return [];
+
+  const allCandidates = disabledComponents.flatMap(
+    c => c.schemaManifest!.tables,
+  );
+  const existing = await pool.query<{ table_name: string }>(
+    `SELECT table_name FROM information_schema.tables
+       WHERE table_schema = 'public' AND table_name = ANY($1)`,
+    [allCandidates],
+  );
+  const existingSet = new Set(existing.rows.map(r => r.table_name));
+
+  // All-or-nothing per component: if ANY manifest table for a disabled
+  // component already exists in the DB, keep them ALL in the schema.
+  // Otherwise drizzle would see an orphaned FK reference (kept table
+  // pointing at an excluded target) and emit broken DROP CONSTRAINT
+  // statements. This makes disabled components prevent CREATION of
+  // greenfield component schemas without ever forcing a destructive drop
+  // on partially-created ones.
   const disabled: string[] = [];
-  for (const component of getSchemaManagingComponents()) {
-    const enabled = componentMap[component.id] ?? component.enabledByDefault;
-    if (!enabled && component.schemaManifest) {
-      disabled.push(...component.schemaManifest.tables);
-    }
+  for (const component of disabledComponents) {
+    const tables = component.schemaManifest!.tables;
+    const anyExists = tables.some(t => existingSet.has(t));
+    if (!anyExists) disabled.push(...tables);
   }
   return disabled;
 }
@@ -109,7 +131,8 @@ function runDrizzleKit(extraArgs: string[]): Promise<number> {
 }
 
 async function main() {
-  if (!process.env.DATABASE_URL) {
+  const databaseUrl = process.env.NEON_DATABASE_URL ?? process.env.DATABASE_URL;
+  if (!databaseUrl) {
     throw new Error("DATABASE_URL is not set");
   }
 
@@ -118,7 +141,7 @@ async function main() {
   cleanupRuntimeFiles();
 
   const extraArgs = process.argv.slice(2);
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  const pool = new Pool({ connectionString: databaseUrl });
 
   let disabledTables: string[] = [];
   try {

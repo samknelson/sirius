@@ -1,5 +1,5 @@
 import { eventBus, EventType, type DispatchSavedPayload } from "./event-bus";
-import { createWorkerDispatchStatusStorage } from "../storage/worker-dispatch-status";
+import { createWorkerDispatchStatusStorage } from "../storage/dispatch/worker-status";
 import { logger } from "../logger";
 
 const SERVICE_NAME = "dispatch-seniority-reset";

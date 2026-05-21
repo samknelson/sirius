@@ -1,0 +1,666 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Wizard plugin framework spike</title>
+<style>
+  @page { size: A4; margin: 18mm; }
+  body { font-family: "Liberation Sans", "Helvetica", "Arial", sans-serif; font-size: 10.5pt; line-height: 1.45; color: #111; }
+  h1 { font-size: 20pt; margin-top: 0; border-bottom: 1px solid #999; padding-bottom: 4pt; }
+  h2 { font-size: 14pt; margin-top: 18pt; border-bottom: 1px solid #ccc; padding-bottom: 2pt; }
+  h3 { font-size: 12pt; margin-top: 14pt; }
+  p, li { margin: 4pt 0; }
+  ul, ol { margin: 4pt 0; padding-left: 22pt; }
+  code { font-family: "Liberation Mono", "Menlo", "Consolas", monospace; font-size: 9.5pt; background: #f2f2f2; padding: 0 3pt; border-radius: 2pt; }
+  pre { font-family: "Liberation Mono", "Menlo", "Consolas", monospace; font-size: 9pt; background: #f6f6f6; padding: 8pt; border: 1px solid #ddd; border-radius: 3pt; white-space: pre-wrap; word-wrap: break-word; }
+  pre code { background: transparent; padding: 0; }
+  blockquote { border-left: 3pt solid #ccc; padding-left: 10pt; color: #444; margin: 6pt 0; }
+  strong { color: #000; }
+  hr { border: none; border-top: 1px solid #ccc; margin: 10pt 0; }
+</style></head><body><h1>Wizard plugin framework spike</h1>
+<h2>What &amp; Why</h2>
+<p>This is a <strong>spike + proof-of-concept</strong> task. The goal is to design and build a
+new &quot;wizard as plugin&quot; framework for the codebase, prove it out by porting one
+existing wizard end-to-end, and leave every other wizard untouched on the
+existing system. No mass migration happens in this task — the migration of the
+remaining ~17 wizards will be planned as follow-up work <em>after</em> the team has
+seen the framework in action and agreed it&#39;s the right shape.</p>
+<h3>The problem we&#39;re trying to solve</h3>
+<p>Today, adding or modifying a wizard touches an uncomfortable number of unrelated
+files in unrelated parts of the tree. The &quot;wizard&quot; is not really a single
+unit — it&#39;s scattered across three layers that each speak a different language:</p>
+<ol>
+<li><p><strong><code>server/wizards/types/&lt;name&gt;.ts</code></strong> — a class that declares step metadata
+(<code>id</code>, <code>name</code>, <code>description</code>) but contains <em>no</em> behavior. It&#39;s purely a
+manifest masquerading as code.</p>
+</li>
+<li><p><strong><code>server/modules/&lt;area&gt;/&lt;name&gt;.ts</code></strong> — hand-rolled Express routes (one per
+step action), each re-implementing the same boilerplate:</p>
+<ul>
+<li><code>requireAuth</code> / <code>requirePermission(...)</code> checks</li>
+<li>request body validation (often ad-hoc, not always with Zod)</li>
+<li>loading the wizard by id</li>
+<li>calling <code>storage.wizards.update(...)</code> with the new step + status + data</li>
+<li>error handling + logging</li>
+<li>in some cases, <code>multer</code> setup for file uploads</li>
+</ul>
+</li>
+<li><p><strong><code>client/src/pages/wizard-view.tsx</code></strong> plus per-wizard page files under
+<code>client/src/pages/...</code> — the UI for each step is either inlined into the
+shared wizard-view dispatcher or lives in a per-wizard page that mostly
+exists to list previous runs and create new ones.</p>
+</li>
+</ol>
+<p>Concretely, for <code>BtuBuildingRepImportWizard</code> the four steps (<code>upload</code>,
+<code>preview</code>, <code>process</code>, <code>results</code>) are described in
+<code>server/wizards/types/btu_building_rep_import.ts</code>, but the actual logic for
+<code>process</code> lives in <code>server/modules/sitespecific/btu/building-rep-import.ts</code>
+behind <code>POST /api/btu-building-rep-import/process</code>, and a developer looking at
+the step list has no way to know that without grepping the route file. This is
+representative of every wizard in the system.</p>
+<p>The pain this causes:</p>
+<ul>
+<li><p><strong>High blast radius for new wizards.</strong> Adding one wizard means: edit the
+types folder, add a module file, register routes in the routes index, edit
+<code>wizard-view.tsx</code> to render the right step UI, often add a landing page
+under <code>client/src/pages/...</code>, and wire that page into <code>App.tsx</code>. That&#39;s six+
+edits for what should be one feature. This is a strong disincentive against
+refactoring wizards or splitting overgrown ones.</p>
+</li>
+<li><p><strong>Inconsistent permission / validation enforcement.</strong> Each per-wizard module
+re-declares its own <code>requirePermission(...)</code> and its own input validation.
+An auditor asking &quot;can a non-admin user hit any wizard step they shouldn&#39;t?&quot;
+has to read every per-wizard module file and check every handler
+individually. There is no single place that enforces this invariant. This
+directly conflicts with the broader effort (see recent storage / audit-log
+consolidation tasks) to shrink the surface area that has to be audited.</p>
+</li>
+<li><p><strong>Inconsistent wizard-state persistence.</strong> Some routes call
+<code>storage.wizards.update(...)</code> with <code>currentStep</code> and <code>status</code> correctly,
+some forget one or the other, some forget to merge <code>wizard.data</code> and
+accidentally clobber prior step output. Centralizing this is a
+correctness win, not just a tidiness win.</p>
+</li>
+<li><p><strong>The &quot;type&quot; file lies about what it is.</strong> Calling
+<code>server/wizards/types/&lt;name&gt;.ts</code> a wizard <em>type</em> implies it owns the
+wizard&#39;s behavior. It does not. It owns four strings per step. New
+contributors routinely look there first for the logic and bounce off.</p>
+</li>
+<li><p><strong>Frontend has to be edited for every new wizard.</strong> <code>wizard-view.tsx</code> (or
+its per-step children) must be taught about every new wizard type. There is
+no registration mechanism — it&#39;s an <code>if</code>/<code>switch</code> over wizard types. This
+is the frontend mirror of the backend routes problem.</p>
+</li>
+</ul>
+<h3>What &quot;good&quot; looks like</h3>
+<p>A wizard should be <strong>one logical plugin</strong>, congruent with the four existing
+server plugin architectures (<code>server/plugins/trust/eligibility</code>,
+<code>server/plugins/ledger/charge</code>, <code>server/plugins/dispatch/eligibility</code>,
+<code>server/plugins/dashboard</code>). That means:</p>
+<ul>
+<li>The plugin lives <strong>entirely on the server</strong>, in a single folder under
+<code>server/plugins/wizards/plugins/&lt;name&gt;/</code>, matching the existing plugin
+convention (e.g. <code>server/plugins/dashboard/plugins/...</code>,
+<code>server/plugins/trust/eligibility/plugins/...</code>).</li>
+<li>Adding a wizard means creating one server plugin folder and one client
+step-components folder. No edits to routes, no edits to <code>wizard-view.tsx</code>,
+no edits to <code>App.tsx</code>, no new file under <code>shared/</code>.</li>
+<li>Common step shapes (file upload, review/confirm, results display) are
+available as <strong>prebuilt generic steps</strong> under
+<code>server/plugins/wizards/generic/</code> and <code>client/src/plugins/wizards/generic/</code>,
+so wizards that only need standard step UIs don&#39;t write any React at all —
+they just compose generic steps into their step map.</li>
+<li>The server&#39;s manifest response <strong>declares which React component renders
+each step</strong>, by string identifier (<code>&quot;generic:Review&quot;</code>,
+<code>&quot;btu_building_rep_import:Process&quot;</code>). A custom server handler can declare a
+generic client component, which is the common case: most wizards have
+bespoke validation/mapping/processing logic on the server but a generic
+upload / review / results UI on the client.</li>
+<li>The client component registry is <strong>auto-discovered</strong> via
+<code>import.meta.glob</code> from <code>client/src/plugins/wizards/</code>. There is no
+per-wizard <code>index.ts</code> to maintain. A wizard whose UI is entirely generic
+ships <strong>zero</strong> client-side files.</li>
+<li>The set of HTTP routes the security team has to audit for wizards is
+<strong>fixed</strong>. Adding wizards does not grow it.</li>
+<li>Permission, validation, file-upload handling, error handling, logging, and
+wizard-state persistence happen in <strong>one place</strong> (the dispatcher), driven
+by declarative metadata that each step exports.</li>
+<li>The &quot;what does this wizard do&quot; question is answered by reading <strong>one
+server folder</strong>, not by spelunking through three trees.</li>
+<li>The existing project rule — <em>all DB access goes through <code>server/storage/</code></em> —
+is preserved verbatim. Wizard plugin handlers may only call <code>storage.*</code>;
+they may not import <code>db</code>, <code>getClient</code>, schema tables, or <code>drizzle-orm</code>
+query operators.</li>
+</ul>
+<h3>Why no <code>shared/</code> manifest</h3>
+<p>An earlier draft of this spike proposed a <code>shared/wizards/&lt;name&gt;/manifest.ts</code>
+that both server and client would import directly. We are explicitly <strong>not</strong>
+doing that, for three reasons:</p>
+<ol>
+<li><p><strong>Directory hygiene.</strong> It would add a new top-level convention under
+<code>shared/</code> and a new tree to keep in sync. We have enough trees.</p>
+</li>
+<li><p><strong>Congruence with existing plugin architectures.</strong> The four existing
+server-side plugin systems all live entirely under <code>server/plugins/</code> with
+no shared half. A wizard plugin should look the same. Anyone who has
+written a dispatch eligibility plugin or a dashboard plugin should
+recognize the layout immediately.</p>
+</li>
+<li><p><strong>Manifests are sometimes dynamic.</strong> A wizard&#39;s step list may depend on
+<code>wizard.data</code> plus storage lookups (e.g. an onboarding wizard that skips
+the &quot;facility selection&quot; step when the user is already scoped to one
+facility, or a report wizard whose available export formats depend on
+which components are enabled). A static <code>shared/</code> file literally cannot
+express that — it would have to be a function — and once it&#39;s a function
+that runs storage queries, it belongs on the server.</p>
+</li>
+</ol>
+<p>The framework therefore keeps the plugin on the server and lets the client
+<strong>fetch</strong> whatever manifest information it needs over HTTP. The same endpoint
+that returns a wizard returns its computed manifest. The client never imports
+plugin code; it consumes a JSON response.</p>
+<h3>Why this is a spike, not a full migration</h3>
+<p>There are 18 wizards in <code>server/wizards/types/</code> today, several with non-trivial
+flows (BTU dues allocation, GBHET legal, employer onboarding, several report
+wizards). A &quot;stop the world and rewrite everything&quot; task is high-risk: if the
+framework design turns out to be wrong in some subtle way, we&#39;d be unwinding a
+huge amount of work.</p>
+<p>The spike approach is:</p>
+<ol>
+<li>Build the framework alongside the existing system. Old wizards keep working
+exactly as they do today.</li>
+<li>Port <strong>one</strong> wizard (<code>btu_building_rep_import</code>, chosen because it&#39;s small,
+has all four common step kinds — upload, review, process, results — and is
+already well-understood) end-to-end onto the new framework.</li>
+<li>Stop. Team uses the result, reviews the code, and decides whether to
+green-light migrating the remaining 17 wizards.</li>
+</ol>
+<p>If the design is wrong, we&#39;ve spent one task instead of ten, and the existing
+wizards are untouched.</p>
+<h2>Done looks like</h2>
+<p>When this task is complete:</p>
+<ul>
+<li>A new generic wizard dispatcher exists on the server, exposing a small,
+fixed set of routes that handle <em>any</em> wizard plugin. Adding new wizards
+does not add new routes.</li>
+<li>A new generic <code>WizardView</code> exists on the client that renders the step
+strip and the active step UI based on data fetched from the server.
+Adding new wizards does not require editing <code>WizardView</code>.</li>
+<li>A server-side wizard plugin registry exists at
+<code>server/plugins/wizards/</code>, congruent with the existing
+<code>server/plugins/trust/eligibility</code>, <code>server/plugins/ledger/charge</code>,
+<code>server/plugins/dispatch/eligibility</code>, and <code>server/plugins/dashboard</code>
+plugin systems. Individual wizard plugins live under
+<code>server/plugins/wizards/plugins/&lt;name&gt;/</code> (the <code>plugins/plugins/</code> nesting is
+the existing project convention — see the four systems above).</li>
+<li>A library of <strong>generic step handlers</strong> exists at
+<code>server/plugins/wizards/generic/&lt;stepId&gt;.ts</code>, providing prebuilt
+implementations of common step shapes (upload, review, results display)
+that any wizard plugin can compose into its step map.</li>
+<li>A client-side component registry exists at
+<code>client/src/plugins/wizards/registry.ts</code>, <strong>auto-discovered</strong> via
+<code>import.meta.glob</code> from sibling folders. There is no per-wizard
+<code>index.ts</code>. Components are resolved by string identifier
+(<code>&quot;&lt;namespace&gt;:&lt;ComponentName&gt;&quot;</code>), and the namespace + filename are the
+identifier. A wizard whose UI is fully generic ships no client-side files
+at all. A library of default components for the generic step ids lives at
+<code>client/src/plugins/wizards/generic/</code> (<code>Upload.tsx</code>, <code>Review.tsx</code>,
+<code>Results.tsx</code>, registered as <code>&quot;generic:Upload&quot;</code>, etc.). No client-side
+declarations about permissions, kinds, step lists, or component-to-step
+bindings — all of that comes from the server&#39;s manifest response.</li>
+<li><code>BtuBuildingRepImportWizard</code> has been fully ported to the new framework:<ul>
+<li>Its old per-wizard routes in
+<code>server/modules/sitespecific/btu/building-rep-import.ts</code> have been
+removed (the file may be deleted if nothing else lives there).</li>
+<li>Its frontend page now goes through the generic <code>WizardView</code>. The
+landing-page file may remain as the index/listing page; only the
+step-rendering responsibility moves.</li>
+<li>The wizard still works end-to-end from the user&#39;s perspective:
+upload CSV → preview matches → process assignments → see results.</li>
+<li>The old <code>server/wizards/types/btu_building_rep_import.ts</code> is removed
+so there is one source of truth for that wizard&#39;s step list.</li>
+</ul>
+</li>
+<li>The other 17 wizards in <code>server/wizards/types/</code> are <strong>untouched</strong> and
+continue to work exactly as they do today. The two systems coexist.</li>
+<li>There is a short developer note (added to <code>replit.md</code> under &quot;Where things
+live&quot; or a new &quot;Wizards&quot; section) describing the new layout and how to
+add a wizard under it, with a pointer to <code>btu_building_rep_import</code> as the
+canonical example.</li>
+</ul>
+<h2>Out of scope</h2>
+<ul>
+<li>Migrating any wizard other than <code>btu_building_rep_import</code>. The other 17
+stay on the existing system. Their migration will be planned as separate
+follow-up tasks <strong>after</strong> the team reviews the spike result.</li>
+<li>Removing the existing wizard infrastructure (the old <code>server/wizards/types/</code>
+base classes, the old per-wizard modules, the old branches in
+<code>wizard-view.tsx</code>). All of that has to stay in place to keep the other
+wizards running. It will be cleaned up at the <em>end</em> of the eventual
+migration, not here.</li>
+<li>Replacing the wizard create endpoint or any cross-wizard infrastructure
+that already works (statuses, <code>wizards</code> table schema, the <code>/wizards/:id</code>
+route shell). Those stay as-is. The new framework adds endpoints; it does
+not remove existing ones.</li>
+<li>Introducing JSON-Schema / RJSF forms. The framework should leave the door
+open for a future schema-driven <code>form</code> step kind, but no actual
+schema-rendered forms ship in this task. Every step in the ported wizard
+uses a hand-written React component.</li>
+<li>Any change to the existing storage-layer rule. Plugin handlers still call
+<code>storage.*</code> and only <code>storage.*</code>. The dispatcher does not introduce a new
+way to access the database.</li>
+<li>Any <code>shared/wizards/</code> directory. Manifest information is computed on the
+server and shipped to the client over HTTP.</li>
+</ul>
+<h2>Design notes</h2>
+<p>These are constraints the implementer should respect; they are the outcome of
+the discussion that produced this spike. They are intentionally specific
+because the framework&#39;s <em>shape</em> is the thing we want the team to react to.</p>
+<h3>Folder layout</h3>
+<p>A wizard plugin lives entirely on the server, mirroring the existing
+<code>server/plugins/&lt;area&gt;/plugins/&lt;name&gt;/</code> convention. The client carries only
+the React step components, mirroring the existing <code>client/src/plugins/&lt;area&gt;/</code>
+convention. The client does not import any plugin metadata:</p>
+<pre><code>server/plugins/wizards/
+  registry.ts                       # wizard plugin registry (parallels server/plugins/dashboard/registry.ts)
+  types.ts                          # WizardManifest, WizardStepHandler, etc.
+  dispatcher.ts                     # the fixed-route HTTP dispatcher
+  generic/                          # prebuilt generic step handlers, importable by any plugin
+    upload.ts
+    review.ts
+    results.ts
+  plugins/
+    &lt;name&gt;/
+      index.ts                      # registers the plugin; exports { type, manifest, steps }
+      steps/
+        &lt;stepId&gt;.ts                 # custom step handler (only when a generic step won&#39;t do)
+
+client/src/plugins/wizards/
+  registry.ts                       # auto-discovered component registry (uses import.meta.glob)
+  WizardView.tsx                    # generic wizard renderer
+  generic/                          # default React components, registered as &quot;generic:&lt;Name&gt;&quot;
+    Upload.tsx                      # -&gt; &quot;generic:Upload&quot;
+    Review.tsx                      # -&gt; &quot;generic:Review&quot;
+    Results.tsx                     # -&gt; &quot;generic:Results&quot;
+  &lt;name&gt;/                           # only created if this wizard needs custom React components
+    &lt;ComponentName&gt;.tsx             # -&gt; &quot;&lt;name&gt;:&lt;ComponentName&gt;&quot;  (no index.ts required)
+</code></pre>
+<p>There is <strong>no</strong> <code>shared/wizards/</code> directory. There is <strong>no</strong> shared manifest
+file. The client learns about a wizard&#39;s steps by calling the server.</p>
+<p>The <code>plugins/plugins/</code> nesting on the server side is intentional and matches
+the four existing plugin systems — it gives each plugin area room for its own
+<code>registry.ts</code>, <code>types.ts</code>, and (here) <code>generic/</code> and <code>dispatcher.ts</code> siblings
+next to the actual plugin folders.</p>
+<h3>Server plugin shape</h3>
+<p>Each plugin exports:</p>
+<ul>
+<li><p>A <code>type</code> string matching the <code>wizards.type</code> column (e.g.
+<code>&#39;btu_building_rep_import&#39;</code>).</p>
+</li>
+<li><p>A <code>manifest</code> function (sync or async) of the form:</p>
+<pre><code class="language-ts">async function manifest({ wizard, storage, user }): Promise&lt;WizardManifest&gt; { ... }
+</code></pre>
+<p>…returning the displayable wizard metadata plus the <strong>current</strong> step list
+for this wizard (which may depend on <code>wizard.data</code> or storage lookups).
+The manifest contains:</p>
+<ul>
+<li><code>displayName</code>, <code>description</code></li>
+<li><code>requiredComponent</code> (top-level component gate for the wizard)</li>
+<li><code>steps: WizardStepManifest[]</code>, where each entry includes:<ul>
+<li><code>id</code>, <code>name</code>, <code>description</code></li>
+<li><code>kind</code> (<code>&#39;upload&#39; | &#39;review&#39; | &#39;results&#39; | &#39;custom&#39; | &#39;form&#39;</code>) — used
+by the dispatcher to decide whether to mount multer, <strong>not</strong> by the
+client to pick a component</li>
+<li><code>requiredPermission</code></li>
+<li><code>state</code> (<code>&#39;pending&#39; | &#39;available&#39; | &#39;current&#39; | &#39;complete&#39;</code>) computed
+from <code>wizard.currentStep</code> and any plugin-specific logic</li>
+<li><code>component</code> — a string identifier the client resolves to a React
+component (e.g. <code>&quot;generic:Review&quot;</code> or
+<code>&quot;btu_building_rep_import:Process&quot;</code>). The server is the single source
+of truth for which UI renders which step.</li>
+<li><code>componentProps</code> (optional) — a JSON-serializable object passed to the
+component. Generic components consume this for parameterization
+(<code>{ dataKey: &#39;previewData&#39;, title: &#39;...&#39; }</code>); custom components may
+ignore it.</li>
+</ul>
+</li>
+</ul>
+</li>
+<li><p>A <code>steps</code> map keyed by step id, each value a <code>WizardStepHandler</code>:</p>
+<pre><code class="language-ts">export const processStep: WizardStepHandler&lt;ProcessInput, ProcessOutput&gt; = {
+  id: &#39;process&#39;,
+  kind: &#39;custom&#39;,
+  component: &#39;btu_building_rep_import:Process&#39;,  // &lt;-- custom React component
+  inputSchema: processInputSchema, // zod
+  requiredPermission: &#39;admin&#39;,
+  requiredComponent: &#39;sitespecific.btu&#39;,
+  async handle({ wizard, input, storage, user, logger }) {
+    // ...the logic that currently lives in the /process route...
+    return {
+      data: { processResults: results },
+      nextStep: &#39;results&#39;,
+      status: &#39;completed&#39;,
+    };
+  },
+};
+</code></pre>
+<p>A custom server handler may declare a <strong>generic</strong> component instead.
+This is the common case for wizards that do bespoke server-side work but
+want a stock UI:</p>
+<pre><code class="language-ts">export const validateStep: WizardStepHandler&lt;ValidateInput, ValidateOutput&gt; = {
+  id: &#39;validate&#39;,
+  kind: &#39;review&#39;,
+  component: &#39;generic:Review&#39;,
+  componentProps: { dataKey: &#39;validationResults&#39;, title: &#39;Validation results&#39; },
+  inputSchema: validateInputSchema,
+  requiredPermission: &#39;admin&#39;,
+  async handle({ wizard, storage }) {
+    // ...custom per-row validation logic using storage.*...
+    return { data: { validationResults }, nextStep: &#39;process&#39; };
+  },
+};
+</code></pre>
+</li>
+</ul>
+<p>The plugin&#39;s <code>index.ts</code> exports <code>{ type, manifest, steps }</code> and registers
+itself with <code>server/plugins/wizards/registry.ts</code>. No Express imports anywhere
+in plugin code.</p>
+<p>The <code>steps</code> map can mix custom handlers (imported from the plugin&#39;s own
+<code>steps/</code> folder) with prebuilt generic handlers (imported from
+<code>server/plugins/wizards/generic/</code>). For example:</p>
+<pre><code class="language-ts">import { uploadStep } from &#39;../../generic/upload&#39;;
+import { reviewStep } from &#39;../../generic/review&#39;;
+import { processStep } from &#39;./steps/process&#39;;
+import { resultsStep } from &#39;../../generic/results&#39;;
+
+export default {
+  type: &#39;btu_building_rep_import&#39;,
+  manifest,
+  steps: {
+    upload: uploadStep({ inputSchema: csvUploadSchema, next: &#39;preview&#39; }),
+    preview: reviewStep({ dataKey: &#39;previewData&#39;, next: &#39;process&#39; }),
+    process: processStep,         // custom, lives in ./steps/process.ts
+    results: resultsStep({ dataKey: &#39;processResults&#39; }),
+  },
+};
+</code></pre>
+<p>The generic step factories take small config objects (input schema,
+<code>wizard.data</code> key to read or write, next-step id) and return a fully-formed
+<code>WizardStepHandler</code>. The dispatcher does not care that a handler came from
+<code>generic/</code> versus <code>./steps/</code> — it just invokes it.</p>
+<p>The manifest function and the per-step <code>requiredPermission</code> are intentionally
+co-located on the server: the dispatcher trusts them to compute the <em>server&#39;s</em>
+view of what&#39;s allowed, and any client-side gating is a UI hint derived from
+the manifest response — never an authoritative check.</p>
+<h3>Server dispatcher</h3>
+<p>The dispatcher exposes a <strong>fixed</strong> set of routes. Adding wizards never adds
+routes:</p>
+<pre><code>GET    /api/wizards/:id                          # returns wizard + computed manifest
+POST   /api/wizards/:id/steps/:stepId            # invoke a step&#39;s JSON handler
+POST   /api/wizards/:id/steps/:stepId/upload     # invoke a step&#39;s multipart handler
+GET    /api/wizards/:id/steps/:stepId/download   # invoke a step&#39;s export/download handler
+</code></pre>
+<p>(<code>POST /api/wizards</code> for creation and <code>DELETE /api/wizards/:id</code> for
+cancellation already exist and continue to be used unchanged.)</p>
+<p>For <code>GET /api/wizards/:id</code>, the dispatcher:</p>
+<ol>
+<li>Loads the wizard via <code>storage.wizards</code>. 404 if missing.</li>
+<li>Looks up the plugin by <code>wizard.type</code>. If registered, calls
+<code>manifest({ wizard, storage, user })</code> and returns <code>{ wizard, manifest }</code>.</li>
+<li>If the plugin is not registered (i.e. the wizard is still on the old
+system), returns <code>{ wizard }</code> only. The old client code path keeps
+working.</li>
+</ol>
+<p>For <code>POST /api/wizards/:id/steps/:stepId</code>, the dispatcher must:</p>
+<ol>
+<li>Load the wizard. 404 if missing.</li>
+<li>Look up the plugin. 404 if not registered.</li>
+<li>Look up the step by <code>:stepId</code>. 404 if not declared.</li>
+<li>Enforce the step&#39;s <code>requiredPermission</code> and the wizard&#39;s
+<code>requiredComponent</code> (and any step-specific <code>requiredComponent</code>) using the
+same middleware the rest of the app uses. <strong>One place</strong> enforces this for
+all wizards.</li>
+<li>Validate <code>req.body</code> against the step&#39;s <code>inputSchema</code>.</li>
+<li>Call the handler with <code>{ wizard, input, storage, user, logger, requestId }</code>.
+The handler returns <code>{ data?, nextStep?, status? }</code> (all optional).</li>
+<li>The dispatcher (not the handler) applies the patch via
+<code>storage.wizards.update(...)</code>, merging <code>data</code> correctly so prior-step
+output is not clobbered.</li>
+<li>Return the handler&#39;s <code>data</code> to the client. Standard error handling +
+Winston logging happen here, once, for every wizard.</li>
+</ol>
+<p>For <code>POST …/upload</code>, the dispatcher mounts <code>multer</code> (memory storage,
+configurable size limit) only for steps whose handler declares
+<code>kind: &#39;upload&#39;</code>. The handler receives <code>input.file</code> in its context. No
+per-wizard module wires up multer.</p>
+<p>For <code>GET …/download</code>, the handler returns a streamable body + headers
+descriptor that the dispatcher writes to the response. This is for report /
+export style steps.</p>
+<h3>Client <code>WizardView</code></h3>
+<p>The client <code>WizardView</code> (replacing the per-wizard switch in the existing
+<code>wizard-view.tsx</code>) is purely data-driven:</p>
+<ol>
+<li><p>Fetches <code>GET /api/wizards/:id</code> via TanStack Query. The response includes
+both the wizard and the computed manifest.</p>
+</li>
+<li><p>Renders the progress strip from <code>manifest.steps</code> (id, name, state).</p>
+</li>
+<li><p>Looks at <code>wizard.currentStep</code>, finds the matching <code>step.id</code> in the
+manifest, reads the manifest entry&#39;s <code>component</code> identifier, and looks
+the component up in the flat auto-discovered registry. The registry is
+built at module load using Vite&#39;s <code>import.meta.glob</code>:</p>
+<pre><code class="language-ts">const modules = import.meta.glob(&#39;./*/*.tsx&#39;, { eager: true });
+// &#39;./generic/Review.tsx&#39; -&gt; &quot;generic:Review&quot;
+// &#39;./btu_building_rep_import/Process.tsx&#39; -&gt; &quot;btu_building_rep_import:Process&quot;
+</code></pre>
+<p>There is no wizard-specific lookup logic and no per-wizard <code>index.ts</code>.
+The server&#39;s <code>component</code> string is the authoritative pointer. If it does
+not resolve, the registry throws at first render rather than silently
+rendering nothing — discovery failures should be loud.</p>
+</li>
+<li><p>Provides each step component with:</p>
+<ul>
+<li>The current <code>wizard</code> object.</li>
+<li>The manifest entry for this step (so the component knows its own kind,
+name, etc. if needed for display).</li>
+<li>The manifest entry&#39;s <code>componentProps</code>, passed straight through so
+generic components can be parameterized from the server.</li>
+<li>A typed <code>useStepAction(stepId)</code> hook that posts to
+<code>/api/wizards/:id/steps/:stepId</code> (or <code>…/upload</code> when the manifest entry
+declares <code>kind: &#39;upload&#39;</code>), invalidates the wizard query on success,
+and returns standard <code>{ mutate, isPending, error }</code>.</li>
+</ul>
+</li>
+</ol>
+<p>Step components are pure React. They do <strong>not</strong> know their own URL. They call
+<code>useStepAction(&#39;process&#39;).mutate({ ... })</code> and the framework handles routing.</p>
+<p>Generic components should publish a Zod schema for their expected
+<code>componentProps</code>. The registry validates the server-supplied <code>componentProps</code>
+against that schema at render time and surfaces a clear error when they
+don&#39;t match, so server/client mismatches fail fast at developer time rather
+than producing silent UI bugs.</p>
+<p>If the manifest is missing from the response (i.e. the wizard type is not
+registered in the new framework), <code>WizardView</code> falls back to the existing
+per-wizard rendering path so unmigrated wizards keep working.</p>
+<h3>Step kinds and the generic step library</h3>
+<p><code>kind</code> and <code>component</code> are two <strong>independent</strong> axes:</p>
+<ul>
+<li><code>kind</code> lives on the server and tells the <strong>dispatcher</strong> how to transport
+this step&#39;s invocation: most steps use the standard JSON POST endpoint,
+but <code>kind: &#39;upload&#39;</code> causes the dispatcher to route through the
+multipart/multer endpoint instead. That&#39;s basically all <code>kind</code> does
+today.</li>
+<li><code>component</code> lives in the manifest response and tells the <strong>client</strong> which
+React component to render. It is fully decoupled from <code>kind</code>: a step with
+<code>kind: &#39;custom&#39;</code> can declare <code>component: &#39;generic:Review&#39;</code>, and a step
+with <code>kind: &#39;review&#39;</code> can declare a custom component if the prebuilt one
+isn&#39;t enough.</li>
+</ul>
+<p>The kinds:</p>
+<ul>
+<li><code>&#39;form&#39;</code> — reserved for a future schema-driven renderer. <strong>Not implemented
+in this spike.</strong> Including it in the type union now keeps the door open.</li>
+<li><code>&#39;upload&#39;</code> — dispatcher mounts multer for this step&#39;s POST. The
+step&#39;s handler receives <code>input.file</code>. The prebuilt <code>generic/upload.ts</code>
+handler validates the file, stashes parsed output on <code>wizard.data</code> under
+a configurable key, and advances to the next step.</li>
+<li><code>&#39;review&#39;</code> — no transport difference from a plain JSON step; the kind
+exists mostly as a hint to the prebuilt <code>generic/Review.tsx</code> component.
+The prebuilt <code>generic/review.ts</code> handler is the trivial &quot;advance to next
+step&quot; no-op; the work was already done by the previous step.</li>
+<li><code>&#39;results&#39;</code> — terminal display. Prebuilt <code>generic/results.ts</code> is a no-op
+handler that marks the wizard <code>completed</code>; <code>generic/Results.tsx</code> renders
+summary counts and any per-row errors from a configurable <code>wizard.data</code>
+key.</li>
+<li><code>&#39;custom&#39;</code> — escape hatch. The handler is hand-written. The component may
+be hand-written <em>or</em> one of the generic ones — that&#39;s a separate decision.</li>
+</ul>
+<p>For the spike, only <code>upload</code>, <code>review</code>, <code>results</code>, and <code>custom</code> need to
+actually work. <code>form</code> is type-union-only.</p>
+<p><strong>The point of the generic library</strong>: most wizards in the codebase are
+CSV-import or report-style flows where the steps follow the same pattern
+(upload → map → validate → process → review/results), with only a couple of
+steps doing wizard-specific server-side work. Under the new framework:</p>
+<ul>
+<li>Generic <em>handlers</em> (<code>generic/upload.ts</code>, <code>generic/review.ts</code>,
+<code>generic/results.ts</code>) eliminate boilerplate on the server when the step&#39;s
+behavior is purely &quot;validate input and stash it on <code>wizard.data</code>.&quot;</li>
+<li>Generic <em>components</em> (<code>generic/Upload.tsx</code>, <code>generic/Review.tsx</code>,
+<code>generic/Results.tsx</code>) eliminate React on the client when the step&#39;s UI
+is a stock upload form, review table, or results summary — <strong>even when
+the server-side handler is fully custom</strong>, which is your Map / Validate /
+Process / Review case.</li>
+</ul>
+<p>The existing per-wizard module files are typically 200–400 lines of
+boilerplate around 50 lines of actual domain logic; this collapses that
+ratio. A typical new wizard might end up as one server handler file for the
+one step that does real work, with everything else composed from generics
+on both sides — and zero files in <code>client/src/plugins/wizards/&lt;name&gt;/</code>.</p>
+<h3>Coexistence with the old system</h3>
+<ul>
+<li>The new dispatcher routes live alongside the old per-wizard routes. They
+do not conflict — the URL prefixes are different
+(<code>/api/wizards/:id/steps/...</code> vs. <code>/api/btu-building-rep-import/...</code>).</li>
+<li>The existing <code>wizard-view.tsx</code> either learns to check the client registry
+<em>first</em> and fall back to its existing per-wizard branches, or is split so
+that registered-plugin wizards go through the new <code>WizardView</code> and
+unmigrated wizards go through the old one. Either is fine; the
+implementer should pick whichever is less invasive.</li>
+<li>The existing <code>server/wizards/types/</code> base class and <code>getSteps()</code> /
+<code>getStatuses()</code> mechanism stay in place for unmigrated wizards. The
+spike should not refactor <code>BaseWizard</code>.</li>
+</ul>
+<h3>Auditability — the actual goal</h3>
+<p>A reviewer asking <em>&quot;can a user without the right permission invoke a wizard
+step?&quot;</em> should, after this spike (and after the eventual full migration), be
+able to answer that question by reading:</p>
+<ol>
+<li>The dispatcher (one file).</li>
+<li>The step handler declarations under <code>server/plugins/wizards/</code>, each of
+which states its own <code>requiredPermission</code> next to its handler.</li>
+</ol>
+<p>…and <strong>nothing else</strong>. That is the success criterion the framework needs to
+serve. Any design decision that compromises it should be reconsidered.</p>
+<h2>Steps</h2>
+<ol>
+<li><p><strong>Inventory the existing endpoints.</strong> Before writing any new code, list
+every wizard-related HTTP route currently registered under
+<code>server/modules/</code> and (where applicable) under <code>server/routes.ts</code>. Group
+them by wizard type. Confirm each one fits cleanly into the proposed
+dispatcher contract (<code>steps/:stepId</code>, <code>steps/:stepId/upload</code>,
+<code>steps/:stepId/download</code>). If any endpoint genuinely does not fit, surface
+it for discussion <em>before</em> designing around it — the answer is to widen
+the dispatcher contract, not to keep a bespoke route.</p>
+</li>
+<li><p><strong>Design the manifest + handler types.</strong> Add the <code>WizardManifest</code>,
+<code>WizardStepManifest</code>, <code>WizardStepKind</code>, <code>WizardStepHandler&lt;Input, Output&gt;</code>,
+and <code>WizardPlugin</code> types in <code>server/plugins/wizards/types.ts</code>. Decide and
+document how <code>wizard.data</code> is merged on step completion (deep merge vs.
+shallow, behavior on conflict).</p>
+</li>
+<li><p><strong>Build the server dispatcher and registry.</strong> Implement the fixed route
+set above in <code>server/plugins/wizards/dispatcher.ts</code>. Implement the wizard
+plugin registry at <code>server/plugins/wizards/registry.ts</code>, mirroring the
+conventions of the four existing plugin systems under <code>server/plugins/</code>
+(note the intentional <code>plugins/plugins/</code> nesting). Ensure the dispatcher
+enforces <code>requiredPermission</code> and <code>requiredComponent</code> exactly the same
+way as the rest of the app. Centralize multer setup for <code>kind: &#39;upload&#39;</code>
+steps. Centralize wizard-state persistence (<code>storage.wizards.update</code>) so
+handlers never call it directly.</p>
+</li>
+<li><p><strong>Build the generic step library on the server.</strong> Implement the three
+prebuilt step handlers under <code>server/plugins/wizards/generic/</code>:
+<code>upload.ts</code>, <code>review.ts</code>, <code>results.ts</code>. Each is a small factory that
+takes a config object and returns a <code>WizardStepHandler</code>. These have to
+be useful enough for the BTU Building Rep Import port to consume at
+least one of them; that&#39;s the bar for &quot;done.&quot;</p>
+</li>
+<li><p><strong>Build the client <code>WizardView</code>, auto-discovered registry, and generic
+components.</strong> Implement the auto-discovered component registry at
+<code>client/src/plugins/wizards/registry.ts</code> using <code>import.meta.glob</code> over
+sibling folders; the registry maps <code>&quot;&lt;namespace&gt;:&lt;ComponentName&gt;&quot;</code> to a
+React component. Implement the generic <code>WizardView</code> at
+<code>client/src/plugins/wizards/WizardView.tsx</code> that fetches the wizard +
+manifest and renders step components by looking up the manifest entry&#39;s
+<code>component</code> identifier in the registry — there is no wizard-specific
+lookup logic. The registry must throw a clear error at first render when
+an identifier doesn&#39;t resolve. Implement the <code>useStepAction(stepId)</code>
+hook that hides URL construction from step components. Implement default
+React components for the generic step ids under
+<code>client/src/plugins/wizards/generic/</code> (<code>Upload.tsx</code>, <code>Review.tsx</code>,
+<code>Results.tsx</code>), each publishing a Zod schema for its expected
+<code>componentProps</code>. Ensure unmigrated wizards still go through the
+existing rendering path.</p>
+</li>
+<li><p><strong>Port <code>btu_building_rep_import</code> end-to-end.</strong> Create the server plugin
+folder at <code>server/plugins/wizards/plugins/btu_building_rep_import/</code>.
+Compose the wizard&#39;s step map using generic handlers where possible and
+custom handlers where required — the <code>process</code> step needs custom
+server-side logic (creating steward assignments); the others can likely
+use generic handlers. For each step, declare a <code>component</code> identifier in
+the handler (either <code>&quot;generic:Upload&quot;</code> / <code>&quot;generic:Review&quot;</code> /
+<code>&quot;generic:Results&quot;</code> for stock UI, or
+<code>&quot;btu_building_rep_import:&lt;ComponentName&gt;&quot;</code> for any step that needs
+custom UI). Refactor the moved handlers to call <code>storage.*</code> only and
+return the new <code>{ data, nextStep, status }</code> shape instead of mutating
+wizard state directly. Create custom React components under
+<code>client/src/plugins/wizards/btu_building_rep_import/</code> <strong>only</strong> for the
+steps where the generic component is genuinely insufficient (likely the
+preview step, because it has a wizard-specific table layout). For an
+all-generic step, ship zero client-side files. Delete the old per-wizard
+module file and the old type-class file. Confirm the wizard works
+end-to-end (upload CSV, preview, process, results) from a logged-in
+admin user.</p>
+</li>
+<li><p><strong>Verify the other 17 wizards still work.</strong> Smoke-test at least two
+unmigrated wizards from different areas (e.g. one BTU import wizard and
+one GBHET report wizard) to confirm coexistence. No code changes
+expected; this is a check.</p>
+</li>
+<li><p><strong>Document the convention.</strong> Add a short &quot;Wizards&quot; section to <code>replit.md</code>
+describing the layout (server plugin under
+<code>server/plugins/wizards/plugins/&lt;name&gt;/</code> + client step components under
+<code>client/src/plugins/wizards/&lt;name&gt;/</code> + shared generic libraries under the
+respective <code>generic/</code> folders), pointing at the manifest response as the
+source of truth for the client, listing the available step kinds, and
+naming <code>btu_building_rep_import</code> as the canonical example. Note
+explicitly that the storage-layer rule still applies to plugin handlers.</p>
+</li>
+<li><p><strong>Restart the <code>Start application</code> workflow</strong> as the last step before
+handing back, per the repo-wide rule about server / shared changes.</p>
+</li>
+</ol>
+<h2>Relevant files</h2>
+<ul>
+<li><code>server/wizards/types/btu_building_rep_import.ts</code></li>
+<li><code>server/wizards/base.ts</code></li>
+<li><code>server/wizards/registry.ts</code></li>
+<li><code>server/wizards/index.ts</code></li>
+<li><code>server/modules/sitespecific/btu/building-rep-import.ts</code></li>
+<li><code>server/plugins/trust/eligibility</code></li>
+<li><code>server/plugins/ledger/charge</code></li>
+<li><code>server/plugins/dispatch/eligibility</code></li>
+<li><code>server/plugins/dashboard</code></li>
+<li><code>client/src/plugins</code></li>
+<li><code>client/src/pages/wizard-view.tsx</code></li>
+<li><code>client/src/pages/sitespecific/btu/building-rep-import.tsx</code></li>
+<li><code>server/routes.ts</code></li>
+<li><code>replit.md</code></li>
+</ul>
+</body></html>

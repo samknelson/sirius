@@ -3,73 +3,52 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useParams, Link } from "wouter";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { insertLedgerPaymentSchema, type LedgerPayment, type LedgerPaymentType } from "@shared/schema";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { type LedgerPayment, type LedgerPaymentType } from "@shared/schema";
 import { Plus, DollarSign, Download, ArrowUpDown, Filter, X, ChevronDown } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
-import type { z } from "zod";
 import { stringify } from "csv-stringify/browser/esm/sync";
 import { formatAmount } from "@shared/currency";
+import { isValidYmd, ymdToDateForPicker } from "@shared/utils/date";
+
+const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+function formatStatementPeriods(details: Record<string, unknown> | null, fallback: string = ""): string {
+  const pa = Array.isArray(details?.proposedAllocation)
+    ? (details.proposedAllocation as Array<{ eaId: string; statementYmd: string }>)
+    : undefined;
+  if (!pa || pa.length === 0) return fallback;
+  const uniquePeriods = new Set<string>();
+  for (const alloc of pa) {
+    if (alloc.statementYmd && isValidYmd(alloc.statementYmd)) {
+      const d = ymdToDateForPicker(alloc.statementYmd);
+      uniquePeriods.add(`${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`);
+    }
+  }
+  if (uniquePeriods.size === 0) return fallback;
+  return Array.from(uniquePeriods).join(", ");
+}
 
 const paymentStatuses = ["draft", "canceled", "cleared", "error"] as const;
 
 type SortField = "amount" | "dateCreated" | "dateReceived" | "dateCleared";
 type SortDirection = "asc" | "desc";
-type PaymentCategory = "financial" | "adjustment";
-
-interface LedgerNotification {
-  type: "created" | "updated" | "deleted";
-  amount: string;
-  description: string;
-}
-
 function EAPaymentsContent() {
   const { id } = useParams<{ id: string }>();
-  const { currencyCode } = useEALayout();
-  const { user, hasPermission } = useAuth();
+  const { currencyCode, ea } = useEALayout();
+  const { hasPermission } = useAuth();
   const isStaff = hasPermission('staff');
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [merchant, setMerchant] = useState("");
-  const [checkTransactionNumber, setCheckTransactionNumber] = useState("");
-  const [adjustmentUser, setAdjustmentUser] = useState("");
-  const [dateEntered, setDateEntered] = useState("");
-  const [effectiveDate, setEffectiveDate] = useState("");
   const { toast } = useToast();
-  
-  const getTodayString = () => new Date().toISOString().split('T')[0];
-  const getEffectiveUserName = () => {
-    if (!user) return "";
-    const parts = [user.firstName, user.lastName].filter(Boolean);
-    return parts.join(" ") || user.email || "";
-  };
-  
-  const showLedgerNotifications = (notifications: LedgerNotification[] | undefined) => {
-    if (!notifications || notifications.length === 0) return;
-    
-    for (const notification of notifications) {
-      const typeLabel = notification.type === "created" ? "Ledger Entry Created" :
-                        notification.type === "updated" ? "Ledger Entry Updated" :
-                        "Ledger Entry Deleted";
-      
-      toast({
-        title: typeLabel,
-        description: `${formatAmount(parseFloat(notification.amount), currencyCode)} - ${notification.description}`,
-      });
-    }
-  };
-  
+
   // Filter state
   const [showFilters, setShowFilters] = useState(false);
   const [filterPaymentType, setFilterPaymentType] = useState<string>("all");
@@ -96,126 +75,6 @@ function EAPaymentsContent() {
     queryKey: ["/api/ledger/payment-types"],
   });
 
-  const form = useForm<z.infer<typeof insertLedgerPaymentSchema>>({
-    resolver: zodResolver(insertLedgerPaymentSchema),
-    defaultValues: {
-      status: "draft",
-      allocated: false,
-      amount: "0.00",
-      paymentType: paymentTypes[0]?.id || "",
-      ledgerEaId: id,
-      details: null,
-      dateReceived: null,
-      dateCleared: null,
-      memo: null,
-    },
-  });
-
-  const watchedPaymentType = form.watch("paymentType");
-  const selectedPaymentType = paymentTypes.find(pt => pt.id === watchedPaymentType);
-  const category: PaymentCategory = (selectedPaymentType?.category as PaymentCategory) || "financial";
-
-  useEffect(() => {
-    if (dialogOpen && category === "adjustment") {
-      if (!adjustmentUser) {
-        setAdjustmentUser(getEffectiveUserName());
-      }
-      if (!dateEntered) {
-        setDateEntered(getTodayString());
-      }
-      if (!effectiveDate) {
-        setEffectiveDate(getTodayString());
-      }
-    }
-  }, [dialogOpen, category, user]);
-
-  const createPaymentMutation = useMutation({
-    mutationFn: async (data: z.infer<typeof insertLedgerPaymentSchema>) => {
-      return await apiRequest("POST", "/api/ledger/payments", data);
-    },
-    onSuccess: (data: any) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/ledger/payments/ea", id] });
-      setDialogOpen(false);
-      setMerchant("");
-      setCheckTransactionNumber("");
-      setAdjustmentUser("");
-      setDateEntered("");
-      setEffectiveDate("");
-      form.reset({
-        status: "draft",
-        allocated: false,
-        amount: "0.00",
-        paymentType: paymentTypes[0]?.id || "",
-        ledgerEaId: id,
-        details: null,
-        dateReceived: null,
-        dateCleared: null,
-        memo: null,
-      });
-      toast({
-        title: "Payment created",
-        description: "The payment has been created successfully.",
-      });
-      showLedgerNotifications(data?.ledgerNotifications);
-    },
-    onError: () => {
-      toast({
-        title: "Error",
-        description: "Failed to create payment. Please try again.",
-        variant: "destructive",
-      });
-    },
-  });
-
-  const onSubmit = form.handleSubmit((data) => {
-    const existingDetails = (data.details || {}) as Record<string, any>;
-    const details: any = { ...existingDetails };
-    
-    if (category === "financial") {
-      if (merchant) {
-        details.merchant = merchant;
-      } else {
-        delete details.merchant;
-      }
-      
-      if (checkTransactionNumber) {
-        details.checkTransactionNumber = checkTransactionNumber;
-      } else {
-        delete details.checkTransactionNumber;
-      }
-      delete details.adjustmentUser;
-      delete details.dateEntered;
-      delete details.effectiveDate;
-    } else {
-      if (adjustmentUser) {
-        details.adjustmentUser = adjustmentUser;
-      } else {
-        delete details.adjustmentUser;
-      }
-      
-      if (dateEntered) {
-        details.dateEntered = dateEntered;
-      } else {
-        delete details.dateEntered;
-      }
-      
-      if (effectiveDate) {
-        details.effectiveDate = effectiveDate;
-      } else {
-        delete details.effectiveDate;
-      }
-      delete details.merchant;
-      delete details.checkTransactionNumber;
-    }
-    
-    const submissionData = {
-      ...data,
-      details: Object.keys(details).length > 0 ? details : null,
-      status: category === "adjustment" ? "cleared" as const : data.status,
-    };
-    
-    createPaymentMutation.mutate(submissionData);
-  });
 
   const getStatusBadgeVariant = (status: string): "default" | "secondary" | "destructive" | "outline" => {
     switch (status) {
@@ -249,8 +108,9 @@ function EAPaymentsContent() {
 
     if (filterMerchant) {
       result = result.filter(p => {
-        const details = p.details as any;
-        return details?.merchant?.toLowerCase().includes(filterMerchant.toLowerCase());
+        const details = p.details as Record<string, unknown> | null;
+        const merchant = details?.merchant;
+        return typeof merchant === "string" && merchant.toLowerCase().includes(filterMerchant.toLowerCase());
       });
     }
 
@@ -408,14 +268,14 @@ function EAPaymentsContent() {
 
     const csvData = filteredAndSortedPayments.map(payment => {
       const paymentType = paymentTypes.find(t => t.id === payment.paymentType);
-      const details = payment.details as any;
-      
+      const details = payment.details as Record<string, unknown> | null;
       return {
         Amount: formatAmount(parseFloat(payment.amount), currencyCode),
         "Payment Type": paymentType?.name || "",
         Status: payment.status,
-        Merchant: details?.merchant || "",
-        "Check/Transaction Number": details?.checkTransactionNumber || "",
+        "Statement Period": formatStatementPeriods(details),
+        Merchant: (typeof details?.merchant === "string" ? details.merchant : "") || "",
+        "Check/Transaction Number": (typeof details?.checkTransactionNumber === "string" ? details.checkTransactionNumber : "") || "",
         "Date Created": payment.dateCreated ? new Date(payment.dateCreated).toLocaleDateString() : "",
         "Date Received": payment.dateReceived ? new Date(payment.dateReceived).toLocaleDateString() : "",
         "Date Cleared": payment.dateCleared ? new Date(payment.dateCleared).toLocaleDateString() : "",
@@ -430,6 +290,7 @@ function EAPaymentsContent() {
         "Amount",
         "Payment Type",
         "Status",
+        "Statement Period",
         "Merchant",
         "Check/Transaction Number",
         "Date Created",
@@ -465,9 +326,8 @@ function EAPaymentsContent() {
     }
   };
 
-  const openDialogWithPaymentType = (paymentTypeId: string) => {
-    form.setValue("paymentType", paymentTypeId);
-    setDialogOpen(true);
+  const openCreatePage = (paymentTypeId: string) => {
+    window.open(`/ea/${id}/payments/new/${paymentTypeId}`, "_blank");
   };
 
   return (
@@ -520,7 +380,7 @@ function EAPaymentsContent() {
                     .map((type) => (
                     <DropdownMenuItem
                       key={type.id}
-                      onClick={() => openDialogWithPaymentType(type.id)}
+                      onClick={() => openCreatePage(type.id)}
                       data-testid={`menu-item-${type.id}`}
                     >
                       {type.name}
@@ -529,194 +389,6 @@ function EAPaymentsContent() {
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
-            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-            <DialogContent className="max-w-md">
-              <DialogHeader>
-                <DialogTitle>Add {selectedPaymentType?.name || "Payment"}</DialogTitle>
-                <DialogDescription>
-                  Create a new {selectedPaymentType?.name?.toLowerCase() || "payment"} record for this account entry
-                </DialogDescription>
-              </DialogHeader>
-              <Form {...form}>
-                <form onSubmit={onSubmit} className="space-y-4">
-                  <FormField
-                    control={form.control}
-                    name="amount"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Amount</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            placeholder="0.00"
-                            data-testid="input-amount"
-                            {...field}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  {category === "financial" ? (
-                    <>
-                      <FormField
-                        control={form.control}
-                        name="status"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Status</FormLabel>
-                            <Select onValueChange={field.onChange} defaultValue={field.value}>
-                              <FormControl>
-                                <SelectTrigger data-testid="select-payment-status">
-                                  <SelectValue placeholder="Select status" />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                {paymentStatuses.map((status) => (
-                                  <SelectItem key={status} value={status} data-testid={`option-${status}`}>
-                                    {status.charAt(0).toUpperCase() + status.slice(1)}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-
-                      <FormField
-                        control={form.control}
-                        name="dateReceived"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Date Received</FormLabel>
-                            <FormControl>
-                              <Input
-                                type="date"
-                                data-testid="input-date-received"
-                                value={field.value ? new Date(field.value).toISOString().split('T')[0] : ''}
-                                onChange={(e) => field.onChange(e.target.value ? new Date(e.target.value) : null)}
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-
-                      <div>
-                        <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                          Merchant
-                        </label>
-                        <Input
-                          placeholder="Enter merchant name..."
-                          data-testid="input-merchant"
-                          value={merchant}
-                          onChange={(e) => setMerchant(e.target.value)}
-                          className="mt-2"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                          Check or Transaction Number
-                        </label>
-                        <Input
-                          placeholder="Enter check or transaction number..."
-                          data-testid="input-check-transaction-number"
-                          value={checkTransactionNumber}
-                          onChange={(e) => setCheckTransactionNumber(e.target.value)}
-                          className="mt-2"
-                        />
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div className="p-3 bg-muted rounded-md">
-                        <p className="text-sm text-muted-foreground">
-                          Status: <span className="font-medium text-foreground">Cleared</span> (adjustments are always cleared)
-                        </p>
-                      </div>
-
-                      <div>
-                        <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                          User Executing Adjustment
-                        </label>
-                        <Input
-                          placeholder="Enter user name..."
-                          data-testid="input-adjustment-user"
-                          value={adjustmentUser}
-                          onChange={(e) => setAdjustmentUser(e.target.value)}
-                          className="mt-2"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                          Date Entered
-                        </label>
-                        <Input
-                          type="date"
-                          data-testid="input-date-entered"
-                          value={dateEntered}
-                          onChange={(e) => setDateEntered(e.target.value)}
-                          className="mt-2"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                          Effective Date
-                        </label>
-                        <Input
-                          type="date"
-                          data-testid="input-effective-date"
-                          value={effectiveDate}
-                          onChange={(e) => setEffectiveDate(e.target.value)}
-                          className="mt-2"
-                        />
-                      </div>
-                    </>
-                  )}
-
-                  <FormField
-                    control={form.control}
-                    name="memo"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Memo</FormLabel>
-                        <FormControl>
-                          <Textarea
-                            placeholder="Add notes or description for this payment..."
-                            data-testid="input-memo"
-                            value={field.value || ''}
-                            onChange={field.onChange}
-                            rows={3}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <DialogFooter>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => setDialogOpen(false)}
-                      data-testid="button-cancel"
-                    >
-                      Cancel
-                    </Button>
-                    <Button type="submit" disabled={createPaymentMutation.isPending} data-testid="button-submit">
-                      {createPaymentMutation.isPending ? "Creating..." : "Create Payment"}
-                    </Button>
-                  </DialogFooter>
-                </form>
-              </Form>
-            </DialogContent>
-          </Dialog>
           </div>
         </div>
       </CardHeader>
@@ -901,6 +573,7 @@ function EAPaymentsContent() {
                   </TableHead>
                   <TableHead>Payment Type</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Statement</TableHead>
                   <TableHead>Merchant</TableHead>
                   <TableHead>
                     <Button
@@ -944,7 +617,7 @@ function EAPaymentsContent() {
               <TableBody>
                 {filteredAndSortedPayments.map((payment) => {
                   const paymentType = paymentTypes.find(t => t.id === payment.paymentType);
-                  const details = payment.details as any;
+                  const details = payment.details as Record<string, unknown> | null;
                   return (
                     <TableRow key={payment.id} data-testid={`row-payment-${payment.id}`}>
                       <TableCell className="font-mono" data-testid={`text-amount-${payment.id}`}>
@@ -958,8 +631,11 @@ function EAPaymentsContent() {
                           {payment.status}
                         </Badge>
                       </TableCell>
+                      <TableCell data-testid={`text-statement-${payment.id}`}>
+                        {formatStatementPeriods(details, "-")}
+                      </TableCell>
                       <TableCell data-testid={`text-merchant-${payment.id}`}>
-                        {details?.merchant || "-"}
+                        {(typeof details?.merchant === "string" ? details.merchant : null) || "-"}
                       </TableCell>
                       <TableCell data-testid={`text-date-created-${payment.id}`}>
                         {payment.dateCreated ? new Date(payment.dateCreated).toLocaleDateString() : "-"}

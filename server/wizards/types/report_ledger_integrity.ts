@@ -1,7 +1,7 @@
 import { WizardReport, ReportConfig, ReportColumn, ReportRecord } from '../report.js';
 import { storage } from '../../storage/index.js';
-import { getChargePlugin, getAllChargePlugins } from '../../charge-plugins/registry.js';
-import type { LedgerEntryVerification } from '../../charge-plugins/types.js';
+import { getChargePlugin, getAllChargePlugins } from '../../plugins/ledger/charge/registry.js';
+import type { LedgerEntryVerification } from '../../plugins/ledger/charge/types.js';
 import type { ChargePluginConfig } from '@shared/schema';
 
 interface LedgerIntegrityConfig extends ReportConfig {

@@ -1,13 +1,11 @@
 import { getClient } from './transaction-context';
 import { 
   workerBans,
-  workers,
-  contacts,
   type WorkerBan, 
   type InsertWorkerBan
 } from "@shared/schema";
 import { eq, desc, and, lt, gte, or, isNull, isNotNull } from "drizzle-orm";
-import { type StorageLoggingConfig } from "./middleware/logging";
+import { defineLoggingConfig, type StorageLoggingConfig } from "./middleware/logging";
 import { eventBus, EventType } from "../services/event-bus";
 import { 
   type ValidationError,
@@ -85,73 +83,36 @@ export const validate = createStorageValidator<InsertWorkerBan, WorkerBan, { den
   }
 );
 
-async function getWorkerName(workerId: string): Promise<string> {
-  const client = getClient();
-  const [worker] = await client
-    .select({ contactId: workers.contactId, siriusId: workers.siriusId })
-    .from(workers)
-    .where(eq(workers.id, workerId));
-  if (!worker) return 'Unknown Worker';
-  
-  const [contact] = await client
-    .select({ given: contacts.given, family: contacts.family, displayName: contacts.displayName })
-    .from(contacts)
-    .where(eq(contacts.id, worker.contactId));
-  
-  const name = contact ? `${contact.given || ''} ${contact.family || ''}`.trim() : '';
-  return name || contact?.displayName || `Worker #${worker.siriusId}`;
-}
-
-export const workerBanLoggingConfig: StorageLoggingConfig<WorkerBanStorage> = {
+export const workerBanLoggingConfig = defineLoggingConfig<WorkerBanStorage>({
   module: 'worker-bans',
+  state: { key: 'ban' },
+  hostEntityId: (args, result, before) =>
+    result?.workerId ?? before?.ban?.workerId ?? args[0]?.workerId,
   methods: {
     create: {
-      enabled: true,
       getEntityId: (args, result) => result?.id || 'new worker ban',
-      getHostEntityId: (args, result) => result?.workerId || args[0]?.workerId,
       getDescription: async (args, result) => {
-        const workerName = await getWorkerName(result?.workerId || args[0]?.workerId);
+        const { storage } = await import('./index');
+        const workerName = await storage.workers.getWorkerDisplayName(result?.workerId || args[0]?.workerId);
         return `Created ban (${result?.type || 'unspecified'}) for ${workerName}`;
       },
-      after: async (args, result) => {
-        return { ban: result };
-      }
     },
     update: {
-      enabled: true,
-      getEntityId: (args) => args[0],
-      getHostEntityId: async (args, result, beforeState) => {
-        return result?.workerId || beforeState?.ban?.workerId;
-      },
       getDescription: async (args, result, beforeState) => {
-        const workerName = await getWorkerName(result?.workerId || beforeState?.ban?.workerId);
+        const { storage } = await import('./index');
+        const workerName = await storage.workers.getWorkerDisplayName(result?.workerId || beforeState?.ban?.workerId);
         return `Updated ban for ${workerName}`;
       },
-      before: async (args, storage) => {
-        const ban = await storage.get(args[0]);
-        return { ban };
-      },
-      after: async (args, result) => {
-        return { ban: result };
-      }
     },
     delete: {
-      enabled: true,
-      getEntityId: (args) => args[0],
-      getHostEntityId: async (args, result, beforeState) => {
-        return beforeState?.ban?.workerId;
-      },
       getDescription: async (args, result, beforeState) => {
-        const workerName = await getWorkerName(beforeState?.ban?.workerId || '');
+        const { storage } = await import('./index');
+        const workerName = await storage.workers.getWorkerDisplayName(beforeState?.ban?.workerId);
         return `Deleted ban for ${workerName}`;
       },
-      before: async (args, storage) => {
-        const ban = await storage.get(args[0]);
-        return { ban };
-      }
-    }
-  }
-};
+    },
+  },
+});
 
 export function createWorkerBanStorage(): WorkerBanStorage {
   return {

@@ -1,21 +1,11 @@
 import { ComponentType } from "react";
 import { Role } from "@shared/schema";
-import type { QueryClient } from "@tanstack/react-query";
-import type { z } from "zod";
 
 export interface DashboardPluginProps {
   userId: string;
   userRoles: Role[];
   userPermissions: string[];
   enabledComponents?: string[];
-}
-
-export interface PluginSettingsProps<T = any> {
-  plugin: DashboardPlugin;
-  queryClient: QueryClient;
-  onConfigSaved?: () => void;
-  loadSettings: () => Promise<T>;
-  saveSettings: (settings: T) => Promise<void>;
 }
 
 export interface DashboardPlugin {
@@ -29,8 +19,8 @@ export interface DashboardPlugin {
   requiredComponent?: string;
   fullWidth?: boolean;
   enabledByDefault: boolean;
-  settingsComponent?: ComponentType<PluginSettingsProps<any>>;
-  settingsSchema?: z.ZodType<any>;
+  /** When true, the config page links to the generic RJSF settings page. */
+  hasSettings?: boolean;
 }
 
 export interface PluginConfig {

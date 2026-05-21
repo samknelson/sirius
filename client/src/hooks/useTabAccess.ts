@@ -336,6 +336,17 @@ export function useTrustBenefitTabAccess(benefitId: string | undefined, enabled 
 }
 
 /**
+ * Hook specifically for trust election entity tabs
+ */
+export function useTrustElectionTabAccess(electionId: string | undefined, enabled = true) {
+  return useTabAccess({
+    entityType: 'trust_election',
+    entityId: electionId,
+    enabled,
+  });
+}
+
+/**
  * Hook specifically for worker hours entity tabs
  */
 export function useWorkerHoursTabAccess(hoursId: string | undefined, enabled = true) {

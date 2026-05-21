@@ -53,6 +53,11 @@ const WorkerBans = lazy(() => import("@/pages/workers/bans"));
 const WorkerEdls = lazy(() => import("@/pages/worker-edls"));
 const WorkerSecondShift = lazy(() => import("@/pages/worker-sitespecific-freeman-2shift"));
 const WorkerSkills = lazy(() => import("@/pages/worker-skills"));
+const WorkerRelations = lazy(() => import("@/pages/workers/relations"));
+const WorkerElectionsCurrent = lazy(() => import("@/pages/workers/elections-current"));
+const WorkerElectionsList = lazy(() => import("@/pages/workers/elections-list"));
+const TrustElectionDetail = lazy(() => import("@/pages/trust/election-detail"));
+const TrustElectionEdit = lazy(() => import("@/pages/trust/election-edit"));
 const WorkerTos = lazy(() => import("@/pages/worker-tos"));
 const WorkerCertifications = lazy(() => import("@/pages/worker-certifications"));
 const WorkerCertificationView = lazy(() => import("@/pages/worker-certification-view"));
@@ -87,6 +92,7 @@ const CompanyLogs = lazy(() => import("@/pages/company-logs"));
 const CompanyAdd = lazy(() => import("@/pages/company-add"));
 const Employers = lazy(() => import("@/pages/employers"));
 const EmployersAdd = lazy(() => import("@/pages/employers-add"));
+const EmployersOnboarding = lazy(() => import("@/pages/employers-onboarding"));
 const EmployersOrganizing = lazy(() => import("@/pages/employers-organizing"));
 const EmployerMissingCardchecks = lazy(() => import("@/pages/employer-missing-cardchecks"));
 const EmployerView = lazy(() => import("@/pages/employer-view"));
@@ -95,6 +101,7 @@ const EmployerWorkers = lazy(() => import("@/pages/employer-workers"));
 const EmployerContacts = lazy(() => import("@/pages/employer-contacts"));
 const EmployerWizards = lazy(() => import("@/pages/employer-wizards"));
 const EmployersMonthlyUploads = lazy(() => import("@/pages/employers-monthly-uploads"));
+const EmployerComplianceDashboard = lazy(() => import("@/pages/employer-compliance-dashboard"));
 const AllEmployerContacts = lazy(() => import("@/pages/all-employer-contacts"));
 const EmployerContactView = lazy(() => import("@/pages/employer-contact-view"));
 const EmployerContactEdit = lazy(() => import("@/pages/employer-contact-edit"));
@@ -102,6 +109,7 @@ const EmployerContactName = lazy(() => import("@/pages/employer-contact-name"));
 const EmployerContactEmail = lazy(() => import("@/pages/employer-contact-email"));
 const EmployerContactPhoneNumbers = lazy(() => import("@/pages/employer-contact-phone-numbers"));
 const EmployerContactAddresses = lazy(() => import("@/pages/employer-contact-addresses"));
+const EmployerContactEmployers = lazy(() => import("@/pages/employer-contact-employers"));
 const EmployerContactUser = lazy(() => import("@/pages/employer-contact-user"));
 const EmployerContactCommHistory = lazy(() => import("@/pages/employer-contact-comm-history"));
 const EmployerContactSendSms = lazy(() => import("@/pages/employer-contact-send-sms"));
@@ -119,10 +127,15 @@ const EmployerSchoolAttributesPage = lazy(() => import("@/pages/employers/school
 const EmployerLedgerAccountsWrapper = lazy(() => import("@/pages/employer-ledger-accounts-wrapper"));
 const EAView = lazy(() => import("@/pages/ea-view"));
 const EAInvoices = lazy(() => import("@/pages/ea-invoices"));
+const EAInvoiceView = lazy(() => import("@/pages/ea-invoice-view"));
 const EAPayments = lazy(() => import("@/pages/ea-payments"));
 const EATransactions = lazy(() => import("@/pages/ea-transactions"));
 const PaymentView = lazy(() => import("@/pages/payment-view"));
 const PaymentEdit = lazy(() => import("@/pages/payment-edit"));
+const PaymentLogs = lazy(() => import("@/pages/payment-logs"));
+const PaymentCreate = lazy(() => import("@/pages/payment-create"));
+const EAPaymentCreate = lazy(() => import("@/pages/ea-payment-create"));
+const EASummary = lazy(() => import("@/pages/ea-summary"));
 const TrustBenefits = lazy(() => import("@/pages/trust-benefits"));
 const TrustBenefitsAdd = lazy(() => import("@/pages/trust-benefits-add"));
 const TrustBenefitView = lazy(() => import("@/pages/trust-benefit-view"));
@@ -137,6 +150,7 @@ const TrustProviderContactName = lazy(() => import("@/pages/trust-provider-conta
 const TrustProviderContactEmail = lazy(() => import("@/pages/trust-provider-contact-email"));
 const TrustProviderContactPhoneNumbers = lazy(() => import("@/pages/trust-provider-contact-phone-numbers"));
 const TrustProviderContactAddresses = lazy(() => import("@/pages/trust-provider-contact-addresses"));
+const TrustProviderContactProviders = lazy(() => import("@/pages/trust-provider-contact-providers"));
 const TrustProviderContactUser = lazy(() => import("@/pages/trust-provider-contact-user"));
 const TrustProviderContactCommHistory = lazy(() => import("@/pages/trust-provider-contact-comm-history"));
 const TrustProviderContactSendSms = lazy(() => import("@/pages/trust-provider-contact-send-sms"));
@@ -319,6 +333,7 @@ const EdlsSheetAssignmentsPage = lazy(() => import("@/pages/edls/sheet-assignmen
 const EdlsSheetManagePage = lazy(() => import("@/pages/edls/sheet-manage"));
 const EdlsSheetEditPage = lazy(() => import("@/pages/edls/sheet-edit"));
 const EdlsSheetLogsPage = lazy(() => import("@/pages/edls/sheet-logs"));
+const FreemanCrewleadsPage = lazy(() => import("@/pages/sitespecific/freeman/crewleads-list"));
 const BulkMessagesPage = lazy(() => import("@/pages/bulk-messages"));
 const BulkMessageDetailsPage = lazy(() => import("@/pages/bulk-message-details"));
 const BulkMessageEditPage = lazy(() => import("@/pages/bulk-message-edit"));
@@ -327,6 +342,15 @@ const BulkMessageLogsPage = lazy(() => import("@/pages/bulk-message-logs"));
 const BulkMessageRecipientsListPage = lazy(() => import("@/pages/bulk-message-recipients-list"));
 const BulkMessageRecipientsAddPage = lazy(() => import("@/pages/bulk-message-recipients-add"));
 const BulkMessageDeliverPage = lazy(() => import("@/pages/bulk-message-deliver"));
+const PensionPlanYearsPage = lazy(() => import("@/pages/sitespecific/gbhet/pension-plan-years"));
+const PensionEmployerPlansPage = lazy(() => import("@/pages/sitespecific/gbhet/pension-employer-plans"));
+const PensionAccrualTiersPage = lazy(() => import("@/pages/sitespecific/gbhet/pension-accrual-tiers"));
+const PensionBenefitSchedulesPage = lazy(() => import("@/pages/sitespecific/gbhet/pension-benefit-schedules"));
+const PensionActuarialFactorsPage = lazy(() => import("@/pages/sitespecific/gbhet/pension-actuarial-factors"));
+const PensionPayoutCalculatorPage = lazy(() => import("@/pages/sitespecific/gbhet/pension-payout-calculator"));
+const PensionShareValuesPage = lazy(() => import("@/pages/sitespecific/gbhet/pension-share-values"));
+const PensionAnnualSummariesPage = lazy(() => import("@/pages/sitespecific/gbhet/pension-annual-summaries"));
+const WorkerVdbPensionPage = lazy(() => import("@/pages/worker-vdb-pension"));
 const BulkMessageTestPage = lazy(() => import("@/pages/bulk-message-test"));
 
 // Loading fallback component
@@ -574,6 +598,46 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/workers/:id/relations">
+        <ProtectedRoute tabId="relations" entityType="worker">
+          <AuthenticatedLayout>
+            <WorkerRelations />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/workers/:id/elections/current">
+        <ProtectedRoute tabId="elections-current" entityType="worker">
+          <AuthenticatedLayout>
+            <WorkerElectionsCurrent />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/workers/:id/elections/list">
+        <ProtectedRoute tabId="elections-list" entityType="worker">
+          <AuthenticatedLayout>
+            <WorkerElectionsList />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/trust/election/:id">
+        <ProtectedRoute permission="staff" component="trust.elections">
+          <AuthenticatedLayout>
+            <TrustElectionDetail />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/trust/election/:id/edit">
+        <ProtectedRoute permission="staff" component="trust.elections">
+          <AuthenticatedLayout>
+            <TrustElectionEdit />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/workers/:id/certifications">
         <ProtectedRoute tabId="certifications" entityType="worker">
           <AuthenticatedLayout>
@@ -694,6 +758,78 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/workers/:id/vdb-pension">
+        <ProtectedRoute permission="staff" component="sitespecific.gbhet.pension">
+          <AuthenticatedLayout>
+            <WorkerVdbPensionPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/sitespecific/gbhet/pension/plan-years">
+        <ProtectedRoute permission="admin" component="sitespecific.gbhet.pension">
+          <AuthenticatedLayout>
+            <PensionPlanYearsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/sitespecific/gbhet/pension/employer-plans">
+        <ProtectedRoute permission="admin" component="sitespecific.gbhet.pension">
+          <AuthenticatedLayout>
+            <PensionEmployerPlansPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/sitespecific/gbhet/pension/accrual-tiers">
+        <ProtectedRoute permission="admin" component="sitespecific.gbhet.pension">
+          <AuthenticatedLayout>
+            <PensionAccrualTiersPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/sitespecific/gbhet/pension/benefit-schedules">
+        <ProtectedRoute permission="admin" component="sitespecific.gbhet.pension">
+          <AuthenticatedLayout>
+            <PensionBenefitSchedulesPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/sitespecific/gbhet/pension/actuarial-factors">
+        <ProtectedRoute permission="admin" component="sitespecific.gbhet.pension">
+          <AuthenticatedLayout>
+            <PensionActuarialFactorsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/sitespecific/gbhet/pension/payout-calculator">
+        <ProtectedRoute permission="staff" component="sitespecific.gbhet.pension">
+          <AuthenticatedLayout>
+            <PensionPayoutCalculatorPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/sitespecific/gbhet/pension/share-values">
+        <ProtectedRoute permission="admin" component="sitespecific.gbhet.pension">
+          <AuthenticatedLayout>
+            <PensionShareValuesPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/sitespecific/gbhet/pension/annual-summaries">
+        <ProtectedRoute permission="staff" component="sitespecific.gbhet.pension">
+          <AuthenticatedLayout>
+            <PensionAnnualSummariesPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/cardchecks/:id">
         <ProtectedRoute component="cardcheck">
           <AuthenticatedLayout>
@@ -801,7 +937,7 @@ function Router() {
       </Route>
 
       <Route path="/workers">
-        <ProtectedRoute permission="staff">
+        <ProtectedRoute policy="worker.list">
           <AuthenticatedLayout>
             <Workers />
           </AuthenticatedLayout>
@@ -936,6 +1072,22 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/employers/compliance">
+        <ProtectedRoute permission="staff" component="ledger">
+          <AuthenticatedLayout>
+            <EmployerComplianceDashboard />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/employers/onboarding">
+        <ProtectedRoute policy="staff">
+          <AuthenticatedLayout>
+            <EmployersOnboarding />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/employers/add">
         <ProtectedRoute permission="staff">
           <AuthenticatedLayout>
@@ -977,7 +1129,7 @@ function Router() {
       </Route>
 
       <Route path="/wizards/:id">
-        <ProtectedRoute permission="admin">
+        <ProtectedRoute>
           <AuthenticatedLayout>
             <WizardView />
           </AuthenticatedLayout>
@@ -992,10 +1144,26 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/ea/:id/invoices/:month/:year">
+        <ProtectedRoute policy="ledger.ea.view" component="ledger">
+          <AuthenticatedLayout>
+            <EAInvoiceView />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/ea/:id/invoices">
         <ProtectedRoute policy="ledger.ea.view" component="ledger">
           <AuthenticatedLayout>
             <EAInvoices />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/ea/:id/payments/new/:paymentTypeId?">
+        <ProtectedRoute policy="ledger.ea.view" component="ledger">
+          <AuthenticatedLayout>
+            <EAPaymentCreate />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -1016,6 +1184,14 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/ea/:id/summary">
+        <ProtectedRoute policy="ledger.ea.view" component="ledger">
+          <AuthenticatedLayout>
+            <EASummary />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/ledger/payment/:id">
         <ProtectedRoute policy="staff" component="ledger">
           <AuthenticatedLayout>
@@ -1028,6 +1204,22 @@ function Router() {
         <ProtectedRoute policy="staff" component="ledger">
           <AuthenticatedLayout>
             <PaymentEdit />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/ledger/payment/:id/logs">
+        <ProtectedRoute policy="staff" component="ledger">
+          <AuthenticatedLayout>
+            <PaymentLogs />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/ledger/accounts/:accountId/payments/new">
+        <ProtectedRoute policy="staff" component="ledger">
+          <AuthenticatedLayout>
+            <PaymentCreate />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -1084,6 +1276,14 @@ function Router() {
         <ProtectedRoute policy="employer.manage">
           <AuthenticatedLayout>
             <EmployerContactAddresses />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/employer-contacts/:id/employers">
+        <ProtectedRoute permission="staff">
+          <AuthenticatedLayout>
+            <EmployerContactEmployers />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -1548,9 +1748,17 @@ function Router() {
       </Route>
 
       <Route path="/trust-provider-contacts/:id/user">
-        <ProtectedRoute policy="trustProviderUserManage" component="trust.providers">
+        <ProtectedRoute policy="trust.provider.manage" component="trust.providers">
           <AuthenticatedLayout>
             <TrustProviderContactUser />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/trust-provider-contacts/:id/providers">
+        <ProtectedRoute policy="staff" component="trust.providers">
+          <AuthenticatedLayout>
+            <TrustProviderContactProviders />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -2509,6 +2717,14 @@ function Router() {
         <ProtectedRoute tabId="logs" entityType="edls_sheet">
           <AuthenticatedLayout>
             <EdlsSheetLogsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/edls/freeman/crewleads">
+        <ProtectedRoute policy="edls.any" component="sitespecific.freeman">
+          <AuthenticatedLayout>
+            <FreemanCrewleadsPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

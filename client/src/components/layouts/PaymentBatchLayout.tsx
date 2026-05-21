@@ -31,7 +31,7 @@ export function PaymentBatchLayout({ activeTab, children }: PaymentBatchLayoutPr
   const { id } = useParams<{ id: string }>();
 
   const { data: batch, isLoading, error } = useQuery<LedgerPaymentBatch>({
-    queryKey: ["/api/ledger-payment-batches", id],
+    queryKey: [`/api/ledger-payment-batches/${id}`],
     enabled: !!id,
   });
 

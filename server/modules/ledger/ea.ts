@@ -4,6 +4,7 @@ import { insertLedgerEaSchema } from "@shared/schema";
 import { requireAccess, checkAccessInline } from "../../services/access-policy-evaluator";
 import { requireComponent } from "../components";
 import { generateInvoicePdf } from "../../utils/pdfGenerator";
+import { isValidYmd, ymdToDateForPicker } from "@shared/utils/date";
 
 async function checkEaAccessInline(req: Request, res: Response, ea: { entityType: string; entityId: string }, policyId: string): Promise<boolean> {
   const result = await checkAccessInline(req, policyId, ea.entityId, { entityType: ea.entityType, entityId: ea.entityId });
@@ -15,12 +16,53 @@ async function checkEaAccessInline(req: Request, res: Response, ea: { entityType
 }
 
 export function registerLedgerEaRoutes(app: Express) {
-  // GET /api/ledger/ea - Get all ledger EA entries (staff only)
+  // GET /api/ledger/ea - Get all ledger EA entries (staff only), optionally filtered by accountId
   app.get("/api/ledger/ea", requireComponent("ledger"), requireAccess('staff'), async (req, res) => {
     try {
-      const entries = await storage.ledger.ea.getAll();
-      res.json(entries);
+      const accountIdFilter = req.query.accountId as string | undefined;
+      let entries = await storage.ledger.ea.getAll();
+      if (accountIdFilter) {
+        entries = entries.filter(e => e.accountId === accountIdFilter);
+      }
+
+      const employerIds = entries.filter(e => e.entityType === "employer").map(e => e.entityId);
+      const workerIds = entries.filter(e => e.entityType === "worker").map(e => e.entityId);
+      const tpIds = entries.filter(e => e.entityType === "trustProvider" || e.entityType === "trust_provider").map(e => e.entityId);
+
+      const nameMap = new Map<string, string>();
+
+      if (employerIds.length > 0) {
+        for (const eid of employerIds) {
+          const emp = await storage.employers.getEmployer(eid);
+          if (emp) nameMap.set(eid, emp.name);
+        }
+      }
+      if (workerIds.length > 0) {
+        for (const wid of workerIds) {
+          const worker = await storage.workers.getWorker(wid);
+          if (worker) {
+            const contact = await storage.contacts.getContact(worker.contactId);
+            if (contact) {
+              nameMap.set(wid, `${contact.given || ""} ${contact.family || ""}`.trim());
+            }
+          }
+        }
+      }
+      if (tpIds.length > 0) {
+        for (const tid of tpIds) {
+          const tp = await storage.trustProviders.getTrustProvider(tid);
+          if (tp) nameMap.set(tid, tp.name);
+        }
+      }
+
+      const enriched = entries.map(e => ({
+        ...e,
+        entityName: nameMap.get(e.entityId) || null,
+      }));
+
+      res.json(enriched);
     } catch (error) {
+      console.error("Failed to fetch ledger EA entries:", error);
       res.status(500).json({ message: "Failed to fetch ledger EA entries" });
     }
   });
@@ -305,6 +347,319 @@ export function registerLedgerEaRoutes(app: Express) {
     } catch (error) {
       console.error("PDF generation error:", error);
       res.status(500).json({ message: "Failed to generate PDF" });
+    }
+  });
+
+  app.get("/api/ledger/ea/:id/account-summary", requireComponent("ledger"), requireAccess('authenticated'), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const rawMonths = parseInt(req.query.months as string, 10);
+      const monthsParam = Math.min(Math.max(isNaN(rawMonths) ? 6 : rawMonths, 1), 36);
+      const groupBy = req.query.groupBy === "statementYmd" ? "statementYmd" : "date";
+
+      const ea = await storage.ledger.ea.get(id);
+      if (!ea) {
+        res.status(404).json({ message: "Ledger EA entry not found" });
+        return;
+      }
+
+      if (!await checkEaAccessInline(req, res, ea, 'ledger.ea.view')) return;
+
+      const account = await storage.ledger.accounts.get(ea.accountId);
+      const currencyCode = account?.currencyCode || "USD";
+
+      const allEntries = await storage.ledger.entries.getByEaId(id);
+      const entries = allEntries
+        .slice()
+        .sort((a, b) => {
+          const ad = a.date ? new Date(a.date).getTime() : 0;
+          const bd = b.date ? new Date(b.date).getTime() : 0;
+          return ad - bd;
+        })
+        .map(e => ({
+          id: e.id,
+          amount: e.amount,
+          date: e.date,
+          statementYmd: e.statementYmd,
+          chargePlugin: e.chargePlugin,
+          referenceType: e.referenceType,
+          referenceId: e.referenceId,
+          memo: e.memo,
+          data: e.data,
+        }));
+
+      const paymentRefIds = [...new Set(
+        entries
+          .filter(e => e.chargePlugin === "payment-simple-allocation" && e.referenceId)
+          .map(e => e.referenceId!)
+      )];
+
+      const paymentMap = new Map<string, { id: string; paymentType: string; dateReceived: Date | null; details: unknown; }>();
+      if (paymentRefIds.length > 0) {
+        const paymentRows = await storage.ledger.payments.getByIds(paymentRefIds);
+        for (const p of paymentRows) {
+          paymentMap.set(p.id, {
+            id: p.id,
+            paymentType: p.paymentType,
+            dateReceived: p.dateReceived,
+            details: p.details,
+          });
+        }
+      }
+
+      const paymentTypeIds = [...new Set([...paymentMap.values()].map(p => p.paymentType))];
+      let paymentTypeMap = new Map<string, { name: string; category: string }>();
+      if (paymentTypeIds.length > 0) {
+        const ptRows = await storage.ledger.paymentTypes.getByIds(paymentTypeIds);
+        for (const pt of ptRows) {
+          paymentTypeMap.set(pt.id, { name: pt.name, category: pt.category });
+        }
+      }
+
+      const now = new Date();
+      const currentMonth = now.getMonth() + 1;
+      const currentYear = now.getFullYear();
+
+      const currentPeriod = { month: currentMonth, year: currentYear };
+
+      const periods: { month: number; year: number }[] = [];
+      let m = currentMonth - 1;
+      let y = currentYear;
+      if (m < 1) { m = 12; y--; }
+      for (let i = 0; i < monthsParam; i++) {
+        periods.unshift({ month: m, year: y });
+        m--;
+        if (m < 1) { m = 12; y--; }
+      }
+
+      const toCents = (amount: string): bigint => {
+        const parts = amount.split(".");
+        const whole = BigInt(parts[0] || "0");
+        let frac = (parts[1] || "00").padEnd(2, "0").slice(0, 2);
+        const sign = whole < BigInt(0) || amount.startsWith("-") ? BigInt(-1) : BigInt(1);
+        return sign * (BigInt(sign < 0 ? -whole : whole) * BigInt(100) + BigInt(frac));
+      };
+      const fromCents = (cents: bigint): string => {
+        const neg = cents < BigInt(0);
+        const abs = neg ? -cents : cents;
+        const whole = abs / BigInt(100);
+        const frac = abs % BigInt(100);
+        return `${neg ? "-" : ""}${whole}.${frac.toString().padStart(2, "0")}`;
+      };
+
+      interface MonthData {
+        charges: bigint;
+        chargeEntryCount: number;
+        chargeWorkerIds: Set<string>;
+        chargeHours: number;
+        adjustments: bigint;
+        adjustmentEntryCount: number;
+        interestPenalties: bigint;
+        interestPenaltyEntryCount: number;
+        paymentsCredited: bigint;
+        paymentDetails: string[];
+        allEntriesSum: bigint;
+      }
+
+      const monthDataMap = new Map<string, MonthData>();
+      const getKey = (month: number, year: number) => `${year}-${month}`;
+
+      const initMonthData = (): MonthData => ({
+        charges: BigInt(0),
+        chargeEntryCount: 0,
+        chargeWorkerIds: new Set(),
+        chargeHours: 0,
+        adjustments: BigInt(0),
+        adjustmentEntryCount: 0,
+        interestPenalties: BigInt(0),
+        interestPenaltyEntryCount: 0,
+        paymentsCredited: BigInt(0),
+        paymentDetails: [],
+        allEntriesSum: BigInt(0),
+      });
+
+      for (const period of periods) {
+        monthDataMap.set(getKey(period.month, period.year), initMonthData());
+      }
+      const currentKey = getKey(currentPeriod.month, currentPeriod.year);
+      monthDataMap.set(currentKey, initMonthData());
+
+      let preIncomingCents = BigInt(0);
+      const firstPeriod = periods[0];
+      const getVisibleMonth = (month: number, year: number): MonthData | null => {
+        const key = getKey(month, year);
+        const data = monthDataMap.get(key);
+        if (data) return data;
+        if (firstPeriod && (year < firstPeriod.year || (year === firstPeriod.year && month < firstPeriod.month))) {
+          return null;
+        }
+        return monthDataMap.get(currentKey) || null;
+      };
+
+      const parseBucketFromStmtYmd = (ymd: string, fallbackMonth: number, fallbackYear: number) => {
+        if (!isValidYmd(ymd)) return { month: fallbackMonth, year: fallbackYear };
+        const d = ymdToDateForPicker(ymd);
+        return { month: d.getMonth() + 1, year: d.getFullYear() };
+      };
+
+      for (const entry of entries) {
+        if (!entry.date) continue;
+        const d = new Date(entry.date);
+        const em = d.getMonth() + 1;
+        const ey = d.getFullYear();
+        const amountCents = toCents(entry.amount);
+
+        let bucketMonth: number;
+        let bucketYear: number;
+
+        if (groupBy === "statementYmd" && entry.statementYmd) {
+          const parsed = parseBucketFromStmtYmd(entry.statementYmd, em, ey);
+          bucketMonth = parsed.month;
+          bucketYear = parsed.year;
+        } else {
+          bucketMonth = em;
+          bucketYear = ey;
+        }
+
+        const bucketKey = getKey(bucketMonth, bucketYear);
+        const bucketData = monthDataMap.get(bucketKey);
+        if (bucketData) {
+          bucketData.allEntriesSum += amountCents;
+        } else if (firstPeriod && (bucketYear < firstPeriod.year || (bucketYear === firstPeriod.year && bucketMonth < firstPeriod.month))) {
+          preIncomingCents += amountCents;
+        }
+
+        if (entry.chargePlugin === "payment-simple-allocation") {
+          const payment = entry.referenceId ? paymentMap.get(entry.referenceId) : undefined;
+          const pt = payment ? paymentTypeMap.get(payment.paymentType) : undefined;
+          const category = pt?.category || "financial";
+
+          const catData = getVisibleMonth(bucketMonth, bucketYear);
+
+          if (catData) {
+            if (category === "adjustment") {
+              catData.adjustments += amountCents;
+              catData.adjustmentEntryCount++;
+            } else {
+              catData.paymentsCredited += amountCents;
+
+              if (payment) {
+                const details = (payment.details || {}) as Record<string, unknown>;
+                const checkNum = (details.checkTransactionNumber as string) || null;
+                const dateReceived = payment.dateReceived
+                  ? new Date(payment.dateReceived).toLocaleDateString("en-US", { month: "numeric", day: "numeric" })
+                  : null;
+                let detailStr = "";
+                if (checkNum) {
+                  detailStr = `CK # ${checkNum}`;
+                  if (dateReceived) detailStr += ` Rec'd ${dateReceived}`;
+                } else if (dateReceived) {
+                  detailStr = `Rec'd ${dateReceived}`;
+                }
+                if (detailStr) catData.paymentDetails.push(detailStr);
+              }
+            }
+          }
+        } else if (entry.chargePlugin === "interest" || entry.chargePlugin === "penalty") {
+          const catData = getVisibleMonth(bucketMonth, bucketYear);
+          if (catData) {
+            catData.interestPenalties += amountCents;
+            catData.interestPenaltyEntryCount++;
+          }
+        } else {
+          const positiveAmount = amountCents > BigInt(0) ? amountCents : BigInt(0);
+          const catData = getVisibleMonth(bucketMonth, bucketYear);
+          if (catData && positiveAmount > BigInt(0)) {
+            catData.charges += positiveAmount;
+            catData.chargeEntryCount++;
+            if (entry.referenceId) {
+              catData.chargeWorkerIds.add(entry.referenceId);
+            }
+            const meta = entry.data as Record<string, unknown> | null;
+            if (meta && typeof meta.hours === "number") {
+              catData.chargeHours += meta.hours;
+            }
+          }
+        }
+      }
+
+      let runningBalanceCents = preIncomingCents;
+
+      const buildColumn = (data: MonthData, period: { month: number; year: number }) => {
+        const incomingBalance = fromCents(runningBalanceCents);
+        runningBalanceCents += data.allEntriesSum;
+        const statementBalance = fromCents(runningBalanceCents);
+
+        const chargesAmount = fromCents(data.charges);
+        const adjustmentsAmount = fromCents(data.adjustments);
+        const interestPenaltiesAmount = fromCents(data.interestPenalties);
+        const paymentsCreditedAmount = fromCents(data.paymentsCredited);
+
+        const unpaidCents = data.charges + data.adjustments + data.interestPenalties + data.paymentsCredited;
+        const unpaidStatementAmount = fromCents(unpaidCents);
+
+        const detailParts: string[] = [];
+        if (data.chargeWorkerIds.size > 0) {
+          detailParts.push(`${data.chargeWorkerIds.size} worker${data.chargeWorkerIds.size !== 1 ? "s" : ""}`);
+        }
+        if (data.chargeHours > 0) {
+          detailParts.push(`${data.chargeHours} hrs`);
+        }
+        if (detailParts.length === 0 && data.chargeEntryCount > 0) {
+          detailParts.push(`${data.chargeEntryCount} entr${data.chargeEntryCount !== 1 ? "ies" : "y"}`);
+        }
+        const chargeDetail = detailParts.join(", ");
+
+        let adjustmentDetail = "";
+        if (data.adjustmentEntryCount > 0) {
+          adjustmentDetail = `${data.adjustmentEntryCount} adjustment${data.adjustmentEntryCount !== 1 ? "s" : ""}`;
+        }
+
+        let interestPenaltyDetail = "";
+        if (data.interestPenaltyEntryCount > 0) {
+          interestPenaltyDetail = `${data.interestPenaltyEntryCount} entr${data.interestPenaltyEntryCount !== 1 ? "ies" : "y"}`;
+        }
+
+        const paymentDetail = [...new Set(data.paymentDetails)].join(", ");
+
+        return {
+          month: period.month,
+          year: period.year,
+          charges: chargesAmount,
+          chargeDetail,
+          adjustments: adjustmentsAmount,
+          adjustmentDetail,
+          interestPenalties: interestPenaltiesAmount,
+          interestPenaltyDetail,
+          paymentsCredited: paymentsCreditedAmount,
+          paymentDetail,
+          unpaidStatementAmount,
+          statementBalance,
+          incomingBalance,
+        };
+      };
+
+      const monthColumns = periods.map(period => {
+        const data = monthDataMap.get(getKey(period.month, period.year))!;
+        return buildColumn(data, period);
+      });
+
+      const currentData = monthDataMap.get(currentKey)!;
+      const currentColumn = buildColumn(currentData, currentPeriod);
+
+      const overallIncomingBalance = monthColumns.length > 0 ? monthColumns[0].incomingBalance : "0.00";
+
+      res.json({
+        currencyCode,
+        groupBy,
+        incomingBalance: overallIncomingBalance,
+        currentBalance: currentColumn.statementBalance,
+        months: monthColumns,
+        current: currentColumn,
+      });
+    } catch (error) {
+      console.error("Failed to fetch account summary:", error);
+      res.status(500).json({ message: "Failed to fetch account summary" });
     }
   });
 }

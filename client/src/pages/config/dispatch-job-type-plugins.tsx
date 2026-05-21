@@ -9,8 +9,15 @@ import { DispatchJobTypeLayout, useDispatchJobTypeLayout } from "@/components/la
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Loader2, Shield, Settings } from "lucide-react";
-import { PluginConfigModal } from "@/components/dispatch/PluginConfigModal";
+import { SchemaFormDialog } from "@/components/json-schema-form";
 import type { EligibilityPluginMetadata, EligibilityPluginConfig, JobTypeData } from "@shared/schema";
+
+/** True when the plugin schema declares at least one configurable property. */
+function hasConfigProps(schema: EligibilityPluginMetadata["configSchema"]): boolean {
+  if (!schema) return false;
+  const props = (schema as { properties?: Record<string, unknown> }).properties;
+  return !!props && Object.keys(props).length > 0;
+}
 
 function DispatchJobTypePluginsContent() {
   const { jobType } = useDispatchJobTypeLayout();
@@ -156,7 +163,7 @@ function DispatchJobTypePluginsContent() {
         ) : (
           <div className="space-y-4">
             {eligibilityPlugins.map((plugin) => {
-              const hasConfigFields = plugin.configFields && plugin.configFields.length > 0;
+              const hasConfigFields = hasConfigProps(plugin.configSchema);
               return (
                 <div 
                   key={plugin.id} 
@@ -197,14 +204,17 @@ function DispatchJobTypePluginsContent() {
         )}
       </CardContent>
 
-      {selectedPlugin && (
-        <PluginConfigModal
+      {selectedPlugin && selectedPlugin.configSchema && (
+        <SchemaFormDialog
           open={configModalOpen}
           onOpenChange={setConfigModalOpen}
-          plugin={selectedPlugin}
-          currentConfig={getPluginConfig(selectedPlugin.id)}
-          onSave={handleSavePluginConfig}
+          title={selectedPlugin.name}
+          description={selectedPlugin.description}
+          schema={selectedPlugin.configSchema}
+          initialData={getPluginConfig(selectedPlugin.id) as Record<string, unknown>}
+          onSave={(data) => handleSavePluginConfig(data as EligibilityPluginConfig["config"])}
           isSaving={saveEligibilityMutation.isPending}
+          testId={`dialog-plugin-${selectedPlugin.id}`}
         />
       )}
     </Card>

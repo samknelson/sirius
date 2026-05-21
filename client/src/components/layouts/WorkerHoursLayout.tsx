@@ -68,10 +68,10 @@ export function WorkerHoursLayout({ children, activeTab }: WorkerHoursLayoutProp
   const { tabs: mainTabs } = useWorkerHoursTabAccess(hoursId || "");
 
   // Set page title based on hours entry period
-  const pageTitleText = hoursEntry 
+  const pageTitle = hoursEntry 
     ? `${getMonthName(hoursEntry.month)} ${hoursEntry.year}` 
     : undefined;
-  usePageTitle(pageTitleText);
+  usePageTitle(pageTitle);
 
   const isError = !!error;
 

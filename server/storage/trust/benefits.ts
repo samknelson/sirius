@@ -1,8 +1,8 @@
 import { createNoopValidator } from '../utils/validation';
 import { getClient } from '../transaction-context';
 import { trustBenefits, optionsTrustBenefitType, type TrustBenefit, type InsertTrustBenefit } from "@shared/schema";
-import { eq } from "drizzle-orm";
-import { type StorageLoggingConfig } from "../middleware/logging";
+import { eq, asc } from "drizzle-orm";
+import { defineLoggingConfig, type StorageLoggingConfig } from "../middleware/logging";
 
 /**
  * Stub validator - add validation logic here when needed
@@ -11,6 +11,7 @@ export const validate = createNoopValidator();
 
 export interface TrustBenefitStorage {
   getAllTrustBenefits(): Promise<any[]>;
+  getActiveTrustBenefitOptions(): Promise<{ id: string; name: string }[]>;
   getTrustBenefit(id: string): Promise<any | undefined>;
   createTrustBenefit(benefit: InsertTrustBenefit): Promise<TrustBenefit>;
   updateTrustBenefit(id: string, benefit: Partial<InsertTrustBenefit>): Promise<TrustBenefit | undefined>;
@@ -39,6 +40,16 @@ export function createTrustBenefitStorage(): TrustBenefitStorage {
         benefitTypeIcon: (r.benefitTypeData as any)?.icon || null,
         benefitTypeData: undefined,
       }));
+    },
+
+    async getActiveTrustBenefitOptions(): Promise<{ id: string; name: string }[]> {
+      const client = getClient();
+      const results = await client
+        .select({ id: trustBenefits.id, name: trustBenefits.name })
+        .from(trustBenefits)
+        .where(eq(trustBenefits.isActive, true))
+        .orderBy(asc(trustBenefits.name));
+      return results;
     },
 
     async getTrustBenefit(id: string): Promise<any | undefined> {
@@ -109,32 +120,14 @@ export function createTrustBenefitStorage(): TrustBenefitStorage {
   };
 }
 
-export const trustBenefitLoggingConfig: StorageLoggingConfig<TrustBenefitStorage> = {
+export const trustBenefitLoggingConfig = defineLoggingConfig<TrustBenefitStorage>({
   module: 'trustBenefits',
+  getter: 'getTrustBenefit',
   methods: {
     createTrustBenefit: {
-      enabled: true,
       getEntityId: (args) => args[0]?.name || 'new trust benefit',
-      after: async (args, result, storage) => {
-        return result; // Capture created trust benefit
-      }
     },
-    updateTrustBenefit: {
-      enabled: true,
-      getEntityId: (args) => args[0], // Trust benefit ID
-      before: async (args, storage) => {
-        return await storage.getTrustBenefit(args[0]); // Current state
-      },
-      after: async (args, result, storage) => {
-        return result; // New state (diff auto-calculated)
-      }
-    },
-    deleteTrustBenefit: {
-      enabled: true,
-      getEntityId: (args) => args[0], // Trust benefit ID
-      before: async (args, storage) => {
-        return await storage.getTrustBenefit(args[0]); // Capture what's being deleted
-      }
-    }
-  }
-};
+    updateTrustBenefit: {},
+    deleteTrustBenefit: {},
+  },
+});

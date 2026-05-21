@@ -26,9 +26,14 @@ interface ReportType {
 }
 
 export function ReportsPlugin({ userRoles }: DashboardPluginProps) {
-  const { data: reportsSettings = {}, isLoading: settingsLoading } = useQuery<Record<string, string[]>>({
+  const { data: settingsResponse, isLoading: settingsLoading } = useQuery<{
+    schema: any;
+    uiSchema: any;
+    value: Record<string, string[]>;
+  }>({
     queryKey: ["/api/dashboard-plugins/reports/settings"],
   });
+  const reportsSettings: Record<string, string[]> = settingsResponse?.value ?? {};
 
   // Fetch wizard types to get display names
   const { data: wizardTypes = [], isLoading: typesLoading } = useQuery<ReportType[]>({

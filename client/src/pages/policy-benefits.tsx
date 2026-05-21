@@ -1,11 +1,13 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { customizeValidator } from "@rjsf/validator-ajv8";
+import { getDefaultFormState } from "@rjsf/utils";
+import type { RJSFSchema } from "@rjsf/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -31,6 +33,9 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { PolicyLayout, usePolicyLayout } from "@/components/layouts/PolicyLayout";
 import { TrustBenefit } from "@shared/schema";
+import type { JsonSchema } from "@shared/json-schema-form";
+import { SchemaFormDialog } from "@/components/json-schema-form/SchemaFormDialog";
+import { SchemaView } from "@/components/json-schema-form/SchemaView";
 import { Save, Loader2, ChevronDown, ChevronRight, Plus, Trash2, Settings } from "lucide-react";
 
 interface EligibilityRule {
@@ -48,49 +53,101 @@ interface EligibilityPlugin {
   id: string;
   name: string;
   description: string;
+  configSchema?: JsonSchema;
 }
 
-interface WorkerWs {
-  id: string;
-  name: string;
-  description: string | null;
+/**
+ * True when the plugin schema has at least one configurable property.
+ * Plugins like "always-eligible" emit an empty-object schema and we
+ * skip rendering an empty form for them.
+ */
+function hasConfigProps(schema: JsonSchema | undefined): boolean {
+  if (!schema) return false;
+  const props = (schema as { properties?: Record<string, unknown> }).properties;
+  return !!props && Object.keys(props).length > 0;
+}
+
+/**
+ * Validator instance shared by both pre-save validation and default
+ * hydration so the two stay in lockstep with the form's runtime
+ * behavior.
+ */
+const sharedValidator = customizeValidator({
+  ajvOptionsOverrides: { $data: true },
+});
+
+/**
+ * Hydrate JSON-Schema defaults for a freshly created rule's config.
+ * Mirrors what rjsf does on first form mount, so a newly added rule
+ * with required defaulted fields can be saved at the page level
+ * without first opening the Configure dialog.
+ */
+function hydrateConfigDefaults(
+  schema: JsonSchema | undefined,
+  initial: Record<string, unknown>,
+): Record<string, unknown> {
+  if (!schema) return initial;
+  const result = getDefaultFormState(
+    sharedValidator,
+    schema as RJSFSchema,
+    initial as Record<string, unknown>,
+    undefined,
+    false,
+    // Match SchemaForm's behavior: don't pad arrays up to `minItems`
+    // with undefined fillers. Otherwise a fresh rule's array field
+    // (e.g. allowedStatusIds with minItems:1) starts as `[undefined]`
+    // and the first AJV check fails with "must be string" even after
+    // the user picks values.
+    { arrayMinItems: { populate: "never" } },
+  );
+  if (result && typeof result === "object" && !Array.isArray(result)) {
+    return result as Record<string, unknown>;
+  }
+  return initial;
 }
 
 function EligibilityRuleEditor({
   rule,
+  ruleIndex,
   plugins,
-  workStatuses,
   onUpdate,
   onRemove,
 }: {
   rule: EligibilityRule;
+  ruleIndex: number;
   plugins: EligibilityPlugin[];
-  workStatuses: WorkerWs[];
   onUpdate: (updatedRule: EligibilityRule) => void;
   onRemove: () => void;
 }) {
   const plugin = plugins.find((p) => p.id === rule.pluginKey);
+  const configSchema = plugin?.configSchema;
+  const hasConfig = hasConfigProps(configSchema);
+  const [configOpen, setConfigOpen] = useState(false);
 
   const handleAppliesToChange = (scanType: "start" | "continue", checked: boolean) => {
-    const newAppliesTo = checked
+    const nextAppliesTo = checked
       ? [...rule.appliesTo, scanType]
       : rule.appliesTo.filter((t) => t !== scanType);
-    onUpdate({ ...rule, appliesTo: newAppliesTo.length > 0 ? newAppliesTo : ["start"] });
+    const finalAppliesTo: ("start" | "continue")[] =
+      nextAppliesTo.length > 0 ? nextAppliesTo : ["start"];
+    // Mirror into rule.config so any code path that reads
+    // config.appliesTo (legacy validators, persisted shape) stays in
+    // lockstep with the top-level rule.appliesTo.
+    onUpdate({
+      ...rule,
+      appliesTo: finalAppliesTo,
+      config: { ...rule.config, appliesTo: finalAppliesTo },
+    });
   };
 
-  const handleStatusToggle = (statusId: string, checked: boolean) => {
-    const currentStatuses = (rule.config.allowedStatusIds as string[]) || [];
-    const newStatuses = checked
-      ? [...currentStatuses, statusId]
-      : currentStatuses.filter((id) => id !== statusId);
-    onUpdate({ ...rule, config: { ...rule.config, allowedStatusIds: newStatuses } });
-  };
-
-  const handleMonthsOffsetChange = (value: string) => {
-    const months = parseInt(value, 10);
-    if (!isNaN(months) && months >= 1) {
-      onUpdate({ ...rule, config: { ...rule.config, monthsOffset: months } });
-    }
+  const handleConfigSave = (newConfig: Record<string, unknown>) => {
+    // Preserve the rule-level appliesTo inside config (mirrored shape)
+    // so partial dialog edits don't drop it.
+    onUpdate({
+      ...rule,
+      config: { ...newConfig, appliesTo: rule.appliesTo },
+    });
+    setConfigOpen(false);
   };
 
   return (
@@ -100,81 +157,77 @@ function EligibilityRuleEditor({
           <Settings className="h-4 w-4 text-muted-foreground" />
           <span className="font-medium">{plugin?.name || rule.pluginKey}</span>
         </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={onRemove}
-          data-testid={`button-remove-rule-${rule.pluginKey}`}
-        >
-          <Trash2 className="h-4 w-4 text-destructive" />
-        </Button>
+        <div className="flex items-center gap-1">
+          {hasConfig && configSchema && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setConfigOpen(true)}
+              data-testid={`button-configure-rule-${rule.pluginKey}-${ruleIndex}`}
+            >
+              Configure
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onRemove}
+            data-testid={`button-remove-rule-${rule.pluginKey}-${ruleIndex}`}
+          >
+            <Trash2 className="h-4 w-4 text-destructive" />
+          </Button>
+        </div>
       </div>
 
       <p className="text-sm text-muted-foreground">{plugin?.description}</p>
+
+      {hasConfig && configSchema && (
+        <SchemaView
+          schema={configSchema}
+          value={rule.config}
+          omitKeys={["appliesTo"]}
+          hideEmpty
+          testIdPrefix={`view-rule-${rule.pluginKey}-${ruleIndex}`}
+        />
+      )}
 
       <div className="space-y-2">
         <Label className="text-sm font-medium">Applies to scan types:</Label>
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
             <Checkbox
-              id={`rule-start-${rule.pluginKey}`}
+              id={`rule-start-${rule.pluginKey}-${ruleIndex}`}
               checked={rule.appliesTo.includes("start")}
               onCheckedChange={(checked) => handleAppliesToChange("start", checked === true)}
             />
-            <label htmlFor={`rule-start-${rule.pluginKey}`} className="text-sm">
+            <label htmlFor={`rule-start-${rule.pluginKey}-${ruleIndex}`} className="text-sm">
               Start
             </label>
           </div>
           <div className="flex items-center gap-2">
             <Checkbox
-              id={`rule-continue-${rule.pluginKey}`}
+              id={`rule-continue-${rule.pluginKey}-${ruleIndex}`}
               checked={rule.appliesTo.includes("continue")}
               onCheckedChange={(checked) => handleAppliesToChange("continue", checked === true)}
             />
-            <label htmlFor={`rule-continue-${rule.pluginKey}`} className="text-sm">
+            <label htmlFor={`rule-continue-${rule.pluginKey}-${ruleIndex}`} className="text-sm">
               Continue
             </label>
           </div>
         </div>
       </div>
 
-      {rule.pluginKey === "work-status" && (
-        <div className="space-y-2">
-          <Label className="text-sm font-medium">Allowed work statuses:</Label>
-          <div className="grid grid-cols-2 gap-2">
-            {workStatuses.map((ws) => (
-              <div key={ws.id} className="flex items-center gap-2">
-                <Checkbox
-                  id={`ws-${ws.id}`}
-                  checked={((rule.config.allowedStatusIds as string[]) || []).includes(ws.id)}
-                  onCheckedChange={(checked) => handleStatusToggle(ws.id, checked === true)}
-                />
-                <label htmlFor={`ws-${ws.id}`} className="text-sm">
-                  {ws.name}
-                </label>
-              </div>
-            ))}
-          </div>
-          {workStatuses.length === 0 && (
-            <p className="text-sm text-muted-foreground">No work statuses configured.</p>
-          )}
-        </div>
-      )}
-
-      {rule.pluginKey === "gbhet-legal" && (
-        <div className="space-y-2">
-          <Label htmlFor="months-offset" className="text-sm font-medium">
-            Months offset (how many months prior to check):
-          </Label>
-          <Input
-            id="months-offset"
-            type="number"
-            min={1}
-            value={(rule.config.monthsOffset as number) || 4}
-            onChange={(e) => handleMonthsOffsetChange(e.target.value)}
-            className="w-24"
-          />
-        </div>
+      {hasConfig && configSchema && (
+        <SchemaFormDialog
+          open={configOpen}
+          onOpenChange={setConfigOpen}
+          title={`Configure ${plugin?.name ?? rule.pluginKey}`}
+          description={plugin?.description}
+          schema={configSchema}
+          initialData={rule.config}
+          onSave={handleConfigSave}
+          testId={`dialog-configure-${rule.pluginKey}-${ruleIndex}`}
+        />
       )}
     </div>
   );
@@ -184,13 +237,11 @@ function BenefitEligibilityConfig({
   benefit,
   rules,
   plugins,
-  workStatuses,
   onUpdateRules,
 }: {
   benefit: TrustBenefit;
   rules: EligibilityRule[];
   plugins: EligibilityPlugin[];
-  workStatuses: WorkerWs[];
   onUpdateRules: (newRules: EligibilityRule[]) => void;
 }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -200,17 +251,19 @@ function BenefitEligibilityConfig({
   const handleAddRule = () => {
     if (!selectedPlugin) return;
 
-    const defaultConfig: Record<string, unknown> = { appliesTo: ["start", "continue"] };
-    if (selectedPlugin === "work-status") {
-      defaultConfig.allowedStatusIds = [];
-    } else if (selectedPlugin === "gbhet-legal") {
-      defaultConfig.monthsOffset = 4;
-    }
+    const pluginMeta = plugins.find((p) => p.id === selectedPlugin);
+    const appliesTo: ("start" | "continue")[] = ["start", "continue"];
+    // Hydrate JSON-Schema defaults at creation time so the rule is
+    // saveable at the page level even if the user never opens
+    // Configure (e.g. plugins whose required fields all have defaults).
+    const hydratedConfig = hydrateConfigDefaults(pluginMeta?.configSchema, {
+      appliesTo,
+    });
 
     const newRule: EligibilityRule = {
       pluginKey: selectedPlugin,
-      appliesTo: ["start", "continue"],
-      config: defaultConfig,
+      appliesTo,
+      config: { ...hydratedConfig, appliesTo },
     };
 
     onUpdateRules([...rules, newRule]);
@@ -264,8 +317,8 @@ function BenefitEligibilityConfig({
                   <EligibilityRuleEditor
                     key={`${rule.pluginKey}-${index}`}
                     rule={rule}
+                    ruleIndex={index}
                     plugins={plugins}
-                    workStatuses={workStatuses}
                     onUpdate={(updatedRule) => handleUpdateRule(index, updatedRule)}
                     onRemove={() => handleRemoveRule(index)}
                   />
@@ -352,10 +405,11 @@ function PolicyBenefitsContent() {
 
   const { data: plugins = [] } = useQuery<EligibilityPlugin[]>({
     queryKey: ["/api/eligibility-plugins"],
-  });
-
-  const { data: workStatuses = [] } = useQuery<WorkerWs[]>({
-    queryKey: ["/api/options/worker-ws"],
+    // The default queryClient has staleTime: Infinity, which would let an
+    // out-of-date plugin list (e.g. cached before a new plugin was added on
+    // the server) stick around for the entire session. Force a refetch on
+    // mount so newly registered plugins appear without a hard refresh.
+    staleTime: 0,
   });
 
   const updateMutation = useMutation({
@@ -408,13 +462,62 @@ function PolicyBenefitsContent() {
     }));
   };
 
+  // Reuse the shared rjsf validator so pre-save validation matches
+  // what the modal form already enforces.
+  const rjsfValidator = sharedValidator;
+
   const handleSave = () => {
     const filteredRules: Record<string, EligibilityRule[]> = {};
+    const errors: string[] = [];
+
     selectedBenefits.forEach((benefitId) => {
-      if (eligibilityRules[benefitId] && eligibilityRules[benefitId].length > 0) {
-        filteredRules[benefitId] = eligibilityRules[benefitId];
-      }
+      const rules = eligibilityRules[benefitId];
+      if (!rules || rules.length === 0) return;
+
+      const benefitName =
+        activeBenefits.find((b) => b.id === benefitId)?.name ?? benefitId;
+
+      // Strip any leftover legacy ageout keys (`minAge`/`maxAge`) from
+      // persisted configs so policies originally saved in the legacy
+      // shape are cleaned up the next time the page is saved.
+      const cleanedRules = rules.map((rule) => {
+        if (rule.pluginKey !== "ageout") return rule;
+        const cfg = rule.config as Record<string, unknown>;
+        if (!("minAge" in cfg) && !("maxAge" in cfg)) return rule;
+        const { minAge: _minAge, maxAge: _maxAge, ...rest } = cfg;
+        void _minAge;
+        void _maxAge;
+        return { ...rule, config: rest };
+      });
+
+      cleanedRules.forEach((rule, idx) => {
+        const plugin = plugins.find((p) => p.id === rule.pluginKey);
+        if (!plugin?.configSchema || !hasConfigProps(plugin.configSchema)) return;
+        const result = rjsfValidator.validateFormData(
+          rule.config,
+          plugin.configSchema as object,
+        );
+        if (result.errors && result.errors.length > 0) {
+          const pluginName = plugin.name ?? rule.pluginKey;
+          for (const e of result.errors) {
+            errors.push(
+              `${benefitName} → ${pluginName} (rule ${idx + 1}): ${e.property || "/"} ${e.message ?? "is invalid"}`,
+            );
+          }
+        }
+      });
+
+      filteredRules[benefitId] = cleanedRules;
     });
+
+    if (errors.length > 0) {
+      toast({
+        title: "Cannot save: invalid eligibility rules",
+        description: errors.slice(0, 5).join("\n"),
+        variant: "destructive",
+      });
+      return;
+    }
 
     updateMutation.mutate({
       benefitIds: Array.from(selectedBenefits),
@@ -519,7 +622,6 @@ function PolicyBenefitsContent() {
                   benefit={benefit}
                   rules={eligibilityRules[benefit.id] || []}
                   plugins={plugins}
-                  workStatuses={workStatuses}
                   onUpdateRules={(newRules) => handleUpdateRulesForBenefit(benefit.id, newRules)}
                 />
               ))}

@@ -20,6 +20,19 @@ export interface BargainingUnitData {
   [key: string]: unknown;
 }
 
+export interface CardcheckSignedSummary {
+  unitsByBu: Array<{
+    bargainingUnitId: string;
+    bargainingUnitName: string;
+    workerCount: number;
+    signedWorkerCount: number;
+  }>;
+  unassigned: {
+    workerCount: number;
+    signedWorkerCount: number;
+  };
+}
+
 function normalizeAccountRates(raw: Record<string, unknown> | undefined): AccountRates {
   if (!raw) return {};
   const result: AccountRates = {};
@@ -68,6 +81,7 @@ export interface BargainingUnitStorage {
   removeAccountRateEntry(id: string, accountId: string, rateIndex: number): Promise<BargainingUnit | undefined>;
   getAccountRates(id: string): Promise<AccountRates | undefined>;
   removeAccountRate(id: string, accountId: string): Promise<BargainingUnit | undefined>;
+  getCardcheckSignedSummary(): Promise<CardcheckSignedSummary>;
 }
 
 export function createBargainingUnitStorage(): BargainingUnitStorage {
@@ -252,6 +266,58 @@ export function createBargainingUnitStorage(): BargainingUnitStorage {
 
       const data = unit.data as BargainingUnitData | null;
       return normalizeAccountRates(data?.accountRates as Record<string, unknown>);
+    },
+
+    async getCardcheckSignedSummary(): Promise<CardcheckSignedSummary> {
+      const client = getClient();
+      const employedWorkerFilter = sql`${workers.id} IN (
+            SELECT DISTINCT ON (wh.worker_id) wh.worker_id
+            FROM ${workerHours} wh
+            JOIN ${optionsEmploymentStatus} es ON es.id = wh.employment_status_id
+            WHERE es.employed = true
+            ORDER BY wh.worker_id, wh.year DESC, wh.month DESC, wh.day DESC
+          )`;
+
+      const buResults = await client
+        .select({
+          bargainingUnitId: bargainingUnits.id,
+          bargainingUnitName: bargainingUnits.name,
+          workerCount: countDistinct(workers.id).as('worker_count'),
+          signedWorkerCount: sql<number>`count(distinct case when ${cardchecks.id} is not null then ${workers.id} end)`.as('signed_worker_count'),
+        })
+        .from(bargainingUnits)
+        .leftJoin(workers, sql`${workers.bargainingUnitId} = ${bargainingUnits.id} AND ${employedWorkerFilter}`)
+        .leftJoin(
+          cardchecks,
+          sql`${cardchecks.workerId} = ${workers.id} AND ${cardchecks.status} = 'signed'`
+        )
+        .groupBy(bargainingUnits.id, bargainingUnits.name)
+        .orderBy(bargainingUnits.name);
+
+      const [unassignedResults] = await client
+        .select({
+          workerCount: countDistinct(workers.id).as('worker_count'),
+          signedWorkerCount: sql<number>`count(distinct case when ${cardchecks.id} is not null then ${workers.id} end)`.as('signed_worker_count'),
+        })
+        .from(workers)
+        .leftJoin(
+          cardchecks,
+          sql`${cardchecks.workerId} = ${workers.id} AND ${cardchecks.status} = 'signed'`
+        )
+        .where(sql`${workers.bargainingUnitId} is null AND ${employedWorkerFilter}`);
+
+      return {
+        unitsByBu: buResults.map(r => ({
+          bargainingUnitId: r.bargainingUnitId,
+          bargainingUnitName: r.bargainingUnitName,
+          workerCount: Number(r.workerCount ?? 0),
+          signedWorkerCount: Number(r.signedWorkerCount ?? 0),
+        })),
+        unassigned: {
+          workerCount: Number(unassignedResults?.workerCount ?? 0),
+          signedWorkerCount: Number(unassignedResults?.signedWorkerCount ?? 0),
+        },
+      };
     },
 
     async removeAccountRate(id: string, accountId: string): Promise<BargainingUnit | undefined> {

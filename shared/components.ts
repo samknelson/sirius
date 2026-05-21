@@ -142,6 +142,30 @@ export const componentRegistry: ComponentDefinition[] = [
     category: "sitespecific.gbhet"
   },
   {
+    id: "sitespecific.gbhet.pension",
+    name: "GBHET VDB Pension",
+    description: "Variable Defined Benefit pension module for GBHET (plan years, accrual tiers, AI/payout/early retirement factors, share values, employer plans, interest rates)",
+    enabledByDefault: false,
+    category: "sitespecific.gbhet",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/sitespecific/gbhet-pension/schema.ts",
+      tables: [
+        "gbhet_pension_benefit_schedules",
+        "gbhet_pension_accrual_tiers",
+        "gbhet_pension_annual_summary",
+        "gbhet_pension_share_values",
+        "gbhet_pension_plan_years",
+        "gbhet_pension_employer_plans",
+        "gbhet_pension_ai_factors",
+        "gbhet_pension_payout_factors",
+        "gbhet_pension_early_retirement_factors",
+        "gbhet_pension_interest_rates"
+      ]
+    }
+  },
+  {
     id: "sitespecific.btu",
     name: "BTU Customization",
     description: "Custom functionality for BTU",
@@ -272,7 +296,7 @@ export const componentRegistry: ComponentDefinition[] = [
     schemaManifest: {
       version: 1,
       schemaPath: "./shared/schema/worker/certifications/schema.ts",
-      tables: ["options_certifications"]
+      tables: ["options_certifications", "worker_certifications"]
     }
   },
   {
@@ -285,7 +309,7 @@ export const componentRegistry: ComponentDefinition[] = [
     schemaManifest: {
       version: 1,
       schemaPath: "./shared/schema/worker/ratings/schema.ts",
-      tables: ["options_worker_ratings"]
+      tables: ["options_worker_ratings", "worker_ratings"]
     }
   },
   {
@@ -299,6 +323,19 @@ export const componentRegistry: ComponentDefinition[] = [
       version: 1,
       schemaPath: "./shared/schema/worker/tos/schema.ts",
       tables: ["worker_tos"]
+    }
+  },
+  {
+    id: "worker.relations",
+    name: "Worker Relations",
+    description: "Management of relationships between workers",
+    enabledByDefault: false,
+    category: "core",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/worker/relations/schema.ts",
+      tables: ["options_worker_relation_type", "worker_relations"]
     }
   },
   {
@@ -355,6 +392,19 @@ export const componentRegistry: ComponentDefinition[] = [
     description: "Automated scanning for worker benefit eligibility",
     enabledByDefault: false,
     category: "trust.benefits"
+  },
+  {
+    id: "trust.elections",
+    name: "Trust Elections",
+    description: "Worker elections (stub)",
+    enabledByDefault: false,
+    category: "core",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/trust/elections-schema.ts",
+      tables: ["worker_trust_elections"]
+    }
   },
   {
     id: "event",

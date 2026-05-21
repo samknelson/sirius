@@ -1,7 +1,8 @@
 import { sql, relations } from "drizzle-orm";
-import { pgTable, pgEnum, text, varchar, boolean, timestamp, date, primaryKey, jsonb, doublePrecision, integer, unique, serial, index, uniqueIndex, numeric } from "drizzle-orm/pg-core";
+import { pgTable, pgEnum, text, varchar, boolean, timestamp, date, primaryKey, jsonb, doublePrecision, integer, unique, serial, index, uniqueIndex, numeric, check } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+import { isValidYmd, type Ymd } from "./utils/date";
 
 export {
   optionsDispatchJobType,
@@ -77,7 +78,6 @@ export {
   type EligibilityPluginMetadata,
   type JobTypeData,
   type DispatchJobData,
-  type PluginConfigField,
   type NotificationMedia,
   type PollPhaseStatus,
   type PollPhaseResult,
@@ -568,12 +568,33 @@ export const contactPostal = pgTable("contact_postal", {
   country: text("country").notNull(),
   isPrimary: boolean("is_primary").default(false).notNull(),
   isActive: boolean("is_active").default(true).notNull(),
+  source: text("source").$type<'worker_self' | 'employer_feed' | 'admin' | 'import' | 'system'>().default('admin').notNull(),
+  deliverabilityStatus: text("deliverability_status").$type<'unknown' | 'verified' | 'undeliverable' | 'vacant' | 'returned_mail'>().default('unknown').notNull(),
+  lastVerifiedAt: timestamp("last_verified_at"),
+  updatedAt: timestamp("updated_at").default(sql`now()`).notNull(),
+  needsReview: boolean("needs_review").default(false).notNull(),
   validationResponse: jsonb("validation_response"),
   latitude: doublePrecision("latitude"),
   longitude: doublePrecision("longitude"),
   accuracy: text("accuracy"),
   createdAt: timestamp("created_at").default(sql`now()`).notNull(),
-});
+}, (table) => ({
+  chkSource: check(
+    "chk_source",
+    sql`${table.source} IN ('worker_self', 'employer_feed', 'admin', 'import', 'system')`
+  ),
+  chkDeliverabilityStatus: check(
+    "chk_deliverability_status",
+    sql`${table.deliverabilityStatus} IN ('unknown', 'verified', 'undeliverable', 'vacant', 'returned_mail')`
+  ),
+  idxContactId: index("idx_contact_postal_contact_id").on(table.contactId),
+  idxContactPrimary: index("idx_contact_postal_contact_primary")
+    .on(table.contactId, table.isPrimary)
+    .where(sql`${table.isActive} = true`),
+  idxNeedsReview: index("idx_contact_postal_needs_review")
+    .on(table.needsReview)
+    .where(sql`${table.needsReview} = true`),
+}));
 
 export const phoneNumbers = pgTable("contact_phone", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -622,7 +643,7 @@ export const ledgerPayments = pgTable("ledger_payments", {
   ledgerEaId: varchar("ledger_ea_id").notNull().references(() => ledgerEa.id),
   details: jsonb("details"),
   dateCreated: timestamp("date_created").default(sql`now()`).notNull(),
-  dateReceived: timestamp("date_received"),
+  dateReceived: timestamp("date_received").notNull(),
   dateCleared: timestamp("date_cleared"),
   memo: text("memo"),
 });
@@ -649,6 +670,7 @@ export const ledger = pgTable("ledger", {
   date: timestamp("date"),
   memo: text("memo"),
   data: jsonb("data"),
+  statementYmd: date("statement_ymd").notNull(),
 }, (table) => ({
   uniqueChargePluginKey: unique().on(table.chargePlugin, table.chargePluginKey),
 }));
@@ -683,6 +705,18 @@ export const wizardFeedMappings = pgTable("wizard_feed_mappings", {
   updatedAt: timestamp("updated_at").default(sql`now()`).notNull(),
 }, (table) => [
   index("idx_wizard_feed_mappings_user_type_hash").on(table.userId, table.type, table.firstRowHash),
+]);
+
+export const wizardEmploymentStatusMappings = pgTable("wizard_employment_status_mappings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  employerId: varchar("employer_id").notNull().references(() => employers.id, { onDelete: 'cascade' }),
+  sourceStatus: text("source_status").notNull(),
+  targetStatusId: varchar("target_status_id").notNull().references(() => optionsEmploymentStatus.id, { onDelete: 'cascade' }),
+  createdAt: timestamp("created_at").default(sql`now()`).notNull(),
+  updatedAt: timestamp("updated_at").default(sql`now()`).notNull(),
+}, (table) => [
+  unique("idx_wizard_esm_employer_source").on(table.employerId, table.sourceStatus),
+  index("idx_wizard_esm_employer").on(table.employerId),
 ]);
 
 export const wizardReportData = pgTable("wizard_report_data", {
@@ -779,7 +813,106 @@ export {
   insertBtuEmployerMapSchema,
   type BtuEmployerMap,
   type InsertBtuEmployerMap,
+  btuTerritories,
+  insertBtuTerritorySchema,
+  type BtuTerritory,
+  type InsertBtuTerritory,
+  btuTerritoryReps,
+  insertBtuTerritoryRepSchema,
+  type BtuTerritoryRep,
+  type InsertBtuTerritoryRep,
+  btuTerritoryWorkers,
+  insertBtuTerritoryWorkerSchema,
+  type BtuTerritoryWorker,
+  type InsertBtuTerritoryWorker,
+  sitespecificBtuSchoolTypes,
+  insertBtuSchoolTypeSchema,
+  type BtuSchoolType,
+  type InsertBtuSchoolType,
+  sitespecificBtuRegions,
+  insertBtuRegionSchema,
+  type BtuRegion,
+  type InsertBtuRegion,
+  sitespecificBtuSchoolAttributes,
+  insertBtuSchoolAttributesSchema,
+  type BtuSchoolAttributes,
+  type InsertBtuSchoolAttributes,
+  btuScheduleItemSchema,
+  type BtuScheduleItem,
 } from "./schema/sitespecific/btu/schema";
+
+export {
+  bulkMediumEnum,
+  bulkMessageStatusEnum,
+  bulkMessages,
+  insertBulkMessageSchema,
+  type BulkMessage,
+  type InsertBulkMessage,
+  bulkMessagesEmail,
+  insertBulkMessagesEmailSchema,
+  type BulkMessagesEmail,
+  type InsertBulkMessagesEmail,
+  bulkMessagesSms,
+  insertBulkMessagesSmsSchema,
+  type BulkMessagesSms,
+  type InsertBulkMessagesSms,
+  bulkMessagesPostal,
+  insertBulkMessagesPostalSchema,
+  type BulkMessagesPostal,
+  type InsertBulkMessagesPostal,
+  bulkMessagesInapp,
+  insertBulkMessagesInappSchema,
+  type BulkMessagesInapp,
+  type InsertBulkMessagesInapp,
+  bulkParticipantStatusEnum,
+  bulkParticipants,
+  insertBulkParticipantSchema,
+  type BulkParticipant,
+  type InsertBulkParticipant,
+} from "./schema/bulk/schema";
+
+export {
+  companies,
+  insertCompanySchema,
+  type Company,
+  type InsertCompany,
+  employerCompanies,
+  insertEmployerCompanySchema,
+  type EmployerCompany,
+  type InsertEmployerCompany,
+} from "./schema/employer/company-schema";
+
+export {
+  ledgerPaymentBatches,
+  insertLedgerPaymentBatchSchema,
+  type LedgerPaymentBatch,
+  type InsertLedgerPaymentBatch,
+  ledgerPaymentBatchAssignments,
+  insertLedgerPaymentBatchAssignmentSchema,
+  type LedgerPaymentBatchAssignment,
+  type InsertLedgerPaymentBatchAssignment,
+} from "./schema/ledger/payment-batch/schema";
+
+export {
+  sftpClientDestinations,
+  insertSftpClientDestinationSchema,
+  type SftpClientDestination,
+  type InsertSftpClientDestination,
+  sftpConnectionSchema,
+  ftpConnectionSchema,
+  connectionDataSchema,
+  type ConnectionData,
+  type SftpConnectionData,
+  type FtpConnectionData,
+  PROTOCOL_DEFAULTS,
+} from "./schema/system/sftp-client-schema";
+
+export {
+  trustProviderEdi,
+  insertTrustProviderEdiSchema,
+  type TrustProviderEdi,
+  type InsertTrustProviderEdi,
+} from "./schema/trust/provider-edi-schema";
 
 export {
   sitespecificBtuPoliticalOfficials,
@@ -795,6 +928,15 @@ export {
   type BtuPoliticalDistrictCache,
   type InsertBtuPoliticalDistrictCache,
 } from "./schema/sitespecific/btu/political-schema";
+
+export * from "./schema/sitespecific/gbhet-pension/schema";
+
+export {
+  sitespecificFreemanCrewleads,
+  insertFreemanCrewleadSchema,
+  type FreemanCrewlead,
+  type InsertFreemanCrewlead,
+} from "./schema/sitespecific/freeman/schema";
 
 export {
   optionsSkills,
@@ -836,6 +978,29 @@ export {
   type WorkerTos,
   type InsertWorkerTos,
 } from "./schema/worker/tos/schema";
+
+export {
+  optionsWorkerRelationType,
+  insertOptionsWorkerRelationTypeSchema,
+  type OptionsWorkerRelationType,
+  type InsertOptionsWorkerRelationType,
+  workerRelations,
+  insertWorkerRelationSchema,
+  type WorkerRelation,
+  type InsertWorkerRelation,
+} from "./schema/worker/relations/schema";
+
+export {
+  workerTrustElections,
+  insertWorkerTrustElectionSchema,
+  createWorkerTrustElectionRequestSchema,
+  updateWorkerTrustElectionRequestSchema,
+  type WorkerTrustElection,
+  type WorkerTrustElectionView,
+  type InsertWorkerTrustElection,
+  type CreateWorkerTrustElectionRequest,
+  type UpdateWorkerTrustElectionRequest,
+} from "./schema/trust/elections-schema";
 
 export {
   edlsSheets,
@@ -975,7 +1140,10 @@ export const insertVariableSchema = createInsertSchema(variables).omit({
   id: true,
 });
 
-export const insertContactPostalSchema = createInsertSchema(contactPostal).omit({
+export const insertContactPostalSchema = createInsertSchema(contactPostal, {
+  source: z.enum(['worker_self', 'employer_feed', 'admin', 'import', 'system']).optional(),
+  deliverabilityStatus: z.enum(['unknown', 'verified', 'undeliverable', 'vacant', 'returned_mail']).optional(),
+}).omit({
   id: true,
   createdAt: true,
 });
@@ -1019,8 +1187,13 @@ export const insertLedgerEaSchema = createInsertSchema(ledgerEa).omit({
 export type InsertLedgerEa = z.infer<typeof insertLedgerEaSchema>;
 export type SelectLedgerEa = typeof ledgerEa.$inferSelect;
 
-export const insertLedgerSchema = createInsertSchema(ledger).omit({
+export const insertLedgerSchema = createInsertSchema(ledger, {
+  date: z.coerce.date().nullish(),
+}).omit({
   id: true,
+}).extend({
+  // statementYmd may be derived from `date` by the storage layer when omitted.
+  statementYmd: z.string().refine(isValidYmd, { message: "statementYmd must be YYYY-MM-DD" }).optional() as z.ZodType<Ymd | undefined>,
 });
 
 export type InsertLedger = z.infer<typeof insertLedgerSchema>;
@@ -1034,6 +1207,12 @@ export const insertWizardSchema = createInsertSchema(wizards).omit({
 export const insertWizardEmployerMonthlySchema = createInsertSchema(wizardEmployerMonthly);
 
 export const insertWizardFeedMappingSchema = createInsertSchema(wizardFeedMappings).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertWizardEmploymentStatusMappingSchema = createInsertSchema(wizardEmploymentStatusMappings).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
@@ -1221,10 +1400,18 @@ export type LedgerAccount = typeof ledgerAccounts.$inferSelect;
 export type InsertLedgerPayment = z.infer<typeof insertLedgerPaymentSchema>;
 export type LedgerPayment = typeof ledgerPayments.$inferSelect;
 
+export type AllocatedEntity = {
+  eaId: string;
+  entityType: string;
+  entityId: string;
+  entityName: string | null;
+};
+
 export type LedgerPaymentWithEntity = LedgerPayment & {
   entityType: string;
   entityId: string;
   entityName: string | null;
+  allocatedEntities: AllocatedEntity[];
 };
 
 export type InsertWizard = z.infer<typeof insertWizardSchema>;
@@ -1232,6 +1419,9 @@ export type Wizard = typeof wizards.$inferSelect;
 
 export type InsertWizardFeedMapping = z.infer<typeof insertWizardFeedMappingSchema>;
 export type WizardFeedMapping = typeof wizardFeedMappings.$inferSelect;
+
+export type InsertWizardEmploymentStatusMapping = z.infer<typeof insertWizardEmploymentStatusMappingSchema>;
+export type WizardEmploymentStatusMapping = typeof wizardEmploymentStatusMappings.$inferSelect;
 
 export type InsertWizardReportData = z.infer<typeof insertWizardReportDataSchema>;
 export type WizardReportData = typeof wizardReportData.$inferSelect;

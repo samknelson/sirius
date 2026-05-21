@@ -21,6 +21,7 @@ import './employer/mine';
 import './employer/ledger';
 import './employer/steward-view';
 
+import './worker/list';
 import './worker/view';
 import './worker/edit';
 import './worker/mine';

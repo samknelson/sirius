@@ -13,6 +13,7 @@ import {
   TabDefinition 
 } from '@shared/tabRegistry';
 import { storage } from '../storage';
+import { logger } from '../logger';
 import { isWorkerEdlsAvailable } from './edls/capability';
 
 async function checkTabCapability(tab: TabDefinition): Promise<boolean> {
@@ -174,6 +175,16 @@ export function registerAccessPolicyRoutes(app: Express) {
         resolvedEntityId,
         entityData
       );
+
+      logger.info(`Policy check: ${policyId}`, {
+        service: 'access-policies',
+        policyId,
+        userId: context.user?.id,
+        userEmail: context.user?.email,
+        granted: result.granted,
+        reason: result.reason,
+        isModular,
+      });
       
       res.json({
         policy: {
@@ -264,6 +275,7 @@ export function registerAccessPolicyRoutes(app: Express) {
         bulk_message: 'bulk.edit',
         ledger_payment_batch: 'staff',
         dispatch_job_group: 'staff',
+        trust_election: 'staff',
       };
       const basePolicy = entityPolicyMap[entityType] || 'authenticated';
       const baseAccessResult = await checkAccess(basePolicy, context.user, resolvedEntityId);

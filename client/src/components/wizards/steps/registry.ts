@@ -10,6 +10,11 @@ import { ResultsStep } from './report/ResultsStep';
 import { LedgerIntegrityInputsStep } from './report/LedgerIntegrityInputsStep';
 import { GbhetLegalComplianceInputsStep } from './report/GbhetLegalComplianceInputsStep';
 import { BTUWorkersInvalidCardcheckInputsStep } from './report/BTUWorkersInvalidCardcheckInputsStep';
+import { EmployerNameStep } from './employer-onboarding/EmployerNameStep';
+import { AttributesStep } from './employer-onboarding/AttributesStep';
+import { ContactsStep } from './employer-onboarding/ContactsStep';
+import { WorkerLoadStep } from './employer-onboarding/WorkerLoadStep';
+import { ReviewStep as OnboardingReviewStep } from './employer-onboarding/ReviewStep';
 import { ConfigureStep as BTUConfigureStep } from './btu-worker-import/ConfigureStep';
 import { ProcessStep as BTUProcessStep } from './btu-worker-import/ProcessStep';
 import { ResultsStep as BTUResultsStep } from './btu-worker-import/ResultsStep';
@@ -66,7 +71,6 @@ const evaluateMapComplete: StepCompletionEvaluator = ({ wizard, fields }) => {
   
   if (!fields || fields.length === 0) return false;
   
-  // Get required fields based on mode
   const requiredFields = fields.filter((f: any) => {
     if (f.required) return true;
     if (mode === 'create' && f.requiredForCreate) return true;
@@ -74,27 +78,53 @@ const evaluateMapComplete: StepCompletionEvaluator = ({ wizard, fields }) => {
     return false;
   });
   
-  // If no required fields, consider the step complete (edge case)
   if (requiredFields.length === 0) return true;
   
-  // Check if all required fields are mapped
-  const mappedValues = Object.values(columnMapping).filter(v => v && v !== '_unmapped');
-  const mappedRequiredFields = requiredFields.filter((f: any) => mappedValues.includes(f.id));
-  
+  const keys = Object.keys(columnMapping);
+  const isOldFormat = keys.length > 0 && keys.every(k => k.startsWith('col_'));
+
+  if (isOldFormat) {
+    const mappedFieldIds = Object.values(columnMapping).filter(v => v && v !== '_unmapped');
+    const mappedRequiredFields = requiredFields.filter((f: any) => mappedFieldIds.includes(f.id));
+    return requiredFields.length === mappedRequiredFields.length;
+  }
+
+  const mappedRequiredFields = requiredFields.filter((f: any) => {
+    const colValue = columnMapping[f.id];
+    return colValue && colValue !== '_unmapped';
+  });
   return requiredFields.length === mappedRequiredFields.length;
 };
 
 const evaluateValidateComplete: StepCompletionEvaluator = ({ wizard }) => {
   const validationResults = wizard?.data?.validationResults;
   
-  // Validation must have been run
   if (!validationResults) return false;
   
-  // All rows must be valid (no invalid rows)
+  if (validationResults.unmappedStatuses && validationResults.unmappedStatuses.length > 0) {
+    return false;
+  }
+  
   return validationResults.invalidRows === 0;
 };
 
 const alwaysComplete: StepCompletionEvaluator = () => true;
+
+const evaluateEmployerNameComplete: StepCompletionEvaluator = ({ wizard }) => {
+  return !!wizard?.data?.employerName?.trim();
+};
+
+const evaluateAttributesComplete: StepCompletionEvaluator = () => true;
+
+const evaluateContactsComplete: StepCompletionEvaluator = ({ wizard }) => {
+  const contacts = wizard?.data?.contacts || [];
+  if (contacts.length === 0) return true;
+  return contacts.every((c: any) => c.email?.trim());
+};
+
+const evaluateWorkerLoadComplete: StepCompletionEvaluator = ({ wizard }) => {
+  return !!wizard?.data?.employerId;
+};
 
 const evaluateRunComplete: StepCompletionEvaluator = ({ wizard }) => {
   const progress = wizard?.data?.progress?.run;
@@ -249,6 +279,13 @@ export const stepControllerRegistry: StepControllerRegistry = {
     'process': { Component: BTUBuildingRepProcessStep, evaluateCompletion: evaluateBuildingRepProcessComplete },
     'results': { Component: BTUBuildingRepResultsStep, evaluateCompletion: alwaysComplete },
   },
+  'employer_onboarding': {
+    'employer_name': { Component: EmployerNameStep, evaluateCompletion: evaluateEmployerNameComplete },
+    'attributes': { Component: AttributesStep, evaluateCompletion: evaluateAttributesComplete },
+    'contacts': { Component: ContactsStep, evaluateCompletion: evaluateContactsComplete },
+    'worker_load': { Component: WorkerLoadStep, evaluateCompletion: evaluateWorkerLoadComplete },
+    'review': { Component: OnboardingReviewStep, evaluateCompletion: alwaysComplete },
+  },
 };
 
 export const stepComponentRegistry: StepComponentRegistry = {
@@ -343,6 +380,13 @@ export const stepComponentRegistry: StepComponentRegistry = {
     'preview': BTUBuildingRepPreviewStep,
     'process': BTUBuildingRepProcessStep,
     'results': BTUBuildingRepResultsStep,
+  },
+  'employer_onboarding': {
+    'employer_name': EmployerNameStep,
+    'attributes': AttributesStep,
+    'contacts': ContactsStep,
+    'worker_load': WorkerLoadStep,
+    'review': OnboardingReviewStep,
   },
 };
 

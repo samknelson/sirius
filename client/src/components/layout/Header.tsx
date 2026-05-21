@@ -84,12 +84,14 @@ export default function Header() {
     staleTime: 30000,
   });
 
-  // Check staff policy for Workers and Employers navigation
-  // Note: We use 'staff' instead of 'worker' or 'employer.view' because those
-  // policies require entity context. For top-level navigation,
-  // staff permission is what grants access to these sections.
+  // Check staff policy for Employers navigation
   const { data: staffPolicy } = useQuery<PolicyAccessResponse>({
     queryKey: ["/api/access/policies/staff"],
+    staleTime: 30000,
+  });
+
+  const { data: workerListPolicy } = useQuery<PolicyAccessResponse>({
+    queryKey: ["/api/access/policies/worker.list"],
     staleTime: 30000,
   });
 
@@ -270,7 +272,7 @@ export default function Header() {
                   </>
                 )}
 
-                {staffPolicy?.access?.granted && (
+                {(workerListPolicy?.access?.granted || bulkEditPolicy?.access?.granted || staffPolicy?.access?.granted) && (
                   <>
                     <div className="border-t border-gray-100 dark:border-gray-800 my-2" />
                     <button
@@ -449,114 +451,42 @@ export default function Header() {
                   </Link>
                 )}
 
-                {hasComponent("edls") && staffPolicy?.access?.granted && (
-                  <Link href="/edls/sheets" onClick={() => setMobileMenuOpen(false)}>
-                    <Button
-                      variant={location === "/edls/sheets" ? "default" : "ghost"}
-                      className="w-full justify-start"
-                      data-testid="mobile-nav-edls-sheets"
-                    >
-                      <FileSpreadsheet className="h-4 w-4 mr-2" />
-                      Day Labor Sheets
-                    </Button>
-                  </Link>
-                )}
-
-                {hasComponent("edls") && hasComponent("worker.tos") && edlsAnyPolicy?.access?.granted && (
-                  <Link href="/edls/tos" onClick={() => setMobileMenuOpen(false)}>
-                    <Button
-                      variant={location === "/edls/tos" ? "default" : "ghost"}
-                      className="w-full justify-start"
-                      data-testid="mobile-nav-edls-tos"
-                    >
-                      <Stethoscope className="h-4 w-4 mr-2" />
-                      Absences
-                    </Button>
-                  </Link>
-                )}
-
-                {staffPolicy?.access?.granted && (
+                {hasComponent("edls") && (staffPolicy?.access?.granted || edlsAnyPolicy?.access?.granted) && (
                   <>
-                    <div className="text-sm font-medium text-muted-foreground px-4 py-2">Workers</div>
-                    <Link href="/workers" onClick={() => setMobileMenuOpen(false)}>
-                      <Button
-                        variant={location === "/workers" ? "default" : "ghost"}
-                        className="w-full justify-start pl-8"
-                        data-testid="mobile-nav-workers-list"
-                      >
-                        <List className="h-4 w-4 mr-2" />
-                        List
-                      </Button>
-                    </Link>
-                    {hasComponent("cardcheck") && (
-                      <Link href="/cardcheck-definitions" onClick={() => setMobileMenuOpen(false)}>
+                    <div className="text-sm font-medium text-muted-foreground px-4 py-2">EDLS</div>
+                    {staffPolicy?.access?.granted && (
+                      <Link href="/edls/sheets" onClick={() => setMobileMenuOpen(false)}>
                         <Button
-                          variant={location.startsWith("/cardcheck") ? "default" : "ghost"}
+                          variant={location === "/edls/sheets" ? "default" : "ghost"}
                           className="w-full justify-start pl-8"
-                          data-testid="mobile-nav-cardcheck-definitions"
-                        >
-                          <ClipboardCheck className="h-4 w-4 mr-2" />
-                          Cardchecks
-                        </Button>
-                      </Link>
-                    )}
-                    {hasComponent("bargainingunits") && (
-                      <Link href="/bargaining-units" onClick={() => setMobileMenuOpen(false)}>
-                        <Button
-                          variant={location.startsWith("/bargaining-units") ? "default" : "ghost"}
-                          className="w-full justify-start pl-8"
-                          data-testid="mobile-nav-bargaining-units"
-                        >
-                          <Users className="h-4 w-4 mr-2" />
-                          Bargaining Units
-                        </Button>
-                      </Link>
-                    )}
-                    {hasComponent("worker.steward") && (
-                      <Link href="/stewards" onClick={() => setMobileMenuOpen(false)}>
-                        <Button
-                          variant={location === "/stewards" ? "default" : "ghost"}
-                          className="w-full justify-start pl-8"
-                          data-testid="mobile-nav-stewards"
-                        >
-                          <Shield className="h-4 w-4 mr-2" />
-                          {term("steward", { plural: true })}
-                        </Button>
-                      </Link>
-                    )}
-                    {hasComponent("sitespecific.btu") && (
-                      <Link href="/sitespecific/btu/csgs" onClick={() => setMobileMenuOpen(false)}>
-                        <Button
-                          variant={location.startsWith("/sitespecific/btu/csg") ? "default" : "ghost"}
-                          className="w-full justify-start pl-8"
-                          data-testid="mobile-nav-class-size-grievances"
-                        >
-                          <FileWarning className="h-4 w-4 mr-2" />
-                          Class Size Grievances
-                        </Button>
-                      </Link>
-                    )}
-                    {hasComponent("sitespecific.hta") && (
-                      <Link href="/imports" onClick={() => setMobileMenuOpen(false)}>
-                        <Button
-                          variant={location === "/imports" ? "default" : "ghost"}
-                          className="w-full justify-start pl-8"
-                          data-testid="mobile-nav-worker-import"
+                          data-testid="mobile-nav-edls-sheets"
                         >
                           <FileSpreadsheet className="h-4 w-4 mr-2" />
-                          Worker Import
+                          Sheets
                         </Button>
                       </Link>
                     )}
-                    {hasComponent("sitespecific.hta") && (
-                      <Link href="/inactivity-scan" onClick={() => setMobileMenuOpen(false)}>
+                    {hasComponent("worker.tos") && edlsAnyPolicy?.access?.granted && (
+                      <Link href="/edls/tos" onClick={() => setMobileMenuOpen(false)}>
                         <Button
-                          variant={location === "/inactivity-scan" ? "default" : "ghost"}
+                          variant={location === "/edls/tos" ? "default" : "ghost"}
                           className="w-full justify-start pl-8"
-                          data-testid="mobile-nav-inactivity-scan"
+                          data-testid="mobile-nav-edls-tos"
                         >
-                          <ScanLine className="h-4 w-4 mr-2" />
-                          Inactivity Scan
+                          <Stethoscope className="h-4 w-4 mr-2" />
+                          Absences
+                        </Button>
+                      </Link>
+                    )}
+                    {hasComponent("sitespecific.freeman") && edlsAnyPolicy?.access?.granted && (
+                      <Link href="/edls/freeman/crewleads" onClick={() => setMobileMenuOpen(false)}>
+                        <Button
+                          variant={location === "/edls/freeman/crewleads" ? "default" : "ghost"}
+                          className="w-full justify-start pl-8"
+                          data-testid="mobile-nav-edls-freeman-crewleads"
+                        >
+                          <UserCog className="h-4 w-4 mr-2" />
+                          Crew Leads
                         </Button>
                       </Link>
                     )}
@@ -631,18 +561,6 @@ export default function Header() {
                         >
                           <Briefcase className="h-4 w-4 mr-2" />
                           Dispatch Jobs
-                        </Button>
-                      </Link>
-                    )}
-                    {hasComponent("edls") && (
-                      <Link href="/edls/sheets" onClick={() => setMobileMenuOpen(false)}>
-                        <Button
-                          variant={location.startsWith("/edls") ? "default" : "ghost"}
-                          className="w-full justify-start pl-8"
-                          data-testid="mobile-nav-edls-sheets"
-                        >
-                          <FileSpreadsheet className="h-4 w-4 mr-2" />
-                          Day Labor Sheets
                         </Button>
                       </Link>
                     )}
@@ -1130,7 +1048,35 @@ export default function Header() {
               </DropdownMenu>
             )}
 
-            {staffPolicy?.access?.granted && (
+            {/* Employer Dispatch access - for employers with dispatch permission */}
+            {hasPermission("employer.dispatch") && hasComponent("dispatch") && !staffPolicy?.access?.granted && (
+              <Link href="/dispatch/jobs">
+                <Button
+                  variant={location.startsWith("/dispatch") ? "default" : "ghost"}
+                  size="sm"
+                  data-testid="nav-employer-dispatch"
+                >
+                  <Briefcase className="h-4 w-4 mr-2" />
+                  Dispatch Jobs
+                </Button>
+              </Link>
+            )}
+
+            {/* Worker dispatch history - for workers */}
+            {hasPermission("worker") && hasComponent("dispatch") && user?.workerId && !staffPolicy?.access?.granted && (
+              <Link href={`/workers/${user.workerId}/dispatch/list`}>
+                <Button
+                  variant={location.includes("/dispatch") ? "default" : "ghost"}
+                  size="sm"
+                  data-testid="nav-my-dispatches"
+                >
+                  <Briefcase className="h-4 w-4 mr-2" />
+                  My Dispatches
+                </Button>
+              </Link>
+            )}
+
+            {(workerListPolicy?.access?.granted || bulkEditPolicy?.access?.granted || staffPolicy?.access?.granted) && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
@@ -1152,7 +1098,7 @@ export default function Header() {
                       </div>
                     </Link>
                   </DropdownMenuItem>
-                  {hasComponent("cardcheck") && (
+                  {staffPolicy?.access?.granted && hasComponent("cardcheck") && (
                     <DropdownMenuItem asChild>
                       <Link href="/cardcheck-definitions" className="w-full">
                         <div className="flex items-center cursor-pointer" data-testid="menu-cardcheck-definitions">
@@ -1162,7 +1108,7 @@ export default function Header() {
                       </Link>
                     </DropdownMenuItem>
                   )}
-                  {hasComponent("bargainingunits") && (
+                  {staffPolicy?.access?.granted && hasComponent("bargainingunits") && (
                     <DropdownMenuItem asChild>
                       <Link href="/bargaining-units" className="w-full">
                         <div className="flex items-center cursor-pointer" data-testid="menu-bargaining-units">
@@ -1172,7 +1118,7 @@ export default function Header() {
                       </Link>
                     </DropdownMenuItem>
                   )}
-                  {hasComponent("worker.steward") && (
+                  {staffPolicy?.access?.granted && hasComponent("worker.steward") && (
                     <DropdownMenuItem asChild>
                       <Link href="/stewards" className="w-full">
                         <div className="flex items-center cursor-pointer" data-testid="menu-stewards">
@@ -1182,7 +1128,7 @@ export default function Header() {
                       </Link>
                     </DropdownMenuItem>
                   )}
-                  {hasComponent("sitespecific.btu") && (
+                  {staffPolicy?.access?.granted && hasComponent("sitespecific.btu") && (
                     <DropdownMenuItem asChild>
                       <Link href="/sitespecific/btu/csgs" className="w-full">
                         <div className="flex items-center cursor-pointer" data-testid="menu-class-size-grievances">
@@ -1192,7 +1138,7 @@ export default function Header() {
                       </Link>
                     </DropdownMenuItem>
                   )}
-                  {hasComponent("sitespecific.btu") && hasPermission("admin") && (
+                  {((staffPolicy?.access?.granted && hasComponent("sitespecific.hta")) || (hasComponent("sitespecific.btu") && hasPermission("admin"))) && (
                     <DropdownMenuItem asChild>
                       <Link href="/sitespecific/btu/worker-import" className="w-full">
                         <div className="flex items-center cursor-pointer" data-testid="menu-btu-worker-import">
@@ -1202,7 +1148,7 @@ export default function Header() {
                       </Link>
                     </DropdownMenuItem>
                   )}
-                  {hasComponent("sitespecific.btu") && hasPermission("admin") && (
+                  {((staffPolicy?.access?.granted && hasComponent("sitespecific.hta")) || (hasComponent("sitespecific.btu") && hasPermission("admin"))) && (
                     <DropdownMenuItem asChild>
                       <Link href="/sitespecific/btu/dues-allocation" className="w-full">
                         <div className="flex items-center cursor-pointer" data-testid="menu-btu-dues-allocation">
@@ -1260,7 +1206,7 @@ export default function Header() {
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
-                    variant={location.startsWith("/employers") || location.startsWith("/employer-contacts") || location.startsWith("/companies") || location.startsWith("/dispatch") || location.startsWith("/edls") ? "default" : "ghost"}
+                    variant={location.startsWith("/employers") || location.startsWith("/employer-contacts") || location.startsWith("/companies") || location.startsWith("/dispatch") ? "default" : "ghost"}
                     size="sm"
                     data-testid="nav-employers"
                   >
@@ -1354,22 +1300,50 @@ export default function Header() {
                       </Link>
                     </DropdownMenuItem>
                   )}
-                  {hasComponent("edls") && (
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+
+            {hasComponent("edls") && (staffPolicy?.access?.granted || edlsAnyPolicy?.access?.granted) && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant={location.startsWith("/edls") ? "default" : "ghost"}
+                    size="sm"
+                    data-testid="nav-edls"
+                  >
+                    <FileSpreadsheet className="h-4 w-4 mr-2" />
+                    EDLS
+                    <ChevronDown className="h-4 w-4 ml-2" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  {staffPolicy?.access?.granted && (
                     <DropdownMenuItem asChild>
                       <Link href="/edls/sheets" className="w-full">
                         <div className="flex items-center cursor-pointer" data-testid="menu-edls-sheets">
                           <FileSpreadsheet className="h-4 w-4 mr-2" />
-                          Day Labor Sheets
+                          Sheets
                         </div>
                       </Link>
                     </DropdownMenuItem>
                   )}
-                  {hasComponent("edls") && hasComponent("worker.tos") && edlsAnyPolicy?.access?.granted && (
+                  {hasComponent("worker.tos") && edlsAnyPolicy?.access?.granted && (
                     <DropdownMenuItem asChild>
                       <Link href="/edls/tos" className="w-full">
                         <div className="flex items-center cursor-pointer" data-testid="menu-edls-tos">
                           <Stethoscope className="h-4 w-4 mr-2" />
                           Absences
+                        </div>
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
+                  {hasComponent("sitespecific.freeman") && edlsAnyPolicy?.access?.granted && (
+                    <DropdownMenuItem asChild>
+                      <Link href="/edls/freeman/crewleads" className="w-full">
+                        <div className="flex items-center cursor-pointer" data-testid="menu-edls-freeman-crewleads">
+                          <UserCog className="h-4 w-4 mr-2" />
+                          Crew Leads
                         </div>
                       </Link>
                     </DropdownMenuItem>
@@ -1560,6 +1534,16 @@ export default function Header() {
                         <div className="flex items-center cursor-pointer" data-testid="menu-cardcheck-report">
                           <FileCheck className="h-4 w-4 mr-2" />
                           Card Check Report
+                        </div>
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
+                  {hasPermission("staff") && hasComponent("ledger") && (
+                    <DropdownMenuItem asChild>
+                      <Link href="/employers/compliance" className="w-full">
+                        <div className="flex items-center cursor-pointer" data-testid="menu-employer-compliance">
+                          <FileCheck className="h-4 w-4 mr-2" />
+                          Employer Compliance
                         </div>
                       </Link>
                     </DropdownMenuItem>

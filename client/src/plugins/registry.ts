@@ -1,14 +1,12 @@
 import { DashboardPlugin } from "./types";
 import { WelcomeMessagesPlugin } from "./welcomeMessages/WelcomeMessagesPlugin";
-import { WelcomeMessagesSettings } from "./welcomeMessages/WelcomeMessagesSettings";
 import { BookmarksPlugin } from "./bookmarks/BookmarksPlugin";
 import { EmployerMonthlyUploadsPlugin } from "./employerMonthlyUploads/EmployerMonthlyUploadsPlugin";
-import { EmployerMonthlySettings } from "./employerMonthlyUploads/EmployerMonthlySettings";
 import { ReportsPlugin } from "./reports/ReportsPlugin";
-import { ReportsSettings } from "./reports/ReportsSettings";
 import { WmbScanStatusPlugin } from "./wmbScanStatus/WmbScanStatusPlugin";
 import { ActiveSessionsPlugin } from "./activeSessions/ActiveSessionsPlugin";
 import { MyStewardPlugin } from "./mySteward/MyStewardPlugin";
+import { MyShopsPlugin } from "./myShops/MyShopsPlugin";
 import { BtuDuesStatusPlugin } from "./btuDuesStatus/BtuDuesStatusPlugin";
 import { BtuBuSummaryPlugin } from "./btuBuSummary/BtuBuSummaryPlugin";
 import { EdlsSummaryPlugin } from "./edlsSummary/EdlsSummaryPlugin";
@@ -21,7 +19,7 @@ export const pluginRegistry: DashboardPlugin[] = [
     order: 1,
     component: WelcomeMessagesPlugin,
     enabledByDefault: true,
-    settingsComponent: WelcomeMessagesSettings,
+    hasSettings: true,
   },
   {
     id: "bookmarks",
@@ -40,7 +38,7 @@ export const pluginRegistry: DashboardPlugin[] = [
     component: ReportsPlugin,
     requiredPermissions: ["admin"],
     enabledByDefault: true,
-    settingsComponent: ReportsSettings,
+    hasSettings: true,
   },
   {
     id: "employer-monthly-uploads",
@@ -50,7 +48,7 @@ export const pluginRegistry: DashboardPlugin[] = [
     component: EmployerMonthlyUploadsPlugin,
     requiredPermissions: ["admin"],
     enabledByDefault: true,
-    settingsComponent: EmployerMonthlySettings,
+    hasSettings: true,
   },
   {
     id: "wmb-scan-status",
@@ -79,10 +77,19 @@ export const pluginRegistry: DashboardPlugin[] = [
     enabledByDefault: true,
   },
   {
+    id: "my-shops",
+    name: "My Shops",
+    description: "Display linked employers with latest upload and account balance",
+    order: 8,
+    component: MyShopsPlugin,
+    requiredPermissions: ["employer"],
+    enabledByDefault: true,
+  },
+  {
     id: "btu-dues-status",
     name: "BTU Dues Status",
     description: "Display summary of most recent BTU dues allocation import with card check comparison",
-    order: 8,
+    order: 9,
     component: BtuDuesStatusPlugin,
     requiredPermissions: ["admin"],
     enabledByDefault: true,
@@ -91,7 +98,7 @@ export const pluginRegistry: DashboardPlugin[] = [
     id: "btu-bu-summary",
     name: "BTU Bargaining Unit Summary",
     description: "Display workers per bargaining unit with signed card check percentages",
-    order: 9,
+    order: 10,
     component: BtuBuSummaryPlugin,
     requiredPermissions: ["admin"],
     enabledByDefault: true,
@@ -100,7 +107,7 @@ export const pluginRegistry: DashboardPlugin[] = [
     id: "edls-summary",
     name: "EDLS Daily Summary",
     description: "Worker assignment counts by member status and sheet status for a selected day",
-    order: 10,
+    order: 11,
     component: EdlsSummaryPlugin,
     requiredPolicy: "edls.coordinator",
     requiredComponent: "edls",

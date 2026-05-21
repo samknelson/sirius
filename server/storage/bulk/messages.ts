@@ -2,7 +2,7 @@ import { createNoopValidator } from '../utils/validation';
 import { getClient } from '../transaction-context';
 import { bulkMessages, type BulkMessage, type InsertBulkMessage } from "../../../shared/schema/bulk/schema";
 import { eq, and, ilike, sql, type SQL } from "drizzle-orm";
-import type { StorageLoggingConfig } from "../middleware/logging";
+import { defineLoggingConfig } from "../middleware/logging";
 
 export const validate = createNoopValidator<InsertBulkMessage, BulkMessage>();
 
@@ -76,34 +76,35 @@ export function createBulkMessageStorage(): BulkMessageStorage {
   return storage;
 }
 
-export const bulkMessageLoggingConfig: StorageLoggingConfig<BulkMessageStorage> = {
+export const bulkMessageLoggingConfig = defineLoggingConfig<BulkMessageStorage>({
   module: 'bulkMessages',
+  state: { key: 'bulkMessage' },
+  getter: 'getById',
   methods: {
     create: {
-      enabled: true,
-      getEntityId: (args, result) => result?.id || 'new bulk message',
-      getHostEntityId: (args, result) => result?.id,
+      state: { fallbackId: 'new bulk message' },
+      getHostEntityId: (_args, result) => result?.id,
+      metadata: (_args, result) => ({
+        bulkMessageId: result?.id,
+        name: result?.name,
+        medium: result?.medium,
+        status: result?.status,
+      }),
       getDescription: async (args, result) => {
         const name = result?.name || args[0]?.name || 'Unnamed';
         return `Created bulk message "${name}"`;
       },
-      after: async (args, result) => {
-        return {
-          bulkMessage: result,
-          metadata: {
-            bulkMessageId: result?.id,
-            name: result?.name,
-            medium: result?.medium,
-            status: result?.status,
-          }
-        };
-      }
     },
     update: {
-      enabled: true,
-      getEntityId: (args) => args[0],
       getHostEntityId: (args) => args[0],
-      getDescription: async (args, result, beforeState) => {
+      state: { previousKey: 'previousBulkMessage' },
+      metadata: (_args, result) => ({
+        bulkMessageId: result?.id,
+        name: result?.name,
+        medium: result?.medium,
+        status: result?.status,
+      }),
+      getDescription: async (_args, result, beforeState) => {
         const oldName = beforeState?.bulkMessage?.name || 'Unknown';
         const newName = result?.name || oldName;
         if (oldName !== newName) {
@@ -111,45 +112,18 @@ export const bulkMessageLoggingConfig: StorageLoggingConfig<BulkMessageStorage> 
         }
         return `Updated bulk message "${newName}"`;
       },
-      before: async (args, storage) => {
-        const bulkMessage = await storage.getById(args[0]);
-        return { bulkMessage };
-      },
-      after: async (args, result, _storage, beforeState) => {
-        return {
-          bulkMessage: result,
-          previousBulkMessage: beforeState?.bulkMessage,
-          metadata: {
-            bulkMessageId: result?.id,
-            name: result?.name,
-            medium: result?.medium,
-            status: result?.status,
-          }
-        };
-      }
     },
     delete: {
-      enabled: true,
-      getEntityId: (args) => args[0],
       getHostEntityId: (args) => args[0],
-      getDescription: async (args, result, beforeState) => {
+      state: { includeOnDelete: true },
+      metadata: (args, _result, beforeState) => ({
+        bulkMessageId: args[0],
+        name: beforeState?.bulkMessage?.name,
+      }),
+      getDescription: async (_args, _result, beforeState) => {
         const name = beforeState?.bulkMessage?.name || 'Unknown';
         return `Deleted bulk message "${name}"`;
       },
-      before: async (args, storage) => {
-        const bulkMessage = await storage.getById(args[0]);
-        return { bulkMessage };
-      },
-      after: async (args, result, _storage, beforeState) => {
-        return {
-          deleted: result,
-          bulkMessage: beforeState?.bulkMessage,
-          metadata: {
-            bulkMessageId: args[0],
-            name: beforeState?.bulkMessage?.name,
-          }
-        };
-      }
     },
-  }
-};
+  },
+});

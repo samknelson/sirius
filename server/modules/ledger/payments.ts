@@ -1,14 +1,211 @@
 import type { Express, Request, Response } from "express";
 import { storage } from "../../storage";
 import { createUnifiedOptionsStorage } from "../../storage/unified-options";
-import { insertLedgerPaymentSchema, LedgerPayment } from "@shared/schema";
+import { insertLedgerPaymentSchema, type LedgerPayment, type LedgerPaymentWithEntity, type AllocatedEntity } from "@shared/schema";
 import { requireAccess, checkAccessInline } from "../../services/access-policy-evaluator";
 import { requireComponent } from "../components";
-import { executeChargePlugins, TriggerType, PaymentSavedContext, LedgerNotification } from "../../charge-plugins";
+import { executeChargePlugins, TriggerType, PaymentSavedContext, LedgerNotification } from "../../plugins/ledger/charge";
 import { logger } from "../../logger";
 import { eventBus, EventType } from "../../services/event-bus";
+import { isValidYmd, ymdToDateForPicker, dateToYmd } from "@shared/utils/date";
 
 const unifiedOptionsStorage = createUnifiedOptionsStorage();
+
+export async function enrichWithAllocatedEntities(
+  payments: LedgerPaymentWithEntity[]
+): Promise<LedgerPaymentWithEntity[]> {
+  const allEaIds = new Set<string>();
+  for (const payment of payments) {
+    const details = payment.details as Record<string, unknown> | null;
+    const pa = Array.isArray(details?.proposedAllocation)
+      ? (details.proposedAllocation as Array<{ eaId: string }>)
+      : [];
+    for (const alloc of pa) {
+      if (alloc.eaId) allEaIds.add(alloc.eaId);
+    }
+  }
+
+  if (allEaIds.size === 0) {
+    return payments.map(p => ({ ...p, allocatedEntities: [] }));
+  }
+
+  const eaMap = new Map<string, { entityType: string; entityId: string }>();
+  const entityEmployerIds = new Set<string>();
+
+  for (const eaId of allEaIds) {
+    const ea = await storage.ledger.ea.get(eaId);
+    if (ea) {
+      eaMap.set(eaId, { entityType: ea.entityType, entityId: ea.entityId });
+      if (ea.entityType === "employer") {
+        entityEmployerIds.add(ea.entityId);
+      }
+    }
+  }
+
+  const employerNames = new Map<string, string>();
+  for (const empId of entityEmployerIds) {
+    const emp = await storage.employers.getEmployer(empId);
+    if (emp) employerNames.set(empId, emp.name);
+  }
+
+  return payments.map(payment => {
+    const details = payment.details as Record<string, unknown> | null;
+    const pa = Array.isArray(details?.proposedAllocation)
+      ? (details.proposedAllocation as Array<{ eaId: string }>)
+      : [];
+
+    const seenEaIds = new Set<string>();
+    const allocatedEntities: AllocatedEntity[] = [];
+    for (const alloc of pa) {
+      if (!alloc.eaId || seenEaIds.has(alloc.eaId)) continue;
+      seenEaIds.add(alloc.eaId);
+      const ea = eaMap.get(alloc.eaId);
+      if (ea) {
+        allocatedEntities.push({
+          eaId: alloc.eaId,
+          entityType: ea.entityType,
+          entityId: ea.entityId,
+          entityName: ea.entityType === "employer"
+            ? employerNames.get(ea.entityId) || null
+            : null,
+        });
+      }
+    }
+
+    return { ...payment, allocatedEntities };
+  });
+}
+
+interface ProposedAllocationEntry {
+  eaId: string;
+  amount: string;
+  statementYmd: string;
+}
+
+export function validateProposedAllocation(
+  details: Record<string, unknown> | null | undefined,
+  paymentAmount: string
+): { valid: boolean; error?: string; allocations?: ProposedAllocationEntry[] } {
+  if (!details || !details.proposedAllocation) {
+    return { valid: true };
+  }
+  const raw = details.proposedAllocation;
+  if (!Array.isArray(raw)) {
+    return { valid: false, error: "proposedAllocation must be an array" };
+  }
+  const allocations: ProposedAllocationEntry[] = [];
+  const seenKeys = new Set<string>();
+  for (const item of raw) {
+    if (!item || typeof item !== "object") {
+      return { valid: false, error: "Each allocation must be an object" };
+    }
+    if (typeof item.eaId !== "string" || !item.eaId) {
+      return { valid: false, error: "Each allocation must have a valid eaId" };
+    }
+    if (typeof item.amount !== "string" || isNaN(parseFloat(item.amount))) {
+      return { valid: false, error: "Each allocation must have a valid amount" };
+    }
+    const ymd = typeof item.statementYmd === "string" ? item.statementYmd : "";
+    if (ymd && !isValidYmd(ymd)) {
+      return { valid: false, error: "statementYmd must be in YYYY-MM-DD format" };
+    }
+    if (ymd) {
+      const parsed = ymdToDateForPicker(ymd);
+      if (dateToYmd(parsed) !== ymd) {
+        return { valid: false, error: `Invalid calendar date: ${ymd}` };
+      }
+    }
+    const compositeKey = `${item.eaId}:${ymd}`;
+    if (seenKeys.has(compositeKey)) {
+      return { valid: false, error: "Duplicate EA + statement date combination" };
+    }
+    seenKeys.add(compositeKey);
+    allocations.push({
+      eaId: item.eaId,
+      amount: item.amount,
+      statementYmd: ymd,
+    });
+  }
+  const allocationTotal = allocations.reduce((sum, a) => sum + parseFloat(a.amount), 0);
+  const payAmt = parseFloat(paymentAmount);
+  if (Math.abs(payAmt - allocationTotal) > 0.01) {
+    return { valid: false, error: "Allocation amounts must equal the payment amount" };
+  }
+  return { valid: true, allocations };
+}
+
+export type CreatePaymentResult =
+  | { ok: true; payment: LedgerPayment }
+  | { ok: false; status: number; message: string };
+
+/**
+ * Shared payment-creation flow used by both `POST /api/ledger/payments` and
+ * `POST /api/ledger-payment-batches/:id/payments`. Performs date coercion,
+ * schema parsing (via `insertLedgerPaymentSchema.parse` — `ZodError` is
+ * intentionally allowed to propagate so callers retain their existing 400
+ * mapping), allocation validation, EA existence checks, and finally
+ * `storage.ledger.payments.create`.
+ *
+ * If `requireAccountId` is set, both the primary EA and every allocation EA
+ * must belong to that account; mismatch yields a 400 with a context-specific
+ * message.
+ */
+export async function createPaymentFromRequestBody(
+  rawBody: unknown,
+  opts?: { requireAccountId?: string }
+): Promise<CreatePaymentResult> {
+  const raw = (rawBody ?? {}) as Record<string, unknown>;
+  const processed = {
+    ...raw,
+    dateReceived: new Date(raw.dateReceived as string),
+    dateCleared: raw.dateCleared ? new Date(raw.dateCleared as string) : undefined,
+  };
+
+  const validated = insertLedgerPaymentSchema.parse(processed);
+
+  const allocValidation = validateProposedAllocation(
+    validated.details as Record<string, unknown> | null,
+    validated.amount,
+  );
+  if (!allocValidation.valid) {
+    return { ok: false, status: 400, message: allocValidation.error || "Invalid allocation" };
+  }
+
+  const primaryEa = await storage.ledger.ea.get(validated.ledgerEaId);
+  if (!primaryEa) {
+    return { ok: false, status: 404, message: "EA entry not found" };
+  }
+  if (opts?.requireAccountId && primaryEa.accountId !== opts.requireAccountId) {
+    return {
+      ok: false,
+      status: 400,
+      message: "Selected participant belongs to a different account than this batch",
+    };
+  }
+
+  if (allocValidation.allocations) {
+    for (const alloc of allocValidation.allocations) {
+      const allocEa = await storage.ledger.ea.get(alloc.eaId);
+      if (!allocEa) {
+        return {
+          ok: false,
+          status: 400,
+          message: `Allocation references non-existent EA: ${alloc.eaId}`,
+        };
+      }
+      if (opts?.requireAccountId && allocEa.accountId !== opts.requireAccountId) {
+        return {
+          ok: false,
+          status: 400,
+          message: "Allocation participant belongs to a different account than this batch",
+        };
+      }
+    }
+  }
+
+  const payment = await storage.ledger.payments.create(validated);
+  return { ok: true, payment };
+}
 
 // Helper to check EA access inline after fetching the EA
 async function checkPaymentEaAccessInline(req: Request, res: Response, ea: { entityType: string; entityId: string }, policyId: string): Promise<boolean> {
@@ -20,8 +217,94 @@ async function checkPaymentEaAccessInline(req: Request, res: Response, ea: { ent
   return true;
 }
 
-async function triggerPaymentChargePlugins(payment: LedgerPayment): Promise<LedgerNotification[]> {
+export async function triggerPaymentChargePlugins(payment: LedgerPayment): Promise<LedgerNotification[]> {
   try {
+    const allNotifications: LedgerNotification[] = [];
+    const details = (payment.details || {}) as Record<string, unknown>;
+    const proposedAllocation = details.proposedAllocation as Array<{ eaId: string; amount: string; statementYmd: string }> | undefined;
+
+    if (proposedAllocation && proposedAllocation.length > 0) {
+      const currentEaIds = new Set(proposedAllocation.map(a => a.eaId));
+
+      for (const alloc of proposedAllocation) {
+        const ea = await storage.ledger.ea.get(alloc.eaId);
+        if (!ea) {
+          logger.warn("Cannot trigger charge plugins - allocation EA not found", {
+            service: "ledger-payments",
+            paymentId: payment.id,
+            ledgerEaId: alloc.eaId,
+          });
+          continue;
+        }
+
+        const allocIdentity = `${alloc.eaId}:${alloc.statementYmd || ""}`;
+        const payload = {
+          paymentId: payment.id,
+          amount: alloc.amount,
+          status: payment.status,
+          ledgerEaId: alloc.eaId,
+          accountId: ea.accountId,
+          entityType: ea.entityType,
+          entityId: ea.entityId,
+          dateReceived: payment.dateReceived,
+          dateCleared: payment.dateCleared,
+          memo: payment.memo,
+          paymentTypeId: payment.paymentType,
+          allocationId: allocIdentity,
+          allocationStatementYmd: alloc.statementYmd,
+        };
+
+        eventBus.emit(EventType.PAYMENT_SAVED, payload).catch(err => {
+          logger.error("Failed to emit PAYMENT_SAVED event for allocation", {
+            service: "ledger-payments",
+            paymentId: payment.id,
+            ledgerEaId: alloc.eaId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
+
+        const context: PaymentSavedContext = {
+          trigger: TriggerType.PAYMENT_SAVED,
+          ...payload,
+        };
+
+        const result = await executeChargePlugins(context);
+        allNotifications.push(...result.notifications);
+      }
+
+      try {
+        const allExistingEntries = await storage.ledger.entries.getByReference("payment", payment.id);
+        const currentAllocationKeySuffixes = new Set(
+          proposedAllocation.map(a => {
+            const ymdSuffix = a.statementYmd ? `:${a.statementYmd}` : "";
+            return `${payment.id}:${a.eaId}${ymdSuffix}`;
+          })
+        );
+        for (const entry of allExistingEntries) {
+          if (entry.chargePlugin === "payment-simple-allocation" && entry.chargePluginKey) {
+            const keyAfterConfig = entry.chargePluginKey.replace(/^[^:]+:/, "");
+            if (!currentAllocationKeySuffixes.has(keyAfterConfig)) {
+              await storage.ledger.entries.delete(entry.id);
+              logger.info("Deleted stale allocation ledger entry", {
+                service: "ledger-payments",
+                paymentId: payment.id,
+                deletedEntryId: entry.id,
+                chargePluginKey: entry.chargePluginKey,
+              });
+            }
+          }
+        }
+      } catch (cleanupErr) {
+        logger.error("Failed to clean up stale allocation entries", {
+          service: "ledger-payments",
+          paymentId: payment.id,
+          error: cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
+        });
+      }
+
+      return allNotifications;
+    }
+
     const ea = await storage.ledger.ea.get(payment.ledgerEaId);
     if (!ea) {
       logger.warn("Cannot trigger charge plugins - EA not found", {
@@ -40,12 +323,12 @@ async function triggerPaymentChargePlugins(payment: LedgerPayment): Promise<Ledg
       accountId: ea.accountId,
       entityType: ea.entityType,
       entityId: ea.entityId,
+      dateReceived: payment.dateReceived,
       dateCleared: payment.dateCleared,
       memo: payment.memo,
       paymentTypeId: payment.paymentType,
     };
 
-    // Emit event for any listeners (future notification plugins, etc.)
     eventBus.emit(EventType.PAYMENT_SAVED, payload).catch(err => {
       logger.error("Failed to emit PAYMENT_SAVED event", {
         service: "ledger-payments",
@@ -54,7 +337,6 @@ async function triggerPaymentChargePlugins(payment: LedgerPayment): Promise<Ledg
       });
     });
 
-    // Execute charge plugins directly (for backwards compatibility with notifications)
     const context: PaymentSavedContext = {
       trigger: TriggerType.PAYMENT_SAVED,
       ...payload,
@@ -114,10 +396,12 @@ export function registerLedgerPaymentRoutes(app: Express) {
 
       if (limit !== undefined && offset !== undefined) {
         const result = await storage.ledger.payments.getByAccountIdWithEntityPaginated(accountId, limit, offset);
+        result.data = await enrichWithAllocatedEntities(result.data);
         res.json(result);
       } else {
         const payments = await storage.ledger.payments.getByAccountIdWithEntity(accountId);
-        res.json(payments);
+        const enriched = await enrichWithAllocatedEntities(payments);
+        res.json(enriched);
       }
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch payments" });
@@ -189,29 +473,16 @@ export function registerLedgerPaymentRoutes(app: Express) {
   // POST /api/ledger/payments - Create a new payment (staff only)
   app.post("/api/ledger/payments", requireComponent("ledger"), requireAccess('staff'), async (req, res) => {
     try {
-      // Convert date strings to Date objects
-      const processedBody = {
-        ...req.body,
-        dateReceived: req.body.dateReceived ? new Date(req.body.dateReceived) : undefined,
-        dateCleared: req.body.dateCleared ? new Date(req.body.dateCleared) : undefined,
-      };
-      
-      const validatedData = insertLedgerPaymentSchema.parse(processedBody);
-      
-      // Verify EA exists
-      const ea = await storage.ledger.ea.get(validatedData.ledgerEaId);
-      if (!ea) {
-        res.status(404).json({ message: "EA entry not found" });
+      const result = await createPaymentFromRequestBody(req.body);
+      if (!result.ok) {
+        res.status(result.status).json({ message: result.message });
         return;
       }
-      
-      const payment = await storage.ledger.payments.create(validatedData);
-      
-      // Trigger charge plugins - they handle their own reconciliation
-      const notifications = await triggerPaymentChargePlugins(payment);
-      
+
+      const notifications = await triggerPaymentChargePlugins(result.payment);
+
       res.status(201).json({
-        ...payment,
+        ...result.payment,
         ledgerNotifications: notifications,
       });
     } catch (error) {
@@ -235,21 +506,41 @@ export function registerLedgerPaymentRoutes(app: Express) {
     try {
       const { id } = req.params;
       
-      // First get the existing payment
       const existingPayment = await storage.ledger.payments.get(id);
       if (!existingPayment) {
         res.status(404).json({ message: "Payment not found" });
         return;
       }
       
-      // Convert date strings to Date objects
+      const rawBody = req.body;
+
       const processedBody = {
-        ...req.body,
-        dateReceived: req.body.dateReceived ? new Date(req.body.dateReceived) : undefined,
-        dateCleared: req.body.dateCleared ? new Date(req.body.dateCleared) : undefined,
+        ...rawBody,
+        dateReceived: rawBody.dateReceived ? new Date(rawBody.dateReceived) : undefined,
+        dateCleared: rawBody.dateCleared ? new Date(rawBody.dateCleared) : undefined,
       };
       
       const validatedData = insertLedgerPaymentSchema.partial().parse(processedBody);
+
+      const effectiveAmount = validatedData.amount ?? existingPayment.amount;
+      const effectiveDetails = validatedData.details !== undefined
+        ? validatedData.details as Record<string, unknown> | null
+        : existingPayment.details as Record<string, unknown> | null;
+      const allocValidation = validateProposedAllocation(effectiveDetails, effectiveAmount);
+      if (!allocValidation.valid) {
+        res.status(400).json({ message: allocValidation.error });
+        return;
+      }
+
+      if (allocValidation.allocations) {
+        for (const alloc of allocValidation.allocations) {
+          const allocEa = await storage.ledger.ea.get(alloc.eaId);
+          if (!allocEa) {
+            res.status(400).json({ message: `Allocation references non-existent EA: ${alloc.eaId}` });
+            return;
+          }
+        }
+      }
       
       const payment = await storage.ledger.payments.update(id, validatedData);
       
@@ -258,7 +549,6 @@ export function registerLedgerPaymentRoutes(app: Express) {
         return;
       }
       
-      // Trigger charge plugins - they handle their own reconciliation
       const notifications = await triggerPaymentChargePlugins(payment);
       
       res.json({
@@ -291,16 +581,6 @@ export function registerLedgerPaymentRoutes(app: Express) {
       if (!payment) {
         res.status(404).json({ message: "Payment not found" });
         return;
-      }
-      
-      // Delete any associated ledger entries first
-      const deletedEntriesCount = await storage.ledger.entries.deleteByReference("payment", id);
-      if (deletedEntriesCount > 0) {
-        logger.info("Deleted ledger entries when deleting payment", {
-          service: "ledger-payments",
-          paymentId: id,
-          deletedCount: deletedEntriesCount,
-        });
       }
       
       const success = await storage.ledger.payments.delete(id);

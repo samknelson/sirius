@@ -71,7 +71,8 @@ export type TabEntityType =
   | 'trust_provider_edi'
   | 'bulk_message'
   | 'ledger_payment_batch'
-  | 'facility';
+  | 'facility'
+  | 'trust_election';
 
 /**
  * Tab check request for batch access evaluation
@@ -121,6 +122,7 @@ export const workerTabTree: HierarchicalTab[] = [
       { id: 'email', label: 'Email', hrefTemplate: '/workers/{id}/email', permission: 'staff' },
       { id: 'addresses', label: 'Addresses', hrefTemplate: '/workers/{id}/addresses', policyId: 'worker.view' },
       { id: 'phone-numbers', label: 'Phone Numbers', hrefTemplate: '/workers/{id}/phone-numbers', policyId: 'worker.view' },
+      { id: 'relations', label: 'Relations', hrefTemplate: '/workers/{id}/relations', policyId: 'worker.view', component: 'worker.relations' },
     ]
   },
   { 
@@ -144,11 +146,18 @@ export const workerTabTree: HierarchicalTab[] = [
     ]
   },
   { 
-    id: 'benefits', label: 'Benefits', hrefTemplate: '/workers/{id}/benefits/history', permission: 'staff',
+    id: 'benefits', label: 'Benefits', hrefTemplate: '/workers/{id}/benefits/history', policyId: 'worker.view',
     children: [
-      { id: 'benefits-history', label: 'History', hrefTemplate: '/workers/{id}/benefits/history', permission: 'staff' },
-      { id: 'benefits-eligibility', label: 'Eligibility', hrefTemplate: '/workers/{id}/benefits/eligibility', permission: 'staff' },
+      { id: 'benefits-history', label: 'History', hrefTemplate: '/workers/{id}/benefits/history', policyId: 'worker.view' },
+      { id: 'benefits-eligibility', label: 'Eligibility', hrefTemplate: '/workers/{id}/benefits/eligibility', policyId: 'worker.view' },
       { id: 'benefits-scan', label: 'Scan', hrefTemplate: '/workers/{id}/benefits/scan', permission: 'staff' },
+    ]
+  },
+  {
+    id: 'elections', label: 'Elections', hrefTemplate: '/workers/{id}/elections/current', policyId: 'worker.view', component: 'trust.elections',
+    children: [
+      { id: 'elections-current', label: 'Current', hrefTemplate: '/workers/{id}/elections/current', policyId: 'worker.view', component: 'trust.elections' },
+      { id: 'elections-list', label: 'List', hrefTemplate: '/workers/{id}/elections/list', permission: 'staff', component: 'trust.elections' },
     ]
   },
   { 
@@ -173,6 +182,7 @@ export const workerTabTree: HierarchicalTab[] = [
   { id: 'edls', label: 'EDLS', hrefTemplate: '/workers/{id}/edls', policyId: 'edls.coordinator', component: 'edls', capability: 'workerEdls' },
   { id: 'sitespecific-freeman-2shift', label: 'Second Shift', hrefTemplate: '/workers/{id}/sitespecific-freeman-2shift', policyId: 'edls.any', component: 'sitespecific.freeman' },
   { id: 'accounting', label: 'Accounting', hrefTemplate: '/workers/{id}/ledger/accounts', policyId: 'worker.ledger', component: 'ledger' },
+  { id: 'vdb-pension', label: 'VDB Pension', hrefTemplate: '/workers/{id}/vdb-pension', permission: 'staff', component: 'sitespecific.gbhet.pension' },
   { id: 'logs', label: 'Logs', hrefTemplate: '/workers/{id}/logs', permission: 'staff' },
   { id: 'delete', label: 'Delete', hrefTemplate: '/workers/{id}/delete', permission: 'workers.delete' },
 ];
@@ -186,7 +196,7 @@ export const employerTabTree: HierarchicalTab[] = [
   { id: 'workers', label: 'Workers', hrefTemplate: '/employers/{id}/workers', policyId: 'employer.steward.view' },
   { id: 'contacts', label: 'Contacts', hrefTemplate: '/employers/{id}/contacts', policyId: 'employer.steward.view' },
   { id: 'policy-history', label: 'Policy History', hrefTemplate: '/employers/{id}/policy-history', permission: 'staff' },
-  { id: 'wizards', label: 'Wizards', hrefTemplate: '/employers/{id}/wizards', permission: 'staff' },
+  { id: 'wizards', label: 'Wizards', hrefTemplate: '/employers/{id}/wizards', policyId: 'employer.mine' },
   { id: 'logs', label: 'Logs', hrefTemplate: '/employers/{id}/logs', permission: 'staff' },
   { 
     id: 'accounting', label: 'Accounting', hrefTemplate: '/employers/{id}/ledger/accounts', policyId: 'employer.ledger', component: 'ledger',
@@ -390,6 +400,15 @@ export const ledgerAccountTabTree: HierarchicalTab[] = [
 export const ledgerPaymentTabTree: HierarchicalTab[] = [
   { id: 'view', label: 'View', hrefTemplate: '/ledger/payment/{id}', policyId: 'staff', component: 'ledger' },
   { id: 'edit', label: 'Edit', hrefTemplate: '/ledger/payment/{id}/edit', policyId: 'staff', component: 'ledger' },
+  { id: 'logs', label: 'Logs', hrefTemplate: '/ledger/payment/{id}/logs', policyId: 'staff', component: 'ledger' },
+];
+
+/**
+ * Trust election entity tab tree
+ */
+export const trustElectionTabTree: HierarchicalTab[] = [
+  { id: 'details', label: 'Details', hrefTemplate: '/trust/election/{id}', permission: 'staff', component: 'trust.elections' },
+  { id: 'edit', label: 'Edit', hrefTemplate: '/trust/election/{id}/edit', permission: 'staff', component: 'trust.elections' },
 ];
 
 /**
@@ -419,6 +438,7 @@ export const employerContactTabTree: HierarchicalTab[] = [
   { id: 'email', label: 'Email', hrefTemplate: '/employer-contacts/{id}/email', policyId: 'employer.manage' },
   { id: 'phone-numbers', label: 'Phone Numbers', hrefTemplate: '/employer-contacts/{id}/phone-numbers', policyId: 'employer.manage' },
   { id: 'addresses', label: 'Addresses', hrefTemplate: '/employer-contacts/{id}/addresses', policyId: 'employer.manage' },
+  { id: 'employers', label: 'Employers', hrefTemplate: '/employer-contacts/{id}/employers', permission: 'staff' },
   { 
     id: 'comm', 
     label: 'Comm', 
@@ -445,6 +465,7 @@ export const providerContactTabTree: HierarchicalTab[] = [
   { id: 'email', label: 'Email', hrefTemplate: '/trust-provider-contacts/{id}/email', permission: 'providers.edit' },
   { id: 'phone-numbers', label: 'Phone Numbers', hrefTemplate: '/trust-provider-contacts/{id}/phone-numbers', permission: 'providers.edit' },
   { id: 'addresses', label: 'Addresses', hrefTemplate: '/trust-provider-contacts/{id}/addresses', permission: 'providers.edit' },
+  { id: 'providers', label: 'Providers', hrefTemplate: '/trust-provider-contacts/{id}/providers', permission: 'staff' },
   { 
     id: 'comm', 
     label: 'Comm', 
@@ -575,6 +596,7 @@ export const tabTreeRegistry: Record<TabEntityType, HierarchicalTab[]> = {
   bulk_message: bulkMessageTabTree,
   ledger_payment_batch: ledgerPaymentBatchTabTree,
   facility: facilityTabTree,
+  trust_election: trustElectionTabTree,
 };
 
 /**

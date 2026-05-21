@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { Upload, FileSpreadsheet, Trash2, Check } from "lucide-react";
+import { Upload, FileSpreadsheet, Trash2, Check, Download } from "lucide-react";
 import { format } from "date-fns";
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
@@ -244,15 +244,27 @@ export function UploadStep({ wizardId, wizardType, data, onDataChange }: UploadS
                       </p>
                     </div>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => deleteMutation.mutate(file.id)}
-                    disabled={deleteMutation.isPending}
-                    data-testid={`button-delete-file-${file.id}`}
-                  >
-                    <Trash2 size={16} className="text-destructive" />
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      asChild
+                      data-testid={`button-download-file-${file.id}`}
+                    >
+                      <a href={`/api/files/${file.id}/download`} download>
+                        <Download size={16} />
+                      </a>
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => deleteMutation.mutate(file.id)}
+                      disabled={deleteMutation.isPending}
+                      data-testid={`button-delete-file-${file.id}`}
+                    >
+                      <Trash2 size={16} className="text-destructive" />
+                    </Button>
+                  </div>
                 </div>
               ))}
             </div>
