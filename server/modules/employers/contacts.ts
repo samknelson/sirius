@@ -1,10 +1,10 @@
 import type { Express, Request, Response, NextFunction } from "express";
-import { storage } from "../storage";
+import { storage } from "../../storage";
 import { insertContactSchema, type InsertContact } from "@shared/schema";
-import { requireAccess } from "../services/access-policy-evaluator";
-import { checkClerkConflict, provisionClerkAccount } from "../services/clerk-provisioning";
-import { credentialUserInOkta, OktaCredentialingError} from "../services/okta-credentialing";
-import { isOktaProviderActive } from "../auth/okta-admin";
+import { requireAccess } from "../../services/access-policy-evaluator";
+import { checkClerkConflict, provisionClerkAccount } from "../../services/clerk-provisioning";
+import { credentialUserInOkta, OktaCredentialingError} from "../../services/okta-credentialing";
+import { isOktaProviderActive } from "../../auth/okta-admin";
 import { z } from "zod";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -516,6 +516,9 @@ export function registerEmployerContactRoutes(
       }
       console.error("Error credentialing employer contact in Okta:", error);
       res.status(500).json({ message: "Failed to credential user in Okta" });
+    }
+  });
+
   // GET /api/employer-contacts/:id/employers - Get all employers linked to this contact (staff only - cross-employer view)
   app.get("/api/employer-contacts/:id/employers", requireAuth, requireAccess('staff'), async (req, res) => {
     try {
