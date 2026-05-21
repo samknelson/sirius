@@ -126,6 +126,13 @@ async function checkUserAccess(
     externalId
   );
 
+  logger.info("DEBUG: identity lookup result", {
+    externalId,
+    found: !!identity,
+    identityId: identity?.id,
+    userId: identity?.userId,
+  });
+
   if (identity) {
     const user = await storage.users.getUser(identity.userId);
     if (!user) {
