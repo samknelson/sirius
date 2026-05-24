@@ -1,5 +1,5 @@
 import type { Request } from "express";
-import { PluginRegistry, isPluginComponentEnabledAsync } from "../_core";
+import { PluginRegistry } from "../_core";
 import type {
   ClientInjectionPlugin,
   ClientInjectionManifestEntry,
@@ -40,12 +40,7 @@ export const clientInjectionRegistry = new PluginRegistry<
 export async function resolveClientInjections(
   req: Request,
 ): Promise<ResolvedInjectionManifest> {
-  const enabled: ClientInjectionPlugin[] = [];
-  for (const p of clientInjectionRegistry.list()) {
-    if (await isPluginComponentEnabledAsync(clientInjectionRegistry.getMetadata(p))) {
-      enabled.push(p);
-    }
-  }
+  const enabled = await clientInjectionRegistry.listVisibleTo(req);
 
   const out: ResolvedInjection[] = [];
   for (const p of enabled) {
