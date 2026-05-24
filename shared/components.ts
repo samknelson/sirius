@@ -650,14 +650,14 @@ export const componentRegistry: ComponentDefinition[] = [
   {
     id: "internationalization",
     name: "Internationalization",
-    description: "Internationalization and translation support (stub)",
+    description: "Umbrella feature flag for translation and localization providers.",
     enabledByDefault: false,
     category: "core"
   },
   {
     id: "internationalization.weglot",
     name: "Weglot Translation",
-    description: "Weglot translation plugin (stub)",
+    description: "Injects the Weglot SDK and initializer so site content can be translated on the fly.",
     enabledByDefault: false,
     category: "internationalization"
   },
