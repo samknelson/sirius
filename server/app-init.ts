@@ -26,6 +26,7 @@ import { registerFloodEvents, loadFloodConfigFromVariables } from "./flood";
 import { initLogNotifier } from "./modules/log-notifier";
 import { initializeDispatchEligSystem } from "./plugins/dispatch/eligibility";
 import { initializeDashboardPluginSystem } from "./plugins/dashboard";
+import { initializeClientInjectionPluginSystem } from "./plugins/client-injection";
 import { initWorkerBanNotifications } from "./services/worker-ban-notifications";
 import { initDispatchNotifications } from "./services/dispatch-notifications";
 import "@shared/access-policies/loader";
@@ -171,6 +172,9 @@ export async function startApp(app: Express, server: Server, onReady: () => void
 
   await initializeDashboardPluginSystem();
   logger.info("Dashboard plugin system initialized", { source: "startup" });
+
+  initializeClientInjectionPluginSystem();
+  logger.info("Client-injection plugin system initialized", { source: "startup" });
 
   // Register charge + trust eligibility kinds with the unified
   // /api/plugins/:kind/manifest endpoint (Task #208). Dashboard +

@@ -29,4 +29,5 @@ export type PluginKind =
   | "dashboard"
   | "dispatch-eligibility"
   | "charge"
-  | "trust-eligibility";
+  | "trust-eligibility"
+  | "client-injection";

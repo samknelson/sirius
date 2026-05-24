@@ -14,6 +14,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 // Import charge plugin UIs to register them (side effect import)
 import "@/plugins/charge-plugins";
+import { ServerInjections } from "@/components/ServerInjections";
 
 // Essential pages loaded eagerly for fast initial render
 import LoginPage from "@/pages/login";
@@ -3292,6 +3293,7 @@ function App() {
           <TerminologyProvider>
             <PageTitleProvider>
               <Toaster />
+              <ServerInjections />
               <Router />
             </PageTitleProvider>
           </TerminologyProvider>

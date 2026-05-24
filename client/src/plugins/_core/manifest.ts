@@ -9,7 +9,8 @@ export type PluginKind =
   | "dashboard"
   | "dispatch-eligibility"
   | "charge"
-  | "trust-eligibility";
+  | "trust-eligibility"
+  | "client-injection";
 
 export function pluginManifestUrl(kind: PluginKind): string {
   return `/api/plugins/${kind}/manifest`;

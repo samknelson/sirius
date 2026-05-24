@@ -317,6 +317,14 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Register dashboard routes
   registerDashboardRoutes(app, requireAuth, requirePermission);
 
+  // Client-injection kind ships a grouped `{ head, bodyEnd }` shape, so
+  // it overrides the generic flat-array manifest. Register first so this
+  // handler wins the path match.
+  const { registerClientInjectionManifestRoute } = await import(
+    "./plugins/client-injection"
+  );
+  registerClientInjectionManifestRoute(app, requireAuth);
+
   // Unified plugin manifest endpoint (Task #208) — replaces the four
   // legacy per-kind manifest URLs.
   const { registerPluginsManifestRoutes } = await import("./modules/plugins-manifest");
