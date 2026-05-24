@@ -129,7 +129,11 @@ async function applyDriftFixes(): Promise<{ tablesFixed: number; statementsRun: 
       seen.add(tableName);
       if (!(await tableExists(tableName))) continue;
       const tableSchema = moduleIndex.get(tableName) ?? mainIndex.get(tableName);
-      if (!tableSchema) continue;
+      if (!tableSchema) {
+        throw new Error(
+          `Baseline aborted — table "${tableName}" exists in the database (listed in component "${component.id}" schema manifest) but no Drizzle schema definition could be resolved from the component's schema module or shared/schema. Cannot safely advance migrations_version while skipping unfixable tables.`,
+        );
+      }
       const stmts = await generateDriftFixStatements(tableSchema, tableName);
       if (stmts.length === 0) continue;
       tablesFixed++;
