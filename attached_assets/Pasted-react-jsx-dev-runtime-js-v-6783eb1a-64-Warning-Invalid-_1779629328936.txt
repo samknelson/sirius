@@ -1,0 +1,21 @@
+react_jsx-dev-runtime.js?v=6783eb1a:64 Warning: Invalid prop `data-replit-metadata` supplied to `React.Fragment`. React.Fragment can only have `key` and `children` props.
+    at ComponentsConfigPage (https://6df5f98a-763b-4214-8d4b-274c33305989-00-3p2k00jwx19el.kirk.replit.dev/src/pages/config/components.tsx?t=1779629280278:36:3)
+    at div
+    at div
+    at ConfigurationLayout (https://6df5f98a-763b-4214-8d4b-274c33305989-00-3p2k00jwx19el.kirk.replit.dev/src/components/layouts/ConfigurationLayout.tsx:34:47)
+    at main
+    at div
+    at AuthenticatedLayout (https://6df5f98a-763b-4214-8d4b-274c33305989-00-3p2k00jwx19el.kirk.replit.dev/src/App.tsx?v=nrGVe_tCmGpPNSPupM_oP:727:32)
+    at ProtectedRoute (https://6df5f98a-763b-4214-8d4b-274c33305989-00-3p2k00jwx19el.kirk.replit.dev/src/components/auth/ProtectedRoute.tsx:35:42)
+    at Route (https://6df5f98a-763b-4214-8d4b-274c33305989-00-3p2k00jwx19el.kirk.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=6783eb1a:191:16)
+    at Switch (https://6df5f98a-763b-4214-8d4b-274c33305989-00-3p2k00jwx19el.kirk.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=6783eb1a:247:17)
+    at Suspense
+    at Router (https://6df5f98a-763b-4214-8d4b-274c33305989-00-3p2k00jwx19el.kirk.replit.dev/src/App.tsx?v=nrGVe_tCmGpPNSPupM_oP:753:42)
+    at PageTitleProvider (https://6df5f98a-763b-4214-8d4b-274c33305989-00-3p2k00jwx19el.kirk.replit.dev/src/contexts/PageTitleContext.tsx:22:37)
+    at TerminologyProvider (https://6df5f98a-763b-4214-8d4b-274c33305989-00-3p2k00jwx19el.kirk.replit.dev/src/contexts/TerminologyContext.tsx:43:39)
+    at AuthProvider (https://6df5f98a-763b-4214-8d4b-274c33305989-00-3p2k00jwx19el.kirk.replit.dev/src/contexts/AuthContext.tsx:35:32)
+    at Provider (https://6df5f98a-763b-4214-8d4b-274c33305989-00-3p2k00jwx19el.kirk.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-OXZDJRWN.js?v=6783eb1a:38:15)
+    at TooltipProvider (https://6df5f98a-763b-4214-8d4b-274c33305989-00-3p2k00jwx19el.kirk.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=6783eb1a:66:5)
+    at QueryClientProvider (https://6df5f98a-763b-4214-8d4b-274c33305989-00-3p2k00jwx19el.kirk.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@tanstack_react-query.js?v=6783eb1a:2805:3)
+    at App
+    at Root
