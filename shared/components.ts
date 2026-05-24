@@ -648,6 +648,20 @@ export const componentRegistry: ComponentDefinition[] = [
     ]
   },
   {
+    id: "internationalization",
+    name: "Internationalization",
+    description: "Internationalization and translation support (stub)",
+    enabledByDefault: false,
+    category: "core"
+  },
+  {
+    id: "internationalization.weglot",
+    name: "Weglot Translation",
+    description: "Weglot translation plugin (stub)",
+    enabledByDefault: false,
+    category: "internationalization"
+  },
+  {
     id: "system.sftp.client",
     name: "SFTP Client",
     description: "SFTP client for secure file transfers",
