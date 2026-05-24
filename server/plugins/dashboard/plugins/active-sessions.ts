@@ -1,3 +1,4 @@
+import { registerDashboardPlugin } from "../registry";
 import type { DashboardPlugin } from "../types";
 
 export const activeSessionsPlugin: DashboardPlugin = {
@@ -42,3 +43,5 @@ export const activeSessionsPlugin: DashboardPlugin = {
     requiredPermissions: ["admin"],
   },
 };
+
+registerDashboardPlugin(activeSessionsPlugin);

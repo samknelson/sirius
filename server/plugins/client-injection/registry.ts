@@ -37,6 +37,14 @@ export const clientInjectionRegistry = new PluginRegistry<
  * a slot is `plugin.order ?? 100` ascending, then registration order
  * (preserved by the underlying Map).
  */
+/**
+ * Convenience helper used by individual plugin files to self-register
+ * at module top level. Mirrors `registerChargePlugin` / `registerEligibilityPlugin`.
+ */
+export function registerClientInjection(plugin: ClientInjectionPlugin): void {
+  clientInjectionRegistry.register(plugin);
+}
+
 export async function resolveClientInjections(
   req: Request,
 ): Promise<ResolvedInjectionManifest> {

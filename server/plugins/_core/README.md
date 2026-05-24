@@ -1,7 +1,7 @@
 # Plugin framework
 
 This directory is the shared base for every plugin kind in the app.
-There are currently four kinds:
+There are currently five kinds:
 
 | Kind                    | Server registry location                          | Client components location                  |
 | ----------------------- | ------------------------------------------------- | ------------------------------------------- |
@@ -9,8 +9,41 @@ There are currently four kinds:
 | `dispatch-eligibility`  | `server/plugins/dispatch/eligibility/`            | (no client component — server-only)         |
 | `charge`                | `server/plugins/ledger/charge/`                   | (no client component — server-only)         |
 | `trust-eligibility`     | `server/plugins/trust/eligibility/`               | (no client component — server-only)         |
+| `client-injection`      | `server/plugins/client-injection/`                | (no client component — server-only)         |
 
-All four go through:
+## Plugin registration convention (every kind, no exceptions)
+
+Every plugin kind uses the **same** registration pattern. There is no
+auto-discovery, no per-kind reinvention, no central list of plugins
+maintained inside an init function. The rule is:
+
+1. **The kind's `registry.ts` exports a `register<Kind>Plugin(plugin)`
+   convenience helper** that delegates to `<kindRegistry>.register(plugin)`.
+   (Examples: `registerChargePlugin`, `registerEligibilityPlugin`,
+   `registerDashboardPlugin`, `registerDispatchEligPlugin`,
+   `registerClientInjection`.)
+2. **Each plugin file self-registers at module top level** by calling
+   `register<Kind>Plugin(myPlugin)` at the bottom of its file. This
+   side-effect happens exactly once, when the file is first imported.
+3. **The kind's `index.ts` imports each plugin file as a side-effect
+   import at the bottom of the file** (`import "./plugins/<name>";`).
+   That's the entire registration list — one line per plugin. Adding
+   a new plugin is two steps: drop a file in `./plugins/` and add one
+   import line at the bottom of `index.ts`.
+4. **The kind's `initialize<Kind>System()` function does NOT register
+   plugins.** By the time it runs, the side-effect imports have already
+   populated the registry. The init function is for kind-level
+   registration (`registerPluginKind(...)`), startup orchestration
+   (e.g. dispatch-eligibility backfills, dashboard legacy-settings
+   migrations), and an aggregate `… plugins registered { plugins: [...] }`
+   log line.
+
+Do not invent alternatives: no `readdirSync` auto-discovery, no central
+register-list array in the init function, no `plugins/index.ts` barrel
+file. Every kind follows the rules above so the entire framework
+behaves consistently and the registration site is grep-able.
+
+All five go through:
 
 - `PluginRegistry` (`registry.ts`) — generic per-kind registry.
 - `registerPluginKind` (`kinds.ts`) — kind-level registration.

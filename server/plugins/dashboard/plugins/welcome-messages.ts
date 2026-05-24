@@ -1,3 +1,4 @@
+import { registerDashboardPlugin } from "../registry";
 import { storage } from "../../../storage";
 import type { JsonSchema } from "@shared/json-schema-form";
 import type { DashboardPlugin } from "../types";
@@ -67,3 +68,5 @@ export const welcomeMessagesPlugin: DashboardPlugin = {
     order: 1,
   },
 };
+
+registerDashboardPlugin(welcomeMessagesPlugin);

@@ -1,3 +1,4 @@
+import { registerDashboardPlugin } from "../registry";
 import type { DashboardPlugin } from "../types";
 
 export const btuBuSummaryPlugin: DashboardPlugin = {
@@ -103,3 +104,5 @@ export const btuBuSummaryPlugin: DashboardPlugin = {
     requiredPermissions: ["admin"],
   },
 };
+
+registerDashboardPlugin(btuBuSummaryPlugin);

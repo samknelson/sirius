@@ -1,3 +1,4 @@
+import { registerDashboardPlugin } from "../registry";
 import type { DashboardPlugin } from "../types";
 
 export const bookmarksPlugin: DashboardPlugin = {
@@ -19,3 +20,5 @@ export const bookmarksPlugin: DashboardPlugin = {
     requiredPermissions: ["bookmark", "admin"],
   },
 };
+
+registerDashboardPlugin(bookmarksPlugin);

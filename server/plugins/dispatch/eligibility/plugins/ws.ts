@@ -1,3 +1,4 @@
+import { registerDispatchEligPlugin } from "../registry";
 import { logger } from "../../../../logger";
 import { storage } from "../../../../storage";
 import { createWorkerDispatchEligDenormStorage } from "../../../../storage/dispatch/worker-elig-denorm";
@@ -148,3 +149,5 @@ export async function backfillDispatchWsEligibility(): Promise<{ workersProcesse
 
   return { workersProcessed: workersWithStatus.length, entriesCreated };
 }
+
+registerDispatchEligPlugin(dispatchWsPlugin);

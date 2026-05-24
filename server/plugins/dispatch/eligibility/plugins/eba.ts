@@ -1,3 +1,4 @@
+import { registerDispatchEligPlugin } from "../registry";
 import { logger } from "../../../../logger";
 import { createWorkerDispatchEbaStorage } from "../../../../storage/dispatch/worker-eba";
 import { createWorkerDispatchEligDenormStorage } from "../../../../storage/dispatch/worker-elig-denorm";
@@ -137,3 +138,5 @@ export async function backfillDispatchEbaEligibility(): Promise<{ workersProcess
 
   return { workersProcessed: uniqueWorkerIds.length, entriesCreated };
 }
+
+registerDispatchEligPlugin(dispatchEbaPlugin);

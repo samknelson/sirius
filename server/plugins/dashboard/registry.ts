@@ -234,3 +234,11 @@ class DashboardPluginRegistry extends PluginRegistry<DashboardPlugin, DashboardM
 }
 
 export const dashboardPluginRegistry = new DashboardPluginRegistry();
+
+/**
+ * Convenience helper used by individual plugin files to self-register
+ * at module top level. Mirrors `registerChargePlugin` / `registerEligibilityPlugin`.
+ */
+export function registerDashboardPlugin(plugin: DashboardPlugin): void {
+  dashboardPluginRegistry.register(plugin);
+}

@@ -200,3 +200,11 @@ class DispatchEligPluginRegistry extends PluginRegistry<DispatchEligPlugin, Elig
 }
 
 export const dispatchEligPluginRegistry = new DispatchEligPluginRegistry();
+
+/**
+ * Convenience helper used by individual plugin files to self-register
+ * at module top level. Mirrors `registerChargePlugin` / `registerEligibilityPlugin`.
+ */
+export function registerDispatchEligPlugin(plugin: DispatchEligPlugin): void {
+  dispatchEligPluginRegistry.register(plugin);
+}

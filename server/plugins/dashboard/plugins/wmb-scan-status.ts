@@ -1,3 +1,4 @@
+import { registerDashboardPlugin } from "../registry";
 import type { DashboardPlugin } from "../types";
 
 export const wmbScanStatusPlugin: DashboardPlugin = {
@@ -19,3 +20,5 @@ export const wmbScanStatusPlugin: DashboardPlugin = {
     requiredPermissions: ["admin"],
   },
 };
+
+registerDashboardPlugin(wmbScanStatusPlugin);

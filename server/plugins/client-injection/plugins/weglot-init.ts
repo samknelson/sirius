@@ -1,4 +1,5 @@
 import type { ClientInjectionPlugin } from "../types";
+import { registerClientInjection } from "../registry";
 
 export const weglotInitPlugin: ClientInjectionPlugin = {
   id: "weglot-init",
@@ -18,3 +19,5 @@ export const weglotInitPlugin: ClientInjectionPlugin = {
     };
   },
 };
+
+registerClientInjection(weglotInitPlugin);

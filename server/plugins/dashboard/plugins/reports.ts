@@ -1,3 +1,4 @@
+import { registerDashboardPlugin } from "../registry";
 import { storage } from "../../../storage";
 import { wizardRegistry } from "../../../wizards";
 import type { JsonSchema } from "@shared/json-schema-form";
@@ -117,3 +118,5 @@ export const reportsPlugin: DashboardPlugin = {
     requiredPermissions: ["admin"],
   },
 };
+
+registerDashboardPlugin(reportsPlugin);

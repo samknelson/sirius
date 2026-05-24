@@ -1,3 +1,4 @@
+import { registerDispatchEligPlugin } from "../registry";
 import { logger } from "../../../../logger";
 import { createWorkerDispatchHfeStorage } from "../../../../storage/dispatch/worker-hfe";
 import { createWorkerDispatchEligDenormStorage } from "../../../../storage/dispatch/worker-elig-denorm";
@@ -65,3 +66,5 @@ export const dispatchHfePlugin: DispatchEligPlugin = {
     });
   },
 };
+
+registerDispatchEligPlugin(dispatchHfePlugin);

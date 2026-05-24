@@ -1,4 +1,5 @@
 import type { ClientInjectionPlugin } from "../types";
+import { registerClientInjection } from "../registry";
 
 export const weglotSdkPlugin: ClientInjectionPlugin = {
   id: "weglot-sdk",
@@ -10,3 +11,5 @@ export const weglotSdkPlugin: ClientInjectionPlugin = {
   src: "https://cdn.weglot.com/weglot.min.js",
   order: 10,
 };
+
+registerClientInjection(weglotSdkPlugin);

@@ -1,3 +1,4 @@
+import { registerDispatchEligPlugin } from "../registry";
 import { logger } from "../../../../logger";
 import { createWorkerDispatchDncStorage } from "../../../../storage/dispatch/worker-dnc";
 import { createWorkerDispatchEligDenormStorage } from "../../../../storage/dispatch/worker-elig-denorm";
@@ -64,3 +65,5 @@ export const dispatchDncPlugin: DispatchEligPlugin = {
     });
   },
 };
+
+registerDispatchEligPlugin(dispatchDncPlugin);

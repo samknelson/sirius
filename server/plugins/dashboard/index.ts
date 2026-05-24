@@ -1,38 +1,9 @@
 import { logger } from "../../logger";
 import { registerPluginKind } from "../_core";
 import { dashboardPluginRegistry } from "./registry";
-import { welcomeMessagesPlugin } from "./plugins/welcome-messages";
-import { bookmarksPlugin } from "./plugins/bookmarks";
-import { reportsPlugin } from "./plugins/reports";
-import { employerMonthlyUploadsPlugin } from "./plugins/employer-monthly-uploads";
-import { wmbScanStatusPlugin } from "./plugins/wmb-scan-status";
-import { activeSessionsPlugin } from "./plugins/active-sessions";
-import { myStewardPlugin } from "./plugins/my-steward";
-import { btuDuesStatusPlugin } from "./plugins/btu-dues-status";
-import { btuBuSummaryPlugin } from "./plugins/btu-bu-summary";
-import { edlsSummaryPlugin } from "./plugins/edls-summary";
-import { myShopsPlugin } from "./plugins/my-shops";
 
-export { dashboardPluginRegistry } from "./registry";
+export { dashboardPluginRegistry, registerDashboardPlugin } from "./registry";
 export type * from "./types";
-
-export function registerDashboardPlugins(): void {
-  dashboardPluginRegistry.register(welcomeMessagesPlugin);
-  dashboardPluginRegistry.register(bookmarksPlugin);
-  dashboardPluginRegistry.register(reportsPlugin);
-  dashboardPluginRegistry.register(employerMonthlyUploadsPlugin);
-  dashboardPluginRegistry.register(wmbScanStatusPlugin);
-  dashboardPluginRegistry.register(activeSessionsPlugin);
-  dashboardPluginRegistry.register(myStewardPlugin);
-  dashboardPluginRegistry.register(btuDuesStatusPlugin);
-  dashboardPluginRegistry.register(btuBuSummaryPlugin);
-  dashboardPluginRegistry.register(edlsSummaryPlugin);
-  dashboardPluginRegistry.register(myShopsPlugin);
-  logger.info("Dashboard plugins registered", {
-    service: "dashboard-plugins",
-    plugins: dashboardPluginRegistry.getAll().map((p) => p.id),
-  });
-}
 
 let kindRegistered = false;
 function registerDashboardKind(): void {
@@ -104,8 +75,36 @@ function registerDashboardKind(): void {
   kindRegistered = true;
 }
 
+/**
+ * Initialize the dashboard plugin system.
+ *
+ * Plugins self-register at module top level — the side-effect imports at
+ * the bottom of this file load each plugin once and trigger its
+ * `registerDashboardPlugin(...)` call. To add a new plugin: drop a file
+ * under `./plugins/` and add one `import "./plugins/<name>"` line below.
+ *
+ * (This matches the convention used by every other plugin kind in the
+ * repo — see `server/plugins/_core/README.md` → "Plugin registration
+ * convention".)
+ */
 export async function initializeDashboardPluginSystem(): Promise<void> {
-  registerDashboardPlugins();
   registerDashboardKind();
+  logger.info("Dashboard plugins registered", {
+    service: "dashboard-plugins",
+    plugins: dashboardPluginRegistry.getAll().map((p) => p.id),
+  });
   await dashboardPluginRegistry.runLegacyMigrations();
 }
+
+// Plugin registrations (side-effect imports — each file self-registers).
+import "./plugins/welcome-messages";
+import "./plugins/bookmarks";
+import "./plugins/reports";
+import "./plugins/employer-monthly-uploads";
+import "./plugins/wmb-scan-status";
+import "./plugins/active-sessions";
+import "./plugins/my-steward";
+import "./plugins/btu-dues-status";
+import "./plugins/btu-bu-summary";
+import "./plugins/edls-summary";
+import "./plugins/my-shops";

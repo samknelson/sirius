@@ -1,3 +1,4 @@
+import { registerDashboardPlugin } from "../registry";
 import { getAccessStorage } from "../../../services/access-policy-evaluator";
 import { isComponentEnabledSync } from "../../../services/component-cache";
 import type { DashboardPlugin } from "../types";
@@ -102,3 +103,5 @@ export const myShopsPlugin: DashboardPlugin = {
     requiredPermissions: ["employer"],
   },
 };
+
+registerDashboardPlugin(myShopsPlugin);

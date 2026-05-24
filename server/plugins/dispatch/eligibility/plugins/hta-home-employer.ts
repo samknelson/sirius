@@ -1,3 +1,4 @@
+import { registerDispatchEligPlugin } from "../registry";
 import { logger } from "../../../../logger";
 import { createWorkerDispatchEligDenormStorage } from "../../../../storage/dispatch/worker-elig-denorm";
 import { createVariableStorage } from "../../../../storage/system/variables";
@@ -274,3 +275,5 @@ export const dispatchHtaHomeEmployerPlugin: DispatchEligPlugin = {
     });
   },
 };
+
+registerDispatchEligPlugin(dispatchHtaHomeEmployerPlugin);

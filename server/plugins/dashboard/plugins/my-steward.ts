@@ -1,3 +1,4 @@
+import { registerDashboardPlugin } from "../registry";
 import type { DashboardPlugin } from "../types";
 
 export const myStewardPlugin: DashboardPlugin = {
@@ -71,3 +72,5 @@ export const myStewardPlugin: DashboardPlugin = {
     order: 7,
   },
 };
+
+registerDashboardPlugin(myStewardPlugin);

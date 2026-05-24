@@ -1,3 +1,4 @@
+import { registerDashboardPlugin } from "../registry";
 import type { DashboardPlugin } from "../types";
 
 export const edlsSummaryPlugin: DashboardPlugin = {
@@ -43,3 +44,5 @@ export const edlsSummaryPlugin: DashboardPlugin = {
     fullWidth: true,
   },
 };
+
+registerDashboardPlugin(edlsSummaryPlugin);

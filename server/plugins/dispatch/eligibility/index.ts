@@ -1,33 +1,11 @@
 import { logger } from "../../../logger";
 import { registerPluginKind } from "../../_core";
 import { dispatchEligPluginRegistry } from "./registry";
-import { dispatchBanPlugin } from "./plugins/ban";
-import { dispatchDncPlugin } from "./plugins/dnc";
-import { dispatchEbaPlugin } from "./plugins/eba";
-import { dispatchHfePlugin } from "./plugins/hfe";
-import { dispatchSkillPlugin } from "./plugins/skill";
-import { dispatchStatusPlugin } from "./plugins/status";
-import { dispatchWsPlugin } from "./plugins/ws";
-import { dispatchSingleshiftPlugin } from "./plugins/singleshift";
-import { dispatchAcceptedPlugin } from "./plugins/accepted";
-import { dispatchHtaHomeEmployerPlugin } from "./plugins/hta-home-employer";
 
-export function registerDispatchEligPlugins(): void {
-  dispatchEligPluginRegistry.register(dispatchBanPlugin);
-  dispatchEligPluginRegistry.register(dispatchDncPlugin);
-  dispatchEligPluginRegistry.register(dispatchEbaPlugin);
-  dispatchEligPluginRegistry.register(dispatchHfePlugin);
-  dispatchEligPluginRegistry.register(dispatchSkillPlugin);
-  dispatchEligPluginRegistry.register(dispatchStatusPlugin);
-  dispatchEligPluginRegistry.register(dispatchWsPlugin);
-  dispatchEligPluginRegistry.register(dispatchSingleshiftPlugin);
-  dispatchEligPluginRegistry.register(dispatchAcceptedPlugin);
-  dispatchEligPluginRegistry.register(dispatchHtaHomeEmployerPlugin);
-  logger.info("Dispatch eligibility plugins registered", {
-    service: "dispatch-elig-plugins",
-    plugins: dispatchEligPluginRegistry.getAllPluginIds(),
-  });
-}
+export {
+  dispatchEligPluginRegistry,
+  registerDispatchEligPlugin,
+} from "./registry";
 
 let kindRegistered = false;
 function registerDispatchEligKind(): void {
@@ -53,9 +31,30 @@ function registerDispatchEligKind(): void {
   kindRegistered = true;
 }
 
+/**
+ * Initialize the dispatch-eligibility plugin system.
+ *
+ * Plugins self-register at module top level — the side-effect imports at
+ * the bottom of this file load each plugin once and trigger its
+ * `registerDispatchEligPlugin(...)` call. To add a new plugin: drop a
+ * file under `./plugins/` and add one `import "./plugins/<name>"` line
+ * below.
+ *
+ * After registration, this function runs startup backfills for plugins
+ * that declare a `backfill()` (in `backfillOrder` ascending). The
+ * backfill loop is intentionally kept here (not per-plugin) because it
+ * is an orchestration concern, not a registration concern.
+ *
+ * (This matches the convention used by every other plugin kind in the
+ * repo — see `server/plugins/_core/README.md` → "Plugin registration
+ * convention".)
+ */
 export async function initializeDispatchEligSystem(): Promise<void> {
-  registerDispatchEligPlugins();
   registerDispatchEligKind();
+  logger.info("Dispatch eligibility plugins registered", {
+    service: "dispatch-elig-plugins",
+    plugins: dispatchEligPluginRegistry.getAllPluginIds(),
+  });
 
   const plugins = dispatchEligPluginRegistry.getAllPlugins()
     .filter(p => p.backfill)
@@ -81,3 +80,15 @@ export async function initializeDispatchEligSystem(): Promise<void> {
     }
   }
 }
+
+// Plugin registrations (side-effect imports — each file self-registers).
+import "./plugins/ban";
+import "./plugins/dnc";
+import "./plugins/eba";
+import "./plugins/hfe";
+import "./plugins/skill";
+import "./plugins/status";
+import "./plugins/ws";
+import "./plugins/singleshift";
+import "./plugins/accepted";
+import "./plugins/hta-home-employer";
