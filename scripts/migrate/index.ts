@@ -26,6 +26,7 @@ import "./core/002_drop_replit_user_id";
 // `replit.md` → "Baselining a deployment" for the full procedure.
 //
 import "./baseline/sirius-dev-20260518";
+import "./baseline/sirius-dev-20260524";
 
 export {
   runMigrations,
