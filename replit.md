@@ -32,27 +32,6 @@ _Populate as you build_
 -   **Ledger System**: `server/modules/ledger/`, `client/src/pages/ledger/`
 -   **SFTP Client Destinations**: `server/modules/sftp-client-destination/`, `client/src/pages/config/sftp-client-destinations/`
 
-## Architecture decisions
-
--   **Centralized Database Access**: All DB interactions are routed through a single storage layer for audit logging, access control, and validation.
--   **Feature-based Module Structure**: Both frontend and backend are organized by feature modules for better maintainability and scalability.
--   **Metadata-driven Configuration**: Configurable settings use a unified, metadata-driven system to dynamically render forms and tables.
--   **Entity-based Access Control**: A modular, entity-based policy architecture with server-side LRU caching ensures fine-grained access control.
--   **Charge Plugin Idempotency**: Charge plugin executions are idempotent via `chargePluginKey` upsert, preventing duplicate ledger entries.
--   **YMD Date Convention**: Date-only fields (those representing a calendar day with no time component, e.g. `ledger.statement_ymd`) use Postgres `date` columns in `shared/schema.ts` and a `Ymd` string type (`"YYYY-MM-DD"`) in TypeScript. NEVER pass a `Ymd` through `new Date(ymd)` — that introduces UTC drift. Always go through helpers in `shared/utils/date.ts`: `dateToYmd`, `ymdToDateForPicker`, `formatYmd`, `isValidYmd`, `assertYmd`. In SQL, use `to_char(col, 'YYYY-MM')` (not `substring`) to bucket dates by month.
--   **VDB Pension Reconciliation via Cron (not cascade)**: SLA contribution-percent and share-based variable contribution ledger entries are produced by two cron jobs (`gbhet-pension-sla-reconcile`, `gbhet-pension-shares-reconcile`) calling `reconcileContributionPctYears` / `reconcileVariableContributionForAllWorkers` in `server/services/gbhet-pension-sla.ts`. Each batch tracks the `chargePluginKey`s it produces and uses `storage.ledger.entries.deleteOrphansByChargePluginAndKnownKeys` for self-healing orphan cleanup. The previous ledger-entry-saved event-driven cascade plugins and event plumbing have been fully removed.
-
-## Product
-
--   **Worker Management**: Comprehensive CRUD operations for workers, contacts, and benefits, with search, filtering, and pagination.
--   **Organizational Settings**: Configurable settings for dynamic UI rendering.
--   **Legal Compliance Reporting**: Supports legal compliance through features like employment status mapping in wizards.
--   **Benefit Charge Billing**: Manages financial transactions, including accounts and payments, with entity-specific access.
--   **Dispatch System**: Manages dispatch jobs, types, listings, and detail pages, with a plugin system for worker eligibility.
--   **Multi-Provider Authentication**: Supports various authentication methods including Replit Auth, Okta, and SAML/OAuth.
--   **Wizards**: Flexible workflow state management for multi-step processes and report generation (e.g., Employer Onboarding, GBHET Legal).
--   **Bulk Messaging**: Infrastructure for managing and sending bulk messages across multiple mediums (email, SMS, postal, in-app).
-
 ## User preferences
 
 Preferred communication style: Simple, everyday language.
@@ -62,16 +41,6 @@ Preferred communication style: Simple, everyday language.
 -   **Facility Contact Sync**: Renaming a facility must go through `storage.facilities.updateContactName` to keep the facility and its associated contact in sync.
 -   **Wizard Access Control**: While `/wizards/:id` only requires authentication, the API endpoints enforce granular authorization.
 -   **T631 Facility Sync**: The `sitespecific-t631-facility-fetch` cron job is disabled by default and gated by the `sitespecific.t631.client` component. It only syncs `name` and `sirius_id` and does not delete local-only rows or write arbitrary `data` jsonb.
-
-## Pointers
-
--   **React Documentation**: [https://react.dev/](https://react.dev/)
--   **Tailwind CSS Documentation**: [https://tailwindcss.com/docs](https://tailwindcss.com/docs)
--   **Zod Documentation**: [https://zod.dev/](https://zod.dev/)
--   **Drizzle ORM Documentation**: [https://orm.drizzle.team/](https://orm.drizzle.team/)
--   **TanStack Query Documentation**: [https://tanstack.com/query/latest](https://tanstack.com/query/latest)
--   **Express.js Documentation**: [https://expressjs.com/](https://expressjs.com/)
--   **PostgreSQL Documentation**: [https://www.postgresql.org/docs/](https://www.postgresql.org/docs/)
 
 ## Always restart the `Start application` workflow after server-side or shared changes
 
@@ -133,7 +102,8 @@ missing, extra, or mistyped.
     per-deployment scripts that bring a database into sync at a known
     point in time. Baselines are registered as core migrations at version
     `>= 1000` and run exactly once like any other migration. They MUST be
-    idempotent on re-run.
+    idempotent on re-run. See `docs/baselining.md` for the full
+    procedure.
 
 **Forbidden:**
 
@@ -165,53 +135,6 @@ missing, extra, or mistyped.
 `SKIP_SCHEMA_DRIFT_CHECK=1` skips the check at boot. This exists so a
 developer can get into the app to inspect a broken state. It is NEVER
 acceptable in production or in any deployment configuration.
-
-## Baselining a deployment
-
-When a new deployment (a fresh Repl, a clone, a production cutover) has
-a database whose shape predates the per-component migration framework,
-its tables almost certainly do not exactly match `shared/schema*` and
-the startup drift gate will refuse to boot. The fix is to write a
-one-off baseline script that brings that specific database into sync.
-
-**Procedure** (give the prompt below to an agent on the affected Repl):
-
-> Build mode. Baseline this Repl's database for the per-component
-> migration framework.
->
-> 1. Read `replit.md` → "Baselining a deployment".
-> 2. Start the server once with `SKIP_SCHEMA_DRIFT_CHECK=1` set so it
->    boots. Then unset it and start again; copy the full drift report
->    that `StartupSchemaDriftError` prints to the workflow logs.
-> 3. For every item in the report:
->    - Missing column → ALTER TABLE ADD COLUMN with the right type and
->      a safe default for any non-empty table.
->    - Type mismatch → ALTER TABLE ALTER COLUMN ... TYPE ... with an
->      explicit USING clause if a cast is needed.
->    - Missing index → CREATE INDEX IF NOT EXISTS.
->    - Missing constraint → ALTER TABLE ADD CONSTRAINT IF NOT EXISTS.
->    - Missing table → CREATE TABLE — but check first whether the
->      component should actually be enabled; an unexpected missing
->      table usually means a component was enabled by default but
->      never went through the enable flow.
-> 4. Create `scripts/migrate/baseline/<this-replit-name>-<YYYYMMDD>.ts`
->    that performs every fix-up above using guards
->    (`IF NOT EXISTS` / column existence checks) so re-running is a
->    no-op. Register it via `registerMigration` with a version `>= 1000`
->    and import it from `scripts/migrate/index.ts`.
-> 5. For every `component_schema_state_<id>` variable that lacks
->    `migrationVersion`, stamp it to `0` so the per-component runner
->    has a defined starting point. (See
->    `scripts/migrate/baseline/sirius-dev-20260518.ts` for an example.)
-> 6. Restart the workflow without `SKIP_SCHEMA_DRIFT_CHECK`. Verify
->    "Schema drift check passed" appears in the logs.
-> 7. Commit the baseline file. Done.
-
-The baseline for THIS Repl is
-`scripts/migrate/baseline/sirius-dev-20260518.ts` — there were no DDL
-fix-ups to apply (the dev DB was already in sync via the retired
-reflective auto-push), so the baseline is a pure
-`migrationVersion`-stamping script.
 
 ## All database access MUST go through the storage layer
 
@@ -264,9 +187,10 @@ of those imports, the work belongs in a storage method.
 response. They must contain zero query logic.
 
 If you find yourself wanting to break this rule, the answer is always
-to add a new storage method instead. See the **Database Access
-Architecture** entry under System Design Choices for the rationale
-(audit logging, access control, validation, separation of concerns).
+to add a new storage method instead. See `docs/architecture-decisions.md`
+(the **Database Access Architecture** entry under System Design Choices)
+for the rationale (audit logging, access control, validation,
+separation of concerns).
 
 ## Entity / page navigation MUST use the shared tab registry
 
@@ -324,81 +248,23 @@ If your tab strip switches the route, gates by access policy /
 component, or names a persistent "view" of an entity, it belongs in
 the registry — not in `@/components/ui/tabs`.
 
-# System Architecture
+# Where to read more
 
-## UI/UX Decisions
-The frontend is built with React 18, TypeScript, Vite, Shadcn/ui (based on Radix UI), and Tailwind CSS with a "new-york" theme, ensuring a modern, accessible, and responsive user interface.
+-   **Architecture decisions** (YMD date convention, charge plugin
+    idempotency, VDB pension reconciliation, etc.) — `docs/architecture-decisions.md`
+-   **System architecture & external dependencies** (full stack
+    breakdown, system design choices, third-party libraries) —
+    `docs/architecture.md`
+-   **Baselining a deployment** (procedure for a new Repl whose DB
+    predates the per-component migration framework) — `docs/baselining.md`
+-   **Plugin Framework contract** — `server/plugins/_core/README.md`
 
-## Technical Implementations
--   **Frontend**: React 18, TypeScript, Vite, Wouter for routing, TanStack Query for server state management, and React Hook Form with Zod for form validation. Pages are lazy-loaded for performance.
--   **Backend**: Express.js with TypeScript, providing a RESTful API structured with feature-based modules.
--   **Authentication**: Supports multi-provider authentication (Replit Auth, Okta, SAML/OAuth, Clerk, local username/password) with environment-driven configuration and masquerade capabilities.
--   **Access Control**: Implements a modular, entity-based policy architecture with server-side LRU caching.
--   **Logging**: Winston logging is integrated with a PostgreSQL backend to maintain audit trails.
--   **Data Storage**: PostgreSQL (Neon Database) is managed using Drizzle ORM.
--   **Object Storage**: Utilizes Replit Object Storage, backed by Google Cloud Storage.
--   **Real-time Notifications**: Features a WebSocket-based push notification system.
--   **Event Bus System**: A typed publish/subscribe event bus facilitates inter-service communication.
--   **Cron Job System**: Provides a framework for scheduling periodic tasks.
--   **Migration Framework**: Manages database schema changes with a versioned migration system.
+## External docs
 
-## System Design Choices
--   **Database Access Architecture**: All database interactions are centralized through a storage layer for audit logging, access control, validation, and separation of concerns. **This is enforced as a hard rule — see the "All database access MUST go through the storage layer" section under Non-Negotiable Rules above.**
--   **Data Validation**: Utilizes Zod schemas and `libphonenumber-js` for robust data validation.
--   **Worker Management**: Comprehensive CRUD operations for workers, contacts, and benefits, with server-side pagination, search, and advanced filtering.
--   **Configurable Settings**: A unified, metadata-driven options system supports dynamic form and table rendering.
--   **User Provisioning**: Email-based provisioning integrated with Replit accounts and automatic contact synchronization.
--   **Employer & Policy Management**: Manages employer records, contacts, and historical policy assignments.
--   **Bookmarks**: Provides user-specific, entity-agnostic bookmarking functionality.
--   **Plugin Framework**: All five plugin kinds (`dashboard`, `dispatch-eligibility`, `charge`, `trust-eligibility`, `client-injection`) share the registry, gating, manifest, and admin-endpoint scaffolding under `server/plugins/_core/`. Every kind uses the same registration convention: each plugin file self-registers via a `register<Kind>Plugin(...)` call at module top level, and the kind's `index.ts` lists them as side-effect imports at the bottom of the file. The full contract for adding a plugin to an existing kind OR introducing a new kind — registration model, admin endpoint surface (`/api/plugins/:kind/...`), gating precedence (component → policy), and manifest contract — lives in `server/plugins/_core/README.md`. Read it before adding a new kind.
--   **Dashboard Plugin System**: Dashboard widgets are one kind of plugin under the Plugin Framework above — see `server/plugins/_core/README.md` for registration, gating, manifest, and admin-endpoint contracts. Dashboard specifics: server-side plugins live under `server/plugins/dashboard/plugins/*.ts` and declare their client component as `<plugin-id>:<ComponentName>`; the client auto-discovers components via `import.meta.glob` in `client/src/plugins/dashboard/registry.ts`. Every widget reads through a single front door — `useDashboardContent` calls `GET /api/dashboard-plugins/:pluginId/content[/:action]` and treats 403/404 as `undefined`. Widgets must NOT receive `userPermissions`/`enabledComponents` or re-check gating client-side; `DashboardPluginProps` is intentionally narrowed to `{ userId, userRoles, componentProps }`. Server-side `requiredComponent` and `requiredPolicy` gating in `dashboardPluginRegistry.runContent` is the authoritative enforcement point. Cross-domain data belongs in the plugin's `content` resolver, not in ad-hoc routes. The generic `Card.tsx` widget accepts only `{ pluginId, action }` for data — the legacy `contentUrl` raw-fetch escape hatch has been removed.
--   **Components Feature Flag System**: A centralized system for managing application features, including dependencies and access control.
--   **Client-Injection Plugins**: One kind of plugin under the Plugin Framework (`server/plugins/_core/README.md`) that lets components contribute `<script>` / `<link>` / `<style>` elements into the client HTML head or bodyEnd. Each contribution is its own file under `server/plugins/client-injection/plugins/<id>.ts` declaring `slot`, `kind` (`js-src` | `js-inline` | `css-href` | `css-inline`), optional `order`/`attrs`, and an optional server-side `resolve(ctx)` that returns the final `src`/`code` (or `null` to skip — the path used to keep secrets like `WEGLOT_API_KEY` server-side). Each plugin file self-registers via `registerClientInjection(...)` at module top level and is wired into the kind by a single side-effect `import "./plugins/<id>"` line at the bottom of `server/plugins/client-injection/index.ts` — the same registration convention every plugin kind uses. The resolved, component-gated manifest is served at `GET /api/plugins/client-injection/manifest` as `{ head, bodyEnd }` and rendered by the single `<ServerInjections />` component mounted in `client/src/App.tsx` (idempotent by plugin id). First consumers are `weglot-sdk` + `weglot-init`, both gated by `internationalization.weglot`.
--   **Ledger System**: Manages financial transactions, accounts, payments, and integrity reports, including payment batches.
--   **Wizards**: Offers flexible workflow state management for multi-step processes.
--   **File Storage System**: Comprehensive file management with metadata and access control.
--   **Worker Hours & Employment Views**: Tracks worker hours and employment history.
--   **Trust Eligibility Plugin System**: A registry-based architecture determines worker eligibility.
--   **Events Management**: Full CRUD for events, occurrences, and scheduling.
--   **Dispatch System**: Manages dispatch jobs, types, listings, and detail pages, including a plugin system for worker eligibility filtering. Supports Dispatch Job Groups for grouping jobs with date ranges and external system linkage.
--   **Worker Bans**: Tracks worker restrictions and dynamically calculates active status.
--   **Worker Member Status History**: Tracks worker member statuses per industry over time.
--   **Worker Certifications**: Manages worker certifications with automatic skill synchronization.
--   **EDLS (Employer Day Labor Scheduler)**: Manages day labor scheduling with sheets, crews, department-based task assignment, supervisor tracking, and audit logging. Includes a TOS view at `/edls/tos` that lists every worker on active Time Off Sick alongside their upcoming day-labor assignments, with filters for supervisor, facility, and job group.
--   **Web Services Framework**: A server-side API framework for exposing services to external clients with client credential authentication and optional IP allowlisting.
--   **SFTP Client Destinations**: Manages SFTP client configurations with CRUD API and UI, including connection diagnostics.
--   **Trust Provider EDI**: Manages trust provider data interchange records with SFTP client destination integration.
--   **Bulk Messaging**: Infrastructure for bulk message management with multi-medium support (email, SMS, postal, in-app).
-
-# External Dependencies
-
-## Database Services
--   **Neon Database**: Serverless PostgreSQL hosting.
-
-## UI and Styling
--   **Radix UI**: Accessible UI primitives.
--   **Tailwind CSS**: Utility-first CSS framework.
--   **Lucide React**: Icon library.
-
-## Validation and Type Safety
--   **Zod**: Runtime type validation.
--   **TypeScript**: Static type checking.
--   **Drizzle Zod**: Integration between Drizzle ORM and Zod.
--   **libphonenumber-js**: Phone number parsing, validation, and formatting.
-
-## File Transfer
--   **ssh2-sftp-client**: SFTP client library.
--   **basic-ftp**: FTP client library.
-
-## Third-Party Integrations
--   **Twilio**: Phone number lookup, validation, and SMS messaging.
-
-## API and State Management
--   **TanStack Query**: Server state management.
--   **Date-fns**: Date utility functions.
-
-## Task Scheduling
--   **node-cron**: Task scheduling and cron job execution.
-
-## Security
--   **DOMPurify**: HTML sanitization.
+-   **React**: [https://react.dev/](https://react.dev/)
+-   **Tailwind CSS**: [https://tailwindcss.com/docs](https://tailwindcss.com/docs)
+-   **Zod**: [https://zod.dev/](https://zod.dev/)
+-   **Drizzle ORM**: [https://orm.drizzle.team/](https://orm.drizzle.team/)
+-   **TanStack Query**: [https://tanstack.com/query/latest](https://tanstack.com/query/latest)
+-   **Express.js**: [https://expressjs.com/](https://expressjs.com/)
+-   **PostgreSQL**: [https://www.postgresql.org/docs/](https://www.postgresql.org/docs/)
