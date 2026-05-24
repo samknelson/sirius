@@ -1,4 +1,4 @@
-import { Fragment, useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Switch } from "@/components/ui/switch";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -217,13 +217,12 @@ export default function ComponentsConfigPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {sortedComponents.map((component) => {
+              {sortedComponents.flatMap((component) => {
                 const isExpanded = !!expandedRows[component.id];
                 const tables = component.schemaManifest?.tables ?? [];
                 const permissions = component.permissions ?? [];
-                return (
-                  <Fragment key={component.id}>
-                    <TableRow data-testid={`row-component-${component.id}`}>
+                const rows = [
+                  <TableRow key={`${component.id}-main`} data-testid={`row-component-${component.id}`}>
                       <TableCell className="w-10">
                         <Button
                           variant="ghost"
@@ -264,12 +263,15 @@ export default function ComponentsConfigPage() {
                           data-testid={`switch-component-${component.id}`}
                         />
                       </TableCell>
-                    </TableRow>
-                    {isExpanded && (
-                      <TableRow
-                        data-testid={`row-component-detail-${component.id}`}
-                        className="bg-muted/30 hover:bg-muted/30"
-                      >
+                    </TableRow>,
+                ];
+                if (isExpanded) {
+                  rows.push(
+                    <TableRow
+                      key={`${component.id}-expanded`}
+                      data-testid={`row-component-detail-${component.id}`}
+                      className="bg-muted/30 hover:bg-muted/30"
+                    >
                         <TableCell colSpan={5} className="p-0">
                           <div className="p-4 grid gap-4 md:grid-cols-2">
                             <div className="space-y-2">
@@ -332,10 +334,10 @@ export default function ComponentsConfigPage() {
                             </div>
                           </div>
                         </TableCell>
-                      </TableRow>
-                    )}
-                  </Fragment>
-                );
+                      </TableRow>,
+                  );
+                }
+                return rows;
               })}
             </TableBody>
           </Table>
