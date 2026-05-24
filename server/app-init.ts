@@ -173,7 +173,7 @@ export async function startApp(app: Express, server: Server, onReady: () => void
   await initializeDashboardPluginSystem();
   logger.info("Dashboard plugin system initialized", { source: "startup" });
 
-  initializeClientInjectionPluginSystem();
+  await initializeClientInjectionPluginSystem();
   logger.info("Client-injection plugin system initialized", { source: "startup" });
 
   // Register charge + trust eligibility kinds with the unified
