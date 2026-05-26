@@ -123,7 +123,7 @@ export function registerCronJobRoutes(
       }
 
       // Get the user ID for audit trail via resolveDbUser helper
-      const { resolveDbUser } = await import("../auth/helpers");
+      const { resolveDbUser } = await import("../../auth/helpers");
       const dbUser = await resolveDbUser(user, user?.claims?.sub);
       if (!dbUser) {
         return res.status(401).json({ message: "User not found" });
