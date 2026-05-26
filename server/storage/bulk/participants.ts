@@ -13,6 +13,8 @@ export interface BulkParticipantWithRelations {
   contactId: string;
   medium: string;
   commId: string | null;
+  status: string;
+  message: string | null;
   data: unknown;
   contactDisplayName: string | null;
   contactGiven: string | null;
@@ -90,6 +92,8 @@ export function createBulkParticipantStorage(): BulkParticipantStorage {
           contactId: bulkParticipants.contactId,
           medium: bulkParticipants.medium,
           commId: bulkParticipants.commId,
+          status: bulkParticipants.status,
+          message: bulkParticipants.message,
           data: bulkParticipants.data,
           contactDisplayName: contacts.displayName,
           contactGiven: contacts.given,
