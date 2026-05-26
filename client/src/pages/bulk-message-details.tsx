@@ -91,18 +91,6 @@ function BulkMessageDetailsContent() {
         </CardContent>
       </Card>
 
-      {bulkMessage.data && Object.keys(bulkMessage.data as Record<string, unknown>).length > 0 && (
-        <Card data-testid="card-bulk-data">
-          <CardHeader>
-            <CardTitle>Additional Data</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <pre className="text-sm bg-muted/50 p-4 rounded-md overflow-auto" data-testid="text-bulk-data-json">
-              {JSON.stringify(bulkMessage.data, null, 2)}
-            </pre>
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 }
