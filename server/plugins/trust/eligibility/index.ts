@@ -33,3 +33,4 @@ import "./plugins/cardcheck";
 import "./plugins/priorMonth";
 import "./plugins/linked";
 import "./plugins/election";
+import "./plugins/relationshipType";
