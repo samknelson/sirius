@@ -17,10 +17,17 @@ export const bulkMessages = pgTable("bulk_messages", {
   data: jsonb("data"),
 });
 
+export const bulkMessageDataSchema = z.object({
+  tagIds: z.array(z.string()).optional(),
+}).passthrough();
+
+export type BulkMessageData = z.infer<typeof bulkMessageDataSchema>;
+
 export const insertBulkMessageSchema = createInsertSchema(bulkMessages).omit({
   id: true,
 }).extend({
   medium: z.array(z.enum(["sms", "email", "inapp", "postal"])).min(1).transform(arr => [...new Set(arr)]),
+  data: bulkMessageDataSchema.nullish(),
 });
 
 export type BulkMessage = typeof bulkMessages.$inferSelect;

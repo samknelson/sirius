@@ -74,6 +74,26 @@ export async function resolveAddress(
   return resolveAddressForMedium(storage, bulkMessage.medium[0], contactId);
 }
 
+async function resolveTagIdsForMedium(
+  storage: IStorage,
+  bulkData: unknown,
+  medium: string,
+): Promise<string[]> {
+  const data = (bulkData ?? {}) as Record<string, unknown>;
+  const rawTagIds = Array.isArray(data.tagIds)
+    ? (data.tagIds as unknown[]).filter((id): id is string => typeof id === "string")
+    : [];
+  if (rawTagIds.length === 0) return [];
+  const tags = await storage.commTags.listByIds(rawTagIds);
+  return tags
+    .filter((t) => {
+      const applies = (t.data as { applicableCommTypes?: string[] } | null)?.applicableCommTypes;
+      if (!applies || applies.length === 0) return true;
+      return applies.includes(medium);
+    })
+    .map((t) => t.id);
+}
+
 export async function deliverToContact(
   storage: IStorage,
   request: DeliverContactRequest
@@ -85,15 +105,17 @@ export async function deliverToContact(
     return { success: false, error: "Bulk message not found", errorCode: "NOT_FOUND" };
   }
 
+  const tagIds = await resolveTagIdsForMedium(storage, bulkMessage.data, medium);
+
   switch (medium) {
     case "email":
-      return deliverEmail(storage, messageId, contactId, userId);
+      return deliverEmail(storage, messageId, contactId, userId, tagIds);
     case "sms":
-      return deliverSms(storage, messageId, contactId, userId);
+      return deliverSms(storage, messageId, contactId, userId, tagIds);
     case "postal":
-      return deliverPostal(storage, messageId, contactId, userId);
+      return deliverPostal(storage, messageId, contactId, userId, tagIds);
     case "inapp":
-      return deliverInapp(storage, messageId, contactId, userId);
+      return deliverInapp(storage, messageId, contactId, userId, tagIds);
     default:
       return { success: false, error: `Unsupported medium: ${medium}`, errorCode: "UNSUPPORTED_MEDIUM" };
   }

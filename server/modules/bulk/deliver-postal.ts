@@ -27,6 +27,7 @@ export async function deliverPostal(
   messageId: string,
   contactId: string,
   userId?: string,
+  tagIds?: string[],
 ): Promise<DeliverContactResult> {
   const postalContent = await storage.bulkMessagesPostal.getByBulkId(messageId);
   if (!postalContent) {
@@ -69,6 +70,7 @@ export async function deliverPostal(
     color: postalContent.color || undefined,
     doubleSided: postalContent.doubleSided || undefined,
     userId,
+    tagIds,
   });
   const addrStr = [addr.name, addr.addressLine1, addr.city, addr.state, addr.zip].filter(Boolean).join(", ");
   return {

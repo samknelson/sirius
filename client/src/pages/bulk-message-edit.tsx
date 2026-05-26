@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
+import { CommTagPicker } from "@/components/comm/CommTagPicker";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { Loader2 } from "lucide-react";
@@ -20,6 +21,7 @@ const mediumLabels: Record<string, string> = {
 };
 
 const ALL_MEDIA = ["email", "sms", "postal", "inapp"] as const;
+type CommMedium = (typeof ALL_MEDIA)[number];
 
 function BulkMessageEditContent() {
   const { bulkMessage } = useBulkMessageLayout();
@@ -31,11 +33,16 @@ function BulkMessageEditContent() {
     medium: [] as string[],
     status: "draft" as string,
     sendDate: "",
+    tagIds: [] as string[],
   });
 
   useEffect(() => {
     if (bulkMessage) {
       const media = Array.isArray(bulkMessage.medium) ? bulkMessage.medium : [bulkMessage.medium];
+      const existingData = (bulkMessage.data ?? {}) as Record<string, unknown>;
+      const existingTagIds = Array.isArray(existingData.tagIds)
+        ? (existingData.tagIds as string[]).filter((id) => typeof id === "string")
+        : [];
       setFormData({
         name: bulkMessage.name,
         medium: media,
@@ -43,16 +50,19 @@ function BulkMessageEditContent() {
         sendDate: bulkMessage.sendDate
           ? new Date(bulkMessage.sendDate).toISOString().slice(0, 16)
           : "",
+        tagIds: existingTagIds,
       });
     }
   }, [bulkMessage]);
 
   const updateMutation = useMutation({
     mutationFn: (data: typeof formData) => {
+      const existingData = (bulkMessage.data ?? {}) as Record<string, unknown>;
       const payload: Record<string, unknown> = {
         name: data.name,
         medium: data.medium,
         status: data.status,
+        data: { ...existingData, tagIds: data.tagIds },
       };
       payload.sendDate = data.sendDate ? new Date(data.sendDate).toISOString() : null;
       return apiRequest("PATCH", `/api/bulk-messages/${bulkMessage.id}`, payload);
@@ -149,6 +159,11 @@ function BulkMessageEditContent() {
                 data-testid="input-bulk-edit-send-date"
               />
             </div>
+            <CommTagPicker
+              mediums={formData.medium as CommMedium[]}
+              value={formData.tagIds}
+              onChange={(ids) => setFormData((prev) => ({ ...prev, tagIds: ids }))}
+            />
             <div className="flex gap-3 pt-4">
               <Button
                 type="submit"

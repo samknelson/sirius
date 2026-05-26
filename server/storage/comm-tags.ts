@@ -14,6 +14,7 @@ export interface CommTagsStorage {
   removeTag(commId: string, tagId: string): Promise<boolean>;
   setTags(commId: string, tagIds: string[]): Promise<OptionsCommTag[]>;
   findMissingTagIds(tagIds: string[]): Promise<string[]>;
+  listByIds(tagIds: string[]): Promise<OptionsCommTag[]>;
 }
 
 export const commTagsLoggingConfig: StorageLoggingConfig<CommTagsStorageRef> = {
@@ -174,6 +175,16 @@ export function createCommTagsStorage(deps: CommTagsStorageDeps = {}): CommTagsS
           .where(inArray(optionsCommTags.id, unique));
         return tags;
       });
+    },
+
+    async listByIds(tagIds: string[]): Promise<OptionsCommTag[]> {
+      const unique = Array.from(new Set(tagIds));
+      if (unique.length === 0) return [];
+      const client = getClient();
+      return client
+        .select()
+        .from(optionsCommTags)
+        .where(inArray(optionsCommTags.id, unique));
     },
   };
 }

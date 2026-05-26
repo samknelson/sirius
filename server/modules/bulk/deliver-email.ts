@@ -15,6 +15,7 @@ export async function deliverEmail(
   messageId: string,
   contactId: string,
   userId?: string,
+  tagIds?: string[],
 ): Promise<DeliverContactResult> {
   const emailContent = await storage.bulkMessagesEmail.getByBulkId(messageId);
   if (!emailContent) {
@@ -43,6 +44,7 @@ export async function deliverEmail(
     fromName: emailContent.fromName || undefined,
     replyTo: emailContent.replyTo || undefined,
     userId,
+    tagIds,
   });
   return {
     success: result.success,

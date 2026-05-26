@@ -14,25 +14,34 @@ export interface CommTagOption {
   data?: { icon?: string; applicableCommTypes?: string[] } | null;
 }
 
+type CommMedium = "sms" | "email" | "postal" | "inapp";
+
 interface CommTagPickerProps {
-  medium: "sms" | "email" | "postal" | "inapp";
+  medium?: CommMedium;
+  mediums?: CommMedium[];
   value: string[];
   onChange: (ids: string[]) => void;
   disabled?: boolean;
 }
 
-export function CommTagPicker({ medium, value, onChange, disabled }: CommTagPickerProps) {
+export function CommTagPicker({ medium, mediums, value, onChange, disabled }: CommTagPickerProps) {
   const { data: allTags = [], isLoading } = useQuery<CommTagOption[]>({
     queryKey: ["/api/options/comm-tag"],
   });
+
+  const activeMediums = useMemo<CommMedium[]>(
+    () => (mediums && mediums.length > 0 ? mediums : medium ? [medium] : []),
+    [mediums, medium],
+  );
 
   const applicable = useMemo(() => {
     return allTags.filter((t) => {
       const applies = t.data?.applicableCommTypes;
       if (!applies || applies.length === 0) return true;
-      return applies.includes(medium);
+      if (activeMediums.length === 0) return true;
+      return activeMediums.some((m) => applies.includes(m));
     });
-  }, [allTags, medium]);
+  }, [allTags, activeMediums]);
 
   const selected = useMemo(
     () => applicable.filter((t) => value.includes(t.id)),
@@ -89,7 +98,9 @@ export function CommTagPicker({ medium, value, onChange, disabled }: CommTagPick
           <PopoverContent className="w-64 p-2" align="start">
             {applicable.length === 0 ? (
               <p className="text-sm text-muted-foreground p-2" data-testid="text-no-tags">
-                No tags available for {medium}.
+                {activeMediums.length === 0
+                  ? "No tags available."
+                  : `No tags available for ${activeMediums.join(", ")}.`}
               </p>
             ) : (
               <div className="max-h-64 overflow-y-auto space-y-1">

@@ -16,6 +16,7 @@ export async function deliverInapp(
   messageId: string,
   contactId: string,
   userId?: string,
+  tagIds?: string[],
 ): Promise<DeliverContactResult> {
   const inappContent = await storage.bulkMessagesInapp.getByBulkId(messageId);
   if (!inappContent) {
@@ -39,6 +40,7 @@ export async function deliverInapp(
     linkUrl: inappContent.linkUrl || undefined,
     linkLabel: renderedLinkLabel,
     initiatedBy: userId || "bulk-test",
+    tagIds,
   });
   return {
     success: result.success,
