@@ -111,7 +111,27 @@ export const commLoggingConfig: StorageLoggingConfig<CommStorage> = {
   module: 'comm',
   methods: {
     createComm: { enabled: true },
-    updateComm: { enabled: true, getEntityId: (args) => args[0] },
+    updateComm: {
+      enabled: true,
+      getEntityId: (args) => args[0],
+      before: async (args, storage) => storage.getComm(args[0]),
+      after: async (_args, result) => result,
+      getDescription: async (args, result, beforeState, afterState, storage) => {
+        const id = args[0];
+        const label = (await storage.getLogLabel(id)) ?? `comm ${id.slice(0, 8)}`;
+        const before = beforeState ?? {};
+        const after = afterState ?? result ?? {};
+        const data = (args[1] ?? {}) as Record<string, unknown>;
+        const parts: string[] = [];
+        for (const field of Object.keys(data)) {
+          const from = (before as Record<string, unknown>)[field];
+          const to = (after as Record<string, unknown>)[field];
+          if (from !== to) parts.push(`${field} ${from ?? '∅'} → ${to ?? '∅'}`);
+        }
+        if (parts.length === 0) return `Updated ${label} (no changes)`;
+        return `Updated ${label}: ${parts.join(', ')}`;
+      },
+    },
     updateWithTags: { enabled: true, getEntityId: (args) => args[0] },
     deleteComm: { enabled: true, getEntityId: (args) => args[0] },
   },
@@ -286,10 +306,12 @@ export function createCommStorage(
       const [row] = await client
         .select({ medium: comm.medium, displayName: contacts.displayName })
         .from(comm)
-        .innerJoin(contacts, eq(contacts.id, comm.contactId))
+        .leftJoin(contacts, eq(contacts.id, comm.contactId))
         .where(eq(comm.id, id));
       if (!row) return undefined;
-      return `${row.medium.toUpperCase()} to ${row.displayName}`;
+      const medium = (row.medium || '').toUpperCase() || 'COMM';
+      if (row.displayName) return `${medium} to ${row.displayName}`;
+      return `${medium} comm ${id.slice(0, 8)}`;
     },
   };
 }

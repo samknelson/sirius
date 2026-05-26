@@ -541,7 +541,49 @@ export class DatabaseStorage implements IStorage {
       {
         module: 'comm',
         methods: {
-          updateWithTags: { enabled: true, getEntityId: (args) => args[0] },
+          updateWithTags: {
+            enabled: true,
+            getEntityId: (args) => args[0],
+            before: async (args, storage) => {
+              const id = args[0];
+              const data = (args[1] ?? {}) as Record<string, unknown>;
+              const tagIds = args[2];
+              const c = data.status !== undefined ? await storage.getComm(id) : undefined;
+              const tags = tagIds !== undefined ? await commTags.listForComm(id) : [];
+              return { status: c?.status, tags };
+            },
+            after: async (args, result, storage) => {
+              const id = args[0];
+              const data = (args[1] ?? {}) as Record<string, unknown>;
+              const tagIds = args[2];
+              const status =
+                data.status !== undefined
+                  ? (result?.status ?? (await storage.getComm(id))?.status)
+                  : undefined;
+              const tags = tagIds !== undefined ? await commTags.listForComm(id) : [];
+              return { status, tags };
+            },
+            getDescription: async (args, _result, beforeState, afterState, storage) => {
+              const id = args[0];
+              const label = (await storage.getLogLabel(id)) ?? `comm ${id.slice(0, 8)}`;
+              const parts: string[] = [];
+              const fromStatus = beforeState?.status;
+              const toStatus = afterState?.status;
+              if (fromStatus !== toStatus) {
+                parts.push(`status ${fromStatus ?? '∅'} → ${toStatus ?? '∅'}`);
+              }
+              const beforeTags: Array<{ id: string; name: string }> = beforeState?.tags ?? [];
+              const afterTags: Array<{ id: string; name: string }> = afterState?.tags ?? [];
+              const beforeIds = new Set(beforeTags.map((t) => t.id));
+              const afterIds = new Set(afterTags.map((t) => t.id));
+              const added = afterTags.filter((t) => !beforeIds.has(t.id)).map((t) => t.name);
+              const removed = beforeTags.filter((t) => !afterIds.has(t.id)).map((t) => t.name);
+              for (const name of added) parts.push(`+${name}`);
+              for (const name of removed) parts.push(`-${name}`);
+              if (parts.length === 0) return `Updated ${label} (no changes)`;
+              return `Updated ${label}: ${parts.join(', ')}`;
+            },
+          },
         },
       },
     );

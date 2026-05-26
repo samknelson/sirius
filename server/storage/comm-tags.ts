@@ -21,7 +21,13 @@ export const commTagsLoggingConfig: StorageLoggingConfig<CommTagsStorageRef> = {
   methods: {
     addTag: { enabled: true, getHostEntityId: (args) => args[0], getEntityId: (args) => args[1] },
     removeTag: { enabled: true, getHostEntityId: (args) => args[0], getEntityId: (args) => args[1] },
-    setTags: { enabled: true, getHostEntityId: (args) => args[0] },
+    // setTags intentionally omitted from the outer wrapper: the per-tag
+    // add/remove diff lines emitted inside the method already capture
+    // every meaningful change, and the high-level "user edited this
+    // comm" summary lives on the comm.updateWithTags wrapper. An outer
+    // setTags log here would always be redundant (and previously
+    // produced a useless `setTags on comm-tags "unknown"` line on
+    // every edit, including no-op ones).
   },
 };
 
@@ -118,13 +124,13 @@ export function createCommTagsStorage(deps: CommTagsStorageDeps = {}): CommTagsS
           for (const r of tagRows) tagNameMap.set(r.id, r.name);
         }
 
-        let commLabel = commId;
+        let commLabel = `comm ${commId.slice(0, 8)}`;
         if (deps.resolveCommLabel && affectedTagIds.length > 0) {
           try {
             const resolved = await deps.resolveCommLabel(commId);
             if (resolved) commLabel = resolved;
           } catch {
-            // fall back to UUID
+            // fall back to short id
           }
         }
 
@@ -132,7 +138,8 @@ export function createCommTagsStorage(deps: CommTagsStorageDeps = {}): CommTagsS
           await client
             .delete(commTags)
             .where(and(eq(commTags.commId, commId), eq(commTags.commTagId, tagId)));
-          const tagLabel = tagNameMap.get(tagId) ?? tagId;
+          const tagName = tagNameMap.get(tagId);
+          const tagLabel = tagName && tagName.length > 0 ? tagName : `tag ${tagId.slice(0, 8)}`;
           storageLogger.info('Storage operation: comm-tags.removeTag', {
             module: 'comm-tags',
             operation: 'removeTag',
@@ -148,7 +155,8 @@ export function createCommTagsStorage(deps: CommTagsStorageDeps = {}): CommTagsS
             .insert(commTags)
             .values({ commId, commTagId: tagId })
             .onConflictDoNothing();
-          const tagLabel = tagNameMap.get(tagId) ?? tagId;
+          const tagName = tagNameMap.get(tagId);
+          const tagLabel = tagName && tagName.length > 0 ? tagName : `tag ${tagId.slice(0, 8)}`;
           storageLogger.info('Storage operation: comm-tags.addTag', {
             module: 'comm-tags',
             operation: 'addTag',
