@@ -3,6 +3,7 @@ import { commTags, optionsCommTags, type CommTagLink, type OptionsCommTag } from
 import { eq, and, inArray } from 'drizzle-orm';
 import { runInTransaction } from './transaction-context';
 import type { StorageLoggingConfig } from './middleware/logging';
+import { storageLogger } from '../logger';
 
 type CommTagsStorageRef = CommTagsStorage;
 
@@ -103,17 +104,33 @@ export function createCommTagsStorage(): CommTagsStorage {
         const toRemove = [...existing].filter((id) => !desired.has(id));
         const toAdd = unique.filter((id) => !existing.has(id));
 
-        if (toRemove.length > 0) {
+        for (const tagId of toRemove) {
           await client
             .delete(commTags)
-            .where(and(eq(commTags.commId, commId), inArray(commTags.commTagId, toRemove)));
+            .where(and(eq(commTags.commId, commId), eq(commTags.commTagId, tagId)));
+          storageLogger.info('Storage operation: comm-tags.removeTag', {
+            module: 'comm-tags',
+            operation: 'removeTag',
+            entity_id: tagId,
+            host_entity_id: commId,
+            description: `setTags diff: unlinked tag "${tagId}" from comm "${commId}"`,
+            meta: { commId, tagId, source: 'setTags' },
+          });
         }
 
-        if (toAdd.length > 0) {
+        for (const tagId of toAdd) {
           await client
             .insert(commTags)
-            .values(toAdd.map((tagId) => ({ commId, commTagId: tagId })))
+            .values({ commId, commTagId: tagId })
             .onConflictDoNothing();
+          storageLogger.info('Storage operation: comm-tags.addTag', {
+            module: 'comm-tags',
+            operation: 'addTag',
+            entity_id: tagId,
+            host_entity_id: commId,
+            description: `setTags diff: linked tag "${tagId}" to comm "${commId}"`,
+            meta: { commId, tagId, source: 'setTags' },
+          });
         }
 
         if (unique.length === 0) return [];

@@ -1,7 +1,8 @@
 import { serviceRegistry } from './service-registry';
 import { getSystemMode } from './system-mode';
 import { createCommStorage, createCommPostalStorage, createCommPostalOptinStorage } from '../storage/comm';
-import { createCommTagsStorage } from '../storage/comm-tags';
+import { storage } from '../storage';
+import { runInTransaction } from '../storage/transaction-context';
 import type { PostalTransport, PostalAddress, SendLetterParams } from './providers/postal';
 import type { Comm, CommPostal } from '@shared/schema';
 import { logger } from '../logger';
@@ -34,7 +35,6 @@ export interface SendPostalResult {
 const commStorage = createCommStorage();
 const commPostalStorage = createCommPostalStorage();
 const postalOptinStorage = createCommPostalOptinStorage();
-const commTagsStorage = createCommTagsStorage();
 
 function buildCanonicalAddress(address: PostalAddress): string {
   const parts = [
@@ -88,41 +88,45 @@ export async function sendPostal(request: SendPostalRequest): Promise<SendPostal
       };
     }
 
-    const comm = await commStorage.createComm({
-      medium: 'postal',
-      contactId,
-      status: 'sending',
-      sent: new Date(),
-      data: { initiatedBy: userId || 'system' },
-    });
+    const { comm, commPostal } = await runInTransaction(async () => {
+      const comm = await commStorage.createComm({
+        medium: 'postal',
+        contactId,
+        status: 'sending',
+        sent: new Date(),
+        data: { initiatedBy: userId || 'system' },
+      });
 
-    if (tagIds && tagIds.length > 0) {
-      await commTagsStorage.setTags(comm.id, tagIds);
-    }
+      const commPostal = await commPostalStorage.createCommPostal({
+        commId: comm.id,
+        toName: toAddress.name || null,
+        toCompany: toAddress.company || null,
+        toAddressLine1: normalizedAddress.addressLine1,
+        toAddressLine2: normalizedAddress.addressLine2 || null,
+        toCity: normalizedAddress.city,
+        toState: normalizedAddress.state,
+        toZip: normalizedAddress.zip,
+        toCountry: normalizedAddress.country,
+        fromName: returnAddress.name || null,
+        fromCompany: returnAddress.company || null,
+        fromAddressLine1: returnAddress.addressLine1,
+        fromAddressLine2: returnAddress.addressLine2 || null,
+        fromCity: returnAddress.city,
+        fromState: returnAddress.state,
+        fromZip: returnAddress.zip,
+        fromCountry: returnAddress.country,
+        description: description || null,
+        mailType: mailType || 'usps_first_class',
+        color: color || false,
+        doubleSided: doubleSided || false,
+        data: {},
+      });
 
-    const commPostal = await commPostalStorage.createCommPostal({
-      commId: comm.id,
-      toName: toAddress.name || null,
-      toCompany: toAddress.company || null,
-      toAddressLine1: normalizedAddress.addressLine1,
-      toAddressLine2: normalizedAddress.addressLine2 || null,
-      toCity: normalizedAddress.city,
-      toState: normalizedAddress.state,
-      toZip: normalizedAddress.zip,
-      toCountry: normalizedAddress.country,
-      fromName: returnAddress.name || null,
-      fromCompany: returnAddress.company || null,
-      fromAddressLine1: returnAddress.addressLine1,
-      fromAddressLine2: returnAddress.addressLine2 || null,
-      fromCity: returnAddress.city,
-      fromState: returnAddress.state,
-      fromZip: returnAddress.zip,
-      fromCountry: returnAddress.country,
-      description: description || null,
-      mailType: mailType || 'usps_first_class',
-      color: color || false,
-      doubleSided: doubleSided || false,
-      data: {},
+      if (tagIds && tagIds.length > 0) {
+        await storage.commTags.setTags(comm.id, tagIds);
+      }
+
+      return { comm, commPostal };
     });
 
     const optinRecord = await postalOptinStorage.getPostalOptinByCanonicalAddress(canonicalAddress);

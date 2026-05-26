@@ -1,7 +1,8 @@
 import { serviceRegistry } from './service-registry';
 import { getSystemMode } from './system-mode';
 import { createCommStorage, createCommEmailStorage, createCommEmailOptinStorage } from '../storage/comm';
-import { createCommTagsStorage } from '../storage/comm-tags';
+import { storage } from '../storage';
+import { runInTransaction } from '../storage/transaction-context';
 import type { EmailTransport, EmailRecipient } from './providers/email';
 import type { Comm, CommEmail } from '@shared/schema';
 import { logger } from '../logger';
@@ -33,7 +34,6 @@ export interface SendEmailResult {
 const commStorage = createCommStorage();
 const commEmailStorage = createCommEmailStorage();
 const emailOptinStorage = createCommEmailOptinStorage();
-const commTagsStorage = createCommTagsStorage();
 
 export async function sendEmail(request: SendEmailRequest): Promise<SendEmailResult> {
   const { contactId, toEmail, toName, subject, bodyText, bodyHtml, fromEmail, fromName, replyTo, userId, tagIds } = request;
@@ -60,18 +60,6 @@ export async function sendEmail(request: SendEmailRequest): Promise<SendEmailRes
 
     const normalizedEmail = validationResult.formatted;
 
-    const comm = await commStorage.createComm({
-      medium: 'email',
-      contactId,
-      status: 'sending',
-      sent: new Date(),
-      data: { initiatedBy: userId || 'system' },
-    });
-
-    if (tagIds && tagIds.length > 0) {
-      await commTagsStorage.setTags(comm.id, tagIds);
-    }
-
     const toRecipient: EmailRecipient = {
       email: normalizedEmail,
       name: toName,
@@ -84,17 +72,33 @@ export async function sendEmail(request: SendEmailRequest): Promise<SendEmailRes
       fromRecipient = await emailTransport.getDefaultFromAddress();
     }
 
-    const commEmail = await commEmailStorage.createCommEmail({
-      commId: comm.id,
-      to: normalizedEmail,
-      toName: toName || null,
-      from: fromRecipient?.email || null,
-      fromName: fromRecipient?.name || null,
-      replyTo: replyTo || null,
-      subject,
-      bodyText: bodyText || null,
-      bodyHtml: bodyHtml || null,
-      data: {},
+    const { comm, commEmail } = await runInTransaction(async () => {
+      const comm = await commStorage.createComm({
+        medium: 'email',
+        contactId,
+        status: 'sending',
+        sent: new Date(),
+        data: { initiatedBy: userId || 'system' },
+      });
+
+      const commEmail = await commEmailStorage.createCommEmail({
+        commId: comm.id,
+        to: normalizedEmail,
+        toName: toName || null,
+        from: fromRecipient?.email || null,
+        fromName: fromRecipient?.name || null,
+        replyTo: replyTo || null,
+        subject,
+        bodyText: bodyText || null,
+        bodyHtml: bodyHtml || null,
+        data: {},
+      });
+
+      if (tagIds && tagIds.length > 0) {
+        await storage.commTags.setTags(comm.id, tagIds);
+      }
+
+      return { comm, commEmail };
     });
 
     const optinRecord = await emailOptinStorage.getEmailOptinByEmail(normalizedEmail);

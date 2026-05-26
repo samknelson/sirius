@@ -1,7 +1,8 @@
 import { serviceRegistry } from './service-registry';
 import { getSystemMode } from './system-mode';
 import { createCommStorage, createCommSmsStorage, createCommSmsOptinStorage } from '../storage/comm';
-import { createCommTagsStorage } from '../storage/comm-tags';
+import { storage } from '../storage';
+import { runInTransaction } from '../storage/transaction-context';
 import { buildStatusCallbackUrl } from './comm-status/url-builder';
 import type { SmsTransport } from './providers/sms';
 import type { Comm, CommSms } from '@shared/schema';
@@ -26,7 +27,6 @@ export interface SendSmsResult {
 const commStorage = createCommStorage();
 const commSmsStorage = createCommSmsStorage();
 const smsOptinStorage = createCommSmsOptinStorage();
-const commTagsStorage = createCommTagsStorage();
 
 export async function sendSms(request: SendSmsRequest): Promise<SendSmsResult> {
   const { contactId, toPhoneNumber, message, userId, tagIds } = request;
@@ -53,23 +53,27 @@ export async function sendSms(request: SendSmsRequest): Promise<SendSmsResult> {
 
     const normalizedPhone = validationResult.formatted;
 
-    const comm = await commStorage.createComm({
-      medium: 'sms',
-      contactId,
-      status: 'sending',
-      sent: new Date(),
-      data: { initiatedBy: userId || 'system' },
-    });
+    const { comm, commSms } = await runInTransaction(async () => {
+      const comm = await commStorage.createComm({
+        medium: 'sms',
+        contactId,
+        status: 'sending',
+        sent: new Date(),
+        data: { initiatedBy: userId || 'system' },
+      });
 
-    if (tagIds && tagIds.length > 0) {
-      await commTagsStorage.setTags(comm.id, tagIds);
-    }
+      const commSms = await commSmsStorage.createCommSms({
+        commId: comm.id,
+        to: normalizedPhone,
+        body: message,
+        data: {},
+      });
 
-    const commSms = await commSmsStorage.createCommSms({
-      commId: comm.id,
-      to: normalizedPhone,
-      body: message,
-      data: {},
+      if (tagIds && tagIds.length > 0) {
+        await storage.commTags.setTags(comm.id, tagIds);
+      }
+
+      return { comm, commSms };
     });
 
     const optinRecord = await smsOptinStorage.getSmsOptinByPhoneNumber(normalizedPhone);
