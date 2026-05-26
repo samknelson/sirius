@@ -1971,6 +1971,20 @@ export const insertCommInappSchema = createInsertSchema(commInapp, {
 export type InsertCommInapp = z.infer<typeof insertCommInappSchema>;
 export type CommInapp = typeof commInapp.$inferSelect;
 
+// Communications - Tag Links (many-to-many between comm and options_comm_tags)
+export const commTags = pgTable("comm_tags", {
+  commId: varchar("comm_id").notNull().references(() => comm.id, { onDelete: 'cascade' }),
+  commTagId: varchar("comm_tag_id").notNull().references(() => optionsCommTags.id, { onDelete: 'cascade' }),
+}, (table) => ({
+  pk: primaryKey({ columns: [table.commId, table.commTagId] }),
+  commTagIdIdx: index("comm_tags_comm_tag_id_idx").on(table.commTagId),
+}));
+
+export const insertCommTagLinkSchema = createInsertSchema(commTags);
+
+export type InsertCommTagLink = z.infer<typeof insertCommTagLinkSchema>;
+export type CommTagLink = typeof commTags.$inferSelect;
+
 // Flood control table for rate limiting
 export const flood = pgTable("flood", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

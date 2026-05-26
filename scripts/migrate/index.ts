@@ -10,6 +10,7 @@ import "./core/005_add_edls_sheet_job_group";
 import "./core/006_ledger_statement_ymd";
 import "./core/002_drop_replit_user_id";
 import "./core/1004_create_options_comm_tags";
+import "./core/1005_create_comm_tags";
 
 // Per-component migrations — each registered via
 // `registerComponentMigration(componentId, migration)`. Tracked by the
