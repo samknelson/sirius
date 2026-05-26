@@ -9,6 +9,7 @@ import "./core/004_add_clerk_auth_provider_type";
 import "./core/005_add_edls_sheet_job_group";
 import "./core/006_ledger_statement_ymd";
 import "./core/002_drop_replit_user_id";
+import "./core/1004_create_options_comm_tags";
 
 // Per-component migrations — each registered via
 // `registerComponentMigration(componentId, migration)`. Tracked by the

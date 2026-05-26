@@ -23,6 +23,8 @@ import {
   optionsIndustry,
   optionsWorkerMs,
   optionsWorkerRelationType,
+  optionsCommTags,
+  bulkMediumEnum,
 } from "@shared/schema";
 import { defineLoggingConfig } from "./middleware/logging";
 import type { JsonSchema, UiSchema } from "@shared/json-schema-form";
@@ -52,7 +54,8 @@ export type OptionsTypeName =
   | "classification"
   | "industry"
   | "worker-ms"
-  | "worker-relation-type";
+  | "worker-relation-type"
+  | "comm-tag";
 
 /**
  * Field definition for dynamic form and table rendering
@@ -60,7 +63,7 @@ export type OptionsTypeName =
 export interface FieldDefinition {
   name: string;
   label: string;
-  inputType: 'text' | 'textarea' | 'number' | 'select-self' | 'icon' | 'checkbox' | 'select-options' | 'color';
+  inputType: 'text' | 'textarea' | 'number' | 'select-self' | 'icon' | 'checkbox' | 'select-options' | 'color' | 'multi-enum';
   required: boolean;
   placeholder?: string;
   helperText?: string;
@@ -69,6 +72,8 @@ export interface FieldDefinition {
   columnWidth?: string;
   dataField?: boolean;
   selectOptionsType?: OptionsTypeName;
+  /** For inputType="multi-enum": the allowed string values (and optional human labels). */
+  enumOptions?: Array<{ value: string; label?: string }>;
 }
 
 /**
@@ -154,6 +159,19 @@ export function fieldsToJsonSchema(
         prop.type = ["string", "null"];
         (prop as Record<string, unknown>)["x-options-self"] = true;
         break;
+      case "multi-enum": {
+        prop.type = "array";
+        prop.uniqueItems = true;
+        const values = (f.enumOptions ?? []).map((o) => o.value);
+        const items: JsonSchema = { type: "string", enum: values };
+        const labels = (f.enumOptions ?? []).map((o) => o.label ?? o.value);
+        if (labels.some((l, i) => l !== values[i])) {
+          items.enumNames = labels;
+        }
+        prop.items = items;
+        if (f.required) prop.minItems = 1;
+        break;
+      }
     }
 
     if (f.placeholder) {
@@ -520,6 +538,38 @@ const optionsMetadata: Record<OptionsTypeName, OptionsTableMetadata<any>> = {
     fields: [
       { name: "name", label: "Name", inputType: "text", required: true, placeholder: "Industry name", showInTable: true, columnHeader: "Name" },
       { name: "code", label: "Code", inputType: "text", required: false, placeholder: "Short code", showInTable: true, columnHeader: "Code" },
+      { name: "siriusId", label: "Sirius ID", inputType: "text", required: false, placeholder: "External ID", showInTable: true, columnHeader: "Sirius ID" },
+    ],
+  },
+  "comm-tag": {
+    table: optionsCommTags,
+    displayName: "Comm Tags",
+    description: "Tags that can be applied to communications, scoped to specific comm media.",
+    singularName: "Comm Tag",
+    pluralName: "Comm Tags",
+    orderByColumn: "name" as const,
+    loggingModule: "options.commTags",
+    requiredFields: ["name"],
+    optionalFields: ["description", "siriusId", "data"],
+    supportsSequencing: false,
+    fields: [
+      { name: "icon", label: "Icon", inputType: "icon", required: false, placeholder: "Select an icon", showInTable: true, columnHeader: "Icon", columnWidth: "80px", dataField: true },
+      { name: "name", label: "Name", inputType: "text", required: true, placeholder: "Tag name", showInTable: true, columnHeader: "Name" },
+      { name: "description", label: "Description", inputType: "textarea", required: false, placeholder: "Optional description", showInTable: true, columnHeader: "Description" },
+      {
+        name: "applicableCommTypes",
+        label: "Applicable Comm Types",
+        inputType: "multi-enum",
+        required: false,
+        helperText: "Restrict this tag to specific communication media. Leave empty to allow all.",
+        showInTable: true,
+        columnHeader: "Applies To",
+        dataField: true,
+        enumOptions: (bulkMediumEnum.enumValues as readonly string[]).map((v) => ({
+          value: v,
+          label: v === "sms" ? "SMS" : v === "email" ? "Email" : v === "inapp" ? "In-App" : v === "postal" ? "Postal" : v,
+        })),
+      },
       { name: "siriusId", label: "Sirius ID", inputType: "text", required: false, placeholder: "External ID", showInTable: true, columnHeader: "Sirius ID" },
     ],
   },

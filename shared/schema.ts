@@ -486,6 +486,14 @@ export const optionsTrustProviderType = pgTable("options_trust_provider_type", {
   data: jsonb("data"),
 });
 
+export const optionsCommTags = pgTable("options_comm_tags", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  siriusId: varchar("sirius_id", { length: 255 }).unique(),
+  data: jsonb("data"),
+});
+
 export const optionsEventType = pgTable("options_event_type", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   siriusId: varchar("sirius_id").notNull().unique(),
@@ -1283,6 +1291,13 @@ export const insertTrustProviderTypeSchema = createInsertSchema(optionsTrustProv
 export const insertEventTypeSchema = createInsertSchema(optionsEventType).omit({
   id: true,
 });
+
+export const insertCommTagSchema = createInsertSchema(optionsCommTags).omit({
+  id: true,
+});
+
+export type OptionsCommTag = typeof optionsCommTags.$inferSelect;
+export type InsertOptionsCommTag = z.infer<typeof insertCommTagSchema>;
 
 export const insertWorkerWsSchema = createInsertSchema(optionsWorkerWs).omit({
   id: true,

@@ -1,7 +1,7 @@
 import { 
   Users, MapPin, Phone, Globe, List, UserCog, Puzzle, Package, Heart, 
   CreditCard, Activity, Wallet, Settings, Shield, Key, FileText, 
-  Building2, Database, Clock, Zap, Server, MessageSquare, Calendar, GraduationCap, Truck, Network, School, type LucideIcon
+  Building2, Database, Clock, Zap, Server, MessageSquare, Calendar, GraduationCap, Truck, Network, School, Tag, type LucideIcon
 } from "lucide-react";
 
 export interface NavItem {
@@ -113,6 +113,7 @@ export const configSections: NavSection[] = [
       { path: "/config/options/worker-rating", label: "Rating Types", icon: List, testId: "nav-config-rating-options", permission: "admin", requiresComponent: "worker.ratings" },
       { path: "/config/options/worker-relation-type", label: "Relationship Types", icon: List, testId: "nav-config-worker-relation-types", permission: "admin", requiresComponent: "worker.relations" },
       { path: "/config/options/employment-status", label: "Employment Statuses", icon: List, testId: "nav-config-employment-statuses", permission: "admin" },
+      { path: "/config/options/comm-tag", label: "Comm Tags", icon: Tag, testId: "nav-config-comm-tags", permission: "admin" },
       { path: "/config/steward-settings", label: "Steward", icon: Users, testId: "nav-config-steward-settings", permission: "admin", requiresComponent: "worker.steward" },
       { path: "/config/workers/ban", label: "Ban Notifications", icon: Shield, testId: "nav-config-workers-ban", permission: "admin", requiresComponent: "worker.ban" },
       { path: "/config/workers/user-settings", label: "Worker User Settings", icon: Settings, testId: "nav-config-users-worker-settings", permission: "admin" },
