@@ -265,23 +265,13 @@ export function createCommStorage(
     },
 
     async updateWithTags(
-      id: string,
-      data: Partial<InsertComm>,
-      tagIds?: string[],
+      _id: string,
+      _data: Partial<InsertComm>,
+      _tagIds?: string[],
     ): Promise<Comm | undefined> {
-      return runInTransaction(async () => {
-        const client = getClient();
-        const [updated] = await client
-          .update(comm)
-          .set(data)
-          .where(eq(comm.id, id))
-          .returning();
-        if (!updated) return undefined;
-        if (tagIds !== undefined) {
-          await commTagsStorage.setTags(id, tagIds);
-        }
-        return updated;
-      });
+      throw new Error(
+        "updateWithTags must be invoked on the orchestrated storage in DatabaseStorage, not on the base CommStorage",
+      );
     },
 
     async deleteComm(id: string): Promise<boolean> {

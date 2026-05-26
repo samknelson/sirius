@@ -1,3 +1,4 @@
+import { runInTransaction } from "./transaction-context";
 import { type VariableStorage, createVariableStorage, variableLoggingConfig } from "./system/variables";
 import { type UserStorage, createUserStorage, userLoggingConfig } from "./users";
 import { type WorkerStorage, createWorkerStorage, workerLoggingConfig } from "./workers";
@@ -508,7 +509,37 @@ export class DatabaseStorage implements IStorage {
     this.gbhetPension = createGbhetPensionStorage();
     this.contactLinks = createContactLinkStorage();
     this.commTags = withStorageLogging(createCommTagsStorage(), commTagsLoggingConfig);
-    this.comm = withStorageLogging(createCommStorage(this.commTags), commLoggingConfig);
+    const baseComm = withStorageLogging(
+      createCommStorage(this.commTags),
+      commLoggingConfig,
+    );
+    const commTags = this.commTags;
+    this.comm = withStorageLogging(
+      {
+        ...baseComm,
+        async updateWithTags(id, data, tagIds) {
+          return runInTransaction(async () => {
+            let updated;
+            if (data && Object.keys(data).length > 0) {
+              updated = await baseComm.updateComm(id, data);
+            } else {
+              updated = await baseComm.getComm(id);
+            }
+            if (!updated) return undefined;
+            if (tagIds !== undefined) {
+              await commTags.setTags(id, tagIds);
+            }
+            return updated;
+          });
+        },
+      },
+      {
+        module: 'comm',
+        methods: {
+          updateWithTags: { enabled: true, getEntityId: (args) => args[0] },
+        },
+      },
+    );
   }
 }
 

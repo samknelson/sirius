@@ -27,29 +27,10 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { CommWithDetails } from "@/lib/comm-types";
 import { Save } from "lucide-react";
-
-const STATUS_VALUES = [
-  "queued",
-  "sending",
-  "sent",
-  "delivered",
-  "received",
-  "undelivered",
-  "failed",
-] as const;
-
-const STATUS_LABELS: Record<(typeof STATUS_VALUES)[number], string> = {
-  queued: "Queued",
-  sending: "Sending",
-  sent: "Sent",
-  delivered: "Delivered",
-  received: "Received",
-  undelivered: "Undelivered",
-  failed: "Failed",
-};
+import { COMM_STATUSES, COMM_STATUS_LABELS, type CommStatus } from "@shared/commStatus";
 
 const formSchema = z.object({
-  status: z.enum(STATUS_VALUES),
+  status: z.string(),
   tagIds: z.array(z.string()),
 });
 
@@ -77,18 +58,26 @@ export default function CommEdit() {
   useEffect(() => {
     if (!didInit && comm) {
       form.reset({
-        status: STATUS_VALUES.includes(comm.status as any)
-          ? (comm.status as (typeof STATUS_VALUES)[number])
-          : "queued",
+        status: comm.status as CommStatus,
         tagIds: comm.tags?.map((t) => t.id) ?? [],
       });
       setDidInit(true);
     }
   }, [comm, didInit, form]);
 
+  const currentStatusUnknown =
+    !!comm && !COMM_STATUSES.includes(comm.status as CommStatus);
+
   const mutation = useMutation({
     mutationFn: async (values: FormValues) => {
-      return await apiRequest("PUT", `/api/comm/${commId}`, values);
+      const body: { status?: string; tagIds: string[] } = {
+        tagIds: values.tagIds,
+      };
+      const isValidStatus = (COMM_STATUSES as readonly string[]).includes(values.status);
+      if (isValidStatus && values.status !== comm?.status) {
+        body.status = values.status;
+      }
+      return await apiRequest("PUT", `/api/comm/${commId}`, body);
     },
     onSuccess: () => {
       toast({
@@ -156,15 +145,23 @@ export default function CommEdit() {
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {STATUS_VALUES.map((value) => (
+                          {COMM_STATUSES.map((value) => (
                             <SelectItem
                               key={value}
                               value={value}
                               data-testid={`select-status-option-${value}`}
                             >
-                              {STATUS_LABELS[value]}
+                              {COMM_STATUS_LABELS[value]}
                             </SelectItem>
                           ))}
+                          {currentStatusUnknown && comm && (
+                            <SelectItem
+                              value={comm.status}
+                              data-testid={`select-status-option-${comm.status}`}
+                            >
+                              {comm.status} (current)
+                            </SelectItem>
+                          )}
                         </SelectContent>
                       </Select>
                       <FormMessage />

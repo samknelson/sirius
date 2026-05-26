@@ -1,13 +1,15 @@
 import { createContext, useContext, ReactNode } from "react";
-import { MessageSquare, Phone, Mail, Mailbox, Bell, AlertCircle } from "lucide-react";
-import { Link, useParams } from "wouter";
+import { ArrowLeft, MessageSquare, Phone, Mail, Mailbox, Bell, AlertCircle } from "lucide-react";
+import { Link, useParams, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
+import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useCommTabAccess } from "@/hooks/useTabAccess";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import { CommWithDetails } from "@/lib/comm-types";
+import { formatPhoneNumberForDisplay } from "@/lib/phone-utils";
 
 interface CommLayoutContextValue {
   comm: CommWithDetails;
@@ -58,8 +60,22 @@ interface CommLayoutProps {
   children: ReactNode;
 }
 
+function recipientFor(comm: CommWithDetails): string | null {
+  if (comm.medium === "sms" && comm.smsDetails?.to) {
+    return formatPhoneNumberForDisplay(comm.smsDetails.to);
+  }
+  if (comm.medium === "email" && comm.emailDetails?.to) {
+    return comm.emailDetails.to;
+  }
+  if (comm.medium === "postal" && comm.postalDetails) {
+    return comm.postalDetails.toName || comm.postalDetails.toAddressLine1 || null;
+  }
+  return null;
+}
+
 export function CommLayout({ activeTab, children }: CommLayoutProps) {
   const { commId } = useParams<{ commId: string }>();
+  const [, navigate] = useLocation();
 
   const { data: comm, isLoading, error } = useQuery<CommWithDetails>({
     queryKey: ["/api/comm", commId],
@@ -136,22 +152,45 @@ export function CommLayout({ activeTab, children }: CommLayoutProps) {
     );
   }
 
+  const recipient = recipientFor(comm);
+  const sentLabel = comm.sent ? format(new Date(comm.sent), "MMM dd, yyyy HH:mm") : null;
+
   return (
     <CommLayoutContext.Provider value={{ comm }}>
       <div className="bg-background text-foreground min-h-screen">
         <header className="bg-card border-b border-border">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
+            <div className="flex justify-between items-center h-16 gap-3">
+              <div className="flex items-center space-x-3 min-w-0">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => navigate(comm.contactId ? `/contacts/${comm.contactId}` : "/")}
+                  data-testid="button-comm-back"
+                  aria-label="Back"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                </Button>
+                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center shrink-0">
                   {mediumIcon(comm.medium)}
                 </div>
-                <h1
-                  className="text-xl font-semibold text-foreground"
-                  data-testid={`text-comm-title-${comm.id}`}
-                >
-                  {mediumLabel(comm.medium)} Communication
-                </h1>
+                <div className="min-w-0">
+                  <h1
+                    className="text-xl font-semibold text-foreground truncate"
+                    data-testid={`text-comm-title-${comm.id}`}
+                  >
+                    {mediumLabel(comm.medium)} Communication
+                    {recipient ? <span className="text-muted-foreground font-normal"> · {recipient}</span> : null}
+                  </h1>
+                  {sentLabel && (
+                    <p
+                      className="text-xs text-muted-foreground font-mono"
+                      data-testid={`text-comm-sent-${comm.id}`}
+                    >
+                      Sent {sentLabel}
+                    </p>
+                  )}
+                </div>
               </div>
             </div>
           </div>

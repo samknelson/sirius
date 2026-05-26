@@ -1,6 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import { createCommStorage, createCommSmsOptinStorage, createCommEmailOptinStorage, createCommPostalOptinStorage, createCommInappStorage, storage } from "../storage";
+import { COMM_STATUSES } from "@shared/commStatus";
 import { sendSms } from "../services/sms-sender";
 import { sendEmail } from "../services/email-sender";
 import { sendPostal } from "../services/postal-sender";
@@ -25,18 +26,15 @@ const commInappStorage = createCommInappStorage();
 
 const tagIdsSchema = z.array(z.string().uuid("Invalid tag id")).optional();
 
-const updateCommSchema = z.object({
-  status: z.enum([
-    "queued",
-    "sending",
-    "sent",
-    "delivered",
-    "received",
-    "undelivered",
-    "failed",
-  ]),
-  tagIds: z.array(z.string().uuid("Invalid tag id")),
-});
+const updateCommSchema = z
+  .object({
+    status: z.enum(COMM_STATUSES).optional(),
+    tagIds: z.array(z.string().uuid("Invalid tag id")).optional(),
+  })
+  .refine(
+    (val) => val.status !== undefined || val.tagIds !== undefined,
+    { message: "At least one of status or tagIds must be provided" },
+  );
 
 const commTagsStorage = createCommTagsStorage();
 
@@ -173,7 +171,9 @@ export function registerCommRoutes(
         return res.status(400).json({ message: tagErr });
       }
 
-      const updated = await storage.comm.updateWithTags(id, { status }, tagIds);
+      const data: { status?: string } = {};
+      if (status !== undefined) data.status = status;
+      const updated = await storage.comm.updateWithTags(id, data, tagIds);
       if (!updated) {
         return res.status(404).json({ message: "Communication record not found" });
       }
