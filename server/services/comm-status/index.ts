@@ -2,7 +2,7 @@ import type { Request } from 'express';
 import type { Comm } from '@shared/schema';
 
 export interface CommStatusUpdate {
-  status: 'queued' | 'sending' | 'sent' | 'delivered' | 'failed' | 'undelivered' | 'unknown';
+  status: 'queued' | 'sending' | 'sent' | 'delivered' | 'failed' | 'undelivered' | 'unknown' | 'offline';
   providerStatus: string;
   errorCode?: string;
   errorMessage?: string;

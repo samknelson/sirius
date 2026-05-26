@@ -7,6 +7,7 @@ export const COMM_STATUSES = [
   "read",
   "undelivered",
   "failed",
+  "offline",
 ] as const;
 
 export type CommStatus = (typeof COMM_STATUSES)[number];
@@ -20,4 +21,5 @@ export const COMM_STATUS_LABELS: Record<CommStatus, string> = {
   read: "Read",
   undelivered: "Undelivered",
   failed: "Failed",
+  offline: "Offline",
 };

@@ -29,6 +29,7 @@ import {
   Phone,
   Mail,
   Tag as TagIcon,
+  WifiOff,
 } from "lucide-react";
 import { format } from "date-fns";
 import { formatPhoneNumberForDisplay } from "@/lib/phone-utils";
@@ -144,6 +145,17 @@ export default function CommDetail() {
           <Badge variant="destructive" data-testid="badge-status-failed">
             <AlertCircle className="w-3 h-3 mr-1" />
             Failed
+          </Badge>
+        );
+      case "offline":
+        return (
+          <Badge
+            variant="secondary"
+            title="Delivered out-of-band; delivery state is unverifiable"
+            data-testid="badge-status-offline"
+          >
+            <WifiOff className="w-3 h-3 mr-1" />
+            Offline
           </Badge>
         );
       default:
