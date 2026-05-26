@@ -1,5 +1,5 @@
 import { getClient, runInTransaction } from './transaction-context';
-import { comm, commSms, commSmsOptin, commEmail, commEmailOptin, commPostal, commPostalOptin, commInapp, type Comm, type InsertComm, type CommSms, type InsertCommSms, type CommSmsOptin, type InsertCommSmsOptin, type CommEmail, type InsertCommEmail, type CommEmailOptin, type InsertCommEmailOptin, type CommPostal, type InsertCommPostal, type CommPostalOptin, type InsertCommPostalOptin, type CommInapp, type InsertCommInapp, type OptionsCommTag } from "@shared/schema";
+import { comm, commSms, commSmsOptin, commEmail, commEmailOptin, commPostal, commPostalOptin, commInapp, contacts, type Comm, type InsertComm, type CommSms, type InsertCommSms, type CommSmsOptin, type InsertCommSmsOptin, type CommEmail, type InsertCommEmail, type CommEmailOptin, type InsertCommEmailOptin, type CommPostal, type InsertCommPostal, type CommPostalOptin, type InsertCommPostalOptin, type CommInapp, type InsertCommInapp, type OptionsCommTag } from "@shared/schema";
 import { eq, desc, and, SQL, inArray } from "drizzle-orm";
 import { phoneValidationService } from "../services/phone-validation";
 import { storageLogger } from "../logger";
@@ -104,6 +104,7 @@ export interface CommStorage {
     tagIds?: string[],
   ): Promise<Comm | undefined>;
   deleteComm(id: string): Promise<boolean>;
+  getLogLabel(id: string): Promise<string | undefined>;
 }
 
 export const commLoggingConfig: StorageLoggingConfig<CommStorage> = {
@@ -278,6 +279,17 @@ export function createCommStorage(
       const client = getClient();
       const result = await client.delete(comm).where(eq(comm.id, id)).returning();
       return result.length > 0;
+    },
+
+    async getLogLabel(id: string): Promise<string | undefined> {
+      const client = getClient();
+      const [row] = await client
+        .select({ medium: comm.medium, displayName: contacts.displayName })
+        .from(comm)
+        .innerJoin(contacts, eq(contacts.id, comm.contactId))
+        .where(eq(comm.id, id));
+      if (!row) return undefined;
+      return `${row.medium.toUpperCase()} to ${row.displayName}`;
     },
   };
 }

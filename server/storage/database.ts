@@ -508,7 +508,12 @@ export class DatabaseStorage implements IStorage {
     this.facilities = withStorageLogging(createFacilityStorage(this.contacts), facilityLoggingConfig);
     this.gbhetPension = createGbhetPensionStorage();
     this.contactLinks = createContactLinkStorage();
-    this.commTags = withStorageLogging(createCommTagsStorage(), commTagsLoggingConfig);
+    this.commTags = withStorageLogging(
+      createCommTagsStorage({
+        resolveCommLabel: (id) => this.comm.getLogLabel(id),
+      }),
+      commTagsLoggingConfig,
+    );
     const baseComm = withStorageLogging(
       createCommStorage(this.commTags),
       commLoggingConfig,

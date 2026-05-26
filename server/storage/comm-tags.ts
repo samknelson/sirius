@@ -25,7 +25,11 @@ export const commTagsLoggingConfig: StorageLoggingConfig<CommTagsStorageRef> = {
   },
 };
 
-export function createCommTagsStorage(): CommTagsStorage {
+export interface CommTagsStorageDeps {
+  resolveCommLabel?: (commId: string) => Promise<string | undefined>;
+}
+
+export function createCommTagsStorage(deps: CommTagsStorageDeps = {}): CommTagsStorage {
   return {
     async listForComm(commId: string): Promise<OptionsCommTag[]> {
       const client = getClient();
@@ -104,16 +108,37 @@ export function createCommTagsStorage(): CommTagsStorage {
         const toRemove = [...existing].filter((id) => !desired.has(id));
         const toAdd = unique.filter((id) => !existing.has(id));
 
+        const affectedTagIds = Array.from(new Set([...toRemove, ...toAdd]));
+        const tagNameMap = new Map<string, string>();
+        if (affectedTagIds.length > 0) {
+          const tagRows = await client
+            .select({ id: optionsCommTags.id, name: optionsCommTags.name })
+            .from(optionsCommTags)
+            .where(inArray(optionsCommTags.id, affectedTagIds));
+          for (const r of tagRows) tagNameMap.set(r.id, r.name);
+        }
+
+        let commLabel = commId;
+        if (deps.resolveCommLabel && affectedTagIds.length > 0) {
+          try {
+            const resolved = await deps.resolveCommLabel(commId);
+            if (resolved) commLabel = resolved;
+          } catch {
+            // fall back to UUID
+          }
+        }
+
         for (const tagId of toRemove) {
           await client
             .delete(commTags)
             .where(and(eq(commTags.commId, commId), eq(commTags.commTagId, tagId)));
+          const tagLabel = tagNameMap.get(tagId) ?? tagId;
           storageLogger.info('Storage operation: comm-tags.removeTag', {
             module: 'comm-tags',
             operation: 'removeTag',
             entity_id: tagId,
             host_entity_id: commId,
-            description: `setTags diff: unlinked tag "${tagId}" from comm "${commId}"`,
+            description: `setTags diff: unlinked tag "${tagLabel}" from comm "${commLabel}"`,
             meta: { commId, tagId, source: 'setTags' },
           });
         }
@@ -123,12 +148,13 @@ export function createCommTagsStorage(): CommTagsStorage {
             .insert(commTags)
             .values({ commId, commTagId: tagId })
             .onConflictDoNothing();
+          const tagLabel = tagNameMap.get(tagId) ?? tagId;
           storageLogger.info('Storage operation: comm-tags.addTag', {
             module: 'comm-tags',
             operation: 'addTag',
             entity_id: tagId,
             host_entity_id: commId,
-            description: `setTags diff: linked tag "${tagId}" to comm "${commId}"`,
+            description: `setTags diff: linked tag "${tagLabel}" to comm "${commLabel}"`,
             meta: { commId, tagId, source: 'setTags' },
           });
         }
