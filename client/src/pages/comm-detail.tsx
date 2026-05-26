@@ -1,7 +1,20 @@
 import { useState } from "react";
 import { useParams, Link } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { CommLayout } from "@/components/layouts/CommLayout";
+import { useCommTabAccess } from "@/hooks/useTabAccess";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -38,16 +51,47 @@ import { WinstonLog } from "@/lib/system-types";
 
 export default function CommDetail() {
   const { commId } = useParams<{ commId: string }>();
+  const { toast } = useToast();
   const [moduleFilter, setModuleFilter] = useState<string>("");
   const [operationFilter, setOperationFilter] = useState<string>("");
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
   const [selectedLog, setSelectedLog] = useState<WinstonLog | null>(null);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+  const [isOfflineConfirmOpen, setIsOfflineConfirmOpen] = useState(false);
 
   const { data: comm, isLoading: commLoading, error: commError } = useQuery<CommWithDetails>({
     queryKey: ["/api/comm", commId],
     enabled: !!commId,
+  });
+
+  const { tabs } = useCommTabAccess(commId);
+  const canEdit = tabs.some((t) => t.id === "edit");
+
+  const markOfflineMutation = useMutation({
+    mutationFn: async () => {
+      return await apiRequest("PUT", `/api/comm/${commId}`, { status: "offline" });
+    },
+    onSuccess: () => {
+      toast({
+        title: "Marked as offline mailed",
+        description: "The status was updated to offline.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/comm", commId] });
+      if (comm?.contactId) {
+        queryClient.invalidateQueries({
+          queryKey: ["/api/contacts", comm.contactId, "comm"],
+        });
+      }
+      setIsOfflineConfirmOpen(false);
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Failed to update status",
+        description: error?.message ?? "An unexpected error occurred.",
+        variant: "destructive",
+      });
+    },
   });
 
   const params = new URLSearchParams();
@@ -239,8 +283,21 @@ export default function CommDetail() {
             </div>
             <div>
               <Label className="text-muted-foreground">Status</Label>
-              <div className="mt-1" data-testid="text-comm-status">
+              <div className="mt-1 flex items-center gap-2 flex-wrap" data-testid="text-comm-status">
                 {getStatusBadge(comm.status)}
+                {canEdit &&
+                  comm.medium === "postal" &&
+                  (comm.status === "queued" || comm.status === "sending") && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setIsOfflineConfirmOpen(true)}
+                      data-testid="button-mark-offline-mailed"
+                    >
+                      <WifiOff className="w-3 h-3 mr-1" />
+                      Mark as offline mailed
+                    </Button>
+                  )}
               </div>
             </div>
             <div>
@@ -601,6 +658,34 @@ export default function CommDetail() {
           )}
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={isOfflineConfirmOpen} onOpenChange={setIsOfflineConfirmOpen}>
+        <AlertDialogContent data-testid="dialog-confirm-offline-mailed">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Mark as offline mailed?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This sets the status to "offline", meaning the comm was delivered
+              out-of-band (e.g. printed and dropped in the mail). Delivery
+              state will be unverifiable afterward.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-offline-mailed">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                markOfflineMutation.mutate();
+              }}
+              disabled={markOfflineMutation.isPending}
+              data-testid="button-confirm-offline-mailed"
+            >
+              {markOfflineMutation.isPending ? "Saving..." : "Mark as offline mailed"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       </div>
     </CommLayout>
   );
