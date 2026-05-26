@@ -11,6 +11,7 @@ import type { PostalTransport, PostalAddress } from "../services/providers/posta
 import { mapVerificationToDeliverabilityStatus, isTerminalDeliverabilityStatus } from "../services/address-validation";
 import { broadcastAlertUpdate } from "../services/websocket";
 import { getEffectiveUser } from "./masquerade";
+import { createCommTagsStorage } from "../storage/comm-tags";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -22,9 +23,23 @@ const emailOptinStorage = createCommEmailOptinStorage();
 const postalOptinStorage = createCommPostalOptinStorage();
 const commInappStorage = createCommInappStorage();
 
+const tagIdsSchema = z.array(z.string().uuid("Invalid tag id")).optional();
+
+const commTagsStorage = createCommTagsStorage();
+
+async function validateTagIds(tagIds: string[] | undefined): Promise<string | null> {
+  if (!tagIds || tagIds.length === 0) return null;
+  const missing = await commTagsStorage.findMissingTagIds(tagIds);
+  if (missing.length > 0) {
+    return `Unknown tag id(s): ${missing.join(', ')}`;
+  }
+  return null;
+}
+
 const sendSmsSchema = z.object({
   phoneNumber: z.string().min(1, "Phone number is required"),
   message: z.string().min(1, "Message is required").max(1600, "Message too long (max 1600 characters)"),
+  tagIds: tagIdsSchema,
 });
 
 const sendEmailSchema = z.object({
@@ -34,6 +49,7 @@ const sendEmailSchema = z.object({
   bodyText: z.string().optional(),
   bodyHtml: z.string().optional(),
   replyTo: z.string().email().optional(),
+  tagIds: tagIdsSchema,
 }).refine(data => data.bodyText || data.bodyHtml, {
   message: "Either bodyText or bodyHtml is required",
 });
@@ -59,6 +75,7 @@ const sendPostalSchema = z.object({
   mailType: z.enum(['usps_first_class', 'usps_standard']).optional(),
   color: z.boolean().optional(),
   doubleSided: z.boolean().optional(),
+  tagIds: tagIdsSchema,
 }).refine(data => data.file || data.templateId, {
   message: "Either file or templateId is required",
 });
@@ -69,6 +86,7 @@ const sendInappSchema = z.object({
   body: z.string().min(1, "Body is required").max(500, "Body must be 500 characters or less"),
   linkUrl: z.string().url("Invalid URL").optional().or(z.literal("")),
   linkLabel: z.string().max(50, "Link label must be 50 characters or less").optional(),
+  tagIds: tagIdsSchema,
 });
 
 async function notifyAlertCountChange(userId: string): Promise<void> {
@@ -131,7 +149,11 @@ export function registerCommRoutes(
         });
       }
 
-      const { phoneNumber, message } = parsed.data;
+      const { phoneNumber, message, tagIds } = parsed.data;
+      const tagErr = await validateTagIds(tagIds);
+      if (tagErr) {
+        return res.status(400).json({ error: tagErr });
+      }
       const user = (req as any).user;
 
       const result = await sendSms({
@@ -139,6 +161,7 @@ export function registerCommRoutes(
         toPhoneNumber: phoneNumber,
         message,
         userId: user?.id,
+        tagIds,
       });
 
       if (!result.success) {
@@ -181,7 +204,11 @@ export function registerCommRoutes(
         });
       }
 
-      const { email, name, subject, bodyText, bodyHtml, replyTo } = parsed.data;
+      const { email, name, subject, bodyText, bodyHtml, replyTo, tagIds } = parsed.data;
+      const tagErr = await validateTagIds(tagIds);
+      if (tagErr) {
+        return res.status(400).json({ error: tagErr });
+      }
       const user = (req as any).user;
 
       const result = await sendEmail({
@@ -193,6 +220,7 @@ export function registerCommRoutes(
         bodyHtml,
         replyTo,
         userId: user?.id,
+        tagIds,
       });
 
       if (!result.success) {
@@ -233,7 +261,11 @@ export function registerCommRoutes(
         });
       }
 
-      const { toAddress, fromAddress, description, file, templateId, mergeVariables, mailType, color, doubleSided } = parsed.data;
+      const { toAddress, fromAddress, description, file, templateId, mergeVariables, mailType, color, doubleSided, tagIds } = parsed.data;
+      const tagErr = await validateTagIds(tagIds);
+      if (tagErr) {
+        return res.status(400).json({ error: tagErr });
+      }
       const user = (req as any).user;
 
       const result = await sendPostal({
@@ -248,6 +280,7 @@ export function registerCommRoutes(
         color,
         doubleSided,
         userId: user?.id,
+        tagIds,
       });
 
       if (!result.success) {
@@ -328,7 +361,11 @@ export function registerCommRoutes(
         });
       }
 
-      const { userId, title, body, linkUrl, linkLabel } = parsed.data;
+      const { userId, title, body, linkUrl, linkLabel, tagIds } = parsed.data;
+      const tagErr = await validateTagIds(tagIds);
+      if (tagErr) {
+        return res.status(400).json({ error: tagErr });
+      }
       const currentUser = (req as any).user;
 
       const result = await sendInapp({
@@ -339,6 +376,7 @@ export function registerCommRoutes(
         linkUrl: linkUrl || undefined,
         linkLabel: linkLabel || undefined,
         initiatedBy: currentUser?.id,
+        tagIds,
       });
 
       if (!result.success) {

@@ -25,6 +25,7 @@ import {
 import { formatPhoneNumberForDisplay } from "@/lib/phone-utils";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { CommTagPicker } from "./CommTagPicker";
 import { PhoneNumber } from "@/lib/entity-types";
 import { SystemModeResponse } from "@/lib/system-types";
 
@@ -51,6 +52,7 @@ export function CommSms({ contactId, phoneNumbers, onSendSuccess }: CommSmsProps
   const { toast } = useToast();
   const [selectedPhoneId, setSelectedPhoneId] = useState<string>("");
   const [message, setMessage] = useState("");
+  const [tagIds, setTagIds] = useState<string[]>([]);
   
   const selectedPhone = phoneNumbers.find(p => p.id === selectedPhoneId);
   
@@ -72,10 +74,11 @@ export function CommSms({ contactId, phoneNumbers, onSendSuccess }: CommSmsProps
   });
 
   const sendSmsMutation = useMutation({
-    mutationFn: async ({ phoneNumber, message }: { phoneNumber: string; message: string }) => {
+    mutationFn: async ({ phoneNumber, message, tagIds }: { phoneNumber: string; message: string; tagIds: string[] }) => {
       return await apiRequest("POST", `/api/contacts/${contactId}/sms`, {
         phoneNumber,
         message,
+        tagIds: tagIds.length > 0 ? tagIds : undefined,
       });
     },
     onSuccess: () => {
@@ -84,6 +87,7 @@ export function CommSms({ contactId, phoneNumbers, onSendSuccess }: CommSmsProps
         description: "Your message has been sent successfully.",
       });
       setMessage("");
+      setTagIds([]);
       queryClient.invalidateQueries({ queryKey: ["/api/contacts", contactId, "comm"] });
       onSendSuccess?.();
     },
@@ -102,6 +106,7 @@ export function CommSms({ contactId, phoneNumbers, onSendSuccess }: CommSmsProps
     sendSmsMutation.mutate({
       phoneNumber: selectedPhone.phoneNumber,
       message: message.trim(),
+      tagIds,
     });
   };
 
@@ -278,6 +283,8 @@ export function CommSms({ contactId, phoneNumbers, onSendSuccess }: CommSmsProps
                 data-testid="input-sms-message"
               />
             </div>
+
+            <CommTagPicker medium="sms" value={tagIds} onChange={setTagIds} />
           </>
         )}
       </CardContent>
@@ -288,6 +295,7 @@ export function CommSms({ contactId, phoneNumbers, onSendSuccess }: CommSmsProps
             onClick={() => {
               setSelectedPhoneId("");
               setMessage("");
+              setTagIds([]);
             }}
             disabled={sendSmsMutation.isPending}
             data-testid="button-clear-sms"

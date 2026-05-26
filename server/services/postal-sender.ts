@@ -1,6 +1,7 @@
 import { serviceRegistry } from './service-registry';
 import { getSystemMode } from './system-mode';
 import { createCommStorage, createCommPostalStorage, createCommPostalOptinStorage } from '../storage/comm';
+import { createCommTagsStorage } from '../storage/comm-tags';
 import type { PostalTransport, PostalAddress, SendLetterParams } from './providers/postal';
 import type { Comm, CommPostal } from '@shared/schema';
 import { logger } from '../logger';
@@ -18,6 +19,7 @@ export interface SendPostalRequest {
   color?: boolean;
   doubleSided?: boolean;
   userId?: string;
+  tagIds?: string[];
 }
 
 export interface SendPostalResult {
@@ -32,6 +34,7 @@ export interface SendPostalResult {
 const commStorage = createCommStorage();
 const commPostalStorage = createCommPostalStorage();
 const postalOptinStorage = createCommPostalOptinStorage();
+const commTagsStorage = createCommTagsStorage();
 
 function buildCanonicalAddress(address: PostalAddress): string {
   const parts = [
@@ -47,7 +50,7 @@ function buildCanonicalAddress(address: PostalAddress): string {
 }
 
 export async function sendPostal(request: SendPostalRequest): Promise<SendPostalResult> {
-  const { contactId, toAddress, fromAddress, description, file, templateId, mergeVariables, mailType, color, doubleSided, userId } = request;
+  const { contactId, toAddress, fromAddress, description, file, templateId, mergeVariables, mailType, color, doubleSided, userId, tagIds } = request;
 
   try {
     const postalTransport = await serviceRegistry.resolve<PostalTransport>('postal');
@@ -92,6 +95,10 @@ export async function sendPostal(request: SendPostalRequest): Promise<SendPostal
       sent: new Date(),
       data: { initiatedBy: userId || 'system' },
     });
+
+    if (tagIds && tagIds.length > 0) {
+      await commTagsStorage.setTags(comm.id, tagIds);
+    }
 
     const commPostal = await commPostalStorage.createCommPostal({
       commId: comm.id,

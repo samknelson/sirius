@@ -1,6 +1,7 @@
 import { serviceRegistry } from './service-registry';
 import { getSystemMode } from './system-mode';
 import { createCommStorage, createCommEmailStorage, createCommEmailOptinStorage } from '../storage/comm';
+import { createCommTagsStorage } from '../storage/comm-tags';
 import type { EmailTransport, EmailRecipient } from './providers/email';
 import type { Comm, CommEmail } from '@shared/schema';
 import { logger } from '../logger';
@@ -17,6 +18,7 @@ export interface SendEmailRequest {
   fromName?: string;
   replyTo?: string;
   userId?: string;
+  tagIds?: string[];
 }
 
 export interface SendEmailResult {
@@ -31,9 +33,10 @@ export interface SendEmailResult {
 const commStorage = createCommStorage();
 const commEmailStorage = createCommEmailStorage();
 const emailOptinStorage = createCommEmailOptinStorage();
+const commTagsStorage = createCommTagsStorage();
 
 export async function sendEmail(request: SendEmailRequest): Promise<SendEmailResult> {
-  const { contactId, toEmail, toName, subject, bodyText, bodyHtml, fromEmail, fromName, replyTo, userId } = request;
+  const { contactId, toEmail, toName, subject, bodyText, bodyHtml, fromEmail, fromName, replyTo, userId, tagIds } = request;
 
   try {
     const emailTransport = await serviceRegistry.resolve<EmailTransport>('email');
@@ -64,6 +67,10 @@ export async function sendEmail(request: SendEmailRequest): Promise<SendEmailRes
       sent: new Date(),
       data: { initiatedBy: userId || 'system' },
     });
+
+    if (tagIds && tagIds.length > 0) {
+      await commTagsStorage.setTags(comm.id, tagIds);
+    }
 
     const toRecipient: EmailRecipient = {
       email: normalizedEmail,

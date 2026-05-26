@@ -31,6 +31,7 @@ import {
   FileCode
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { CommTagPicker } from "./CommTagPicker";
 import { useToast } from "@/hooks/use-toast";
 import { Address } from "@/lib/entity-types";
 
@@ -140,6 +141,7 @@ export function CommPostal({ contactId, addresses, contactName, onSendSuccess }:
   const [mailType, setMailType] = useState<"usps_first_class" | "usps_standard">("usps_first_class");
   const [isOptinDialogOpen, setIsOptinDialogOpen] = useState(false);
   const [verificationResult, setVerificationResult] = useState<VerifyAddressResult | null>(null);
+  const [tagIds, setTagIds] = useState<string[]>([]);
   
   const selectedAddress = addresses.find(a => a.id === selectedAddressId);
 
@@ -261,6 +263,7 @@ export function CommPostal({ contactId, addresses, contactName, onSendSuccess }:
       templateId?: string;
       file?: string;
       mailType?: string;
+      tagIds?: string[];
     }) => {
       return await apiRequest("POST", `/api/contacts/${contactId}/postal`, data);
     },
@@ -273,6 +276,7 @@ export function CommPostal({ contactId, addresses, contactName, onSendSuccess }:
       setTemplateId("");
       setComposeBody("");
       setRawHtml("");
+      setTagIds([]);
       queryClient.invalidateQueries({ queryKey: ["/api/contacts", contactId, "comm"] });
       onSendSuccess?.();
     },
@@ -314,10 +318,12 @@ export function CommPostal({ contactId, addresses, contactName, onSendSuccess }:
       templateId?: string;
       file?: string;
       mailType: string;
+      tagIds?: string[];
     } = {
       toAddress,
       description: description.trim() || undefined,
       mailType,
+      tagIds: tagIds.length > 0 ? tagIds : undefined,
     };
 
     if (contentMode === "template") {
@@ -804,6 +810,8 @@ export function CommPostal({ contactId, addresses, contactName, onSendSuccess }:
                   data-testid="input-postal-description"
                 />
               </div>
+
+              <CommTagPicker medium="postal" value={tagIds} onChange={setTagIds} />
             </>
           )}
         </CardContent>
@@ -818,6 +826,7 @@ export function CommPostal({ contactId, addresses, contactName, onSendSuccess }:
                 setComposeBody("");
                 setRawHtml("");
                 setVerificationResult(null);
+                setTagIds([]);
               }}
               disabled={sendPostalMutation.isPending}
               data-testid="button-clear-postal"

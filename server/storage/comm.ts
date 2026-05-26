@@ -1,8 +1,9 @@
 import { getClient } from './transaction-context';
-import { comm, commSms, commSmsOptin, commEmail, commEmailOptin, commPostal, commPostalOptin, commInapp, type Comm, type InsertComm, type CommSms, type InsertCommSms, type CommSmsOptin, type InsertCommSmsOptin, type CommEmail, type InsertCommEmail, type CommEmailOptin, type InsertCommEmailOptin, type CommPostal, type InsertCommPostal, type CommPostalOptin, type InsertCommPostalOptin, type CommInapp, type InsertCommInapp } from "@shared/schema";
+import { comm, commSms, commSmsOptin, commEmail, commEmailOptin, commPostal, commPostalOptin, commInapp, type Comm, type InsertComm, type CommSms, type InsertCommSms, type CommSmsOptin, type InsertCommSmsOptin, type CommEmail, type InsertCommEmail, type CommEmailOptin, type InsertCommEmailOptin, type CommPostal, type InsertCommPostal, type CommPostalOptin, type InsertCommPostalOptin, type CommInapp, type InsertCommInapp, type OptionsCommTag } from "@shared/schema";
 import { eq, desc, and, SQL, inArray } from "drizzle-orm";
 import { phoneValidationService } from "../services/phone-validation";
 import { storageLogger } from "../logger";
+import { createCommTagsStorage } from "./comm-tags";
 import { 
   type ValidationError,
   createAsyncStorageValidator
@@ -65,14 +66,17 @@ export const phoneValidateRequired = createAsyncStorageValidator<{ phoneNumber: 
 
 export interface CommWithSms extends Comm {
   smsDetails?: CommSms | null;
+  tags?: OptionsCommTag[];
 }
 
 export interface CommWithEmail extends Comm {
   emailDetails?: CommEmail | null;
+  tags?: OptionsCommTag[];
 }
 
 export interface CommWithPostal extends Comm {
   postalDetails?: CommPostal | null;
+  tags?: OptionsCommTag[];
 }
 
 export interface CommWithDetails extends Comm {
@@ -80,6 +84,7 @@ export interface CommWithDetails extends Comm {
   emailDetails?: CommEmail | null;
   postalDetails?: CommPostal | null;
   inappDetails?: CommInapp | null;
+  tags?: OptionsCommTag[];
 }
 
 export interface CommStorage {
@@ -125,6 +130,7 @@ export interface CommEmailStorage {
 }
 
 export function createCommStorage(): CommStorage {
+  const commTagsStorage = createCommTagsStorage();
   return {
     async getComm(id: string): Promise<Comm | undefined> {
       const client = getClient();
@@ -146,17 +152,19 @@ export function createCommStorage(): CommStorage {
     async getCommsByContactWithSms(contactId: string): Promise<CommWithSms[]> {
       const client = getClient();
       const comms = await client.select().from(comm).where(eq(comm.contactId, contactId)).orderBy(desc(comm.sent));
-      
+      const tagsByComm = await commTagsStorage.listForComms(comms.map((c) => c.id));
+
       const result: CommWithSms[] = await Promise.all(
         comms.map(async (c) => {
+          const tags = tagsByComm.get(c.id) ?? [];
           if (c.medium === 'sms') {
             const [smsDetails] = await client.select().from(commSms).where(eq(commSms.commId, c.id));
-            return { ...c, smsDetails: smsDetails || null };
+            return { ...c, smsDetails: smsDetails || null, tags };
           }
-          return { ...c, smsDetails: null };
+          return { ...c, smsDetails: null, tags };
         })
       );
-      
+
       return result;
     },
 
@@ -164,38 +172,42 @@ export function createCommStorage(): CommStorage {
       const client = getClient();
       const [c] = await client.select().from(comm).where(eq(comm.id, id));
       if (!c) return undefined;
-      
+
+      const tags = await commTagsStorage.listForComm(c.id);
       if (c.medium === 'sms') {
         const [smsDetails] = await client.select().from(commSms).where(eq(commSms.commId, c.id));
-        return { ...c, smsDetails: smsDetails || null };
+        return { ...c, smsDetails: smsDetails || null, tags };
       }
-      
-      return { ...c, smsDetails: null };
+
+      return { ...c, smsDetails: null, tags };
     },
 
     async getCommsByContactWithDetails(contactId: string): Promise<CommWithDetails[]> {
       const client = getClient();
       const comms = await client.select().from(comm).where(eq(comm.contactId, contactId)).orderBy(desc(comm.sent));
-      
+      const tagsByComm = await commTagsStorage.listForComms(comms.map((c) => c.id));
+
       const result: CommWithDetails[] = await Promise.all(
         comms.map(async (c) => {
+          const tags = tagsByComm.get(c.id) ?? [];
+          const base = { smsDetails: null as CommSms | null, emailDetails: null as CommEmail | null, postalDetails: null as CommPostal | null, inappDetails: null as CommInapp | null };
           if (c.medium === 'sms') {
             const [smsDetails] = await client.select().from(commSms).where(eq(commSms.commId, c.id));
-            return { ...c, smsDetails: smsDetails || null, emailDetails: null, postalDetails: null, inappDetails: null };
+            return { ...c, ...base, smsDetails: smsDetails || null, tags };
           } else if (c.medium === 'email') {
             const [emailDetails] = await client.select().from(commEmail).where(eq(commEmail.commId, c.id));
-            return { ...c, smsDetails: null, emailDetails: emailDetails || null, postalDetails: null, inappDetails: null };
+            return { ...c, ...base, emailDetails: emailDetails || null, tags };
           } else if (c.medium === 'postal') {
             const [postalDetails] = await client.select().from(commPostal).where(eq(commPostal.commId, c.id));
-            return { ...c, smsDetails: null, emailDetails: null, postalDetails: postalDetails || null, inappDetails: null };
+            return { ...c, ...base, postalDetails: postalDetails || null, tags };
           } else if (c.medium === 'inapp') {
             const [inappDetails] = await client.select().from(commInapp).where(eq(commInapp.commId, c.id));
-            return { ...c, smsDetails: null, emailDetails: null, postalDetails: null, inappDetails: inappDetails || null };
+            return { ...c, ...base, inappDetails: inappDetails || null, tags };
           }
-          return { ...c, smsDetails: null, emailDetails: null, postalDetails: null, inappDetails: null };
+          return { ...c, ...base, tags };
         })
       );
-      
+
       return result;
     },
 
@@ -203,22 +215,24 @@ export function createCommStorage(): CommStorage {
       const client = getClient();
       const [c] = await client.select().from(comm).where(eq(comm.id, id));
       if (!c) return undefined;
-      
+
+      const tags = await commTagsStorage.listForComm(c.id);
+      const base = { smsDetails: null as CommSms | null, emailDetails: null as CommEmail | null, postalDetails: null as CommPostal | null, inappDetails: null as CommInapp | null };
       if (c.medium === 'sms') {
         const [smsDetails] = await client.select().from(commSms).where(eq(commSms.commId, c.id));
-        return { ...c, smsDetails: smsDetails || null, emailDetails: null, postalDetails: null, inappDetails: null };
+        return { ...c, ...base, smsDetails: smsDetails || null, tags };
       } else if (c.medium === 'email') {
         const [emailDetails] = await client.select().from(commEmail).where(eq(commEmail.commId, c.id));
-        return { ...c, smsDetails: null, emailDetails: emailDetails || null, postalDetails: null, inappDetails: null };
+        return { ...c, ...base, emailDetails: emailDetails || null, tags };
       } else if (c.medium === 'postal') {
         const [postalDetails] = await client.select().from(commPostal).where(eq(commPostal.commId, c.id));
-        return { ...c, smsDetails: null, emailDetails: null, postalDetails: postalDetails || null, inappDetails: null };
+        return { ...c, ...base, postalDetails: postalDetails || null, tags };
       } else if (c.medium === 'inapp') {
         const [inappDetails] = await client.select().from(commInapp).where(eq(commInapp.commId, c.id));
-        return { ...c, smsDetails: null, emailDetails: null, postalDetails: null, inappDetails: inappDetails || null };
+        return { ...c, ...base, inappDetails: inappDetails || null, tags };
       }
-      
-      return { ...c, smsDetails: null, emailDetails: null, postalDetails: null, inappDetails: null };
+
+      return { ...c, ...base, tags };
     },
 
     async createComm(data: InsertComm): Promise<Comm> {

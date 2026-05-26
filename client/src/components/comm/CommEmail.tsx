@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { CommTagPicker } from "./CommTagPicker";
 
 interface EmailOptinResponse {
   exists: boolean;
@@ -48,6 +49,7 @@ export function CommEmail({ contactId, email, contactName, onSendSuccess }: Comm
   const [subject, setSubject] = useState("");
   const [bodyText, setBodyText] = useState("");
   const [isOptinDialogOpen, setIsOptinDialogOpen] = useState(false);
+  const [tagIds, setTagIds] = useState<string[]>([]);
   
   const hasEmail = !!email && email.trim().length > 0;
 
@@ -91,7 +93,7 @@ export function CommEmail({ contactId, email, contactName, onSendSuccess }: Comm
   });
 
   const sendEmailMutation = useMutation({
-    mutationFn: async (data: { email: string; name?: string; subject: string; bodyText: string }) => {
+    mutationFn: async (data: { email: string; name?: string; subject: string; bodyText: string; tagIds?: string[] }) => {
       return await apiRequest("POST", `/api/contacts/${contactId}/email`, data);
     },
     onSuccess: () => {
@@ -101,6 +103,7 @@ export function CommEmail({ contactId, email, contactName, onSendSuccess }: Comm
       });
       setSubject("");
       setBodyText("");
+      setTagIds([]);
       queryClient.invalidateQueries({ queryKey: ["/api/contacts", contactId, "comm"] });
       onSendSuccess?.();
     },
@@ -121,6 +124,7 @@ export function CommEmail({ contactId, email, contactName, onSendSuccess }: Comm
       name: contactName?.trim() || undefined,
       subject: subject.trim(),
       bodyText: bodyText.trim(),
+      tagIds: tagIds.length > 0 ? tagIds : undefined,
     });
   };
 
@@ -339,6 +343,8 @@ export function CommEmail({ contactId, email, contactName, onSendSuccess }: Comm
             data-testid="input-email-body"
           />
         </div>
+
+        <CommTagPicker medium="email" value={tagIds} onChange={setTagIds} />
       </CardContent>
       <CardFooter className="flex justify-end gap-2">
         <Button
@@ -346,6 +352,7 @@ export function CommEmail({ contactId, email, contactName, onSendSuccess }: Comm
           onClick={() => {
             setSubject("");
             setBodyText("");
+            setTagIds([]);
           }}
           disabled={sendEmailMutation.isPending}
           data-testid="button-clear-email"

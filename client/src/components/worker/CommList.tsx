@@ -33,7 +33,8 @@ import {
   Phone,
   Mail,
   Eye,
-  Bell
+  Bell,
+  Tag
 } from "lucide-react";
 import { format } from "date-fns";
 import { formatPhoneNumberForDisplay } from "@/lib/phone-utils";
@@ -94,6 +95,13 @@ interface CommInappDetails {
   createdAt: string;
 }
 
+interface CommTag {
+  id: string;
+  name: string;
+  description?: string | null;
+  data?: { icon?: string; applicableCommTypes?: string[] } | null;
+}
+
 interface CommWithDetails {
   id: string;
   medium: string;
@@ -106,6 +114,7 @@ interface CommWithDetails {
   emailDetails?: CommEmailDetails | null;
   postalDetails?: CommPostalDetails | null;
   inappDetails?: CommInappDetails | null;
+  tags?: CommTag[];
 }
 
 type SortField = "sent" | "medium" | "status";
@@ -518,6 +527,21 @@ export function CommList({
                               ? truncateBody(record.inappDetails.title)
                               : truncateBody(record.smsDetails?.body || null)}
                       </span>
+                      {record.tags && record.tags.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1" data-testid={`tags-comm-${record.id}`}>
+                          {record.tags.map((tag) => (
+                            <Badge
+                              key={tag.id}
+                              variant="secondary"
+                              className="gap-1 text-xs"
+                              data-testid={`badge-tag-${record.id}-${tag.id}`}
+                            >
+                              <Tag className="h-3 w-3" />
+                              {tag.name}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
                     </TableCell>
                     <TableCell className="text-right">
                       <Button

@@ -1,6 +1,7 @@
 import { serviceRegistry } from './service-registry';
 import { getSystemMode } from './system-mode';
 import { createCommStorage, createCommSmsStorage, createCommSmsOptinStorage } from '../storage/comm';
+import { createCommTagsStorage } from '../storage/comm-tags';
 import { buildStatusCallbackUrl } from './comm-status/url-builder';
 import type { SmsTransport } from './providers/sms';
 import type { Comm, CommSms } from '@shared/schema';
@@ -10,6 +11,7 @@ export interface SendSmsRequest {
   toPhoneNumber: string;
   message: string;
   userId?: string;
+  tagIds?: string[];
 }
 
 export interface SendSmsResult {
@@ -24,9 +26,10 @@ export interface SendSmsResult {
 const commStorage = createCommStorage();
 const commSmsStorage = createCommSmsStorage();
 const smsOptinStorage = createCommSmsOptinStorage();
+const commTagsStorage = createCommTagsStorage();
 
 export async function sendSms(request: SendSmsRequest): Promise<SendSmsResult> {
-  const { contactId, toPhoneNumber, message, userId } = request;
+  const { contactId, toPhoneNumber, message, userId, tagIds } = request;
 
   try {
     const smsTransport = await serviceRegistry.resolve<SmsTransport>('sms');
@@ -57,6 +60,10 @@ export async function sendSms(request: SendSmsRequest): Promise<SendSmsResult> {
       sent: new Date(),
       data: { initiatedBy: userId || 'system' },
     });
+
+    if (tagIds && tagIds.length > 0) {
+      await commTagsStorage.setTags(comm.id, tagIds);
+    }
 
     const commSms = await commSmsStorage.createCommSms({
       commId: comm.id,

@@ -27,6 +27,7 @@ import {
   Inbox,
   Phone,
   Mail,
+  Tag as TagIcon,
 } from "lucide-react";
 import { format } from "date-fns";
 import { formatPhoneNumberForDisplay } from "@/lib/phone-utils";
@@ -201,6 +202,24 @@ export default function CommDetail() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
+          {comm.tags && comm.tags.length > 0 && (
+            <div>
+              <Label className="text-muted-foreground">Tags</Label>
+              <div className="flex flex-wrap gap-2 mt-2" data-testid="tags-comm-detail">
+                {comm.tags.map((tag) => (
+                  <Badge
+                    key={tag.id}
+                    variant="secondary"
+                    className="gap-1"
+                    data-testid={`badge-detail-tag-${tag.id}`}
+                  >
+                    <TagIcon className="h-3 w-3" />
+                    {tag.name}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <div>
               <Label className="text-muted-foreground">Medium</Label>

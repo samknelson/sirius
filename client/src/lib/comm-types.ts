@@ -42,6 +42,13 @@ export interface CommPostalDetails {
   data: Record<string, unknown> | null;
 }
 
+export interface CommTag {
+  id: string;
+  name: string;
+  description?: string | null;
+  data?: { icon?: string; applicableCommTypes?: string[] } | null;
+}
+
 export interface CommWithDetails {
   id: string;
   medium: string;
@@ -53,6 +60,7 @@ export interface CommWithDetails {
   smsDetails?: CommSmsDetails | null;
   emailDetails?: CommEmailDetails | null;
   postalDetails?: CommPostalDetails | null;
+  tags?: CommTag[];
 }
 
 export interface CommWithSms {
@@ -64,4 +72,5 @@ export interface CommWithSms {
   received: string | null;
   data: Record<string, unknown> | null;
   smsDetails?: CommSmsDetails | null;
+  tags?: CommTag[];
 }

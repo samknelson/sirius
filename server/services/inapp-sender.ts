@@ -1,4 +1,5 @@
 import { createCommStorage, createCommInappStorage } from '../storage/comm';
+import { createCommTagsStorage } from '../storage/comm-tags';
 import { notifyAlertCountChange } from '../modules/comm';
 import type { Comm, CommInapp } from '@shared/schema';
 import { storageLogger } from '../logger';
@@ -11,6 +12,7 @@ export interface SendInappRequest {
   linkUrl?: string;
   linkLabel?: string;
   initiatedBy?: string;
+  tagIds?: string[];
 }
 
 export interface SendInappResult {
@@ -30,9 +32,10 @@ export interface MarkAsReadResult {
 
 const commStorage = createCommStorage();
 const commInappStorage = createCommInappStorage();
+const commTagsStorage = createCommTagsStorage();
 
 export async function sendInapp(request: SendInappRequest): Promise<SendInappResult> {
-  const { contactId, userId, title, body, linkUrl, linkLabel, initiatedBy } = request;
+  const { contactId, userId, title, body, linkUrl, linkLabel, initiatedBy, tagIds } = request;
 
   try {
     if (!contactId) {
@@ -90,6 +93,10 @@ export async function sendInapp(request: SendInappRequest): Promise<SendInappRes
       sent: new Date(),
       data: { initiatedBy: initiatedBy || 'system' },
     });
+
+    if (tagIds && tagIds.length > 0) {
+      await commTagsStorage.setTags(comm.id, tagIds);
+    }
 
     let commInappRecord: CommInapp;
     try {
