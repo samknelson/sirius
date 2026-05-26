@@ -111,6 +111,7 @@ import { type WsBundleStorage, type WsClientStorage, type WsClientCredentialStor
 import { type CompanyStorage, createCompanyStorage, companyLoggingConfig, type EmployerCompanyStorage, createEmployerCompanyStorage, employerCompanyLoggingConfig } from "./employers/companies";
 import { type ContactLinkStorage, createContactLinkStorage } from "./contact-links";
 import { type CommTagsStorage, createCommTagsStorage, commTagsLoggingConfig } from "./comm-tags";
+import { type CommStorage, createCommStorage, commLoggingConfig } from "./comm";
 import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
 import { db } from "./db";
 import { employers, workers, contacts } from "@shared/schema";
@@ -201,6 +202,7 @@ export interface IStorage {
   gbhetPension: GbhetPensionStorage;
   contactLinks: ContactLinkStorage;
   commTags: CommTagsStorage;
+  comm: CommStorage;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -288,6 +290,7 @@ export class DatabaseStorage implements IStorage {
   gbhetPension: GbhetPensionStorage;
   contactLinks: ContactLinkStorage;
   commTags: CommTagsStorage;
+  comm: CommStorage;
 
   constructor() {
     this.variables = withStorageLogging(
@@ -505,6 +508,7 @@ export class DatabaseStorage implements IStorage {
     this.gbhetPension = createGbhetPensionStorage();
     this.contactLinks = createContactLinkStorage();
     this.commTags = withStorageLogging(createCommTagsStorage(), commTagsLoggingConfig);
+    this.comm = withStorageLogging(createCommStorage(this.commTags), commLoggingConfig);
   }
 }
 

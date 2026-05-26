@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useParams, Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
+import { CommLayout } from "@/components/layouts/CommLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -159,41 +160,36 @@ export default function CommDetail() {
     return format(new Date(dateStr), "MMM dd, yyyy HH:mm");
   };
 
-  if (commLoading) {
+  if (commLoading || commError || !comm) {
     return (
-      <div className="p-6">
-        <div className="text-center py-8 text-muted-foreground">Loading communication details...</div>
-      </div>
-    );
-  }
-
-  if (commError || !comm) {
-    return (
-      <div className="p-6">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-center py-8">
-              <AlertCircle className="w-12 h-12 text-destructive mx-auto mb-4" />
-              <p className="text-muted-foreground">Communication record not found.</p>
-              <Button variant="outline" className="mt-4" asChild>
-                <Link href="/">
-                  <ArrowLeft className="w-4 h-4 mr-2" />
-                  Go Back
-                </Link>
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      <CommLayout activeTab="details">
+        {commLoading ? (
+          <div className="text-center py-8 text-muted-foreground">
+            Loading communication details...
+          </div>
+        ) : (
+          <Card>
+            <CardContent className="pt-6">
+              <div className="text-center py-8">
+                <AlertCircle className="w-12 h-12 text-destructive mx-auto mb-4" />
+                <p className="text-muted-foreground">Communication record not found.</p>
+                <Button variant="outline" className="mt-4" asChild>
+                  <Link href="/">
+                    <ArrowLeft className="w-4 h-4 mr-2" />
+                    Go Back
+                  </Link>
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </CommLayout>
     );
   }
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center gap-4">
-        <h1 className="text-xl md:text-2xl font-bold" data-testid="text-page-title">Communication Details</h1>
-      </div>
-
+    <CommLayout activeTab="details">
+      <div className="space-y-6">
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -593,6 +589,7 @@ export default function CommDetail() {
           )}
         </DialogContent>
       </Dialog>
-    </div>
+      </div>
+    </CommLayout>
   );
 }

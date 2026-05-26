@@ -85,6 +85,7 @@ const WorkerSendEmail = lazy(() => import("@/pages/worker-send-email"));
 const WorkerSendPostal = lazy(() => import("@/pages/worker-send-postal"));
 const WorkerSendInApp = lazy(() => import("@/pages/worker-send-inapp"));
 const CommDetail = lazy(() => import("@/pages/comm-detail"));
+const CommEdit = lazy(() => import("@/pages/comm-edit"));
 const WorkerDelete = lazy(() => import("@/pages/worker-delete"));
 const Companies = lazy(() => import("@/pages/companies"));
 const CompanyView = lazy(() => import("@/pages/company-view"));
@@ -488,9 +489,17 @@ function Router() {
       </Route>
 
       <Route path="/comm/:commId">
-        <ProtectedRoute permission="staff">
+        <ProtectedRoute tabId="details" entityType="comm">
           <AuthenticatedLayout>
             <CommDetail />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/comm/:commId/edit">
+        <ProtectedRoute tabId="edit" entityType="comm">
+          <AuthenticatedLayout>
+            <CommEdit />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

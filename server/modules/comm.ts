@@ -25,6 +25,19 @@ const commInappStorage = createCommInappStorage();
 
 const tagIdsSchema = z.array(z.string().uuid("Invalid tag id")).optional();
 
+const updateCommSchema = z.object({
+  status: z.enum([
+    "queued",
+    "sending",
+    "sent",
+    "delivered",
+    "received",
+    "undelivered",
+    "failed",
+  ]),
+  tagIds: z.array(z.string().uuid("Invalid tag id")),
+});
+
 const commTagsStorage = createCommTagsStorage();
 
 async function validateTagIds(tagIds: string[] | undefined): Promise<string | null> {
@@ -134,6 +147,42 @@ export function registerCommRoutes(
     } catch (error) {
       console.error("Failed to fetch comm record:", error);
       res.status(500).json({ message: "Failed to fetch communication record" });
+    }
+  });
+
+  app.put("/api/comm/:id", requireAuth, requirePermission("staff"), async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      const existing = await commStorage.getComm(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Communication record not found" });
+      }
+
+      const parsed = updateCommSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({
+          message: "Invalid request body",
+          errors: parsed.error.flatten(),
+        });
+      }
+
+      const { status, tagIds } = parsed.data;
+      const tagErr = await validateTagIds(tagIds);
+      if (tagErr) {
+        return res.status(400).json({ message: tagErr });
+      }
+
+      const updated = await storage.comm.updateWithTags(id, { status }, tagIds);
+      if (!updated) {
+        return res.status(404).json({ message: "Communication record not found" });
+      }
+
+      const fresh = await commStorage.getCommWithDetails(id);
+      res.json(fresh);
+    } catch (error) {
+      console.error("Failed to update comm record:", error);
+      res.status(500).json({ message: "Failed to update communication record" });
     }
   });
 

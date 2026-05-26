@@ -1,9 +1,10 @@
-import { getClient } from './transaction-context';
+import { getClient, runInTransaction } from './transaction-context';
 import { comm, commSms, commSmsOptin, commEmail, commEmailOptin, commPostal, commPostalOptin, commInapp, type Comm, type InsertComm, type CommSms, type InsertCommSms, type CommSmsOptin, type InsertCommSmsOptin, type CommEmail, type InsertCommEmail, type CommEmailOptin, type InsertCommEmailOptin, type CommPostal, type InsertCommPostal, type CommPostalOptin, type InsertCommPostalOptin, type CommInapp, type InsertCommInapp, type OptionsCommTag } from "@shared/schema";
 import { eq, desc, and, SQL, inArray } from "drizzle-orm";
 import { phoneValidationService } from "../services/phone-validation";
 import { storageLogger } from "../logger";
-import { createCommTagsStorage } from "./comm-tags";
+import { createCommTagsStorage, type CommTagsStorage } from "./comm-tags";
+import type { StorageLoggingConfig } from "./middleware/logging";
 import { 
   type ValidationError,
   createAsyncStorageValidator
@@ -97,8 +98,23 @@ export interface CommStorage {
   getCommWithDetails(id: string): Promise<CommWithDetails | undefined>;
   createComm(data: InsertComm): Promise<Comm>;
   updateComm(id: string, data: Partial<InsertComm>): Promise<Comm | undefined>;
+  updateWithTags(
+    id: string,
+    data: Partial<InsertComm>,
+    tagIds?: string[],
+  ): Promise<Comm | undefined>;
   deleteComm(id: string): Promise<boolean>;
 }
+
+export const commLoggingConfig: StorageLoggingConfig<CommStorage> = {
+  module: 'comm',
+  methods: {
+    createComm: { enabled: true },
+    updateComm: { enabled: true, getEntityId: (args) => args[0] },
+    updateWithTags: { enabled: true, getEntityId: (args) => args[0] },
+    deleteComm: { enabled: true, getEntityId: (args) => args[0] },
+  },
+};
 
 export interface CommSmsWithComm {
   commSms: CommSms;
@@ -129,8 +145,9 @@ export interface CommEmailStorage {
   deleteCommEmail(id: string): Promise<boolean>;
 }
 
-export function createCommStorage(): CommStorage {
-  const commTagsStorage = createCommTagsStorage();
+export function createCommStorage(
+  commTagsStorage: CommTagsStorage = createCommTagsStorage(),
+): CommStorage {
   return {
     async getComm(id: string): Promise<Comm | undefined> {
       const client = getClient();
@@ -245,6 +262,26 @@ export function createCommStorage(): CommStorage {
       const client = getClient();
       const [result] = await client.update(comm).set(data).where(eq(comm.id, id)).returning();
       return result || undefined;
+    },
+
+    async updateWithTags(
+      id: string,
+      data: Partial<InsertComm>,
+      tagIds?: string[],
+    ): Promise<Comm | undefined> {
+      return runInTransaction(async () => {
+        const client = getClient();
+        const [updated] = await client
+          .update(comm)
+          .set(data)
+          .where(eq(comm.id, id))
+          .returning();
+        if (!updated) return undefined;
+        if (tagIds !== undefined) {
+          await commTagsStorage.setTags(id, tagIds);
+        }
+        return updated;
+      });
     },
 
     async deleteComm(id: string): Promise<boolean> {

@@ -465,3 +465,11 @@ export function useFacilityTabAccess(facilityId: string | undefined, enabled = t
     enabled,
   });
 }
+
+export function useCommTabAccess(commId: string | undefined, enabled = true) {
+  return useTabAccess({
+    entityType: 'comm',
+    entityId: commId,
+    enabled,
+  });
+}
