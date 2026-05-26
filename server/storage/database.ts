@@ -514,21 +514,23 @@ export class DatabaseStorage implements IStorage {
       }),
       commTagsLoggingConfig,
     );
-    const baseComm = withStorageLogging(
-      createCommStorage(this.commTags),
-      commLoggingConfig,
-    );
+    const rawComm = createCommStorage(this.commTags);
+    const baseComm = withStorageLogging(rawComm, commLoggingConfig);
     const commTags = this.commTags;
     this.comm = withStorageLogging(
       {
         ...baseComm,
         async updateWithTags(id, data, tagIds) {
           return runInTransaction(async () => {
+            // Use the unwrapped rawComm here so the inner updateComm
+            // does NOT emit its own log line — the orchestrator-level
+            // log below is the single high-level summary for this
+            // edit. Calling baseComm.updateComm would double-log.
             let updated;
             if (data && Object.keys(data).length > 0) {
-              updated = await baseComm.updateComm(id, data);
+              updated = await rawComm.updateComm(id, data);
             } else {
-              updated = await baseComm.getComm(id);
+              updated = await rawComm.getComm(id);
             }
             if (!updated) return undefined;
             if (tagIds !== undefined) {
