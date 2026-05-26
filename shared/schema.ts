@@ -1883,6 +1883,7 @@ export const commPostal = pgTable("comm_postal", {
   fromZip: text("from_zip"),
   fromCountry: text("from_country").default('US'),
   description: text("description"),
+  body: text("body"),
   fileUrl: text("file_url"),
   templateId: varchar("template_id"),
   mergeVariables: jsonb("merge_variables"),

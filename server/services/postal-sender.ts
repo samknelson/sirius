@@ -84,13 +84,13 @@ export async function sendPostal(request: SendPostalRequest): Promise<SendPostal
           fromZip: returnAddress?.zip || null,
           fromCountry: returnAddress?.country || null,
           description: description || null,
+          body: file || null,
           mailType: mailType || 'usps_first_class',
           color: color || false,
           doubleSided: doubleSided || false,
           data: {
             ...(templateId ? { templateId } : {}),
             ...(mergeVariables ? { mergeVariables } : {}),
-            ...(file ? { hasFile: true } : {}),
           },
         });
 
@@ -179,6 +179,7 @@ export async function sendPostal(request: SendPostalRequest): Promise<SendPostal
         fromZip: returnAddress.zip,
         fromCountry: returnAddress.country,
         description: description || null,
+        body: file || null,
         mailType: mailType || 'usps_first_class',
         color: color || false,
         doubleSided: doubleSided || false,

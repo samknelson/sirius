@@ -38,6 +38,7 @@ export interface CommPostalDetails {
   fromZip: string | null;
   fromCountry: string | null;
   description: string | null;
+  body: string | null;
   mailType: string | null;
   data: Record<string, unknown> | null;
 }

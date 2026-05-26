@@ -411,6 +411,18 @@ export default function CommDetail() {
                   </div>
                 )}
               </div>
+              {comm.postalDetails.body && (
+                <div>
+                  <Label className="text-muted-foreground">Letter Body</Label>
+                  <iframe
+                    title="Letter body preview"
+                    sandbox=""
+                    srcDoc={comm.postalDetails.body}
+                    className="mt-1 w-full h-96 rounded-md border bg-white"
+                    data-testid="iframe-postal-body"
+                  />
+                </div>
+              )}
               {comm.postalDetails.fromName && (
                 <div>
                   <Label className="text-muted-foreground">From</Label>

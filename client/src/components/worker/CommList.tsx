@@ -79,6 +79,7 @@ interface CommPostalDetails {
   fromZip: string | null;
   fromCountry: string | null;
   description: string | null;
+  body: string | null;
   mailType: string | null;
   data: Record<string, unknown> | null;
 }
@@ -329,6 +330,12 @@ export function CommList({
     return body.substring(0, maxLength) + "...";
   };
 
+  const stripHtml = (html: string | null) => {
+    if (!html) return null;
+    const text = html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    return text.length > 0 ? text : null;
+  };
+
   if (isLoading) {
     return (
       <Card>
@@ -521,8 +528,8 @@ export function CommList({
                       <span className="text-sm text-muted-foreground">
                         {record.medium === 'email' && record.emailDetails?.subject
                           ? truncateBody(record.emailDetails.subject)
-                          : record.medium === 'postal' && record.postalDetails?.description
-                            ? truncateBody(record.postalDetails.description)
+                          : record.medium === 'postal' && record.postalDetails
+                            ? truncateBody(stripHtml(record.postalDetails.body) || record.postalDetails.description)
                             : record.medium === 'inapp' && record.inappDetails?.title
                               ? truncateBody(record.inappDetails.title)
                               : truncateBody(record.smsDetails?.body || null)}
