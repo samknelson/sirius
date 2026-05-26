@@ -42,6 +42,13 @@ export interface CommPostalDetails {
   data: Record<string, unknown> | null;
 }
 
+export interface ContactMainLink {
+  type: "worker" | "employer_contact" | "trust_provider_contact";
+  url: string;
+  label: string;
+  entityName: string;
+}
+
 export interface CommTag {
   id: string;
   name: string;
@@ -61,6 +68,7 @@ export interface CommWithDetails {
   emailDetails?: CommEmailDetails | null;
   postalDetails?: CommPostalDetails | null;
   tags?: CommTag[];
+  contactMainLink?: ContactMainLink | null;
 }
 
 export interface CommWithSms {

@@ -162,15 +162,18 @@ export function CommLayout({ activeTab, children }: CommLayoutProps) {
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex justify-between items-center h-16 gap-3">
               <div className="flex items-center space-x-3 min-w-0">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => navigate(comm.contactId ? `/contacts/${comm.contactId}` : "/")}
-                  data-testid="button-comm-back"
-                  aria-label="Back"
-                >
-                  <ArrowLeft className="w-4 h-4" />
-                </Button>
+                {comm.contactMainLink && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => navigate(comm.contactMainLink!.url)}
+                    data-testid="button-comm-back"
+                    aria-label={`Back to ${comm.contactMainLink.label}`}
+                    title={`Back to ${comm.contactMainLink.label}`}
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                  </Button>
+                )}
                 <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center shrink-0">
                   {mediumIcon(comm.medium)}
                 </div>

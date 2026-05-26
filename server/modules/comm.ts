@@ -12,6 +12,7 @@ import type { PostalTransport, PostalAddress } from "../services/providers/posta
 import { mapVerificationToDeliverabilityStatus, isTerminalDeliverabilityStatus } from "../services/address-validation";
 import { broadcastAlertUpdate } from "../services/websocket";
 import { getEffectiveUser } from "./masquerade";
+import { resolveContactLinks } from "./contact-links";
 import { createCommTagsStorage } from "../storage/comm-tags";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -140,8 +141,9 @@ export function registerCommRoutes(
       if (!record) {
         return res.status(404).json({ message: "Communication record not found" });
       }
-      
-      res.json(record);
+
+      const { mainLink } = await resolveContactLinks(record.contactId);
+      res.json({ ...record, contactMainLink: mainLink });
     } catch (error) {
       console.error("Failed to fetch comm record:", error);
       res.status(500).json({ message: "Failed to fetch communication record" });
@@ -179,7 +181,11 @@ export function registerCommRoutes(
       }
 
       const fresh = await commStorage.getCommWithDetails(id);
-      res.json(fresh);
+      if (!fresh) {
+        return res.status(404).json({ message: "Communication record not found" });
+      }
+      const { mainLink } = await resolveContactLinks(fresh.contactId);
+      res.json({ ...fresh, contactMainLink: mainLink });
     } catch (error) {
       console.error("Failed to update comm record:", error);
       res.status(500).json({ message: "Failed to update communication record" });
