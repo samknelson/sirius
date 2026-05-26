@@ -19,6 +19,7 @@ export const bulkMessages = pgTable("bulk_messages", {
 
 export const bulkMessageDataSchema = z.object({
   tagIds: z.array(z.string()).optional(),
+  offline: z.boolean().optional(),
 }).passthrough();
 
 export type BulkMessageData = z.infer<typeof bulkMessageDataSchema>;

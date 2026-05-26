@@ -2,7 +2,7 @@ import { createNoopValidator } from '../utils/validation';
 import { getClient } from '../transaction-context';
 import { bulkParticipants, type BulkParticipant, type InsertBulkParticipant } from "../../../shared/schema/bulk/schema";
 import { contacts, workers, comm } from "../../../shared/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, ne } from "drizzle-orm";
 import { defineLoggingConfig } from "../middleware/logging";
 
 export const validate = createNoopValidator<InsertBulkParticipant, BulkParticipant>();
@@ -42,6 +42,7 @@ export interface BulkParticipantStorage {
   delete(id: string): Promise<boolean>;
   deleteByMessageAndMedium(messageId: string, medium: string): Promise<number>;
   existsForMessageAndContact(messageId: string, contactId: string): Promise<boolean>;
+  hasNonPendingForMessage(messageId: string): Promise<boolean>;
 }
 
 export function createBulkParticipantStorage(): BulkParticipantStorage {
@@ -162,6 +163,19 @@ export function createBulkParticipantStorage(): BulkParticipantStorage {
         .where(and(
           eq(bulkParticipants.messageId, messageId),
           eq(bulkParticipants.contactId, contactId),
+        ))
+        .limit(1);
+      return rows.length > 0;
+    },
+
+    async hasNonPendingForMessage(messageId: string): Promise<boolean> {
+      const client = getClient();
+      const rows = await client
+        .select({ id: bulkParticipants.id })
+        .from(bulkParticipants)
+        .where(and(
+          eq(bulkParticipants.messageId, messageId),
+          ne(bulkParticipants.status, "pending"),
         ))
         .limit(1);
       return rows.length > 0;

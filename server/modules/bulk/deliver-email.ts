@@ -16,6 +16,7 @@ export async function deliverEmail(
   contactId: string,
   userId?: string,
   tagIds?: string[],
+  offline?: boolean,
 ): Promise<DeliverContactResult> {
   const emailContent = await storage.bulkMessagesEmail.getByBulkId(messageId);
   if (!emailContent) {
@@ -45,6 +46,7 @@ export async function deliverEmail(
     replyTo: emailContent.replyTo || undefined,
     userId,
     tagIds,
+    sendOffline: offline,
   });
   return {
     success: result.success,

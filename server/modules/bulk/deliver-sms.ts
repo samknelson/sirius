@@ -18,6 +18,7 @@ export async function deliverSms(
   contactId: string,
   userId?: string,
   tagIds?: string[],
+  offline?: boolean,
 ): Promise<DeliverContactResult> {
   const smsContent = await storage.bulkMessagesSms.getByBulkId(messageId);
   if (!smsContent) {
@@ -35,6 +36,7 @@ export async function deliverSms(
     message: renderedBody,
     userId,
     tagIds,
+    sendOffline: offline,
   });
   return {
     success: result.success,

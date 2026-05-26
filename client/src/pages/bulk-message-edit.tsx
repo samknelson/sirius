@@ -8,10 +8,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { CommTagPicker } from "@/components/comm/CommTagPicker";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { Loader2 } from "lucide-react";
+import { Loader2, AlertTriangle } from "lucide-react";
 
 const mediumLabels: Record<string, string> = {
   email: "Email",
@@ -34,7 +36,10 @@ function BulkMessageEditContent() {
     status: "draft" as string,
     sendDate: "",
     tagIds: [] as string[],
+    offline: false,
   });
+
+  const deliveryStarted = (bulkMessage as { deliveryStarted?: boolean }).deliveryStarted === true;
 
   useEffect(() => {
     if (bulkMessage) {
@@ -51,6 +56,7 @@ function BulkMessageEditContent() {
           ? new Date(bulkMessage.sendDate).toISOString().slice(0, 16)
           : "",
         tagIds: existingTagIds,
+        offline: existingData.offline === true,
       });
     }
   }, [bulkMessage]);
@@ -62,7 +68,7 @@ function BulkMessageEditContent() {
         name: data.name,
         medium: data.medium,
         status: data.status,
-        data: { ...existingData, tagIds: data.tagIds },
+        data: { ...existingData, tagIds: data.tagIds, offline: data.offline },
       };
       payload.sendDate = data.sendDate ? new Date(data.sendDate).toISOString() : null;
       return apiRequest("PATCH", `/api/bulk-messages/${bulkMessage.id}`, payload);
@@ -101,6 +107,15 @@ function BulkMessageEditContent() {
 
   return (
     <div className="space-y-6">
+      {formData.offline && (
+        <Alert variant="destructive" data-testid="alert-bulk-offline-warning">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription>
+            This message will <strong>NOT</strong> be sent through the system — it will be recorded as
+            delivered manually for each recipient. In-app messages, if selected, still send normally.
+          </AlertDescription>
+        </Alert>
+      )}
       <Card data-testid="card-bulk-edit">
         <CardHeader>
           <CardTitle>Edit Bulk Message</CardTitle>
@@ -164,6 +179,37 @@ function BulkMessageEditContent() {
               value={formData.tagIds}
               onChange={(ids) => setFormData((prev) => ({ ...prev, tagIds: ids }))}
             />
+            <div className="space-y-2 rounded-md border border-border p-4">
+              <div className="flex items-start justify-between gap-4">
+                <div className="space-y-1">
+                  <Label htmlFor="offline-switch" className="text-sm font-medium">
+                    Deliver offline (manual)
+                  </Label>
+                  <p className="text-sm text-muted-foreground">
+                    The system will record each recipient as delivered without actually sending
+                    email, SMS, or postal mail. Use this for messages you'll hand off, mail
+                    yourself, or read out by phone.
+                  </p>
+                  <p className="text-xs text-muted-foreground italic">
+                    In-app messages always send through the system.
+                  </p>
+                  {deliveryStarted && (
+                    <p className="text-xs text-muted-foreground" data-testid="text-offline-locked">
+                      Locked — delivery has started for at least one recipient.
+                    </p>
+                  )}
+                </div>
+                <Switch
+                  id="offline-switch"
+                  checked={formData.offline}
+                  disabled={deliveryStarted}
+                  onCheckedChange={(checked) =>
+                    setFormData((prev) => ({ ...prev, offline: checked === true }))
+                  }
+                  data-testid="switch-bulk-offline"
+                />
+              </div>
+            </div>
             <div className="flex gap-3 pt-4">
               <Button
                 type="submit"

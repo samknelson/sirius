@@ -106,14 +106,16 @@ export async function deliverToContact(
   }
 
   const tagIds = await resolveTagIdsForMedium(storage, bulkMessage.data, medium);
+  const bulkData = (bulkMessage.data ?? {}) as Record<string, unknown>;
+  const offline = bulkData.offline === true;
 
   switch (medium) {
     case "email":
-      return deliverEmail(storage, messageId, contactId, userId, tagIds);
+      return deliverEmail(storage, messageId, contactId, userId, tagIds, offline);
     case "sms":
-      return deliverSms(storage, messageId, contactId, userId, tagIds);
+      return deliverSms(storage, messageId, contactId, userId, tagIds, offline);
     case "postal":
-      return deliverPostal(storage, messageId, contactId, userId, tagIds);
+      return deliverPostal(storage, messageId, contactId, userId, tagIds, offline);
     case "inapp":
       return deliverInapp(storage, messageId, contactId, userId, tagIds);
     default:

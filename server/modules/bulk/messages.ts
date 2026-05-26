@@ -80,7 +80,8 @@ export function registerBulkMessageRoutes(
       for (const m of item.medium) {
         mediumRecords[m] = await getMediumRecord(storage, m, item.id) || null;
       }
-      res.json({ ...item, mediumRecords });
+      const deliveryStarted = await rawParticipantStorage.hasNonPendingForMessage(item.id);
+      res.json({ ...item, mediumRecords, deliveryStarted });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Failed to fetch bulk message";
       res.status(500).json({ message });
@@ -190,6 +191,20 @@ export function registerBulkMessageRoutes(
       const parsed = insertBulkMessageSchema.partial().safeParse(body);
       if (!parsed.success) {
         return res.status(400).json({ message: "Validation failed", errors: parsed.error.issues });
+      }
+      if (parsed.data.data !== undefined) {
+        const existingData = (existing.data ?? {}) as Record<string, unknown>;
+        const newData = (parsed.data.data ?? {}) as Record<string, unknown>;
+        const existingOffline = existingData.offline === true;
+        const newOffline = newData.offline === true;
+        if (existingOffline !== newOffline) {
+          const deliveryStarted = await rawParticipantStorage.hasNonPendingForMessage(existing.id);
+          if (deliveryStarted) {
+            return res.status(409).json({
+              message: "Cannot change the offline delivery flag after delivery has started for this message.",
+            });
+          }
+        }
       }
       if (parsed.data.medium) {
         const oldMedia = new Set(existing.medium);
