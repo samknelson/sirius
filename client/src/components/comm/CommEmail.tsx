@@ -93,13 +93,15 @@ export function CommEmail({ contactId, email, contactName, onSendSuccess }: Comm
   });
 
   const sendEmailMutation = useMutation({
-    mutationFn: async (data: { email: string; name?: string; subject: string; bodyText: string; tagIds?: string[] }) => {
+    mutationFn: async (data: { email: string; name?: string; subject: string; bodyText: string; tagIds?: string[]; sendOffline?: boolean }) => {
       return await apiRequest("POST", `/api/contacts/${contactId}/email`, data);
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       toast({
-        title: "Email Sent",
-        description: "Your email has been sent successfully.",
+        title: variables.sendOffline ? "Recorded as Sent Offline" : "Email Sent",
+        description: variables.sendOffline
+          ? "The email has been recorded as sent offline."
+          : "Your email has been sent successfully.",
       });
       setSubject("");
       setBodyText("");
@@ -107,17 +109,17 @@ export function CommEmail({ contactId, email, contactName, onSendSuccess }: Comm
       queryClient.invalidateQueries({ queryKey: ["/api/contacts", contactId, "comm"] });
       onSendSuccess?.();
     },
-    onError: (error: any) => {
+    onError: (error: any, variables) => {
       const errorMessage = error?.message || "Failed to send email";
       toast({
-        title: "Failed to Send Email",
+        title: variables.sendOffline ? "Failed to Record Offline Email" : "Failed to Send Email",
         description: errorMessage,
         variant: "destructive",
       });
     },
   });
 
-  const handleSend = () => {
+  const handleSend = (sendOffline = false) => {
     if (!hasEmail || !subject.trim() || !bodyText.trim()) return;
     sendEmailMutation.mutate({
       email: email!.trim(),
@@ -125,6 +127,7 @@ export function CommEmail({ contactId, email, contactName, onSendSuccess }: Comm
       subject: subject.trim(),
       bodyText: bodyText.trim(),
       tagIds: tagIds.length > 0 ? tagIds : undefined,
+      sendOffline: sendOffline || undefined,
     });
   };
 
@@ -360,7 +363,16 @@ export function CommEmail({ contactId, email, contactName, onSendSuccess }: Comm
           Clear
         </Button>
         <Button
-          onClick={handleSend}
+          variant="secondary"
+          onClick={() => handleSend(true)}
+          disabled={!canSend || sendEmailMutation.isPending}
+          data-testid="button-send-email-offline"
+        >
+          <Send className="h-4 w-4 mr-2" />
+          Send offline
+        </Button>
+        <Button
+          onClick={() => handleSend(false)}
           disabled={!canSend || sendEmailMutation.isPending}
           data-testid="button-send-email"
         >

@@ -21,6 +21,7 @@ export interface SendPostalRequest {
   doubleSided?: boolean;
   userId?: string;
   tagIds?: string[];
+  sendOffline?: boolean;
 }
 
 export interface SendPostalResult {
@@ -50,7 +51,69 @@ function buildCanonicalAddress(address: PostalAddress): string {
 }
 
 export async function sendPostal(request: SendPostalRequest): Promise<SendPostalResult> {
-  const { contactId, toAddress, fromAddress, description, file, templateId, mergeVariables, mailType, color, doubleSided, userId, tagIds } = request;
+  const { contactId, toAddress, fromAddress, description, file, templateId, mergeVariables, mailType, color, doubleSided, userId, tagIds, sendOffline } = request;
+
+  if (sendOffline) {
+    try {
+      const returnAddress = fromAddress;
+      const { comm, commPostal } = await runInTransaction(async () => {
+        const comm = await commStorage.createComm({
+          medium: 'postal',
+          contactId,
+          status: 'offline',
+          sent: new Date(),
+          data: { initiatedBy: userId || 'system', offline: true },
+        });
+
+        const commPostal = await commPostalStorage.createCommPostal({
+          commId: comm.id,
+          toName: toAddress.name || null,
+          toCompany: toAddress.company || null,
+          toAddressLine1: toAddress.addressLine1,
+          toAddressLine2: toAddress.addressLine2 || null,
+          toCity: toAddress.city,
+          toState: toAddress.state,
+          toZip: toAddress.zip,
+          toCountry: toAddress.country,
+          fromName: returnAddress?.name || null,
+          fromCompany: returnAddress?.company || null,
+          fromAddressLine1: returnAddress?.addressLine1 || null,
+          fromAddressLine2: returnAddress?.addressLine2 || null,
+          fromCity: returnAddress?.city || null,
+          fromState: returnAddress?.state || null,
+          fromZip: returnAddress?.zip || null,
+          fromCountry: returnAddress?.country || null,
+          description: description || null,
+          mailType: mailType || 'usps_first_class',
+          color: color || false,
+          doubleSided: doubleSided || false,
+          data: {
+            ...(templateId ? { templateId } : {}),
+            ...(mergeVariables ? { mergeVariables } : {}),
+            ...(file ? { hasFile: true } : {}),
+          },
+        });
+
+        if (tagIds && tagIds.length > 0) {
+          await storage.commTags.setTags(comm.id, tagIds);
+        }
+
+        return { comm, commPostal };
+      });
+
+      return { success: true, comm, commPostal };
+    } catch (error: any) {
+      logger.error('Postal offline record failed', {
+        service: 'postal-sender',
+        error: error?.message || String(error),
+      });
+      return {
+        success: false,
+        error: error?.message || 'Unknown error occurred while recording offline postal mail',
+        errorCode: 'UNKNOWN_ERROR',
+      };
+    }
+  }
 
   try {
     const postalTransport = await serviceRegistry.resolve<PostalTransport>('postal');

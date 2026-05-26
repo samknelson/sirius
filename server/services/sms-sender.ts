@@ -13,6 +13,7 @@ export interface SendSmsRequest {
   message: string;
   userId?: string;
   tagIds?: string[];
+  sendOffline?: boolean;
 }
 
 export interface SendSmsResult {
@@ -29,7 +30,43 @@ const commSmsStorage = createCommSmsStorage();
 const smsOptinStorage = createCommSmsOptinStorage();
 
 export async function sendSms(request: SendSmsRequest): Promise<SendSmsResult> {
-  const { contactId, toPhoneNumber, message, userId, tagIds } = request;
+  const { contactId, toPhoneNumber, message, userId, tagIds, sendOffline } = request;
+
+  if (sendOffline) {
+    try {
+      const { comm, commSms } = await runInTransaction(async () => {
+        const comm = await commStorage.createComm({
+          medium: 'sms',
+          contactId,
+          status: 'offline',
+          sent: new Date(),
+          data: { initiatedBy: userId || 'system', offline: true },
+        });
+
+        const commSms = await commSmsStorage.createCommSms({
+          commId: comm.id,
+          to: toPhoneNumber,
+          body: message,
+          data: {},
+        });
+
+        if (tagIds && tagIds.length > 0) {
+          await storage.commTags.setTags(comm.id, tagIds);
+        }
+
+        return { comm, commSms };
+      });
+
+      return { success: true, comm, commSms };
+    } catch (error: any) {
+      console.error('SMS offline record error:', error);
+      return {
+        success: false,
+        error: error?.message || 'Unknown error occurred while recording offline SMS',
+        errorCode: 'UNKNOWN_ERROR',
+      };
+    }
+  }
 
   try {
     const smsTransport = await serviceRegistry.resolve<SmsTransport>('sms');

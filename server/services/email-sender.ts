@@ -20,6 +20,7 @@ export interface SendEmailRequest {
   replyTo?: string;
   userId?: string;
   tagIds?: string[];
+  sendOffline?: boolean;
 }
 
 export interface SendEmailResult {
@@ -36,7 +37,52 @@ const commEmailStorage = createCommEmailStorage();
 const emailOptinStorage = createCommEmailOptinStorage();
 
 export async function sendEmail(request: SendEmailRequest): Promise<SendEmailResult> {
-  const { contactId, toEmail, toName, subject, bodyText, bodyHtml, fromEmail, fromName, replyTo, userId, tagIds } = request;
+  const { contactId, toEmail, toName, subject, bodyText, bodyHtml, fromEmail, fromName, replyTo, userId, tagIds, sendOffline } = request;
+
+  if (sendOffline) {
+    try {
+      const { comm, commEmail } = await runInTransaction(async () => {
+        const comm = await commStorage.createComm({
+          medium: 'email',
+          contactId,
+          status: 'offline',
+          sent: new Date(),
+          data: { initiatedBy: userId || 'system', offline: true },
+        });
+
+        const commEmail = await commEmailStorage.createCommEmail({
+          commId: comm.id,
+          to: toEmail,
+          toName: toName || null,
+          from: fromEmail || null,
+          fromName: fromName || null,
+          replyTo: replyTo || null,
+          subject,
+          bodyText: bodyText || null,
+          bodyHtml: bodyHtml || null,
+          data: {},
+        });
+
+        if (tagIds && tagIds.length > 0) {
+          await storage.commTags.setTags(comm.id, tagIds);
+        }
+
+        return { comm, commEmail };
+      });
+
+      return { success: true, comm, commEmail };
+    } catch (error: any) {
+      logger.error('Email offline record failed', {
+        service: 'email-sender',
+        error: error?.message || String(error),
+      });
+      return {
+        success: false,
+        error: error?.message || 'Unknown error occurred while recording offline email',
+        errorCode: 'UNKNOWN_ERROR',
+      };
+    }
+  }
 
   try {
     const emailTransport = await serviceRegistry.resolve<EmailTransport>('email');

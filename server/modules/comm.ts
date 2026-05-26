@@ -52,6 +52,7 @@ const sendSmsSchema = z.object({
   phoneNumber: z.string().min(1, "Phone number is required"),
   message: z.string().min(1, "Message is required").max(1600, "Message too long (max 1600 characters)"),
   tagIds: tagIdsSchema,
+  sendOffline: z.boolean().optional(),
 });
 
 const sendEmailSchema = z.object({
@@ -62,6 +63,7 @@ const sendEmailSchema = z.object({
   bodyHtml: z.string().optional(),
   replyTo: z.string().email().optional(),
   tagIds: tagIdsSchema,
+  sendOffline: z.boolean().optional(),
 }).refine(data => data.bodyText || data.bodyHtml, {
   message: "Either bodyText or bodyHtml is required",
 });
@@ -88,6 +90,7 @@ const sendPostalSchema = z.object({
   color: z.boolean().optional(),
   doubleSided: z.boolean().optional(),
   tagIds: tagIdsSchema,
+  sendOffline: z.boolean().optional(),
 }).refine(data => data.file || data.templateId, {
   message: "Either file or templateId is required",
 });
@@ -204,7 +207,7 @@ export function registerCommRoutes(
         });
       }
 
-      const { phoneNumber, message, tagIds } = parsed.data;
+      const { phoneNumber, message, tagIds, sendOffline } = parsed.data;
       const tagErr = await validateTagIds(tagIds);
       if (tagErr) {
         return res.status(400).json({ error: tagErr });
@@ -217,6 +220,7 @@ export function registerCommRoutes(
         message,
         userId: user?.id,
         tagIds,
+        sendOffline,
       });
 
       if (!result.success) {
@@ -259,7 +263,7 @@ export function registerCommRoutes(
         });
       }
 
-      const { email, name, subject, bodyText, bodyHtml, replyTo, tagIds } = parsed.data;
+      const { email, name, subject, bodyText, bodyHtml, replyTo, tagIds, sendOffline } = parsed.data;
       const tagErr = await validateTagIds(tagIds);
       if (tagErr) {
         return res.status(400).json({ error: tagErr });
@@ -276,6 +280,7 @@ export function registerCommRoutes(
         replyTo,
         userId: user?.id,
         tagIds,
+        sendOffline,
       });
 
       if (!result.success) {
@@ -316,7 +321,7 @@ export function registerCommRoutes(
         });
       }
 
-      const { toAddress, fromAddress, description, file, templateId, mergeVariables, mailType, color, doubleSided, tagIds } = parsed.data;
+      const { toAddress, fromAddress, description, file, templateId, mergeVariables, mailType, color, doubleSided, tagIds, sendOffline } = parsed.data;
       const tagErr = await validateTagIds(tagIds);
       if (tagErr) {
         return res.status(400).json({ error: tagErr });
@@ -336,6 +341,7 @@ export function registerCommRoutes(
         doubleSided,
         userId: user?.id,
         tagIds,
+        sendOffline,
       });
 
       if (!result.success) {
