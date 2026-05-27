@@ -189,10 +189,25 @@ export function createProvider(config: ClerkProviderConfig): AuthProvider {
           logger.debug("Clearing expired session before Clerk re-auth", {
             providerType: existingUser.providerType,
           });
-          req.logout(() => {});
-          if (req.session) {
-            (req as any).user = undefined;
-          }
+          // Await logout so the session regeneration / Set-Cookie completes
+          // before any downstream middleware writes the response. Otherwise the
+          // async Set-Cookie races with res.sendFile() and triggers
+          // ERR_HTTP_HEADERS_SENT, surfacing as a white "Internal Server Error"
+          // page on session expiry.
+          await new Promise<void>((resolve) => {
+            try {
+              req.logout((err) => {
+                if (err) {
+                  logger.warn("Logout during expired-session refresh failed", { error: err });
+                }
+                resolve();
+              });
+            } catch (err) {
+              logger.warn("Logout during expired-session refresh threw", { error: err });
+              resolve();
+            }
+          });
+          (req as any).user = undefined;
         }
 
         try {

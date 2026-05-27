@@ -381,7 +381,21 @@ server.listen({
       error: err.stack || err.toString(),
       url: _req.url,
       method: _req.method,
+      headersSent: res.headersSent,
     });
+
+    // If headers were already sent (e.g. async Set-Cookie raced with the
+    // response writer), writing a JSON body throws and falls through to
+    // Express's default handler — which emits a plain-text "Internal Server
+    // Error" page. End the connection cleanly instead.
+    if (res.headersSent) {
+      try {
+        res.end();
+      } catch {
+        // ignore
+      }
+      return;
+    }
 
     res.status(status).json({ message });
   });
