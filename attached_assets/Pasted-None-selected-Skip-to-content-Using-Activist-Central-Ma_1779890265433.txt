@@ -1,0 +1,263 @@
+None selected 
+
+Skip to content
+Using Activist Central Mail with screen readers
+in:sent replit fix 
+
+Replit Directions for fixing stale sessions
+
+John Young <john.young@activistcentral.net>
+Attachments
+Fri, May 8, 1:00 PM
+to Mitchell, Sam, Joey
+
+Hi Mitch,
+
+Try feeding this to HTA and see if it likes it.
+
+Thanks!
+
+John Young
+617.817.7063
+john.young@activistcentral.net
+ One attachment
+  •  Scanned by Gmail
+# Fix: "Internal Server Error" page on stale / expired sessions
+
+A portable handoff for another Replit project that uses a similar stack
+(Express + express-session + Passport + Clerk auth, with a generic Express
+error handler that returns JSON).
+
+---
+
+## Symptom
+
+When a user returns to the app after their session has expired (or after
+Clerk has rotated the session), the browser shows a plain white page that
+just says **"Internal Server Error"** — not the app's normal JSON error,
+not the login screen.
+
+Server logs around the same request show:
+
+- An Express error-handler log entry for the failing request.
+- Often (but not always) `ERR_HTTP_HEADERS_SENT` from inside the JSON
+  error responder, or a stack trace that includes `res.sendFile` /
+  `res.json` after `Set-Cookie` was already written.
+
+Reliable repro:
+
+1. Sign in.
+2. Wait for the Clerk/session token to expire (or invalidate it manually).
+3. Reload any page that hits an authenticated route.
+
+---
+
+## Root cause
+
+Two interacting problems:
+
+1. **Race condition in the Clerk re-auth path.**
+   When the server detects an expired local session and decides to log the
+   user out before re-authenticating against Clerk, it called
+   `req.logout(() => {})` *without awaiting* the callback. `req.logout`
+   regenerates the session and writes a new `Set-Cookie` header
+   asynchronously. Meanwhile, the request continued through the middleware
+   chain and the next handler (often `res.sendFile()` for the SPA shell)
+   started writing the response. The async `Set-Cookie` then landed *after*
+   headers were already flushed, throwing `ERR_HTTP_HEADERS_SENT`.
+
+2. **Express's JSON error handler crashes when headers are already sent.**
+   The global error middleware unconditionally did `res.status(...).json(...)`.
+   If `res.headersSent` was already true, that call throws, Express falls
+   through to its built-in default handler, and the user gets the white
+   "Internal Server Error" text page instead of a clean response.
+
+Fixing only one of these masks the other; both are needed.
+
+---
+
+## The fix (3 small edits)
+
+### 1) Await `req.logout` in the Clerk provider's expired-session branch
+
+**File (this project):** `server/auth/providers/clerk.ts`
+**Equivalent in your project:** wherever your Clerk auth provider detects
+that the locally stored user is stale and decides to log them out before
+re-issuing a session. Look for a `req.logout(() => {})` call near a
+"clearing expired session" / "re-auth" comment.
+
+**Before:**
+
+```ts
+req.logout(() => {});
+if (req.session) {
+  (req as any).user = undefined;
+}
+```
+
+**After:**
+
+```ts
+// Await logout so the session regeneration / Set-Cookie completes
+// before any downstream middleware writes the response. Otherwise the
+// async Set-Cookie races with res.sendFile() and triggers
+// ERR_HTTP_HEADERS_SENT, surfacing as a white "Internal Server Error"
+// page on session expiry.
+await new Promise<void>((resolve) => {
+  try {
+    req.logout((err) => {
+      if (err) {
+        logger.warn("Logout during expired-session refresh failed", { error: err });
+      }
+      resolve();
+    });
+  } catch (err) {
+    logger.warn("Logout during expired-session refresh threw", { error: err });
+    resolve();
+  }
+});
+(req as any).user = undefined;
+```
+
+Notes for adapting:
+
+- The enclosing function must be `async` (it already was here because the
+  surrounding handler awaits Clerk SDK calls). If yours isn't, make it so
+  or wrap with `.then()`.
+- If you don't have a `logger`, swap in `console.warn` — the important
+  part is the `await new Promise` wrapper around `req.logout`.
+- The `if (req.session)` guard around clearing `req.user` was removed
+  because by the time `logout` resolves, the session has been regenerated;
+  always clearing `req.user` is correct.
+
+### 2) Make the global Express error handler safe when headers are sent
+
+This change applies to **every** generic Express error handler in your
+project. In this codebase that meant two near-identical handlers:
+
+**File A (this project):** `server/app-init.ts`
+**File B (this project):** `server/index.ts`
+
+**Equivalent in your project:** any `app.use((err, req, res, next) => { ... })`
+that ends with `res.status(status).json({ message })`.
+
+**Before:**
+
+```ts
+logger.error("Express error handler", {
+  error: err.stack || err.toString(),
+  url: _req.url,
+  method: _req.method,
+});
+
+res.status(status).json({ message });
+```
+
+**After:**
+
+```ts
+logger.error("Express error handler", {
+  error: err.stack || err.toString(),
+  url: _req.url,
+  method: _req.method,
+  headersSent: res.headersSent,
+});
+
+// If headers were already sent (e.g. async Set-Cookie raced with the
+// response writer), writing a JSON body throws and falls through to
+// Express's default handler — which emits a plain-text "Internal Server
+// Error" page. End the connection cleanly instead.
+if (res.headersSent) {
+  try {
+    res.end();
+  } catch {
+    // ignore
+  }
+  return;
+}
+
+res.status(status).json({ message });
+```
+
+That's the entire fix — three edits, ~30 lines net.
+
+---
+
+## Verification
+
+1. Sign in to the app.
+2. Either wait for the session to expire or, faster, invalidate the
+   Clerk session in another tab (or clear the relevant session row in
+   the `sessions` table).
+3. Reload an authenticated page.
+4. Expected: you are redirected to the sign-in flow (or get a clean JSON
+   401), **not** a white "Internal Server Error" page.
+5. Check the server logs: the Express error handler should now log
+   `headersSent: true` in the rare cases where the race still occurs,
+   and the connection should end cleanly with no stack trace from
+   `ERR_HTTP_HEADERS_SENT`.
+
+---
+
+## Reference: original commit in this project
+
+```
+commit 6adc8e08 — Prevent internal server errors on session expiration
+
+server/app-init.ts                |  +14
+server/auth/providers/clerk.ts    |  +19 / -4
+server/index.ts                   |  +14
+```
+
+Full unified diff is reproduced below for copy/paste.
+
+```diff
+diff --git a/server/auth/providers/clerk.ts b/server/auth/providers/clerk.ts
+@@
+-          req.logout(() => {});
+-          if (req.session) {
+-            (req as any).user = undefined;
+-          }
++          // Await logout so the session regeneration / Set-Cookie completes
++          // before any downstream middleware writes the response. Otherwise the
++          // async Set-Cookie races with res.sendFile() and triggers
++          // ERR_HTTP_HEADERS_SENT, surfacing as a white "Internal Server Error"
++          // page on session expiry.
++          await new Promise<void>((resolve) => {
++            try {
++              req.logout((err) => {
++                if (err) {
++                  logger.warn("Logout during expired-session refresh failed", { error: err });
++                }
++                resolve();
++              });
++            } catch (err) {
++              logger.warn("Logout during expired-session refresh threw", { error: err });
++              resolve();
++            }
++          });
++          (req as any).user = undefined;
+
+diff --git a/server/app-init.ts b/server/app-init.ts
+diff --git a/server/index.ts b/server/index.ts
+@@ (in the global Express error handler)
+   logger.error("Express error handler", {
+     error: err.stack || err.toString(),
+     url: _req.url,
+     method: _req.method,
++    headersSent: res.headersSent,
+   });
+
++  if (res.headersSent) {
++    try {
++      res.end();
++    } catch {
++      // ignore
++    }
++    return;
++  }
++
+   res.status(status).json({ message });
+```
+stale-session-internal-server-error-fix.md
+Displaying stale-session-internal-server-error-fix.md.
