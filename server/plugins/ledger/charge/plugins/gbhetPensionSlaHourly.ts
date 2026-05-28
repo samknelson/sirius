@@ -10,7 +10,7 @@ import { registerChargePlugin } from "../registry";
 import { z } from "zod";
 import { logger } from "../../../../logger";
 import { storage } from "../../../../storage/database";
-import { computeSlaForWorkerYear } from "../../../../services/gbhet-pension-sla";
+import { computeSlaForWorkerYear } from "../../../../services/sitespecific/gbhet/pension-sla";
 import type { ChargePluginConfig } from "@shared/schema";
 
 const PLUGIN_ID = "gbhet-pension-sla-hourly";

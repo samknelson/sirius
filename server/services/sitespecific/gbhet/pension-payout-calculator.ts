@@ -1,5 +1,5 @@
-import { storage } from "../storage";
-import { logger } from "../logger";
+import { storage } from "../../../storage";
+import { logger } from "../../../logger";
 import type { GbhetPensionAnnualSummary } from "@shared/schema/sitespecific/gbhet-pension/schema";
 
 const VAR_CONTRIB_TARGET_ACCOUNT_VARIABLE = "gbhet_pension_var_contrib_target_account_id";
