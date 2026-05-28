@@ -15,6 +15,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { formatAmount } from "@shared/currency";
+import { Download } from "lucide-react";
 
 type Basis = "cash" | "accrual";
 type Months = 6 | 12;
@@ -75,6 +76,27 @@ function absAmount(amount: string): string {
   return Math.abs(n).toFixed(2);
 }
 
+function csvEscape(value: string | number | null | undefined): string {
+  const s = value == null ? "" : String(value);
+  if (/[",\n\r]/.test(s)) {
+    return `"${s.replace(/"/g, '""')}"`;
+  }
+  return s;
+}
+
+function downloadCsv(filename: string, rows: (string | number | null | undefined)[][]) {
+  const csv = rows.map((r) => r.map(csvEscape).join(",")).join("\r\n");
+  const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 function AccountSummaryContent() {
   usePageTitle("Account Summary");
   const { id } = useParams<{ id: string }>();
@@ -130,6 +152,58 @@ function AccountSummaryContent() {
   const currency = account.currencyCode;
   const showCharges = sideFilter !== "payments";
   const showPayments = sideFilter !== "charges";
+
+  const exportSummary = () => {
+    if (!summaryQuery.data) return;
+    const { monthKeys, rows } = summaryQuery.data;
+    const header = ["Row", ...monthKeys.map(formatMonthLabel), "Total"];
+    const out: (string | number)[][] = [header];
+    if (showCharges) {
+      const total = sumStrings(rows.map((r) => r.charges));
+      out.push([
+        "Charges",
+        ...rows.map((r) => absAmount(r.charges)),
+        absAmount(total),
+      ]);
+    }
+    if (showPayments) {
+      const total = sumStrings(rows.map((r) => r.payments));
+      out.push([
+        "Payments",
+        ...rows.map((r) => absAmount(r.payments)),
+        absAmount(total),
+      ]);
+    }
+    const fname = `account-summary-${account.name || id}-${basis}-${months}mo.csv`;
+    downloadCsv(fname.replace(/[^a-z0-9.\-_]+/gi, "_"), out);
+  };
+
+  const exportDrilldown = () => {
+    if (!drillQuery.data || !drill) return;
+    const header = [
+      "Date",
+      "Statement YMD",
+      "Plugin",
+      "Reference Type",
+      "Reference ID",
+      "Memo",
+      "Amount",
+    ];
+    const out: (string | number | null)[][] = [header];
+    for (const e of drillQuery.data.entries) {
+      out.push([
+        e.date ? new Date(e.date).toISOString().slice(0, 10) : "",
+        e.statementYmd,
+        e.chargePlugin,
+        e.referenceType ?? "",
+        e.referenceId ?? "",
+        e.memo ?? "",
+        absAmount(e.amount),
+      ]);
+    }
+    const fname = `account-${drill.side}-${drill.ym}-${basis}.csv`;
+    downloadCsv(fname.replace(/[^a-z0-9.\-_]+/gi, "_"), out);
+  };
 
   const renderCell = (value: string, side: DrillSide, ym: string) => {
     const n = Number(value || 0);
@@ -232,8 +306,18 @@ function AccountSummaryContent() {
 
       {/* Summary Grid */}
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Monthly Summary</CardTitle>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={exportSummary}
+            disabled={!summaryQuery.data}
+            data-testid="button-export-summary"
+          >
+            <Download className="h-4 w-4 mr-2" />
+            Export CSV
+          </Button>
         </CardHeader>
         <CardContent>
           {summaryQuery.isLoading && (
@@ -352,6 +436,18 @@ function AccountSummaryContent() {
             <DialogDescription>
               {basis === "cash" ? "Bucketed by entry date." : "Bucketed by statement month."}
             </DialogDescription>
+            <div className="pt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={exportDrilldown}
+                disabled={!drillQuery.data || drillQuery.data.entries.length === 0}
+                data-testid="button-export-drilldown"
+              >
+                <Download className="h-4 w-4 mr-2" />
+                Export CSV
+              </Button>
+            </div>
           </DialogHeader>
 
           {drillQuery.isLoading && (
