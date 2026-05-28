@@ -1,6 +1,6 @@
 import { parsePhoneNumber, CountryCode, PhoneNumber } from 'libphonenumber-js';
-import { serviceRegistry } from './service-registry';
-import type { SmsTransport } from './comm/providers/sms';
+import { serviceRegistry } from '../../service-registry';
+import type { SmsTransport } from '../providers/sms';
 
 export interface PhoneValidationResult {
   isValid: boolean;

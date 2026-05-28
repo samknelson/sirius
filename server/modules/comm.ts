@@ -9,7 +9,7 @@ import { sendInapp, markInappAsRead, markAllInappAsRead } from "../services/comm
 import { handleStatusCallback } from "../services/comm/callback-handlers/handler";
 import { serviceRegistry } from "../services/service-registry";
 import type { PostalTransport, PostalAddress } from "../services/comm/providers/postal";
-import { mapVerificationToDeliverabilityStatus, isTerminalDeliverabilityStatus } from "../services/address-validation";
+import { mapVerificationToDeliverabilityStatus, isTerminalDeliverabilityStatus } from "../services/comm/validators/address";
 import { broadcastAlertUpdate } from "../services/websocket";
 import { getEffectiveUser } from "./masquerade";
 import { resolveContactLinks } from "./contact-links";

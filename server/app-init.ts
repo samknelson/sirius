@@ -3,7 +3,7 @@ import type { Server } from "http";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./vite";
 import { initializePermissions } from "@shared/permissions";
-import { addressValidationService } from "./services/address-validation";
+import { addressValidationService } from "./services/comm/validators/address";
 import { logger } from "./logger";
 import { setupAuth } from "./auth";
 import { initAccessControl, registerEntityLoader } from "./services/access-policy-evaluator";

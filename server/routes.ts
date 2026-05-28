@@ -115,8 +115,8 @@ import { registerTerminologyRoutes } from "./modules/terminology";
 import { registerCompaniesRoutes } from "./modules/employers/companies";
 import { registerPoliciesRoutes } from "./modules/policies";
 import { requireAccess } from "./services/access-policy-evaluator";
-import { addressValidationService } from "./services/address-validation";
-import { phoneValidationService } from "./services/phone-validation";
+import { addressValidationService } from "./services/comm/validators/address";
+import { phoneValidationService } from "./services/comm/validators/phone";
 import { serviceRegistry } from "./services/service-registry";
 import { isAuthenticated } from "./auth";
 

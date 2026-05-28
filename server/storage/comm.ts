@@ -1,7 +1,7 @@
 import { getClient, runInTransaction } from './transaction-context';
 import { comm, commSms, commSmsOptin, commEmail, commEmailOptin, commPostal, commPostalOptin, commInapp, contacts, type Comm, type InsertComm, type CommSms, type InsertCommSms, type CommSmsOptin, type InsertCommSmsOptin, type CommEmail, type InsertCommEmail, type CommEmailOptin, type InsertCommEmailOptin, type CommPostal, type InsertCommPostal, type CommPostalOptin, type InsertCommPostalOptin, type CommInapp, type InsertCommInapp, type OptionsCommTag } from "@shared/schema";
 import { eq, desc, and, SQL, inArray } from "drizzle-orm";
-import { phoneValidationService } from "../services/phone-validation";
+import { phoneValidationService } from "../services/comm/validators/phone";
 import { storageLogger } from "../logger";
 import { createCommTagsStorage, type CommTagsStorage } from "./comm-tags";
 import type { StorageLoggingConfig } from "./middleware/logging";
