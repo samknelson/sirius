@@ -33,7 +33,7 @@ import "./plugins/trust/eligibility";
 
 // Import service providers module to trigger registration
 // Note: SMS, Email, and other providers are registered here
-import "./services/providers";
+import "./services/comm/providers";
 
 // Import and register flood events
 import { registerFloodEvents, loadFloodConfigFromVariables } from "./flood";

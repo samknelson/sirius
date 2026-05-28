@@ -10,7 +10,7 @@ import type {
   PostalTemplate,
 } from './index';
 import { buildCanonicalAddress } from './index';
-import { storage } from '../../../storage';
+import { storage } from '../../../../storage';
 import { getConfigKey } from '../base';
 
 interface LobVerificationResponse {

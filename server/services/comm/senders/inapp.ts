@@ -1,9 +1,9 @@
-import { createCommStorage, createCommInappStorage } from '../storage/comm';
-import { storage } from '../storage';
-import { runInTransaction } from '../storage/transaction-context';
-import { notifyAlertCountChange } from '../modules/comm';
+import { createCommStorage, createCommInappStorage } from '../../../storage/comm';
+import { storage } from '../../../storage';
+import { runInTransaction } from '../../../storage/transaction-context';
+import { notifyAlertCountChange } from '../../../modules/comm';
 import type { Comm, CommInapp } from '@shared/schema';
-import { storageLogger } from '../logger';
+import { storageLogger } from '../../../logger';
 
 export interface SendInappRequest {
   contactId: string;

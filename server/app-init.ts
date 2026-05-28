@@ -20,7 +20,7 @@ import { getSession } from "./auth";
 
 import "./plugins/ledger/charge";
 import "./plugins/trust/eligibility";
-import "./services/providers";
+import "./services/comm/providers";
 
 import { registerFloodEvents, loadFloodConfigFromVariables } from "./flood";
 import { initLogNotifier } from "./modules/log-notifier";

@@ -1,6 +1,6 @@
 import { eventBus, EventType, type LogPayload } from "../services/event-bus";
 import { logger } from "../logger";
-import { sendInapp } from "../services/inapp-sender";
+import { sendInapp } from "../services/comm/senders/inapp";
 import { storage } from "../storage";
 
 const IGNORED_SOURCES = new Set([

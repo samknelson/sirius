@@ -1,10 +1,10 @@
-import { serviceRegistry } from './service-registry';
-import { getSystemMode } from './system-mode';
-import { createCommStorage, createCommSmsStorage, createCommSmsOptinStorage } from '../storage/comm';
-import { storage } from '../storage';
-import { runInTransaction } from '../storage/transaction-context';
-import { buildStatusCallbackUrl } from './comm-status/url-builder';
-import type { SmsTransport } from './providers/sms';
+import { serviceRegistry } from '../../service-registry';
+import { getSystemMode } from '../../system-mode';
+import { createCommStorage, createCommSmsStorage, createCommSmsOptinStorage } from '../../../storage/comm';
+import { storage } from '../../../storage';
+import { runInTransaction } from '../../../storage/transaction-context';
+import { buildStatusCallbackUrl } from '../callback-handlers/url-builder';
+import type { SmsTransport } from '../providers/sms';
 import type { Comm, CommSms } from '@shared/schema';
 
 export interface SendSmsRequest {

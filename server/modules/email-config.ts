@@ -2,7 +2,7 @@ import type { Express, Request, Response } from "express";
 import { requireAccess } from "../services/access-policy-evaluator";
 import { z } from "zod";
 import { serviceRegistry } from "../services/service-registry";
-import type { EmailTransport } from "../services/providers/email";
+import type { EmailTransport } from "../services/comm/providers/email";
 
 export function registerEmailConfigRoutes(app: Express) {
   app.get(

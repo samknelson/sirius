@@ -1,4 +1,4 @@
-import { serviceRegistry } from '../../service-registry';
+import { serviceRegistry } from '../../../service-registry';
 import { LobPostalProvider } from './lob';
 import { LocalPostalProvider } from './local';
 

@@ -1,8 +1,8 @@
 import { eventBus, EventType, type WorkerBanSavedPayload } from "./event-bus";
 import { getWorkerBanNotificationConfig } from "../modules/worker-ban-config";
-import { sendSms } from "./sms-sender";
-import { sendEmail } from "./email-sender";
-import { sendInapp } from "./inapp-sender";
+import { sendSms } from "./comm/senders/sms";
+import { sendEmail } from "./comm/senders/email";
+import { sendInapp } from "./comm/senders/inapp";
 import { storage } from "../storage";
 import { logger } from "../logger";
 import { isComponentEnabledSync, isCacheInitialized } from "./component-cache";

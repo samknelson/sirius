@@ -1,4 +1,4 @@
-import { serviceRegistry } from '../../service-registry';
+import { serviceRegistry } from '../../../service-registry';
 import { TwilioSmsProvider } from './twilio';
 import { LocalSmsProvider } from './local';
 

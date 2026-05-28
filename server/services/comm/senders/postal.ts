@@ -1,12 +1,12 @@
-import { serviceRegistry } from './service-registry';
-import { getSystemMode } from './system-mode';
-import { createCommStorage, createCommPostalStorage, createCommPostalOptinStorage } from '../storage/comm';
-import { storage } from '../storage';
-import { runInTransaction } from '../storage/transaction-context';
-import type { PostalTransport, PostalAddress, SendLetterParams } from './providers/postal';
+import { serviceRegistry } from '../../service-registry';
+import { getSystemMode } from '../../system-mode';
+import { createCommStorage, createCommPostalStorage, createCommPostalOptinStorage } from '../../../storage/comm';
+import { storage } from '../../../storage';
+import { runInTransaction } from '../../../storage/transaction-context';
+import type { PostalTransport, PostalAddress, SendLetterParams } from '../providers/postal';
 import type { Comm, CommPostal } from '@shared/schema';
-import { logger } from '../logger';
-import { buildStatusCallbackUrl } from './comm-status/url-builder';
+import { logger } from '../../../logger';
+import { buildStatusCallbackUrl } from '../callback-handlers/url-builder';
 
 export interface SendPostalRequest {
   contactId: string;

@@ -1,12 +1,12 @@
-import { serviceRegistry } from './service-registry';
-import { getSystemMode } from './system-mode';
-import { createCommStorage, createCommEmailStorage, createCommEmailOptinStorage } from '../storage/comm';
-import { storage } from '../storage';
-import { runInTransaction } from '../storage/transaction-context';
-import type { EmailTransport, EmailRecipient } from './providers/email';
+import { serviceRegistry } from '../../service-registry';
+import { getSystemMode } from '../../system-mode';
+import { createCommStorage, createCommEmailStorage, createCommEmailOptinStorage } from '../../../storage/comm';
+import { storage } from '../../../storage';
+import { runInTransaction } from '../../../storage/transaction-context';
+import type { EmailTransport, EmailRecipient } from '../providers/email';
 import type { Comm, CommEmail } from '@shared/schema';
-import { logger } from '../logger';
-import { buildStatusCallbackUrl } from './comm-status/url-builder';
+import { logger } from '../../../logger';
+import { buildStatusCallbackUrl } from '../callback-handlers/url-builder';
 
 export interface SendEmailRequest {
   contactId: string;

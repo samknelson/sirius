@@ -5,8 +5,8 @@ import type {
   CategoryConfig, 
   ProviderConfig,
   ProviderFactory 
-} from './providers/base';
-import { getConfigKey, categoryConfigSchema } from './providers/base';
+} from './comm/providers/base';
+import { getConfigKey, categoryConfigSchema } from './comm/providers/base';
 
 type ProviderMap<T extends ServiceProvider> = Map<string, ProviderFactory<T>>;
 

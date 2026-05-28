@@ -1,6 +1,6 @@
 import type { ConnectionTestResult } from '../base';
 import type { SmsTransport, PhoneValidationResult, SmsSendResult, SmsProviderSettings } from './index';
-import { getTwilioClient, getTwilioFromPhoneNumber, clearTwilioCredentialsCache } from '../../../lib/twilio-client';
+import { getTwilioClient, getTwilioFromPhoneNumber, clearTwilioCredentialsCache } from '../../../../lib/twilio-client';
 import { parsePhoneNumber, isValidPhoneNumber } from 'libphonenumber-js';
 
 export class TwilioSmsProvider implements SmsTransport {

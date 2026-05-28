@@ -1,5 +1,5 @@
 import type { IStorage } from "../../storage";
-import { sendEmail, type SendEmailResult } from "../../services/email-sender";
+import { sendEmail, type SendEmailResult } from "../../services/comm/senders/email";
 import type { DeliverContactResult } from "./deliver";
 import { renderTemplate } from "../../../shared/bulk-tokens";
 import { buildRecipientContext } from "./token-context";

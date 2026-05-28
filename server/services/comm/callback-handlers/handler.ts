@@ -3,8 +3,8 @@ import { TwilioStatusHandler } from './twilio';
 import { SendGridStatusHandler } from './sendgrid';
 import { LobStatusHandler } from './lob';
 import type { CommStatusHandler, CommStatusUpdate } from './index';
-import { createCommStorage, createCommSmsStorage, createCommEmailStorage, createCommPostalStorage } from '../../storage/comm';
-import { storageLogger } from '../../logger';
+import { createCommStorage, createCommSmsStorage, createCommEmailStorage, createCommPostalStorage } from '../../../storage/comm';
+import { storageLogger } from '../../../logger';
 
 const commStorage = createCommStorage();
 const commSmsStorage = createCommSmsStorage();

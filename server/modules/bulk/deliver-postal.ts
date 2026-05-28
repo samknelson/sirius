@@ -1,6 +1,6 @@
 import type { IStorage } from "../../storage";
-import { sendPostal, type SendPostalResult } from "../../services/postal-sender";
-import type { PostalAddress } from "../../services/providers/postal";
+import { sendPostal, type SendPostalResult } from "../../services/comm/senders/postal";
+import type { PostalAddress } from "../../services/comm/providers/postal";
 import type { DeliverContactResult } from "./deliver";
 import { renderTemplate, TOKEN_REGISTRY } from "../../../shared/bulk-tokens";
 import { buildRecipientContext } from "./token-context";

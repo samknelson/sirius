@@ -1,7 +1,7 @@
 import type { IStorage } from '../storage';
-import { sendSms } from './sms-sender';
-import { sendEmail } from './email-sender';
-import { sendInapp } from './inapp-sender';
+import { sendSms } from './comm/senders/sms';
+import { sendEmail } from './comm/senders/email';
+import { sendInapp } from './comm/senders/inapp';
 import { staffAlertConfigSchema, type StaffAlertConfig, type StaffAlertRecipient } from '@shared/staffAlerts';
 import type {
   StaffAlertMessagePayload,

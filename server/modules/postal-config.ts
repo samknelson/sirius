@@ -2,7 +2,7 @@ import type { Express, Request, Response } from "express";
 import { requireAccess } from "../services/access-policy-evaluator";
 import { z } from "zod";
 import { serviceRegistry } from "../services/service-registry";
-import type { PostalTransport, PostalAddress } from "../services/providers/postal";
+import type { PostalTransport, PostalAddress } from "../services/comm/providers/postal";
 
 export function registerPostalConfigRoutes(app: Express) {
   app.get(

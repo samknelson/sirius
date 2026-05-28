@@ -9,7 +9,7 @@ import type {
   PostalProviderSettings,
 } from './index';
 import { buildCanonicalAddress } from './index';
-import { log } from '../../../logger';
+import { log } from '../../../../logger';
 
 export class LocalPostalProvider implements PostalTransport {
   readonly id = 'local';

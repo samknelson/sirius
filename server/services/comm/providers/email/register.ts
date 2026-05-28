@@ -1,4 +1,4 @@
-import { serviceRegistry } from '../../service-registry';
+import { serviceRegistry } from '../../../service-registry';
 import { SendGridEmailProvider } from './sendgrid';
 import { LocalEmailProvider } from './local';
 
