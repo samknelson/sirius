@@ -47,6 +47,7 @@ import { registerWorkerMshRoutes } from "./modules/worker-msh";
 import { registerWorkerHoursRoutes } from "./modules/worker-hours";
 import { registerQuickstartRoutes } from "./modules/quickstart";
 import { registerCronJobRoutes } from "./modules/system/cron";
+import { registerEventBusIntrospectRoutes } from "./modules/dev/event-bus-introspect";
 import { registerChargePluginRoutes } from "./modules/charge-plugins";
 import { registerEligibilityPluginRoutes } from "./modules/eligibility-plugins";
 import { registerTwilioRoutes } from "./modules/twilio";
@@ -375,6 +376,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register cron job management routes
   registerCronJobRoutes(app, requireAuth, requirePermission);
+
+  // Register event bus introspection routes (debug component)
+  registerEventBusIntrospectRoutes(app);
 
   // Register charge plugin configuration routes
   registerChargePluginRoutes(app, requireAuth, requirePermission);

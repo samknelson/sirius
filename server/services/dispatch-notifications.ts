@@ -439,7 +439,12 @@ export function initDispatchNotifications(): void {
     return;
   }
 
-  handlerId = eventBus.on(EventType.DISPATCH_SAVED, handleDispatchSaved);
+  handlerId = eventBus.on({
+    name: "dispatch-notifications",
+    description: "Sends SMS/email notifications when a dispatch is created or its status changes.",
+    event: EventType.DISPATCH_SAVED,
+    handler: handleDispatchSaved,
+  });
 
   logger.info(`Dispatch notifications service initialized`, {
     service: SERVICE_NAME,

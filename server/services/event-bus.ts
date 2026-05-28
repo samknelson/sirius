@@ -161,36 +161,104 @@ export interface EventPayloadMap {
 
 export type EventHandler<T extends EventType> = (payload: EventPayloadMap[T]) => Promise<void>;
 
+export interface OnOptions<T extends EventType> {
+  name: string;
+  description: string;
+  event: T;
+  handler: EventHandler<T>;
+}
+
 interface RegisteredHandler {
   id: string;
+  name: string;
+  description: string;
   handler: (payload: any) => Promise<void>;
+}
+
+export interface HandlerInfo {
+  id: string;
+  name: string;
+  description: string;
+}
+
+export interface EmitFailure {
+  handlerId: string;
+  handlerName: string;
+  message: string;
+}
+
+export interface RecentEmitEntry {
+  emittedAt: Date;
+  eventType: EventType;
+  payload: unknown;
+  payloadTruncated: boolean;
+  handlerCount: number;
+  successCount: number;
+  failureCount: number;
+  durationMs: number;
+  failures: EmitFailure[];
+}
+
+const RECENT_EMITS_PER_TYPE = 100;
+const PAYLOAD_MAX_SERIALIZED_BYTES = 4096;
+
+function capturePayload(payload: unknown): { value: unknown; truncated: boolean } {
+  try {
+    const serialized = JSON.stringify(payload);
+    if (serialized === undefined) {
+      return { value: String(payload), truncated: false };
+    }
+    if (serialized.length > PAYLOAD_MAX_SERIALIZED_BYTES) {
+      return {
+        value: {
+          __truncated: true,
+          originalBytes: serialized.length,
+          preview: serialized.slice(0, PAYLOAD_MAX_SERIALIZED_BYTES),
+        },
+        truncated: true,
+      };
+    }
+    return { value: JSON.parse(serialized), truncated: false };
+  } catch (err) {
+    return {
+      value: { __unserializable: true, error: err instanceof Error ? err.message : String(err) },
+      truncated: true,
+    };
+  }
 }
 
 class EventBus {
   private handlers = new Map<EventType, RegisteredHandler[]>();
   private handlerIdCounter = 0;
+  private recentEmits = new Map<EventType, RecentEmitEntry[]>();
 
-  on<T extends EventType>(eventType: T, handler: EventHandler<T>): string {
-    if (!this.handlers.has(eventType)) {
-      this.handlers.set(eventType, []);
+  on<T extends EventType>(opts: OnOptions<T>): string {
+    const { name, description, event, handler } = opts;
+    if (!name || !description) {
+      throw new Error(`eventBus.on requires name and description (event=${event})`);
     }
-    
+    if (!this.handlers.has(event)) {
+      this.handlers.set(event, []);
+    }
+
     const handlerId = `handler_${++this.handlerIdCounter}`;
-    this.handlers.get(eventType)!.push({
+    this.handlers.get(event)!.push({
       id: handlerId,
+      name,
+      description,
       handler: handler as (payload: any) => Promise<void>,
     });
-    
-    logger.debug(`Event handler registered: ${handlerId} for ${eventType}`, {
+
+    logger.debug(`Event handler registered: ${name} (${handlerId}) for ${event}`, {
       service: "event-bus",
     });
-    
+
     return handlerId;
   }
 
   off(handlerId: string): boolean {
     const entries = Array.from(this.handlers.entries());
-    for (const [eventType, handlers] of entries) {
+    for (const [, handlers] of entries) {
       const index = handlers.findIndex((h: RegisteredHandler) => h.id === handlerId);
       if (index !== -1) {
         handlers.splice(index, 1);
@@ -205,11 +273,12 @@ class EventBus {
 
   async emit<T extends EventType>(eventType: T, payload: EventPayloadMap[T]): Promise<void> {
     const handlers = this.handlers.get(eventType) || [];
-    
+
     if (handlers.length === 0) {
       logger.debug(`No handlers for event: ${eventType}`, {
         service: "event-bus",
       });
+      this.recordEmit(eventType, payload, [], 0);
       return;
     }
 
@@ -217,12 +286,14 @@ class EventBus {
       service: "event-bus",
     });
 
+    const startedAt = Date.now();
     const results = await Promise.allSettled(
-      handlers.map(({ id, handler }) => 
+      handlers.map(({ id, name, handler }) =>
         handler(payload).catch(error => {
-          logger.error(`Event handler ${id} failed for ${eventType}`, {
+          logger.error(`Event handler ${name} (${id}) failed for ${eventType}`, {
             service: "event-bus",
             handlerId: id,
+            handlerName: name,
             eventType,
             error: error instanceof Error ? error.message : String(error),
           });
@@ -230,12 +301,68 @@ class EventBus {
         })
       )
     );
+    const durationMs = Date.now() - startedAt;
 
     const failures = results.filter(r => r.status === "rejected");
     if (failures.length > 0) {
       logger.warn(`${failures.length}/${handlers.length} handlers failed for event: ${eventType}`, {
         service: "event-bus",
       });
+    }
+
+    this.recordEmit(eventType, payload, handlers, durationMs, results);
+  }
+
+  private recordEmit<T extends EventType>(
+    eventType: T,
+    payload: EventPayloadMap[T],
+    handlers: RegisteredHandler[],
+    durationMs: number,
+    results?: PromiseSettledResult<void>[],
+  ): void {
+    // Exclude LOG to avoid feedback loop with log-notifier.
+    if (eventType === EventType.LOG) return;
+
+    const failures: EmitFailure[] = [];
+    let successCount = 0;
+    let failureCount = 0;
+    if (results) {
+      results.forEach((r, idx) => {
+        if (r.status === "fulfilled") {
+          successCount++;
+        } else {
+          failureCount++;
+          const h = handlers[idx];
+          failures.push({
+            handlerId: h?.id ?? "unknown",
+            handlerName: h?.name ?? "unknown",
+            message: r.reason instanceof Error ? r.reason.message : String(r.reason),
+          });
+        }
+      });
+    }
+
+    const captured = capturePayload(payload);
+    const entry: RecentEmitEntry = {
+      emittedAt: new Date(),
+      eventType,
+      payload: captured.value,
+      payloadTruncated: captured.truncated,
+      handlerCount: handlers.length,
+      successCount,
+      failureCount,
+      durationMs,
+      failures,
+    };
+
+    let bucket = this.recentEmits.get(eventType);
+    if (!bucket) {
+      bucket = [];
+      this.recentEmits.set(eventType, bucket);
+    }
+    bucket.push(entry);
+    if (bucket.length > RECENT_EMITS_PER_TYPE) {
+      bucket.splice(0, bucket.length - RECENT_EMITS_PER_TYPE);
     }
   }
 
@@ -250,6 +377,33 @@ class EventBus {
     }
     return total;
   }
+
+  getRegistry(): Record<string, HandlerInfo[]> {
+    const out: Record<string, HandlerInfo[]> = {};
+    for (const eventType of Object.values(EventType)) {
+      const handlers = this.handlers.get(eventType) || [];
+      out[eventType] = handlers.map(h => ({ id: h.id, name: h.name, description: h.description }));
+    }
+    return out;
+  }
+
+  getRecentEmits(eventType?: EventType, limit?: number): RecentEmitEntry[] {
+    const collect: RecentEmitEntry[] = [];
+    if (eventType) {
+      collect.push(...(this.recentEmits.get(eventType) || []));
+    } else {
+      const buckets = Array.from(this.recentEmits.values());
+      for (const b of buckets) collect.push(...b);
+    }
+    collect.sort((a, b) => b.emittedAt.getTime() - a.emittedAt.getTime());
+    if (limit && limit > 0) return collect.slice(0, limit);
+    return collect;
+  }
+
+  clearRecentEmits(): void {
+    this.recentEmits.clear();
+  }
 }
 
 export const eventBus = new EventBus();
+export const EVENT_BUS_RING_BUFFER_CAP = RECENT_EMITS_PER_TYPE;

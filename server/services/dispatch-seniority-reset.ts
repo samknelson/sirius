@@ -62,7 +62,12 @@ export function initDispatchSeniorityReset(): void {
     return;
   }
 
-  handlerId = eventBus.on(EventType.DISPATCH_SAVED, handleDispatchSaved);
+  handlerId = eventBus.on({
+    name: "dispatch-seniority-reset",
+    description: "Resets a worker's seniority date when their dispatch transitions to a configured trigger status.",
+    event: EventType.DISPATCH_SAVED,
+    handler: handleDispatchSaved,
+  });
 
   logger.info(`Dispatch seniority reset service initialized`, { service: SERVICE_NAME });
 }

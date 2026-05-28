@@ -103,7 +103,11 @@ class DispatchEligPluginRegistry extends PluginRegistry<DispatchEligPlugin, Elig
     if (!plugin.eventHandlers) return;
     const handlerIds: string[] = [];
     for (const eventHandler of plugin.eventHandlers) {
-      const handlerId = eventBus.on(eventHandler.event, async (payload) => {
+      const handlerId = eventBus.on({
+        name: `dispatch-eligibility:${plugin.id}`,
+        description: plugin.description || `Recomputes ${plugin.id} eligibility for affected workers.`,
+        event: eventHandler.event,
+        handler: async (payload) => {
         if (!isCacheInitialized()) {
           logger.warn(`Component cache not initialized, skipping ${plugin.id} eligibility recompute`, {
             service: "dispatch-elig-registry",
@@ -144,6 +148,7 @@ class DispatchEligPluginRegistry extends PluginRegistry<DispatchEligPlugin, Elig
             error: error instanceof Error ? error.message : String(error),
           });
         }
+        },
       });
       handlerIds.push(handlerId);
     }

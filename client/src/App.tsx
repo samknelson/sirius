@@ -185,6 +185,7 @@ const WmbScanQueue = lazy(() => import("@/pages/admin/wmb-scan-queue"));
 const WmbScanDetail = lazy(() => import("@/pages/admin/wmb-scan-detail"));
 const AdminQuickstarts = lazy(() => import("@/pages/admin-quickstarts"));
 const CronJobs = lazy(() => import("@/pages/cron-jobs"));
+const EventBusDebug = lazy(() => import("@/pages/admin/debug/event-bus"));
 const CronJobView = lazy(() => import("@/pages/cron-job-view"));
 const CronJobSettings = lazy(() => import("@/pages/cron-job-settings"));
 const CronJobHistory = lazy(() => import("@/pages/cron-job-history"));
@@ -3258,6 +3259,14 @@ function Router() {
 
       <Route path="/admin/cron-jobs">
         <Redirect to="/cron-jobs" />
+      </Route>
+
+      <Route path="/admin/debug/event-bus">
+        <ProtectedRoute permission="admin" component="debug">
+          <AuthenticatedLayout>
+            <EventBusDebug />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
       </Route>
 
       {/* Legacy admin route - redirect to configuration */}

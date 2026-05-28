@@ -255,7 +255,12 @@ export function initWorkerBanNotifications(): void {
     return;
   }
 
-  handlerId = eventBus.on(EventType.WORKER_BAN_SAVED, handleWorkerBanSaved);
+  handlerId = eventBus.on({
+    name: "worker-ban-notifications",
+    description: "Notifies relevant staff when a worker ban is created, activated, or expires.",
+    event: EventType.WORKER_BAN_SAVED,
+    handler: handleWorkerBanSaved,
+  });
   
   logger.info(`Worker ban notifications initialized`, { service: SERVICE_NAME });
 }

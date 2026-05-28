@@ -125,6 +125,11 @@ async function handleLogEvent(payload: LogPayload): Promise<void> {
 }
 
 export function initLogNotifier(): void {
-  eventBus.on(EventType.LOG, handleLogEvent);
+  eventBus.on({
+    name: "log-notifier",
+    description: "Forwards qualifying log entries to configured notification channels.",
+    event: EventType.LOG,
+    handler: handleLogEvent,
+  });
   logger.info("Log notifier initialized", { source: "log-notifier" });
 }
