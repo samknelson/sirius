@@ -1,5 +1,5 @@
-import { storage } from "../storage";
-import { getClient } from "../storage/transaction-context";
+import { storage } from "../../../storage";
+import { getClient } from "../../../storage/transaction-context";
 import {
   workers,
   workerWsh,
@@ -8,7 +8,7 @@ import {
   contacts,
 } from "@shared/schema";
 import { eq, desc, sql, and } from "drizzle-orm";
-import { logger } from "../logger";
+import { logger } from "../../../logger";
 
 export interface WorkerScanDetail {
   workerId: string;
