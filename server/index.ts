@@ -12,7 +12,7 @@ import { initAccessControl, registerEntityLoader } from "./services/access-polic
 import { storage } from "./storage";
 import { captureRequestContext } from "./middleware/request-context";
 import { registerCronJob, bootstrapCronJobs, cronScheduler, deleteExpiredReportsHandler, deleteOldCronLogsHandler, processWmbBatchHandler, deleteExpiredFloodEventsHandler, deleteExpiredHfeHandler, sweepExpiredBanEligHandler, workerBanActiveScanHandler, workerCertificationActiveScanHandler, logCleanupHandler, dispatchEbaCleanupHandler, dispatchJobPollHandler, bulkDeliverHandler, t631DispatchJobGroupFetchHandler, t631FacilityFetchHandler, t631TosFetchHandler, gbhetPensionSlaReconcileHandler, gbhetPensionSharesReconcileHandler } from "./cron";
-import { initDispatchSeniorityReset } from "./services/dispatch-seniority-reset";
+import { initDispatchSeniorityReset } from "./services/dispatch/seniority-reset";
 import { memberStatusScanHandler } from "./cron/jobs/memberStatusScan";
 import { loadComponentCache } from "./services/component-cache";
 import { syncComponentPermissions } from "./services/component-permissions";
@@ -49,7 +49,7 @@ import { initializeDashboardPluginSystem } from "./plugins/dashboard";
 import { initWorkerBanNotifications } from "./services/worker-ban-notifications";
 
 // Import dispatch notifications
-import { initDispatchNotifications } from "./services/dispatch-notifications";
+import { initDispatchNotifications } from "./services/dispatch/notifications";
 
 // Import modular access policies (triggers registration via loader)
 import "@shared/access-policies/loader";

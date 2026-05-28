@@ -1,8 +1,8 @@
-import { eventBus, EventType, type DispatchSavedPayload } from "./event-bus";
-import { createWorkerDispatchStatusStorage } from "../storage/dispatch/worker-status";
-import { getSeniorityResetSettings } from "../modules/dispatch/seniority-reset-config";
-import { storage } from "../storage";
-import { logger } from "../logger";
+import { eventBus, EventType, type DispatchSavedPayload } from "../event-bus";
+import { createWorkerDispatchStatusStorage } from "../../storage/dispatch/worker-status";
+import { getSeniorityResetSettings } from "../../modules/dispatch/seniority-reset-config";
+import { storage } from "../../storage";
+import { logger } from "../../logger";
 
 const SERVICE_NAME = "dispatch-seniority-reset";
 

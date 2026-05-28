@@ -1,8 +1,8 @@
-import { storage } from "../storage";
+import { storage } from "../../storage";
 import { getTodayYmd, isYmdBefore } from "@shared/utils/date";
-import { logger } from "../logger";
+import { logger } from "../../logger";
 import type { PollPhaseResult, PollResult, DispatchJobData } from "@shared/schema";
-import { createDispatchEligibleWorkersStorage } from "../storage/dispatch/eligible-workers";
+import { createDispatchEligibleWorkersStorage } from "../../storage/dispatch/eligible-workers";
 
 const SERVICE_NAME = "dispatch-poll";
 

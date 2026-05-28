@@ -28,7 +28,7 @@ import { initializeDispatchEligSystem } from "./plugins/dispatch/eligibility";
 import { initializeDashboardPluginSystem } from "./plugins/dashboard";
 import { initializeClientInjectionPluginSystem } from "./plugins/client-injection";
 import { initWorkerBanNotifications } from "./services/worker-ban-notifications";
-import { initDispatchNotifications } from "./services/dispatch-notifications";
+import { initDispatchNotifications } from "./services/dispatch/notifications";
 import "@shared/access-policies/loader";
 import { registerEntityAccessModule } from "./modules/entity-access";
 import { isComponentEnabled } from "./modules/components";

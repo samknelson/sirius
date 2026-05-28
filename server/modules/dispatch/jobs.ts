@@ -8,7 +8,7 @@ import type { DispatchJobFilters } from "../../storage/dispatch/jobs";
 import { dispatchEligPluginRegistry } from "../../plugins/dispatch/eligibility/registry";
 import { createDispatchEligibleWorkersStorage } from "../../storage/dispatch/eligible-workers";
 import { isComponentEnabledSync } from "../../services/component-cache";
-import { runPoll } from "../../services/dispatch-poll";
+import { runPoll } from "../../services/dispatch/poll";
 import { sendInapp } from "../../services/comm/senders/inapp";
 import { logger } from "../../logger";
 
