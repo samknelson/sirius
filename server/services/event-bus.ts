@@ -1,4 +1,23 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { logger } from "../logger";
+
+export const EVENT_BUS_MAX_EMIT_DEPTH = 100;
+
+export class EventBusEmitDepthExceededError extends Error {
+  readonly depth: number;
+  readonly rootEventType: string;
+  readonly attemptedEventType: string;
+
+  constructor(opts: { depth: number; rootEventType: string; attemptedEventType: string }) {
+    super(
+      `Event bus emit depth exceeded: refusing to emit "${opts.attemptedEventType}" at depth ${opts.depth} (root="${opts.rootEventType}", cap=${EVENT_BUS_MAX_EMIT_DEPTH})`,
+    );
+    this.name = "EventBusEmitDepthExceededError";
+    this.depth = opts.depth;
+    this.rootEventType = opts.rootEventType;
+    this.attemptedEventType = opts.attemptedEventType;
+  }
+}
 
 export enum EventType {
   HOURS_SAVED = "hours.saved",
@@ -227,10 +246,16 @@ function capturePayload(payload: unknown): { value: unknown; truncated: boolean 
   }
 }
 
+interface EmitDepthStore {
+  depth: number;
+  rootEventType: EventType;
+}
+
 class EventBus {
   private handlers = new Map<EventType, RegisteredHandler[]>();
   private handlerIdCounter = 0;
   private recentEmits = new Map<EventType, RecentEmitEntry[]>();
+  private emitDepthAls = new AsyncLocalStorage<EmitDepthStore>();
 
   on<T extends EventType>(opts: OnOptions<T>): string {
     const { name, description, event, handler } = opts;
@@ -272,45 +297,70 @@ class EventBus {
   }
 
   async emit<T extends EventType>(eventType: T, payload: EventPayloadMap[T]): Promise<void> {
-    const handlers = this.handlers.get(eventType) || [];
+    // Storm protection: per-async-chain emit depth tracking.
+    const parent = this.emitDepthAls.getStore();
+    const nextDepth = parent ? parent.depth + 1 : 1;
+    const rootEventType = parent ? parent.rootEventType : eventType;
 
-    if (handlers.length === 0) {
-      logger.debug(`No handlers for event: ${eventType}`, {
-        service: "event-bus",
+    if (nextDepth > EVENT_BUS_MAX_EMIT_DEPTH) {
+      logger.error(
+        `Event bus emit depth exceeded: refusing "${eventType}" at depth ${nextDepth} (root="${rootEventType}", cap=${EVENT_BUS_MAX_EMIT_DEPTH})`,
+        {
+          service: "event-bus",
+          depth: nextDepth,
+          rootEventType,
+          attemptedEventType: eventType,
+          cap: EVENT_BUS_MAX_EMIT_DEPTH,
+        },
+      );
+      throw new EventBusEmitDepthExceededError({
+        depth: nextDepth,
+        rootEventType,
+        attemptedEventType: eventType,
       });
-      this.recordEmit(eventType, payload, [], 0);
-      return;
     }
 
-    logger.debug(`Emitting event: ${eventType} to ${handlers.length} handler(s)`, {
-      service: "event-bus",
+    return this.emitDepthAls.run({ depth: nextDepth, rootEventType }, async () => {
+      const handlers = this.handlers.get(eventType) || [];
+
+      if (handlers.length === 0) {
+        logger.debug(`No handlers for event: ${eventType}`, {
+          service: "event-bus",
+        });
+        this.recordEmit(eventType, payload, [], 0);
+        return;
+      }
+
+      logger.debug(`Emitting event: ${eventType} to ${handlers.length} handler(s)`, {
+        service: "event-bus",
+      });
+
+      const startedAt = Date.now();
+      const results = await Promise.allSettled(
+        handlers.map(({ id, name, handler }) =>
+          handler(payload).catch(error => {
+            logger.error(`Event handler ${name} (${id}) failed for ${eventType}`, {
+              service: "event-bus",
+              handlerId: id,
+              handlerName: name,
+              eventType,
+              error: error instanceof Error ? error.message : String(error),
+            });
+            throw error;
+          })
+        )
+      );
+      const durationMs = Date.now() - startedAt;
+
+      const failures = results.filter(r => r.status === "rejected");
+      if (failures.length > 0) {
+        logger.warn(`${failures.length}/${handlers.length} handlers failed for event: ${eventType}`, {
+          service: "event-bus",
+        });
+      }
+
+      this.recordEmit(eventType, payload, handlers, durationMs, results);
     });
-
-    const startedAt = Date.now();
-    const results = await Promise.allSettled(
-      handlers.map(({ id, name, handler }) =>
-        handler(payload).catch(error => {
-          logger.error(`Event handler ${name} (${id}) failed for ${eventType}`, {
-            service: "event-bus",
-            handlerId: id,
-            handlerName: name,
-            eventType,
-            error: error instanceof Error ? error.message : String(error),
-          });
-          throw error;
-        })
-      )
-    );
-    const durationMs = Date.now() - startedAt;
-
-    const failures = results.filter(r => r.status === "rejected");
-    if (failures.length > 0) {
-      logger.warn(`${failures.length}/${handlers.length} handlers failed for event: ${eventType}`, {
-        service: "event-bus",
-      });
-    }
-
-    this.recordEmit(eventType, payload, handlers, durationMs, results);
   }
 
   private recordEmit<T extends EventType>(
