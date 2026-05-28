@@ -390,6 +390,7 @@ export const ledgerAccountTabTree: HierarchicalTab[] = [
   { id: 'payments', label: 'Payments', hrefTemplate: '/ledger/accounts/{id}/payments', policyId: 'staff', component: 'ledger' },
   { id: 'batches', label: 'Batches', hrefTemplate: '/ledger/accounts/{id}/batches', policyId: 'staff', component: 'ledger.payment.batch' },
   { id: 'transactions', label: 'Transactions', hrefTemplate: '/ledger/accounts/{id}/transactions', policyId: 'staff', component: 'ledger' },
+  { id: 'summary', label: 'Summary', hrefTemplate: '/ledger/accounts/{id}/summary', policyId: 'staff', component: 'ledger' },
   { id: 'participants', label: 'Participants', hrefTemplate: '/ledger/accounts/{id}/participants', policyId: 'staff', component: 'ledger' },
   { id: 'settings', label: 'Settings', hrefTemplate: '/ledger/accounts/{id}/settings', policyId: 'staff', component: 'ledger' },
 ];

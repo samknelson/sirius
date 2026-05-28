@@ -281,6 +281,7 @@ const LedgerAccountView = lazy(() => import("@/pages/config/ledger/account-view"
 const LedgerAccountEdit = lazy(() => import("@/pages/config/ledger/account-edit"));
 const AccountPayments = lazy(() => import("@/pages/config/ledger/account-payments"));
 const AccountTransactions = lazy(() => import("@/pages/config/ledger/account-transactions"));
+const AccountSummary = lazy(() => import("@/pages/config/ledger/account-summary"));
 const AccountParticipants = lazy(() => import("@/pages/account-participants"));
 const AccountSettings = lazy(() => import("@/pages/config/ledger/account-settings"));
 const AccountBatches = lazy(() => import("@/pages/config/ledger/account-batches"));
@@ -3001,6 +3002,14 @@ function Router() {
         <ProtectedRoute tabId="transactions" entityType="ledger_account">
           <AuthenticatedLayout>
             <AccountTransactions />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/ledger/accounts/:id/summary">
+        <ProtectedRoute tabId="summary" entityType="ledger_account">
+          <AuthenticatedLayout>
+            <AccountSummary />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
