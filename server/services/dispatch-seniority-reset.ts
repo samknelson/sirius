@@ -1,5 +1,7 @@
 import { eventBus, EventType, type DispatchSavedPayload } from "./event-bus";
 import { createWorkerDispatchStatusStorage } from "../storage/dispatch/worker-status";
+import { getSeniorityResetSettings } from "../modules/dispatch/seniority-reset-config";
+import { storage } from "../storage";
 import { logger } from "../logger";
 
 const SERVICE_NAME = "dispatch-seniority-reset";
@@ -7,7 +9,24 @@ const SERVICE_NAME = "dispatch-seniority-reset";
 let handlerId: string | undefined;
 
 async function handleDispatchSaved(payload: DispatchSavedPayload): Promise<void> {
-  if (payload.status !== "notified" || payload.previousStatus === "notified") {
+  if (payload.previousStatus === payload.status) {
+    return;
+  }
+
+  let triggerStatuses: readonly string[];
+  try {
+    const settings = await getSeniorityResetSettings(storage);
+    triggerStatuses = settings.triggerStatuses;
+  } catch (error) {
+    logger.error(`Failed to load seniority-reset config; skipping`, {
+      service: SERVICE_NAME,
+      dispatchId: payload.dispatchId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return;
+  }
+
+  if (!triggerStatuses.includes(payload.status)) {
     return;
   }
 
@@ -19,11 +38,12 @@ async function handleDispatchSaved(payload: DispatchSavedPayload): Promise<void>
 
     await statusStorage.upsertByWorker(workerId, { seniorityDate: now });
 
-    logger.info(`Reset seniority date for worker on notification`, {
+    logger.info(`Reset seniority date for worker on status transition`, {
       service: SERVICE_NAME,
       workerId,
       dispatchId: payload.dispatchId,
       jobId: payload.jobId,
+      status: payload.status,
       seniorityDate: now.toISOString(),
     });
   } catch (error) {

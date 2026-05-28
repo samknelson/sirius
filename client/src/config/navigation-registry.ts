@@ -1,7 +1,7 @@
 import { 
   Users, MapPin, Phone, Globe, List, UserCog, Puzzle, Package, Heart, 
   CreditCard, Activity, Wallet, Settings, Shield, Key, FileText, 
-  Building2, Database, Clock, Zap, Server, MessageSquare, Calendar, GraduationCap, Truck, Network, School, Tag, type LucideIcon
+  Building2, Database, Clock, Zap, Server, MessageSquare, Calendar, GraduationCap, Truck, Network, School, Tag, RefreshCw, type LucideIcon
 } from "lucide-react";
 
 export interface NavItem {
@@ -138,6 +138,7 @@ export const configSections: NavSection[] = [
       { path: "/config/dispatch/plugins", label: "Eligibility Plugins", icon: Puzzle, testId: "nav-config-dispatch-plugins", permission: "admin", requiresComponent: "dispatch" },
       { path: "/config/dispatch/dnc", label: "Do Not Call", icon: Phone, testId: "nav-config-dispatch-dnc", permission: "admin", requiresComponent: "dispatch.dnc" },
       { path: "/config/dispatch/eba", label: "EBA", icon: Calendar, testId: "nav-config-dispatch-eba", permission: "admin", requiresComponent: "dispatch.eba" },
+      { path: "/config/dispatch/seniority-reset", label: "Seniority Reset", icon: RefreshCw, testId: "nav-config-dispatch-seniority-reset", permission: "admin", requiresComponent: "dispatch" },
       { path: "/config/sitespecific/hta/home-employment-statuses", label: "Home Employment Statuses", icon: Building2, testId: "nav-config-hta-home-employment-statuses", permission: "staff", requiresComponent: "sitespecific.hta" },
     ],
   },
