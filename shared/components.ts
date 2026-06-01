@@ -642,7 +642,13 @@ export const componentRegistry: ComponentDefinition[] = [
     name: "BAO Customization",
     description: "Custom functionality for Unite Here Local 11 Health Benefits Administration",
     enabledByDefault: false,
-    category: "site-specific"
+    category: "site-specific",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/sitespecific/bao/schema.ts",
+      tables: ["sitespecific_bao_employer_immediate_eligibility"]
+    }
   },
   {
     id: "bulk",

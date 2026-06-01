@@ -939,6 +939,8 @@ export {
 
 export * from "./schema/sitespecific/gbhet-pension/schema";
 
+export * from "./schema/sitespecific/bao/schema";
+
 export {
   sitespecificFreemanCrewleads,
   insertFreemanCrewleadSchema,
