@@ -411,6 +411,13 @@ export const componentRegistry: ComponentDefinition[] = [
     category: "trust.benefits"
   },
   {
+    id: "trust.benefits.eligibility.exemptions",
+    name: "Eligibility Exemptions",
+    description: "Exempt individual members from specified eligibility plugins (stub)",
+    enabledByDefault: false,
+    category: "trust.benefits.eligibility"
+  },
+  {
     id: "trust.elections",
     name: "Trust Elections",
     description: "Worker elections (stub)",
