@@ -19,8 +19,7 @@ import "./core/1006_comm_postal_body";
 // per-component migration files under `scripts/migrate/components/<id>/`
 // and import them here so they are loaded at startup.
 //
-// (no component migrations registered yet — first author of a per-component
-//  schema change should add their files here)
+import "./components/trust.benefits.eligibility.exemptions/001_create_exemptions";
 
 // Baseline scripts — one-off, per-deployment scripts that bring a database
 // into sync with the schema BEFORE the drift gate runs. Baseline scripts

@@ -1011,6 +1011,17 @@ export {
 } from "./schema/trust/elections-schema";
 
 export {
+  trustBenefitEligibilityExemptions,
+  insertTrustBenefitEligibilityExemptionSchema,
+  createTrustBenefitEligibilityExemptionRequestSchema,
+  updateTrustBenefitEligibilityExemptionRequestSchema,
+  type TrustBenefitEligibilityExemption,
+  type InsertTrustBenefitEligibilityExemption,
+  type CreateTrustBenefitEligibilityExemptionRequest,
+  type UpdateTrustBenefitEligibilityExemptionRequest,
+} from "./schema/trust/eligibility-exemptions-schema";
+
+export {
   edlsSheets,
   edlsSheetStatusEnum,
   insertEdlsSheetsSchema,

@@ -413,9 +413,15 @@ export const componentRegistry: ComponentDefinition[] = [
   {
     id: "trust.benefits.eligibility.exemptions",
     name: "Eligibility Exemptions",
-    description: "Exempt individual members from specified eligibility plugins (stub)",
+    description: "Exempt individual members from specified eligibility plugins",
     enabledByDefault: false,
-    category: "trust.benefits.eligibility"
+    category: "trust.benefits.eligibility",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/trust/eligibility-exemptions-schema.ts",
+      tables: ["trust_benefit_eligibility_exemptions"]
+    }
   },
   {
     id: "trust.elections",
