@@ -1680,7 +1680,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   registerBtuCsgRoutes(app, requireAuth, requirePermission);
   registerBtuTerritoriesRoutes(app, requireAuth, requirePermission);
   registerBtuSchoolRoutes(app, requireAuth, requirePermission);
-  registerBaoImmediateEligibilityRoutes(app, requireAuth, requirePermission);
+  registerBaoImmediateEligibilityRoutes(app, requireAuth, requirePermission, requireAccess);
   registerBtuSigImportRoutes(app, requireAuth, requirePermission);
   registerBtuScraperImportRoutes(app, requireAuth, requirePermission);
   registerBtuBuildingRepImportRoutes(app, requireAuth, requirePermission);

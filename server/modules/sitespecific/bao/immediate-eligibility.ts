@@ -8,6 +8,10 @@ import {
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
+type AccessMiddleware = (
+  policyId: string,
+  getEntityId?: (req: Request) => string | undefined | Promise<string | undefined>,
+) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 
 const TABLE_MISSING_MESSAGE =
   "BAO Immediate Eligibility table does not exist. Please enable the BAO component first.";
@@ -15,17 +19,28 @@ const TABLE_MISSING_MESSAGE =
 export function registerBaoImmediateEligibilityRoutes(
   app: Express,
   requireAuth: AuthMiddleware,
-  requirePermission: PermissionMiddleware,
+  _requirePermission: PermissionMiddleware,
+  requireAccess: AccessMiddleware,
 ) {
   const eligibilityStorage = storage.baoImmediateEligibility;
   const componentMiddleware = requireComponent("sitespecific.bao");
-  const requireStaff = requirePermission("staff");
+
+  // Resolve the employer that owns a given immediate-eligibility record so that
+  // PATCH/DELETE can be authorized against that specific employer.
+  const employerIdForRecord = async (req: Request): Promise<string | undefined> => {
+    try {
+      const record = await eligibilityStorage.get(req.params.id);
+      return record?.employerId;
+    } catch {
+      return undefined;
+    }
+  };
 
   app.get(
     "/api/sitespecific/bao/immediate-eligibility/employer/:employerId",
     requireAuth,
-    requireStaff,
     componentMiddleware,
+    requireAccess("employer.view", (req) => req.params.employerId),
     async (req, res) => {
       try {
         if (!(await eligibilityStorage.tableExists())) {
@@ -43,8 +58,8 @@ export function registerBaoImmediateEligibilityRoutes(
   app.post(
     "/api/sitespecific/bao/immediate-eligibility",
     requireAuth,
-    requireStaff,
     componentMiddleware,
+    requireAccess("employer.manage", (req) => req.body?.employerId),
     async (req, res) => {
       try {
         if (!(await eligibilityStorage.tableExists())) {
@@ -71,8 +86,8 @@ export function registerBaoImmediateEligibilityRoutes(
   app.patch(
     "/api/sitespecific/bao/immediate-eligibility/:id",
     requireAuth,
-    requireStaff,
     componentMiddleware,
+    requireAccess("employer.manage", employerIdForRecord),
     async (req, res) => {
       try {
         if (!(await eligibilityStorage.tableExists())) {
@@ -97,8 +112,8 @@ export function registerBaoImmediateEligibilityRoutes(
   app.delete(
     "/api/sitespecific/bao/immediate-eligibility/:id",
     requireAuth,
-    requireStaff,
     componentMiddleware,
+    requireAccess("employer.manage", employerIdForRecord),
     async (req, res) => {
       try {
         if (!(await eligibilityStorage.tableExists())) {

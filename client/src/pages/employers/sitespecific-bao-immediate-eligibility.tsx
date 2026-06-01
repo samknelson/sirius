@@ -13,20 +13,36 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import type { BaoEmployerImmediateEligibility } from "@shared/schema/sitespecific/bao/schema";
+import {
+  createBaoEmployerImmediateEligibilityRequestSchema,
+  type BaoEmployerImmediateEligibility,
+} from "@shared/schema/sitespecific/bao/schema";
 
+// Reuse the shared request schema's date-order rule rather than redefining it.
+// The shared schema does not enforce non-empty dates, so the required checks
+// stay here at the form level.
 const formSchema = z
   .object({
     startYmd: z.string().min(1, "Start date is required"),
     endYmd: z.string().min(1, "End date is required"),
   })
   .superRefine((val, ctx) => {
-    if (val.startYmd && val.endYmd && val.endYmd <= val.startYmd) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["endYmd"],
-        message: "End date must be after the start date",
-      });
+    const result = createBaoEmployerImmediateEligibilityRequestSchema.safeParse({
+      employerId: "_",
+      startYmd: val.startYmd,
+      endYmd: val.endYmd,
+    });
+    if (!result.success) {
+      for (const issue of result.error.issues) {
+        const field = issue.path[0];
+        if (field === "startYmd" || field === "endYmd") {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [field],
+            message: issue.message,
+          });
+        }
+      }
     }
   });
 
