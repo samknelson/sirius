@@ -67,6 +67,7 @@ const WorkerLedgerAccounts = lazy(() => import("@/pages/worker-ledger-accounts")
 const Stewards = lazy(() => import("@/pages/stewards"));
 const WorkerBenefitsHistory = lazy(() => import("@/pages/worker-benefits-history"));
 const WorkerBenefitsEligibility = lazy(() => import("@/pages/worker-benefits-eligibility"));
+const WorkerBenefitsExemptions = lazy(() => import("@/pages/worker-benefits-exemptions"));
 const WorkerBenefitsScan = lazy(() => import("@/pages/worker-benefits-scan"));
 const WorkerCurrentEmployment = lazy(() => import("@/pages/worker-current-employment"));
 const WorkerEmploymentHistory = lazy(() => import("@/pages/worker-employment-history"));
@@ -702,6 +703,14 @@ function Router() {
         <ProtectedRoute tabId="benefits-eligibility" entityType="worker">
           <AuthenticatedLayout>
             <WorkerBenefitsEligibility />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/workers/:id/benefits/exemptions">
+        <ProtectedRoute tabId="benefits-exemptions" entityType="worker">
+          <AuthenticatedLayout>
+            <WorkerBenefitsExemptions />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

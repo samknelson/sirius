@@ -42,8 +42,8 @@ export const createTrustBenefitEligibilityExemptionRequestSchema = z
     startYmd: ymdOrDate,
     endYmd: ymdOrDate.nullable().optional(),
     description: z.string().nullable().optional(),
-    data: z.unknown().optional(),
   })
+  .strict()
   .superRefine((val, ctx) => {
     if (val.endYmd && val.endYmd <= val.startYmd) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['endYmd'], message: 'endYmd must be strictly after startYmd' });
@@ -52,13 +52,12 @@ export const createTrustBenefitEligibilityExemptionRequestSchema = z
 
 export const updateTrustBenefitEligibilityExemptionRequestSchema = z
   .object({
-    subscriberWorkerId: z.string().min(1).optional(),
     eligibilityPlugins: z.array(z.string()).nullable().optional(),
     startYmd: ymdOrDate.optional(),
     endYmd: ymdOrDate.nullable().optional(),
     description: z.string().nullable().optional(),
-    data: z.unknown().optional(),
   })
+  .strict()
   .superRefine((val, ctx) => {
     if (val.endYmd && val.startYmd && val.endYmd <= val.startYmd) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['endYmd'], message: 'endYmd must be strictly after startYmd' });
