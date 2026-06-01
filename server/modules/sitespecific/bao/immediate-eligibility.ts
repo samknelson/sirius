@@ -93,7 +93,14 @@ export function registerBaoImmediateEligibilityRoutes(
         if (!(await eligibilityStorage.tableExists())) {
           return res.status(503).json({ message: TABLE_MISSING_MESSAGE });
         }
-        const { data: _ignoredData, ...parsed } = updateBaoEmployerImmediateEligibilityRequestSchema.parse(req.body);
+        // Scope is date-window updates only. Strip `data` (out of scope) and
+        // `employerId` (immutable here) so a caller authorized for this record's
+        // current owner cannot re-point it at a different employer.
+        const {
+          data: _ignoredData,
+          employerId: _ignoredEmployerId,
+          ...parsed
+        } = updateBaoEmployerImmediateEligibilityRequestSchema.parse(req.body);
         const record = await eligibilityStorage.update(req.params.id, parsed);
         if (!record) {
           return res.status(404).json({ message: "Immediate eligibility not found" });
