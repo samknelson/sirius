@@ -2,12 +2,13 @@ import { pgTable, varchar, text, jsonb, date } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
-import { workers } from "../../schema";
+import { workers, trustBenefits } from "../../schema";
 
 export const trustBenefitEligibilityExemptions = pgTable("trust_benefit_eligibility_exemptions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   subscriberWorkerId: varchar("subscriber_worker_id").notNull().references(() => workers.id, { onDelete: 'cascade' }),
-  eligibilityPlugins: varchar("eligibility_plugins").array(),
+  benefitId: varchar("benefit_id").notNull().references(() => trustBenefits.id, { onDelete: 'cascade' }),
+  eligibilityPlugins: varchar("eligibility_plugins").array().notNull(),
   startYmd: date("start_ymd").notNull(),
   endYmd: date("end_ymd"),
   description: text("description"),
@@ -38,7 +39,8 @@ const ymdOrDate = z
 export const createTrustBenefitEligibilityExemptionRequestSchema = z
   .object({
     subscriberWorkerId: z.string().min(1),
-    eligibilityPlugins: z.array(z.string()).nullable().optional(),
+    benefitId: z.string().min(1, 'A benefit is required'),
+    eligibilityPlugins: z.array(z.string()).min(1, 'At least one eligibility check is required'),
     startYmd: ymdOrDate,
     endYmd: ymdOrDate.nullable().optional(),
     description: z.string().nullable().optional(),
@@ -52,7 +54,8 @@ export const createTrustBenefitEligibilityExemptionRequestSchema = z
 
 export const updateTrustBenefitEligibilityExemptionRequestSchema = z
   .object({
-    eligibilityPlugins: z.array(z.string()).nullable().optional(),
+    benefitId: z.string().min(1, 'A benefit is required').optional(),
+    eligibilityPlugins: z.array(z.string()).min(1, 'At least one eligibility check is required').optional(),
     startYmd: ymdOrDate.optional(),
     endYmd: ymdOrDate.nullable().optional(),
     description: z.string().nullable().optional(),

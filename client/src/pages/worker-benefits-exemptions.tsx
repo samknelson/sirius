@@ -10,6 +10,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   Dialog,
@@ -40,6 +47,12 @@ interface EligibilityPlugin {
   description: string;
 }
 
+interface TrustBenefitOption {
+  id: string;
+  name: string;
+  isActive: boolean;
+}
+
 function todayYmd(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -57,6 +70,7 @@ function ExemptionFormDialog({
   workerId,
   exemption,
   plugins,
+  benefits,
   onSaved,
 }: {
   open: boolean;
@@ -65,9 +79,11 @@ function ExemptionFormDialog({
   workerId: string;
   exemption?: TrustBenefitEligibilityExemption | null;
   plugins: EligibilityPlugin[];
+  benefits: TrustBenefitOption[];
   onSaved: () => void;
 }) {
   const { toast } = useToast();
+  const [benefitId, setBenefitId] = useState<string>("");
   const [startYmd, setStartYmd] = useState<string>("");
   const [endYmd, setEndYmd] = useState<string>("");
   const [description, setDescription] = useState<string>("");
@@ -76,11 +92,13 @@ function ExemptionFormDialog({
   useEffect(() => {
     if (!open) return;
     if (mode === "edit" && exemption) {
+      setBenefitId(exemption.benefitId ?? "");
       setStartYmd(ymdFromValue(exemption.startYmd));
       setEndYmd(ymdFromValue(exemption.endYmd));
       setDescription(exemption.description ?? "");
       setSelectedPlugins(exemption.eligibilityPlugins ?? []);
     } else {
+      setBenefitId("");
       setStartYmd(todayYmd());
       setEndYmd("");
       setDescription("");
@@ -97,6 +115,7 @@ function ExemptionFormDialog({
   const saveMutation = useMutation({
     mutationFn: async () => {
       const body = {
+        benefitId,
         eligibilityPlugins: selectedPlugins,
         startYmd,
         endYmd: endYmd || null,
@@ -118,8 +137,20 @@ function ExemptionFormDialog({
   });
 
   function handleSave() {
+    if (!benefitId) {
+      toast({ title: "Validation", description: "A benefit is required.", variant: "destructive" });
+      return;
+    }
     if (!startYmd) {
       toast({ title: "Validation", description: "Start date is required.", variant: "destructive" });
+      return;
+    }
+    if (selectedPlugins.length === 0) {
+      toast({
+        title: "Validation",
+        description: "Select at least one eligibility check.",
+        variant: "destructive",
+      });
       return;
     }
     saveMutation.mutate();
@@ -137,6 +168,22 @@ function ExemptionFormDialog({
         </DialogHeader>
 
         <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="exemption-benefit">Benefit</Label>
+            <Select value={benefitId} onValueChange={setBenefitId}>
+              <SelectTrigger id="exemption-benefit" data-testid="select-exemption-benefit">
+                <SelectValue placeholder="Choose a benefit" />
+              </SelectTrigger>
+              <SelectContent>
+                {benefits.map((b) => (
+                  <SelectItem key={b.id} value={b.id} data-testid={`option-benefit-${b.id}`}>
+                    {b.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="exemption-start">Start date</Label>
@@ -178,7 +225,7 @@ function ExemptionFormDialog({
               ))}
             </div>
             <p className="text-xs text-muted-foreground">
-              Leave all unchecked to exempt the worker from every eligibility check.
+              Select at least one eligibility check to exempt this worker from.
             </p>
           </div>
 
@@ -236,7 +283,12 @@ function ExemptionsContent() {
     queryKey: pluginManifestQueryKey("trust-eligibility"),
   });
 
+  const { data: benefits = [] } = useQuery<TrustBenefitOption[]>({
+    queryKey: ["/api/trust-benefits"],
+  });
+
   const pluginName = (id: string) => plugins.find((p) => p.id === id)?.name || id;
+  const benefitName = (id: string) => benefits.find((b) => b.id === id)?.name || id;
 
   const refetch = () => {
     queryClient.invalidateQueries({ queryKey: ["/api/workers", worker.id, "benefits-exemptions"] });
@@ -292,6 +344,7 @@ function ExemptionsContent() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>Benefit</TableHead>
                 <TableHead>Exempt from</TableHead>
                 <TableHead>Start</TableHead>
                 <TableHead>End</TableHead>
@@ -302,6 +355,7 @@ function ExemptionsContent() {
             <TableBody>
               {rows.map((row) => (
                 <TableRow key={row.id} data-testid={`row-exemption-${row.id}`}>
+                  <TableCell data-testid={`text-benefit-${row.id}`}>{benefitName(row.benefitId)}</TableCell>
                   <TableCell data-testid={`text-plugins-${row.id}`}>
                     {row.eligibilityPlugins && row.eligibilityPlugins.length > 0 ? (
                       <div className="flex flex-wrap gap-1">
@@ -310,7 +364,7 @@ function ExemptionsContent() {
                         ))}
                       </div>
                     ) : (
-                      <Badge variant="secondary">All checks</Badge>
+                      <span className="text-muted-foreground">—</span>
                     )}
                   </TableCell>
                   <TableCell data-testid={`text-start-${row.id}`}>{ymdFromValue(row.startYmd)}</TableCell>
@@ -353,6 +407,7 @@ function ExemptionsContent() {
           workerId={worker.id}
           exemption={editingExemption}
           plugins={plugins}
+          benefits={benefits}
           onSaved={refetch}
         />
       )}

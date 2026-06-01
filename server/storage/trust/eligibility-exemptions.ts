@@ -2,16 +2,18 @@ import { getClient, runInTransaction } from '../transaction-context';
 import {
   trustBenefitEligibilityExemptions,
   workers,
+  trustBenefits,
   createTrustBenefitEligibilityExemptionRequestSchema,
   updateTrustBenefitEligibilityExemptionRequestSchema,
   type TrustBenefitEligibilityExemption,
 } from '@shared/schema';
-import { eq, and, asc, desc, type SQL } from 'drizzle-orm';
+import { eq, and, asc, desc, lte, gte, isNull, or, type SQL } from 'drizzle-orm';
 import { defineLoggingConfig } from '../middleware/logging';
 
 export interface TrustBenefitEligibilityExemptionSearchParams {
   id?: string;
   subscriberWorkerId?: string;
+  benefitId?: string;
   sort?: 'startAsc' | 'startDesc';
   limit?: number;
   offset?: number;
@@ -21,9 +23,25 @@ export interface TrustBenefitEligibilityExemptionsStorage {
   search(params: TrustBenefitEligibilityExemptionSearchParams): Promise<TrustBenefitEligibilityExemption[]>;
   getById(id: string): Promise<TrustBenefitEligibilityExemption | undefined>;
   listByWorker(workerId: string): Promise<TrustBenefitEligibilityExemption[]>;
+  /**
+   * Exemptions for a worker + benefit that are active on the as-of date:
+   * startYmd on/before the date and (endYmd empty or on/after the date).
+   */
+  listActiveForWorkerAndBenefit(
+    workerId: string,
+    benefitId: string,
+    asOf: Date,
+  ): Promise<TrustBenefitEligibilityExemption[]>;
   create(workerId: string, input: unknown): Promise<TrustBenefitEligibilityExemption>;
   update(id: string, input: unknown): Promise<TrustBenefitEligibilityExemption | undefined>;
   delete(id: string): Promise<boolean>;
+}
+
+function toYmd(value: Date): string {
+  const yr = value.getFullYear();
+  const mo = String(value.getMonth() + 1).padStart(2, '0');
+  const dy = String(value.getDate()).padStart(2, '0');
+  return `${yr}-${mo}-${dy}`;
 }
 
 export class TrustBenefitEligibilityExemptionValidationError extends Error {
@@ -95,6 +113,14 @@ async function assertWorkerExists(workerId: string): Promise<void> {
   }
 }
 
+async function assertBenefitExists(benefitId: string): Promise<void> {
+  const client = getClient();
+  const [found] = await client.select({ id: trustBenefits.id }).from(trustBenefits).where(eq(trustBenefits.id, benefitId));
+  if (!found) {
+    throw new TrustBenefitEligibilityExemptionValidationError('benefitId', 'benefit does not exist');
+  }
+}
+
 export function createTrustBenefitEligibilityExemptionsStorage(): TrustBenefitEligibilityExemptionsStorage {
   const storage: TrustBenefitEligibilityExemptionsStorage = {
     async search(params): Promise<TrustBenefitEligibilityExemption[]> {
@@ -103,6 +129,9 @@ export function createTrustBenefitEligibilityExemptionsStorage(): TrustBenefitEl
       if (params.id) conds.push(eq(trustBenefitEligibilityExemptions.id, params.id));
       if (params.subscriberWorkerId) {
         conds.push(eq(trustBenefitEligibilityExemptions.subscriberWorkerId, params.subscriberWorkerId));
+      }
+      if (params.benefitId) {
+        conds.push(eq(trustBenefitEligibilityExemptions.benefitId, params.benefitId));
       }
       const where = conds.length > 0 ? and(...conds) : undefined;
       const order = params.sort === 'startAsc'
@@ -125,6 +154,26 @@ export function createTrustBenefitEligibilityExemptionsStorage(): TrustBenefitEl
       return await storage.search({ subscriberWorkerId: workerId, sort: 'startDesc' });
     },
 
+    async listActiveForWorkerAndBenefit(workerId, benefitId, asOf) {
+      const client = getClient();
+      const asOfYmd = toYmd(asOf);
+      const rows = await client
+        .select()
+        .from(trustBenefitEligibilityExemptions)
+        .where(
+          and(
+            eq(trustBenefitEligibilityExemptions.subscriberWorkerId, workerId),
+            eq(trustBenefitEligibilityExemptions.benefitId, benefitId),
+            lte(trustBenefitEligibilityExemptions.startYmd, asOfYmd),
+            or(
+              isNull(trustBenefitEligibilityExemptions.endYmd),
+              gte(trustBenefitEligibilityExemptions.endYmd, asOfYmd),
+            ),
+          ),
+        );
+      return rows.map(stripData);
+    },
+
     async create(workerId, input) {
       const parsed = createTrustBenefitEligibilityExemptionRequestSchema.parse({
         ...(input as Record<string, unknown>),
@@ -132,12 +181,14 @@ export function createTrustBenefitEligibilityExemptionsStorage(): TrustBenefitEl
       });
       return await runInTransaction(async () => {
         await assertWorkerExists(parsed.subscriberWorkerId);
+        await assertBenefitExists(parsed.benefitId);
         const client = getClient();
         const [created] = await client
           .insert(trustBenefitEligibilityExemptions)
           .values({
             subscriberWorkerId: parsed.subscriberWorkerId,
-            eligibilityPlugins: parsed.eligibilityPlugins ?? null,
+            benefitId: parsed.benefitId,
+            eligibilityPlugins: parsed.eligibilityPlugins,
             startYmd: parsed.startYmd,
             endYmd: parsed.endYmd ?? null,
             description: parsed.description ?? null,
@@ -166,7 +217,12 @@ export function createTrustBenefitEligibilityExemptionsStorage(): TrustBenefitEl
           );
         }
 
+        if (parsed.benefitId !== undefined) {
+          await assertBenefitExists(parsed.benefitId);
+        }
+
         const updateValues: Record<string, unknown> = {};
+        if (parsed.benefitId !== undefined) updateValues.benefitId = parsed.benefitId;
         if (parsed.eligibilityPlugins !== undefined) updateValues.eligibilityPlugins = parsed.eligibilityPlugins;
         if (parsed.startYmd !== undefined) updateValues.startYmd = parsed.startYmd;
         if (parsed.endYmd !== undefined) updateValues.endYmd = parsed.endYmd;

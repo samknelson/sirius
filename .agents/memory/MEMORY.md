@@ -1,0 +1,1 @@
+- [Author-time migration check vs untracked files](migration-check-untracked.md) — check-migrations false-fails on untracked migration files; startup drift gate is the real enforcement.

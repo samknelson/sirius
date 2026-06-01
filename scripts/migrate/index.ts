@@ -20,6 +20,7 @@ import "./core/1006_comm_postal_body";
 // and import them here so they are loaded at startup.
 //
 import "./components/trust.benefits.eligibility.exemptions/001_create_exemptions";
+import "./components/trust.benefits.eligibility.exemptions/002_require_benefit_and_plugins";
 
 // Baseline scripts — one-off, per-deployment scripts that bring a database
 // into sync with the schema BEFORE the drift gate runs. Baseline scripts

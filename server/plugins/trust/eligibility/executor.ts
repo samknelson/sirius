@@ -76,6 +76,49 @@ function asOfDate(asOfYear: number, asOfMonth: number): Date {
   return d;
 }
 
+const ELIGIBILITY_EXEMPTIONS_COMPONENT_ID = "trust.benefits.eligibility.exemptions";
+
+/**
+ * When the eligibility-exemptions component is enabled, resolves the set of
+ * eligibility plugin keys the SUBSCRIBER worker is exempted from for this
+ * benefit on the as-of date. Maps each exempted plugin key to the exemption's
+ * description (or null) so callers can surface a reason. Returns an empty map
+ * when the component is disabled, no benefit is in scope, or nothing matches.
+ */
+async function loadExemptedPlugins(
+  workerId: string,
+  benefitId: string | undefined,
+  enabledComponents: string[],
+  asOfYear: number,
+  asOfMonth: number,
+): Promise<Map<string, string | null>> {
+  const map = new Map<string, string | null>();
+  if (!benefitId) return map;
+  if (!enabledComponents.includes(ELIGIBILITY_EXEMPTIONS_COMPONENT_ID)) return map;
+
+  const exemptions =
+    await storage.trustBenefitEligibilityExemptions.listActiveForWorkerAndBenefit(
+      workerId,
+      benefitId,
+      asOfDate(asOfYear, asOfMonth),
+    );
+
+  for (const exemption of exemptions) {
+    for (const pluginKey of exemption.eligibilityPlugins ?? []) {
+      if (!map.has(pluginKey)) {
+        map.set(pluginKey, exemption.description ?? null);
+      }
+    }
+  }
+  return map;
+}
+
+function exemptionReason(description: string | null | undefined): string {
+  return description
+    ? `Exempted: ${description}`
+    : "Exempted by an eligibility exemption";
+}
+
 /**
  * Public hook for routes that need to hard-validate a supplied
  * `relationship` before short-circuiting on "no rules configured".
@@ -185,9 +228,24 @@ export async function evaluateEligibilityRules(
   const results: EligibilityResult[] = [];
 
   const enabledComponents = await getEnabledComponentIds();
+  const exemptedPlugins = await loadExemptedPlugins(
+    input.workerId,
+    input.benefitId,
+    enabledComponents,
+    asOfYear,
+    asOfMonth,
+  );
 
   for (const rule of rules) {
     if (!rule.appliesTo.includes(input.scanType)) {
+      continue;
+    }
+
+    if (exemptedPlugins.has(rule.pluginKey)) {
+      results.push({
+        eligible: true,
+        reason: exemptionReason(exemptedPlugins.get(rule.pluginKey)),
+      });
       continue;
     }
 
@@ -264,9 +322,25 @@ export async function evaluateBenefitEligibility(
   let overallEligible = true;
 
   const enabledComponents = await getEnabledComponentIds();
+  const exemptedPlugins = await loadExemptedPlugins(
+    input.workerId,
+    benefitId,
+    enabledComponents,
+    asOfYear,
+    asOfMonth,
+  );
 
   for (const rule of rules) {
     if (!rule.appliesTo.includes(input.scanType)) {
+      continue;
+    }
+
+    if (exemptedPlugins.has(rule.pluginKey)) {
+      pluginResults.push({
+        pluginKey: rule.pluginKey,
+        eligible: true,
+        reason: exemptionReason(exemptedPlugins.get(rule.pluginKey)),
+      });
       continue;
     }
 
