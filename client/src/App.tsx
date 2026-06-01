@@ -127,6 +127,7 @@ const WizardView = lazy(() => import("@/pages/wizard-view"));
 const StripeCustomerPage = lazy(() => import("@/pages/employers/stripe-customer"));
 const StripePaymentMethodsPage = lazy(() => import("@/pages/employers/stripe-payment-methods"));
 const EmployerSchoolAttributesPage = lazy(() => import("@/pages/employers/school-attributes"));
+const EmployerBaoImmediateEligibilityPage = lazy(() => import("@/pages/employers/sitespecific-bao-immediate-eligibility"));
 const EmployerLedgerAccountsWrapper = lazy(() => import("@/pages/employer-ledger-accounts-wrapper"));
 const EAView = lazy(() => import("@/pages/ea-view"));
 const EAInvoices = lazy(() => import("@/pages/ea-invoices"));
@@ -1417,6 +1418,14 @@ function Router() {
         <ProtectedRoute tabId="school-attributes" entityType="employer">
           <AuthenticatedLayout>
             <EmployerSchoolAttributesPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/employers/:id/sitespecific-bao-immediate-eligibility">
+        <ProtectedRoute tabId="sitespecific-bao-immediate-eligibility" entityType="employer">
+          <AuthenticatedLayout>
+            <EmployerBaoImmediateEligibilityPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
