@@ -35,3 +35,4 @@ import "./plugins/linked";
 import "./plugins/election";
 import "./plugins/relationshipType";
 import "./plugins/sitespecific-bao-start-healthnet";
+import "./plugins/sitespecific-bao-buildup";
