@@ -78,6 +78,24 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
     },
   );
 
+  // Special-case: facilities exposed as a remote-options source for the
+  // trust eligibility "BAO - Start Healthnet" plugin's site picker.
+  // Read-only; gated by the `sitespecific.bao` component. Register BEFORE
+  // the generic `/api/options/:type` so it matches first.
+  app.get(
+    "/api/options/facility",
+    requireAccess('authenticated'),
+    requireComponent("sitespecific.bao"),
+    async (_req: Request, res: Response) => {
+      try {
+        const facilities = await storage.facilities.getAll();
+        res.json(facilities.map((f) => ({ id: f.id, name: f.name })));
+      } catch (error) {
+        res.status(500).json({ message: "Failed to fetch facilities" });
+      }
+    },
+  );
+
   // GET /api/options/:type - List all items of a specific options type
   app.get("/api/options/:type", requireAccess('authenticated'), async (req: Request, res: Response) => {
     try {
