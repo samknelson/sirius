@@ -5,7 +5,7 @@ import type {
   EligibilityRule,
   ScanType,
 } from "./types";
-import type { Worker, Contact } from "@shared/schema";
+import type { Worker, Contact, Employer } from "@shared/schema";
 import { storage } from "../../../storage/database";
 import { logger } from "../../../logger";
 import { getEnabledComponentIds } from "../../../modules/components";
@@ -41,6 +41,14 @@ export interface EligibilityEvaluationInput {
   relationship?: {
     dependentWorkerId: string;
   };
+  /**
+   * Optionally evaluate as if the subscriber's employer is this one
+   * ("evaluate as if the subscriber's employer is X"). When omitted, the
+   * executor resolves the employer from the subscriber's active trust
+   * election as of the evaluation date. When neither yields an employer,
+   * the context employer is simply absent.
+   */
+  employerId?: string;
 }
 
 export interface BenefitEligibilityResult {
@@ -74,6 +82,40 @@ function asOfDate(asOfYear: number, asOfMonth: number): Date {
   // plugins (e.g. workStatus) for "as of this scan window".
   const d = new Date(asOfYear, asOfMonth, 0);
   return d;
+}
+
+function asOfYmd(asOfYear: number, asOfMonth: number): string {
+  const d = asOfDate(asOfYear, asOfMonth);
+  const yr = d.getFullYear();
+  const mo = String(d.getMonth() + 1).padStart(2, "0");
+  const dy = String(d.getDate()).padStart(2, "0");
+  return `${yr}-${mo}-${dy}`;
+}
+
+/**
+ * Resolve the subscriber's employer for an evaluation. Prefers an
+ * externally-supplied employer id; otherwise looks it up from the
+ * subscriber's trust election active as of the evaluation date. Returns
+ * undefined when neither yields an employer (or the id no longer exists).
+ * Tolerant of a missing election/employer — this runs on every
+ * evaluation (test page and monthly scan), so it must never throw.
+ */
+async function resolveEmployer(
+  input: EligibilityEvaluationInput,
+  asOfMonth: number,
+  asOfYear: number,
+): Promise<Employer | undefined> {
+  if (input.employerId) {
+    const supplied = await storage.employers.getEmployer(input.employerId);
+    return supplied ?? undefined;
+  }
+  const election = await storage.workerTrustElections.getActiveByWorkerAsOf(
+    input.workerId,
+    asOfYmd(asOfYear, asOfMonth),
+  );
+  if (!election?.employerId) return undefined;
+  const fromElection = await storage.employers.getEmployer(election.employerId);
+  return fromElection ?? undefined;
 }
 
 const ELIGIBILITY_EXEMPTIONS_COMPONENT_ID = "trust.benefits.eligibility.exemptions";
@@ -168,9 +210,11 @@ async function buildContextParts(
   dependentWorker: Worker;
   dependentContact: Contact | null;
   relationship?: EligibilityContext["relationship"];
+  employer?: Employer;
 }> {
   const subscriberWorker = await loadWorker(input.workerId, input.worker);
   const subscriberContact = await loadContactFor(subscriberWorker);
+  const employer = await resolveEmployer(input, asOfMonth, asOfYear);
 
   if (!input.relationship) {
     return {
@@ -178,6 +222,7 @@ async function buildContextParts(
       subscriberContact,
       dependentWorker: subscriberWorker,
       dependentContact: subscriberContact,
+      employer,
     };
   }
 
@@ -212,6 +257,7 @@ async function buildContextParts(
       dependentWorkerId,
       relationType: row.relationType,
     },
+    employer,
   };
 }
 

@@ -72,6 +72,12 @@ interface WorkerRelationOption {
 }
 
 const NO_DEPENDENT = "__none__";
+const USE_RESOLVED_EMPLOYER = "__resolved__";
+
+interface EmployerOption {
+  id: string;
+  name: string;
+}
 
 function lastDayOfMonthIso(year: number, month: number): string {
   const d = new Date(year, month, 0);
@@ -98,6 +104,7 @@ function WorkerBenefitsEligibilityContent() {
   const [selectedBenefitId, setSelectedBenefitId] = useState<string>("");
   const [selectedScanType, setSelectedScanType] = useState<"start" | "continue">("start");
   const [selectedDependentId, setSelectedDependentId] = useState<string>(NO_DEPENDENT);
+  const [selectedEmployerId, setSelectedEmployerId] = useState<string>(USE_RESOLVED_EMPLOYER);
   const [evaluatedSubscriberName, setEvaluatedSubscriberName] = useState<string | null>(null);
   const [evaluatedDependentName, setEvaluatedDependentName] = useState<string | null>(null);
   const [eligibilityResult, setEligibilityResult] = useState<BenefitEligibilityResult | null>(null);
@@ -163,6 +170,10 @@ function WorkerBenefitsEligibilityContent() {
     enabled: !!worker.denormHomeEmployerId,
   });
 
+  const { data: employerOptions = [] } = useQuery<EmployerOption[]>({
+    queryKey: ["/api/employers/lookup"],
+  });
+
   const { data: defaultPolicyVariable } = useQuery<Variable | null>({
     queryKey: ["/api/variables/by-name", "policy_default"],
     queryFn: async () => {
@@ -212,6 +223,9 @@ function WorkerBenefitsEligibilityContent() {
       };
       if (selectedDependentId !== NO_DEPENDENT) {
         body.relationship = { dependentWorkerId: selectedDependentId };
+      }
+      if (selectedEmployerId !== USE_RESOLVED_EMPLOYER) {
+        body.employerId = selectedEmployerId;
       }
       return apiRequest("POST", "/api/eligibility/evaluate", body);
     },
@@ -414,6 +428,40 @@ function WorkerBenefitsEligibilityContent() {
                 {selectedYear} are listed.
                 {dependentRelations.length === 0 &&
                   " This worker has no active dependents on that date."}
+              </p>
+            </div>
+
+            <div className="space-y-2 md:col-span-2">
+              <Label htmlFor="employer">Employer (optional)</Label>
+              <Select
+                value={selectedEmployerId}
+                onValueChange={(value) => {
+                  setSelectedEmployerId(value);
+                  setEligibilityResult(null);
+                }}
+              >
+                <SelectTrigger id="employer" data-testid="select-employer">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={USE_RESOLVED_EMPLOYER}>
+                    Use the subscriber's active election employer
+                  </SelectItem>
+                  {employerOptions.map((emp) => (
+                    <SelectItem
+                      key={emp.id}
+                      value={emp.id}
+                      data-testid={`option-employer-${emp.id}`}
+                    >
+                      {emp.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Leave on the default to use the employer from the subscriber's
+                active trust election. Pick an employer to evaluate as if the
+                subscriber belonged to it.
               </p>
             </div>
 

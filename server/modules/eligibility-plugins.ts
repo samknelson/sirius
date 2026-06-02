@@ -22,6 +22,7 @@ const evaluateEligibilitySchema = z.object({
       dependentWorkerId: z.string().uuid(),
     })
     .optional(),
+  employerId: z.string().uuid().optional(),
 });
 
 export function registerEligibilityPluginRoutes(
@@ -82,6 +83,7 @@ export function registerEligibilityPluginRoutes(
           asOfYear: input.asOfYear,
           stopAfterIneligible: input.stopAfterIneligible,
           relationship: input.relationship,
+          employerId: input.employerId,
         }
       );
 

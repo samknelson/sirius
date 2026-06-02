@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { Worker, Contact } from "@shared/schema";
+import type { Worker, Contact, Employer } from "@shared/schema";
 import type { JsonSchema } from "@shared/json-schema-form";
 
 export type ScanType = "start" | "continue";
@@ -58,6 +58,15 @@ export interface EligibilityContext {
     dependentWorkerId: string;
     relationType: string;
   };
+  /**
+   * Subscriber's employer resolved once by the executor before any plugin
+   * runs. It is the externally-supplied employer when one is provided to
+   * the evaluation, otherwise the employer on the subscriber's trust
+   * election active as of the evaluation date. Absent when neither yields
+   * an employer; plugins that depend on it (e.g. BAO immediate
+   * eligibility) must tolerate it being undefined rather than crash.
+   */
+  employer?: Employer;
 }
 
 export interface EligibilityResult {

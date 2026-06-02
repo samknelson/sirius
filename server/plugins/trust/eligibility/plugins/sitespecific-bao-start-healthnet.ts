@@ -30,6 +30,9 @@ interface BaoStartHealthnetConfig extends BaseEligibilityConfig {
     benefitTypeId?: string;
     months?: number;
   };
+  immediateEligibility?: {
+    enabled?: boolean;
+  };
   // Legacy top-level fields (pre-nesting). Read for backward compat only.
   distanceMiles?: number;
   facilityIds?: string[];
@@ -42,6 +45,7 @@ interface NormalizedConfig {
   healthnetBenefitId?: string;
   medicalBenefitTypeId?: string;
   medicalMonths?: number;
+  immediateEligibilityEnabled?: boolean;
 }
 
 function normalizeConfig(config: unknown): NormalizedConfig {
@@ -52,6 +56,7 @@ function normalizeConfig(config: unknown): NormalizedConfig {
     healthnetBenefitId: c.healthnet?.benefitId,
     medicalBenefitTypeId: c.medical?.benefitTypeId,
     medicalMonths: c.medical?.months,
+    immediateEligibilityEnabled: c.immediateEligibility?.enabled === true,
   };
 }
 
@@ -76,6 +81,19 @@ function isMedicalConfigured(n: NormalizedConfig): boolean {
     Number.isInteger(n.medicalMonths) &&
     n.medicalMonths >= 1
   );
+}
+
+function isImmediateEligibilityConfigured(n: NormalizedConfig): boolean {
+  return n.immediateEligibilityEnabled === true;
+}
+
+function ymdFromYearMonth(asOfYear: number, asOfMonth: number): string {
+  // Last day of the asOf month — matches the executor's as-of convention.
+  const d = new Date(asOfYear, asOfMonth, 0);
+  const yr = d.getFullYear();
+  const mo = String(d.getMonth() + 1).padStart(2, "0");
+  const dy = String(d.getDate()).padStart(2, "0");
+  return `${yr}-${mo}-${dy}`;
 }
 
 type CoordsLookup =
@@ -147,7 +165,7 @@ class BaoStartHealthnetPlugin extends EligibilityPlugin<BaoStartHealthnetConfig>
       "1. Geographic — primary address is more than the chosen distance from every selected site.\n" +
       "2. Ever had HealthNet — the subscriber has at any point held the benefit designated as HealthNet.\n" +
       "3. Continuous medical — the subscriber has held a benefit of the chosen Medical type for the required number of consecutive months at any point in their history.\n" +
-      "4. Employer immediate-eligibility period (not yet available).",
+      "4. Employer immediate-eligibility — the subscriber's employer is inside an immediate-eligibility window covering the evaluated date.",
     requiredComponent: "sitespecific.bao",
     configSchema: {
       type: "object",
@@ -215,10 +233,18 @@ class BaoStartHealthnetPlugin extends EligibilityPlugin<BaoStartHealthnetConfig>
         },
         immediateEligibility: {
           type: "object",
-          title: "Criterion 4 — Employer immediate-eligibility period (not yet available)",
+          title: "Criterion 4 — Employer immediate-eligibility period",
           description:
-            "This criterion is not configurable yet. It will let workers qualify while their employer is in an immediate-eligibility period.",
-          properties: {},
+            "Eligible if the subscriber's employer is inside an immediate-eligibility window covering the evaluated date. Turn this on to enable the criterion; leave it off to skip it.",
+          properties: {
+            enabled: {
+              type: "boolean",
+              title: "Enable employer immediate-eligibility",
+              description:
+                "When on, a worker qualifies if their resolved employer has an immediate-eligibility window covering the evaluated date.",
+              default: false,
+            },
+          },
         },
       },
     },
@@ -337,8 +363,9 @@ class BaoStartHealthnetPlugin extends EligibilityPlugin<BaoStartHealthnetConfig>
     const geographic = isGeographicConfigured(n);
     const healthnet = isHealthnetConfigured(n);
     const medical = isMedicalConfigured(n);
+    const immediate = isImmediateEligibilityConfigured(n);
 
-    if (!geographic && !healthnet && !medical) {
+    if (!geographic && !healthnet && !medical && !immediate) {
       return {
         eligible: false,
         reason: "BAO - Start Healthnet is misconfigured: no eligibility criteria are configured",
@@ -396,6 +423,34 @@ class BaoStartHealthnetPlugin extends EligibilityPlugin<BaoStartHealthnetConfig>
       failures.push(
         `Continuous medical: longest unbroken medical coverage is ${longestRun} ${longestRun === 1 ? "month" : "months"}, but ${n.medicalMonths} consecutive months are required`,
       );
+    }
+
+    // Criterion 4 — Employer immediate-eligibility window
+    if (immediate) {
+      const employer = context.employer;
+      if (!employer) {
+        failures.push(
+          "Employer immediate-eligibility: no employer could be resolved for the subscriber on the evaluated date",
+        );
+      } else {
+        const asOfYmd = ymdFromYearMonth(context.asOfYear, context.asOfMonth);
+        const window = await storage.baoImmediateEligibility.getByEmployerId(employer.id);
+        if (window && window.startYmd <= asOfYmd && window.endYmd >= asOfYmd) {
+          return {
+            eligible: true,
+            reason: `Eligible (employer immediate-eligibility): employer "${employer.name}" is within an immediate-eligibility window (${window.startYmd} → ${window.endYmd}) covering ${asOfYmd}`,
+          };
+        }
+        if (window) {
+          failures.push(
+            `Employer immediate-eligibility: employer "${employer.name}" has a window (${window.startYmd} → ${window.endYmd}) that does not cover ${asOfYmd}`,
+          );
+        } else {
+          failures.push(
+            `Employer immediate-eligibility: employer "${employer.name}" has no immediate-eligibility window`,
+          );
+        }
+      }
     }
 
     return {
