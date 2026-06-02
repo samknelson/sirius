@@ -399,6 +399,7 @@ export const optionsWorkerIdType = pgTable("options_worker_id_type", {
 export const optionsTrustBenefitType = pgTable("options_trust_benefit_type", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
+  siriusId: varchar("sirius_id", { length: 255 }).unique(),
   sequence: integer("sequence").notNull().default(0),
   data: jsonb("data"),
 });
