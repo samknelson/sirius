@@ -315,6 +315,7 @@ export const trustProviderContacts = pgTable("trust_provider_contacts", {
 
 export const trustBenefits = pgTable("trust_benefits", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  siriusId: varchar("sirius_id").unique(),
   name: text("name").notNull(),
   benefitType: varchar("benefit_type").references(() => optionsTrustBenefitType.id, { onDelete: 'set null' }),
   isActive: boolean("is_active").default(true).notNull(),
