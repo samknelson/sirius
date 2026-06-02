@@ -92,6 +92,7 @@ import { type BtuSchoolTypesStorage, createBtuSchoolTypesStorage } from "./sites
 import { type BtuRegionsStorage, createBtuRegionsStorage } from "./sitespecific/btu/regions";
 import { type BtuSchoolAttributesStorage, createBtuSchoolAttributesStorage } from "./sitespecific/btu/school-attributes";
 import { type BaoImmediateEligibilityStorage, createBaoImmediateEligibilityStorage, baoImmediateEligibilityLoggingConfig } from "./sitespecific/bao/immediate-eligibility";
+import { type BaoBeneficiariesStorage, createBaoBeneficiariesStorage, baoBeneficiariesLoggingConfig } from "./sitespecific/bao/beneficiaries";
 import { type WorkerBanStorage, createWorkerBanStorage, workerBanLoggingConfig } from "./worker-bans";
 import { type WorkerDispatchDncStorage, createWorkerDispatchDncStorage, workerDispatchDncLoggingConfig } from "./dispatch/worker-dnc";
 import { type WorkerSkillStorage, createWorkerSkillStorage, workerSkillLoggingConfig } from "./workers/skills";
@@ -169,6 +170,7 @@ export interface IStorage {
   btuRegions: BtuRegionsStorage;
   btuSchoolAttributes: BtuSchoolAttributesStorage;
   baoImmediateEligibility: BaoImmediateEligibilityStorage;
+  baoBeneficiaries: BaoBeneficiariesStorage;
   freemanCrewleads: FreemanCrewleadsStorage;
   workerBans: WorkerBanStorage;
   workerDispatchDnc: WorkerDispatchDncStorage;
@@ -259,6 +261,7 @@ export class DatabaseStorage implements IStorage {
   btuRegions: BtuRegionsStorage;
   btuSchoolAttributes: BtuSchoolAttributesStorage;
   baoImmediateEligibility: BaoImmediateEligibilityStorage;
+  baoBeneficiaries: BaoBeneficiariesStorage;
   freemanCrewleads: FreemanCrewleadsStorage;
   workerBans: WorkerBanStorage;
   workerDispatchDnc: WorkerDispatchDncStorage;
@@ -451,6 +454,10 @@ export class DatabaseStorage implements IStorage {
     this.baoImmediateEligibility = withStorageLogging(
       createBaoImmediateEligibilityStorage(),
       baoImmediateEligibilityLoggingConfig,
+    );
+    this.baoBeneficiaries = withStorageLogging(
+      createBaoBeneficiariesStorage(this.workers),
+      baoBeneficiariesLoggingConfig,
     );
     this.freemanCrewleads = withStorageLogging(
       createFreemanCrewleadsStorage(),

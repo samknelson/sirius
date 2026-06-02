@@ -1,1 +1,2 @@
 - [Author-time migration check vs untracked files](migration-check-untracked.md) — check-migrations false-fails on untracked migration files; startup drift gate is the real enforcement.
+- [New jsonb column auto-leaks via storage reads](jsonb-column-pii-leak.md) — a new column on a core table leaks through every star-select/`.returning()` read; strip it at the storage boundary, type omit alone won't stop the runtime leak.

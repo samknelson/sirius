@@ -231,6 +231,7 @@ export const workers = pgTable("workers", {
   denormHomeEmployerId: varchar("denorm_home_employer_id").references(() => employers.id, { onDelete: 'set null' }),
   denormEmployerIds: varchar("denorm_employer_ids").array(),
   bargainingUnitId: varchar("bargaining_unit_id").references(() => bargainingUnits.id, { onDelete: 'set null' }),
+  data: jsonb("data"),
 });
 
 export const workerBans = pgTable("worker_bans", {
@@ -1088,6 +1089,7 @@ export const insertContactSchema = createInsertSchema(contacts).omit({
 export const insertWorkerSchema = createInsertSchema(workers).omit({
   id: true,
   contactId: true, // Contact will be managed automatically
+  data: true, // Generic JSON blob; written only through dedicated storage methods
 });
 
 export const workerBanTypeEnum = ["dispatch"] as const;
@@ -1371,7 +1373,12 @@ export type InsertContact = z.infer<typeof insertContactSchema>;
 export type Contact = typeof contacts.$inferSelect;
 
 export type InsertWorker = z.infer<typeof insertWorkerSchema>;
-export type Worker = typeof workers.$inferSelect;
+// `data` (jsonb) is an internal storage blob (e.g. sitespecific.bao.beneficiaries,
+// which holds PII). It is deliberately excluded from the public Worker type and
+// stripped in the storage layer so it never leaks through generic worker
+// endpoints — it is only ever accessed via the dedicated getData/setData
+// accessors and the component-gated beneficiaries storage namespace.
+export type Worker = Omit<typeof workers.$inferSelect, "data">;
 
 export type InsertWorkerBan = z.infer<typeof insertWorkerBanSchema>;
 export type WorkerBan = typeof workerBans.$inferSelect;

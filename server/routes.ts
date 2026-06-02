@@ -100,6 +100,7 @@ import { registerGbhetPensionRoutes } from "./modules/sitespecific/gbhet/pension
 import { registerBtuTerritoriesRoutes } from "./modules/sitespecific/btu/territories";
 import { registerBtuSchoolRoutes } from "./modules/sitespecific/btu/school";
 import { registerBaoImmediateEligibilityRoutes } from "./modules/sitespecific/bao/immediate-eligibility";
+import { registerBaoBeneficiariesRoutes } from "./modules/sitespecific/bao/beneficiaries";
 import { registerBtuSigImportRoutes } from "./modules/sitespecific/btu/sig-import";
 import { registerBtuScraperImportRoutes } from "./modules/sitespecific/btu/scraper-import";
 import { registerBtuBuildingRepImportRoutes } from "./modules/sitespecific/btu/building-rep-import";
@@ -1681,6 +1682,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   registerBtuTerritoriesRoutes(app, requireAuth, requirePermission);
   registerBtuSchoolRoutes(app, requireAuth, requirePermission);
   registerBaoImmediateEligibilityRoutes(app, requireAuth, requirePermission, requireAccess);
+  registerBaoBeneficiariesRoutes(app, requireAuth, requirePermission, requireAccess);
   registerBtuSigImportRoutes(app, requireAuth, requirePermission);
   registerBtuScraperImportRoutes(app, requireAuth, requirePermission);
   registerBtuBuildingRepImportRoutes(app, requireAuth, requirePermission);

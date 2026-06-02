@@ -188,6 +188,12 @@ export interface WorkerStorage {
   getContactExportDataByIds(workerIdsList: string[]): Promise<WorkerContactExportRow[]>;
   getWorkersCurrentBenefits(month?: number, year?: number): Promise<WorkerCurrentBenefits[]>;
   getWorker(id: string): Promise<Worker | undefined>;
+  // Generic, feature-agnostic accessors for the worker's `data` jsonb blob.
+  // These know nothing about any particular feature's JSON path; the only
+  // legitimate writer is a validated, feature-specific storage namespace that
+  // performs an atomic read-modify-write. Do NOT use as a general escape hatch.
+  getData(id: string): Promise<Record<string, unknown>>;
+  setData(id: string, data: Record<string, unknown>): Promise<void>;
   getWorkerDisplayName(id: string | undefined | null): Promise<string>;
   getWorkerBySSN(ssn: string): Promise<Worker | undefined>;
   getWorkerByContactEmail(email: string): Promise<Worker | undefined>;
@@ -545,6 +551,15 @@ async function _searchWorkers(params: InternalSearchParams): Promise<InternalSea
   };
 }
 
+// Strip the internal `data` jsonb blob from a worker row before it leaves the
+// storage layer. `data` (beneficiary PII, etc.) must never ride along on generic
+// worker responses; it is only exposed via the dedicated getData/baoBeneficiaries
+// paths. Applied to every method that returns a worker row to callers.
+function stripWorkerData<T extends { data?: unknown }>(row: T): Omit<T, "data"> {
+  const { data: _data, ...rest } = row;
+  return rest;
+}
+
 export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerStorage {
   let denormDataProvider: ((workerId: string) => Promise<WorkerDenormData>) | null = null;
 
@@ -555,7 +570,8 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
 
     async getAllWorkers(): Promise<Worker[]> {
       const client = getClient();
-      return await client.select().from(workers);
+      const rows = await client.select().from(workers);
+      return rows.map(stripWorkerData);
     },
 
     async searchWorkers(query: string, limit: number = 10): Promise<WorkerSearchResult> {
@@ -816,7 +832,34 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
     async getWorker(id: string): Promise<Worker | undefined> {
       const client = getClient();
       const [worker] = await client.select().from(workers).where(eq(workers.id, id));
-      return worker || undefined;
+      return worker ? stripWorkerData(worker) : undefined;
+    },
+
+    async getData(id: string): Promise<Record<string, unknown>> {
+      const client = getClient();
+      const [row] = await client
+        .select({ data: workers.data })
+        .from(workers)
+        .where(eq(workers.id, id));
+      if (!row) {
+        throw new Error("WORKER_NOT_FOUND");
+      }
+      const data = row.data;
+      return data && typeof data === "object" && !Array.isArray(data)
+        ? (data as Record<string, unknown>)
+        : {};
+    },
+
+    async setData(id: string, data: Record<string, unknown>): Promise<void> {
+      const client = getClient();
+      const result = await client
+        .update(workers)
+        .set({ data })
+        .where(eq(workers.id, id))
+        .returning({ id: workers.id });
+      if (result.length === 0) {
+        throw new Error("WORKER_NOT_FOUND");
+      }
     },
 
     async getWorkerDisplayName(id: string | undefined | null): Promise<string> {
@@ -855,7 +898,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         .from(workers)
         .where(sql`regexp_replace(${workers.ssn}, '[^0-9]', '', 'g') = ${normalizedSSN}`);
       
-      return worker || undefined;
+      return worker ? stripWorkerData(worker) : undefined;
     },
 
     async getWorkerByContactEmail(email: string): Promise<Worker | undefined> {
@@ -886,7 +929,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         .select()
         .from(workers)
         .where(eq(workers.contactId, contactId));
-      return worker || undefined;
+      return worker ? stripWorkerData(worker) : undefined;
     },
 
     async getWorkersByHomeEmployerId(employerId: string): Promise<Array<{
@@ -934,7 +977,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         .values({ contactId: contact.id })
         .returning();
       
-      return worker;
+      return stripWorkerData(worker);
     },
 
     async updateWorkerContactName(workerId: string, name: string): Promise<Worker | undefined> {
@@ -948,7 +991,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       // Update the contact's name using contact storage
       await contactsStorage.updateName(currentWorker.contactId, name);
       
-      return currentWorker;
+      return stripWorkerData(currentWorker);
     },
 
     async updateWorkerContactNameComponents(
@@ -972,7 +1015,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       // Update the contact's name components using contact storage
       await contactsStorage.updateNameComponents(currentWorker.contactId, components);
       
-      return currentWorker;
+      return stripWorkerData(currentWorker);
     },
 
     async updateWorkerContactEmail(workerId: string, email: string): Promise<Worker | undefined> {
@@ -986,7 +1029,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       // Update the contact's email using contact storage
       await contactsStorage.updateEmail(currentWorker.contactId, email);
       
-      return currentWorker;
+      return stripWorkerData(currentWorker);
     },
 
     async updateWorkerContactBirthDate(workerId: string, birthDate: string | null): Promise<Worker | undefined> {
@@ -1000,7 +1043,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       // Update the contact's birth date using contact storage
       await contactsStorage.updateBirthDate(currentWorker.contactId, birthDate);
       
-      return currentWorker;
+      return stripWorkerData(currentWorker);
     },
 
     async updateWorkerContactGender(workerId: string, gender: string | null, genderNota: string | null): Promise<Worker | undefined> {
@@ -1014,7 +1057,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       // Update the contact's gender using contact storage
       await contactsStorage.updateGender(currentWorker.contactId, gender, genderNota);
       
-      return currentWorker;
+      return stripWorkerData(currentWorker);
     },
 
     async updateWorkerSSN(workerId: string, ssn: string): Promise<Worker | undefined> {
@@ -1027,7 +1070,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         .where(eq(workers.id, workerId))
         .returning();
       
-      return updatedWorker || undefined;
+      return updatedWorker ? stripWorkerData(updatedWorker) : undefined;
     },
 
     async updateWorkerStatus(workerId: string, denormWsId: string | null): Promise<Worker | undefined> {
@@ -1038,7 +1081,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         .where(eq(workers.id, workerId))
         .returning();
       
-      return updatedWorker || undefined;
+      return updatedWorker ? stripWorkerData(updatedWorker) : undefined;
     },
 
     async updateWorkerMemberStatuses(workerId: string, denormMsIds: string[] | null): Promise<Worker | undefined> {
@@ -1049,7 +1092,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         .where(eq(workers.id, workerId))
         .returning();
       
-      return updatedWorker || undefined;
+      return updatedWorker ? stripWorkerData(updatedWorker) : undefined;
     },
 
     async syncWorkerEmployerDenorm(workerId: string): Promise<void> {
@@ -1082,7 +1125,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         .where(eq(workers.id, workerId))
         .returning();
       
-      return updatedWorker || undefined;
+      return updatedWorker ? stripWorkerData(updatedWorker) : undefined;
     },
 
     async deleteWorker(id: string): Promise<boolean> {
