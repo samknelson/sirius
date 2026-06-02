@@ -30,9 +30,6 @@ interface BaoStartHealthnetConfig extends BaseEligibilityConfig {
     benefitTypeId?: string;
     months?: number;
   };
-  immediateEligibility?: {
-    enabled?: boolean;
-  };
   // Legacy top-level fields (pre-nesting). Read for backward compat only.
   distanceMiles?: number;
   facilityIds?: string[];
@@ -45,7 +42,6 @@ interface NormalizedConfig {
   healthnetBenefitId?: string;
   medicalBenefitTypeId?: string;
   medicalMonths?: number;
-  immediateEligibilityEnabled?: boolean;
 }
 
 function normalizeConfig(config: unknown): NormalizedConfig {
@@ -56,7 +52,6 @@ function normalizeConfig(config: unknown): NormalizedConfig {
     healthnetBenefitId: c.healthnet?.benefitId,
     medicalBenefitTypeId: c.medical?.benefitTypeId,
     medicalMonths: c.medical?.months,
-    immediateEligibilityEnabled: c.immediateEligibility?.enabled === true,
   };
 }
 
@@ -81,10 +76,6 @@ function isMedicalConfigured(n: NormalizedConfig): boolean {
     Number.isInteger(n.medicalMonths) &&
     n.medicalMonths >= 1
   );
-}
-
-function isImmediateEligibilityConfigured(n: NormalizedConfig): boolean {
-  return n.immediateEligibilityEnabled === true;
 }
 
 function ymdFromYearMonth(asOfYear: number, asOfMonth: number): string {
@@ -161,11 +152,11 @@ class BaoStartHealthnetPlugin extends EligibilityPlugin<BaoStartHealthnetConfig>
     id: "sitespecific-bao-start-healthnet",
     name: "BAO - Start Healthnet",
     description:
-      "A subscriber is eligible if they meet ANY ONE of the following criteria (only configured criteria are checked):\n" +
+      "A subscriber is eligible if they meet ANY ONE of the following criteria (criteria 1–3 are checked only when configured; criterion 4 is always checked):\n" +
       "1. Geographic — primary address is more than the chosen distance from every selected site.\n" +
       "2. Ever had HealthNet — the subscriber has at any point held the benefit designated as HealthNet.\n" +
       "3. Continuous medical — the subscriber has held a benefit of the chosen Medical type for the required number of consecutive months at any point in their history.\n" +
-      "4. Employer immediate-eligibility — the subscriber's employer is inside an immediate-eligibility window covering the evaluated date.",
+      "4. Employer immediate-eligibility (always checked) — the subscriber's employer is inside an immediate-eligibility window covering the evaluated date.",
     requiredComponent: "sitespecific.bao",
     configSchema: {
       type: "object",
@@ -228,21 +219,6 @@ class BaoStartHealthnetPlugin extends EligibilityPlugin<BaoStartHealthnetConfig>
               description: "How many unbroken months of medical coverage are required.",
               minimum: 1,
               default: 6,
-            },
-          },
-        },
-        immediateEligibility: {
-          type: "object",
-          title: "Criterion 4 — Employer immediate-eligibility period",
-          description:
-            "Eligible if the subscriber's employer is inside an immediate-eligibility window covering the evaluated date. Turn this on to enable the criterion; leave it off to skip it.",
-          properties: {
-            enabled: {
-              type: "boolean",
-              title: "Enable employer immediate-eligibility",
-              description:
-                "When on, a worker qualifies if their resolved employer has an immediate-eligibility window covering the evaluated date.",
-              default: false,
             },
           },
         },
@@ -363,14 +339,6 @@ class BaoStartHealthnetPlugin extends EligibilityPlugin<BaoStartHealthnetConfig>
     const geographic = isGeographicConfigured(n);
     const healthnet = isHealthnetConfigured(n);
     const medical = isMedicalConfigured(n);
-    const immediate = isImmediateEligibilityConfigured(n);
-
-    if (!geographic && !healthnet && !medical && !immediate) {
-      return {
-        eligible: false,
-        reason: "BAO - Start Healthnet is misconfigured: no eligibility criteria are configured",
-      };
-    }
 
     const failures: string[] = [];
 
@@ -425,31 +393,29 @@ class BaoStartHealthnetPlugin extends EligibilityPlugin<BaoStartHealthnetConfig>
       );
     }
 
-    // Criterion 4 — Employer immediate-eligibility window
-    if (immediate) {
-      const employer = context.employer;
-      if (!employer) {
+    // Criterion 4 — Employer immediate-eligibility window (always checked)
+    const employer = context.employer;
+    if (!employer) {
+      failures.push(
+        "Employer immediate-eligibility: no employer could be resolved for the subscriber on the evaluated date",
+      );
+    } else {
+      const asOfYmd = ymdFromYearMonth(context.asOfYear, context.asOfMonth);
+      const window = await storage.baoImmediateEligibility.getByEmployerId(employer.id);
+      if (window && window.startYmd <= asOfYmd && window.endYmd >= asOfYmd) {
+        return {
+          eligible: true,
+          reason: `Eligible (employer immediate-eligibility): employer "${employer.name}" is within an immediate-eligibility window (${window.startYmd} → ${window.endYmd}) covering ${asOfYmd}`,
+        };
+      }
+      if (window) {
         failures.push(
-          "Employer immediate-eligibility: no employer could be resolved for the subscriber on the evaluated date",
+          `Employer immediate-eligibility: employer "${employer.name}" has a window (${window.startYmd} → ${window.endYmd}) that does not cover ${asOfYmd}`,
         );
       } else {
-        const asOfYmd = ymdFromYearMonth(context.asOfYear, context.asOfMonth);
-        const window = await storage.baoImmediateEligibility.getByEmployerId(employer.id);
-        if (window && window.startYmd <= asOfYmd && window.endYmd >= asOfYmd) {
-          return {
-            eligible: true,
-            reason: `Eligible (employer immediate-eligibility): employer "${employer.name}" is within an immediate-eligibility window (${window.startYmd} → ${window.endYmd}) covering ${asOfYmd}`,
-          };
-        }
-        if (window) {
-          failures.push(
-            `Employer immediate-eligibility: employer "${employer.name}" has a window (${window.startYmd} → ${window.endYmd}) that does not cover ${asOfYmd}`,
-          );
-        } else {
-          failures.push(
-            `Employer immediate-eligibility: employer "${employer.name}" has no immediate-eligibility window`,
-          );
-        }
+        failures.push(
+          `Employer immediate-eligibility: employer "${employer.name}" has no immediate-eligibility window`,
+        );
       }
     }
 
