@@ -1426,6 +1426,12 @@ export const workerLoggingConfig: StorageLoggingConfig<WorkerStorage> = {
           }
         };
       }
+    },
+    setData: {
+      enabled: true,
+      getEntityId: (args) => args[0],
+      getHostEntityId: (args) => args[0],
+      getDescription: () => 'Updated worker data',
     }
   }
 };
