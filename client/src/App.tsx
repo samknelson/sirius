@@ -223,6 +223,7 @@ const HtaHomeEmploymentStatusesPage = lazy(() => import("@/pages/config/hta-home
 const EdlsSettingsPage = lazy(() => import("@/pages/config/edls/settings"));
 const EdlsTasksPage = lazy(() => import("@/pages/config/edls/tasks"));
 const T631FetchPage = lazy(() => import("@/pages/config/edls/t631-fetch"));
+const BaoMemberStatusThresholdsPage = lazy(() => import("@/pages/config/trust/sitespecific/bao/thresholds"));
 const WsBundlesPage = lazy(() => import("@/pages/config/ws/bundles"));
 const WsClientsPage = lazy(() => import("@/pages/config/ws/clients"));
 const WsClientSettingsPage = lazy(() => import("@/pages/config/ws/client-settings"));
@@ -2371,6 +2372,16 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <T631FetchPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/trust/sitespecific/bao/thresholds">
+        <ProtectedRoute permission="admin" component="sitespecific.bao">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <BaoMemberStatusThresholdsPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
