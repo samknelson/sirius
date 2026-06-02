@@ -9,9 +9,70 @@ import { registerEligibilityPlugin } from "../registry";
 import { storage } from "../../../../storage/database";
 import { distanceInMiles, type Coordinates } from "@shared/utils/geocode";
 
+/**
+ * Raw config as persisted on the rule. New configs use the nested
+ * per-criterion shape below; older configs stored `distanceMiles` and
+ * `facilityIds` at the top level (when only the geographic criterion
+ * existed). `normalizeConfig` reads both so existing rules keep working.
+ */
 interface BaoStartHealthnetConfig extends BaseEligibilityConfig {
-  distanceMiles: number;
-  facilityIds: string[];
+  geographic?: {
+    distanceMiles?: number;
+    facilityIds?: string[];
+  };
+  healthnet?: {
+    benefitId?: string;
+  };
+  medical?: {
+    benefitTypeId?: string;
+    months?: number;
+  };
+  // Legacy top-level fields (pre-nesting). Read for backward compat only.
+  distanceMiles?: number;
+  facilityIds?: string[];
+}
+
+/** Flattened, shape-agnostic view of the config used by validate/evaluate. */
+interface NormalizedConfig {
+  distanceMiles?: number;
+  facilityIds?: string[];
+  healthnetBenefitId?: string;
+  medicalBenefitTypeId?: string;
+  medicalMonths?: number;
+}
+
+function normalizeConfig(config: unknown): NormalizedConfig {
+  const c = (config ?? {}) as BaoStartHealthnetConfig;
+  return {
+    distanceMiles: c.geographic?.distanceMiles ?? c.distanceMiles,
+    facilityIds: c.geographic?.facilityIds ?? c.facilityIds,
+    healthnetBenefitId: c.healthnet?.benefitId,
+    medicalBenefitTypeId: c.medical?.benefitTypeId,
+    medicalMonths: c.medical?.months,
+  };
+}
+
+function isGeographicConfigured(n: NormalizedConfig): boolean {
+  return (
+    typeof n.distanceMiles === "number" &&
+    n.distanceMiles > 0 &&
+    Array.isArray(n.facilityIds) &&
+    n.facilityIds.length > 0
+  );
+}
+
+function isHealthnetConfigured(n: NormalizedConfig): boolean {
+  return typeof n.healthnetBenefitId === "string" && n.healthnetBenefitId.length > 0;
+}
+
+function isMedicalConfigured(n: NormalizedConfig): boolean {
+  return (
+    typeof n.medicalBenefitTypeId === "string" &&
+    n.medicalBenefitTypeId.length > 0 &&
+    typeof n.medicalMonths === "number" &&
+    Number.isInteger(n.medicalMonths) &&
+    n.medicalMonths >= 1
+  );
 }
 
 type CoordsLookup =
@@ -38,39 +99,111 @@ async function getPrimaryCoords(contactId: string): Promise<CoordsLookup> {
   };
 }
 
+/**
+ * Longest run of consecutive calendar months across the given rows.
+ * Each (year, month) is mapped to an ordinal (year * 12 + month - 1),
+ * de-duplicated, sorted, and scanned for the longest streak of
+ * consecutive ordinals. Returns 0 when there are no rows.
+ */
+function longestConsecutiveMonths(rows: Array<{ month: number; year: number }>): number {
+  const ordinals = Array.from(
+    new Set(rows.map((r) => r.year * 12 + (r.month - 1))),
+  ).sort((a, b) => a - b);
+  if (ordinals.length === 0) return 0;
+  let longest = 1;
+  let run = 1;
+  for (let i = 1; i < ordinals.length; i++) {
+    if (ordinals[i] === ordinals[i - 1] + 1) {
+      run += 1;
+      if (run > longest) longest = run;
+    } else {
+      run = 1;
+    }
+  }
+  return longest;
+}
+
 class BaoStartHealthnetPlugin extends EligibilityPlugin<BaoStartHealthnetConfig> {
   readonly metadata: EligibilityPluginMetadata = {
     id: "sitespecific-bao-start-healthnet",
     name: "BAO - Start Healthnet",
     description:
-      "A subscriber will eventually be required to meet one of the following four criteria (only the geographic criterion is implemented):\n" +
-      "1. Meet the specified geographic requirements (primary address is more than X miles from every chosen site)\n" +
-      "2. Have EVER had HealthNet coverage (not yet implemented)\n" +
-      "3. Have had ANY medical benefit without break for the specified number of months (not yet implemented)\n" +
-      "4. The employer is in an immediate eligibility period (not yet implemented)",
+      "A subscriber is eligible if they meet ANY ONE of the following criteria (only configured criteria are checked):\n" +
+      "1. Geographic — primary address is more than the chosen distance from every selected site.\n" +
+      "2. Ever had HealthNet — the subscriber has at any point held the benefit designated as HealthNet.\n" +
+      "3. Continuous medical — the subscriber has held a benefit of the chosen Medical type for the required number of consecutive months at any point in their history.\n" +
+      "4. Employer immediate-eligibility period (not yet available).",
     requiredComponent: "sitespecific.bao",
     configSchema: {
       type: "object",
-      required: ["distanceMiles", "facilityIds"],
       properties: {
-        distanceMiles: {
-          type: "number",
-          title: "Distance (miles)",
+        geographic: {
+          type: "object",
+          title: "Criterion 1 — Geographic distance",
           description:
-            "Worker is eligible only if their primary address is MORE than this many miles from every chosen site.",
-          exclusiveMinimum: 0,
-          default: 10,
-        },
-        facilityIds: {
-          type: "array",
-          title: "Sites",
-          description:
-            "Choose one or more facilities. The worker must live more than the configured distance from every one of them.",
-          minItems: 1,
-          items: {
-            type: "string",
+            "Eligible if the worker's primary address is MORE than the chosen distance from every selected site. Leave the sites empty to skip this criterion.",
+          properties: {
+            distanceMiles: {
+              type: "number",
+              title: "Distance (miles)",
+              description:
+                "Worker is eligible only if their primary address is MORE than this many miles from every chosen site.",
+              exclusiveMinimum: 0,
+              default: 10,
+            },
+            facilityIds: {
+              type: "array",
+              title: "Sites",
+              description:
+                "Choose one or more facilities. The worker must live more than the configured distance from every one of them.",
+              items: {
+                type: "string",
+              },
+              "x-options-resource": "facility",
+            },
           },
-          "x-options-resource": "facility",
+        },
+        healthnet: {
+          type: "object",
+          title: "Criterion 2 — Ever had HealthNet",
+          description:
+            "Eligible if the worker has EVER held the benefit designated as HealthNet. Leave unset to skip this criterion.",
+          properties: {
+            benefitId: {
+              type: "string",
+              title: "HealthNet benefit",
+              description: "Pick the single benefit that counts as HealthNet.",
+              "x-options-resource": "trust-benefit",
+            },
+          },
+        },
+        medical: {
+          type: "object",
+          title: "Criterion 3 — Continuous medical coverage",
+          description:
+            "Eligible if the worker has held any benefit of the chosen Medical type for the required number of consecutive months at any point in their history. Set both fields to enable; leave unset to skip.",
+          properties: {
+            benefitTypeId: {
+              type: "string",
+              title: "Medical benefit type",
+              description: "Pick the benefit type that counts as Medical.",
+              "x-options-resource": "trust-benefit-type",
+            },
+            months: {
+              type: "integer",
+              title: "Required consecutive months",
+              description: "How many unbroken months of medical coverage are required.",
+              minimum: 1,
+              default: 6,
+            },
+          },
+        },
+        immediateEligibility: {
+          type: "object",
+          title: "Criterion 4 — Employer immediate-eligibility period (not yet available)",
+          description:
+            "This criterion is not configurable yet. It will let workers qualify while their employer is in an immediate-eligibility period.",
+          properties: {},
         },
       },
     },
@@ -79,85 +212,87 @@ class BaoStartHealthnetPlugin extends EligibilityPlugin<BaoStartHealthnetConfig>
   async validateConfig(config: unknown): Promise<{ valid: boolean; errors?: string[] }> {
     const base = await super.validateConfig(config);
     if (!base.valid) return base;
-    const c = (config ?? {}) as BaoStartHealthnetConfig;
-    if (typeof c.distanceMiles !== "number" || !(c.distanceMiles > 0)) {
-      return { valid: false, errors: ["distanceMiles must be a number greater than 0"] };
-    }
-    if (!Array.isArray(c.facilityIds) || c.facilityIds.length === 0) {
-      return { valid: false, errors: ["At least one site must be selected"] };
-    }
-    for (const id of c.facilityIds) {
-      if (typeof id !== "string" || id.length === 0) {
-        return { valid: false, errors: ["facilityIds entries must be non-empty strings"] };
+
+    const n = normalizeConfig(config);
+
+    // Criteria are independent (OR). A group is only enforced when it is
+    // fully configured; a partially-filled group (including one left at
+    // its schema defaults, e.g. distance=10 with no sites, or months=6
+    // with no medical type) is treated as "not configured" and skipped —
+    // exactly as `evaluate` skips it. This keeps single-criterion setups
+    // (e.g. HealthNet only) valid. Field-level shape (distance > 0,
+    // months integer >= 1, site entries are strings) is already enforced
+    // by AJV in `super.validateConfig`.
+
+    // Geographic: when configured, every chosen site must exist.
+    if (isGeographicConfigured(n)) {
+      for (const id of n.facilityIds!) {
+        const facility = await storage.facilities.get(id);
+        if (!facility) {
+          return { valid: false, errors: [`Geographic criterion: unknown site (${id})`] };
+        }
       }
-      const facility = await storage.facilities.get(id);
-      if (!facility) {
-        return { valid: false, errors: [`Unknown facility: ${id}`] };
+    }
+
+    // HealthNet: when configured, the chosen benefit must exist.
+    if (isHealthnetConfigured(n)) {
+      const benefit = await storage.trustBenefits.getTrustBenefit(n.healthnetBenefitId!);
+      if (!benefit) {
+        return { valid: false, errors: [`HealthNet criterion: unknown benefit (${n.healthnetBenefitId})`] };
       }
     }
+
+    // Medical: `isMedicalConfigured` already guarantees a benefit type and
+    // a valid positive-integer month count, so there is nothing further to
+    // existence-check here.
+
+    // At least one criterion must be fully configured, otherwise the rule
+    // can never grant eligibility.
+    if (!isGeographicConfigured(n) && !isHealthnetConfigured(n) && !isMedicalConfigured(n)) {
+      return {
+        valid: false,
+        errors: ["Configure at least one criterion (geographic, HealthNet, or continuous medical)"],
+      };
+    }
+
     return { valid: true };
   }
 
-  async evaluate(
-    context: EligibilityContext,
-    config: BaoStartHealthnetConfig,
-  ): Promise<EligibilityResult> {
-    const { distanceMiles, facilityIds } = config;
-
-    if (typeof distanceMiles !== "number" || !(distanceMiles > 0)) {
-      return {
-        eligible: false,
-        reason: "BAO - Start Healthnet is misconfigured: distance (miles) must be greater than 0",
-      };
-    }
-    if (!Array.isArray(facilityIds) || facilityIds.length === 0) {
-      return {
-        eligible: false,
-        reason: "BAO - Start Healthnet is misconfigured: no sites selected",
-      };
-    }
-
-    const workerCoords = await getPrimaryCoords(context.subscriberWorker.contactId);
+  /**
+   * Evaluate the geographic criterion. Returns whether it is met plus a
+   * human-readable reason. Missing/ungeocoded addresses (worker or site)
+   * mean the criterion cannot be confirmed, so it is reported as not met
+   * rather than throwing — other criteria may still grant eligibility.
+   */
+  private async evaluateGeographic(
+    contactId: string,
+    distanceMiles: number,
+    facilityIds: string[],
+  ): Promise<{ met: boolean; reason: string }> {
+    const workerCoords = await getPrimaryCoords(contactId);
     if (workerCoords.status === "no-address") {
-      return {
-        eligible: false,
-        reason: "Worker has no primary address, so distance from the chosen sites cannot be determined",
-      };
+      return { met: false, reason: "worker has no primary address, so distance from the chosen sites cannot be determined" };
     }
     if (workerCoords.status === "not-geocoded") {
-      return {
-        eligible: false,
-        reason: "Worker's primary address has not been geocoded, so distance from the chosen sites cannot be determined",
-      };
+      return { met: false, reason: "worker's primary address has not been geocoded, so distance from the chosen sites cannot be determined" };
     }
 
-    // Validate and measure EVERY chosen site before deciding eligibility,
-    // so a missing address/geocode on any site is always surfaced and the
-    // ineligible reason can name the closest site deterministically.
+    // Validate and measure EVERY chosen site before deciding, so a missing
+    // address/geocode on any site is surfaced and the reason can name the
+    // closest site deterministically.
     const measured: { name: string; distance: number }[] = [];
     for (const facilityId of facilityIds) {
       const facility = await storage.facilities.get(facilityId);
       if (!facility) {
-        return {
-          eligible: false,
-          reason: `Configured site (${facilityId}) no longer exists, so the geographic criterion cannot be confirmed`,
-        };
+        return { met: false, reason: `configured site (${facilityId}) no longer exists, so the geographic criterion cannot be confirmed` };
       }
-
       const facilityCoords = await getPrimaryCoords(facility.contactId);
       if (facilityCoords.status === "no-address") {
-        return {
-          eligible: false,
-          reason: `Site "${facility.name}" has no address, so distance to it cannot be confirmed`,
-        };
+        return { met: false, reason: `site "${facility.name}" has no address, so distance to it cannot be confirmed` };
       }
       if (facilityCoords.status === "not-geocoded") {
-        return {
-          eligible: false,
-          reason: `Site "${facility.name}" has not been geocoded, so distance to it cannot be confirmed`,
-        };
+        return { met: false, reason: `site "${facility.name}" has not been geocoded, so distance to it cannot be confirmed` };
       }
-
       measured.push({
         name: facility.name,
         distance: distanceInMiles(workerCoords.coords, facilityCoords.coords),
@@ -165,17 +300,89 @@ class BaoStartHealthnetPlugin extends EligibilityPlugin<BaoStartHealthnetConfig>
     }
 
     const nearest = measured.reduce((a, b) => (b.distance < a.distance ? b : a));
-
     if (nearest.distance <= distanceMiles) {
       return {
+        met: false,
+        reason: `worker is ${nearest.distance.toFixed(1)} miles from ${nearest.name}, which is within the ${distanceMiles} mile limit`,
+      };
+    }
+    return {
+      met: true,
+      reason: `worker is more than ${distanceMiles} miles from all ${measured.length} chosen ${measured.length === 1 ? "site" : "sites"} (nearest: ${nearest.name} at ${nearest.distance.toFixed(1)} miles)`,
+    };
+  }
+
+  async evaluate(
+    context: EligibilityContext,
+    config: BaoStartHealthnetConfig,
+  ): Promise<EligibilityResult> {
+    const n = normalizeConfig(config);
+
+    const geographic = isGeographicConfigured(n);
+    const healthnet = isHealthnetConfigured(n);
+    const medical = isMedicalConfigured(n);
+
+    if (!geographic && !healthnet && !medical) {
+      return {
         eligible: false,
-        reason: `Worker is ${nearest.distance.toFixed(1)} miles from ${nearest.name}, which is within the ${distanceMiles} mile limit`,
+        reason: "BAO - Start Healthnet is misconfigured: no eligibility criteria are configured",
       };
     }
 
+    const failures: string[] = [];
+
+    // Subscriber benefit history is needed by both the HealthNet and
+    // medical criteria; load it at most once.
+    let history: any[] | undefined;
+    const getHistory = async (): Promise<any[]> => {
+      if (history === undefined) {
+        history = await storage.workers.getWorkerBenefits(context.subscriberWorker.id);
+      }
+      return history;
+    };
+
+    // Criterion 1 — Geographic
+    if (geographic) {
+      const result = await this.evaluateGeographic(
+        context.subscriberWorker.contactId,
+        n.distanceMiles!,
+        n.facilityIds!,
+      );
+      if (result.met) {
+        return { eligible: true, reason: `Eligible (geographic): ${result.reason}` };
+      }
+      failures.push(`Geographic: ${result.reason}`);
+    }
+
+    // Criterion 2 — Ever had HealthNet
+    if (healthnet) {
+      const rows = await getHistory();
+      const hasHealthnet = rows.some((r) => r.benefitId === n.healthnetBenefitId);
+      if (hasHealthnet) {
+        return { eligible: true, reason: "Eligible (HealthNet): worker has previously held the designated HealthNet benefit" };
+      }
+      failures.push("HealthNet: worker has never held the designated HealthNet benefit");
+    }
+
+    // Criterion 3 — Continuous medical coverage
+    if (medical) {
+      const rows = await getHistory();
+      const medicalRows = rows.filter((r) => r.benefit?.benefitType === n.medicalBenefitTypeId);
+      const longestRun = longestConsecutiveMonths(medicalRows);
+      if (longestRun >= n.medicalMonths!) {
+        return {
+          eligible: true,
+          reason: `Eligible (continuous medical): worker held the chosen medical benefit type for ${longestRun} consecutive months (needs ${n.medicalMonths})`,
+        };
+      }
+      failures.push(
+        `Continuous medical: longest unbroken medical coverage is ${longestRun} ${longestRun === 1 ? "month" : "months"}, but ${n.medicalMonths} consecutive months are required`,
+      );
+    }
+
     return {
-      eligible: true,
-      reason: `Worker is more than ${distanceMiles} miles from all ${measured.length} chosen ${measured.length === 1 ? "site" : "sites"} (nearest: ${nearest.name} at ${nearest.distance.toFixed(1)} miles)`,
+      eligible: false,
+      reason: `Not eligible — no criterion was met. ${failures.join(". ")}.`,
     };
   }
 }
