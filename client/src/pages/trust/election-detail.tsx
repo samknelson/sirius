@@ -11,6 +11,7 @@ function ElectionDetailsContent() {
   const { election, workerName, isWorkerLoading } = useTrustElectionLayout();
 
   const policyName = election.policyName ?? "Unknown policy";
+  const employerName = election.employerName ?? "Unknown employer";
   const benefitLabels = (election.benefits ?? []).map((b) => b.name);
   const relationLabels = (election.relationships ?? []).map((r) => r.label);
 
@@ -31,6 +32,10 @@ function ElectionDetailsContent() {
       </CardHeader>
       <CardContent>
         <dl className="grid grid-cols-2 gap-4 text-sm">
+          <div>
+            <dt className="text-muted-foreground">Employer</dt>
+            <dd data-testid="text-employer">{employerName}</dd>
+          </div>
           <div>
             <dt className="text-muted-foreground">Policy</dt>
             <dd data-testid="text-policy">{policyName}</dd>

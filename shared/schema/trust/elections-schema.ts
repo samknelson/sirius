@@ -2,11 +2,12 @@ import { pgTable, varchar, jsonb, date } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
-import { workers, policies } from "../../schema";
+import { workers, policies, employers } from "../../schema";
 
 export const workerTrustElections = pgTable("worker_trust_elections", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   workerId: varchar("worker_id").notNull().references(() => workers.id, { onDelete: 'cascade' }),
+  employerId: varchar("employer_id").notNull().references(() => employers.id, { onDelete: 'restrict' }),
   benefitIds: varchar("benefit_ids").array(),
   policyId: varchar("policy_id").notNull().references(() => policies.id, { onDelete: 'restrict' }),
   startYmd: date("start_ymd").notNull(),
@@ -24,6 +25,7 @@ export type InsertWorkerTrustElection = z.infer<typeof insertWorkerTrustElection
 
 export interface WorkerTrustElectionView extends WorkerTrustElection {
   policyName: string | null;
+  employerName: string | null;
   benefits: { id: string; name: string }[];
   relationships: { id: string; label: string }[];
 }
@@ -48,6 +50,7 @@ const ymdOrDate = z
 
 export const createWorkerTrustElectionRequestSchema = z
   .object({
+    employerId: z.string().min(1),
     policyId: z.string().min(1),
     startYmd: ymdOrDate,
     endYmd: ymdOrDate.nullable().optional(),
@@ -66,6 +69,7 @@ export const createWorkerTrustElectionRequestSchema = z
 
 export const updateWorkerTrustElectionRequestSchema = z
   .object({
+    employerId: z.string().min(1).optional(),
     policyId: z.string().min(1).optional(),
     startYmd: ymdOrDate.optional(),
     endYmd: ymdOrDate.nullable().optional(),

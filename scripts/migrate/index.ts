@@ -15,6 +15,7 @@ import "./core/1006_comm_postal_body";
 import "./core/1007_add_edls_sheet_facility_fk";
 import "./core/1008_add_trust_benefit_sirius_id";
 import "./core/1009_add_benefit_type_sirius_id";
+import "./core/1010_add_worker_trust_elections_employer_id";
 
 // Per-component migrations — each registered via
 // `registerComponentMigration(componentId, migration)`. Tracked by the

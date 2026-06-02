@@ -52,6 +52,7 @@ function ElectionsListContent() {
             <TableHeader>
               <TableRow>
                 <TableHead>Status</TableHead>
+                <TableHead>Employer</TableHead>
                 <TableHead>Policy</TableHead>
                 <TableHead>Start</TableHead>
                 <TableHead>End</TableHead>
@@ -67,6 +68,7 @@ function ElectionsListContent() {
                       {row.endYmd ? "Ended" : "Active"}
                     </Badge>
                   </TableCell>
+                  <TableCell data-testid={`text-employer-${row.id}`}>{row.employerName ?? "Unknown employer"}</TableCell>
                   <TableCell data-testid={`text-policy-${row.id}`}>{row.policyName ?? "Unknown policy"}</TableCell>
                   <TableCell data-testid={`text-start-${row.id}`}>{row.startYmd}</TableCell>
                   <TableCell data-testid={`text-end-${row.id}`}>{row.endYmd ?? "—"}</TableCell>
