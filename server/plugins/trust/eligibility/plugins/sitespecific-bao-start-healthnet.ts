@@ -7,7 +7,10 @@ import {
 } from "../types";
 import { registerEligibilityPlugin } from "../registry";
 import { storage } from "../../../../storage/database";
+import { createUnifiedOptionsStorage } from "../../../../storage/unified-options";
 import { distanceInMiles, type Coordinates } from "@shared/utils/geocode";
+
+const unifiedOptionsStorage = createUnifiedOptionsStorage();
 
 /**
  * Raw config as persisted on the rule. New configs use the nested
@@ -97,6 +100,18 @@ async function getPrimaryCoords(contactId: string): Promise<CoordsLookup> {
     status: "ok",
     coords: { latitude: primary.latitude, longitude: primary.longitude },
   };
+}
+
+/**
+ * Shape of the subset of `storage.workers.getWorkerBenefits` rows that the
+ * HealthNet and continuous-medical criteria depend on. Other columns exist on
+ * the row but are not consumed here.
+ */
+interface BenefitHistoryRow {
+  benefitId: string;
+  month: number;
+  year: number;
+  benefit?: { benefitType?: string | null } | null;
 }
 
 /**
@@ -242,17 +257,18 @@ class BaoStartHealthnetPlugin extends EligibilityPlugin<BaoStartHealthnetConfig>
       }
     }
 
-    // Medical: `isMedicalConfigured` already guarantees a benefit type and
-    // a valid positive-integer month count, so there is nothing further to
-    // existence-check here.
-
-    // At least one criterion must be fully configured, otherwise the rule
-    // can never grant eligibility.
-    if (!isGeographicConfigured(n) && !isHealthnetConfigured(n) && !isMedicalConfigured(n)) {
-      return {
-        valid: false,
-        errors: ["Configure at least one criterion (geographic, HealthNet, or continuous medical)"],
-      };
+    // Medical: when configured, the chosen benefit type must exist.
+    if (isMedicalConfigured(n)) {
+      const benefitType = await unifiedOptionsStorage.get(
+        "trust-benefit-type",
+        n.medicalBenefitTypeId!,
+      );
+      if (!benefitType) {
+        return {
+          valid: false,
+          errors: [`Medical criterion: unknown benefit type (${n.medicalBenefitTypeId})`],
+        };
+      }
     }
 
     return { valid: true };
@@ -333,10 +349,12 @@ class BaoStartHealthnetPlugin extends EligibilityPlugin<BaoStartHealthnetConfig>
 
     // Subscriber benefit history is needed by both the HealthNet and
     // medical criteria; load it at most once.
-    let history: any[] | undefined;
-    const getHistory = async (): Promise<any[]> => {
+    let history: BenefitHistoryRow[] | undefined;
+    const getHistory = async (): Promise<BenefitHistoryRow[]> => {
       if (history === undefined) {
-        history = await storage.workers.getWorkerBenefits(context.subscriberWorker.id);
+        history = (await storage.workers.getWorkerBenefits(
+          context.subscriberWorker.id,
+        )) as BenefitHistoryRow[];
       }
       return history;
     };
