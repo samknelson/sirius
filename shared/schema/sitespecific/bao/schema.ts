@@ -170,3 +170,48 @@ export const baoBeneficiaryListSchema = z
 
 export type BaoBeneficiary = z.infer<typeof baoBeneficiarySchema>;
 export type BaoBeneficiaryList = z.infer<typeof baoBeneficiaryListSchema>;
+
+/**
+ * Event Center Hours Purchase (ECHP) per-policy pricing configuration.
+ *
+ * Stored on the policy's `data` jsonb at `data.sitespecific.bao.echp`. The price
+ * a worker pays is determined by a ladder of breakpoints: the first breakpoint
+ * (ascending by `maxHoursWorked`) whose `maxHoursWorked` is strictly greater
+ * than the worker's hours worked supplies the price. When ECHP is not enabled
+ * (or has no breakpoints) for the worker's policy, purchasing is denied.
+ */
+export const baoEchpBreakpointSchema = z.object({
+  /** Applies when hours worked is strictly less than this value. */
+  maxHoursWorked: z.number().positive(),
+  /** Dollar price for the breakpoint. */
+  price: z.number().nonnegative(),
+});
+
+export const baoEchpConfigSchema = z.object({
+  enabled: z.boolean(),
+  breakpoints: z.array(baoEchpBreakpointSchema),
+});
+
+export type BaoEchpBreakpoint = z.infer<typeof baoEchpBreakpointSchema>;
+export type BaoEchpConfig = z.infer<typeof baoEchpConfigSchema>;
+
+/**
+ * Default ECHP pricing ladder used only to pre-fill the configuration form for
+ * a policy that has not been configured yet. It is NOT a runtime fallback: an
+ * unconfigured policy denies purchasing rather than silently applying these.
+ */
+export const DEFAULT_BAO_ECHP_BREAKPOINTS: BaoEchpBreakpoint[] = [
+  { maxHoursWorked: 40, price: 750 },
+  { maxHoursWorked: 44, price: 540 },
+  { maxHoursWorked: 49, price: 515 },
+  { maxHoursWorked: 54, price: 490 },
+  { maxHoursWorked: 59, price: 465 },
+  { maxHoursWorked: 64, price: 440 },
+  { maxHoursWorked: 69, price: 415 },
+  { maxHoursWorked: 74, price: 390 },
+  { maxHoursWorked: 79, price: 365 },
+  { maxHoursWorked: 84, price: 340 },
+  { maxHoursWorked: 89, price: 315 },
+  { maxHoursWorked: 94, price: 290 },
+  { maxHoursWorked: 100, price: 265 },
+];

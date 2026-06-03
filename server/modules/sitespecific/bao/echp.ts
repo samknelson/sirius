@@ -5,6 +5,8 @@ import { storage } from "../../../storage";
 import { createUnifiedOptionsStorage } from "../../../storage/unified-options";
 import { fetchBuildupStatus } from "../../../plugins/trust/eligibility/plugins/sitespecific-bao-buildup";
 import { computeEchpHoursPrice } from "./echp-pricing";
+import { baoEchpConfigSchema } from "../../../../shared/schema/sitespecific/bao/schema";
+import { z } from "zod";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -124,6 +126,16 @@ async function evaluateEchpEligibility(workerId: string, asOf: AsOf): Promise<Ec
     );
   }
 
+  // 2b. ECHP must be enabled and priced on the worker's policy. An unconfigured
+  //     or disabled policy denies purchasing — there is no hardcoded fallback.
+  const echpConfig = await storage.baoEchpConfig.get(election.policyId);
+  if (!echpConfig.enabled || echpConfig.breakpoints.length === 0) {
+    return fail(
+      "denied",
+      "Event Center Hours Purchasing is not available for your policy. Please contact the office for assistance.",
+    );
+  }
+
   // 3. The ECHP employer must be configured.
   const echpEmployer = await storage.employers.getBySiriusId(ECHP_EMPLOYER_SIRIUS_ID);
   if (!echpEmployer) {
@@ -212,7 +224,7 @@ async function evaluateEchpEligibility(workerId: string, asOf: AsOf): Promise<Ec
   const threshold = buildup.threshold;
   const hoursWorked = buildup.currentBreakFirstHrs;
   const hoursToPurchase = Math.max(0, threshold - hoursWorked);
-  const price = computeEchpHoursPrice(hoursWorked);
+  const price = computeEchpHoursPrice(hoursWorked, echpConfig.breakpoints);
 
   return {
     eligible: true,
@@ -256,6 +268,52 @@ export function registerBaoEchpRoutes(
   const componentMiddleware = requireComponent("sitespecific.bao");
 
   const workerIdParam = (req: Request): string | undefined => req.params.workerId;
+
+  // --- Per-policy ECHP pricing configuration (staff/admin) ---
+
+  app.get(
+    "/api/sitespecific/bao/echp/policy/:policyId/config",
+    requireAuth,
+    componentMiddleware,
+    requireAccess("admin"),
+    async (req, res) => {
+      try {
+        const config = await storage.baoEchpConfig.get(req.params.policyId);
+        return res.json(config);
+      } catch (error: any) {
+        if (error?.message === "POLICY_NOT_FOUND") {
+          return res.status(404).json({ message: "Policy not found" });
+        }
+        console.error("Failed to load ECHP pricing config:", error);
+        res.status(500).json({ message: "Failed to load ECHP pricing config" });
+      }
+    },
+  );
+
+  app.put(
+    "/api/sitespecific/bao/echp/policy/:policyId/config",
+    requireAuth,
+    componentMiddleware,
+    requireAccess("admin"),
+    async (req, res) => {
+      try {
+        const config = baoEchpConfigSchema.parse(req.body);
+        const saved = await storage.baoEchpConfig.set(req.params.policyId, config);
+        return res.json(saved);
+      } catch (error: any) {
+        if (error instanceof z.ZodError) {
+          return res
+            .status(400)
+            .json({ message: "Validation error", errors: error.errors });
+        }
+        if (error?.message === "POLICY_NOT_FOUND") {
+          return res.status(404).json({ message: "Policy not found" });
+        }
+        console.error("Failed to save ECHP pricing config:", error);
+        res.status(500).json({ message: "Failed to save ECHP pricing config" });
+      }
+    },
+  );
 
   app.get(
     "/api/sitespecific/bao/echp/worker/:workerId/eligibility",

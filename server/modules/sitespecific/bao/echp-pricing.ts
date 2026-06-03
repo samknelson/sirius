@@ -5,40 +5,30 @@
  * on how many hours they actually WORKED in that month — not on how many hours
  * are being purchased. The fewer hours worked, the higher the price.
  *
- * This is intentionally a separate, exported, pure function (no DB access) so a
- * future charge plugin and a future configurable-pricing feature can reuse the
- * exact same ladder rather than duplicating it.
+ * Pricing is configured per-policy (see `data.sitespecific.bao.echp`). This is
+ * a pure function (no DB access) so a charge plugin and the eligibility
+ * evaluator can reuse the exact same ladder rather than duplicating it. The
+ * breakpoints are supplied by the caller; there is no hardcoded runtime
+ * fallback — an unconfigured policy denies purchasing upstream.
  */
 
-interface EchpPriceTier {
-  /** Applies when hours worked is strictly less than this value. */
-  maxHoursWorked: number;
-  /** Dollar price for the tier. */
-  price: number;
-}
-
-const ECHP_PRICE_LADDER: ReadonlyArray<EchpPriceTier> = [
-  { maxHoursWorked: 40, price: 750 },
-  { maxHoursWorked: 44, price: 540 },
-  { maxHoursWorked: 49, price: 515 },
-  { maxHoursWorked: 54, price: 490 },
-  { maxHoursWorked: 59, price: 465 },
-  { maxHoursWorked: 64, price: 440 },
-  { maxHoursWorked: 69, price: 415 },
-  { maxHoursWorked: 74, price: 390 },
-  { maxHoursWorked: 79, price: 365 },
-  { maxHoursWorked: 84, price: 340 },
-  { maxHoursWorked: 89, price: 315 },
-  { maxHoursWorked: 94, price: 290 },
-  { maxHoursWorked: 100, price: 265 },
-];
+import type { BaoEchpBreakpoint } from "../../../../shared/schema/sitespecific/bao/schema";
 
 /**
- * Maps the number of hours worked in the targeted month to a dollar price.
- * Returns 0 when 100 or more hours were worked (nothing to charge).
+ * Maps the number of hours worked in the targeted month to a dollar price using
+ * the supplied breakpoint ladder. Breakpoints are sorted ascending by
+ * `maxHoursWorked`; the first breakpoint whose `maxHoursWorked` is strictly
+ * greater than `hoursWorked` supplies the price. Returns 0 when no breakpoint
+ * matches (i.e. enough hours were worked that nothing is owed).
  */
-export function computeEchpHoursPrice(hoursWorked: number): number {
-  for (const tier of ECHP_PRICE_LADDER) {
+export function computeEchpHoursPrice(
+  hoursWorked: number,
+  breakpoints: ReadonlyArray<BaoEchpBreakpoint>,
+): number {
+  const sorted = [...breakpoints].sort(
+    (a, b) => a.maxHoursWorked - b.maxHoursWorked,
+  );
+  for (const tier of sorted) {
     if (hoursWorked < tier.maxHoursWorked) {
       return tier.price;
     }
