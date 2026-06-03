@@ -24,6 +24,7 @@ export interface EmployerWorker {
 export interface EmployerStorage {
   getAllEmployers(): Promise<Employer[]>;
   getEmployer(id: string): Promise<Employer | undefined>;
+  getBySiriusId(siriusId: string): Promise<Employer | undefined>;
   getByIds(ids: string[]): Promise<Employer[]>;
   getEmployerWorkers(employerId: string): Promise<EmployerWorker[]>;
   createEmployer(employer: InsertEmployer): Promise<Employer>;
@@ -42,6 +43,12 @@ export function createEmployerStorage(): EmployerStorage {
     async getEmployer(id: string): Promise<Employer | undefined> {
       const client = getClient();
       const [employer] = await client.select().from(employers).where(eq(employers.id, id));
+      return employer || undefined;
+    },
+
+    async getBySiriusId(siriusId: string): Promise<Employer | undefined> {
+      const client = getClient();
+      const [employer] = await client.select().from(employers).where(eq(employers.siriusId, siriusId));
       return employer || undefined;
     },
 
