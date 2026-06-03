@@ -1,14 +1,27 @@
 import { useState } from "react";
 import { useParams } from "wouter";
-import { useQuery } from "@tanstack/react-query";
-import { CheckCircle2, XCircle } from "lucide-react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { CheckCircle2, XCircle, ShoppingCart } from "lucide-react";
 import { WorkerLayout } from "@/components/layouts/WorkerLayout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { apiRequest } from "@/lib/queryClient";
+import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { apiRequest, queryClient, ApiError } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 
 interface EligibilityResult {
@@ -17,16 +30,33 @@ interface EligibilityResult {
   message: string;
   asOf: { year: number; month: number; day: number };
   asOfApplied: boolean;
+  target?: { year: number; month: number };
+  hoursWorked?: number;
+  hoursToPurchase?: number;
+  threshold?: number;
+  price?: number;
+}
+
+function formatPrice(price: number): string {
+  return `$${price.toLocaleString("en-US")}`;
 }
 
 function WorkerEchpContent() {
   const { id: workerId } = useParams<{ id: string }>();
   const { hasComponent, hasPermission } = useAuth();
+  const { toast } = useToast();
   const showAsOf = hasComponent("debug") && hasPermission("admin");
   const [asOf, setAsOf] = useState("");
 
+  const eligibilityKey = [
+    "/api/sitespecific/bao/echp/worker",
+    workerId,
+    "eligibility",
+    showAsOf ? asOf : "",
+  ];
+
   const { data, isLoading, isError } = useQuery<EligibilityResult>({
-    queryKey: ["/api/sitespecific/bao/echp/worker", workerId, "eligibility", showAsOf ? asOf : ""],
+    queryKey: eligibilityKey,
     queryFn: async () => {
       const qs = showAsOf && asOf ? `?asOf=${encodeURIComponent(asOf)}` : "";
       return await apiRequest(
@@ -36,6 +66,45 @@ function WorkerEchpContent() {
     },
     enabled: !!workerId,
   });
+
+  const purchase = useMutation({
+    mutationFn: async () => {
+      const qs = showAsOf && asOf ? `?asOf=${encodeURIComponent(asOf)}` : "";
+      return await apiRequest(
+        "POST",
+        `/api/sitespecific/bao/echp/worker/${workerId}/purchase${qs}`,
+      );
+    },
+    onSuccess: (result: { message?: string }) => {
+      toast({
+        title: "Purchase complete",
+        description:
+          result?.message ?? "Your hours have been purchased.",
+      });
+      queryClient.invalidateQueries({ queryKey: eligibilityKey });
+    },
+    onError: (error: unknown) => {
+      const message =
+        error instanceof ApiError
+          ? error.data?.message ?? error.message
+          : "Something went wrong. Please try again.";
+      toast({
+        variant: "destructive",
+        title: "Unable to purchase",
+        description: message,
+      });
+      // Eligibility may have changed (e.g. window closed); refresh it.
+      queryClient.invalidateQueries({ queryKey: eligibilityKey });
+    },
+  });
+
+  const canPurchase =
+    !!data &&
+    data.eligible &&
+    data.code === "permitted" &&
+    typeof data.hoursToPurchase === "number" &&
+    data.hoursToPurchase > 0 &&
+    !!data.target;
 
   return (
     <Card data-testid="card-echp-eligibility">
@@ -94,6 +163,78 @@ function WorkerEchpContent() {
               {data.message}
             </AlertDescription>
           </Alert>
+        )}
+
+        {canPurchase && data.target && (
+          <div
+            className="space-y-4 rounded-lg border p-4"
+            data-testid="section-purchase"
+          >
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div>
+                <p className="text-xs text-muted-foreground">For month</p>
+                <p className="text-lg font-semibold" data-testid="text-purchase-month">
+                  {String(data.target.month).padStart(2, "0")}/{data.target.year}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Hours to purchase</p>
+                <p className="text-lg font-semibold" data-testid="text-purchase-hours">
+                  {data.hoursToPurchase}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Price</p>
+                <p className="text-lg font-semibold" data-testid="text-purchase-price">
+                  {formatPrice(data.price ?? 0)}
+                </p>
+              </div>
+            </div>
+
+            <p
+              className="text-sm text-muted-foreground"
+              data-testid="text-purchase-disclaimer"
+            >
+              No payment is taken now. Confirming records your hours for the month
+              above; the corresponding charge follows later.
+            </p>
+
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button
+                  disabled={purchase.isPending}
+                  data-testid="button-purchase"
+                >
+                  <ShoppingCart className="mr-2 h-4 w-4" />
+                  {purchase.isPending
+                    ? "Purchasing…"
+                    : `Purchase ${data.hoursToPurchase} hours`}
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent data-testid="dialog-purchase-confirm">
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Confirm purchase</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will record {data.hoursToPurchase} Event Center hours for{" "}
+                    {String(data.target.month).padStart(2, "0")}/{data.target.year}{" "}
+                    at a price of {formatPrice(data.price ?? 0)}. No payment is
+                    taken now — the charge follows later.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel data-testid="button-purchase-cancel">
+                    Cancel
+                  </AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={() => purchase.mutate()}
+                    data-testid="button-purchase-confirm"
+                  >
+                    Confirm purchase
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
         )}
 
         {data && (
