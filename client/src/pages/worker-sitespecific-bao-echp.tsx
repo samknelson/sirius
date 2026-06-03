@@ -178,9 +178,21 @@ function WorkerEchpContent() {
                 </p>
               </div>
               <div>
+                <p className="text-xs text-muted-foreground">Hours worked</p>
+                <p className="text-lg font-semibold" data-testid="text-purchase-hours-worked">
+                  {data.hoursWorked}
+                </p>
+              </div>
+              <div>
                 <p className="text-xs text-muted-foreground">Hours to purchase</p>
                 <p className="text-lg font-semibold" data-testid="text-purchase-hours">
                   {data.hoursToPurchase}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Required hours</p>
+                <p className="text-lg font-semibold" data-testid="text-purchase-threshold">
+                  {data.threshold}
                 </p>
               </div>
               <div>
