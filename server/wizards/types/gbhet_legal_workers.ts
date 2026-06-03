@@ -893,13 +893,13 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
       if (this.isBenefitEligible(eligibilityValue)) {
         try {
           // Check if WMB already exists
-          const exists = await storage.workers.workerBenefitExists(workerId, benefitId, targetMonth, targetYear);
+          const exists = await storage.trust.wmb.workerBenefitExists(workerId, benefitId, targetMonth, targetYear);
           
           if (exists) {
             result.skipped++;
           } else {
             // Create WMB record via storage layer (includes logging and charge plugin execution)
-            const wmb = await storage.workers.createWorkerBenefit({
+            const wmb = await storage.trust.wmb.createWorkerBenefit({
               workerId,
               month: targetMonth,
               year: targetYear,

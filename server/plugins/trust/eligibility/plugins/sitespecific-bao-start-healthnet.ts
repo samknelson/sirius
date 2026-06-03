@@ -347,7 +347,7 @@ class BaoStartHealthnetPlugin extends EligibilityPlugin<BaoStartHealthnetConfig>
     let history: BenefitHistoryRow[] | undefined;
     const getHistory = async (): Promise<BenefitHistoryRow[]> => {
       if (history === undefined) {
-        history = (await storage.workers.getWorkerBenefits(
+        history = (await storage.trust.wmb.getWorkerBenefits(
           context.subscriberWorker.id,
         )) as BenefitHistoryRow[];
       }

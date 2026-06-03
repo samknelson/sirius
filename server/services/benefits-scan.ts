@@ -84,7 +84,7 @@ export async function runBenefitsScan(
     allBenefits.map((b: TrustBenefit) => [b.id, b])
   );
 
-  const workerWmbRecords = await storage.workers.getWorkerBenefits(workerId);
+  const workerWmbRecords = await storage.trust.wmb.getWorkerBenefits(workerId);
   const prevMonth = getPreviousMonth(month, year);
   const previousMonthWmb = workerWmbRecords.filter(
     (wmb: any) => wmb.month === prevMonth.month && wmb.year === prevMonth.year
@@ -157,7 +157,7 @@ export async function runBenefitsScan(
     for (const action of actions) {
       try {
         if (action.action === "create") {
-          await storage.workers.createWorkerBenefit({
+          await storage.trust.wmb.createWorkerBenefit({
             workerId,
             month,
             year,
@@ -168,7 +168,7 @@ export async function runBenefitsScan(
         } else if (action.action === "delete") {
           const existingRecord = currentMonthBenefitMap.get(action.benefitId);
           if (existingRecord) {
-            await storage.workers.deleteWorkerBenefit(existingRecord.id);
+            await storage.trust.wmb.deleteWorkerBenefit(existingRecord.id);
             action.executed = true;
           }
         }

@@ -155,7 +155,7 @@ class BaoStartKaiserPlugin extends EligibilityPlugin<BaoStartKaiserConfig> {
 
     // Criterion 1 — Continuous medical coverage across the preceding window.
     if (medical) {
-      const rows = (await storage.workers.getWorkerBenefits(
+      const rows = (await storage.trust.wmb.getWorkerBenefits(
         context.subscriberWorker.id,
       )) as BenefitHistoryRow[];
       const coveredOrdinals = new Set(

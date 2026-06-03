@@ -2,22 +2,18 @@ import { getClient } from './transaction-context';
 import {
   workers,
   contacts,
-  trustWmb,
-  trustBenefits,
   employers,
   optionsWorkerWs,
   type Worker,
   type InsertWorker,
-  type TrustWmb,
   type TrustBenefit,
   type Employer,
 } from "@shared/schema";
-import { eq, sql, desc, and, ne } from "drizzle-orm";
+import { eq, sql, and, ne } from "drizzle-orm";
 import type { ContactsStorage } from "./contacts";
 import type { WorkerDenormData } from "./worker-hours";
 import { type StorageLoggingConfig } from "./middleware/logging";
 import { logger } from "../logger";
-import { eventBus, EventType } from "../services/event-bus";
 import { 
   type ValidationError,
   createAsyncStorageValidator
@@ -229,10 +225,6 @@ export interface WorkerStorage {
   deleteWorker(id: string): Promise<boolean>;
   updateWorkerBargainingUnit(workerId: string, bargainingUnitId: string | null): Promise<Worker | undefined>;
   // Worker benefits methods
-  getWorkerBenefits(workerId: string): Promise<any[]>;
-  createWorkerBenefit(data: { workerId: string; month: number; year: number; employerId: string; benefitId: string }): Promise<TrustWmb>;
-  deleteWorkerBenefit(id: string): Promise<boolean>;
-  workerBenefitExists(workerId: string, benefitId: string, month: number, year: number): Promise<boolean>;
   getMemberStatusCodesByIndustry(industryId: string, workerIdsList: string[]): Promise<Array<{ workerId: string; code: string }>>;
 }
 
@@ -1147,122 +1139,6 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       return result.length > 0;
     },
 
-    // Worker benefits methods
-    async getWorkerBenefits(workerId: string): Promise<any[]> {
-      const client = getClient();
-      const results = await client
-        .select({
-          id: trustWmb.id,
-          month: trustWmb.month,
-          year: trustWmb.year,
-          workerId: trustWmb.workerId,
-          employerId: trustWmb.employerId,
-          benefitId: trustWmb.benefitId,
-          benefit: trustBenefits,
-          employer: employers,
-        })
-        .from(trustWmb)
-        .leftJoin(trustBenefits, eq(trustWmb.benefitId, trustBenefits.id))
-        .leftJoin(employers, eq(trustWmb.employerId, employers.id))
-        .where(eq(trustWmb.workerId, workerId))
-        .orderBy(desc(trustWmb.year), desc(trustWmb.month));
-
-      return results;
-    },
-
-    async createWorkerBenefit(data: { workerId: string; month: number; year: number; employerId: string; benefitId: string }): Promise<TrustWmb> {
-      const client = getClient();
-      const [wmb] = await client
-        .insert(trustWmb)
-        .values(data)
-        .returning();
-
-      if (wmb) {
-        const payload = {
-          wmbId: wmb.id,
-          workerId: wmb.workerId,
-          employerId: wmb.employerId,
-          benefitId: wmb.benefitId,
-          year: wmb.year,
-          month: wmb.month,
-        };
-
-        // Emit event for any listeners (future notification plugins, etc.)
-        eventBus.emit(EventType.WMB_SAVED, payload).catch(err => {
-          logger.error("Failed to emit WMB_SAVED event", {
-            service: "worker-storage",
-            wmbId: wmb.id,
-            error: err instanceof Error ? err.message : String(err),
-          });
-        });
-
-        // Execute charge plugins directly (for backwards compatibility)
-        try {
-          const { executeChargePlugins, TriggerType } = await import("../plugins/ledger/charge");
-          await executeChargePlugins({
-            trigger: TriggerType.WMB_SAVED,
-            ...payload,
-          });
-        } catch (error) {
-          logger.error("Failed to execute charge plugins for WMB create", {
-            service: "worker-storage",
-            wmbId: wmb.id,
-            error: error instanceof Error ? error.message : String(error),
-          });
-        }
-      }
-
-      return wmb;
-    },
-
-    async deleteWorkerBenefit(id: string): Promise<boolean> {
-      const client = getClient();
-      const result = await client
-        .delete(trustWmb)
-        .where(eq(trustWmb.id, id))
-        .returning();
-      
-      const deleted = result[0];
-      
-      if (deleted) {
-        const payload = {
-          wmbId: deleted.id,
-          workerId: deleted.workerId,
-          employerId: deleted.employerId,
-          benefitId: deleted.benefitId,
-          year: deleted.year,
-          month: deleted.month,
-          isDeleted: true,
-        };
-
-        // Emit event for any listeners (future notification plugins, etc.)
-        eventBus.emit(EventType.WMB_SAVED, payload).catch(err => {
-          logger.error("Failed to emit WMB_SAVED event", {
-            service: "worker-storage",
-            wmbId: deleted.id,
-            error: err instanceof Error ? err.message : String(err),
-          });
-        });
-
-        // Execute charge plugins directly (for backwards compatibility)
-        try {
-          const { executeChargePlugins, TriggerType } = await import("../plugins/ledger/charge");
-          await executeChargePlugins({
-            trigger: TriggerType.WMB_SAVED,
-            ...payload,
-          });
-        } catch (error) {
-          logger.error("Failed to execute charge plugins for WMB delete", {
-            service: "worker-storage",
-            wmbId: deleted.id,
-            error: error instanceof Error ? error.message : String(error),
-          });
-        }
-      }
-      
-      return result.length > 0;
-    },
-
     async getMemberStatusCodesByIndustry(industryId: string, workerIdsList: string[]): Promise<Array<{ workerId: string; code: string }>> {
       if (workerIdsList.length === 0) return [];
       const client = getClient();
@@ -1281,23 +1157,6 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       return rows
         .filter((r): r is { workerId: string; code: string } => r.code !== null)
         .map((r) => ({ workerId: r.workerId, code: r.code }));
-    },
-
-    async workerBenefitExists(workerId: string, benefitId: string, month: number, year: number): Promise<boolean> {
-      const client = getClient();
-      const result = await client
-        .select({ id: trustWmb.id })
-        .from(trustWmb)
-        .where(
-          and(
-            eq(trustWmb.workerId, workerId),
-            eq(trustWmb.benefitId, benefitId),
-            eq(trustWmb.month, month),
-            eq(trustWmb.year, year)
-          )
-        )
-        .limit(1);
-      return result.length > 0;
     },
   };
 

@@ -41,7 +41,7 @@ class PriorMonthPlugin extends EligibilityPlugin<PriorMonthConfig> {
     );
     const subject = context.relationship ? "Dependent" : "Worker";
 
-    const exists = await storage.workers.workerBenefitExists(
+    const exists = await storage.trust.wmb.workerBenefitExists(
       context.dependentWorker.id,
       context.benefitId,
       priorMonth,

@@ -143,3 +143,26 @@ export function registerChargePluginListeners(): void {
     handlerCount: eventBus.getHandlerCount(),
   });
 }
+
+/**
+ * Registers ONLY the WMB_SAVED charge-plugin listener.
+ *
+ * WMB storage no longer calls charge plugins directly — it emits WMB_SAVED and
+ * this listener runs the charge plugins via the event bus. The other triggers
+ * (HOURS/PAYMENT/PARTICIPANT/CRON) still invoke charge plugins directly from
+ * their own write paths, so registering their listeners here would double-charge
+ * them. Until those paths are migrated, register the WMB listener in isolation.
+ */
+export function registerWmbChargePluginListener(): void {
+  eventBus.on({
+    name: "ledger-charge:wmb-saved",
+    description: "Runs all charge plugins registered for the WMB_SAVED trigger.",
+    event: EventType.WMB_SAVED,
+    handler: handleWmbSaved,
+  });
+
+  logger.info("WMB charge plugin event listener registered", {
+    service: "charge-plugin-listener",
+    handlerCount: eventBus.getHandlerCount(EventType.WMB_SAVED),
+  });
+}

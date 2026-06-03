@@ -25,7 +25,7 @@ import { getSession } from "./auth";
 // Import charge plugins module to trigger registration
 // Note: Individual plugins are registered in ./plugins/ledger/charge/index.ts
 import "./plugins/ledger/charge";
-import { registerChargePluginListeners } from "./plugins/ledger/charge";
+import { registerWmbChargePluginListener } from "./plugins/ledger/charge";
 
 // Import eligibility plugins module to trigger registration
 // Note: Individual plugins are registered in ./plugins/trust/eligibility/index.ts
@@ -320,10 +320,13 @@ server.listen({
   initDispatchNotifications();
   logger.info("Dispatch notifications initialized", { source: "startup" });
 
-  // Register charge plugin event listeners
-  // Note: Charge plugins are currently called directly from storage for backwards compatibility.
-  // The listener is available for future use when we fully migrate to event-driven execution.
-  // registerChargePluginListeners();
+  // Register charge plugin event listeners.
+  // WMB charges are fully event-driven: trust.wmb storage emits WMB_SAVED and
+  // this listener runs the WMB charge plugins. Only the WMB listener is enabled
+  // here — HOURS/PAYMENT/PARTICIPANT/CRON charge plugins are still invoked
+  // directly from their own write paths, so registering the full
+  // registerChargePluginListeners() would double-charge them.
+  registerWmbChargePluginListener();
 
   // Register cron job handlers
   registerCronJob('delete-expired-reports', deleteExpiredReportsHandler);

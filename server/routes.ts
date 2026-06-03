@@ -1568,7 +1568,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   app.get("/api/workers/:workerId/benefits", requireAccess('worker.view', req => req.params.workerId), async (req, res) => {
     try {
       const { workerId } = req.params;
-      const benefits = await storage.workers.getWorkerBenefits(workerId);
+      const benefits = await storage.trust.wmb.getWorkerBenefits(workerId);
       res.json(benefits);
     } catch (error) {
       console.error("Failed to fetch worker benefits:", error);
@@ -1588,7 +1588,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         });
       }
 
-      const wmb = await storage.workers.createWorkerBenefit({
+      const wmb = await storage.trust.wmb.createWorkerBenefit({
         workerId,
         month,
         year,
@@ -1612,7 +1612,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   app.delete("/api/worker-benefits/:id", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
       const { id } = req.params;
-      const deleted = await storage.workers.deleteWorkerBenefit(id);
+      const deleted = await storage.trust.wmb.deleteWorkerBenefit(id);
 
       if (!deleted) {
         return res.status(404).json({ message: "Worker benefit not found" });
