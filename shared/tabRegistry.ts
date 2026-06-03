@@ -188,7 +188,7 @@ export const workerTabTree: HierarchicalTab[] = [
     id: 'accounting', label: 'Accounting', hrefTemplate: '/workers/{id}/ledger/accounts', policyId: 'worker.ledger', component: 'ledger|sitespecific.bao',
     children: [
       { id: 'accounts', label: 'Accounts', hrefTemplate: '/workers/{id}/ledger/accounts', policyId: 'worker.ledger', component: 'ledger' },
-      { id: 'sitespecific-bao-echp', label: 'Event Center Hours Purchase', hrefTemplate: '/workers/{id}/ledger/sitespecific/bao/echp', policyId: 'worker.ledger', component: 'sitespecific.bao' },
+      { id: 'sitespecific-bao-echp', label: 'Event Center Hours Purchase', hrefTemplate: '/workers/{id}/ledger/sitespecific/bao/echp', policyId: 'worker.mine', component: 'sitespecific.bao' },
     ]
   },
   { id: 'vdb-pension', label: 'VDB Pension', hrefTemplate: '/workers/{id}/vdb-pension', permission: 'staff', component: 'sitespecific.gbhet.pension' },

@@ -40,7 +40,7 @@ export function registerBaoEchpRoutes(
     "/api/sitespecific/bao/echp/worker/:workerId/eligibility",
     requireAuth,
     componentMiddleware,
-    requireAccess("worker.ledger", workerIdParam),
+    requireAccess("worker.mine", workerIdParam),
     async (req, res) => {
       try {
         const workerId = req.params.workerId;
