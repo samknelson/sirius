@@ -25,6 +25,15 @@ export interface TabDefinition {
   termKey?: string;
   /** Whether to use plural form for terminology substitution */
   termPlural?: boolean;
+  /**
+   * For a parent tab, navigate to its first ACCESSIBLE child instead of its
+   * own hrefTemplate. Use this when the parent's hrefTemplate points at a child
+   * that some audiences can't access (e.g. Accounting -> Accounts is gated by
+   * worker.ledger, but a worker.mine-only user should land on the ECHP child).
+   * Leave unset for parents whose hrefTemplate already matches their first
+   * child for every audience.
+   */
+  navigateToFirstAccessibleChild?: boolean;
 }
 
 /**
@@ -185,7 +194,7 @@ export const workerTabTree: HierarchicalTab[] = [
   { id: 'sitespecific-freeman-2shift', label: 'Second Shift', hrefTemplate: '/workers/{id}/sitespecific-freeman-2shift', policyId: 'edls.any', component: 'sitespecific.freeman' },
   { id: 'sitespecific-bao-beneficiaries', label: 'Beneficiaries', hrefTemplate: '/workers/{id}/sitespecific/bao/beneficiaries', policyId: 'worker.view', component: 'sitespecific.bao' },
   {
-    id: 'accounting', label: 'Accounting', hrefTemplate: '/workers/{id}/ledger/accounts', policyId: 'worker.ledger', component: 'ledger|sitespecific.bao',
+    id: 'accounting', label: 'Accounting', hrefTemplate: '/workers/{id}/ledger/accounts', policyId: 'worker.mine', component: 'ledger|sitespecific.bao', navigateToFirstAccessibleChild: true,
     children: [
       { id: 'accounts', label: 'Accounts', hrefTemplate: '/workers/{id}/ledger/accounts', policyId: 'worker.ledger', component: 'ledger' },
       { id: 'sitespecific-bao-echp', label: 'Event Center Hours Purchase', hrefTemplate: '/workers/{id}/ledger/sitespecific/bao/echp', policyId: 'worker.mine', component: 'sitespecific.bao' },
