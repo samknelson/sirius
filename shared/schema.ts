@@ -247,7 +247,7 @@ export const workerBans = pgTable("worker_bans", {
 
 export const employers = pgTable("employers", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  siriusId: serial("sirius_id").notNull().unique(),
+  siriusId: varchar("sirius_id").unique(),
   name: text("name").notNull(),
   isActive: boolean("is_active").default(true).notNull(),
   typeId: varchar("type_id").references(() => optionsEmployerType.id, { onDelete: 'set null' }),

@@ -17,6 +17,7 @@ import "./core/1008_add_trust_benefit_sirius_id";
 import "./core/1009_add_benefit_type_sirius_id";
 import "./core/1010_add_worker_trust_elections_employer_id";
 import "./core/1011_add_workers_data";
+import "./core/1012_employer_sirius_id_varchar";
 
 // Per-component migrations — each registered via
 // `registerComponentMigration(componentId, migration)`. Tracked by the
