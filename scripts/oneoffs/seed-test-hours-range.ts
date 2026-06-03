@@ -16,9 +16,9 @@
  */
 import { storage } from "../../server/storage/database";
 
-const WORKER_ID = "18c10445-ae9a-4f1e-aa9d-2d03d6238d3d";
-const MIN_HOURS = 41;
-const MAX_HOURS = 79;
+const WORKER_ID = "d6fea247-89ad-4def-b688-7401b11c2788";
+const MIN_HOURS = 110;
+const MAX_HOURS = 160;
 const START = { year: 2025, month: 1 }; // January 2025
 const END = { year: 2026, month: 4 }; // April 2026
 
