@@ -99,7 +99,7 @@ export function registerBaoEchpRoutes(
           return respond(
             false,
             "window_closed",
-            "Online purchasing for this month has closed. Please contact the office for assistance.",
+            "Online purchasing for this month is closed. Please contact the office for assistance.",
           );
         }
 
@@ -150,7 +150,7 @@ export function registerBaoEchpRoutes(
           return respond(
             false,
             "terminated",
-            "You have been marked as Terminated, which means you are ineligible for the Hours Buy-Up program. If you wish to maintain coverage, you may be eligible to make a COBRA election.",
+            "You have been marked as Terminated, which means you are ineligible for the Hours Buy-Up program. If you wish to maintain coverage, you may be eligible to make a COBRA election",
           );
         }
 
