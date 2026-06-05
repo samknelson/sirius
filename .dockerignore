@@ -1,0 +1,43 @@
+# Build artifacts & deps — reinstalled/rebuilt inside the image
+node_modules
+dist
+dist-ssr
+
+# Version control & CI
+.git
+.github
+.gitignore
+
+# Local/dev tooling & Replit-specific files
+.local
+.agents
+.replit
+replit.nix
+.config
+.upm
+.cache
+.breakpoints
+
+# Env & secrets — never bake these into the image
+.env
+.env.*
+*.pem
+*.key
+
+# Editor / OS noise
+.vscode
+.idea
+.DS_Store
+*.log
+
+# Tests & docs not needed at build time
+coverage
+*.md
+docs
+
+# Local attachments / scratch
+attached_assets
+screenshots
+exports
+tmp
+.tmp
