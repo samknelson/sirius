@@ -5,8 +5,8 @@ import {
   evaluateBenefitEligibility,
   validateEligibilityRelationship,
   EligibilityRelationshipError,
+  pluginConfigToEligibilityRule,
 } from "../plugins/trust/eligibility/executor";
-import type { EligibilityRule } from "../plugins/trust/eligibility/types";
 import { z } from "zod";
 
 const evaluateEligibilitySchema = z.object({
@@ -50,9 +50,13 @@ export function registerEligibilityPluginRoutes(
         return res.status(404).json({ message: "Policy not found" });
       }
 
-      const policyData = (policy.data as Record<string, unknown>) || {};
-      const eligibilityRules = (policyData.eligibilityRules as Record<string, EligibilityRule[]>) || {};
-      const benefitRules = eligibilityRules[input.benefitId] || [];
+      const ruleRows = await storage.pluginConfigs.search("trust-eligibility", {
+        policy: input.policyId,
+        benefit: input.benefitId,
+      });
+      const benefitRules = ruleRows.map((r) =>
+        pluginConfigToEligibilityRule(r.config),
+      );
 
       if (benefitRules.length === 0) {
         // Even when no rules exist, hard-validate any supplied

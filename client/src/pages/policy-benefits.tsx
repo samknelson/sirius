@@ -1,5 +1,5 @@
-import { pluginManifestQueryKey } from "@/plugins/_core";
-import { useState, useEffect, useMemo } from "react";
+import { pluginManifestQueryKey, pluginSearch, pluginConfigsUrl } from "@/plugins/_core";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { customizeValidator } from "@rjsf/validator-ajv8";
 import { getDefaultFormState } from "@rjsf/utils";
@@ -43,11 +43,31 @@ interface EligibilityRule {
   pluginKey: string;
   appliesTo: ("start" | "continue")[];
   config: Record<string, unknown>;
+  /**
+   * The unified `plugin_configs` row id this rule was loaded from. Absent for
+   * rules added in the editor that have not yet been persisted. Carried through
+   * all local edits via object spread so Save can PATCH existing rows and POST
+   * new ones.
+   */
+  _id?: string;
 }
 
 interface PolicyData {
   benefitIds?: string[];
-  eligibilityRules?: Record<string, EligibilityRule[]>;
+}
+
+/**
+ * Flat (hydrated) trust-eligibility config envelope returned by
+ * `pluginSearch`. `data` is the rule config (incl. the authoritative
+ * `appliesTo` array); `benefit` is the subsidiary dimension.
+ */
+interface EligibilityConfigRow {
+  id: string;
+  pluginId: string;
+  ordering: number;
+  data: Record<string, unknown> | null;
+  policy: string | null;
+  benefit: string | null;
 }
 
 interface EligibilityPlugin {
@@ -390,19 +410,48 @@ function PolicyBenefitsContent() {
   const [selectedBenefits, setSelectedBenefits] = useState<Set<string>>(
     new Set(policyData.benefitIds || [])
   );
-  const [eligibilityRules, setEligibilityRules] = useState<Record<string, EligibilityRule[]>>(
-    policyData.eligibilityRules || {}
-  );
+  const [eligibilityRules, setEligibilityRules] = useState<Record<string, EligibilityRule[]>>({});
 
   useEffect(() => {
     const currentData = (policy.data as PolicyData) || {};
     setSelectedBenefits(new Set(currentData.benefitIds || []));
-    setEligibilityRules(currentData.eligibilityRules || {});
   }, [policy.data]);
 
   const { data: benefits, isLoading: benefitsLoading } = useQuery<TrustBenefit[]>({
     queryKey: ["/api/trust-benefits"],
   });
+
+  // Eligibility rules now live in the unified plugin_configs table; load every
+  // trust-eligibility row for this policy and group them by benefit. The
+  // dispatcher returns rows already sorted by `ordering, id`, so each benefit's
+  // rules keep their exact configured sequence.
+  const eligibilityConfigsQueryKey = ["/api/plugins/trust-eligibility/configs/search", policy.id] as const;
+  const { data: ruleRows, isLoading: rulesLoading } = useQuery<EligibilityConfigRow[]>({
+    queryKey: eligibilityConfigsQueryKey,
+    queryFn: () =>
+      pluginSearch<"trust-eligibility", EligibilityConfigRow>("trust-eligibility", {
+        policy: policy.id,
+      }),
+  });
+
+  useEffect(() => {
+    if (!ruleRows) return;
+    const grouped: Record<string, EligibilityRule[]> = {};
+    for (const row of ruleRows) {
+      if (!row.benefit) continue;
+      const data = (row.data ?? {}) as Record<string, unknown>;
+      const appliesTo = Array.isArray(data.appliesTo)
+        ? (data.appliesTo as ("start" | "continue")[])
+        : [];
+      (grouped[row.benefit] ??= []).push({
+        _id: row.id,
+        pluginKey: row.pluginId,
+        appliesTo,
+        config: data,
+      });
+    }
+    setEligibilityRules(grouped);
+  }, [ruleRows]);
 
   const { data: plugins = [] } = useQuery<EligibilityPlugin[]>({
     queryKey: pluginManifestQueryKey("trust-eligibility"),
@@ -414,17 +463,46 @@ function PolicyBenefitsContent() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: async (data: { benefitIds: string[]; eligibilityRules: Record<string, EligibilityRule[]> }) => {
-      const currentData = (policy.data as Record<string, unknown>) || {};
-      const newData = {
-        ...currentData,
-        benefitIds: data.benefitIds,
-        eligibilityRules: data.eligibilityRules,
-      };
-      return apiRequest("PUT", `/api/policies/${policy.id}`, { data: newData });
+    mutationFn: async (desired: { benefitId: string; rule: EligibilityRule; index: number }[]) => {
+      // 1) Persist benefit membership on the policy and retire any leftover
+      //    legacy `eligibilityRules` blob.
+      const currentData = { ...((policy.data as Record<string, unknown>) || {}) };
+      delete currentData.eligibilityRules;
+      currentData.benefitIds = Array.from(selectedBenefits);
+      await apiRequest("PUT", `/api/policies/${policy.id}`, { data: currentData });
+
+      // 2) Reconcile the unified plugin_configs rows against the desired state:
+      //    PATCH existing rows, POST new ones, DELETE any loaded row no longer
+      //    desired (covers removed rules and unchecked benefits).
+      const baseUrl = pluginConfigsUrl("trust-eligibility");
+      const desiredIds = new Set(
+        desired.map((d) => d.rule._id).filter((id): id is string => !!id),
+      );
+      const toDelete = (ruleRows ?? []).filter((r) => !desiredIds.has(r.id));
+
+      await Promise.all([
+        ...toDelete.map((r) => apiRequest("DELETE", `${baseUrl}/${r.id}`)),
+        ...desired.map((d) => {
+          const body = {
+            pluginId: d.rule.pluginKey,
+            name: null,
+            enabled: true,
+            ordering: d.index,
+            policy: policy.id,
+            benefit: d.benefitId,
+            // appliesTo lives inside data (authoritative); the server derives
+            // the subsidiary applies_to column from it.
+            data: { ...d.rule.config, appliesTo: d.rule.appliesTo },
+          };
+          return d.rule._id
+            ? apiRequest("PATCH", `${baseUrl}/${d.rule._id}`, body)
+            : apiRequest("POST", baseUrl, body);
+        }),
+      ]);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/policies", policy.id] });
+      queryClient.invalidateQueries({ queryKey: eligibilityConfigsQueryKey });
       toast({
         title: "Benefits Updated",
         description: "Policy benefits and eligibility rules have been saved successfully.",
@@ -468,7 +546,7 @@ function PolicyBenefitsContent() {
   const rjsfValidator = sharedValidator;
 
   const handleSave = () => {
-    const filteredRules: Record<string, EligibilityRule[]> = {};
+    const desired: { benefitId: string; rule: EligibilityRule; index: number }[] = [];
     const errors: string[] = [];
 
     selectedBenefits.forEach((benefitId) => {
@@ -479,8 +557,8 @@ function PolicyBenefitsContent() {
         activeBenefits.find((b) => b.id === benefitId)?.name ?? benefitId;
 
       // Strip any leftover legacy ageout keys (`minAge`/`maxAge`) from
-      // persisted configs so policies originally saved in the legacy
-      // shape are cleaned up the next time the page is saved.
+      // persisted configs so rules originally saved in the legacy shape are
+      // cleaned up the next time the page is saved.
       const cleanedRules = rules.map((rule) => {
         if (rule.pluginKey !== "ageout") return rule;
         const cfg = rule.config as Record<string, unknown>;
@@ -493,22 +571,22 @@ function PolicyBenefitsContent() {
 
       cleanedRules.forEach((rule, idx) => {
         const plugin = plugins.find((p) => p.id === rule.pluginKey);
-        if (!plugin?.configSchema || !hasConfigProps(plugin.configSchema)) return;
-        const result = rjsfValidator.validateFormData(
-          rule.config,
-          plugin.configSchema as object,
-        );
-        if (result.errors && result.errors.length > 0) {
-          const pluginName = plugin.name ?? rule.pluginKey;
-          for (const e of result.errors) {
-            errors.push(
-              `${benefitName} → ${pluginName} (rule ${idx + 1}): ${e.property || "/"} ${e.message ?? "is invalid"}`,
-            );
+        if (plugin?.configSchema && hasConfigProps(plugin.configSchema)) {
+          const result = rjsfValidator.validateFormData(
+            rule.config,
+            plugin.configSchema as object,
+          );
+          if (result.errors && result.errors.length > 0) {
+            const pluginName = plugin.name ?? rule.pluginKey;
+            for (const e of result.errors) {
+              errors.push(
+                `${benefitName} → ${pluginName} (rule ${idx + 1}): ${e.property || "/"} ${e.message ?? "is invalid"}`,
+              );
+            }
           }
         }
+        desired.push({ benefitId, rule, index: idx });
       });
-
-      filteredRules[benefitId] = cleanedRules;
     });
 
     if (errors.length > 0) {
@@ -520,16 +598,13 @@ function PolicyBenefitsContent() {
       return;
     }
 
-    updateMutation.mutate({
-      benefitIds: Array.from(selectedBenefits),
-      eligibilityRules: filteredRules,
-    });
+    updateMutation.mutate(desired);
   };
 
   const activeBenefits = benefits?.filter((b) => b.isActive) || [];
   const selectedBenefitList = activeBenefits.filter((b) => selectedBenefits.has(b.id));
 
-  if (benefitsLoading) {
+  if (benefitsLoading || rulesLoading) {
     return (
       <div className="space-y-4">
         <Card>

@@ -41,21 +41,33 @@ export function registerTrustEligibilityKind(): void {
       benefit: z.string().nullable().optional(),
       appliesTo: z.string().nullable().optional(),
     }),
-    toRows: (input) => ({
-      base: {
-        pluginType: "trust-eligibility",
-        pluginId: input.pluginId,
-        enabled: input.enabled,
-        name: input.name,
-        ordering: input.ordering,
-        data: input.data,
-      },
-      subsidiary: {
-        policy: input.policy ?? null,
-        benefit: input.benefit ?? null,
-        appliesTo: input.appliesTo ?? null,
-      },
-    }),
+    toRows: (input) => {
+      // `data.appliesTo` is the authoritative rule-level scan-type list
+      // (the per-plugin validateConfig requires it). The subsidiary
+      // `applies_to` column is a denormalized comma-joined copy derived from
+      // it, so config payloads never carry a top-level `appliesTo` array
+      // (which would fail the adapter's `appliesTo: z.string()` schema).
+      const dataAppliesTo = (input.data as { appliesTo?: unknown } | null)
+        ?.appliesTo;
+      const appliesTo = Array.isArray(dataAppliesTo)
+        ? dataAppliesTo.join(",")
+        : (input.appliesTo ?? null);
+      return {
+        base: {
+          pluginType: "trust-eligibility",
+          pluginId: input.pluginId,
+          enabled: input.enabled,
+          name: input.name,
+          ordering: input.ordering,
+          data: input.data,
+        },
+        subsidiary: {
+          policy: input.policy ?? null,
+          benefit: input.benefit ?? null,
+          appliesTo,
+        },
+      };
+    },
     envelopeFields: [
       { name: "policy", label: "Policy", type: "string" },
       { name: "benefit", label: "Benefit", type: "string" },

@@ -5,10 +5,37 @@ import type {
   EligibilityRule,
   ScanType,
 } from "./types";
-import type { Worker, Contact, Employer } from "@shared/schema";
+import type { Worker, Contact, Employer, PluginConfig } from "@shared/schema";
 import { storage } from "../../../storage/database";
 import { logger } from "../../../logger";
 import { getEnabledComponentIds } from "../../../modules/components";
+
+/**
+ * Reconstruct the in-memory `EligibilityRule` shape the executor evaluates
+ * from a unified `plugin_configs` base row (plugin_type = 'trust-eligibility').
+ *
+ * The base row's `data` jsonb IS the rule config, with the authoritative
+ * `appliesTo` scan-type list mirrored inside it. The `pluginId` column is the
+ * plugin key. Callers fetch ordered rows via
+ * `storage.pluginConfigs.search("trust-eligibility", …)` (already sorted by
+ * `ordering, id`, preserving the exact per-benefit evaluation order) and map
+ * each `.config` through this helper. `enabled` is intentionally NOT consulted:
+ * every configured rule participates in evaluation, exactly as the legacy blob
+ * behaved.
+ */
+export function pluginConfigToEligibilityRule(
+  config: PluginConfig,
+): EligibilityRule {
+  const data = (config.data ?? {}) as Record<string, unknown>;
+  const appliesTo = Array.isArray(data.appliesTo)
+    ? (data.appliesTo as ScanType[])
+    : [];
+  return {
+    pluginKey: config.pluginId,
+    appliesTo,
+    config: data,
+  };
+}
 
 /**
  * Thrown when an eligibility evaluation is requested with a

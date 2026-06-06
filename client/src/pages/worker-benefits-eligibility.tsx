@@ -1,4 +1,4 @@
-import { pluginManifestQueryKey } from "@/plugins/_core";
+import { pluginManifestQueryKey, pluginSearch } from "@/plugins/_core";
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Policy, TrustBenefit, Employer, Variable } from "@shared/schema";
@@ -19,13 +19,23 @@ import { apiRequest } from "@/lib/queryClient";
 
 interface PolicyData {
   benefitIds?: string[];
-  eligibilityRules?: Record<string, EligibilityRule[]>;
 }
 
 interface EligibilityRule {
   pluginKey: string;
   appliesTo: ("start" | "continue")[];
   config: Record<string, unknown>;
+}
+
+/**
+ * Flat (hydrated) trust-eligibility config envelope returned by `pluginSearch`.
+ * `data` carries the rule config including the authoritative `appliesTo` array.
+ */
+interface EligibilityConfigRow {
+  id: string;
+  pluginId: string;
+  data: Record<string, unknown> | null;
+  benefit: string | null;
 }
 
 interface EligibilityPluginResult {
@@ -208,7 +218,22 @@ function WorkerBenefitsEligibilityContent() {
   const policyData = (selectedPolicy?.data as PolicyData) || {};
   const policyBenefitIds = policyData.benefitIds || [];
   const policyBenefits = allBenefits.filter((b) => policyBenefitIds.includes(b.id));
-  const eligibilityRules = policyData.eligibilityRules || {};
+
+  // Eligibility rules live in the unified plugin_configs table; load the rows
+  // for the selected policy + benefit (ordered by the dispatcher).
+  const { data: benefitRuleRows = [] } = useQuery<EligibilityConfigRow[]>({
+    queryKey: [
+      "/api/plugins/trust-eligibility/configs/search",
+      selectedPolicyId,
+      selectedBenefitId,
+    ],
+    queryFn: () =>
+      pluginSearch<"trust-eligibility", EligibilityConfigRow>("trust-eligibility", {
+        policy: selectedPolicyId,
+        benefit: selectedBenefitId,
+      }),
+    enabled: !!selectedPolicyId && !!selectedBenefitId,
+  });
 
   const evaluateMutation = useMutation({
     mutationFn: async () => {
@@ -291,7 +316,13 @@ function WorkerBenefitsEligibilityContent() {
     { value: "12", label: "December" },
   ];
 
-  const selectedBenefitRules = selectedBenefitId ? (eligibilityRules[selectedBenefitId] || []) : [];
+  const selectedBenefitRules: EligibilityRule[] = benefitRuleRows.map((row) => {
+    const data = (row.data ?? {}) as Record<string, unknown>;
+    const appliesTo = Array.isArray(data.appliesTo)
+      ? (data.appliesTo as ("start" | "continue")[])
+      : [];
+    return { pluginKey: row.pluginId, appliesTo, config: data };
+  });
   const applicableRules = selectedBenefitRules.filter((r) => r.appliesTo.includes(selectedScanType));
 
   return (
