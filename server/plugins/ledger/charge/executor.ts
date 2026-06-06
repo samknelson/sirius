@@ -6,6 +6,7 @@ import {
   LedgerNotification,
 } from "./types";
 import { getEnabledChargePluginsByTrigger } from "./registry";
+import { mergeEnabledChargeConfigs, toChargeConfig } from "./charge-config-resolution";
 import { storage } from "../../../storage";
 import { dateToYmd } from "@shared/utils/date";
 
@@ -220,5 +221,28 @@ async function getEnabledConfigsForPlugin(
   pluginId: string,
   employerId: string | null
 ): Promise<any[]> {
-  return storage.chargePluginConfigs.getEnabledForPlugin(pluginId, employerId);
+  // All enabled global configs (one per account).
+  const globalConfigs = (
+    await storage.pluginConfigs.search("charge", {
+      pluginId,
+      enabled: true,
+      scope: "global",
+    })
+  ).map(toChargeConfig);
+
+  if (!employerId) {
+    return globalConfigs;
+  }
+
+  // Employer-specific configs override globals targeting the same account.
+  const employerConfigs = (
+    await storage.pluginConfigs.search("charge", {
+      pluginId,
+      enabled: true,
+      scope: "employer",
+      employerId,
+    })
+  ).map(toChargeConfig);
+
+  return mergeEnabledChargeConfigs(globalConfigs, employerConfigs);
 }

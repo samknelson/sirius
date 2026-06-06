@@ -1,4 +1,5 @@
 import { storage } from "../../../storage";
+import { pickFirstByAccountOrder, toChargeConfig } from "../../../plugins/ledger/charge/charge-config-resolution";
 import { logger } from "../../../logger";
 import type { GbhetPensionAccrualTier, GbhetPensionPlanYear } from "../../../storage/sitespecific/gbhet/pension";
 import type { RawLedgerEntryWithEntity } from "../../../storage/ledger";
@@ -35,7 +36,12 @@ async function resolveAccountId(override?: string | null): Promise<string> {
   // No explicit override: use the account from the active plugin config when
   // one is set. This keeps batch/contribution flows working off the same
   // account the admin manages in the Charge Plugins UI.
-  const activeConfig = await storage.chargePluginConfigs.getFirstEnabledByPluginId(PLUGIN_ID);
+  const activeConfig = pickFirstByAccountOrder(
+    (await storage.pluginConfigs.search("charge", {
+      pluginId: PLUGIN_ID,
+      enabled: true,
+    })).map(toChargeConfig),
+  );
   if (activeConfig?.account) {
     const configAccount = await storage.ledger.accounts.get(activeConfig.account);
     if (configAccount) {
@@ -408,13 +414,22 @@ async function resolveContributionContext(): Promise<ContributionContext | null>
 
   const contribYearsByYear = new Map(contribYears.map(py => [py.year, py]));
 
-  const globalConfig = await storage.chargePluginConfigs.getByPluginIdAndScope(
-    CONTRIBUTION_PLUGIN_ID,
-    "global",
+  const globalConfig = pickFirstByAccountOrder(
+    (await storage.pluginConfigs.search("charge", {
+      pluginId: CONTRIBUTION_PLUGIN_ID,
+      scope: "global",
+      employerId: null,
+    })).map(toChargeConfig),
   );
   const batchConfig = globalConfig
     ? undefined
-    : await storage.chargePluginConfigs.getByPluginIdAndScope(CONTRIBUTION_PLUGIN_ID, "batch");
+    : pickFirstByAccountOrder(
+        (await storage.pluginConfigs.search("charge", {
+          pluginId: CONTRIBUTION_PLUGIN_ID,
+          scope: "batch",
+          employerId: null,
+        })).map(toChargeConfig),
+      );
   const effectiveConfig = globalConfig || batchConfig;
   const effectiveConfigId = effectiveConfig?.id || "batch";
   const settings = (effectiveConfig?.settings || {}) as { specialDesignationMemberStatusIds?: string[] };
@@ -770,14 +785,20 @@ async function resolveVarContribAccounts(): Promise<{ sourceAccountId: string; t
 }
 
 async function resolveVarContribConfigId(): Promise<string> {
-  const globalConfig = await storage.chargePluginConfigs.getByPluginIdAndScope(
-    VAR_CONTRIB_PLUGIN_ID,
-    "global",
+  const globalConfig = pickFirstByAccountOrder(
+    (await storage.pluginConfigs.search("charge", {
+      pluginId: VAR_CONTRIB_PLUGIN_ID,
+      scope: "global",
+      employerId: null,
+    })).map(toChargeConfig),
   );
   if (globalConfig?.id) return globalConfig.id;
-  const batchConfig = await storage.chargePluginConfigs.getByPluginIdAndScope(
-    VAR_CONTRIB_PLUGIN_ID,
-    "batch",
+  const batchConfig = pickFirstByAccountOrder(
+    (await storage.pluginConfigs.search("charge", {
+      pluginId: VAR_CONTRIB_PLUGIN_ID,
+      scope: "batch",
+      employerId: null,
+    })).map(toChargeConfig),
   );
   return batchConfig?.id || "batch";
 }

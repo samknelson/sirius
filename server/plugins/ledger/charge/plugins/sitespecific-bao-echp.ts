@@ -11,6 +11,7 @@ import { registerChargePlugin } from "../registry";
 import type { ChargePluginMetadata } from "../types";
 import { logger } from "../../../../logger";
 import { storage } from "../../../../storage/database";
+import { toChargeConfig } from "../charge-config-resolution";
 import { createUnifiedOptionsStorage } from "../../../../storage/unified-options";
 import { fetchBuildupStatus } from "../../../trust/eligibility/plugins/sitespecific-bao-buildup";
 import {
@@ -124,9 +125,9 @@ export function resolveEchpQuote(
  * none is configured. Invalid settings are skipped.
  */
 export async function loadEchpSettings(): Promise<EchpSettings | null> {
-  const configs = await storage.chargePluginConfigs.getByPluginId(
-    "sitespecific-bao-echp",
-  );
+  const configs = (await storage.pluginConfigs.search("charge", {
+    pluginId: "sitespecific-bao-echp",
+  })).map(toChargeConfig);
   for (const config of configs) {
     if (!config.enabled) continue;
     const parsed = baoEchpChargeSettingsSchema.safeParse(config.settings);

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { reconcileVariableContributionForAllWorkers } from "../../services/sitespecific/gbhet/pension-sla";
 import { storage } from "../../storage";
+import { pickFirstByAccountOrder, toChargeConfig } from "../../plugins/ledger/charge/charge-config-resolution";
 import type { CronJobHandler, CronJobContext, CronJobResult } from "../registry";
 
 const settingsSchema = z.object({});
@@ -8,14 +9,20 @@ const settingsSchema = z.object({});
 const VAR_CONTRIB_PLUGIN_ID = "gbhet-pension-variable-contribution";
 
 async function resolveConfigId(): Promise<string> {
-  const globalConfig = await storage.chargePluginConfigs.getByPluginIdAndScope(
-    VAR_CONTRIB_PLUGIN_ID,
-    "global",
+  const globalConfig = pickFirstByAccountOrder(
+    (await storage.pluginConfigs.search("charge", {
+      pluginId: VAR_CONTRIB_PLUGIN_ID,
+      scope: "global",
+      employerId: null,
+    })).map(toChargeConfig),
   );
   if (globalConfig?.id) return globalConfig.id;
-  const batchConfig = await storage.chargePluginConfigs.getByPluginIdAndScope(
-    VAR_CONTRIB_PLUGIN_ID,
-    "batch",
+  const batchConfig = pickFirstByAccountOrder(
+    (await storage.pluginConfigs.search("charge", {
+      pluginId: VAR_CONTRIB_PLUGIN_ID,
+      scope: "batch",
+      employerId: null,
+    })).map(toChargeConfig),
   );
   if (batchConfig?.id) return batchConfig.id;
   return "batch";

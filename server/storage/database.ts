@@ -52,10 +52,6 @@ import {
   createCronJobRunStorage,
 } from "./system/cron";
 import {
-  type ChargePluginConfigStorage,
-  createChargePluginConfigStorage,
-} from "./charge-plugins";
-import {
   type PluginConfigStorage,
   createPluginConfigStorage,
 } from "./plugin-configs";
@@ -146,7 +142,6 @@ export interface IStorage {
   files: FileStorage;
   cronJobs: CronJobStorage;
   cronJobRuns: CronJobRunStorage;
-  chargePluginConfigs: ChargePluginConfigStorage;
   pluginConfigs: PluginConfigStorage;
   logs: LogsStorage;
   workerWsh: WorkerWshStorage;
@@ -238,7 +233,6 @@ export class DatabaseStorage implements IStorage {
   files: FileStorage;
   cronJobs: CronJobStorage;
   cronJobRuns: CronJobRunStorage;
-  chargePluginConfigs: ChargePluginConfigStorage;
   pluginConfigs: PluginConfigStorage;
   logs: LogsStorage;
   workerWsh: WorkerWshStorage;
@@ -368,7 +362,6 @@ export class DatabaseStorage implements IStorage {
     this.files = withStorageLogging(createFileStorage(), fileLoggingConfig);
     this.cronJobs = createCronJobStorage();
     this.cronJobRuns = createCronJobRunStorage();
-    this.chargePluginConfigs = createChargePluginConfigStorage();
     this.pluginConfigs = createPluginConfigStorage();
     this.logs = createLogsStorage();
 

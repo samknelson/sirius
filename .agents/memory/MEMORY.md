@@ -10,3 +10,4 @@
 - [Cross-table plugin_configs uniqueness](cross-table-uniqueness-denormalization.md) — tuple spanning base+subsidiary: denormalize base discriminator onto subsidiary + null-safe COALESCE unique index.
 - [Legacy-table drop needs full SQL sweep](legacy-table-drop-sql-sweep.md) — before DROPping a bespoke config table, grep the whole repo for raw SQL refs (service files bypass storage rule); drift-gate boot won't catch lazy call paths.
 - [plugin_configs legacy backfill is boot-time](plugin-configs-backfill-boot-time.md) — backfill legacy `variables`→plugin_configs at boot (knows enabledByDefault), not a SQL migration; canonical row = first by (ordering,id).
+- [Charge configs via generic search must re-apply legacy ordering](charge-config-generic-search-ordering.md) — generic pluginConfigs.search orders by (ordering,id); legacy charge single-row picks need account-nulls-last/id re-sort + employerId:null for non-employer scopes.

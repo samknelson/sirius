@@ -1,5 +1,6 @@
 import { WizardReport, ReportConfig, ReportColumn, ReportRecord } from '../report.js';
 import { storage } from '../../storage';
+import { toChargeConfig } from '../../plugins/ledger/charge/charge-config-resolution.js';
 import { 
   workerHours, 
   workers, 
@@ -98,7 +99,10 @@ export class ReportGbhetLegalCompliance extends WizardReport {
     // Charge configs now live in the unified plugin_configs tables; fetch the
     // enabled 'gbhet-legal-benefit' configs via the storage layer before the
     // read-only query block and close over the result.
-    const allPluginConfigs = await storage.chargePluginConfigs.getEnabledByPluginId('gbhet-legal-benefit');
+    const allPluginConfigs = (await storage.pluginConfigs.search("charge", {
+      pluginId: 'gbhet-legal-benefit',
+      enabled: true,
+    })).map(toChargeConfig);
     if (allPluginConfigs.length === 0) {
       return [];
     }

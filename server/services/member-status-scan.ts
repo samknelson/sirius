@@ -1,4 +1,5 @@
 import { storage } from "../storage";
+import { toChargeConfig } from "../plugins/ledger/charge/charge-config-resolution";
 import { logger } from "../logger";
 import { getClient } from "../storage/transaction-context";
 import { sql, eq, and, desc } from "drizzle-orm";
@@ -51,7 +52,10 @@ async function getIndustryId(): Promise<string | null> {
 async function getDuesAccountId(): Promise<string | null> {
   // Charge configs now live in the unified plugin_configs tables; resolve the
   // first enabled 'btu-dues-allocation' config via the storage layer.
-  const configs = await storage.chargePluginConfigs.getEnabledByPluginId('btu-dues-allocation');
+  const configs = (await storage.pluginConfigs.search("charge", {
+    pluginId: 'btu-dues-allocation',
+    enabled: true,
+  })).map(toChargeConfig);
   if (configs.length === 0) return null;
   const settings = configs[0].settings as { accountIds?: string[] } | null;
   return settings?.accountIds?.[0] || null;

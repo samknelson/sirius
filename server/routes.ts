@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import { stringify } from "csv-stringify/sync";
 import multer from "multer";
 import { storage } from "./storage";
+import { pickFirstByAccountOrder, toChargeConfig } from "./plugins/ledger/charge/charge-config-resolution";
 import { insertWorkerSchema, insertWorkerDispatchHfeSchema, type WorkerId, type ContactPostal, type PhoneNumber } from "@shared/schema";
 import { z } from "zod";
 import { registerUserRoutes } from "./modules/users";
@@ -390,13 +391,11 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Register eligibility plugin routes
   registerEligibilityPluginRoutes(app, requireAuth, requirePermission);
 
-  // Generic plugin config CRUD + search endpoints (Task #353 — additive
-  // foundation). Registered AFTER every per-kind config route so the
-  // existing kind-specific handlers (e.g. charge's /api/plugins/charge/configs,
-  // which still read the legacy chargePluginConfigs table) take precedence.
-  // These generic routes operate solely on the new plugin_configs tables and
-  // remain dormant for any kind that still owns specific routes — nothing
-  // visible changes until a kind is cut over in a later task.
+  // Generic plugin config CRUD + search endpoints. Registered AFTER every
+  // per-kind config route so any existing kind-specific handlers take
+  // precedence. These generic routes operate solely on the unified
+  // plugin_configs tables and remain dormant for any kind that still owns
+  // specific routes.
   const { registerPluginsConfigRoutes } = await import("./modules/plugins-config");
   registerPluginsConfigRoutes(app, requireAuth);
 
@@ -573,7 +572,12 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         return res.json({});
       }
       const limitedWorkerIds = workerIds.slice(0, 100);
-      const config = await storage.chargePluginConfigs.getFirstEnabledByPluginId('btu-dues-allocation');
+      const config = pickFirstByAccountOrder(
+        (await storage.pluginConfigs.search("charge", {
+          pluginId: 'btu-dues-allocation',
+          enabled: true,
+        })).map(toChargeConfig),
+      );
       const settings = (config?.settings ?? null) as { accountIds?: string[] } | null;
       const duesAccountId = settings?.accountIds?.[0];
       const duesMap: Record<string, { amount: string; date: string }> = {};

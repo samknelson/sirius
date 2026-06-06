@@ -4,6 +4,7 @@ import { storage } from '../../storage/index.js';
 import { createBtuWorkerImportStorage } from '../../storage/sitespecific/btu/worker-import.js';
 import { createCardcheckStorage, SignedCardcheckWithDetails } from '../../storage/cardchecks.js';
 import { createBargainingUnitStorage, type BargainingUnitData } from '../../storage/bargaining-units.js';
+import { toChargeConfig } from '../../plugins/ledger/charge/charge-config-resolution.js';
 import { executeChargePlugins, TriggerType, DuesImportSavedContext } from '../../plugins/ledger/charge/index.js';
 import { scanWorkerMemberStatus } from '../../services/member-status-scan.js';
 import { parse as parseCSV } from 'csv-parse/sync';
@@ -272,7 +273,11 @@ export class BtuDuesAllocationWizard extends FeedWizard {
       throw new Error('No uploaded file found');
     }
 
-    const pluginConfigs = await storage.chargePluginConfigs.getEnabledForPlugin('btu-dues-allocation', null);
+    const pluginConfigs = (await storage.pluginConfigs.search("charge", {
+      pluginId: 'btu-dues-allocation',
+      enabled: true,
+      scope: "global",
+    })).map(toChargeConfig);
     if (pluginConfigs.length === 0) {
       throw new Error('BTU Dues Allocation plugin is not configured. Please configure it in Ledger > Charge Plugins.');
     }
@@ -709,7 +714,11 @@ export class BtuDuesAllocationWizard extends FeedWizard {
 
     let accountId = wizardData?.accountId;
     if (!accountId) {
-      const pluginConfigs = await storage.chargePluginConfigs.getEnabledForPlugin('btu-dues-allocation', null);
+      const pluginConfigs = (await storage.pluginConfigs.search("charge", {
+        pluginId: 'btu-dues-allocation',
+        enabled: true,
+        scope: "global",
+      })).map(toChargeConfig);
       const settings = pluginConfigs[0]?.settings as { accountIds?: string[] } | null;
       accountId = settings?.accountIds?.[0];
       if (!accountId) throw new Error('No account ID found in wizard data or plugin configuration');

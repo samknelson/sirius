@@ -10,7 +10,7 @@
  *
  *   npx tsx scripts/oneoffs/verify-charge-config-resolution.ts
  */
-import { mergeEnabledChargeConfigs } from "../../server/storage/charge-plugins";
+import { mergeEnabledChargeConfigs } from "../../server/plugins/ledger/charge/charge-config-resolution";
 import type { ChargePluginConfig } from "../../shared/schema";
 
 function cfg(id: string, scope: string, account: string | null, employerId: string | null): ChargePluginConfig {
