@@ -192,12 +192,12 @@ export const baoEchpBreakpointSchema = z.object({
 });
 
 /**
- * The charge plugin's settings: the ledger account ECHP charges post to, the
- * flat list of policies that may purchase hours, and the single price ladder.
- * An empty policy list means no policy can purchase hours.
+ * The charge plugin's settings: the flat list of policies that may purchase
+ * hours, and the single price ladder. The ledger account ECHP charges post to
+ * is now a first-class column on charge_plugin_configs (config.account), not a
+ * setting. An empty policy list means no policy can purchase hours.
  */
 export const baoEchpChargeSettingsSchema = z.object({
-  accountId: z.string().uuid("Account ID must be a valid UUID"),
   policyIds: z.array(z.string()).default([]),
   breakpoints: z
     .array(baoEchpBreakpointSchema)

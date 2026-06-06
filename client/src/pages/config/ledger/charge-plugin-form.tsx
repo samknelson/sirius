@@ -5,8 +5,10 @@ import { usePageTitle } from "@/contexts/PageTitleContext";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import HourFixedConfigFormPage from "@/plugins/charge-plugins/hour-fixed/ConfigFormPage";
+import GbheHourlyChargeConfigFormPage from "@/plugins/charge-plugins/gbhe-hourly-charge/ConfigFormPage";
 import GbhetLegalHourlyConfigFormPage from "@/plugins/charge-plugins/gbhet-legal-hourly/ConfigFormPage";
 import GbhetLegalBenefitConfigFormPage from "@/plugins/charge-plugins/gbhet-legal-benefit/ConfigFormPage";
+import GbhetPensionSlaHourlyConfigFormPage from "@/plugins/charge-plugins/gbhet-pension-sla-hourly/ConfigFormPage";
 import PaymentSimpleAllocationConfigFormPage from "@/plugins/charge-plugins/payment-simple-allocation/ConfigFormPage";
 import BtuStewardAttendanceConfigFormPage from "@/plugins/charge-plugins/btu-steward-attendance/ConfigFormPage";
 import BtuDuesAllocationConfigFormPage from "@/plugins/charge-plugins/btu-dues-allocation/ConfigFormPage";
@@ -64,10 +66,14 @@ export default function ChargePluginFormPage() {
   switch (pluginId) {
     case "hour-fixed":
       return <HourFixedConfigFormPage />;
+    case "gbhe-hourly-charge":
+      return <GbheHourlyChargeConfigFormPage />;
     case "gbhet-legal-hourly":
       return <GbhetLegalHourlyConfigFormPage />;
     case "gbhet-legal-benefit":
       return <GbhetLegalBenefitConfigFormPage />;
+    case "gbhet-pension-sla-hourly":
+      return <GbhetPensionSlaHourlyConfigFormPage />;
     case "payment-simple-allocation":
       return <PaymentSimpleAllocationConfigFormPage />;
     case "btu-steward-attendance":

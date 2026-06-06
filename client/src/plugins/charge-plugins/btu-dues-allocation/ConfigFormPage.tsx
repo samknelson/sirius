@@ -6,7 +6,8 @@ import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -14,7 +15,8 @@ import { useEffect } from "react";
 import { LedgerAccountBase } from "@/lib/ledger-types";
 
 const formSchema = z.object({
-  accountIds: z.array(z.string()).min(1, "At least one account is required"),
+  name: z.string().optional(),
+  account: z.string().min(1, "Account is required"),
 });
 
 type FormData = z.infer<typeof formSchema>;
@@ -25,9 +27,9 @@ interface ChargePluginConfig {
   enabled: boolean;
   scope: string;
   employerId: string | null;
-  settings: {
-    accountIds?: string[];
-  };
+  account: string | null;
+  name: string | null;
+  settings: Record<string, unknown>;
 }
 
 export default function BtuDuesAllocationConfigFormPage() {
@@ -55,14 +57,16 @@ export default function BtuDuesAllocationConfigFormPage() {
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      accountIds: [],
+      name: "",
+      account: "",
     },
   });
 
   useEffect(() => {
     if (existingConfig && isEditMode) {
       form.reset({
-        accountIds: existingConfig.settings.accountIds || [],
+        name: existingConfig.name || "",
+        account: existingConfig.account || "",
       });
     }
   }, [existingConfig, isEditMode, form]);
@@ -73,9 +77,9 @@ export default function BtuDuesAllocationConfigFormPage() {
         pluginId,
         scope: "global",
         enabled: true,
-        settings: {
-          accountIds: data.accountIds,
-        },
+        name: data.name || null,
+        account: data.account,
+        settings: {},
       });
     },
     onSuccess: () => {
@@ -98,9 +102,8 @@ export default function BtuDuesAllocationConfigFormPage() {
   const updateMutation = useMutation({
     mutationFn: async (data: FormData) => {
       return apiRequest("PUT", `/api/plugins/charge/configs/${configId}`, {
-        settings: {
-          accountIds: data.accountIds,
-        },
+        name: data.name || null,
+        account: data.account,
       });
     },
     onSuccess: () => {
@@ -160,64 +163,62 @@ export default function BtuDuesAllocationConfigFormPage() {
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>Configured Accounts</CardTitle>
+              <CardTitle>Configured Account</CardTitle>
               <CardDescription>
-                Select the ledger accounts that should receive dues deduction entries when importing via the wizard.
-                Only accounts selected here will have entries created.
+                Select the ledger account that should receive dues deduction entries when importing via the wizard.
+                Only the account selected here will have entries created.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <FormField
                 control={form.control}
-                name="accountIds"
-                render={() => (
+                name="name"
+                render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Accounts</FormLabel>
-                    <FormDescription>
-                      Select the accounts that should receive dues allocation entries
-                    </FormDescription>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
-                      {activeAccounts.length === 0 ? (
-                        <p className="text-muted-foreground text-sm">No active accounts available.</p>
-                      ) : (
-                        activeAccounts.map((account) => (
-                          <FormField
-                            key={account.id}
-                            control={form.control}
-                            name="accountIds"
-                            render={({ field }) => (
-                              <FormItem className="flex items-center space-x-3 space-y-0">
-                                <FormControl>
-                                  <Checkbox
-                                    checked={field.value?.includes(account.id)}
-                                    onCheckedChange={(checked) => {
-                                      if (checked) {
-                                        field.onChange([...field.value, account.id]);
-                                      } else {
-                                        field.onChange(field.value.filter((id: string) => id !== account.id));
-                                      }
-                                    }}
-                                    data-testid={`checkbox-account-${account.id}`}
-                                  />
-                                </FormControl>
-                                <FormLabel className="font-normal cursor-pointer">
-                                  {account.name}
-                                  {account.description && (
-                                    <span className="text-muted-foreground ml-2 text-xs">
-                                      ({account.description})
-                                    </span>
-                                  )}
-                                </FormLabel>
-                              </FormItem>
-                            )}
-                          />
-                        ))
-                      )}
-                    </div>
+                    <FormLabel>Name</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="Optional label for this configuration"
+                        value={field.value || ""}
+                        onChange={field.onChange}
+                        data-testid="input-name"
+                      />
+                    </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
+
+              <FormField
+                control={form.control}
+                name="account"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Account</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-account">
+                          <SelectValue placeholder="Select an account" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {activeAccounts.map((account) => (
+                          <SelectItem key={account.id} value={account.id}>
+                            {account.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormDescription>
+                      Only dues imports targeting this account will create ledger entries.
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              {activeAccounts.length === 0 && (
+                <p className="text-muted-foreground text-sm">No active accounts available.</p>
+              )}
             </CardContent>
           </Card>
 
@@ -227,7 +228,7 @@ export default function BtuDuesAllocationConfigFormPage() {
                 Cancel
               </Button>
             </Link>
-            <Button type="submit" disabled={isPending} data-testid="button-save">
+            <Button type="submit" disabled={isPending || activeAccounts.length === 0} data-testid="button-save">
               {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {isEditMode ? "Update" : "Create"} Configuration
             </Button>

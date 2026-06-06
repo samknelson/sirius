@@ -24,8 +24,26 @@ export function clearAccountCache() {
   cacheTimestamp = 0;
 }
 
-async function resolveAccountId(): Promise<string> {
+async function resolveAccountId(override?: string | null): Promise<string> {
+  // Prefer the per-config account when one is set and valid. The system
+  // variable is kept only as a fallback for configs with no account.
+  if (override) {
+    const overrideAccount = await storage.ledger.accounts.get(override);
+    if (overrideAccount) return overrideAccount.id;
+  }
   if (cachedAccountId && Date.now() - cacheTimestamp < CACHE_TTL_MS) return cachedAccountId;
+  // No explicit override: use the account from the active plugin config when
+  // one is set. This keeps batch/contribution flows working off the same
+  // account the admin manages in the Charge Plugins UI.
+  const activeConfig = await storage.chargePluginConfigs.getFirstEnabledByPluginId(PLUGIN_ID);
+  if (activeConfig?.account) {
+    const configAccount = await storage.ledger.accounts.get(activeConfig.account);
+    if (configAccount) {
+      cachedAccountId = configAccount.id;
+      cacheTimestamp = Date.now();
+      return configAccount.id;
+    }
+  }
   const variable = await storage.variables.getByName(SLA_ACCOUNT_VARIABLE);
   const accountIdValue = variable?.value as string | null;
   if (!accountIdValue) {
@@ -92,6 +110,7 @@ export async function computeSlaForWorkerYear(
   year: number,
   planYear: GbhetPensionPlanYear,
   configId: string,
+  accountIdOverride?: string | null,
 ): Promise<SlaCalculationResult> {
   const totalHours = await storage.workerHours.getWorkerYearlyHoursTotal(workerId, year);
 
@@ -166,7 +185,7 @@ export async function computeSlaForWorkerYear(
 
   const chargePluginKey = `sla:${workerId}:${year}`;
 
-  const accountId = await resolveAccountId();
+  const accountId = await resolveAccountId(accountIdOverride);
   const ea = await storage.ledger.ea.getOrCreate("worker", workerId, accountId);
 
   const existingEntry = await storage.ledger.entries.getByChargePluginKey(

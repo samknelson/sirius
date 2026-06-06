@@ -16,7 +16,8 @@ import { useEffect } from "react";
 import { LedgerAccountBase } from "@/lib/ledger-types";
 
 const formSchema = z.object({
-  accountId: z.string().min(1, "Account is required"),
+  name: z.string().optional(),
+  account: z.string().min(1, "Account is required"),
   amount: z.number({ invalid_type_error: "Amount is required" }).positive("Amount must be positive"),
   eventTypeIds: z.array(z.string()).min(1, "At least one event type is required"),
   attendedStatuses: z.array(z.string()).min(1, "At least one status is required"),
@@ -36,8 +37,9 @@ interface ChargePluginConfig {
   enabled: boolean;
   scope: string;
   employerId: string | null;
+  account: string | null;
+  name: string | null;
   settings: {
-    accountId?: string;
     amount?: number;
     eventTypeIds?: string[];
     attendedStatuses?: string[];
@@ -79,7 +81,8 @@ export default function BtuStewardAttendanceConfigFormPage() {
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      accountId: "",
+      name: "",
+      account: "",
       amount: 1,
       eventTypeIds: [],
       attendedStatuses: ["attended"],
@@ -89,7 +92,8 @@ export default function BtuStewardAttendanceConfigFormPage() {
   useEffect(() => {
     if (existingConfig && isEditMode) {
       form.reset({
-        accountId: existingConfig.settings.accountId || "",
+        name: existingConfig.name || "",
+        account: existingConfig.account || "",
         amount: existingConfig.settings.amount ?? 1,
         eventTypeIds: existingConfig.settings.eventTypeIds || [],
         attendedStatuses: existingConfig.settings.attendedStatuses || ["attended"],
@@ -103,8 +107,9 @@ export default function BtuStewardAttendanceConfigFormPage() {
         pluginId,
         scope: "global",
         enabled: true,
+        name: data.name || null,
+        account: data.account,
         settings: {
-          accountId: data.accountId,
           amount: data.amount,
           eventTypeIds: data.eventTypeIds,
           attendedStatuses: data.attendedStatuses,
@@ -131,8 +136,9 @@ export default function BtuStewardAttendanceConfigFormPage() {
   const updateMutation = useMutation({
     mutationFn: async (data: FormData) => {
       return apiRequest("PUT", `/api/plugins/charge/configs/${configId}`, {
+        name: data.name || null,
+        account: data.account,
         settings: {
-          accountId: data.accountId,
           amount: data.amount,
           eventTypeIds: data.eventTypeIds,
           attendedStatuses: data.attendedStatuses,
@@ -202,7 +208,26 @@ export default function BtuStewardAttendanceConfigFormPage() {
             <CardContent className="space-y-6">
               <FormField
                 control={form.control}
-                name="accountId"
+                name="name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Name</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="Optional label for this configuration"
+                        value={field.value || ""}
+                        onChange={field.onChange}
+                        data-testid="input-name"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="account"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Account</FormLabel>

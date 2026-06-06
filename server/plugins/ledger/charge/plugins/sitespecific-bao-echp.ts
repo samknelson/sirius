@@ -313,11 +313,20 @@ class BaoEchpChargePlugin extends ChargePlugin {
 
       const settings = config.settings as BaoEchpChargeSettings;
 
+      // No account configured => plugin is inert (produces no new entries).
+      if (!config.account) {
+        return {
+          success: true,
+          transactions: [],
+          message: "No ledger account configured for this charge plugin",
+        };
+      }
+
       // The worker (participant) is always the billed entity.
       const ea = await storage.ledger.ea.getOrCreate(
         "worker",
         hoursContext.workerId,
-        settings.accountId,
+        config.account,
       );
       const chargePluginKey = `${config.id}:${ea.id}:${hoursContext.hoursId}`;
 
@@ -388,7 +397,7 @@ class BaoEchpChargePlugin extends ChargePlugin {
           chargePlugin: this.metadata.id,
           chargePluginKey: expectedEntry.chargePluginKey,
           chargePluginConfigId: config.id,
-          accountId: settings.accountId,
+          accountId: config.account,
           entityType: "worker",
           entityId: hoursContext.workerId,
           amount: expectedEntry.amount,
@@ -448,7 +457,7 @@ class BaoEchpChargePlugin extends ChargePlugin {
         chargePlugin: this.metadata.id,
         chargePluginKey: adjustmentKey,
         chargePluginConfigId: config.id,
-        accountId: settings.accountId,
+        accountId: config.account,
         entityType: "worker",
         entityId: hoursContext.workerId,
         amount: adjustmentAmount,
@@ -595,6 +604,16 @@ class BaoEchpChargePlugin extends ChargePlugin {
         };
       }
 
+      if (!config.account) {
+        return {
+          ...baseResult,
+          isValid: false,
+          discrepancies: [
+            "No ledger account configured for this charge plugin",
+          ],
+        };
+      }
+
       const echpStatusId = await this.resolveEchpStatusId();
 
       const hoursContext: HoursSavedContext = {
@@ -613,7 +632,7 @@ class BaoEchpChargePlugin extends ChargePlugin {
       const ea = await storage.ledger.ea.getOrCreate(
         "worker",
         data.workerId,
-        settings.accountId,
+        config.account,
       );
 
       const expectedEntry = await this.computeExpectedEntry(

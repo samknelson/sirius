@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -23,8 +24,9 @@ interface ChargePluginConfig {
   enabled: boolean;
   scope: string;
   employerId: string | null;
+  account: string | null;
+  name: string | null;
   settings: {
-    accountId?: string;
     employmentStatusIds?: string[];
     rateHistory?: Array<{
       effectiveDate: string;
@@ -34,7 +36,8 @@ interface ChargePluginConfig {
 }
 
 const formSchema = z.object({
-  accountId: z.string().min(1, "Account is required"),
+  name: z.string().optional(),
+  account: z.string().min(1, "Account is required"),
   employmentStatusIds: z.array(z.string()).default([]),
   rateHistory: z.array(z.object({
     effectiveDate: z.string().min(1, "Effective date is required"),
@@ -73,7 +76,8 @@ export default function GbhetLegalHourlyConfigFormPage() {
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      accountId: "",
+      name: "",
+      account: "",
       employmentStatusIds: [],
       rateHistory: [{ effectiveDate: "", rate: 0 }],
     },
@@ -86,7 +90,8 @@ export default function GbhetLegalHourlyConfigFormPage() {
         : [{ effectiveDate: "", rate: 0 }];
       
       form.reset({
-        accountId: existingConfig.settings.accountId || "",
+        name: existingConfig.name || "",
+        account: existingConfig.account || "",
         employmentStatusIds: existingConfig.settings.employmentStatusIds || [],
         rateHistory,
       });
@@ -99,8 +104,9 @@ export default function GbhetLegalHourlyConfigFormPage() {
         pluginId,
         scope: "global",
         enabled: true,
+        name: data.name || null,
+        account: data.account,
         settings: {
-          accountId: data.accountId,
           employmentStatusIds: data.employmentStatusIds,
           rateHistory: data.rateHistory,
         },
@@ -126,8 +132,9 @@ export default function GbhetLegalHourlyConfigFormPage() {
   const updateMutation = useMutation({
     mutationFn: async (data: FormData) => {
       return apiRequest("PUT", `/api/plugins/charge/configs/${configId}`, {
+        name: data.name || null,
+        account: data.account,
         settings: {
-          accountId: data.accountId,
           employmentStatusIds: data.employmentStatusIds,
           rateHistory: data.rateHistory,
         },
@@ -196,7 +203,26 @@ export default function GbhetLegalHourlyConfigFormPage() {
             <CardContent className="space-y-6">
               <FormField
                 control={form.control}
-                name="accountId"
+                name="name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Name</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="Optional label for this configuration"
+                        value={field.value || ""}
+                        onChange={field.onChange}
+                        data-testid="input-name"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="account"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Account</FormLabel>

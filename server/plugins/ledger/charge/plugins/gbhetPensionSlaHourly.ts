@@ -50,7 +50,13 @@ class GbhetPensionSlaHourlyPlugin extends ChargePlugin {
         return { success: true, transactions: [], message: `Plan year ${ctx.year} is not tiered` };
       }
 
-      const result = await computeSlaForWorkerYear(ctx.workerId, ctx.year, config.id);
+      const result = await computeSlaForWorkerYear(
+        ctx.workerId,
+        ctx.year,
+        planYear,
+        config.id,
+        config.account,
+      );
 
       const transactions: LedgerTransaction[] = [];
       if (result.created || result.updated) {

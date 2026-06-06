@@ -92,15 +92,17 @@ export function registerChargePluginRoutes(
         return res.status(400).json({ message: "Employer ID should not be provided for global configurations" });
       }
 
-      // Check for duplicate configuration
-      const existing = await storage.chargePluginConfigs.getByPluginIdAndScope(
+      // Check for duplicate configuration (uniqueness is per plugin + scope +
+      // employer + account).
+      const existing = await storage.chargePluginConfigs.getByUniqueKey(
         configData.pluginId,
         configData.scope,
-        configData.employerId || undefined
+        configData.employerId || null,
+        configData.account || null
       );
       
       if (existing) {
-        return res.status(409).json({ message: "Configuration already exists for this plugin and scope" });
+        return res.status(409).json({ message: "Configuration already exists for this plugin, scope, and account" });
       }
 
       const config = await storage.chargePluginConfigs.create(configData);
@@ -146,6 +148,28 @@ export function registerChargePluginRoutes(
         updatePayload.settings = updateData.settings;
       }
 
+      if (updateData.name !== undefined) {
+        updatePayload.name = updateData.name;
+      }
+
+      if (updateData.account !== undefined) {
+        updatePayload.account = updateData.account;
+      }
+
+      // If the account changed, re-check the 4-tuple uniqueness so we don't
+      // collide with another config for the same plugin/scope/employer/account.
+      if (updateData.account !== undefined && (updateData.account || null) !== (existing.account || null)) {
+        const duplicate = await storage.chargePluginConfigs.getByUniqueKey(
+          existing.pluginId,
+          existing.scope,
+          existing.employerId || null,
+          updateData.account || null
+        );
+        if (duplicate && duplicate.id !== id) {
+          return res.status(409).json({ message: "Configuration already exists for this plugin, scope, and account" });
+        }
+      }
+
       // Update only the provided mutable fields
       const config = await storage.chargePluginConfigs.update(id, updatePayload);
       
@@ -178,6 +202,43 @@ export function registerChargePluginRoutes(
     } catch (error) {
       console.error("Failed to delete charge plugin config:", error);
       res.status(500).json({ message: "Failed to delete charge plugin config" });
+    }
+  });
+
+  // GET /api/plugins/charge/states - Get all per-plugin master enable states.
+  // Plugins without a stored row are enabled by default.
+  app.get("/api/plugins/charge/states", requireAuth, requireComponent("ledger"), requireAccess('admin'), async (req, res) => {
+    try {
+      const states = await storage.chargePluginStates.getAll();
+      res.json(states);
+    } catch (error) {
+      console.error("Failed to fetch charge plugin states:", error);
+      res.status(500).json({ message: "Failed to fetch charge plugin states" });
+    }
+  });
+
+  // PUT /api/plugins/charge/states/:pluginId - Set a plugin's master enable switch.
+  app.put("/api/plugins/charge/states/:pluginId", requireAuth, requireComponent("ledger"), requireAccess('admin'), async (req, res) => {
+    try {
+      const { pluginId } = req.params;
+
+      // Verify the plugin exists in registry.
+      const plugin = chargePluginRegistry.get(pluginId);
+      if (!plugin) {
+        return res.status(400).json({ message: `Plugin '${pluginId}' not found in registry` });
+      }
+
+      const bodySchema = z.object({ enabled: z.boolean() });
+      const { enabled } = bodySchema.parse(req.body);
+
+      const state = await storage.chargePluginStates.setEnabled(pluginId, enabled);
+      res.json(state);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid request data", errors: error.errors });
+      }
+      console.error("Failed to update charge plugin state:", error);
+      res.status(500).json({ message: "Failed to update charge plugin state" });
     }
   });
 }

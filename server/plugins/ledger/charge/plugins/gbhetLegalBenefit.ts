@@ -21,7 +21,6 @@ const rateHistoryEntrySchema = z.object({
 });
 
 const gbhetLegalBenefitSettingsSchema = z.object({
-  accountId: z.string().uuid("Account ID must be a valid UUID"),
   benefitId: z.string().uuid("Benefit ID must be a valid UUID"),
   rateHistory: z.array(rateHistoryEntrySchema).min(1, "At least one rate entry is required"),
   billingOffsetMonths: z.number().int().default(-3),
@@ -56,6 +55,10 @@ class GbhetLegalBenefitPlugin extends ChargePlugin {
     config: any,
     settings: GbhetLegalBenefitSettings
   ): Promise<ExpectedEntry | null> {
+    if (!config.account) {
+      return null;
+    }
+
     if (wmbContext.benefitId !== settings.benefitId) {
       return null;
     }
@@ -82,7 +85,7 @@ class GbhetLegalBenefitPlugin extends ChargePlugin {
     const ea = await storage.ledger.ea.getOrCreate(
       "employer",
       wmbContext.employerId,
-      settings.accountId
+      config.account
     );
 
     const chargePluginKey = `${config.id}:${ea.id}:${wmbContext.workerId}:${wmbContext.year}:${wmbContext.month}`;
@@ -158,6 +161,15 @@ class GbhetLegalBenefitPlugin extends ChargePlugin {
 
       const settings = config.settings as GbhetLegalBenefitSettings;
 
+      // No account configured => plugin is inert (produces no new entries).
+      if (!config.account) {
+        return {
+          success: true,
+          transactions: [],
+          message: "No ledger account configured for this charge plugin",
+        };
+      }
+
       if (wmbContext.benefitId !== settings.benefitId) {
         logger.debug("WMB benefit does not match configured benefit, skipping", {
           service: "charge-plugin-gbhet-legal-benefit",
@@ -175,7 +187,7 @@ class GbhetLegalBenefitPlugin extends ChargePlugin {
       const ea = await storage.ledger.ea.getOrCreate(
         "employer",
         wmbContext.employerId,
-        settings.accountId
+        config.account
       );
 
       const chargePluginKey = `${config.id}:${ea.id}:${wmbContext.workerId}:${wmbContext.year}:${wmbContext.month}`;
@@ -234,7 +246,7 @@ class GbhetLegalBenefitPlugin extends ChargePlugin {
           chargePlugin: this.metadata.id,
           chargePluginKey: expectedEntry.chargePluginKey,
           chargePluginConfigId: config.id,
-          accountId: settings.accountId,
+          accountId: config.account,
           entityType: "employer",
           entityId: wmbContext.employerId,
           amount: expectedEntry.amount,

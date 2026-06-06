@@ -31,7 +31,8 @@ import {
 } from "@shared/schema/sitespecific/bao/schema";
 
 const formSchema = baoEchpChargeSettingsSchema.extend({
-  accountId: z.string().uuid("Please select an account"),
+  name: z.string().optional(),
+  account: z.string().uuid("Please select an account"),
   enabled: z.boolean(),
 });
 
@@ -49,8 +50,9 @@ interface ChargePluginConfig {
   enabled: boolean;
   scope: string;
   employerId: string | null;
+  account: string | null;
+  name: string | null;
   settings: {
-    accountId?: string;
     policyIds?: string[];
     breakpoints?: FormData["breakpoints"];
   };
@@ -253,7 +255,8 @@ export default function BaoEchpConfigFormPage() {
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      accountId: "",
+      name: "",
+      account: "",
       enabled: false,
       policyIds: [],
       breakpoints: DEFAULT_BAO_ECHP_BREAKPOINTS,
@@ -263,7 +266,8 @@ export default function BaoEchpConfigFormPage() {
   useEffect(() => {
     if (isEditMode && existingConfig) {
       form.reset({
-        accountId: existingConfig.settings?.accountId || "",
+        name: existingConfig.name || "",
+        account: existingConfig.account || "",
         enabled: existingConfig.enabled,
         policyIds: existingConfig.settings?.policyIds ?? [],
         breakpoints: existingConfig.settings?.breakpoints ?? DEFAULT_BAO_ECHP_BREAKPOINTS,
@@ -274,13 +278,14 @@ export default function BaoEchpConfigFormPage() {
   const saveMutation = useMutation({
     mutationFn: async (data: FormData) => {
       const settings = {
-        accountId: data.accountId,
         policyIds: data.policyIds,
         breakpoints: data.breakpoints,
       };
       if (isEditMode) {
         return apiRequest("PUT", `/api/plugins/charge/configs/${configId}`, {
           enabled: data.enabled,
+          name: data.name || null,
+          account: data.account,
           settings,
         });
       }
@@ -288,6 +293,8 @@ export default function BaoEchpConfigFormPage() {
         pluginId: pluginId!,
         scope: "global",
         enabled: data.enabled,
+        name: data.name || null,
+        account: data.account,
         settings,
       });
     },
@@ -395,7 +402,26 @@ export default function BaoEchpConfigFormPage() {
 
               <FormField
                 control={form.control}
-                name="accountId"
+                name="name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Name</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="Optional label for this configuration"
+                        value={field.value || ""}
+                        onChange={field.onChange}
+                        data-testid="input-name"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="account"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Account</FormLabel>

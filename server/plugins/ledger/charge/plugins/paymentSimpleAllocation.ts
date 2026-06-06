@@ -19,9 +19,10 @@ import { dateToYmd } from "@shared/utils/date";
 
 const unifiedOptionsStorage = createUnifiedOptionsStorage();
 
-const paymentSimpleAllocationSettingsSchema = z.object({
-  accountIds: z.array(z.string().uuid("Account ID must be a valid UUID")).min(1, "At least one account is required"),
-});
+// The ledger account this plugin watches is now a first-class column on
+// charge_plugin_configs (config.account), not a setting. This plugin keeps no
+// account-related settings of its own.
+const paymentSimpleAllocationSettingsSchema = z.object({});
 
 type PaymentSimpleAllocationSettings = z.infer<typeof paymentSimpleAllocationSettingsSchema>;
 
@@ -120,19 +121,26 @@ class PaymentSimpleAllocationPlugin extends ChargePlugin {
         };
       }
 
-      const settings = config.settings as PaymentSimpleAllocationSettings;
+      // No account configured => plugin is inert (produces no new entries).
+      if (!config.account) {
+        return {
+          success: true,
+          transactions: [],
+          message: "No ledger account configured for this charge plugin",
+        };
+      }
 
-      if (!settings.accountIds.includes(paymentContext.accountId)) {
-        logger.debug("Payment account not in configured list, skipping", {
+      if (config.account !== paymentContext.accountId) {
+        logger.debug("Payment account does not match configured account, skipping", {
           service: "charge-plugin-payment-simple-allocation",
           paymentId: paymentContext.paymentId,
           accountId: paymentContext.accountId,
-          configuredAccounts: settings.accountIds,
+          configuredAccount: config.account,
         });
         return {
           success: true,
           transactions: [],
-          message: "Payment account not in configured list",
+          message: "Payment account does not match configured account",
         };
       }
 
@@ -344,7 +352,13 @@ class PaymentSimpleAllocationPlugin extends ChargePlugin {
         };
       }
 
-      const settings = config.settings as PaymentSimpleAllocationSettings;
+      if (!config.account) {
+        return {
+          ...baseResult,
+          isValid: false,
+          discrepancies: ["No ledger account configured for this charge plugin"],
+        };
+      }
 
       if (!entry.referenceId) {
         return {
@@ -373,11 +387,11 @@ class PaymentSimpleAllocationPlugin extends ChargePlugin {
         };
       }
 
-      if (!settings.accountIds.includes(ea.accountId)) {
+      if (config.account !== ea.accountId) {
         return {
           ...baseResult,
           isValid: false,
-          discrepancies: [`Payment account ${ea.accountId} is not in the configured account list - entry should not exist`],
+          discrepancies: [`Payment account ${ea.accountId} does not match the configured account - entry should not exist`],
         };
       }
 

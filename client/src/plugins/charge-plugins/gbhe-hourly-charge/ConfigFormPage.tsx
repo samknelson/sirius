@@ -16,41 +16,48 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Loader2, ArrowLeft } from "lucide-react";
 import { Link, useParams, useLocation } from "wouter";
 import { RateHistorySection } from "@/components/charge-plugins/RateHistorySection";
-import { baseRateHistoryEntrySchema, BaseRateHistoryEntry } from "@shared/schema";
+import { baseRateHistoryEntrySchema } from "@shared/schema";
 import { EmploymentStatus } from "@/lib/entity-types";
 import { Employer } from "@/lib/employer-types";
 import { LedgerAccountBase } from "@/lib/ledger-types";
 
-// Use base schema from shared with coerce for number input
 const rateHistoryEntrySchema = baseRateHistoryEntrySchema.extend({
   rate: z.coerce.number({ invalid_type_error: "Rate is required" }),
 });
 
-const formSchema = z.object({
-  name: z.string().optional(),
-  account: z.string().uuid("Please select an account"),
-  chargeTo: z.enum(["worker", "employer"]),
-  fixedMonthly: z.boolean(),
-  employmentStatusIds: z.array(z.string()).optional(),
-  rateHistory: z.array(rateHistoryEntrySchema).min(1, "At least one rate entry is required"),
-  scope: z.enum(["global", "employer"]),
-  employerId: z.string().optional(),
-  enabled: z.boolean(),
-}).refine(
-  (data) => {
-    // If scope is employer, employerId must be provided
-    if (data.scope === "employer") {
-      return data.employerId && data.employerId.trim().length > 0;
+const formSchema = z
+  .object({
+    name: z.string().optional(),
+    account: z.string().uuid("Please select an account"),
+    chargeTo: z.enum(["worker", "employer"]),
+    employmentStatusIds: z.array(z.string()).optional(),
+    specialDesignationMemberStatusIds: z.array(z.string()).optional(),
+    specialDesignationMonthlyHours: z.coerce.number().min(0, "Must be zero or more"),
+    rateHistory: z.array(rateHistoryEntrySchema).min(1, "At least one rate entry is required"),
+    scope: z.enum(["global", "employer"]),
+    employerId: z.string().optional(),
+    enabled: z.boolean(),
+  })
+  .refine(
+    (data) => {
+      if (data.scope === "employer") {
+        return data.employerId && data.employerId.trim().length > 0;
+      }
+      return true;
+    },
+    {
+      message: "Employer must be selected for employer-scoped configuration",
+      path: ["employerId"],
     }
-    return true;
-  },
-  {
-    message: "Employer must be selected for employer-scoped configuration",
-    path: ["employerId"],
-  }
-);
+  );
 
 type FormData = z.infer<typeof formSchema>;
+
+interface MemberStatusOption {
+  id: string;
+  name: string;
+  code?: string;
+}
 
 interface ChargePluginConfig {
   id: string;
@@ -62,16 +69,14 @@ interface ChargePluginConfig {
   name: string | null;
   settings: {
     chargeTo?: "worker" | "employer";
-    fixedMonthly?: boolean;
     employmentStatusIds?: string[];
-    rateHistory?: Array<{
-      effectiveDate: string;
-      rate: number;
-    }>;
+    specialDesignationMemberStatusIds?: string[];
+    specialDesignationMonthlyHours?: number;
+    rateHistory?: Array<{ effectiveDate: string; rate: number }>;
   };
 }
 
-export default function HourFixedConfigFormPage() {
+export default function GbheHourlyChargeConfigFormPage() {
   const { toast } = useToast();
   const params = useParams<{ pluginId: string; configId?: string }>();
   const [, navigate] = useLocation();
@@ -79,7 +84,6 @@ export default function HourFixedConfigFormPage() {
 
   const isEditMode = !!configId;
 
-  // Fetch existing config if editing
   const { data: existingConfig, isLoading: isLoadingConfig } = useQuery<ChargePluginConfig>({
     queryKey: ["/api/plugins/charge/configs", configId],
     queryFn: async () => {
@@ -90,19 +94,20 @@ export default function HourFixedConfigFormPage() {
     enabled: isEditMode,
   });
 
-  // Fetch ledger accounts
   const { data: accounts = [] } = useQuery<LedgerAccountBase[]>({
     queryKey: ["/api/ledger/accounts"],
   });
 
-  // Fetch employers
   const { data: employers = [] } = useQuery<Employer[]>({
     queryKey: ["/api/employers"],
   });
 
-  // Fetch employment statuses
   const { data: employmentStatuses = [] } = useQuery<EmploymentStatus[]>({
     queryKey: ["/api/options/employment-status"],
+  });
+
+  const { data: memberStatuses = [] } = useQuery<MemberStatusOption[]>({
+    queryKey: ["/api/options/worker-ms"],
   });
 
   const form = useForm<FormData>({
@@ -110,9 +115,10 @@ export default function HourFixedConfigFormPage() {
     defaultValues: {
       name: "",
       account: "",
-      chargeTo: "worker",
-      fixedMonthly: false,
+      chargeTo: "employer",
       employmentStatusIds: [],
+      specialDesignationMemberStatusIds: [],
+      specialDesignationMonthlyHours: 135,
       rateHistory: [{ effectiveDate: "", rate: 0 }],
       scope: "global",
       employerId: "",
@@ -120,17 +126,17 @@ export default function HourFixedConfigFormPage() {
     },
   });
 
-  // Update form when existing config loads
   useEffect(() => {
     if (isEditMode && existingConfig) {
       form.reset({
         name: existingConfig.name || "",
         account: existingConfig.account || "",
-        chargeTo: existingConfig.settings?.chargeTo || "worker",
-        fixedMonthly: existingConfig.settings?.fixedMonthly || false,
-        employmentStatusIds: existingConfig.settings?.employmentStatusIds || undefined,
-        rateHistory: existingConfig.settings?.rateHistory 
-          ? sortRatesDescending(existingConfig.settings.rateHistory) 
+        chargeTo: existingConfig.settings?.chargeTo || "employer",
+        employmentStatusIds: existingConfig.settings?.employmentStatusIds || [],
+        specialDesignationMemberStatusIds: existingConfig.settings?.specialDesignationMemberStatusIds || [],
+        specialDesignationMonthlyHours: existingConfig.settings?.specialDesignationMonthlyHours ?? 135,
+        rateHistory: existingConfig.settings?.rateHistory
+          ? sortRatesDescending(existingConfig.settings.rateHistory)
           : [{ effectiveDate: "", rate: 0 }],
         scope: existingConfig.scope as "global" | "employer",
         employerId: existingConfig.employerId || "",
@@ -139,61 +145,47 @@ export default function HourFixedConfigFormPage() {
     }
   }, [isEditMode, existingConfig, form]);
 
-
   const saveMutation = useMutation({
     mutationFn: async (data: FormData) => {
-      const payload = {
+      const settings = {
+        chargeTo: data.chargeTo,
+        employmentStatusIds: data.employmentStatusIds,
+        specialDesignationMemberStatusIds: data.specialDesignationMemberStatusIds,
+        specialDesignationMonthlyHours: data.specialDesignationMonthlyHours,
+        rateHistory: data.rateHistory,
+      };
+
+      if (isEditMode) {
+        return apiRequest("PUT", `/api/plugins/charge/configs/${configId}`, {
+          enabled: data.enabled,
+          name: data.name || null,
+          account: data.account,
+          settings,
+        });
+      }
+      return apiRequest("POST", "/api/plugins/charge/configs", {
         pluginId: pluginId!,
         scope: data.scope,
         employerId: data.scope === "employer" ? data.employerId : undefined,
         enabled: data.enabled,
         name: data.name || null,
         account: data.account,
-        settings: {
-          chargeTo: data.chargeTo,
-          fixedMonthly: data.fixedMonthly,
-          employmentStatusIds: data.employmentStatusIds,
-          rateHistory: data.rateHistory,
-        },
-      };
-
-      if (isEditMode) {
-        // Update existing config - only send defined fields in settings
-        const updateSettings: any = {
-          chargeTo: data.chargeTo,
-          fixedMonthly: data.fixedMonthly,
-          rateHistory: data.rateHistory,
-        };
-        
-        // Only include employmentStatusIds if it's defined (not undefined)
-        if (data.employmentStatusIds !== undefined) {
-          updateSettings.employmentStatusIds = data.employmentStatusIds;
-        }
-        
-        return apiRequest("PUT", `/api/plugins/charge/configs/${configId}`, {
-          enabled: data.enabled,
-          name: data.name || null,
-          account: data.account,
-          settings: updateSettings,
-        });
-      } else {
-        // Create new config
-        return apiRequest("POST", "/api/plugins/charge/configs", payload);
-      }
+        settings,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/plugins/charge/configs/by-plugin", pluginId] });
       queryClient.invalidateQueries({ queryKey: ["/api/plugins/charge/configs"] });
       toast({
         title: "Success",
-        description: `Configuration ${isEditMode ? 'updated' : 'created'} successfully.`,
+        description: `Configuration ${isEditMode ? "updated" : "created"} successfully.`,
       });
       navigate(`/config/ledger/charge-plugins/${pluginId}`);
     },
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || `Failed to ${isEditMode ? 'update' : 'create'} configuration.`,
+        description: error.message || `Failed to ${isEditMode ? "update" : "create"} configuration.`,
         variant: "destructive",
       });
     },
@@ -206,10 +198,7 @@ export default function HourFixedConfigFormPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/plugins/charge/configs/by-plugin", pluginId] });
       queryClient.invalidateQueries({ queryKey: ["/api/plugins/charge/configs"] });
-      toast({
-        title: "Success",
-        description: "Configuration deleted successfully.",
-      });
+      toast({ title: "Success", description: "Configuration deleted successfully." });
       navigate(`/config/ledger/charge-plugins/${pluginId}`);
     },
     onError: (error: any) => {
@@ -245,23 +234,18 @@ export default function HourFixedConfigFormPage() {
           <h1 className="text-2xl md:text-3xl font-bold">
             {isEditMode ? "Edit Configuration" : "New Configuration"}
           </h1>
-          <p className="text-muted-foreground mt-2">
-            Hour - Fixed Rate
-          </p>
+          <p className="text-muted-foreground mt-2">GBHE Hourly Charge</p>
         </div>
       </div>
 
       <Card>
         <CardHeader>
           <CardTitle>Configuration Details</CardTitle>
-          <CardDescription>
-            Set up the hourly rate configuration with effective dates
-          </CardDescription>
+          <CardDescription>Set up the GBHE hourly charge configuration with effective dates</CardDescription>
         </CardHeader>
         <CardContent>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-              {/* Scope and Employer (only for new configs) */}
               {!isEditMode && (
                 <div className="grid grid-cols-2 gap-4">
                   <FormField
@@ -299,7 +283,7 @@ export default function HourFixedConfigFormPage() {
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
-                              {employers.filter(e => e.isActive).map((employer) => (
+                              {employers.filter((e) => e.isActive).map((employer) => (
                                 <SelectItem key={employer.id} value={employer.id}>
                                   {employer.name}
                                 </SelectItem>
@@ -314,7 +298,6 @@ export default function HourFixedConfigFormPage() {
                 </div>
               )}
 
-              {/* Enabled toggle */}
               <FormField
                 control={form.control}
                 name="enabled"
@@ -327,17 +310,12 @@ export default function HourFixedConfigFormPage() {
                       </p>
                     </div>
                     <FormControl>
-                      <Switch
-                        checked={field.value}
-                        onCheckedChange={field.onChange}
-                        data-testid="switch-enabled"
-                      />
+                      <Switch checked={field.value} onCheckedChange={field.onChange} data-testid="switch-enabled" />
                     </FormControl>
                   </FormItem>
                 )}
               />
 
-              {/* Name */}
               <FormField
                 control={form.control}
                 name="name"
@@ -357,7 +335,6 @@ export default function HourFixedConfigFormPage() {
                 )}
               />
 
-              {/* Account selection */}
               <FormField
                 control={form.control}
                 name="account"
@@ -371,7 +348,7 @@ export default function HourFixedConfigFormPage() {
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {accounts.filter(a => a.isActive).map((account) => (
+                        {accounts.filter((a) => a.isActive).map((account) => (
                           <SelectItem key={account.id} value={account.id}>
                             {account.name}
                           </SelectItem>
@@ -383,7 +360,6 @@ export default function HourFixedConfigFormPage() {
                 )}
               />
 
-              {/* Charge To selection */}
               <FormField
                 control={form.control}
                 name="chargeTo"
@@ -406,30 +382,6 @@ export default function HourFixedConfigFormPage() {
                 )}
               />
 
-              {/* Fixed Monthly toggle */}
-              <FormField
-                control={form.control}
-                name="fixedMonthly"
-                render={({ field }) => (
-                  <FormItem className="flex items-center justify-between p-3 border rounded-md">
-                    <div>
-                      <FormLabel>Fixed Monthly?</FormLabel>
-                      <p className="text-sm text-muted-foreground">
-                        If enabled, the rate is fixed monthly per worker. If disabled, the rate is per hour.
-                      </p>
-                    </div>
-                    <FormControl>
-                      <Switch
-                        checked={field.value}
-                        onCheckedChange={field.onChange}
-                        data-testid="switch-fixed-monthly"
-                      />
-                    </FormControl>
-                  </FormItem>
-                )}
-              />
-
-              {/* Employment Status selection */}
               <FormField
                 control={form.control}
                 name="employmentStatusIds"
@@ -448,18 +400,17 @@ export default function HourFixedConfigFormPage() {
                                 <Checkbox
                                   checked={field.value?.includes(status.id)}
                                   onCheckedChange={(checked) => {
-                                    const currentValues = field.value || [];
-                                    const newValues = checked
-                                      ? [...currentValues, status.id]
-                                      : currentValues.filter((id) => id !== status.id);
-                                    field.onChange(newValues);
+                                    const current = field.value || [];
+                                    field.onChange(
+                                      checked
+                                        ? [...current, status.id]
+                                        : current.filter((id) => id !== status.id)
+                                    );
                                   }}
                                   data-testid={`checkbox-employment-status-${status.code}`}
                                 />
                               </FormControl>
-                              <FormLabel className="font-normal cursor-pointer">
-                                {status.name}
-                              </FormLabel>
+                              <FormLabel className="font-normal cursor-pointer">{status.name}</FormLabel>
                             </FormItem>
                           )}
                         />
@@ -470,7 +421,68 @@ export default function HourFixedConfigFormPage() {
                 )}
               />
 
-              {/* Rate history */}
+              <FormField
+                control={form.control}
+                name="specialDesignationMemberStatusIds"
+                render={() => (
+                  <FormItem>
+                    <FormLabel>Special Designation Member Statuses</FormLabel>
+                    <p className="text-sm text-muted-foreground">
+                      Workers with these member statuses are billed fixed monthly hours instead of actual hours
+                    </p>
+                    <div className="grid grid-cols-2 gap-3 p-3 border rounded-md">
+                      {memberStatuses.map((status) => (
+                        <FormField
+                          key={status.id}
+                          control={form.control}
+                          name="specialDesignationMemberStatusIds"
+                          render={({ field }) => (
+                            <FormItem className="flex items-center space-x-2 space-y-0">
+                              <FormControl>
+                                <Checkbox
+                                  checked={field.value?.includes(status.id)}
+                                  onCheckedChange={(checked) => {
+                                    const current = field.value || [];
+                                    field.onChange(
+                                      checked
+                                        ? [...current, status.id]
+                                        : current.filter((id) => id !== status.id)
+                                    );
+                                  }}
+                                  data-testid={`checkbox-member-status-${status.id}`}
+                                />
+                              </FormControl>
+                              <FormLabel className="font-normal cursor-pointer">{status.name}</FormLabel>
+                            </FormItem>
+                          )}
+                        />
+                      ))}
+                    </div>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="specialDesignationMonthlyHours"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Special Designation Monthly Hours</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        step="1"
+                        value={field.value ?? 135}
+                        onChange={field.onChange}
+                        data-testid="input-special-monthly-hours"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
               <RateHistorySection
                 control={form.control}
                 name="rateHistory"
@@ -483,7 +495,6 @@ export default function HourFixedConfigFormPage() {
                 testIdPrefix="rate"
               />
 
-              {/* Action buttons */}
               <div className="flex items-center justify-between pt-4 border-t">
                 <div>
                   {isEditMode && (
@@ -501,19 +512,11 @@ export default function HourFixedConfigFormPage() {
                 </div>
                 <div className="flex gap-2">
                   <Link href={`/config/ledger/charge-plugins/${pluginId}`}>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      data-testid="button-cancel"
-                    >
+                    <Button type="button" variant="outline" data-testid="button-cancel">
                       Cancel
                     </Button>
                   </Link>
-                  <Button
-                    type="submit"
-                    disabled={saveMutation.isPending}
-                    data-testid="button-save-config"
-                  >
+                  <Button type="submit" disabled={saveMutation.isPending} data-testid="button-save-config">
                     {saveMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     {isEditMode ? "Update" : "Create"} Configuration
                   </Button>

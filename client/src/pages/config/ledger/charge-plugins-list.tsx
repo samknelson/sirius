@@ -24,7 +24,14 @@ interface ChargePluginConfig {
   enabled: boolean;
   scope: string;
   employerId: string | null;
+  account: string | null;
+  name: string | null;
   settings: Record<string, any>;
+}
+
+interface ChargePluginState {
+  pluginId: string;
+  enabled: boolean;
 }
 
 export default function ChargePluginsListPage() {
@@ -41,21 +48,27 @@ export default function ChargePluginsListPage() {
     queryKey: ["/api/plugins/charge/configs"],
   });
 
-  const toggleEnabledMutation = useMutation({
-    mutationFn: async ({ id, enabled }: { id: string; enabled: boolean }) => {
-      return apiRequest("PUT", `/api/plugins/charge/configs/${id}`, { enabled });
+  // Fetch all per-plugin master switch states. A plugin without a stored row
+  // is enabled by default.
+  const { data: states = [], isLoading: isLoadingStates } = useQuery<ChargePluginState[]>({
+    queryKey: ["/api/plugins/charge/states"],
+  });
+
+  const toggleMasterMutation = useMutation({
+    mutationFn: async ({ pluginId, enabled }: { pluginId: string; enabled: boolean }) => {
+      return apiRequest("PUT", `/api/plugins/charge/states/${pluginId}`, { enabled });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/plugins/charge/configs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plugins/charge/states"] });
       toast({
         title: "Success",
-        description: "Plugin status updated successfully.",
+        description: "Plugin master switch updated.",
       });
     },
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to update plugin status.",
+        description: error.message || "Failed to update plugin master switch.",
         variant: "destructive",
       });
     },
@@ -65,11 +78,13 @@ export default function ChargePluginsListPage() {
     return configs.filter(c => c.pluginId === pluginId);
   };
 
-  const getGlobalConfig = (pluginId: string) => {
-    return configs.find(c => c.pluginId === pluginId && c.scope === "global");
+  // A plugin is master-enabled unless an explicit state row says otherwise.
+  const isMasterEnabled = (pluginId: string) => {
+    const state = states.find(s => s.pluginId === pluginId);
+    return state ? state.enabled : true;
   };
 
-  if (isLoadingPlugins || isLoadingConfigs) {
+  if (isLoadingPlugins || isLoadingConfigs || isLoadingStates) {
     return (
       <div className="flex items-center justify-center h-64">
         <Loader2 className="h-8 w-8 animate-spin" data-testid="loading-spinner" />
@@ -82,7 +97,9 @@ export default function ChargePluginsListPage() {
       <div>
         <h1 className="text-xl md:text-2xl font-bold text-foreground">Charge Plugins</h1>
         <p className="text-muted-foreground mt-2">
-          Manage automatic charge plugins for ledger transactions
+          Manage automatic charge plugins for ledger transactions. The master switch turns a
+          plugin on or off. Turning it off only stops new charges from being created — existing
+          ledger entries are left untouched.
         </p>
       </div>
 
@@ -96,10 +113,9 @@ export default function ChargePluginsListPage() {
         <div className="space-y-4">
           {plugins.map((plugin) => {
             const pluginConfigs = getConfigsForPlugin(plugin.id);
-            const globalConfig = getGlobalConfig(plugin.id);
-            const employerConfigCount = pluginConfigs.filter(c => c.scope === "employer").length;
             const isConfigured = pluginConfigs.length > 0;
-            
+            const masterEnabled = isMasterEnabled(plugin.id);
+
             return (
               <Card key={plugin.id} data-testid={`card-plugin-${plugin.id}`}>
                 <CardHeader>
@@ -122,21 +138,19 @@ export default function ChargePluginsListPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
-                      {globalConfig && (
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm text-muted-foreground">Global:</span>
-                          <Switch
-                            checked={globalConfig.enabled}
-                            onCheckedChange={(enabled) => 
-                              toggleEnabledMutation.mutate({ id: globalConfig.id, enabled })
-                            }
-                            data-testid={`switch-enabled-${plugin.id}`}
-                          />
-                          <span className={`text-sm ${globalConfig.enabled ? "text-green-600 font-medium" : "text-muted-foreground"}`}>
-                            {globalConfig.enabled ? "ON" : "OFF"}
-                          </span>
-                        </div>
-                      )}
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-muted-foreground">Master:</span>
+                        <Switch
+                          checked={masterEnabled}
+                          onCheckedChange={(enabled) =>
+                            toggleMasterMutation.mutate({ pluginId: plugin.id, enabled })
+                          }
+                          data-testid={`switch-master-${plugin.id}`}
+                        />
+                        <span className={`text-sm ${masterEnabled ? "text-green-600 font-medium" : "text-muted-foreground"}`}>
+                          {masterEnabled ? "ON" : "OFF"}
+                        </span>
+                      </div>
                       <Link href={`/config/ledger/charge-plugins/${plugin.id}`}>
                         <Button variant="default" data-testid={`button-configure-${plugin.id}`}>
                           <Settings className="mr-2 h-4 w-4" />
@@ -146,13 +160,6 @@ export default function ChargePluginsListPage() {
                     </div>
                   </div>
                 </CardHeader>
-                {employerConfigCount > 0 && (
-                  <CardContent>
-                    <p className="text-sm text-muted-foreground">
-                      {employerConfigCount} employer-specific configuration{employerConfigCount !== 1 ? "s" : ""} configured
-                    </p>
-                  </CardContent>
-                )}
               </Card>
             );
           })}

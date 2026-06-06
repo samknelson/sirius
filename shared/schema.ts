@@ -1700,15 +1700,17 @@ export type EmployerMonthlyPluginConfig = z.infer<typeof employerMonthlyPluginCo
 export const chargePluginConfigs = pgTable("charge_plugin_configs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   pluginId: text("plugin_id").notNull(), // e.g., "hour-fixed", "payment-percentage"
+  name: text("name"), // optional descriptive name for this configuration
   enabled: boolean("enabled").default(false).notNull(),
   scope: varchar("scope").notNull(), // 'global' or 'employer'
   employerId: varchar("employer_id").references(() => employers.id, { onDelete: 'cascade' }),
+  account: varchar("account").references(() => ledgerAccounts.id, { onDelete: 'set null' }), // ledger account this config writes to / applies to
   settings: jsonb("settings").default('{}'),
   createdAt: timestamp("created_at").default(sql`now()`).notNull(),
   updatedAt: timestamp("updated_at").default(sql`now()`).notNull(),
 }, (table) => ({
-  // Unique constraint: one config per plugin per employer (or one global per plugin)
-  uniquePluginScope: unique().on(table.pluginId, table.scope, table.employerId),
+  // Unique constraint: one config per plugin per scope/employer per account
+  uniquePluginScope: unique().on(table.pluginId, table.scope, table.employerId, table.account),
 }));
 
 export const insertChargePluginConfigSchema = createInsertSchema(chargePluginConfigs)
@@ -1723,6 +1725,23 @@ export const insertChargePluginConfigSchema = createInsertSchema(chargePluginCon
 
 export type InsertChargePluginConfig = z.infer<typeof insertChargePluginConfigSchema>;
 export type ChargePluginConfig = typeof chargePluginConfigs.$inferSelect;
+
+// Charge Plugin Master Enable State (keyed by pluginId). Absence of a row means
+// the plugin is enabled (preserves pre-existing behavior). Toggling OFF only
+// stops NEW ledger entries; previously-posted entries are untouched.
+export const chargePluginStates = pgTable("charge_plugin_states", {
+  pluginId: text("plugin_id").primaryKey(),
+  enabled: boolean("enabled").default(true).notNull(),
+  updatedAt: timestamp("updated_at").default(sql`now()`).notNull(),
+});
+
+export const insertChargePluginStateSchema = createInsertSchema(chargePluginStates)
+  .omit({
+    updatedAt: true,
+  });
+
+export type InsertChargePluginState = z.infer<typeof insertChargePluginStateSchema>;
+export type ChargePluginState = typeof chargePluginStates.$inferSelect;
 
 // Base Rate History Schema - for use in charge plugins
 export const baseRateHistoryEntrySchema = z.object({

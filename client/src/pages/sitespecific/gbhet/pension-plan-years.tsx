@@ -136,7 +136,6 @@ export default function PensionPlanYearsPage() {
 
   const [batchConfirmOpen, setBatchConfirmOpen] = useState(false);
   const [batchResult, setBatchResult] = useState<any>(null);
-  const [selectedAccountId, setSelectedAccountId] = useState<string>("");
   const [selectedTriggerAccountId, setSelectedTriggerAccountId] = useState<string>("");
 
   const { data: slaConfig, isLoading: slaConfigLoading } = useQuery<{
@@ -153,16 +152,13 @@ export default function PensionPlanYearsPage() {
   });
 
   useEffect(() => {
-    if (slaConfig?.accountId && !selectedAccountId) {
-      setSelectedAccountId(slaConfig.accountId);
-    }
     if (slaConfig?.triggerAccountId && !selectedTriggerAccountId) {
       setSelectedTriggerAccountId(slaConfig.triggerAccountId);
     }
-  }, [slaConfig?.accountId, slaConfig?.triggerAccountId]);
+  }, [slaConfig?.triggerAccountId]);
 
   const saveConfigMutation = useMutation({
-    mutationFn: async (params: { accountId?: string; triggerAccountId?: string }) => {
+    mutationFn: async (params: { triggerAccountId?: string }) => {
       return await apiRequest("PUT", "/api/sitespecific/gbhet/pension/sla/config", params);
     },
     onSuccess: () => {
@@ -579,8 +575,9 @@ export default function PensionPlanYearsPage() {
             <CardTitle className="text-base">SLA Settings</CardTitle>
           </div>
           <CardDescription>
-            Configure ledger accounts for SLA processing. The output account receives computed SLA charges.
-            The trigger account (optional) enables automatic SLA contribution calculation when entries are posted to it.
+            Configure the trigger account for SLA processing. The trigger account (optional) enables
+            automatic SLA contribution calculation when entries are posted to it. The SLA output account
+            is now managed under Charge Plugins (GBHET Pension SLA).
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -591,24 +588,6 @@ export default function PensionPlanYearsPage() {
             </div>
           ) : (
             <div className="space-y-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium" htmlFor="sla-output-account">Output Account</label>
-                <Select
-                  value={selectedAccountId || slaConfig?.accountId || ""}
-                  onValueChange={setSelectedAccountId}
-                >
-                  <SelectTrigger className="w-[280px]" data-testid="select-sla-account" id="sla-output-account">
-                    <SelectValue placeholder="Select output account" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(slaConfig?.accounts || []).map((acct) => (
-                      <SelectItem key={acct.id} value={acct.id}>
-                        {acct.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium" htmlFor="sla-trigger-account">Trigger Account</label>
                 <Select
@@ -632,10 +611,9 @@ export default function PensionPlanYearsPage() {
               </div>
               <Button
                 size="sm"
-                disabled={saveConfigMutation.isPending || (!selectedAccountId && !selectedTriggerAccountId)}
+                disabled={saveConfigMutation.isPending || !selectedTriggerAccountId}
                 onClick={() => {
-                  const params: { accountId?: string; triggerAccountId?: string } = {};
-                  if (selectedAccountId) params.accountId = selectedAccountId;
+                  const params: { triggerAccountId?: string } = {};
                   if (selectedTriggerAccountId) params.triggerAccountId = selectedTriggerAccountId;
                   saveConfigMutation.mutate(params);
                 }}

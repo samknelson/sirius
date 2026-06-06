@@ -6,7 +6,8 @@ import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -14,7 +15,8 @@ import { useEffect } from "react";
 import { LedgerAccountBase } from "@/lib/ledger-types";
 
 const formSchema = z.object({
-  accountIds: z.array(z.string()).min(1, "At least one account is required"),
+  name: z.string().optional(),
+  account: z.string().min(1, "Account is required"),
 });
 
 type FormData = z.infer<typeof formSchema>;
@@ -25,9 +27,9 @@ interface ChargePluginConfig {
   enabled: boolean;
   scope: string;
   employerId: string | null;
-  settings: {
-    accountIds?: string[];
-  };
+  account: string | null;
+  name: string | null;
+  settings: Record<string, unknown>;
 }
 
 export default function PaymentSimpleAllocationConfigFormPage() {
@@ -55,14 +57,16 @@ export default function PaymentSimpleAllocationConfigFormPage() {
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      accountIds: [],
+      name: "",
+      account: "",
     },
   });
 
   useEffect(() => {
     if (existingConfig && isEditMode) {
       form.reset({
-        accountIds: existingConfig.settings.accountIds || [],
+        name: existingConfig.name || "",
+        account: existingConfig.account || "",
       });
     }
   }, [existingConfig, isEditMode, form]);
@@ -73,9 +77,9 @@ export default function PaymentSimpleAllocationConfigFormPage() {
         pluginId,
         scope: "global",
         enabled: true,
-        settings: {
-          accountIds: data.accountIds,
-        },
+        name: data.name || null,
+        account: data.account,
+        settings: {},
       });
     },
     onSuccess: () => {
@@ -98,9 +102,8 @@ export default function PaymentSimpleAllocationConfigFormPage() {
   const updateMutation = useMutation({
     mutationFn: async (data: FormData) => {
       return apiRequest("PUT", `/api/plugins/charge/configs/${configId}`, {
-        settings: {
-          accountIds: data.accountIds,
-        },
+        name: data.name || null,
+        account: data.account,
       });
     },
     onSuccess: () => {
@@ -162,75 +165,62 @@ export default function PaymentSimpleAllocationConfigFormPage() {
             <CardHeader>
               <CardTitle>Configuration Settings</CardTitle>
               <CardDescription>
-                Select which accounts should trigger automatic ledger entry creation when payments are saved
+                Select the account that should trigger automatic ledger entry creation when payments are saved
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <FormField
                 control={form.control}
-                name="accountIds"
-                render={() => (
+                name="name"
+                render={({ field }) => (
                   <FormItem>
-                    <div className="mb-4">
-                      <FormLabel className="text-base">Accounts</FormLabel>
-                      <FormDescription>
-                        Select accounts where cleared payments will automatically create ledger entries.
-                        The ledger entry will have a negative amount (reducing the balance).
-                      </FormDescription>
-                    </div>
-                    {activeAccounts.length === 0 ? (
-                      <div className="text-sm text-muted-foreground">
-                        No active accounts available. Please create an account first.
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {activeAccounts.map((account) => (
-                          <FormField
-                            key={account.id}
-                            control={form.control}
-                            name="accountIds"
-                            render={({ field }) => {
-                              return (
-                                <FormItem
-                                  key={account.id}
-                                  className="flex flex-row items-start space-x-3 space-y-0 p-3 border rounded-md"
-                                >
-                                  <FormControl>
-                                    <Checkbox
-                                      checked={field.value?.includes(account.id)}
-                                      onCheckedChange={(checked) => {
-                                        return checked
-                                          ? field.onChange([...field.value, account.id])
-                                          : field.onChange(
-                                              field.value?.filter(
-                                                (value: string) => value !== account.id
-                                              )
-                                            )
-                                      }}
-                                      data-testid={`checkbox-account-${account.id}`}
-                                    />
-                                  </FormControl>
-                                  <div className="space-y-1 leading-none">
-                                    <FormLabel className="font-medium cursor-pointer">
-                                      {account.name}
-                                    </FormLabel>
-                                    {account.description && (
-                                      <p className="text-xs text-muted-foreground">
-                                        {account.description}
-                                      </p>
-                                    )}
-                                  </div>
-                                </FormItem>
-                              )
-                            }}
-                          />
-                        ))}
-                      </div>
-                    )}
+                    <FormLabel>Name</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="Optional label for this configuration"
+                        value={field.value || ""}
+                        onChange={field.onChange}
+                        data-testid="input-name"
+                      />
+                    </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
+
+              <FormField
+                control={form.control}
+                name="account"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Account</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-account">
+                          <SelectValue placeholder="Select an account" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {activeAccounts.map((account) => (
+                          <SelectItem key={account.id} value={account.id}>
+                            {account.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormDescription>
+                      When a cleared payment on this account is saved, a corresponding ledger entry
+                      will be created with a negative amount (reducing the balance).
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              {activeAccounts.length === 0 && (
+                <div className="text-sm text-muted-foreground">
+                  No active accounts available. Please create an account first.
+                </div>
+              )}
             </CardContent>
           </Card>
 

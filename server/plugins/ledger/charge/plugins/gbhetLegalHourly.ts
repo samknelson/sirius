@@ -21,7 +21,6 @@ const rateHistoryEntrySchema = z.object({
 });
 
 const gbhetLegalHourlySettingsSchema = z.object({
-  accountId: z.string().uuid("Account ID must be a valid UUID"),
   employmentStatusIds: z.array(z.string()).optional(),
   rateHistory: z.array(rateHistoryEntrySchema).min(1, "At least one rate entry is required"),
 });
@@ -55,6 +54,10 @@ class GbhetLegalHourlyPlugin extends ChargePlugin {
     config: any,
     settings: GbhetLegalHourlySettings
   ): Promise<ExpectedEntry | null> {
+    if (!config.account) {
+      return null;
+    }
+
     const totalHours = await storage.workers.getMonthlyHoursTotal(
       hoursContext.workerId,
       hoursContext.employerId,
@@ -83,7 +86,7 @@ class GbhetLegalHourlyPlugin extends ChargePlugin {
     const ea = await storage.ledger.ea.getOrCreate(
       "employer",
       hoursContext.employerId,
-      settings.accountId
+      config.account
     );
 
     const chargePluginKey = `${config.id}:${ea.id}:${hoursContext.employerId}:${hoursContext.workerId}:${hoursContext.year}:${hoursContext.month}`;
@@ -143,10 +146,19 @@ class GbhetLegalHourlyPlugin extends ChargePlugin {
 
       const settings = config.settings as GbhetLegalHourlySettings;
 
+      // No account configured => plugin is inert (produces no new entries).
+      if (!config.account) {
+        return {
+          success: true,
+          transactions: [],
+          message: "No ledger account configured for this charge plugin",
+        };
+      }
+
       const ea = await storage.ledger.ea.getOrCreate(
         "employer",
         hoursContext.employerId,
-        settings.accountId
+        config.account
       );
 
       const chargePluginKey = `${config.id}:${ea.id}:${hoursContext.employerId}:${hoursContext.workerId}:${hoursContext.year}:${hoursContext.month}`;
@@ -236,7 +248,7 @@ class GbhetLegalHourlyPlugin extends ChargePlugin {
           chargePlugin: this.metadata.id,
           chargePluginKey: expectedEntry.chargePluginKey,
           chargePluginConfigId: config.id,
-          accountId: settings.accountId,
+          accountId: config.account,
           entityType: "employer",
           entityId: hoursContext.employerId,
           amount: expectedEntry.amount,

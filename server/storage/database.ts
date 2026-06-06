@@ -55,6 +55,10 @@ import {
   type ChargePluginConfigStorage,
   createChargePluginConfigStorage,
 } from "./charge-plugins";
+import {
+  type ChargePluginStateStorage,
+  createChargePluginStateStorage,
+} from "./charge-plugin-states";
 import { type LogsStorage, createLogsStorage } from "./system/logs";
 import { type WorkerWshStorage, createWorkerWshStorage, workerWshLoggingConfig } from "./worker-wsh";
 import { type WorkerMshStorage, createWorkerMshStorage, workerMshLoggingConfig } from "./worker-msh";
@@ -143,6 +147,7 @@ export interface IStorage {
   cronJobs: CronJobStorage;
   cronJobRuns: CronJobRunStorage;
   chargePluginConfigs: ChargePluginConfigStorage;
+  chargePluginStates: ChargePluginStateStorage;
   logs: LogsStorage;
   workerWsh: WorkerWshStorage;
   workerMsh: WorkerMshStorage;
@@ -235,6 +240,7 @@ export class DatabaseStorage implements IStorage {
   cronJobRuns: CronJobRunStorage;
   chargePluginConfigs: ChargePluginConfigStorage;
   logs: LogsStorage;
+  chargePluginStates: ChargePluginStateStorage;
   workerWsh: WorkerWshStorage;
   workerMsh: WorkerMshStorage;
   workerHours: WorkerHoursStorage;
@@ -363,6 +369,7 @@ export class DatabaseStorage implements IStorage {
     this.cronJobs = createCronJobStorage();
     this.cronJobRuns = createCronJobRunStorage();
     this.chargePluginConfigs = createChargePluginConfigStorage();
+    this.chargePluginStates = createChargePluginStateStorage();
     this.logs = createLogsStorage();
 
     // No logging for wmb scan queue - high-volume internal state changes

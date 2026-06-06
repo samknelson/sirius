@@ -15,7 +15,6 @@ import { storage } from "../../../../storage/database";
 import type { Ledger, ChargePluginConfig } from "@shared/schema";
 
 const btuStewardAttendanceSettingsSchema = z.object({
-  accountId: z.string().uuid("Account ID must be a valid UUID"),
   amount: z.number().positive("Amount must be positive"),
   eventTypeIds: z.array(z.string().uuid()).min(1, "At least one event type must be selected"),
   attendedStatuses: z.array(z.string()).min(1, "At least one attended status must be selected"),
@@ -50,6 +49,10 @@ class BtuStewardAttendancePlugin extends ChargePlugin {
     config: any,
     settings: BtuStewardAttendanceSettings
   ): Promise<ExpectedEntry | null> {
+    if (!config.account) {
+      return null;
+    }
+
     if (!settings.eventTypeIds.includes(context.eventTypeId)) {
       return null;
     }
@@ -69,7 +72,7 @@ class BtuStewardAttendancePlugin extends ChargePlugin {
     const ea = await storage.ledger.ea.getOrCreate(
       "worker",
       context.workerId,
-      settings.accountId
+      config.account
     );
 
     const chargePluginKey = `${config.id}:${context.participantId}`;
@@ -136,6 +139,15 @@ class BtuStewardAttendancePlugin extends ChargePlugin {
       }
 
       const settings = config.settings as BtuStewardAttendanceSettings;
+
+      // No account configured => plugin is inert (produces no new entries).
+      if (!config.account) {
+        return {
+          success: true,
+          transactions: [],
+          message: "No ledger account configured for this charge plugin",
+        };
+      }
 
       if (!settings.eventTypeIds.includes(participantContext.eventTypeId)) {
         logger.debug("Event type does not match configured types, skipping", {
@@ -204,7 +216,7 @@ class BtuStewardAttendancePlugin extends ChargePlugin {
           chargePlugin: this.metadata.id,
           chargePluginKey: expectedEntry.chargePluginKey,
           chargePluginConfigId: config.id,
-          accountId: settings.accountId,
+          accountId: config.account,
           entityType: "worker",
           entityId: participantContext.workerId!,
           amount: expectedEntry.amount,

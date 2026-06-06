@@ -1,7 +1,7 @@
 import { createNoopValidator } from './utils/validation';
 import { getClient } from './transaction-context';
 import { chargePluginConfigs, type ChargePluginConfig, type InsertChargePluginConfig } from "@shared/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 
 /**
  * Stub validator - add validation logic here when needed
@@ -14,6 +14,7 @@ export interface ChargePluginConfigStorage {
   getByPluginId(pluginId: string): Promise<ChargePluginConfig[]>;
   getFirstEnabledByPluginId(pluginId: string): Promise<ChargePluginConfig | undefined>;
   getByPluginIdAndScope(pluginId: string, scope: string, employerId?: string): Promise<ChargePluginConfig | undefined>;
+  getByUniqueKey(pluginId: string, scope: string, employerId: string | null, account: string | null): Promise<ChargePluginConfig | undefined>;
   getEnabledForPlugin(pluginId: string, employerId: string | null): Promise<ChargePluginConfig[]>;
   create(config: InsertChargePluginConfig): Promise<ChargePluginConfig>;
   update(id: string, config: Partial<InsertChargePluginConfig>): Promise<ChargePluginConfig | undefined>;
@@ -42,10 +43,14 @@ export function createChargePluginConfigStorage(): ChargePluginConfigStorage {
 
     async getFirstEnabledByPluginId(pluginId: string): Promise<ChargePluginConfig | undefined> {
       const client = getClient();
+      // Deterministic selection: prefer a config that has an account set
+      // (account ASC puts NULLs last in Postgres), then by id for a stable
+      // tiebreak. With per-account configs there can be multiple enabled rows.
       const [config] = await client
         .select()
         .from(chargePluginConfigs)
         .where(and(eq(chargePluginConfigs.pluginId, pluginId), eq(chargePluginConfigs.enabled, true)))
+        .orderBy(chargePluginConfigs.account, chargePluginConfigs.id)
         .limit(1);
       return config || undefined;
     },
@@ -57,9 +62,44 @@ export function createChargePluginConfigStorage(): ChargePluginConfigStorage {
         eq(chargePluginConfigs.scope, scope),
       ];
 
-      if (scope === "employer" && employerId) {
-        conditions.push(eq(chargePluginConfigs.employerId, employerId));
+      // Constrain the employer dimension by scope so a global/batch lookup
+      // never accidentally matches an employer-scoped row, and an employer
+      // lookup without an id only matches the null-employer rows.
+      if (scope === "employer") {
+        conditions.push(
+          employerId
+            ? eq(chargePluginConfigs.employerId, employerId)
+            : isNull(chargePluginConfigs.employerId),
+        );
+      } else {
+        conditions.push(isNull(chargePluginConfigs.employerId));
       }
+
+      // Deterministic selection when multiple per-account rows exist: prefer a
+      // config with an account set (account ASC = NULLs last), then id.
+      const [config] = await client
+        .select()
+        .from(chargePluginConfigs)
+        .where(and(...conditions))
+        .orderBy(chargePluginConfigs.account, chargePluginConfigs.id)
+        .limit(1);
+
+      return config || undefined;
+    },
+
+    async getByUniqueKey(
+      pluginId: string,
+      scope: string,
+      employerId: string | null,
+      account: string | null,
+    ): Promise<ChargePluginConfig | undefined> {
+      const client = getClient();
+      const conditions = [
+        eq(chargePluginConfigs.pluginId, pluginId),
+        eq(chargePluginConfigs.scope, scope),
+        employerId ? eq(chargePluginConfigs.employerId, employerId) : isNull(chargePluginConfigs.employerId),
+        account ? eq(chargePluginConfigs.account, account) : isNull(chargePluginConfigs.account),
+      ];
 
       const [config] = await client
         .select()
@@ -76,8 +116,8 @@ export function createChargePluginConfigStorage(): ChargePluginConfigStorage {
         eq(chargePluginConfigs.enabled, true),
       ];
 
-      // Get global config
-      const globalConfig = await client
+      // Get all enabled global configs (one per account).
+      const globalConfigs = await client
         .select()
         .from(chargePluginConfigs)
         .where(
@@ -85,30 +125,35 @@ export function createChargePluginConfigStorage(): ChargePluginConfigStorage {
             ...baseConditions,
             eq(chargePluginConfigs.scope, "global")
           )
-        )
-        .limit(1);
+        );
 
-      // If employer-specific, also get employer config (which overrides global)
-      if (employerId) {
-        const employerConfig = await client
-          .select()
-          .from(chargePluginConfigs)
-          .where(
-            and(
-              ...baseConditions,
-              eq(chargePluginConfigs.scope, "employer"),
-              eq(chargePluginConfigs.employerId, employerId)
-            )
-          )
-          .limit(1);
-
-        // Return employer config if exists, otherwise global
-        if (employerConfig.length > 0) {
-          return employerConfig;
-        }
+      if (!employerId) {
+        return globalConfigs;
       }
 
-      return globalConfig;
+      // Get all enabled employer-specific configs for this employer.
+      const employerConfigs = await client
+        .select()
+        .from(chargePluginConfigs)
+        .where(
+          and(
+            ...baseConditions,
+            eq(chargePluginConfigs.scope, "employer"),
+            eq(chargePluginConfigs.employerId, employerId)
+          )
+        );
+
+      if (employerConfigs.length === 0) {
+        return globalConfigs;
+      }
+
+      // Employer configs override global configs that target the same account.
+      const overriddenAccounts = new Set(employerConfigs.map((c) => c.account ?? "__null__"));
+      const remainingGlobals = globalConfigs.filter(
+        (g) => !overriddenAccounts.has(g.account ?? "__null__")
+      );
+
+      return [...remainingGlobals, ...employerConfigs];
     },
 
     async create(insertConfig: InsertChargePluginConfig): Promise<ChargePluginConfig> {

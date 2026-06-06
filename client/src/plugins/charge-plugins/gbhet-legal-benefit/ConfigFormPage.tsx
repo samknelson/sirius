@@ -23,8 +23,9 @@ interface ChargePluginConfig {
   enabled: boolean;
   scope: string;
   employerId: string | null;
+  account: string | null;
+  name: string | null;
   settings: {
-    accountId?: string;
     benefitId?: string;
     billingOffsetMonths?: number;
     rateHistory?: Array<{
@@ -35,7 +36,8 @@ interface ChargePluginConfig {
 }
 
 const formSchema = z.object({
-  accountId: z.string().min(1, "Account is required"),
+  name: z.string().optional(),
+  account: z.string().min(1, "Account is required"),
   benefitId: z.string().min(1, "Benefit is required"),
   billingOffsetMonths: z.number().int().default(-3),
   rateHistory: z.array(z.object({
@@ -75,7 +77,8 @@ export default function GbhetLegalBenefitConfigFormPage() {
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      accountId: "",
+      name: "",
+      account: "",
       benefitId: "",
       billingOffsetMonths: -3,
       rateHistory: [{ effectiveDate: "", rate: 0 }],
@@ -89,7 +92,8 @@ export default function GbhetLegalBenefitConfigFormPage() {
         : [{ effectiveDate: "", rate: 0 }];
       
       form.reset({
-        accountId: existingConfig.settings.accountId || "",
+        name: existingConfig.name || "",
+        account: existingConfig.account || "",
         benefitId: existingConfig.settings.benefitId || "",
         billingOffsetMonths: existingConfig.settings.billingOffsetMonths ?? -3,
         rateHistory,
@@ -103,8 +107,9 @@ export default function GbhetLegalBenefitConfigFormPage() {
         pluginId,
         scope: "global",
         enabled: true,
+        name: data.name || null,
+        account: data.account,
         settings: {
-          accountId: data.accountId,
           benefitId: data.benefitId,
           billingOffsetMonths: data.billingOffsetMonths,
           rateHistory: data.rateHistory,
@@ -131,8 +136,9 @@ export default function GbhetLegalBenefitConfigFormPage() {
   const updateMutation = useMutation({
     mutationFn: async (data: FormData) => {
       return apiRequest("PUT", `/api/plugins/charge/configs/${configId}`, {
+        name: data.name || null,
+        account: data.account,
         settings: {
-          accountId: data.accountId,
           benefitId: data.benefitId,
           billingOffsetMonths: data.billingOffsetMonths,
           rateHistory: data.rateHistory,
@@ -202,7 +208,26 @@ export default function GbhetLegalBenefitConfigFormPage() {
             <CardContent className="space-y-6">
               <FormField
                 control={form.control}
-                name="accountId"
+                name="name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Name</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="Optional label for this configuration"
+                        value={field.value || ""}
+                        onChange={field.onChange}
+                        data-testid="input-name"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="account"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Account</FormLabel>

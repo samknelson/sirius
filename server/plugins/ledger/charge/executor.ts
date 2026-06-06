@@ -66,6 +66,19 @@ export async function executeChargePlugins(
   // Execute each plugin
   for (const plugin of applicablePlugins) {
     try {
+      // Respect the per-plugin master enable switch. When OFF, skip the
+      // plugin entirely so no NEW ledger entries are produced. Already-posted
+      // entries are untouched.
+      const masterEnabled = await storage.chargePluginStates.isEnabled(plugin.metadata.id);
+      if (!masterEnabled) {
+        logger.debug("Charge plugin master switch is off; skipping", {
+          service: "charge-plugin-executor",
+          pluginId: plugin.metadata.id,
+          trigger,
+        });
+        continue;
+      }
+
       // Get configs for this plugin (both global and employer-specific if applicable)
       const configs = await getEnabledConfigsForPlugin(plugin.metadata.id, employerId);
       

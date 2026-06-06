@@ -3,12 +3,15 @@ import type { ChargePluginConfigProps } from "../registry";
 import SharedConfigList from "../SharedConfigList";
 import { EmploymentStatus } from "@/lib/entity-types";
 
-interface GbhetLegalHourlySettings {
+interface GbheHourlyChargeSettings {
+  chargeTo?: "worker" | "employer";
   employmentStatusIds?: string[];
+  specialDesignationMemberStatusIds?: string[];
+  specialDesignationMonthlyHours?: number;
   rateHistory?: Array<{ effectiveDate: string; rate: number }>;
 }
 
-export default function GbhetLegalHourlyConfigList({ pluginId }: ChargePluginConfigProps) {
+export default function GbheHourlyChargeConfigList({ pluginId }: ChargePluginConfigProps) {
   const { data: employmentStatuses = [] } = useQuery<EmploymentStatus[]>({
     queryKey: ["/api/options/employment-status"],
   });
@@ -30,16 +33,25 @@ export default function GbhetLegalHourlyConfigList({ pluginId }: ChargePluginCon
   };
 
   return (
-    <SharedConfigList<GbhetLegalHourlySettings>
+    <SharedConfigList<GbheHourlyChargeSettings>
       pluginId={pluginId}
-      title="GBHET Legal Hourly Configurations"
-      description="Manage hourly rate configurations for GBHET Legal benefit charges"
+      title="GBHE Hourly Charge Configurations"
+      description="Charge based on hours worked, with special-designation workers billed fixed monthly hours"
       cardDescription="Add a global configuration and per-employer overrides as needed"
-      emptyMessage="No GBHET Legal hourly configurations yet."
+      emptyMessage="No GBHE hourly charge configurations yet."
       renderSummary={(config) => (
         <>
+          <p data-testid={`text-config-charge-to-${config.id}`}>
+            <strong>Charge To:</strong> {config.settings.chargeTo === "worker" ? "Worker" : "Employer"}
+          </p>
           <p data-testid={`text-config-status-${config.id}`}>
             <strong>Employment Status:</strong> {getEmploymentStatusNames(config.settings.employmentStatusIds)}
+          </p>
+          <p data-testid={`text-config-special-${config.id}`}>
+            <strong>Special Designation:</strong>{" "}
+            {config.settings.specialDesignationMemberStatusIds?.length
+              ? `${config.settings.specialDesignationMemberStatusIds.length} status(es) @ ${config.settings.specialDesignationMonthlyHours ?? 135} hrs/mo`
+              : "None"}
           </p>
           <p data-testid={`text-config-current-rate-${config.id}`}>
             <strong>Current Rate:</strong> {getCurrentRate(config.settings.rateHistory)}

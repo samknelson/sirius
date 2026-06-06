@@ -19,7 +19,6 @@ const rateHistoryEntrySchema = z.object({
 });
 
 const hourFixedSettingsSchema = z.object({
-  accountId: z.string().uuid("Account ID must be a valid UUID"),
   chargeTo: z.enum(["worker", "employer"]).default("employer"),
   fixedMonthly: z.boolean().default(false),
   employmentStatusIds: z.array(z.string()).optional(),
@@ -71,6 +70,15 @@ class HourFixedPlugin extends ChargePlugin {
 
       const settings = config.settings as HourFixedSettings;
 
+      // No account configured => plugin is inert (produces no new entries).
+      if (!config.account) {
+        return {
+          success: true,
+          transactions: [],
+          message: "No ledger account configured for this charge plugin",
+        };
+      }
+
       // Check employment status filtering
       if (settings.employmentStatusIds && settings.employmentStatusIds.length > 0) {
         if (!settings.employmentStatusIds.includes(hoursContext.employmentStatusId)) {
@@ -117,7 +125,7 @@ class HourFixedPlugin extends ChargePlugin {
       if (fixedMonthly) {
         // For fixed monthly: check if there's already an entry for this month
         const existingMonthlyEntry = await this.findExistingMonthlyEntry(
-          settings.accountId,
+          config.account,
           entityType,
           entityId,
           hoursContext.year,
@@ -179,7 +187,7 @@ class HourFixedPlugin extends ChargePlugin {
 
       // Create ledger transaction
       const transaction: LedgerTransaction = {
-        accountId: settings.accountId,
+        accountId: config.account,
         entityType,
         entityId,
         amount: charge.toFixed(2),
@@ -208,7 +216,7 @@ class HourFixedPlugin extends ChargePlugin {
         charge,
         rate: applicableRate.rate,
         hours: hoursContext.hours,
-        accountId: settings.accountId,
+        accountId: config.account,
         entityType,
         entityId,
         fixedMonthly,

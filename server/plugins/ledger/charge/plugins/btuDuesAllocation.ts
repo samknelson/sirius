@@ -14,9 +14,10 @@ import { logger } from "../../../../logger";
 import { storage } from "../../../../storage";
 import type { Ledger, ChargePluginConfig } from "@shared/schema";
 
-const btuDuesAllocationSettingsSchema = z.object({
-  accountIds: z.array(z.string().uuid("Account ID must be a valid UUID")).min(1, "At least one account is required"),
-});
+// The ledger account this plugin watches is now a first-class column on
+// charge_plugin_configs (config.account), not a setting. This plugin keeps no
+// account-related settings of its own.
+const btuDuesAllocationSettingsSchema = z.object({});
 
 type BtuDuesAllocationSettings = z.infer<typeof btuDuesAllocationSettingsSchema>;
 
@@ -60,19 +61,26 @@ class BtuDuesAllocationPlugin extends ChargePlugin {
         };
       }
 
-      const settings = config.settings as BtuDuesAllocationSettings;
+      // No account configured => plugin is inert (produces no new entries).
+      if (!config.account) {
+        return {
+          success: true,
+          transactions: [],
+          message: "No ledger account configured for this charge plugin",
+        };
+      }
 
-      if (!settings.accountIds.includes(duesContext.accountId)) {
-        logger.debug("Dues account not in configured list, skipping", {
+      if (config.account !== duesContext.accountId) {
+        logger.debug("Dues account does not match configured account, skipping", {
           service: "charge-plugin-btu-dues-allocation",
           wizardId: duesContext.wizardId,
           accountId: duesContext.accountId,
-          configuredAccounts: settings.accountIds,
+          configuredAccount: config.account,
         });
         return {
           success: true,
           transactions: [],
-          message: "Dues account not in configured list",
+          message: "Dues account does not match configured account",
         };
       }
 
