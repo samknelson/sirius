@@ -1,4 +1,3 @@
-import { pluginManifestQueryKey } from "@/plugins/_core";
 import { Component, useMemo, type ErrorInfo, type ReactNode } from "react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Home, User, Building2, AlertCircle } from "lucide-react";
@@ -9,10 +8,17 @@ import {
   hasDashboardComponent,
   resolveDashboardComponent,
 } from "@/plugins/dashboard/registry";
+import { DashboardConfigContext } from "@/plugins/dashboard/useDashboardContent";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 
-interface PluginManifestEntry {
+/**
+ * One rendered dashboard item — a single dashboard config row joined with its
+ * plugin's display metadata. The dashboard renders one widget per item, so a
+ * plugin configured several times produces several items (each scoped to its
+ * own `configId`). Served by `GET /api/dashboard-plugins/items`.
+ */
+interface DashboardItem {
   id: string;
   name: string;
   description: string;
@@ -26,6 +32,9 @@ interface PluginManifestEntry {
   hasSettings: boolean;
   enabledByDefault: boolean;
   enabled: boolean;
+  configId: string;
+  configName: string | null;
+  ordering: number;
 }
 
 export default function Dashboard() {
@@ -36,13 +45,13 @@ export default function Dashboard() {
     enabled: !!user?.id,
   });
 
-  const { data: manifest = [], isLoading: manifestLoading } = useQuery<PluginManifestEntry[]>({
-    queryKey: pluginManifestQueryKey("dashboard"),
+  const { data: items = [], isLoading: itemsLoading } = useQuery<DashboardItem[]>({
+    queryKey: ["/api/dashboard-plugins/items"],
   });
 
   const policiesNeeded = useMemo(
-    () => [...new Set(manifest.filter((p) => p.requiredPolicy).map((p) => p.requiredPolicy!))],
-    [manifest],
+    () => Array.from(new Set(items.filter((p) => p.requiredPolicy).map((p) => p.requiredPolicy!))),
+    [items],
   );
 
   const { data: policyResults = {}, isLoading: policiesLoading } = useQuery<
@@ -92,54 +101,58 @@ export default function Dashboard() {
   const showWorkerLinkageMessage = hasWorkerRole && !hasLinkedWorker && !staffPolicyGranted;
   const showEmployerLinkageMessage = hasEmployerRole && !hasLinkedEmployer && !staffPolicyGranted;
 
-  const enabledPlugins = manifest.filter((plugin) => {
-    if (!plugin.enabled) return false;
+  const enabledItems = items.filter((item) => {
+    if (!item.enabled) return false;
 
-    if (plugin.requiredPermissions.length > 0) {
-      if (!plugin.requiredPermissions.some((perm) => permissions.includes(perm))) {
+    if (item.requiredPermissions.length > 0) {
+      if (!item.requiredPermissions.some((perm) => permissions.includes(perm))) {
         return false;
       }
     }
 
-    if (plugin.requiredComponent && components && !components.includes(plugin.requiredComponent)) {
+    if (item.requiredComponent && components && !components.includes(item.requiredComponent)) {
       return false;
     }
 
-    if (plugin.requiredPolicy) {
-      const policyResult = policyResults[plugin.requiredPolicy];
+    if (item.requiredPolicy) {
+      const policyResult = policyResults[item.requiredPolicy];
       if (!policyResult || !policyResult.allowed) return false;
     }
 
     return true;
   });
 
-  const fullWidthPlugins = enabledPlugins.filter((p) => p.fullWidth);
-  const gridPlugins = enabledPlugins.filter((p) => !p.fullWidth);
+  const fullWidthItems = enabledItems.filter((p) => p.fullWidth);
+  const gridItems = enabledItems.filter((p) => !p.fullWidth);
 
-  const renderPlugin = (plugin: PluginManifestEntry) => {
-    if (!hasDashboardComponent(plugin.componentId)) {
+  const renderItem = (item: DashboardItem) => {
+    if (!hasDashboardComponent(item.componentId)) {
       return (
         <MissingPluginCard
-          key={plugin.id}
-          pluginId={plugin.id}
-          pluginName={plugin.name}
-          componentId={plugin.componentId}
+          key={item.configId}
+          pluginId={item.id}
+          pluginName={item.configName ?? item.name}
+          componentId={item.componentId}
         />
       );
     }
-    const PluginComponent = resolveDashboardComponent(plugin.componentId);
+    const PluginComponent = resolveDashboardComponent(item.componentId);
     return (
       <PluginErrorBoundary
-        key={plugin.id}
-        pluginId={plugin.id}
-        pluginName={plugin.name}
-        componentId={plugin.componentId}
+        key={item.configId}
+        pluginId={item.id}
+        pluginName={item.configName ?? item.name}
+        componentId={item.componentId}
       >
-        <PluginComponent
-          userId={user?.id || ""}
-          userRoles={userRoles}
-          componentProps={plugin.componentProps ?? undefined}
-        />
+        <DashboardConfigContext.Provider value={{ configId: item.configId }}>
+          <PluginComponent
+            userId={user?.id || ""}
+            userRoles={userRoles}
+            componentProps={item.componentProps ?? undefined}
+            configId={item.configId}
+            configName={item.configName}
+          />
+        </DashboardConfigContext.Provider>
       </PluginErrorBoundary>
     );
   };
@@ -148,7 +161,7 @@ export default function Dashboard() {
     <div className="bg-background text-foreground min-h-screen">
       <PageHeader title="Dashboard" icon={<Home className="text-primary-foreground" size={16} />} />
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {rolesLoading || manifestLoading || policiesLoading ? (
+        {rolesLoading || itemsLoading || policiesLoading ? (
           <div className="text-center text-muted-foreground py-8">
             <p>Loading dashboard...</p>
           </div>
@@ -202,13 +215,13 @@ export default function Dashboard() {
               </div>
             )}
 
-            {fullWidthPlugins.length > 0 && (
-              <div className="space-y-6 mb-6">{fullWidthPlugins.map(renderPlugin)}</div>
+            {fullWidthItems.length > 0 && (
+              <div className="space-y-6 mb-6">{fullWidthItems.map(renderItem)}</div>
             )}
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-              {gridPlugins.map(renderPlugin)}
+              {gridItems.map(renderItem)}
             </div>
-            {enabledPlugins.length === 0 && (
+            {enabledItems.length === 0 && (
               <div className="text-center text-muted-foreground">
                 <p>No plugins are currently enabled for your dashboard.</p>
               </div>

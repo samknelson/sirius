@@ -46,6 +46,22 @@ export function registerDashboardRoutes(
     }
   };
 
+  // One entry per dashboard config row (joined with plugin display metadata).
+  // The dashboard renders one widget per item, so a plugin configured several
+  // times yields several items. Per-user gating metadata travels with each
+  // item; the client filters and each widget's /content read remains the
+  // authoritative enforcement point.
+  app.get("/api/dashboard-plugins/items", requireAuth, async (_req: Request, res: Response) => {
+    try {
+      const items = await dashboardPluginRegistry.getConfigItems();
+      res.setHeader("Cache-Control", "no-store");
+      res.json(items);
+    } catch (error) {
+      console.error("Failed to fetch dashboard items:", error);
+      res.status(500).json({ message: "Failed to fetch dashboard items" });
+    }
+  });
+
   app.get("/api/dashboard-plugins/:pluginId/content", requireAuth, contentHandler);
   app.get("/api/dashboard-plugins/:pluginId/content/:action", requireAuth, contentHandler);
 }

@@ -16,6 +16,10 @@ export interface DashboardPluginProps {
   userId: string;
   userRoles: Role[];
   componentProps?: Record<string, unknown>;
+  /** The config row this widget instance renders (one widget per config). */
+  configId?: string;
+  /** Admin-set name for this config instance, when present. */
+  configName?: string | null;
 }
 
 const registry = createPluginComponentRegistry<DashboardPluginProps>({

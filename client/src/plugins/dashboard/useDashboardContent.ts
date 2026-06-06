@@ -1,9 +1,22 @@
 import { useQuery } from "@tanstack/react-query";
+import { createContext, useContext } from "react";
 
 export type DashboardContentParams = Record<
   string,
   string | number | boolean | undefined | null
 >;
+
+/**
+ * Identifies which dashboard config row the surrounding widget instance is
+ * rendering. The dashboard page wraps each rendered widget in a
+ * `DashboardConfigContext.Provider`, so `useDashboardContent` automatically
+ * scopes its `/content` read to that specific config (sending `?configId=...`)
+ * without each widget having to thread the id through itself. A `null` configId
+ * means "unscoped" — the server then falls back to the canonical config.
+ */
+export const DashboardConfigContext = createContext<{ configId: string | null }>({
+  configId: null,
+});
 
 export interface UseDashboardContentOptions<TParams extends DashboardContentParams = DashboardContentParams> {
   action?: string;
@@ -28,13 +41,16 @@ export function useDashboardContent<
   TParams extends DashboardContentParams = DashboardContentParams,
 >(pluginId: string, options: UseDashboardContentOptions<TParams> = {}) {
   const { action, params, enabled = true, refetchIntervalMs } = options;
+  const { configId } = useContext(DashboardConfigContext);
 
   const url = (() => {
     const base = `/api/dashboard-plugins/${pluginId}/content${action ? `/${action}` : ""}`;
-    if (!params) return base;
     const qs = new URLSearchParams();
-    for (const [k, v] of Object.entries(params)) {
-      if (v !== undefined && v !== null) qs.append(k, String(v));
+    if (configId) qs.append("configId", configId);
+    if (params) {
+      for (const [k, v] of Object.entries(params)) {
+        if (v !== undefined && v !== null) qs.append(k, String(v));
+      }
     }
     const s = qs.toString();
     return s ? `${base}?${s}` : base;
@@ -46,6 +62,7 @@ export function useDashboardContent<
       pluginId,
       "content",
       action ?? null,
+      configId ?? null,
       params ?? null,
     ],
     queryFn: async () => {

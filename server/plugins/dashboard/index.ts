@@ -99,6 +99,9 @@ export async function initializeDashboardPluginSystem(): Promise<void> {
     plugins: dashboardPluginRegistry.getAll().map((p) => p.id),
   });
   await dashboardPluginRegistry.backfillFromLegacyVariables();
+  // Ensure every renderable plugin has at least one config row so the
+  // per-config dashboard render path never drops a previously-shown widget.
+  await dashboardPluginRegistry.seedDefaultConfigs();
 }
 
 // Plugin registrations (side-effect imports — each file self-registers).

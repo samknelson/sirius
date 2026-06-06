@@ -46,6 +46,21 @@ export interface DashboardManifestEntry {
   uiSchema?: DashboardPluginUiSchema;
 }
 
+/**
+ * One rendered dashboard item, derived from a single `plugin_configs` row
+ * joined with its owning plugin's display metadata. The dashboard renders
+ * one widget per item (in `ordering` order), so a plugin with several config
+ * rows produces several items — each scoped to its own config via `configId`.
+ */
+export interface DashboardConfigItem extends DashboardManifestEntry {
+  /** The owning `plugin_configs` row id. Used to scope `/content` reads. */
+  configId: string;
+  /** Per-config display name (admin-set), or null to fall back to plugin name. */
+  configName: string | null;
+  /** The config row's ordering (primary sort key for items). */
+  ordering: number;
+}
+
 function pluginToMetadata(p: DashboardPlugin): BasePluginMetadata {
   return {
     id: p.id,
@@ -143,6 +158,94 @@ class DashboardPluginRegistry extends PluginRegistry<DashboardPlugin, DashboardM
     const row = await this.getCanonicalConfig(plugin);
     if (row) return row.data ?? {};
     return plugin.defaultSettings ?? {};
+  }
+
+  /**
+   * Settings for a specific config row, used to scope a single rendered
+   * dashboard item. When `configId` names a valid dashboard config row that
+   * belongs to this plugin, its `data` is returned. Otherwise we fall back to
+   * the canonical config (or plugin defaults) so legacy callers that omit a
+   * configId keep working.
+   */
+  async getSettingsValueForConfig(
+    plugin: DashboardPlugin,
+    configId: string | undefined,
+  ): Promise<any> {
+    if (configId) {
+      const row = await storage.pluginConfigs.get(configId);
+      if (row && row.pluginType === "dashboard" && row.pluginId === plugin.id) {
+        return row.data ?? {};
+      }
+    }
+    return this.getSettingsValue(plugin);
+  }
+
+  /**
+   * One dashboard item per dashboard config row, joined with its owning
+   * plugin's display metadata. Headless plugins (no `client` block) and rows
+   * whose plugin is no longer registered are skipped. Sorted by the config
+   * row's `ordering`, then the plugin's default order, then config id — so the
+   * default ordering (all rows at ordering 0) follows each plugin's declared
+   * order until an admin overrides it.
+   */
+  async getConfigItems(): Promise<DashboardConfigItem[]> {
+    const configs = await storage.pluginConfigs.getByType("dashboard");
+    const items: DashboardConfigItem[] = [];
+    for (const cfg of configs) {
+      const plugin = this.get(cfg.pluginId);
+      if (!plugin || !plugin.client) continue;
+      const entry = pluginToManifestEntry(plugin);
+      items.push({
+        ...entry,
+        enabled: cfg.enabled,
+        configId: cfg.id,
+        configName: cfg.name ?? null,
+        ordering: cfg.ordering,
+      });
+    }
+    items.sort(
+      (a, b) =>
+        a.ordering - b.ordering ||
+        a.order - b.order ||
+        a.configId.localeCompare(b.configId),
+    );
+    return items;
+  }
+
+  /**
+   * Idempotently ensure every registered, renderable (non-headless) plugin
+   * has at least one config row, so no dashboard item disappears once the
+   * dashboard renders per-config instead of per-plugin. Runs at boot after
+   * the legacy backfill; plugins that already have a row (backfilled or
+   * admin-created) are left untouched.
+   */
+  async seedDefaultConfigs(): Promise<void> {
+    for (const plugin of this.list()) {
+      if (!plugin.client) continue;
+      try {
+        const existing = await storage.pluginConfigs.getByTypeAndPlugin(
+          "dashboard",
+          plugin.id,
+        );
+        if (existing.length > 0) continue;
+        await storage.pluginConfigs.create({
+          pluginType: "dashboard",
+          pluginId: plugin.id,
+          enabled: this.defaultEnabled(plugin),
+          name: null,
+          ordering: 0,
+          data: plugin.defaultSettings ?? {},
+        });
+        logger.info(`Seeded default dashboard config for ${plugin.id}`, {
+          service: SERVICE,
+        });
+      } catch (error) {
+        logger.error(`Failed to seed default dashboard config for ${plugin.id}`, {
+          service: SERVICE,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
   }
 
   /**
@@ -270,7 +373,10 @@ class DashboardPluginRegistry extends PluginRegistry<DashboardPlugin, DashboardM
     }
 
     const userRoles = await storage.users.getUserRoles(dbUser.id);
-    const settings = await this.getSettingsValue(plugin);
+    const configIdRaw = req.query.configId;
+    const configId =
+      typeof configIdRaw === "string" && configIdRaw ? configIdRaw : undefined;
+    const settings = await this.getSettingsValueForConfig(plugin, configId);
 
     const ctx: DashboardContentContext = {
       userId: dbUser.id,
