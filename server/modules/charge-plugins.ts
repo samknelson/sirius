@@ -205,40 +205,4 @@ export function registerChargePluginRoutes(
     }
   });
 
-  // GET /api/plugins/charge/states - Get all per-plugin master enable states.
-  // Plugins without a stored row are enabled by default.
-  app.get("/api/plugins/charge/states", requireAuth, requireComponent("ledger"), requireAccess('admin'), async (req, res) => {
-    try {
-      const states = await storage.chargePluginStates.getAll();
-      res.json(states);
-    } catch (error) {
-      console.error("Failed to fetch charge plugin states:", error);
-      res.status(500).json({ message: "Failed to fetch charge plugin states" });
-    }
-  });
-
-  // PUT /api/plugins/charge/states/:pluginId - Set a plugin's master enable switch.
-  app.put("/api/plugins/charge/states/:pluginId", requireAuth, requireComponent("ledger"), requireAccess('admin'), async (req, res) => {
-    try {
-      const { pluginId } = req.params;
-
-      // Verify the plugin exists in registry.
-      const plugin = chargePluginRegistry.get(pluginId);
-      if (!plugin) {
-        return res.status(400).json({ message: `Plugin '${pluginId}' not found in registry` });
-      }
-
-      const bodySchema = z.object({ enabled: z.boolean() });
-      const { enabled } = bodySchema.parse(req.body);
-
-      const state = await storage.chargePluginStates.setEnabled(pluginId, enabled);
-      res.json(state);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: "Invalid request data", errors: error.errors });
-      }
-      console.error("Failed to update charge plugin state:", error);
-      res.status(500).json({ message: "Failed to update charge plugin state" });
-    }
-  });
 }

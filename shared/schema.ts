@@ -1726,23 +1726,6 @@ export const insertChargePluginConfigSchema = createInsertSchema(chargePluginCon
 export type InsertChargePluginConfig = z.infer<typeof insertChargePluginConfigSchema>;
 export type ChargePluginConfig = typeof chargePluginConfigs.$inferSelect;
 
-// Charge Plugin Master Enable State (keyed by pluginId). Absence of a row means
-// the plugin is enabled (preserves pre-existing behavior). Toggling OFF only
-// stops NEW ledger entries; previously-posted entries are untouched.
-export const chargePluginStates = pgTable("charge_plugin_states", {
-  pluginId: text("plugin_id").primaryKey(),
-  enabled: boolean("enabled").default(true).notNull(),
-  updatedAt: timestamp("updated_at").default(sql`now()`).notNull(),
-});
-
-export const insertChargePluginStateSchema = createInsertSchema(chargePluginStates)
-  .omit({
-    updatedAt: true,
-  });
-
-export type InsertChargePluginState = z.infer<typeof insertChargePluginStateSchema>;
-export type ChargePluginState = typeof chargePluginStates.$inferSelect;
-
 // Base Rate History Schema - for use in charge plugins
 export const baseRateHistoryEntrySchema = z.object({
   effectiveDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be in YYYY-MM-DD format"),
