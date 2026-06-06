@@ -75,7 +75,6 @@ export function createChargeSubsidiaryStorage(): SubsidiaryStorage<
         .onConflictDoUpdate({
           target: pluginConfigsCharge.id,
           set: {
-            pluginId: row.pluginId,
             scope: row.scope,
             employerId: row.employerId ?? null,
             account: row.account ?? null,

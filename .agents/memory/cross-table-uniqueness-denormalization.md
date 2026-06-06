@@ -27,3 +27,10 @@ friendly UX AND add the DB index for integrity. The drift gate flags extra COLUM
 not extra indexes, so the denormalized column must be declared in the Drizzle schema
 (lockstep with the migration), while a COALESCE expression index can live in the
 migration only (Drizzle can't reflect it cleanly) without tripping drift.
+
+**Status note:** The charge instance of this pattern was later REMOVED — the product
+decided duplicate charge configs are acceptable, so the denormalized `plugin_id` column,
+its `plugin_configs_charge_unique_4tuple` index, and the charge adapter's `uniqueKey`
+hook were all dropped. Do NOT re-add a `plugin_id` column to `plugin_configs_charge`
+thinking it is required; it is not. The pattern itself remains valid for any OTHER kind
+that genuinely needs cross-table uniqueness.

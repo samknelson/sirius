@@ -77,11 +77,6 @@ export function registerChargePluginKind(): void {
         data: input.data,
       },
       subsidiary: {
-        // pluginId is denormalized onto the subsidiary purely so the 4-tuple
-        // (pluginId, scope, employerId, account) can be enforced by a single
-        // null-safe DB unique index — the base table holds the canonical
-        // pluginId; reads still take it from the base row.
-        pluginId: input.pluginId,
         scope: input.scope,
         employerId: input.employerId ?? null,
         account: input.account ?? null,
@@ -103,14 +98,9 @@ export function registerChargePluginKind(): void {
         },
       },
     ],
-    // One config per plugin per scope/employer/account (the legacy table's
-    // unique constraint). The generic route uses this to reject collisions.
-    uniqueKey: (input) => ({
-      pluginId: input.pluginId,
-      scope: input.scope,
-      employerId: input.employerId ?? null,
-      account: input.account ?? null,
-    }),
+    // Duplicate charge configs (same plugin / scope / employer / account) are
+    // an accepted state, so no uniqueKey is declared — the generic route skips
+    // its duplicate-collision rejection for this kind.
   });
   kindRegistered = true;
 }
