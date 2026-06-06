@@ -1777,7 +1777,10 @@ export const pluginConfigsCharge = pgTable("plugin_configs_charge", {
   pluginId: text("plugin_id").notNull(),
   scope: varchar("scope").notNull(), // 'global' or 'employer'
   employerId: varchar("employer_id").references(() => employers.id, { onDelete: 'cascade' }),
-  account: varchar("account").references(() => ledgerAccounts.id, { onDelete: 'set null' }),
+  // Required FK: every charge config must target a ledger account. Delete is
+  // RESTRICT so a referenced account cannot be removed out from under a config
+  // (which would otherwise violate this NOT NULL).
+  account: varchar("account").notNull().references(() => ledgerAccounts.id, { onDelete: 'restrict' }),
 });
 
 export const insertPluginConfigChargeSchema = createInsertSchema(pluginConfigsCharge);

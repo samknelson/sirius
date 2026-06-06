@@ -17,6 +17,13 @@ import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -426,6 +433,23 @@ function GenericConfigDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, config]);
 
+  const handleSubmit = (validSettings: Record<string, unknown>) => {
+    // Block save if any required envelope field is empty (client-side mirror of
+    // the server-side adapter validation, e.g. charge's required account).
+    const missing = envelopeFields.find(
+      (f) => f.required && !(envelope[f.name] ?? "").trim(),
+    );
+    if (missing) {
+      toast({
+        title: "Missing required field",
+        description: `${missing.label} is required.`,
+        variant: "destructive",
+      });
+      return;
+    }
+    saveMutation.mutate(validSettings);
+  };
+
   const saveMutation = useMutation({
     mutationFn: async (validSettings: Record<string, unknown>) => {
       // Empty string → null for optional fields; coerce number-typed fields.
@@ -521,15 +545,25 @@ function GenericConfigDialog({
                       {field.label}
                       {field.required && <span className="text-destructive"> *</span>}
                     </Label>
-                    <Input
-                      type={field.type === "number" ? "number" : "text"}
-                      placeholder={field.required ? "Required" : "Optional"}
-                      value={envelope[field.name] ?? ""}
-                      onChange={(e) =>
-                        setEnvelope((prev) => ({ ...prev, [field.name]: e.target.value }))
-                      }
-                      data-testid={`input-envelope-${field.name}`}
-                    />
+                    {field.options ? (
+                      <EnvelopeSelectField
+                        field={field}
+                        value={envelope[field.name] ?? ""}
+                        onChange={(value) =>
+                          setEnvelope((prev) => ({ ...prev, [field.name]: value }))
+                        }
+                      />
+                    ) : (
+                      <Input
+                        type={field.type === "number" ? "number" : "text"}
+                        placeholder={field.required ? "Required" : "Optional"}
+                        value={envelope[field.name] ?? ""}
+                        onChange={(e) =>
+                          setEnvelope((prev) => ({ ...prev, [field.name]: e.target.value }))
+                        }
+                        data-testid={`input-envelope-${field.name}`}
+                      />
+                    )}
                   </div>
                 ))}
               </div>
@@ -543,7 +577,7 @@ function GenericConfigDialog({
               formData={settings}
               showErrorList="top"
               onChange={(e: IChangeEvent) => setSettings(e.formData as Record<string, unknown>)}
-              onSubmit={(e: IChangeEvent) => saveMutation.mutate(e.formData as Record<string, unknown>)}
+              onSubmit={(e: IChangeEvent) => handleSubmit(e.formData as Record<string, unknown>)}
             >
               <button ref={submitBtnRef} type="submit" hidden aria-hidden="true" tabIndex={-1} />
             </SchemaForm>
@@ -570,5 +604,49 @@ function GenericConfigDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * Renders a relational envelope field as a dropdown populated from the remote
+ * data source declared in the field's `options` metadata. Generic: the endpoint
+ * and the value/label keys all come from the adapter metadata, so no field is
+ * hardcoded here.
+ */
+function EnvelopeSelectField({
+  field,
+  value,
+  onChange,
+}: {
+  field: PluginConfigEnvelopeField;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const options = field.options!;
+  const { data = [], isLoading } = useQuery<Record<string, unknown>[]>({
+    queryKey: [options.endpoint],
+  });
+
+  return (
+    <Select value={value || undefined} onValueChange={onChange}>
+      <SelectTrigger data-testid={`select-envelope-${field.name}`}>
+        <SelectValue placeholder={isLoading ? "Loading…" : "Select…"} />
+      </SelectTrigger>
+      <SelectContent>
+        {data.map((item) => {
+          const itemValue = String(item[options.valueKey] ?? "");
+          const itemLabel = String(item[options.labelKey] ?? itemValue);
+          return (
+            <SelectItem
+              key={itemValue}
+              value={itemValue}
+              data-testid={`option-envelope-${field.name}-${itemValue}`}
+            >
+              {itemLabel}
+            </SelectItem>
+          );
+        })}
+      </SelectContent>
+    </Select>
   );
 }

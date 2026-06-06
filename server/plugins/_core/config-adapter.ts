@@ -42,6 +42,21 @@ export interface PluginConfigRows {
  * policy/benefit/appliesTo, dispatch jobType) without any kind-specific code.
  * Kinds with no subsidiary (e.g. "dashboard") declare an empty list.
  */
+/**
+ * Describes a remote data source the generic admin UI can use to render a
+ * relational envelope field as a dropdown (Select) instead of a free-text
+ * input. The UI fetches `endpoint` (expected to return an array of objects),
+ * uses `valueKey` for each option's stored value and `labelKey` for its label.
+ */
+export interface PluginConfigEnvelopeFieldOptions {
+  /** GET endpoint returning an array of option objects (e.g. "/api/ledger/accounts"). */
+  endpoint: string;
+  /** Property on each option object used as the stored value (e.g. "id"). */
+  valueKey: string;
+  /** Property on each option object used as the visible label (e.g. "name"). */
+  labelKey: string;
+}
+
 export interface PluginConfigEnvelopeField {
   /** Column / payload key (e.g. "scope", "employerId", "jobType"). */
   name: string;
@@ -51,6 +66,11 @@ export interface PluginConfigEnvelopeField {
   type: "string" | "number";
   /** Whether the field must be provided (non-empty). */
   required?: boolean;
+  /**
+   * When present, the UI renders this field as a dropdown populated from the
+   * given remote data source rather than a plain text input.
+   */
+  options?: PluginConfigEnvelopeFieldOptions;
 }
 
 export interface PluginConfigAdapter<TConfig = any, TSearch = any> {

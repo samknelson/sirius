@@ -35,7 +35,9 @@ export function registerChargePluginKind(): void {
         ...baseConfigSchemaShape,
         scope: z.enum(["global", "employer"]),
         employerId: z.string().nullable().optional(),
-        account: z.string().nullable().optional(),
+        // A ledger account is REQUIRED for every charge config (enforced at the
+        // DB level by the NOT NULL FK on plugin_configs_charge.account).
+        account: z.string().min(1, "account is required"),
       })
       // Preserve the legacy charge route's scope/employer invariants:
       // an employer-scoped config REQUIRES an employerId; a global-scoped
@@ -88,7 +90,18 @@ export function registerChargePluginKind(): void {
     envelopeFields: [
       { name: "scope", label: "Scope", type: "string", required: true },
       { name: "employerId", label: "Employer ID", type: "string" },
-      { name: "account", label: "Account", type: "string" },
+      {
+        name: "account",
+        label: "Account",
+        type: "string",
+        required: true,
+        // Render as a dropdown populated from the ledger accounts endpoint.
+        options: {
+          endpoint: "/api/ledger/accounts",
+          valueKey: "id",
+          labelKey: "name",
+        },
+      },
     ],
     // One config per plugin per scope/employer/account (the legacy table's
     // unique constraint). The generic route uses this to reject collisions.

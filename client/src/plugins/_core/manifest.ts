@@ -69,11 +69,22 @@ export function pluginConfigsQueryKey(
  * `GET /api/plugins/:kind/configs/meta`. The generic admin UI renders one
  * input per field and includes them in create/update payloads.
  */
+export interface PluginConfigEnvelopeFieldOptions {
+  /** GET endpoint returning an array of option objects (e.g. "/api/ledger/accounts"). */
+  endpoint: string;
+  /** Property on each option object used as the stored value (e.g. "id"). */
+  valueKey: string;
+  /** Property on each option object used as the visible label (e.g. "name"). */
+  labelKey: string;
+}
+
 export interface PluginConfigEnvelopeField {
   name: string;
   label: string;
   type: "string" | "number";
   required?: boolean;
+  /** When present, render this field as a dropdown populated from this source. */
+  options?: PluginConfigEnvelopeFieldOptions;
 }
 
 /** Stable URL + query-key for the per-kind config metadata endpoint. */
