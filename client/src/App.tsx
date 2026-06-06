@@ -217,7 +217,7 @@ const DispatchDncConfigPage = lazy(() => import("@/pages/config/dispatch-dnc"));
 const DispatchJobTypeRunSettingsPage = lazy(() => import("@/pages/config/dispatch-job-type-run-settings"));
 const DispatchEbaSettingsPage = lazy(() => import("@/pages/config/dispatch-eba-settings"));
 const DispatchSeniorityResetConfigPage = lazy(() => import("@/pages/config/dispatch-seniority-reset"));
-const DispatchPluginsPage = lazy(() => import("@/pages/config/dispatch-plugins"));
+const DispatchBackfillPage = lazy(() => import("@/pages/config/dispatch-backfill"));
 const HtaHomeEmploymentStatusesPage = lazy(() => import("@/pages/config/hta-home-employment-statuses"));
 const EdlsSettingsPage = lazy(() => import("@/pages/config/edls/settings"));
 const EdlsTasksPage = lazy(() => import("@/pages/config/edls/tasks"));
@@ -2332,11 +2332,11 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/dispatch/plugins">
+      <Route path="/config/dispatch/backfill">
         <ProtectedRoute permission="admin" component="dispatch">
           <AuthenticatedLayout>
             <ConfigurationLayout>
-              <DispatchPluginsPage />
+              <DispatchBackfillPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>

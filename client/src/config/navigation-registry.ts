@@ -137,7 +137,7 @@ export const configSections: NavSection[] = [
     icon: Truck,
     items: [
       { path: "/config/dispatch-job-types", label: "Job Types", icon: List, testId: "nav-config-dispatch-job-types", permission: "admin", requiresComponent: "dispatch" },
-      { path: "/config/dispatch/plugins", label: "Eligibility Plugins", icon: Puzzle, testId: "nav-config-dispatch-plugins", permission: "admin", requiresComponent: "dispatch" },
+      { path: "/config/dispatch/backfill", label: "Eligibility Backfill", icon: RefreshCw, testId: "nav-config-dispatch-backfill", permission: "admin", requiresComponent: "dispatch" },
       { path: "/config/dispatch/dnc", label: "Do Not Call", icon: Phone, testId: "nav-config-dispatch-dnc", permission: "admin", requiresComponent: "dispatch.dnc" },
       { path: "/config/dispatch/eba", label: "EBA", icon: Calendar, testId: "nav-config-dispatch-eba", permission: "admin", requiresComponent: "dispatch.eba" },
       { path: "/config/dispatch/seniority-reset", label: "Seniority Reset", icon: RefreshCw, testId: "nav-config-dispatch-seniority-reset", permission: "admin", requiresComponent: "dispatch" },
