@@ -9,6 +9,7 @@ import {
   LedgerEntryVerification,
 } from "../types";
 import { registerChargePlugin } from "../registry";
+import type { ChargePluginMetadata } from "../types";
 import { z } from "zod";
 import { logger } from "../../../../logger";
 import { storage } from "../../../../storage/database";
@@ -34,13 +35,46 @@ interface ExpectedEntry {
 }
 
 class BtuStewardAttendancePlugin extends ChargePlugin {
-  readonly metadata = {
+  readonly metadata: ChargePluginMetadata = {
     id: "btu-steward-attendance",
     name: "BTU Steward Attendance",
     description: "Awards points to stewards who attend configured event types with an 'attended' status.",
     triggers: [TriggerType.PARTICIPANT_SAVED],
     defaultScope: "global" as const,
-    settingsSchema: btuStewardAttendanceSettingsSchema,
+    configSchema: {
+      type: "object",
+      required: ["amount", "eventTypeIds", "attendedStatuses"],
+      properties: {
+        amount: {
+          type: "number",
+          title: "Amount",
+          description: "Points/amount awarded per qualifying attendance.",
+          exclusiveMinimum: 0,
+        },
+        eventTypeIds: {
+          type: "array",
+          title: "Event Types",
+          description: "Attendance at these event types is rewarded.",
+          minItems: 1,
+          items: { type: "string" },
+          uniqueItems: true,
+          "x-options-resource": "event-type",
+        },
+        attendedStatuses: {
+          type: "array",
+          title: "Attended Statuses",
+          description: 'Which participation statuses count as "attended".',
+          minItems: 1,
+          default: ["attended"],
+          items: {
+            type: "string",
+            enum: ["attended", "registered", "confirmed"],
+            enumNames: ["Attended", "Registered", "Confirmed"],
+          },
+          uniqueItems: true,
+        },
+      },
+    },
     requiredComponent: "sitespecific.btu",
   };
 

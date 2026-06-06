@@ -96,6 +96,27 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
     },
   );
 
+  // Policies feed the sitespecific-bao-echp charge plugin's policy picker.
+  // Register BEFORE the generic `/api/options/:type` so it matches first.
+  app.get(
+    "/api/options/policy",
+    requireAccess('authenticated'),
+    requireComponent("sitespecific.bao"),
+    async (_req: Request, res: Response) => {
+      try {
+        const policies = await storage.policies.getAllPolicies();
+        res.json(
+          policies.map((p) => ({
+            id: p.id,
+            name: p.name?.trim() || p.siriusId,
+          })),
+        );
+      } catch (error) {
+        res.status(500).json({ message: "Failed to fetch policies" });
+      }
+    },
+  );
+
   // GET /api/options/:type - List all items of a specific options type
   app.get("/api/options/:type", requireAccess('authenticated'), async (req: Request, res: Response) => {
     try {

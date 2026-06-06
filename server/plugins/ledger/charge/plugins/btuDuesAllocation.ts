@@ -9,6 +9,7 @@ import {
   LedgerEntryVerification,
 } from "../types";
 import { registerChargePlugin } from "../registry";
+import type { ChargePluginMetadata } from "../types";
 import { z } from "zod";
 import { logger } from "../../../../logger";
 import { storage } from "../../../../storage";
@@ -22,13 +23,16 @@ const btuDuesAllocationSettingsSchema = z.object({});
 type BtuDuesAllocationSettings = z.infer<typeof btuDuesAllocationSettingsSchema>;
 
 class BtuDuesAllocationPlugin extends ChargePlugin {
-  readonly metadata = {
+  readonly metadata: ChargePluginMetadata = {
     id: "btu-dues-allocation",
     name: "BTU Dues Allocation",
     description: "Creates ledger entries when dues are imported via the BTU Dues Allocation wizard. Only applies to configured accounts.",
     triggers: [TriggerType.DUES_IMPORT_SAVED],
     defaultScope: "global" as const,
-    settingsSchema: btuDuesAllocationSettingsSchema,
+    configSchema: {
+      type: "object",
+      properties: {},
+    },
     requiredComponent: "sitespecific.btu",
   };
 

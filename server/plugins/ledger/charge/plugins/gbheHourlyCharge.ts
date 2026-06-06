@@ -9,6 +9,8 @@ import {
   LedgerEntryVerification,
 } from "../types";
 import { registerChargePlugin } from "../registry";
+import type { ChargePluginMetadata } from "../types";
+import { rateHistoryField } from "../config-schema-helpers";
 import { z } from "zod";
 import { logger } from "../../../../logger";
 import { getCurrentEffectiveRate } from "../../../../utils/rateHistory";
@@ -42,13 +44,51 @@ interface ExpectedEntry {
 }
 
 class GbheHourlyChargePlugin extends ChargePlugin {
-  readonly metadata = {
+  readonly metadata: ChargePluginMetadata = {
     id: "gbhe-hourly-charge",
     name: "GBHE Hourly Charge",
     description: "GBHE hourly charge plugin. Charges based on hours worked with per-hour rates and special designation workers with fixed monthly hours.",
     triggers: [TriggerType.HOURS_SAVED],
     defaultScope: "global" as const,
-    settingsSchema: gbheHourlyChargeSettingsSchema,
+    supportedScopes: ["global", "employer"] as const,
+    configSchema: {
+      type: "object",
+      required: ["chargeTo", "rateHistory"],
+      properties: {
+        chargeTo: {
+          type: "string",
+          title: "Charge To",
+          enum: ["worker", "employer"],
+          enumNames: ["Worker", "Employer"],
+          default: "employer",
+        },
+        employmentStatusIds: {
+          type: "array",
+          title: "Employment Statuses",
+          description:
+            "Optional. Restrict charges to workers with these employment statuses. Leave empty to apply to all.",
+          items: { type: "string" },
+          uniqueItems: true,
+          "x-options-resource": "employment-status",
+        },
+        specialDesignationMemberStatusIds: {
+          type: "array",
+          title: "Special Designation Member Statuses",
+          description:
+            "Workers with these member statuses are charged using the fixed monthly hours below instead of their actual hours.",
+          items: { type: "string" },
+          uniqueItems: true,
+          "x-options-resource": "worker-ms",
+        },
+        specialDesignationMonthlyHours: {
+          type: "number",
+          title: "Special Designation Monthly Hours",
+          minimum: 0,
+          default: 135,
+        },
+        rateHistory: rateHistoryField(),
+      },
+    },
     requiredComponent: "sitespecific.gbhet",
   };
 

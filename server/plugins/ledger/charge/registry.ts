@@ -19,11 +19,37 @@ function pluginToBaseMetadata(p: ChargePlugin): BasePluginMetadata {
   };
 }
 
-function pluginToManifestEntry(p: ChargePlugin): ChargePluginMetadata {
-  return p.metadata;
+/**
+ * Shape served to the client at GET /api/plugins/charge/manifest. We
+ * return an explicit subset (mirroring the eligibility registry) so the
+ * client gets the JSON `configSchema` it renders with RJSF — and never
+ * any non-serializable runtime-only metadata.
+ */
+export interface ChargePluginManifestEntry {
+  id: string;
+  name: string;
+  description: string;
+  triggers: TriggerType[];
+  defaultScope: "global" | "employer";
+  supportedScopes: readonly ("global" | "employer")[];
+  configSchema?: ChargePluginMetadata["configSchema"];
+  requiredComponent?: string;
 }
 
-class ChargePluginRegistry extends PluginRegistry<ChargePlugin, ChargePluginMetadata> {
+function pluginToManifestEntry(p: ChargePlugin): ChargePluginManifestEntry {
+  return {
+    id: p.metadata.id,
+    name: p.metadata.name,
+    description: p.metadata.description,
+    triggers: p.metadata.triggers,
+    defaultScope: p.metadata.defaultScope,
+    supportedScopes: p.metadata.supportedScopes ?? ["global"],
+    configSchema: p.metadata.configSchema,
+    requiredComponent: p.metadata.requiredComponent,
+  };
+}
+
+class ChargePluginRegistry extends PluginRegistry<ChargePlugin, ChargePluginManifestEntry> {
   constructor() {
     super({
       kind: "charge",

@@ -12,8 +12,6 @@ import Footer from "@/components/layout/Footer";
 import { useEffect, lazy, Suspense } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 
-// Import charge plugin UIs to register them (side effect import)
-import "@/plugins/charge-plugins";
 import { ServerInjections } from "@/components/ServerInjections";
 
 // Essential pages loaded eagerly for fast initial render
@@ -282,7 +280,6 @@ const StripeSettingsPage = lazy(() => import("@/pages/config/ledger/stripe/setti
 const PaymentTypesPage = lazy(() => import("@/pages/config/ledger/stripe/payment-types"));
 const LedgerPaymentTypesPage = lazy(() => import("@/pages/config/ledger-payment-types"));
 const ChargePluginsListPage = lazy(() => import("@/pages/config/ledger/charge-plugins-list"));
-const ChargePluginFormPage = lazy(() => import("@/pages/config/ledger/charge-plugin-form"));
 const ConfigurationLandingPage = lazy(() => import("@/pages/config/index"));
 const LedgerAccountsPage = lazy(() => import("@/pages/config/ledger/accounts"));
 const LedgerAccountView = lazy(() => import("@/pages/config/ledger/account-view"));
@@ -2980,26 +2977,6 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <ChargePluginsListPage />
-            </ConfigurationLayout>
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/config/ledger/charge-plugins/:pluginId/new">
-        <ProtectedRoute permission="admin" component="ledger">
-          <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <ChargePluginFormPage />
-            </ConfigurationLayout>
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/config/ledger/charge-plugins/:pluginId/edit/:configId">
-        <ProtectedRoute permission="admin" component="ledger">
-          <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <ChargePluginFormPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>

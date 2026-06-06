@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { pluginManifestQueryKey } from "@/plugins/_core";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { usePageTitle } from "@/contexts/PageTitleContext";
@@ -6,7 +7,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Loader2, Plus, Settings, Trash2, ChevronDown } from "lucide-react";
-import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
@@ -28,21 +28,22 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Employer } from "@/lib/employer-types";
 import { LedgerAccountBase } from "@/lib/ledger-types";
-import { chargePluginUIRegistry, type ChargePluginConfigRow } from "@/plugins/charge-plugins/registry";
-
-interface ChargePluginMetadata {
-  id: string;
-  name: string;
-  description: string;
-  triggers: string[];
-  defaultScope: "global" | "employer";
-}
+import type { ChargePluginConfigRow } from "@/plugins/charge-plugins/registry";
+import {
+  ChargePluginConfigDialog,
+  type ChargePluginManifestEntry,
+} from "@/components/charge-plugins/ChargePluginConfigDialog";
+import { ChargeConfigSummary } from "@/components/charge-plugins/ChargeConfigSummary";
 
 export default function ChargePluginsListPage() {
   usePageTitle("Charge Plugins");
   const { toast } = useToast();
 
-  const { data: plugins = [], isLoading: isLoadingPlugins } = useQuery<ChargePluginMetadata[]>({
+  const [dialogPlugin, setDialogPlugin] = useState<ChargePluginManifestEntry | null>(null);
+  const [dialogConfig, setDialogConfig] = useState<ChargePluginConfigRow | null>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
+
+  const { data: plugins = [], isLoading: isLoadingPlugins } = useQuery<ChargePluginManifestEntry[]>({
     queryKey: pluginManifestQueryKey("charge"),
   });
 
@@ -57,6 +58,18 @@ export default function ChargePluginsListPage() {
   const { data: employers = [] } = useQuery<Employer[]>({
     queryKey: ["/api/employers"],
   });
+
+  const openNew = (plugin: ChargePluginManifestEntry) => {
+    setDialogPlugin(plugin);
+    setDialogConfig(null);
+    setDialogOpen(true);
+  };
+
+  const openEdit = (plugin: ChargePluginManifestEntry, config: ChargePluginConfigRow) => {
+    setDialogPlugin(plugin);
+    setDialogConfig(config);
+    setDialogOpen(true);
+  };
 
   const toggleEnabledMutation = useMutation({
     mutationFn: async ({ id, enabled }: { id: string; enabled: boolean }) => {
@@ -141,11 +154,13 @@ export default function ChargePluginsListPage() {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               {sortedPlugins.map((plugin) => (
-                <Link key={plugin.id} href={`/config/ledger/charge-plugins/${plugin.id}/new`}>
-                  <DropdownMenuItem data-testid={`menu-new-${plugin.id}`}>
-                    {plugin.name}
-                  </DropdownMenuItem>
-                </Link>
+                <DropdownMenuItem
+                  key={plugin.id}
+                  onSelect={() => openNew(plugin)}
+                  data-testid={`menu-new-${plugin.id}`}
+                >
+                  {plugin.name}
+                </DropdownMenuItem>
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
@@ -162,7 +177,6 @@ export default function ChargePluginsListPage() {
         <div className="space-y-6">
           {sortedPlugins.map((plugin) => {
             const pluginConfigs = configs.filter((c) => c.pluginId === plugin.id);
-            const SummaryComponent = chargePluginUIRegistry.get(plugin.id)?.summaryComponent;
 
             return (
               <Card key={plugin.id} data-testid={`card-plugin-${plugin.id}`}>
@@ -209,16 +223,23 @@ export default function ChargePluginsListPage() {
                               <p data-testid={`text-config-account-${config.id}`}>
                                 <strong>Account:</strong> {getAccountName(config.account)}
                               </p>
-                              {SummaryComponent && <SummaryComponent config={config} />}
+                              <ChargeConfigSummary
+                                configSchema={plugin.configSchema}
+                                settings={config.settings as Record<string, unknown>}
+                                configId={config.id}
+                              />
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
-                            <Link href={`/config/ledger/charge-plugins/${plugin.id}/edit/${config.id}`}>
-                              <Button variant="outline" size="sm" data-testid={`button-edit-${config.id}`}>
-                                <Settings className="mr-2 h-4 w-4" />
-                                Edit
-                              </Button>
-                            </Link>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => openEdit(plugin, config)}
+                              data-testid={`button-edit-${config.id}`}
+                            >
+                              <Settings className="mr-2 h-4 w-4" />
+                              Edit
+                            </Button>
                             <AlertDialog>
                               <AlertDialogTrigger asChild>
                                 <Button variant="outline" size="sm" data-testid={`button-delete-${config.id}`}>
@@ -252,12 +273,15 @@ export default function ChargePluginsListPage() {
                       <p className="text-sm text-muted-foreground" data-testid={`text-empty-${plugin.id}`}>
                         No configurations yet.
                       </p>
-                      <Link href={`/config/ledger/charge-plugins/${plugin.id}/new`}>
-                        <Button variant="outline" size="sm" data-testid={`button-add-${plugin.id}`}>
-                          <Plus className="mr-2 h-4 w-4" />
-                          Add Configuration
-                        </Button>
-                      </Link>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => openNew(plugin)}
+                        data-testid={`button-add-${plugin.id}`}
+                      >
+                        <Plus className="mr-2 h-4 w-4" />
+                        Add Configuration
+                      </Button>
                     </div>
                   )}
                 </CardContent>
@@ -265,6 +289,17 @@ export default function ChargePluginsListPage() {
             );
           })}
         </div>
+      )}
+
+      {dialogPlugin && (
+        <ChargePluginConfigDialog
+          open={dialogOpen}
+          onOpenChange={setDialogOpen}
+          plugin={dialogPlugin}
+          config={dialogConfig}
+          accounts={accounts as unknown as { id: string; name: string; isActive: boolean }[]}
+          employers={employers as unknown as { id: string; name: string; isActive: boolean }[]}
+        />
       )}
     </div>
   );

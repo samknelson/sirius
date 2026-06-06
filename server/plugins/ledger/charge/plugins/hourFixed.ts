@@ -7,6 +7,8 @@ import {
   LedgerTransaction,
 } from "../types";
 import { registerChargePlugin } from "../registry";
+import type { ChargePluginMetadata } from "../types";
+import { rateHistoryField } from "../config-schema-helpers";
 import { z } from "zod";
 import { logger } from "../../../../logger";
 import { getCurrentEffectiveRate } from "../../../../utils/rateHistory";
@@ -29,13 +31,43 @@ type HourFixedSettings = z.infer<typeof hourFixedSettingsSchema>;
 type RateHistoryEntry = z.infer<typeof rateHistoryEntrySchema>;
 
 class HourFixedPlugin extends ChargePlugin {
-  readonly metadata = {
+  readonly metadata: ChargePluginMetadata = {
     id: "hour-fixed",
     name: "Hour - Fixed Rate",
     description: "Charges a fixed hourly rate based on rate history. When hours are saved, creates a ledger transaction.",
     triggers: [TriggerType.HOURS_SAVED],
     defaultScope: "global" as const,
-    settingsSchema: hourFixedSettingsSchema,
+    supportedScopes: ["global", "employer"] as const,
+    configSchema: {
+      type: "object",
+      required: ["chargeTo", "rateHistory"],
+      properties: {
+        chargeTo: {
+          type: "string",
+          title: "Charge To",
+          enum: ["worker", "employer"],
+          enumNames: ["Worker", "Employer"],
+          default: "employer",
+        },
+        fixedMonthly: {
+          type: "boolean",
+          title: "Fixed Monthly",
+          description:
+            "When enabled, charges the full monthly rate once per month regardless of hours, instead of per-hour.",
+          default: false,
+        },
+        employmentStatusIds: {
+          type: "array",
+          title: "Employment Statuses",
+          description:
+            "Optional. Restrict charges to workers with these employment statuses. Leave empty to apply to all.",
+          items: { type: "string" },
+          uniqueItems: true,
+          "x-options-resource": "employment-status",
+        },
+        rateHistory: rateHistoryField({ ratePositive: true }),
+      },
+    },
   };
 
   async execute(

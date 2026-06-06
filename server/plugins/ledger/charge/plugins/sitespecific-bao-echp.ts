@@ -8,12 +8,14 @@ import {
   LedgerEntryVerification,
 } from "../types";
 import { registerChargePlugin } from "../registry";
+import type { ChargePluginMetadata } from "../types";
 import { logger } from "../../../../logger";
 import { storage } from "../../../../storage/database";
 import { createUnifiedOptionsStorage } from "../../../../storage/unified-options";
 import { fetchBuildupStatus } from "../../../trust/eligibility/plugins/sitespecific-bao-buildup";
 import {
   baoEchpChargeSettingsSchema,
+  DEFAULT_BAO_ECHP_BREAKPOINTS,
   type BaoEchpChargeSettings,
   type BaoEchpBreakpoint,
 } from "@shared/schema/sitespecific/bao/schema";
@@ -177,14 +179,56 @@ function monthName(year: number, month: number): string {
 }
 
 class BaoEchpChargePlugin extends ChargePlugin {
-  readonly metadata = {
+  readonly metadata: ChargePluginMetadata = {
     id: "sitespecific-bao-echp",
     name: "BAO - Event Center Hours Purchase Charge",
     description:
       "Bills a worker for an Event Center Hours Purchase (ECHP). When an ECHP-type hours entry is saved, charges the worker the price they were quoted, derived from their member-status buildup threshold and the hours worked, using this plugin's policy list and price ladder. Charges the worker (participant) to the configured account.",
     triggers: [TriggerType.HOURS_SAVED],
     defaultScope: "global" as const,
-    settingsSchema: baoEchpChargeSettingsSchema,
+    configSchema: {
+      type: "object",
+      required: ["breakpoints"],
+      properties: {
+        policyIds: {
+          type: "array",
+          title: "Policies",
+          description:
+            "Policies that may purchase ECHP hours. An empty list means no policy can purchase hours.",
+          items: { type: "string" },
+          uniqueItems: true,
+          default: [],
+          "x-options-resource": "policy",
+        },
+        breakpoints: {
+          type: "array",
+          title: "Price Ladder",
+          description:
+            "The first breakpoint (ascending by max hours) whose max-hours is strictly greater than the worker's hours worked supplies the price.",
+          minItems: 1,
+          default: DEFAULT_BAO_ECHP_BREAKPOINTS,
+          "x-widget": "array-table",
+          "x-sort-asc": "maxHoursWorked",
+          "x-reset-to-default": true,
+          items: {
+            type: "object",
+            required: ["maxHoursWorked", "price"],
+            properties: {
+              maxHoursWorked: {
+                type: "number",
+                title: "Max Hours Worked",
+                exclusiveMinimum: 0,
+              },
+              price: {
+                type: "number",
+                title: "Price",
+                minimum: 0,
+              },
+            },
+          },
+        },
+      },
+    },
     requiredComponent: "sitespecific.bao",
   };
 

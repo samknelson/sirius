@@ -2,5 +2,6 @@
 - [New jsonb column auto-leaks via storage reads](jsonb-column-pii-leak.md) — a new column on a core table leaks through every star-select/`.returning()` read; strip it at the storage boundary, type omit alone won't stop the runtime leak.
 - [Charge plugin adjustment math (net-total reconcile)](charge-plugin-net-total-reconcile.md) — edit-driven charge deltas must reconcile against sum(base+adjustments), not the immutable base entry, or repeated edits overcharge.
 - [ECHP quote/billing parity](echp-quote-billing-parity.md) — ECHP eligibility quote and charge reconciliation must price from the same aggregated rule source or worker is quoted one price, billed another.
+- [RJSF custom field onChange](rjsf-custom-field-onchange.md) — field onChange needs `(value, [])` (2nd arg required FieldPathList); widget onChange differs; field id is on `fieldPathId.$id`.
 - [Vite JSX generic transform](vite-jsx-generic-transform.md) — inline `<Component<Type>>` JSX crash-loops the dev server; standalone esbuild passes but Vite rejects it; type the callback prop instead.
 - [Drizzle raw-sql ANY(array) fails in migrations](drizzle-raw-sql-any-array.md) — `= ANY(${jsArray})` in db.execute throws "requires array on right side"; use `IN (${sql.join(...)})`.

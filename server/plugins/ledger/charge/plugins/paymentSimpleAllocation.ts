@@ -9,6 +9,7 @@ import {
   LedgerEntryVerification,
 } from "../types";
 import { registerChargePlugin } from "../registry";
+import type { ChargePluginMetadata } from "../types";
 import { z } from "zod";
 import { logger } from "../../../../logger";
 import { storage } from "../../../../storage";
@@ -40,13 +41,16 @@ interface ExpectedEntry {
 }
 
 class PaymentSimpleAllocationPlugin extends ChargePlugin {
-  readonly metadata = {
+  readonly metadata: ChargePluginMetadata = {
     id: "payment-simple-allocation",
     name: "Payment Simple Allocation",
     description: "Automatically creates ledger entries when payments are saved. Only applies to payments on configured accounts.",
     triggers: [TriggerType.PAYMENT_SAVED],
     defaultScope: "global" as const,
-    settingsSchema: paymentSimpleAllocationSettingsSchema,
+    configSchema: {
+      type: "object",
+      properties: {},
+    },
   };
 
   private computeExpectedEntry(

@@ -9,6 +9,8 @@ import {
   LedgerEntryVerification,
 } from "../types";
 import { registerChargePlugin } from "../registry";
+import type { ChargePluginMetadata } from "../types";
+import { rateHistoryField } from "../config-schema-helpers";
 import { z } from "zod";
 import { logger } from "../../../../logger";
 import { getCurrentEffectiveRate } from "../../../../utils/rateHistory";
@@ -39,13 +41,28 @@ interface ExpectedEntry {
 }
 
 class GbhetLegalHourlyPlugin extends ChargePlugin {
-  readonly metadata = {
+  readonly metadata: ChargePluginMetadata = {
     id: "gbhet-legal-hourly",
     name: "GBHET Legal Hourly",
     description: "Charges a monthly rate for GBHET Legal benefits when there are qualifying hours in a month.",
     triggers: [TriggerType.HOURS_SAVED],
     defaultScope: "global" as const,
-    settingsSchema: gbhetLegalHourlySettingsSchema,
+    configSchema: {
+      type: "object",
+      required: ["rateHistory"],
+      properties: {
+        employmentStatusIds: {
+          type: "array",
+          title: "Employment Statuses",
+          description:
+            "Optional. Restrict charges to workers with these employment statuses. Leave empty to apply to all.",
+          items: { type: "string" },
+          uniqueItems: true,
+          "x-options-resource": "employment-status",
+        },
+        rateHistory: rateHistoryField(),
+      },
+    },
     requiredComponent: "sitespecific.gbhet.legal",
   };
 

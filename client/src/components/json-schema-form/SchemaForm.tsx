@@ -2,13 +2,19 @@ import { useMemo } from "react";
 import { Form as RjsfForm } from "@rjsf/shadcn";
 import { customizeValidator } from "@rjsf/validator-ajv8";
 import type { FormProps, IChangeEvent } from "@rjsf/core";
-import type { RJSFSchema, UiSchema, RegistryWidgetsType } from "@rjsf/utils";
+import type {
+  RJSFSchema,
+  UiSchema,
+  RegistryWidgetsType,
+  RegistryFieldsType,
+} from "@rjsf/utils";
 import type { JsonSchema } from "@shared/json-schema-form";
 import { RemoteOptionsWidget } from "./widgets/RemoteOptionsWidget";
 import { SelfOptionsWidget } from "./widgets/SelfOptionsWidget";
 import { IconWidget } from "./widgets/IconWidget";
 import { ColorWidget } from "./widgets/ColorWidget";
 import { EnumSelectWidget } from "./widgets/EnumSelectWidget";
+import { ArrayTableField } from "./fields/ArrayTableField";
 
 const validator = customizeValidator({
   ajvOptionsOverrides: { $data: true },
@@ -64,7 +70,10 @@ function buildVendorUiSchema(
     const subAny = sub as Record<string, unknown>;
     const existing = (out[name] as UiSchema | undefined) ?? {};
     let widget: string | undefined;
-    if (typeof subAny["x-options-resource"] === "string") {
+    let field: string | undefined;
+    if (subAny["x-widget"] === "array-table") {
+      field = "arrayTable";
+    } else if (typeof subAny["x-options-resource"] === "string") {
       const isArray = (sub as RJSFSchema).type === "array";
       widget = isArray ? "remoteOptionsMulti" : "remoteOptions";
     } else if (subAny["x-options-self"] === true) {
@@ -74,7 +83,9 @@ function buildVendorUiSchema(
     } else if (subAny["x-widget"] === "color") {
       widget = "color";
     }
-    if (widget && !existing["ui:widget"]) {
+    if (field && !existing["ui:field"]) {
+      out[name] = { ...existing, "ui:field": field };
+    } else if (widget && !existing["ui:widget"]) {
       out[name] = { ...existing, "ui:widget": widget };
     }
     if ((sub as RJSFSchema).type === "object") {
@@ -100,6 +111,10 @@ const baseWidgets = {
   icon: IconWidget,
   color: ColorWidget,
 } as unknown as RegistryWidgetsType;
+
+const baseFields = {
+  arrayTable: ArrayTableField,
+} as unknown as RegistryFieldsType;
 
 /**
  * Thin wrapper over `@rjsf/shadcn` Form that wires our AJV validator,
@@ -130,6 +145,7 @@ export function SchemaForm({
       uiSchema={inferred}
       validator={validator}
       widgets={widgets}
+      fields={baseFields}
       liveValidate={false}
       showErrorList={false}
       // Don't pre-pad arrays to satisfy `minItems`. By default rjsf

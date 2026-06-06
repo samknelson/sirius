@@ -19,8 +19,8 @@ export function registerChargePluginKind(): void {
     requiredPolicy: "admin",
     sortEntries: (a, b) => a.id.localeCompare(b.id),
     // Backs POST /api/plugins/charge/:id/validate-config. Delegates to
-    // the plugin's Zod-backed `validateSettings` helper.
-    validateConfig: (plugin, config) => plugin.validateSettings(config),
+    // the plugin's JSON-Schema-backed `validateConfig` helper.
+    validateConfig: (plugin, config) => plugin.validateConfig(config),
   });
   kindRegistered = true;
 }

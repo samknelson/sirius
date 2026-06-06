@@ -92,6 +92,16 @@ export function registerChargePluginRoutes(
         return res.status(400).json({ message: "Employer ID should not be provided for global configurations" });
       }
 
+      // Validate the settings payload against the plugin's JSON Schema
+      // (plus any cross-field rules in its validateConfig override).
+      const settingsCheck = await plugin.validateConfig(configData.settings ?? {});
+      if (!settingsCheck.valid) {
+        return res.status(400).json({
+          message: "Invalid plugin settings",
+          errors: settingsCheck.errors,
+        });
+      }
+
       // Check for duplicate configuration (uniqueness is per plugin + scope +
       // employer + account).
       const existing = await storage.chargePluginConfigs.getByUniqueKey(
@@ -145,6 +155,17 @@ export function registerChargePluginRoutes(
       }
       
       if (updateData.settings !== undefined) {
+        // Validate the new settings against the plugin's JSON Schema.
+        const plugin = chargePluginRegistry.get(existing.pluginId);
+        if (plugin) {
+          const settingsCheck = await plugin.validateConfig(updateData.settings ?? {});
+          if (!settingsCheck.valid) {
+            return res.status(400).json({
+              message: "Invalid plugin settings",
+              errors: settingsCheck.errors,
+            });
+          }
+        }
         updatePayload.settings = updateData.settings;
       }
 

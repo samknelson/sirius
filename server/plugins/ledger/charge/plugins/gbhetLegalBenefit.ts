@@ -9,6 +9,8 @@ import {
   LedgerEntryVerification,
 } from "../types";
 import { registerChargePlugin } from "../registry";
+import type { ChargePluginMetadata } from "../types";
+import { rateHistoryField } from "../config-schema-helpers";
 import { z } from "zod";
 import { logger } from "../../../../logger";
 import { getCurrentEffectiveRate } from "../../../../utils/rateHistory";
@@ -40,13 +42,32 @@ interface ExpectedEntry {
 }
 
 class GbhetLegalBenefitPlugin extends ChargePlugin {
-  readonly metadata = {
+  readonly metadata: ChargePluginMetadata = {
     id: "gbhet-legal-benefit",
     name: "GBHET Legal Benefit",
     description: "Charges a monthly rate for GBHET Legal benefits when a worker has the configured benefit in a given month.",
     triggers: [TriggerType.WMB_SAVED],
     defaultScope: "global" as const,
-    settingsSchema: gbhetLegalBenefitSettingsSchema,
+    configSchema: {
+      type: "object",
+      required: ["benefitId", "rateHistory"],
+      properties: {
+        benefitId: {
+          type: "string",
+          title: "Trust Benefit",
+          format: "uuid",
+          "x-options-resource": "trust-benefit",
+        },
+        billingOffsetMonths: {
+          type: "integer",
+          title: "Billing Offset Months",
+          description:
+            "Number of months to offset the billing date from the benefit month (e.g. -3 bills three months earlier).",
+          default: -3,
+        },
+        rateHistory: rateHistoryField(),
+      },
+    },
     requiredComponent: "sitespecific.gbhet.legal",
   };
 
