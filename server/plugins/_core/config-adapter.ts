@@ -42,19 +42,32 @@ export interface PluginConfigRows {
  * policy/benefit/appliesTo, dispatch jobType) without any kind-specific code.
  * Kinds with no subsidiary (e.g. "dashboard") declare an empty list.
  */
+/** A single fixed dropdown choice: the stored value and its visible label. */
+export interface PluginConfigEnvelopeFieldChoice {
+  value: string;
+  label: string;
+}
+
 /**
- * Describes a remote data source the generic admin UI can use to render a
- * relational envelope field as a dropdown (Select) instead of a free-text
- * input. The UI fetches `endpoint` (expected to return an array of objects),
- * uses `valueKey` for each option's stored value and `labelKey` for its label.
+ * Describes the source of dropdown options the generic admin UI uses to render
+ * a relational envelope field as a dropdown (Select) instead of a free-text
+ * input. Provide EITHER:
+ *
+ * - a remote source (`endpoint` + `valueKey` + `labelKey`): the UI fetches
+ *   `endpoint` (expected to return an array of objects), uses `valueKey` for
+ *   each option's stored value and `labelKey` for its label; or
+ * - a fixed list (`choices`): a static array of value/label pairs, for fields
+ *   backed by a small closed enum (e.g. charge scope = global / employer).
  */
 export interface PluginConfigEnvelopeFieldOptions {
   /** GET endpoint returning an array of option objects (e.g. "/api/ledger/accounts"). */
-  endpoint: string;
+  endpoint?: string;
   /** Property on each option object used as the stored value (e.g. "id"). */
-  valueKey: string;
+  valueKey?: string;
   /** Property on each option object used as the visible label (e.g. "name"). */
-  labelKey: string;
+  labelKey?: string;
+  /** A fixed list of choices, used instead of a remote endpoint. */
+  choices?: PluginConfigEnvelopeFieldChoice[];
 }
 
 export interface PluginConfigEnvelopeField {

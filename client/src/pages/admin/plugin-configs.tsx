@@ -623,29 +623,50 @@ function EnvelopeSelectField({
   onChange: (value: string) => void;
 }) {
   const options = field.options!;
+  const isStatic = Array.isArray(options.choices);
+  // Only hit the endpoint when this field is endpoint-backed (static choices
+  // need no fetch). queryKey still needs a stable value, so fall back to a
+  // dummy key with the query disabled.
   const { data = [], isLoading } = useQuery<Record<string, unknown>[]>({
-    queryKey: [options.endpoint],
+    queryKey: [options.endpoint ?? `__static__${field.name}`],
+    enabled: !isStatic && !!options.endpoint,
   });
 
+  // Normalize both sources to a flat {value,label} list.
+  const items: { value: string; label: string }[] = isStatic
+    ? options.choices!.map((c) => ({ value: c.value, label: c.label }))
+    : data.map((item) => {
+        const itemValue = String(item[options.valueKey!] ?? "");
+        return { value: itemValue, label: String(item[options.labelKey!] ?? itemValue) };
+      });
+
+  // Sentinel for the "clear selection" item — Radix SelectItem forbids an
+  // empty-string value, so optional fields use this and map it back to "".
+  const NONE = "__none__";
+
   return (
-    <Select value={value || undefined} onValueChange={onChange}>
+    <Select
+      value={value || undefined}
+      onValueChange={(v) => onChange(v === NONE ? "" : v)}
+    >
       <SelectTrigger data-testid={`select-envelope-${field.name}`}>
         <SelectValue placeholder={isLoading ? "Loading…" : "Select…"} />
       </SelectTrigger>
       <SelectContent>
-        {data.map((item) => {
-          const itemValue = String(item[options.valueKey] ?? "");
-          const itemLabel = String(item[options.labelKey] ?? itemValue);
-          return (
-            <SelectItem
-              key={itemValue}
-              value={itemValue}
-              data-testid={`option-envelope-${field.name}-${itemValue}`}
-            >
-              {itemLabel}
-            </SelectItem>
-          );
-        })}
+        {!field.required && (
+          <SelectItem value={NONE} data-testid={`option-envelope-${field.name}-none`}>
+            None
+          </SelectItem>
+        )}
+        {items.map((item) => (
+          <SelectItem
+            key={item.value}
+            value={item.value}
+            data-testid={`option-envelope-${field.name}-${item.value}`}
+          >
+            {item.label}
+          </SelectItem>
+        ))}
       </SelectContent>
     </Select>
   );

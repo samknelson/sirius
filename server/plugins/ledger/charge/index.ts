@@ -83,8 +83,30 @@ export function registerChargePluginKind(): void {
       },
     }),
     envelopeFields: [
-      { name: "scope", label: "Scope", type: "string", required: true },
-      { name: "employerId", label: "Employer ID", type: "string" },
+      {
+        name: "scope",
+        label: "Scope",
+        type: "string",
+        required: true,
+        // Render as a dropdown of the fixed scope enum (global / employer).
+        options: {
+          choices: [
+            { value: "global", label: "Global" },
+            { value: "employer", label: "Employer" },
+          ],
+        },
+      },
+      {
+        name: "employerId",
+        label: "Employer ID",
+        type: "string",
+        // Render as a dropdown populated from the active-employer lookup.
+        options: {
+          endpoint: "/api/employers/lookup",
+          valueKey: "id",
+          labelKey: "name",
+        },
+      },
       {
         name: "account",
         label: "Account",
