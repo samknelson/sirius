@@ -62,6 +62,14 @@ export function registerChargePluginKind(): void {
       { name: "employerId", label: "Employer ID", type: "string" },
       { name: "account", label: "Account", type: "string" },
     ],
+    // One config per plugin per scope/employer/account (the legacy table's
+    // unique constraint). The generic route uses this to reject collisions.
+    uniqueKey: (input) => ({
+      pluginId: input.pluginId,
+      scope: input.scope,
+      employerId: input.employerId ?? null,
+      account: input.account ?? null,
+    }),
   });
   kindRegistered = true;
 }

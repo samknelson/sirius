@@ -9,14 +9,11 @@ type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void 
  * Kinds that still own dedicated, authoritative config routes + legacy
  * storage tables and have NOT been cut over to the unified plugin_configs
  * tables yet. The generic routes refuse to operate on these so there is
- * exactly one authoritative config surface per kind. `charge` keeps its
- * `/api/plugins/charge/configs` routes (legacy chargePluginConfigs table);
- * while route-order precedence already lets the legacy GET/POST/DELETE win,
- * the legacy surface uses PUT (not PATCH), so without this guard the generic
- * PATCH/search would be a second, divergent surface for charge. Remove a
- * kind from this set in the same task that cuts it over.
+ * exactly one authoritative config surface per kind. Remove a kind from this
+ * set in the same task that cuts it over. (Charge was cut over in Task #355;
+ * the set is now empty but kept for the remaining legacy kinds' migrations.)
  */
-const LEGACY_OWNED_KINDS = new Set<string>(["charge"]);
+const LEGACY_OWNED_KINDS = new Set<string>([]);
 
 /**
  * Generic plugin configuration CRUD + search endpoints (Task #353 — additive
@@ -74,6 +71,32 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
 
   const hydrate = (adapter: ReturnType<typeof getPluginConfigAdapter>, envelope: any) =>
     adapter?.hydrate ? adapter.hydrate(envelope) : defaultHydrate(envelope);
+
+  /**
+   * Enforce a kind's uniqueness key (if it declares one). Returns true when a
+   * conflicting row exists (excluding `selfId`, the row being updated) and has
+   * already sent a 409; the caller must stop. Returns false to proceed.
+   */
+  async function rejectIfDuplicate(
+    kind: string,
+    adapter: NonNullable<ReturnType<typeof getPluginConfigAdapter>>,
+    config: any,
+    selfId: string | null,
+    res: Response,
+  ): Promise<boolean> {
+    if (!adapter.uniqueKey) return false;
+    const key = adapter.uniqueKey(config);
+    if (!key) return false;
+    const matches = await storage.pluginConfigs.search(kind, key as any);
+    const conflict = matches.find((m) => m.config.id !== selfId);
+    if (conflict) {
+      res.status(409).json({
+        message: "A configuration with this key already exists",
+      });
+      return true;
+    }
+    return false;
+  }
 
   /**
    * Resolve the target plugin from the kind's registry and validate the
@@ -168,6 +191,7 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
         return;
       }
       if (!(await ensureValidPlugin(registration, parsed.data.pluginId, parsed.data.data, res))) return;
+      if (await rejectIfDuplicate(kind, adapter, parsed.data, null, res)) return;
       const { base, subsidiary } = adapter.toRows(parsed.data);
       const created = await runInTransaction(async () => {
         const row = await storage.pluginConfigs.create(base as any);
@@ -221,6 +245,7 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
         return;
       }
       if (!(await ensureValidPlugin(registration, parsed.data.pluginId, parsed.data.data, res))) return;
+      if (await rejectIfDuplicate(kind, adapter, parsed.data, req.params.id, res)) return;
       const { base, subsidiary } = adapter.toRows(parsed.data);
       await runInTransaction(async () => {
         await storage.pluginConfigs.update(req.params.id, base as any);

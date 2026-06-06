@@ -7,7 +7,6 @@ import {
   employers, 
   trustWmb, 
   trustBenefits,
-  chargePluginConfigs 
 } from '@shared/schema';
 import { eq, sql, and, inArray } from 'drizzle-orm';
 
@@ -96,21 +95,15 @@ export class ReportGbhetLegalCompliance extends WizardReport {
       toMonth = parseInt(monthStr, 10);
     }
 
+    // Charge configs now live in the unified plugin_configs tables; fetch the
+    // enabled 'gbhet-legal-benefit' configs via the storage layer before the
+    // read-only query block and close over the result.
+    const allPluginConfigs = await storage.chargePluginConfigs.getEnabledByPluginId('gbhet-legal-benefit');
+    if (allPluginConfigs.length === 0) {
+      return [];
+    }
+
     return storage.readOnly.query(async (db) => {
-      const allPluginConfigs = await db
-        .select()
-        .from(chargePluginConfigs)
-        .where(
-          and(
-            eq(chargePluginConfigs.pluginId, 'gbhet-legal-benefit'),
-            eq(chargePluginConfigs.enabled, true)
-          )
-        );
-
-      if (allPluginConfigs.length === 0) {
-        return [];
-      }
-
       const globalConfig = allPluginConfigs.find(c => c.scope === 'global');
       const employerConfigs = allPluginConfigs.filter(c => c.scope === 'employer' && c.employerId);
 

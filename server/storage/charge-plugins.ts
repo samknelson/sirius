@@ -1,65 +1,126 @@
-import { createNoopValidator } from './utils/validation';
 import { getClient } from './transaction-context';
-import { chargePluginConfigs, type ChargePluginConfig, type InsertChargePluginConfig } from "@shared/schema";
-import { eq, and, isNull } from "drizzle-orm";
+import {
+  pluginConfigs,
+  pluginConfigsCharge,
+  type ChargePluginConfig,
+} from "@shared/schema";
+import { eq, and, isNull, type SQL } from "drizzle-orm";
 
 /**
- * Stub validator - add validation logic here when needed
+ * Charge plugin configuration storage (Task #355).
+ *
+ * Charge no longer owns a dedicated table. These reads compose the unified
+ * `plugin_configs` (plugin_type = 'charge') base row with its
+ * `plugin_configs_charge` subsidiary (scope / employer / account) and map the
+ * pair into the resolved {@link ChargePluginConfig} shape callers expect (the
+ * base `data` blob is surfaced as `settings`). Writes go through the generic
+ * `storage.pluginConfigs` CRUD surface (see server/modules/plugins-config.ts);
+ * this namespace is read/resolution-only.
  */
-export const validate = createNoopValidator();
-
 export interface ChargePluginConfigStorage {
   getAll(): Promise<ChargePluginConfig[]>;
   get(id: string): Promise<ChargePluginConfig | undefined>;
   getByPluginId(pluginId: string): Promise<ChargePluginConfig[]>;
+  getEnabledByPluginId(pluginId: string): Promise<ChargePluginConfig[]>;
   getFirstEnabledByPluginId(pluginId: string): Promise<ChargePluginConfig | undefined>;
   getByPluginIdAndScope(pluginId: string, scope: string, employerId?: string): Promise<ChargePluginConfig | undefined>;
-  getByUniqueKey(pluginId: string, scope: string, employerId: string | null, account: string | null): Promise<ChargePluginConfig | undefined>;
   getEnabledForPlugin(pluginId: string, employerId: string | null): Promise<ChargePluginConfig[]>;
-  create(config: InsertChargePluginConfig): Promise<ChargePluginConfig>;
-  update(id: string, config: Partial<InsertChargePluginConfig>): Promise<ChargePluginConfig | undefined>;
-  delete(id: string): Promise<boolean>;
+}
+
+type BaseRow = typeof pluginConfigs.$inferSelect;
+type ChargeRow = typeof pluginConfigsCharge.$inferSelect;
+
+/** Map a joined base + subsidiary row pair into the resolved charge config. */
+function mapRow(config: BaseRow, subsidiary: ChargeRow): ChargePluginConfig {
+  return {
+    id: config.id,
+    pluginId: config.pluginId,
+    name: config.name,
+    enabled: config.enabled,
+    scope: subsidiary.scope,
+    employerId: subsidiary.employerId,
+    account: subsidiary.account,
+    settings: config.data,
+    createdAt: config.createdAt,
+    updatedAt: config.updatedAt,
+  };
+}
+
+/**
+ * Employer configs override global configs that target the SAME account (a
+ * null account is its own bucket). Pure function so the override semantics —
+ * the highest-risk, billing-critical behavior — can be unit-tested without a
+ * database. Returns the surviving globals followed by all employer configs.
+ */
+export function mergeEnabledChargeConfigs(
+  globalConfigs: ChargePluginConfig[],
+  employerConfigs: ChargePluginConfig[],
+): ChargePluginConfig[] {
+  if (employerConfigs.length === 0) {
+    return globalConfigs;
+  }
+  const overriddenAccounts = new Set(employerConfigs.map((c) => c.account ?? "__null__"));
+  const remainingGlobals = globalConfigs.filter(
+    (g) => !overriddenAccounts.has(g.account ?? "__null__"),
+  );
+  return [...remainingGlobals, ...employerConfigs];
 }
 
 export function createChargePluginConfigStorage(): ChargePluginConfigStorage {
+  /** Run the standard charge base⨝subsidiary select with extra conditions. */
+  async function select(conditions: SQL[], ordered: boolean): Promise<ChargePluginConfig[]> {
+    const client = getClient();
+    const query = client
+      .select({ config: pluginConfigs, subsidiary: pluginConfigsCharge })
+      .from(pluginConfigs)
+      .innerJoin(pluginConfigsCharge, eq(pluginConfigsCharge.id, pluginConfigs.id))
+      .where(and(eq(pluginConfigs.pluginType, "charge"), ...conditions));
+    // Deterministic selection: account ASC puts NULLs last in Postgres, then
+    // id for a stable tiebreak. Matches the legacy ordering exactly.
+    const rows = ordered
+      ? await query.orderBy(pluginConfigsCharge.account, pluginConfigs.id)
+      : await query;
+    return rows.map((r) => mapRow(r.config, r.subsidiary));
+  }
+
   return {
     async getAll(): Promise<ChargePluginConfig[]> {
-      const client = getClient();
-      const allConfigs = await client.select().from(chargePluginConfigs);
-      return allConfigs.sort((a, b) => a.pluginId.localeCompare(b.pluginId));
+      const all = await select([], false);
+      return all.sort((a, b) => a.pluginId.localeCompare(b.pluginId));
     },
 
     async get(id: string): Promise<ChargePluginConfig | undefined> {
-      const client = getClient();
-      const [config] = await client.select().from(chargePluginConfigs).where(eq(chargePluginConfigs.id, id));
+      const [config] = await select([eq(pluginConfigs.id, id)], false);
       return config || undefined;
     },
 
     async getByPluginId(pluginId: string): Promise<ChargePluginConfig[]> {
-      const client = getClient();
-      const configs = await client.select().from(chargePluginConfigs).where(eq(chargePluginConfigs.pluginId, pluginId));
-      return configs;
+      return select([eq(pluginConfigs.pluginId, pluginId)], false);
+    },
+
+    async getEnabledByPluginId(pluginId: string): Promise<ChargePluginConfig[]> {
+      return select(
+        [eq(pluginConfigs.pluginId, pluginId), eq(pluginConfigs.enabled, true)],
+        false,
+      );
     },
 
     async getFirstEnabledByPluginId(pluginId: string): Promise<ChargePluginConfig | undefined> {
-      const client = getClient();
-      // Deterministic selection: prefer a config that has an account set
-      // (account ASC puts NULLs last in Postgres), then by id for a stable
-      // tiebreak. With per-account configs there can be multiple enabled rows.
-      const [config] = await client
-        .select()
-        .from(chargePluginConfigs)
-        .where(and(eq(chargePluginConfigs.pluginId, pluginId), eq(chargePluginConfigs.enabled, true)))
-        .orderBy(chargePluginConfigs.account, chargePluginConfigs.id)
-        .limit(1);
+      const [config] = await select(
+        [eq(pluginConfigs.pluginId, pluginId), eq(pluginConfigs.enabled, true)],
+        true,
+      );
       return config || undefined;
     },
 
-    async getByPluginIdAndScope(pluginId: string, scope: string, employerId?: string): Promise<ChargePluginConfig | undefined> {
-      const client = getClient();
-      const conditions = [
-        eq(chargePluginConfigs.pluginId, pluginId),
-        eq(chargePluginConfigs.scope, scope),
+    async getByPluginIdAndScope(
+      pluginId: string,
+      scope: string,
+      employerId?: string,
+    ): Promise<ChargePluginConfig | undefined> {
+      const conditions: SQL[] = [
+        eq(pluginConfigs.pluginId, pluginId),
+        eq(pluginConfigsCharge.scope, scope),
       ];
 
       // Constrain the employer dimension by scope so a global/batch lookup
@@ -68,120 +129,47 @@ export function createChargePluginConfigStorage(): ChargePluginConfigStorage {
       if (scope === "employer") {
         conditions.push(
           employerId
-            ? eq(chargePluginConfigs.employerId, employerId)
-            : isNull(chargePluginConfigs.employerId),
+            ? eq(pluginConfigsCharge.employerId, employerId)
+            : isNull(pluginConfigsCharge.employerId),
         );
       } else {
-        conditions.push(isNull(chargePluginConfigs.employerId));
+        conditions.push(isNull(pluginConfigsCharge.employerId));
       }
 
-      // Deterministic selection when multiple per-account rows exist: prefer a
-      // config with an account set (account ASC = NULLs last), then id.
-      const [config] = await client
-        .select()
-        .from(chargePluginConfigs)
-        .where(and(...conditions))
-        .orderBy(chargePluginConfigs.account, chargePluginConfigs.id)
-        .limit(1);
-
+      const [config] = await select(conditions, true);
       return config || undefined;
     },
 
-    async getByUniqueKey(
+    async getEnabledForPlugin(
       pluginId: string,
-      scope: string,
       employerId: string | null,
-      account: string | null,
-    ): Promise<ChargePluginConfig | undefined> {
-      const client = getClient();
-      const conditions = [
-        eq(chargePluginConfigs.pluginId, pluginId),
-        eq(chargePluginConfigs.scope, scope),
-        employerId ? eq(chargePluginConfigs.employerId, employerId) : isNull(chargePluginConfigs.employerId),
-        account ? eq(chargePluginConfigs.account, account) : isNull(chargePluginConfigs.account),
+    ): Promise<ChargePluginConfig[]> {
+      const baseConditions: SQL[] = [
+        eq(pluginConfigs.pluginId, pluginId),
+        eq(pluginConfigs.enabled, true),
       ];
 
-      const [config] = await client
-        .select()
-        .from(chargePluginConfigs)
-        .where(and(...conditions));
-
-      return config || undefined;
-    },
-
-    async getEnabledForPlugin(pluginId: string, employerId: string | null): Promise<ChargePluginConfig[]> {
-      const client = getClient();
-      const baseConditions = [
-        eq(chargePluginConfigs.pluginId, pluginId),
-        eq(chargePluginConfigs.enabled, true),
-      ];
-
-      // Get all enabled global configs (one per account).
-      const globalConfigs = await client
-        .select()
-        .from(chargePluginConfigs)
-        .where(
-          and(
-            ...baseConditions,
-            eq(chargePluginConfigs.scope, "global")
-          )
-        );
+      // All enabled global configs (one per account).
+      const globalConfigs = await select(
+        [...baseConditions, eq(pluginConfigsCharge.scope, "global")],
+        false,
+      );
 
       if (!employerId) {
         return globalConfigs;
       }
 
-      // Get all enabled employer-specific configs for this employer.
-      const employerConfigs = await client
-        .select()
-        .from(chargePluginConfigs)
-        .where(
-          and(
-            ...baseConditions,
-            eq(chargePluginConfigs.scope, "employer"),
-            eq(chargePluginConfigs.employerId, employerId)
-          )
-        );
-
-      if (employerConfigs.length === 0) {
-        return globalConfigs;
-      }
-
-      // Employer configs override global configs that target the same account.
-      const overriddenAccounts = new Set(employerConfigs.map((c) => c.account ?? "__null__"));
-      const remainingGlobals = globalConfigs.filter(
-        (g) => !overriddenAccounts.has(g.account ?? "__null__")
+      // All enabled employer-specific configs for this employer.
+      const employerConfigs = await select(
+        [
+          ...baseConditions,
+          eq(pluginConfigsCharge.scope, "employer"),
+          eq(pluginConfigsCharge.employerId, employerId),
+        ],
+        false,
       );
 
-      return [...remainingGlobals, ...employerConfigs];
+      return mergeEnabledChargeConfigs(globalConfigs, employerConfigs);
     },
-
-    async create(insertConfig: InsertChargePluginConfig): Promise<ChargePluginConfig> {
-      validate.validateOrThrow(insertConfig);
-      const client = getClient();
-      const [config] = await client
-        .insert(chargePluginConfigs)
-        .values(insertConfig)
-        .returning();
-      return config;
-    },
-
-    async update(id: string, configUpdate: Partial<InsertChargePluginConfig>): Promise<ChargePluginConfig | undefined> {
-      validate.validateOrThrow(id);
-      const client = getClient();
-      const [config] = await client
-        .update(chargePluginConfigs)
-        .set(configUpdate)
-        .where(eq(chargePluginConfigs.id, id))
-        .returning();
-      
-      return config || undefined;
-    },
-
-    async delete(id: string): Promise<boolean> {
-      const client = getClient();
-      const result = await client.delete(chargePluginConfigs).where(eq(chargePluginConfigs.id, id)).returning();
-      return result.length > 0;
-    }
   };
 }

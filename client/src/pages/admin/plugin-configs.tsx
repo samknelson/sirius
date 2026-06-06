@@ -64,12 +64,13 @@ import { SchemaForm, sortArrayTableSettings } from "@/components/json-schema-for
  * of truth until then.
  */
 
-// Kinds the unified generic config routes actually serve. `charge` is
-// intentionally excluded: it is still legacy-owned (see LEGACY_OWNED_KINDS in
-// server/modules/plugins-config.ts), so its generic routes 404. The remaining
-// kinds exercise the full surface — `trust-eligibility` / `dispatch-eligibility`
-// have relational envelope fields, `dashboard` has none.
+// Kinds the unified generic config routes actually serve. `charge` was cut
+// over to the unified plugin_configs tables in Task #355 and is served here via
+// the "Charge Plugins" nav entry (/admin/plugin-configs/charge). The
+// relational kinds (`charge`, `trust-eligibility`, `dispatch-eligibility`)
+// carry envelope fields; `dashboard` has none.
 const ALLOWED_KINDS: ArrayManifestPluginKind[] = [
+  "charge",
   "dashboard",
   "dispatch-eligibility",
   "trust-eligibility",

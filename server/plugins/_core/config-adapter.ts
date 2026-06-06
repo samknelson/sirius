@@ -73,6 +73,14 @@ export interface PluginConfigAdapter<TConfig = any, TSearch = any> {
    * for kinds with no subsidiary.
    */
   envelopeFields?: PluginConfigEnvelopeField[];
+  /**
+   * Optional uniqueness key. When present, the generic create/update routes
+   * reject a config whose key collides with an existing row (excluding the row
+   * being updated). The returned object is a {@link search} filter that selects
+   * exactly the conflicting rows (e.g. charge's `{ pluginId, scope, employerId,
+   * account }` 4-tuple). Return `null` to skip the check for a given input.
+   */
+  uniqueKey?(input: TConfig): Record<string, unknown> | null;
 }
 
 /** Reusable schema shape for the base columns every flat config carries. */

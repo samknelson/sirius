@@ -21,6 +21,8 @@ import "./core/1012_employer_sirius_id_varchar";
 import "./core/1013_charge_plugin_account_name_states";
 import "./core/1014_drop_charge_plugin_states";
 import "./core/1015_create_plugin_configs";
+import "./core/1016_backfill_charge_plugin_configs";
+import "./core/1017_drop_charge_plugin_configs";
 
 // Per-component migrations — each registered via
 // `registerComponentMigration(componentId, migration)`. Tracked by the

@@ -1701,34 +1701,26 @@ export const employerMonthlyPluginConfigSchema = z.record(
 export type EmployerMonthlyPluginConfig = z.infer<typeof employerMonthlyPluginConfigSchema>;
 
 // Charge Plugin Configs
-export const chargePluginConfigs = pgTable("charge_plugin_configs", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  pluginId: text("plugin_id").notNull(), // e.g., "hour-fixed", "payment-percentage"
-  name: text("name"), // optional descriptive name for this configuration
-  enabled: boolean("enabled").default(false).notNull(),
-  scope: varchar("scope").notNull(), // 'global' or 'employer'
-  employerId: varchar("employer_id").references(() => employers.id, { onDelete: 'cascade' }),
-  account: varchar("account").references(() => ledgerAccounts.id, { onDelete: 'set null' }), // ledger account this config writes to / applies to
-  settings: jsonb("settings").default('{}'),
-  createdAt: timestamp("created_at").default(sql`now()`).notNull(),
-  updatedAt: timestamp("updated_at").default(sql`now()`).notNull(),
-}, (table) => ({
-  // Unique constraint: one config per plugin per scope/employer per account
-  uniquePluginScope: unique().on(table.pluginId, table.scope, table.employerId, table.account),
-}));
-
-export const insertChargePluginConfigSchema = createInsertSchema(chargePluginConfigs)
-  .omit({
-    id: true,
-    createdAt: true,
-    updatedAt: true,
-  })
-  .extend({
-    settings: z.unknown().optional().default({}),
-  });
-
-export type InsertChargePluginConfig = z.infer<typeof insertChargePluginConfigSchema>;
-export type ChargePluginConfig = typeof chargePluginConfigs.$inferSelect;
+//
+// Charge no longer owns a dedicated table (Task #355). Charge configs live in
+// the unified `plugin_configs` (plugin_type = 'charge') base table plus the
+// `plugin_configs_charge` subsidiary (scope / employer / account). This type is
+// the resolved, composed shape every charge caller consumes: base columns with
+// the base `data` blob surfaced as `settings`, joined with the subsidiary's
+// relational dimensions. The charge storage namespace maps the two rows into
+// this shape so callers (executor, crons, wizards) keep working unchanged.
+export type ChargePluginConfig = {
+  id: string;
+  pluginId: string;
+  name: string | null;
+  enabled: boolean;
+  scope: string;
+  employerId: string | null;
+  account: string | null;
+  settings: unknown;
+  createdAt: Date;
+  updatedAt: Date;
+};
 
 // ---------------------------------------------------------------------------
 // Unified plugin configuration storage (Task #353 — additive foundation)

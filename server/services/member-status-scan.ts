@@ -49,12 +49,11 @@ async function getIndustryId(): Promise<string | null> {
 }
 
 async function getDuesAccountId(): Promise<string | null> {
-  const client = getClient();
-  const result = await client.execute(sql`
-    SELECT settings FROM charge_plugin_configs WHERE plugin_id = 'btu-dues-allocation' AND enabled = true LIMIT 1
-  `);
-  if (result.rows.length === 0) return null;
-  const settings = (result.rows[0] as any).settings as { accountIds?: string[] } | null;
+  // Charge configs now live in the unified plugin_configs tables; resolve the
+  // first enabled 'btu-dues-allocation' config via the storage layer.
+  const configs = await storage.chargePluginConfigs.getEnabledByPluginId('btu-dues-allocation');
+  if (configs.length === 0) return null;
+  const settings = configs[0].settings as { accountIds?: string[] } | null;
   return settings?.accountIds?.[0] || null;
 }
 

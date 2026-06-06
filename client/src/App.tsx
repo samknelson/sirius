@@ -277,7 +277,6 @@ const StripeTestPage = lazy(() => import("@/pages/config/ledger/stripe/test"));
 const StripeSettingsPage = lazy(() => import("@/pages/config/ledger/stripe/settings"));
 const PaymentTypesPage = lazy(() => import("@/pages/config/ledger/stripe/payment-types"));
 const LedgerPaymentTypesPage = lazy(() => import("@/pages/config/ledger-payment-types"));
-const ChargePluginsListPage = lazy(() => import("@/pages/config/ledger/charge-plugins-list"));
 // Hidden, nav-less generic plugin-config admin (Task #353 foundation). Not in
 // any navigation registry; reachable only via this route for verification.
 const GenericPluginConfigsPage = lazy(() => import("@/pages/admin/plugin-configs"));
@@ -2949,16 +2948,6 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <LedgerPaymentTypesPage />
-            </ConfigurationLayout>
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/config/ledger/charge-plugins">
-        <ProtectedRoute permission="admin" component="ledger">
-          <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <ChargePluginsListPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
