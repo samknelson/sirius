@@ -212,7 +212,6 @@ const DispatchJobTypesPage = lazy(() => import("@/pages/config/dispatch-job-type
 const DispatchJobTypeViewPage = lazy(() => import("@/pages/config/dispatch-job-type-view"));
 const DispatchJobTypeEditPage = lazy(() => import("@/pages/config/dispatch-job-type-edit"));
 const DispatchJobTypeDeletePage = lazy(() => import("@/pages/config/dispatch-job-type-delete"));
-const DispatchJobTypePluginsPage = lazy(() => import("@/pages/config/dispatch-job-type-plugins"));
 const DispatchJobTypeNotificationsPage = lazy(() => import("@/pages/config/dispatch-job-type-notifications"));
 const DispatchDncConfigPage = lazy(() => import("@/pages/config/dispatch-dnc"));
 const DispatchJobTypeRunSettingsPage = lazy(() => import("@/pages/config/dispatch-job-type-run-settings"));
@@ -2273,14 +2272,6 @@ function Router() {
         <ProtectedRoute tabId="edit" entityType="dispatch_job_type">
           <AuthenticatedLayout>
             <DispatchJobTypeEditPage />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/config/dispatch-job-type/:id/plugins">
-        <ProtectedRoute tabId="plugins" entityType="dispatch_job_type">
-          <AuthenticatedLayout>
-            <DispatchJobTypePluginsPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
