@@ -5,8 +5,8 @@ import { storage } from "../../../storage";
 import { createUnifiedOptionsStorage } from "../../../storage/unified-options";
 import { fetchBuildupStatus } from "../../../plugins/trust/eligibility/plugins/sitespecific-bao-buildup";
 import {
-  loadEchpPricingRules,
-  matchingEchpRules,
+  loadEchpSettings,
+  isEchpEnabledForPolicy,
   resolveEchpQuote,
 } from "../../../plugins/ledger/charge/plugins/sitespecific-bao-echp";
 
@@ -130,9 +130,9 @@ async function evaluateEchpEligibility(workerId: string, asOf: AsOf): Promise<Ec
 
   // 2b. ECHP must be enabled and priced for the worker's policy. Pricing is
   //     owned by the ECHP charge plugin: a policy is enabled only when it
-  //     appears in at least one pricing rule. No hardcoded fallback.
-  const echpRules = await loadEchpPricingRules();
-  if (matchingEchpRules(echpRules, election.policyId).length === 0) {
+  //     appears in the policy list. No hardcoded fallback.
+  const echpSettings = await loadEchpSettings();
+  if (!isEchpEnabledForPolicy(echpSettings, election.policyId)) {
     return fail(
       "denied",
       "Event Center Hours Purchasing is not available for your policy. Please contact the office for assistance.",
@@ -227,10 +227,10 @@ async function evaluateEchpEligibility(workerId: string, asOf: AsOf): Promise<Ec
   const threshold = buildup.threshold;
   const hoursWorked = buildup.currentBreakFirstHrs;
   const hoursToPurchase = Math.max(0, threshold - hoursWorked);
-  // Pricing is owned by the ECHP charge plugin. When the policy appears in more
-  // than one rule, `prices` lists every matching price and the LOWEST is billed.
-  const quote = resolveEchpQuote(echpRules, election.policyId, hoursWorked);
-  const price = quote.billable;
+  // Pricing is owned by the ECHP charge plugin: the single price ladder yields
+  // exactly one price for the policy.
+  const quote = resolveEchpQuote(echpSettings, election.policyId, hoursWorked);
+  const price = quote.price;
 
   return {
     eligible: true,
@@ -242,7 +242,6 @@ async function evaluateEchpEligibility(workerId: string, asOf: AsOf): Promise<Ec
       threshold,
       hoursToPurchase,
       price,
-      prices: quote.prices,
     },
     context: {
       echpEmployerId: echpEmployer.id,

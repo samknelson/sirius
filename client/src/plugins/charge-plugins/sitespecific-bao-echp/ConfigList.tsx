@@ -29,7 +29,8 @@ interface ChargePluginConfig {
   employerId: string | null;
   settings: {
     accountId?: string;
-    rules?: { policyIds: string[]; breakpoints: unknown[] }[];
+    policyIds?: string[];
+    breakpoints?: unknown[];
   };
 }
 
@@ -93,15 +94,9 @@ export default function BaoEchpConfigList({ pluginId }: ChargePluginConfigProps)
 
   const globalConfig = configs.find(c => c.scope === "global");
 
-  const ruleCount = (config: ChargePluginConfig) => config.settings.rules?.length ?? 0;
+  const breakpointCount = (config: ChargePluginConfig) => config.settings.breakpoints?.length ?? 0;
 
-  const enabledPolicyCount = (config: ChargePluginConfig) => {
-    const ids = new Set<string>();
-    for (const rule of config.settings.rules ?? []) {
-      for (const id of rule.policyIds ?? []) ids.add(id);
-    }
-    return ids.size;
-  };
+  const policyCount = (config: ChargePluginConfig) => config.settings.policyIds?.length ?? 0;
 
   const getAccountName = (accountId?: string) => {
     if (!accountId) return "Not set";
@@ -162,8 +157,8 @@ export default function BaoEchpConfigList({ pluginId }: ChargePluginConfigProps)
                   </div>
                   <div className="mt-2 space-y-1 text-sm text-muted-foreground">
                     <p data-testid="text-config-account"><strong>Account:</strong> {getAccountName(globalConfig.settings.accountId)}</p>
-                    <p data-testid="text-config-rules">
-                      <strong>Pricing rules:</strong> {ruleCount(globalConfig)} ({enabledPolicyCount(globalConfig)} {enabledPolicyCount(globalConfig) === 1 ? "policy" : "policies"} enabled)
+                    <p data-testid="text-config-pricing">
+                      <strong>Pricing:</strong> {policyCount(globalConfig)} {policyCount(globalConfig) === 1 ? "policy" : "policies"} enabled, {breakpointCount(globalConfig)} {breakpointCount(globalConfig) === 1 ? "breakpoint" : "breakpoints"}
                     </p>
                   </div>
                 </div>

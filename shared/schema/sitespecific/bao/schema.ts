@@ -175,15 +175,14 @@ export type BaoBeneficiaryList = z.infer<typeof baoBeneficiaryListSchema>;
  * Event Center Hours Purchase (ECHP) pricing — owned by the charge plugin.
  *
  * Pricing lives in the `sitespecific-bao-echp` charge plugin's configuration
- * settings (a single global config). The settings hold a LIST of pricing rules.
- * Each rule pairs a set of access-policy ids with a ladder of breakpoints. A
- * worker's policy is "enabled" for ECHP when it appears in at least one rule.
+ * settings (a single global config). The settings hold a flat list of
+ * access-policy ids plus a single price ladder of breakpoints. A worker's policy
+ * is "enabled" for ECHP when it appears in the policy list.
  *
- * The price a worker pays is determined by the rule's ladder of breakpoints: the
- * first breakpoint (ascending by `maxHoursWorked`) whose `maxHoursWorked` is
- * strictly greater than the worker's hours worked supplies the price. When a
- * policy appears in more than one rule, every matching price is shown on the
- * quote page and the LOWEST is billed.
+ * The price a worker pays is determined by the ladder of breakpoints: the first
+ * breakpoint (ascending by `maxHoursWorked`) whose `maxHoursWorked` is strictly
+ * greater than the worker's hours worked supplies the price. There is exactly
+ * one price — no per-policy ladders and no lowest-of selection.
  */
 export const baoEchpBreakpointSchema = z.object({
   /** Applies when hours worked is strictly less than this value. */
@@ -193,31 +192,25 @@ export const baoEchpBreakpointSchema = z.object({
 });
 
 /**
- * A single ECHP pricing rule: the policies it applies to and the price ladder
- * those policies use. A policy may legitimately appear in more than one rule.
- */
-export const baoEchpPricingRuleSchema = z.object({
-  policyIds: z.array(z.string()).min(1, "Select at least one policy"),
-  breakpoints: z.array(baoEchpBreakpointSchema).min(1, "Add at least one breakpoint"),
-});
-
-/**
- * The charge plugin's settings: the ledger account ECHP charges post to plus the
- * list of pricing rules. An empty rule list means no policy can purchase hours.
+ * The charge plugin's settings: the ledger account ECHP charges post to, the
+ * flat list of policies that may purchase hours, and the single price ladder.
+ * An empty policy list means no policy can purchase hours.
  */
 export const baoEchpChargeSettingsSchema = z.object({
   accountId: z.string().uuid("Account ID must be a valid UUID"),
-  rules: z.array(baoEchpPricingRuleSchema).default([]),
+  policyIds: z.array(z.string()).default([]),
+  breakpoints: z
+    .array(baoEchpBreakpointSchema)
+    .min(1, "Add at least one breakpoint"),
 });
 
 export type BaoEchpBreakpoint = z.infer<typeof baoEchpBreakpointSchema>;
-export type BaoEchpPricingRule = z.infer<typeof baoEchpPricingRuleSchema>;
 export type BaoEchpChargeSettings = z.infer<typeof baoEchpChargeSettingsSchema>;
 
 /**
- * Default ECHP pricing ladder used only to pre-fill a new pricing rule in the
- * configuration form. It is NOT a runtime fallback: a policy not present in any
- * rule denies purchasing rather than silently applying these.
+ * Default ECHP pricing ladder used only to pre-fill the price ladder in the
+ * configuration form. It is NOT a runtime fallback: a policy not present in the
+ * policy list denies purchasing rather than silently applying these.
  */
 export const DEFAULT_BAO_ECHP_BREAKPOINTS: BaoEchpBreakpoint[] = [
   { maxHoursWorked: 40, price: 750 },

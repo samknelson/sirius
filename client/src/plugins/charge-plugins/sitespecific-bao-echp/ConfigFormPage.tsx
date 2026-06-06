@@ -9,7 +9,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
@@ -52,7 +51,8 @@ interface ChargePluginConfig {
   employerId: string | null;
   settings: {
     accountId?: string;
-    rules?: FormData["rules"];
+    policyIds?: string[];
+    breakpoints?: FormData["breakpoints"];
   };
 }
 
@@ -129,16 +129,10 @@ function PolicyMultiSelect({
   );
 }
 
-function BreakpointEditor({
-  control,
-  ruleIndex,
-}: {
-  control: Control<FormData>;
-  ruleIndex: number;
-}) {
+function BreakpointEditor({ control }: { control: Control<FormData> }) {
   const { fields, append, remove, replace } = useFieldArray({
     control,
-    name: `rules.${ruleIndex}.breakpoints`,
+    name: "breakpoints",
   });
 
   return (
@@ -151,7 +145,7 @@ function BreakpointEditor({
             variant="outline"
             size="sm"
             onClick={() => replace(DEFAULT_BAO_ECHP_BREAKPOINTS)}
-            data-testid={`button-reset-breakpoints-${ruleIndex}`}
+            data-testid="button-reset-breakpoints"
           >
             <RotateCcw className="mr-2 h-3.5 w-3.5" />
             Reset to defaults
@@ -161,7 +155,7 @@ function BreakpointEditor({
             variant="outline"
             size="sm"
             onClick={() => append({ maxHoursWorked: 0, price: 0 })}
-            data-testid={`button-add-breakpoint-${ruleIndex}`}
+            data-testid="button-add-breakpoint"
           >
             <Plus className="mr-2 h-3.5 w-3.5" />
             Add breakpoint
@@ -181,7 +175,7 @@ function BreakpointEditor({
         <div key={bp.id} className="grid grid-cols-[1fr_1fr_auto] gap-2 items-start">
           <FormField
             control={control}
-            name={`rules.${ruleIndex}.breakpoints.${bpIndex}.maxHoursWorked`}
+            name={`breakpoints.${bpIndex}.maxHoursWorked`}
             render={({ field }) => (
               <FormItem>
                 <FormControl>
@@ -190,7 +184,7 @@ function BreakpointEditor({
                     step="any"
                     value={field.value ?? ""}
                     onChange={(e) => field.onChange(e.target.value === "" ? undefined : Number(e.target.value))}
-                    data-testid={`input-breakpoint-hours-${ruleIndex}-${bpIndex}`}
+                    data-testid={`input-breakpoint-hours-${bpIndex}`}
                   />
                 </FormControl>
                 <FormMessage />
@@ -199,7 +193,7 @@ function BreakpointEditor({
           />
           <FormField
             control={control}
-            name={`rules.${ruleIndex}.breakpoints.${bpIndex}.price`}
+            name={`breakpoints.${bpIndex}.price`}
             render={({ field }) => (
               <FormItem>
                 <FormControl>
@@ -208,7 +202,7 @@ function BreakpointEditor({
                     step="any"
                     value={field.value ?? ""}
                     onChange={(e) => field.onChange(e.target.value === "" ? undefined : Number(e.target.value))}
-                    data-testid={`input-breakpoint-price-${ruleIndex}-${bpIndex}`}
+                    data-testid={`input-breakpoint-price-${bpIndex}`}
                   />
                 </FormControl>
                 <FormMessage />
@@ -220,7 +214,7 @@ function BreakpointEditor({
             variant="ghost"
             size="icon"
             onClick={() => remove(bpIndex)}
-            data-testid={`button-remove-breakpoint-${ruleIndex}-${bpIndex}`}
+            data-testid={`button-remove-breakpoint-${bpIndex}`}
           >
             <Trash2 className="h-4 w-4" />
           </Button>
@@ -261,13 +255,9 @@ export default function BaoEchpConfigFormPage() {
     defaultValues: {
       accountId: "",
       enabled: false,
-      rules: [],
+      policyIds: [],
+      breakpoints: DEFAULT_BAO_ECHP_BREAKPOINTS,
     },
-  });
-
-  const { fields: ruleFields, append: appendRule, remove: removeRule } = useFieldArray({
-    control: form.control,
-    name: "rules",
   });
 
   useEffect(() => {
@@ -275,14 +265,19 @@ export default function BaoEchpConfigFormPage() {
       form.reset({
         accountId: existingConfig.settings?.accountId || "",
         enabled: existingConfig.enabled,
-        rules: existingConfig.settings?.rules ?? [],
+        policyIds: existingConfig.settings?.policyIds ?? [],
+        breakpoints: existingConfig.settings?.breakpoints ?? DEFAULT_BAO_ECHP_BREAKPOINTS,
       });
     }
   }, [isEditMode, existingConfig, form]);
 
   const saveMutation = useMutation({
     mutationFn: async (data: FormData) => {
-      const settings = { accountId: data.accountId, rules: data.rules };
+      const settings = {
+        accountId: data.accountId,
+        policyIds: data.policyIds,
+        breakpoints: data.breakpoints,
+      };
       if (isEditMode) {
         return apiRequest("PUT", `/api/plugins/charge/configs/${configId}`, {
           enabled: data.enabled,
@@ -427,93 +422,46 @@ export default function BaoEchpConfigFormPage() {
 
           <Card>
             <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle>Pricing Rules</CardTitle>
-                  <CardDescription>
-                    Each rule applies a price ladder to one or more policies. A
-                    policy may appear in several rules; the worker is shown every
-                    matching price and billed the lowest.
-                  </CardDescription>
-                </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() =>
-                    appendRule({ policyIds: [], breakpoints: DEFAULT_BAO_ECHP_BREAKPOINTS })
-                  }
-                  data-testid="button-add-rule"
-                >
-                  <Plus className="mr-2 h-4 w-4" />
-                  Add rule
-                </Button>
-              </div>
+              <CardTitle>Pricing</CardTitle>
+              <CardDescription>
+                Choose which policies may purchase Event Center hours and set the
+                single price ladder used for all of them.
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              {ruleFields.length === 0 && (
-                <p className="text-sm text-muted-foreground" data-testid="text-no-rules">
-                  No pricing rules yet. Add a rule to let policies purchase Event
-                  Center hours.
-                </p>
-              )}
-              {ruleFields.map((rule, ruleIndex) => (
-                <div
-                  key={rule.id}
-                  className="space-y-4 rounded-lg border p-4"
-                  data-testid={`section-rule-${ruleIndex}`}
-                >
-                  <div className="flex items-center justify-between">
-                    <Badge variant="secondary">Rule {ruleIndex + 1}</Badge>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => removeRule(ruleIndex)}
-                      data-testid={`button-remove-rule-${ruleIndex}`}
-                    >
-                      <Trash2 className="mr-2 h-4 w-4" />
-                      Remove rule
-                    </Button>
-                  </div>
-
-                  <FormField
-                    control={form.control}
-                    name={`rules.${ruleIndex}.policyIds`}
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Policies</FormLabel>
-                        <PolicyMultiSelect
-                          value={field.value ?? []}
-                          onChange={field.onChange}
-                          policies={policies}
-                        />
-                        {(field.value?.length ?? 0) > 0 && (
-                          <div className="flex flex-wrap gap-1 pt-1">
-                            {(field.value ?? []).map((id) => {
-                              const policy = policies.find((p) => p.id === id);
-                              return (
-                                <Badge
-                                  key={id}
-                                  variant="outline"
-                                  data-testid={`badge-rule-policy-${ruleIndex}-${id}`}
-                                >
-                                  {policy ? policyLabel(policy) : id}
-                                </Badge>
-                              );
-                            })}
-                          </div>
-                        )}
-                        <FormMessage />
-                      </FormItem>
+              <FormField
+                control={form.control}
+                name="policyIds"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Policies</FormLabel>
+                    <PolicyMultiSelect
+                      value={field.value ?? []}
+                      onChange={field.onChange}
+                      policies={policies}
+                    />
+                    {(field.value?.length ?? 0) > 0 && (
+                      <div className="flex flex-wrap gap-1 pt-1">
+                        {(field.value ?? []).map((id) => {
+                          const policy = policies.find((p) => p.id === id);
+                          return (
+                            <Badge
+                              key={id}
+                              variant="outline"
+                              data-testid={`badge-policy-${id}`}
+                            >
+                              {policy ? policyLabel(policy) : id}
+                            </Badge>
+                          );
+                        })}
+                      </div>
                     )}
-                  />
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
-                  <Separator />
-
-                  <BreakpointEditor control={form.control} ruleIndex={ruleIndex} />
-                </div>
-              ))}
+              <BreakpointEditor control={form.control} />
             </CardContent>
           </Card>
 

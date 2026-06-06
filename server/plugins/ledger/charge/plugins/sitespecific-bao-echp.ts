@@ -15,7 +15,6 @@ import { fetchBuildupStatus } from "../../../trust/eligibility/plugins/sitespeci
 import {
   baoEchpChargeSettingsSchema,
   type BaoEchpChargeSettings,
-  type BaoEchpPricingRule,
   type BaoEchpBreakpoint,
 } from "@shared/schema/sitespecific/bao/schema";
 import type { Ledger, ChargePluginConfig } from "@shared/schema";
@@ -76,80 +75,81 @@ export function computeEchpHoursPrice(
   return 0;
 }
 
+/** The pricing inputs a worker quote needs: the enabled policies and the ladder. */
+export interface EchpSettings {
+  policyIds: string[];
+  breakpoints: BaoEchpBreakpoint[];
+}
+
 /** A resolved ECHP quote for a single policy at a given hours-worked figure. */
 export interface EchpPolicyQuote {
-  /** True when the policy appears in at least one pricing rule. */
+  /** True when the policy appears in the enabled policy list. */
   enabled: boolean;
-  /** Every matching rule's ladder-resolved price (one per matching rule). */
-  prices: number[];
-  /** The lowest matching price — the amount that is actually billed. */
-  billable: number;
+  /** The ladder-resolved price the worker is quoted and billed. */
+  price: number;
 }
 
-/**
- * Given the full list of pricing rules (across the plugin's config), the rules
- * that apply to `policyId` are those whose `policyIds` include it. A policy may
- * appear in more than one rule; every matching rule contributes a price.
- */
-export function matchingEchpRules(
-  rules: ReadonlyArray<BaoEchpPricingRule>,
+/** True when `policyId` is in the enabled policy list. */
+export function isEchpEnabledForPolicy(
+  settings: EchpSettings | null,
   policyId: string,
-): BaoEchpPricingRule[] {
-  return rules.filter((rule) => rule.policyIds.includes(policyId));
+): boolean {
+  return !!settings && settings.policyIds.includes(policyId);
 }
 
 /**
- * Resolve the ECHP quote for a policy from a pre-loaded rule list. Pure: callers
- * pass in the rules so both the eligibility evaluator and the charge plugin
- * share identical pricing. `prices` holds every matching rule's price; the
- * lowest is billed.
+ * Resolve the ECHP quote for a policy from pre-loaded settings. Pure: callers
+ * pass in the settings so both the eligibility evaluator and the charge plugin
+ * share identical pricing. A policy not in the list is denied (enabled=false).
  */
 export function resolveEchpQuote(
-  rules: ReadonlyArray<BaoEchpPricingRule>,
+  settings: EchpSettings | null,
   policyId: string,
   hoursWorked: number,
 ): EchpPolicyQuote {
-  const matches = matchingEchpRules(rules, policyId);
-  if (matches.length === 0) {
-    return { enabled: false, prices: [], billable: 0 };
+  if (!isEchpEnabledForPolicy(settings, policyId)) {
+    return { enabled: false, price: 0 };
   }
-  const prices = matches.map((rule) =>
-    computeEchpHoursPrice(hoursWorked, rule.breakpoints),
-  );
-  return { enabled: true, prices, billable: Math.min(...prices) };
+  return {
+    enabled: true,
+    price: computeEchpHoursPrice(hoursWorked, settings!.breakpoints),
+  };
 }
 
 /**
- * Load the ECHP pricing rules across all enabled configs of this charge plugin.
- * In practice there is exactly one global config, but aggregating keeps the
- * quote endpoint correct regardless. Invalid settings are skipped.
+ * Load the ECHP pricing settings from the (single) enabled config of this charge
+ * plugin. Returns the first enabled config whose settings parse, or null when
+ * none is configured. Invalid settings are skipped.
  */
-export async function loadEchpPricingRules(): Promise<BaoEchpPricingRule[]> {
+export async function loadEchpSettings(): Promise<EchpSettings | null> {
   const configs = await storage.chargePluginConfigs.getByPluginId(
     "sitespecific-bao-echp",
   );
-  const rules: BaoEchpPricingRule[] = [];
   for (const config of configs) {
     if (!config.enabled) continue;
     const parsed = baoEchpChargeSettingsSchema.safeParse(config.settings);
     if (parsed.success) {
-      rules.push(...parsed.data.rules);
+      return {
+        policyIds: parsed.data.policyIds,
+        breakpoints: parsed.data.breakpoints,
+      };
     }
   }
-  return rules;
+  return null;
 }
 
 /**
- * Async convenience: load the plugin's rules and resolve the quote for a policy.
- * This is the method the BAO ECHP module calls — pricing ownership lives here in
- * the charge plugin, and the module depends on the plugin (not vice versa).
+ * Async convenience: load the plugin's settings and resolve the quote for a
+ * policy. This is the method the BAO ECHP module calls — pricing ownership lives
+ * here in the charge plugin, and the module depends on the plugin (not vice
+ * versa).
  */
 export async function quoteEchpForPolicy(
   policyId: string,
   hoursWorked: number,
 ): Promise<EchpPolicyQuote> {
-  const rules = await loadEchpPricingRules();
-  return resolveEchpQuote(rules, policyId, hoursWorked);
+  const settings = await loadEchpSettings();
+  return resolveEchpQuote(settings, policyId, hoursWorked);
 }
 
 interface ExpectedEntry {
@@ -181,7 +181,7 @@ class BaoEchpChargePlugin extends ChargePlugin {
     id: "sitespecific-bao-echp",
     name: "BAO - Event Center Hours Purchase Charge",
     description:
-      "Bills a worker for an Event Center Hours Purchase (ECHP). When an ECHP-type hours entry is saved, charges the worker the price they were quoted, derived from their member-status buildup threshold and the hours worked, using this plugin's pricing rules. A policy may match several rules; the lowest matching price is billed. Charges the worker (participant) to the configured account.",
+      "Bills a worker for an Event Center Hours Purchase (ECHP). When an ECHP-type hours entry is saved, charges the worker the price they were quoted, derived from their member-status buildup threshold and the hours worked, using this plugin's policy list and price ladder. Charges the worker (participant) to the configured account.",
     triggers: [TriggerType.HOURS_SAVED],
     defaultScope: "global" as const,
     settingsSchema: baoEchpChargeSettingsSchema,
@@ -229,11 +229,10 @@ class BaoEchpChargePlugin extends ChargePlugin {
     }
 
     // ECHP must be enabled and priced for the worker's policy. Pricing is owned
-    // by the plugin's rules (aggregated across enabled configs — the SAME source
-    // the eligibility quote reads), so the billed amount always equals the quote.
-    // A policy is enabled only when it appears in a rule, and the lowest matching
-    // price is billed.
-    const rules = await loadEchpPricingRules();
+    // by the plugin's settings (the SAME source the eligibility quote reads), so
+    // the billed amount always equals the quote. A policy is enabled only when it
+    // appears in the policy list, and the price comes from the single ladder.
+    const settings = await loadEchpSettings();
 
     // Reproduce the purchase-time price. The threshold is resolved from the
     // worker's member status (stable, independent of hours), so re-deriving
@@ -245,11 +244,11 @@ class BaoEchpChargePlugin extends ChargePlugin {
     );
     const threshold = buildup.threshold;
     const hoursWorked = Math.max(0, threshold - hoursContext.hours);
-    const quote = resolveEchpQuote(rules, election.policyId, hoursWorked);
+    const quote = resolveEchpQuote(settings, election.policyId, hoursWorked);
     if (!quote.enabled) {
       return null;
     }
-    const price = quote.billable;
+    const price = quote.price;
     if (price <= 0) {
       return null;
     }

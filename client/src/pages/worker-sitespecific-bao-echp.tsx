@@ -35,7 +35,6 @@ interface EligibilityResult {
   hoursToPurchase?: number;
   threshold?: number;
   price?: number;
-  prices?: number[];
 }
 
 function formatPrice(price: number): string {
@@ -203,34 +202,6 @@ function WorkerEchpContent() {
                 </p>
               </div>
             </div>
-
-            {Array.isArray(data.prices) && data.prices.length > 1 && (
-              <div
-                className="rounded-md border border-dashed p-3 text-sm"
-                data-testid="section-matching-prices"
-              >
-                <p className="text-xs text-muted-foreground">
-                  This policy matches multiple pricing rules. All matching prices
-                  are shown below; you are billed the lowest.
-                </p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {data.prices.map((p, i) => (
-                    <span
-                      key={i}
-                      className={
-                        p === data.price
-                          ? "rounded-md bg-green-100 px-2 py-1 font-semibold text-green-800 dark:bg-green-900/40 dark:text-green-300"
-                          : "rounded-md bg-muted px-2 py-1 text-muted-foreground line-through"
-                      }
-                      data-testid={`text-matching-price-${i}`}
-                    >
-                      {formatPrice(p)}
-                      {p === data.price ? " (billed)" : ""}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
 
             <p
               className="text-sm text-muted-foreground"
