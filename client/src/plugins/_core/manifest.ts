@@ -63,17 +63,48 @@ export function pluginConfigsQueryKey(
   return [pluginConfigsUrl(kind)];
 }
 
+/** Base search filters every kind accepts (mirrors `baseSearchSchemaShape`). */
+export interface BasePluginSearchParams {
+  pluginId?: string;
+  enabled?: boolean;
+}
+
+/**
+ * Per-kind search-param shapes. Each entry mirrors the kind's adapter
+ * `searchParamsSchema` on the server, so a caller passing the wrong filter
+ * for a kind fails at compile time. Keep this in lockstep with the adapters
+ * registered in `server/plugins/**` (Task #353).
+ */
+export interface PluginSearchParamsByKind {
+  dashboard: BasePluginSearchParams;
+  "dispatch-eligibility": BasePluginSearchParams & { jobType?: string | null };
+  charge: BasePluginSearchParams & {
+    scope?: string;
+    employerId?: string | null;
+    account?: string | null;
+  };
+  "trust-eligibility": BasePluginSearchParams & {
+    policy?: string | null;
+    benefit?: string | null;
+    appliesTo?: string | null;
+  };
+}
+
 /**
  * Search plugin configs for a kind via `POST /api/plugins/:kind/configs/search`.
  * Filters are passed in the request body; every field is optional and the
  * server validates them against the kind's adapter `searchParamsSchema`.
  * Returns the hydrated (flat) config envelopes. Throws on non-2xx.
  *
- * `T` types the parsed JSON rows; `P` types the filter params.
+ * `K` is the plugin kind, which selects the allowed filter shape from
+ * {@link PluginSearchParamsByKind} at compile time; `T` types the parsed rows.
  */
-export async function pluginSearch<T = unknown, P extends Record<string, unknown> = Record<string, unknown>>(
-  kind: ArrayManifestPluginKind,
-  params: P = {} as P,
+export async function pluginSearch<
+  K extends keyof PluginSearchParamsByKind,
+  T = unknown,
+>(
+  kind: K,
+  params: PluginSearchParamsByKind[K] = {} as PluginSearchParamsByKind[K],
 ): Promise<T[]> {
   const res = await fetch(`${pluginConfigsUrl(kind)}/search`, {
     method: "POST",

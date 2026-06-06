@@ -69,11 +69,40 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
       res.status(404).json({ message: `Kind '${kind}' has no config adapter` });
       return null;
     }
-    return { kind, adapter };
+    return { kind, adapter, registration };
   }
 
   const hydrate = (adapter: ReturnType<typeof getPluginConfigAdapter>, envelope: any) =>
     adapter?.hydrate ? adapter.hydrate(envelope) : defaultHydrate(envelope);
+
+  /**
+   * Resolve the target plugin from the kind's registry and validate the
+   * config payload against that plugin's own schema/validator (the same
+   * `validateConfig` that backs POST /api/plugins/:kind/:id/validate-config).
+   * Returns true when the request may proceed; otherwise sends a 4xx and
+   * returns false. This is what stops the unified routes from storing
+   * arbitrary `data` against an unknown or mis-configured plugin.
+   */
+  async function ensureValidPlugin(
+    registration: NonNullable<ReturnType<typeof getPluginKind>>,
+    pluginId: string,
+    data: unknown,
+    res: Response,
+  ): Promise<boolean> {
+    const plugin = registration.registry.get(pluginId);
+    if (!plugin) {
+      res.status(400).json({ message: `Plugin '${pluginId}' not found in '${registration.kind}' registry` });
+      return false;
+    }
+    if (registration.validateConfig) {
+      const result = await registration.validateConfig(plugin, data ?? {});
+      if (!result.valid) {
+        res.status(400).json({ message: "Invalid plugin configuration", errors: result.errors ?? [] });
+        return false;
+      }
+    }
+    return true;
+  }
 
   app.get("/api/plugins/:kind/configs", requireAuth, async (req, res) => {
     try {
@@ -116,12 +145,13 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
     try {
       const resolved = await resolve(req, res);
       if (!resolved) return;
-      const { kind, adapter } = resolved;
+      const { kind, adapter, registration } = resolved;
       const parsed = adapter.configSchema.safeParse(req.body ?? {});
       if (!parsed.success) {
         res.status(400).json({ message: "Invalid configuration", errors: parsed.error.errors });
         return;
       }
+      if (!(await ensureValidPlugin(registration, parsed.data.pluginId, parsed.data.data, res))) return;
       const { base, subsidiary } = adapter.toRows(parsed.data);
       const created = await runInTransaction(async () => {
         const row = await storage.pluginConfigs.create(base as any);
@@ -159,7 +189,7 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
     try {
       const resolved = await resolve(req, res);
       if (!resolved) return;
-      const { kind, adapter } = resolved;
+      const { kind, adapter, registration } = resolved;
       const existingEnvelope = await storage.pluginConfigs.getWithSubsidiary(req.params.id);
       if (!existingEnvelope || existingEnvelope.config.pluginType !== kind) {
         res.status(404).json({ message: "Plugin config not found" });
@@ -174,6 +204,7 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
         res.status(400).json({ message: "Invalid configuration", errors: parsed.error.errors });
         return;
       }
+      if (!(await ensureValidPlugin(registration, parsed.data.pluginId, parsed.data.data, res))) return;
       const { base, subsidiary } = adapter.toRows(parsed.data);
       await runInTransaction(async () => {
         await storage.pluginConfigs.update(req.params.id, base as any);
