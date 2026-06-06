@@ -6,6 +6,10 @@ import { isValidYmd, type Ymd } from "./utils/date";
 
 export {
   optionsDispatchJobType,
+  pluginConfigsDispatch,
+  insertPluginConfigDispatchSchema,
+  type InsertPluginConfigDispatch,
+  type PluginConfigDispatch,
   dispatchJobs,
   dispatchJobStatusEnum,
   insertDispatchJobTypeSchema,
@@ -1725,6 +1729,75 @@ export const insertChargePluginConfigSchema = createInsertSchema(chargePluginCon
 
 export type InsertChargePluginConfig = z.infer<typeof insertChargePluginConfigSchema>;
 export type ChargePluginConfig = typeof chargePluginConfigs.$inferSelect;
+
+// ---------------------------------------------------------------------------
+// Unified plugin configuration storage (Task #353 — additive foundation)
+//
+// A single base table (`plugin_configs`) holds the fields common to every
+// plugin kind's configuration row. Per-kind relational / queryable dimensions
+// live in subsidiary tables keyed 1:1 by the base row id (class-table
+// inheritance): each subsidiary's primary key IS a cascade-delete FK back to
+// `plugin_configs.id`. Kind-specific opaque settings stay in the base `data`
+// jsonb column.
+//
+// This is the additive foundation only — no kind has been cut over to it yet;
+// the legacy per-kind config tables remain the source of truth.
+// ---------------------------------------------------------------------------
+export const pluginConfigs = pgTable("plugin_configs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  // PluginKind discriminator (e.g. "charge", "dispatch-eligibility",
+  // "trust-eligibility", "dashboard"). Client-injection plugins are
+  // env-var driven and carry no config, so they are not stored here.
+  pluginType: varchar("plugin_type").notNull(),
+  pluginId: text("plugin_id").notNull(), // the registered plugin's id within its kind
+  enabled: boolean("enabled").default(false).notNull(),
+  name: text("name"), // optional descriptive name for this configuration
+  // CORE ordering dimension (deterministic listing / precedence) shared by
+  // every kind — intentionally on the base table, not a subsidiary.
+  ordering: integer("ordering").default(0).notNull(),
+  data: jsonb("data").default('{}'), // kind-specific opaque settings blob
+  createdAt: timestamp("created_at").default(sql`now()`).notNull(),
+  updatedAt: timestamp("updated_at").default(sql`now()`).notNull(),
+});
+
+export const insertPluginConfigSchema = createInsertSchema(pluginConfigs)
+  .omit({
+    id: true,
+    createdAt: true,
+    updatedAt: true,
+  })
+  .extend({
+    data: z.unknown().optional().default({}),
+  });
+
+export type InsertPluginConfig = z.infer<typeof insertPluginConfigSchema>;
+export type PluginConfig = typeof pluginConfigs.$inferSelect;
+
+// Charge subsidiary — relational dimensions hoisted out of the opaque settings
+// blob (scope / employer / account). Mirrors legacy charge_plugin_configs.
+export const pluginConfigsCharge = pgTable("plugin_configs_charge", {
+  id: varchar("id").primaryKey().references(() => pluginConfigs.id, { onDelete: 'cascade' }),
+  scope: varchar("scope").notNull(), // 'global' or 'employer'
+  employerId: varchar("employer_id").references(() => employers.id, { onDelete: 'cascade' }),
+  account: varchar("account").references(() => ledgerAccounts.id, { onDelete: 'set null' }),
+});
+
+export const insertPluginConfigChargeSchema = createInsertSchema(pluginConfigsCharge);
+export type InsertPluginConfigCharge = z.infer<typeof insertPluginConfigChargeSchema>;
+export type PluginConfigCharge = typeof pluginConfigsCharge.$inferSelect;
+
+// Trust benefit eligibility subsidiary — relational dimensions hoisted out of
+// the policies.data blob (policy / benefit / applies_to).
+export const pluginConfigsBenefitEligibility = pgTable("plugin_configs_benefit_eligibility", {
+  id: varchar("id").primaryKey().references(() => pluginConfigs.id, { onDelete: 'cascade' }),
+  policy: varchar("policy").references(() => policies.id, { onDelete: 'cascade' }),
+  benefit: varchar("benefit").references(() => trustBenefits.id, { onDelete: 'cascade' }),
+  appliesTo: varchar("applies_to"),
+});
+
+export const insertPluginConfigBenefitEligibilitySchema = createInsertSchema(pluginConfigsBenefitEligibility);
+export type InsertPluginConfigBenefitEligibility = z.infer<typeof insertPluginConfigBenefitEligibilitySchema>;
+export type PluginConfigBenefitEligibility = typeof pluginConfigsBenefitEligibility.$inferSelect;
 
 // Base Rate History Schema - for use in charge plugins
 export const baseRateHistoryEntrySchema = z.object({

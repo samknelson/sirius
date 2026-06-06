@@ -1,5 +1,11 @@
+import { z } from "zod";
 import { logger } from "../../logger";
-import { registerPluginKind } from "../_core";
+import {
+  registerPluginKind,
+  registerPluginConfigAdapter,
+  baseConfigSchemaShape,
+  baseSearchSchemaShape,
+} from "../_core";
 import { dashboardPluginRegistry } from "./registry";
 
 export { dashboardPluginRegistry, registerDashboardPlugin } from "./registry";
@@ -71,6 +77,23 @@ function registerDashboardKind(): void {
       await dashboardPluginRegistry.saveSettings(plugin, value);
       return { valid: true };
     },
+  });
+  // Dashboard configs carry no relational dimensions, so they live entirely
+  // in the base table — the adapter declares no subsidiary.
+  registerPluginConfigAdapter({
+    pluginType: "dashboard",
+    configSchema: z.object({ ...baseConfigSchemaShape }),
+    searchParamsSchema: z.object({ ...baseSearchSchemaShape }),
+    toRows: (input) => ({
+      base: {
+        pluginType: "dashboard",
+        pluginId: input.pluginId,
+        enabled: input.enabled,
+        name: input.name,
+        ordering: input.ordering,
+        data: input.data,
+      },
+    }),
   });
   kindRegistered = true;
 }

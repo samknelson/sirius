@@ -1,4 +1,10 @@
-import { registerPluginKind } from "../../_core";
+import { z } from "zod";
+import {
+  registerPluginKind,
+  registerPluginConfigAdapter,
+  baseConfigSchemaShape,
+  baseSearchSchemaShape,
+} from "../../_core";
 import { eligibilityPluginRegistry } from "./registry";
 
 export * from "./types";
@@ -20,6 +26,36 @@ export function registerTrustEligibilityKind(): void {
     validateConfig: async (plugin, config) => {
       return plugin.validateConfig(config);
     },
+  });
+  registerPluginConfigAdapter({
+    pluginType: "trust-eligibility",
+    configSchema: z.object({
+      ...baseConfigSchemaShape,
+      policy: z.string().nullable().optional(),
+      benefit: z.string().nullable().optional(),
+      appliesTo: z.string().nullable().optional(),
+    }),
+    searchParamsSchema: z.object({
+      ...baseSearchSchemaShape,
+      policy: z.string().nullable().optional(),
+      benefit: z.string().nullable().optional(),
+      appliesTo: z.string().nullable().optional(),
+    }),
+    toRows: (input) => ({
+      base: {
+        pluginType: "trust-eligibility",
+        pluginId: input.pluginId,
+        enabled: input.enabled,
+        name: input.name,
+        ordering: input.ordering,
+        data: input.data,
+      },
+      subsidiary: {
+        policy: input.policy ?? null,
+        benefit: input.benefit ?? null,
+        appliesTo: input.appliesTo ?? null,
+      },
+    }),
   });
   kindRegistered = true;
 }

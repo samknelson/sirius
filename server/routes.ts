@@ -390,6 +390,16 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Register eligibility plugin routes
   registerEligibilityPluginRoutes(app, requireAuth, requirePermission);
 
+  // Generic plugin config CRUD + search endpoints (Task #353 — additive
+  // foundation). Registered AFTER every per-kind config route so the
+  // existing kind-specific handlers (e.g. charge's /api/plugins/charge/configs,
+  // which still read the legacy chargePluginConfigs table) take precedence.
+  // These generic routes operate solely on the new plugin_configs tables and
+  // remain dormant for any kind that still owns specific routes — nothing
+  // visible changes until a kind is cut over in a later task.
+  const { registerPluginsConfigRoutes } = await import("./modules/plugins-config");
+  registerPluginsConfigRoutes(app, requireAuth);
+
   // Register Twilio configuration routes
   registerTwilioRoutes(app);
 

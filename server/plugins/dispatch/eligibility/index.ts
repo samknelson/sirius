@@ -1,5 +1,11 @@
+import { z } from "zod";
 import { logger } from "../../../logger";
-import { registerPluginKind } from "../../_core";
+import {
+  registerPluginKind,
+  registerPluginConfigAdapter,
+  baseConfigSchemaShape,
+  baseSearchSchemaShape,
+} from "../../_core";
 import { dispatchEligPluginRegistry } from "./registry";
 
 export {
@@ -27,6 +33,30 @@ function registerDispatchEligKind(): void {
       if (result.valid) return { valid: true };
       return { valid: false, errors: result.errors ?? ["Invalid configuration"] };
     },
+  });
+  registerPluginConfigAdapter({
+    pluginType: "dispatch-eligibility",
+    configSchema: z.object({
+      ...baseConfigSchemaShape,
+      jobType: z.string().nullable().optional(),
+    }),
+    searchParamsSchema: z.object({
+      ...baseSearchSchemaShape,
+      jobType: z.string().nullable().optional(),
+    }),
+    toRows: (input) => ({
+      base: {
+        pluginType: "dispatch-eligibility",
+        pluginId: input.pluginId,
+        enabled: input.enabled,
+        name: input.name,
+        ordering: input.ordering,
+        data: input.data,
+      },
+      subsidiary: {
+        jobType: input.jobType ?? null,
+      },
+    }),
   });
   kindRegistered = true;
 }

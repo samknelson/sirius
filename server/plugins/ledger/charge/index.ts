@@ -1,4 +1,10 @@
-import { registerPluginKind } from "../../_core";
+import { z } from "zod";
+import {
+  registerPluginKind,
+  registerPluginConfigAdapter,
+  baseConfigSchemaShape,
+  baseSearchSchemaShape,
+} from "../../_core";
 import { chargePluginRegistry } from "./registry";
 
 export * from "./types";
@@ -21,6 +27,36 @@ export function registerChargePluginKind(): void {
     // Backs POST /api/plugins/charge/:id/validate-config. Delegates to
     // the plugin's JSON-Schema-backed `validateConfig` helper.
     validateConfig: (plugin, config) => plugin.validateConfig(config),
+  });
+  registerPluginConfigAdapter({
+    pluginType: "charge",
+    configSchema: z.object({
+      ...baseConfigSchemaShape,
+      scope: z.string().min(1),
+      employerId: z.string().nullable().optional(),
+      account: z.string().nullable().optional(),
+    }),
+    searchParamsSchema: z.object({
+      ...baseSearchSchemaShape,
+      scope: z.string().optional(),
+      employerId: z.string().nullable().optional(),
+      account: z.string().nullable().optional(),
+    }),
+    toRows: (input) => ({
+      base: {
+        pluginType: "charge",
+        pluginId: input.pluginId,
+        enabled: input.enabled,
+        name: input.name,
+        ordering: input.ordering,
+        data: input.data,
+      },
+      subsidiary: {
+        scope: input.scope,
+        employerId: input.employerId ?? null,
+        account: input.account ?? null,
+      },
+    }),
   });
   kindRegistered = true;
 }

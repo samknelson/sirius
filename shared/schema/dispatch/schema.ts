@@ -2,7 +2,7 @@ import { pgTable, text, timestamp, varchar, jsonb, index, integer, boolean, date
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
-import { employers, workers } from "../../schema";
+import { employers, workers, pluginConfigs } from "../../schema";
 
 export const optionsDispatchJobType = pgTable("options_dispatch_job_type", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -10,6 +10,19 @@ export const optionsDispatchJobType = pgTable("options_dispatch_job_type", {
   description: text("description"),
   data: jsonb("data"),
 });
+
+// Dispatch eligibility subsidiary for the unified plugin config base table
+// (Task #353 — additive foundation). Relational dimension hoisted out of the
+// dispatch job type's data blob (the job type the eligibility config applies
+// to). Keyed 1:1 by the base `plugin_configs.id` via a cascade-delete FK.
+export const pluginConfigsDispatch = pgTable("plugin_configs_dispatch", {
+  id: varchar("id").primaryKey().references(() => pluginConfigs.id, { onDelete: 'cascade' }),
+  jobType: varchar("job_type").references(() => optionsDispatchJobType.id, { onDelete: 'cascade' }),
+});
+
+export const insertPluginConfigDispatchSchema = createInsertSchema(pluginConfigsDispatch);
+export type InsertPluginConfigDispatch = z.infer<typeof insertPluginConfigDispatchSchema>;
+export type PluginConfigDispatch = typeof pluginConfigsDispatch.$inferSelect;
 
 export const dispatchJobStatusEnum = ["draft", "open", "closed", "archived"] as const;
 export type DispatchJobStatus = typeof dispatchJobStatusEnum[number];

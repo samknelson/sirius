@@ -47,3 +47,42 @@ export async function fetchPluginManifest<T = unknown>(
   }
   return (await res.json()) as T[];
 }
+
+/**
+ * Stable URL + query-key for the generic plugin config CRUD endpoints
+ * (`/api/plugins/:kind/configs`, Task #353). Every client caller MUST go
+ * through these so the URL and cache-key shape stay consistent.
+ */
+export function pluginConfigsUrl(kind: ArrayManifestPluginKind): string {
+  return `/api/plugins/${kind}/configs`;
+}
+
+export function pluginConfigsQueryKey(
+  kind: ArrayManifestPluginKind,
+): readonly unknown[] {
+  return [pluginConfigsUrl(kind)];
+}
+
+/**
+ * Search plugin configs for a kind via `POST /api/plugins/:kind/configs/search`.
+ * Filters are passed in the request body; every field is optional and the
+ * server validates them against the kind's adapter `searchParamsSchema`.
+ * Returns the hydrated (flat) config envelopes. Throws on non-2xx.
+ *
+ * `T` types the parsed JSON rows; `P` types the filter params.
+ */
+export async function pluginSearch<T = unknown, P extends Record<string, unknown> = Record<string, unknown>>(
+  kind: ArrayManifestPluginKind,
+  params: P = {} as P,
+): Promise<T[]> {
+  const res = await fetch(`${pluginConfigsUrl(kind)}/search`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to search ${kind} plugin configs: ${res.status}`);
+  }
+  return (await res.json()) as T[];
+}
