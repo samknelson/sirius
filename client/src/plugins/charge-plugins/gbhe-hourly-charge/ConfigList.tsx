@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import type { ChargePluginConfigProps } from "../registry";
-import SharedConfigList from "../SharedConfigList";
+import SharedConfigList, { type ChargePluginConfigRow } from "../SharedConfigList";
 import { EmploymentStatus } from "@/lib/entity-types";
 
 interface GbheHourlyChargeSettings {
@@ -33,13 +33,13 @@ export default function GbheHourlyChargeConfigList({ pluginId }: ChargePluginCon
   };
 
   return (
-    <SharedConfigList<GbheHourlyChargeSettings>
+    <SharedConfigList
       pluginId={pluginId}
       title="GBHE Hourly Charge Configurations"
       description="Charge based on hours worked, with special-designation workers billed fixed monthly hours"
       cardDescription="Add a global configuration and per-employer overrides as needed"
       emptyMessage="No GBHE hourly charge configurations yet."
-      renderSummary={(config) => (
+      renderSummary={(config: ChargePluginConfigRow<GbheHourlyChargeSettings>) => (
         <>
           <p data-testid={`text-config-charge-to-${config.id}`}>
             <strong>Charge To:</strong> {config.settings.chargeTo === "worker" ? "Worker" : "Employer"}

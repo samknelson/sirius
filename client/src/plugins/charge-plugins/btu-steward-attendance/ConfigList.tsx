@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import type { ChargePluginConfigProps } from "../registry";
-import SharedConfigList from "../SharedConfigList";
+import SharedConfigList, { type ChargePluginConfigRow } from "../SharedConfigList";
 
 interface BtuStewardAttendanceSettings {
   amount?: number;
@@ -25,13 +25,13 @@ export default function BtuStewardAttendanceConfigList({ pluginId }: ChargePlugi
   };
 
   return (
-    <SharedConfigList<BtuStewardAttendanceSettings>
+    <SharedConfigList
       pluginId={pluginId}
       title="BTU Steward Attendance Configurations"
       description="Award points to shop stewards when they attend configured event types"
       cardDescription="Each configuration awards points for the selected event types"
       emptyMessage="No steward attendance configurations yet."
-      renderSummary={(config) => (
+      renderSummary={(config: ChargePluginConfigRow<BtuStewardAttendanceSettings>) => (
         <>
           <p data-testid={`text-config-points-${config.id}`}>
             <strong>Points per Attendance:</strong> {config.settings.amount ?? "Not set"}

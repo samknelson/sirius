@@ -1,5 +1,5 @@
 import type { ChargePluginConfigProps } from "../registry";
-import SharedConfigList from "../SharedConfigList";
+import SharedConfigList, { type ChargePluginConfigRow } from "../SharedConfigList";
 
 interface BaoEchpSettings {
   policyIds?: string[];
@@ -8,13 +8,13 @@ interface BaoEchpSettings {
 
 export default function BaoEchpConfigList({ pluginId }: ChargePluginConfigProps) {
   return (
-    <SharedConfigList<BaoEchpSettings>
+    <SharedConfigList
       pluginId={pluginId}
       title="Event Center Hours Purchase Charge Configurations"
       description="Manage the accounts that worker ECHP charges are posted to"
       cardDescription="Each configuration posts ECHP charges to its selected account"
       emptyMessage="ECHP charges will not be posted until a configuration is added."
-      renderSummary={(config) => {
+      renderSummary={(config: ChargePluginConfigRow<BaoEchpSettings>) => {
         const policyCount = config.settings.policyIds?.length ?? 0;
         const breakpointCount = config.settings.breakpoints?.length ?? 0;
         return (

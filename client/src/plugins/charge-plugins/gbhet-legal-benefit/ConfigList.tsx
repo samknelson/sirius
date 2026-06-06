@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import type { ChargePluginConfigProps } from "../registry";
-import SharedConfigList from "../SharedConfigList";
+import SharedConfigList, { type ChargePluginConfigRow } from "../SharedConfigList";
 import { TrustBenefit } from "@/lib/policy-types";
 
 interface GbhetLegalBenefitSettings {
@@ -29,13 +29,13 @@ export default function GbhetLegalBenefitConfigList({ pluginId }: ChargePluginCo
   };
 
   return (
-    <SharedConfigList<GbhetLegalBenefitSettings>
+    <SharedConfigList
       pluginId={pluginId}
       title="GBHET Legal Benefit Configurations"
       description="Manage monthly rate configurations for GBHET Legal benefit charges based on worker benefits"
       cardDescription="Each configuration applies when workers have the configured benefit"
       emptyMessage="No GBHET Legal benefit configurations yet."
-      renderSummary={(config) => (
+      renderSummary={(config: ChargePluginConfigRow<GbhetLegalBenefitSettings>) => (
         <>
           <p data-testid={`text-config-benefit-${config.id}`}>
             <strong>Benefit:</strong> {getBenefitName(config.settings.benefitId)}

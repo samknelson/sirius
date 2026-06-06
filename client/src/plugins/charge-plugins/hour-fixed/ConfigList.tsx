@@ -1,5 +1,5 @@
 import type { ChargePluginConfigProps } from "../registry";
-import SharedConfigList from "../SharedConfigList";
+import SharedConfigList, { type ChargePluginConfigRow } from "../SharedConfigList";
 import { getCurrentRateValue } from "@/lib/rateHistory";
 
 interface HourFixedSettings {
@@ -8,13 +8,13 @@ interface HourFixedSettings {
 
 export default function HourFixedConfigList({ pluginId }: ChargePluginConfigProps) {
   return (
-    <SharedConfigList<HourFixedSettings>
+    <SharedConfigList
       pluginId={pluginId}
       title="Hour - Fixed Rate Configurations"
       description="Manage hourly rate configurations for charging based on worker hours"
       cardDescription="Add a global configuration and per-employer overrides as needed"
       emptyMessage="No hourly rate configurations yet."
-      renderSummary={(config) => {
+      renderSummary={(config: ChargePluginConfigRow<HourFixedSettings>) => {
         const rate = getCurrentRateValue(config.settings?.rateHistory || []);
         return (
           <>

@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import type { ChargePluginConfigProps } from "../registry";
-import SharedConfigList from "../SharedConfigList";
+import SharedConfigList, { type ChargePluginConfigRow } from "../SharedConfigList";
 import { EmploymentStatus } from "@/lib/entity-types";
 
 interface GbhetLegalHourlySettings {
@@ -30,13 +30,13 @@ export default function GbhetLegalHourlyConfigList({ pluginId }: ChargePluginCon
   };
 
   return (
-    <SharedConfigList<GbhetLegalHourlySettings>
+    <SharedConfigList
       pluginId={pluginId}
       title="GBHET Legal Hourly Configurations"
       description="Manage hourly rate configurations for GBHET Legal benefit charges"
       cardDescription="Add a global configuration and per-employer overrides as needed"
       emptyMessage="No GBHET Legal hourly configurations yet."
-      renderSummary={(config) => (
+      renderSummary={(config: ChargePluginConfigRow<GbhetLegalHourlySettings>) => (
         <>
           <p data-testid={`text-config-status-${config.id}`}>
             <strong>Employment Status:</strong> {getEmploymentStatusNames(config.settings.employmentStatusIds)}
