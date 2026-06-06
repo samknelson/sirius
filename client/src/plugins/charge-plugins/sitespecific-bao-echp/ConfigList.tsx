@@ -29,6 +29,7 @@ interface ChargePluginConfig {
   employerId: string | null;
   settings: {
     accountId?: string;
+    rules?: { policyIds: string[]; breakpoints: unknown[] }[];
   };
 }
 
@@ -92,6 +93,16 @@ export default function BaoEchpConfigList({ pluginId }: ChargePluginConfigProps)
 
   const globalConfig = configs.find(c => c.scope === "global");
 
+  const ruleCount = (config: ChargePluginConfig) => config.settings.rules?.length ?? 0;
+
+  const enabledPolicyCount = (config: ChargePluginConfig) => {
+    const ids = new Set<string>();
+    for (const rule of config.settings.rules ?? []) {
+      for (const id of rule.policyIds ?? []) ids.add(id);
+    }
+    return ids.size;
+  };
+
   const getAccountName = (accountId?: string) => {
     if (!accountId) return "Not set";
     const account = accounts.find(a => a.id === accountId);
@@ -150,7 +161,10 @@ export default function BaoEchpConfigList({ pluginId }: ChargePluginConfigProps)
                     </Badge>
                   </div>
                   <div className="mt-2 space-y-1 text-sm text-muted-foreground">
-                    <p><strong>Account:</strong> {getAccountName(globalConfig.settings.accountId)}</p>
+                    <p data-testid="text-config-account"><strong>Account:</strong> {getAccountName(globalConfig.settings.accountId)}</p>
+                    <p data-testid="text-config-rules">
+                      <strong>Pricing rules:</strong> {ruleCount(globalConfig)} ({enabledPolicyCount(globalConfig)} {enabledPolicyCount(globalConfig) === 1 ? "policy" : "policies"} enabled)
+                    </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">

@@ -1,3 +1,4 @@
 - [Author-time migration check vs untracked files](migration-check-untracked.md) — check-migrations false-fails on untracked migration files; startup drift gate is the real enforcement.
 - [New jsonb column auto-leaks via storage reads](jsonb-column-pii-leak.md) — a new column on a core table leaks through every star-select/`.returning()` read; strip it at the storage boundary, type omit alone won't stop the runtime leak.
 - [Charge plugin adjustment math (net-total reconcile)](charge-plugin-net-total-reconcile.md) — edit-driven charge deltas must reconcile against sum(base+adjustments), not the immutable base entry, or repeated edits overcharge.
+- [ECHP quote/billing parity](echp-quote-billing-parity.md) — ECHP eligibility quote and charge reconciliation must price from the same aggregated rule source or worker is quoted one price, billed another.
