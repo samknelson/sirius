@@ -105,6 +105,7 @@ export function registerTrustEligibilityKind(): void {
         label: "Applies To",
         type: "string",
         multiple: true,
+        filterable: true,
         options: {
           choices: [
             { value: "start", label: "Start" },

@@ -10,8 +10,8 @@ import {
   type PluginConfigDispatch,
   type InsertPluginConfigDispatch,
 } from "@shared/schema";
-import { eq, isNull, type SQL } from "drizzle-orm";
-import type { AnyPgTable } from "drizzle-orm/pg-core";
+import { eq, isNull, sql, type SQL } from "drizzle-orm";
+import type { AnyPgTable, PgColumn } from "drizzle-orm/pg-core";
 
 /**
  * Per-kind subsidiary storage namespaces (Task #353).
@@ -54,6 +54,27 @@ export interface SubsidiarySearchParams {
 function eqOrNull(out: SQL[], col: any, val: string | null | undefined): void {
   if (val === undefined) return;
   out.push(val === null ? isNull(col) : eq(col, val));
+}
+
+/**
+ * Token-aware filter for a comma-joined multi-value column (e.g.
+ * `applies_to` storing "start", "continue", or "start,continue"). A
+ * single-value filter must match any row whose list *contains* the token,
+ * so a plain `eq` would wrongly skip combined-value rows. Comma-wrapping
+ * both sides makes the LIKE token-safe (no substring false positives).
+ * `null` filters on the absence of any value; `undefined` is skipped.
+ */
+function containsToken(
+  out: SQL[],
+  col: PgColumn,
+  val: string | null | undefined,
+): void {
+  if (val === undefined) return;
+  if (val === null) {
+    out.push(isNull(col));
+    return;
+  }
+  out.push(sql`',' || ${col} || ',' LIKE ${`%,${val},%`}`);
 }
 
 export function createChargeSubsidiaryStorage(): SubsidiaryStorage<
@@ -127,7 +148,7 @@ export function createBenefitEligibilitySubsidiaryStorage(): SubsidiaryStorage<
       const out: SQL[] = [];
       eqOrNull(out, pluginConfigsBenefitEligibility.policy, params.policy);
       eqOrNull(out, pluginConfigsBenefitEligibility.benefit, params.benefit);
-      eqOrNull(out, pluginConfigsBenefitEligibility.appliesTo, params.appliesTo);
+      containsToken(out, pluginConfigsBenefitEligibility.appliesTo, params.appliesTo);
       return out;
     },
   };
