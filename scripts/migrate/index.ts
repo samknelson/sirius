@@ -25,6 +25,7 @@ import "./core/1016_backfill_charge_plugin_configs";
 import "./core/1017_drop_charge_plugin_configs";
 import "./core/1018_charge_subsidiary_plugin_id_unique";
 import "./core/1019_backfill_trust_eligibility_configs";
+import "./core/1020_backfill_dispatch_eligibility_configs";
 
 // Per-component migrations — each registered via
 // `registerComponentMigration(componentId, migration)`. Tracked by the

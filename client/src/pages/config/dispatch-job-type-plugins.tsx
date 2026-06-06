@@ -1,4 +1,4 @@
-import { pluginManifestQueryKey } from "@/plugins/_core";
+import { pluginManifestQueryKey, pluginSearch, pluginConfigsUrl } from "@/plugins/_core";
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { usePageTitle } from "@/contexts/PageTitleContext";
@@ -11,7 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Loader2, Shield, Settings } from "lucide-react";
 import { SchemaFormDialog } from "@/components/json-schema-form";
-import type { EligibilityPluginMetadata, EligibilityPluginConfig, JobTypeData } from "@shared/schema";
+import type { EligibilityPluginMetadata } from "@shared/schema";
 
 /** True when the plugin schema declares at least one configurable property. */
 function hasConfigProps(schema: EligibilityPluginMetadata["configSchema"]): boolean {
@@ -20,13 +20,28 @@ function hasConfigProps(schema: EligibilityPluginMetadata["configSchema"]): bool
   return !!props && Object.keys(props).length > 0;
 }
 
+/**
+ * Flat (hydrated) dispatch-eligibility config envelope returned by
+ * `pluginSearch`. `data` is the plugin's per-job-type config; `jobType` is the
+ * subsidiary dimension. `id` is the unified `plugin_configs` row id used to
+ * PATCH/DELETE this entry.
+ */
+interface DispatchConfigRow {
+  id: string;
+  pluginId: string;
+  enabled: boolean;
+  data: Record<string, unknown> | null;
+  jobType: string | null;
+}
+
+type SaveArgs =
+  | { op: "create"; body: Record<string, unknown> }
+  | { op: "update"; id: string; body: Record<string, unknown> };
+
 function DispatchJobTypePluginsContent() {
   const { jobType } = useDispatchJobTypeLayout();
   const { toast } = useToast();
-  
-  const jobTypeData = jobType.data as JobTypeData | undefined;
-  const eligibility = jobTypeData?.eligibility || [];
-  
+
   const [configModalOpen, setConfigModalOpen] = useState(false);
   const [selectedPlugin, setSelectedPlugin] = useState<EligibilityPluginMetadata | null>(null);
 
@@ -34,45 +49,30 @@ function DispatchJobTypePluginsContent() {
     queryKey: pluginManifestQueryKey("dispatch-eligibility"),
   });
 
-  const saveEligibilityMutation = useMutation({
-    mutationFn: async (newEligibility: EligibilityPluginConfig[]) => {
-      const updatedData: JobTypeData = {
-        ...jobTypeData,
-        eligibility: newEligibility,
-      };
-      return apiRequest("PUT", `/api/options/dispatch-job-type/${jobType.id}`, {
-        name: jobType.name,
-        description: jobType.description,
-        data: updatedData,
-      });
+  // Eligibility entries for this job type now live in the unified plugin_configs
+  // table; load every dispatch-eligibility row scoped to this job type.
+  const configsQueryKey = ["/api/plugins/dispatch-eligibility/configs/search", jobType.id] as const;
+  const { data: configRows = [], isLoading: rowsLoading } = useQuery<DispatchConfigRow[]>({
+    queryKey: configsQueryKey,
+    queryFn: () =>
+      pluginSearch<"dispatch-eligibility", DispatchConfigRow>("dispatch-eligibility", {
+        jobType: jobType.id,
+      }),
+  });
+
+  const rowByPlugin = new Map<string, DispatchConfigRow>();
+  for (const row of configRows) {
+    rowByPlugin.set(row.pluginId, row);
+  }
+
+  const saveMutation = useMutation({
+    mutationFn: async (args: SaveArgs) => {
+      const baseUrl = pluginConfigsUrl("dispatch-eligibility");
+      return args.op === "create"
+        ? apiRequest("POST", baseUrl, args.body)
+        : apiRequest("PATCH", `${baseUrl}/${args.id}`, args.body);
     },
-    onMutate: async (newEligibility) => {
-      // Cancel outgoing refetches
-      await queryClient.cancelQueries({ queryKey: ["/api/options/dispatch-job-type", jobType.id] });
-      
-      // Snapshot current value for rollback
-      const previousJobType = queryClient.getQueryData(["/api/options/dispatch-job-type", jobType.id]);
-      
-      // Optimistically update the cache
-      queryClient.setQueryData(["/api/options/dispatch-job-type", jobType.id], (old: typeof jobType | undefined) => {
-        if (!old) return old;
-        const oldData = (old.data || {}) as JobTypeData;
-        return {
-          ...old,
-          data: {
-            ...oldData,
-            eligibility: newEligibility,
-          },
-        };
-      });
-      
-      return { previousJobType };
-    },
-    onError: (error: any, _newEligibility, context) => {
-      // Rollback on error
-      if (context?.previousJobType) {
-        queryClient.setQueryData(["/api/options/dispatch-job-type", jobType.id], context.previousJobType);
-      }
+    onError: (error: any) => {
       toast({
         title: "Error",
         description: error.message || "Failed to save plugin configuration.",
@@ -80,35 +80,28 @@ function DispatchJobTypePluginsContent() {
       });
     },
     onSettled: () => {
-      // Always refetch after mutation completes
-      queryClient.invalidateQueries({ queryKey: ["/api/options/dispatch-job-type"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/options/dispatch-job-type", jobType.id] });
+      queryClient.invalidateQueries({ queryKey: configsQueryKey });
     },
   });
 
   const togglePluginEnabled = (pluginId: string) => {
-    const existing = eligibility.find(p => p.pluginId === pluginId);
-    let newEligibility: EligibilityPluginConfig[];
-    
+    const existing = rowByPlugin.get(pluginId);
     if (existing) {
-      newEligibility = eligibility.map(p => 
-        p.pluginId === pluginId ? { ...p, enabled: !p.enabled } : p
-      );
+      saveMutation.mutate({ op: "update", id: existing.id, body: { enabled: !existing.enabled } });
     } else {
-      newEligibility = [...eligibility, { pluginId, enabled: true, config: {} }];
+      saveMutation.mutate({
+        op: "create",
+        body: { pluginId, enabled: true, data: {}, jobType: jobType.id },
+      });
     }
-    
-    saveEligibilityMutation.mutate(newEligibility);
   };
 
   const isPluginEnabled = (pluginId: string): boolean => {
-    const config = eligibility.find(p => p.pluginId === pluginId);
-    return config?.enabled ?? false;
+    return rowByPlugin.get(pluginId)?.enabled ?? false;
   };
 
-  const getPluginConfig = (pluginId: string): EligibilityPluginConfig["config"] => {
-    const config = eligibility.find(p => p.pluginId === pluginId);
-    return config?.config || {};
+  const getPluginConfig = (pluginId: string): Record<string, unknown> => {
+    return (rowByPlugin.get(pluginId)?.data ?? {}) as Record<string, unknown>;
   };
 
   const openConfigModal = (plugin: EligibilityPluginMetadata) => {
@@ -116,30 +109,32 @@ function DispatchJobTypePluginsContent() {
     setConfigModalOpen(true);
   };
 
-  const handleSavePluginConfig = (newConfig: EligibilityPluginConfig["config"]) => {
+  const handleSavePluginConfig = (newConfig: Record<string, unknown>) => {
     if (!selectedPlugin) return;
-    
-    const existing = eligibility.find(p => p.pluginId === selectedPlugin.id);
-    let newEligibility: EligibilityPluginConfig[];
-    
+
+    const existing = rowByPlugin.get(selectedPlugin.id);
+    const onSuccess = () => {
+      setConfigModalOpen(false);
+      toast({
+        title: "Success",
+        description: "Plugin configuration saved.",
+      });
+    };
+
     if (existing) {
-      newEligibility = eligibility.map(p => 
-        p.pluginId === selectedPlugin.id ? { ...p, config: newConfig } : p
-      );
+      saveMutation.mutate({ op: "update", id: existing.id, body: { data: newConfig } }, { onSuccess });
     } else {
-      newEligibility = [...eligibility, { pluginId: selectedPlugin.id, enabled: false, config: newConfig }];
+      saveMutation.mutate(
+        {
+          op: "create",
+          body: { pluginId: selectedPlugin.id, enabled: false, data: newConfig, jobType: jobType.id },
+        },
+        { onSuccess },
+      );
     }
-    
-    saveEligibilityMutation.mutate(newEligibility, {
-      onSuccess: () => {
-        setConfigModalOpen(false);
-        toast({
-          title: "Success",
-          description: "Plugin configuration saved.",
-        });
-      },
-    });
   };
+
+  const isLoading = pluginsLoading || rowsLoading;
 
   return (
     <Card>
@@ -153,7 +148,7 @@ function DispatchJobTypePluginsContent() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        {pluginsLoading ? (
+        {isLoading ? (
           <div className="flex items-center justify-center py-8">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
@@ -194,7 +189,7 @@ function DispatchJobTypePluginsContent() {
                       id={`plugin-${plugin.id}`}
                       checked={isPluginEnabled(plugin.id)}
                       onCheckedChange={() => togglePluginEnabled(plugin.id)}
-                      disabled={saveEligibilityMutation.isPending}
+                      disabled={saveMutation.isPending}
                       data-testid={`switch-plugin-${plugin.id}`}
                     />
                   </div>
@@ -212,9 +207,9 @@ function DispatchJobTypePluginsContent() {
           title={selectedPlugin.name}
           description={selectedPlugin.description}
           schema={selectedPlugin.configSchema}
-          initialData={getPluginConfig(selectedPlugin.id) as Record<string, unknown>}
-          onSave={(data) => handleSavePluginConfig(data as EligibilityPluginConfig["config"])}
-          isSaving={saveEligibilityMutation.isPending}
+          initialData={getPluginConfig(selectedPlugin.id)}
+          onSave={(data) => handleSavePluginConfig(data as Record<string, unknown>)}
+          isSaving={saveMutation.isPending}
           testId={`dialog-plugin-${selectedPlugin.id}`}
         />
       )}

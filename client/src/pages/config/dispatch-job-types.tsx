@@ -1,4 +1,4 @@
-import { pluginManifestQueryKey } from "@/plugins/_core";
+import { pluginManifestQueryKey, pluginConfigsUrl } from "@/plugins/_core";
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { usePageTitle } from "@/contexts/PageTitleContext";
@@ -122,14 +122,31 @@ export default function DispatchJobTypesPage() {
 
   const createMutation = useMutation({
     mutationFn: async (data: InsertDispatchJobType) => {
-      const jobTypeData: JobTypeData = { 
+      const jobTypeData: JobTypeData = {
         icon: formIcon,
-        eligibility: formEligibility,
       };
-      return apiRequest("POST", "/api/options/dispatch-job-type", {
+      const created = await apiRequest("POST", "/api/options/dispatch-job-type", {
         ...data,
         data: jobTypeData,
       });
+
+      // Eligibility entries live in the unified plugin_configs table (scoped to
+      // this job type), not in the job-type blob. Persist each selected entry as
+      // a dispatch-eligibility config row once the job type id is known.
+      const newJobTypeId = created?.id as string | undefined;
+      if (newJobTypeId && formEligibility.length > 0) {
+        const baseUrl = pluginConfigsUrl("dispatch-eligibility");
+        for (const entry of formEligibility) {
+          await apiRequest("POST", baseUrl, {
+            pluginId: entry.pluginId,
+            enabled: entry.enabled,
+            data: entry.config ?? {},
+            jobType: newJobTypeId,
+          });
+        }
+      }
+
+      return created;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/options/dispatch-job-type"] });
