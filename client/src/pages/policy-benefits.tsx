@@ -163,12 +163,12 @@ function PolicyBenefitsContent() {
             to add, edit, or remove the rules that decide which workers qualify for a
             benefit.
           </p>
-          <Link href={ELIGIBILITY_ADMIN_PATH}>
-            <Button variant="outline" data-testid="link-eligibility-config">
+          <Button variant="outline" asChild data-testid="link-eligibility-config">
+            <Link href={ELIGIBILITY_ADMIN_PATH}>
               <ExternalLink className="h-4 w-4 mr-2" />
               Manage eligibility rules
-            </Button>
-          </Link>
+            </Link>
+          </Button>
         </CardContent>
       </Card>
     </div>
