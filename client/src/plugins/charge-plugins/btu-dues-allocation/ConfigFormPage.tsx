@@ -88,7 +88,7 @@ export default function BtuDuesAllocationConfigFormPage() {
         title: "Success",
         description: "Configuration created successfully.",
       });
-      navigate(`/config/ledger/charge-plugins/${pluginId}`);
+      navigate(`/config/ledger/charge-plugins`);
     },
     onError: (error: any) => {
       toast({
@@ -112,7 +112,7 @@ export default function BtuDuesAllocationConfigFormPage() {
         title: "Success",
         description: "Configuration updated successfully.",
       });
-      navigate(`/config/ledger/charge-plugins/${pluginId}`);
+      navigate(`/config/ledger/charge-plugins`);
     },
     onError: (error: any) => {
       toast({
@@ -146,7 +146,7 @@ export default function BtuDuesAllocationConfigFormPage() {
   return (
     <div className="container mx-auto p-6 space-y-6">
       <div className="flex items-center gap-4">
-        <Link href={`/config/ledger/charge-plugins/${pluginId}`}>
+        <Link href={`/config/ledger/charge-plugins`}>
           <Button variant="ghost" size="sm" data-testid="button-back">
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back
@@ -223,7 +223,7 @@ export default function BtuDuesAllocationConfigFormPage() {
           </Card>
 
           <div className="flex justify-end gap-4">
-            <Link href={`/config/ledger/charge-plugins/${pluginId}`}>
+            <Link href={`/config/ledger/charge-plugins`}>
               <Button type="button" variant="outline" data-testid="button-cancel">
                 Cancel
               </Button>

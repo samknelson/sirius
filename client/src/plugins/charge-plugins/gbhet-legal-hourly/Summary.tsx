@@ -1,6 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import type { ChargePluginConfigProps } from "../registry";
-import SharedConfigList, { type ChargePluginConfigRow } from "../SharedConfigList";
+import type { ChargePluginSummaryProps } from "../registry";
 import { EmploymentStatus } from "@/lib/entity-types";
 
 interface GbhetLegalHourlySettings {
@@ -8,7 +7,9 @@ interface GbhetLegalHourlySettings {
   rateHistory?: Array<{ effectiveDate: string; rate: number }>;
 }
 
-export default function GbhetLegalHourlyConfigList({ pluginId }: ChargePluginConfigProps) {
+export default function GbhetLegalHourlySummary({
+  config,
+}: ChargePluginSummaryProps<GbhetLegalHourlySettings>) {
   const { data: employmentStatuses = [] } = useQuery<EmploymentStatus[]>({
     queryKey: ["/api/options/employment-status"],
   });
@@ -30,22 +31,13 @@ export default function GbhetLegalHourlyConfigList({ pluginId }: ChargePluginCon
   };
 
   return (
-    <SharedConfigList
-      pluginId={pluginId}
-      title="GBHET Legal Hourly Configurations"
-      description="Manage hourly rate configurations for GBHET Legal benefit charges"
-      cardDescription="Add a global configuration and per-employer overrides as needed"
-      emptyMessage="No GBHET Legal hourly configurations yet."
-      renderSummary={(config: ChargePluginConfigRow<GbhetLegalHourlySettings>) => (
-        <>
-          <p data-testid={`text-config-status-${config.id}`}>
-            <strong>Employment Status:</strong> {getEmploymentStatusNames(config.settings.employmentStatusIds)}
-          </p>
-          <p data-testid={`text-config-current-rate-${config.id}`}>
-            <strong>Current Rate:</strong> {getCurrentRate(config.settings.rateHistory)}
-          </p>
-        </>
-      )}
-    />
+    <>
+      <p data-testid={`text-config-status-${config.id}`}>
+        <strong>Employment Status:</strong> {getEmploymentStatusNames(config.settings.employmentStatusIds)}
+      </p>
+      <p data-testid={`text-config-current-rate-${config.id}`}>
+        <strong>Current Rate:</strong> {getCurrentRate(config.settings.rateHistory)}
+      </p>
+    </>
   );
 }

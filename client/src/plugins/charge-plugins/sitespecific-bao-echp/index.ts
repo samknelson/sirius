@@ -1,9 +1,7 @@
 import { registerChargePluginUI } from "../registry";
-import ConfigList from "./ConfigList";
+import Summary from "./Summary";
 
 registerChargePluginUI({
   pluginId: "sitespecific-bao-echp",
-  configComponent: ConfigList,
+  summaryComponent: Summary,
 });
-
-export { ConfigList };

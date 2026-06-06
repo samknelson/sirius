@@ -10,4 +10,8 @@ import "./btu-dues-allocation";
 import "./sitespecific-bao-echp";
 
 export { chargePluginUIRegistry } from "./registry";
-export type { ChargePluginConfigProps, ChargePluginUIRegistration } from "./registry";
+export type {
+  ChargePluginUIRegistration,
+  ChargePluginSummaryProps,
+  ChargePluginConfigRow,
+} from "./registry";

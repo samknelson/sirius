@@ -188,7 +188,7 @@ export default function HourFixedConfigFormPage() {
         title: "Success",
         description: `Configuration ${isEditMode ? 'updated' : 'created'} successfully.`,
       });
-      navigate(`/config/ledger/charge-plugins/${pluginId}`);
+      navigate(`/config/ledger/charge-plugins`);
     },
     onError: (error: any) => {
       toast({
@@ -210,7 +210,7 @@ export default function HourFixedConfigFormPage() {
         title: "Success",
         description: "Configuration deleted successfully.",
       });
-      navigate(`/config/ledger/charge-plugins/${pluginId}`);
+      navigate(`/config/ledger/charge-plugins`);
     },
     onError: (error: any) => {
       toast({
@@ -236,7 +236,7 @@ export default function HourFixedConfigFormPage() {
   return (
     <div className="container mx-auto p-6 space-y-6">
       <div className="flex items-center gap-4">
-        <Link href={`/config/ledger/charge-plugins/${pluginId}`}>
+        <Link href={`/config/ledger/charge-plugins`}>
           <Button variant="ghost" size="sm" data-testid="button-back">
             <ArrowLeft className="h-4 w-4" />
           </Button>
@@ -500,7 +500,7 @@ export default function HourFixedConfigFormPage() {
                   )}
                 </div>
                 <div className="flex gap-2">
-                  <Link href={`/config/ledger/charge-plugins/${pluginId}`}>
+                  <Link href={`/config/ledger/charge-plugins`}>
                     <Button
                       type="button"
                       variant="outline"

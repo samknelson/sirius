@@ -282,7 +282,6 @@ const StripeSettingsPage = lazy(() => import("@/pages/config/ledger/stripe/setti
 const PaymentTypesPage = lazy(() => import("@/pages/config/ledger/stripe/payment-types"));
 const LedgerPaymentTypesPage = lazy(() => import("@/pages/config/ledger-payment-types"));
 const ChargePluginsListPage = lazy(() => import("@/pages/config/ledger/charge-plugins-list"));
-const ChargePluginConfigPage = lazy(() => import("@/pages/config/ledger/charge-plugin-config"));
 const ChargePluginFormPage = lazy(() => import("@/pages/config/ledger/charge-plugin-form"));
 const ConfigurationLandingPage = lazy(() => import("@/pages/config/index"));
 const LedgerAccountsPage = lazy(() => import("@/pages/config/ledger/accounts"));
@@ -3001,16 +3000,6 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <ChargePluginFormPage />
-            </ConfigurationLayout>
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/config/ledger/charge-plugins/:pluginId">
-        <ProtectedRoute permission="admin" component="ledger">
-          <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <ChargePluginConfigPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>

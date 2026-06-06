@@ -1,14 +1,28 @@
 import { ComponentType } from "react";
 
-export interface ChargePluginConfigProps {
+export interface ChargePluginConfigRow<TSettings = Record<string, unknown>> {
+  id: string;
   pluginId: string;
+  enabled: boolean;
+  scope: string;
+  employerId: string | null;
+  account: string | null;
+  name: string | null;
+  settings: TSettings;
+}
+
+export interface ChargePluginSummaryProps<TSettings = Record<string, unknown>> {
+  config: ChargePluginConfigRow<TSettings>;
 }
 
 export interface ChargePluginUIRegistration {
   pluginId: string;
-  configComponent: ComponentType<ChargePluginConfigProps>;
-  settingsToPayload?: (settings: any) => any;
-  payloadToSettings?: (payload: any) => any;
+  /**
+   * Optional plugin-specific summary lines rendered for each configuration row
+   * on the unified charge plugins page. May use hooks (e.g. useQuery) to look
+   * up display names for ids stored in settings.
+   */
+  summaryComponent?: ComponentType<ChargePluginSummaryProps<any>>;
 }
 
 class ChargePluginUIRegistry {

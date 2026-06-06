@@ -1,9 +1,7 @@
 import { registerChargePluginUI } from "../registry";
-import ConfigList from "./ConfigList";
+import Summary from "./Summary";
 
 registerChargePluginUI({
   pluginId: "gbhe-hourly-charge",
-  configComponent: ConfigList,
+  summaryComponent: Summary,
 });
-
-export { ConfigList };
