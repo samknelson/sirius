@@ -219,6 +219,9 @@ export default function GenericPluginConfigsPage() {
   };
 
   const sortedPlugins = [...plugins].sort((a, b) => a.name.localeCompare(b.name));
+  const visiblePlugins = sortedPlugins.filter((plugin) =>
+    configs.some((c) => c.pluginId === plugin.id)
+  );
 
   const updateFilter = (name: string, value: string) =>
     setFilters((prev) => ({ ...prev, [name]: value }));
@@ -279,9 +282,23 @@ export default function GenericPluginConfigsPage() {
             </p>
           </CardContent>
         </Card>
+      ) : visiblePlugins.length === 0 ? (
+        <Card>
+          <CardContent className="pt-6">
+            {hasActiveFilters ? (
+              <p className="text-center text-muted-foreground" data-testid="text-empty-filtered">
+                No configurations match the current filters.
+              </p>
+            ) : (
+              <p className="text-center text-muted-foreground" data-testid="text-empty-configs">
+                No configurations yet. Use “New Configuration” above to add one.
+              </p>
+            )}
+          </CardContent>
+        </Card>
       ) : (
         <div className="space-y-6">
-          {sortedPlugins.map((plugin) => {
+          {visiblePlugins.map((plugin) => {
             const pluginConfigs = configs.filter((c) => c.pluginId === plugin.id);
             return (
               <Card key={plugin.id} data-testid={`card-plugin-${plugin.id}`}>
@@ -299,9 +316,8 @@ export default function GenericPluginConfigsPage() {
                   </div>
                 </CardHeader>
                 <CardContent>
-                  {pluginConfigs.length > 0 ? (
-                    <div className="space-y-3" data-testid={`list-configs-${plugin.id}`}>
-                      {pluginConfigs.map((config) => (
+                  <div className="space-y-3" data-testid={`list-configs-${plugin.id}`}>
+                    {pluginConfigs.map((config) => (
                         <div
                           key={config.id}
                           className="flex items-center justify-between gap-4 p-4 border rounded-md flex-wrap"
@@ -355,23 +371,7 @@ export default function GenericPluginConfigsPage() {
                           </div>
                         </div>
                       ))}
-                    </div>
-                  ) : (
-                    <div className="flex items-center justify-between gap-4 flex-wrap">
-                      <p className="text-sm text-muted-foreground" data-testid={`text-empty-${plugin.id}`}>
-                        No configurations yet.
-                      </p>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => openNew(plugin)}
-                        data-testid={`button-add-${plugin.id}`}
-                      >
-                        <Plus className="mr-2 h-4 w-4" />
-                        Add Configuration
-                      </Button>
-                    </div>
-                  )}
+                  </div>
                 </CardContent>
               </Card>
             );
