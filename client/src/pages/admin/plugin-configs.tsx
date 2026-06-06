@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -384,7 +385,16 @@ function useEnvelopeLabelMaps(envelopeFields: PluginConfigEnvelopeField[]) {
       const map = new Map(options.choices.map((c) => [c.value, c.label]));
       byField.set(field.name, {
         label: field.label,
-        resolve: (value) => map.get(String(value)) ?? String(value),
+        // Multi-value fields store a comma-joined string (e.g. "start,continue");
+        // single-value fields store one token. Split-map-join handles both since
+        // a lone value has no comma.
+        resolve: (value) =>
+          String(value)
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean)
+            .map((v) => map.get(v) ?? v)
+            .join(", "),
       });
       continue;
     }
@@ -619,7 +629,15 @@ function GenericConfigDialog({
                       {field.label}
                       {field.required && <span className="text-destructive"> *</span>}
                     </Label>
-                    {field.options ? (
+                    {field.multiple && field.options?.choices ? (
+                      <EnvelopeCheckboxField
+                        field={field}
+                        value={envelope[field.name] ?? ""}
+                        onChange={(value) =>
+                          setEnvelope((prev) => ({ ...prev, [field.name]: value }))
+                        }
+                      />
+                    ) : field.options ? (
                       <EnvelopeSelectField
                         field={field}
                         value={envelope[field.name] ?? ""}
@@ -743,5 +761,66 @@ function EnvelopeSelectField({
         ))}
       </SelectContent>
     </Select>
+  );
+}
+
+/**
+ * Renders a fixed-choice envelope field as a checkbox group allowing multiple
+ * selections. The value is stored as a comma-joined string of selected choice
+ * values (e.g. "start,continue") so it round-trips through the flat envelope
+ * state and the adapter's `string` payload field unchanged.
+ */
+function EnvelopeCheckboxField({
+  field,
+  value,
+  onChange,
+}: {
+  field: PluginConfigEnvelopeField;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const choices = field.options!.choices ?? [];
+  const selected = new Set(
+    value
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
+  );
+
+  const toggle = (choiceValue: string, checked: boolean) => {
+    const next = new Set(selected);
+    if (checked) {
+      next.add(choiceValue);
+    } else {
+      next.delete(choiceValue);
+    }
+    // Preserve the declared choice order when re-joining.
+    onChange(
+      choices
+        .map((c) => c.value)
+        .filter((v) => next.has(v))
+        .join(","),
+    );
+  };
+
+  return (
+    <div className="space-y-2 pt-1" data-testid={`checkbox-group-envelope-${field.name}`}>
+      {choices.map((choice) => (
+        <div key={choice.value} className="flex items-center gap-2">
+          <Checkbox
+            id={`envelope-${field.name}-${choice.value}`}
+            checked={selected.has(choice.value)}
+            onCheckedChange={(checked) => toggle(choice.value, checked === true)}
+            data-testid={`checkbox-envelope-${field.name}-${choice.value}`}
+          />
+          <Label
+            htmlFor={`envelope-${field.name}-${choice.value}`}
+            className="font-normal cursor-pointer"
+          >
+            {choice.label}
+          </Label>
+        </div>
+      ))}
+    </div>
   );
 }

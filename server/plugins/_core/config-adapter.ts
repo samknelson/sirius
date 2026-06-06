@@ -84,6 +84,13 @@ export interface PluginConfigEnvelopeField {
    * given remote data source rather than a plain text input.
    */
   options?: PluginConfigEnvelopeFieldOptions;
+  /**
+   * When true (only meaningful together with `options.choices`), the UI renders
+   * the fixed choices as a checkbox group allowing multiple selections. The
+   * stored value is a comma-joined string of the selected choice values (e.g.
+   * "start,continue").
+   */
+  multiple?: boolean;
 }
 
 export interface PluginConfigAdapter<TConfig = any, TSearch = any> {

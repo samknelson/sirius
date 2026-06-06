@@ -190,9 +190,14 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
         res.status(400).json({ message: "Invalid configuration", errors: parsed.error.errors });
         return;
       }
-      if (!(await ensureValidPlugin(registration, parsed.data.pluginId, parsed.data.data, res))) return;
-      if (await rejectIfDuplicate(kind, adapter, parsed.data, null, res)) return;
+      // Run toRows first so plugin validation sees the data that will actually
+      // be stored. Some adapters (e.g. trust-eligibility) move authoritative
+      // fields into `data` here — for example `data.appliesTo`, which RJSF
+      // strips on the generic admin form and re-supplies via a top-level
+      // envelope field. Validating `base.data` keeps both save paths valid.
       const { base, subsidiary } = adapter.toRows(parsed.data);
+      if (!(await ensureValidPlugin(registration, parsed.data.pluginId, base.data, res))) return;
+      if (await rejectIfDuplicate(kind, adapter, parsed.data, null, res)) return;
       const created = await runInTransaction(async () => {
         const row = await storage.pluginConfigs.create(base as any);
         if (subsidiary) {
@@ -244,9 +249,11 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
         res.status(400).json({ message: "Invalid configuration", errors: parsed.error.errors });
         return;
       }
-      if (!(await ensureValidPlugin(registration, parsed.data.pluginId, parsed.data.data, res))) return;
-      if (await rejectIfDuplicate(kind, adapter, parsed.data, req.params.id, res)) return;
+      // See POST: validate the post-toRows `data` (what actually gets stored)
+      // so adapters that relocate authoritative fields into `data` stay valid.
       const { base, subsidiary } = adapter.toRows(parsed.data);
+      if (!(await ensureValidPlugin(registration, parsed.data.pluginId, base.data, res))) return;
+      if (await rejectIfDuplicate(kind, adapter, parsed.data, req.params.id, res)) return;
       await runInTransaction(async () => {
         await storage.pluginConfigs.update(req.params.id, base as any);
         if (subsidiary) {

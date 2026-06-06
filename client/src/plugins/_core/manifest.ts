@@ -93,6 +93,12 @@ export interface PluginConfigEnvelopeField {
   required?: boolean;
   /** When present, render this field as a dropdown populated from this source. */
   options?: PluginConfigEnvelopeFieldOptions;
+  /**
+   * When true (with `options.choices`), render the choices as a checkbox group
+   * allowing multiple selections. The stored value is a comma-joined string of
+   * the selected choice values (e.g. "start,continue").
+   */
+  multiple?: boolean;
 }
 
 /** Stable URL + query-key for the per-kind config metadata endpoint. */

@@ -42,16 +42,29 @@ export function registerTrustEligibilityKind(): void {
       appliesTo: z.string().nullable().optional(),
     }),
     toRows: (input) => {
-      // `data.appliesTo` is the authoritative rule-level scan-type list
-      // (the per-plugin validateConfig requires it). The subsidiary
-      // `applies_to` column is a denormalized comma-joined copy derived from
-      // it, so config payloads never carry a top-level `appliesTo` array
-      // (which would fail the adapter's `appliesTo: z.string()` schema).
-      const dataAppliesTo = (input.data as { appliesTo?: unknown } | null)
-        ?.appliesTo;
-      const appliesTo = Array.isArray(dataAppliesTo)
-        ? dataAppliesTo.join(",")
-        : (input.appliesTo ?? null);
+      // `data.appliesTo` is the authoritative rule-level scan-type list (the
+      // per-plugin validateConfig and the executor both read it from there).
+      // The subsidiary `applies_to` column is a denormalized comma-joined copy.
+      //
+      // Two save paths share this adapter:
+      //   - the policy-benefits rule editor sends the array on `data.appliesTo`;
+      //   - the generic admin config page sends a comma-joined string on the
+      //     top-level `appliesTo` envelope field (checkbox group), and RJSF
+      //     strips `appliesTo` out of `data` (it's not in the JSON Schema).
+      // Resolve the authoritative array from whichever source provided it, then
+      // write it back into `data.appliesTo` so the executor stays correct
+      // regardless of which editor saved the config.
+      const dataObj = (input.data as Record<string, unknown> | null) ?? {};
+      const dataAppliesTo = dataObj.appliesTo;
+      const appliesToArr = Array.isArray(dataAppliesTo)
+        ? (dataAppliesTo as string[])
+        : typeof input.appliesTo === "string" && input.appliesTo.length > 0
+          ? input.appliesTo
+              .split(",")
+              .map((s: string) => s.trim())
+              .filter(Boolean)
+          : [];
+      const appliesTo = appliesToArr.length > 0 ? appliesToArr.join(",") : null;
       return {
         base: {
           pluginType: "trust-eligibility",
@@ -59,7 +72,7 @@ export function registerTrustEligibilityKind(): void {
           enabled: input.enabled,
           name: input.name,
           ordering: input.ordering,
-          data: input.data,
+          data: { ...dataObj, appliesTo: appliesToArr },
         },
         subsidiary: {
           policy: input.policy ?? null,
@@ -69,9 +82,34 @@ export function registerTrustEligibilityKind(): void {
       };
     },
     envelopeFields: [
-      { name: "policy", label: "Policy", type: "string" },
-      { name: "benefit", label: "Benefit", type: "string" },
-      { name: "appliesTo", label: "Applies To", type: "string" },
+      {
+        name: "policy",
+        label: "Policy",
+        type: "string",
+        options: { endpoint: "/api/policies", valueKey: "id", labelKey: "name" },
+      },
+      {
+        name: "benefit",
+        label: "Benefit",
+        type: "string",
+        options: {
+          endpoint: "/api/trust-benefits",
+          valueKey: "id",
+          labelKey: "name",
+        },
+      },
+      {
+        name: "appliesTo",
+        label: "Applies To",
+        type: "string",
+        multiple: true,
+        options: {
+          choices: [
+            { value: "start", label: "Start" },
+            { value: "continue", label: "Continue" },
+          ],
+        },
+      },
     ],
   });
   kindRegistered = true;
