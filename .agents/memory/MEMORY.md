@@ -6,6 +6,7 @@
 - [RJSF custom field onChange](rjsf-custom-field-onchange.md) — field onChange needs `(value, [])` (2nd arg required FieldPathList); widget onChange differs; field id is on `fieldPathId.$id`.
 - [Vite JSX generic transform](vite-jsx-generic-transform.md) — inline `<Component<Type>>` JSX crash-loops the dev server; standalone esbuild passes but Vite rejects it; type the callback prop instead.
 - [Drizzle raw-sql ANY(array) fails in migrations](drizzle-raw-sql-any-array.md) — `= ANY(${jsArray})` in db.execute throws "requires array on right side"; use `IN (${sql.join(...)})`.
+- [queryFn undefined overrides default fetcher](queryfn-undefined-overrides-default.md) — `queryFn: cond ? fn : undefined` kills the default fetcher; the no-fn branch never fetches and silently renders empty.
 - [Plugin config validation runs on post-toRows data](plugin-config-validation-order.md) — validate `base.data` after `toRows`, not the raw body; RJSF strips fields not in the JSON Schema (e.g. trust-eligibility appliesTo).
 - [Migration runner has no transaction](migration-runner-no-transaction.md) — up() isn't wrapped; copy-then-strip backfills must self-wrap in db.transaction or lose rows on rerun.
 - [Cross-table plugin_configs uniqueness](cross-table-uniqueness-denormalization.md) — tuple spanning base+subsidiary: denormalize base discriminator onto subsidiary + null-safe COALESCE unique index.

@@ -152,17 +152,21 @@ export default function GenericPluginConfigsPage() {
   const hasActiveFilters = Object.keys(searchParams).length > 0;
 
   const { data: configs = [], isLoading: isLoadingConfigs } = useQuery<PluginConfigRow[]>({
-    // With no filters we use the plain list endpoint (default fetcher keyed on
-    // the URL) so the unfiltered view matches the legacy behavior exactly —
-    // including any base rows without a subsidiary, which the relational search
-    // join would otherwise omit. Only when a filter is set do we switch to the
-    // unified POST search.
+    // With no filters we hit the plain list endpoint so the unfiltered view
+    // matches the legacy behavior exactly — including any base rows without a
+    // subsidiary, which the relational search join would otherwise omit. Only
+    // when a filter is set do we switch to the unified POST search.
     queryKey: hasActiveFilters
       ? [...pluginConfigsQueryKey(kind), "search", searchParams]
       : pluginConfigsQueryKey(kind),
+    // Always supply an explicit fetcher. We must NOT fall back to
+    // `queryFn: undefined` for the unfiltered case: passing it explicitly
+    // overwrites the app-wide default fetcher during option merging, leaving the
+    // query with no fetcher so it never requests the list and the page wrongly
+    // shows "No configurations yet" until a filter is selected.
     queryFn: hasActiveFilters
       ? () => pluginSearch<ArrayManifestPluginKind, PluginConfigRow>(kind, searchParams as any)
-      : undefined,
+      : () => apiRequest("GET", pluginConfigsUrl(kind)) as Promise<PluginConfigRow[]>,
     enabled: isValidKind,
     // Keep the previous results visible while a filter change refetches so the
     // page doesn't flash the full-page loading spinner on every selection.
