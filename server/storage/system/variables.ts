@@ -1,7 +1,7 @@
 import { createNoopValidator } from '../utils/validation';
 import { getClient } from '../transaction-context';
 import { variables, type Variable, type InsertVariable } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { eq, like } from "drizzle-orm";
 import { defineLoggingConfig, type StorageLoggingConfig } from "../middleware/logging";
 
 /**
@@ -9,13 +9,24 @@ import { defineLoggingConfig, type StorageLoggingConfig } from "../middleware/lo
  */
 export const validate = createNoopValidator();
 
+/**
+ * Escapes LIKE wildcard metacharacters (`%`, `_`) and the escape character
+ * (`\`) so a prefix is matched literally. PostgreSQL's default LIKE escape
+ * character is the backslash, so no explicit ESCAPE clause is required.
+ */
+function escapeLikePrefix(prefix: string): string {
+  return prefix.replace(/[\\%_]/g, (c) => `\\${c}`);
+}
+
 export interface VariableStorage {
   getAll(): Promise<Variable[]>;
   get(id: string): Promise<Variable | undefined>;
   getByName(name: string): Promise<Variable | undefined>;
+  getByNamePrefix(prefix: string): Promise<Variable[]>;
   create(variable: InsertVariable): Promise<Variable>;
   update(id: string, variable: Partial<InsertVariable>): Promise<Variable | undefined>;
   delete(id: string): Promise<boolean>;
+  deleteByNamePrefix(prefix: string): Promise<number>;
 }
 
 export function createVariableStorage(): VariableStorage {
@@ -36,6 +47,11 @@ export function createVariableStorage(): VariableStorage {
       const client = getClient();
       const [variable] = await client.select().from(variables).where(eq(variables.name, name));
       return variable || undefined;
+    },
+
+    async getByNamePrefix(prefix: string): Promise<Variable[]> {
+      const client = getClient();
+      return client.select().from(variables).where(like(variables.name, `${escapeLikePrefix(prefix)}%`));
     },
 
     async create(insertVariable: InsertVariable): Promise<Variable> {
@@ -64,6 +80,15 @@ export function createVariableStorage(): VariableStorage {
       const client = getClient();
       const result = await client.delete(variables).where(eq(variables.id, id)).returning();
       return result.length > 0;
+    },
+
+    async deleteByNamePrefix(prefix: string): Promise<number> {
+      const client = getClient();
+      const result = await client
+        .delete(variables)
+        .where(like(variables.name, `${escapeLikePrefix(prefix)}%`))
+        .returning();
+      return result.length;
     }
   };
 }

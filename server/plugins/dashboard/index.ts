@@ -7,6 +7,7 @@ import {
   baseSearchSchemaShape,
 } from "../_core";
 import { dashboardPluginRegistry } from "./registry";
+import { migrateWelcomeMessages } from "./plugins/welcome-messages";
 
 export { dashboardPluginRegistry, registerDashboardPlugin } from "./registry";
 export type * from "./types";
@@ -99,6 +100,11 @@ export async function initializeDashboardPluginSystem(): Promise<void> {
     plugins: dashboardPluginRegistry.getAll().map((p) => p.id),
   });
   await dashboardPluginRegistry.backfillFromLegacyVariables();
+  // Split any old per-role welcome-message content (consolidated config rows
+  // and/or legacy `welcome_message_<roleId>` variables) into the unified
+  // one-message-per-configuration shape, then retire the legacy variables.
+  // Runs before seeding so a converted plugin isn't also given an empty seed.
+  await migrateWelcomeMessages();
   // Ensure every renderable plugin has at least one config row so the
   // per-config dashboard render path never drops a previously-shown widget.
   await dashboardPluginRegistry.seedDefaultConfigs();

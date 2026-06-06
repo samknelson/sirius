@@ -14,6 +14,7 @@ import { SelfOptionsWidget } from "./widgets/SelfOptionsWidget";
 import { IconWidget } from "./widgets/IconWidget";
 import { ColorWidget } from "./widgets/ColorWidget";
 import { EnumSelectWidget } from "./widgets/EnumSelectWidget";
+import { HtmlEditorWidget } from "./widgets/HtmlEditorWidget";
 import { ArrayTableField } from "./fields/ArrayTableField";
 
 const validator = customizeValidator({
@@ -110,6 +111,7 @@ const baseWidgets = {
   selfOptions: SelfOptionsWidget,
   icon: IconWidget,
   color: ColorWidget,
+  htmlEditor: HtmlEditorWidget,
 } as unknown as RegistryWidgetsType;
 
 const baseFields = {
