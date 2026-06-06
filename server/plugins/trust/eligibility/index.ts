@@ -86,12 +86,14 @@ export function registerTrustEligibilityKind(): void {
         name: "policy",
         label: "Policy",
         type: "string",
+        filterable: true,
         options: { endpoint: "/api/policies", valueKey: "id", labelKey: "name" },
       },
       {
         name: "benefit",
         label: "Benefit",
         type: "string",
+        filterable: true,
         options: {
           endpoint: "/api/trust-benefits",
           valueKey: "id",

@@ -91,6 +91,13 @@ export interface PluginConfigEnvelopeField {
    * "start,continue").
    */
   multiple?: boolean;
+  /**
+   * When true, the generic admin page offers this field as a filter in its
+   * filter bar (in addition to the universal Plugin filter). The kind's
+   * `searchParamsSchema` and subsidiary `buildConditions` must already accept
+   * this field name for the filter to take effect.
+   */
+  filterable?: boolean;
 }
 
 export interface PluginConfigAdapter<TConfig = any, TSearch = any> {

@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "wouter";
-import { useQuery, useQueries, useMutation } from "@tanstack/react-query";
+import { useQuery, useQueries, useMutation, keepPreviousData } from "@tanstack/react-query";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import {
   pluginManifestQueryKey,
   pluginConfigsQueryKey,
   pluginConfigsUrl,
   pluginConfigsMetaQueryKey,
+  pluginSearch,
   type ArrayManifestPluginKind,
   type PluginConfigEnvelopeField,
 } from "@/plugins/_core";
@@ -49,7 +50,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Loader2, Plus, Settings, Trash2, ChevronDown } from "lucide-react";
+import { Loader2, Plus, Settings, Trash2, ChevronDown, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { JsonSchema } from "@shared/json-schema-form";
@@ -127,13 +128,12 @@ export default function GenericPluginConfigsPage() {
   const [dialogConfig, setDialogConfig] = useState<PluginConfigRow | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
 
+  // Active filter values keyed by field name (plus the universal "pluginId").
+  // Empty string means "no filter on this field".
+  const [filters, setFilters] = useState<Record<string, string>>({});
+
   const { data: plugins = [], isLoading: isLoadingPlugins } = useQuery<ManifestEntry[]>({
     queryKey: pluginManifestQueryKey(kind),
-    enabled: isValidKind,
-  });
-
-  const { data: configs = [], isLoading: isLoadingConfigs } = useQuery<PluginConfigRow[]>({
-    queryKey: pluginConfigsQueryKey(kind),
     enabled: isValidKind,
   });
 
@@ -142,6 +142,32 @@ export default function GenericPluginConfigsPage() {
     enabled: isValidKind,
   });
   const envelopeFields = meta?.envelopeFields ?? [];
+  const filterableFields = envelopeFields.filter((f) => f.filterable);
+
+  // Drop empty selections so an unset filter contributes no search condition.
+  const searchParams: Record<string, string> = {};
+  for (const [name, value] of Object.entries(filters)) {
+    if (value) searchParams[name] = value;
+  }
+  const hasActiveFilters = Object.keys(searchParams).length > 0;
+
+  const { data: configs = [], isLoading: isLoadingConfigs } = useQuery<PluginConfigRow[]>({
+    // With no filters we use the plain list endpoint (default fetcher keyed on
+    // the URL) so the unfiltered view matches the legacy behavior exactly —
+    // including any base rows without a subsidiary, which the relational search
+    // join would otherwise omit. Only when a filter is set do we switch to the
+    // unified POST search.
+    queryKey: hasActiveFilters
+      ? [...pluginConfigsQueryKey(kind), "search", searchParams]
+      : pluginConfigsQueryKey(kind),
+    queryFn: hasActiveFilters
+      ? () => pluginSearch<ArrayManifestPluginKind, PluginConfigRow>(kind, searchParams as any)
+      : undefined,
+    enabled: isValidKind,
+    // Keep the previous results visible while a filter change refetches so the
+    // page doesn't flash the full-page loading spinner on every selection.
+    placeholderData: keepPreviousData,
+  });
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => apiRequest("DELETE", `${pluginConfigsUrl(kind)}/${id}`),
@@ -194,6 +220,10 @@ export default function GenericPluginConfigsPage() {
 
   const sortedPlugins = [...plugins].sort((a, b) => a.name.localeCompare(b.name));
 
+  const updateFilter = (name: string, value: string) =>
+    setFilters((prev) => ({ ...prev, [name]: value }));
+  const clearFilters = () => setFilters({});
+
   return (
     <div className="space-y-6 p-6">
       <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -230,6 +260,16 @@ export default function GenericPluginConfigsPage() {
           </DropdownMenu>
         )}
       </div>
+
+      {sortedPlugins.length > 0 && (
+        <FilterBar
+          filterableFields={filterableFields}
+          plugins={sortedPlugins}
+          filters={filters}
+          onChange={updateFilter}
+          onClear={clearFilters}
+        />
+      )}
 
       {sortedPlugins.length === 0 ? (
         <Card>
@@ -350,6 +390,65 @@ export default function GenericPluginConfigsPage() {
         />
       )}
     </div>
+  );
+}
+
+/**
+ * Filter bar for the generic config list. Renders a universal "Plugin" dropdown
+ * (sourced from the kind's manifest) plus one dropdown per field the kind marked
+ * `filterable` in its adapter metadata. Selections drive the unified search;
+ * nothing here is kind-specific — a kind gains filters by flagging its fields.
+ */
+function FilterBar({
+  filterableFields,
+  plugins,
+  filters,
+  onChange,
+  onClear,
+}: {
+  filterableFields: PluginConfigEnvelopeField[];
+  plugins: ManifestEntry[];
+  filters: Record<string, string>;
+  onChange: (name: string, value: string) => void;
+  onClear: () => void;
+}) {
+  // Synthesize the universal Plugin filter as an envelope field so it renders
+  // through the same dropdown control as the relational filters.
+  const pluginField: PluginConfigEnvelopeField = {
+    name: "pluginId",
+    label: "Plugin",
+    type: "string",
+    options: {
+      choices: plugins.map((p) => ({ value: p.id, label: p.name })),
+    },
+  };
+  const controls = [pluginField, ...filterableFields];
+  const hasActive = Object.values(filters).some((v) => v);
+
+  return (
+    <Card data-testid="card-filters">
+      <CardContent className="pt-6">
+        <div className="flex flex-wrap items-end gap-4">
+          {controls.map((field) => (
+            <div className="space-y-1 min-w-[12rem]" key={field.name}>
+              <Label>{field.label}</Label>
+              <EnvelopeSelectField
+                field={field}
+                value={filters[field.name] ?? ""}
+                onChange={(value) => onChange(field.name, value)}
+                testIdPrefix="filter"
+              />
+            </div>
+          ))}
+          {hasActive && (
+            <Button variant="ghost" onClick={onClear} data-testid="button-clear-filters">
+              <X className="mr-2 h-4 w-4" />
+              Clear filters
+            </Button>
+          )}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -709,10 +808,12 @@ function EnvelopeSelectField({
   field,
   value,
   onChange,
+  testIdPrefix = "envelope",
 }: {
   field: PluginConfigEnvelopeField;
   value: string;
   onChange: (value: string) => void;
+  testIdPrefix?: string;
 }) {
   const options = field.options!;
   const isStatic = Array.isArray(options.choices);
@@ -741,12 +842,12 @@ function EnvelopeSelectField({
       value={value || undefined}
       onValueChange={(v) => onChange(v === NONE ? "" : v)}
     >
-      <SelectTrigger data-testid={`select-envelope-${field.name}`}>
+      <SelectTrigger data-testid={`select-${testIdPrefix}-${field.name}`}>
         <SelectValue placeholder={isLoading ? "Loading…" : "Select…"} />
       </SelectTrigger>
       <SelectContent>
         {!field.required && (
-          <SelectItem value={NONE} data-testid={`option-envelope-${field.name}-none`}>
+          <SelectItem value={NONE} data-testid={`option-${testIdPrefix}-${field.name}-none`}>
             None
           </SelectItem>
         )}
@@ -754,7 +855,7 @@ function EnvelopeSelectField({
           <SelectItem
             key={item.value}
             value={item.value}
-            data-testid={`option-envelope-${field.name}-${item.value}`}
+            data-testid={`option-${testIdPrefix}-${field.name}-${item.value}`}
           >
             {item.label}
           </SelectItem>

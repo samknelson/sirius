@@ -99,6 +99,11 @@ export interface PluginConfigEnvelopeField {
    * the selected choice values (e.g. "start,continue").
    */
   multiple?: boolean;
+  /**
+   * When true, the generic admin page offers this field as a filter in its
+   * filter bar (alongside the universal Plugin filter).
+   */
+  filterable?: boolean;
 }
 
 /** Stable URL + query-key for the per-kind config metadata endpoint. */
