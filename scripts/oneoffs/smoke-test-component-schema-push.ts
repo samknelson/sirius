@@ -8,7 +8,7 @@
  * SQL defaults, scalar defaults) and asserts the generated SQL contains
  * the expected keywords. Also asserts that unknown column types throw.
  *
- * Run: npx tsx scripts/smoke-test-component-schema-push.ts
+ * Run: npx tsx scripts/oneoffs/smoke-test-component-schema-push.ts
  */
 import {
   pgTable,
@@ -37,7 +37,7 @@ import {
   check,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import { generateCreateStatements, detectSchemaDrift } from "../server/services/component-schema-push";
+import { generateCreateStatements, detectSchemaDrift } from "../../server/services/component-schema-push";
 
 const colorEnum = pgEnum("smoke_color", ["red", "green", "blue"]);
 
@@ -221,7 +221,7 @@ await check_("unknown column type throws", () => {
 // doesn't depend on any pre-existing app table.
 const REAL_TABLE = "smoke_drift_temp";
 const REAL_COL = "id";
-const { storage } = await import("../server/storage");
+const { storage } = await import("../../server/storage");
 await storage.rawSql.execute(`DROP TABLE IF EXISTS ${REAL_TABLE} CASCADE`);
 await storage.rawSql.execute(`CREATE TABLE ${REAL_TABLE} ("id" varchar PRIMARY KEY)`);
 const colsSym = Object.getOwnPropertySymbols(parent).find((s) => s.description === "drizzle:Columns")!;

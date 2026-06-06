@@ -3,10 +3,10 @@
  * Smoke test for the ageout eligibility plugin's new fractional shape
  * (`{ minYears, minMonths, maxYears, maxMonths, warn* }`).
  *
- * Run: npx tsx scripts/smoke-test-ageout.ts
+ * Run: npx tsx scripts/oneoffs/smoke-test-ageout.ts
  */
-import { AgeoutPlugin } from "../server/plugins/trust/eligibility/plugins/ageout";
-import type { EligibilityContext } from "../server/plugins/trust/eligibility/types";
+import { AgeoutPlugin } from "../../server/plugins/trust/eligibility/plugins/ageout";
+import type { EligibilityContext } from "../../server/plugins/trust/eligibility/types";
 
 const plugin = new AgeoutPlugin();
 

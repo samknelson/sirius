@@ -1,4 +1,4 @@
-import { db } from "../server/db";
+import { db } from "../../server/db";
 import { sql } from "drizzle-orm";
 
 // DC Public Buildings for addresses

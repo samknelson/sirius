@@ -136,6 +136,20 @@ missing, extra, or mistyped.
 developer can get into the app to inspect a broken state. It is NEVER
 acceptable in production or in any deployment configuration.
 
+## One-time-use scripts MUST live in `scripts/oneoffs/`
+
+Any one-off script — seeders, data backfills/fixups, populate/import
+helpers, and ad-hoc smoke tests — must live under `scripts/oneoffs/`,
+never at the top level of `scripts/`. The top level of `scripts/` is
+reserved for the durable tooling that the app and its checks depend on
+(`migrate/`, `db-push.ts`, `check-migrations.ts`, etc.).
+
+Because files in `scripts/oneoffs/` are one level deeper, their
+relative imports use `../../` (e.g. `../../server/storage/database`,
+`../../shared/schema`), and they run via
+`npx tsx scripts/oneoffs/<name>.ts`. Match the import style of the
+existing files already in that directory.
+
 ## All database access MUST go through the storage layer
 
 This is a hard, project-wide rule with **no exceptions**. Every database

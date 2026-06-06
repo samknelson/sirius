@@ -3,11 +3,11 @@
  * 
  * This creates the EDLS bundle and a test client with credentials for development.
  * 
- * Usage: npx tsx scripts/seed-ws-edls-bundle.ts
+ * Usage: npx tsx scripts/oneoffs/seed-ws-edls-bundle.ts
  */
 
-import { storage } from "../server/storage";
-import { runInTransaction } from "../server/storage/transaction-context";
+import { storage } from "../../server/storage";
+import { runInTransaction } from "../../server/storage/transaction-context";
 
 async function seed() {
   console.log("Seeding EDLS Web Service bundle...\n");

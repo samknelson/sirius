@@ -1,6 +1,6 @@
-import { storage } from '../server/storage/database';
-import { db } from '../server/storage/db';
-import { optionsDepartment, type Employer, type Worker } from '../shared/schema';
+import { storage } from '../../server/storage/database';
+import { db } from '../../server/storage/db';
+import { optionsDepartment, type Employer, type Worker } from '../../shared/schema';
 
 const martianSheetTitles = [
   "Operation Red Dawn",

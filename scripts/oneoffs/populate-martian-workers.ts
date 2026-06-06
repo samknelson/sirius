@@ -1,4 +1,4 @@
-import { storage } from '../server/storage/database';
+import { storage } from '../../server/storage/database';
 
 // Martian-themed worker names
 const martianTitles = [

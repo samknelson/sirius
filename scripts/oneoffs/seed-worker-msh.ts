@@ -1,6 +1,6 @@
-import { storage } from '../server/storage/database';
-import { db } from '../server/storage/db';
-import { workers, optionsWorkerMs, optionsIndustry } from '../shared/schema';
+import { storage } from '../../server/storage/database';
+import { db } from '../../server/storage/db';
+import { workers, optionsWorkerMs, optionsIndustry } from '../../shared/schema';
 
 interface MemberStatus {
   id: string;
