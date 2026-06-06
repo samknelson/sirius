@@ -432,12 +432,25 @@ function FilterBar({
           {controls.map((field) => (
             <div className="space-y-1 min-w-[12rem]" key={field.name}>
               <Label>{field.label}</Label>
-              <EnvelopeSelectField
-                field={field}
-                value={filters[field.name] ?? ""}
-                onChange={(value) => onChange(field.name, value)}
-                testIdPrefix="filter"
-              />
+              {field.options ? (
+                <EnvelopeSelectField
+                  field={field}
+                  value={filters[field.name] ?? ""}
+                  onChange={(value) => onChange(field.name, value)}
+                  testIdPrefix="filter"
+                />
+              ) : (
+                // Defensive fallback: a field can be flagged `filterable`
+                // without `options` metadata. Render a free-text filter rather
+                // than crashing EnvelopeSelectField (which assumes options).
+                <Input
+                  type={field.type === "number" ? "number" : "text"}
+                  placeholder="Filter…"
+                  value={filters[field.name] ?? ""}
+                  onChange={(e) => onChange(field.name, e.target.value)}
+                  data-testid={`input-filter-${field.name}`}
+                />
+              )}
             </div>
           ))}
           {hasActive && (

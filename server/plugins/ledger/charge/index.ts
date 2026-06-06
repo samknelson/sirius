@@ -88,6 +88,7 @@ export function registerChargePluginKind(): void {
         label: "Scope",
         type: "string",
         required: true,
+        filterable: true,
         // Render as a dropdown of the fixed scope enum (global / employer).
         options: {
           choices: [
@@ -100,6 +101,7 @@ export function registerChargePluginKind(): void {
         name: "employerId",
         label: "Employer",
         type: "string",
+        filterable: true,
         // Render as a dropdown populated from the active-employer lookup.
         options: {
           endpoint: "/api/employers/lookup",
@@ -112,6 +114,7 @@ export function registerChargePluginKind(): void {
         label: "Account",
         type: "string",
         required: true,
+        filterable: true,
         // Render as a dropdown populated from the ledger accounts endpoint.
         options: {
           endpoint: "/api/ledger/accounts",

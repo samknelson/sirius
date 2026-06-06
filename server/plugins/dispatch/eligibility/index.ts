@@ -57,7 +57,22 @@ function registerDispatchEligKind(): void {
         jobType: input.jobType ?? null,
       },
     }),
-    envelopeFields: [{ name: "jobType", label: "Job Type", type: "string" }],
+    envelopeFields: [
+      {
+        name: "jobType",
+        label: "Job Type",
+        type: "string",
+        filterable: true,
+        // `jobType` stores a dispatch job-type id (matched against a job's
+        // jobTypeId at eligibility time). Render as a dropdown populated from
+        // the dispatch job-types lookup so the filter shows readable names.
+        options: {
+          endpoint: "/api/options/dispatch-job-type",
+          valueKey: "id",
+          labelKey: "name",
+        },
+      },
+    ],
   });
   kindRegistered = true;
 }
