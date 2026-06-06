@@ -272,8 +272,6 @@ const TwilioConfigPage = lazy(() => import("@/pages/config/twilio"));
 const EmailConfigPage = lazy(() => import("@/pages/config/email"));
 const PostalConfigPage = lazy(() => import("@/pages/config/postal"));
 const LogsPage = lazy(() => import("@/pages/config/logs"));
-const DashboardPluginsConfigPage = lazy(() => import("@/pages/config/dashboard-plugins"));
-const PluginSettingsPage = lazy(() => import("@/pages/config/plugin-settings"));
 const ComponentsConfigPage = lazy(() => import("@/pages/config/components"));
 const StripeTestPage = lazy(() => import("@/pages/config/ledger/stripe/test"));
 const StripeSettingsPage = lazy(() => import("@/pages/config/ledger/stripe/settings"));
@@ -2817,25 +2815,6 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/dashboard-plugins">
-        <ProtectedRoute permission="admin">
-          <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <DashboardPluginsConfigPage />
-            </ConfigurationLayout>
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/config/dashboard-plugins/:pluginId">
-        <ProtectedRoute permission="admin">
-          <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <PluginSettingsPage />
-            </ConfigurationLayout>
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
 
       <Route path="/config/components">
         <ProtectedRoute permission="admin">
@@ -2985,9 +2964,10 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      {/* Hidden generic plugin-config admin (Task #353 foundation). Not in
-          any navigation registry — reachable only by direct URL for
-          verification of the unified config surface. */}
+      {/* Generic plugin-config admin (unified config surface). Dashboard
+          plugins are served here via the "Dashboard Plugins" nav entry
+          (/admin/plugin-configs/dashboard); other kinds remain reachable by
+          direct URL. */}
       <Route path="/admin/plugin-configs/:kind">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>

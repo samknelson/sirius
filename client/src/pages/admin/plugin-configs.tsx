@@ -46,6 +46,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { JsonSchema } from "@shared/json-schema-form";
 import type { IChangeEvent } from "@rjsf/core";
+import type { UiSchema } from "@rjsf/utils";
 import { SchemaForm, sortArrayTableSettings } from "@/components/json-schema-form";
 
 /**
@@ -79,6 +80,7 @@ interface ManifestEntry {
   name: string;
   description?: string;
   configSchema?: JsonSchema;
+  uiSchema?: UiSchema;
 }
 
 interface PluginConfigRow {
@@ -388,6 +390,7 @@ function GenericConfigDialog({
   const isEditMode = !!config;
   const submitBtnRef = useRef<HTMLButtonElement>(null);
   const settingsSchema = plugin.configSchema ?? { type: "object", properties: {} };
+  const settingsUiSchema = plugin.uiSchema;
 
   const [name, setName] = useState("");
   const [enabled, setEnabled] = useState(false);
@@ -535,6 +538,7 @@ function GenericConfigDialog({
           <div className="border-t pt-4">
             <SchemaForm
               schema={settingsSchema}
+              uiSchema={settingsUiSchema}
               formData={settings}
               showErrorList="top"
               onChange={(e: IChangeEvent) => setSettings(e.formData as Record<string, unknown>)}

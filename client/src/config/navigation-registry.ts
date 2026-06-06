@@ -61,7 +61,7 @@ export const configSections: NavSection[] = [
     items: [
       { path: "/config/site", label: "Site Information", icon: Globe, testId: "nav-config-site", permission: "admin" },
       { path: "/config/terminology", label: "Terminology", icon: Globe, testId: "nav-config-terminology", permission: "admin" },
-      { path: "/config/dashboard-plugins", label: "Dashboard Plugins", icon: Puzzle, testId: "nav-config-dashboard-plugins", permission: "admin" },
+      { path: "/admin/plugin-configs/dashboard", label: "Dashboard Plugins", icon: Puzzle, testId: "nav-config-dashboard-plugins", permission: "admin" },
     ],
   },
   {

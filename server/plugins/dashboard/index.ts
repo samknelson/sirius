@@ -19,63 +19,39 @@ function registerDashboardKind(): void {
     registry: dashboardPluginRegistry,
     sortEntries: (a, b) =>
       a.order - b.order || a.id.localeCompare(b.id),
-    // Per-plugin enable toggle lives in a `dashboard_plugin_<id>` variable
-    // (independent of the schema-driven settings variable). Apply it here
-    // so the manifest reflects the operator's current selection.
+    // Resolve the manifest's `enabled` flag and the settings form schema from
+    // the unified `plugin_configs` store. Under the multi-config model a plugin
+    // may have several rows; the canonical one is the first by (ordering, id).
+    // `configSchema` / `uiSchema` are attached so the generic plugin-config
+    // admin UI can render the settings form for a dashboard config row.
     decorateEntries: async (entries) => {
-      const enriched = await Promise.all(
+      const { storage } = await import("../../storage");
+      const configs = await storage.pluginConfigs.getByType("dashboard");
+      const firstByPlugin = new Map<string, (typeof configs)[number]>();
+      for (const c of configs) {
+        const cur = firstByPlugin.get(c.pluginId);
+        if (
+          !cur ||
+          c.ordering < cur.ordering ||
+          (c.ordering === cur.ordering && c.id < cur.id)
+        ) {
+          firstByPlugin.set(c.pluginId, c);
+        }
+      }
+      return Promise.all(
         entries.map(async (entry) => {
-          const variable = await (
-            await import("../../storage")
-          ).storage.variables.getByName(`dashboard_plugin_${entry.id}`);
-          const enabled =
-            variable !== undefined && variable !== null
-              ? Boolean(variable.value)
-              : entry.enabledByDefault;
-          return { ...entry, enabled };
+          const row = firstByPlugin.get(entry.id);
+          const enabled = row ? row.enabled : entry.enabledByDefault;
+          const plugin = dashboardPluginRegistry.get(entry.id);
+          const configSchema = plugin
+            ? await dashboardPluginRegistry.resolveSchema(plugin)
+            : undefined;
+          const uiSchema = plugin
+            ? await dashboardPluginRegistry.resolveUiSchema(plugin)
+            : undefined;
+          return { ...entry, enabled, configSchema, uiSchema };
         }),
       );
-      return enriched;
-    },
-    // Per-plugin enable list / toggle. Backs
-    // GET /api/plugins/dashboard/enabled and
-    // PUT /api/plugins/dashboard/:id/enabled.
-    listEnabled: async () => {
-      const { storage } = await import("../../storage");
-      const all = await storage.variables.getAll();
-      return all
-        .filter((v) => v.name.startsWith("dashboard_plugin_") && !v.name.endsWith("_settings"))
-        .map((v) => ({
-          pluginId: v.name.replace("dashboard_plugin_", ""),
-          enabled: Boolean(v.value),
-        }));
-    },
-    setEnabled: async (plugin, enabled) => {
-      const { storage } = await import("../../storage");
-      const name = `dashboard_plugin_${plugin.id}`;
-      const existing = await storage.variables.getByName(name);
-      if (existing) {
-        await storage.variables.update(existing.id, { value: enabled });
-      } else {
-        await storage.variables.create({ name, value: enabled });
-      }
-    },
-    // Schema-driven settings for the per-plugin settings page. Backs
-    // GET / PUT /api/plugins/dashboard/:id/settings.
-    getSettings: async (plugin) => {
-      const schema = await dashboardPluginRegistry.resolveSchema(plugin);
-      if (!schema) return null;
-      const uiSchema = (await dashboardPluginRegistry.resolveUiSchema(plugin)) ?? {};
-      const value = await dashboardPluginRegistry.getSettingsValue(plugin);
-      return { schema, uiSchema, value };
-    },
-    saveSettings: async (plugin, value) => {
-      const result = await dashboardPluginRegistry.validateSettings(plugin, value);
-      if (!result.valid) {
-        return { valid: false, errors: result.errors };
-      }
-      await dashboardPluginRegistry.saveSettings(plugin, value);
-      return { valid: true };
     },
     // Validate a unified plugin_configs `data` payload against the dashboard
     // plugin's own JSON schema. Generic CRUD calls this so dashboard configs
@@ -122,7 +98,7 @@ export async function initializeDashboardPluginSystem(): Promise<void> {
     service: "dashboard-plugins",
     plugins: dashboardPluginRegistry.getAll().map((p) => p.id),
   });
-  await dashboardPluginRegistry.runLegacyMigrations();
+  await dashboardPluginRegistry.backfillFromLegacyVariables();
 }
 
 // Plugin registrations (side-effect imports — each file self-registers).

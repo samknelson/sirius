@@ -4,6 +4,7 @@ import { storage } from "../../storage";
 import { getEffectiveUser } from "../../modules/masquerade";
 import { validateAgainstSchema } from "../../lib/json-schema-validator";
 import type { JsonSchema } from "@shared/json-schema-form";
+import type { PluginConfig } from "@shared/schema";
 import { PluginRegistry, enforcePluginGating } from "../_core";
 import type { BasePluginMetadata } from "../_core";
 import type {
@@ -35,6 +36,14 @@ export interface DashboardManifestEntry {
   enabledByDefault: boolean;
   enabled: boolean;
   hidden?: boolean;
+  /**
+   * Resolved JSON Schema for the plugin's settings, populated in
+   * `decorateEntries`. The generic plugin-config admin UI reads this to
+   * render the settings form for a dashboard config row.
+   */
+  configSchema?: JsonSchema;
+  /** Resolved RJSF uiSchema companion to `configSchema`. */
+  uiSchema?: DashboardPluginUiSchema;
 }
 
 function pluginToMetadata(p: DashboardPlugin): BasePluginMetadata {
@@ -102,10 +111,6 @@ class DashboardPluginRegistry extends PluginRegistry<DashboardPlugin, DashboardM
     return this.list();
   }
 
-  variableName(pluginId: string): string {
-    return `dashboard_plugin_${pluginId}_settings`;
-  }
-
   async resolveSchema(plugin: DashboardPlugin): Promise<JsonSchema | undefined> {
     if (!plugin.settingsSchema) return undefined;
     return typeof plugin.settingsSchema === "function"
@@ -118,39 +123,99 @@ class DashboardPluginRegistry extends PluginRegistry<DashboardPlugin, DashboardM
     return typeof plugin.uiSchema === "function" ? await plugin.uiSchema() : plugin.uiSchema;
   }
 
+  /**
+   * The canonical config row for a plugin: the first by `(ordering, id)`.
+   * Under the unified multi-config model an operator may create several rows
+   * for one dashboard plugin; the runtime resolves to a single deterministic
+   * one. Returns undefined when the plugin has no config row at all.
+   */
+  async getCanonicalConfig(plugin: DashboardPlugin): Promise<PluginConfig | undefined> {
+    const rows = await storage.pluginConfigs.getByTypeAndPlugin("dashboard", plugin.id);
+    return rows[0];
+  }
+
+  /** Enabled state to assume when a plugin has no explicit config row. */
+  defaultEnabled(plugin: DashboardPlugin): boolean {
+    return plugin.client ? plugin.client.enabledByDefault !== false : false;
+  }
+
   async getSettingsValue(plugin: DashboardPlugin): Promise<any> {
-    const variable = await storage.variables.getByName(this.variableName(plugin.id));
-    if (variable) return variable.value;
+    const row = await this.getCanonicalConfig(plugin);
+    if (row) return row.data ?? {};
     return plugin.defaultSettings ?? {};
   }
 
-  async saveSettings(plugin: DashboardPlugin, value: any): Promise<void> {
-    const name = this.variableName(plugin.id);
-    const existing = await storage.variables.getByName(name);
-    if (existing) {
-      await storage.variables.update(existing.id, { value });
-    } else {
-      await storage.variables.create({ name, value });
-    }
-  }
-
-  async runLegacyMigrations(): Promise<void> {
-    for (const plugin of this.list()) {
-      if (!plugin.migrateLegacySettings) continue;
+  /**
+   * One-shot, idempotent backfill from the legacy `variables` store
+   * (`dashboard_plugin_<id>` enabled flag + `dashboard_plugin_<id>_settings`
+   * JSON) into unified `plugin_configs` rows, then retirement of the old keys.
+   *
+   * Runs at boot. For each registered plugin without a config row it creates
+   * one from whatever legacy state exists (or, absent any, from
+   * `migrateLegacySettings`), with `enabled` defaulting to the plugin's
+   * enabledByDefault when no toggle was ever stored — preserving the
+   * pre-migration runtime behavior. After backfilling it deletes every
+   * `dashboard_plugin_*` variable for handled plugins plus any orphans
+   * (variables for plugins no longer registered). Re-running is a no-op.
+   */
+  async backfillFromLegacyVariables(): Promise<void> {
+    const plugins = this.list();
+    const handled = new Set<string>();
+    for (const plugin of plugins) {
       try {
-        const existing = await storage.variables.getByName(this.variableName(plugin.id));
-        if (existing) continue;
-        const migrated = await plugin.migrateLegacySettings();
-        if (migrated && typeof migrated === "object" && Object.keys(migrated).length > 0) {
-          await storage.variables.create({ name: this.variableName(plugin.id), value: migrated });
-          logger.info(`Migrated legacy settings for dashboard plugin ${plugin.id}`, { service: SERVICE });
+        const existing = await storage.pluginConfigs.getByTypeAndPlugin("dashboard", plugin.id);
+        if (existing.length > 0) {
+          handled.add(plugin.id);
+          continue;
         }
+        const enabledVar = await storage.variables.getByName(`dashboard_plugin_${plugin.id}`);
+        const settingsVar = await storage.variables.getByName(
+          `dashboard_plugin_${plugin.id}_settings`,
+        );
+        let data: unknown = settingsVar ? settingsVar.value : undefined;
+        const hasLegacy = !!enabledVar || !!settingsVar;
+        if (!hasLegacy && plugin.migrateLegacySettings) {
+          const migrated = await plugin.migrateLegacySettings();
+          if (migrated && typeof migrated === "object" && Object.keys(migrated).length > 0) {
+            data = migrated;
+          }
+        }
+        if (data !== undefined || enabledVar) {
+          const enabled = enabledVar ? Boolean(enabledVar.value) : this.defaultEnabled(plugin);
+          await storage.pluginConfigs.create({
+            pluginType: "dashboard",
+            pluginId: plugin.id,
+            enabled,
+            name: null,
+            ordering: 0,
+            data: data ?? {},
+          });
+          logger.info(`Backfilled dashboard plugin config for ${plugin.id}`, { service: SERVICE });
+        }
+        handled.add(plugin.id);
       } catch (error) {
-        logger.error(`Failed to migrate legacy settings for dashboard plugin ${plugin.id}`, {
+        logger.error(`Failed to backfill dashboard plugin config for ${plugin.id}`, {
           service: SERVICE,
           error: error instanceof Error ? error.message : String(error),
         });
       }
+    }
+    // Retire legacy keys for handled plugins + orphans (unregistered plugins).
+    try {
+      const all = await storage.variables.getAll();
+      const known = new Set(plugins.map((p) => p.id));
+      for (const v of all) {
+        if (!v.name.startsWith("dashboard_plugin_")) continue;
+        const pid = v.name.replace(/^dashboard_plugin_/, "").replace(/_settings$/, "");
+        if (handled.has(pid) || !known.has(pid)) {
+          await storage.variables.delete(v.id);
+        }
+      }
+    } catch (error) {
+      logger.error("Failed to retire legacy dashboard plugin variables", {
+        service: SERVICE,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
