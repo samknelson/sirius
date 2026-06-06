@@ -98,7 +98,7 @@ export function registerChargePluginKind(): void {
       },
       {
         name: "employerId",
-        label: "Employer ID",
+        label: "Employer",
         type: "string",
         // Render as a dropdown populated from the active-employer lookup.
         options: {

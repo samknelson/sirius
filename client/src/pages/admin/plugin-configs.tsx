@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "wouter";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useQueries, useMutation } from "@tanstack/react-query";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import {
   pluginManifestQueryKey,
@@ -275,7 +275,7 @@ export default function GenericPluginConfigsPage() {
                                 {config.name || "—"}
                               </span>
                             </div>
-                            <ConfigSummary config={config} />
+                            <ConfigSummary config={config} envelopeFields={envelopeFields} />
                           </div>
                           <div className="flex items-center gap-2">
                             <Button
@@ -352,8 +352,73 @@ export default function GenericPluginConfigsPage() {
   );
 }
 
-/** Read-only key/value preview of a config's non-base (subsidiary + data) fields. */
-function ConfigSummary({ config }: { config: PluginConfigRow }) {
+/**
+ * Resolves relational envelope-field values to human-friendly labels using the
+ * same `options` metadata that drives the edit-form dropdowns. Static-choice
+ * fields (e.g. scope) map locally; endpoint-backed fields (e.g. employer,
+ * account) fetch their source once and build an id→label map. The result is a
+ * lookup keyed by field name: `{ label, resolve(value) }`.
+ */
+function useEnvelopeLabelMaps(envelopeFields: PluginConfigEnvelopeField[]) {
+  const endpointFields = envelopeFields.filter(
+    (f) => f.options?.endpoint && !f.options.choices,
+  );
+
+  const results = useQueries({
+    queries: endpointFields.map((f) => ({
+      queryKey: [f.options!.endpoint!],
+      enabled: !!f.options!.endpoint,
+    })),
+  });
+
+  const byField = new Map<
+    string,
+    { label: string; resolve: (value: unknown) => string }
+  >();
+
+  for (const field of envelopeFields) {
+    const options = field.options;
+    if (!options) continue;
+
+    if (Array.isArray(options.choices)) {
+      const map = new Map(options.choices.map((c) => [c.value, c.label]));
+      byField.set(field.name, {
+        label: field.label,
+        resolve: (value) => map.get(String(value)) ?? String(value),
+      });
+      continue;
+    }
+
+    if (options.endpoint) {
+      const idx = endpointFields.indexOf(field);
+      const rows = (results[idx]?.data as Record<string, unknown>[] | undefined) ?? [];
+      const map = new Map(
+        rows.map((row) => [
+          String(row[options.valueKey!] ?? ""),
+          String(row[options.labelKey!] ?? ""),
+        ]),
+      );
+      byField.set(field.name, {
+        label: field.label,
+        resolve: (value) => {
+          const key = String(value);
+          return map.get(key) || key;
+        },
+      });
+    }
+  }
+
+  return byField;
+}
+
+function ConfigSummary({
+  config,
+  envelopeFields,
+}: {
+  config: PluginConfigRow;
+  envelopeFields: PluginConfigEnvelopeField[];
+}) {
+  const labelMaps = useEnvelopeLabelMaps(envelopeFields);
   const extras = Object.entries(config).filter(([k]) => !BASE_KEYS.has(k));
   return (
     <div className="mt-1 space-y-0.5 text-sm text-muted-foreground" data-testid={`summary-config-${config.id}`}>
@@ -362,7 +427,16 @@ function ConfigSummary({ config }: { config: PluginConfigRow }) {
       </p>
       {extras.length > 0 && (
         <p className="truncate max-w-xl">
-          {extras.map(([k, v]) => `${k}: ${v === null || v === undefined ? "—" : String(v)}`).join(" · ")}
+          {extras
+            .map(([k, v]) => {
+              const fieldMeta = labelMaps.get(k);
+              const label = fieldMeta?.label ?? k;
+              if (v === null || v === undefined || v === "") {
+                return `${label}: —`;
+              }
+              return `${label}: ${fieldMeta ? fieldMeta.resolve(v) : String(v)}`;
+            })
+            .join(" · ")}
         </p>
       )}
     </div>
