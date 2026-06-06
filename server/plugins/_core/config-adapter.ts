@@ -34,6 +34,25 @@ export interface PluginConfigRows {
   subsidiary?: Record<string, unknown>;
 }
 
+/**
+ * Describes one relational (subsidiary) field a kind carries beyond the base
+ * envelope. The generic admin UI reads these from the kind's config-meta
+ * endpoint and renders a matching input per field, so it can create/edit
+ * kinds with relational dimensions (charge scope/employer/account, trust
+ * policy/benefit/appliesTo, dispatch jobType) without any kind-specific code.
+ * Kinds with no subsidiary (e.g. "dashboard") declare an empty list.
+ */
+export interface PluginConfigEnvelopeField {
+  /** Column / payload key (e.g. "scope", "employerId", "jobType"). */
+  name: string;
+  /** Human label for the form control. */
+  label: string;
+  /** Input type the UI should render. */
+  type: "string" | "number";
+  /** Whether the field must be provided (non-empty). */
+  required?: boolean;
+}
+
 export interface PluginConfigAdapter<TConfig = any, TSearch = any> {
   /** PluginKind discriminator — matches the `:kind` URL segment. */
   pluginType: string;
@@ -48,6 +67,12 @@ export interface PluginConfigAdapter<TConfig = any, TSearch = any> {
    * back to {@link defaultHydrate} (base columns + flattened subsidiary).
    */
   hydrate?(envelope: PluginConfigWithSubsidiary): Record<string, unknown>;
+  /**
+   * Relational (subsidiary) fields this kind carries beyond the base
+   * envelope. Drives the generic admin UI's per-kind inputs. Omit / empty
+   * for kinds with no subsidiary.
+   */
+  envelopeFields?: PluginConfigEnvelopeField[];
 }
 
 /** Reusable schema shape for the base columns every flat config carries. */

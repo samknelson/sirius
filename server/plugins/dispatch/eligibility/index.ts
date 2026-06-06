@@ -57,6 +57,7 @@ function registerDispatchEligKind(): void {
         jobType: input.jobType ?? null,
       },
     }),
+    envelopeFields: [{ name: "jobType", label: "Job Type", type: "string" }],
   });
   kindRegistered = true;
 }

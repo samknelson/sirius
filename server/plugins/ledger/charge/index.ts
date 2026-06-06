@@ -57,6 +57,11 @@ export function registerChargePluginKind(): void {
         account: input.account ?? null,
       },
     }),
+    envelopeFields: [
+      { name: "scope", label: "Scope", type: "string", required: true },
+      { name: "employerId", label: "Employer ID", type: "string" },
+      { name: "account", label: "Account", type: "string" },
+    ],
   });
   kindRegistered = true;
 }

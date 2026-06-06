@@ -6,7 +6,9 @@ import {
   pluginManifestQueryKey,
   pluginConfigsQueryKey,
   pluginConfigsUrl,
+  pluginConfigsMetaQueryKey,
   type ArrayManifestPluginKind,
+  type PluginConfigEnvelopeField,
 } from "@/plugins/_core";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -61,10 +63,14 @@ import { SchemaForm, sortArrayTableSettings } from "@/components/json-schema-for
  * of truth until then.
  */
 
+// Kinds the unified generic config routes actually serve. `charge` is
+// intentionally excluded: it is still legacy-owned (see LEGACY_OWNED_KINDS in
+// server/modules/plugins-config.ts), so its generic routes 404. The remaining
+// kinds exercise the full surface — `trust-eligibility` / `dispatch-eligibility`
+// have relational envelope fields, `dashboard` has none.
 const ALLOWED_KINDS: ArrayManifestPluginKind[] = [
   "dashboard",
   "dispatch-eligibility",
-  "charge",
   "trust-eligibility",
 ];
 
@@ -119,6 +125,12 @@ export default function GenericPluginConfigsPage() {
     queryKey: pluginConfigsQueryKey(kind),
     enabled: isValidKind,
   });
+
+  const { data: meta } = useQuery<{ envelopeFields: PluginConfigEnvelopeField[] }>({
+    queryKey: pluginConfigsMetaQueryKey(kind),
+    enabled: isValidKind,
+  });
+  const envelopeFields = meta?.envelopeFields ?? [];
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => apiRequest("DELETE", `${pluginConfigsUrl(kind)}/${id}`),
@@ -323,6 +335,7 @@ export default function GenericPluginConfigsPage() {
           kind={kind}
           plugin={dialogPlugin}
           config={dialogConfig}
+          envelopeFields={envelopeFields}
         />
       )}
     </div>
@@ -352,16 +365,25 @@ interface GenericConfigDialogProps {
   kind: ArrayManifestPluginKind;
   plugin: ManifestEntry;
   config?: PluginConfigRow | null;
+  envelopeFields: PluginConfigEnvelopeField[];
 }
 
 /**
  * Generic add/edit dialog. Base envelope fields (name / enabled / ordering)
- * are plain inputs; the plugin-specific settings (`data`) are rendered by
- * the server-provided JSON Schema via SchemaForm. Kind-specific relational
- * (subsidiary) fields are not edited here — they default server-side and
- * will be added when each kind is cut over.
+ * are plain inputs; the kind's relational (subsidiary) fields are rendered
+ * from the adapter-provided `envelopeFields` metadata; the plugin-specific
+ * settings (`data`) are rendered by the server-provided JSON Schema via
+ * SchemaForm. Nothing here is kind-specific — adding a relational field to a
+ * kind is a server-only change.
  */
-function GenericConfigDialog({ open, onOpenChange, kind, plugin, config }: GenericConfigDialogProps) {
+function GenericConfigDialog({
+  open,
+  onOpenChange,
+  kind,
+  plugin,
+  config,
+  envelopeFields,
+}: GenericConfigDialogProps) {
   const { toast } = useToast();
   const isEditMode = !!config;
   const submitBtnRef = useRef<HTMLButtonElement>(null);
@@ -371,6 +393,7 @@ function GenericConfigDialog({ open, onOpenChange, kind, plugin, config }: Gener
   const [enabled, setEnabled] = useState(false);
   const [ordering, setOrdering] = useState(0);
   const [settings, setSettings] = useState<Record<string, unknown>>({});
+  const [envelope, setEnvelope] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (!open) return;
@@ -381,22 +404,44 @@ function GenericConfigDialog({ open, onOpenChange, kind, plugin, config }: Gener
       setSettings(
         sortArrayTableSettings(settingsSchema, (config.data as Record<string, unknown>) ?? {}),
       );
+      setEnvelope(
+        Object.fromEntries(
+          envelopeFields.map((f) => {
+            const v = config[f.name];
+            return [f.name, v === null || v === undefined ? "" : String(v)];
+          }),
+        ),
+      );
     } else {
       setName("");
       setEnabled(false);
       setOrdering(0);
       setSettings({});
+      setEnvelope(Object.fromEntries(envelopeFields.map((f) => [f.name, ""])));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, config]);
 
   const saveMutation = useMutation({
     mutationFn: async (validSettings: Record<string, unknown>) => {
+      // Empty string → null for optional fields; coerce number-typed fields.
+      const envelopeBody: Record<string, unknown> = {};
+      for (const f of envelopeFields) {
+        const raw = envelope[f.name] ?? "";
+        if (raw === "") {
+          envelopeBody[f.name] = null;
+        } else if (f.type === "number") {
+          envelopeBody[f.name] = Number(raw);
+        } else {
+          envelopeBody[f.name] = raw;
+        }
+      }
       const body = {
         pluginId: plugin.id,
         name: name.trim() || null,
         enabled,
         ordering,
+        ...envelopeBody,
         data: validSettings,
       };
       if (isEditMode && config) {
@@ -463,6 +508,28 @@ function GenericConfigDialog({ open, onOpenChange, kind, plugin, config }: Gener
                 />
               </div>
             </div>
+
+            {envelopeFields.length > 0 && (
+              <div className="grid grid-cols-2 gap-4" data-testid="envelope-fields">
+                {envelopeFields.map((field) => (
+                  <div className="space-y-1" key={field.name}>
+                    <Label>
+                      {field.label}
+                      {field.required && <span className="text-destructive"> *</span>}
+                    </Label>
+                    <Input
+                      type={field.type === "number" ? "number" : "text"}
+                      placeholder={field.required ? "Required" : "Optional"}
+                      value={envelope[field.name] ?? ""}
+                      onChange={(e) =>
+                        setEnvelope((prev) => ({ ...prev, [field.name]: e.target.value }))
+                      }
+                      data-testid={`input-envelope-${field.name}`}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="border-t pt-4">

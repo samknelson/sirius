@@ -2,19 +2,19 @@ import { createNoopValidator } from './utils/validation';
 import { getClient } from './transaction-context';
 import {
   pluginConfigs,
-  pluginConfigsCharge,
-  pluginConfigsBenefitEligibility,
-  pluginConfigsDispatch,
   type PluginConfig,
   type InsertPluginConfig,
   type PluginConfigCharge,
-  type InsertPluginConfigCharge,
   type PluginConfigBenefitEligibility,
-  type InsertPluginConfigBenefitEligibility,
   type PluginConfigDispatch,
-  type InsertPluginConfigDispatch,
 } from "@shared/schema";
-import { eq, and, isNull, type SQL } from "drizzle-orm";
+import { eq, and, type SQL } from "drizzle-orm";
+import {
+  createChargeSubsidiaryStorage,
+  createBenefitEligibilitySubsidiaryStorage,
+  createDispatchSubsidiaryStorage,
+  type SubsidiaryStorage,
+} from "./plugin-configs-subsidiary";
 
 /**
  * Stub validator - add validation logic here when needed.
@@ -74,16 +74,12 @@ export interface PluginConfigStorage {
   delete(id: string): Promise<boolean>;
 
   // --- Subsidiary access (1:1 by base id) --------------------------------
-  getCharge(id: string): Promise<PluginConfigCharge | undefined>;
-  upsertCharge(row: InsertPluginConfigCharge): Promise<PluginConfigCharge>;
-  getBenefitEligibility(id: string): Promise<PluginConfigBenefitEligibility | undefined>;
-  upsertBenefitEligibility(row: InsertPluginConfigBenefitEligibility): Promise<PluginConfigBenefitEligibility>;
-  getDispatch(id: string): Promise<PluginConfigDispatch | undefined>;
-  upsertDispatch(row: InsertPluginConfigDispatch): Promise<PluginConfigDispatch>;
   /**
    * Generic subsidiary upsert dispatcher — routes a `{ id, ...cols }` row to
-   * the subsidiary table for `type`. Returns `null` for kinds without a
-   * subsidiary (e.g. "dashboard"). Keeps generic CRUD routes thin.
+   * the internal subsidiary namespace for `type`. Returns `null` for kinds
+   * without a subsidiary (e.g. "dashboard"). Keeps generic CRUD routes thin.
+   * Per-kind subsidiary queries live in their own namespaces in
+   * `plugin-configs-subsidiary.ts`; this base namespace only dispatches.
    */
   upsertSubsidiary(
     type: string,
@@ -95,32 +91,26 @@ export interface PluginConfigStorage {
   search(type: string, params?: PluginConfigSearchParams): Promise<PluginConfigWithSubsidiary[]>;
 }
 
-/**
- * Maps a PluginKind discriminator (the `:kind` URL segment / `plugin_type`
- * column value) to the subsidiary table that holds its relational
- * dimensions. Kinds absent from this map (e.g. "dashboard") carry no
- * relational dimensions and live entirely in the base table.
- */
-function subsidiaryTableFor(type: string) {
-  switch (type) {
-    case "charge":
-      return pluginConfigsCharge;
-    case "trust-eligibility":
-      return pluginConfigsBenefitEligibility;
-    case "dispatch-eligibility":
-      return pluginConfigsDispatch;
-    default:
-      return null;
-  }
-}
-
 export function createPluginConfigStorage(): PluginConfigStorage {
+  /**
+   * Internal per-kind subsidiary namespaces, keyed by the PluginKind
+   * discriminator (the `:kind` URL segment / `plugin_type` column value).
+   * Kinds absent from this map (e.g. "dashboard") carry no relational
+   * dimensions and live entirely in the base table. Each namespace owns the
+   * queries for exactly one subsidiary table; this base namespace composes
+   * them via the search dispatcher below.
+   */
+  const subsidiaries: Record<string, SubsidiaryStorage<PluginConfigSubsidiary & object, any>> = {
+    charge: createChargeSubsidiaryStorage() as SubsidiaryStorage<any, any>,
+    "trust-eligibility": createBenefitEligibilitySubsidiaryStorage() as SubsidiaryStorage<any, any>,
+    "dispatch-eligibility": createDispatchSubsidiaryStorage() as SubsidiaryStorage<any, any>,
+  };
+
   /** Fetch the subsidiary row for a base config of a given type, if any. */
   async function getSubsidiary(type: string, id: string): Promise<PluginConfigSubsidiary> {
-    const client = getClient();
-    const table = subsidiaryTableFor(type);
-    if (!table) return null;
-    const [row] = await client.select().from(table).where(eq(table.id, id));
+    const ns = subsidiaries[type];
+    if (!ns) return null;
+    const row = await ns.get(id);
     return (row as PluginConfigSubsidiary) ?? null;
   }
 
@@ -189,86 +179,13 @@ export function createPluginConfigStorage(): PluginConfigStorage {
     },
 
     // --- Subsidiary access ----------------------------------------------
-    async getCharge(id: string): Promise<PluginConfigCharge | undefined> {
-      const client = getClient();
-      const [row] = await client.select().from(pluginConfigsCharge).where(eq(pluginConfigsCharge.id, id));
-      return row || undefined;
-    },
-
-    async upsertCharge(row: InsertPluginConfigCharge): Promise<PluginConfigCharge> {
-      const client = getClient();
-      const [result] = await client
-        .insert(pluginConfigsCharge)
-        .values(row)
-        .onConflictDoUpdate({
-          target: pluginConfigsCharge.id,
-          set: { scope: row.scope, employerId: row.employerId ?? null, account: row.account ?? null },
-        })
-        .returning();
-      return result;
-    },
-
-    async getBenefitEligibility(id: string): Promise<PluginConfigBenefitEligibility | undefined> {
-      const client = getClient();
-      const [row] = await client
-        .select()
-        .from(pluginConfigsBenefitEligibility)
-        .where(eq(pluginConfigsBenefitEligibility.id, id));
-      return row || undefined;
-    },
-
-    async upsertBenefitEligibility(
-      row: InsertPluginConfigBenefitEligibility,
-    ): Promise<PluginConfigBenefitEligibility> {
-      const client = getClient();
-      const [result] = await client
-        .insert(pluginConfigsBenefitEligibility)
-        .values(row)
-        .onConflictDoUpdate({
-          target: pluginConfigsBenefitEligibility.id,
-          set: {
-            policy: row.policy ?? null,
-            benefit: row.benefit ?? null,
-            appliesTo: row.appliesTo ?? null,
-          },
-        })
-        .returning();
-      return result;
-    },
-
-    async getDispatch(id: string): Promise<PluginConfigDispatch | undefined> {
-      const client = getClient();
-      const [row] = await client.select().from(pluginConfigsDispatch).where(eq(pluginConfigsDispatch.id, id));
-      return row || undefined;
-    },
-
-    async upsertDispatch(row: InsertPluginConfigDispatch): Promise<PluginConfigDispatch> {
-      const client = getClient();
-      const [result] = await client
-        .insert(pluginConfigsDispatch)
-        .values(row)
-        .onConflictDoUpdate({
-          target: pluginConfigsDispatch.id,
-          set: { jobType: row.jobType ?? null },
-        })
-        .returning();
-      return result;
-    },
-
     async upsertSubsidiary(
       type: string,
       row: { id: string } & Record<string, unknown>,
     ): Promise<PluginConfigSubsidiary> {
-      switch (type) {
-        case "charge":
-          return this.upsertCharge(row as unknown as InsertPluginConfigCharge);
-        case "trust-eligibility":
-          return this.upsertBenefitEligibility(row as unknown as InsertPluginConfigBenefitEligibility);
-        case "dispatch-eligibility":
-          return this.upsertDispatch(row as unknown as InsertPluginConfigDispatch);
-        default:
-          return null;
-      }
+      const ns = subsidiaries[type];
+      if (!ns) return null;
+      return (await ns.upsert(row)) as PluginConfigSubsidiary;
     },
 
     // --- Composed read + generic search ---------------------------------
@@ -282,21 +199,22 @@ export function createPluginConfigStorage(): PluginConfigStorage {
 
     /**
      * Generic search dispatcher. Applies base-table filters (pluginId,
-     * enabled) plus any subsidiary filters relevant to `type`, joining the
-     * subsidiary table when the kind has one. All SQL lives here — callers
-     * pass a plain params object and receive composed envelopes.
+     * enabled) and, for kinds with a subsidiary namespace, joins that table
+     * and applies the namespace's own WHERE conditions. Callers pass a plain
+     * params object and receive composed envelopes; the per-kind subsidiary
+     * SQL lives in each subsidiary namespace.
      */
     async search(type: string, params: PluginConfigSearchParams = {}): Promise<PluginConfigWithSubsidiary[]> {
       const client = getClient();
-      const table = subsidiaryTableFor(type);
+      const ns = subsidiaries[type];
 
       // Base conditions shared by every kind.
       const baseConditions: SQL[] = [eq(pluginConfigs.pluginType, type)];
       if (params.pluginId !== undefined) baseConditions.push(eq(pluginConfigs.pluginId, params.pluginId));
       if (params.enabled !== undefined) baseConditions.push(eq(pluginConfigs.enabled, params.enabled));
 
-      // Kinds without a subsidiary table: filter and return base rows only.
-      if (!table) {
+      // Kinds without a subsidiary namespace: filter and return base rows only.
+      if (!ns) {
         const rows = await client
           .select()
           .from(pluginConfigs)
@@ -305,30 +223,13 @@ export function createPluginConfigStorage(): PluginConfigStorage {
         return rows.map((config) => ({ config, subsidiary: null }));
       }
 
-      // Subsidiary conditions, applied per kind.
-      const subConditions: SQL[] = [];
-      const eqOrNull = (col: any, val: string | null | undefined) => {
-        if (val === undefined) return;
-        subConditions.push(val === null ? isNull(col) : eq(col, val));
-      };
-
-      if (type === "charge") {
-        if (params.scope !== undefined) subConditions.push(eq(pluginConfigsCharge.scope, params.scope));
-        eqOrNull(pluginConfigsCharge.employerId, params.employerId);
-        eqOrNull(pluginConfigsCharge.account, params.account);
-      } else if (type === "trust-eligibility") {
-        eqOrNull(pluginConfigsBenefitEligibility.policy, params.policy);
-        eqOrNull(pluginConfigsBenefitEligibility.benefit, params.benefit);
-        eqOrNull(pluginConfigsBenefitEligibility.appliesTo, params.appliesTo);
-      } else if (type === "dispatch-eligibility") {
-        eqOrNull(pluginConfigsDispatch.jobType, params.jobType);
-      }
-
+      const table = ns.table;
+      const subConditions = ns.buildConditions(params);
       const whereClause = and(...baseConditions, ...subConditions);
       const rows = await client
         .select({ config: pluginConfigs, subsidiary: table })
         .from(pluginConfigs)
-        .innerJoin(table, eq(table.id, pluginConfigs.id))
+        .innerJoin(table, eq((table as any).id, pluginConfigs.id))
         .where(whereClause)
         .orderBy(pluginConfigs.ordering, pluginConfigs.id);
 

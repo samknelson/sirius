@@ -56,6 +56,11 @@ export function registerTrustEligibilityKind(): void {
         appliesTo: input.appliesTo ?? null,
       },
     }),
+    envelopeFields: [
+      { name: "policy", label: "Policy", type: "string" },
+      { name: "benefit", label: "Benefit", type: "string" },
+      { name: "appliesTo", label: "Applies To", type: "string" },
+    ],
   });
   kindRegistered = true;
 }

@@ -141,6 +141,22 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
     }
   });
 
+  // Per-kind config metadata for the generic admin UI: the relational
+  // (subsidiary) fields this kind carries beyond the base envelope. The UI
+  // renders one input per field and includes them in create/update payloads.
+  // Registered before `/configs/:id` so "meta" is not captured as an id.
+  app.get("/api/plugins/:kind/configs/meta", requireAuth, async (req, res) => {
+    try {
+      const resolved = await resolve(req, res);
+      if (!resolved) return;
+      const { adapter } = resolved;
+      res.json({ envelopeFields: adapter.envelopeFields ?? [] });
+    } catch (error) {
+      console.error("Failed to fetch plugin config meta:", error);
+      res.status(500).json({ message: "Failed to fetch plugin config meta" });
+    }
+  });
+
   app.post("/api/plugins/:kind/configs", requireAuth, async (req, res) => {
     try {
       const resolved = await resolve(req, res);

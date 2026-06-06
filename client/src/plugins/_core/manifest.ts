@@ -63,6 +63,30 @@ export function pluginConfigsQueryKey(
   return [pluginConfigsUrl(kind)];
 }
 
+/**
+ * A relational (subsidiary) field a kind carries beyond the base envelope.
+ * Mirrors the server `PluginConfigEnvelopeField` and is served by
+ * `GET /api/plugins/:kind/configs/meta`. The generic admin UI renders one
+ * input per field and includes them in create/update payloads.
+ */
+export interface PluginConfigEnvelopeField {
+  name: string;
+  label: string;
+  type: "string" | "number";
+  required?: boolean;
+}
+
+/** Stable URL + query-key for the per-kind config metadata endpoint. */
+export function pluginConfigsMetaUrl(kind: ArrayManifestPluginKind): string {
+  return `${pluginConfigsUrl(kind)}/meta`;
+}
+
+export function pluginConfigsMetaQueryKey(
+  kind: ArrayManifestPluginKind,
+): readonly unknown[] {
+  return [pluginConfigsMetaUrl(kind)];
+}
+
 /** Base search filters every kind accepts (mirrors `baseSearchSchemaShape`). */
 export interface BasePluginSearchParams {
   pluginId?: string;

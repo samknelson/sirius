@@ -77,6 +77,12 @@ function registerDashboardKind(): void {
       await dashboardPluginRegistry.saveSettings(plugin, value);
       return { valid: true };
     },
+    // Validate a unified plugin_configs `data` payload against the dashboard
+    // plugin's own JSON schema. Generic CRUD calls this so dashboard configs
+    // are never stored with arbitrary, unvalidated settings.
+    validateConfig: async (plugin, config) => {
+      return dashboardPluginRegistry.validateSettings(plugin, config);
+    },
   });
   // Dashboard configs carry no relational dimensions, so they live entirely
   // in the base table — the adapter declares no subsidiary.
