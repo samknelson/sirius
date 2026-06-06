@@ -1769,6 +1769,12 @@ export type PluginConfig = typeof pluginConfigs.$inferSelect;
 // blob (scope / employer / account). Mirrors legacy charge_plugin_configs.
 export const pluginConfigsCharge = pgTable("plugin_configs_charge", {
   id: varchar("id").primaryKey().references(() => pluginConfigs.id, { onDelete: 'cascade' }),
+  // Denormalized copy of pluginConfigs.pluginId, kept in sync on write. Exists
+  // only so the billing-critical 4-tuple (pluginId, scope, employerId, account)
+  // can be enforced by a single null-safe DB unique index on this table (the
+  // tuple spans base + subsidiary; a single-table index needs pluginId here).
+  // Reads still take the canonical pluginId from the base row.
+  pluginId: text("plugin_id").notNull(),
   scope: varchar("scope").notNull(), // 'global' or 'employer'
   employerId: varchar("employer_id").references(() => employers.id, { onDelete: 'cascade' }),
   account: varchar("account").references(() => ledgerAccounts.id, { onDelete: 'set null' }),

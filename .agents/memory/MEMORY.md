@@ -6,5 +6,6 @@
 - [RJSF custom field onChange](rjsf-custom-field-onchange.md) — field onChange needs `(value, [])` (2nd arg required FieldPathList); widget onChange differs; field id is on `fieldPathId.$id`.
 - [Vite JSX generic transform](vite-jsx-generic-transform.md) — inline `<Component<Type>>` JSX crash-loops the dev server; standalone esbuild passes but Vite rejects it; type the callback prop instead.
 - [Drizzle raw-sql ANY(array) fails in migrations](drizzle-raw-sql-any-array.md) — `= ANY(${jsArray})` in db.execute throws "requires array on right side"; use `IN (${sql.join(...)})`.
+- [Cross-table plugin_configs uniqueness](cross-table-uniqueness-denormalization.md) — tuple spanning base+subsidiary: denormalize base discriminator onto subsidiary + null-safe COALESCE unique index.
 - [Legacy-table drop needs full SQL sweep](legacy-table-drop-sql-sweep.md) — before DROPping a bespoke config table, grep the whole repo for raw SQL refs (service files bypass storage rule); drift-gate boot won't catch lazy call paths.
 - [plugin_configs legacy backfill is boot-time](plugin-configs-backfill-boot-time.md) — backfill legacy `variables`→plugin_configs at boot (knows enabledByDefault), not a SQL migration; canonical row = first by (ordering,id).

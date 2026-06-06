@@ -30,12 +30,35 @@ export function registerChargePluginKind(): void {
   });
   registerPluginConfigAdapter({
     pluginType: "charge",
-    configSchema: z.object({
-      ...baseConfigSchemaShape,
-      scope: z.string().min(1),
-      employerId: z.string().nullable().optional(),
-      account: z.string().nullable().optional(),
-    }),
+    configSchema: z
+      .object({
+        ...baseConfigSchemaShape,
+        scope: z.enum(["global", "employer"]),
+        employerId: z.string().nullable().optional(),
+        account: z.string().nullable().optional(),
+      })
+      // Preserve the legacy charge route's scope/employer invariants:
+      // an employer-scoped config REQUIRES an employerId; a global-scoped
+      // config FORBIDS one. Runs in the generic POST/PATCH handlers, which
+      // parse the body through this adapter schema.
+      .superRefine((data, ctx) => {
+        if (data.scope === "employer" && !data.employerId) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["employerId"],
+            message: "employerId is required when scope is 'employer'",
+          });
+        }
+        // Use `!= null` so an explicit empty string ("") is also rejected,
+        // not just real ids — only a true null/undefined means "no employer".
+        if (data.scope === "global" && data.employerId != null) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["employerId"],
+            message: "employerId must not be set when scope is 'global'",
+          });
+        }
+      }),
     searchParamsSchema: z.object({
       ...baseSearchSchemaShape,
       scope: z.string().optional(),
@@ -52,6 +75,11 @@ export function registerChargePluginKind(): void {
         data: input.data,
       },
       subsidiary: {
+        // pluginId is denormalized onto the subsidiary purely so the 4-tuple
+        // (pluginId, scope, employerId, account) can be enforced by a single
+        // null-safe DB unique index — the base table holds the canonical
+        // pluginId; reads still take it from the base row.
+        pluginId: input.pluginId,
         scope: input.scope,
         employerId: input.employerId ?? null,
         account: input.account ?? null,
