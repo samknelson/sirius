@@ -32,6 +32,13 @@ export interface PluginKindRegistration<TPlugin = unknown, TEntry = unknown> {
   kind: string;
   registry: PluginRegistry<TPlugin, TEntry>;
   /**
+   * Optional human-readable label for the kind, surfaced by the
+   * `/api/plugins/kinds` index endpoint (and the admin index page that
+   * consumes it). When omitted, the endpoint derives a sensible label
+   * from the kind id (e.g. "trust-eligibility" → "Trust Eligibility").
+   */
+  label?: string;
+  /**
    * Kind-level component gate. If set, the entire manifest endpoint
    * 403s when the component is disabled. Mirrors the legacy
    * `requireComponent(...)` middleware that protected the per-kind

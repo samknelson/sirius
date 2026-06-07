@@ -279,6 +279,7 @@ const LedgerPaymentTypesPage = lazy(() => import("@/pages/config/ledger-payment-
 // Hidden, nav-less generic plugin-config admin (Task #353 foundation). Not in
 // any navigation registry; reachable only via this route for verification.
 const GenericPluginConfigsPage = lazy(() => import("@/pages/admin/plugin-configs"));
+const PluginConfigsIndexPage = lazy(() => import("@/pages/admin/plugin-configs-index"));
 const ConfigurationLandingPage = lazy(() => import("@/pages/config/index"));
 const LedgerAccountsPage = lazy(() => import("@/pages/config/ledger/accounts"));
 const LedgerAccountView = lazy(() => import("@/pages/config/ledger/account-view"));
@@ -2940,6 +2941,16 @@ function Router() {
             <ConfigurationLayout>
               <LedgerPaymentTypesPage />
             </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      {/* Navigation-only index linking to every configurable plugin kind.
+          Registered before the :kind route so it isn't shadowed. */}
+      <Route path="/admin/plugin-configs">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <PluginConfigsIndexPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

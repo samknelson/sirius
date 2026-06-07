@@ -1,7 +1,16 @@
 import type { Express, Request, Response, NextFunction } from "express";
-import { getPluginKind, enforceKindGating } from "../plugins/_core";
+import { getPluginKind, enforceKindGating, listPluginConfigAdapters } from "../plugins/_core";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
+
+/** Derive a human-readable label from a kind id (e.g. "trust-eligibility" → "Trust Eligibility"). */
+function prettifyKind(kind: string): string {
+  return kind
+    .split("-")
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
 
 /**
  * Unified plugin manifest endpoint. Replaces the four legacy URLs:
@@ -65,6 +74,44 @@ export function registerPluginsManifestRoutes(app: Express, requireAuth: AuthMid
     } catch (error) {
       console.error("Failed to fetch plugin manifest:", error);
       res.status(500).json({ message: "Failed to fetch plugin manifest" });
+    }
+  });
+
+  // Index of configurable plugin kinds. Drives the admin navigation page
+  // at /admin/plugin-configs so the kind list is never duplicated in the
+  // client. A kind is "configurable" when it has a registered config
+  // adapter (`client-injection` has none and is therefore excluded). Each
+  // kind is filtered by the same component + access-policy gate the
+  // manifest endpoint applies, so a caller only sees kinds they may
+  // configure.
+  app.get("/api/plugins/kinds", requireAuth, async (req, res) => {
+    try {
+      const kinds: { kind: string; label: string }[] = [];
+      for (const kind of listPluginConfigAdapters()) {
+        const registration = getPluginKind(kind);
+        // A config adapter without a kind registration can't be gated
+        // safely, so skip it rather than expose an ungated link.
+        if (!registration) continue;
+
+        const kindGate = await enforceKindGating(
+          {
+            requiredComponent: registration.requiredComponent,
+            requiredPolicy: registration.requiredPolicy,
+          },
+          req,
+        );
+        if (!kindGate.ok) continue;
+
+        kinds.push({ kind, label: registration.label ?? prettifyKind(kind) });
+      }
+
+      kinds.sort((a, b) => a.label.localeCompare(b.label));
+
+      res.setHeader("Cache-Control", "no-store");
+      res.json(kinds);
+    } catch (error) {
+      console.error("Failed to list plugin kinds:", error);
+      res.status(500).json({ message: "Failed to list plugin kinds" });
     }
   });
 }

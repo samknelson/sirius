@@ -20,6 +20,26 @@ export type PluginKind =
  */
 export type ArrayManifestPluginKind = Exclude<PluginKind, "client-injection">;
 
+/**
+ * One configurable plugin kind as returned by `GET /api/plugins/kinds`.
+ * The server owns the list (and the human-readable label) so the client
+ * never duplicates the set of kinds. Drives the admin index page at
+ * `/admin/plugin-configs`.
+ */
+export interface PluginKindSummary {
+  kind: ArrayManifestPluginKind;
+  label: string;
+}
+
+/** Stable URL + query-key for the configurable-kinds index endpoint. */
+export function pluginKindsUrl(): string {
+  return "/api/plugins/kinds";
+}
+
+export function pluginKindsQueryKey(): readonly unknown[] {
+  return [pluginKindsUrl()];
+}
+
 export function pluginManifestUrl(kind: PluginKind): string {
   return `/api/plugins/${kind}/manifest`;
 }
