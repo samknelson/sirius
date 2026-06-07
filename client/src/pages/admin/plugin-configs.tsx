@@ -11,7 +11,20 @@ import {
   type ArrayManifestPluginKind,
   type PluginConfigEnvelopeField,
 } from "@/plugins/_core";
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
@@ -50,7 +63,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Loader2, Plus, Settings, Trash2, ChevronDown, X } from "lucide-react";
+import { Loader2, Plus, Settings, Trash2, ChevronDown, X, Info } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { JsonSchema } from "@shared/json-schema-form";
@@ -103,18 +116,6 @@ interface PluginConfigRow {
   data: unknown;
   [key: string]: unknown;
 }
-
-const BASE_KEYS = new Set([
-  "id",
-  "pluginType",
-  "pluginId",
-  "name",
-  "enabled",
-  "ordering",
-  "data",
-  "createdAt",
-  "updatedAt",
-]);
 
 export default function GenericPluginConfigsPage() {
   const params = useParams<{ kind: string }>();
@@ -188,6 +189,8 @@ export default function GenericPluginConfigsPage() {
     },
   });
 
+  const labelMaps = useEnvelopeLabelMaps(envelopeFields);
+
   if (!isValidKind) {
     return (
       <div className="p-6">
@@ -223,9 +226,18 @@ export default function GenericPluginConfigsPage() {
   };
 
   const sortedPlugins = [...plugins].sort((a, b) => a.name.localeCompare(b.name));
-  const visiblePlugins = sortedPlugins.filter((plugin) =>
-    configs.some((c) => c.pluginId === plugin.id)
-  );
+  const pluginById = new Map(sortedPlugins.map((p) => [p.id, p]));
+  // Flatten configs into table rows (one per config), sorted by plugin name then
+  // order. Configs whose plugin is missing from the manifest are dropped.
+  const rows = configs
+    .filter((c) => pluginById.has(c.pluginId))
+    .sort((a, b) => {
+      const byPlugin = pluginById
+        .get(a.pluginId)!
+        .name.localeCompare(pluginById.get(b.pluginId)!.name);
+      if (byPlugin !== 0) return byPlugin;
+      return (a.ordering ?? 0) - (b.ordering ?? 0);
+    });
 
   const updateFilter = (name: string, value: string) =>
     setFilters((prev) => ({ ...prev, [name]: value }));
@@ -286,7 +298,7 @@ export default function GenericPluginConfigsPage() {
             </p>
           </CardContent>
         </Card>
-      ) : visiblePlugins.length === 0 ? (
+      ) : rows.length === 0 ? (
         <Card>
           <CardContent className="pt-6">
             {hasActiveFilters ? (
@@ -301,85 +313,107 @@ export default function GenericPluginConfigsPage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-6">
-          {visiblePlugins.map((plugin) => {
-            const pluginConfigs = configs.filter((c) => c.pluginId === plugin.id);
-            return (
-              <Card key={plugin.id} data-testid={`card-plugin-${plugin.id}`}>
-                <CardHeader>
-                  <div className="flex items-start justify-between gap-4 flex-wrap">
-                    <div className="flex-1">
-                      <CardTitle data-testid={`text-plugin-name-${plugin.id}`}>{plugin.name}</CardTitle>
-                      {plugin.description && (
-                        <CardDescription className="mt-2">{plugin.description}</CardDescription>
-                      )}
-                    </div>
-                    <Badge variant="secondary" className="text-xs" data-testid={`badge-count-${plugin.id}`}>
-                      {pluginConfigs.length} configuration{pluginConfigs.length !== 1 ? "s" : ""}
-                    </Badge>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3" data-testid={`list-configs-${plugin.id}`}>
-                    {pluginConfigs.map((config) => (
-                        <div
-                          key={config.id}
-                          className="flex items-center justify-between gap-4 p-4 border rounded-md flex-wrap"
-                          data-testid={`row-config-${config.id}`}
+        <div className="rounded-md border">
+          <Table data-testid="table-plugin-configs">
+            <TableHeader>
+              <TableRow>
+                <TableHead>Plugin</TableHead>
+                <TableHead>Name</TableHead>
+                {filterableFields.map((field) => (
+                  <TableHead key={field.name}>{field.label}</TableHead>
+                ))}
+                <TableHead>Enabled?</TableHead>
+                <TableHead>Order</TableHead>
+                <TableHead className="text-right">Tools</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((config) => {
+                const plugin = pluginById.get(config.pluginId)!;
+                return (
+                  <TableRow key={config.id} data-testid={`row-config-${config.id}`}>
+                    <TableCell>
+                      <div className="flex items-center gap-1.5">
+                        <span
+                          className="font-medium"
+                          data-testid={`text-plugin-name-${config.id}`}
                         >
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-3">
-                              <Badge variant={config.enabled ? "default" : "secondary"}>
-                                {config.enabled ? "Enabled" : "Disabled"}
-                              </Badge>
-                              <span className="text-sm font-medium" data-testid={`text-config-name-${config.id}`}>
-                                {config.name || "—"}
-                              </span>
-                            </div>
-                            <ConfigSummary config={config} envelopeFields={envelopeFields} />
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => openEdit(plugin, config)}
-                              data-testid={`button-edit-${config.id}`}
-                            >
-                              <Settings className="mr-2 h-4 w-4" />
-                              Edit
+                          {plugin.name}
+                        </span>
+                        {plugin.description && <PluginInfoPopover plugin={plugin} configId={config.id} />}
+                      </div>
+                    </TableCell>
+                    <TableCell data-testid={`text-config-name-${config.id}`}>
+                      {config.name || "—"}
+                    </TableCell>
+                    {filterableFields.map((field) => {
+                      const fieldMeta = labelMaps.get(field.name);
+                      const value = config[field.name];
+                      const display =
+                        value === null || value === undefined || value === ""
+                          ? "—"
+                          : fieldMeta
+                          ? fieldMeta.resolve(value)
+                          : String(value);
+                      return (
+                        <TableCell
+                          key={field.name}
+                          data-testid={`cell-${field.name}-${config.id}`}
+                        >
+                          {display}
+                        </TableCell>
+                      );
+                    })}
+                    <TableCell>
+                      <Badge variant={config.enabled ? "default" : "secondary"}>
+                        {config.enabled ? "Enabled" : "Disabled"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell data-testid={`text-order-${config.id}`}>
+                      {config.ordering}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => openEdit(plugin, config)}
+                          data-testid={`button-edit-${config.id}`}
+                        >
+                          <Settings className="mr-2 h-4 w-4" />
+                          Edit
+                        </Button>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="outline" size="sm" data-testid={`button-delete-${config.id}`}>
+                              <Trash2 className="h-4 w-4" />
                             </Button>
-                            <AlertDialog>
-                              <AlertDialogTrigger asChild>
-                                <Button variant="outline" size="sm" data-testid={`button-delete-${config.id}`}>
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              </AlertDialogTrigger>
-                              <AlertDialogContent>
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle>Delete Configuration</AlertDialogTitle>
-                                  <AlertDialogDescription>
-                                    Are you sure you want to delete this configuration? This action cannot be undone.
-                                  </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                  <AlertDialogAction
-                                    onClick={() => deleteMutation.mutate(config.id)}
-                                    data-testid={`button-confirm-delete-${config.id}`}
-                                  >
-                                    Delete
-                                  </AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
-                          </div>
-                        </div>
-                      ))}
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Delete Configuration</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Are you sure you want to delete this configuration? This action cannot be undone.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction
+                                onClick={() => deleteMutation.mutate(config.id)}
+                                data-testid={`button-confirm-delete-${config.id}`}
+                              >
+                                Delete
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
         </div>
       )}
 
@@ -537,35 +571,39 @@ function useEnvelopeLabelMaps(envelopeFields: PluginConfigEnvelopeField[]) {
   return byField;
 }
 
-function ConfigSummary({
-  config,
-  envelopeFields,
+/**
+ * Small info trigger shown beside a plugin's name in the table. Opens a popover
+ * with the plugin's manifest description so the description doesn't have to sit
+ * inline in every row. Only rendered when the plugin has a description.
+ */
+function PluginInfoPopover({
+  plugin,
+  configId,
 }: {
-  config: PluginConfigRow;
-  envelopeFields: PluginConfigEnvelopeField[];
+  plugin: ManifestEntry;
+  configId: string;
 }) {
-  const labelMaps = useEnvelopeLabelMaps(envelopeFields);
-  const extras = Object.entries(config).filter(([k]) => !BASE_KEYS.has(k));
   return (
-    <div className="mt-1 space-y-0.5 text-sm text-muted-foreground" data-testid={`summary-config-${config.id}`}>
-      <p>
-        <strong>Plugin:</strong> {config.pluginId} · <strong>Order:</strong> {config.ordering}
-      </p>
-      {extras.length > 0 && (
-        <p className="truncate max-w-xl">
-          {extras
-            .map(([k, v]) => {
-              const fieldMeta = labelMaps.get(k);
-              const label = fieldMeta?.label ?? k;
-              if (v === null || v === undefined || v === "") {
-                return `${label}: —`;
-              }
-              return `${label}: ${fieldMeta ? fieldMeta.resolve(v) : String(v)}`;
-            })
-            .join(" · ")}
-        </p>
-      )}
-    </div>
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-6 w-6 text-muted-foreground"
+          aria-label={`About ${plugin.name}`}
+          data-testid={`button-plugin-info-${configId}`}
+        >
+          <Info className="h-4 w-4" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        className="max-w-xs text-sm"
+        data-testid={`popover-plugin-info-${configId}`}
+      >
+        <p className="font-medium mb-1">{plugin.name}</p>
+        <p className="text-muted-foreground">{plugin.description}</p>
+      </PopoverContent>
+    </Popover>
   );
 }
 
