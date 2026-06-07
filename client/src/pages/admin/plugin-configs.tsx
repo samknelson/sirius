@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useParams } from "wouter";
+import { Link, useParams } from "wouter";
 import { useQuery, useQueries, useMutation, keepPreviousData } from "@tanstack/react-query";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import {
@@ -76,6 +76,7 @@ import {
   ArrowUp,
   ArrowDown,
   ArrowUpDown,
+  ArrowLeft,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -166,7 +167,7 @@ export default function GenericPluginConfigsPage() {
   const kindName = kindSummary?.label ?? prettifyKind(kind);
   const kindDescription = kindSummary?.description;
 
-  usePageTitle(kindName);
+  usePageTitle(`Plugin Configs - ${kindName}`);
   const { toast } = useToast();
 
   const [dialogPlugin, setDialogPlugin] = useState<ManifestEntry | null>(null);
@@ -350,11 +351,17 @@ export default function GenericPluginConfigsPage() {
   const clearFilters = () => setFilters({});
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="max-w-7xl mx-auto space-y-6">
+      <Link href="/admin/plugin-configs">
+        <Button variant="ghost" size="sm" className="-ml-2" data-testid="button-back-to-plugin-configs">
+          <ArrowLeft className="h-4 w-4 mr-2" />
+          Back to Plugin Configs
+        </Button>
+      </Link>
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-xl md:text-2xl font-bold text-foreground" data-testid="text-page-title">
-            {kindName}
+            {`Plugin Configs - ${kindName}`}
           </h1>
           {kindDescription && (
             <p className="text-muted-foreground mt-2" data-testid="text-page-description">

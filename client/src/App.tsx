@@ -2962,7 +2962,9 @@ function Router() {
       <Route path="/admin/plugin-configs/:kind">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
-            <GenericPluginConfigsPage />
+            <ConfigurationLayout>
+              <GenericPluginConfigsPage />
+            </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
