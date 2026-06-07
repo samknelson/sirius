@@ -150,5 +150,7 @@ export function registerClientInjectionManifestRoute(
 // Plugin registrations (side-effect imports — each file self-registers).
 import "./plugins/weglot-sdk";
 import "./plugins/weglot-init";
-import "./plugins/custom-css";
-import "./plugins/custom-js";
+import "./plugins/custom-css-inline";
+import "./plugins/custom-css-href";
+import "./plugins/custom-js-inline";
+import "./plugins/custom-js-href";
