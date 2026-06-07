@@ -13,13 +13,13 @@ export function registerDashboardRoutes(
 ) {
   // NOTE: The dashboard manifest endpoint was unified in Task #208 and
   // now lives at `GET /api/plugins/dashboard/manifest`. The per-plugin
-  // enable toggle + settings endpoints were unified in Task #209 and
-  // now live at:
-  //   GET  /api/plugins/dashboard/enabled
-  //   PUT  /api/plugins/dashboard/:id/enabled
+  // settings endpoints were unified in Task #209 and now live at:
   //   GET  /api/plugins/dashboard/:id/settings
   //   PUT  /api/plugins/dashboard/:id/settings
-  // See `server/modules/plugins-admin.ts`.
+  // See `server/modules/plugins-admin.ts`. Per-config enable/disable
+  // state now lives on each `plugin_configs` row and is managed through
+  // the unified `/api/plugins/dashboard/configs` endpoints; the
+  // dashboard manifest's `decorateEntries` reads `enabled` from there.
 
   // Single registry-backed content handler. Component + access-policy
   // gating is enforced inside dashboardPluginRegistry.runContent via the

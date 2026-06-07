@@ -23,8 +23,6 @@ type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void 
  *
  * Endpoints:
  *   POST /api/plugins/:kind/:id/validate-config
- *   GET  /api/plugins/:kind/enabled
- *   PUT  /api/plugins/:kind/:id/enabled
  *   GET  /api/plugins/:kind/:id/settings
  *   PUT  /api/plugins/:kind/:id/settings
  *
@@ -89,44 +87,6 @@ export function registerPluginsAdminRoutes(app: Express, requireAuth: AuthMiddle
     } catch (error) {
       console.error("Failed to validate plugin config:", error);
       res.status(500).json({ message: "Failed to validate plugin configuration" });
-    }
-  });
-
-  app.get("/api/plugins/:kind/enabled", requireAuth, async (req, res) => {
-    try {
-      const registration = await resolveKind(req, res);
-      if (!registration) return;
-      if (!registration.listEnabled) {
-        res.status(404).json({ message: `Kind '${req.params.kind}' does not expose an enabled list` });
-        return;
-      }
-      const entries = await registration.listEnabled();
-      res.json(entries);
-    } catch (error) {
-      console.error("Failed to fetch plugin enabled list:", error);
-      res.status(500).json({ message: "Failed to fetch plugin enabled list" });
-    }
-  });
-
-  app.put("/api/plugins/:kind/:id/enabled", requireAuth, async (req, res) => {
-    try {
-      const resolved = await resolvePlugin(req, res);
-      if (!resolved) return;
-      const { registration, plugin } = resolved;
-      if (!registration.setEnabled) {
-        res.status(404).json({ message: `Kind '${req.params.kind}' does not support enable/disable` });
-        return;
-      }
-      const { enabled } = req.body ?? {};
-      if (typeof enabled !== "boolean") {
-        res.status(400).json({ message: "`enabled` must be a boolean" });
-        return;
-      }
-      await registration.setEnabled(plugin, enabled);
-      res.json({ pluginId: req.params.id, enabled });
-    } catch (error) {
-      console.error("Failed to update plugin enabled state:", error);
-      res.status(500).json({ message: "Failed to update plugin enabled state" });
     }
   });
 

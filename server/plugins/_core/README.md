@@ -76,8 +76,6 @@ return 404.
 | ------ | ------------------------------------------------ | -------------------- | --------------------------------------------------------------------- |
 | GET    | `/api/plugins/:kind/manifest`                    | (always present)     | Always-on. Filters via `listVisibleTo` + `decorateEntries` + sort.    |
 | POST   | `/api/plugins/:kind/:id/validate-config`         | `validateConfig`     | Pre-save config check. Returns `{ valid, errors? }`.                  |
-| GET    | `/api/plugins/:kind/enabled`                     | `listEnabled`        | Per-plugin enabled snapshot (`{ pluginId, enabled }[]`).              |
-| PUT    | `/api/plugins/:kind/:id/enabled`                 | `setEnabled`         | Body `{ enabled: boolean }`. Toggle a single plugin on/off.           |
 | GET    | `/api/plugins/:kind/:id/settings`                | `getSettings`        | Returns `{ schema, uiSchema, value }` or 404 if no schema.            |
 | PUT    | `/api/plugins/:kind/:id/settings`                | `saveSettings`       | Body is the new value. May return `{ valid: false, errors }` → 400.   |
 
@@ -88,12 +86,12 @@ single-plugin route — run the per-plugin gate (`requiredComponent`
 
 ### Which kind implements which today
 
-| Kind                   | Kind-level component | Kind-level policy | `validateConfig` | `listEnabled` / `setEnabled` | `getSettings` / `saveSettings` |
-| ---------------------- | -------------------- | ----------------- | ---------------- | ---------------------------- | ------------------------------ |
-| `dashboard`            | —                    | —                 | —                | yes                          | yes                            |
-| `dispatch-eligibility` | `dispatch`           | `admin`           | yes              | —                            | —                              |
-| `charge`               | `ledger`             | `admin`           | yes              | —                            | —                              |
-| `trust-eligibility`    | —                    | `admin`           | yes              | —                            | —                              |
+| Kind                   | Kind-level component | Kind-level policy | `validateConfig` | `getSettings` / `saveSettings` |
+| ---------------------- | -------------------- | ----------------- | ---------------- | ------------------------------ |
+| `dashboard`            | —                    | —                 | —                | yes                            |
+| `dispatch-eligibility` | `dispatch`           | `admin`           | yes              | —                              |
+| `charge`               | `ledger`             | `admin`           | yes              | —                              |
+| `trust-eligibility`    | —                    | `admin`           | yes              | —                              |
 
 `dashboard` intentionally omits a kind-level policy so every
 authenticated user can list their widgets; per-plugin
@@ -261,8 +259,6 @@ Steps:
        // Optional admin capabilities — each opts the matching URL in.
        // Omit a callback to leave the matching route as a 404.
        // validateConfig: (plugin, config) => plugin.validateSettings(config),
-       // listEnabled:    async () => [...],
-       // setEnabled:     async (plugin, enabled) => {...},
        // getSettings:    async (plugin) => ({ schema, uiSchema, value }),
        // saveSettings:   async (plugin, value) => ({ valid: true }),
      });

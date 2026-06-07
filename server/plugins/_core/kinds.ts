@@ -14,12 +14,6 @@ export interface PluginSettingsPayload {
   value: unknown;
 }
 
-/** Per-plugin enabled snapshot returned by `listEnabled`. */
-export interface PluginEnabledEntry {
-  pluginId: string;
-  enabled: boolean;
-}
-
 /**
  * Registry of plugin kinds. The unified `/api/plugins/:kind/manifest`
  * endpoint looks up kinds here and delegates to the appropriate
@@ -74,8 +68,6 @@ export interface PluginKindRegistration<TPlugin = unknown, TEntry = unknown> {
    * per-plugin component gating.
    *
    * - `validateConfig`  → POST /api/plugins/:kind/:id/validate-config
-   * - `listEnabled`     → GET  /api/plugins/:kind/enabled
-   * - `setEnabled`      → PUT  /api/plugins/:kind/:id/enabled
    * - `getSettings`     → GET  /api/plugins/:kind/:id/settings
    * - `saveSettings`    → PUT  /api/plugins/:kind/:id/settings
    */
@@ -83,8 +75,6 @@ export interface PluginKindRegistration<TPlugin = unknown, TEntry = unknown> {
     plugin: TPlugin,
     config: unknown,
   ) => Promise<PluginValidationResult> | PluginValidationResult;
-  listEnabled?: () => Promise<PluginEnabledEntry[]> | PluginEnabledEntry[];
-  setEnabled?: (plugin: TPlugin, enabled: boolean) => Promise<void> | void;
   getSettings?: (
     plugin: TPlugin,
   ) => Promise<PluginSettingsPayload | null> | PluginSettingsPayload | null;
