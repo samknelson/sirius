@@ -271,15 +271,49 @@ export function getAllPoliciesNeeded(): string[] {
   return Array.from(new Set(policies));
 }
 
-export function isPathInSection(path: string, section: NavSection): boolean {
-  const inItems = section.items.some(
-    item => path === item.path || path.startsWith(item.path + "/")
-  );
+/** True when `path` equals `itemPath` or is nested beneath it. */
+function pathMatchesItem(path: string, itemPath: string): boolean {
+  return path === itemPath || path.startsWith(itemPath + "/");
+}
+
+/**
+ * Resolve the single nav item that should be highlighted for `path`, by
+ * choosing the matching item with the longest path. This makes the most
+ * specific item win: e.g. on `/admin/plugin-configs/charge` the
+ * "Charge Plugins" item (path `/admin/plugin-configs/charge`) is chosen over
+ * the generic "Plugins" item (path `/admin/plugin-configs`), instead of both
+ * matching via prefix. Falls back to the generic parent item when no more
+ * specific item exists. Returns `null` when nothing matches.
+ */
+export function findActiveItemPath(path: string): string | null {
+  let best: string | null = null;
+  const consider = (itemPath: string) => {
+    if (pathMatchesItem(path, itemPath)) {
+      if (best === null || itemPath.length > best.length) best = itemPath;
+    }
+  };
+  for (const section of configSections) {
+    section.items.forEach(item => consider(item.path));
+    section.subsections?.forEach(sub => sub.items.forEach(item => consider(item.path)));
+  }
+  return best;
+}
+
+/**
+ * True when the section (or one of its subsections) owns the currently active
+ * item. Driven by `activeItemPath` (from `findActiveItemPath`) so a section
+ * only opens/highlights when it holds the most specific match — not merely a
+ * prefix of the location.
+ */
+export function isPathInSection(activeItemPath: string | null, section: NavSection): boolean {
+  if (!activeItemPath) return false;
+
+  const inItems = section.items.some(item => item.path === activeItemPath);
   if (inItems) return true;
 
   if (section.subsections) {
     return section.subsections.some(sub =>
-      sub.items.some(item => path === item.path || path.startsWith(item.path + "/"))
+      sub.items.some(item => item.path === activeItemPath)
     );
   }
 
