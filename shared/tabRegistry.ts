@@ -18,8 +18,6 @@ export interface TabDefinition {
   policyId?: string;
   permission?: string;
   component?: string;
-  /** Optional capability name; tab is hidden when capability is unavailable */
-  capability?: string;
   parent?: string;
   /** Terminology key for dynamic label substitution (e.g., 'steward', 'union') */
   termKey?: string;
@@ -190,7 +188,7 @@ export const workerTabTree: HierarchicalTab[] = [
     ]
   },
   { id: 'political', label: 'Political', hrefTemplate: '/workers/{id}/political', permission: 'staff', component: 'sitespecific.btu.political' },
-  { id: 'edls', label: 'EDLS', hrefTemplate: '/workers/{id}/edls', policyId: 'edls.coordinator', component: 'edls', capability: 'workerEdls' },
+  { id: 'edls', label: 'EDLS', hrefTemplate: '/workers/{id}/edls', policyId: 'edls.coordinator', component: 'edls' },
   { id: 'sitespecific-freeman-2shift', label: 'Second Shift', hrefTemplate: '/workers/{id}/sitespecific-freeman-2shift', policyId: 'edls.any', component: 'sitespecific.freeman' },
   { id: 'sitespecific-bao-beneficiaries', label: 'Beneficiaries', hrefTemplate: '/workers/{id}/sitespecific/bao/beneficiaries', policyId: 'worker.view', component: 'sitespecific.bao' },
   {

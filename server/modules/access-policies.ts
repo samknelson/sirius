@@ -14,17 +14,6 @@ import {
 } from '@shared/tabRegistry';
 import { storage } from '../storage';
 import { logger } from '../logger';
-import { isWorkerEdlsAvailable } from './edls/capability';
-
-async function checkTabCapability(tab: TabDefinition): Promise<boolean> {
-  if (!tab.capability) return true;
-  switch (tab.capability) {
-    case 'workerEdls':
-      return isWorkerEdlsAvailable();
-    default:
-      return true;
-  }
-}
 
 /**
  * Check if a tab's component requirement is met
@@ -300,15 +289,6 @@ export function registerAccessPolicyRoutes(app: Express) {
         if (!componentEnabled) {
           granted = false;
           reason = `Component not enabled: ${tab.component}`;
-        }
-
-        // Check capability requirement (e.g. table existence)
-        if (granted) {
-          const capabilityAvailable = await checkTabCapability(tab);
-          if (!capabilityAvailable) {
-            granted = false;
-            reason = `Capability not available: ${tab.capability}`;
-          }
         }
 
         // Check policy or permission if component passed
