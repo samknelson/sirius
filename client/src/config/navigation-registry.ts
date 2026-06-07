@@ -46,6 +46,7 @@ export const configSections: NavSection[] = [
       { path: "/config/email", label: "Email Providers", icon: MessageSquare, testId: "nav-config-email", permission: "admin" },
       { path: "/config/postal", label: "Postal Providers", icon: MessageSquare, testId: "nav-config-postal", permission: "admin" },
       { path: "/config/components", label: "Components", icon: Package, testId: "nav-config-components", permission: "admin" },
+      { path: "/admin/plugin-configs", label: "Plugins", icon: Puzzle, testId: "nav-config-plugins", permission: "admin" },
       { path: "/config/logs", label: "System Logs", icon: FileText, testId: "nav-config-logs", permission: "admin" },
       { path: "/admin/quickstarts", label: "Quickstarts", icon: Database, testId: "nav-config-quickstarts", permission: "admin" },
       { path: "/admin/cron-jobs", label: "Cron Jobs", icon: Clock, testId: "nav-config-cron-jobs", permission: "admin" },
@@ -71,6 +72,7 @@ export const configSections: NavSection[] = [
     icon: Heart,
     items: [
       { path: "/trust-benefits", label: "Trust Benefits", icon: Heart, testId: "nav-trust-benefits", permission: "staff" },
+      { path: "/admin/plugin-configs/trust-eligibility", label: "Eligibility Plugins", icon: Zap, testId: "nav-config-trust-eligibility-plugins", permission: "admin" },
       { path: "/config/options/trust-benefit-type", label: "Trust Benefit Types", icon: List, testId: "nav-config-trust-benefit-types", permission: "admin" },
       { path: "/config/options/trust-provider-type", label: "Provider Contact Types", icon: List, testId: "nav-config-provider-contact-types", permission: "admin" },
       { path: "/config/trust/providers/user-settings", label: "Provider User Settings", icon: Settings, testId: "nav-config-users-trust-provider-settings", permission: "admin" },
@@ -137,6 +139,7 @@ export const configSections: NavSection[] = [
     icon: Truck,
     items: [
       { path: "/config/dispatch-job-types", label: "Job Types", icon: List, testId: "nav-config-dispatch-job-types", permission: "admin", requiresComponent: "dispatch" },
+      { path: "/admin/plugin-configs/dispatch-eligibility", label: "Eligibility Plugins", icon: Zap, testId: "nav-config-dispatch-eligibility-plugins", permission: "admin" },
       { path: "/config/dispatch/backfill", label: "Eligibility Backfill", icon: RefreshCw, testId: "nav-config-dispatch-backfill", permission: "admin", requiresComponent: "dispatch" },
       { path: "/config/dispatch/dnc", label: "Do Not Call", icon: Phone, testId: "nav-config-dispatch-dnc", permission: "admin", requiresComponent: "dispatch.dnc" },
       { path: "/config/dispatch/eba", label: "EBA", icon: Calendar, testId: "nav-config-dispatch-eba", permission: "admin", requiresComponent: "dispatch.eba" },
