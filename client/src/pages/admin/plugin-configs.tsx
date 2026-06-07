@@ -63,7 +63,19 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Loader2, Plus, Settings, Trash2, ChevronDown, X, Info } from "lucide-react";
+import {
+  Loader2,
+  Plus,
+  Settings,
+  Trash2,
+  ChevronDown,
+  X,
+  Info,
+  ArrowUp,
+  ArrowDown,
+  ArrowUpDown,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { JsonSchema } from "@shared/json-schema-form";
@@ -117,6 +129,15 @@ interface PluginConfigRow {
   [key: string]: unknown;
 }
 
+type SortDirection = "asc" | "desc";
+
+// Reserved (non-field) sortable column ids. Dynamic filterable columns use
+// `field:<envelopeFieldName>` so they never collide with these.
+const SORT_PLUGIN = "plugin";
+const SORT_NAME = "name";
+const SORT_ENABLED = "enabled";
+const SORT_ORDER = "order";
+
 export default function GenericPluginConfigsPage() {
   const params = useParams<{ kind: string }>();
   const kind = params.kind as ArrayManifestPluginKind;
@@ -132,6 +153,11 @@ export default function GenericPluginConfigsPage() {
   // Active filter values keyed by field name (plus the universal "pluginId").
   // Empty string means "no filter on this field".
   const [filters, setFilters] = useState<Record<string, string>>({});
+
+  // Active column sort. `null` keeps the default ordering (plugin name, then
+  // order). Column ids are the reserved keys below or `field:<envelopeFieldName>`
+  // for the dynamic filterable columns.
+  const [sort, setSort] = useState<{ column: string; direction: SortDirection } | null>(null);
 
   const { data: plugins = [], isLoading: isLoadingPlugins } = useQuery<ManifestEntry[]>({
     queryKey: pluginManifestQueryKey(kind),
@@ -227,17 +253,70 @@ export default function GenericPluginConfigsPage() {
 
   const sortedPlugins = [...plugins].sort((a, b) => a.name.localeCompare(b.name));
   const pluginById = new Map(sortedPlugins.map((p) => [p.id, p]));
-  // Flatten configs into table rows (one per config), sorted by plugin name then
-  // order. Configs whose plugin is missing from the manifest are dropped.
+  // Stable default ordering used as the base view and as the tiebreaker for
+  // every column sort: plugin name, then order.
+  const defaultCompare = (a: PluginConfigRow, b: PluginConfigRow) => {
+    const byPlugin = pluginById
+      .get(a.pluginId)!
+      .name.localeCompare(pluginById.get(b.pluginId)!.name);
+    if (byPlugin !== 0) return byPlugin;
+    return (a.ordering ?? 0) - (b.ordering ?? 0);
+  };
+
+  // Flatten configs into table rows (one per config). Configs whose plugin is
+  // missing from the manifest are dropped.
   const rows = configs
     .filter((c) => pluginById.has(c.pluginId))
-    .sort((a, b) => {
-      const byPlugin = pluginById
-        .get(a.pluginId)!
-        .name.localeCompare(pluginById.get(b.pluginId)!.name);
-      if (byPlugin !== 0) return byPlugin;
-      return (a.ordering ?? 0) - (b.ordering ?? 0);
-    });
+    .sort(defaultCompare);
+
+  // The comparable value for a config in a given column, using the value the
+  // user actually sees (resolved labels for relational columns).
+  const getSortValue = (
+    config: PluginConfigRow,
+    column: string,
+  ): string | number | boolean => {
+    if (column === SORT_PLUGIN) return pluginById.get(config.pluginId)?.name ?? "";
+    if (column === SORT_NAME) return config.name ?? "";
+    if (column === SORT_ENABLED) return config.enabled;
+    if (column === SORT_ORDER) return config.ordering ?? 0;
+    const fieldName = column.startsWith("field:") ? column.slice("field:".length) : column;
+    const value = config[fieldName];
+    if (value === null || value === undefined || value === "") return "";
+    const fieldMeta = labelMaps.get(fieldName);
+    return fieldMeta ? fieldMeta.resolve(value) : String(value);
+  };
+
+  // Sort the (already filtered, default-ordered) rows by the active column.
+  // Empty values are always grouped at the end; equal values fall back to the
+  // default ordering so rows never shuffle arbitrarily.
+  const sortedRows = sort
+    ? [...rows].sort((a, b) => {
+        const av = getSortValue(a, sort.column);
+        const bv = getSortValue(b, sort.column);
+        const aEmpty = av === "";
+        const bEmpty = bv === "";
+        if (aEmpty && bEmpty) return defaultCompare(a, b);
+        if (aEmpty) return 1;
+        if (bEmpty) return -1;
+        let cmp: number;
+        if (typeof av === "number" && typeof bv === "number") {
+          cmp = av - bv;
+        } else if (typeof av === "boolean" && typeof bv === "boolean") {
+          cmp = av === bv ? 0 : av ? 1 : -1;
+        } else {
+          cmp = String(av).localeCompare(String(bv));
+        }
+        if (sort.direction === "desc") cmp = -cmp;
+        return cmp !== 0 ? cmp : defaultCompare(a, b);
+      })
+    : rows;
+
+  const toggleSort = (column: string) =>
+    setSort((prev) =>
+      prev?.column === column
+        ? { column, direction: prev.direction === "asc" ? "desc" : "asc" }
+        : { column, direction: "asc" },
+    );
 
   const updateFilter = (name: string, value: string) =>
     setFilters((prev) => ({ ...prev, [name]: value }));
@@ -317,18 +396,24 @@ export default function GenericPluginConfigsPage() {
           <Table data-testid="table-plugin-configs">
             <TableHeader>
               <TableRow>
-                <TableHead>Plugin</TableHead>
-                <TableHead>Name</TableHead>
+                <SortableHead columnId={SORT_PLUGIN} label="Plugin" sort={sort} onToggle={toggleSort} />
+                <SortableHead columnId={SORT_NAME} label="Name" sort={sort} onToggle={toggleSort} />
                 {filterableFields.map((field) => (
-                  <TableHead key={field.name}>{field.label}</TableHead>
+                  <SortableHead
+                    key={field.name}
+                    columnId={`field:${field.name}`}
+                    label={field.label}
+                    sort={sort}
+                    onToggle={toggleSort}
+                  />
                 ))}
-                <TableHead>Enabled?</TableHead>
-                <TableHead>Order</TableHead>
+                <SortableHead columnId={SORT_ENABLED} label="Enabled?" sort={sort} onToggle={toggleSort} />
+                <SortableHead columnId={SORT_ORDER} label="Order" sort={sort} onToggle={toggleSort} />
                 <TableHead className="text-right">Tools</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.map((config) => {
+              {sortedRows.map((config) => {
                 const plugin = pluginById.get(config.pluginId)!;
                 return (
                   <TableRow key={config.id} data-testid={`row-config-${config.id}`}>
@@ -604,6 +689,49 @@ function PluginInfoPopover({
         <p className="text-muted-foreground">{plugin.description}</p>
       </PopoverContent>
     </Popover>
+  );
+}
+
+/**
+ * A clickable table header that toggles sorting for its column. Shows a
+ * neutral up/down icon when inactive and the active direction otherwise.
+ */
+function SortableHead({
+  columnId,
+  label,
+  sort,
+  onToggle,
+  className,
+}: {
+  columnId: string;
+  label: string;
+  sort: { column: string; direction: SortDirection } | null;
+  onToggle: (column: string) => void;
+  className?: string;
+}) {
+  const active = sort?.column === columnId;
+  const Icon = active ? (sort!.direction === "asc" ? ArrowUp : ArrowDown) : ArrowUpDown;
+  return (
+    <TableHead
+      className={className}
+      aria-sort={active ? (sort!.direction === "asc" ? "ascending" : "descending") : "none"}
+    >
+      <button
+        type="button"
+        onClick={() => onToggle(columnId)}
+        className="flex items-center gap-1 hover:text-foreground"
+        aria-label={`Sort by ${label}`}
+        data-testid={`sort-${columnId.replace(":", "-")}`}
+      >
+        {label}
+        <Icon
+          className={cn(
+            "h-3.5 w-3.5",
+            active ? "text-foreground" : "text-muted-foreground/50",
+          )}
+        />
+      </button>
+    </TableHead>
   );
 }
 
