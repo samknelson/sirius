@@ -18,6 +18,9 @@ function registerDashboardKind(): void {
   registerPluginKind({
     kind: "dashboard",
     registry: dashboardPluginRegistry,
+    label: "Dashboard Widgets",
+    description:
+      "Widgets available on the dashboard, including which users can see them.",
     sortEntries: (a, b) =>
       a.order - b.order || a.id.localeCompare(b.id),
     // Resolve the manifest's `enabled` flag and the settings form schema from

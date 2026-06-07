@@ -7,9 +7,11 @@ import {
   pluginConfigsQueryKey,
   pluginConfigsUrl,
   pluginConfigsMetaQueryKey,
+  pluginKindsQueryKey,
   pluginSearch,
   type ArrayManifestPluginKind,
   type PluginConfigEnvelopeField,
+  type PluginKindSummary,
 } from "@/plugins/_core";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -140,12 +142,31 @@ const SORT_ENABLED = "enabled";
 const SORT_ORDER = "order";
 const SORT_SIRIUS_ID = "siriusId";
 
+/** Derive a human-readable name from a kind id (e.g. "trust-eligibility" → "Trust Eligibility"). Mirrors the server fallback. */
+function prettifyKind(kind: string): string {
+  return kind
+    .split("-")
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
 export default function GenericPluginConfigsPage() {
   const params = useParams<{ kind: string }>();
   const kind = params.kind as ArrayManifestPluginKind;
   const isValidKind = ALLOWED_KINDS.includes(kind);
 
-  usePageTitle(`Plugin Configs — ${kind}`);
+  const { data: kinds = [] } = useQuery<PluginKindSummary[]>({
+    queryKey: pluginKindsQueryKey(),
+    enabled: isValidKind,
+  });
+  const kindSummary = kinds.find((k) => k.kind === kind);
+  // Fall back to a prettified id when the kinds index has no match yet
+  // (loading) or omits this kind, so the page never shows the raw id.
+  const kindName = kindSummary?.label ?? prettifyKind(kind);
+  const kindDescription = kindSummary?.description;
+
+  usePageTitle(kindName);
   const { toast } = useToast();
 
   const [dialogPlugin, setDialogPlugin] = useState<ManifestEntry | null>(null);
@@ -333,13 +354,13 @@ export default function GenericPluginConfigsPage() {
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-xl md:text-2xl font-bold text-foreground" data-testid="text-page-title">
-            Plugin Configs — {kind}
+            {kindName}
           </h1>
-          <p className="text-muted-foreground mt-2">
-            Generic, adapter-driven configuration manager for the{" "}
-            <strong>{kind}</strong> plugin kind. Backed by the unified
-            plugin_configs storage.
-          </p>
+          {kindDescription && (
+            <p className="text-muted-foreground mt-2" data-testid="text-page-description">
+              {kindDescription}
+            </p>
+          )}
         </div>
         {sortedPlugins.length > 0 && (
           <DropdownMenu>

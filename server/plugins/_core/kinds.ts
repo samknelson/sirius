@@ -33,6 +33,12 @@ export interface PluginKindRegistration<TPlugin = unknown, TEntry = unknown> {
    */
   label?: string;
   /**
+   * Optional human-readable description for the kind, surfaced by the
+   * `/api/plugins/kinds` index endpoint and shown under the title on the
+   * admin plugin-configs page. When omitted, no description is shown.
+   */
+  description?: string;
+  /**
    * Kind-level component gate. If set, the entire manifest endpoint
    * 403s when the component is disabled. Mirrors the legacy
    * `requireComponent(...)` middleware that protected the per-kind

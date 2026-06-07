@@ -86,7 +86,7 @@ export function registerPluginsManifestRoutes(app: Express, requireAuth: AuthMid
   // configure.
   app.get("/api/plugins/kinds", requireAuth, async (req, res) => {
     try {
-      const kinds: { kind: string; label: string }[] = [];
+      const kinds: { kind: string; label: string; description?: string }[] = [];
       for (const kind of listPluginConfigAdapters()) {
         const registration = getPluginKind(kind);
         // A config adapter without a kind registration can't be gated
@@ -102,7 +102,11 @@ export function registerPluginsManifestRoutes(app: Express, requireAuth: AuthMid
         );
         if (!kindGate.ok) continue;
 
-        kinds.push({ kind, label: registration.label ?? prettifyKind(kind) });
+        kinds.push({
+          kind,
+          label: registration.label ?? prettifyKind(kind),
+          description: registration.description,
+        });
       }
 
       kinds.sort((a, b) => a.label.localeCompare(b.label));

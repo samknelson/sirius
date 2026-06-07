@@ -19,6 +19,9 @@ export function registerChargePluginKind(): void {
   registerPluginKind({
     kind: "charge",
     registry: chargePluginRegistry,
+    label: "Charge Plugins",
+    description:
+      "Automated charges posted to the ledger when trigger events occur (for example when hours or payments are saved).",
     // Mirror legacy auth on /api/charge-plugins:
     // requireComponent("ledger") + requireAccess("admin").
     requiredComponent: "ledger",

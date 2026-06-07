@@ -19,6 +19,9 @@ function registerDispatchEligKind(): void {
   registerPluginKind({
     kind: "dispatch-eligibility",
     registry: dispatchEligPluginRegistry,
+    label: "Dispatch Eligibility",
+    description:
+      "Rules that determine which workers are eligible for dispatch jobs.",
     // Mirror legacy auth on /api/dispatch-eligibility-plugins:
     // requireComponent("dispatch") + requireAccess("admin").
     requiredComponent: "dispatch",

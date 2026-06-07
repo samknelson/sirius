@@ -31,6 +31,7 @@ export type ArrayManifestPluginKind = PluginKind;
 export interface PluginKindSummary {
   kind: ArrayManifestPluginKind;
   label: string;
+  description?: string;
 }
 
 /** Stable URL + query-key for the configurable-kinds index endpoint. */

@@ -18,6 +18,9 @@ export function registerTrustEligibilityKind(): void {
   registerPluginKind({
     kind: "trust-eligibility",
     registry: eligibilityPluginRegistry,
+    label: "Trust Eligibility",
+    description:
+      "Rules that determine worker eligibility for trust benefits at election start and continuation.",
     // Mirror legacy auth on /api/eligibility-plugins: requireAccess("admin").
     requiredPolicy: "admin",
     sortEntries: (a, b) => a.id.localeCompare(b.id),
