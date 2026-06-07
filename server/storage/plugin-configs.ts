@@ -51,6 +51,7 @@ export interface PluginConfigSearchParams {
   // Base dimensions (every kind)
   pluginId?: string;
   enabled?: boolean;
+  siriusId?: string | null;
   // Charge subsidiary
   scope?: string;
   employerId?: string | null;
@@ -69,6 +70,7 @@ export interface PluginConfigStorage {
   get(id: string): Promise<PluginConfig | undefined>;
   getByType(pluginType: string): Promise<PluginConfig[]>;
   getByTypeAndPlugin(pluginType: string, pluginId: string): Promise<PluginConfig[]>;
+  findBySiriusId(siriusId: string): Promise<PluginConfig | undefined>;
   create(config: InsertPluginConfig): Promise<PluginConfig>;
   update(id: string, config: Partial<InsertPluginConfig>): Promise<PluginConfig | undefined>;
   delete(id: string): Promise<boolean>;
@@ -153,6 +155,15 @@ export function createPluginConfigStorage(): PluginConfigStorage {
       return rows;
     },
 
+    async findBySiriusId(siriusId: string): Promise<PluginConfig | undefined> {
+      const client = getClient();
+      const [row] = await client
+        .select()
+        .from(pluginConfigs)
+        .where(eq(pluginConfigs.siriusId, siriusId));
+      return row || undefined;
+    },
+
     async create(insertConfig: InsertPluginConfig): Promise<PluginConfig> {
       validate.validateOrThrow(insertConfig);
       const client = getClient();
@@ -212,6 +223,9 @@ export function createPluginConfigStorage(): PluginConfigStorage {
       const baseConditions: SQL[] = [eq(pluginConfigs.pluginType, type)];
       if (params.pluginId !== undefined) baseConditions.push(eq(pluginConfigs.pluginId, params.pluginId));
       if (params.enabled !== undefined) baseConditions.push(eq(pluginConfigs.enabled, params.enabled));
+      if (params.siriusId !== undefined && params.siriusId !== null) {
+        baseConditions.push(eq(pluginConfigs.siriusId, params.siriusId));
+      }
 
       // Kinds without a subsidiary namespace: filter and return base rows only.
       if (!ns) {

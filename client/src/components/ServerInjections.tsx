@@ -82,7 +82,7 @@ function appendOnce(parent: HTMLElement, entry: ResolvedInjection) {
 
 export function ServerInjections() {
   const { data } = useQuery<ResolvedInjectionManifest>({
-    queryKey: ["/api/plugins/client-injection/manifest"],
+    queryKey: ["/api/plugins/client-injection/resolved"],
     staleTime: Infinity,
     retry: false,
   });

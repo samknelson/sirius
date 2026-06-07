@@ -105,6 +105,7 @@ import { SchemaForm, sortArrayTableSettings } from "@/components/json-schema-for
 // carry envelope fields; `dashboard` has none.
 const ALLOWED_KINDS: ArrayManifestPluginKind[] = [
   "charge",
+  "client-injection",
   "dashboard",
   "dispatch-eligibility",
   "trust-eligibility",
@@ -137,6 +138,7 @@ const SORT_PLUGIN = "plugin";
 const SORT_NAME = "name";
 const SORT_ENABLED = "enabled";
 const SORT_ORDER = "order";
+const SORT_SIRIUS_ID = "siriusId";
 
 export default function GenericPluginConfigsPage() {
   const params = useParams<{ kind: string }>();
@@ -279,6 +281,10 @@ export default function GenericPluginConfigsPage() {
     if (column === SORT_NAME) return config.name ?? "";
     if (column === SORT_ENABLED) return config.enabled;
     if (column === SORT_ORDER) return config.ordering ?? 0;
+    if (column === SORT_SIRIUS_ID) {
+      const sid = config.siriusId;
+      return sid === null || sid === undefined ? "" : String(sid);
+    }
     const fieldName = column.startsWith("field:") ? column.slice("field:".length) : column;
     const value = config[fieldName];
     if (value === null || value === undefined || value === "") return "";
@@ -409,6 +415,7 @@ export default function GenericPluginConfigsPage() {
                 ))}
                 <SortableHead columnId={SORT_ENABLED} label="Enabled?" sort={sort} onToggle={toggleSort} />
                 <SortableHead columnId={SORT_ORDER} label="Order" sort={sort} onToggle={toggleSort} />
+                <SortableHead columnId={SORT_SIRIUS_ID} label="Sirius ID" sort={sort} onToggle={toggleSort} />
                 <TableHead className="text-right">Tools</TableHead>
               </TableRow>
             </TableHeader>
@@ -456,6 +463,11 @@ export default function GenericPluginConfigsPage() {
                     </TableCell>
                     <TableCell data-testid={`text-order-${config.id}`}>
                       {config.ordering}
+                    </TableCell>
+                    <TableCell data-testid={`text-sirius-id-${config.id}`}>
+                      {config.siriusId === null || config.siriusId === undefined
+                        ? "—"
+                        : String(config.siriusId)}
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-2">
@@ -769,6 +781,7 @@ function GenericConfigDialog({
   const [name, setName] = useState("");
   const [enabled, setEnabled] = useState(false);
   const [ordering, setOrdering] = useState(0);
+  const [siriusId, setSiriusId] = useState("");
   const [settings, setSettings] = useState<Record<string, unknown>>({});
   const [envelope, setEnvelope] = useState<Record<string, string>>({});
 
@@ -778,6 +791,11 @@ function GenericConfigDialog({
       setName(config.name ?? "");
       setEnabled(config.enabled);
       setOrdering(config.ordering ?? 0);
+      setSiriusId(
+        config.siriusId === null || config.siriusId === undefined
+          ? ""
+          : String(config.siriusId),
+      );
       setSettings(
         sortArrayTableSettings(settingsSchema, (config.data as Record<string, unknown>) ?? {}),
       );
@@ -793,6 +811,7 @@ function GenericConfigDialog({
       setName("");
       setEnabled(false);
       setOrdering(0);
+      setSiriusId("");
       setSettings({});
       setEnvelope(Object.fromEntries(envelopeFields.map((f) => [f.name, ""])));
     }
@@ -835,6 +854,7 @@ function GenericConfigDialog({
         name: name.trim() || null,
         enabled,
         ordering,
+        siriusId: siriusId.trim() || null,
         ...envelopeBody,
         data: validSettings,
       };
@@ -901,6 +921,20 @@ function GenericConfigDialog({
                   data-testid="input-ordering"
                 />
               </div>
+            </div>
+
+            <div className="space-y-1">
+              <Label>Sirius ID</Label>
+              <Input
+                placeholder="Optional unique identifier"
+                value={siriusId}
+                onChange={(e) => setSiriusId(e.target.value)}
+                data-testid="input-sirius-id"
+              />
+              <p className="text-xs text-muted-foreground">
+                Optional, unique, stable identifier. Component-owned rows manage
+                this automatically — leave blank for manual configs.
+              </p>
             </div>
 
             {envelopeFields.length > 0 && (

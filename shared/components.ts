@@ -27,6 +27,30 @@ export interface ComponentPolicyRule {
   attributes?: ComponentPolicyRuleAttribute[];
 }
 
+/**
+ * A `plugin_configs` row a component owns and materializes through its
+ * enable/disable lifecycle (Task #397). On enable the row is created if
+ * missing (keyed by its stable {@link siriusId}) else re-activated
+ * (`enabled = true`) while preserving any admin edits to name/ordering/data.
+ * On disable the row is set `enabled = false` and retained so edits survive a
+ * disable/enable cycle. The `auto.<componentId>.<localId>` siriusId scheme
+ * marks the row as component-owned.
+ */
+export interface ComponentManagedPluginConfig {
+  /** PluginKind discriminator, e.g. "client-injection". */
+  pluginType: string;
+  /** Registered impl id, e.g. "weglot-sdk". */
+  pluginId: string;
+  /** Stable, unique, editable identifier. Use `auto.<componentId>.<localId>`. */
+  siriusId: string;
+  /** Initial display name (admin may rename; preserved on re-enable). */
+  name?: string;
+  /** Initial ordering (admin may change; preserved on re-enable). */
+  ordering?: number;
+  /** Initial editable settings payload (admin may edit; preserved on re-enable). */
+  data?: Record<string, unknown>;
+}
+
 export interface ComponentDefinition {
   id: string;
   name: string;
@@ -37,6 +61,11 @@ export interface ComponentDefinition {
   schemaManifest?: ComponentSchemaManifest;
   permissions?: ComponentPermission[];
   policies?: ComponentPolicy[];
+  /**
+   * Plugin configs this component owns and materializes via its lifecycle.
+   * See {@link ComponentManagedPluginConfig}.
+   */
+  pluginConfigs?: ComponentManagedPluginConfig[];
 }
 
 export interface ComponentConfig {
@@ -678,7 +707,23 @@ export const componentRegistry: ComponentDefinition[] = [
     name: "Weglot Translation",
     description: "Injects the Weglot SDK and initializer so site content can be translated on the fly.",
     enabledByDefault: false,
-    category: "internationalization"
+    category: "internationalization",
+    pluginConfigs: [
+      {
+        pluginType: "client-injection",
+        pluginId: "weglot-sdk",
+        siriusId: "auto.internationalization.weglot.sdk",
+        name: "Weglot SDK",
+        ordering: 10,
+      },
+      {
+        pluginType: "client-injection",
+        pluginId: "weglot-init",
+        siriusId: "auto.internationalization.weglot.init",
+        name: "Weglot Initialization",
+        ordering: 20,
+      },
+    ],
   },
   {
     id: "system.sftp.client",

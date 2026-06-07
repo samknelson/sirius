@@ -27,6 +27,12 @@ export interface PluginConfigRows {
     pluginId: string;
     enabled?: boolean;
     name?: string | null;
+    /**
+     * Optional, unique, editable stable identifier. The generic CRUD routes
+     * inject this onto the base row from the validated payload, so per-kind
+     * adapters do not need to thread it through `toRows`.
+     */
+    siriusId?: string | null;
     ordering?: number;
     data?: unknown;
   };
@@ -135,6 +141,12 @@ export const baseConfigSchemaShape = {
   pluginId: z.string().min(1),
   name: z.string().nullable().optional(),
   enabled: z.boolean().optional().default(false),
+  // Treat a blank/whitespace-only sirius_id as null so it is never used as a
+  // DOM element id and multiple unset rows don't collide on the unique index.
+  siriusId: z.preprocess(
+    (v) => (typeof v === "string" && v.trim() === "" ? null : v),
+    z.string().trim().min(1).nullable().optional(),
+  ),
   ordering: z.number().int().optional().default(0),
   data: z.unknown().optional().default({}),
 };
@@ -143,6 +155,7 @@ export const baseConfigSchemaShape = {
 export const baseSearchSchemaShape = {
   pluginId: z.string().optional(),
   enabled: z.boolean().optional(),
+  siriusId: z.string().optional(),
 };
 
 /**

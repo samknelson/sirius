@@ -28,6 +28,7 @@ import "./core/1019_backfill_trust_eligibility_configs";
 import "./core/1020_backfill_dispatch_eligibility_configs";
 import "./core/1021_charge_account_required";
 import "./core/1022_drop_charge_subsidiary_plugin_id";
+import "./core/1023_add_plugin_configs_sirius_id";
 
 // Per-component migrations — each registered via
 // `registerComponentMigration(componentId, migration)`. Tracked by the

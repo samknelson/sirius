@@ -342,6 +342,70 @@ export async function checkComponentSchemaDrift(componentId: string): Promise<Dr
   return { componentId, drift, schemaState };
 }
 
+export interface PluginConfigReconcileResult {
+  componentId: string;
+  created: string[];
+  reactivated: string[];
+  disabled: string[];
+}
+
+/**
+ * Materialize (enable) or deactivate (disable) the `plugin_configs` rows a
+ * component owns (Task #397). Rows are keyed by their stable `siriusId`
+ * (`auto.<componentId>.<localId>`):
+ *
+ * - enable: create the row if missing (`enabled = true`), else re-activate the
+ *   existing row (`enabled = true`) WITHOUT clobbering any admin edits to
+ *   name / ordering / data.
+ * - disable: set `enabled = false` on existing rows and retain them, so admin
+ *   edits survive a disable→enable cycle.
+ *
+ * Components with no `pluginConfigs` are a no-op. Safe to call repeatedly
+ * (idempotent), which is what the boot-time reconcile relies on.
+ */
+export async function reconcileComponentPluginConfigs(
+  componentId: string,
+  enabled: boolean,
+): Promise<PluginConfigReconcileResult> {
+  const result: PluginConfigReconcileResult = {
+    componentId,
+    created: [],
+    reactivated: [],
+    disabled: [],
+  };
+
+  const component = getComponentById(componentId);
+  if (!component?.pluginConfigs?.length) return result;
+
+  for (const managed of component.pluginConfigs) {
+    const existing = await storage.pluginConfigs.findBySiriusId(managed.siriusId);
+
+    if (enabled) {
+      if (!existing) {
+        await storage.pluginConfigs.create({
+          pluginType: managed.pluginType,
+          pluginId: managed.pluginId,
+          siriusId: managed.siriusId,
+          name: managed.name ?? null,
+          ordering: managed.ordering ?? 0,
+          enabled: true,
+          data: managed.data ?? {},
+        });
+        result.created.push(managed.siriusId);
+      } else if (!existing.enabled) {
+        // Re-activate only; preserve admin edits to name/ordering/data.
+        await storage.pluginConfigs.update(existing.id, { enabled: true });
+        result.reactivated.push(managed.siriusId);
+      }
+    } else if (existing && existing.enabled) {
+      await storage.pluginConfigs.update(existing.id, { enabled: false });
+      result.disabled.push(managed.siriusId);
+    }
+  }
+
+  return result;
+}
+
 export async function getComponentSchemaInfo(component: ComponentDefinition): Promise<{
   hasSchema: boolean;
   tables: string[];

@@ -1738,12 +1738,16 @@ export type ChargePluginConfig = {
 export const pluginConfigs = pgTable("plugin_configs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   // PluginKind discriminator (e.g. "charge", "dispatch-eligibility",
-  // "trust-eligibility", "dashboard"). Client-injection plugins are
-  // env-var driven and carry no config, so they are not stored here.
+  // "trust-eligibility", "dashboard", "client-injection").
   pluginType: varchar("plugin_type").notNull(),
   pluginId: text("plugin_id").notNull(), // the registered plugin's id within its kind
   enabled: boolean("enabled").default(false).notNull(),
   name: text("name"), // optional descriptive name for this configuration
+  // Optional, unique, editable stable identifier. Manual rows leave it null
+  // (multiple NULLs are allowed by the unique constraint); component-owned
+  // rows use the scheme `auto.<componentId>.<localId>` so the component
+  // lifecycle can reconcile them by sirius_id.
+  siriusId: varchar("sirius_id").unique(),
   // CORE ordering dimension (deterministic listing / precedence) shared by
   // every kind — intentionally on the base table, not a subsidiary.
   ordering: integer("ordering").default(0).notNull(),

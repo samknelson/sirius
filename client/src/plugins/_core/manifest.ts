@@ -14,11 +14,13 @@ export type PluginKind =
 
 /**
  * Kinds whose `/api/plugins/:kind/manifest` returns a flat array of
- * manifest entries. `client-injection` is intentionally excluded — it
- * has a custom `{ head, bodyEnd }` response shape served by its own
- * route handler and consumed via `<ServerInjections />`.
+ * manifest entries. Every kind now returns an array here, including
+ * `client-injection` (its admin manifest lists the registered injection
+ * impls). The fully-resolved `{ head, bodyEnd }` injection payload lives at
+ * the separate `/api/plugins/client-injection/resolved` endpoint, consumed
+ * via `<ServerInjections />`.
  */
-export type ArrayManifestPluginKind = Exclude<PluginKind, "client-injection">;
+export type ArrayManifestPluginKind = PluginKind;
 
 /**
  * One configurable plugin kind as returned by `GET /api/plugins/kinds`.
@@ -162,6 +164,7 @@ export interface PluginSearchParamsByKind {
     benefit?: string | null;
     appliesTo?: string | null;
   };
+  "client-injection": BasePluginSearchParams;
 }
 
 /**

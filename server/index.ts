@@ -44,6 +44,7 @@ import { initLogNotifier } from "./modules/log-notifier";
 // Import dispatch eligibility plugins system
 import { initializeDispatchEligSystem } from "./plugins/dispatch/eligibility";
 import { initializeDashboardPluginSystem } from "./plugins/dashboard";
+import { initializeClientInjectionPluginSystem } from "./plugins/client-injection";
 
 // Import worker ban notifications
 import { initWorkerBanNotifications } from "./services/worker-ban-notifications";
@@ -304,6 +305,28 @@ server.listen({
   // Initialize dashboard plugin system (registration + legacy migrations)
   await initializeDashboardPluginSystem();
   logger.info("Dashboard plugin system initialized", { source: "startup" });
+
+  // Initialize client-injection plugin system (registration + adapter)
+  await initializeClientInjectionPluginSystem();
+  logger.info("Client-injection plugin system initialized", { source: "startup" });
+
+  // Materialize component-owned plugin_configs for components that are already
+  // enabled (Task #397). Idempotent: existing rows are left untouched (admin
+  // edits preserved), only missing rows are created and disabled-but-present
+  // rows are re-activated. Mirrors the PUT-handler reconcile for the boot path.
+  {
+    const { getAllComponents } = await import("../shared/components");
+    const { reconcileComponentPluginConfigs } = await import(
+      "./services/component-lifecycle"
+    );
+    for (const component of getAllComponents()) {
+      if (!component.pluginConfigs?.length) continue;
+      if (await isComponentEnabled(component.id)) {
+        await reconcileComponentPluginConfigs(component.id, true);
+      }
+    }
+  }
+  logger.info("Component-owned plugin configs reconciled", { source: "startup" });
 
   // Register charge + trust eligibility kinds with the unified
   // /api/plugins/:kind/manifest endpoint (Task #208).

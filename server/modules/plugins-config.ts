@@ -196,6 +196,9 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
       // strips on the generic admin form and re-supplies via a top-level
       // envelope field. Validating `base.data` keeps both save paths valid.
       const { base, subsidiary } = adapter.toRows(parsed.data);
+      // `siriusId` is a base-table dimension common to every kind, so the
+      // generic route threads it through rather than each adapter's `toRows`.
+      base.siriusId = (parsed.data as any).siriusId ?? null;
       if (!(await ensureValidPlugin(registration, parsed.data.pluginId, base.data, res))) return;
       if (await rejectIfDuplicate(kind, adapter, parsed.data, null, res)) return;
       const created = await runInTransaction(async () => {
@@ -252,6 +255,8 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
       // See POST: validate the post-toRows `data` (what actually gets stored)
       // so adapters that relocate authoritative fields into `data` stay valid.
       const { base, subsidiary } = adapter.toRows(parsed.data);
+      // See POST: `siriusId` is a shared base dimension threaded by the route.
+      base.siriusId = (parsed.data as any).siriusId ?? null;
       if (!(await ensureValidPlugin(registration, parsed.data.pluginId, base.data, res))) return;
       if (await rejectIfDuplicate(kind, adapter, parsed.data, req.params.id, res)) return;
       await runInTransaction(async () => {
