@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Info, Database, AlertTriangle, Loader2, Archive, Trash2, Shield, ChevronRight, ChevronDown } from "lucide-react";
+import { Info, Database, AlertTriangle, Loader2, Archive, Trash2, Shield, ChevronRight, ChevronDown, Plug } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { getAllComponents, ComponentDefinition, ComponentConfig } from "@shared/components";
 import { usePageTitle } from "@/contexts/PageTitleContext";
@@ -221,6 +221,7 @@ export default function ComponentsConfigPage() {
                 const isExpanded = !!expandedRows[component.id];
                 const tables = component.schemaManifest?.tables ?? [];
                 const permissions = component.permissions ?? [];
+                const pluginConfigs = component.pluginConfigs ?? [];
                 const rows = [
                   <TableRow key={`${component.id}-main`} data-testid={`row-component-${component.id}`}>
                       <TableCell className="w-10">
@@ -250,6 +251,12 @@ export default function ComponentsConfigPage() {
                               Permissions
                             </Badge>
                           )}
+                          {component.pluginConfigs && component.pluginConfigs.length > 0 && (
+                            <Badge variant="outline" className="text-xs" data-testid={`badge-plugin-configs-${component.id}`}>
+                              <Plug className="h-3 w-3 mr-1" />
+                              Plugin Config
+                            </Badge>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell className="font-medium">{component.name}</TableCell>
@@ -273,7 +280,7 @@ export default function ComponentsConfigPage() {
                       className="bg-muted/30 hover:bg-muted/30"
                     >
                         <TableCell colSpan={5} className="p-0">
-                          <div className="p-4 grid gap-4 md:grid-cols-2">
+                          <div className="p-4 grid gap-4 md:grid-cols-3">
                             <div className="space-y-2">
                               <div className="flex items-center gap-2 text-sm font-semibold">
                                 <Database className="h-4 w-4 text-muted-foreground" />
@@ -329,6 +336,40 @@ export default function ComponentsConfigPage() {
                               ) : (
                                 <p className="text-sm text-muted-foreground">
                                   This component does not define any permissions.
+                                </p>
+                              )}
+                            </div>
+                            <div className="space-y-2">
+                              <div className="flex items-center gap-2 text-sm font-semibold">
+                                <Plug className="h-4 w-4 text-muted-foreground" />
+                                Plugin Configs
+                              </div>
+                              {pluginConfigs.length > 0 ? (
+                                <ul className="space-y-2">
+                                  {pluginConfigs.map((pc) => (
+                                    <li
+                                      key={pc.siriusId}
+                                      className="text-sm"
+                                      data-testid={`row-plugin-config-${component.id}-${pc.siriusId}`}
+                                    >
+                                      <div
+                                        className="font-medium"
+                                        data-testid={`text-plugin-config-name-${component.id}-${pc.siriusId}`}
+                                      >
+                                        {pc.name ?? pc.siriusId}
+                                      </div>
+                                      <div
+                                        className="font-mono text-xs text-muted-foreground"
+                                        data-testid={`text-plugin-config-type-${component.id}-${pc.siriusId}`}
+                                      >
+                                        {pc.pluginType}/{pc.pluginId}
+                                      </div>
+                                    </li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <p className="text-sm text-muted-foreground">
+                                  This component does not declare any plugin configs.
                                 </p>
                               )}
                             </div>
