@@ -7,6 +7,7 @@ export interface LedgerAccountBase {
 
 export interface LedgerAccount extends LedgerAccountBase {
   currencyCode: string;
+  gatewayConfigId: string | null;
 }
 
 export interface LedgerAccountWithDetails extends LedgerAccount {
