@@ -145,7 +145,21 @@ export const componentRegistry: ComponentDefinition[] = [
     name: "Stripe Integration",
     description: "Integration with the Stripe payment processing system",
     enabledByDefault: false,
-    category: "ledger"
+    category: "ledger",
+    // Seed a default payment-gateway config naming the secret that holds the
+    // Stripe API credentials. Materialized on enable (and at boot for an
+    // already-enabled component); admin edits to name/ordering/data are
+    // preserved on re-enable. Mirrors how internationalization.weglot seeds
+    // its client-injection rows.
+    pluginConfigs: [
+      {
+        pluginType: "payment-gateway",
+        pluginId: "stripe",
+        siriusId: "auto.ledger.stripe.default",
+        name: "Stripe (Default)",
+        data: { secretName: "STRIPE_DEFAULT" },
+      },
+    ],
   },
   {
     id: "ledger.payment.batch",

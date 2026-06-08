@@ -30,4 +30,5 @@ export type PluginKind =
   | "dispatch-eligibility"
   | "charge"
   | "trust-eligibility"
-  | "client-injection";
+  | "client-injection"
+  | "payment-gateway";

@@ -22,6 +22,7 @@ import { getSession } from "./auth";
 // Side-effect imports: trigger plugin / provider / access-policy registration.
 import "./plugins/ledger/charge";
 import { registerWmbChargePluginListener } from "./plugins/ledger/charge";
+import "./plugins/ledger/payment-gateway";
 import "./plugins/trust/eligibility";
 import "./services/comm/providers";
 
@@ -254,8 +255,10 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
   // dispatch eligibility register themselves inside their init fns above.
   const { registerChargePluginKind } = await import("./plugins/ledger/charge");
   const { registerTrustEligibilityKind } = await import("./plugins/trust/eligibility");
+  const { registerPaymentGatewayPluginKind } = await import("./plugins/ledger/payment-gateway");
   registerChargePluginKind();
   registerTrustEligibilityKind();
+  registerPaymentGatewayPluginKind();
 
   // Initialize worker ban notifications
   initWorkerBanNotifications();

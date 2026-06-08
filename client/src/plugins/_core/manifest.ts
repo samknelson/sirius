@@ -10,7 +10,8 @@ export type PluginKind =
   | "dispatch-eligibility"
   | "charge"
   | "trust-eligibility"
-  | "client-injection";
+  | "client-injection"
+  | "payment-gateway";
 
 /**
  * Kinds whose `/api/plugins/:kind/manifest` returns a flat array of
@@ -166,6 +167,7 @@ export interface PluginSearchParamsByKind {
     appliesTo?: string | null;
   };
   "client-injection": BasePluginSearchParams;
+  "payment-gateway": BasePluginSearchParams;
 }
 
 /**
