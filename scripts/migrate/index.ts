@@ -29,6 +29,7 @@ import "./core/1020_backfill_dispatch_eligibility_configs";
 import "./core/1021_charge_account_required";
 import "./core/1022_drop_charge_subsidiary_plugin_id";
 import "./core/1023_add_plugin_configs_sirius_id";
+import "./core/1024_drop_freeman_crewleads";
 
 // Per-component migrations — each registered via
 // `registerComponentMigration(componentId, migration)`. Tracked by the
@@ -39,6 +40,7 @@ import "./core/1023_add_plugin_configs_sirius_id";
 import "./components/trust.benefits.eligibility.exemptions/001_create_exemptions";
 import "./components/trust.benefits.eligibility.exemptions/002_require_benefit_and_plugins";
 import "./components/sitespecific.bao/001_create_immediate_eligibility";
+import "./components/sitespecific.freeman/001_create_crewleads";
 
 // Baseline scripts — one-off, per-deployment scripts that bring a database
 // into sync with the schema BEFORE the drift gate runs. Baseline scripts

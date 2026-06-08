@@ -671,7 +671,13 @@ export const componentRegistry: ComponentDefinition[] = [
     name: "Freeman Customization",
     description: "Custom functionality for Freeman",
     enabledByDefault: false,
-    category: "site-specific"
+    category: "site-specific",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/sitespecific/freeman/schema.ts",
+      tables: ["sitespecific_freeman_crewleads"]
+    }
   },
   {
     id: "sitespecific.t631.client",
