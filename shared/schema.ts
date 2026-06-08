@@ -1798,6 +1798,21 @@ export const insertPluginConfigBenefitEligibilitySchema = createInsertSchema(plu
 export type InsertPluginConfigBenefitEligibility = z.infer<typeof insertPluginConfigBenefitEligibilitySchema>;
 export type PluginConfigBenefitEligibility = typeof pluginConfigsBenefitEligibility.$inferSelect;
 
+// Dashboard subsidiary — role-based visibility hoisted out of the opaque
+// settings blob. Each dashboard config targets exactly one role; a viewer
+// sees the widget only when they hold that role. The role FK is RESTRICT so a
+// role still referenced by a dashboard config cannot be deleted out from under
+// it (which would otherwise leave the config with no subsidiary row and make it
+// vanish from the inner-joined search/render path).
+export const pluginConfigsDashboard = pgTable("plugin_configs_dashboard", {
+  id: varchar("id").primaryKey().references(() => pluginConfigs.id, { onDelete: 'cascade' }),
+  role: varchar("role").notNull().references(() => roles.id, { onDelete: 'restrict' }),
+});
+
+export const insertPluginConfigDashboardSchema = createInsertSchema(pluginConfigsDashboard);
+export type InsertPluginConfigDashboard = z.infer<typeof insertPluginConfigDashboardSchema>;
+export type PluginConfigDashboard = typeof pluginConfigsDashboard.$inferSelect;
+
 // Base Rate History Schema - for use in charge plugins
 export const baseRateHistoryEntrySchema = z.object({
   effectiveDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be in YYYY-MM-DD format"),

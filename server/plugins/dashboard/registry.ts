@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import { logger } from "../../logger";
 import { storage } from "../../storage";
+import { runInTransaction } from "../../storage/transaction-context";
 import { getEffectiveUser } from "../../modules/masquerade";
 import { validateAgainstSchema } from "../../lib/json-schema-validator";
 import type { JsonSchema } from "@shared/json-schema-form";
@@ -154,31 +155,6 @@ class DashboardPluginRegistry extends PluginRegistry<DashboardPlugin, DashboardM
     return plugin.client ? plugin.client.enabledByDefault !== false : false;
   }
 
-  async getSettingsValue(plugin: DashboardPlugin): Promise<any> {
-    const row = await this.getCanonicalConfig(plugin);
-    if (row) return row.data ?? {};
-    return plugin.defaultSettings ?? {};
-  }
-
-  /**
-   * Settings for a specific config row, used to scope a single rendered
-   * dashboard item. When `configId` names a valid dashboard config row that
-   * belongs to this plugin, its `data` is returned. Otherwise we fall back to
-   * the canonical config (or plugin defaults) so legacy callers that omit a
-   * configId keep working.
-   */
-  async getSettingsValueForConfig(
-    plugin: DashboardPlugin,
-    configId: string | undefined,
-  ): Promise<any> {
-    if (configId) {
-      const row = await storage.pluginConfigs.get(configId);
-      if (row && row.pluginType === "dashboard" && row.pluginId === plugin.id) {
-        return row.data ?? {};
-      }
-    }
-    return this.getSettingsValue(plugin);
-  }
 
   /**
    * One dashboard item per dashboard config row, joined with its owning
@@ -188,10 +164,15 @@ class DashboardPluginRegistry extends PluginRegistry<DashboardPlugin, DashboardM
    * default ordering (all rows at ordering 0) follows each plugin's declared
    * order until an admin overrides it.
    */
-  async getConfigItems(): Promise<DashboardConfigItem[]> {
-    const configs = await storage.pluginConfigs.getByType("dashboard");
+  async getConfigItems(roleIds: string[]): Promise<DashboardConfigItem[]> {
+    // Role-filtered: the unified search inner-joins the dashboard subsidiary and
+    // returns only configs whose required role is one of the viewer's roles.
+    // A viewer with no roles sees no widgets (empty `roleIn` matches nothing).
+    const envelopes = await storage.pluginConfigs.search("dashboard", {
+      roleIn: roleIds,
+    });
     const items: DashboardConfigItem[] = [];
-    for (const cfg of configs) {
+    for (const { config: cfg } of envelopes) {
       const plugin = this.get(cfg.pluginId);
       if (!plugin || !plugin.client) continue;
       const entry = pluginToManifestEntry(plugin);
@@ -241,6 +222,72 @@ class DashboardPluginRegistry extends PluginRegistry<DashboardPlugin, DashboardM
         });
       } catch (error) {
         logger.error(`Failed to seed default dashboard config for ${plugin.id}`, {
+          service: SERVICE,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+  }
+
+  /**
+   * Idempotently ensure every dashboard config has a role subsidiary row.
+   * Runs at boot AFTER the legacy/welcome backfills and the default seed, so
+   * any config created by those steps also gets a role. The render and search
+   * paths inner-join the subsidiary, so a config without one would silently
+   * vanish — this guarantees the invariant holds.
+   *
+   * Role selection per config without an existing row:
+   *   - welcome-messages configs adopt their legacy `data.roles[0]` (when it
+   *     names a still-valid role), then have `roles` stripped from `data`.
+   *   - everything else defaults to the first role in the roles table.
+   *
+   * Configs that already have a subsidiary row are left untouched, so
+   * re-running is a no-op.
+   */
+  async backfillRoleSubsidiaries(): Promise<void> {
+    const roles = await storage.users.getAllRoles();
+    if (roles.length === 0) {
+      logger.warn("No roles exist; skipping dashboard role backfill", {
+        service: SERVICE,
+      });
+      return;
+    }
+    const validRoleIds = new Set(roles.map((r) => r.id));
+    const firstRoleId = roles[0].id;
+    const configs = await storage.pluginConfigs.getByType("dashboard");
+    for (const cfg of configs) {
+      try {
+        const envelope = await storage.pluginConfigs.getWithSubsidiary(cfg.id);
+        if (!envelope || envelope.subsidiary) continue; // already has a role
+
+        let roleId = firstRoleId;
+        let stripRoles = false;
+        if (cfg.pluginId === "welcome-messages") {
+          const data = (cfg.data ?? {}) as Record<string, unknown>;
+          if ("roles" in data) stripRoles = true;
+          const list = Array.isArray(data.roles) ? data.roles : [];
+          const candidate = list.find(
+            (r): r is string => typeof r === "string" && validRoleIds.has(r),
+          );
+          if (candidate) roleId = candidate;
+        }
+
+        await runInTransaction(async () => {
+          await storage.pluginConfigs.upsertSubsidiary("dashboard", {
+            id: cfg.id,
+            role: roleId,
+          });
+          if (stripRoles) {
+            const data = { ...((cfg.data ?? {}) as Record<string, unknown>) };
+            delete data.roles;
+            await storage.pluginConfigs.update(cfg.id, { data });
+          }
+        });
+        logger.info(`Backfilled dashboard role for config ${cfg.id}`, {
+          service: SERVICE,
+        });
+      } catch (error) {
+        logger.error(`Failed to backfill dashboard role for config ${cfg.id}`, {
           service: SERVICE,
           error: error instanceof Error ? error.message : String(error),
         });
@@ -376,7 +423,48 @@ class DashboardPluginRegistry extends PluginRegistry<DashboardPlugin, DashboardM
     const configIdRaw = req.query.configId;
     const configId =
       typeof configIdRaw === "string" && configIdRaw ? configIdRaw : undefined;
-    const settings = await this.getSettingsValueForConfig(plugin, configId);
+
+    // Resolve the ONE authoritative config envelope this request reads, and use
+    // it for BOTH role authorization and settings — never split the two, or a
+    // caller could pass a configId from another plugin (whose role they hold) to
+    // clear the role check and then receive this plugin's canonical content.
+    //
+    // A supplied configId MUST be a dashboard config belonging to this plugin;
+    // otherwise fall back to the canonical first row. A request that resolves to
+    // no config (e.g. all rows deleted) is denied — there is no "show everyone".
+    let envelope: Awaited<ReturnType<typeof storage.pluginConfigs.getWithSubsidiary>>;
+    if (configId) {
+      envelope = await storage.pluginConfigs.getWithSubsidiary(configId);
+      if (
+        !envelope ||
+        envelope.config.pluginType !== "dashboard" ||
+        envelope.config.pluginId !== plugin.id
+      ) {
+        res.status(404).json({ message: "Dashboard config not found" });
+        return;
+      }
+    } else {
+      const canonical = await this.getCanonicalConfig(plugin);
+      envelope = canonical
+        ? await storage.pluginConfigs.getWithSubsidiary(canonical.id)
+        : undefined;
+    }
+    if (!envelope) {
+      res.status(404).json({ message: "No dashboard config for this widget" });
+      return;
+    }
+
+    // Authoritative role enforcement: a widget is visible only to viewers who
+    // hold its config's role. A missing role or a role the viewer doesn't hold
+    // means the content is hidden.
+    const userRoleIds = new Set(userRoles.map((r) => r.id));
+    const role = (envelope.subsidiary as { role?: string } | null)?.role;
+    if (!role || !userRoleIds.has(role)) {
+      res.status(403).json({ message: "Not authorized to view this dashboard widget" });
+      return;
+    }
+
+    const settings = envelope.config.data ?? plugin.defaultSettings ?? {};
 
     const ctx: DashboardContentContext = {
       userId: dbUser.id,

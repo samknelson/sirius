@@ -7,12 +7,14 @@ import {
   type PluginConfigCharge,
   type PluginConfigBenefitEligibility,
   type PluginConfigDispatch,
+  type PluginConfigDashboard,
 } from "@shared/schema";
 import { eq, and, type SQL } from "drizzle-orm";
 import {
   createChargeSubsidiaryStorage,
   createBenefitEligibilitySubsidiaryStorage,
   createDispatchSubsidiaryStorage,
+  createDashboardSubsidiaryStorage,
   type SubsidiaryStorage,
 } from "./plugin-configs-subsidiary";
 
@@ -29,6 +31,7 @@ export type PluginConfigSubsidiary =
   | PluginConfigCharge
   | PluginConfigBenefitEligibility
   | PluginConfigDispatch
+  | PluginConfigDashboard
   | null;
 
 /**
@@ -62,6 +65,10 @@ export interface PluginConfigSearchParams {
   appliesTo?: string | null;
   // Dispatch subsidiary
   jobType?: string | null;
+  // Dashboard subsidiary: admin single-role filter (`role`) + render-side
+  // viewer role-set filter (`roleIn`).
+  role?: string | null;
+  roleIn?: string[];
 }
 
 export interface PluginConfigStorage {
@@ -106,6 +113,7 @@ export function createPluginConfigStorage(): PluginConfigStorage {
     charge: createChargeSubsidiaryStorage() as SubsidiaryStorage<any, any>,
     "trust-eligibility": createBenefitEligibilitySubsidiaryStorage() as SubsidiaryStorage<any, any>,
     "dispatch-eligibility": createDispatchSubsidiaryStorage() as SubsidiaryStorage<any, any>,
+    dashboard: createDashboardSubsidiaryStorage() as SubsidiaryStorage<any, any>,
   };
 
   /** Fetch the subsidiary row for a base config of a given type, if any. */

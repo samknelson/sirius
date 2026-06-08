@@ -1,5 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { dashboardPluginRegistry } from "../plugins/dashboard";
+import { storage } from "../storage";
+import { getEffectiveUser } from "./masquerade";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PermissionMiddleware = (
@@ -51,9 +53,19 @@ export function registerDashboardRoutes(
   // times yields several items. Per-user gating metadata travels with each
   // item; the client filters and each widget's /content read remains the
   // authoritative enforcement point.
-  app.get("/api/dashboard-plugins/items", requireAuth, async (_req: Request, res: Response) => {
+  app.get("/api/dashboard-plugins/items", requireAuth, async (req: Request, res: Response) => {
     try {
-      const items = await dashboardPluginRegistry.getConfigItems();
+      const user = (req as any).user;
+      const session = (req as any).session;
+      const { dbUser } = await getEffectiveUser(session, user);
+      if (!dbUser) {
+        res.status(401).json({ message: "User not found" });
+        return;
+      }
+      const userRoles = await storage.users.getUserRoles(dbUser.id);
+      const items = await dashboardPluginRegistry.getConfigItems(
+        userRoles.map((r) => r.id),
+      );
       res.setHeader("Cache-Control", "no-store");
       res.json(items);
     } catch (error) {

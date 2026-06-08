@@ -15,3 +15,4 @@
 - [Charge configs via generic search must re-apply legacy ordering](charge-config-generic-search-ordering.md) — generic pluginConfigs.search orders by (ordering,id); legacy charge single-row picks need account-nulls-last/id re-sort + employerId:null for non-employer scopes.
 - [Unified startup via bootstrapApp](dual-startup-entrypoints.md) — dev (index.ts) + prod (production-entry→startApp) now share ONE init sequence (bootstrapApp in app-init.ts); add boot-time init there once. Also: `rg -rn` = `--replace=n`.
 - [New plugin kind needs client ALLOWED_KINDS](new-plugin-kind-client-allowlist.md) — generic admin page has a hardcoded client allowlist; missing kind → "unknown kind" client-side even though server registered it fine.
+- [Split authz/data config resolution is an IDOR](split-authz-data-idor.md) — auth-check config and data-read config must be the SAME resolved record; separate lookups + canonical fallback = confused-deputy.

@@ -11,39 +11,25 @@ const LEGACY_VARIABLE_PREFIX = "welcome_message_";
 
 interface WelcomeMessageSettings {
   message?: string;
-  roles?: string[];
 }
 
 /**
- * Static settings shape: one HTML message body plus the roles that should
- * receive it. The role list only supplies the multi-select options — the
- * schema shape itself never changes with the role set (unlike the old
- * "one HTML field per role" form this replaces).
+ * Static settings shape: a single HTML message body. Role-based visibility is
+ * no longer a per-plugin concern — it's the global `role` envelope field on
+ * every dashboard config (stored in the `plugin_configs_dashboard` subsidiary),
+ * enforced centrally on the render and content paths.
  */
 async function buildSchema(): Promise<JsonSchema> {
-  const roles = await storage.users.getAllRoles();
   return {
     type: "object",
     title: "Welcome Message",
     description:
-      "A welcome message shown to users who hold one of the selected roles. HTML is sanitized for security.",
+      "A welcome message shown to users who hold this config's role. HTML is sanitized for security.",
     properties: {
       message: {
         type: "string",
         title: "Message",
         description: "The welcome message body. Supports basic HTML formatting.",
-      },
-      roles: {
-        type: "array",
-        title: "Who should see this",
-        description:
-          "Users with any of these roles will see this welcome message.",
-        uniqueItems: true,
-        items: {
-          type: "string",
-          enum: roles.map((r) => r.id),
-          enumNames: roles.map((r) => r.name),
-        },
       },
     },
   };
@@ -52,30 +38,25 @@ async function buildSchema(): Promise<JsonSchema> {
 function buildUiSchema(): DashboardPluginUiSchema {
   return {
     message: { "ui:widget": "htmlEditor" },
-    roles: { "ui:widget": "checkboxes" },
   };
 }
 
 export const welcomeMessagesPlugin: DashboardPlugin = {
   id: "welcome-messages",
   name: "Welcome Messages",
-  description:
-    "Display a welcome message to users who hold one of the selected roles",
+  description: "Display a welcome message to users who hold this config's role",
   settingsSchema: buildSchema,
   uiSchema: buildUiSchema,
-  defaultSettings: { message: "", roles: [] },
+  defaultSettings: { message: "" },
 
   async content(ctx) {
+    // Role visibility is enforced centrally (runContent rejects a viewer whose
+    // roles don't include this config's role), so the resolver just returns the
+    // message body.
     const settings = (ctx.settings ?? {}) as WelcomeMessageSettings;
     const message =
       typeof settings.message === "string" ? settings.message : "";
-    const targetRoles = Array.isArray(settings.roles) ? settings.roles : [];
-    if (!message.trim() || targetRoles.length === 0) {
-      return { message: null };
-    }
-    const userRoleIds = new Set(ctx.userRoles.map((r) => r.id));
-    const matches = targetRoles.some((roleId) => userRoleIds.has(roleId));
-    return { message: matches ? message : null };
+    return { message: message.trim() ? message : null };
   },
 
   client: {

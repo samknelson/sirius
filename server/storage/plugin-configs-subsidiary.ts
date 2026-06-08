@@ -3,14 +3,17 @@ import {
   pluginConfigsCharge,
   pluginConfigsBenefitEligibility,
   pluginConfigsDispatch,
+  pluginConfigsDashboard,
   type PluginConfigCharge,
   type InsertPluginConfigCharge,
   type PluginConfigBenefitEligibility,
   type InsertPluginConfigBenefitEligibility,
   type PluginConfigDispatch,
   type InsertPluginConfigDispatch,
+  type PluginConfigDashboard,
+  type InsertPluginConfigDashboard,
 } from "@shared/schema";
-import { eq, isNull, sql, type SQL } from "drizzle-orm";
+import { eq, isNull, inArray, sql, type SQL } from "drizzle-orm";
 import type { AnyPgTable, PgColumn } from "drizzle-orm/pg-core";
 
 /**
@@ -48,6 +51,10 @@ export interface SubsidiarySearchParams {
   benefit?: string | null;
   appliesTo?: string | null;
   jobType?: string | null;
+  // Dashboard: the admin "this exact role" filter (`role`) and the render-side
+  // "role is one of the viewer's roles" filter (`roleIn`).
+  role?: string | null;
+  roleIn?: string[];
 }
 
 /** `col = val`, or `col IS NULL` when val is explicitly null; skip undefined. */
@@ -180,6 +187,50 @@ export function createDispatchSubsidiaryStorage(): SubsidiaryStorage<
     buildConditions(params) {
       const out: SQL[] = [];
       eqOrNull(out, pluginConfigsDispatch.jobType, params.jobType);
+      return out;
+    },
+  };
+}
+
+export function createDashboardSubsidiaryStorage(): SubsidiaryStorage<
+  PluginConfigDashboard,
+  InsertPluginConfigDashboard
+> {
+  return {
+    table: pluginConfigsDashboard,
+    async get(id) {
+      const client = getClient();
+      const [row] = await client.select().from(pluginConfigsDashboard).where(eq(pluginConfigsDashboard.id, id));
+      return row || undefined;
+    },
+    async upsert(row) {
+      const client = getClient();
+      const [result] = await client
+        .insert(pluginConfigsDashboard)
+        .values(row)
+        .onConflictDoUpdate({
+          target: pluginConfigsDashboard.id,
+          set: { role: row.role },
+        })
+        .returning();
+      return result;
+    },
+    buildConditions(params) {
+      const out: SQL[] = [];
+      // Admin "this exact role" filter. `role` is NOT NULL, so a null filter is
+      // never meaningful — treat only a defined, non-null value as a filter.
+      if (params.role !== undefined && params.role !== null) {
+        out.push(eq(pluginConfigsDashboard.role, params.role));
+      }
+      // Render-side "role is one of the viewer's roles". An empty set matches no
+      // rows (a user with no roles sees no role-gated widgets).
+      if (params.roleIn !== undefined) {
+        out.push(
+          params.roleIn.length > 0
+            ? inArray(pluginConfigsDashboard.role, params.roleIn)
+            : sql`false`,
+        );
+      }
       return out;
     },
   };

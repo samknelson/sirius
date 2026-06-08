@@ -64,12 +64,22 @@ function registerDashboardKind(): void {
       return dashboardPluginRegistry.validateSettings(plugin, config);
     },
   });
-  // Dashboard configs carry no relational dimensions, so they live entirely
-  // in the base table — the adapter declares no subsidiary.
+  // Every dashboard config targets exactly one role (its sole relational
+  // dimension). The role lives in the `plugin_configs_dashboard` subsidiary and
+  // is surfaced as a required, filterable envelope field — a viewer sees a
+  // widget only when they hold its role. There is no "show everyone": an
+  // unmatched role means the widget is hidden.
   registerPluginConfigAdapter({
     pluginType: "dashboard",
-    configSchema: z.object({ ...baseConfigSchemaShape }),
-    searchParamsSchema: z.object({ ...baseSearchSchemaShape }),
+    configSchema: z.object({
+      ...baseConfigSchemaShape,
+      role: z.string().min(1),
+    }),
+    searchParamsSchema: z.object({
+      ...baseSearchSchemaShape,
+      role: z.string().optional(),
+      roleIn: z.array(z.string()).optional(),
+    }),
     toRows: (input) => ({
       base: {
         pluginType: "dashboard",
@@ -79,7 +89,26 @@ function registerDashboardKind(): void {
         ordering: input.ordering,
         data: input.data,
       },
+      subsidiary: {
+        role: input.role,
+      },
     }),
+    envelopeFields: [
+      {
+        name: "role",
+        label: "Visible to role",
+        type: "string",
+        required: true,
+        filterable: true,
+        // `role` stores a role id; render as a dropdown populated from the
+        // roles lookup so the column and filter show readable role names.
+        options: {
+          endpoint: "/api/admin/roles",
+          valueKey: "id",
+          labelKey: "name",
+        },
+      },
+    ],
   });
   kindRegistered = true;
 }
@@ -111,6 +140,11 @@ export async function initializeDashboardPluginSystem(): Promise<void> {
   // Ensure every renderable plugin has at least one config row so the
   // per-config dashboard render path never drops a previously-shown widget.
   await dashboardPluginRegistry.seedDefaultConfigs();
+  // Every dashboard config MUST have a role subsidiary row (the render/search
+  // path inner-joins it). Run this LAST so newly-seeded and newly-migrated
+  // configs all get a role: welcome configs adopt their legacy data.roles[0];
+  // everything else defaults to the first role in the roles table. Idempotent.
+  await dashboardPluginRegistry.backfillRoleSubsidiaries();
 }
 
 // Plugin registrations (side-effect imports — each file self-registers).

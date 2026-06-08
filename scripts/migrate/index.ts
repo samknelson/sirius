@@ -30,6 +30,7 @@ import "./core/1021_charge_account_required";
 import "./core/1022_drop_charge_subsidiary_plugin_id";
 import "./core/1023_add_plugin_configs_sirius_id";
 import "./core/1024_drop_freeman_crewleads";
+import "./core/1025_create_plugin_configs_dashboard";
 
 // Per-component migrations — each registered via
 // `registerComponentMigration(componentId, migration)`. Tracked by the
