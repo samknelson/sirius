@@ -2950,7 +2950,9 @@ function Router() {
       <Route path="/admin/plugin-configs">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
-            <PluginConfigsIndexPage />
+            <ConfigurationLayout>
+              <PluginConfigsIndexPage />
+            </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

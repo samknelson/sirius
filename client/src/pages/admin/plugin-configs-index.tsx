@@ -30,7 +30,7 @@ export default function PluginConfigsIndexPage() {
   });
 
   return (
-    <div className="container mx-auto max-w-3xl py-8 px-4">
+    <div className="max-w-3xl">
       <div className="mb-6">
         <h1 className="text-2xl font-semibold tracking-tight" data-testid="text-plugin-configs-title">
           Plugin Configs
