@@ -4,6 +4,7 @@ import {
   pluginConfigsBenefitEligibility,
   pluginConfigsDispatch,
   pluginConfigsDashboard,
+  pluginConfigsPaymentGateway,
   type PluginConfigCharge,
   type InsertPluginConfigCharge,
   type PluginConfigBenefitEligibility,
@@ -12,6 +13,8 @@ import {
   type InsertPluginConfigDispatch,
   type PluginConfigDashboard,
   type InsertPluginConfigDashboard,
+  type PluginConfigPaymentGateway,
+  type InsertPluginConfigPaymentGateway,
 } from "@shared/schema";
 import { eq, isNull, inArray, sql, type SQL } from "drizzle-orm";
 import type { AnyPgTable, PgColumn } from "drizzle-orm/pg-core";
@@ -232,6 +235,43 @@ export function createDashboardSubsidiaryStorage(): SubsidiaryStorage<
         );
       }
       return out;
+    },
+  };
+}
+
+export function createPaymentGatewaySubsidiaryStorage(): SubsidiaryStorage<
+  PluginConfigPaymentGateway,
+  InsertPluginConfigPaymentGateway
+> {
+  return {
+    table: pluginConfigsPaymentGateway,
+    async get(id) {
+      const client = getClient();
+      const [row] = await client
+        .select()
+        .from(pluginConfigsPaymentGateway)
+        .where(eq(pluginConfigsPaymentGateway.id, id));
+      return row || undefined;
+    },
+    async upsert(row) {
+      const client = getClient();
+      // The table has no columns beyond the shared `id` FK, so there is nothing
+      // to update on conflict — insert-if-absent, then read the row back.
+      await client
+        .insert(pluginConfigsPaymentGateway)
+        .values(row)
+        .onConflictDoNothing();
+      const [result] = await client
+        .select()
+        .from(pluginConfigsPaymentGateway)
+        .where(eq(pluginConfigsPaymentGateway.id, row.id));
+      return result;
+    },
+    buildConditions() {
+      // No filterable columns yet — the subsidiary exists only as an FK target.
+      // The dispatcher still inner-joins it, which is exactly what guarantees a
+      // payment-gateway config is returned only once it has a subsidiary row.
+      return [];
     },
   };
 }

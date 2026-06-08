@@ -647,6 +647,11 @@ export const ledgerAccounts = pgTable("ledger_accounts", {
   currencyCode: text("currency_code").default('USD').notNull(),
   isActive: boolean("is_active").default(true).notNull(),
   data: jsonb("data"),
+  // Optional link to the payment-gateway plugin config this account uses. The
+  // FK targets the payment-gateway subsidiary (a type-safe FK target) rather
+  // than the polymorphic plugin_configs base, and is ON DELETE SET NULL so
+  // deleting the gateway config simply unlinks the account.
+  gatewayConfigId: varchar("gateway_config_id").references(() => pluginConfigsPaymentGateway.id, { onDelete: 'set null' }),
 });
 
 export const ledgerPayments = pgTable("ledger_payments", {
@@ -1812,6 +1817,22 @@ export const pluginConfigsDashboard = pgTable("plugin_configs_dashboard", {
 export const insertPluginConfigDashboardSchema = createInsertSchema(pluginConfigsDashboard);
 export type InsertPluginConfigDashboard = z.infer<typeof insertPluginConfigDashboardSchema>;
 export type PluginConfigDashboard = typeof pluginConfigsDashboard.$inferSelect;
+
+// Payment-gateway subsidiary — exists primarily as a type-safe FK target so
+// other tables (e.g. ledger_accounts.gateway_config_id) can reference a
+// specific payment-gateway config without pointing at the polymorphic
+// plugin_configs base. It carries no columns of its own yet beyond the shared
+// id FK (meaningful columns may be added later). Every payment-gateway config
+// gets exactly one row — created by the adapter's toRows on write and by an
+// idempotent boot-time backfill for pre-existing configs — so the generic
+// inner-joined search keeps returning them.
+export const pluginConfigsPaymentGateway = pgTable("plugin_configs_payment_gateway", {
+  id: varchar("id").primaryKey().references(() => pluginConfigs.id, { onDelete: 'cascade' }),
+});
+
+export const insertPluginConfigPaymentGatewaySchema = createInsertSchema(pluginConfigsPaymentGateway);
+export type InsertPluginConfigPaymentGateway = z.infer<typeof insertPluginConfigPaymentGatewaySchema>;
+export type PluginConfigPaymentGateway = typeof pluginConfigsPaymentGateway.$inferSelect;
 
 // Base Rate History Schema - for use in charge plugins
 export const baseRateHistoryEntrySchema = z.object({

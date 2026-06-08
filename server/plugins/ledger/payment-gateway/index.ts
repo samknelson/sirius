@@ -5,6 +5,7 @@ import {
   baseConfigSchemaShape,
   baseSearchSchemaShape,
 } from "../../_core";
+import { logger } from "../../../logger";
 import { paymentGatewayRegistry } from "./registry";
 
 export {
@@ -28,10 +29,15 @@ export function registerPaymentGatewayPluginKind(): void {
     requiredPolicy: "admin",
     sortEntries: (a, b) => a.id.localeCompare(b.id),
   });
-  // Payment-gateway configs carry no relational dimensions, so they live
-  // entirely in the base table — the adapter declares no subsidiary. The
-  // editable `secretName` (the NAME of the secret holding the provider's API
-  // credentials, never the value) rides in `data`, mirroring how the
+  // Payment-gateway configs carry no relational dimensions of their own, but
+  // they DO get a subsidiary row in `plugin_configs_payment_gateway`. That
+  // table has no columns yet — it exists purely as a type-safe FK target so
+  // other tables (e.g. `ledger_accounts.gateway_config_id`) can reference a
+  // specific gateway config instead of the polymorphic base. The adapter's
+  // `toRows` emits an empty `subsidiary` object so the generic create/update
+  // path inserts the row; a boot-time backfill covers pre-existing configs.
+  // The editable `secretName` (the NAME of the secret holding the provider's
+  // API credentials, never the value) still rides in `data`, mirroring how the
   // trust-eligibility adapter relocates `appliesTo` into `data`.
   registerPluginConfigAdapter({
     pluginType: "payment-gateway",
@@ -60,6 +66,11 @@ export function registerPaymentGatewayPluginKind(): void {
           secretName: input.secretName,
         },
       },
+      // Empty subsidiary — the FK-target table has no columns yet. Returning an
+      // (empty) object is what makes the generic CRUD path call
+      // `upsertSubsidiary("payment-gateway", { id })`, so every config has a row
+      // and stays visible through the inner-joined generic search.
+      subsidiary: {},
     }),
     // Lift `data.secretName` back to the top-level flat shape clients send, so
     // round-tripping a config (read -> PATCH) keeps the field populated.
@@ -73,6 +84,34 @@ export function registerPaymentGatewayPluginKind(): void {
     ],
   });
   kindRegistered = true;
+}
+
+/**
+ * Idempotently ensure every payment-gateway config has a subsidiary row in
+ * `plugin_configs_payment_gateway`. The generic search inner-joins that table,
+ * so a config without a row would silently vanish from listings. New configs
+ * get their row from the adapter's `toRows`; this backfill covers configs that
+ * existed before the subsidiary was introduced (e.g. Stripe). Runs at boot
+ * after the kind is registered. Re-running is a no-op.
+ */
+export async function backfillPaymentGatewaySubsidiaries(): Promise<void> {
+  const { storage } = await import("../../../storage");
+  const configs = await storage.pluginConfigs.getByType("payment-gateway");
+  for (const cfg of configs) {
+    try {
+      const envelope = await storage.pluginConfigs.getWithSubsidiary(cfg.id);
+      if (!envelope || envelope.subsidiary) continue; // already has a row
+      await storage.pluginConfigs.upsertSubsidiary("payment-gateway", { id: cfg.id });
+      logger.info(`Backfilled payment-gateway subsidiary for config ${cfg.id}`, {
+        service: "payment-gateway-plugins",
+      });
+    } catch (error) {
+      logger.error(`Failed to backfill payment-gateway subsidiary for config ${cfg.id}`, {
+        service: "payment-gateway-plugins",
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
 }
 
 // Plugin registrations (side-effect imports — each file self-registers).

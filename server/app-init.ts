@@ -255,10 +255,14 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
   // dispatch eligibility register themselves inside their init fns above.
   const { registerChargePluginKind } = await import("./plugins/ledger/charge");
   const { registerTrustEligibilityKind } = await import("./plugins/trust/eligibility");
-  const { registerPaymentGatewayPluginKind } = await import("./plugins/ledger/payment-gateway");
+  const { registerPaymentGatewayPluginKind, backfillPaymentGatewaySubsidiaries } = await import("./plugins/ledger/payment-gateway");
   registerChargePluginKind();
   registerTrustEligibilityKind();
   registerPaymentGatewayPluginKind();
+  // Every payment-gateway config needs a subsidiary row (the generic search
+  // inner-joins it). Backfill pre-existing configs so they don't vanish.
+  await backfillPaymentGatewaySubsidiaries();
+  logger.info("Payment-gateway subsidiaries backfilled", { source: "startup" });
 
   // Initialize worker ban notifications
   initWorkerBanNotifications();
