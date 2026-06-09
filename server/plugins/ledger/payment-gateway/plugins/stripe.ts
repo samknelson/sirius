@@ -7,6 +7,7 @@ import type {
   GatewaySetupSession,
   GatewayMethodSummary,
   GatewayMethodDetails,
+  GatewayConnectionTest,
 } from "../types";
 import { registerPaymentGatewayPlugin } from "../registry";
 
@@ -40,6 +41,51 @@ export const stripePaymentGatewayPlugin: PaymentGatewayPlugin = {
     "Stripe payment gateway. Each configuration names the secret that holds the Stripe API credentials.",
   requiredComponent: "ledger.stripe",
   addComponentId: "stripe:StripeAddPaymentMethod",
+
+  async testConnection(ctx: PaymentGatewayContext): Promise<GatewayConnectionTest> {
+    try {
+      const c = client(ctx);
+      const account = await c.accounts.retrieve();
+      const balance = await c.balance.retrieve();
+      return {
+        connected: true,
+        account: {
+          id: account.id,
+          email: account.email,
+          country: account.country,
+          defaultCurrency: account.default_currency,
+          type: account.type,
+          capabilities: [
+            { label: "Charges Enabled", enabled: !!account.charges_enabled },
+            { label: "Payouts Enabled", enabled: !!account.payouts_enabled },
+            { label: "Details Submitted", enabled: !!account.details_submitted },
+          ],
+        },
+        balances: [
+          ...balance.available.map((b) => ({
+            label: "Available",
+            amount: b.amount,
+            currency: b.currency,
+          })),
+          ...balance.pending.map((b) => ({
+            label: "Pending",
+            amount: b.amount,
+            currency: b.currency,
+          })),
+        ],
+        testMode: ctx.apiKey.startsWith("sk_test_"),
+      };
+    } catch (error: any) {
+      return {
+        connected: false,
+        error: {
+          message: error.message || "Failed to connect to Stripe",
+          type: error.type,
+          code: error.code,
+        },
+      };
+    }
+  },
 
   async createCustomer(
     ctx: PaymentGatewayContext,

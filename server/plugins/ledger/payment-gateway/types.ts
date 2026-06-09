@@ -76,6 +76,32 @@ export interface GatewayMethodDetails {
   providerUrl?: string;
 }
 
+/**
+ * Normalized result of a provider connection test. Kept provider-agnostic so
+ * the admin test page can render any gateway's health without provider-specific
+ * knowledge. Providers map their native account/balance shapes into this.
+ */
+export interface GatewayConnectionTest {
+  /** True when the provider credentials authenticated successfully. */
+  connected: boolean;
+  /** Provider account summary (present when connected). */
+  account?: {
+    id: string;
+    email?: string | null;
+    country?: string | null;
+    defaultCurrency?: string | null;
+    type?: string | null;
+    /** Named capability flags (e.g. "Charges Enabled"). */
+    capabilities?: { label: string; enabled: boolean }[];
+  };
+  /** Labeled balance lines (e.g. Available / Pending per currency). */
+  balances?: { label: string; amount: number; currency: string }[];
+  /** True when the credential targets a non-production/test environment. */
+  testMode?: boolean;
+  /** Populated when the connection failed. */
+  error?: { message: string; type?: string; code?: string };
+}
+
 export interface PaymentGatewayPlugin {
   id: string;
   name: string;
@@ -94,6 +120,8 @@ export interface PaymentGatewayPlugin {
   addComponentId?: string;
 
   // --- Provider-only behaviour (no storage/DB access) --------------------
+  /** Test the provider connection using this config's resolved credentials. */
+  testConnection(ctx: PaymentGatewayContext): Promise<GatewayConnectionTest>;
   /** Create a provider customer for an entity. */
   createCustomer(
     ctx: PaymentGatewayContext,

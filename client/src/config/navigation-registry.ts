@@ -168,6 +168,7 @@ export const configSections: NavSection[] = [
     items: [
       { path: "/config/ledger/payment-types", label: "Payment Types", icon: Wallet, testId: "nav-ledger-payment-types", policy: "staff" },
       { path: "/admin/plugin-configs/charge", label: "Charge Plugins", icon: Zap, testId: "nav-ledger-charge-plugins", permission: "admin" },
+      { path: "/config/ledger/payment-gateways/test", label: "Gateway Test", icon: Activity, testId: "nav-ledger-gateway-test", permission: "admin" },
     ],
     subsections: [
       {
@@ -177,7 +178,6 @@ export const configSections: NavSection[] = [
         icon: CreditCard,
         items: [
           { path: "/config/ledger/stripe/settings", label: "Settings", icon: Settings, testId: "nav-ledger-stripe-settings", permission: "admin" },
-          { path: "/config/ledger/stripe/test", label: "Test Connection", icon: Activity, testId: "nav-ledger-stripe-test", permission: "admin" },
           { path: "/config/ledger/stripe/payment-types", label: "Payment Methods", icon: CreditCard, testId: "nav-ledger-stripe-payment-types", permission: "admin" },
         ],
       },

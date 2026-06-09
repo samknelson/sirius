@@ -16,44 +16,6 @@ function getStripeClient(): Stripe {
 }
 
 export function registerLedgerStripeRoutes(app: Express) {
-  app.get("/api/ledger/stripe/test", requireAccess('admin'), async (req: Request, res: Response) => {
-    try {
-      const stripeClient = getStripeClient();
-      
-      const account = await stripeClient.accounts.retrieve();
-      const balance = await stripeClient.balance.retrieve();
-      
-      const accountInfo = {
-        connected: true,
-        account: {
-          id: account.id,
-          email: account.email,
-          country: account.country,
-          defaultCurrency: account.default_currency,
-          chargesEnabled: account.charges_enabled,
-          payoutsEnabled: account.payouts_enabled,
-          detailsSubmitted: account.details_submitted,
-          type: account.type,
-        },
-        balance: {
-          available: balance.available,
-          pending: balance.pending,
-        },
-        testMode: account.id?.startsWith('acct_') === false || process.env.STRIPE_SECRET_KEY?.startsWith('sk_test_'),
-      };
-
-      res.json(accountInfo);
-    } catch (error: any) {
-      res.status(500).json({
-        connected: false,
-        error: {
-          message: error.message || 'Failed to connect to Stripe',
-          type: error.type,
-          code: error.code,
-        },
-      });
-    }
-  });
 
   app.get("/api/ledger/stripe/payment-types", requireAccess('admin'), async (req: Request, res: Response) => {
     try {

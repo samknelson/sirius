@@ -272,7 +272,7 @@ const EmailConfigPage = lazy(() => import("@/pages/config/email"));
 const PostalConfigPage = lazy(() => import("@/pages/config/postal"));
 const LogsPage = lazy(() => import("@/pages/config/logs"));
 const ComponentsConfigPage = lazy(() => import("@/pages/config/components"));
-const StripeTestPage = lazy(() => import("@/pages/config/ledger/stripe/test"));
+const GatewayTestPage = lazy(() => import("@/pages/config/ledger/payment-gateway-test"));
 const StripeSettingsPage = lazy(() => import("@/pages/config/ledger/stripe/settings"));
 const PaymentTypesPage = lazy(() => import("@/pages/config/ledger/stripe/payment-types"));
 const LedgerPaymentTypesPage = lazy(() => import("@/pages/config/ledger-payment-types"));
@@ -2915,11 +2915,11 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/ledger/stripe/test">
+      <Route path="/config/ledger/payment-gateways/test">
         <ProtectedRoute policy="admin" component="ledger">
           <AuthenticatedLayout>
             <ConfigurationLayout>
-              <StripeTestPage />
+              <GatewayTestPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>

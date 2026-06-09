@@ -38,6 +38,7 @@ import { registerEmployerOnboardingWizardRoutes } from "./modules/employer-onboa
 import { registerFileRoutes } from "./modules/files";
 import { registerLedgerStripeRoutes } from "./modules/ledger/stripe";
 import { registerLedgerPaymentMethodRoutes } from "./modules/ledger/payment-methods";
+import { registerLedgerPaymentGatewayRoutes } from "./modules/ledger/payment-gateways";
 import { registerLedgerAccountRoutes } from "./modules/ledger/accounts";
 import { registerLedgerEaRoutes } from "./modules/ledger/ea";
 import { registerLedgerPaymentRoutes } from "./modules/ledger/payments";
@@ -358,6 +359,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register provider-generic ledger payment-method routes
   registerLedgerPaymentMethodRoutes(app);
+
+  // Register provider-generic ledger payment-gateway admin routes (connection test)
+  registerLedgerPaymentGatewayRoutes(app);
 
   // Register ledger/accounts routes
   registerLedgerAccountRoutes(app);
