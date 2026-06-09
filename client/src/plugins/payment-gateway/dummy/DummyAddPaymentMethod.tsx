@@ -105,14 +105,14 @@ export function DummyAddPaymentMethod({
 
     setIsProcessing(true);
 
-    // Build the opaque token from non-sensitive fields ONLY. The full card
-    // number and the CVC are intentionally excluded — they are discarded here.
+    // Build the opaque token from non-sensitive, strictly-bounded fields ONLY.
+    // The full card number and the CVC are intentionally excluded — they are
+    // discarded here and never leave the browser.
     const meta = {
       brand: detectBrand(digits),
       last4: digits.slice(-4),
       expMonth,
       expYear,
-      nonce: Math.random().toString(36).slice(2),
     };
     const methodToken = "dummy_pm_" + btoa(JSON.stringify(meta));
     onSuccess(methodToken);

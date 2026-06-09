@@ -16,8 +16,11 @@ request before `storage.ledger.paymentMethods.create`. `getMethodSummary` /
 
 **Why:** the Dummy gateway is stateless (no remote provider to canonicalize
 against), so a no-op attach would let a crafted client POST a token containing
-a real card number and have it stored. Strict validation in attach (exact key
-set, brand allowlist, 4-digit last4, valid expiry, sized nonce) is the guard.
+a real card number and have it stored. Strict validation in attach is the
+guard: exact key set, brand allowlist, 4-digit last4, calendar-range expiry.
+Critically, the token has **no free-form field** — an early version kept a
+`nonce`, but `^[a-z0-9]{8,32}$` still matches a 16-digit PAN, so any
+unbounded string is a smuggling channel. Only keep strictly-bounded fields.
 
 **Also:** `PaymentGatewayPlugin.requiresSecret` defaults to true; set it false
 for credential-less gateways. `resolveGateway` then skips the missing-secret

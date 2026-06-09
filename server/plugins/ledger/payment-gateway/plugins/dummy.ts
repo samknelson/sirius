@@ -14,18 +14,21 @@ import { registerPaymentGatewayPlugin } from "../registry";
 
 /**
  * Opaque method-reference format shared with the client add-form. The token
- * carries ONLY the non-sensitive card descriptor (brand, last 4, expiry) plus a
- * random nonce — never the full PAN or the CVC. The client encodes it and the
- * server decodes it here to enrich the list/detail views.
+ * carries ONLY the non-sensitive card descriptor (brand, last 4, expiry) —
+ * never the full PAN or the CVC, and no free-form field that could smuggle
+ * one. The client encodes it and the server decodes it here to enrich the
+ * list/detail views.
  */
 const DUMMY_METHOD_PREFIX = "dummy_pm_";
 
 /**
  * The exact, allowed key set for a decoded dummy token. Anything else (e.g. a
- * `pan`, `number`, or `cvc` field) is rejected so sensitive card data can never
- * be persisted, even if a crafted client bypasses the UI.
+ * `pan`, `number`, `cvc`, or a free-form `nonce` field) is rejected so sensitive
+ * card data can never be persisted, even if a crafted client bypasses the UI.
+ * Every allowed field below is strictly bounded (brand allowlist, 4-digit
+ * last4, calendar-range expiry), so none can carry a full card number.
  */
-const ALLOWED_TOKEN_KEYS = ["brand", "last4", "expMonth", "expYear", "nonce"];
+const ALLOWED_TOKEN_KEYS = ["brand", "last4", "expMonth", "expYear"];
 
 /** Brands the client's detector can emit; anything else is rejected. */
 const ALLOWED_BRANDS = [
@@ -82,7 +85,7 @@ function decodeMethodRef(methodRef: string): DummyCardMeta {
     }
   }
 
-  const { brand, last4, expMonth, expYear, nonce } = obj;
+  const { brand, last4, expMonth, expYear } = obj;
   if (typeof brand !== "string" || !ALLOWED_BRANDS.includes(brand)) {
     throw new Error("Dummy payment-method reference has an invalid brand");
   }
@@ -104,9 +107,6 @@ function decodeMethodRef(methodRef: string): DummyCardMeta {
     expYear > 2100
   ) {
     throw new Error("Dummy payment-method reference has an invalid expiry year");
-  }
-  if (typeof nonce !== "string" || nonce.length === 0 || nonce.length > 64) {
-    throw new Error("Dummy payment-method reference has an invalid nonce");
   }
 
   return { brand, last4, expMonth, expYear };
