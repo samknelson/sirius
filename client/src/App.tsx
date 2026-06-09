@@ -274,7 +274,7 @@ const LogsPage = lazy(() => import("@/pages/config/logs"));
 const ComponentsConfigPage = lazy(() => import("@/pages/config/components"));
 const GatewayTestPage = lazy(() => import("@/pages/config/ledger/payment-gateway-test"));
 const StripeSettingsPage = lazy(() => import("@/pages/config/ledger/stripe/settings"));
-const PaymentTypesPage = lazy(() => import("@/pages/config/ledger/stripe/payment-types"));
+const PaymentTypesPage = lazy(() => import("@/pages/config/ledger/payment-gateway-payment-types"));
 const LedgerPaymentTypesPage = lazy(() => import("@/pages/config/ledger-payment-types"));
 // Hidden, nav-less generic plugin-config admin (Task #353 foundation). Not in
 // any navigation registry; reachable only via this route for verification.
@@ -2925,7 +2925,7 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/ledger/stripe/payment-types">
+      <Route path="/config/ledger/payment-gateways/payment-types">
         <ProtectedRoute policy="admin" component="ledger">
           <AuthenticatedLayout>
             <ConfigurationLayout>

@@ -102,6 +102,17 @@ export interface GatewayConnectionTest {
   error?: { message: string; type?: string; code?: string };
 }
 
+/**
+ * A single selectable payment method type in a provider's catalog. `id` is the
+ * value stored on the config (e.g. "card"); `name`/`description` are display
+ * text for the editor.
+ */
+export interface PaymentTypeOption {
+  id: string;
+  name: string;
+  description?: string;
+}
+
 export interface PaymentGatewayPlugin {
   id: string;
   name: string;
@@ -118,6 +129,14 @@ export interface PaymentGatewayPlugin {
    * component registry.
    */
   addComponentId?: string;
+  /**
+   * Catalog of payment method types this provider supports, surfaced to the
+   * provider-generic payment-types editor. The admin picks from this list per
+   * config; the chosen ids are stored on the config's `data.paymentTypes` and
+   * drive the setup flow. Kept on the plugin so the editor stays
+   * provider-agnostic (no hardcoded provider knowledge in the UI).
+   */
+  supportedPaymentTypes?: PaymentTypeOption[];
 
   // --- Provider-only behaviour (no storage/DB access) --------------------
   /** Test the provider connection using this config's resolved credentials. */

@@ -255,7 +255,11 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
   // dispatch eligibility register themselves inside their init fns above.
   const { registerChargePluginKind } = await import("./plugins/ledger/charge");
   const { registerTrustEligibilityKind } = await import("./plugins/trust/eligibility");
-  const { registerPaymentGatewayPluginKind, backfillPaymentGatewaySubsidiaries } = await import("./plugins/ledger/payment-gateway");
+  const {
+    registerPaymentGatewayPluginKind,
+    backfillPaymentGatewaySubsidiaries,
+    backfillPaymentTypesFromGlobal,
+  } = await import("./plugins/ledger/payment-gateway");
   registerChargePluginKind();
   registerTrustEligibilityKind();
   registerPaymentGatewayPluginKind();
@@ -263,6 +267,10 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
   // inner-joins it). Backfill pre-existing configs so they don't vanish.
   await backfillPaymentGatewaySubsidiaries();
   logger.info("Payment-gateway subsidiaries backfilled", { source: "startup" });
+  // Migrate the legacy global `stripe_payment_methods` variable onto each
+  // gateway config's own `data.paymentTypes`, then retire the global.
+  await backfillPaymentTypesFromGlobal();
+  logger.info("Payment types migrated off legacy global variable", { source: "startup" });
 
   // Initialize worker ban notifications
   initWorkerBanNotifications();
