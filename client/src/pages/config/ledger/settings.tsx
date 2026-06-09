@@ -34,7 +34,7 @@ export default function LedgerSettingsPage() {
 
   // Fetch current setting
   const { data: currentSetting, isLoading: isLoadingSettings } = useQuery<{ id: string; value: { paymentTypeId: string } | null } | null>({
-    queryKey: ["/api/variables/by-name/ledger_stripe_payment_type"],
+    queryKey: ["/api/variables/by-name/ledger_payment_type"],
   });
 
   // Update selected value when currentSetting loads
@@ -49,20 +49,20 @@ export default function LedgerSettingsPage() {
       // Check if variable already exists
       if (currentSetting) {
         // Update existing variable
-        const variableId = currentSetting.id || "ledger_stripe_payment_type";
+        const variableId = currentSetting.id || "ledger_payment_type";
         return apiRequest("PUT", `/api/variables/${variableId}`, {
           value: { paymentTypeId },
         });
       } else {
         // Create new variable
         return apiRequest("POST", "/api/variables", {
-          name: "ledger_stripe_payment_type",
+          name: "ledger_payment_type",
           value: { paymentTypeId },
         });
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/variables/by-name/ledger_stripe_payment_type"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/variables/by-name/ledger_payment_type"] });
       toast({
         title: "Success",
         description: "Default payment type saved successfully.",

@@ -182,7 +182,7 @@
       },
       {
         "id": "08afbd8b-85c3-4f6b-af0c-4030b9cb3c8a",
-        "name": "ledger_stripe_payment_type",
+        "name": "ledger_payment_type",
         "value": {
           "paymentTypeId": "3cd4830b-1606-449b-804e-4982712c5954"
         }
