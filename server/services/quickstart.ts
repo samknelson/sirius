@@ -52,7 +52,7 @@ const TABLE_ORDER = [
   'rolePermissions',
   'trustBenefits',
   'bookmarks',
-  'ledgerStripePaymentMethods',
+  'ledgerPaymentMethods',
   'ledgerEa',
   'wizards',
   'chargePluginConfigs',

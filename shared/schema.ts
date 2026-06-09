@@ -630,11 +630,19 @@ export const bookmarks = pgTable("bookmarks", {
   createdAt: timestamp("created_at").default(sql`now()`).notNull(),
 });
 
-export const ledgerStripePaymentMethods = pgTable("ledger_stripe_paymentmethods", {
+export const ledgerPaymentMethods = pgTable("ledger_paymentmethods", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   entityType: text("entity_type").notNull(),
   entityId: varchar("entity_id").notNull(),
   paymentMethod: text("payment_method").notNull(),
+  // Required link to the payment-gateway plugin config this method belongs to.
+  // FK targets the payment-gateway subsidiary (a type-safe FK target) rather
+  // than the polymorphic plugin_configs id. NOT NULL — a payment method is
+  // unusable without knowing its gateway. ON DELETE RESTRICT prevents deleting
+  // a gateway config that still has payment methods attached.
+  gatewayConfigId: varchar("gateway_config_id").notNull().references(() => pluginConfigsPaymentGateway.id, { onDelete: 'restrict' }),
+  // Generic, gateway-agnostic opaque settings blob.
+  data: jsonb("data").default('{}'),
   isActive: boolean("is_active").default(true).notNull(),
   isDefault: boolean("is_default").default(false).notNull(),
   createdAt: timestamp("created_at").default(sql`now()`).notNull(),
@@ -1192,7 +1200,7 @@ export const insertBookmarkSchema = createInsertSchema(bookmarks).omit({
   createdAt: true,
 });
 
-export const insertLedgerStripePaymentMethodSchema = createInsertSchema(ledgerStripePaymentMethods).omit({
+export const insertLedgerPaymentMethodSchema = createInsertSchema(ledgerPaymentMethods).omit({
   id: true,
   createdAt: true,
 });
@@ -1437,8 +1445,8 @@ export type PhoneNumber = typeof phoneNumbers.$inferSelect;
 export type InsertBookmark = z.infer<typeof insertBookmarkSchema>;
 export type Bookmark = typeof bookmarks.$inferSelect;
 
-export type InsertLedgerStripePaymentMethod = z.infer<typeof insertLedgerStripePaymentMethodSchema>;
-export type LedgerStripePaymentMethod = typeof ledgerStripePaymentMethods.$inferSelect;
+export type InsertLedgerPaymentMethod = z.infer<typeof insertLedgerPaymentMethodSchema>;
+export type LedgerPaymentMethod = typeof ledgerPaymentMethods.$inferSelect;
 
 export type InsertLedgerAccount = z.infer<typeof insertLedgerAccountSchema>;
 export type LedgerAccount = typeof ledgerAccounts.$inferSelect;

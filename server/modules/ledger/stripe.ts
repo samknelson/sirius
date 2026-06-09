@@ -244,7 +244,7 @@ export function registerLedgerStripeRoutes(app: Express) {
       }
 
       // Get payment methods from database
-      const paymentMethods = await storage.ledger.stripePaymentMethods.getByEntity('employer', employerId);
+      const paymentMethods = await storage.ledger.paymentMethods.getByEntity('employer', employerId);
       
       // Get Stripe customer ID
       const customerId = employer.stripeCustomerId;
@@ -397,20 +397,38 @@ export function registerLedgerStripeRoutes(app: Express) {
         });
       }
 
+      // Resolve the Stripe payment-gateway config this method belongs to.
+      // gatewayConfigId is required (NOT NULL), so we need exactly one enabled
+      // Stripe gateway config before we can store the payment method.
+      const stripeGateways = await storage.pluginConfigs.getByTypeAndPlugin('payment-gateway', 'stripe');
+      const enabledGateways = stripeGateways.filter((g) => g.enabled);
+      if (enabledGateways.length === 0) {
+        return res.status(409).json({
+          message: "No enabled Stripe payment gateway is configured",
+        });
+      }
+      if (enabledGateways.length > 1) {
+        return res.status(409).json({
+          message: "Multiple enabled Stripe payment gateways are configured; expected exactly one",
+        });
+      }
+      const gatewayConfigId = enabledGateways[0].id;
+
       // Attach payment method to customer in Stripe
       await stripeClient.paymentMethods.attach(paymentMethodId, {
         customer: customerId,
       });
 
       // Check if this is the first payment method for this entity
-      const existingMethods = await storage.ledger.stripePaymentMethods.getByEntity('employer', employerId);
+      const existingMethods = await storage.ledger.paymentMethods.getByEntity('employer', employerId);
       const isFirst = existingMethods.length === 0;
 
       // Save to database
-      const paymentMethod = await storage.ledger.stripePaymentMethods.create({
+      const paymentMethod = await storage.ledger.paymentMethods.create({
         entityType: 'employer',
         entityId: employerId,
         paymentMethod: paymentMethodId,
+        gatewayConfigId,
         isActive: true,
         isDefault: isFirst, // Set as default if it's the first one
       });
@@ -434,7 +452,7 @@ export function registerLedgerStripeRoutes(app: Express) {
         return res.status(400).json({ message: "isActive must be a boolean" });
       }
 
-      const paymentMethod = await storage.ledger.stripePaymentMethods.get(pmId);
+      const paymentMethod = await storage.ledger.paymentMethods.get(pmId);
       if (!paymentMethod) {
         return res.status(404).json({ message: "Payment method not found" });
       }
@@ -443,7 +461,7 @@ export function registerLedgerStripeRoutes(app: Express) {
         return res.status(403).json({ message: "Payment method does not belong to this employer" });
       }
 
-      const updated = await storage.ledger.stripePaymentMethods.update(pmId, { isActive });
+      const updated = await storage.ledger.paymentMethods.update(pmId, { isActive });
       res.json(updated);
     } catch (error: any) {
       res.status(500).json({ 
@@ -458,7 +476,7 @@ export function registerLedgerStripeRoutes(app: Express) {
     try {
       const { id: employerId, pmId } = req.params;
 
-      const paymentMethod = await storage.ledger.stripePaymentMethods.get(pmId);
+      const paymentMethod = await storage.ledger.paymentMethods.get(pmId);
       if (!paymentMethod) {
         return res.status(404).json({ message: "Payment method not found" });
       }
@@ -467,7 +485,7 @@ export function registerLedgerStripeRoutes(app: Express) {
         return res.status(403).json({ message: "Payment method does not belong to this employer" });
       }
 
-      const updated = await storage.ledger.stripePaymentMethods.setAsDefault(pmId, 'employer', employerId);
+      const updated = await storage.ledger.paymentMethods.setAsDefault(pmId, 'employer', employerId);
       res.json(updated);
     } catch (error: any) {
       res.status(500).json({ 
@@ -482,7 +500,7 @@ export function registerLedgerStripeRoutes(app: Express) {
     try {
       const { id: employerId, pmId } = req.params;
 
-      const paymentMethod = await storage.ledger.stripePaymentMethods.get(pmId);
+      const paymentMethod = await storage.ledger.paymentMethods.get(pmId);
       if (!paymentMethod) {
         return res.status(404).json({ message: "Payment method not found" });
       }
@@ -533,7 +551,7 @@ export function registerLedgerStripeRoutes(app: Express) {
     try {
       const { id: employerId, pmId } = req.params;
 
-      const paymentMethod = await storage.ledger.stripePaymentMethods.get(pmId);
+      const paymentMethod = await storage.ledger.paymentMethods.get(pmId);
       if (!paymentMethod) {
         return res.status(404).json({ message: "Payment method not found" });
       }
@@ -560,7 +578,7 @@ export function registerLedgerStripeRoutes(app: Express) {
       }
 
       // Delete from database
-      await storage.ledger.stripePaymentMethods.delete(pmId);
+      await storage.ledger.paymentMethods.delete(pmId);
       
       res.json({ success: true });
     } catch (error: any) {

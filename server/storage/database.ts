@@ -14,10 +14,16 @@ import {
   type LedgerStorage,
   createLedgerStorage,
   ledgerAccountLoggingConfig,
-  stripePaymentMethodLoggingConfig,
   ledgerPaymentLoggingConfig,
   ledgerPaymentBatchLoggingConfig,
 } from "./ledger";
+import {
+  type PaymentMethodStorage,
+  createPaymentMethodStorage,
+  paymentMethodLoggingConfig,
+} from "./ledger/payment_methods";
+
+type LedgerStorageWithPaymentMethods = LedgerStorage & { paymentMethods: PaymentMethodStorage };
 import {
   type EmployerContactStorage,
   createEmployerContactStorage,
@@ -133,7 +139,7 @@ export interface IStorage {
   trust: { wmb: TrustWmbStorage };
   workerIds: WorkerIdStorage;
   bookmarks: BookmarkStorage;
-  ledger: LedgerStorage;
+  ledger: LedgerStorageWithPaymentMethods;
   employerContacts: EmployerContactStorage;
   wizards: WizardStorage;
   wizardFeedMappings: WizardFeedMappingStorage;
@@ -224,7 +230,7 @@ export class DatabaseStorage implements IStorage {
   trust: { wmb: TrustWmbStorage };
   workerIds: WorkerIdStorage;
   bookmarks: BookmarkStorage;
-  ledger: LedgerStorage;
+  ledger: LedgerStorageWithPaymentMethods;
   employerContacts: EmployerContactStorage;
   wizards: WizardStorage;
   wizardFeedMappings: WizardFeedMappingStorage;
@@ -340,14 +346,19 @@ export class DatabaseStorage implements IStorage {
       workerIdLoggingConfig,
     );
     this.bookmarks = createBookmarkStorage();
-    this.ledger = createLedgerStorage(
-      ledgerAccountLoggingConfig,
-      stripePaymentMethodLoggingConfig,
-      undefined,
-      ledgerPaymentLoggingConfig,
-      undefined,
-      ledgerPaymentBatchLoggingConfig,
-    );
+    this.ledger = {
+      ...createLedgerStorage(
+        ledgerAccountLoggingConfig,
+        undefined,
+        ledgerPaymentLoggingConfig,
+        undefined,
+        ledgerPaymentBatchLoggingConfig,
+      ),
+      paymentMethods: withStorageLogging(
+        createPaymentMethodStorage(),
+        paymentMethodLoggingConfig,
+      ),
+    };
     this.employerContacts = withStorageLogging(
       createEmployerContactStorage(this.contacts),
       employerContactLoggingConfig,

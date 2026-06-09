@@ -1,14 +1,12 @@
 import { createNoopValidator } from './utils/validation';
 import { getClient } from './transaction-context';
 import { logger } from "../logger";
-import { ledgerAccounts, ledgerStripePaymentMethods, ledgerEa, ledgerPayments, ledger, employers, workers, contacts, trustProviders, optionsLedgerPaymentType } from "@shared/schema";
+import { ledgerAccounts, ledgerEa, ledgerPayments, ledger, employers, workers, contacts, trustProviders, optionsLedgerPaymentType } from "@shared/schema";
 import { ledgerPaymentBatches, ledgerPaymentBatchAssignments } from "@shared/schema/ledger/payment-batch/schema";
 import type { LedgerPaymentBatch, InsertLedgerPaymentBatch, LedgerPaymentBatchAssignment } from "@shared/schema/ledger/payment-batch/schema";
 import type { 
   LedgerAccount, 
   InsertLedgerAccount,
-  LedgerStripePaymentMethod,
-  InsertLedgerStripePaymentMethod,
   SelectLedgerEa,
   InsertLedgerEa,
   LedgerPayment,
@@ -27,16 +25,6 @@ import { dateToYmd, ymdToDateForPicker, isValidYmd } from "@shared/utils/date";
  * Stub validator - add validation logic here when needed
  */
 export const validate = createNoopValidator();
-
-export interface StripePaymentMethodStorage {
-  getAll(): Promise<LedgerStripePaymentMethod[]>;
-  get(id: string): Promise<LedgerStripePaymentMethod | undefined>;
-  getByEntity(entityType: string, entityId: string): Promise<LedgerStripePaymentMethod[]>;
-  create(method: InsertLedgerStripePaymentMethod): Promise<LedgerStripePaymentMethod>;
-  update(id: string, method: Partial<InsertLedgerStripePaymentMethod>): Promise<LedgerStripePaymentMethod | undefined>;
-  delete(id: string): Promise<boolean>;
-  setAsDefault(paymentMethodId: string, entityType: string, entityId: string): Promise<LedgerStripePaymentMethod | undefined>;
-}
 
 export type LedgerEaWithBalance = SelectLedgerEa & { balance: string };
 
@@ -224,7 +212,6 @@ export interface LedgerPaymentBatchAssignmentStorage {
 
 export interface LedgerStorage {
   accounts: LedgerAccountStorage;
-  stripePaymentMethods: StripePaymentMethodStorage;
   ea: LedgerEaStorage;
   payments: LedgerPaymentStorage;
   paymentTypes: LedgerPaymentTypeStorage;
@@ -379,83 +366,6 @@ export function createLedgerAccountStorage(): LedgerAccountStorage {
       const paginatedParticipants = enrichedParticipants.slice(offset, offset + limit);
 
       return { data: paginatedParticipants, total };
-    }
-  };
-}
-
-export function createStripePaymentMethodStorage(): StripePaymentMethodStorage {
-  return {
-    async getAll(): Promise<LedgerStripePaymentMethod[]> {
-      const client = getClient();
-      return await client.select().from(ledgerStripePaymentMethods)
-        .orderBy(desc(ledgerStripePaymentMethods.createdAt));
-    },
-
-    async get(id: string): Promise<LedgerStripePaymentMethod | undefined> {
-      const client = getClient();
-      const [paymentMethod] = await client.select().from(ledgerStripePaymentMethods)
-        .where(eq(ledgerStripePaymentMethods.id, id));
-      return paymentMethod || undefined;
-    },
-
-    async getByEntity(entityType: string, entityId: string): Promise<LedgerStripePaymentMethod[]> {
-      const client = getClient();
-      return await client.select().from(ledgerStripePaymentMethods)
-        .where(and(
-          eq(ledgerStripePaymentMethods.entityType, entityType),
-          eq(ledgerStripePaymentMethods.entityId, entityId)
-        ))
-        .orderBy(desc(ledgerStripePaymentMethods.isDefault), desc(ledgerStripePaymentMethods.createdAt));
-    },
-
-    async create(insertPaymentMethod: InsertLedgerStripePaymentMethod): Promise<LedgerStripePaymentMethod> {
-      validate.validateOrThrow(insertPaymentMethod);
-      const client = getClient();
-      const [paymentMethod] = await client.insert(ledgerStripePaymentMethods)
-        .values(insertPaymentMethod)
-        .returning();
-      return paymentMethod;
-    },
-
-    async update(id: string, paymentMethodUpdate: Partial<InsertLedgerStripePaymentMethod>): Promise<LedgerStripePaymentMethod | undefined> {
-      validate.validateOrThrow(id);
-      const client = getClient();
-      const [paymentMethod] = await client.update(ledgerStripePaymentMethods)
-        .set(paymentMethodUpdate)
-        .where(eq(ledgerStripePaymentMethods.id, id))
-        .returning();
-      return paymentMethod || undefined;
-    },
-
-    async delete(id: string): Promise<boolean> {
-      const client = getClient();
-      const result = await client.delete(ledgerStripePaymentMethods)
-        .where(eq(ledgerStripePaymentMethods.id, id))
-        .returning();
-      return result.length > 0;
-    },
-
-    async setAsDefault(paymentMethodId: string, entityType: string, entityId: string): Promise<LedgerStripePaymentMethod | undefined> {
-      const client = getClient();
-      await client
-        .update(ledgerStripePaymentMethods)
-        .set({ isDefault: false })
-        .where(and(
-          eq(ledgerStripePaymentMethods.entityType, entityType),
-          eq(ledgerStripePaymentMethods.entityId, entityId)
-        ));
-      
-      const [paymentMethod] = await client
-        .update(ledgerStripePaymentMethods)
-        .set({ isDefault: true })
-        .where(and(
-          eq(ledgerStripePaymentMethods.id, paymentMethodId),
-          eq(ledgerStripePaymentMethods.entityType, entityType),
-          eq(ledgerStripePaymentMethods.entityId, entityId)
-        ))
-        .returning();
-      
-      return paymentMethod || undefined;
     }
   };
 }
@@ -1994,7 +1904,6 @@ export function createLedgerPaymentBatchAssignmentStorage(): LedgerPaymentBatchA
 
 export function createLedgerStorage(
   accountLoggingConfig?: StorageLoggingConfig<LedgerAccountStorage>,
-  stripePaymentMethodLoggingConfig?: StorageLoggingConfig<StripePaymentMethodStorage>,
   eaLoggingConfig?: StorageLoggingConfig<LedgerEaStorage>,
   paymentLoggingConfig?: StorageLoggingConfig<LedgerPaymentStorage>,
   entryLoggingConfig?: StorageLoggingConfig<LedgerEntryStorage>,
@@ -2004,10 +1913,6 @@ export function createLedgerStorage(
   const accountStorage = accountLoggingConfig
     ? withStorageLogging(createLedgerAccountStorage(), accountLoggingConfig)
     : createLedgerAccountStorage();
-  
-  const stripePaymentMethodStorage = stripePaymentMethodLoggingConfig
-    ? withStorageLogging(createStripePaymentMethodStorage(), stripePaymentMethodLoggingConfig)
-    : createStripePaymentMethodStorage();
 
   const eaStorage = eaLoggingConfig
     ? withStorageLogging(createLedgerEaStorage(), eaLoggingConfig)
@@ -2031,7 +1936,6 @@ export function createLedgerStorage(
 
   return {
     accounts: accountStorage,
-    stripePaymentMethods: stripePaymentMethodStorage,
     ea: eaStorage,
     payments: paymentStorage,
     paymentTypes: paymentTypeStorage,
@@ -2056,24 +1960,6 @@ export const ledgerAccountLoggingConfig = defineLoggingConfig<LedgerAccountStora
   },
 });
 
-/**
- * Logging configuration for Stripe payment method storage operations
- * 
- * Logs all Stripe payment method mutations with full argument capture and change tracking.
- */
-export const stripePaymentMethodLoggingConfig = defineLoggingConfig<StripePaymentMethodStorage>({
-  module: 'ledger.stripePaymentMethods',
-  methods: {
-    create: { getEntityId: (args, result) => result?.id || 'new payment method' },
-    update: {},
-    delete: {},
-    setAsDefault: {
-      getEntityId: (args) => args[0],
-      before: async (args, storage) => await storage.get(args[0]),
-      after: async (args, result) => result,
-    },
-  },
-});
 
 /**
  * Helper to format a payment for logging display
