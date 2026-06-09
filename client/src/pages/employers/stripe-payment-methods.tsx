@@ -251,6 +251,7 @@ function PaymentMethodsContent() {
   }
 
   if (error) {
+    const serverMessage = (error as any)?.data?.message as string | undefined;
     return (
       <Card>
         <CardHeader>
@@ -259,8 +260,10 @@ function PaymentMethodsContent() {
         </CardHeader>
         <CardContent>
           <Alert variant="destructive">
-            <AlertDescription>
-              Failed to load payment methods. Please try again later.
+            <AlertDescription data-testid="text-payment-methods-error">
+              {serverMessage
+                ? `Failed to load payment methods: ${serverMessage}`
+                : "Failed to load payment methods. Please try again later."}
             </AlertDescription>
           </Alert>
         </CardContent>
