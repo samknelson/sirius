@@ -1381,7 +1381,7 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/employers/:id/ledger/stripe/payment_methods">
+      <Route path="/employers/:id/ledger/payment_methods">
         <ProtectedRoute tabId="payment-methods" entityType="employer">
           <AuthenticatedLayout>
             <StripePaymentMethodsPage />

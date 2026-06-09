@@ -218,7 +218,7 @@ export const employerTabTree: HierarchicalTab[] = [
     id: 'accounting', label: 'Accounting', hrefTemplate: '/employers/{id}/ledger/accounts', policyId: 'employer.ledger', component: 'ledger',
     children: [
       { id: 'accounts', label: 'Accounts', hrefTemplate: '/employers/{id}/ledger/accounts', policyId: 'employer.ledger' },
-      { id: 'payment-methods', label: 'Payment Methods', hrefTemplate: '/employers/{id}/ledger/stripe/payment_methods', policyId: 'employer.ledger' },
+      { id: 'payment-methods', label: 'Payment Methods', hrefTemplate: '/employers/{id}/ledger/payment_methods', policyId: 'employer.ledger' },
       { id: 'customer', label: 'Customer', hrefTemplate: '/employers/{id}/ledger/customer', policyId: 'employer.ledger' },
     ]
   },
