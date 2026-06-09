@@ -236,6 +236,15 @@ export function registerLedgerPaymentMethodRoutes(app: Express): void {
       }
       await assertEntityAccess(req, entityType, entityId);
 
+      // Always confirm the entity still exists locally, even when a customer
+      // mapping is already present — otherwise a stale mapping would expose
+      // provider customer details for a deleted entity (parity with the old
+      // Stripe route, which 404'd on a missing employer).
+      const descriptor = await entityConfigOrThrow(entityType).loadDescriptor(entityId);
+      if (!descriptor) {
+        throw new HttpError(404, "Entity not found");
+      }
+
       const resolved = await resolveGateway(gatewayConfigId);
       await assertPluginComponent(resolved);
 
