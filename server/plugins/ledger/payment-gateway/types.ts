@@ -144,6 +144,16 @@ export interface PaymentGatewayPlugin {
   /** Hide from default manifest listings (still registered/usable). */
   hidden?: boolean;
   /**
+   * Whether resolving this gateway requires the named credential secret to be
+   * present in the environment. Defaults to `true` (the historical behaviour:
+   * a missing secret yields a 503). A provider that needs no real credentials
+   * — e.g. the in-app "dummy" testing gateway — sets this to `false`, so the
+   * config may still name a secret without the gateway breaking when it is
+   * unset. When `false`, the resolved `context.apiKey` is an empty string if
+   * the secret is absent.
+   */
+  requiresSecret?: boolean;
+  /**
    * Client component id (`"<plugin-id>:<Component>"`) for the auto-discovered
    * add-a-payment-method form, resolved through the client payment-gateway
    * component registry.

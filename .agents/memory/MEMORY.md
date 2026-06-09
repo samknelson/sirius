@@ -16,3 +16,4 @@
 - [Unified startup via bootstrapApp](dual-startup-entrypoints.md) — dev (index.ts) + prod (production-entry→startApp) now share ONE init sequence (bootstrapApp in app-init.ts); add boot-time init there once. Also: `rg -rn` = `--replace=n`.
 - [New plugin kind needs client ALLOWED_KINDS](new-plugin-kind-client-allowlist.md) — generic admin page has a hardcoded client allowlist; missing kind → "unknown kind" client-side even though server registered it fine.
 - [Split authz/data config resolution is an IDOR](split-authz-data-idor.md) — auth-check config and data-read config must be the SAME resolved record; separate lookups + canonical fallback = confused-deputy.
+- [Payment-method token enforcement point](payment-method-token-enforcement.md) — create route stores methodToken verbatim; validate/reject sensitive data in plugin attachMethod (runs pre-persist), not in summary/details reads.

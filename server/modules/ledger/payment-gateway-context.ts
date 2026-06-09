@@ -60,12 +60,12 @@ export async function resolveGateway(
   }
 
   const apiKey = process.env[secretName];
-  if (!apiKey) {
+  if (!apiKey && plugin.requiresSecret !== false) {
     throw new GatewayResolutionError(
       503,
       `Payment gateway credential secret '${secretName}' is not set`,
     );
   }
 
-  return { config, plugin, context: { apiKey, config } };
+  return { config, plugin, context: { apiKey: apiKey ?? "", config } };
 }

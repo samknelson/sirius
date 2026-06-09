@@ -162,6 +162,27 @@ export const componentRegistry: ComponentDefinition[] = [
     ],
   },
   {
+    id: "ledger.dummy_gateway",
+    name: "Dummy Gateway (Testing)",
+    description:
+      "A fake payment gateway for exercising the full payment-method lifecycle without real provider credentials. Accepts a hand-typed test card and stores only its brand, expiry, and last 4 digits.",
+    enabledByDefault: false,
+    category: "ledger",
+    // Seed a default payment-gateway config. It names a DUMMY_GATEWAY secret to
+    // exercise the secret-naming path, but the dummy plugin opts out of
+    // actually requiring the secret to be set (requiresSecret: false on the
+    // plugin), so the gateway works whether or not the env var exists.
+    pluginConfigs: [
+      {
+        pluginType: "payment-gateway",
+        pluginId: "dummy",
+        siriusId: "auto.ledger.dummy_gateway.default",
+        name: "Dummy (Default)",
+        data: { secretName: "DUMMY_GATEWAY", paymentTypes: ["card"] },
+      },
+    ],
+  },
+  {
     id: "ledger.payment.batch",
     name: "Payment Batches",
     description: "Batch creation and management of payments",
