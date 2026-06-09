@@ -86,6 +86,15 @@ async function assertEntityAccess(
   }
 }
 
+/** Non-throwing check: is the resolved plugin's required component enabled? */
+async function isPluginComponentEnabled(resolved: ResolvedGateway): Promise<boolean> {
+  const component = resolved.plugin.requiredComponent;
+  if (!component) return true;
+  const checker = getComponentChecker();
+  if (!checker) return false;
+  return checker(component);
+}
+
 /** Enforce the resolved plugin's component gate or 403. */
 async function assertPluginComponent(resolved: ResolvedGateway): Promise<void> {
   const component = resolved.plugin.requiredComponent;
@@ -97,6 +106,17 @@ async function assertPluginComponent(resolved: ResolvedGateway): Promise<void> {
   if (!(await checker(component))) {
     throw new HttpError(403, `Component not enabled: ${component}`);
   }
+}
+
+/**
+ * Resolve the gateway config for a stored method and enforce both that the
+ * gateway is usable and its plugin component is enabled. Centralizes the gate
+ * applied by every per-method route (patch, set-default, details, delete).
+ */
+async function resolveMethodGateway(gatewayConfigId: string): Promise<ResolvedGateway> {
+  const resolved = await resolveGateway(gatewayConfigId);
+  await assertPluginComponent(resolved);
+  return resolved;
 }
 
 /**
@@ -114,7 +134,18 @@ async function ensureCustomer(
     entityId,
     resolved.config.id,
   );
-  if (existing) return existing.customerRef;
+  if (existing) {
+    // Reuse the mapping unless the plugin can verify the provider customer is
+    // gone, in which case fall through to recreate and repair the mapping.
+    if (!resolved.plugin.retrieveCustomer) {
+      return existing.customerRef;
+    }
+    const { exists } = await resolved.plugin.retrieveCustomer(
+      resolved.context,
+      existing.customerRef,
+    );
+    if (exists) return existing.customerRef;
+  }
 
   const descriptor = await entityConfigOrThrow(entityType).loadDescriptor(entityId);
   if (!descriptor) {
@@ -219,7 +250,7 @@ export function registerLedgerPaymentMethodRoutes(app: Express): void {
           resolvedByConfig.set(pm.gatewayConfigId, resolved);
         }
 
-        if (!resolved) {
+        if (!resolved || !(await isPluginComponentEnabled(resolved))) {
           enriched.push({ ...pm, providerError: "Payment gateway unavailable" });
           continue;
         }
@@ -320,7 +351,8 @@ export function registerLedgerPaymentMethodRoutes(app: Express): void {
         throw new HttpError(400, "isActive must be a boolean");
       }
       await assertEntityAccess(req, entityType, entityId);
-      await loadOwnedMethod(pmId, entityType, entityId);
+      const method = await loadOwnedMethod(pmId, entityType, entityId);
+      await resolveMethodGateway(method.gatewayConfigId);
 
       const updated = await storage.ledger.paymentMethods.update(pmId, { isActive });
       res.json(updated);
@@ -334,7 +366,8 @@ export function registerLedgerPaymentMethodRoutes(app: Express): void {
     try {
       const { entityType, entityId, pmId } = req.params;
       await assertEntityAccess(req, entityType, entityId);
-      await loadOwnedMethod(pmId, entityType, entityId);
+      const method = await loadOwnedMethod(pmId, entityType, entityId);
+      await resolveMethodGateway(method.gatewayConfigId);
 
       const updated = await storage.ledger.paymentMethods.setAsDefault(
         pmId,
@@ -354,8 +387,7 @@ export function registerLedgerPaymentMethodRoutes(app: Express): void {
       await assertEntityAccess(req, entityType, entityId);
       const method = await loadOwnedMethod(pmId, entityType, entityId);
 
-      const resolved = await resolveGateway(method.gatewayConfigId);
-      await assertPluginComponent(resolved);
+      const resolved = await resolveMethodGateway(method.gatewayConfigId);
 
       try {
         const details = await resolved.plugin.getMethodDetails(
@@ -384,8 +416,7 @@ export function registerLedgerPaymentMethodRoutes(app: Express): void {
       await assertEntityAccess(req, entityType, entityId);
       const method = await loadOwnedMethod(pmId, entityType, entityId);
 
-      const resolved = await resolveGateway(method.gatewayConfigId);
-      await assertPluginComponent(resolved);
+      const resolved = await resolveMethodGateway(method.gatewayConfigId);
 
       // Best-effort detach; still delete the row if the provider no longer has it.
       try {
