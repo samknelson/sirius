@@ -33,6 +33,7 @@ import "./core/1024_drop_freeman_crewleads";
 import "./core/1025_create_plugin_configs_dashboard";
 import "./core/1026_create_plugin_configs_payment_gateway";
 import "./core/1027_rename_ledger_payment_methods";
+import "./core/1028_provider_generic_payment_methods";
 
 // Per-component migrations — each registered via
 // `registerComponentMigration(componentId, migration)`. Tracked by the

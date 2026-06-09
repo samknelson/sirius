@@ -1,19 +1,22 @@
-import { useState } from 'react';
-import { useStripe, useElements, PaymentElement, Elements } from '@stripe/react-stripe-js';
-import { loadStripe, StripeElementsOptions } from '@stripe/stripe-js';
+import { useMemo, useState } from "react";
+import {
+  useStripe,
+  useElements,
+  PaymentElement,
+  Elements,
+} from "@stripe/react-stripe-js";
+import { loadStripe, type StripeElementsOptions } from "@stripe/stripe-js";
 import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import type { PaymentGatewayAddProps } from "../registry";
 
-const stripePublicKey = import.meta.env.VITE_STRIPE_PUBLIC_KEY;
-const stripePromise = stripePublicKey ? loadStripe(stripePublicKey) : null;
-
-interface PaymentMethodFormProps {
-  onSuccess: (paymentMethodId: string) => void;
+interface StripeFormProps {
+  onSuccess: (methodToken: string) => void;
   onCancel: () => void;
 }
 
-function PaymentMethodForm({ onSuccess, onCancel }: PaymentMethodFormProps) {
+function StripeForm({ onSuccess, onCancel }: StripeFormProps) {
   const stripe = useStripe();
   const elements = useElements();
   const { toast } = useToast();
@@ -21,20 +24,14 @@ function PaymentMethodForm({ onSuccess, onCancel }: PaymentMethodFormProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    if (!stripe || !elements) {
-      return;
-    }
+    if (!stripe || !elements) return;
 
     setIsProcessing(true);
-
     try {
       const { error, setupIntent } = await stripe.confirmSetup({
         elements,
-        redirect: 'if_required',
-        confirmParams: {
-          return_url: window.location.href,
-        },
+        redirect: "if_required",
+        confirmParams: { return_url: window.location.href },
       });
 
       if (error) {
@@ -45,12 +42,11 @@ function PaymentMethodForm({ onSuccess, onCancel }: PaymentMethodFormProps) {
         });
         setIsProcessing(false);
       } else if (setupIntent?.payment_method) {
-        // Successfully created payment method
-        const paymentMethodId = typeof setupIntent.payment_method === 'string' 
-          ? setupIntent.payment_method 
-          : setupIntent.payment_method.id;
-        
-        onSuccess(paymentMethodId);
+        const methodToken =
+          typeof setupIntent.payment_method === "string"
+            ? setupIntent.payment_method
+            : setupIntent.payment_method.id;
+        onSuccess(methodToken);
       }
     } catch (err: any) {
       toast({
@@ -74,8 +70,8 @@ function PaymentMethodForm({ onSuccess, onCancel }: PaymentMethodFormProps) {
         >
           Cancel
         </Button>
-        <Button 
-          type="submit" 
+        <Button
+          type="submit"
           disabled={!stripe || isProcessing}
           data-testid="button-confirm-payment-method"
         >
@@ -87,22 +83,34 @@ function PaymentMethodForm({ onSuccess, onCancel }: PaymentMethodFormProps) {
   );
 }
 
-interface PaymentMethodCollectorProps {
-  clientSecret: string;
-  onSuccess: (paymentMethodId: string) => void;
-  onCancel: () => void;
-}
+/**
+ * Stripe "add a payment method" component, auto-discovered by the
+ * payment-gateway client registry (id `stripe:StripeAddPaymentMethod`). The
+ * publishable key arrives from the server via `publicConfig.publishableKey`, so
+ * no provider-specific env var is read on the client.
+ */
+export function StripeAddPaymentMethod({
+  clientSecret,
+  publicConfig,
+  onSuccess,
+  onCancel,
+}: PaymentGatewayAddProps) {
+  const publishableKey =
+    typeof publicConfig.publishableKey === "string"
+      ? publicConfig.publishableKey
+      : "";
 
-export default function PaymentMethodCollector({ 
-  clientSecret, 
-  onSuccess, 
-  onCancel
-}: PaymentMethodCollectorProps) {
+  const stripePromise = useMemo(
+    () => (publishableKey ? loadStripe(publishableKey) : null),
+    [publishableKey],
+  );
+
   if (!stripePromise) {
     return (
       <div className="p-4 border border-yellow-200 bg-yellow-50 rounded">
         <p className="text-sm text-yellow-800">
-          Stripe payment processing is not configured. Please contact your administrator to set up payment processing.
+          Stripe payment processing is not configured. Please contact your
+          administrator to set up payment processing.
         </p>
         <div className="flex justify-end mt-4">
           <Button variant="outline" onClick={onCancel}>
@@ -115,17 +123,14 @@ export default function PaymentMethodCollector({
 
   const options: StripeElementsOptions = {
     clientSecret,
-    appearance: {
-      theme: 'stripe',
-    },
+    appearance: { theme: "stripe" },
   };
 
   return (
     <Elements stripe={stripePromise} options={options}>
-      <PaymentMethodForm 
-        onSuccess={onSuccess} 
-        onCancel={onCancel} 
-      />
+      <StripeForm onSuccess={onSuccess} onCancel={onCancel} />
     </Elements>
   );
 }
+
+export default StripeAddPaymentMethod;

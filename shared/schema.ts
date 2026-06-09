@@ -256,7 +256,6 @@ export const employers = pgTable("employers", {
   isActive: boolean("is_active").default(true).notNull(),
   typeId: varchar("type_id").references(() => optionsEmployerType.id, { onDelete: 'set null' }),
   industryId: varchar("industry_id").references(() => optionsIndustry.id, { onDelete: 'set null' }),
-  stripeCustomerId: text("stripe_customer_id"),
   denormPolicyId: varchar("denorm_policy_id").references(() => policies.id, { onDelete: 'set null' }),
 });
 
@@ -647,6 +646,36 @@ export const ledgerPaymentMethods = pgTable("ledger_paymentmethods", {
   isDefault: boolean("is_default").default(false).notNull(),
   createdAt: timestamp("created_at").default(sql`now()`).notNull(),
 });
+
+// Per-(entity, gateway config) provider customer mapping. Replaces the old
+// single `employers.stripe_customer_id` column so an entity can have a distinct
+// provider customer reference per gateway config (e.g. two Stripe accounts).
+export const ledgerGatewayCustomers = pgTable("ledger_gateway_customers", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  entityType: text("entity_type").notNull(),
+  entityId: varchar("entity_id").notNull(),
+  // FK targets the payment-gateway subsidiary (a type-safe FK target) rather
+  // than the polymorphic plugin_configs base. ON DELETE RESTRICT mirrors the
+  // payment-method link: a gateway config with customer mappings cannot be
+  // deleted out from under them.
+  gatewayConfigId: varchar("gateway_config_id").notNull().references(() => pluginConfigsPaymentGateway.id, { onDelete: 'restrict' }),
+  // Opaque provider customer reference (e.g. Stripe `cus_...`).
+  customerRef: text("customer_ref").notNull(),
+  createdAt: timestamp("created_at").default(sql`now()`).notNull(),
+}, (table) => ({
+  entityGatewayUnique: unique("ledger_gateway_customers_entity_gateway_unique").on(
+    table.entityType,
+    table.entityId,
+    table.gatewayConfigId,
+  ),
+}));
+
+export const insertLedgerGatewayCustomerSchema = createInsertSchema(ledgerGatewayCustomers).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertLedgerGatewayCustomer = z.infer<typeof insertLedgerGatewayCustomerSchema>;
+export type LedgerGatewayCustomer = typeof ledgerGatewayCustomers.$inferSelect;
 
 export const ledgerAccounts = pgTable("ledger_accounts", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

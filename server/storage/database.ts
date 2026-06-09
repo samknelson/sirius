@@ -22,8 +22,15 @@ import {
   createPaymentMethodStorage,
   paymentMethodLoggingConfig,
 } from "./ledger/payment_methods";
+import {
+  createGatewayCustomerStorage,
+  gatewayCustomerLoggingConfig,
+} from "./ledger/gateway_customers";
 
-type LedgerStorageWithPaymentMethods = LedgerStorage & { paymentMethods: PaymentMethodStorage };
+type LedgerStorageWithPaymentMethods = LedgerStorage & {
+  paymentMethods: PaymentMethodStorage;
+  gatewayCustomers: ReturnType<typeof createGatewayCustomerStorage>;
+};
 import {
   type EmployerContactStorage,
   createEmployerContactStorage,
@@ -357,6 +364,10 @@ export class DatabaseStorage implements IStorage {
       paymentMethods: withStorageLogging(
         createPaymentMethodStorage(),
         paymentMethodLoggingConfig,
+      ),
+      gatewayCustomers: withStorageLogging(
+        createGatewayCustomerStorage(),
+        gatewayCustomerLoggingConfig,
       ),
     };
     this.employerContacts = withStorageLogging(
