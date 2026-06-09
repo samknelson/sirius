@@ -124,7 +124,7 @@ const EmployerPolicyHistory = lazy(() => import("@/pages/employer-policy-history
 const EmployerStewards = lazy(() => import("@/pages/employer-stewards"));
 const EmployerDispatchPage = lazy(() => import("@/pages/employers/dispatch"));
 const WizardView = lazy(() => import("@/pages/wizard-view"));
-const StripeCustomerPage = lazy(() => import("@/pages/employers/stripe-customer"));
+const CustomerPage = lazy(() => import("@/pages/employers/customer"));
 const StripePaymentMethodsPage = lazy(() => import("@/pages/employers/stripe-payment-methods"));
 const EmployerSchoolAttributesPage = lazy(() => import("@/pages/employers/school-attributes"));
 const EmployerBaoImmediateEligibilityPage = lazy(() => import("@/pages/employers/sitespecific-bao-immediate-eligibility"));
@@ -1373,10 +1373,10 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/employers/:id/ledger/stripe/customer">
+      <Route path="/employers/:id/ledger/customer">
         <ProtectedRoute tabId="customer" entityType="employer">
           <AuthenticatedLayout>
-            <StripeCustomerPage />
+            <CustomerPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

@@ -77,6 +77,26 @@ export interface GatewayMethodDetails {
 }
 
 /**
+ * Normalized provider-customer detail used by the generic customer view. Kept
+ * provider-agnostic so the page can render any gateway's customer without
+ * provider-specific knowledge. Providers map their native customer shape here.
+ */
+export interface GatewayCustomerDetails {
+  /** Opaque provider customer reference (e.g. Stripe `cus_...`). */
+  id: string;
+  name: string | null;
+  email: string | null;
+  /** Unix epoch seconds the customer was created, when known. */
+  created: number | null;
+  currency: string | null;
+  /** Minor-unit balance (e.g. cents), when known. */
+  balance: number | null;
+  delinquent: boolean | null;
+  /** Optional deep link into the provider dashboard. */
+  providerUrl?: string;
+}
+
+/**
  * Normalized result of a provider connection test. Kept provider-agnostic so
  * the admin test page can render any gateway's health without provider-specific
  * knowledge. Providers map their native account/balance shapes into this.
@@ -151,6 +171,11 @@ export interface PaymentGatewayPlugin {
     ctx: PaymentGatewayContext,
     customerRef: string,
   ): Promise<{ exists: boolean }>;
+  /** Fetch normalized provider-customer detail for the customer view. */
+  getCustomerDetails(
+    ctx: PaymentGatewayContext,
+    customerRef: string,
+  ): Promise<GatewayCustomerDetails>;
   /** Create a session for collecting a new payment method. */
   createSetupSession(
     ctx: PaymentGatewayContext,

@@ -36,7 +36,6 @@ import { registerWorkerUsersRoutes } from "./modules/workers/users";
 import { registerWizardRoutes } from "./modules/wizards";
 import { registerEmployerOnboardingWizardRoutes } from "./modules/employer-onboarding-wizard";
 import { registerFileRoutes } from "./modules/files";
-import { registerLedgerStripeRoutes } from "./modules/ledger/stripe";
 import { registerLedgerPaymentMethodRoutes } from "./modules/ledger/payment-methods";
 import { registerLedgerPaymentGatewayRoutes } from "./modules/ledger/payment-gateways";
 import { registerLedgerAccountRoutes } from "./modules/ledger/accounts";
@@ -353,9 +352,6 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register component configuration routes
   registerComponentRoutes(app, requireAuth, requirePermission);
-
-  // Register ledger/stripe routes
-  registerLedgerStripeRoutes(app);
 
   // Register provider-generic ledger payment-method routes
   registerLedgerPaymentMethodRoutes(app);

@@ -8,6 +8,7 @@ import type {
   GatewayMethodSummary,
   GatewayMethodDetails,
   GatewayConnectionTest,
+  GatewayCustomerDetails,
 } from "../types";
 import { registerPaymentGatewayPlugin } from "../registry";
 
@@ -146,6 +147,31 @@ export const stripePaymentGatewayPlugin: PaymentGatewayPlugin = {
       }
       throw error;
     }
+  },
+
+  async getCustomerDetails(
+    ctx: PaymentGatewayContext,
+    customerRef: string,
+  ): Promise<GatewayCustomerDetails> {
+    const customer = (await client(ctx).customers.retrieve(
+      customerRef,
+    )) as Stripe.Customer | Stripe.DeletedCustomer;
+    if ((customer as Stripe.DeletedCustomer).deleted) {
+      const err: any = new Error("Customer has been deleted at Stripe");
+      err.code = "resource_missing";
+      throw err;
+    }
+    const c = customer as Stripe.Customer;
+    return {
+      id: c.id,
+      name: c.name ?? null,
+      email: c.email ?? null,
+      created: c.created ?? null,
+      currency: c.currency ?? null,
+      balance: c.balance ?? null,
+      delinquent: c.delinquent ?? null,
+      providerUrl: `${dashboardBaseUrl(ctx)}/customers/${c.id}`,
+    };
   },
 
   async createSetupSession(

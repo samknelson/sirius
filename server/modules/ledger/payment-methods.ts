@@ -225,6 +225,39 @@ export function registerLedgerPaymentMethodRoutes(app: Express): void {
     }
   });
 
+  // Fetch the provider customer linked to this entity + gateway config. Ensures
+  // a customer exists (creating + recording the mapping on first use, repairing
+  // a stale mapping), then enriches via the plugin. Provider-generic.
+  app.get(`${base}/customer/:gatewayConfigId`, async (req: Request, res: Response) => {
+    try {
+      const { entityType, entityId, gatewayConfigId } = req.params;
+      if (!gatewayConfigId) {
+        throw new HttpError(400, "gatewayConfigId is required");
+      }
+      await assertEntityAccess(req, entityType, entityId);
+
+      const resolved = await resolveGateway(gatewayConfigId);
+      await assertPluginComponent(resolved);
+
+      const customerRef = await ensureCustomer(entityType, entityId, resolved);
+
+      try {
+        const customer = await resolved.plugin.getCustomerDetails(
+          resolved.context,
+          customerRef,
+        );
+        res.json({ customer, providerUrl: customer.providerUrl });
+      } catch (error: any) {
+        if (error?.code === "resource_missing") {
+          throw new HttpError(404, "Customer no longer exists at the provider");
+        }
+        throw error;
+      }
+    } catch (error) {
+      sendError(res, error, "Failed to fetch customer");
+    }
+  });
+
   // List payment methods for the entity, enriched with provider details.
   app.get(base, async (req: Request, res: Response) => {
     try {
