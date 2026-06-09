@@ -273,7 +273,7 @@ const PostalConfigPage = lazy(() => import("@/pages/config/postal"));
 const LogsPage = lazy(() => import("@/pages/config/logs"));
 const ComponentsConfigPage = lazy(() => import("@/pages/config/components"));
 const GatewayTestPage = lazy(() => import("@/pages/config/ledger/payment-gateway-test"));
-const StripeSettingsPage = lazy(() => import("@/pages/config/ledger/stripe/settings"));
+const LedgerSettingsPage = lazy(() => import("@/pages/config/ledger/settings"));
 const PaymentTypesPage = lazy(() => import("@/pages/config/ledger/payment-gateway-payment-types"));
 const LedgerPaymentTypesPage = lazy(() => import("@/pages/config/ledger-payment-types"));
 // Hidden, nav-less generic plugin-config admin (Task #353 foundation). Not in
@@ -2905,14 +2905,19 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/ledger/stripe/settings">
+      <Route path="/config/ledger/settings">
         <ProtectedRoute policy="admin" component="ledger">
           <AuthenticatedLayout>
             <ConfigurationLayout>
-              <StripeSettingsPage />
+              <LedgerSettingsPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
+      </Route>
+
+      {/* Redirect old provider-specific path to provider-neutral path */}
+      <Route path="/config/ledger/stripe/settings">
+        <Redirect to="/config/ledger/settings" />
       </Route>
 
       <Route path="/config/ledger/payment-gateways/test">

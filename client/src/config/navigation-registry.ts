@@ -170,17 +170,7 @@ export const configSections: NavSection[] = [
       { path: "/admin/plugin-configs/charge", label: "Charge Plugins", icon: Zap, testId: "nav-ledger-charge-plugins", permission: "admin" },
       { path: "/config/ledger/payment-gateways/test", label: "Gateway Test", icon: Activity, testId: "nav-ledger-gateway-test", permission: "admin" },
       { path: "/config/ledger/payment-gateways/payment-types", label: "Gateway Payment Types", icon: CreditCard, testId: "nav-ledger-gateway-payment-types", permission: "admin" },
-    ],
-    subsections: [
-      {
-        id: "stripe",
-        title: "Stripe",
-        description: "Stripe payment integration settings",
-        icon: CreditCard,
-        items: [
-          { path: "/config/ledger/stripe/settings", label: "Settings", icon: Settings, testId: "nav-ledger-stripe-settings", permission: "admin" },
-        ],
-      },
+      { path: "/config/ledger/settings", label: "Settings", icon: Settings, testId: "nav-ledger-settings", permission: "admin" },
     ],
   },
   {

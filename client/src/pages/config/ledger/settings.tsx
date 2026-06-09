@@ -22,8 +22,8 @@ interface LedgerPaymentType {
   sequence: number;
 }
 
-export default function StripeSettingsPage() {
-  usePageTitle("Stripe Settings");
+export default function LedgerSettingsPage() {
+  usePageTitle("Ledger Settings");
   const { toast } = useToast();
   const [selectedPaymentTypeId, setSelectedPaymentTypeId] = useState<string>("");
 
@@ -99,15 +99,15 @@ export default function StripeSettingsPage() {
 
   return (
     <div className="container mx-auto py-8 max-w-4xl">
-      <h1 className="text-2xl md:text-3xl font-bold mb-6" data-testid="heading-stripe-settings">
-        Stripe Settings
+      <h1 className="text-2xl md:text-3xl font-bold mb-6" data-testid="heading-ledger-settings">
+        Ledger Settings
       </h1>
 
       <Card>
         <CardHeader>
           <CardTitle>Default Payment Type</CardTitle>
           <CardDescription>
-            Select the default payment type to use for Stripe transactions.
+            Select the default payment type to use for ledger payment transactions.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
