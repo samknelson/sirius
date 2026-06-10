@@ -1,0 +1,1 @@
+- [Neon pool error handler](neon-pool-error-handler.md) — db.ts Pool must keep an 'error' listener or idle-connection drops crash the process (intermittent prod 500s).
