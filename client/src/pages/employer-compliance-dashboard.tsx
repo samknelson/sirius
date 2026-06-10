@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { format } from "date-fns";
-import { Building2, Loader2, Send, AlertCircle } from "lucide-react";
+import { Building2, Loader2, Send, AlertCircle, Download } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -122,6 +122,35 @@ function readQueryParam(name: string): string | null {
   return new URLSearchParams(window.location.search).get(name);
 }
 
+function csvEscape(value: string | number | null | undefined): string {
+  const s = value == null ? "" : String(value);
+  if (/[",\n\r]/.test(s)) {
+    return `"${s.replace(/"/g, '""')}"`;
+  }
+  return s;
+}
+
+function downloadCsv(filename: string, rows: (string | number | null | undefined)[][]) {
+  const csv = rows.map((r) => r.map(csvEscape).join(",")).join("\r\n");
+  const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+function isMonthMissing(m: MonthCell): boolean {
+  return !m.status || (m.status !== "completed" && m.status !== "cancelled");
+}
+
+function isMonthDelinquent(m: MonthCell): boolean {
+  return m.balanceDelta !== null && Number(m.balanceDelta) > 0;
+}
+
 export default function EmployerComplianceDashboard() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
@@ -170,6 +199,8 @@ export default function EmployerComplianceDashboard() {
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkName, setBulkName] = useState("");
   const [bulkMedia, setBulkMedia] = useState<Array<"sms" | "email" | "inapp" | "postal">>(["email"]);
+
+  const [isExporting, setIsExporting] = useState(false);
 
   const { data: wizardTypes = [] } = useQuery<WizardType[]>({
     queryKey: ["/api/wizard-types"],
@@ -402,6 +433,113 @@ export default function EmployerComplianceDashboard() {
     },
   });
 
+  const handleExport = async () => {
+    if (!wizardType) {
+      toast({ title: "Select an upload type first", variant: "destructive" });
+      return;
+    }
+    if (selectedAccountIds.length === 0) {
+      toast({
+        title: "Select at least one ledger account",
+        description: "Delinquent amounts can't be computed without an account.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const monthLabelFor = (m: MonthCell) =>
+      format(new Date(m.year, m.month - 1, 1), "MMM yyyy");
+
+    const exportRows = filteredRows
+      .map((row) => {
+        const monthsNeedingReporting = row.months.filter(isMonthMissing);
+        const delinquentMonths = row.months.filter(isMonthDelinquent);
+        return { row, monthsNeedingReporting, delinquentMonths };
+      })
+      .filter(
+        (r) =>
+          r.monthsNeedingReporting.length > 0 || r.delinquentMonths.length > 0,
+      );
+
+    if (exportRows.length === 0) {
+      toast({
+        title: "Nothing to export",
+        description:
+          "No employers have an incomplete month or an unpaid balance for the current filters.",
+      });
+      return;
+    }
+
+    setIsExporting(true);
+    try {
+      const resp: any = await apiRequest(
+        "POST",
+        "/api/employer-compliance/resolve-contacts",
+        { employerIds: exportRows.map((r) => r.row.employerId) },
+      );
+
+      const contactsByEmployer = new Map<string, string[]>();
+      const contactList: Array<{
+        employerId: string;
+        displayName: string | null;
+        email: string | null;
+      }> = Array.isArray(resp?.contacts) ? resp.contacts : [];
+      for (const c of contactList) {
+        const name = (c.displayName ?? "").trim();
+        const email = (c.email ?? "").trim();
+        let label = "";
+        if (name && email) label = `${name} <${email}>`;
+        else if (name) label = name;
+        else if (email) label = email;
+        if (!label) continue;
+        const arr = contactsByEmployer.get(c.employerId) ?? [];
+        arr.push(label);
+        contactsByEmployer.set(c.employerId, arr);
+      }
+
+      const header = [
+        "Employer",
+        "Sirius ID",
+        ...(companyEnabled ? ["Company"] : []),
+        "Contacts",
+        "Months Needing Reporting",
+        "Delinquent Amounts by Month",
+      ];
+      const out: (string | number | null)[][] = [header];
+
+      for (const { row, monthsNeedingReporting, delinquentMonths } of exportRows) {
+        out.push([
+          row.employerName,
+          row.siriusId,
+          ...(companyEnabled ? [row.companyName ?? ""] : []),
+          (contactsByEmployer.get(row.employerId) ?? []).join("; "),
+          monthsNeedingReporting.map(monthLabelFor).join("; "),
+          delinquentMonths
+            .map((m) => `${monthLabelFor(m)}: ${Number(m.balanceDelta).toFixed(2)}`)
+            .join("; "),
+        ]);
+      }
+
+      const fname = `compliance-export-${wizardType}-${year}-${String(month).padStart(2, "0")}.csv`;
+      downloadCsv(fname.replace(/[^a-z0-9.\-_]+/gi, "_"), out);
+
+      toast({
+        title: "Export ready",
+        description: `Exported ${exportRows.length} employer${
+          exportRows.length === 1 ? "" : "s"
+        }.`,
+      });
+    } catch (err: any) {
+      toast({
+        title: "Failed to export",
+        description: err?.message ?? "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   const yearOptions = (() => {
     const cur = new Date().getFullYear();
     return [cur, cur - 1, cur - 2, cur - 3];
@@ -627,6 +765,19 @@ export default function EmployerComplianceDashboard() {
             <span className="text-sm text-muted-foreground" data-testid="text-selected-count">
               {selectedEmployerIds.size} selected
             </span>
+            <Button
+              variant="outline"
+              onClick={handleExport}
+              disabled={isExporting || !wizardType || selectedAccountIds.length === 0}
+              data-testid="button-export-compliance"
+            >
+              {isExporting ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4 mr-2" />
+              )}
+              Export CSV
+            </Button>
             <Button
               onClick={() => {
                 if (selectedEmployerIds.size === 0) {
