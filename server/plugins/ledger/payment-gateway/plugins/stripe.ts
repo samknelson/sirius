@@ -238,14 +238,23 @@ export const stripePaymentGatewayPlugin: PaymentGatewayPlugin = {
       ? (data.paymentTypes as string[])
       : ["card", "us_bank_account"];
     // Only types that can be SAVED as a reusable method work on a SetupIntent.
-    // Drop charge-only types (PayPal, BNPL, vouchers, single-use redirects) so
-    // an over-broad gateway config can't poison the add-a-method flow.
-    const paymentTypes = configured.filter((t) => SETUP_ELIGIBLE_TYPE_IDS.has(t));
-    if (paymentTypes.length === 0) {
+    // If the config carries any charge-only type (PayPal, BNPL, vouchers,
+    // single-use redirects), fail with a clear, actionable error that NAMES the
+    // offending type(s) instead of letting Stripe reject the call with an opaque
+    // 500. The Gateway Payment Types editor prevents creating this state going
+    // forward; this guard covers configs saved before that.
+    const ineligible = configured.filter((t) => !SETUP_ELIGIBLE_TYPE_IDS.has(t));
+    if (ineligible.length > 0) {
+      throw new GatewaySetupError(
+        `These payment types can't be saved as a reusable payment method: ${ineligible.join(", ")}. Remove them under Gateway Payment Types and keep a card or bank account type.`,
+      );
+    }
+    if (configured.length === 0) {
       throw new GatewaySetupError(
         "This gateway has no payment types that can be saved as a reusable payment method. Enable a card or bank account type under Gateway Payment Types.",
       );
     }
+    const paymentTypes = configured;
 
     const setupIntent = await client(ctx).setupIntents.create({
       customer: args.customerRef,

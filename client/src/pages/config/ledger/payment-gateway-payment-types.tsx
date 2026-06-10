@@ -69,10 +69,18 @@ export default function PaymentGatewayPaymentTypesPage() {
     }
   }, [selectedId]);
 
-  // Seed the checkbox state once the selected config's own data arrives.
+  // Seed the checkbox state once the selected config's own data arrives. Drop
+  // any previously-saved type that the provider now marks as not savable, so a
+  // legacy bad selection (e.g. PayPal) is removed from the config when the admin
+  // saves.
   useEffect(() => {
     if (data && loadedFor.current !== selectedId) {
-      setSelectedTypes(data.selected);
+      const eligibleIds = new Set(
+        data.available
+          .filter((t) => t.setupEligible !== false)
+          .map((t) => t.id),
+      );
+      setSelectedTypes(data.selected.filter((id) => eligibleIds.has(id)));
       loadedFor.current = selectedId;
     }
   }, [data, selectedId]);
@@ -124,7 +132,12 @@ export default function PaymentGatewayPaymentTypesPage() {
     updateMutation.mutate(selectedTypes);
   };
 
-  const available = data?.available ?? [];
+  // Only show types that can be SAVED as a reusable payment method; charge-only
+  // types (e.g. PayPal, BNPL, vouchers) are not selectable here because the
+  // add-a-method flow can't use them.
+  const available = (data?.available ?? []).filter(
+    (t) => t.setupEligible !== false,
+  );
   const hasChanges =
     isHydrated &&
     JSON.stringify([...selectedTypes].sort()) !==
@@ -227,14 +240,6 @@ export default function PaymentGatewayPaymentTypesPage() {
                         {type.description && (
                           <p className="text-sm text-muted-foreground mt-1">
                             {type.description}
-                          </p>
-                        )}
-                        {type.setupEligible === false && (
-                          <p
-                            className="text-xs text-amber-600 dark:text-amber-500 mt-1"
-                            data-testid={`text-not-savable-${type.id}`}
-                          >
-                            Can't be saved as a reusable payment method.
                           </p>
                         )}
                       </div>

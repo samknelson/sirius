@@ -144,6 +144,23 @@ export function registerLedgerPaymentGatewayRoutes(app: Express): void {
               validTypes: catalog.map((o) => o.id),
             });
           }
+          // Reject types the provider marks as NOT saveable via the
+          // add-a-payment-method (SetupIntent) flow. Selecting them would
+          // guarantee a failure when an entity later tries to add a method, so
+          // block the bad state at save time and name the offenders. Providers
+          // that don't declare `setupEligible` are unaffected (treated as
+          // eligible).
+          const notSavable = catalog
+            .filter((o) => o.setupEligible === false)
+            .map((o) => o.id);
+          const notSavableSet = new Set(notSavable);
+          const rejected = paymentTypes.filter((t: string) => notSavableSet.has(t));
+          if (rejected.length > 0) {
+            return res.status(400).json({
+              message: `These payment types can't be saved as a reusable payment method: ${rejected.join(", ")}. Choose a card or bank account type instead.`,
+              notSavableTypes: notSavable,
+            });
+          }
         }
 
         const existingData = (resolved.config!.data ?? {}) as Record<string, unknown>;
