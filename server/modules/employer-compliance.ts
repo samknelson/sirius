@@ -203,7 +203,7 @@ export function registerEmployerComplianceRoutes(
     "/api/employer-compliance/resolve-contacts",
     requireAuth,
     requireComponent("ledger"),
-    requireAccess("bulk.edit"),
+    requireAccess("staff"),
     async (req, res) => {
       try {
         const { employerIds, contactTypeIds } = req.body ?? {};

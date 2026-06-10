@@ -155,8 +155,7 @@ export default function EmployerComplianceDashboard() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const { hasComponent, hasPermission } = useAuth();
-  const canBulkEdit =
-    hasComponent("bulk") && (hasPermission("admin") || hasPermission("staff.bulk"));
+  const canExport = hasPermission("staff") || hasPermission("admin");
   const ledgerEnabled = hasComponent("ledger");
   const companyEnabled = hasComponent("employer.company");
 
@@ -767,7 +766,7 @@ export default function EmployerComplianceDashboard() {
             <span className="text-sm text-muted-foreground" data-testid="text-selected-count">
               {selectedEmployerIds.size} selected
             </span>
-            {canBulkEdit && (
+            {canExport && (
               <Button
                 variant="outline"
                 onClick={handleExport}

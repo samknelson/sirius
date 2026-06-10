@@ -1,1 +1,1 @@
-- [Neon pool error handler](neon-pool-error-handler.md) — db.ts Pool must keep an 'error' listener or idle-connection drops crash the process (intermittent prod 500s).
+- [Employer compliance gating](employer-compliance-gating.md) — /employers/compliance is staff+ledger gated, never bulk.edit (bulk.edit is unsatisfiable: no staff.bulk perm, bulk component often off).
