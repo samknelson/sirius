@@ -596,9 +596,9 @@ function PaymentMethodsContent() {
                 <div>
                   <h4 className="text-sm font-semibold mb-2">Basic Information</h4>
                   <div className="bg-muted/50 rounded-lg p-3 space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">ID:</span>
-                      <span className="font-mono">{providerDetails.paymentMethod.id}</span>
+                    <div className="flex justify-between gap-4">
+                      <span className="text-muted-foreground shrink-0">ID:</span>
+                      <span className="font-mono break-all text-right">{providerDetails.paymentMethod.id}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Type:</span>
@@ -642,9 +642,9 @@ function PaymentMethodsContent() {
                         </div>
                       )}
                       {providerDetails.paymentMethod.card.fingerprint && (
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">Fingerprint:</span>
-                          <span className="font-mono text-xs">{providerDetails.paymentMethod.card.fingerprint}</span>
+                        <div className="flex justify-between gap-4">
+                          <span className="text-muted-foreground shrink-0">Fingerprint:</span>
+                          <span className="font-mono text-xs break-all text-right">{providerDetails.paymentMethod.card.fingerprint}</span>
                         </div>
                       )}
                     </div>
