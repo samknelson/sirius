@@ -30,8 +30,8 @@ export default function PluginConfigsIndexPage() {
   });
 
   return (
-    <div className="max-w-3xl">
-      <div className="mb-6">
+    <div className="space-y-6">
+      <div>
         <h1 className="text-2xl font-semibold tracking-tight" data-testid="text-plugin-configs-title">
           Plugin Configs
         </h1>

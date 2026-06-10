@@ -352,7 +352,7 @@ export default function GenericPluginConfigsPage() {
   const clearFilters = () => setFilters({});
 
   return (
-    <div className="max-w-7xl mx-auto space-y-6">
+    <div className="space-y-6">
       <Link href="/admin/plugin-configs">
         <Button variant="ghost" size="sm" className="-ml-2" data-testid="button-back-to-plugin-configs">
           <ArrowLeft className="h-4 w-4 mr-2" />
