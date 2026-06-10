@@ -78,8 +78,8 @@ export interface PluginConfigStorage {
   // --- Base CRUD ---------------------------------------------------------
   getAll(): Promise<PluginConfig[]>;
   get(id: string): Promise<PluginConfig | undefined>;
-  getByType(pluginType: string): Promise<PluginConfig[]>;
-  getByTypeAndPlugin(pluginType: string, pluginId: string): Promise<PluginConfig[]>;
+  getByKind(pluginKind: string): Promise<PluginConfig[]>;
+  getByKindAndPlugin(pluginKind: string, pluginId: string): Promise<PluginConfig[]>;
   findBySiriusId(siriusId: string): Promise<PluginConfig | undefined>;
   create(config: InsertPluginConfig): Promise<PluginConfig>;
   update(id: string, config: Partial<InsertPluginConfig>): Promise<PluginConfig | undefined>;
@@ -106,7 +106,7 @@ export interface PluginConfigStorage {
 export function createPluginConfigStorage(): PluginConfigStorage {
   /**
    * Internal per-kind subsidiary namespaces, keyed by the PluginKind
-   * discriminator (the `:kind` URL segment / `plugin_type` column value).
+   * discriminator (the `:kind` URL segment / `plugin_kind` column value).
    * Kinds absent from this map (e.g. "dashboard") carry no relational
    * dimensions and live entirely in the base table. Each namespace owns the
    * queries for exactly one subsidiary table; this base namespace composes
@@ -135,7 +135,7 @@ export function createPluginConfigStorage(): PluginConfigStorage {
       const rows = await client.select().from(pluginConfigs);
       return rows.sort(
         (a, b) =>
-          a.pluginType.localeCompare(b.pluginType) ||
+          a.pluginKind.localeCompare(b.pluginKind) ||
           a.ordering - b.ordering ||
           a.pluginId.localeCompare(b.pluginId),
       );
@@ -147,22 +147,22 @@ export function createPluginConfigStorage(): PluginConfigStorage {
       return row || undefined;
     },
 
-    async getByType(pluginType: string): Promise<PluginConfig[]> {
+    async getByKind(pluginKind: string): Promise<PluginConfig[]> {
       const client = getClient();
       const rows = await client
         .select()
         .from(pluginConfigs)
-        .where(eq(pluginConfigs.pluginType, pluginType))
+        .where(eq(pluginConfigs.pluginKind, pluginKind))
         .orderBy(pluginConfigs.ordering, pluginConfigs.pluginId);
       return rows;
     },
 
-    async getByTypeAndPlugin(pluginType: string, pluginId: string): Promise<PluginConfig[]> {
+    async getByKindAndPlugin(pluginKind: string, pluginId: string): Promise<PluginConfig[]> {
       const client = getClient();
       const rows = await client
         .select()
         .from(pluginConfigs)
-        .where(and(eq(pluginConfigs.pluginType, pluginType), eq(pluginConfigs.pluginId, pluginId)))
+        .where(and(eq(pluginConfigs.pluginKind, pluginKind), eq(pluginConfigs.pluginId, pluginId)))
         .orderBy(pluginConfigs.ordering, pluginConfigs.id);
       return rows;
     },
@@ -216,7 +216,7 @@ export function createPluginConfigStorage(): PluginConfigStorage {
       const client = getClient();
       const [config] = await client.select().from(pluginConfigs).where(eq(pluginConfigs.id, id));
       if (!config) return undefined;
-      const subsidiary = await getSubsidiary(config.pluginType, id);
+      const subsidiary = await getSubsidiary(config.pluginKind, id);
       return { config, subsidiary };
     },
 
@@ -232,7 +232,7 @@ export function createPluginConfigStorage(): PluginConfigStorage {
       const ns = subsidiaries[type];
 
       // Base conditions shared by every kind.
-      const baseConditions: SQL[] = [eq(pluginConfigs.pluginType, type)];
+      const baseConditions: SQL[] = [eq(pluginConfigs.pluginKind, type)];
       if (params.pluginId !== undefined) baseConditions.push(eq(pluginConfigs.pluginId, params.pluginId));
       if (params.enabled !== undefined) baseConditions.push(eq(pluginConfigs.enabled, params.enabled));
       if (params.siriusId !== undefined && params.siriusId !== null) {

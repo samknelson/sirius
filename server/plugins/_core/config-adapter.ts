@@ -23,7 +23,7 @@ import type { PluginConfigWithSubsidiary } from "../../storage/plugin-configs";
  */
 export interface PluginConfigRows {
   base: {
-    pluginType: string;
+    pluginKind: string;
     pluginId: string;
     enabled?: boolean;
     name?: string | null;
@@ -108,7 +108,7 @@ export interface PluginConfigEnvelopeField {
 
 export interface PluginConfigAdapter<TConfig = any, TSearch = any> {
   /** PluginKind discriminator — matches the `:kind` URL segment. */
-  pluginType: string;
+  pluginKind: string;
   /** Validates the flat create/update payload. */
   configSchema: z.ZodType<TConfig>;
   /** Validates the search request body (filters; all optional). */
@@ -172,14 +172,14 @@ export function defaultHydrate(envelope: PluginConfigWithSubsidiary): Record<str
 const ADAPTERS = new Map<string, PluginConfigAdapter>();
 
 export function registerPluginConfigAdapter(adapter: PluginConfigAdapter): void {
-  if (ADAPTERS.has(adapter.pluginType)) {
-    throw new Error(`Plugin config adapter for '${adapter.pluginType}' already registered`);
+  if (ADAPTERS.has(adapter.pluginKind)) {
+    throw new Error(`Plugin config adapter for '${adapter.pluginKind}' already registered`);
   }
-  ADAPTERS.set(adapter.pluginType, adapter);
+  ADAPTERS.set(adapter.pluginKind, adapter);
 }
 
-export function getPluginConfigAdapter(pluginType: string): PluginConfigAdapter | undefined {
-  return ADAPTERS.get(pluginType);
+export function getPluginConfigAdapter(pluginKind: string): PluginConfigAdapter | undefined {
+  return ADAPTERS.get(pluginKind);
 }
 
 export function listPluginConfigAdapters(): string[] {

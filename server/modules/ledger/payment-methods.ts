@@ -203,7 +203,7 @@ export function registerLedgerPaymentMethodRoutes(app: Express): void {
       const { entityType, entityId } = req.params;
       await assertEntityAccess(req, entityType, entityId);
 
-      const configs = await storage.pluginConfigs.getByType("payment-gateway");
+      const configs = await storage.pluginConfigs.getByKind("payment-gateway");
       const checker = getComponentChecker();
       const available = [];
       for (const cfg of configs) {

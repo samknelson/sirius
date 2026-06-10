@@ -40,7 +40,7 @@ export function registerPaymentGatewayPluginKind(): void {
   // API credentials, never the value) still rides in `data`, mirroring how the
   // trust-eligibility adapter relocates `appliesTo` into `data`.
   registerPluginConfigAdapter({
-    pluginType: "payment-gateway",
+    pluginKind: "payment-gateway",
     configSchema: z.object({
       ...baseConfigSchemaShape,
       secretName: z.string().min(1, "secretName is required"),
@@ -59,7 +59,7 @@ export function registerPaymentGatewayPluginKind(): void {
     }),
     toRows: (input) => ({
       base: {
-        pluginType: "payment-gateway",
+        pluginKind: "payment-gateway",
         pluginId: input.pluginId,
         enabled: input.enabled,
         name: input.name,
@@ -110,7 +110,7 @@ export function registerPaymentGatewayPluginKind(): void {
  */
 export async function backfillPaymentGatewaySubsidiaries(): Promise<void> {
   const { storage } = await import("../../../storage");
-  const configs = await storage.pluginConfigs.getByType("payment-gateway");
+  const configs = await storage.pluginConfigs.getByKind("payment-gateway");
   for (const cfg of configs) {
     try {
       const envelope = await storage.pluginConfigs.getWithSubsidiary(cfg.id);
@@ -152,7 +152,7 @@ export async function backfillPaymentTypesFromGlobal(): Promise<void> {
     // The legacy variable was Stripe-specific, so only seed Stripe configs that
     // do not already carry their own list. Other providers must not inherit a
     // Stripe payment-type list.
-    const configs = (await storage.pluginConfigs.getByType("payment-gateway"))
+    const configs = (await storage.pluginConfigs.getByKind("payment-gateway"))
       .filter((cfg) => cfg.pluginId === "stripe");
     for (const cfg of configs) {
       const data = (cfg.data ?? {}) as Record<string, unknown>;

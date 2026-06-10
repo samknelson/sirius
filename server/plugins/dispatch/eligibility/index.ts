@@ -38,7 +38,7 @@ function registerDispatchEligKind(): void {
     },
   });
   registerPluginConfigAdapter({
-    pluginType: "dispatch-eligibility",
+    pluginKind: "dispatch-eligibility",
     configSchema: z.object({
       ...baseConfigSchemaShape,
       jobType: z.string().nullable().optional(),
@@ -49,7 +49,7 @@ function registerDispatchEligKind(): void {
     }),
     toRows: (input) => ({
       base: {
-        pluginType: "dispatch-eligibility",
+        pluginKind: "dispatch-eligibility",
         pluginId: input.pluginId,
         enabled: input.enabled,
         name: input.name,

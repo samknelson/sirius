@@ -12,7 +12,7 @@ import { getEnabledComponentIds } from "../../../modules/components";
 
 /**
  * Reconstruct the in-memory `EligibilityRule` shape the executor evaluates
- * from a unified `plugin_configs` base row (plugin_type = 'trust-eligibility').
+ * from a unified `plugin_configs` base row (plugin_kind = 'trust-eligibility').
  *
  * The base row's `data` jsonb IS the rule config, with the authoritative
  * `appliesTo` scan-type list mirrored inside it. The `pluginId` column is the

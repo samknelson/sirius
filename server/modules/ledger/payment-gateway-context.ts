@@ -35,7 +35,7 @@ export async function resolveGateway(
   gatewayConfigId: string,
 ): Promise<ResolvedGateway> {
   const config = await storage.pluginConfigs.get(gatewayConfigId);
-  if (!config || config.pluginType !== "payment-gateway") {
+  if (!config || config.pluginKind !== "payment-gateway") {
     throw new GatewayResolutionError(404, "Payment gateway configuration not found");
   }
   if (!config.enabled) {

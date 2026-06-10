@@ -32,7 +32,7 @@ export function registerChargePluginKind(): void {
     validateConfig: (plugin, config) => plugin.validateConfig(config),
   });
   registerPluginConfigAdapter({
-    pluginType: "charge",
+    pluginKind: "charge",
     configSchema: z
       .object({
         ...baseConfigSchemaShape,
@@ -72,7 +72,7 @@ export function registerChargePluginKind(): void {
     }),
     toRows: (input) => ({
       base: {
-        pluginType: "charge",
+        pluginKind: "charge",
         pluginId: input.pluginId,
         enabled: input.enabled,
         name: input.name,

@@ -362,7 +362,7 @@ export default function ComponentsConfigPage() {
                                         className="font-mono text-xs text-muted-foreground"
                                         data-testid={`text-plugin-config-type-${component.id}-${pc.siriusId}`}
                                       >
-                                        {pc.pluginType}/{pc.pluginId}
+                                        {pc.pluginKind}/{pc.pluginId}
                                       </div>
                                     </li>
                                   ))}

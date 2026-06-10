@@ -383,7 +383,7 @@ export async function reconcileComponentPluginConfigs(
     if (enabled) {
       if (!existing) {
         await storage.pluginConfigs.create({
-          pluginType: managed.pluginType,
+          pluginKind: managed.pluginKind,
           pluginId: managed.pluginId,
           siriusId: managed.siriusId,
           name: managed.name ?? null,

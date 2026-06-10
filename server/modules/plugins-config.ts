@@ -132,7 +132,7 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
       const resolved = await resolve(req, res);
       if (!resolved) return;
       const { kind, adapter } = resolved;
-      const configs = await storage.pluginConfigs.getByType(kind);
+      const configs = await storage.pluginConfigs.getByKind(kind);
       const out = await Promise.all(
         configs.map(async (config) => {
           const envelope = await storage.pluginConfigs.getWithSubsidiary(config.id);
@@ -222,7 +222,7 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
       if (!resolved) return;
       const { kind, adapter } = resolved;
       const envelope = await storage.pluginConfigs.getWithSubsidiary(req.params.id);
-      if (!envelope || envelope.config.pluginType !== kind) {
+      if (!envelope || envelope.config.pluginKind !== kind) {
         res.status(404).json({ message: "Plugin config not found" });
         return;
       }
@@ -239,7 +239,7 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
       if (!resolved) return;
       const { kind, adapter, registration } = resolved;
       const existingEnvelope = await storage.pluginConfigs.getWithSubsidiary(req.params.id);
-      if (!existingEnvelope || existingEnvelope.config.pluginType !== kind) {
+      if (!existingEnvelope || existingEnvelope.config.pluginKind !== kind) {
         res.status(404).json({ message: "Plugin config not found" });
         return;
       }
@@ -279,7 +279,7 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
       if (!resolved) return;
       const { kind } = resolved;
       const existing = await storage.pluginConfigs.get(req.params.id);
-      if (!existing || existing.pluginType !== kind) {
+      if (!existing || existing.pluginKind !== kind) {
         res.status(404).json({ message: "Plugin config not found" });
         return;
       }

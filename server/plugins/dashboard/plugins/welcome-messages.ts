@@ -93,7 +93,7 @@ function isNewShape(data: unknown): boolean {
  */
 export async function migrateWelcomeMessages(): Promise<void> {
   try {
-    const rows = await storage.pluginConfigs.getByTypeAndPlugin(
+    const rows = await storage.pluginConfigs.getByKindAndPlugin(
       "dashboard",
       welcomeMessagesPlugin.id,
     );
@@ -136,7 +136,7 @@ export async function migrateWelcomeMessages(): Promise<void> {
       let ordering = 0;
       for (const [roleId, { message, enabled }] of byRole) {
         await storage.pluginConfigs.create({
-          pluginType: "dashboard",
+          pluginKind: "dashboard",
           pluginId: welcomeMessagesPlugin.id,
           enabled,
           name: roleNameById.get(roleId) ?? null,

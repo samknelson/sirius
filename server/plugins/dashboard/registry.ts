@@ -146,7 +146,7 @@ class DashboardPluginRegistry extends PluginRegistry<DashboardPlugin, DashboardM
    * one. Returns undefined when the plugin has no config row at all.
    */
   async getCanonicalConfig(plugin: DashboardPlugin): Promise<PluginConfig | undefined> {
-    const rows = await storage.pluginConfigs.getByTypeAndPlugin("dashboard", plugin.id);
+    const rows = await storage.pluginConfigs.getByKindAndPlugin("dashboard", plugin.id);
     return rows[0];
   }
 
@@ -204,13 +204,13 @@ class DashboardPluginRegistry extends PluginRegistry<DashboardPlugin, DashboardM
     for (const plugin of this.list()) {
       if (!plugin.client) continue;
       try {
-        const existing = await storage.pluginConfigs.getByTypeAndPlugin(
+        const existing = await storage.pluginConfigs.getByKindAndPlugin(
           "dashboard",
           plugin.id,
         );
         if (existing.length > 0) continue;
         await storage.pluginConfigs.create({
-          pluginType: "dashboard",
+          pluginKind: "dashboard",
           pluginId: plugin.id,
           enabled: this.defaultEnabled(plugin),
           name: null,
@@ -254,7 +254,7 @@ class DashboardPluginRegistry extends PluginRegistry<DashboardPlugin, DashboardM
     }
     const validRoleIds = new Set(roles.map((r) => r.id));
     const firstRoleId = roles[0].id;
-    const configs = await storage.pluginConfigs.getByType("dashboard");
+    const configs = await storage.pluginConfigs.getByKind("dashboard");
     for (const cfg of configs) {
       try {
         const envelope = await storage.pluginConfigs.getWithSubsidiary(cfg.id);
@@ -313,7 +313,7 @@ class DashboardPluginRegistry extends PluginRegistry<DashboardPlugin, DashboardM
     const handled = new Set<string>();
     for (const plugin of plugins) {
       try {
-        const existing = await storage.pluginConfigs.getByTypeAndPlugin("dashboard", plugin.id);
+        const existing = await storage.pluginConfigs.getByKindAndPlugin("dashboard", plugin.id);
         if (existing.length > 0) {
           handled.add(plugin.id);
           continue;
@@ -333,7 +333,7 @@ class DashboardPluginRegistry extends PluginRegistry<DashboardPlugin, DashboardM
         if (data !== undefined || enabledVar) {
           const enabled = enabledVar ? Boolean(enabledVar.value) : this.defaultEnabled(plugin);
           await storage.pluginConfigs.create({
-            pluginType: "dashboard",
+            pluginKind: "dashboard",
             pluginId: plugin.id,
             enabled,
             name: null,
@@ -437,7 +437,7 @@ class DashboardPluginRegistry extends PluginRegistry<DashboardPlugin, DashboardM
       envelope = await storage.pluginConfigs.getWithSubsidiary(configId);
       if (
         !envelope ||
-        envelope.config.pluginType !== "dashboard" ||
+        envelope.config.pluginKind !== "dashboard" ||
         envelope.config.pluginId !== plugin.id
       ) {
         res.status(404).json({ message: "Dashboard config not found" });

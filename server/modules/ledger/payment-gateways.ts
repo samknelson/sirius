@@ -28,7 +28,7 @@ export function registerLedgerPaymentGatewayRoutes(app: Express): void {
   // registered and whose required component (if any) is enabled.
   app.get(base, requireAccess("admin"), async (_req: Request, res: Response) => {
     try {
-      const configs = await storage.pluginConfigs.getByType("payment-gateway");
+      const configs = await storage.pluginConfigs.getByKind("payment-gateway");
       const checker = getComponentChecker();
       const available = [];
       for (const cfg of configs) {
@@ -61,7 +61,7 @@ export function registerLedgerPaymentGatewayRoutes(app: Express): void {
     | { ok: false; status: number; message: string }
   > {
     const config = await storage.pluginConfigs.get(configId);
-    if (!config || config.pluginType !== "payment-gateway") {
+    if (!config || config.pluginKind !== "payment-gateway") {
       return { ok: false, status: 404, message: "Payment gateway configuration not found" };
     }
     const plugin = getPaymentGatewayPlugin(config.pluginId);

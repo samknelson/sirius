@@ -66,7 +66,7 @@ export async function resolveClientInjections(
   req: Request,
 ): Promise<ResolvedInjectionManifest> {
   const { storage } = await import("../../storage");
-  const rows = await storage.pluginConfigs.getByType("client-injection");
+  const rows = await storage.pluginConfigs.getByKind("client-injection");
 
   const out: ResolvedInjection[] = [];
   for (const row of rows) {

@@ -1745,7 +1745,7 @@ export type EmployerMonthlyPluginConfig = z.infer<typeof employerMonthlyPluginCo
 // Charge Plugin Configs
 //
 // Charge no longer owns a dedicated table (Task #355). Charge configs live in
-// the unified `plugin_configs` (plugin_type = 'charge') base table plus the
+// the unified `plugin_configs` (plugin_kind = 'charge') base table plus the
 // `plugin_configs_charge` subsidiary (scope / employer / account). This type is
 // the resolved, composed shape every charge caller consumes: base columns with
 // the base `data` blob surfaced as `settings`, joined with the subsidiary's
@@ -1781,7 +1781,7 @@ export const pluginConfigs = pgTable("plugin_configs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   // PluginKind discriminator (e.g. "charge", "dispatch-eligibility",
   // "trust-eligibility", "dashboard", "client-injection").
-  pluginType: varchar("plugin_type").notNull(),
+  pluginKind: varchar("plugin_kind").notNull(),
   pluginId: text("plugin_id").notNull(), // the registered plugin's id within its kind
   enabled: boolean("enabled").default(false).notNull(),
   name: text("name"), // optional descriptive name for this configuration

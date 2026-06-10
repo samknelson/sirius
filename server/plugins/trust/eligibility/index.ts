@@ -31,7 +31,7 @@ export function registerTrustEligibilityKind(): void {
     },
   });
   registerPluginConfigAdapter({
-    pluginType: "trust-eligibility",
+    pluginKind: "trust-eligibility",
     configSchema: z.object({
       ...baseConfigSchemaShape,
       policy: z.string().nullable().optional(),
@@ -70,7 +70,7 @@ export function registerTrustEligibilityKind(): void {
       const appliesTo = appliesToArr.length > 0 ? appliesToArr.join(",") : null;
       return {
         base: {
-          pluginType: "trust-eligibility",
+          pluginKind: "trust-eligibility",
           pluginId: input.pluginId,
           enabled: input.enabled,
           name: input.name,

@@ -38,7 +38,7 @@ export interface ComponentPolicyRule {
  */
 export interface ComponentManagedPluginConfig {
   /** PluginKind discriminator, e.g. "client-injection". */
-  pluginType: string;
+  pluginKind: string;
   /** Registered impl id, e.g. "weglot-sdk". */
   pluginId: string;
   /** Stable, unique, editable identifier. Use `auto.<componentId>.<localId>`. */
@@ -153,7 +153,7 @@ export const componentRegistry: ComponentDefinition[] = [
     // its client-injection rows.
     pluginConfigs: [
       {
-        pluginType: "payment-gateway",
+        pluginKind: "payment-gateway",
         pluginId: "stripe",
         siriusId: "auto.ledger.stripe.default",
         name: "Stripe (Default)",
@@ -174,7 +174,7 @@ export const componentRegistry: ComponentDefinition[] = [
     // plugin), so the gateway works whether or not the env var exists.
     pluginConfigs: [
       {
-        pluginType: "payment-gateway",
+        pluginKind: "payment-gateway",
         pluginId: "dummy",
         siriusId: "auto.ledger.dummy_gateway.default",
         name: "Dummy (Default)",
@@ -751,14 +751,14 @@ export const componentRegistry: ComponentDefinition[] = [
     category: "internationalization",
     pluginConfigs: [
       {
-        pluginType: "client-injection",
+        pluginKind: "client-injection",
         pluginId: "weglot-sdk",
         siriusId: "auto.internationalization.weglot.sdk",
         name: "Weglot SDK",
         ordering: 10,
       },
       {
-        pluginType: "client-injection",
+        pluginKind: "client-injection",
         pluginId: "weglot-init",
         siriusId: "auto.internationalization.weglot.init",
         name: "Weglot Initialization",

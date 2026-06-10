@@ -38,7 +38,7 @@ function registerClientInjectionKind(): void {
     // (ordering, id) — matching the dashboard kind.
     decorateEntries: async (entries) => {
       const { storage } = await import("../../storage");
-      const configs = await storage.pluginConfigs.getByType("client-injection");
+      const configs = await storage.pluginConfigs.getByKind("client-injection");
       const firstByPlugin = new Map<string, (typeof configs)[number]>();
       for (const c of configs) {
         const cur = firstByPlugin.get(c.pluginId);
@@ -77,12 +77,12 @@ function registerClientInjectionKind(): void {
   // entirely in the base table — the adapter declares no subsidiary. The
   // editable injection fields (slot/kind/src/code/attrs) ride in `data`.
   registerPluginConfigAdapter({
-    pluginType: "client-injection",
+    pluginKind: "client-injection",
     configSchema: z.object({ ...baseConfigSchemaShape }),
     searchParamsSchema: z.object({ ...baseSearchSchemaShape }),
     toRows: (input) => ({
       base: {
-        pluginType: "client-injection",
+        pluginKind: "client-injection",
         pluginId: input.pluginId,
         enabled: input.enabled,
         name: input.name,

@@ -30,7 +30,7 @@ function registerDashboardKind(): void {
     // admin UI can render the settings form for a dashboard config row.
     decorateEntries: async (entries) => {
       const { storage } = await import("../../storage");
-      const configs = await storage.pluginConfigs.getByType("dashboard");
+      const configs = await storage.pluginConfigs.getByKind("dashboard");
       const firstByPlugin = new Map<string, (typeof configs)[number]>();
       for (const c of configs) {
         const cur = firstByPlugin.get(c.pluginId);
@@ -70,7 +70,7 @@ function registerDashboardKind(): void {
   // widget only when they hold its role. There is no "show everyone": an
   // unmatched role means the widget is hidden.
   registerPluginConfigAdapter({
-    pluginType: "dashboard",
+    pluginKind: "dashboard",
     configSchema: z.object({
       ...baseConfigSchemaShape,
       role: z.string().min(1),
@@ -82,7 +82,7 @@ function registerDashboardKind(): void {
     }),
     toRows: (input) => ({
       base: {
-        pluginType: "dashboard",
+        pluginKind: "dashboard",
         pluginId: input.pluginId,
         enabled: input.enabled,
         name: input.name,

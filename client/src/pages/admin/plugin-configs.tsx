@@ -125,7 +125,7 @@ interface ManifestEntry {
 
 interface PluginConfigRow {
   id: string;
-  pluginType: string;
+  pluginKind: string;
   pluginId: string;
   name: string | null;
   enabled: boolean;
