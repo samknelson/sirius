@@ -2915,11 +2915,6 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      {/* Redirect old provider-specific path to provider-neutral path */}
-      <Route path="/config/ledger/stripe/settings">
-        <Redirect to="/config/ledger/settings" />
-      </Route>
-
       <Route path="/config/ledger/payment-gateways/test">
         <ProtectedRoute policy="admin" component="ledger">
           <AuthenticatedLayout>
