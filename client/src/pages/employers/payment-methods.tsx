@@ -758,7 +758,7 @@ function PaymentMethodsContent() {
       </Dialog>
 
       <Dialog open={addDialogOpen} onOpenChange={(open) => (open ? setAddDialogOpen(true) : resetAddDialog())}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Add Payment Method</DialogTitle>
             <DialogDescription>
