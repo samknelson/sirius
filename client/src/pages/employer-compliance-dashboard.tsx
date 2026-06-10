@@ -154,7 +154,9 @@ function isMonthDelinquent(m: MonthCell): boolean {
 export default function EmployerComplianceDashboard() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const { hasComponent } = useAuth();
+  const { hasComponent, hasPermission } = useAuth();
+  const canBulkEdit =
+    hasComponent("bulk") && (hasPermission("admin") || hasPermission("staff.bulk"));
   const ledgerEnabled = hasComponent("ledger");
   const companyEnabled = hasComponent("employer.company");
 
@@ -765,19 +767,21 @@ export default function EmployerComplianceDashboard() {
             <span className="text-sm text-muted-foreground" data-testid="text-selected-count">
               {selectedEmployerIds.size} selected
             </span>
-            <Button
-              variant="outline"
-              onClick={handleExport}
-              disabled={isExporting || !wizardType || selectedAccountIds.length === 0}
-              data-testid="button-export-compliance"
-            >
-              {isExporting ? (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              ) : (
-                <Download className="h-4 w-4 mr-2" />
-              )}
-              Export CSV
-            </Button>
+            {canBulkEdit && (
+              <Button
+                variant="outline"
+                onClick={handleExport}
+                disabled={isExporting}
+                data-testid="button-export-compliance"
+              >
+                {isExporting ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Download className="h-4 w-4 mr-2" />
+                )}
+                Export CSV
+              </Button>
+            )}
             <Button
               onClick={() => {
                 if (selectedEmployerIds.size === 0) {
