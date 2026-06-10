@@ -2,6 +2,7 @@ import Stripe from "stripe";
 import type {
   PaymentGatewayPlugin,
   PaymentGatewayContext,
+  PaymentTypeOption,
   CreateCustomerInput,
   GatewayCustomerResult,
   GatewaySetupSession,
@@ -28,6 +29,64 @@ function dashboardBaseUrl(ctx: PaymentGatewayContext): string {
     ? "https://dashboard.stripe.com/test"
     : "https://dashboard.stripe.com";
 }
+
+/**
+ * Thrown when a gateway config has no payment type that can be saved as a
+ * reusable method. Carries a 4xx `statusCode` so the route's error mapper can
+ * surface it as an actionable client error instead of a generic 500.
+ */
+class GatewaySetupError extends Error {
+  readonly statusCode = 400;
+  constructor(message: string) {
+    super(message);
+    this.name = "GatewaySetupError";
+  }
+}
+
+/**
+ * Catalog of Stripe payment method types the editor offers. Stays here (not in
+ * the UI) so the payment-types editor remains provider-agnostic. `setupEligible`
+ * marks the types that can be SAVED as a reusable method via the SetupIntent
+ * (add-a-payment-method) flow; charge-only types (PayPal, BNPL, single-use
+ * redirects, vouchers) are excluded from that flow.
+ */
+const STRIPE_PAYMENT_TYPES: PaymentTypeOption[] = [
+  { id: "card", name: "Credit/Debit Card", description: "Accept Visa, Mastercard, Amex, and other cards", setupEligible: true },
+  { id: "us_bank_account", name: "US Bank Account (ACH)", description: "ACH direct debit payments", setupEligible: true },
+  { id: "cashapp", name: "Cash App Pay", description: "Accept payments via Cash App", setupEligible: true },
+  { id: "paypal", name: "PayPal", description: "Accept payments via PayPal", setupEligible: false },
+  { id: "link", name: "Link", description: "Stripe's one-click payment method", setupEligible: true },
+  { id: "affirm", name: "Affirm", description: "Buy now, pay later with Affirm", setupEligible: false },
+  { id: "afterpay_clearpay", name: "Afterpay / Clearpay", description: "Buy now, pay later", setupEligible: false },
+  { id: "klarna", name: "Klarna", description: "Buy now, pay later with Klarna", setupEligible: false },
+  { id: "alipay", name: "Alipay", description: "Popular payment method in China", setupEligible: false },
+  { id: "wechat_pay", name: "WeChat Pay", description: "Popular payment method in China", setupEligible: false },
+  { id: "ideal", name: "iDEAL", description: "Popular payment method in Netherlands", setupEligible: false },
+  { id: "sepa_debit", name: "SEPA Direct Debit", description: "European bank debits", setupEligible: true },
+  { id: "bancontact", name: "Bancontact", description: "Popular payment method in Belgium", setupEligible: false },
+  { id: "giropay", name: "Giropay", description: "Popular payment method in Germany", setupEligible: false },
+  { id: "eps", name: "EPS", description: "Popular payment method in Austria", setupEligible: false },
+  { id: "p24", name: "Przelewy24", description: "Popular payment method in Poland", setupEligible: false },
+  { id: "blik", name: "BLIK", description: "Mobile payment method in Poland", setupEligible: false },
+  { id: "acss_debit", name: "ACSS Debit", description: "Pre-authorized debit in Canada", setupEligible: true },
+  { id: "au_becs_debit", name: "BECS Direct Debit", description: "Direct debit in Australia", setupEligible: true },
+  { id: "bacs_debit", name: "Bacs Direct Debit", description: "Direct debit in UK", setupEligible: true },
+  { id: "fpx", name: "FPX", description: "Online banking in Malaysia", setupEligible: false },
+  { id: "grabpay", name: "GrabPay", description: "Popular digital wallet in Southeast Asia", setupEligible: false },
+  { id: "paynow", name: "PayNow", description: "Real-time payment in Singapore", setupEligible: false },
+  { id: "promptpay", name: "PromptPay", description: "Real-time payment in Thailand", setupEligible: false },
+  { id: "pix", name: "Pix", description: "Instant payment method in Brazil", setupEligible: false },
+  { id: "boleto", name: "Boleto", description: "Cash-based voucher payment in Brazil", setupEligible: false },
+  { id: "oxxo", name: "OXXO", description: "Cash-based voucher payment in Mexico", setupEligible: false },
+  { id: "konbini", name: "Konbini", description: "Cash payment at convenience stores in Japan", setupEligible: false },
+  { id: "customer_balance", name: "Customer Balance", description: "Use customer account balance", setupEligible: false },
+  { id: "sofort", name: "Sofort", description: "Bank redirect in Europe (deprecated, use Klarna)", setupEligible: false },
+];
+
+/** Ids from the catalog that are valid for the save-a-method (SetupIntent) flow. */
+const SETUP_ELIGIBLE_TYPE_IDS = new Set(
+  STRIPE_PAYMENT_TYPES.filter((t) => t.setupEligible).map((t) => t.id),
+);
 
 /**
  * Stripe payment gateway. Each `payment-gateway` config row of this plugin
@@ -70,40 +129,9 @@ export const stripePaymentGatewayPlugin: PaymentGatewayPlugin = {
     return { valid: true };
   },
 
-  // Catalog of Stripe payment method types the editor offers. Stays here (not
-  // in the UI) so the payment-types editor remains provider-agnostic.
-  supportedPaymentTypes: [
-    { id: "card", name: "Credit/Debit Card", description: "Accept Visa, Mastercard, Amex, and other cards" },
-    { id: "us_bank_account", name: "US Bank Account (ACH)", description: "ACH direct debit payments" },
-    { id: "cashapp", name: "Cash App Pay", description: "Accept payments via Cash App" },
-    { id: "paypal", name: "PayPal", description: "Accept payments via PayPal" },
-    { id: "link", name: "Link", description: "Stripe's one-click payment method" },
-    { id: "affirm", name: "Affirm", description: "Buy now, pay later with Affirm" },
-    { id: "afterpay_clearpay", name: "Afterpay / Clearpay", description: "Buy now, pay later" },
-    { id: "klarna", name: "Klarna", description: "Buy now, pay later with Klarna" },
-    { id: "alipay", name: "Alipay", description: "Popular payment method in China" },
-    { id: "wechat_pay", name: "WeChat Pay", description: "Popular payment method in China" },
-    { id: "ideal", name: "iDEAL", description: "Popular payment method in Netherlands" },
-    { id: "sepa_debit", name: "SEPA Direct Debit", description: "European bank debits" },
-    { id: "bancontact", name: "Bancontact", description: "Popular payment method in Belgium" },
-    { id: "giropay", name: "Giropay", description: "Popular payment method in Germany" },
-    { id: "eps", name: "EPS", description: "Popular payment method in Austria" },
-    { id: "p24", name: "Przelewy24", description: "Popular payment method in Poland" },
-    { id: "blik", name: "BLIK", description: "Mobile payment method in Poland" },
-    { id: "acss_debit", name: "ACSS Debit", description: "Pre-authorized debit in Canada" },
-    { id: "au_becs_debit", name: "BECS Direct Debit", description: "Direct debit in Australia" },
-    { id: "bacs_debit", name: "Bacs Direct Debit", description: "Direct debit in UK" },
-    { id: "fpx", name: "FPX", description: "Online banking in Malaysia" },
-    { id: "grabpay", name: "GrabPay", description: "Popular digital wallet in Southeast Asia" },
-    { id: "paynow", name: "PayNow", description: "Real-time payment in Singapore" },
-    { id: "promptpay", name: "PromptPay", description: "Real-time payment in Thailand" },
-    { id: "pix", name: "Pix", description: "Instant payment method in Brazil" },
-    { id: "boleto", name: "Boleto", description: "Cash-based voucher payment in Brazil" },
-    { id: "oxxo", name: "OXXO", description: "Cash-based voucher payment in Mexico" },
-    { id: "konbini", name: "Konbini", description: "Cash payment at convenience stores in Japan" },
-    { id: "customer_balance", name: "Customer Balance", description: "Use customer account balance" },
-    { id: "sofort", name: "Sofort", description: "Bank redirect in Europe (deprecated, use Klarna)" },
-  ],
+  // Catalog of Stripe payment method types the editor offers (defined at module
+  // scope so the setup flow can share the `setupEligible` markers).
+  supportedPaymentTypes: STRIPE_PAYMENT_TYPES,
 
   async testConnection(ctx: PaymentGatewayContext): Promise<GatewayConnectionTest> {
     try {
@@ -206,9 +234,18 @@ export const stripePaymentGatewayPlugin: PaymentGatewayPlugin = {
     args: { customerRef: string },
   ): Promise<GatewaySetupSession> {
     const data = configData(ctx);
-    const paymentTypes = Array.isArray(data.paymentTypes)
+    const configured = Array.isArray(data.paymentTypes)
       ? (data.paymentTypes as string[])
       : ["card", "us_bank_account"];
+    // Only types that can be SAVED as a reusable method work on a SetupIntent.
+    // Drop charge-only types (PayPal, BNPL, vouchers, single-use redirects) so
+    // an over-broad gateway config can't poison the add-a-method flow.
+    const paymentTypes = configured.filter((t) => SETUP_ELIGIBLE_TYPE_IDS.has(t));
+    if (paymentTypes.length === 0) {
+      throw new GatewaySetupError(
+        "This gateway has no payment types that can be saved as a reusable payment method. Enable a card or bank account type under Gateway Payment Types.",
+      );
+    }
 
     const setupIntent = await client(ctx).setupIntents.create({
       customer: args.customerRef,

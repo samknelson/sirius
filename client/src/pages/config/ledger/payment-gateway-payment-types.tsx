@@ -27,6 +27,7 @@ interface PaymentTypeOption {
   id: string;
   name: string;
   description?: string;
+  setupEligible?: boolean;
 }
 
 interface PaymentTypesResponse {
@@ -226,6 +227,14 @@ export default function PaymentGatewayPaymentTypesPage() {
                         {type.description && (
                           <p className="text-sm text-muted-foreground mt-1">
                             {type.description}
+                          </p>
+                        )}
+                        {type.setupEligible === false && (
+                          <p
+                            className="text-xs text-amber-600 dark:text-amber-500 mt-1"
+                            data-testid={`text-not-savable-${type.id}`}
+                          >
+                            Can't be saved as a reusable payment method.
                           </p>
                         )}
                       </div>

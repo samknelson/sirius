@@ -189,6 +189,24 @@ function sendError(res: Response, error: unknown, fallback: string): void {
     res.status(error.status).json({ message: error.message });
     return;
   }
+  // Provider validation errors (e.g. Stripe `StripeInvalidRequestError`) and the
+  // gateway setup guard expose a 4xx `statusCode`/`status`. Surface their real,
+  // actionable message instead of masking it as a generic 500.
+  const providerStatus =
+    typeof (error as { statusCode?: unknown })?.statusCode === "number"
+      ? (error as { statusCode: number }).statusCode
+      : typeof (error as { status?: unknown })?.status === "number"
+        ? (error as { status: number }).status
+        : undefined;
+  if (
+    providerStatus !== undefined &&
+    providerStatus >= 400 &&
+    providerStatus < 500
+  ) {
+    const message = error instanceof Error ? error.message : String(error);
+    res.status(providerStatus).json({ message });
+    return;
+  }
   const message = error instanceof Error ? error.message : String(error);
   res.status(500).json({ message: fallback, error: message });
 }

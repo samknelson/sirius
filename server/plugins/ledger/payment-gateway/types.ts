@@ -135,6 +135,14 @@ export interface PaymentTypeOption {
   id: string;
   name: string;
   description?: string;
+  /**
+   * Whether this payment type can be SAVED as a reusable payment method via the
+   * add-a-payment-method (SetupIntent) flow. Charge-only types (PayPal, BNPL,
+   * vouchers, single-use redirects) set this to `false` so that flow never
+   * offers or sends them to the provider. Omitted/`undefined` is treated as
+   * eligible, so providers that don't distinguish keep working unchanged.
+   */
+  setupEligible?: boolean;
 }
 
 export interface PaymentGatewayPlugin {
