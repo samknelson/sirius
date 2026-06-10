@@ -837,7 +837,7 @@ function PaymentMethodsContent() {
   );
 }
 
-export default function StripePaymentMethodsPage() {
+export default function PaymentMethodsPage() {
   return (
     <EmployerLayout activeTab="payment-methods">
       <PaymentMethodsContent />
