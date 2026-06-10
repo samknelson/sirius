@@ -106,6 +106,10 @@ import { SchemaForm, sortArrayTableSettings } from "@/components/json-schema-for
 // the "Charge Plugins" nav entry (/admin/plugin-configs/charge). The
 // relational kinds (`charge`, `trust-eligibility`, `dispatch-eligibility`)
 // carry envelope fields; `dashboard` has none.
+// Stable empty reference so dialogs whose plugin declares no extra fields don't
+// get a fresh array each render (keeps the seeding effect's deps stable).
+const NO_PLUGIN_FIELDS: PluginConfigEnvelopeField[] = [];
+
 const ALLOWED_KINDS: ArrayManifestPluginKind[] = [
   "charge",
   "client-injection",
@@ -189,11 +193,15 @@ export default function GenericPluginConfigsPage() {
     enabled: isValidKind,
   });
 
-  const { data: meta } = useQuery<{ envelopeFields: PluginConfigEnvelopeField[] }>({
+  const { data: meta } = useQuery<{
+    envelopeFields: PluginConfigEnvelopeField[];
+    pluginFields?: Record<string, PluginConfigEnvelopeField[]>;
+  }>({
     queryKey: pluginConfigsMetaQueryKey(kind),
     enabled: isValidKind,
   });
   const envelopeFields = meta?.envelopeFields ?? [];
+  const pluginFieldsByPlugin = meta?.pluginFields ?? {};
   const filterableFields = envelopeFields.filter((f) => f.filterable);
 
   // Drop empty selections so an unset filter contributes no search condition.
@@ -551,6 +559,7 @@ export default function GenericPluginConfigsPage() {
           plugin={dialogPlugin}
           config={dialogConfig}
           envelopeFields={envelopeFields}
+          pluginFields={pluginFieldsByPlugin[dialogPlugin.id] ?? NO_PLUGIN_FIELDS}
         />
       )}
     </div>
@@ -783,6 +792,11 @@ interface GenericConfigDialogProps {
   plugin: ManifestEntry;
   config?: PluginConfigRow | null;
   envelopeFields: PluginConfigEnvelopeField[];
+  /**
+   * Fields declared by the selected plugin (keyed by plugin id on the server).
+   * Rendered alongside the kind's envelope fields and persisted inside `data`.
+   */
+  pluginFields: PluginConfigEnvelopeField[];
 }
 
 /**
@@ -800,6 +814,7 @@ function GenericConfigDialog({
   plugin,
   config,
   envelopeFields,
+  pluginFields,
 }: GenericConfigDialogProps) {
   const { toast } = useToast();
   const isEditMode = !!config;
@@ -813,9 +828,12 @@ function GenericConfigDialog({
   const [siriusId, setSiriusId] = useState("");
   const [settings, setSettings] = useState<Record<string, unknown>>({});
   const [envelope, setEnvelope] = useState<Record<string, string>>({});
+  // Per-plugin field values, seeded from / persisted into the config's `data`.
+  const [pluginData, setPluginData] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (!open) return;
+    const data = (config?.data as Record<string, unknown>) ?? {};
     if (config) {
       setName(config.name ?? "");
       setEnabled(config.enabled);
@@ -825,13 +843,19 @@ function GenericConfigDialog({
           ? ""
           : String(config.siriusId),
       );
-      setSettings(
-        sortArrayTableSettings(settingsSchema, (config.data as Record<string, unknown>) ?? {}),
-      );
+      setSettings(sortArrayTableSettings(settingsSchema, data));
       setEnvelope(
         Object.fromEntries(
           envelopeFields.map((f) => {
             const v = config[f.name];
+            return [f.name, v === null || v === undefined ? "" : String(v)];
+          }),
+        ),
+      );
+      setPluginData(
+        Object.fromEntries(
+          pluginFields.map((f) => {
+            const v = data[f.name];
             return [f.name, v === null || v === undefined ? "" : String(v)];
           }),
         ),
@@ -843,9 +867,10 @@ function GenericConfigDialog({
       setSiriusId("");
       setSettings({});
       setEnvelope(Object.fromEntries(envelopeFields.map((f) => [f.name, ""])));
+      setPluginData(Object.fromEntries(pluginFields.map((f) => [f.name, ""])));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, config]);
+  }, [open, config, plugin.id, pluginFields]);
 
   const handleSubmit = (validSettings: Record<string, unknown>) => {
     // Block save if any required envelope field is empty (client-side mirror of
@@ -857,6 +882,19 @@ function GenericConfigDialog({
       toast({
         title: "Missing required field",
         description: `${missing.label} is required.`,
+        variant: "destructive",
+      });
+      return;
+    }
+    // Same client-side mirror for required per-plugin fields (e.g. Stripe's
+    // publishable key). The server re-checks these authoritatively.
+    const missingPluginField = pluginFields.find(
+      (f) => f.required && !(pluginData[f.name] ?? "").trim(),
+    );
+    if (missingPluginField) {
+      toast({
+        title: "Missing required field",
+        description: `${missingPluginField.label} is required.`,
         variant: "destructive",
       });
       return;
@@ -878,6 +916,14 @@ function GenericConfigDialog({
           envelopeBody[f.name] = raw;
         }
       }
+      // Fold per-plugin field values into `data` (their authoritative store).
+      // Trim strings; empty optional fields are dropped so they don't clobber.
+      const pluginDataBody: Record<string, unknown> = {};
+      for (const f of pluginFields) {
+        const raw = (pluginData[f.name] ?? "").trim();
+        if (raw === "") continue;
+        pluginDataBody[f.name] = f.type === "number" ? Number(raw) : raw;
+      }
       const body = {
         pluginId: plugin.id,
         name: name.trim() || null,
@@ -885,7 +931,7 @@ function GenericConfigDialog({
         ordering,
         siriusId: siriusId.trim() || null,
         ...envelopeBody,
-        data: validSettings,
+        data: { ...validSettings, ...pluginDataBody },
       };
       if (isEditMode && config) {
         return apiRequest("PATCH", `${pluginConfigsUrl(kind)}/${config.id}`, body);
@@ -1001,6 +1047,28 @@ function GenericConfigDialog({
                         data-testid={`input-envelope-${field.name}`}
                       />
                     )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {pluginFields.length > 0 && (
+              <div className="grid grid-cols-2 gap-4" data-testid="plugin-fields">
+                {pluginFields.map((field) => (
+                  <div className="space-y-1" key={field.name}>
+                    <Label>
+                      {field.label}
+                      {field.required && <span className="text-destructive"> *</span>}
+                    </Label>
+                    <Input
+                      type={field.type === "number" ? "number" : "text"}
+                      placeholder={field.required ? "Required" : "Optional"}
+                      value={pluginData[field.name] ?? ""}
+                      onChange={(e) =>
+                        setPluginData((prev) => ({ ...prev, [field.name]: e.target.value }))
+                      }
+                      data-testid={`input-plugin-field-${field.name}`}
+                    />
                   </div>
                 ))}
               </div>

@@ -18,6 +18,10 @@
  * the base `plugin_configs` table; the editable `secretName` rides in `data`.
  */
 import type { PluginConfig } from "@shared/schema";
+import type {
+  PluginConfigEnvelopeField,
+  PluginValidationResult,
+} from "../../_core";
 
 /**
  * Resolved per-operation context handed to every provider method. Built by the
@@ -167,6 +171,24 @@ export interface PaymentGatewayPlugin {
    * provider-agnostic (no hardcoded provider knowledge in the UI).
    */
   supportedPaymentTypes?: PaymentTypeOption[];
+
+  /**
+   * Per-plugin configuration fields. Rendered by the generic admin config form
+   * once this plugin is selected and stored inside the config's `data` json
+   * (no schema change). Reuses the shared field descriptor
+   * (name/label/type/required). The generic create/update path enforces
+   * `required`; provider-specific format checks (e.g. Stripe's `pk_` prefix)
+   * belong in {@link validateConfig}. A provider with no extra fields (e.g. the
+   * dummy gateway) simply omits this.
+   */
+  configFields?: PluginConfigEnvelopeField[];
+  /**
+   * Optional provider-specific validation of the config `data` beyond the
+   * generic required-field check (which the unified routes apply from
+   * {@link configFields}). Return `{ valid: false, errors }` to reject the
+   * save. Used by Stripe to require a `pk_`-prefixed publishable key.
+   */
+  validateConfig?(data: Record<string, unknown>): PluginValidationResult;
 
   // --- Provider-only behaviour (no storage/DB access) --------------------
   /** Test the provider connection using this config's resolved credentials. */

@@ -1,5 +1,5 @@
 import type { Express, Request, Response, NextFunction } from "express";
-import { getPluginKind, enforceKindGating, getPluginConfigAdapter, defaultHydrate } from "../plugins/_core";
+import { getPluginKind, enforceKindGating, getPluginConfigAdapter, defaultHydrate, type PluginConfigEnvelopeField } from "../plugins/_core";
 import { storage } from "../storage";
 import { runInTransaction } from "../storage/transaction-context";
 
@@ -117,6 +117,26 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
       res.status(400).json({ message: `Plugin '${pluginId}' not found in '${registration.kind}' registry` });
       return false;
     }
+    // Enforce required per-plugin config fields (declared by the plugin and
+    // stored in `data`). This is the authoritative check behind the client-side
+    // mirror in the generic admin form. Runs for any kind whose plugins declare
+    // `configFields`; kinds/plugins without them are unaffected.
+    const configFields = (plugin as { configFields?: PluginConfigEnvelopeField[] }).configFields;
+    if (Array.isArray(configFields)) {
+      const dataObj = (data ?? {}) as Record<string, unknown>;
+      for (const field of configFields) {
+        if (!field.required) continue;
+        const value = dataObj[field.name];
+        const empty =
+          value === undefined ||
+          value === null ||
+          (typeof value === "string" && value.trim() === "");
+        if (empty) {
+          res.status(400).json({ message: `${field.label} is required` });
+          return false;
+        }
+      }
+    }
     if (registration.validateConfig) {
       const result = await registration.validateConfig(plugin, data ?? {});
       if (!result.valid) {
@@ -172,8 +192,19 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
     try {
       const resolved = await resolve(req, res);
       if (!resolved) return;
-      const { adapter } = resolved;
-      res.json({ envelopeFields: adapter.envelopeFields ?? [] });
+      const { adapter, registration } = resolved;
+      // Per-plugin config fields, keyed by plugin id. The generic admin form
+      // renders these (in addition to the per-kind envelope fields) once a
+      // plugin is selected. Values are stored inside the config's `data` json.
+      const pluginFields: Record<string, PluginConfigEnvelopeField[]> = {};
+      for (const plugin of registration.registry.list()) {
+        const fields = (plugin as { configFields?: PluginConfigEnvelopeField[] }).configFields;
+        if (Array.isArray(fields) && fields.length > 0) {
+          const id = registration.registry.getMetadata(plugin).id;
+          pluginFields[id] = fields;
+        }
+      }
+      res.json({ envelopeFields: adapter.envelopeFields ?? [], pluginFields });
     } catch (error) {
       console.error("Failed to fetch plugin config meta:", error);
       res.status(500).json({ message: "Failed to fetch plugin config meta" });

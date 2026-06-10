@@ -28,6 +28,14 @@ export function registerPaymentGatewayPluginKind(): void {
     requiredComponent: "ledger",
     requiredPolicy: "admin",
     sortEntries: (a, b) => a.id.localeCompare(b.id),
+    // Delegate provider-specific config validation (e.g. Stripe's `pk_`
+    // publishable-key prefix) to the plugin. The generic create/update path
+    // already enforces required per-plugin fields from `configFields`; this
+    // covers format checks beyond presence.
+    validateConfig: (plugin, config) =>
+      plugin.validateConfig
+        ? plugin.validateConfig((config ?? {}) as Record<string, unknown>)
+        : { valid: true },
   });
   // Payment-gateway configs carry no relational dimensions of their own, but
   // they DO get a subsidiary row in `plugin_configs_payment_gateway`. That

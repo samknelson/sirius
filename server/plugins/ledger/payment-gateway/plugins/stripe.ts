@@ -43,6 +43,33 @@ export const stripePaymentGatewayPlugin: PaymentGatewayPlugin = {
   requiredComponent: "ledger.stripe",
   addComponentId: "stripe:StripeAddPaymentMethod",
 
+  // The publishable key the browser needs to load Stripe Elements. Stored in
+  // the config's `data` json (no schema change). Required: there is no env
+  // fallback anymore, so a Stripe config without it cannot collect a card.
+  configFields: [
+    {
+      name: "publishableKey",
+      label: "Publishable Key",
+      type: "string",
+      required: true,
+    },
+  ],
+
+  // Presence of the publishable key is enforced generically (configFields
+  // `required`); here we add the Stripe-specific format check. A test/live key
+  // always starts with `pk_`, never the secret `sk_`/`rk_` prefixes.
+  validateConfig(data: Record<string, unknown>) {
+    const key =
+      typeof data.publishableKey === "string" ? data.publishableKey.trim() : "";
+    if (key && !key.startsWith("pk_")) {
+      return {
+        valid: false,
+        errors: ['Publishable Key must start with "pk_".'],
+      };
+    }
+    return { valid: true };
+  },
+
   // Catalog of Stripe payment method types the editor offers. Stays here (not
   // in the UI) so the payment-types editor remains provider-agnostic.
   supportedPaymentTypes: [
@@ -188,11 +215,10 @@ export const stripePaymentGatewayPlugin: PaymentGatewayPlugin = {
       payment_method_types: paymentTypes,
     });
 
+    // Single source of truth: the publishable key lives only in the config
+    // `data` (entered via the admin form). No environment-variable fallback.
     const publishableKey =
-      (typeof data.publishableKey === "string" && data.publishableKey) ||
-      process.env.VITE_STRIPE_PUBLIC_KEY ||
-      process.env.STRIPE_PUBLISHABLE_KEY ||
-      "";
+      typeof data.publishableKey === "string" ? data.publishableKey : "";
 
     return {
       clientSecret: setupIntent.client_secret ?? "",
