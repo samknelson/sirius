@@ -369,13 +369,17 @@ export function registerLedgerPaymentMethodRoutes(app: Express): void {
         entityType,
         entityId,
       );
+      // First method added for a given gateway becomes that gateway's default.
+      const hasMethodForGateway = existing.some(
+        (m) => m.gatewayConfigId === gatewayConfigId,
+      );
       const created = await storage.ledger.paymentMethods.create({
         entityType,
         entityId,
         paymentMethod: methodToken,
         gatewayConfigId,
         isActive: true,
-        isDefault: existing.length === 0,
+        isDefault: !hasMethodForGateway,
       });
 
       res.json(created);
@@ -415,6 +419,7 @@ export function registerLedgerPaymentMethodRoutes(app: Express): void {
         pmId,
         entityType,
         entityId,
+        method.gatewayConfigId,
       );
       res.json(updated);
     } catch (error) {

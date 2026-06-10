@@ -17,7 +17,7 @@ export interface PaymentMethodStorage {
   create(method: InsertLedgerPaymentMethod): Promise<LedgerPaymentMethod>;
   update(id: string, method: Partial<InsertLedgerPaymentMethod>): Promise<LedgerPaymentMethod | undefined>;
   delete(id: string): Promise<boolean>;
-  setAsDefault(paymentMethodId: string, entityType: string, entityId: string): Promise<LedgerPaymentMethod | undefined>;
+  setAsDefault(paymentMethodId: string, entityType: string, entityId: string, gatewayConfigId: string): Promise<LedgerPaymentMethod | undefined>;
 }
 
 export function createPaymentMethodStorage(): PaymentMethodStorage {
@@ -72,14 +72,18 @@ export function createPaymentMethodStorage(): PaymentMethodStorage {
       return result.length > 0;
     },
 
-    async setAsDefault(paymentMethodId: string, entityType: string, entityId: string): Promise<LedgerPaymentMethod | undefined> {
+    async setAsDefault(paymentMethodId: string, entityType: string, entityId: string, gatewayConfigId: string): Promise<LedgerPaymentMethod | undefined> {
       const client = getClient();
+      // A default only makes sense within a single gateway, so only clear the
+      // default flag for other methods on the SAME gateway. Methods on other
+      // gateways keep their own default.
       await client
         .update(ledgerPaymentMethods)
         .set({ isDefault: false })
         .where(and(
           eq(ledgerPaymentMethods.entityType, entityType),
-          eq(ledgerPaymentMethods.entityId, entityId)
+          eq(ledgerPaymentMethods.entityId, entityId),
+          eq(ledgerPaymentMethods.gatewayConfigId, gatewayConfigId)
         ));
 
       const [paymentMethod] = await client
