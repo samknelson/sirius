@@ -315,6 +315,35 @@ function PaymentMethodsContent() {
 
   const hasGateways = !!gateways && gateways.length > 0;
 
+  // Group the loaded methods by their gateway so the list can render one
+  // section per gateway (in configured order). Done entirely client-side: both
+  // the methods (each carrying gatewayConfigId) and the gateways list are
+  // already loaded, so no extra backend calls are needed.
+  const methodsByGateway = new Map<string, PaymentMethod[]>();
+  for (const pm of paymentMethods ?? []) {
+    const bucket = methodsByGateway.get(pm.gatewayConfigId);
+    if (bucket) bucket.push(pm);
+    else methodsByGateway.set(pm.gatewayConfigId, [pm]);
+  }
+  const gatewayLabel = (g: GatewayOption) =>
+    g.name?.trim() || g.pluginId.charAt(0).toUpperCase() + g.pluginId.slice(1);
+  const methodSections: { id: string; title: string; methods: PaymentMethod[] }[] = [];
+  // Configured gateways first, in their configured order; skip those with none.
+  for (const g of gateways ?? []) {
+    const methods = methodsByGateway.get(g.id);
+    if (methods && methods.length > 0) {
+      methodSections.push({ id: g.id, title: gatewayLabel(g), methods });
+    }
+  }
+  // Any methods whose gateway is missing from the list (e.g. a since-removed
+  // gateway) still get shown so nothing is silently hidden.
+  const knownGatewayIds = new Set((gateways ?? []).map((g) => g.id));
+  methodsByGateway.forEach((methods, gatewayId) => {
+    if (!knownGatewayIds.has(gatewayId) && methods.length > 0) {
+      methodSections.push({ id: gatewayId, title: "Other gateway", methods });
+    }
+  });
+
   return (
     <>
       <Card>
@@ -361,8 +390,17 @@ function PaymentMethodsContent() {
               </p>
             </div>
           ) : (
-            <div className="space-y-4">
-              {paymentMethods.map((pm) => (
+            <div className="space-y-8">
+              {methodSections.map((section) => (
+                <div key={section.id} data-testid={`gateway-section-${section.id}`}>
+                  <h3
+                    className="text-sm font-semibold text-foreground mb-3"
+                    data-testid={`text-gateway-name-${section.id}`}
+                  >
+                    {section.title}
+                  </h3>
+                  <div className="space-y-4">
+                    {section.methods.map((pm) => (
                 <div
                   key={pm.id}
                   className={`border rounded-lg p-4 ${!pm.isActive ? "bg-muted/30" : ""}`}
@@ -496,6 +534,9 @@ function PaymentMethodsContent() {
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>
+                  </div>
+                </div>
+                    ))}
                   </div>
                 </div>
               ))}
