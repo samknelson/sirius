@@ -221,10 +221,9 @@ function PaymentMethodsContent() {
     setSelectedGatewayId(gatewayConfigId);
     setIsLoadingSetup(true);
     try {
-      const response = await apiRequest("POST", `${PM_BASE}/${ENTITY_TYPE}/${entityId}/setup`, {
+      const data: SetupResponse = await apiRequest("POST", `${PM_BASE}/${ENTITY_TYPE}/${entityId}/setup`, {
         gatewayConfigId,
       });
-      const data: SetupResponse = await response.json();
       setClientSecret(data.clientSecret);
       setAddComponentId(data.componentId);
       setPublicConfig(data.publicConfig ?? {});
@@ -260,8 +259,7 @@ function PaymentMethodsContent() {
     setProviderDetails(null);
 
     try {
-      const response = await apiRequest("GET", `${PM_BASE}/${ENTITY_TYPE}/${entityId}/${pm.id}/details`);
-      const data = await response.json();
+      const data = await apiRequest("GET", `${PM_BASE}/${ENTITY_TYPE}/${entityId}/${pm.id}/details`);
       setProviderDetails(data);
     } catch (error: any) {
       toast({
