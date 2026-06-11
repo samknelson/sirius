@@ -298,13 +298,13 @@ export function EmployersTable({ employers, isLoading, includeInactive, onToggle
                   </div>
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  <span>Contacts</span>
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   <span>Status</span>
                 </th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider whitespace-nowrap">
                   <span>Workers</span>
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  <span>Contacts</span>
                 </th>
                 {showBenefits && benefits.map((b) => (
                   <th
@@ -361,27 +361,6 @@ export function EmployersTable({ employers, isLoading, includeInactive, onToggle
                       {employer.name}
                     </span>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span 
-                      className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                        employer.isActive 
-                          ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' 
-                          : 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200'
-                      }`}
-                      data-testid={`status-employer-${employer.id}`}
-                    >
-                      {employer.isActive ? 'Active' : 'Inactive'}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm" data-testid={`text-employer-worker-count-${employer.id}`}>
-                    {countsLoading && !workerCounts ? (
-                      <Skeleton className="h-4 w-8 ml-auto" />
-                    ) : (workerCounts?.[employer.id] ?? 0) > 0 ? (
-                      <span className="font-medium tabular-nums">{workerCounts?.[employer.id]}</span>
-                    ) : (
-                      <span className="text-muted-foreground tabular-nums">0</span>
-                    )}
-                  </td>
                   <td className="px-6 py-4" data-testid={`cell-employer-contacts-${employer.id}`}>
                     {(() => {
                       const list = contactIndicators?.[employer.id] ?? [];
@@ -418,6 +397,27 @@ export function EmployersTable({ employers, isLoading, includeInactive, onToggle
                         </div>
                       );
                     })()}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <span 
+                      className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                        employer.isActive 
+                          ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' 
+                          : 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200'
+                      }`}
+                      data-testid={`status-employer-${employer.id}`}
+                    >
+                      {employer.isActive ? 'Active' : 'Inactive'}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm" data-testid={`text-employer-worker-count-${employer.id}`}>
+                    {countsLoading && !workerCounts ? (
+                      <Skeleton className="h-4 w-8 ml-auto" />
+                    ) : (workerCounts?.[employer.id] ?? 0) > 0 ? (
+                      <span className="font-medium tabular-nums">{workerCounts?.[employer.id]}</span>
+                    ) : (
+                      <span className="text-muted-foreground tabular-nums">0</span>
+                    )}
                   </td>
                   {showBenefits && benefits.map((b) => {
                     const count = benefitCounts?.[employer.id]?.[b.id] ?? 0;
