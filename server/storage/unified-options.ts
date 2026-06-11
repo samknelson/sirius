@@ -237,10 +237,11 @@ const optionsMetadata: Record<OptionsTypeName, OptionsTableMetadata<any>> = {
     orderByColumn: "name" as const,
     loggingModule: "options.employerContactTypes",
     requiredFields: ["name"],
-    optionalFields: ["description"],
+    optionalFields: ["description", "data"],
     supportsSequencing: false,
     fields: [
       { name: "name", label: "Name", inputType: "text", required: true, placeholder: "Contact type name", showInTable: true, columnHeader: "Name" },
+      { name: "icon", label: "Icon", inputType: "icon", required: false, placeholder: "Select an icon", showInTable: true, columnHeader: "Icon", columnWidth: "80px", dataField: true },
       { name: "description", label: "Description", inputType: "textarea", required: false, placeholder: "Optional description", showInTable: true, columnHeader: "Description" },
     ],
   },
