@@ -126,6 +126,26 @@ export function registerEmployerRoutes(
     }
   });
 
+  app.get("/api/employers/contact-indicators", requireAuth, requireAccess('staff'), async (_req, res) => {
+    try {
+      const rows = await storage.employerContacts.getContactIndicatorsByEmployer();
+      const byEmployer: Record<string, Array<{ contactId: string; contactName: string | null; contactTypeName: string | null; icon: string | null; hasActiveUser: boolean }>> = {};
+      for (const row of rows) {
+        (byEmployer[row.employerId] ??= []).push({
+          contactId: row.contactId,
+          contactName: row.contactName,
+          contactTypeName: row.contactTypeName,
+          icon: row.icon,
+          hasActiveUser: row.hasActiveUser,
+        });
+      }
+      res.json(byEmployer);
+    } catch (error) {
+      console.error("Failed to fetch employer contact indicators:", error);
+      res.status(500).json({ message: "Failed to fetch employer contact indicators" });
+    }
+  });
+
   app.get("/api/employers/:id", requireAuth, requireAccess('employer.view', (req) => req.params.id), async (req, res) => {
     try {
       const { id } = req.params;

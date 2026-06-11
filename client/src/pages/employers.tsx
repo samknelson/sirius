@@ -17,6 +17,16 @@ interface EmployerCountsResponse {
   benefitCounts?: Record<string, Record<string, number>>;
 }
 
+export interface EmployerContactIndicator {
+  contactId: string;
+  contactName: string | null;
+  contactTypeName: string | null;
+  icon: string | null;
+  hasActiveUser: boolean;
+}
+
+type EmployerContactIndicatorsResponse = Record<string, EmployerContactIndicator[]>;
+
 export default function Employers() {
   const [location] = useLocation();
   const [includeInactive, setIncludeInactive] = useState(false);
@@ -49,6 +59,10 @@ export default function Employers() {
 
   const { data: counts, isLoading: countsLoading } = useQuery<EmployerCountsResponse>({
     queryKey: ["/api/employers/counts"],
+  });
+
+  const { data: contactIndicators } = useQuery<EmployerContactIndicatorsResponse>({
+    queryKey: ["/api/employers/contact-indicators"],
   });
 
   const { data: benefits = [] } = useQuery<TrustBenefit[]>({
@@ -120,6 +134,7 @@ export default function Employers() {
           onSelectionChange={setSelectedIds}
           workerCounts={counts?.workerCounts}
           benefitCounts={counts?.benefitCounts}
+          contactIndicators={contactIndicators}
           countsLoading={countsLoading}
           showBenefits={showBenefits}
           benefits={activeBenefits}

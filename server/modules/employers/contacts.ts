@@ -16,6 +16,87 @@ async function getEmployerIdFromContactId(req: Request): Promise<string | undefi
   return employerContact?.employerId;
 }
 
+type EnsuredUser = NonNullable<Awaited<ReturnType<typeof storage.users.getUserByEmail>>>;
+
+/**
+ * Create-or-fetch a user account for an email, provisioning a Clerk account on
+ * first creation. Shared by the single-contact provisioning route and the bulk
+ * provisioning route so the two can never drift.
+ */
+async function ensureUserForEmail(params: {
+  email: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  isActive?: boolean;
+  updateNamesOnExisting?: boolean;
+}): Promise<{ ok: true; user: EnsuredUser; created: boolean } | { ok: false; reason: 'conflict' }> {
+  const { email, firstName, lastName, isActive, updateNamesOnExisting } = params;
+
+  let user = await storage.users.getUserByEmail(email);
+
+  if (!user) {
+    const clerkCheck = await checkClerkConflict(email);
+    if (clerkCheck.conflict) {
+      return { ok: false, reason: 'conflict' };
+    }
+
+    user = await storage.users.createUser({
+      email,
+      firstName: firstName ?? null,
+      lastName: lastName ?? null,
+      isActive: isActive !== undefined ? isActive : true,
+      accountStatus: 'active',
+    });
+
+    const clerkResult = await provisionClerkAccount({
+      userId: user.id,
+      email,
+      firstName: firstName ?? null,
+      lastName: lastName ?? null,
+      existingClerkUserId: clerkCheck.existingClerkUserId,
+    });
+
+    if (clerkResult.success) {
+      user = (await storage.users.getUser(user.id)) || user;
+    }
+
+    return { ok: true, user, created: true };
+  }
+
+  const updated = await storage.users.updateUser(user.id, {
+    firstName: updateNamesOnExisting && firstName !== undefined ? firstName : user.firstName,
+    lastName: updateNamesOnExisting && lastName !== undefined ? lastName : user.lastName,
+    isActive: isActive !== undefined ? isActive : user.isActive,
+  });
+
+  return { ok: true, user: updated || user, created: false };
+}
+
+/**
+ * Idempotently assign the base employer roles (the auto "employer" role plus any
+ * configured required roles) to a user. Additive only — never removes roles.
+ * Returns the user's role IDs after assignment.
+ */
+async function assignEmployerBaseRoles(userId: string, requiredRoleIds: string[]): Promise<string[]> {
+  const currentRoles = await storage.users.getUserRoles(userId);
+  const currentRoleIds = currentRoles.map(r => r.id);
+
+  const employerRole = await storage.users.getRoleByName('employer');
+  if (employerRole && !currentRoleIds.includes(employerRole.id)) {
+    await storage.users.assignRoleToUser({ userId, roleId: employerRole.id });
+    currentRoleIds.push(employerRole.id);
+  }
+
+  for (const roleId of requiredRoleIds) {
+    if (!currentRoleIds.includes(roleId)) {
+      await storage.users.assignRoleToUser({ userId, roleId });
+      currentRoleIds.push(roleId);
+    }
+  }
+
+  return currentRoleIds;
+}
+
 export function registerEmployerContactRoutes(
   app: Express, 
   requireAuth: AuthMiddleware, 
@@ -66,6 +147,81 @@ export function registerEmployerContactRoutes(
       return res.json({ contactIds: ordered, total: ordered.length });
     } catch (error) {
       return res.status(500).json({ message: "Failed to fetch matching employer contacts" });
+    }
+  });
+
+  // POST /api/employer-contacts/bulk-provision-users - Create or enable user accounts for the
+  // selected contacts (global Employer Contacts list only). Processed sequentially and throttled
+  // to respect Clerk rate limits; never fails the whole batch on a single contact's error.
+  app.post("/api/employer-contacts/bulk-provision-users", requireAuth, requireAccess('staff'), async (req, res) => {
+    try {
+      const parsed = z.object({
+        contactIds: z.array(z.string().uuid()).min(1).max(2000),
+      }).safeParse(req.body);
+
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid request body", errors: parsed.error.errors });
+      }
+
+      const uniqueContactIds = Array.from(new Set(parsed.data.contactIds));
+
+      const requiredVariable = await storage.variables.getByName('employer_user_roles_required');
+      const requiredRoleIds: string[] = (Array.isArray(requiredVariable?.value) ? requiredVariable.value : []) as string[];
+
+      type BulkStatus = 'created' | 'enabled' | 'skipped_no_email' | 'conflict' | 'error';
+      const results: Array<{ contactId: string; contactName: string | null; status: BulkStatus; message?: string }> = [];
+      const summary = { created: 0, enabled: 0, skippedNoEmail: 0, conflict: 0, error: 0 };
+
+      for (const contactId of uniqueContactIds) {
+        try {
+          const contact = await storage.contacts.getContact(contactId);
+          if (!contact) {
+            results.push({ contactId, contactName: null, status: 'error', message: 'Contact not found' });
+            summary.error++;
+            continue;
+          }
+
+          if (!contact.email) {
+            results.push({ contactId, contactName: contact.displayName, status: 'skipped_no_email' });
+            summary.skippedNoEmail++;
+            continue;
+          }
+
+          const ensured = await ensureUserForEmail({
+            email: contact.email,
+            firstName: contact.given,
+            lastName: contact.family,
+            isActive: true,
+            updateNamesOnExisting: false,
+          });
+
+          if (!ensured.ok) {
+            results.push({ contactId, contactName: contact.displayName, status: 'conflict', message: 'Email already linked to another Clerk account' });
+            summary.conflict++;
+            continue;
+          }
+
+          await assignEmployerBaseRoles(ensured.user.id, requiredRoleIds);
+
+          if (ensured.created) {
+            results.push({ contactId, contactName: contact.displayName, status: 'created' });
+            summary.created++;
+            // Throttle only when we actually hit Clerk (account creation).
+            await new Promise(resolve => setTimeout(resolve, 200));
+          } else {
+            results.push({ contactId, contactName: contact.displayName, status: 'enabled' });
+            summary.enabled++;
+          }
+        } catch (err: any) {
+          results.push({ contactId, contactName: null, status: 'error', message: err?.message || 'Unknown error' });
+          summary.error++;
+        }
+      }
+
+      return res.json({ results, summary });
+    } catch (error) {
+      console.error("Error bulk provisioning employer contact users:", error);
+      return res.status(500).json({ message: "Failed to bulk provision users" });
     }
   });
   
@@ -358,72 +514,26 @@ export function registerEmployerContactRoutes(
         });
       }
       
-      let user = await storage.users.getUserByEmail(email);
-      
-      if (!user) {
-        const clerkCheck = await checkClerkConflict(email);
-        if (clerkCheck.conflict) {
-          return res.status(409).json({ 
-            message: "This email is already associated with a Clerk account linked to another user." 
-          });
-        }
+      const ensured = await ensureUserForEmail({
+        email,
+        firstName,
+        lastName,
+        isActive,
+        updateNamesOnExisting: true,
+      });
 
-        user = await storage.users.createUser({
-          email,
-          firstName: firstName || null,
-          lastName: lastName || null,
-          isActive: isActive !== undefined ? isActive : true,
-          accountStatus: 'active',
+      if (!ensured.ok) {
+        return res.status(409).json({
+          message: "This email is already associated with a Clerk account linked to another user.",
         });
-
-        const clerkResult = await provisionClerkAccount({
-          userId: user.id,
-          email,
-          firstName: firstName || null,
-          lastName: lastName || null,
-          existingClerkUserId: clerkCheck.existingClerkUserId,
-        });
-
-        if (clerkResult.success) {
-          user = await storage.users.getUser(user.id) || user;
-        }
-      } else {
-        // Update existing user
-        user = await storage.users.updateUser(user.id, {
-          firstName: firstName !== undefined ? firstName : user.firstName,
-          lastName: lastName !== undefined ? lastName : user.lastName,
-          isActive: isActive !== undefined ? isActive : user.isActive,
-        });
-        
-        if (!user) {
-          return res.status(500).json({ message: "Failed to update user" });
-        }
       }
-      
-      // Get user's current roles
-      const currentRoles = await storage.users.getUserRoles(user.id);
-      const currentRoleIds = currentRoles.map(r => r.id);
-      
-      // Automatically assign the "employer" role if it exists
+
+      const user = ensured.user;
+
+      // Assign the auto "employer" role plus required roles (idempotent, additive)
+      const currentRoleIds = await assignEmployerBaseRoles(user.id, requiredRoleIds);
       const employerRole = await storage.users.getRoleByName('employer');
-      if (employerRole && !currentRoleIds.includes(employerRole.id)) {
-        await storage.users.assignRoleToUser({
-          userId: user.id,
-          roleId: employerRole.id,
-        });
-        currentRoleIds.push(employerRole.id);
-      }
-      
-      // Assign all required roles (idempotent)
-      for (const roleId of requiredRoleIds) {
-        if (!currentRoleIds.includes(roleId)) {
-          await storage.users.assignRoleToUser({
-            userId: user.id,
-            roleId,
-          });
-        }
-      }
-      
+
       // Reconcile optional roles
       // Add new optional roles
       for (const roleId of optionalRoleIds) {

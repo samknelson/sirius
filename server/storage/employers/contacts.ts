@@ -24,6 +24,7 @@ export interface EmployerContactStorage {
   getByUserEmail(email: string): Promise<EmployerContact | null>;
   delete(id: string): Promise<boolean>;
   getUserAccountStatuses(employerContactIds: string[]): Promise<Array<{ employerContactId: string; userId: string | null; hasUser: boolean; accountStatus: string | null }>>;
+  getContactIndicatorsByEmployer(employerIds?: string[]): Promise<Array<{ employerId: string; contactId: string; contactName: string | null; contactTypeName: string | null; icon: string | null; hasActiveUser: boolean }>>;
 }
 
 export function createEmployerContactStorage(contactsStorage: ContactsStorage): EmployerContactStorage {
@@ -312,6 +313,35 @@ export function createEmployerContactStorage(contactsStorage: ContactsStorage): 
           accountStatus: null,
         }
       );
+    },
+
+    async getContactIndicatorsByEmployer(employerIds?: string[]): Promise<Array<{ employerId: string; contactId: string; contactName: string | null; contactTypeName: string | null; icon: string | null; hasActiveUser: boolean }>> {
+      const client = getClient();
+
+      const rows = await client
+        .select({
+          employerId: employerContacts.employerId,
+          contactId: contacts.id,
+          contactName: contacts.displayName,
+          contactTypeName: optionsEmployerContactType.name,
+          icon: sql<string | null>`${optionsEmployerContactType.data}->>'icon'`,
+          userId: users.id,
+          isActive: users.isActive,
+        })
+        .from(employerContacts)
+        .innerJoin(contacts, eq(employerContacts.contactId, contacts.id))
+        .leftJoin(optionsEmployerContactType, eq(employerContacts.contactTypeId, optionsEmployerContactType.id))
+        .leftJoin(users, sql`lower(${contacts.email}) = lower(${users.email})`)
+        .where(employerIds && employerIds.length > 0 ? inArray(employerContacts.employerId, employerIds) : undefined);
+
+      return rows.map(row => ({
+        employerId: row.employerId,
+        contactId: row.contactId,
+        contactName: row.contactName,
+        contactTypeName: row.contactTypeName,
+        icon: row.icon,
+        hasActiveUser: row.userId !== null && row.isActive === true,
+      }));
     },
   };
 }
