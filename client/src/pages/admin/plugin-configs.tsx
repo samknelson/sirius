@@ -115,6 +115,7 @@ const ALLOWED_KINDS: ArrayManifestPluginKind[] = [
   "client-injection",
   "dashboard",
   "dispatch-eligibility",
+  "event-notifier",
   "payment-gateway",
   "trust-eligibility",
 ];

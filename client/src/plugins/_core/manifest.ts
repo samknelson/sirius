@@ -11,7 +11,8 @@ export type PluginKind =
   | "charge"
   | "trust-eligibility"
   | "client-injection"
-  | "payment-gateway";
+  | "payment-gateway"
+  | "event-notifier";
 
 /**
  * Kinds whose `/api/plugins/:kind/manifest` returns a flat array of
@@ -168,6 +169,7 @@ export interface PluginSearchParamsByKind {
   };
   "client-injection": BasePluginSearchParams;
   "payment-gateway": BasePluginSearchParams;
+  "event-notifier": BasePluginSearchParams;
 }
 
 /**

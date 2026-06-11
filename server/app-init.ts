@@ -31,6 +31,7 @@ import { initLogNotifier } from "./modules/log-notifier";
 import { initializeDispatchEligSystem } from "./plugins/dispatch/eligibility";
 import { initializeDashboardPluginSystem } from "./plugins/dashboard";
 import { initializeClientInjectionPluginSystem } from "./plugins/client-injection";
+import { initializeEventNotifierPluginSystem } from "./plugins/event-notifier";
 import { initWorkerBanNotifications } from "./services/worker-ban-notifications";
 import { initDispatchNotifications } from "./services/dispatch/notifications";
 import "@shared/access-policies/loader";
@@ -231,6 +232,10 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
   // Initialize client-injection plugin system (registration + adapter)
   await initializeClientInjectionPluginSystem();
   logger.info("Client-injection plugin system initialized", { source: "startup" });
+
+  // Initialize event-notifier plugin system (registration + adapter)
+  initializeEventNotifierPluginSystem();
+  logger.info("Event-notifier plugin system initialized", { source: "startup" });
 
   // Materialize component-owned plugin_configs for components that are already
   // enabled (Task #397). Idempotent: existing rows are left untouched (admin

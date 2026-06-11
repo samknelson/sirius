@@ -31,4 +31,5 @@ export type PluginKind =
   | "charge"
   | "trust-eligibility"
   | "client-injection"
-  | "payment-gateway";
+  | "payment-gateway"
+  | "event-notifier";
