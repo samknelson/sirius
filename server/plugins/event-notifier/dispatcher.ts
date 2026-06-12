@@ -24,6 +24,7 @@ async function deliver(
   recipient: NotifierRecipient,
   content: NotifierMessageContent,
   pluginId: string,
+  tagIds: string[],
 ): Promise<void> {
   const { storage } = await import("../../storage");
   try {
@@ -39,6 +40,7 @@ async function deliver(
         bodyText: content.bodyText,
         bodyHtml: content.bodyHtml,
         userId: recipient.userId ?? undefined,
+        tagIds,
       });
       return;
     }
@@ -57,6 +59,7 @@ async function deliver(
         toPhoneNumber: chosen.phoneNumber,
         message: content.message,
         userId: recipient.userId ?? undefined,
+        tagIds,
       });
       return;
     }
@@ -83,6 +86,7 @@ async function deliver(
         linkUrl: content.linkUrl,
         linkLabel: content.linkLabel,
         initiatedBy: SERVICE,
+        tagIds,
       });
       return;
     }
@@ -110,6 +114,7 @@ async function deliver(
         description: content.description,
         mergeVariables: content.mergeVariables,
         userId: recipient.userId ?? undefined,
+        tagIds,
       });
       return;
     }
@@ -123,6 +128,46 @@ async function deliver(
     });
   }
 }
+
+/**
+ * Resolve (get-or-create) the comm tag ids every send for this plugin should
+ * carry so the generated comms are filterable in the comm log: one stable
+ * "Event Notifier" tag for the whole framework plus a per-plugin tag. Results
+ * are cached by siriusId for the process lifetime. Tagging is best-effort — a
+ * failure here must never block delivery.
+ */
+async function resolveTagIds(pluginId: string, pluginName: string): Promise<string[]> {
+  const wanted: Array<{ siriusId: string; name: string }> = [
+    { siriusId: "event-notifier", name: "Event Notifier" },
+    { siriusId: `event-notifier:${pluginId}`, name: pluginName },
+  ];
+  const { storage } = await import("../../storage");
+  const ids: string[] = [];
+  for (const { siriusId, name } of wanted) {
+    const cached = tagIdCache.get(siriusId);
+    if (cached) {
+      ids.push(cached);
+      continue;
+    }
+    try {
+      const tag = await storage.commTags.getOrCreateBySiriusId(siriusId, name);
+      if (tag?.id) {
+        tagIdCache.set(siriusId, tag.id);
+        ids.push(tag.id);
+      }
+    } catch (error) {
+      logger.warn("Event-notifier tag resolution failed", {
+        service: SERVICE,
+        pluginId,
+        siriusId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+  return ids;
+}
+
+const tagIdCache = new Map<string, string>();
 
 /**
  * Handle one fired event for one enabled config: resolve the active media (the
@@ -152,11 +197,13 @@ async function dispatchForConfig(
   const recipients = await plugin.getRecipients(ctx);
   if (recipients.length === 0) return;
 
+  const tagIds = await resolveTagIds(plugin.id, plugin.name);
+
   for (const recipient of recipients) {
     for (const medium of active) {
       const content = await plugin.getMessage(medium, recipient, ctx);
       if (!content) continue;
-      await deliver(medium, recipient, content, pluginId);
+      await deliver(medium, recipient, content, pluginId, tagIds);
     }
   }
 }

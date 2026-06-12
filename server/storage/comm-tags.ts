@@ -15,6 +15,7 @@ export interface CommTagsStorage {
   setTags(commId: string, tagIds: string[]): Promise<OptionsCommTag[]>;
   findMissingTagIds(tagIds: string[]): Promise<string[]>;
   listByIds(tagIds: string[]): Promise<OptionsCommTag[]>;
+  getOrCreateBySiriusId(siriusId: string, name: string): Promise<OptionsCommTag>;
 }
 
 export const commTagsLoggingConfig: StorageLoggingConfig<CommTagsStorageRef> = {
@@ -185,6 +186,27 @@ export function createCommTagsStorage(deps: CommTagsStorageDeps = {}): CommTagsS
         .select()
         .from(optionsCommTags)
         .where(inArray(optionsCommTags.id, unique));
+    },
+
+    async getOrCreateBySiriusId(siriusId: string, name: string): Promise<OptionsCommTag> {
+      const client = getClient();
+      const [existing] = await client
+        .select()
+        .from(optionsCommTags)
+        .where(eq(optionsCommTags.siriusId, siriusId));
+      if (existing) return existing;
+      // siriusId is unique; onConflictDoNothing makes concurrent creates safe.
+      const [created] = await client
+        .insert(optionsCommTags)
+        .values({ siriusId, name })
+        .onConflictDoNothing({ target: optionsCommTags.siriusId })
+        .returning();
+      if (created) return created;
+      const [raced] = await client
+        .select()
+        .from(optionsCommTags)
+        .where(eq(optionsCommTags.siriusId, siriusId));
+      return raced;
     },
   };
 }

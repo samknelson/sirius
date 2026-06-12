@@ -56,7 +56,7 @@ export const stewardAssignmentNotifier: EventNotifierPlugin = {
 
   async getMessage(
     medium: NotificationMedium,
-    _recipient: NotifierRecipient,
+    recipient: NotifierRecipient,
     ctx: EventNotifierEventContext,
   ): Promise<NotifierMessageContent | null> {
     const { workerId, operation } = payloadOf(ctx);
@@ -81,14 +81,44 @@ export const stewardAssignmentNotifier: EventNotifierPlugin = {
         return {
           message: body,
         };
-      case "postal":
-        // No letter document/template is defined for this notifier yet, so
-        // postal is declared as supported but produces nothing to send.
-        return null;
+      case "postal": {
+        // Compose a basic letter as HTML (the postal sender stores this as the
+        // letter body and the configured provider renders it). Greet the
+        // recipient by name when their contact has one on file.
+        const greeting = await greetingFor(recipient.contactId);
+        return {
+          file: postalLetterHtml(greeting, body),
+          description: title,
+        };
+      }
       default:
         return null;
     }
   },
 };
+
+/** Resolve a "Dear <name>," greeting from the recipient's contact, if any. */
+async function greetingFor(contactId: string): Promise<string> {
+  try {
+    const { storage } = await import("../../../storage");
+    const contact = await storage.contacts.getContact(contactId);
+    const name = contact?.displayName?.trim();
+    return name ? `Dear ${name},` : "Dear Member,";
+  } catch {
+    return "Dear Member,";
+  }
+}
+
+/** Minimal, self-contained HTML letter body for a steward-assignment notice. */
+function postalLetterHtml(greeting: string, body: string): string {
+  return [
+    "<html><body style=\"font-family: Arial, sans-serif; font-size: 12pt; line-height: 1.5;\">",
+    `<p>${greeting}</p>`,
+    `<p>${body}</p>`,
+    "<p>Please contact your union representative if you have any questions about your steward assignment.</p>",
+    "<p>Sincerely,<br/>Your Union</p>",
+    "</body></html>",
+  ].join("");
+}
 
 registerEventNotifier(stewardAssignmentNotifier);
