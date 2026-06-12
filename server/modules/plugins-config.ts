@@ -72,6 +72,20 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
   const hydrate = (adapter: ReturnType<typeof getPluginConfigAdapter>, envelope: any) =>
     adapter?.hydrate ? adapter.hydrate(envelope) : defaultHydrate(envelope);
 
+  // Fire a kind's optional post-mutation hook (e.g. to invalidate an in-memory
+  // derived cache). Best-effort: a failure here must never fail the request the
+  // client already saw succeed, so it is awaited but only logged on error.
+  const notifyConfigChanged = async (
+    adapter: NonNullable<ReturnType<typeof getPluginConfigAdapter>>,
+  ) => {
+    if (!adapter.onConfigChanged) return;
+    try {
+      await adapter.onConfigChanged();
+    } catch (error) {
+      console.error("Plugin config onConfigChanged hook failed:", error);
+    }
+  };
+
   /**
    * Enforce a kind's uniqueness key (if it declares one). Returns true when a
    * conflicting row exists (excluding `selfId`, the row being updated) and has
@@ -239,6 +253,7 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
         }
         return row;
       });
+      await notifyConfigChanged(adapter);
       const envelope = await storage.pluginConfigs.getWithSubsidiary(created.id);
       res.status(201).json(envelope ? hydrate(adapter, envelope) : { id: created.id });
     } catch (error) {
@@ -296,6 +311,7 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
           await storage.pluginConfigs.upsertSubsidiary(kind, { id: req.params.id, ...subsidiary });
         }
       });
+      await notifyConfigChanged(adapter);
       const envelope = await storage.pluginConfigs.getWithSubsidiary(req.params.id);
       res.json(envelope ? hydrate(adapter, envelope) : { id: req.params.id });
     } catch (error) {
@@ -315,6 +331,7 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
         return;
       }
       const ok = await storage.pluginConfigs.delete(req.params.id);
+      await notifyConfigChanged(resolved.adapter);
       res.json({ success: ok });
     } catch (error) {
       console.error("Failed to delete plugin config:", error);

@@ -134,6 +134,14 @@ export interface PluginConfigAdapter<TConfig = any, TSearch = any> {
    * account }` 4-tuple). Return `null` to skip the check for a given input.
    */
   uniqueKey?(input: TConfig): Record<string, unknown> | null;
+  /**
+   * Optional best-effort hook fired after a successful create/update/delete of
+   * a config of this kind. Lets a kind invalidate any in-memory derived cache
+   * it keeps (e.g. the event-notifier dispatcher's event index) so the next
+   * read reflects the change. Never throws to the client: the generic routes
+   * call it inside a try/catch and only log failures.
+   */
+  onConfigChanged?(): void | Promise<void>;
 }
 
 /** Reusable schema shape for the base columns every flat config carries. */
