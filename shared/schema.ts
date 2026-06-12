@@ -1871,6 +1871,23 @@ export const insertPluginConfigPaymentGatewaySchema = createInsertSchema(pluginC
 export type InsertPluginConfigPaymentGateway = z.infer<typeof insertPluginConfigPaymentGatewaySchema>;
 export type PluginConfigPaymentGateway = typeof pluginConfigsPaymentGateway.$inferSelect;
 
+// Event-notifier subsidiary — hoists the per-config "active media" selection
+// out of the opaque settings blob into a real, filterable envelope column.
+// A plugin declares which media it *can* send through (supportedMedia); the
+// admin picks the active subset per config, persisted here as a comma-joined
+// list (e.g. "email,sms"). Every event-notifier config gets exactly one row —
+// created by the adapter's toRows on write and by an idempotent boot-time
+// backfill for pre-existing configs — so the generic inner-joined search keeps
+// returning them.
+export const pluginConfigsEventNotifier = pgTable("plugin_configs_event_notifier", {
+  id: varchar("id").primaryKey().references(() => pluginConfigs.id, { onDelete: 'cascade' }),
+  media: text("media"),
+});
+
+export const insertPluginConfigEventNotifierSchema = createInsertSchema(pluginConfigsEventNotifier);
+export type InsertPluginConfigEventNotifier = z.infer<typeof insertPluginConfigEventNotifierSchema>;
+export type PluginConfigEventNotifier = typeof pluginConfigsEventNotifier.$inferSelect;
+
 // Base Rate History Schema - for use in charge plugins
 export const baseRateHistoryEntrySchema = z.object({
   effectiveDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be in YYYY-MM-DD format"),

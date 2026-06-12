@@ -36,6 +36,7 @@ import "./core/1027_rename_ledger_payment_methods";
 import "./core/1028_provider_generic_payment_methods";
 import "./core/1029_rename_ledger_payment_type_variable";
 import "./core/1030_rename_plugin_type_to_plugin_kind";
+import "./core/1031_create_plugin_configs_event_notifier";
 
 // Per-component migrations — each registered via
 // `registerComponentMigration(componentId, migration)`. Tracked by the

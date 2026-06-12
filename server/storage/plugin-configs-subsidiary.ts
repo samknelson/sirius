@@ -5,6 +5,7 @@ import {
   pluginConfigsDispatch,
   pluginConfigsDashboard,
   pluginConfigsPaymentGateway,
+  pluginConfigsEventNotifier,
   type PluginConfigCharge,
   type InsertPluginConfigCharge,
   type PluginConfigBenefitEligibility,
@@ -15,6 +16,8 @@ import {
   type InsertPluginConfigDashboard,
   type PluginConfigPaymentGateway,
   type InsertPluginConfigPaymentGateway,
+  type PluginConfigEventNotifier,
+  type InsertPluginConfigEventNotifier,
 } from "@shared/schema";
 import { eq, isNull, inArray, sql, type SQL } from "drizzle-orm";
 import type { AnyPgTable, PgColumn } from "drizzle-orm/pg-core";
@@ -58,6 +61,9 @@ export interface SubsidiarySearchParams {
   // "role is one of the viewer's roles" filter (`roleIn`).
   role?: string | null;
   roleIn?: string[];
+  // Event-notifier: a single active medium (token-matched against the
+  // comma-joined `media` list).
+  media?: string | null;
 }
 
 /** `col = val`, or `col IS NULL` when val is explicitly null; skip undefined. */
@@ -272,6 +278,42 @@ export function createPaymentGatewaySubsidiaryStorage(): SubsidiaryStorage<
       // The dispatcher still inner-joins it, which is exactly what guarantees a
       // payment-gateway config is returned only once it has a subsidiary row.
       return [];
+    },
+  };
+}
+
+export function createEventNotifierSubsidiaryStorage(): SubsidiaryStorage<
+  PluginConfigEventNotifier,
+  InsertPluginConfigEventNotifier
+> {
+  return {
+    table: pluginConfigsEventNotifier,
+    async get(id) {
+      const client = getClient();
+      const [row] = await client
+        .select()
+        .from(pluginConfigsEventNotifier)
+        .where(eq(pluginConfigsEventNotifier.id, id));
+      return row || undefined;
+    },
+    async upsert(row) {
+      const client = getClient();
+      const [result] = await client
+        .insert(pluginConfigsEventNotifier)
+        .values(row)
+        .onConflictDoUpdate({
+          target: pluginConfigsEventNotifier.id,
+          set: { media: row.media ?? null },
+        })
+        .returning();
+      return result;
+    },
+    buildConditions(params) {
+      const out: SQL[] = [];
+      // `media` is a comma-joined multi-value list, so a single-value filter
+      // must match any row whose list *contains* the token (token-safe LIKE).
+      containsToken(out, pluginConfigsEventNotifier.media, params.media);
+      return out;
     },
   };
 }

@@ -9,6 +9,7 @@ import {
   type PluginConfigDispatch,
   type PluginConfigDashboard,
   type PluginConfigPaymentGateway,
+  type PluginConfigEventNotifier,
 } from "@shared/schema";
 import { eq, and, type SQL } from "drizzle-orm";
 import {
@@ -17,6 +18,7 @@ import {
   createDispatchSubsidiaryStorage,
   createDashboardSubsidiaryStorage,
   createPaymentGatewaySubsidiaryStorage,
+  createEventNotifierSubsidiaryStorage,
   type SubsidiaryStorage,
 } from "./plugin-configs-subsidiary";
 
@@ -35,6 +37,7 @@ export type PluginConfigSubsidiary =
   | PluginConfigDispatch
   | PluginConfigDashboard
   | PluginConfigPaymentGateway
+  | PluginConfigEventNotifier
   | null;
 
 /**
@@ -118,6 +121,7 @@ export function createPluginConfigStorage(): PluginConfigStorage {
     "dispatch-eligibility": createDispatchSubsidiaryStorage() as SubsidiaryStorage<any, any>,
     dashboard: createDashboardSubsidiaryStorage() as SubsidiaryStorage<any, any>,
     "payment-gateway": createPaymentGatewaySubsidiaryStorage() as SubsidiaryStorage<any, any>,
+    "event-notifier": createEventNotifierSubsidiaryStorage() as SubsidiaryStorage<any, any>,
   };
 
   /** Fetch the subsidiary row for a base config of a given type, if any. */

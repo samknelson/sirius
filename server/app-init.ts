@@ -27,7 +27,6 @@ import "./plugins/trust/eligibility";
 import "./services/comm/providers";
 
 import { registerFloodEvents, loadFloodConfigFromVariables } from "./flood";
-import { initLogNotifier } from "./modules/log-notifier";
 import { initializeDispatchEligSystem } from "./plugins/dispatch/eligibility";
 import { initializeDashboardPluginSystem } from "./plugins/dashboard";
 import { initializeClientInjectionPluginSystem } from "./plugins/client-injection";
@@ -272,6 +271,21 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
   // inner-joins it). Backfill pre-existing configs so they don't vanish.
   await backfillPaymentGatewaySubsidiaries();
   logger.info("Payment-gateway subsidiaries backfilled", { source: "startup" });
+
+  // Every event-notifier config needs a subsidiary row (the generic search
+  // inner-joins it). Backfill pre-existing configs, then subscribe the
+  // dispatcher to the bus so fired events fan out to enabled configs.
+  {
+    const { backfillEventNotifierSubsidiaries } = await import(
+      "./plugins/event-notifier"
+    );
+    const { initializeEventNotifierDispatcher } = await import(
+      "./plugins/event-notifier/dispatcher"
+    );
+    await backfillEventNotifierSubsidiaries();
+    initializeEventNotifierDispatcher();
+  }
+  logger.info("Event-notifier dispatcher initialized", { source: "startup" });
   // Migrate the legacy global `stripe_payment_methods` variable onto each
   // gateway config's own `data.paymentTypes`, then retire the global.
   await backfillPaymentTypesFromGlobal();
@@ -321,9 +335,6 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
   // Load custom flood configurations from variables
   await loadFloodConfigFromVariables();
   logger.info("Flood configs loaded from variables", { source: "startup" });
-
-  // Initialize log notifier (listens to LOG events for conditional in-app alerts)
-  initLogNotifier();
 
   // Bootstrap default cron jobs
   await bootstrapCronJobs();

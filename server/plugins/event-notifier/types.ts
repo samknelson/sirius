@@ -1,35 +1,77 @@
 import type { JsonSchema, UiSchema } from "@shared/json-schema-form";
+import type { EventType } from "../../services/event-bus";
 
 /**
- * Editable per-row settings stored in `plugin_configs.data` for an
- * event-notifier config. The shape is intentionally open for now: this kind
- * is scaffolding only (Task #457). The eventual config (which event to
- * subscribe to, which comm channel/recipients to send through) will be
- * formalized when the event-subscription + send "wrapper" is built.
+ * The communication media an event-notifier can fan out to. Each maps to one
+ * of the comm send functions (`sendEmail`, `sendSms`, `sendInapp`,
+ * `sendPostal`). A plugin declares which media it is *capable* of producing a
+ * message for (its `supportedMedia`); the admin selects the *active* subset per
+ * config (persisted on the subsidiary `media` column).
  */
-export interface EventNotifierData {
-  [key: string]: unknown;
+export type NotificationMedium = "email" | "sms" | "inapp" | "postal";
+
+export const ALL_NOTIFICATION_MEDIA: readonly NotificationMedium[] = [
+  "email",
+  "sms",
+  "inapp",
+  "postal",
+];
+
+/**
+ * A resolved recipient for a fired event. `contactId` anchors every send (the
+ * comm layer keys delivery, opt-outs and tagging off it). `userId` is required
+ * only for in-app messages (they deliver to an authenticated user); resolve it
+ * (e.g. via `storage.users.getUserByEmail`) when the notifier supports in-app.
+ */
+export interface NotifierRecipient {
+  contactId: string;
+  userId?: string | null;
 }
 
 /**
- * Context handed to a notifier when it eventually runs. Deliberately empty
- * for now — the event-bus wiring and the comm send "wrapper" are future work
- * (see Task #457 "Out of scope"). It exists so the placeholder `notify`
- * signature has a stable extension point.
+ * The per-medium message content a notifier composes for one recipient. Only
+ * the fields relevant to the medium being sent are read; the send wrapper picks
+ * them out and ignores the rest. Returning `null` from {@link
+ * EventNotifierPlugin.getMessage} skips that medium for that recipient.
  */
-export interface EventNotifierContext {
-  // future: resolved config row, storage handle, the event payload, etc.
+export interface NotifierMessageContent {
+  // email
+  subject?: string;
+  bodyText?: string;
+  bodyHtml?: string;
+  // sms
+  message?: string;
+  // inapp
+  title?: string;
+  body?: string;
+  linkUrl?: string;
+  linkLabel?: string;
+  // postal
+  file?: string;
+  templateId?: string;
+  description?: string;
+  mergeVariables?: Record<string, string>;
 }
 
 /**
- * An event-notifier plugin. Its eventual job is to listen for an event on the
- * server event bus and fan it out to the comm send functions (`sendEmail`,
- * `sendPostal`, `sendSms`, `sendInapp`).
- *
- * For now this is scaffolding only: the kind registers, exposes a manifest,
- * and is configurable through the generic admin page. The `notify` method is
- * a documented placeholder — nothing subscribes to the event bus or calls it
- * yet.
+ * Context handed to a notifier for a single fired event. `event` is the bus
+ * event type and `payload` is its (untyped here) payload — the notifier
+ * narrows it against the event-bus `EventPayloadMap`.
+ */
+export interface EventNotifierEventContext {
+  event: EventType;
+  payload: unknown;
+}
+
+/**
+ * An event-notifier plugin. It subscribes to one or more event-bus events and
+ * fans each fired event out to the comm send functions for every active
+ * medium. The framework (the event-notifier "send wrapper") owns subscription,
+ * config resolution, medium gating and the actual sends; a plugin only:
+ *   - declares which events it cares about (`subscribedEvents`),
+ *   - declares which media it can produce (`supportedMedia`),
+ *   - resolves recipients for a fired event (`getRecipients`), and
+ *   - composes the message for one recipient on one medium (`getMessage`).
  */
 export interface EventNotifierPlugin {
   id: string;
@@ -48,15 +90,30 @@ export interface EventNotifierPlugin {
   configSchema?: JsonSchema;
   /** Optional RJSF UI hints paired with {@link configSchema}. */
   uiSchema?: UiSchema;
+
+  /** Event-bus events this notifier subscribes to. */
+  subscribedEvents: EventType[];
+  /** The media this notifier is capable of producing a message for. */
+  supportedMedia: NotificationMedium[];
+
   /**
-   * Placeholder for the future event-handling method. NOT yet wired to the
-   * event bus and never invoked today. When the subscription + send wrapper
-   * lands, this will receive the event payload and perform the sends.
+   * Resolve the recipients for a fired event. An empty array means "nobody to
+   * notify" and the framework sends nothing.
    */
-  notify?: (
-    payload: unknown,
-    ctx: EventNotifierContext,
-  ) => Promise<void> | void;
+  getRecipients(
+    ctx: EventNotifierEventContext,
+  ): Promise<NotifierRecipient[]>;
+
+  /**
+   * Compose the message for one recipient on one medium. Return `null` to skip
+   * that medium for that recipient (e.g. the recipient has no address on file,
+   * or the content does not apply).
+   */
+  getMessage(
+    medium: NotificationMedium,
+    recipient: NotifierRecipient,
+    ctx: EventNotifierEventContext,
+  ): Promise<NotifierMessageContent | null>;
 }
 
 export interface EventNotifierManifestEntry {
