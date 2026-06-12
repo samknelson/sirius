@@ -272,6 +272,17 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
   await backfillPaymentGatewaySubsidiaries();
   logger.info("Payment-gateway subsidiaries backfilled", { source: "startup" });
 
+  // Wire the shared plugin-config cache's invalidation subscription before any
+  // config writes matter. The cache is generic (per-kind) and lazy; this only
+  // registers its single PLUGIN_CONFIG_SAVED listener.
+  {
+    const { initializePluginConfigCache } = await import(
+      "./plugins/_core/plugin-config-cache"
+    );
+    initializePluginConfigCache();
+  }
+  logger.info("Plugin-config cache initialized", { source: "startup" });
+
   // Every event-notifier config needs a subsidiary row (the generic search
   // inner-joins it). Backfill pre-existing configs, then subscribe the
   // dispatcher to the bus so fired events fan out to enabled configs.

@@ -17,4 +17,4 @@
 - [New plugin kind needs client ALLOWED_KINDS](new-plugin-kind-client-allowlist.md) — generic admin page has a hardcoded client allowlist; missing kind → "unknown kind" client-side even though server registered it fine.
 - [Split authz/data config resolution is an IDOR](split-authz-data-idor.md) — auth-check config and data-read config must be the SAME resolved record; separate lookups + canonical fallback = confused-deputy.
 - [Payment-method token enforcement point](payment-method-token-enforcement.md) — create route stores methodToken verbatim; validate/reject sensitive data in plugin attachMethod (runs pre-persist), not in summary/details reads.
-- [Plugin config onConfigChanged hook](plugin-config-onconfigchanged-hook.md) — generic CRUD routes fire adapter.onConfigChanged() post-mutation; the sanctioned way to invalidate a kind's in-memory derived cache (only covers route writes).
+- [Cache-invalidating events must emit after commit](cache-invalidation-emit-after-commit.md) — storage emits that invalidate an in-memory cache must use onAfterCommit, or a concurrent read rebuilds from pre-commit data and stays stale until the next write.

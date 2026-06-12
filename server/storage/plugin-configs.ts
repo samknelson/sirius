@@ -1,5 +1,5 @@
 import { createNoopValidator } from './utils/validation';
-import { getClient } from './transaction-context';
+import { getClient, onAfterCommit } from './transaction-context';
 import {
   pluginConfigs,
   type PluginConfig,
@@ -12,6 +12,8 @@ import {
   type PluginConfigEventNotifier,
 } from "@shared/schema";
 import { eq, and, type SQL } from "drizzle-orm";
+import { eventBus, EventType } from "../services/event-bus";
+import { logger } from "../logger";
 import {
   createChargeSubsidiaryStorage,
   createBenefitEligibilitySubsidiaryStorage,
@@ -26,6 +28,34 @@ import {
  * Stub validator - add validation logic here when needed.
  */
 export const validate = createNoopValidator();
+
+/**
+ * Emit `PLUGIN_CONFIG_SAVED` so the shared plugin-config cache can invalidate
+ * the affected kind's slice. Deferred to after the surrounding transaction
+ * commits (via {@link onAfterCommit}; runs immediately when not in a
+ * transaction) so the cache can never rebuild from pre-commit data during the
+ * open-transaction window and persist stale state. Fire-and-forget: a bus
+ * failure must never break the write the caller just performed.
+ */
+function emitConfigSaved(
+  kind: string,
+  id: string,
+  operation: "create" | "update" | "delete",
+): void {
+  onAfterCommit(() => {
+    eventBus
+      .emit(EventType.PLUGIN_CONFIG_SAVED, { kind, id, operation })
+      .catch((err) => {
+        logger.error("Failed to emit PLUGIN_CONFIG_SAVED", {
+          service: "plugin-configs-storage",
+          kind,
+          id,
+          operation,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+  });
+}
 
 /**
  * The opaque subsidiary row shape returned alongside a base config. A kind
@@ -184,6 +214,7 @@ export function createPluginConfigStorage(): PluginConfigStorage {
       validate.validateOrThrow(insertConfig);
       const client = getClient();
       const [row] = await client.insert(pluginConfigs).values(insertConfig).returning();
+      emitConfigSaved(row.pluginKind, row.id, "create");
       return row;
     },
 
@@ -195,14 +226,23 @@ export function createPluginConfigStorage(): PluginConfigStorage {
         .set({ ...configUpdate, updatedAt: new Date() })
         .where(eq(pluginConfigs.id, id))
         .returning();
+      if (row) emitConfigSaved(row.pluginKind, row.id, "update");
       return row || undefined;
     },
 
     async delete(id: string): Promise<boolean> {
       const client = getClient();
+      // Read the kind first so the invalidation event can target this kind's
+      // cache slice (the delete itself only returns the row count).
+      const [existing] = await client
+        .select({ pluginKind: pluginConfigs.pluginKind })
+        .from(pluginConfigs)
+        .where(eq(pluginConfigs.id, id));
       // Subsidiary rows are removed automatically via ON DELETE CASCADE.
       const result = await client.delete(pluginConfigs).where(eq(pluginConfigs.id, id)).returning();
-      return result.length > 0;
+      const deleted = result.length > 0;
+      if (deleted && existing) emitConfigSaved(existing.pluginKind, id, "delete");
+      return deleted;
     },
 
     // --- Subsidiary access ----------------------------------------------
@@ -212,7 +252,11 @@ export function createPluginConfigStorage(): PluginConfigStorage {
     ): Promise<PluginConfigSubsidiary> {
       const ns = subsidiaries[type];
       if (!ns) return null;
-      return (await ns.upsert(row)) as PluginConfigSubsidiary;
+      const result = (await ns.upsert(row)) as PluginConfigSubsidiary;
+      // Covers non-route writers (e.g. the boot-time subsidiary backfill) that
+      // touch a config's subsidiary row directly.
+      emitConfigSaved(type, row.id, "update");
+      return result;
     },
 
     // --- Composed read + generic search ---------------------------------

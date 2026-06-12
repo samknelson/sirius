@@ -2,7 +2,7 @@ import { eventBus, EventType } from "../../services/event-bus";
 import { logger } from "../../logger";
 import { isComponentEnabledSync } from "../../services/component-cache";
 import { eventNotifierRegistry } from "./registry";
-import { getEventNotifierConfigsForEvent } from "./config-cache";
+import { getEnabledConfigsForKind } from "../_core/plugin-config-cache";
 import {
   type EventNotifierEventContext,
   type NotificationMedium,
@@ -209,24 +209,43 @@ async function dispatchForConfig(
   }
 }
 
+const KIND = "event-notifier";
+
+/** Parse the subsidiary `media` column (comma-joined string) into a list. */
+function parseMedia(value: unknown): NotificationMedium[] {
+  if (typeof value !== "string" || value.length === 0) return [];
+  return value
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean) as NotificationMedium[];
+}
+
 /**
  * Build the handler that fans a single fired event out to every enabled config.
- * The set of enabled configs subscribed to this event is served from the
- * pre-built, cached index (refreshed when configs change) rather than querying
- * all configs on every emit.
+ * The enabled event-notifier configs come from the shared, kind-indexed cache
+ * (invalidated centrally when any config changes); the small set is filtered in
+ * memory per emit — by which plugin subscribes to this event, and by the admin's
+ * media selection — rather than querying the DB on every emit.
  */
 function makeHandler(event: EventType) {
   return async (payload: unknown): Promise<void> => {
     const ctx: EventNotifierEventContext = { event, payload };
-    const entries = await getEventNotifierConfigsForEvent(event);
-    for (const entry of entries) {
+    const envelopes = await getEnabledConfigsForKind(KIND);
+    for (const envelope of envelopes) {
+      const plugin = eventNotifierRegistry.get(envelope.config.pluginId);
+      if (!plugin || !plugin.subscribedEvents.includes(event)) continue;
+
+      const subsidiary = envelope.subsidiary as { media?: string | null } | null;
+      const media = parseMedia(subsidiary?.media);
+      if (media.length === 0) continue;
+
       try {
-        await dispatchForConfig(entry.pluginId, entry.media, ctx);
+        await dispatchForConfig(envelope.config.pluginId, media, ctx);
       } catch (error) {
         logger.error("Event-notifier dispatch failed for config", {
           service: SERVICE,
-          configId: entry.configId,
-          pluginId: entry.pluginId,
+          configId: envelope.config.id,
+          pluginId: envelope.config.pluginId,
           event,
           error: error instanceof Error ? error.message : String(error),
         });

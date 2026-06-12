@@ -7,7 +7,6 @@ import {
   baseSearchSchemaShape,
 } from "../_core";
 import { eventNotifierRegistry } from "./registry";
-import { invalidateEventNotifierConfigCache } from "./config-cache";
 import { ALL_NOTIFICATION_MEDIA, type NotificationMedium } from "./types";
 
 export { eventNotifierRegistry, registerEventNotifier } from "./registry";
@@ -172,9 +171,6 @@ function registerEventNotifierKind(): void {
         options: { choices: MEDIA_CHOICES },
       },
     ],
-    // Any create/update/delete of an event-notifier config drops the
-    // dispatcher's cached event index so the next fired event rebuilds it.
-    onConfigChanged: invalidateEventNotifierConfigCache,
   });
   kindRegistered = true;
 }

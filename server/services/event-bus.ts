@@ -33,6 +33,7 @@ export enum EventType {
   WORKER_SKILL_SAVED = "worker.skill.saved",
   WORKER_WS_CHANGED = "worker.ws.changed",
   STEWARD_ASSIGNMENT_SAVED = "steward.assignment.saved",
+  PLUGIN_CONFIG_SAVED = "plugin.config.saved",
   CRON = "cron",
   LOG = "log",
 }
@@ -153,6 +154,12 @@ export interface CronPayload {
   mode: "live" | "test";
 }
 
+export interface PluginConfigSavedPayload {
+  kind: string;
+  id: string;
+  operation: "create" | "update" | "delete";
+}
+
 export interface LogPayload {
   id: number;
   level: string | null;
@@ -184,6 +191,7 @@ export interface EventPayloadMap {
   [EventType.WORKER_SKILL_SAVED]: WorkerSkillSavedPayload;
   [EventType.WORKER_WS_CHANGED]: WorkerWsChangedPayload;
   [EventType.STEWARD_ASSIGNMENT_SAVED]: StewardAssignmentSavedPayload;
+  [EventType.PLUGIN_CONFIG_SAVED]: PluginConfigSavedPayload;
   [EventType.CRON]: CronPayload;
   [EventType.LOG]: LogPayload;
 }
