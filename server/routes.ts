@@ -66,7 +66,7 @@ import { registerEmployerRoutes } from "./modules/employers/employers";
 import { registerEmployerPolicyHistoryRoutes } from "./modules/employers/policy-history";
 import { registerWorkerBenefitsScanRoutes } from "./modules/worker-benefits-scan";
 import { registerWmbScanQueueRoutes } from "./modules/wmb-scan-queue";
-import { registerStaffAlertRoutes } from "./modules/staff-alerts";
+import { registerEventNotifierMetaRoutes } from "./modules/event-notifier-meta";
 import { registerDispatchDncConfigRoutes } from "./modules/dispatch/dnc-config";
 import { registerDispatchEbaConfigRoutes } from "./modules/dispatch/eba-config";
 import { registerDispatchSeniorityResetConfigRoutes } from "./modules/dispatch/seniority-reset-config";
@@ -451,8 +451,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Register WMB scan queue routes (admin only)
   registerWmbScanQueueRoutes(app, requireAuth, requireAccess, storage);
   
-  // Register staff alert configuration routes
-  registerStaffAlertRoutes(app, requireAuth, requireAccess, storage);
+  // Register event-notifier admin metadata routes (staff user picker source)
+  registerEventNotifierMetaRoutes(app, requireAuth, requireAccess, storage);
   
   // Register dispatch DNC configuration routes
   registerDispatchDncConfigRoutes(app, requireAuth, requireAccess, storage);

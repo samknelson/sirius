@@ -83,6 +83,14 @@ export interface EventNotifierPlugin {
   /** Ordering hint mirrored onto manifest entries (ascending). */
   order?: number;
   /**
+   * When true, this notifier targets a fixed list of internal staff/admin
+   * users chosen per config rather than recipients derived from the event
+   * payload. The framework resolves the recipients itself from the config's
+   * `data.staffRecipientUserIds` (userId → user email → contact), so a
+   * staff-mode plugin omits {@link getRecipients}.
+   */
+  staffNotification?: boolean;
+  /**
    * JSON Schema describing the editable `data` fields the generic admin UI
    * renders for a config row of this notifier. Omit for notifiers with no
    * editable settings.
@@ -98,9 +106,11 @@ export interface EventNotifierPlugin {
 
   /**
    * Resolve the recipients for a fired event. An empty array means "nobody to
-   * notify" and the framework sends nothing.
+   * notify" and the framework sends nothing. Omitted by staff-mode notifiers
+   * ({@link staffNotification}): the framework resolves their recipients from
+   * the config instead.
    */
-  getRecipients(
+  getRecipients?(
     ctx: EventNotifierEventContext,
   ): Promise<NotifierRecipient[]>;
 

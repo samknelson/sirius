@@ -87,6 +87,36 @@ function registerEventNotifierKind(): void {
           ],
         };
       }
+      // Staff-mode notifiers may only target staff/admin users. The recipients
+      // are operator-supplied (`data.staffRecipientUserIds`) and a direct API
+      // write could otherwise smuggle in arbitrary user ids, so re-check
+      // membership here at save time (the legacy staff-alert framework enforced
+      // the same constraint).
+      if (plugin.staffNotification) {
+        const ids = Array.isArray(cfg.staffRecipientUserIds)
+          ? (cfg.staffRecipientUserIds as unknown[]).filter(
+              (v): v is string => typeof v === "string",
+            )
+          : [];
+        if (ids.length > 0) {
+          const { storage } = await import("../../storage");
+          const allowed = await storage.users.getUsersWithAnyPermission([
+            "staff",
+            "admin",
+          ]);
+          const allowedIds = new Set(allowed.map((u) => u.id));
+          const invalid = ids.filter((id) => !allowedIds.has(id));
+          if (invalid.length > 0) {
+            return {
+              valid: false,
+              errors: [
+                `Recipients for "${plugin.name}" must be staff or admin users. ` +
+                  `${invalid.length} selected user(s) are not eligible.`,
+              ],
+            };
+          }
+        }
+      }
       if (!plugin.configSchema) return { valid: true };
       const { validateAgainstSchema } = await import(
         "../../lib/json-schema-validator"
@@ -237,3 +267,4 @@ export { ALL_NOTIFICATION_MEDIA };
 
 // Plugin registrations (side-effect imports — each file self-registers).
 import "./plugins/steward-assignment-notifier";
+import "./plugins/trust-wmb-scan";

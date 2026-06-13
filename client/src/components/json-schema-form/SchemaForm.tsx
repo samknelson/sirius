@@ -16,6 +16,7 @@ import { ColorWidget } from "./widgets/ColorWidget";
 import { EnumSelectWidget } from "./widgets/EnumSelectWidget";
 import { HtmlEditorWidget } from "./widgets/HtmlEditorWidget";
 import { ArrayTableField } from "./fields/ArrayTableField";
+import { StaffRecipientsField } from "./fields/StaffRecipientsField";
 
 const validator = customizeValidator({
   ajvOptionsOverrides: { $data: true },
@@ -74,6 +75,8 @@ function buildVendorUiSchema(
     let field: string | undefined;
     if (subAny["x-widget"] === "array-table") {
       field = "arrayTable";
+    } else if (subAny["x-widget"] === "staff-recipients") {
+      field = "staffRecipients";
     } else if (typeof subAny["x-options-resource"] === "string") {
       const isArray = (sub as RJSFSchema).type === "array";
       widget = isArray ? "remoteOptionsMulti" : "remoteOptions";
@@ -116,6 +119,7 @@ const baseWidgets = {
 
 const baseFields = {
   arrayTable: ArrayTableField,
+  staffRecipients: StaffRecipientsField,
 } as unknown as RegistryFieldsType;
 
 /**

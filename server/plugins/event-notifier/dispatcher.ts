@@ -171,14 +171,77 @@ async function resolveTagIds(pluginId: string, pluginName: string): Promise<stri
 const tagIdCache = new Map<string, string>();
 
 /**
+ * Resolve the recipients for a staff-mode notifier from the config's chosen
+ * staff/admin user ids. Each user is resolved to the contact that owns its
+ * email address (that contact anchors every send + opt-out); the userId is
+ * kept on the recipient so in-app delivery can target the authenticated user
+ * directly. Users that can't be reached (missing user, no email, or no
+ * matching contact) are logged and skipped rather than aborting the fan-out.
+ */
+async function resolveStaffRecipients(
+  userIds: string[],
+  pluginId: string,
+): Promise<NotifierRecipient[]> {
+  const { storage } = await import("../../storage");
+  const recipients: NotifierRecipient[] = [];
+  for (const userId of userIds) {
+    try {
+      const user = await storage.users.getUser(userId);
+      if (!user?.email) {
+        logger.warn("Event-notifier staff recipient unreachable", {
+          service: SERVICE,
+          pluginId,
+          userId,
+          reason: user ? "user has no email" : "user not found",
+        });
+        continue;
+      }
+      const contact = await storage.contacts.getContactByEmail(user.email);
+      if (!contact) {
+        logger.warn("Event-notifier staff recipient unreachable", {
+          service: SERVICE,
+          pluginId,
+          userId,
+          reason: "no contact matches user email",
+        });
+        continue;
+      }
+      recipients.push({ contactId: contact.id, userId: user.id });
+    } catch (error) {
+      logger.warn("Event-notifier staff recipient resolution failed", {
+        service: SERVICE,
+        pluginId,
+        userId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+  return recipients;
+}
+
+/** Read the staff recipient user ids off a config's `data` payload. */
+function staffRecipientUserIds(configData: unknown): string[] {
+  const data =
+    configData && typeof configData === "object"
+      ? (configData as Record<string, unknown>)
+      : {};
+  const ids = data.staffRecipientUserIds;
+  if (!Array.isArray(ids)) return [];
+  return ids.filter((v): v is string => typeof v === "string");
+}
+
+/**
  * Handle one fired event for one enabled config: resolve the active media (the
  * admin's selection intersected with the plugin's supportedMedia), fetch the
  * recipients, then deliver each (recipient, medium) message the plugin composes.
+ * Staff-mode notifiers resolve their recipients from the config's chosen staff
+ * users; all others delegate to the plugin's `getRecipients`.
  */
 async function dispatchForConfig(
   pluginId: string,
   mediaSelection: NotificationMedium[],
   ctx: EventNotifierEventContext,
+  configData: unknown,
 ): Promise<void> {
   const plugin = eventNotifierRegistry.get(pluginId);
   if (!plugin) return;
@@ -195,7 +258,11 @@ async function dispatchForConfig(
   const active = mediaSelection.filter((m) => supported.has(m));
   if (active.length === 0) return;
 
-  const recipients = await plugin.getRecipients(ctx);
+  const recipients = plugin.staffNotification
+    ? await resolveStaffRecipients(staffRecipientUserIds(configData), plugin.id)
+    : plugin.getRecipients
+      ? await plugin.getRecipients(ctx)
+      : [];
   if (recipients.length === 0) return;
 
   const tagIds = await resolveTagIds(plugin.id, plugin.name);
@@ -240,7 +307,12 @@ function makeHandler(event: EventType) {
       if (media.length === 0) continue;
 
       try {
-        await dispatchForConfig(envelope.config.pluginId, media, ctx);
+        await dispatchForConfig(
+          envelope.config.pluginId,
+          media,
+          ctx,
+          envelope.config.data,
+        );
       } catch (error) {
         logger.error("Event-notifier dispatch failed for config", {
           service: SERVICE,

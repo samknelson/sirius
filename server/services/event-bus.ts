@@ -33,6 +33,7 @@ export enum EventType {
   WORKER_SKILL_SAVED = "worker.skill.saved",
   WORKER_WS_CHANGED = "worker.ws.changed",
   STEWARD_ASSIGNMENT_SAVED = "steward.assignment.saved",
+  TRUST_WMB_SCAN_COMPLETED = "trust.wmb.scan.completed",
   PLUGIN_CONFIG_SAVED = "plugin.config.saved",
   CRON = "cron",
   LOG = "log",
@@ -149,6 +150,18 @@ export interface StewardAssignmentSavedPayload {
   operation: "created" | "updated" | "deleted";
 }
 
+export interface TrustWmbScanCompletedPayload {
+  statusId: string;
+  month: number;
+  year: number;
+  totalProcessed: number;
+  successCount: number;
+  failedCount: number;
+  benefitsStarted: number;
+  benefitsContinued: number;
+  benefitsTerminated: number;
+}
+
 export interface CronPayload {
   jobId: string;
   mode: "live" | "test";
@@ -191,6 +204,7 @@ export interface EventPayloadMap {
   [EventType.WORKER_SKILL_SAVED]: WorkerSkillSavedPayload;
   [EventType.WORKER_WS_CHANGED]: WorkerWsChangedPayload;
   [EventType.STEWARD_ASSIGNMENT_SAVED]: StewardAssignmentSavedPayload;
+  [EventType.TRUST_WMB_SCAN_COMPLETED]: TrustWmbScanCompletedPayload;
   [EventType.PLUGIN_CONFIG_SAVED]: PluginConfigSavedPayload;
   [EventType.CRON]: CronPayload;
   [EventType.LOG]: LogPayload;
