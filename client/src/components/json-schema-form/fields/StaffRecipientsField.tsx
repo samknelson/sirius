@@ -20,7 +20,7 @@ interface StaffUser {
  * the event-notifier admin metadata endpoint.
  */
 export function StaffRecipientsField(props: FieldProps) {
-  const { formData, onChange, disabled, readonly } = props;
+  const { formData, onChange, disabled, readonly, fieldPathId } = props;
   const selected: string[] = Array.isArray(formData)
     ? (formData as string[])
     : [];
@@ -34,7 +34,7 @@ export function StaffRecipientsField(props: FieldProps) {
     const next = checked
       ? Array.from(new Set([...selected, userId]))
       : selected.filter((id) => id !== userId);
-    onChange(next, []);
+    onChange(next, fieldPathId.path);
   };
 
   if (isLoading) {

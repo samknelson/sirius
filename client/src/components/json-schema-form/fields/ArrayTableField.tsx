@@ -78,7 +78,7 @@ export function ArrayTableField(props: FieldProps) {
     return r;
   };
 
-  const update = (next: Row[]) => onChange(next as never, []);
+  const update = (next: Row[]) => onChange(next as never, fieldPathId.path);
 
   const setCell = (idx: number, col: ColumnDef, raw: string) => {
     const next = rows.map((row, i) => {
