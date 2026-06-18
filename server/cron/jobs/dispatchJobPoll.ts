@@ -1,6 +1,6 @@
 import { CronJobHandler, CronJobContext, CronJobResult } from "../registry";
 import { storage } from "../../storage";
-import { runPoll } from "../../services/dispatch-poll";
+import { runPoll } from "../../services/dispatch/poll";
 import { logger } from "../../logger";
 
 export const dispatchJobPollHandler: CronJobHandler = {

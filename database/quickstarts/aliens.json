@@ -23,7 +23,7 @@
       "rolePermissions": 14,
       "trustBenefits": 1,
       "bookmarks": 5,
-      "ledgerStripePaymentMethods": 3,
+      "ledgerPaymentMethods": 0,
       "ledgerEa": 16,
       "wizards": 16,
       "chargePluginConfigs": 1,
@@ -182,7 +182,7 @@
       },
       {
         "id": "08afbd8b-85c3-4f6b-af0c-4030b9cb3c8a",
-        "name": "ledger_stripe_payment_type",
+        "name": "ledger_payment_type",
         "value": {
           "paymentTypeId": "3cd4830b-1606-449b-804e-4982712c5954"
         }
@@ -2896,35 +2896,7 @@
         "createdAt": "2025-11-17T16:02:44.763Z"
       }
     ],
-    "ledgerStripePaymentMethods": [
-      {
-        "id": "35f82799-d3d3-48fa-b1c7-c0196d41e608",
-        "entityType": "employer",
-        "entityId": "ab5f98ff-90b1-4106-b332-32c73917fffd",
-        "paymentMethod": "pm_1SQTrmE3zxs69wvi5fwybQKZ",
-        "isActive": true,
-        "isDefault": true,
-        "createdAt": "2025-11-06T14:08:48.358Z"
-      },
-      {
-        "id": "90ecefe6-e55e-45e0-a32f-3268eb75234b",
-        "entityType": "employer",
-        "entityId": "ab5f98ff-90b1-4106-b332-32c73917fffd",
-        "paymentMethod": "pm_1SQrnyE3zxs69wvivs8Bck0K",
-        "isActive": true,
-        "isDefault": false,
-        "createdAt": "2025-11-07T15:42:27.251Z"
-      },
-      {
-        "id": "d67e0909-7413-4465-9b4e-0ed85d33f23a",
-        "entityType": "employer",
-        "entityId": "bd6d9bef-4654-466f-8d86-a09e634f6c9a",
-        "paymentMethod": "pm_1SR0VcE3zxs69wviIFOMINqf",
-        "isActive": true,
-        "isDefault": true,
-        "createdAt": "2025-11-08T01:00:05.580Z"
-      }
-    ],
+    "ledgerPaymentMethods": [],
     "ledgerEa": [
       {
         "id": "329d95c9-a181-4975-ba88-b57208fe7b8c",

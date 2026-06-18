@@ -1,5 +1,5 @@
 import type { IStorage } from "../../storage";
-import { sendEmail, type SendEmailResult } from "../../services/email-sender";
+import { sendEmail, type SendEmailResult } from "../../services/comm/senders/email";
 import type { DeliverContactResult } from "./deliver";
 import { renderTemplate } from "../../../shared/bulk-tokens";
 import { buildRecipientContext } from "./token-context";
@@ -15,6 +15,8 @@ export async function deliverEmail(
   messageId: string,
   contactId: string,
   userId?: string,
+  tagIds?: string[],
+  offline?: boolean,
 ): Promise<DeliverContactResult> {
   const emailContent = await storage.bulkMessagesEmail.getByBulkId(messageId);
   if (!emailContent) {
@@ -43,6 +45,8 @@ export async function deliverEmail(
     fromName: emailContent.fromName || undefined,
     replyTo: emailContent.replyTo || undefined,
     userId,
+    tagIds,
+    sendOffline: offline,
   });
   return {
     success: result.success,

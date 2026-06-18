@@ -1,4 +1,4 @@
-import { pgTable, text, varchar, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, jsonb, unique } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -15,7 +15,7 @@ export const workerDispatchDnc = pgTable("worker_dispatch_dnc", {
   data: jsonb("data"),
   message: text("message"),
 }, (table) => ({
-  workerEmployerTypeUnique: sql`UNIQUE(${table.workerId}, ${table.employerId}, ${table.type})`,
+  workerEmployerTypeUnique: unique().on(table.workerId, table.employerId, table.type),
 }));
 
 export const insertWorkerDispatchDncSchema = createInsertSchema(workerDispatchDnc).omit({

@@ -1,3 +1,4 @@
+import { registerDispatchEligPlugin } from "../registry";
 import { logger } from "../../../../logger";
 import { createWorkerDispatchEbaStorage } from "../../../../storage/dispatch/worker-eba";
 import { createWorkerDispatchEligDenormStorage } from "../../../../storage/dispatch/worker-elig-denorm";
@@ -13,7 +14,7 @@ export const dispatchEbaPlugin: DispatchEligPlugin = {
   id: "dispatch_eba",
   name: "Employed but Available",
   description: "Requires workers to have marked themselves available for the job's start date",
-  componentId: COMPONENT_ID,
+  requiredComponent: COMPONENT_ID,
   backfill: () => backfillDispatchEbaEligibility(),
 
   eventHandlers: [
@@ -137,3 +138,5 @@ export async function backfillDispatchEbaEligibility(): Promise<{ workersProcess
 
   return { workersProcessed: uniqueWorkerIds.length, entriesCreated };
 }
+
+registerDispatchEligPlugin(dispatchEbaPlugin);

@@ -10,7 +10,7 @@ import {
   triggerPaymentChargePlugins,
   enrichWithAllocatedEntities,
 } from "./payments";
-import type { LedgerNotification } from "../../charge-plugins";
+import type { LedgerNotification } from "../../plugins/ledger/charge/types";
 import type { LedgerPayment } from "@shared/schema";
 import type { LedgerPaymentBatchAssignment } from "@shared/schema/ledger/payment-batch/schema";
 

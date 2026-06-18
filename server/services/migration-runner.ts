@@ -1,5 +1,6 @@
 import { storage } from "../storage";
 import { logger } from "../logger";
+import { getComponentSchemaStateVariableName, type ComponentSchemaState } from "../../shared/components";
 
 export interface Migration {
   version: number;
@@ -11,6 +12,7 @@ export interface Migration {
 const MIGRATIONS_VARIABLE_NAME = "migrations_version";
 
 let registeredMigrations: Migration[] = [];
+const componentMigrations = new Map<string, Migration[]>();
 
 export function registerMigration(migration: Migration): void {
   registeredMigrations.push(migration);
@@ -19,6 +21,31 @@ export function registerMigration(migration: Migration): void {
 
 export function getMigrations(): Migration[] {
   return [...registeredMigrations];
+}
+
+export function registerComponentMigration(componentId: string, migration: Migration): void {
+  const list = componentMigrations.get(componentId) ?? [];
+  if (list.some(m => m.version === migration.version)) {
+    throw new Error(
+      `Duplicate component migration version ${migration.version} for component ${componentId} ` +
+      `(name "${migration.name}"). Per-component migration versions must be unique within their component.`,
+    );
+  }
+  list.push(migration);
+  list.sort((a, b) => a.version - b.version);
+  componentMigrations.set(componentId, list);
+}
+
+export function getComponentMigrations(componentId: string): Migration[] {
+  return [...(componentMigrations.get(componentId) ?? [])];
+}
+
+export function getAllComponentMigrations(): Map<string, Migration[]> {
+  const out = new Map<string, Migration[]>();
+  for (const [id, list] of componentMigrations) {
+    out.set(id, [...list]);
+  }
+  return out;
 }
 
 async function getCurrentVersion(): Promise<number> {
@@ -118,4 +145,174 @@ export async function getMigrationStatus(): Promise<{
     totalMigrations: registeredMigrations.length,
     pendingMigrations
   };
+}
+
+async function readComponentSchemaState(componentId: string): Promise<{
+  state: ComponentSchemaState | null;
+  variableId: string | null;
+}> {
+  const name = getComponentSchemaStateVariableName(componentId);
+  const variable = await storage.variables.getByName(name);
+  if (!variable) return { state: null, variableId: null };
+  return { state: variable.value as ComponentSchemaState, variableId: variable.id };
+}
+
+async function writeComponentSchemaState(
+  componentId: string,
+  state: ComponentSchemaState,
+  existingVariableId: string | null,
+): Promise<void> {
+  const name = getComponentSchemaStateVariableName(componentId);
+  if (existingVariableId) {
+    await storage.variables.update(existingVariableId, { name, value: state });
+  } else {
+    await storage.variables.create({ name, value: state });
+  }
+}
+
+export interface ComponentMigrationResult {
+  componentId: string;
+  ran: number;
+  skipped: number;
+  fromVersion: number;
+  toVersion: number;
+  errors: string[];
+}
+
+/**
+ * Run all registered migrations for the given component whose version is
+ * greater than the component's recorded `migrationVersion` in its
+ * `component_schema_state_<id>` variable. Stops at the first failure.
+ *
+ * The component's schema state variable must already exist (e.g. created by
+ * the enable flow when tables are created). If it does not, the caller is
+ * responsible for creating it first — this function will refuse to invent
+ * one because doing so would silently lose the table-state audit trail.
+ */
+export async function runComponentMigrations(componentId: string): Promise<ComponentMigrationResult> {
+  const list = componentMigrations.get(componentId) ?? [];
+  const { state, variableId } = await readComponentSchemaState(componentId);
+
+  if (!state) {
+    return {
+      componentId,
+      ran: 0,
+      skipped: list.length,
+      fromVersion: 0,
+      toVersion: 0,
+      errors: list.length > 0
+        ? [`Component ${componentId} has ${list.length} migration(s) registered but no component_schema_state variable exists yet — enable the component first.`]
+        : [],
+    };
+  }
+
+  const fromVersion = state.migrationVersion ?? 0;
+  const pending = list.filter(m => m.version > fromVersion);
+
+  if (pending.length === 0) {
+    return {
+      componentId,
+      ran: 0,
+      skipped: list.length,
+      fromVersion,
+      toVersion: fromVersion,
+      errors: [],
+    };
+  }
+
+  logger.info(`Running component migrations for ${componentId}`, {
+    service: "migration-runner",
+    componentId,
+    fromVersion,
+    pendingCount: pending.length,
+  });
+
+  let ran = 0;
+  let toVersion = fromVersion;
+  const errors: string[] = [];
+  const appliedLog = state.migrationsApplied ? [...state.migrationsApplied] : [];
+
+  for (const migration of pending) {
+    try {
+      logger.info(`Running component migration ${componentId}:${migration.version} ${migration.name}`, {
+        service: "migration-runner",
+        componentId,
+        version: migration.version,
+        name: migration.name,
+      });
+      await migration.up();
+      toVersion = migration.version;
+      appliedLog.push({
+        version: migration.version,
+        name: migration.name,
+        appliedAt: new Date().toISOString(),
+      });
+      const updated: ComponentSchemaState = {
+        ...state,
+        migrationVersion: toVersion,
+        migrationsApplied: appliedLog,
+      };
+      await writeComponentSchemaState(componentId, updated, variableId);
+      ran++;
+      logger.info(`Component migration ${componentId}:${migration.version} completed`, {
+        service: "migration-runner",
+        componentId,
+        version: migration.version,
+      });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      errors.push(`Component migration ${componentId}:${migration.version} (${migration.name}) failed: ${msg}`);
+      logger.error(`Component migration failed`, {
+        service: "migration-runner",
+        componentId,
+        version: migration.version,
+        name: migration.name,
+        error: msg,
+      });
+      break;
+    }
+  }
+
+  return {
+    componentId,
+    ran,
+    skipped: list.length - ran,
+    fromVersion,
+    toVersion,
+    errors,
+  };
+}
+
+/**
+ * Run any pending per-component migrations for every component that is
+ * currently enabled. Called at startup after the component cache is loaded
+ * and before the drift gate runs, so a freshly-added per-component migration
+ * does not block boot.
+ *
+ * Throws if any component reports errors — the drift gate would otherwise
+ * fail anyway, and surfacing the migration error gives the operator a clearer
+ * diagnostic.
+ */
+export async function runPendingComponentMigrationsAtStartup(): Promise<void> {
+  const { getAllComponents } = await import("../../shared/components");
+  const { isComponentEnabledSync } = await import("./component-cache");
+  const errors: string[] = [];
+  let totalRan = 0;
+  for (const component of getAllComponents()) {
+    if (!component.managesSchema) continue;
+    if (!isComponentEnabledSync(component.id)) continue;
+    if ((componentMigrations.get(component.id) ?? []).length === 0) continue;
+    const result = await runComponentMigrations(component.id);
+    totalRan += result.ran;
+    errors.push(...result.errors);
+  }
+  if (totalRan > 0) {
+    logger.info("Startup component migrations applied", {
+      service: "migration-runner",
+      totalRan,
+    });
+  }
+  if (errors.length > 0) {
+    throw new Error(`Startup component migrations failed:\n  - ${errors.join("\n  - ")}`);
+  }
 }

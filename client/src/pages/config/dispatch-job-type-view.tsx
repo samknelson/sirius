@@ -1,3 +1,5 @@
+import { pluginSearch } from "@/plugins/_core";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DispatchJobTypeLayout, useDispatchJobTypeLayout } from "@/components/layouts/DispatchJobTypeLayout";
 import { usePageTitle } from "@/contexts/PageTitleContext";
@@ -8,11 +10,31 @@ const iconMap: Record<string, LucideIcon> = {
   Briefcase, Truck, HardHat, Wrench, Clock, Calendar, ClipboardList, Package, MapPin, Users,
 };
 
+/**
+ * Flat (hydrated) dispatch-eligibility config envelope returned by
+ * `pluginSearch`. `enabled` is the base-row flag; `jobType` the subsidiary.
+ */
+interface DispatchConfigRow {
+  id: string;
+  pluginId: string;
+  enabled: boolean;
+  jobType: string | null;
+}
+
 function DispatchJobTypeViewContent() {
   const { jobType } = useDispatchJobTypeLayout();
   const jobTypeData = jobType.data as JobTypeData | undefined;
   const IconComponent = jobTypeData?.icon ? iconMap[jobTypeData.icon] || Briefcase : Briefcase;
-  const enabledPlugins = (jobTypeData?.eligibility || []).filter(p => p.enabled);
+
+  // Eligibility entries now live in the unified plugin_configs table.
+  const { data: configRows = [] } = useQuery<DispatchConfigRow[]>({
+    queryKey: ["/api/plugins/dispatch-eligibility/configs/search", jobType.id],
+    queryFn: () =>
+      pluginSearch<"dispatch-eligibility", DispatchConfigRow>("dispatch-eligibility", {
+        jobType: jobType.id,
+      }),
+  });
+  const enabledPlugins = configRows.filter((p) => p.enabled);
 
   return (
     <Card>

@@ -1,104 +1,104 @@
 import { ChargePlugin } from "./base";
 import { logger } from "../../../logger";
-import type { TriggerType } from "./types";
-import { isComponentEnabled } from "../../../modules/components";
+import type { TriggerType, ChargePluginMetadata } from "./types";
+import { PluginRegistry } from "../../_core";
+import type { BasePluginMetadata } from "../../_core";
 
 export interface RegisteredChargePlugin {
   id: string;
   plugin: ChargePlugin;
-  metadata: ChargePlugin['metadata'];
+  metadata: ChargePluginMetadata;
 }
 
-class ChargePluginRegistry {
-  private plugins: Map<string, ChargePlugin> = new Map();
+function pluginToBaseMetadata(p: ChargePlugin): BasePluginMetadata {
+  return {
+    id: p.metadata.id,
+    name: p.metadata.name,
+    description: p.metadata.description,
+    requiredComponent: p.metadata.requiredComponent,
+  };
+}
+
+/**
+ * Shape served to the client at GET /api/plugins/charge/manifest. We
+ * return an explicit subset (mirroring the eligibility registry) so the
+ * client gets the JSON `configSchema` it renders with RJSF — and never
+ * any non-serializable runtime-only metadata.
+ */
+export interface ChargePluginManifestEntry {
+  id: string;
+  name: string;
+  description: string;
+  triggers: TriggerType[];
+  defaultScope: "global" | "employer";
+  supportedScopes: readonly ("global" | "employer")[];
+  configSchema?: ChargePluginMetadata["configSchema"];
+  requiredComponent?: string;
+}
+
+function pluginToManifestEntry(p: ChargePlugin): ChargePluginManifestEntry {
+  return {
+    id: p.metadata.id,
+    name: p.metadata.name,
+    description: p.metadata.description,
+    triggers: p.metadata.triggers,
+    defaultScope: p.metadata.defaultScope,
+    supportedScopes: p.metadata.supportedScopes ?? ["global"],
+    configSchema: p.metadata.configSchema,
+    requiredComponent: p.metadata.requiredComponent,
+  };
+}
+
+class ChargePluginRegistry extends PluginRegistry<ChargePlugin, ChargePluginManifestEntry> {
+  constructor() {
+    super({
+      kind: "charge",
+      getMetadata: pluginToBaseMetadata,
+      toManifestEntry: pluginToManifestEntry,
+    });
+  }
 
   register(plugin: ChargePlugin): void {
-    const id = plugin.metadata.id;
-    if (this.plugins.has(id)) {
-      throw new Error(`Charge plugin "${id}" is already registered`);
-    }
-    this.plugins.set(id, plugin);
-    logger.info(`Registered charge plugin: ${id}`, { 
-      service: 'charge-plugin-registry',
+    super.register(plugin);
+    logger.info(`Registered charge plugin: ${plugin.metadata.id}`, {
+      service: "charge-plugin-registry",
       triggers: plugin.metadata.triggers,
       requiredComponent: plugin.metadata.requiredComponent,
     });
   }
 
-  get(id: string): ChargePlugin | undefined {
-    return this.plugins.get(id);
-  }
-
   getAll(): RegisteredChargePlugin[] {
-    return Array.from(this.plugins.entries()).map(([id, plugin]) => ({
-      id,
+    return this.list().map((plugin) => ({
+      id: plugin.metadata.id,
       plugin,
       metadata: plugin.metadata,
     }));
   }
 
   async getAllEnabled(): Promise<RegisteredChargePlugin[]> {
-    const all = this.getAll();
-    const enabledPlugins: RegisteredChargePlugin[] = [];
-    
-    for (const entry of all) {
-      if (entry.metadata.requiredComponent) {
-        const enabled = await isComponentEnabled(entry.metadata.requiredComponent);
-        if (!enabled) {
-          continue;
-        }
-      }
-      enabledPlugins.push(entry);
-    }
-    
-    return enabledPlugins;
+    const enabled = await this.listEnabledAsync();
+    return enabled.map((plugin) => ({
+      id: plugin.metadata.id,
+      plugin,
+      metadata: plugin.metadata,
+    }));
   }
 
   getAllIds(): string[] {
-    return Array.from(this.plugins.keys());
-  }
-
-  has(id: string): boolean {
-    return this.plugins.has(id);
+    return this.listIds();
   }
 
   getByTrigger(trigger: TriggerType): ChargePlugin[] {
-    return Array.from(this.plugins.values()).filter(plugin => 
-      plugin.canHandle(trigger)
-    );
+    return this.list().filter((plugin) => plugin.canHandle(trigger));
   }
 
   async getEnabledByTrigger(trigger: TriggerType): Promise<ChargePlugin[]> {
-    const plugins = this.getByTrigger(trigger);
-    const enabledPlugins: ChargePlugin[] = [];
-    
-    for (const plugin of plugins) {
-      if (plugin.metadata.requiredComponent) {
-        const enabled = await isComponentEnabled(plugin.metadata.requiredComponent);
-        if (!enabled) {
-          logger.debug("Skipping charge plugin - required component disabled", {
-            service: "charge-plugin-registry",
-            pluginId: plugin.metadata.id,
-            requiredComponent: plugin.metadata.requiredComponent,
-          });
-          continue;
-        }
-      }
-      enabledPlugins.push(plugin);
-    }
-    
-    return enabledPlugins;
+    const enabled = await this.listEnabledAsync();
+    return enabled.filter((plugin) => plugin.canHandle(trigger));
   }
 
-  async isPluginEnabled(id: string): Promise<boolean> {
-    const plugin = this.get(id);
-    if (!plugin) {
-      return false;
-    }
-    if (!plugin.metadata.requiredComponent) {
-      return true;
-    }
-    return isComponentEnabled(plugin.metadata.requiredComponent);
+  isPluginEnabled(id: string): Promise<boolean> {
+    return this.isEnabledAsync(id);
   }
 }
 

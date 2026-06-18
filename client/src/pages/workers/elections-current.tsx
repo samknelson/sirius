@@ -72,6 +72,10 @@ function ElectionsCurrentContent() {
             </div>
             <dl className="grid grid-cols-2 gap-3 text-sm">
               <div>
+                <dt className="text-muted-foreground">Employer</dt>
+                <dd data-testid="text-current-employer">{current.employerName ?? "Unknown employer"}</dd>
+              </div>
+              <div>
                 <dt className="text-muted-foreground">Policy</dt>
                 <dd data-testid="text-current-policy">{current.policyName ?? "Unknown policy"}</dd>
               </div>

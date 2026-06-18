@@ -49,9 +49,19 @@ export function registerTrustBenefitsRoutes(
         return res.status(400).json({ message: "Invalid trust benefit data", errors: parsed.error.errors });
       }
       
-      const benefit = await storage.trustBenefits.createTrustBenefit(parsed.data);
+      const data = {
+        ...parsed.data,
+        siriusId: typeof parsed.data.siriusId === "string" && parsed.data.siriusId.trim()
+          ? parsed.data.siriusId.trim()
+          : null,
+      };
+      
+      const benefit = await storage.trustBenefits.createTrustBenefit(data);
       res.status(201).json(benefit);
     } catch (error: any) {
+      if (error?.message?.includes("ID already exists")) {
+        return res.status(409).json({ message: "That ID is already in use by another trust benefit" });
+      }
       res.status(500).json({ message: "Failed to create trust benefit" });
     }
   });
@@ -60,9 +70,16 @@ export function registerTrustBenefitsRoutes(
   app.put("/api/trust-benefits/:id", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
       const { id } = req.params;
-      const { name, benefitType, isActive, description } = req.body;
+      const { name, benefitType, isActive, description, siriusId } = req.body;
       
       const updates: Partial<InsertTrustBenefit> = {};
+      
+      if (siriusId !== undefined) {
+        if (siriusId !== null && typeof siriusId !== "string") {
+          return res.status(400).json({ message: "ID must be a string" });
+        }
+        updates.siriusId = typeof siriusId === "string" && siriusId.trim() ? siriusId.trim() : null;
+      }
       
       if (name !== undefined) {
         if (!name || typeof name !== 'string' || !name.trim()) {
@@ -98,7 +115,10 @@ export function registerTrustBenefitsRoutes(
       }
       
       res.json(benefit);
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.message?.includes("ID already exists")) {
+        return res.status(409).json({ message: "That ID is already in use by another trust benefit" });
+      }
       res.status(500).json({ message: "Failed to update trust benefit" });
     }
   });

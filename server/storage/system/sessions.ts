@@ -1,7 +1,7 @@
 import { createNoopValidator } from '../utils/validation';
 import { getClient } from '../transaction-context';
-import { sessions, users } from "@shared/schema";
-import { eq, gt, desc, sql } from "drizzle-orm";
+import { sessions } from "@shared/schema";
+import { eq, sql } from "drizzle-orm";
 import type { StorageLoggingConfig } from "../middleware/logging";
 
 /**
@@ -18,20 +18,9 @@ export interface SessionWithUser {
   userLastName: string | null;
 }
 
-export interface ActiveUsersStats {
-  activeCount: number;
-  recentUsers: Array<{
-    id: string;
-    email: string;
-    firstName: string | null;
-    lastName: string | null;
-  }>;
-}
-
 export interface SessionStorage {
   getSessions(): Promise<SessionWithUser[]>;
   deleteSession(sid: string): Promise<boolean>;
-  getActiveUsersStats(limit?: number): Promise<ActiveUsersStats>;
 }
 
 export function createSessionStorage(): SessionStorage {
@@ -72,42 +61,6 @@ export function createSessionStorage(): SessionStorage {
       return result.length > 0;
     },
 
-    async getActiveUsersStats(limit: number = 4): Promise<ActiveUsersStats> {
-      const client = getClient();
-      const now = new Date();
-      
-      const countResult = await client.execute(sql`
-        SELECT COUNT(DISTINCT u.id) as count
-        FROM sessions s
-        INNER JOIN users u ON u.id::text = (s.sess->'passport'->'user'->'dbUser'->>'id')
-        WHERE s.expire > ${now}
-      `);
-      
-      const activeCount = parseInt((countResult.rows[0] as any)?.count || '0', 10);
-      
-      const recentResult = await client.execute(sql`
-        SELECT DISTINCT ON (u.id)
-          u.id as user_id,
-          u.email as user_email,
-          u.first_name as user_first_name,
-          u.last_name as user_last_name,
-          u.last_login as last_login
-        FROM sessions s
-        INNER JOIN users u ON u.id::text = (s.sess->'passport'->'user'->'dbUser'->>'id')
-        WHERE s.expire > ${now}
-        ORDER BY u.id, u.last_login DESC NULLS LAST
-        LIMIT ${limit}
-      `);
-      
-      const recentUsers = (recentResult.rows as any[]).map(row => ({
-        id: row.user_id,
-        email: row.user_email,
-        firstName: row.user_first_name,
-        lastName: row.user_last_name,
-      }));
-      
-      return { activeCount, recentUsers };
-    },
   };
 
   return storage;

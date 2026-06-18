@@ -1,8 +1,8 @@
 import { eventBus, EventType, type WorkerBanSavedPayload } from "./event-bus";
 import { getWorkerBanNotificationConfig } from "../modules/worker-ban-config";
-import { sendSms } from "./sms-sender";
-import { sendEmail } from "./email-sender";
-import { sendInapp } from "./inapp-sender";
+import { sendSms } from "./comm/senders/sms";
+import { sendEmail } from "./comm/senders/email";
+import { sendInapp } from "./comm/senders/inapp";
 import { storage } from "../storage";
 import { logger } from "../logger";
 import { isComponentEnabledSync, isCacheInitialized } from "./component-cache";
@@ -255,7 +255,12 @@ export function initWorkerBanNotifications(): void {
     return;
   }
 
-  handlerId = eventBus.on(EventType.WORKER_BAN_SAVED, handleWorkerBanSaved);
+  handlerId = eventBus.on({
+    name: "worker-ban-notifications",
+    description: "Notifies relevant staff when a worker ban is created, activated, or expires.",
+    event: EventType.WORKER_BAN_SAVED,
+    handler: handleWorkerBanSaved,
+  });
   
   logger.info(`Worker ban notifications initialized`, { service: SERVICE_NAME });
 }

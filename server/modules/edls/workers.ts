@@ -1,8 +1,7 @@
-import type { Express, Request, Response, NextFunction } from "express";
+import type { Express, Request, Response } from "express";
 import { z } from "zod";
 import { storage } from "../../storage";
 import { requireAccess } from "../../services/access-policy-evaluator";
-import { isWorkerEdlsAvailable } from "./capability";
 import { requireComponent } from "../components";
 
 type RequireAuth = (req: Request, res: Response, next: () => void) => void;
@@ -11,15 +10,6 @@ const setActiveSchema = z.object({
   active: z.boolean(),
 });
 
-async function requireWorkerEdlsCapability(req: Request, res: Response, next: NextFunction) {
-  const available = await isWorkerEdlsAvailable();
-  if (!available) {
-    res.status(404).json({ error: "EDLS feature not available", capability: "workerEdls" });
-    return;
-  }
-  next();
-}
-
 export function registerWorkerEdlsRoutes(app: Express, requireAuth: RequireAuth) {
   const edlsComponent = requireComponent("edls");
 
@@ -27,7 +17,6 @@ export function registerWorkerEdlsRoutes(app: Express, requireAuth: RequireAuth)
     "/api/workers/:id/edls",
     requireAuth,
     edlsComponent,
-    requireWorkerEdlsCapability,
     requireAccess('edls.coordinator', req => req.params.id),
     async (req: Request, res: Response) => {
       try {
@@ -51,7 +40,6 @@ export function registerWorkerEdlsRoutes(app: Express, requireAuth: RequireAuth)
     "/api/workers/:id/edls",
     requireAuth,
     edlsComponent,
-    requireWorkerEdlsCapability,
     requireAccess('edls.coordinator', req => req.params.id),
     async (req: Request, res: Response) => {
       try {

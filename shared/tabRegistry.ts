@@ -18,13 +18,20 @@ export interface TabDefinition {
   policyId?: string;
   permission?: string;
   component?: string;
-  /** Optional capability name; tab is hidden when capability is unavailable */
-  capability?: string;
   parent?: string;
   /** Terminology key for dynamic label substitution (e.g., 'steward', 'union') */
   termKey?: string;
   /** Whether to use plural form for terminology substitution */
   termPlural?: boolean;
+  /**
+   * For a parent tab, navigate to its first ACCESSIBLE child instead of its
+   * own hrefTemplate. Use this when the parent's hrefTemplate points at a child
+   * that some audiences can't access (e.g. Accounting -> Accounts is gated by
+   * worker.ledger, but a worker.mine-only user should land on the ECHP child).
+   * Leave unset for parents whose hrefTemplate already matches their first
+   * child for every audience.
+   */
+  navigateToFirstAccessibleChild?: boolean;
 }
 
 /**
@@ -72,7 +79,8 @@ export type TabEntityType =
   | 'bulk_message'
   | 'ledger_payment_batch'
   | 'facility'
-  | 'trust_election';
+  | 'trust_election'
+  | 'comm';
 
 /**
  * Tab check request for batch access evaluation
@@ -151,6 +159,7 @@ export const workerTabTree: HierarchicalTab[] = [
       { id: 'benefits-history', label: 'History', hrefTemplate: '/workers/{id}/benefits/history', policyId: 'worker.view' },
       { id: 'benefits-eligibility', label: 'Eligibility', hrefTemplate: '/workers/{id}/benefits/eligibility', policyId: 'worker.view' },
       { id: 'benefits-scan', label: 'Scan', hrefTemplate: '/workers/{id}/benefits/scan', permission: 'staff' },
+      { id: 'benefits-exemptions', label: 'Exemptions', hrefTemplate: '/workers/{id}/benefits/exemptions', permission: 'staff', component: 'trust.benefits.eligibility.exemptions' },
     ]
   },
   {
@@ -179,9 +188,16 @@ export const workerTabTree: HierarchicalTab[] = [
     ]
   },
   { id: 'political', label: 'Political', hrefTemplate: '/workers/{id}/political', permission: 'staff', component: 'sitespecific.btu.political' },
-  { id: 'edls', label: 'EDLS', hrefTemplate: '/workers/{id}/edls', policyId: 'edls.coordinator', component: 'edls', capability: 'workerEdls' },
+  { id: 'edls', label: 'EDLS', hrefTemplate: '/workers/{id}/edls', policyId: 'edls.coordinator', component: 'edls' },
   { id: 'sitespecific-freeman-2shift', label: 'Second Shift', hrefTemplate: '/workers/{id}/sitespecific-freeman-2shift', policyId: 'edls.any', component: 'sitespecific.freeman' },
-  { id: 'accounting', label: 'Accounting', hrefTemplate: '/workers/{id}/ledger/accounts', policyId: 'worker.ledger', component: 'ledger' },
+  { id: 'sitespecific-bao-beneficiaries', label: 'Beneficiaries', hrefTemplate: '/workers/{id}/sitespecific/bao/beneficiaries', policyId: 'worker.view', component: 'sitespecific.bao' },
+  {
+    id: 'accounting', label: 'Accounting', hrefTemplate: '/workers/{id}/ledger/accounts', policyId: 'worker.mine', component: 'ledger|sitespecific.bao', navigateToFirstAccessibleChild: true,
+    children: [
+      { id: 'accounts', label: 'Accounts', hrefTemplate: '/workers/{id}/ledger/accounts', policyId: 'worker.ledger', component: 'ledger' },
+      { id: 'sitespecific-bao-echp', label: 'Event Center Hours Purchase', hrefTemplate: '/workers/{id}/ledger/sitespecific/bao/echp', policyId: 'worker.mine', component: 'sitespecific.bao' },
+    ]
+  },
   { id: 'vdb-pension', label: 'VDB Pension', hrefTemplate: '/workers/{id}/vdb-pension', permission: 'staff', component: 'sitespecific.gbhet.pension' },
   { id: 'logs', label: 'Logs', hrefTemplate: '/workers/{id}/logs', permission: 'staff' },
   { id: 'delete', label: 'Delete', hrefTemplate: '/workers/{id}/delete', permission: 'workers.delete' },
@@ -202,8 +218,8 @@ export const employerTabTree: HierarchicalTab[] = [
     id: 'accounting', label: 'Accounting', hrefTemplate: '/employers/{id}/ledger/accounts', policyId: 'employer.ledger', component: 'ledger',
     children: [
       { id: 'accounts', label: 'Accounts', hrefTemplate: '/employers/{id}/ledger/accounts', policyId: 'employer.ledger' },
-      { id: 'payment-methods', label: 'Payment Methods', hrefTemplate: '/employers/{id}/ledger/stripe/payment_methods', policyId: 'employer.ledger' },
-      { id: 'customer', label: 'Customer', hrefTemplate: '/employers/{id}/ledger/stripe/customer', policyId: 'employer.ledger' },
+      { id: 'payment-methods', label: 'Payment Methods', hrefTemplate: '/employers/{id}/ledger/payment_methods', policyId: 'employer.ledger' },
+      { id: 'customer', label: 'Customer', hrefTemplate: '/employers/{id}/ledger/customer', policyId: 'employer.ledger' },
     ]
   },
   { 
@@ -214,6 +230,7 @@ export const employerTabTree: HierarchicalTab[] = [
   },
   { id: 'dispatch', label: 'Dispatch', hrefTemplate: '/employers/{id}/dispatch', permission: 'staff', component: 'dispatch' },
   { id: 'school-attributes', label: 'School Attributes', hrefTemplate: '/employers/{id}/school-attributes', policyId: 'employer.steward.view', component: 'sitespecific.btu' },
+  { id: 'sitespecific-bao-immediate-eligibility', label: 'Immediate Eligibility', hrefTemplate: '/employers/{id}/sitespecific-bao-immediate-eligibility', permission: 'staff', component: 'sitespecific.bao' },
 ];
 
 /**
@@ -340,7 +357,6 @@ export const dispatchJobTabTree: HierarchicalTab[] = [
 export const dispatchJobTypeTabTree: HierarchicalTab[] = [
   { id: 'view', label: 'View', hrefTemplate: '/config/dispatch-job-type/{id}', permission: 'staff', component: 'dispatch' },
   { id: 'edit', label: 'Edit', hrefTemplate: '/config/dispatch-job-type/{id}/edit', permission: 'staff', component: 'dispatch' },
-  { id: 'plugins', label: 'Plugins', hrefTemplate: '/config/dispatch-job-type/{id}/plugins', permission: 'staff', component: 'dispatch' },
   { id: 'notifications', label: 'Notifications', hrefTemplate: '/config/dispatch-job-type/{id}/notifications', permission: 'staff', component: 'dispatch' },
   { id: 'run-settings', label: 'Run Settings', hrefTemplate: '/config/dispatch-job-type/{id}/run-settings', permission: 'staff', component: 'dispatch' },
   { id: 'delete', label: 'Delete', hrefTemplate: '/config/dispatch-job-type/{id}/delete', permission: 'staff', component: 'dispatch' },
@@ -409,6 +425,14 @@ export const ledgerPaymentTabTree: HierarchicalTab[] = [
 export const trustElectionTabTree: HierarchicalTab[] = [
   { id: 'details', label: 'Details', hrefTemplate: '/trust/election/{id}', permission: 'staff', component: 'trust.elections' },
   { id: 'edit', label: 'Edit', hrefTemplate: '/trust/election/{id}/edit', permission: 'staff', component: 'trust.elections' },
+];
+
+/**
+ * Communication record entity tab tree
+ */
+export const commTabTree: HierarchicalTab[] = [
+  { id: 'details', label: 'Details', hrefTemplate: '/comm/{id}', permission: 'staff' },
+  { id: 'edit', label: 'Edit', hrefTemplate: '/comm/{id}/edit', permission: 'staff' },
 ];
 
 /**
@@ -597,6 +621,7 @@ export const tabTreeRegistry: Record<TabEntityType, HierarchicalTab[]> = {
   ledger_payment_batch: ledgerPaymentBatchTabTree,
   facility: facilityTabTree,
   trust_election: trustElectionTabTree,
+  comm: commTabTree,
 };
 
 /**

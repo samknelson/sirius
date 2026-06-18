@@ -55,7 +55,8 @@ interface FieldDefinition {
     | "icon"
     | "checkbox"
     | "select-options"
-    | "color";
+    | "color"
+    | "multi-enum";
   required: boolean;
   placeholder?: string;
   helperText?: string;
@@ -64,6 +65,7 @@ interface FieldDefinition {
   columnWidth?: string;
   dataField?: boolean;
   selectOptionsType?: string;
+  enumOptions?: Array<{ value: string; label?: string }>;
 }
 
 interface OptionsResourceDefinition {
@@ -354,6 +356,27 @@ export function GenericOptionsPage({ optionsType }: GenericOptionsPageProps) {
       const selected = list.find((o) => o.id === (typeof value === "string" ? value : ""));
       return selected ? selected.name : (
         <span className="text-muted-foreground italic">None</span>
+      );
+    }
+    if (field.inputType === "multi-enum") {
+      const arr = Array.isArray(value) ? value : [];
+      if (arr.length === 0) {
+        return <span className="text-muted-foreground italic">None</span>;
+      }
+      const labelMap = new Map(
+        (field.enumOptions ?? []).map((o) => [o.value, o.label ?? o.value]),
+      );
+      return (
+        <div className="flex flex-wrap gap-1">
+          {arr.map((v) => (
+            <span
+              key={String(v)}
+              className="inline-flex items-center rounded border bg-muted px-2 py-0.5 text-xs"
+            >
+              {labelMap.get(String(v)) ?? String(v)}
+            </span>
+          ))}
+        </div>
       );
     }
     if (field.inputType === "select-self") {

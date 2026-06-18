@@ -17,6 +17,7 @@ import {
   User
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { CommTagPicker } from "./CommTagPicker";
 import { useToast } from "@/hooks/use-toast";
 
 interface UserLookupResponse {
@@ -43,6 +44,7 @@ export function CommInApp({ contactId, onSendSuccess }: CommInAppProps) {
   const [bodyHtml, setBodyHtml] = useState("");
   const [linkUrl, setLinkUrl] = useState("");
   const [linkLabel, setLinkLabel] = useState("");
+  const [tagIds, setTagIds] = useState<string[]>([]);
 
   const derivedBody = htmlToPlainText(bodyHtml);
 
@@ -64,7 +66,7 @@ export function CommInApp({ contactId, onSendSuccess }: CommInAppProps) {
   });
 
   const sendInappMutation = useMutation({
-    mutationFn: async (data: { userId: string; title: string; body: string; linkUrl?: string; linkLabel?: string }) => {
+    mutationFn: async (data: { userId: string; title: string; body: string; linkUrl?: string; linkLabel?: string; tagIds?: string[] }) => {
       return await apiRequest("POST", `/api/contacts/${contactId}/inapp`, data);
     },
     onSuccess: () => {
@@ -76,6 +78,7 @@ export function CommInApp({ contactId, onSendSuccess }: CommInAppProps) {
       setBodyHtml("");
       setLinkUrl("");
       setLinkLabel("");
+      setTagIds([]);
       queryClient.invalidateQueries({ queryKey: ["/api/contacts", contactId, "comm"] });
       onSendSuccess?.();
     },
@@ -97,6 +100,7 @@ export function CommInApp({ contactId, onSendSuccess }: CommInAppProps) {
       body: derivedBody.trim(),
       linkUrl: linkUrl.trim() || undefined,
       linkLabel: linkLabel.trim() || undefined,
+      tagIds: tagIds.length > 0 ? tagIds : undefined,
     });
   };
 
@@ -235,6 +239,8 @@ export function CommInApp({ contactId, onSendSuccess }: CommInAppProps) {
                 </p>
               </div>
             </div>
+
+            <CommTagPicker medium="inapp" value={tagIds} onChange={setTagIds} />
           </>
         )}
       </CardContent>

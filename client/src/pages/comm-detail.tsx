@@ -1,6 +1,20 @@
 import { useState } from "react";
 import { useParams, Link } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { CommLayout } from "@/components/layouts/CommLayout";
+import { useCommTabAccess } from "@/hooks/useTabAccess";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -27,6 +41,8 @@ import {
   Inbox,
   Phone,
   Mail,
+  Tag as TagIcon,
+  WifiOff,
 } from "lucide-react";
 import { format } from "date-fns";
 import { formatPhoneNumberForDisplay } from "@/lib/phone-utils";
@@ -35,16 +51,47 @@ import { WinstonLog } from "@/lib/system-types";
 
 export default function CommDetail() {
   const { commId } = useParams<{ commId: string }>();
+  const { toast } = useToast();
   const [moduleFilter, setModuleFilter] = useState<string>("");
   const [operationFilter, setOperationFilter] = useState<string>("");
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
   const [selectedLog, setSelectedLog] = useState<WinstonLog | null>(null);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+  const [isOfflineConfirmOpen, setIsOfflineConfirmOpen] = useState(false);
 
   const { data: comm, isLoading: commLoading, error: commError } = useQuery<CommWithDetails>({
     queryKey: ["/api/comm", commId],
     enabled: !!commId,
+  });
+
+  const { tabs } = useCommTabAccess(commId);
+  const canEdit = tabs.some((t) => t.id === "edit");
+
+  const markOfflineMutation = useMutation({
+    mutationFn: async () => {
+      return await apiRequest("PUT", `/api/comm/${commId}`, { status: "offline" });
+    },
+    onSuccess: () => {
+      toast({
+        title: "Marked as offline mailed",
+        description: "The status was updated to offline.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/comm", commId] });
+      if (comm?.contactId) {
+        queryClient.invalidateQueries({
+          queryKey: ["/api/contacts", comm.contactId, "comm"],
+        });
+      }
+      setIsOfflineConfirmOpen(false);
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Failed to update status",
+        description: error?.message ?? "An unexpected error occurred.",
+        variant: "destructive",
+      });
+    },
   });
 
   const params = new URLSearchParams();
@@ -144,6 +191,17 @@ export default function CommDetail() {
             Failed
           </Badge>
         );
+      case "offline":
+        return (
+          <Badge
+            variant="secondary"
+            title="Delivered out-of-band; delivery state is unverifiable"
+            data-testid="badge-status-offline"
+          >
+            <WifiOff className="w-3 h-3 mr-1" />
+            Offline
+          </Badge>
+        );
       default:
         return (
           <Badge variant="secondary" data-testid="badge-status-default">
@@ -158,41 +216,36 @@ export default function CommDetail() {
     return format(new Date(dateStr), "MMM dd, yyyy HH:mm");
   };
 
-  if (commLoading) {
+  if (commLoading || commError || !comm) {
     return (
-      <div className="p-6">
-        <div className="text-center py-8 text-muted-foreground">Loading communication details...</div>
-      </div>
-    );
-  }
-
-  if (commError || !comm) {
-    return (
-      <div className="p-6">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-center py-8">
-              <AlertCircle className="w-12 h-12 text-destructive mx-auto mb-4" />
-              <p className="text-muted-foreground">Communication record not found.</p>
-              <Button variant="outline" className="mt-4" asChild>
-                <Link href="/">
-                  <ArrowLeft className="w-4 h-4 mr-2" />
-                  Go Back
-                </Link>
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      <CommLayout activeTab="details">
+        {commLoading ? (
+          <div className="text-center py-8 text-muted-foreground">
+            Loading communication details...
+          </div>
+        ) : (
+          <Card>
+            <CardContent className="pt-6">
+              <div className="text-center py-8">
+                <AlertCircle className="w-12 h-12 text-destructive mx-auto mb-4" />
+                <p className="text-muted-foreground">Communication record not found.</p>
+                <Button variant="outline" className="mt-4" asChild>
+                  <Link href="/">
+                    <ArrowLeft className="w-4 h-4 mr-2" />
+                    Go Back
+                  </Link>
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </CommLayout>
     );
   }
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center gap-4">
-        <h1 className="text-xl md:text-2xl font-bold" data-testid="text-page-title">Communication Details</h1>
-      </div>
-
+    <CommLayout activeTab="details">
+      <div className="space-y-6">
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -201,6 +254,24 @@ export default function CommDetail() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
+          {comm.tags && comm.tags.length > 0 && (
+            <div>
+              <Label className="text-muted-foreground">Tags</Label>
+              <div className="flex flex-wrap gap-2 mt-2" data-testid="tags-comm-detail">
+                {comm.tags.map((tag) => (
+                  <Badge
+                    key={tag.id}
+                    variant="secondary"
+                    className="gap-1"
+                    data-testid={`badge-detail-tag-${tag.id}`}
+                  >
+                    <TagIcon className="h-3 w-3" />
+                    {tag.name}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <div>
               <Label className="text-muted-foreground">Medium</Label>
@@ -212,8 +283,21 @@ export default function CommDetail() {
             </div>
             <div>
               <Label className="text-muted-foreground">Status</Label>
-              <div className="mt-1" data-testid="text-comm-status">
+              <div className="mt-1 flex items-center gap-2 flex-wrap" data-testid="text-comm-status">
                 {getStatusBadge(comm.status)}
+                {canEdit &&
+                  comm.medium === "postal" &&
+                  (comm.status === "queued" || comm.status === "sending") && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setIsOfflineConfirmOpen(true)}
+                      data-testid="button-mark-offline-mailed"
+                    >
+                      <WifiOff className="w-3 h-3 mr-1" />
+                      Mark as offline mailed
+                    </Button>
+                  )}
               </div>
             </div>
             <div>
@@ -327,6 +411,18 @@ export default function CommDetail() {
                   </div>
                 )}
               </div>
+              {comm.postalDetails.body && (
+                <div>
+                  <Label className="text-muted-foreground">Letter Body</Label>
+                  <iframe
+                    title="Letter body preview"
+                    sandbox=""
+                    srcDoc={comm.postalDetails.body}
+                    className="mt-1 w-full h-96 rounded-md border bg-white"
+                    data-testid="iframe-postal-body"
+                  />
+                </div>
+              )}
               {comm.postalDetails.fromName && (
                 <div>
                   <Label className="text-muted-foreground">From</Label>
@@ -574,6 +670,35 @@ export default function CommDetail() {
           )}
         </DialogContent>
       </Dialog>
-    </div>
+
+      <AlertDialog open={isOfflineConfirmOpen} onOpenChange={setIsOfflineConfirmOpen}>
+        <AlertDialogContent data-testid="dialog-confirm-offline-mailed">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Mark as offline mailed?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This sets the status to "offline", meaning the comm was delivered
+              out-of-band (e.g. printed and dropped in the mail). Delivery
+              state will be unverifiable afterward.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-offline-mailed">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                markOfflineMutation.mutate();
+              }}
+              disabled={markOfflineMutation.isPending}
+              data-testid="button-confirm-offline-mailed"
+            >
+              {markOfflineMutation.isPending ? "Saving..." : "Mark as offline mailed"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      </div>
+    </CommLayout>
   );
 }

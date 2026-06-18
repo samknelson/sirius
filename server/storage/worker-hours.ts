@@ -207,7 +207,6 @@ export function createWorkerHoursStorage(
           e.sirius_id AS "employer.siriusId",
           e.name AS "employer.name",
           e.is_active AS "employer.isActive",
-          e.stripe_customer_id AS "employer.stripeCustomerId",
           es.id AS "employmentStatus.id",
           es.name AS "employmentStatus.name",
           es.code AS "employmentStatus.code",
@@ -234,7 +233,6 @@ export function createWorkerHoursStorage(
           siriusId: row['employer.siriusId'],
           name: row['employer.name'],
           isActive: row['employer.isActive'],
-          stripeCustomerId: row['employer.stripeCustomerId'],
         },
         employmentStatus: {
           id: row['employmentStatus.id'],
@@ -279,7 +277,6 @@ export function createWorkerHoursStorage(
           e.sirius_id AS "employer.siriusId",
           e.name AS "employer.name",
           e.is_active AS "employer.isActive",
-          e.stripe_customer_id AS "employer.stripeCustomerId",
           es.id AS "employmentStatus.id",
           es.name AS "employmentStatus.name",
           es.code AS "employmentStatus.code",
@@ -306,7 +303,6 @@ export function createWorkerHoursStorage(
           siriusId: row['employer.siriusId'],
           name: row['employer.name'],
           isActive: row['employer.isActive'],
-          stripeCustomerId: row['employer.stripeCustomerId'],
         },
         employmentStatus: {
           id: row['employmentStatus.id'],
@@ -333,7 +329,6 @@ export function createWorkerHoursStorage(
           e.sirius_id AS "employer.siriusId",
           e.name AS "employer.name",
           e.is_active AS "employer.isActive",
-          e.stripe_customer_id AS "employer.stripeCustomerId",
           es.id AS "employmentStatus.id",
           es.name AS "employmentStatus.name",
           es.code AS "employmentStatus.code",
@@ -344,7 +339,7 @@ export function createWorkerHoursStorage(
         LEFT JOIN options_employment_status es ON wh.employment_status_id = es.id
         WHERE wh.worker_id = ${workerId}
         GROUP BY wh.employer_id, wh.year, wh.month, wh.employment_status_id,
-                 e.id, e.sirius_id, e.name, e.is_active, e.stripe_customer_id,
+                 e.id, e.sirius_id, e.name, e.is_active,
                  es.id, es.name, es.code, es.employed, es.description
         ORDER BY wh.year DESC, wh.month DESC, wh.employer_id
       `);
@@ -371,7 +366,6 @@ export function createWorkerHoursStorage(
             siriusId: row['employer.siriusId'],
             name: row['employer.name'],
             isActive: row['employer.isActive'],
-            stripeCustomerId: row['employer.stripeCustomerId'],
           },
           employmentStatus: {
             id: row['employmentStatus.id'],

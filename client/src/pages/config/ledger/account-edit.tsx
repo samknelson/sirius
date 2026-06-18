@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "wouter";
 import { usePageTitle } from "@/contexts/PageTitleContext";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -9,10 +9,25 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { Save } from "lucide-react";
 import { LedgerAccountLayout, useLedgerAccountLayout } from "@/components/layouts/LedgerAccountLayout";
+import { pluginSearch, pluginConfigsQueryKey } from "@/plugins/_core/manifest";
+
+const NO_GATEWAY = "none";
+
+interface PaymentGatewayConfig {
+  id: string;
+  name: string;
+}
 
 function AccountEditContent() {
   usePageTitle("Edit Account");
@@ -23,9 +38,22 @@ function AccountEditContent() {
   const [editName, setEditName] = useState(account.name);
   const [editDescription, setEditDescription] = useState(account.description || "");
   const [editIsActive, setEditIsActive] = useState(account.isActive);
+  const [editGatewayConfigId, setEditGatewayConfigId] = useState(
+    account.gatewayConfigId ?? NO_GATEWAY
+  );
+
+  const { data: gatewayConfigs = [], isLoading: gatewaysLoading } = useQuery<PaymentGatewayConfig[]>({
+    queryKey: [...pluginConfigsQueryKey("payment-gateway"), "search"],
+    queryFn: () => pluginSearch<"payment-gateway", PaymentGatewayConfig>("payment-gateway"),
+  });
 
   const updateAccountMutation = useMutation({
-    mutationFn: async (data: { name: string; description?: string; isActive: boolean }) => {
+    mutationFn: async (data: {
+      name: string;
+      description?: string;
+      isActive: boolean;
+      gatewayConfigId: string | null;
+    }) => {
       return await apiRequest("PUT", `/api/ledger/accounts/${account.id}`, data);
     },
     onSuccess: () => {
@@ -51,7 +79,8 @@ function AccountEditContent() {
       updateAccountMutation.mutate({ 
         name: editName.trim(), 
         description: editDescription.trim() || undefined,
-        isActive: editIsActive 
+        isActive: editIsActive,
+        gatewayConfigId: editGatewayConfigId === NO_GATEWAY ? null : editGatewayConfigId,
       });
     }
   };
@@ -101,6 +130,43 @@ function AccountEditContent() {
                 className="w-full min-h-[100px]"
                 data-testid="input-edit-account-description"
               />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-account-gateway" className="text-sm font-medium text-foreground">
+                Payment Gateway
+              </Label>
+              <Select
+                value={editGatewayConfigId}
+                onValueChange={setEditGatewayConfigId}
+                disabled={gatewaysLoading}
+              >
+                <SelectTrigger
+                  id="edit-account-gateway"
+                  className="w-full"
+                  data-testid="select-account-gateway"
+                >
+                  <SelectValue
+                    placeholder={gatewaysLoading ? "Loading gateways..." : "Select a payment gateway"}
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_GATEWAY} data-testid="select-gateway-option-none">
+                    None
+                  </SelectItem>
+                  {gatewayConfigs.map((gateway) => (
+                    <SelectItem
+                      key={gateway.id}
+                      value={gateway.id}
+                      data-testid={`select-gateway-option-${gateway.id}`}
+                    >
+                      {gateway.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Choose which payment gateway processes payments for this account.
+              </p>
             </div>
             <div className="flex items-center space-x-2">
               <Checkbox

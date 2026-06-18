@@ -2,7 +2,7 @@ import type { Express, Request, Response } from "express";
 import { requireAccess } from "../services/access-policy-evaluator";
 import { z } from "zod";
 import { serviceRegistry } from "../services/service-registry";
-import type { SmsTransport } from "../services/providers/sms";
+import type { SmsTransport } from "../services/comm/providers/sms";
 
 export function registerTwilioRoutes(app: Express) {
   app.get(

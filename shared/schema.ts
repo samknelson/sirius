@@ -6,6 +6,10 @@ import { isValidYmd, type Ymd } from "./utils/date";
 
 export {
   optionsDispatchJobType,
+  pluginConfigsDispatch,
+  insertPluginConfigDispatchSchema,
+  type InsertPluginConfigDispatch,
+  type PluginConfigDispatch,
   dispatchJobs,
   dispatchJobStatusEnum,
   insertDispatchJobTypeSchema,
@@ -231,6 +235,7 @@ export const workers = pgTable("workers", {
   denormHomeEmployerId: varchar("denorm_home_employer_id").references(() => employers.id, { onDelete: 'set null' }),
   denormEmployerIds: varchar("denorm_employer_ids").array(),
   bargainingUnitId: varchar("bargaining_unit_id").references(() => bargainingUnits.id, { onDelete: 'set null' }),
+  data: jsonb("data"),
 });
 
 export const workerBans = pgTable("worker_bans", {
@@ -246,12 +251,11 @@ export const workerBans = pgTable("worker_bans", {
 
 export const employers = pgTable("employers", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  siriusId: serial("sirius_id").notNull().unique(),
+  siriusId: varchar("sirius_id").unique(),
   name: text("name").notNull(),
   isActive: boolean("is_active").default(true).notNull(),
   typeId: varchar("type_id").references(() => optionsEmployerType.id, { onDelete: 'set null' }),
   industryId: varchar("industry_id").references(() => optionsIndustry.id, { onDelete: 'set null' }),
-  stripeCustomerId: text("stripe_customer_id"),
   denormPolicyId: varchar("denorm_policy_id").references(() => policies.id, { onDelete: 'set null' }),
 });
 
@@ -315,6 +319,7 @@ export const trustProviderContacts = pgTable("trust_provider_contacts", {
 
 export const trustBenefits = pgTable("trust_benefits", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  siriusId: varchar("sirius_id").unique(),
   name: text("name").notNull(),
   benefitType: varchar("benefit_type").references(() => optionsTrustBenefitType.id, { onDelete: 'set null' }),
   isActive: boolean("is_active").default(true).notNull(),
@@ -398,6 +403,7 @@ export const optionsWorkerIdType = pgTable("options_worker_id_type", {
 export const optionsTrustBenefitType = pgTable("options_trust_benefit_type", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
+  siriusId: varchar("sirius_id", { length: 255 }).unique(),
   sequence: integer("sequence").notNull().default(0),
   data: jsonb("data"),
 });
@@ -483,6 +489,14 @@ export const optionsTrustProviderType = pgTable("options_trust_provider_type", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
   description: text("description"),
+  data: jsonb("data"),
+});
+
+export const optionsCommTags = pgTable("options_comm_tags", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  siriusId: varchar("sirius_id", { length: 255 }).unique(),
   data: jsonb("data"),
 });
 
@@ -615,15 +629,53 @@ export const bookmarks = pgTable("bookmarks", {
   createdAt: timestamp("created_at").default(sql`now()`).notNull(),
 });
 
-export const ledgerStripePaymentMethods = pgTable("ledger_stripe_paymentmethods", {
+export const ledgerPaymentMethods = pgTable("ledger_paymentmethods", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   entityType: text("entity_type").notNull(),
   entityId: varchar("entity_id").notNull(),
   paymentMethod: text("payment_method").notNull(),
+  // Required link to the payment-gateway plugin config this method belongs to.
+  // FK targets the payment-gateway subsidiary (a type-safe FK target) rather
+  // than the polymorphic plugin_configs id. NOT NULL — a payment method is
+  // unusable without knowing its gateway. ON DELETE RESTRICT prevents deleting
+  // a gateway config that still has payment methods attached.
+  gatewayConfigId: varchar("gateway_config_id").notNull().references(() => pluginConfigsPaymentGateway.id, { onDelete: 'restrict' }),
+  // Generic, gateway-agnostic opaque settings blob.
+  data: jsonb("data").default('{}'),
   isActive: boolean("is_active").default(true).notNull(),
   isDefault: boolean("is_default").default(false).notNull(),
   createdAt: timestamp("created_at").default(sql`now()`).notNull(),
 });
+
+// Per-(entity, gateway config) provider customer mapping. Replaces the old
+// single `employers.stripe_customer_id` column so an entity can have a distinct
+// provider customer reference per gateway config (e.g. two Stripe accounts).
+export const ledgerGatewayCustomers = pgTable("ledger_gateway_customers", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  entityType: text("entity_type").notNull(),
+  entityId: varchar("entity_id").notNull(),
+  // FK targets the payment-gateway subsidiary (a type-safe FK target) rather
+  // than the polymorphic plugin_configs base. ON DELETE RESTRICT mirrors the
+  // payment-method link: a gateway config with customer mappings cannot be
+  // deleted out from under them.
+  gatewayConfigId: varchar("gateway_config_id").notNull().references(() => pluginConfigsPaymentGateway.id, { onDelete: 'restrict' }),
+  // Opaque provider customer reference (e.g. Stripe `cus_...`).
+  customerRef: text("customer_ref").notNull(),
+  createdAt: timestamp("created_at").default(sql`now()`).notNull(),
+}, (table) => ({
+  entityGatewayUnique: unique("ledger_gateway_customers_entity_gateway_unique").on(
+    table.entityType,
+    table.entityId,
+    table.gatewayConfigId,
+  ),
+}));
+
+export const insertLedgerGatewayCustomerSchema = createInsertSchema(ledgerGatewayCustomers).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertLedgerGatewayCustomer = z.infer<typeof insertLedgerGatewayCustomerSchema>;
+export type LedgerGatewayCustomer = typeof ledgerGatewayCustomers.$inferSelect;
 
 export const ledgerAccounts = pgTable("ledger_accounts", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -632,6 +684,11 @@ export const ledgerAccounts = pgTable("ledger_accounts", {
   currencyCode: text("currency_code").default('USD').notNull(),
   isActive: boolean("is_active").default(true).notNull(),
   data: jsonb("data"),
+  // Optional link to the payment-gateway plugin config this account uses. The
+  // FK targets the payment-gateway subsidiary (a type-safe FK target) rather
+  // than the polymorphic plugin_configs base, and is ON DELETE SET NULL so
+  // deleting the gateway config simply unlinks the account.
+  gatewayConfigId: varchar("gateway_config_id").references(() => pluginConfigsPaymentGateway.id, { onDelete: 'set null' }),
 });
 
 export const ledgerPayments = pgTable("ledger_payments", {
@@ -931,6 +988,8 @@ export {
 
 export * from "./schema/sitespecific/gbhet-pension/schema";
 
+export * from "./schema/sitespecific/bao/schema";
+
 export {
   sitespecificFreemanCrewleads,
   insertFreemanCrewleadSchema,
@@ -1003,6 +1062,17 @@ export {
 } from "./schema/trust/elections-schema";
 
 export {
+  trustBenefitEligibilityExemptions,
+  insertTrustBenefitEligibilityExemptionSchema,
+  createTrustBenefitEligibilityExemptionRequestSchema,
+  updateTrustBenefitEligibilityExemptionRequestSchema,
+  type TrustBenefitEligibilityExemption,
+  type InsertTrustBenefitEligibilityExemption,
+  type CreateTrustBenefitEligibilityExemptionRequest,
+  type UpdateTrustBenefitEligibilityExemptionRequest,
+} from "./schema/trust/eligibility-exemptions-schema";
+
+export {
   edlsSheets,
   edlsSheetStatusEnum,
   insertEdlsSheetsSchema,
@@ -1065,6 +1135,7 @@ export const insertContactSchema = createInsertSchema(contacts).omit({
 export const insertWorkerSchema = createInsertSchema(workers).omit({
   id: true,
   contactId: true, // Contact will be managed automatically
+  data: true, // Generic JSON blob; written only through dedicated storage methods
 });
 
 export const workerBanTypeEnum = ["dispatch"] as const;
@@ -1158,7 +1229,7 @@ export const insertBookmarkSchema = createInsertSchema(bookmarks).omit({
   createdAt: true,
 });
 
-export const insertLedgerStripePaymentMethodSchema = createInsertSchema(ledgerStripePaymentMethods).omit({
+export const insertLedgerPaymentMethodSchema = createInsertSchema(ledgerPaymentMethods).omit({
   id: true,
   createdAt: true,
 });
@@ -1284,6 +1355,13 @@ export const insertEventTypeSchema = createInsertSchema(optionsEventType).omit({
   id: true,
 });
 
+export const insertCommTagSchema = createInsertSchema(optionsCommTags).omit({
+  id: true,
+});
+
+export type OptionsCommTag = typeof optionsCommTags.$inferSelect;
+export type InsertOptionsCommTag = z.infer<typeof insertCommTagSchema>;
+
 export const insertWorkerWsSchema = createInsertSchema(optionsWorkerWs).omit({
   id: true,
 }).extend({
@@ -1341,7 +1419,12 @@ export type InsertContact = z.infer<typeof insertContactSchema>;
 export type Contact = typeof contacts.$inferSelect;
 
 export type InsertWorker = z.infer<typeof insertWorkerSchema>;
-export type Worker = typeof workers.$inferSelect;
+// `data` (jsonb) is an internal storage blob (e.g. sitespecific.bao.beneficiaries,
+// which holds PII). It is deliberately excluded from the public Worker type and
+// stripped in the storage layer so it never leaks through generic worker
+// endpoints — it is only ever accessed via the dedicated getData/setData
+// accessors and the component-gated beneficiaries storage namespace.
+export type Worker = Omit<typeof workers.$inferSelect, "data">;
 
 export type InsertWorkerBan = z.infer<typeof insertWorkerBanSchema>;
 export type WorkerBan = typeof workerBans.$inferSelect;
@@ -1391,8 +1474,8 @@ export type PhoneNumber = typeof phoneNumbers.$inferSelect;
 export type InsertBookmark = z.infer<typeof insertBookmarkSchema>;
 export type Bookmark = typeof bookmarks.$inferSelect;
 
-export type InsertLedgerStripePaymentMethod = z.infer<typeof insertLedgerStripePaymentMethodSchema>;
-export type LedgerStripePaymentMethod = typeof ledgerStripePaymentMethods.$inferSelect;
+export type InsertLedgerPaymentMethod = z.infer<typeof insertLedgerPaymentMethodSchema>;
+export type LedgerPaymentMethod = typeof ledgerPaymentMethods.$inferSelect;
 
 export type InsertLedgerAccount = z.infer<typeof insertLedgerAccountSchema>;
 export type LedgerAccount = typeof ledgerAccounts.$inferSelect;
@@ -1660,32 +1743,150 @@ export const employerMonthlyPluginConfigSchema = z.record(
 export type EmployerMonthlyPluginConfig = z.infer<typeof employerMonthlyPluginConfigSchema>;
 
 // Charge Plugin Configs
-export const chargePluginConfigs = pgTable("charge_plugin_configs", {
+//
+// Charge no longer owns a dedicated table (Task #355). Charge configs live in
+// the unified `plugin_configs` (plugin_kind = 'charge') base table plus the
+// `plugin_configs_charge` subsidiary (scope / employer / account). This type is
+// the resolved, composed shape every charge caller consumes: base columns with
+// the base `data` blob surfaced as `settings`, joined with the subsidiary's
+// relational dimensions. The charge storage namespace maps the two rows into
+// this shape so callers (executor, crons, wizards) keep working unchanged.
+export type ChargePluginConfig = {
+  id: string;
+  pluginId: string;
+  name: string | null;
+  enabled: boolean;
+  scope: string;
+  employerId: string | null;
+  account: string | null;
+  settings: unknown;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+// ---------------------------------------------------------------------------
+// Unified plugin configuration storage (Task #353 — additive foundation)
+//
+// A single base table (`plugin_configs`) holds the fields common to every
+// plugin kind's configuration row. Per-kind relational / queryable dimensions
+// live in subsidiary tables keyed 1:1 by the base row id (class-table
+// inheritance): each subsidiary's primary key IS a cascade-delete FK back to
+// `plugin_configs.id`. Kind-specific opaque settings stay in the base `data`
+// jsonb column.
+//
+// This is the additive foundation only — no kind has been cut over to it yet;
+// the legacy per-kind config tables remain the source of truth.
+// ---------------------------------------------------------------------------
+export const pluginConfigs = pgTable("plugin_configs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  pluginId: text("plugin_id").notNull(), // e.g., "hour-fixed", "payment-percentage"
+  // PluginKind discriminator (e.g. "charge", "dispatch-eligibility",
+  // "trust-eligibility", "dashboard", "client-injection").
+  pluginKind: varchar("plugin_kind").notNull(),
+  pluginId: text("plugin_id").notNull(), // the registered plugin's id within its kind
   enabled: boolean("enabled").default(false).notNull(),
-  scope: varchar("scope").notNull(), // 'global' or 'employer'
-  employerId: varchar("employer_id").references(() => employers.id, { onDelete: 'cascade' }),
-  settings: jsonb("settings").default('{}'),
+  name: text("name"), // optional descriptive name for this configuration
+  // Optional, unique, editable stable identifier. Manual rows leave it null
+  // (multiple NULLs are allowed by the unique constraint); component-owned
+  // rows use the scheme `auto.<componentId>.<localId>` so the component
+  // lifecycle can reconcile them by sirius_id.
+  siriusId: varchar("sirius_id").unique(),
+  // CORE ordering dimension (deterministic listing / precedence) shared by
+  // every kind — intentionally on the base table, not a subsidiary.
+  ordering: integer("ordering").default(0).notNull(),
+  data: jsonb("data").default('{}'), // kind-specific opaque settings blob
   createdAt: timestamp("created_at").default(sql`now()`).notNull(),
   updatedAt: timestamp("updated_at").default(sql`now()`).notNull(),
-}, (table) => ({
-  // Unique constraint: one config per plugin per employer (or one global per plugin)
-  uniquePluginScope: unique().on(table.pluginId, table.scope, table.employerId),
-}));
+});
 
-export const insertChargePluginConfigSchema = createInsertSchema(chargePluginConfigs)
+export const insertPluginConfigSchema = createInsertSchema(pluginConfigs)
   .omit({
     id: true,
     createdAt: true,
     updatedAt: true,
   })
   .extend({
-    settings: z.unknown().optional().default({}),
+    data: z.unknown().optional().default({}),
   });
 
-export type InsertChargePluginConfig = z.infer<typeof insertChargePluginConfigSchema>;
-export type ChargePluginConfig = typeof chargePluginConfigs.$inferSelect;
+export type InsertPluginConfig = z.infer<typeof insertPluginConfigSchema>;
+export type PluginConfig = typeof pluginConfigs.$inferSelect;
+
+// Charge subsidiary — relational dimensions hoisted out of the opaque settings
+// blob (scope / employer / account). Mirrors legacy charge_plugin_configs.
+export const pluginConfigsCharge = pgTable("plugin_configs_charge", {
+  id: varchar("id").primaryKey().references(() => pluginConfigs.id, { onDelete: 'cascade' }),
+  scope: varchar("scope").notNull(), // 'global' or 'employer'
+  employerId: varchar("employer_id").references(() => employers.id, { onDelete: 'cascade' }),
+  // Required FK: every charge config must target a ledger account. Delete is
+  // RESTRICT so a referenced account cannot be removed out from under a config
+  // (which would otherwise violate this NOT NULL).
+  account: varchar("account").notNull().references(() => ledgerAccounts.id, { onDelete: 'restrict' }),
+});
+
+export const insertPluginConfigChargeSchema = createInsertSchema(pluginConfigsCharge);
+export type InsertPluginConfigCharge = z.infer<typeof insertPluginConfigChargeSchema>;
+export type PluginConfigCharge = typeof pluginConfigsCharge.$inferSelect;
+
+// Trust benefit eligibility subsidiary — relational dimensions hoisted out of
+// the policies.data blob (policy / benefit / applies_to).
+export const pluginConfigsBenefitEligibility = pgTable("plugin_configs_benefit_eligibility", {
+  id: varchar("id").primaryKey().references(() => pluginConfigs.id, { onDelete: 'cascade' }),
+  policy: varchar("policy").references(() => policies.id, { onDelete: 'cascade' }),
+  benefit: varchar("benefit").references(() => trustBenefits.id, { onDelete: 'cascade' }),
+  appliesTo: varchar("applies_to"),
+});
+
+export const insertPluginConfigBenefitEligibilitySchema = createInsertSchema(pluginConfigsBenefitEligibility);
+export type InsertPluginConfigBenefitEligibility = z.infer<typeof insertPluginConfigBenefitEligibilitySchema>;
+export type PluginConfigBenefitEligibility = typeof pluginConfigsBenefitEligibility.$inferSelect;
+
+// Dashboard subsidiary — role-based visibility hoisted out of the opaque
+// settings blob. Each dashboard config targets exactly one role; a viewer
+// sees the widget only when they hold that role. The role FK is RESTRICT so a
+// role still referenced by a dashboard config cannot be deleted out from under
+// it (which would otherwise leave the config with no subsidiary row and make it
+// vanish from the inner-joined search/render path).
+export const pluginConfigsDashboard = pgTable("plugin_configs_dashboard", {
+  id: varchar("id").primaryKey().references(() => pluginConfigs.id, { onDelete: 'cascade' }),
+  role: varchar("role").notNull().references(() => roles.id, { onDelete: 'restrict' }),
+});
+
+export const insertPluginConfigDashboardSchema = createInsertSchema(pluginConfigsDashboard);
+export type InsertPluginConfigDashboard = z.infer<typeof insertPluginConfigDashboardSchema>;
+export type PluginConfigDashboard = typeof pluginConfigsDashboard.$inferSelect;
+
+// Payment-gateway subsidiary — exists primarily as a type-safe FK target so
+// other tables (e.g. ledger_accounts.gateway_config_id) can reference a
+// specific payment-gateway config without pointing at the polymorphic
+// plugin_configs base. It carries no columns of its own yet beyond the shared
+// id FK (meaningful columns may be added later). Every payment-gateway config
+// gets exactly one row — created by the adapter's toRows on write and by an
+// idempotent boot-time backfill for pre-existing configs — so the generic
+// inner-joined search keeps returning them.
+export const pluginConfigsPaymentGateway = pgTable("plugin_configs_payment_gateway", {
+  id: varchar("id").primaryKey().references(() => pluginConfigs.id, { onDelete: 'cascade' }),
+});
+
+export const insertPluginConfigPaymentGatewaySchema = createInsertSchema(pluginConfigsPaymentGateway);
+export type InsertPluginConfigPaymentGateway = z.infer<typeof insertPluginConfigPaymentGatewaySchema>;
+export type PluginConfigPaymentGateway = typeof pluginConfigsPaymentGateway.$inferSelect;
+
+// Event-notifier subsidiary — hoists the per-config "active media" selection
+// out of the opaque settings blob into a real, filterable envelope column.
+// A plugin declares which media it *can* send through (supportedMedia); the
+// admin picks the active subset per config, persisted here as a comma-joined
+// list (e.g. "email,sms"). Every event-notifier config gets exactly one row —
+// created by the adapter's toRows on write and by an idempotent boot-time
+// backfill for pre-existing configs — so the generic inner-joined search keeps
+// returning them.
+export const pluginConfigsEventNotifier = pgTable("plugin_configs_event_notifier", {
+  id: varchar("id").primaryKey().references(() => pluginConfigs.id, { onDelete: 'cascade' }),
+  media: text("media"),
+});
+
+export const insertPluginConfigEventNotifierSchema = createInsertSchema(pluginConfigsEventNotifier);
+export type InsertPluginConfigEventNotifier = z.infer<typeof insertPluginConfigEventNotifierSchema>;
+export type PluginConfigEventNotifier = typeof pluginConfigsEventNotifier.$inferSelect;
 
 // Base Rate History Schema - for use in charge plugins
 export const baseRateHistoryEntrySchema = z.object({
@@ -1868,6 +2069,7 @@ export const commPostal = pgTable("comm_postal", {
   fromZip: text("from_zip"),
   fromCountry: text("from_country").default('US'),
   description: text("description"),
+  body: text("body"),
   fileUrl: text("file_url"),
   templateId: varchar("template_id"),
   mergeVariables: jsonb("merge_variables"),
@@ -1955,6 +2157,20 @@ export const insertCommInappSchema = createInsertSchema(commInapp, {
 
 export type InsertCommInapp = z.infer<typeof insertCommInappSchema>;
 export type CommInapp = typeof commInapp.$inferSelect;
+
+// Communications - Tag Links (many-to-many between comm and options_comm_tags)
+export const commTags = pgTable("comm_tags", {
+  commId: varchar("comm_id").notNull().references(() => comm.id, { onDelete: 'cascade' }),
+  commTagId: varchar("comm_tag_id").notNull().references(() => optionsCommTags.id, { onDelete: 'cascade' }),
+}, (table) => ({
+  pk: primaryKey({ columns: [table.commId, table.commTagId] }),
+  commTagIdIdx: index("comm_tags_comm_tag_id_idx").on(table.commTagId),
+}));
+
+export const insertCommTagLinkSchema = createInsertSchema(commTags);
+
+export type InsertCommTagLink = z.infer<typeof insertCommTagLinkSchema>;
+export type CommTagLink = typeof commTags.$inferSelect;
 
 // Flood control table for rate limiting
 export const flood = pgTable("flood", {

@@ -3,6 +3,7 @@ import { storage } from '../../storage/index.js';
 import { getChargePlugin, getAllChargePlugins } from '../../plugins/ledger/charge/registry.js';
 import type { LedgerEntryVerification } from '../../plugins/ledger/charge/types.js';
 import type { ChargePluginConfig } from '@shared/schema';
+import { toChargeConfig } from '../../plugins/ledger/charge/charge-config-resolution.js';
 
 interface LedgerIntegrityConfig extends ReportConfig {
   chargePlugins?: string[];
@@ -117,7 +118,9 @@ export class ReportLedgerIntegrity extends WizardReport {
     const entries = await storage.ledger.entries.getByFilter(filter);
     const total = entries.length;
 
-    const pluginConfigs = await storage.chargePluginConfigs.getAll();
+    const pluginConfigs = (await storage.pluginConfigs.search("charge", {}))
+      .map(toChargeConfig)
+      .sort((a, b) => a.pluginId.localeCompare(b.pluginId));
     
     const configsByPlugin = new Map<string, ChargePluginConfig[]>();
     for (const cfg of pluginConfigs) {

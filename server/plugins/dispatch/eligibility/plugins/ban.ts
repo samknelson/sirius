@@ -1,3 +1,4 @@
+import { registerDispatchEligPlugin } from "../registry";
 import { logger } from "../../../../logger";
 import { createWorkerBanStorage } from "../../../../storage/worker-bans";
 import { createWorkerDispatchEligDenormStorage } from "../../../../storage/dispatch/worker-elig-denorm";
@@ -28,7 +29,7 @@ export const dispatchBanPlugin: DispatchEligPlugin = {
   id: "dispatch_ban",
   name: "Worker Ban",
   description: "Excludes workers who have an active dispatch ban",
-  componentId: "dispatch.ban",
+  requiredComponent: "dispatch.ban",
   backfill: () => backfillDispatchBanEligibility(),
 
   eventHandlers: [
@@ -151,3 +152,5 @@ export async function backfillDispatchBanEligibility(): Promise<{ workersProcess
 
   return { workersProcessed: uniqueWorkerIds.length, entriesCreated };
 }
+
+registerDispatchEligPlugin(dispatchBanPlugin);

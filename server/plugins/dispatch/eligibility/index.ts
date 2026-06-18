@@ -1,35 +1,109 @@
+import { z } from "zod";
 import { logger } from "../../../logger";
+import {
+  registerPluginKind,
+  registerPluginConfigAdapter,
+  baseConfigSchemaShape,
+  baseSearchSchemaShape,
+} from "../../_core";
 import { dispatchEligPluginRegistry } from "./registry";
-import { dispatchBanPlugin } from "./plugins/ban";
-import { dispatchDncPlugin } from "./plugins/dnc";
-import { dispatchEbaPlugin } from "./plugins/eba";
-import { dispatchHfePlugin } from "./plugins/hfe";
-import { dispatchSkillPlugin } from "./plugins/skill";
-import { dispatchStatusPlugin } from "./plugins/status";
-import { dispatchWsPlugin } from "./plugins/ws";
-import { dispatchSingleshiftPlugin } from "./plugins/singleshift";
-import { dispatchAcceptedPlugin } from "./plugins/accepted";
-import { dispatchHtaHomeEmployerPlugin } from "./plugins/hta-home-employer";
 
-export function registerDispatchEligPlugins(): void {
-  dispatchEligPluginRegistry.register(dispatchBanPlugin);
-  dispatchEligPluginRegistry.register(dispatchDncPlugin);
-  dispatchEligPluginRegistry.register(dispatchEbaPlugin);
-  dispatchEligPluginRegistry.register(dispatchHfePlugin);
-  dispatchEligPluginRegistry.register(dispatchSkillPlugin);
-  dispatchEligPluginRegistry.register(dispatchStatusPlugin);
-  dispatchEligPluginRegistry.register(dispatchWsPlugin);
-  dispatchEligPluginRegistry.register(dispatchSingleshiftPlugin);
-  dispatchEligPluginRegistry.register(dispatchAcceptedPlugin);
-  dispatchEligPluginRegistry.register(dispatchHtaHomeEmployerPlugin);
+export {
+  dispatchEligPluginRegistry,
+  registerDispatchEligPlugin,
+} from "./registry";
+
+let kindRegistered = false;
+function registerDispatchEligKind(): void {
+  if (kindRegistered) return;
+  registerPluginKind({
+    kind: "dispatch-eligibility",
+    registry: dispatchEligPluginRegistry,
+    label: "Dispatch Eligibility",
+    description:
+      "Rules that determine which workers are eligible for dispatch jobs.",
+    // Mirror legacy auth on /api/dispatch-eligibility-plugins:
+    // requireComponent("dispatch") + requireAccess("admin").
+    requiredComponent: "dispatch",
+    requiredPolicy: "admin",
+    sortEntries: (a, b) => a.id.localeCompare(b.id),
+    // Backs POST /api/plugins/dispatch-eligibility/:id/validate-config.
+    // Validates the supplied config against the plugin's JSON Schema.
+    validateConfig: async (plugin, config) => {
+      if (!plugin.configSchema) return { valid: true };
+      const { validateAgainstSchema } = await import("../../../lib/json-schema-validator");
+      const result = validateAgainstSchema(plugin.configSchema, config);
+      if (result.valid) return { valid: true };
+      return { valid: false, errors: result.errors ?? ["Invalid configuration"] };
+    },
+  });
+  registerPluginConfigAdapter({
+    pluginKind: "dispatch-eligibility",
+    configSchema: z.object({
+      ...baseConfigSchemaShape,
+      jobType: z.string().nullable().optional(),
+    }),
+    searchParamsSchema: z.object({
+      ...baseSearchSchemaShape,
+      jobType: z.string().nullable().optional(),
+    }),
+    toRows: (input) => ({
+      base: {
+        pluginKind: "dispatch-eligibility",
+        pluginId: input.pluginId,
+        enabled: input.enabled,
+        name: input.name,
+        ordering: input.ordering,
+        data: input.data,
+      },
+      subsidiary: {
+        jobType: input.jobType ?? null,
+      },
+    }),
+    envelopeFields: [
+      {
+        name: "jobType",
+        label: "Job Type",
+        type: "string",
+        filterable: true,
+        // `jobType` stores a dispatch job-type id (matched against a job's
+        // jobTypeId at eligibility time). Render as a dropdown populated from
+        // the dispatch job-types lookup so the filter shows readable names.
+        options: {
+          endpoint: "/api/options/dispatch-job-type",
+          valueKey: "id",
+          labelKey: "name",
+        },
+      },
+    ],
+  });
+  kindRegistered = true;
+}
+
+/**
+ * Initialize the dispatch-eligibility plugin system.
+ *
+ * Plugins self-register at module top level — the side-effect imports at
+ * the bottom of this file load each plugin once and trigger its
+ * `registerDispatchEligPlugin(...)` call. To add a new plugin: drop a
+ * file under `./plugins/` and add one `import "./plugins/<name>"` line
+ * below.
+ *
+ * After registration, this function runs startup backfills for plugins
+ * that declare a `backfill()` (in `backfillOrder` ascending). The
+ * backfill loop is intentionally kept here (not per-plugin) because it
+ * is an orchestration concern, not a registration concern.
+ *
+ * (This matches the convention used by every other plugin kind in the
+ * repo — see `server/plugins/_core/README.md` → "Plugin registration
+ * convention".)
+ */
+export async function initializeDispatchEligSystem(): Promise<void> {
+  registerDispatchEligKind();
   logger.info("Dispatch eligibility plugins registered", {
     service: "dispatch-elig-plugins",
     plugins: dispatchEligPluginRegistry.getAllPluginIds(),
   });
-}
-
-export async function initializeDispatchEligSystem(): Promise<void> {
-  registerDispatchEligPlugins();
 
   const plugins = dispatchEligPluginRegistry.getAllPlugins()
     .filter(p => p.backfill)
@@ -55,3 +129,15 @@ export async function initializeDispatchEligSystem(): Promise<void> {
     }
   }
 }
+
+// Plugin registrations (side-effect imports — each file self-registers).
+import "./plugins/ban";
+import "./plugins/dnc";
+import "./plugins/eba";
+import "./plugins/hfe";
+import "./plugins/skill";
+import "./plugins/status";
+import "./plugins/ws";
+import "./plugins/singleshift";
+import "./plugins/accepted";
+import "./plugins/hta-home-employer";

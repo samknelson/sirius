@@ -2,22 +2,18 @@ import { getClient } from './transaction-context';
 import {
   workers,
   contacts,
-  trustWmb,
-  trustBenefits,
   employers,
   optionsWorkerWs,
   type Worker,
   type InsertWorker,
-  type TrustWmb,
   type TrustBenefit,
   type Employer,
 } from "@shared/schema";
-import { eq, sql, desc, and, ne } from "drizzle-orm";
+import { eq, sql, and, ne } from "drizzle-orm";
 import type { ContactsStorage } from "./contacts";
 import type { WorkerDenormData } from "./worker-hours";
 import { type StorageLoggingConfig } from "./middleware/logging";
 import { logger } from "../logger";
-import { eventBus, EventType } from "../services/event-bus";
 import { 
   type ValidationError,
   createAsyncStorageValidator
@@ -188,6 +184,12 @@ export interface WorkerStorage {
   getContactExportDataByIds(workerIdsList: string[]): Promise<WorkerContactExportRow[]>;
   getWorkersCurrentBenefits(month?: number, year?: number): Promise<WorkerCurrentBenefits[]>;
   getWorker(id: string): Promise<Worker | undefined>;
+  // Generic, feature-agnostic accessors for the worker's `data` jsonb blob.
+  // These know nothing about any particular feature's JSON path; the only
+  // legitimate writer is a validated, feature-specific storage namespace that
+  // performs an atomic read-modify-write. Do NOT use as a general escape hatch.
+  getData(id: string): Promise<Record<string, unknown>>;
+  setData(id: string, data: Record<string, unknown>): Promise<void>;
   getWorkerDisplayName(id: string | undefined | null): Promise<string>;
   getWorkerBySSN(ssn: string): Promise<Worker | undefined>;
   getWorkerByContactEmail(email: string): Promise<Worker | undefined>;
@@ -224,10 +226,6 @@ export interface WorkerStorage {
   deleteWorker(id: string): Promise<boolean>;
   updateWorkerBargainingUnit(workerId: string, bargainingUnitId: string | null): Promise<Worker | undefined>;
   // Worker benefits methods
-  getWorkerBenefits(workerId: string): Promise<any[]>;
-  createWorkerBenefit(data: { workerId: string; month: number; year: number; employerId: string; benefitId: string }): Promise<TrustWmb>;
-  deleteWorkerBenefit(id: string): Promise<boolean>;
-  workerBenefitExists(workerId: string, benefitId: string, month: number, year: number): Promise<boolean>;
   getMemberStatusCodesByIndustry(industryId: string, workerIdsList: string[]): Promise<Array<{ workerId: string; code: string }>>;
 }
 
@@ -546,6 +544,15 @@ async function _searchWorkers(params: InternalSearchParams): Promise<InternalSea
   };
 }
 
+// Strip the internal `data` jsonb blob from a worker row before it leaves the
+// storage layer. `data` (beneficiary PII, etc.) must never ride along on generic
+// worker responses; it is only exposed via the dedicated getData/baoBeneficiaries
+// paths. Applied to every method that returns a worker row to callers.
+function stripWorkerData<T extends { data?: unknown }>(row: T): Omit<T, "data"> {
+  const { data: _data, ...rest } = row;
+  return rest;
+}
+
 export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerStorage {
   let denormDataProvider: ((workerId: string) => Promise<WorkerDenormData>) | null = null;
 
@@ -556,7 +563,8 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
 
     async getAllWorkers(): Promise<Worker[]> {
       const client = getClient();
-      return await client.select().from(workers);
+      const rows = await client.select().from(workers);
+      return rows.map(stripWorkerData);
     },
 
     async searchWorkers(query: string, limit: number = 10): Promise<WorkerSearchResult> {
@@ -817,7 +825,34 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
     async getWorker(id: string): Promise<Worker | undefined> {
       const client = getClient();
       const [worker] = await client.select().from(workers).where(eq(workers.id, id));
-      return worker || undefined;
+      return worker ? stripWorkerData(worker) : undefined;
+    },
+
+    async getData(id: string): Promise<Record<string, unknown>> {
+      const client = getClient();
+      const [row] = await client
+        .select({ data: workers.data })
+        .from(workers)
+        .where(eq(workers.id, id));
+      if (!row) {
+        throw new Error("WORKER_NOT_FOUND");
+      }
+      const data = row.data;
+      return data && typeof data === "object" && !Array.isArray(data)
+        ? (data as Record<string, unknown>)
+        : {};
+    },
+
+    async setData(id: string, data: Record<string, unknown>): Promise<void> {
+      const client = getClient();
+      const result = await client
+        .update(workers)
+        .set({ data })
+        .where(eq(workers.id, id))
+        .returning({ id: workers.id });
+      if (result.length === 0) {
+        throw new Error("WORKER_NOT_FOUND");
+      }
     },
 
     async getWorkerDisplayName(id: string | undefined | null): Promise<string> {
@@ -856,7 +891,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         .from(workers)
         .where(sql`regexp_replace(${workers.ssn}, '[^0-9]', '', 'g') = ${normalizedSSN}`);
       
-      return worker || undefined;
+      return worker ? stripWorkerData(worker) : undefined;
     },
 
     async getWorkerByContactEmail(email: string): Promise<Worker | undefined> {
@@ -909,7 +944,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         .select()
         .from(workers)
         .where(eq(workers.contactId, contactId));
-      return worker || undefined;
+      return worker ? stripWorkerData(worker) : undefined;
     },
 
     async getWorkersByHomeEmployerId(employerId: string): Promise<Array<{
@@ -957,7 +992,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         .values({ contactId: contact.id })
         .returning();
       
-      return worker;
+      return stripWorkerData(worker);
     },
 
     async updateWorkerContactName(workerId: string, name: string): Promise<Worker | undefined> {
@@ -971,7 +1006,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       // Update the contact's name using contact storage
       await contactsStorage.updateName(currentWorker.contactId, name);
       
-      return currentWorker;
+      return stripWorkerData(currentWorker);
     },
 
     async updateWorkerContactNameComponents(
@@ -995,7 +1030,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       // Update the contact's name components using contact storage
       await contactsStorage.updateNameComponents(currentWorker.contactId, components);
       
-      return currentWorker;
+      return stripWorkerData(currentWorker);
     },
 
     async updateWorkerContactEmail(workerId: string, email: string): Promise<Worker | undefined> {
@@ -1009,7 +1044,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       // Update the contact's email using contact storage
       await contactsStorage.updateEmail(currentWorker.contactId, email);
       
-      return currentWorker;
+      return stripWorkerData(currentWorker);
     },
 
     async updateWorkerContactBirthDate(workerId: string, birthDate: string | null): Promise<Worker | undefined> {
@@ -1023,7 +1058,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       // Update the contact's birth date using contact storage
       await contactsStorage.updateBirthDate(currentWorker.contactId, birthDate);
       
-      return currentWorker;
+      return stripWorkerData(currentWorker);
     },
 
     async updateWorkerContactGender(workerId: string, gender: string | null, genderNota: string | null): Promise<Worker | undefined> {
@@ -1037,7 +1072,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       // Update the contact's gender using contact storage
       await contactsStorage.updateGender(currentWorker.contactId, gender, genderNota);
       
-      return currentWorker;
+      return stripWorkerData(currentWorker);
     },
 
     async updateWorkerSSN(workerId: string, ssn: string): Promise<Worker | undefined> {
@@ -1050,7 +1085,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         .where(eq(workers.id, workerId))
         .returning();
       
-      return updatedWorker || undefined;
+      return updatedWorker ? stripWorkerData(updatedWorker) : undefined;
     },
 
     async updateWorkerStatus(workerId: string, denormWsId: string | null): Promise<Worker | undefined> {
@@ -1061,7 +1096,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         .where(eq(workers.id, workerId))
         .returning();
       
-      return updatedWorker || undefined;
+      return updatedWorker ? stripWorkerData(updatedWorker) : undefined;
     },
 
     async updateWorkerMemberStatuses(workerId: string, denormMsIds: string[] | null): Promise<Worker | undefined> {
@@ -1072,7 +1107,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         .where(eq(workers.id, workerId))
         .returning();
       
-      return updatedWorker || undefined;
+      return updatedWorker ? stripWorkerData(updatedWorker) : undefined;
     },
 
     async syncWorkerEmployerDenorm(workerId: string): Promise<void> {
@@ -1105,7 +1140,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         .where(eq(workers.id, workerId))
         .returning();
       
-      return updatedWorker || undefined;
+      return updatedWorker ? stripWorkerData(updatedWorker) : undefined;
     },
 
     async deleteWorker(id: string): Promise<boolean> {
@@ -1122,122 +1157,6 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       // If worker was deleted, also delete the corresponding contact using contact storage
       if (result.length > 0) {
         await contactsStorage.deleteContact(worker.contactId);
-      }
-      
-      return result.length > 0;
-    },
-
-    // Worker benefits methods
-    async getWorkerBenefits(workerId: string): Promise<any[]> {
-      const client = getClient();
-      const results = await client
-        .select({
-          id: trustWmb.id,
-          month: trustWmb.month,
-          year: trustWmb.year,
-          workerId: trustWmb.workerId,
-          employerId: trustWmb.employerId,
-          benefitId: trustWmb.benefitId,
-          benefit: trustBenefits,
-          employer: employers,
-        })
-        .from(trustWmb)
-        .leftJoin(trustBenefits, eq(trustWmb.benefitId, trustBenefits.id))
-        .leftJoin(employers, eq(trustWmb.employerId, employers.id))
-        .where(eq(trustWmb.workerId, workerId))
-        .orderBy(desc(trustWmb.year), desc(trustWmb.month));
-
-      return results;
-    },
-
-    async createWorkerBenefit(data: { workerId: string; month: number; year: number; employerId: string; benefitId: string }): Promise<TrustWmb> {
-      const client = getClient();
-      const [wmb] = await client
-        .insert(trustWmb)
-        .values(data)
-        .returning();
-
-      if (wmb) {
-        const payload = {
-          wmbId: wmb.id,
-          workerId: wmb.workerId,
-          employerId: wmb.employerId,
-          benefitId: wmb.benefitId,
-          year: wmb.year,
-          month: wmb.month,
-        };
-
-        // Emit event for any listeners (future notification plugins, etc.)
-        eventBus.emit(EventType.WMB_SAVED, payload).catch(err => {
-          logger.error("Failed to emit WMB_SAVED event", {
-            service: "worker-storage",
-            wmbId: wmb.id,
-            error: err instanceof Error ? err.message : String(err),
-          });
-        });
-
-        // Execute charge plugins directly (for backwards compatibility)
-        try {
-          const { executeChargePlugins, TriggerType } = await import("../plugins/ledger/charge");
-          await executeChargePlugins({
-            trigger: TriggerType.WMB_SAVED,
-            ...payload,
-          });
-        } catch (error) {
-          logger.error("Failed to execute charge plugins for WMB create", {
-            service: "worker-storage",
-            wmbId: wmb.id,
-            error: error instanceof Error ? error.message : String(error),
-          });
-        }
-      }
-
-      return wmb;
-    },
-
-    async deleteWorkerBenefit(id: string): Promise<boolean> {
-      const client = getClient();
-      const result = await client
-        .delete(trustWmb)
-        .where(eq(trustWmb.id, id))
-        .returning();
-      
-      const deleted = result[0];
-      
-      if (deleted) {
-        const payload = {
-          wmbId: deleted.id,
-          workerId: deleted.workerId,
-          employerId: deleted.employerId,
-          benefitId: deleted.benefitId,
-          year: deleted.year,
-          month: deleted.month,
-          isDeleted: true,
-        };
-
-        // Emit event for any listeners (future notification plugins, etc.)
-        eventBus.emit(EventType.WMB_SAVED, payload).catch(err => {
-          logger.error("Failed to emit WMB_SAVED event", {
-            service: "worker-storage",
-            wmbId: deleted.id,
-            error: err instanceof Error ? err.message : String(err),
-          });
-        });
-
-        // Execute charge plugins directly (for backwards compatibility)
-        try {
-          const { executeChargePlugins, TriggerType } = await import("../plugins/ledger/charge");
-          await executeChargePlugins({
-            trigger: TriggerType.WMB_SAVED,
-            ...payload,
-          });
-        } catch (error) {
-          logger.error("Failed to execute charge plugins for WMB delete", {
-            service: "worker-storage",
-            wmbId: deleted.id,
-            error: error instanceof Error ? error.message : String(error),
-          });
-        }
       }
       
       return result.length > 0;
@@ -1261,23 +1180,6 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       return rows
         .filter((r): r is { workerId: string; code: string } => r.code !== null)
         .map((r) => ({ workerId: r.workerId, code: r.code }));
-    },
-
-    async workerBenefitExists(workerId: string, benefitId: string, month: number, year: number): Promise<boolean> {
-      const client = getClient();
-      const result = await client
-        .select({ id: trustWmb.id })
-        .from(trustWmb)
-        .where(
-          and(
-            eq(trustWmb.workerId, workerId),
-            eq(trustWmb.benefitId, benefitId),
-            eq(trustWmb.month, month),
-            eq(trustWmb.year, year)
-          )
-        )
-        .limit(1);
-      return result.length > 0;
     },
   };
 
@@ -1406,6 +1308,12 @@ export const workerLoggingConfig: StorageLoggingConfig<WorkerStorage> = {
           }
         };
       }
+    },
+    setData: {
+      enabled: true,
+      getEntityId: (args) => args[0],
+      getHostEntityId: (args) => args[0],
+      getDescription: () => 'Updated worker data',
     }
   }
 };

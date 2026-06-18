@@ -7,10 +7,11 @@ import {
   LedgerTransaction,
 } from "../types";
 import { registerChargePlugin } from "../registry";
+import type { ChargePluginMetadata } from "../types";
 import { z } from "zod";
 import { logger } from "../../../../logger";
 import { storage } from "../../../../storage/database";
-import { computeSlaForWorkerYear } from "../../../../services/gbhet-pension-sla";
+import { computeSlaForWorkerYear } from "../../../../services/sitespecific/gbhet/pension-sla";
 import type { ChargePluginConfig } from "@shared/schema";
 
 const PLUGIN_ID = "gbhet-pension-sla-hourly";
@@ -20,14 +21,17 @@ const settingsSchema = z.object({
 });
 
 class GbhetPensionSlaHourlyPlugin extends ChargePlugin {
-  readonly metadata = {
+  readonly metadata: ChargePluginMetadata = {
     id: PLUGIN_ID,
     name: "GBHE Pension SLA (Hourly Trigger)",
     description:
       "On worker hours changes for a tiered plan year, recomputes the worker's annual SLA tier value and writes/updates a Dec-31 ledger entry (idempotent on workerId+year).",
     triggers: [TriggerType.HOURS_SAVED],
     defaultScope: "global" as const,
-    settingsSchema,
+    configSchema: {
+      type: "object",
+      properties: {},
+    },
     requiredComponent: "sitespecific.gbhet.pension",
   };
 
@@ -50,7 +54,13 @@ class GbhetPensionSlaHourlyPlugin extends ChargePlugin {
         return { success: true, transactions: [], message: `Plan year ${ctx.year} is not tiered` };
       }
 
-      const result = await computeSlaForWorkerYear(ctx.workerId, ctx.year, config.id);
+      const result = await computeSlaForWorkerYear(
+        ctx.workerId,
+        ctx.year,
+        planYear,
+        config.id,
+        config.account,
+      );
 
       const transactions: LedgerTransaction[] = [];
       if (result.created || result.updated) {

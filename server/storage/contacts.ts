@@ -433,6 +433,20 @@ export function createAddressStorage(): AddressStorage {
           }
         }
 
+        // Backfill coordinates onto a matched record that lacks them. Address
+        // fields are immutable, so re-saving an address "matches" the existing
+        // row; this is how a previously un-geocoded address gets coordinates.
+        // Coordinates are not immutable, and we never overwrite existing ones.
+        if (existing.latitude == null && metadata?.latitude != null) {
+          matchUpdates.latitude = metadata.latitude;
+        }
+        if (existing.longitude == null && metadata?.longitude != null) {
+          matchUpdates.longitude = metadata.longitude;
+        }
+        if (existing.accuracy == null && metadata?.accuracy != null) {
+          matchUpdates.accuracy = metadata.accuracy;
+        }
+
         const [updated] = await getClient()
           .update(contactPostal)
           .set(matchUpdates)

@@ -38,7 +38,7 @@ class ManualPlugin extends EligibilityPlugin<ManualConfig> {
       };
     }
 
-    const exists = await storage.workers.workerBenefitExists(
+    const exists = await storage.trust.wmb.workerBenefitExists(
       context.subscriberWorker.id,
       context.benefitId,
       context.asOfMonth,

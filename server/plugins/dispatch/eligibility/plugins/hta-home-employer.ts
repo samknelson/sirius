@@ -1,3 +1,4 @@
+import { registerDispatchEligPlugin } from "../registry";
 import { logger } from "../../../../logger";
 import { createWorkerDispatchEligDenormStorage } from "../../../../storage/dispatch/worker-elig-denorm";
 import { createVariableStorage } from "../../../../storage/system/variables";
@@ -50,7 +51,7 @@ export const dispatchHtaHomeEmployerPlugin: DispatchEligPlugin = {
   id: "dispatch_hta_home_employer",
   name: "HTA Home Employer",
   description: "Prevents workers from being dispatched to their home employer",
-  componentId: COMPONENT_ID,
+  requiredComponent: COMPONENT_ID,
 
   async backfill(): Promise<{ workersProcessed: number; entriesCreated: number }> {
     if (!isCacheInitialized()) {
@@ -274,3 +275,5 @@ export const dispatchHtaHomeEmployerPlugin: DispatchEligPlugin = {
     });
   },
 };
+
+registerDispatchEligPlugin(dispatchHtaHomeEmployerPlugin);

@@ -1,3 +1,4 @@
+import { registerDispatchEligPlugin } from "../registry";
 import { logger } from "../../../../logger";
 import { createDispatchStorage } from "../../../../storage/dispatch/dispatches";
 import { createDispatchJobStorage } from "../../../../storage/dispatch/jobs";
@@ -109,3 +110,5 @@ export async function backfillDispatchAcceptedEligibility(): Promise<{ workersPr
 
   return { workersProcessed: uniqueWorkerIds.length, entriesCreated };
 }
+
+registerDispatchEligPlugin(dispatchAcceptedPlugin);

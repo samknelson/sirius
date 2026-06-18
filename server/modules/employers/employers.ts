@@ -162,16 +162,21 @@ export function registerEmployerRoutes(
 
   app.post("/api/employers", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
-      const { name, isActive = true, typeId } = req.body;
+      const { name, isActive = true, typeId, siriusId } = req.body;
       
       if (!name || typeof name !== 'string' || !name.trim()) {
         return res.status(400).json({ message: "Employer name is required" });
       }
       
+      if (siriusId !== undefined && siriusId !== null && typeof siriusId !== 'string') {
+        return res.status(400).json({ message: "siriusId must be a string" });
+      }
+      
       const employer = await storage.employers.createEmployer({ 
         name: name.trim(),
         isActive: typeof isActive === 'boolean' ? isActive : true,
-        typeId: typeId === null || typeId === "" ? null : (typeId || null)
+        typeId: typeId === null || typeId === "" ? null : (typeId || null),
+        siriusId: typeof siriusId === 'string' && siriusId.trim() ? siriusId.trim() : null
       });
       
       res.status(201).json(employer);
@@ -202,7 +207,7 @@ export function registerEmployerRoutes(
   app.put("/api/employers/:id", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
       const { id } = req.params;
-      const { name, isActive, typeId, industryId, companyId } = req.body;
+      const { name, isActive, typeId, industryId, companyId, siriusId } = req.body;
       
       const updates: Partial<InsertEmployer> = {};
       
@@ -211,6 +216,15 @@ export function registerEmployerRoutes(
           return res.status(400).json({ message: "Employer name cannot be empty" });
         }
         updates.name = name.trim();
+      }
+      
+      if (siriusId !== undefined) {
+        if (siriusId !== null && typeof siriusId !== 'string') {
+          return res.status(400).json({ message: "siriusId must be a string" });
+        }
+        updates.siriusId = typeof siriusId === 'string' && siriusId.trim()
+          ? siriusId.trim()
+          : null;
       }
       
       if (isActive !== undefined) {
@@ -228,7 +242,7 @@ export function registerEmployerRoutes(
         updates.industryId = industryId === null || industryId === "" ? null : industryId;
       }
       
-      if (Object.keys(updates).length === 0 && companyId === undefined) {
+      if (Object.keys(updates).length === 0 && companyId === undefined && siriusId === undefined) {
         return res.status(400).json({ message: "No fields to update" });
       }
       

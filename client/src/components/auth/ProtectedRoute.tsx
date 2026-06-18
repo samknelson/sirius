@@ -90,6 +90,7 @@ export default function ProtectedRoute({ children, permission, policy, component
       'employer-contacts': 'employer_contact',
       'ea': 'ea',
       'sheet': 'edls_sheet',
+      'comm': 'comm',
     };
     
     for (let i = 0; i < segments.length - 1; i++) {

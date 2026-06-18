@@ -1,6 +1,18 @@
 import { getClient } from './transaction-context';
 import { sql } from "drizzle-orm";
 
+export async function listAllPublicTables(): Promise<string[]> {
+  const client = getClient();
+  const result = await client.execute(sql`
+    SELECT table_name
+    FROM information_schema.tables
+    WHERE table_schema = 'public'
+      AND table_type = 'BASE TABLE'
+    ORDER BY table_name
+  `);
+  return result.rows.map((r: any) => r.table_name as string);
+}
+
 export async function tableExists(tableName: string): Promise<boolean> {
   const client = getClient();
   const result = await client.execute(sql`

@@ -2,6 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 import { insertContactPostalSchema } from "@shared/schema";
 import type { AddressSource } from "../storage/contacts";
+import { addressValidationService } from "../services/comm/validators/address";
 
 // Type for middleware functions that we'll accept from the main routes
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -31,6 +32,40 @@ function extractGeometryFromValidationResponse(validationResponse: any): {
     longitude: location?.lng,
     accuracy: locationType,
   };
+}
+
+// Best-effort server-side geocode of raw address parts. Returns {} on any
+// failure (missing Google key, no result, network error) so that geocoding
+// never blocks an address from being saved.
+async function geocodeAddressParts(parts: {
+  street?: string | null;
+  city?: string | null;
+  state?: string | null;
+  postalCode?: string | null;
+  country?: string | null;
+}): Promise<{ latitude?: number; longitude?: number; accuracy?: string }> {
+  if (!parts.street && !parts.city && !parts.state && !parts.postalCode) {
+    return {};
+  }
+  try {
+    const result = await addressValidationService.geocodeAddress({
+      street: parts.street ?? "",
+      city: parts.city ?? "",
+      state: parts.state ?? "",
+      postalCode: parts.postalCode ?? "",
+      country: parts.country ?? "",
+    });
+    if (result.success && result.latitude != null && result.longitude != null) {
+      return {
+        latitude: result.latitude,
+        longitude: result.longitude,
+        accuracy: result.accuracy,
+      };
+    }
+  } catch (error) {
+    console.error("Server-side geocoding failed:", error);
+  }
+  return {};
 }
 
 export function registerContactPostalRoutes(
@@ -108,6 +143,14 @@ export function registerContactPostalRoutes(
         source,
       });
 
+      // No client-supplied coordinates — geocode server-side (best-effort).
+      if (parsed.latitude == null || parsed.longitude == null) {
+        const geo = await geocodeAddressParts(parsed);
+        parsed.latitude = geo.latitude ?? parsed.latitude;
+        parsed.longitude = geo.longitude ?? parsed.longitude;
+        parsed.accuracy = geo.accuracy ?? parsed.accuracy;
+      }
+
       const { address: newAddress, isNew } = await storage.contacts.addresses.createOrMatchAddress(
         contactId,
         {
@@ -177,6 +220,14 @@ export function registerContactPostalRoutes(
         source,
       });
 
+      // No client-supplied coordinates — geocode server-side (best-effort).
+      if (parsed.latitude == null || parsed.longitude == null) {
+        const geo = await geocodeAddressParts(parsed);
+        parsed.latitude = geo.latitude ?? parsed.latitude;
+        parsed.longitude = geo.longitude ?? parsed.longitude;
+        parsed.accuracy = geo.accuracy ?? parsed.accuracy;
+      }
+
       const { address: newAddress, isNew } = await storage.contacts.addresses.createOrMatchAddress(
         contactId,
         {
@@ -220,8 +271,20 @@ export function registerContactPostalRoutes(
   }, async (req, res) => {
     try {
       const { id } = req.params;
+      const existing = (req as any).addressRecord;
 
-      const geometryData = extractGeometryFromValidationResponse(req.body.validationResponse);
+      let geometryData = extractGeometryFromValidationResponse(req.body.validationResponse);
+
+      // No client-supplied coordinates and the record isn't geocoded yet —
+      // geocode from its immutable address parts (best-effort). Skip if it
+      // already has coordinates (re-geocoding is out of scope).
+      if (
+        (geometryData.latitude == null || geometryData.longitude == null) &&
+        existing && existing.latitude == null && existing.longitude == null
+      ) {
+        const geo = await geocodeAddressParts(existing);
+        geometryData = { ...geometryData, ...geo };
+      }
 
       // Strip immutable address fields, server-derived source, and system-managed
       // deliverability lifecycle fields. Deliverability state must only flow through

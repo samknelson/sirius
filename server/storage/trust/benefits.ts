@@ -25,6 +25,7 @@ export function createTrustBenefitStorage(): TrustBenefitStorage {
       const results = await client
         .select({
           id: trustBenefits.id,
+          siriusId: trustBenefits.siriusId,
           name: trustBenefits.name,
           benefitType: trustBenefits.benefitType,
           benefitTypeName: optionsTrustBenefitType.name,
@@ -57,6 +58,7 @@ export function createTrustBenefitStorage(): TrustBenefitStorage {
       const [result] = await client
         .select({
           id: trustBenefits.id,
+          siriusId: trustBenefits.siriusId,
           name: trustBenefits.name,
           benefitType: trustBenefits.benefitType,
           benefitTypeName: optionsTrustBenefitType.name,

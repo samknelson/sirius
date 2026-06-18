@@ -50,6 +50,7 @@ function EmployerEditContent() {
   const showCompany = hasComponent("employer.company");
 
   const [editName, setEditName] = useState(employer.name);
+  const [editSiriusId, setEditSiriusId] = useState(employer.siriusId ?? "");
   const [editIsActive, setEditIsActive] = useState(employer.isActive);
   const [editTypeId, setEditTypeId] = useState<string | null>(employer.typeId || null);
   const [editIndustryId, setEditIndustryId] = useState<string | null>(employer.industryId || null);
@@ -83,7 +84,7 @@ function EmployerEditContent() {
 
 
   const updateEmployerMutation = useMutation({
-    mutationFn: async (data: { name: string; isActive: boolean; typeId: string | null; industryId: string | null; companyId?: string | null }) => {
+    mutationFn: async (data: { name: string; isActive: boolean; typeId: string | null; industryId: string | null; siriusId: string | null; companyId?: string | null }) => {
       return await apiRequest("PUT", `/api/employers/${employer.id}`, data);
     },
     onSuccess: () => {
@@ -107,11 +108,12 @@ function EmployerEditContent() {
 
   const handleSaveEdit = () => {
     if (editName.trim()) {
-      const payload: { name: string; isActive: boolean; typeId: string | null; industryId: string | null; companyId?: string | null } = {
+      const payload: { name: string; isActive: boolean; typeId: string | null; industryId: string | null; siriusId: string | null; companyId?: string | null } = {
         name: editName.trim(),
         isActive: editIsActive,
         typeId: editTypeId,
         industryId: editIndustryId,
+        siriusId: editSiriusId.trim() === "" ? null : editSiriusId.trim(),
       };
       if (showCompany) {
         payload.companyId = editCompanyId;
@@ -138,6 +140,20 @@ function EmployerEditContent() {
                 onChange={(e) => setEditName(e.target.value)}
                 className="w-full"
                 data-testid="input-edit-employer-name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-employer-sirius-id" className="text-sm font-medium text-foreground">
+                Sirius ID
+              </Label>
+              <Input
+                id="edit-employer-sirius-id"
+                type="text"
+                placeholder="Optional external ID (e.g. ECHP)"
+                value={editSiriusId}
+                onChange={(e) => setEditSiriusId(e.target.value)}
+                className="w-full"
+                data-testid="input-edit-employer-sirius-id"
               />
             </div>
             <div className="space-y-2">

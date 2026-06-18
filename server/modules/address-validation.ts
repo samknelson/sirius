@@ -1,5 +1,5 @@
 import { Express, Request, Response, NextFunction } from "express";
-import { addressValidationService, AddressInput } from "../services/address-validation";
+import { addressValidationService, AddressInput } from "../services/comm/validators/address";
 import { z } from "zod";
 import { ParseAddressRequest } from "@shared/schema";
 import { requireAccess } from "../services/access-policy-evaluator";

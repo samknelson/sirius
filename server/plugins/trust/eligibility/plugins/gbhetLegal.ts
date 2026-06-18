@@ -18,7 +18,7 @@ class GbhetLegalPlugin extends EligibilityPlugin<GbhetLegalConfig> {
     name: "GBHET Legal",
     description:
       "Worker must have nonzero hours in the month that is a specified number of months prior (default: 4 months).",
-    requiresComponent: "sitespecific.gbhet.legal",
+    requiredComponent: "sitespecific.gbhet.legal",
     configSchema: {
       type: "object",
       required: ["monthsOffset"],

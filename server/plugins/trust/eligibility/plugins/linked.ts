@@ -81,7 +81,7 @@ class LinkedPlugin extends EligibilityPlugin<LinkedConfig> {
         continue;
       }
       checkedNames.push(benefit.name);
-      const exists = await storage.workers.workerBenefitExists(
+      const exists = await storage.trust.wmb.workerBenefitExists(
         context.dependentWorker.id,
         benefitId,
         context.asOfMonth,

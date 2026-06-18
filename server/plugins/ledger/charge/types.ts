@@ -1,4 +1,5 @@
 import type { ChargePluginConfig } from "@shared/schema";
+import type { JsonSchema } from "@shared/json-schema-form";
 
 export enum TriggerType {
   HOURS_SAVED = "hours_saved",
@@ -125,7 +126,20 @@ export interface ChargePluginMetadata {
   description: string;
   triggers: TriggerType[];
   defaultScope: "global" | "employer";
-  settingsSchema?: any; // Zod schema for validating settings
+  /**
+   * Which scopes a configuration of this plugin may use. The unified
+   * config dialog shows a scope selector only when "employer" is
+   * present; otherwise configs are always global. Defaults to
+   * `["global"]` when omitted.
+   */
+  supportedScopes?: readonly ("global" | "employer")[];
+  /**
+   * JSON Schema describing the plugin's `settings` payload. This is the
+   * single source of truth for the client form (RJSF) and server-side
+   * validation. Cross-field rules that JSON Schema can't express live in
+   * the plugin's `validateConfig` override.
+   */
+  configSchema?: JsonSchema;
   requiredComponent?: string; // Component ID that must be enabled for this plugin to function
 }
 

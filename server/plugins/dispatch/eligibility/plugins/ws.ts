@@ -1,3 +1,4 @@
+import { registerDispatchEligPlugin } from "../registry";
 import { logger } from "../../../../logger";
 import { storage } from "../../../../storage";
 import { createWorkerDispatchEligDenormStorage } from "../../../../storage/dispatch/worker-elig-denorm";
@@ -16,7 +17,7 @@ export const dispatchWsPlugin: DispatchEligPlugin = {
   id: "dispatch_ws",
   name: "Work Status",
   description: "Filters workers based on eligible work statuses configured per job type",
-  componentId: COMPONENT_ID,
+  requiredComponent: COMPONENT_ID,
   backfill: () => backfillDispatchWsEligibility(),
 
   eventHandlers: [
@@ -148,3 +149,5 @@ export async function backfillDispatchWsEligibility(): Promise<{ workersProcesse
 
   return { workersProcessed: workersWithStatus.length, entriesCreated };
 }
+
+registerDispatchEligPlugin(dispatchWsPlugin);

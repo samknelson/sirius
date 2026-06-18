@@ -4,6 +4,7 @@ import { getAllComponents, getComponentById, ComponentConfig, ComponentDefinitio
 import {
   enableComponentSchema,
   disableComponentSchema,
+  reconcileComponentPluginConfigs,
   checkComponentSchemaDrift,
   getComponentSchemaInfo,
 } from "../services/component-lifecycle";
@@ -165,6 +166,11 @@ export function registerComponentRoutes(
           }
         }
       }
+
+      // Materialize / deactivate any plugin_configs this component owns
+      // (Task #397). Runs after the schema lifecycle so the rows are only
+      // created once the component's tables (if any) are in place.
+      await reconcileComponentPluginConfigs(componentId, enabled);
 
       await updateComponentCache(componentId, enabled);
 

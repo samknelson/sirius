@@ -297,7 +297,7 @@ function WorkerLedgerAccountsContent() {
 
 export default function WorkerLedgerAccountsPage() {
   return (
-    <WorkerLayout activeTab="accounting">
+    <WorkerLayout activeTab="accounts">
       <WorkerLedgerAccountsContent />
     </WorkerLayout>
   );

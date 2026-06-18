@@ -3,8 +3,8 @@ import { storage } from "../../../storage";
 import { objectStorageService } from "../../../services/objectStorage";
 import { insertFileSchema } from "@shared/schema";
 import { logger } from "../../../logger";
-import { sendInapp } from "../../../services/inapp-sender";
-import { sendEmail } from "../../../services/email-sender";
+import { sendInapp } from "../../../services/comm/senders/inapp";
+import { sendEmail } from "../../../services/comm/senders/email";
 import puppeteer, { type Browser, type Page } from "puppeteer-core";
 import { PDFDocument } from "pdf-lib";
 

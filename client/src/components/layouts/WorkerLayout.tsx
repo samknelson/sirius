@@ -38,21 +38,21 @@ interface WorkerLayoutProps {
 
 
 function WorkerEdlsBadge({ workerId }: { workerId: string }) {
-  const { hasComponent, hasCapability } = useAuth();
-  if (!hasComponent('edls') || !hasCapability('workerEdls')) return null;
+  const { hasComponent } = useAuth();
+  if (!hasComponent('edls')) return null;
   return <WorkerEdlsBadgeInner workerId={workerId} />;
 }
 
 function WorkerEdlsBadgeInner({ workerId }: { workerId: string }) {
   const { canAccess, isLoading: accessLoading } = useAccessCheck('edls.coordinator', workerId);
   const enabled = !accessLoading && canAccess;
-  const { data } = useQuery<{ active: boolean; exists: boolean; tableMissing?: boolean }>({
+  const { data } = useQuery<{ active: boolean; exists: boolean }>({
     queryKey: ["/api/workers", workerId, "edls"],
     enabled,
     retry: false,
   });
 
-  if (!enabled || !data || data.tableMissing) return null;
+  if (!enabled || !data) return null;
 
   return (
     <Badge

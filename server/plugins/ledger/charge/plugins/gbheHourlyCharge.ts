@@ -9,6 +9,8 @@ import {
   LedgerEntryVerification,
 } from "../types";
 import { registerChargePlugin } from "../registry";
+import type { ChargePluginMetadata } from "../types";
+import { rateHistoryField } from "../config-schema-helpers";
 import { z } from "zod";
 import { logger } from "../../../../logger";
 import { getCurrentEffectiveRate } from "../../../../utils/rateHistory";
@@ -21,7 +23,6 @@ const rateHistoryEntrySchema = z.object({
 });
 
 const gbheHourlyChargeSettingsSchema = z.object({
-  accountId: z.string().uuid("Account ID must be a valid UUID"),
   chargeTo: z.enum(["worker", "employer"]).default("employer"),
   employmentStatusIds: z.array(z.string()).optional(),
   specialDesignationMemberStatusIds: z.array(z.string()).optional(),
@@ -43,13 +44,51 @@ interface ExpectedEntry {
 }
 
 class GbheHourlyChargePlugin extends ChargePlugin {
-  readonly metadata = {
+  readonly metadata: ChargePluginMetadata = {
     id: "gbhe-hourly-charge",
     name: "GBHE Hourly Charge",
     description: "GBHE hourly charge plugin. Charges based on hours worked with per-hour rates and special designation workers with fixed monthly hours.",
     triggers: [TriggerType.HOURS_SAVED],
     defaultScope: "global" as const,
-    settingsSchema: gbheHourlyChargeSettingsSchema,
+    supportedScopes: ["global", "employer"] as const,
+    configSchema: {
+      type: "object",
+      required: ["chargeTo", "rateHistory"],
+      properties: {
+        chargeTo: {
+          type: "string",
+          title: "Charge To",
+          enum: ["worker", "employer"],
+          enumNames: ["Worker", "Employer"],
+          default: "employer",
+        },
+        employmentStatusIds: {
+          type: "array",
+          title: "Employment Statuses",
+          description:
+            "Optional. Restrict charges to workers with these employment statuses. Leave empty to apply to all.",
+          items: { type: "string" },
+          uniqueItems: true,
+          "x-options-resource": "employment-status",
+        },
+        specialDesignationMemberStatusIds: {
+          type: "array",
+          title: "Special Designation Member Statuses",
+          description:
+            "Workers with these member statuses are charged using the fixed monthly hours below instead of their actual hours.",
+          items: { type: "string" },
+          uniqueItems: true,
+          "x-options-resource": "worker-ms",
+        },
+        specialDesignationMonthlyHours: {
+          type: "number",
+          title: "Special Designation Monthly Hours",
+          minimum: 0,
+          default: 135,
+        },
+        rateHistory: rateHistoryField(),
+      },
+    },
     requiredComponent: "sitespecific.gbhet",
   };
 
@@ -72,6 +111,10 @@ class GbheHourlyChargePlugin extends ChargePlugin {
     config: any,
     settings: GbheHourlyChargeSettings
   ): Promise<ExpectedEntry | null> {
+    if (!config.account) {
+      return null;
+    }
+
     if (settings.employmentStatusIds && settings.employmentStatusIds.length > 0) {
       if (!settings.employmentStatusIds.includes(hoursContext.employmentStatusId)) {
         return null;
@@ -98,7 +141,7 @@ class GbheHourlyChargePlugin extends ChargePlugin {
     const ea = await storage.ledger.ea.getOrCreate(
       entityType,
       entityId,
-      settings.accountId
+      config.account
     );
 
     if (isSpecial) {
@@ -193,6 +236,16 @@ class GbheHourlyChargePlugin extends ChargePlugin {
       }
 
       const settings = config.settings as GbheHourlyChargeSettings;
+
+      // No account configured => plugin is inert (produces no new entries).
+      if (!config.account) {
+        return {
+          success: true,
+          transactions: [],
+          message: "No ledger account configured for this charge plugin",
+        };
+      }
+
       const isSpecial = await this.isSpecialDesignation(hoursContext.workerId, settings);
 
       const chargeTo = settings.chargeTo || "employer";
@@ -202,7 +255,7 @@ class GbheHourlyChargePlugin extends ChargePlugin {
       const ea = await storage.ledger.ea.getOrCreate(
         entityType,
         entityId,
-        settings.accountId
+        config.account
       );
 
       if (isSpecial) {
@@ -288,7 +341,7 @@ class GbheHourlyChargePlugin extends ChargePlugin {
         chargePlugin: this.metadata.id,
         chargePluginKey: expectedEntry.chargePluginKey,
         chargePluginConfigId: config.id,
-        accountId: settings.accountId,
+        accountId: config.account,
         entityType: settings.chargeTo === "worker" ? "worker" : "employer",
         entityId: settings.chargeTo === "worker" ? hoursContext.workerId : hoursContext.employerId,
         amount: expectedEntry.amount,
@@ -342,7 +395,7 @@ class GbheHourlyChargePlugin extends ChargePlugin {
         chargePlugin: this.metadata.id,
         chargePluginKey: adjustmentKey,
         chargePluginConfigId: config.id,
-        accountId: settings.accountId,
+        accountId: config.account,
         entityType: settings.chargeTo === "worker" ? "worker" : "employer",
         entityId: settings.chargeTo === "worker" ? hoursContext.workerId : hoursContext.employerId,
         amount: adjustmentAmount,
@@ -431,7 +484,7 @@ class GbheHourlyChargePlugin extends ChargePlugin {
         chargePlugin: this.metadata.id,
         chargePluginKey: expectedEntry.chargePluginKey,
         chargePluginConfigId: config.id,
-        accountId: settings.accountId,
+        accountId: config.account,
         entityType: settings.chargeTo === "worker" ? "worker" : "employer",
         entityId: settings.chargeTo === "worker" ? hoursContext.workerId : hoursContext.employerId,
         amount: expectedEntry.amount,
@@ -484,7 +537,7 @@ class GbheHourlyChargePlugin extends ChargePlugin {
         chargePlugin: this.metadata.id,
         chargePluginKey: adjustmentKey,
         chargePluginConfigId: config.id,
-        accountId: settings.accountId,
+        accountId: config.account,
         entityType: settings.chargeTo === "worker" ? "worker" : "employer",
         entityId: settings.chargeTo === "worker" ? hoursContext.workerId : hoursContext.employerId,
         amount: adjustmentAmount,

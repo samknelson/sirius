@@ -16,7 +16,7 @@ class ElectionPlugin extends EligibilityPlugin<ElectionConfig> {
     name: "Election",
     description:
       "Eligible when the subscriber's active trust election covers this benefit (and, for dependents, includes the subscriber→dependent relationship).",
-    requiresComponent: "trust.elections",
+    requiredComponent: "trust.elections",
     configSchema: {
       type: "object",
       properties: {},

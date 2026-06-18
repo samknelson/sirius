@@ -2,9 +2,9 @@ import { defineConfig } from "drizzle-kit";
 import { readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 
-const databaseUrl = process.env.NEON_DATABASE_URL ?? process.env.DATABASE_URL;
+const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
-  throw new Error("NEON_DATABASE_URL or DATABASE_URL, ensure the database is provisioned");
+  throw new Error("DATABASE_URL must be set, ensure the database is provisioned");
 }
 
 // `scripts/db-push.ts` writes `.drizzle-runtime.json` (and a companion

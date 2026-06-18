@@ -15,6 +15,7 @@ import { TrustBenefitType } from "@shared/schema";
 
 export function AddTrustBenefitForm() {
   const [name, setName] = useState("");
+  const [siriusId, setSiriusId] = useState("");
   const [benefitType, setBenefitType] = useState<string | undefined>(undefined);
   const [isActive, setIsActive] = useState(true);
   const [description, setDescription] = useState("");
@@ -27,12 +28,13 @@ export function AddTrustBenefitForm() {
   });
 
   const addBenefitMutation = useMutation({
-    mutationFn: async (benefitData: { name: string; benefitType?: string; isActive: boolean; description?: string }) => {
+    mutationFn: async (benefitData: { name: string; siriusId?: string; benefitType?: string; isActive: boolean; description?: string }) => {
       return await apiRequest("POST", "/api/trust-benefits", benefitData);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/trust-benefits"] });
       setName("");
+      setSiriusId("");
       setBenefitType(undefined);
       setIsActive(true);
       setDescription("");
@@ -57,6 +59,7 @@ export function AddTrustBenefitForm() {
     if (name.trim()) {
       addBenefitMutation.mutate({ 
         name: name.trim(), 
+        siriusId: siriusId.trim() || undefined,
         benefitType: benefitType || undefined,
         isActive,
         description: description.trim() || undefined
@@ -88,6 +91,21 @@ export function AddTrustBenefitForm() {
               />
             </div>
             
+            <div>
+              <Label htmlFor="benefit-sirius-id" className="text-sm font-medium text-foreground mb-2 block">
+                ID
+              </Label>
+              <Input
+                id="benefit-sirius-id"
+                type="text"
+                placeholder="Optional ID..."
+                value={siriusId}
+                onChange={(e) => setSiriusId(e.target.value)}
+                className="w-full"
+                data-testid="input-benefit-sirius-id"
+              />
+            </div>
+
             <div>
               <Label htmlFor="benefit-type" className="text-sm font-medium text-foreground mb-2 block">
                 Benefit Type

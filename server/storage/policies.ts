@@ -16,6 +16,8 @@ export interface PolicyStorage {
   createPolicy(data: InsertPolicy): Promise<Policy>;
   updatePolicy(id: string, data: Partial<InsertPolicy>): Promise<Policy | undefined>;
   deletePolicy(id: string): Promise<boolean>;
+  getData(id: string): Promise<Record<string, unknown>>;
+  setData(id: string, data: Record<string, unknown>): Promise<void>;
 }
 
 export function createPolicyStorage(): PolicyStorage {
@@ -72,6 +74,33 @@ export function createPolicyStorage(): PolicyStorage {
         .returning();
       return result.length > 0;
     },
+
+    async getData(id: string): Promise<Record<string, unknown>> {
+      const client = getClient();
+      const [row] = await client
+        .select({ data: policies.data })
+        .from(policies)
+        .where(eq(policies.id, id));
+      if (!row) {
+        throw new Error("POLICY_NOT_FOUND");
+      }
+      const data = row.data;
+      return data && typeof data === "object" && !Array.isArray(data)
+        ? (data as Record<string, unknown>)
+        : {};
+    },
+
+    async setData(id: string, data: Record<string, unknown>): Promise<void> {
+      const client = getClient();
+      const result = await client
+        .update(policies)
+        .set({ data })
+        .where(eq(policies.id, id))
+        .returning({ id: policies.id });
+      if (result.length === 0) {
+        throw new Error("POLICY_NOT_FOUND");
+      }
+    },
   };
 
   return storage;
@@ -114,6 +143,12 @@ export const policyLoggingConfig = defineLoggingConfig<PolicyStorage>({
         siriusId: beforeState?.policy?.siriusId,
         name: beforeState?.policy?.name,
       }),
+    },
+    setData: {
+      getEntityId: (args) => args[0],
+      getHostEntityId: (args) => args[0],
+      getDescription: () => 'Updated policy data',
+      metadata: (args) => ({ policyId: args[0] }),
     },
   },
 });

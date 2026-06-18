@@ -25,6 +25,7 @@ const iconMap: Record<string, React.ComponentType<{ className?: string; size?: n
 
 export function AddEmployerForm() {
   const [name, setName] = useState("");
+  const [siriusId, setSiriusId] = useState("");
   const [isActive, setIsActive] = useState(true);
   const [typeId, setTypeId] = useState<string | null>(null);
   const { toast } = useToast();
@@ -36,12 +37,13 @@ export function AddEmployerForm() {
   });
 
   const addEmployerMutation = useMutation({
-    mutationFn: async (employerData: { name: string; isActive: boolean; typeId: string | null }) => {
+    mutationFn: async (employerData: { name: string; isActive: boolean; typeId: string | null; siriusId: string | null }) => {
       return await apiRequest("POST", "/api/employers", employerData);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/employers"] });
       setName("");
+      setSiriusId("");
       setIsActive(true);
       setTypeId(null);
       toast({
@@ -64,7 +66,7 @@ export function AddEmployerForm() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (name.trim()) {
-      addEmployerMutation.mutate({ name: name.trim(), isActive, typeId });
+      addEmployerMutation.mutate({ name: name.trim(), isActive, typeId, siriusId: siriusId.trim() === "" ? null : siriusId.trim() });
     }
   };
 
@@ -89,6 +91,20 @@ export function AddEmployerForm() {
                 onChange={(e) => setName(e.target.value)}
                 className="w-full"
                 data-testid="input-employer-name"
+              />
+            </div>
+            <div>
+              <Label htmlFor="employer-sirius-id" className="text-sm font-medium text-foreground mb-2 block">
+                Sirius ID
+              </Label>
+              <Input
+                id="employer-sirius-id"
+                type="text"
+                placeholder="Optional external ID (e.g. ECHP)"
+                value={siriusId}
+                onChange={(e) => setSiriusId(e.target.value)}
+                className="w-full"
+                data-testid="input-employer-sirius-id"
               />
             </div>
             <div>

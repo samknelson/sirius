@@ -11,8 +11,8 @@ import { BtuDuesAllocationWizard } from "../wizards/types/btu_dues_allocation.js
 import { objectStorageService } from "../services/objectStorage.js";
 import { hashHeaderRow } from "../utils/hash.js";
 import { getEffectiveUser } from "./masquerade";
-import { sendInapp } from "../services/inapp-sender.js";
-import { sendEmail } from "../services/email-sender.js";
+import { sendInapp } from "../services/comm/senders/inapp.js";
+import { sendEmail } from "../services/comm/senders/email.js";
 import { logger } from "../logger.js";
 
 const upload = multer({

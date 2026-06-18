@@ -1,3 +1,4 @@
+import { registerDispatchEligPlugin } from "../registry";
 import { logger } from "../../../../logger";
 import { createDispatchStorage } from "../../../../storage/dispatch/dispatches";
 import { createDispatchJobStorage } from "../../../../storage/dispatch/jobs";
@@ -14,7 +15,7 @@ export const dispatchSingleshiftPlugin: DispatchEligPlugin = {
   id: "dispatch_singleshift",
   name: "Single Shift Dispatch",
   description: "Prevents a worker from accepting two dispatches that start on the same date",
-  componentId: COMPONENT_ID,
+  requiredComponent: COMPONENT_ID,
   backfill: () => backfillDispatchSingleshiftEligibility(),
   backfillOrder: 10,
 
@@ -151,3 +152,5 @@ export async function backfillDispatchSingleshiftEligibility(): Promise<{ worker
 
   return { workersProcessed: uniqueWorkerIds.length, entriesCreated };
 }
+
+registerDispatchEligPlugin(dispatchSingleshiftPlugin);

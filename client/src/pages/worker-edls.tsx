@@ -13,13 +13,12 @@ interface WorkerEdlsState {
   workerId: string;
   active: boolean;
   exists: boolean;
-  tableMissing?: boolean;
 }
 
 function WorkerEdlsContent() {
   const { worker } = useWorkerLayout();
-  const { hasComponent, hasCapability } = useAuth();
-  const componentEnabled = hasComponent('edls') && hasCapability('workerEdls');
+  const { hasComponent } = useAuth();
+  const componentEnabled = hasComponent('edls');
   const { canAccess: canEdit } = useAccessCheck('edls.coordinator', worker.id, { enabled: componentEnabled });
   const { toast } = useToast();
 
@@ -46,7 +45,7 @@ function WorkerEdlsContent() {
     },
   });
 
-  if (!componentEnabled || data?.tableMissing) {
+  if (!componentEnabled) {
     return (
       <Card>
         <CardHeader>

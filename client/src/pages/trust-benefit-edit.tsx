@@ -20,6 +20,7 @@ function TrustBenefitEditContent() {
   const queryClient = useQueryClient();
 
   const [editName, setEditName] = useState(benefit.name);
+  const [editSiriusId, setEditSiriusId] = useState(benefit.siriusId || "");
   const [editBenefitType, setEditBenefitType] = useState(benefit.benefitType || undefined);
   const [editIsActive, setEditIsActive] = useState(benefit.isActive);
   const [editDescription, setEditDescription] = useState(benefit.description || "");
@@ -29,7 +30,7 @@ function TrustBenefitEditContent() {
   });
 
   const updateBenefitMutation = useMutation({
-    mutationFn: async (data: { name: string; benefitType?: string; isActive: boolean; description?: string }) => {
+    mutationFn: async (data: { name: string; siriusId?: string | null; benefitType?: string; isActive: boolean; description?: string }) => {
       return await apiRequest("PUT", `/api/trust-benefits/${benefit.id}`, data);
     },
     onSuccess: () => {
@@ -54,6 +55,7 @@ function TrustBenefitEditContent() {
     if (editName.trim()) {
       updateBenefitMutation.mutate({ 
         name: editName.trim(), 
+        siriusId: editSiriusId.trim() || null,
         benefitType: editBenefitType || undefined,
         isActive: editIsActive,
         description: editDescription.trim() || undefined
@@ -82,6 +84,21 @@ function TrustBenefitEditContent() {
               />
             </div>
             
+            <div className="space-y-2">
+              <Label htmlFor="edit-benefit-sirius-id" className="text-sm font-medium text-foreground">
+                ID
+              </Label>
+              <Input
+                id="edit-benefit-sirius-id"
+                type="text"
+                placeholder="Optional ID..."
+                value={editSiriusId}
+                onChange={(e) => setEditSiriusId(e.target.value)}
+                className="w-full"
+                data-testid="input-edit-benefit-sirius-id"
+              />
+            </div>
+
             <div className="space-y-2">
               <Label htmlFor="edit-benefit-type" className="text-sm font-medium text-foreground">
                 Benefit Type

@@ -1,3 +1,4 @@
+import { registerDispatchEligPlugin } from "../registry";
 import { logger } from "../../../../logger";
 import { createWorkerDispatchStatusStorage } from "../../../../storage/dispatch/worker-status";
 import { createWorkerDispatchEligDenormStorage } from "../../../../storage/dispatch/worker-elig-denorm";
@@ -13,7 +14,7 @@ export const dispatchStatusPlugin: DispatchEligPlugin = {
   id: "dispatch_status",
   name: "Dispatch Availability",
   description: "Only includes workers whose dispatch status is set to Available",
-  componentId: "dispatch",
+  requiredComponent: "dispatch",
   backfill: () => backfillDispatchStatusEligibility(),
 
   eventHandlers: [
@@ -122,3 +123,5 @@ export async function backfillDispatchStatusEligibility(): Promise<{ workersProc
 
   return { workersProcessed: availableWorkers.length, entriesCreated };
 }
+
+registerDispatchEligPlugin(dispatchStatusPlugin);

@@ -3,7 +3,7 @@ import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
-export const sitespecificFreemanCrewleads = pgTable("freeman_crewleads", {
+export const sitespecificFreemanCrewleads = pgTable("sitespecific_freeman_crewleads", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   siriusId: varchar("sirius_id").unique().notNull(),
   name: text("name").notNull(),

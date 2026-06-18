@@ -1,6 +1,9 @@
 import { BulkMessageLayout, useBulkMessageLayout } from "@/components/layouts/BulkMessageLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { useQuery } from "@tanstack/react-query";
+import { Tag } from "lucide-react";
+import type { CommTagOption } from "@/components/comm/CommTagPicker";
 
 const mediumLabels: Record<string, string> = {
   email: "Email",
@@ -12,6 +15,17 @@ const mediumLabels: Record<string, string> = {
 function BulkMessageDetailsContent() {
   const { bulkMessage } = useBulkMessageLayout();
   const media = Array.isArray(bulkMessage.medium) ? bulkMessage.medium : [bulkMessage.medium];
+
+  const data = (bulkMessage.data ?? {}) as Record<string, unknown>;
+  const tagIds = Array.isArray(data.tagIds)
+    ? (data.tagIds as unknown[]).filter((id): id is string => typeof id === "string")
+    : [];
+
+  const { data: allTags = [] } = useQuery<CommTagOption[]>({
+    queryKey: ["/api/options/comm-tag"],
+    enabled: tagIds.length > 0,
+  });
+  const selectedTags = allTags.filter((t) => tagIds.includes(t.id));
 
   return (
     <div className="space-y-6">
@@ -51,22 +65,32 @@ function BulkMessageDetailsContent() {
                   : <span className="text-muted-foreground">—</span>}
               </dd>
             </div>
+            <div className="sm:col-span-2">
+              <dt className="text-sm font-medium text-muted-foreground">Tags</dt>
+              <dd className="mt-1 text-sm flex flex-wrap gap-1" data-testid="text-bulk-detail-tags">
+                {tagIds.length === 0 ? (
+                  <span className="text-muted-foreground">—</span>
+                ) : selectedTags.length === 0 ? (
+                  tagIds.map((id) => (
+                    <Badge key={id} variant="outline" data-testid={`badge-bulk-tag-${id}`}>
+                      <Tag className="h-3 w-3 mr-1" />
+                      {id}
+                    </Badge>
+                  ))
+                ) : (
+                  selectedTags.map((t) => (
+                    <Badge key={t.id} variant="secondary" data-testid={`badge-bulk-tag-${t.id}`}>
+                      <Tag className="h-3 w-3 mr-1" />
+                      {t.name}
+                    </Badge>
+                  ))
+                )}
+              </dd>
+            </div>
           </dl>
         </CardContent>
       </Card>
 
-      {bulkMessage.data && Object.keys(bulkMessage.data as Record<string, unknown>).length > 0 && (
-        <Card data-testid="card-bulk-data">
-          <CardHeader>
-            <CardTitle>Additional Data</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <pre className="text-sm bg-muted/50 p-4 rounded-md overflow-auto" data-testid="text-bulk-data-json">
-              {JSON.stringify(bulkMessage.data, null, 2)}
-            </pre>
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 }

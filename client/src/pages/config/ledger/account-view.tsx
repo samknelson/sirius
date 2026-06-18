@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { usePageTitle } from "@/contexts/PageTitleContext";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -17,6 +17,12 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Trash2, Loader2 } from "lucide-react";
 import { LedgerAccountLayout, useLedgerAccountLayout } from "@/components/layouts/LedgerAccountLayout";
+import { pluginSearch, pluginConfigsQueryKey } from "@/plugins/_core/manifest";
+
+interface PaymentGatewayConfig {
+  id: string;
+  name: string;
+}
 
 function AccountDetailsContent() {
   usePageTitle("Account Details");
@@ -24,6 +30,16 @@ function AccountDetailsContent() {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+
+  const { data: gatewayConfigs = [], isLoading: gatewaysLoading } = useQuery<PaymentGatewayConfig[]>({
+    queryKey: [...pluginConfigsQueryKey("payment-gateway"), "search"],
+    queryFn: () => pluginSearch<"payment-gateway", PaymentGatewayConfig>("payment-gateway"),
+    enabled: !!account.gatewayConfigId,
+  });
+
+  const gatewayName = account.gatewayConfigId
+    ? gatewayConfigs.find((g) => g.id === account.gatewayConfigId)?.name
+    : null;
 
   const deleteMutation = useMutation({
     mutationFn: async () => {
@@ -84,6 +100,16 @@ function AccountDetailsContent() {
                   {account.isActive ? "Active" : "Inactive"}
                 </Badge>
               </div>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-muted-foreground">Payment Gateway</label>
+              <p className="text-foreground" data-testid="text-account-gateway">
+                {!account.gatewayConfigId
+                  ? "None"
+                  : gatewaysLoading
+                    ? "Loading..."
+                    : gatewayName ?? "Unknown gateway"}
+              </p>
             </div>
             {account.description && (
               <div className="space-y-2 md:col-span-2">

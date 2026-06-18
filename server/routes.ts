@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import { stringify } from "csv-stringify/sync";
 import multer from "multer";
 import { storage } from "./storage";
+import { pickFirstByAccountOrder, toChargeConfig } from "./plugins/ledger/charge/charge-config-resolution";
 import { insertWorkerSchema, insertWorkerDispatchHfeSchema, type WorkerId, type ContactPostal, type PhoneNumber } from "@shared/schema";
 import { z } from "zod";
 import { registerUserRoutes } from "./modules/users";
@@ -35,7 +36,8 @@ import { registerWorkerUsersRoutes } from "./modules/workers/users";
 import { registerWizardRoutes } from "./modules/wizards";
 import { registerEmployerOnboardingWizardRoutes } from "./modules/employer-onboarding-wizard";
 import { registerFileRoutes } from "./modules/files";
-import { registerLedgerStripeRoutes } from "./modules/ledger/stripe";
+import { registerLedgerPaymentMethodRoutes } from "./modules/ledger/payment-methods";
+import { registerLedgerPaymentGatewayRoutes } from "./modules/ledger/payment-gateways";
 import { registerLedgerAccountRoutes } from "./modules/ledger/accounts";
 import { registerLedgerEaRoutes } from "./modules/ledger/ea";
 import { registerLedgerPaymentRoutes } from "./modules/ledger/payments";
@@ -47,7 +49,7 @@ import { registerWorkerMshRoutes } from "./modules/worker-msh";
 import { registerWorkerHoursRoutes } from "./modules/worker-hours";
 import { registerQuickstartRoutes } from "./modules/quickstart";
 import { registerCronJobRoutes } from "./modules/system/cron";
-import { registerChargePluginRoutes } from "./modules/charge-plugins";
+import { registerEventBusIntrospectRoutes } from "./modules/dev/event-bus-introspect";
 import { registerEligibilityPluginRoutes } from "./modules/eligibility-plugins";
 import { registerTwilioRoutes } from "./modules/twilio";
 import { registerEmailConfigRoutes } from "./modules/email-config";
@@ -64,9 +66,10 @@ import { registerEmployerRoutes } from "./modules/employers/employers";
 import { registerEmployerPolicyHistoryRoutes } from "./modules/employers/policy-history";
 import { registerWorkerBenefitsScanRoutes } from "./modules/worker-benefits-scan";
 import { registerWmbScanQueueRoutes } from "./modules/wmb-scan-queue";
-import { registerStaffAlertRoutes } from "./modules/staff-alerts";
+import { registerEventNotifierMetaRoutes } from "./modules/event-notifier-meta";
 import { registerDispatchDncConfigRoutes } from "./modules/dispatch/dnc-config";
 import { registerDispatchEbaConfigRoutes } from "./modules/dispatch/eba-config";
+import { registerDispatchSeniorityResetConfigRoutes } from "./modules/dispatch/seniority-reset-config";
 import { registerWorkerBanConfigRoutes } from "./modules/worker-ban-config";
 import { registerCardcheckDefinitionsRoutes } from "./modules/cardcheck-definitions";
 import { registerCardchecksRoutes } from "./modules/cardchecks";
@@ -86,6 +89,7 @@ import { registerWorkerBansRoutes } from "./modules/worker-bans";
 import { registerWorkerSkillsRoutes } from "./modules/workers/skills";
 import { registerWorkerRelationsRoutes } from "./modules/workers/relations";
 import { registerWorkerTrustElectionsRoutes } from "./modules/trust/elections";
+import { registerTrustBenefitEligibilityExemptionsRoutes } from "./modules/trust/eligibility-exemptions";
 import { registerWorkerTosRoutes } from "./modules/workers/tos";
 import { registerWorkerCertificationsRoutes } from "./modules/workers/certifications";
 import { registerWorkerRatingsRoutes } from "./modules/workers/ratings";
@@ -96,6 +100,9 @@ import { registerHtaRoutes } from "./modules/hta";
 import { registerGbhetPensionRoutes } from "./modules/sitespecific/gbhet/pension";
 import { registerBtuTerritoriesRoutes } from "./modules/sitespecific/btu/territories";
 import { registerBtuSchoolRoutes } from "./modules/sitespecific/btu/school";
+import { registerBaoImmediateEligibilityRoutes } from "./modules/sitespecific/bao/immediate-eligibility";
+import { registerBaoBeneficiariesRoutes } from "./modules/sitespecific/bao/beneficiaries";
+import { registerBaoEchpRoutes } from "./modules/sitespecific/bao/echp";
 import { registerBtuSigImportRoutes } from "./modules/sitespecific/btu/sig-import";
 import { registerBtuScraperImportRoutes } from "./modules/sitespecific/btu/scraper-import";
 import { registerBtuBuildingRepImportRoutes } from "./modules/sitespecific/btu/building-rep-import";
@@ -113,8 +120,8 @@ import { registerTerminologyRoutes } from "./modules/terminology";
 import { registerCompaniesRoutes } from "./modules/employers/companies";
 import { registerPoliciesRoutes } from "./modules/policies";
 import { requireAccess } from "./services/access-policy-evaluator";
-import { addressValidationService } from "./services/address-validation";
-import { phoneValidationService } from "./services/phone-validation";
+import { addressValidationService } from "./services/comm/validators/address";
+import { phoneValidationService } from "./services/comm/validators/phone";
 import { serviceRegistry } from "./services/service-registry";
 import { isAuthenticated } from "./auth";
 
@@ -231,9 +238,6 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         },
         permissions: userPermissions.map((p) => p.key),
         components: enabledComponents,
-        capabilities: {
-          workerEdls: await (await import('./modules/edls/capability')).isWorkerEdlsAvailable(),
-        },
         masquerade: session.masqueradeUserId
           ? {
               isMasquerading: true,
@@ -321,6 +325,25 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Register dashboard routes
   registerDashboardRoutes(app, requireAuth, requirePermission);
 
+  // Client-injection kind ships a grouped `{ head, bodyEnd }` shape, so
+  // it overrides the generic flat-array manifest. Register first so this
+  // handler wins the path match.
+  const { registerClientInjectionManifestRoute } = await import(
+    "./plugins/client-injection"
+  );
+  registerClientInjectionManifestRoute(app, requireAuth);
+
+  // Unified plugin manifest endpoint (Task #208) — replaces the four
+  // legacy per-kind manifest URLs.
+  const { registerPluginsManifestRoutes } = await import("./modules/plugins-manifest");
+  registerPluginsManifestRoutes(app, requireAuth);
+
+  // Generic plugin admin endpoints (Task #209) — replaces the per-kind
+  // enable / settings / validate-config endpoints across dashboard,
+  // charge, trust-eligibility, and dispatch-eligibility.
+  const { registerPluginsAdminRoutes } = await import("./modules/plugins-admin");
+  registerPluginsAdminRoutes(app, requireAuth);
+
   // Register bookmark routes
   registerBookmarkRoutes(app, requireAuth, requirePermission);
 
@@ -334,8 +357,11 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Register component configuration routes
   registerComponentRoutes(app, requireAuth, requirePermission);
 
-  // Register ledger/stripe routes
-  registerLedgerStripeRoutes(app);
+  // Register provider-generic ledger payment-method routes
+  registerLedgerPaymentMethodRoutes(app);
+
+  // Register provider-generic ledger payment-gateway admin routes (connection test)
+  registerLedgerPaymentGatewayRoutes(app);
 
   // Register ledger/accounts routes
   registerLedgerAccountRoutes(app);
@@ -360,11 +386,23 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Register cron job management routes
   registerCronJobRoutes(app, requireAuth, requirePermission);
 
-  // Register charge plugin configuration routes
-  registerChargePluginRoutes(app, requireAuth, requirePermission);
+  // Register event bus introspection routes (debug component)
+  registerEventBusIntrospectRoutes(app);
+
+  // Charge plugin configs are served by the unified generic config routes
+  // (registerPluginsConfigRoutes); the bespoke charge route was removed in
+  // Task #355.
 
   // Register eligibility plugin routes
   registerEligibilityPluginRoutes(app, requireAuth, requirePermission);
+
+  // Generic plugin config CRUD + search endpoints. Registered AFTER every
+  // per-kind config route so any existing kind-specific handlers take
+  // precedence. These generic routes operate solely on the unified
+  // plugin_configs tables and remain dormant for any kind that still owns
+  // specific routes.
+  const { registerPluginsConfigRoutes } = await import("./modules/plugins-config");
+  registerPluginsConfigRoutes(app, requireAuth);
 
   // Register Twilio configuration routes
   registerTwilioRoutes(app);
@@ -417,14 +455,15 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Register WMB scan queue routes (admin only)
   registerWmbScanQueueRoutes(app, requireAuth, requireAccess, storage);
   
-  // Register staff alert configuration routes
-  registerStaffAlertRoutes(app, requireAuth, requireAccess, storage);
+  // Register event-notifier admin metadata routes (staff user picker source)
+  registerEventNotifierMetaRoutes(app, requireAuth, requireAccess, storage);
   
   // Register dispatch DNC configuration routes
   registerDispatchDncConfigRoutes(app, requireAuth, requireAccess, storage);
   
   // Register dispatch EBA configuration routes
   registerDispatchEbaConfigRoutes(app, requireAuth, requireAccess, storage);
+  registerDispatchSeniorityResetConfigRoutes(app, requireAuth, requireAccess, storage);
   
   // Register worker ban configuration routes
   registerWorkerBanConfigRoutes(app, requireAuth, requireAccess, storage);
@@ -538,7 +577,12 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         return res.json({});
       }
       const limitedWorkerIds = workerIds.slice(0, 100);
-      const config = await storage.chargePluginConfigs.getFirstEnabledByPluginId('btu-dues-allocation');
+      const config = pickFirstByAccountOrder(
+        (await storage.pluginConfigs.search("charge", {
+          pluginId: 'btu-dues-allocation',
+          enabled: true,
+        })).map(toChargeConfig),
+      );
       const settings = (config?.settings ?? null) as { accountIds?: string[] } | null;
       const duesAccountId = settings?.accountIds?.[0];
       const duesMap: Record<string, { amount: string; date: string }> = {};
@@ -1544,7 +1588,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   app.get("/api/workers/:workerId/benefits", requireAccess('worker.view', req => req.params.workerId), async (req, res) => {
     try {
       const { workerId } = req.params;
-      const benefits = await storage.workers.getWorkerBenefits(workerId);
+      const benefits = await storage.trust.wmb.getWorkerBenefits(workerId);
       res.json(benefits);
     } catch (error) {
       console.error("Failed to fetch worker benefits:", error);
@@ -1564,7 +1608,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         });
       }
 
-      const wmb = await storage.workers.createWorkerBenefit({
+      const wmb = await storage.trust.wmb.createWorkerBenefit({
         workerId,
         month,
         year,
@@ -1588,7 +1632,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   app.delete("/api/worker-benefits/:id", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
       const { id } = req.params;
-      const deleted = await storage.workers.deleteWorkerBenefit(id);
+      const deleted = await storage.trust.wmb.deleteWorkerBenefit(id);
 
       if (!deleted) {
         return res.status(404).json({ message: "Worker benefit not found" });
@@ -1641,6 +1685,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Register worker trust elections routes (handles all access control internally)
   registerWorkerTrustElectionsRoutes(app, requireAuth, requireAccess);
 
+  // Register trust benefit eligibility exemptions routes (handles all access control internally)
+  registerTrustBenefitEligibilityExemptionsRoutes(app, requireAuth, requireAccess);
+
   // Register worker time-off-sick (TOS) routes
   registerWorkerTosRoutes(app, requireAuth, requireAccess);
 
@@ -1654,6 +1701,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   registerBtuCsgRoutes(app, requireAuth, requirePermission);
   registerBtuTerritoriesRoutes(app, requireAuth, requirePermission);
   registerBtuSchoolRoutes(app, requireAuth, requirePermission);
+  registerBaoImmediateEligibilityRoutes(app, requireAuth, requirePermission, requireAccess);
+  registerBaoBeneficiariesRoutes(app, requireAuth, requirePermission, requireAccess);
+  registerBaoEchpRoutes(app, requireAuth, requirePermission, requireAccess);
   registerBtuSigImportRoutes(app, requireAuth, requirePermission);
   registerBtuScraperImportRoutes(app, requireAuth, requirePermission);
   registerBtuBuildingRepImportRoutes(app, requireAuth, requirePermission);

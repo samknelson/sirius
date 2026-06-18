@@ -1,3 +1,4 @@
+import { registerDispatchEligPlugin } from "../registry";
 import { logger } from "../../../../logger";
 import { createWorkerSkillStorage } from "../../../../storage/workers/skills";
 import { createWorkerDispatchEligDenormStorage } from "../../../../storage/dispatch/worker-elig-denorm";
@@ -17,7 +18,7 @@ export const dispatchSkillPlugin: DispatchEligPlugin = {
   id: "dispatch_skill",
   name: "Required Skills",
   description: "Filters workers based on required skills for the job",
-  componentId: "worker.skills",
+  requiredComponent: "worker.skills",
   backfill: () => backfillDispatchSkillEligibility(),
 
   eventHandlers: [
@@ -154,3 +155,5 @@ export async function backfillDispatchSkillEligibility(): Promise<{ workersProce
 
   return { workersProcessed: workerIds.length, entriesCreated };
 }
+
+registerDispatchEligPlugin(dispatchSkillPlugin);

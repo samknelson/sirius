@@ -47,6 +47,7 @@ export function BulkMessageLayout({ activeTab, children }: BulkMessageLayoutProp
   const { data: bulkMessage, isLoading, error } = useQuery<BulkMessage>({
     queryKey: ["/api/bulk-messages", id],
     enabled: !!id,
+    refetchOnMount: "always",
   });
 
   const { tabs: mainTabs, getActiveRoot } = useBulkMessageTabAccess(id);
@@ -122,6 +123,11 @@ export function BulkMessageLayout({ activeTab, children }: BulkMessageLayoutProp
                 {mediumLabels[m] || m}
               </Badge>
             ))}
+            {((bulkMessage.data as { offline?: boolean } | null)?.offline === true) && (
+              <Badge variant="destructive" data-testid="badge-bulk-offline">
+                Offline
+              </Badge>
+            )}
           </div>
         </div>
       </div>

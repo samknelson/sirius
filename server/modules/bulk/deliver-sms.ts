@@ -1,5 +1,5 @@
 import type { IStorage } from "../../storage";
-import { sendSms, type SendSmsResult } from "../../services/sms-sender";
+import { sendSms, type SendSmsResult } from "../../services/comm/senders/sms";
 import type { DeliverContactResult } from "./deliver";
 import { renderTemplate } from "../../../shared/bulk-tokens";
 import { buildRecipientContext } from "./token-context";
@@ -17,6 +17,8 @@ export async function deliverSms(
   messageId: string,
   contactId: string,
   userId?: string,
+  tagIds?: string[],
+  offline?: boolean,
 ): Promise<DeliverContactResult> {
   const smsContent = await storage.bulkMessagesSms.getByBulkId(messageId);
   if (!smsContent) {
@@ -33,6 +35,8 @@ export async function deliverSms(
     toPhoneNumber: phone,
     message: renderedBody,
     userId,
+    tagIds,
+    sendOffline: offline,
   });
   return {
     success: result.success,

@@ -1,3 +1,4 @@
+import { registerDispatchEligPlugin } from "../registry";
 import { logger } from "../../../../logger";
 import { createWorkerDispatchHfeStorage } from "../../../../storage/dispatch/worker-hfe";
 import { createWorkerDispatchEligDenormStorage } from "../../../../storage/dispatch/worker-elig-denorm";
@@ -10,7 +11,7 @@ export const dispatchHfePlugin: DispatchEligPlugin = {
   id: "dispatch_hfe",
   name: "Employer Priority",
   description: "Only includes workers who are being held for a specific employer",
-  componentId: "dispatch.hfe",
+  requiredComponent: "dispatch.hfe",
 
   eventHandlers: [
     {
@@ -65,3 +66,5 @@ export const dispatchHfePlugin: DispatchEligPlugin = {
     });
   },
 };
+
+registerDispatchEligPlugin(dispatchHfePlugin);

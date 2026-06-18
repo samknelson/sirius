@@ -1,4 +1,31 @@
 #!/usr/bin/env npx tsx
+/**
+ * DEV-ONLY drizzle-kit wrapper.
+ *
+ * This script used to be the primary mechanism for syncing the dev DB to
+ * `shared/schema*`. That role has been replaced by the per-component
+ * migration framework (see `replit.md` → "Schema changes require migrations"
+ * and `scripts/migrate/`). The startup drift gate now refuses to boot the
+ * server if anything is out of sync.
+ *
+ * `db-push` is preserved ONLY for the developer-loop case of "I'm
+ * iterating on a Drizzle schema locally and want to see drizzle-kit's
+ * generated DDL before I hand-write a migration file." It is GATED behind
+ * an explicit `ALLOW_DB_PUSH=1` environment variable so it cannot be run
+ * accidentally and will not be invoked in production or by automation.
+ *
+ * Workflow:
+ *   1. Edit `shared/schema*`.
+ *   2. Run `ALLOW_DB_PUSH=1 npx tsx scripts/db-push.ts --dry-run` to see
+ *      what drizzle-kit thinks the diff is.
+ *   3. Author a migration file under `scripts/migrate/core/` or
+ *      `scripts/migrate/components/<id>/`, register it, and run the
+ *      server — the migration runner will apply it and the drift gate
+ *      will pass.
+ *
+ * Do NOT use this script to apply schema changes to production. There is
+ * no production code path that calls it.
+ */
 import { spawn } from "node:child_process";
 import { writeFileSync, unlinkSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
@@ -49,13 +76,6 @@ async function getDisabledComponentTables(pool: Pool): Promise<string[]> {
   );
   const existingSet = new Set(existing.rows.map(r => r.table_name));
 
-  // All-or-nothing per component: if ANY manifest table for a disabled
-  // component already exists in the DB, keep them ALL in the schema.
-  // Otherwise drizzle would see an orphaned FK reference (kept table
-  // pointing at an excluded target) and emit broken DROP CONSTRAINT
-  // statements. This makes disabled components prevent CREATION of
-  // greenfield component schemas without ever forcing a destructive drop
-  // on partially-created ones.
   const disabled: string[] = [];
   for (const component of disabledComponents) {
     const tables = component.schemaManifest!.tables;
@@ -131,13 +151,36 @@ function runDrizzleKit(extraArgs: string[]): Promise<number> {
 }
 
 async function main() {
-  const databaseUrl = process.env.NEON_DATABASE_URL ?? process.env.DATABASE_URL;
+  if (process.env.ALLOW_DB_PUSH !== "1") {
+    console.error(
+      [
+        "",
+        "[db:push] REFUSED — db-push is a dev-only escape hatch.",
+        "",
+        "Schema changes are applied via the per-component migration framework now:",
+        "  - Core schema changes:        scripts/migrate/core/",
+        "  - Per-component changes:      scripts/migrate/components/<componentId>/",
+        "  - Per-deployment baselines:   scripts/migrate/baseline/<replit>-<YYYYMMDD>.ts",
+        "",
+        "The server's startup drift check will refuse to boot if your DB is out",
+        "of sync with the schema. Author a migration file instead of running push.",
+        "",
+        "If you really need to preview drizzle-kit's diff against your dev DB",
+        "(e.g. to copy DDL into a migration you are writing), set ALLOW_DB_PUSH=1:",
+        "    ALLOW_DB_PUSH=1 npx tsx scripts/db-push.ts --dry-run",
+        "",
+        "NEVER set ALLOW_DB_PUSH in production. See replit.md.",
+        "",
+      ].join("\n"),
+    );
+    process.exit(2);
+  }
+
+  const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) {
     throw new Error("DATABASE_URL is not set");
   }
 
-  // Defensive: clear any stale runtime files from a prior crashed run so
-  // ad-hoc `npx drizzle-kit ...` invocations are never silently filtered.
   cleanupRuntimeFiles();
 
   const extraArgs = process.argv.slice(2);

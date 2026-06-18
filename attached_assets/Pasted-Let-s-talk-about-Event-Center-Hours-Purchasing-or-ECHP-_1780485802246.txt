@@ -1,0 +1,31 @@
+Let's talk about "Event Center Hours Purchasing", or ECHP. This is a new feature that is within the sitespecific.bao component.
+
+FRONT END: There is a new page called "Event Center Hours Purchase". It is located at /workers/:id/ledger/sitespecific/bao/echp, and appears as a sub-tab under "Accounting" for the worker.
+
+ROUTE: We'll need a new module, in server/modules/sitespecific/bao/echp.ts. The logic for these routes is a little detailed. First, we need to determine if ECHP is available to you. There are many ways in which it might fail:
+
+- If today's date is after the 15th day of the month, fail with the error: "Online purchasing for this month is closed. Please contact the office for assistance."
+
+- The worker must have an active election, with a policy and an employer.
+
+- There must exist an employer with the sirius_id "ECHP". If not, this is a configuration error.
+
+- There must exist an hours type with the sirius_id "TERMINATED". If not, this is a configuration error.
+
+- There must exist an hours type with the sirius_id "ECHP". If not, this is a configuration error.
+
+- The hours type of the last hours entry for this worker at the employer in the election must not have the "TERMINATED" type. Otherwise, fail with the error "You have been marked as Terminated, which means you are ineligible for the Hours Buy-Up program. If you wish to maintain coverage, you may be eligible to make a COBRA election"
+
+- The worker must have completed buildup (as defined in the sitespecific eligibility plugin). If not, fail with the error "Buildup is not complete."
+
+- You must be on a break (from the buildup result, current_break_first_year / month). If not, fail with the error "There are no break months that need purchasing."
+
+- The break (current_break_first_year / month) must be exactly three months prior to the current month. If not, fail with the error "Retroactive coverage cannot be purchased online. Please contact an administrator to update prior months. (Hours needed for target_month / target_year)"
+
+- You must have fewer than six nonzero hours entries of type ECHP in the targeted calendar year.
+
+For now, let's just implement this. If all the tests pass, then show a message saying "hours purchasing is permitted."
+
+DEBUGGING: In the preceding, we reference the current date (15th of the month, three months prior, and so forth). If the "debug" component is enabled, AND if the user has the "admin" permission, then we should allow the user to select a date and assume use that as the "current date", i.e. so that we can operate the system "as of" a different date.
+
+STORAGE: I believe that all of this can be accomplished with no new storage methods. But please check carefully to make sure we can get everything we need.
