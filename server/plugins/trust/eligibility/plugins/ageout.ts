@@ -6,6 +6,14 @@ import {
   BaseEligibilityConfig,
 } from "../types";
 import { registerEligibilityPlugin } from "../registry";
+import { createUnifiedOptionsStorage } from "../../../../storage/unified-options";
+
+const unifiedOptionsStorage = createUnifiedOptionsStorage();
+
+async function lookupRelationTypeName(id: string): Promise<string> {
+  const opt = await unifiedOptionsStorage.get("worker-relation-type", id);
+  return opt?.name ?? id;
+}
 
 interface AgeoutConfig extends BaseEligibilityConfig {
   // Fractional-year shape (years + months 0..11). Each pair is
@@ -20,6 +28,11 @@ interface AgeoutConfig extends BaseEligibilityConfig {
   warnMinMonths?: number | null;
   warnMaxYears?: number | null;
   warnMaxMonths?: number | null;
+  // Optional relationship-type filter. When non-empty, the age check only
+  // applies to dependents whose active relationship to the subscriber is
+  // one of these types; the subscriber and dependents of other types skip
+  // the age check entirely. Empty means "apply the age check to everyone".
+  appliesToRelationTypeIds?: string[];
 }
 
 function computeAgeInMonths(
@@ -113,6 +126,16 @@ class AgeoutPlugin extends EligibilityPlugin<AgeoutConfig> {
           "Workers between (warnMax, max] are eligible but flagged with a warning. Leave blank for no upper warning.",
         ),
         warnMaxMonths: makeMonthsField("Warning band — maximum months"),
+        appliesToRelationTypeIds: {
+          type: "array",
+          title: "Apply to relationship types",
+          description:
+            "When set, the age check only applies to dependents whose active relationship to the subscriber (on the as-of date) is one of these types. The subscriber and dependents of other types skip the age check entirely. Leave empty to apply the age check to everyone.",
+          items: { type: "string", format: "uuid" },
+          uniqueItems: true,
+          default: [],
+          "x-options-resource": "worker-relation-type",
+        },
       },
       // Year-level cross-bound checks (inexpensive AJV $data refs).
       // Precise month-level cross-bound validation lives in
@@ -246,6 +269,31 @@ class AgeoutPlugin extends EligibilityPlugin<AgeoutConfig> {
       : null;
     const prefix = (msg: string): string =>
       dependentName ? `Dependent ${dependentName}: ${msg}` : msg;
+
+    // Optional relationship-type filter. When configured, the age check
+    // only applies to dependents whose active relationship type is in the
+    // list; everyone else (subscriber/self and dependents of other types)
+    // passes ageout automatically because the rule does not apply to them.
+    const appliesToRelationTypeIds = config.appliesToRelationTypeIds ?? [];
+    if (appliesToRelationTypeIds.length > 0) {
+      if (!context.relationship) {
+        return {
+          eligible: true,
+          reason:
+            "Ageout does not apply to the subscriber (rule is limited to specific relationship types)",
+        };
+      }
+      const relationType = context.relationship.relationType;
+      if (!appliesToRelationTypeIds.includes(relationType)) {
+        const typeName = await lookupRelationTypeName(relationType);
+        return {
+          eligible: true,
+          reason: prefix(
+            `Ageout does not apply to "${typeName}" relationships (rule is limited to specific relationship types)`,
+          ),
+        };
+      }
+    }
 
     // Defense-in-depth: re-check every cross-bound constraint at
     // evaluate time so a persisted-but-invalid config (e.g. one that
