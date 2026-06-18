@@ -1,1 +1,2 @@
 - [Migration version-counter collision](migration-version-collision.md) — merged low-version migrations get skipped past the shared counter; fix residual drift with high-version baselines, never db:push.
+- [package-lock empty-version dedupe crash](lockfile-empty-version-dedupe.md) — fresh npm install dies with "Invalid Version:" when lockfile has nested optional platform entries lacking version; strip them, never touch package.json.
