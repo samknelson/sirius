@@ -171,6 +171,11 @@ export function initializePermissions(): void {
       module: 'core'
     },
     {
+      key: 'policies.edit',
+      description: 'Edit access policies',
+      module: 'core'
+    },
+    {
       key: 'workers.comm',
       description: 'Access worker communication features (SMS, email, postal, in-app)',
       module: 'core'
