@@ -7,6 +7,13 @@ import {
 } from "../types";
 import { registerEligibilityPlugin } from "../registry";
 import { storage } from "../../../../storage/database";
+import {
+  lastDayOfMonthYmd,
+  monthName,
+  toOrdinal,
+  fromOrdinal,
+  resolveBaoThreshold,
+} from "./bao-shared";
 
 /**
  * Defaults that mirror the legacy PHP implementation:
@@ -90,72 +97,6 @@ export interface FetchBuildupOptions {
   warningBreakCount?: number;
 }
 
-/** Read a non-negative integer threshold from a member status option's JSON. */
-function readThresholdFromMs(ms: unknown): number | undefined {
-  const value = (ms as { data?: { sitespecific?: { bao?: { threshold?: unknown } } } } | null)
-    ?.data?.sitespecific?.bao?.threshold;
-  return typeof value === "number" && Number.isInteger(value) && value >= 0
-    ? value
-    : undefined;
-}
-
-/** Last day of the given month, as a YYYY-MM-DD string. */
-function lastDayOfMonthYmd(year: number, month: number): string {
-  const d = new Date(year, month, 0);
-  const yr = d.getFullYear();
-  const mo = String(d.getMonth() + 1).padStart(2, "0");
-  const dy = String(d.getDate()).padStart(2, "0");
-  return `${yr}-${mo}-${dy}`;
-}
-
-function monthName(month: number): string {
-  return new Date(2000, month - 1, 1).toLocaleString("default", { month: "long" });
-}
-
-/** year/month → a single comparable ordinal (months since year 0). */
-function toOrdinal(year: number, month: number): number {
-  return year * 12 + (month - 1);
-}
-
-function fromOrdinal(ord: number): { year: number; month: number } {
-  return { year: Math.floor(ord / 12), month: (ord % 12) + 1 };
-}
-
-/**
- * Resolve the hours threshold for a worker by walking employer → industry →
- * the worker's member status in that industry as of the date → the threshold
- * stored on that member status's JSON. Falls back to {@link DEFAULT_THRESHOLD}
- * (or a caller-supplied default) when any link is missing.
- */
-async function resolveThreshold(
-  workerId: string,
-  employerId: string | undefined,
-  asOfYmd: string,
-  defaultThreshold: number,
-): Promise<{ threshold: number; resolved: boolean }> {
-  if (!employerId) return { threshold: defaultThreshold, resolved: false };
-
-  const employer = await storage.employers.getEmployer(employerId);
-  const industryId = employer?.industryId;
-  if (!industryId) return { threshold: defaultThreshold, resolved: false };
-
-  // History is ordered by date descending, so the first row matching the
-  // industry and dated on or before the as-of date is the status in effect.
-  const history = await storage.workerMsh.getWorkerMsh(workerId);
-  const asOf = history.find(
-    (row) =>
-      row.industryId === industryId &&
-      typeof row.date === "string" &&
-      row.date <= asOfYmd,
-  );
-  if (!asOf) return { threshold: defaultThreshold, resolved: false };
-
-  const threshold = readThresholdFromMs(asOf.ms);
-  if (threshold === undefined) return { threshold: defaultThreshold, resolved: false };
-
-  return { threshold, resolved: true };
-}
-
 /**
  * Compute a worker's buildup status as of a month. Loads the worker's full
  * monthly hours once, resolves the threshold (unless one is supplied), and
@@ -182,7 +123,7 @@ export async function fetchBuildupStatus(
     fromOrdinal(benefitOrdinal);
 
   const asOfYmd = lastDayOfMonthYmd(asofYear, asofMonth);
-  const { threshold, resolved } = await resolveThreshold(
+  const { threshold, resolved } = await resolveBaoThreshold(
     workerId,
     options.threshold === undefined ? options.employerId : undefined,
     asOfYmd,
