@@ -55,8 +55,10 @@ import "./components/sitespecific.freeman/001_create_crewleads";
 // reserved for baselining (>= 1000). They are idempotent on re-run. See
 // `replit.md` → "Baselining a deployment" for the full procedure.
 //
+import "./baseline/sirius-dev-20260618";
 import "./baseline/sirius-dev-20260518";
 import "./baseline/sirius-dev-20260524";
+import "./baseline/sirius-dev-20260618b";
 
 export {
   runMigrations,
