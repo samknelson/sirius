@@ -154,8 +154,8 @@ class BaoStartHealthnetPlugin extends EligibilityPlugin<BaoStartHealthnetConfig>
     description:
       "A subscriber is eligible if they meet ANY ONE of the following criteria (criteria 1–3 are checked only when configured; criterion 4 is always checked):\n" +
       "1. Geographic — primary address is more than the chosen distance from every selected site.\n" +
-      "2. Ever had HealthNet — the subscriber has at any point held the benefit designated as HealthNet.\n" +
-      "3. Continuous medical — the subscriber has held a benefit of the chosen Medical type for the required number of consecutive months at any point in their history.\n" +
+      "2. Ever had HealthNet — the subscriber has, on or before the evaluated date, held the benefit designated as HealthNet.\n" +
+      "3. Continuous medical — the subscriber has held a benefit of the chosen Medical type for the required number of consecutive months at some point on or before the evaluated date.\n" +
       "4. Employer immediate-eligibility (always checked) — the subscriber's employer is inside an immediate-eligibility window covering the evaluated date.",
     requiredComponent: "sitespecific.bao",
     configSchema: {
@@ -191,7 +191,7 @@ class BaoStartHealthnetPlugin extends EligibilityPlugin<BaoStartHealthnetConfig>
           type: "object",
           title: "Criterion 2 — Ever had HealthNet",
           description:
-            "Eligible if the worker has EVER held the benefit designated as HealthNet. Leave unset to skip this criterion.",
+            "Eligible if the worker has held the benefit designated as HealthNet on or before the evaluated date. Leave unset to skip this criterion.",
           properties: {
             benefitId: {
               type: "string",
@@ -205,7 +205,7 @@ class BaoStartHealthnetPlugin extends EligibilityPlugin<BaoStartHealthnetConfig>
           type: "object",
           title: "Criterion 3 — Continuous medical coverage",
           description:
-            "Eligible if the worker has held any benefit of the chosen Medical type for the required number of consecutive months at any point in their history. Set both fields to enable; leave unset to skip.",
+            "Eligible if the worker has held any benefit of the chosen Medical type for the required number of consecutive months at some point on or before the evaluated date. Set both fields to enable; leave unset to skip.",
           properties: {
             benefitTypeId: {
               type: "string",
@@ -343,13 +343,21 @@ class BaoStartHealthnetPlugin extends EligibilityPlugin<BaoStartHealthnetConfig>
     const failures: string[] = [];
 
     // Subscriber benefit history is needed by both the HealthNet and
-    // medical criteria; load it at most once.
+    // medical criteria; load it at most once. Both criteria are evaluated
+    // "as of" the scan date, so coverage dated AFTER the as-of month is
+    // excluded — a record in the future relative to the evaluated date must
+    // not count toward "ever held" (criterion 2) or a consecutive-month run
+    // (criterion 3).
+    const asOfOrdinal = context.asOfYear * 12 + (context.asOfMonth - 1);
     let history: BenefitHistoryRow[] | undefined;
     const getHistory = async (): Promise<BenefitHistoryRow[]> => {
       if (history === undefined) {
-        history = (await storage.trust.wmb.getWorkerBenefits(
+        const allRows = (await storage.trust.wmb.getWorkerBenefits(
           context.subscriberWorker.id,
         )) as BenefitHistoryRow[];
+        history = allRows.filter(
+          (r) => r.year * 12 + (r.month - 1) <= asOfOrdinal,
+        );
       }
       return history;
     };
