@@ -30,9 +30,32 @@ export function initializeWebSocket(
   server: Server,
   sessionMiddleware: any
 ): WebSocketServer {
-  wss = new WebSocketServer({ 
-    server,
-    path: "/ws"
+  // Use `noServer` mode and route upgrades by path manually. Attaching with
+  // `{ server, path: "/ws" }` makes the `ws` library install an `upgrade`
+  // listener that aborts EVERY non-matching upgrade with HTTP 400 — including
+  // Vite's HMR socket (path "/"). That breaks hot-reload in development (the
+  // browser shows a failed/invalid WebSocket, which surfaces as the preview
+  // "not loading"). With `noServer` we only claim the "/ws" path and leave all
+  // other upgrades (Vite HMR, etc.) for their own handlers.
+  wss = new WebSocketServer({ noServer: true });
+
+  server.on("upgrade", (req, socket, head) => {
+    let pathname = "";
+    try {
+      pathname = new URL(req.url ?? "", "http://localhost").pathname;
+    } catch {
+      pathname = (req.url ?? "").split("?")[0];
+    }
+
+    if (pathname !== "/ws") {
+      // Not ours — leave the socket alone for other upgrade listeners
+      // (e.g. Vite HMR). Do NOT destroy it.
+      return;
+    }
+
+    wss!.handleUpgrade(req, socket, head, (ws) => {
+      wss!.emit("connection", ws, req);
+    });
   });
 
   wss.on("connection", async (ws: WebSocket, req: IncomingMessage) => {

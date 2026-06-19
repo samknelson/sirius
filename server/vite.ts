@@ -22,7 +22,20 @@ export function log(message: string, source = "express") {
 export async function setupVite(app: Express, server: Server) {
   const serverOptions = {
     middlewareMode: true,
-    hmr: { server },
+    // Attach HMR to the existing HTTP server. On Replit the preview is a
+    // proxied iframe served over HTTPS on port 443, so the HMR client must be
+    // told to connect via wss on 443 (using the page's own hostname). Without
+    // this, Vite falls back to guessing and produces an invalid WebSocket URL
+    // (e.g. ws://localhost:5000 / wss://localhost:undefined). That failed
+    // connection throws an unhandledrejection which the runtime-error overlay
+    // catches and renders as a full-screen modal, making the preview look
+    // broken even though the app itself is fine.
+    hmr: {
+      server,
+      ...(process.env.REPL_ID
+        ? { clientPort: 443, protocol: "wss" as const }
+        : {}),
+    },
     allowedHosts: true as const,
   };
 
