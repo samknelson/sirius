@@ -27,12 +27,20 @@ const DEFAULT_THRESHOLD = 100;
 const DEFAULT_BUILDUP_MONTHS = 3;
 const DEFAULT_BREAK_MONTHS = 12;
 const DEFAULT_WARNING_BREAK_COUNT = 10;
+/**
+ * Months between the last qualifying month and the month coverage begins.
+ * The BAO rule is "3 consecutive qualifying months, then coverage on the 6th
+ * month" — e.g. Jan/Feb/Mar qualifying → coverage in June. That is a 3-month
+ * look-back from the coverage (as-of) month to the last qualifying month.
+ */
+const DEFAULT_LAG_MONTHS = 3;
 
 interface BaoBuildupConfig extends BaseEligibilityConfig {
   defaultThreshold?: number;
   buildupMonths?: number;
   breakMonths?: number;
   warningBreakCount?: number;
+  lagMonths?: number;
 }
 
 /**
@@ -81,11 +89,18 @@ export interface BuildupStatus {
 
 export interface FetchBuildupOptions {
   /**
-   * When true, the benefit month is the as-of month itself (an election /
-   * enrollment). When false/omitted (an ongoing scan), the benefit month is
-   * three months earlier.
+   * Legacy benefit-month selector retained for the ECHP charge callers that
+   * rely on it: when true the benefit month is the as-of month itself, when
+   * false/omitted it is three months earlier. Ignored when `lagMonths` is set.
    */
   isElection?: boolean;
+  /**
+   * Explicit number of months to look back from the as-of (coverage) month to
+   * the last qualifying month. When provided it overrides `isElection`. The
+   * BAO eligibility rule passes this (default 3) so the lag applies on both
+   * first-time and ongoing scans.
+   */
+  lagMonths?: number;
   /** Explicit threshold override; when set, the employer→industry→status chain is skipped. */
   threshold?: number;
   /** Employer whose industry drives threshold resolution when no explicit threshold is given. */
@@ -115,10 +130,12 @@ export async function fetchBuildupStatus(
   const asofYear = asOf.year;
   const asofMonth = asOf.month;
 
-  // Benefit month: three months prior for ongoing scans, the as-of month
-  // itself for elections.
-  const benefitOrdinal =
-    toOrdinal(asofYear, asofMonth) - (options.isElection ? 0 : 3);
+  // Benefit (last qualifying) month, derived from the as-of/coverage month by
+  // applying the configured lag. An explicit `lagMonths` wins; otherwise fall
+  // back to the legacy ECHP behavior (as-of month for elections, else three
+  // months prior).
+  const lagOffset = options.lagMonths ?? (options.isElection ? 0 : 3);
+  const benefitOrdinal = toOrdinal(asofYear, asofMonth) - lagOffset;
   const { year: threemonthsprevYear, month: threemonthsprevMonth } =
     fromOrdinal(benefitOrdinal);
 
@@ -293,7 +310,7 @@ class BaoBuildupPlugin extends EligibilityPlugin<BaoBuildupConfig> {
     id: "sitespecific-bao-buildup",
     name: "BAO - Buildup",
     description:
-      "A subscriber is eligible once they have completed buildup: at least the configured number of consecutive months (default 3) with hours at or above the threshold, counting back from the benefit month (the as-of month for elections, otherwise three months earlier). " +
+      "A subscriber is eligible once they have completed buildup: at least the configured number of consecutive months (default 3) with hours at or above the threshold, counting back from the last qualifying month, which is the configured lag (default 3 months) before the coverage month — so qualifying in Jan/Feb/Mar grants coverage in June. " +
       "The threshold is resolved per worker from the employer's industry and the worker's member status in that industry as of the evaluated date (defaulting to 100 when none is set). " +
       "A subscriber is ineligible if hours stayed below threshold for the configured number of consecutive months (default 12) before any buildup completed. A long current low-hours stretch is reported as a non-blocking warning.",
     requiredComponent: "sitespecific.bao",
@@ -332,6 +349,14 @@ class BaoBuildupPlugin extends EligibilityPlugin<BaoBuildupConfig> {
           minimum: 0,
           default: DEFAULT_WARNING_BREAK_COUNT,
         },
+        lagMonths: {
+          type: "integer",
+          title: "Lag months",
+          description:
+            "Months between the last qualifying buildup month and the month coverage begins. With the default of 3, three consecutive qualifying months (e.g. Jan/Feb/Mar) grant coverage on the 6th month (June).",
+          minimum: 0,
+          default: DEFAULT_LAG_MONTHS,
+        },
       },
     },
   };
@@ -352,7 +377,7 @@ class BaoBuildupPlugin extends EligibilityPlugin<BaoBuildupConfig> {
       context.subscriberWorker.id,
       { year: context.asOfYear, month: context.asOfMonth },
       {
-        isElection: context.scanType === "start",
+        lagMonths: config.lagMonths ?? DEFAULT_LAG_MONTHS,
         employerId: context.employer.id,
         defaultThreshold: config.defaultThreshold ?? DEFAULT_THRESHOLD,
         buildupMonths: config.buildupMonths ?? DEFAULT_BUILDUP_MONTHS,
