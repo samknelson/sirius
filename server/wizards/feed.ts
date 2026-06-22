@@ -101,6 +101,12 @@ export interface ValidationError {
   value?: any;
 }
 
+export interface SsnWarning {
+  rowIndex: number;
+  value?: any;
+  message: string;
+}
+
 export interface ValidationResults {
   totalRows: number;
   validRows: number;
@@ -108,6 +114,7 @@ export interface ValidationResults {
   errors: ValidationError[];
   errorSummary: Record<string, number>;
   unmappedStatuses?: string[];
+  ssnWarnings?: SsnWarning[];
   completedAt?: Date;
 }
 

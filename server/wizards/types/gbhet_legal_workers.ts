@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from 'async_hooks';
-import { FeedWizard, FeedField, ValidationError, type ValidationResults, type ProcessResults } from '../feed.js';
+import { FeedWizard, FeedField, ValidationError, type ValidationResults, type ProcessResults, type SsnWarning } from '../feed.js';
 import { WizardStatus, WizardStep, LaunchArgument } from '../base.js';
 import { storage } from '../../storage/index.js';
 import { createUnifiedOptionsStorage } from '../../storage/unified-options.js';
@@ -50,6 +50,7 @@ interface RunContext {
   mappings: Array<{ sourceStatus: string; targetStatusId: string }> | null;
   unmappedValues: Set<string>;
   unmappedOnlyRows: Set<number>;
+  ssnWarnings: SsnWarning[];
 }
 
 const runContextStorage = new AsyncLocalStorage<RunContext>();
@@ -456,10 +457,12 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
     onProgress?: (progress: { processed: number; total: number; validRows: number; invalidRows: number }) => void
   ): Promise<ValidationResults> {
     const wizard = await storage.wizards.getById(wizardId);
-    const ctx: RunContext = { employerId: wizard?.entityId || '', mappings: null, unmappedValues: new Set(), unmappedOnlyRows: new Set() };
+    const ctx: RunContext = { employerId: wizard?.entityId || '', mappings: null, unmappedValues: new Set(), unmappedOnlyRows: new Set(), ssnWarnings: [] };
 
     return runContextStorage.run(ctx, async () => {
       const results = await super.validateFeedData(wizardId, batchSize, onProgress);
+
+      let needsResave = false;
 
       if (ctx.unmappedValues.size > 0) {
         results.unmappedStatuses = Array.from(ctx.unmappedValues);
@@ -478,6 +481,18 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
           }
         }
 
+        needsResave = true;
+      }
+
+      // Bad-format SSN errors were demoted to warnings in validateRow (removed
+      // from the row's blocking errors), so those rows already count as valid.
+      // Surface the collected warnings on the results for the UI.
+      if (ctx.ssnWarnings.length > 0) {
+        results.ssnWarnings = ctx.ssnWarnings;
+        needsResave = true;
+      }
+
+      if (needsResave) {
         const wizardObj = await storage.wizards.getById(wizardId);
         if (wizardObj) {
           const wizardData = wizardObj.data as any;
@@ -507,7 +522,7 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
     }) => void
   ): Promise<ProcessResults> {
     const wizard = await storage.wizards.getById(wizardId);
-    const ctx: RunContext = { employerId: wizard?.entityId || '', mappings: null, unmappedValues: new Set(), unmappedOnlyRows: new Set() };
+    const ctx: RunContext = { employerId: wizard?.entityId || '', mappings: null, unmappedValues: new Set(), unmappedOnlyRows: new Set(), ssnWarnings: [] };
     return runContextStorage.run(ctx, () => super.processFeedData(wizardId, batchSize, onProgress));
   }
 
@@ -521,9 +536,30 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
         row.ssn = preprocessed;
       }
     }
+
+    // Treat a blank "Number of Hours" as 0 so it passes the required-field
+    // check; it is recorded as zero hours during processing.
+    if (row.numberOfHours === undefined || row.numberOfHours === null || row.numberOfHours === '') {
+      row.numberOfHours = 0;
+    }
     
     // Call parent validation to get standard field validation errors
     const errors = await super.validateRow(row, rowIndex, mode);
+
+    // Demote bad-format SSN errors to warnings so they don't block the file.
+    // A completely missing SSN ("SSN is required") stays a blocking error.
+    const ssnCtx = runContextStorage.getStore();
+    let hasSsnWarning = false;
+    for (let i = errors.length - 1; i >= 0; i--) {
+      const e = errors[i];
+      if (e.field === 'ssn' && e.message !== 'SSN is required') {
+        hasSsnWarning = true;
+        if (ssnCtx) {
+          ssnCtx.ssnWarnings.push({ rowIndex, value: e.value, message: e.message });
+        }
+        errors.splice(i, 1);
+      }
+    }
     
     if (row.employmentStatus !== undefined && row.employmentStatus !== null && row.employmentStatus !== '') {
       const employmentStatusOptions = await this.getEmploymentStatusOptions();
@@ -572,8 +608,9 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
     if (mode === 'update') {
       const ssn = row.ssn;
       
-      // Only check if SSN is present and passed format validation
-      if (ssn && !errors.some(e => e.field === 'ssn')) {
+      // Only check if SSN is present and passed format validation. A bad-format
+      // SSN was demoted to a warning above, so skip the existence check for it.
+      if (ssn && !hasSsnWarning && !errors.some(e => e.field === 'ssn')) {
         const existingWorker = await storage.workers.getWorkerBySSN(ssn);
         
         if (!existingWorker) {
@@ -608,14 +645,15 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
     const rawHours = row.numberOfHours;
     const employmentStatusValue = row.employmentStatus;
 
-    // Validate hours - if missing or blank, skip
-    if (rawHours === undefined || rawHours === null || rawHours === '') {
-      return; // Skip hours processing if not provided
-    }
+    // A blank/missing hours value is treated as 0 (recorded as a zero-hour
+    // entry) rather than being skipped.
+    const isBlankHours = rawHours === undefined || rawHours === null || rawHours === '';
 
     // Parse hours as number
-    const hours = typeof rawHours === 'number' ? rawHours : parseFloat(String(rawHours));
-    if (!isFinite(hours)) {
+    const hours = isBlankHours
+      ? 0
+      : (typeof rawHours === 'number' ? rawHours : parseFloat(String(rawHours)));
+    if (!isBlankHours && !isFinite(hours)) {
       throw new Error(`Invalid hours value: ${rawHours}`);
     }
 

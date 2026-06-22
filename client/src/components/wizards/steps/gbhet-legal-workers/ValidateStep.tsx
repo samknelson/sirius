@@ -25,6 +25,12 @@ interface ValidationError {
   value?: any;
 }
 
+interface SsnWarning {
+  rowIndex: number;
+  value?: any;
+  message: string;
+}
+
 interface ValidationResults {
   totalRows: number;
   validRows: number;
@@ -32,6 +38,7 @@ interface ValidationResults {
   errors: ValidationError[];
   errorSummary: Record<string, number>;
   unmappedStatuses?: string[];
+  ssnWarnings?: SsnWarning[];
   completedAt?: string;
 }
 
@@ -173,6 +180,7 @@ export function ValidateStep({ wizardId, wizardType, data, onDataChange }: Valid
 
   const hasUnmappedStatuses = results?.unmappedStatuses && results.unmappedStatuses.length > 0;
   const allMapped = hasUnmappedStatuses && results.unmappedStatuses!.every(s => statusMappings[s]);
+  const hasSsnWarnings = !!(results?.ssnWarnings && results.ssnWarnings.length > 0);
 
   return (
     <div className="space-y-6">
@@ -376,6 +384,42 @@ export function ValidateStep({ wizardId, wizardType, data, onDataChange }: Valid
                 </Card>
               )}
 
+              {hasSsnWarnings && (
+                <Card className="border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800">
+                  <CardHeader>
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <AlertCircle className="h-4 w-4 text-amber-600" />
+                      SSN Format Warnings
+                    </CardTitle>
+                    <CardDescription>
+                      The following rows have a badly formatted SSN. These are warnings only —
+                      the file can still be processed, and each row will be imported as best it can.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ScrollArea className="h-[240px]">
+                      <div className="space-y-1">
+                        {results.ssnWarnings!.map((warning, idx) => (
+                          <div
+                            key={idx}
+                            className="text-sm text-muted-foreground border-l-2 border-amber-300 pl-3 py-1"
+                            data-testid={`ssn-warning-${idx}`}
+                          >
+                            <span className="font-mono">Row {warning.rowIndex + 1}</span>
+                            <span className="ml-2">{warning.message}</span>
+                            {warning.value !== undefined && warning.value !== null && (
+                              <span className="ml-2">
+                                (value: <span className="font-mono">{JSON.stringify(warning.value)}</span>)
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </ScrollArea>
+                  </CardContent>
+                </Card>
+              )}
+
               {results.invalidRows > 0 && (
                 <Card>
                   <CardHeader>
@@ -428,9 +472,11 @@ export function ValidateStep({ wizardId, wizardType, data, onDataChange }: Valid
               {results.invalidRows === 0 && !hasUnmappedStatuses && (
                 <Alert>
                   <CheckCircle2 className="h-4 w-4" />
-                  <AlertTitle>All Data Valid</AlertTitle>
+                  <AlertTitle>{hasSsnWarnings ? "Ready to Proceed" : "All Data Valid"}</AlertTitle>
                   <AlertDescription>
-                    All {results.totalRows.toLocaleString()} rows passed validation. You can proceed to the next step.
+                    {hasSsnWarnings
+                      ? `All ${results.totalRows.toLocaleString()} rows passed validation (with SSN format warnings noted above). You can proceed to the next step.`
+                      : `All ${results.totalRows.toLocaleString()} rows passed validation. You can proceed to the next step.`}
                   </AlertDescription>
                 </Alert>
               )}
