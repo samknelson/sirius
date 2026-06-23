@@ -63,6 +63,19 @@ export interface DenormPlugin<TPayload = unknown> {
    * it. Plugins that omit this method do not participate in backfill.
    */
   backfill?(configId: string, limit: number): Promise<string[]>;
+  /**
+   * Optional widow source — the mirror image of `backfill`. Enumerate up to
+   * `limit` entity ids that HAVE a denorm row for this plugin's config
+   * (`configId`) but whose underlying entity no longer exists. The wrapper's
+   * `backfillAll` deletes the returned ids' denorm rows (and, via the FK
+   * cascade, their dependent payload rows).
+   *
+   * This is a read-only anti-join from the `denorm` table back to the plugin's
+   * source domain (e.g. `denorm` LEFT JOIN `workers` for `worker_ms`); it must
+   * not mutate anything. The wrapper supplies the already-resolved `configId`.
+   * Plugins that omit this method do not participate in widow cleanup.
+   */
+  findWidows?(configId: string, limit: number): Promise<string[]>;
 }
 
 /**

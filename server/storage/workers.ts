@@ -183,6 +183,13 @@ export interface WorkerStorage {
    * discover workers that still need a (stale) denorm row enqueued.
    */
   findIdsMissingDenorm(configId: string, limit: number): Promise<string[]>;
+  /**
+   * Widow anti-join (the mirror of {@link findIdsMissingDenorm}): entity ids of
+   * `denorm` rows for the given config whose worker no longer exists, capped at
+   * `limit`. Read-only; used by the denorm backfill sweep to discover orphaned
+   * denorm rows to delete.
+   */
+  findDenormWidowIds(configId: string, limit: number): Promise<string[]>;
   searchWorkers(query: string, limit?: number): Promise<WorkerSearchResult>;
   getWorkersWithDetails(): Promise<WorkerWithDetails[]>;
   getWorkersWithDetailsPaginated(params: WorkersPaginationParams): Promise<PaginatedWorkersResult>;
@@ -585,6 +592,17 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         .where(isNull(denorm.id))
         .limit(limit);
       return rows.map((r) => r.id);
+    },
+
+    async findDenormWidowIds(configId: string, limit: number): Promise<string[]> {
+      const client = getClient();
+      const rows = await client
+        .select({ entityId: denorm.entityId })
+        .from(denorm)
+        .leftJoin(workers, eq(workers.id, denorm.entityId))
+        .where(and(eq(denorm.configId, configId), isNull(workers.id)))
+        .limit(limit);
+      return rows.map((r) => r.entityId);
     },
 
     async searchWorkers(query: string, limit: number = 10): Promise<WorkerSearchResult> {

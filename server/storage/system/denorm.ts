@@ -6,7 +6,7 @@ import {
   type InsertDenorm,
   type DenormStatus,
 } from "@shared/schema";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, inArray } from "drizzle-orm";
 
 /**
  * Stub validator - add validation logic here when needed.
@@ -83,6 +83,14 @@ export interface DenormStorage {
    * event-written `ok` row), so backfill stays idempotent.
    */
   insertStaleBatch(seeds: DenormStaleSeed[]): Promise<number>;
+  /**
+   * Delete denorm rows for a config whose entity ids are in `entityIds`,
+   * returning the number of rows deleted. This is the widow-cleanup half of the
+   * backfill sweep: it removes orphaned denorm rows whose underlying entity no
+   * longer exists. Dependent payload rows (e.g. `worker_msh_denorm`) are removed
+   * automatically by their `ON DELETE CASCADE` foreign key.
+   */
+  deleteByEntityIdsForConfig(configId: string, entityIds: string[]): Promise<number>;
 }
 
 export function createDenormStorage(): DenormStorage {
@@ -184,6 +192,16 @@ export function createDenormStorage(): DenormStorage {
         .onConflictDoNothing({ target: [denorm.entityId, denorm.configId] })
         .returning({ id: denorm.id });
       return inserted.length;
+    },
+
+    async deleteByEntityIdsForConfig(configId: string, entityIds: string[]): Promise<number> {
+      if (entityIds.length === 0) return 0;
+      const client = getClient();
+      const deleted = await client
+        .delete(denorm)
+        .where(and(eq(denorm.configId, configId), inArray(denorm.entityId, entityIds)))
+        .returning({ id: denorm.id });
+      return deleted.length;
     },
   };
 }

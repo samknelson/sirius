@@ -49,6 +49,12 @@ const workerMsDenormPlugin: DenormPlugin<WorkerMsDenorm> = {
     return storage.workers.findIdsMissingDenorm(configId, limit);
   },
 
+  async findWidows(configId: string, limit: number): Promise<string[]> {
+    // denorm rows whose worker no longer exists (read-only anti-join). The
+    // wrapper deletes them; dependent worker_msh_denorm rows cascade away.
+    return storage.workers.findDenormWidowIds(configId, limit);
+  },
+
   async write(workerId: string, payload: WorkerMsDenorm): Promise<void> {
     const configs = await storage.pluginConfigs.getByKindAndPlugin("denorm", "worker_ms");
     const config = configs[0];
