@@ -47,6 +47,7 @@ export const configSections: NavSection[] = [
       { path: "/config/postal", label: "Postal Providers", icon: MessageSquare, testId: "nav-config-postal", permission: "admin" },
       { path: "/config/components", label: "Components", icon: Package, testId: "nav-config-components", permission: "admin" },
       { path: "/admin/plugin-configs", label: "Plugins", icon: Puzzle, testId: "nav-config-plugins", permission: "admin" },
+      { path: "/admin/denorm", label: "Denorm", icon: RefreshCw, testId: "nav-config-denorm", permission: "admin" },
       { path: "/config/logs", label: "System Logs", icon: FileText, testId: "nav-config-logs", permission: "admin" },
       { path: "/admin/quickstarts", label: "Quickstarts", icon: Database, testId: "nav-config-quickstarts", permission: "admin" },
       { path: "/admin/cron-jobs", label: "Cron Jobs", icon: Clock, testId: "nav-config-cron-jobs", permission: "admin" },

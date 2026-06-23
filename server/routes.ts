@@ -8,6 +8,7 @@ import { insertWorkerSchema, insertWorkerDispatchHfeSchema, type WorkerId, type 
 import { z } from "zod";
 import { registerUserRoutes } from "./modules/users";
 import { registerVariableRoutes } from "./modules/system/variables";
+import { registerDenormRoutes } from "./modules/system/denorm";
 import { registerContactPostalRoutes } from "./modules/contact-postal";
 import { registerPhoneNumberRoutes } from "./modules/phone-numbers";
 import { registerCommRoutes } from "./modules/comm";
@@ -1643,6 +1644,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register generic variable management routes (MUST come after specific routes)
   registerVariableRoutes(app, requireAuth, requirePermission);
+  registerDenormRoutes(app, requireAuth, requirePermission);
 
   // Register events routes
   registerEventsRoutes(app, requireAuth, requirePermission);

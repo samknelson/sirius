@@ -280,6 +280,8 @@ const LedgerPaymentTypesPage = lazy(() => import("@/pages/config/ledger-payment-
 // any navigation registry; reachable only via this route for verification.
 const GenericPluginConfigsPage = lazy(() => import("@/pages/admin/plugin-configs"));
 const PluginConfigsIndexPage = lazy(() => import("@/pages/admin/plugin-configs-index"));
+const DenormConfigsPage = lazy(() => import("@/pages/admin/denorm"));
+const DenormConfigDetailPage = lazy(() => import("@/pages/admin/denorm-detail"));
 const ConfigurationLandingPage = lazy(() => import("@/pages/config/index"));
 const LedgerAccountsPage = lazy(() => import("@/pages/config/ledger/accounts"));
 const LedgerAccountView = lazy(() => import("@/pages/config/ledger/account-view"));
@@ -2966,6 +2968,28 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <GenericPluginConfigsPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      {/* Denorm system visibility. The list page is registered before the
+          :plugin_config_id detail route so it isn't shadowed. */}
+      <Route path="/admin/denorm">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <DenormConfigsPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/admin/denorm/:plugin_config_id">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <DenormConfigDetailPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
