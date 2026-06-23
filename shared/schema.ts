@@ -1926,6 +1926,36 @@ export const insertPluginConfigCronSchema = createInsertSchema(pluginConfigsCron
 export type InsertPluginConfigCron = z.infer<typeof insertPluginConfigCronSchema>;
 export type PluginConfigCron = typeof pluginConfigsCron.$inferSelect;
 
+// Denorm workflow status spine. One row per (entity, plugin-config): tracks
+// whether an entity's denormalized data for a given plugin config is current,
+// stale, or errored — NOT the payload itself (each plugin owns its own payload
+// table(s) and may write as many rows as it likes). `config_id` is ON DELETE
+// CASCADE so a config's denorm rows die with it. `entity_type` is a plain
+// plugin-defined string (no enum) — each plugin decides what to write.
+export const denormStatusEnum = pgEnum("denorm_status", ["ok", "stale", "error"]);
+
+export const denorm = pgTable("denorm", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  entityId: varchar("entity_id").notNull(),
+  entityType: varchar("entity_type").notNull(),
+  configId: varchar("config_id")
+    .notNull()
+    .references(() => pluginConfigs.id, { onDelete: 'cascade' }),
+  status: denormStatusEnum("status").notNull(),
+  computedAt: timestamp("computed_at"),
+  staleAt: timestamp("stale_at"),
+  message: varchar("message"),
+}, (table) => [
+  uniqueIndex("denorm_entity_config_uniq").on(table.entityId, table.configId),
+  index("denorm_status_idx").on(table.status),
+  index("denorm_config_idx").on(table.configId),
+]);
+
+export const insertDenormSchema = createInsertSchema(denorm);
+export type InsertDenorm = z.infer<typeof insertDenormSchema>;
+export type Denorm = typeof denorm.$inferSelect;
+export type DenormStatus = (typeof denormStatusEnum.enumValues)[number];
+
 // Base Rate History Schema - for use in charge plugins
 export const baseRateHistoryEntrySchema = z.object({
   effectiveDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be in YYYY-MM-DD format"),
