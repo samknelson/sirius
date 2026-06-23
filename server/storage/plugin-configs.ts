@@ -13,6 +13,9 @@ import {
   type PluginConfigCron,
 } from "@shared/schema";
 import { eq, and, type SQL } from "drizzle-orm";
+// Import the cycle-safe `_core` submodule directly (NOT the `_core/index.ts`
+// barrel, which re-exports the singleton seeder that imports storage).
+import { isSingletonPluginType } from "../plugins/_core/kinds";
 import { eventBus, EventType } from "../services/event-bus";
 import { logger } from "../logger";
 import {
@@ -149,9 +152,9 @@ export interface PluginConfigStorage {
   getByKind(pluginKind: string): Promise<PluginConfig[]>;
   getByKindAndPlugin(pluginKind: string, pluginId: string): Promise<PluginConfig[]>;
   findBySiriusId(siriusId: string): Promise<PluginConfig | undefined>;
-  create(config: InsertPluginConfig, opts?: { enforceSingleton?: boolean }): Promise<PluginConfig>;
+  create(config: InsertPluginConfig): Promise<PluginConfig>;
   update(id: string, config: Partial<InsertPluginConfig>): Promise<PluginConfig | undefined>;
-  delete(id: string, opts?: { enforceSingleton?: boolean }): Promise<boolean>;
+  delete(id: string): Promise<boolean>;
 
   // --- Subsidiary access (1:1 by base id) --------------------------------
   /**
@@ -246,18 +249,23 @@ export function createPluginConfigStorage(): PluginConfigStorage {
       return row || undefined;
     },
 
-    async create(
-      insertConfig: InsertPluginConfig,
-      opts?: { enforceSingleton?: boolean },
-    ): Promise<PluginConfig> {
+    async create(insertConfig: InsertPluginConfig): Promise<PluginConfig> {
       validate.validateOrThrow(insertConfig);
       const client = getClient();
+      // Singleton-ness is a property of the plugin TYPE, read straight from its
+      // manifest for this row's (kind, plugin id) — callers no longer pass it.
+      // The boolean is persisted (`is_singleton`) so the partial unique index
+      // can key off it, covering every singleton type rather than one kind.
+      const enforceSingleton = isSingletonPluginType(
+        insertConfig.pluginKind,
+        insertConfig.pluginId,
+      );
       // Singleton plugins permit exactly one config row (keyed by kind +
       // plugin id). The pre-check gives a friendly error for the common case;
-      // the partial unique index `plugin_configs_singleton_cron_uniq` is the
+      // the partial unique index `plugin_configs_singleton_uniq` is the
       // race-safe backstop (two concurrent inserts both pass the pre-check but
       // only one survives the index), translated below from a 23505 conflict.
-      if (opts?.enforceSingleton) {
+      if (enforceSingleton) {
         const existing = await client
           .select({ id: pluginConfigs.id })
           .from(pluginConfigs)
@@ -275,11 +283,14 @@ export function createPluginConfigStorage(): PluginConfigStorage {
       }
       let row;
       try {
-        [row] = await client.insert(pluginConfigs).values(insertConfig).returning();
+        [row] = await client
+          .insert(pluginConfigs)
+          .values({ ...insertConfig, isSingleton: enforceSingleton })
+          .returning();
       } catch (err) {
         if (
-          opts?.enforceSingleton &&
-          isUniqueViolation(err, "plugin_configs_singleton_cron_uniq")
+          enforceSingleton &&
+          isUniqueViolation(err, "plugin_configs_singleton_uniq")
         ) {
           throw new SingletonViolationError(
             `A configuration for "${insertConfig.pluginId}" already exists and cannot be duplicated.`,
@@ -303,7 +314,7 @@ export function createPluginConfigStorage(): PluginConfigStorage {
       return row || undefined;
     },
 
-    async delete(id: string, opts?: { enforceSingleton?: boolean }): Promise<boolean> {
+    async delete(id: string): Promise<boolean> {
       const client = getClient();
       // Read the kind first so the invalidation event can target this kind's
       // cache slice (the delete itself only returns the row count).
@@ -315,8 +326,9 @@ export function createPluginConfigStorage(): PluginConfigStorage {
         .from(pluginConfigs)
         .where(eq(pluginConfigs.id, id));
       // A singleton plugin's one config row IS the plugin instance; deleting it
-      // would orphan the plugin, so the operation is refused.
-      if (opts?.enforceSingleton && existing) {
+      // would orphan the plugin, so the operation is refused. Singleton-ness is
+      // read from the plugin TYPE's manifest for this row's (kind, plugin id).
+      if (existing && isSingletonPluginType(existing.pluginKind, existing.pluginId)) {
         throw new SingletonViolationError(
           `"${existing.pluginId}" is a built-in singleton and its configuration cannot be deleted.`,
         );

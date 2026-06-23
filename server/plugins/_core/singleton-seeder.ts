@@ -57,9 +57,10 @@ export async function bootstrapSingletonPluginConfigs(): Promise<void> {
         base.siriusId = (flat as { siriusId?: string | null }).siriusId ?? null;
 
         await runInTransaction(async () => {
-          const row = await storage.pluginConfigs.create(base as any, {
-            enforceSingleton: true,
-          });
+          // The storage layer reads singleton-ness from the plugin manifest
+          // (this plugin is `meta.singleton`), so the create call no longer
+          // needs an explicit flag.
+          const row = await storage.pluginConfigs.create(base as any);
           if (subsidiary) {
             await storage.pluginConfigs.upsertSubsidiary(kind, {
               id: row.id,

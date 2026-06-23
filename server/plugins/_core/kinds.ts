@@ -108,3 +108,23 @@ export function getPluginKind(kind: string): PluginKindRegistration | undefined 
 export function listPluginKinds(): string[] {
   return Array.from(KINDS.keys());
 }
+
+/**
+ * Resolve a plugin type's singleton flag straight from its registered
+ * manifest. A singleton type permits exactly one config row (keyed by plugin
+ * kind + plugin id). Returns false for unknown kinds / plugin ids.
+ *
+ * This is the single source of truth the storage layer reads to decide
+ * singleton enforcement — callers no longer pass an `enforceSingleton` flag.
+ * It lives here (a cycle-safe `_core` submodule that does NOT import storage)
+ * so `server/storage/plugin-configs.ts` can import it directly without an
+ * import cycle. Import this submodule, NOT the `_core/index.ts` barrel, from
+ * storage: the barrel re-exports the singleton seeder, which imports storage.
+ */
+export function isSingletonPluginType(kind: string, pluginId: string): boolean {
+  const registration = KINDS.get(kind);
+  if (!registration) return false;
+  const plugin = registration.registry.get(pluginId);
+  if (!plugin) return false;
+  return !!registration.registry.getMetadata(plugin).singleton;
+}

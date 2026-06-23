@@ -41,6 +41,7 @@ import "./core/1032_create_plugin_configs_cron";
 import "./core/1033_backfill_cron_plugin_configs";
 import "./core/1034_drop_cron_jobs";
 import "./core/1035_plugin_configs_singleton_unique";
+import "./core/1036_plugin_configs_singleton_per_type";
 
 // Per-component migrations — each registered via
 // `registerComponentMigration(componentId, migration)`. Tracked by the

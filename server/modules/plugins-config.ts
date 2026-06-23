@@ -74,19 +74,6 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
     adapter?.hydrate ? adapter.hydrate(envelope) : defaultHydrate(envelope);
 
   /**
-   * Whether the plugin identified by `pluginId` is registered as a singleton
-   * (exactly one config row allowed). Unknown plugin ids resolve to false; the
-   * separate plugin-validity check rejects those.
-   */
-  function isSingletonPlugin(
-    registration: NonNullable<Awaited<ReturnType<typeof resolve>>>["registration"],
-    pluginId: string,
-  ): boolean {
-    const plugin = registration.registry.get(pluginId);
-    return !!(plugin && registration.registry.getMetadata(plugin).singleton);
-  }
-
-  /**
    * Enforce a kind's uniqueness key (if it declares one). Returns true when a
    * conflicting row exists (excluding `selfId`, the row being updated) and has
    * already sent a 409; the caller must stop. Returns false to proceed.
@@ -246,9 +233,10 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
       base.siriusId = (parsed.data as any).siriusId ?? null;
       if (!(await ensureValidPlugin(registration, parsed.data.pluginId, base.data, res))) return;
       if (await rejectIfDuplicate(kind, adapter, parsed.data, null, res)) return;
-      const enforceSingleton = isSingletonPlugin(registration, parsed.data.pluginId);
       const created = await runInTransaction(async () => {
-        const row = await storage.pluginConfigs.create(base as any, { enforceSingleton });
+        // Singleton enforcement is decided by the storage layer from the plugin
+        // type's manifest; the route no longer computes/passes it.
+        const row = await storage.pluginConfigs.create(base as any);
         if (subsidiary) {
           await storage.pluginConfigs.upsertSubsidiary(kind, { id: row.id, ...subsidiary });
         }
@@ -327,14 +315,15 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
     try {
       const resolved = await resolve(req, res);
       if (!resolved) return;
-      const { kind, registration } = resolved;
+      const { kind } = resolved;
       const existing = await storage.pluginConfigs.get(req.params.id);
       if (!existing || existing.pluginKind !== kind) {
         res.status(404).json({ message: "Plugin config not found" });
         return;
       }
-      const enforceSingleton = isSingletonPlugin(registration, existing.pluginId);
-      const ok = await storage.pluginConfigs.delete(req.params.id, { enforceSingleton });
+      // Singleton deletion-refusal is decided by the storage layer from the
+      // plugin type's manifest; the route no longer computes/passes it.
+      const ok = await storage.pluginConfigs.delete(req.params.id);
       res.json({ success: ok });
     } catch (error) {
       if (error instanceof SingletonViolationError) {

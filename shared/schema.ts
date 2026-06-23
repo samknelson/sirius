@@ -1793,23 +1793,29 @@ export const pluginConfigs = pgTable("plugin_configs", {
   // CORE ordering dimension (deterministic listing / precedence) shared by
   // every kind — intentionally on the base table, not a subsidiary.
   ordering: integer("ordering").default(0).notNull(),
+  // Per-row singleton marker. Set by the storage layer from the plugin type's
+  // manifest `singleton` flag at create time (omitted from the insert schema so
+  // it can never be set from request input). Drives the partial unique index
+  // below, making the singleton backstop fully per-TYPE instead of hardcoded to
+  // a specific kind: any plugin type that declares `singleton: true` is covered
+  // with no schema/migration change.
+  isSingleton: boolean("is_singleton").default(false).notNull(),
   data: jsonb("data").default('{}'), // kind-specific opaque settings blob
   createdAt: timestamp("created_at").default(sql`now()`).notNull(),
   updatedAt: timestamp("updated_at").default(sql`now()`).notNull(),
 }, (table) => [
-  // Singleton kinds permit exactly one config row per plugin id. Non-singleton
-  // kinds (charge, trust-eligibility, …) legitimately have many rows per
-  // (kind, plugin_id), so this uniqueness is a PARTIAL index scoped to the
-  // singleton kinds only. `cron` is currently the sole singleton kind; extend
-  // the predicate (with a matching migration) when another singleton kind is
-  // added. This is the race-safe backstop behind the app-level singleton check.
-  uniqueIndex("plugin_configs_singleton_cron_uniq")
+  // Singleton plugin types permit exactly one config row per plugin id.
+  // Non-singleton types (charge, trust-eligibility, …) legitimately have many
+  // rows per (kind, plugin_id), so this uniqueness is a PARTIAL index scoped to
+  // rows the storage layer flagged `is_singleton`. This is the race-safe
+  // backstop behind the app-level singleton check, and it covers EVERY
+  // singleton type (any kind) without a predicate that names a specific kind.
+  // The reflected predicate for a boolean column is just the bare column name
+  // (`WHERE is_singleton`), which normalizes cleanly for the startup drift gate
+  // — no `::text` cast needed (unlike the previous string-literal predicate).
+  uniqueIndex("plugin_configs_singleton_uniq")
     .on(table.pluginKind, table.pluginId)
-    // Match Postgres's reflected, normalized predicate exactly (varchar is cast
-    // to text for the literal comparison) so the startup drift gate — which
-    // compares predicates after normalization but does NOT strip `::text` casts
-    // — sees expected == actual instead of `plugin_kind = 'cron'`.
-    .where(sql`(${table.pluginKind})::text = 'cron'::text`),
+    .where(sql`${table.isSingleton}`),
 ]);
 
 export const insertPluginConfigSchema = createInsertSchema(pluginConfigs)
@@ -1817,6 +1823,9 @@ export const insertPluginConfigSchema = createInsertSchema(pluginConfigs)
     id: true,
     createdAt: true,
     updatedAt: true,
+    // Derived by the storage layer from the plugin type's manifest singleton
+    // flag — never accepted from request input.
+    isSingleton: true,
   })
   .extend({
     data: z.unknown().optional().default({}),
