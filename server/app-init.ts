@@ -11,6 +11,7 @@ import { storage } from "./storage";
 import { captureRequestContext } from "./middleware/request-context";
 import { cronScheduler } from "./cron";
 import { initializeCronPluginSystem } from "./plugins/system/cron";
+import { initializeDenormPluginSystem } from "./plugins/system/denorm";
 import { bootstrapSingletonPluginConfigs } from "./plugins/_core";
 import { initDispatchSeniorityReset } from "./services/dispatch/seniority-reset";
 import { loadComponentCache } from "./services/component-cache";
@@ -323,6 +324,10 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
   // Register cron plugins (kind + adapter + self-registering plugin imports)
   initializeCronPluginSystem();
   logger.info("Cron plugins registered", { source: "startup" });
+
+  // Register denorm plugins (kind + adapter + self-registering plugin imports)
+  initializeDenormPluginSystem();
+  logger.info("Denorm plugins registered", { source: "startup" });
 
   // Register flood events
   registerFloodEvents();

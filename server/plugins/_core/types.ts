@@ -41,4 +41,5 @@ export type PluginKind =
   | "client-injection"
   | "payment-gateway"
   | "event-notifier"
-  | "cron";
+  | "cron"
+  | "denorm";

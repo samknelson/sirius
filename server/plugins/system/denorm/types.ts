@@ -1,0 +1,64 @@
+import type { BasePluginMetadata } from "../../_core";
+import type { EventType } from "../../../services/event-bus";
+
+/**
+ * One event a denorm plugin responds to, plus how to react when it fires.
+ *
+ * The common case is that the event payload already carries everything the
+ * denorm row needs, so the handler can write directly without recomputing.
+ * For that case provide `getPayload`: the registry hands its result straight
+ * to `write`. When the event only identifies the affected entity (no usable
+ * payload), omit `getPayload` and the registry falls back to `compute(entityId)`
+ * before writing.
+ */
+export interface DenormEventHandler<TPayload = unknown> {
+  /** The event-bus event this handler subscribes to. */
+  event: EventType;
+  /** Pull the affected entity's id out of the event payload. */
+  getEntityId: (payload: unknown) => string;
+  /**
+   * Build the denorm payload directly from the event payload. When present,
+   * the registry passes the result to `write` without calling `compute`. When
+   * omitted, the registry recomputes via `compute(entityId)` first.
+   */
+  getPayload?: (payload: unknown) => TPayload;
+}
+
+/**
+ * A denormalization plugin: keeps a precomputed (denormalized) copy of an
+ * entity's data in sync. Each plugin TYPE declares the single `entityType` it
+ * owns and the events it reacts to, and implements three pieces of behaviour:
+ *
+ *   - `compute(entityId)`         build the full denorm payload from scratch.
+ *   - event response             via `eventHandlers`; the registry subscribes
+ *                                each one to the event bus and, when it fires,
+ *                                either derives the payload from the event
+ *                                (`getPayload`) or recomputes it, then calls
+ *                                `write`.
+ *   - `write(entityId, payload)` persist the denorm payload for the entity.
+ *
+ * Metadata is nested under `.metadata` (matching the cron / charge / trust
+ * conventions). A denorm plugin is typically a singleton: exactly one config
+ * row exists for it, seeded at boot from the kind adapter's `seedDefault`.
+ */
+export interface DenormPlugin<TPayload = unknown> {
+  /** Base metadata. `id` is the stable identifier keying the config row. */
+  metadata: BasePluginMetadata;
+  /** The single entity type this plugin denormalizes (e.g. "worker"). */
+  entityType: string;
+  /** Events this plugin reacts to. Omit / empty for a plugin with no triggers. */
+  eventHandlers?: DenormEventHandler<TPayload>[];
+  /** Build the denorm payload for an entity from scratch. */
+  compute(entityId: string): Promise<TPayload>;
+  /** Persist the denorm payload for an entity. */
+  write(entityId: string, payload: TPayload): Promise<void>;
+}
+
+/**
+ * Manifest entry shape for denorm plugins. Extends the base metadata with the
+ * `entityType` so the generic admin manifest can surface which entity each
+ * denorm plugin owns.
+ */
+export interface DenormManifestEntry extends BasePluginMetadata {
+  entityType: string;
+}
