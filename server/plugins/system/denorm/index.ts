@@ -17,6 +17,13 @@ export {
   type DenormBackfillPluginResult,
   type BackfillAllOptions,
 } from "./backfill";
+export {
+  recomputeStaleDenorm,
+  DEFAULT_RECOMPUTE_LIMIT,
+  type DenormRecomputeSummary,
+  type DenormRecomputePluginResult,
+  type RecomputeAllOptions,
+} from "./recompute";
 
 let kindRegistered = false;
 function registerDenormKind(): void {

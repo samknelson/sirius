@@ -127,3 +127,4 @@ import "./plugins/t631TosFetch";
 import "./plugins/gbhetPensionSlaReconcile";
 import "./plugins/gbhetPensionSharesReconcile";
 import "./plugins/denormBackfill";
+import "./plugins/denormStale";

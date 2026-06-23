@@ -1,7 +1,9 @@
 import { logger } from "../../../logger";
 import { isComponentEnabledSync, isCacheInitialized } from "../../../services/component-cache";
 import { eventBus } from "../../../services/event-bus";
+import { storage } from "../../../storage";
 import { PluginRegistry } from "../../_core";
+import { applyComputed } from "./apply";
 import type { DenormPlugin, DenormManifestEntry } from "./types";
 
 /**
@@ -10,7 +12,9 @@ import type { DenormPlugin, DenormManifestEntry } from "./types";
  * plugin kind, and additionally subscribes each plugin's `eventHandlers` to the
  * event bus — mirroring the dispatch-eligibility registry. When a subscribed
  * event fires, the handler derives the affected entity id, builds the denorm
- * payload (from the event or via `compute`), and persists it through `write`.
+ * payload (from the event or via `compute`), and persists it through the shared
+ * `applyComputed` helper, which marks the `denorm` status row `ok` and writes
+ * the payload in one transaction.
  *
  * Metadata is nested under `.metadata`, matching the cron / charge / trust
  * eligibility convention.
@@ -77,10 +81,22 @@ class DenormPluginRegistry extends PluginRegistry<DenormPlugin, DenormManifestEn
               );
               return;
             }
+            const configs = await storage.pluginConfigs.getByKindAndPlugin(
+              "denorm",
+              plugin.metadata.id,
+            );
+            const config = configs[0];
+            if (!config) {
+              logger.error(
+                `No denorm config found for plugin ${plugin.metadata.id}; skipping update`,
+                { service: "denorm-registry", pluginId: plugin.metadata.id },
+              );
+              return;
+            }
             const data = eventHandler.getPayload
               ? eventHandler.getPayload(payload)
               : await plugin.compute(entityId);
-            await plugin.write(entityId, data);
+            await applyComputed(plugin, config.id, entityId, data);
           } catch (error) {
             logger.error(
               `Denorm plugin ${plugin.metadata.id} failed to update from event ${eventHandler.event}`,

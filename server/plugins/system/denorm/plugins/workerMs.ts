@@ -2,8 +2,6 @@ import { registerDenormPlugin } from "../registry";
 import type { DenormPlugin } from "../types";
 import { EventType } from "../../../../services/event-bus";
 import { storage } from "../../../../storage";
-import { runInTransaction } from "../../../../storage/transaction-context";
-import { logger } from "../../../../logger";
 
 /**
  * Denorm payload for a worker's current member statuses: the latest member
@@ -17,10 +15,11 @@ export interface WorkerMsDenorm {
  * `worker_ms` denorm plugin — sole maintainer of the `worker_msh_denorm` table.
  *
  * Subscribes to WORKER_MSH_SAVED (emitted after a member-status history change
- * commits). On each event it recomputes the worker's current member statuses
- * from history and replaces the worker's `worker_msh_denorm` rows, recording an
- * `ok` status in `denorm`. The two writes share one transaction so the payload
- * rows and their status stay consistent.
+ * commits). On each event the registry recomputes the worker's current member
+ * statuses from history and routes them through the shared apply helper, which
+ * marks the `denorm` status row `ok` and calls this plugin's payload-only
+ * `write` (both in one transaction). The plugin itself only replaces the
+ * worker's `worker_msh_denorm` payload rows; the wrapper owns the status row.
  */
 const workerMsDenormPlugin: DenormPlugin<WorkerMsDenorm> = {
   metadata: {
@@ -55,27 +54,11 @@ const workerMsDenormPlugin: DenormPlugin<WorkerMsDenorm> = {
     return storage.workers.findDenormWidowIds(configId, limit);
   },
 
-  async write(workerId: string, payload: WorkerMsDenorm): Promise<void> {
-    const configs = await storage.pluginConfigs.getByKindAndPlugin("denorm", "worker_ms");
-    const config = configs[0];
-    if (!config) {
-      logger.error("worker_ms denorm config not found; skipping write", {
-        service: "denorm-worker-ms",
-        workerId,
-      });
-      return;
-    }
-
-    await runInTransaction(async () => {
-      const denormRow = await storage.denorm.upsertStatus({
-        entityId: workerId,
-        entityType: "worker",
-        configId: config.id,
-        status: "ok",
-        computedAt: new Date(),
-      });
-      await storage.workerMshDenorm.replaceForWorker(workerId, denormRow.id, payload.msIds);
-    });
+  async write(workerId: string, payload: WorkerMsDenorm, denormRowId: string): Promise<void> {
+    // Payload-only: the wrapper (`applyComputed`) has already upserted the
+    // `denorm` status row to `ok` and supplies its id. We only replace the
+    // worker's `worker_msh_denorm` payload rows, which FK-reference that id.
+    await storage.workerMshDenorm.replaceForWorker(workerId, denormRowId, payload.msIds);
   },
 };
 

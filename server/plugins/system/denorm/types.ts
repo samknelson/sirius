@@ -35,7 +35,10 @@ export interface DenormEventHandler<TPayload = unknown> {
  *                                either derives the payload from the event
  *                                (`getPayload`) or recomputes it, then calls
  *                                `write`.
- *   - `write(entityId, payload)` persist the denorm payload for the entity.
+ *   - `write(entityId, payload, denormRowId)` persist the denorm payload for
+ *                                the entity. The wrapper has already upserted
+ *                                the `denorm` status row (to `ok`) and passes
+ *                                its id; the plugin writes only payload rows.
  *
  * Metadata is nested under `.metadata` (matching the cron / charge / trust
  * conventions). A denorm plugin is typically a singleton: exactly one config
@@ -50,8 +53,13 @@ export interface DenormPlugin<TPayload = unknown> {
   eventHandlers?: DenormEventHandler<TPayload>[];
   /** Build the denorm payload for an entity from scratch. */
   compute(entityId: string): Promise<TPayload>;
-  /** Persist the denorm payload for an entity. */
-  write(entityId: string, payload: TPayload): Promise<void>;
+  /**
+   * Persist the denorm payload for an entity. Receives the id of the entity's
+   * `denorm` status row (already upserted to `ok` by the wrapper) so payload
+   * rows can reference it via FK. The plugin writes ONLY payload rows here; the
+   * wrapper owns the `denorm` status row.
+   */
+  write(entityId: string, payload: TPayload, denormRowId: string): Promise<void>;
   /**
    * Optional backfill source. Enumerate up to `limit` entity ids that SHOULD
    * have a denorm row for this plugin's config (`configId`) but currently have

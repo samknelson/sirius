@@ -6,7 +6,7 @@ import {
   type InsertDenorm,
   type DenormStatus,
 } from "@shared/schema";
-import { eq, and, sql, inArray } from "drizzle-orm";
+import { eq, and, asc, sql, inArray } from "drizzle-orm";
 
 /**
  * Stub validator - add validation logic here when needed.
@@ -56,6 +56,12 @@ export interface DenormStorage {
   get(entityId: string, configId: string): Promise<Denorm | undefined>;
   /** All denorm rows in a given status (e.g. `stale` for a recompute sweep). */
   listByStatus(status: DenormStatus): Promise<Denorm[]>;
+  /**
+   * Fetch up to `limit` `stale` denorm rows for a single config, oldest stale
+   * first. This is the batch the recompute sweep (`recomputeStaleDenorm`) drains
+   * each run; capping per run lets a large backlog drain over successive runs.
+   */
+  getStaleBatchForConfig(configId: string, limit: number): Promise<Denorm[]>;
   /**
    * Count denorm records grouped by status for a single plugin config. Uses a
    * grouped SQL aggregate (not an in-memory scan). Returns zeros for a config
@@ -116,6 +122,16 @@ export function createDenormStorage(): DenormStorage {
     async listByStatus(status: DenormStatus): Promise<Denorm[]> {
       const client = getClient();
       return client.select().from(denorm).where(eq(denorm.status, status));
+    },
+
+    async getStaleBatchForConfig(configId: string, limit: number): Promise<Denorm[]> {
+      const client = getClient();
+      return client
+        .select()
+        .from(denorm)
+        .where(and(eq(denorm.configId, configId), eq(denorm.status, "stale")))
+        .orderBy(asc(denorm.staleAt))
+        .limit(limit);
     },
 
     async countByStatusForConfig(configId: string): Promise<DenormStatusCounts> {
