@@ -6,14 +6,8 @@ import {
   BaseEligibilityConfig,
 } from "../types";
 import { registerEligibilityPlugin } from "../registry";
-import { storage } from "../../../../storage/database";
-import {
-  lastDayOfMonthYmd,
-  monthName,
-  toOrdinal,
-  fromOrdinal,
-  resolveBaoThreshold,
-} from "./bao-shared";
+import { monthName } from "./bao-shared";
+import { fetchBuildupStatus } from "./sitespecific-bao-buildup";
 
 /**
  * "BAO - Threshold" is the simpler sibling of "BAO - Buildup". A worker is
@@ -66,10 +60,14 @@ export interface FetchThresholdOptions {
 }
 
 /**
- * Compute a worker's threshold status as of a month. Resolves the threshold
- * (unless one is supplied), reads the worker's total hours for the single
- * month three months earlier, and compares the two. The look-back is always
- * three months regardless of scan type.
+ * Compute a worker's threshold status as of a month by delegating to the
+ * "BAO - Buildup" helper. The single month the threshold rule examines is
+ * exactly buildup's benefit month when the lag equals the three-month
+ * look-back, and whether that month met the threshold is buildup's
+ * `threemonthsprevElig`. Threshold resolution, the look-back math, and the
+ * monthly-hours lookup all live in the buildup helper now, so there is no
+ * duplicate query or threshold logic here and future rule changes are made in
+ * one place.
  */
 export async function fetchThresholdStatus(
   workerId: string,
@@ -77,35 +75,34 @@ export async function fetchThresholdStatus(
   options: FetchThresholdOptions = {},
 ): Promise<ThresholdStatus> {
   const defaultThreshold = options.defaultThreshold ?? DEFAULT_THRESHOLD;
-  const asofYear = asOf.year;
-  const asofMonth = asOf.month;
 
-  // The single month examined is always three months before the as-of month,
-  // for both election starts and ongoing continuation scans.
-  const targetOrdinal = toOrdinal(asofYear, asofMonth) - LOOKBACK_MONTHS;
-  const { year: targetYear, month: targetMonth } = fromOrdinal(targetOrdinal);
-
-  const asOfYmd = lastDayOfMonthYmd(asofYear, asofMonth);
-  const { threshold, resolved } = await resolveBaoThreshold(
-    workerId,
-    options.threshold === undefined ? options.employerId : undefined,
-    asOfYmd,
+  const buildup = await fetchBuildupStatus(workerId, asOf, {
+    // The threshold rule's three-month look-back is the buildup lag, so the
+    // benefit month buildup counts back to is the single month examined here.
+    lagMonths: LOOKBACK_MONTHS,
+    threshold: options.threshold,
+    employerId: options.employerId,
     defaultThreshold,
+  });
+
+  const targetMonth = buildup.threemonthsprevMonth;
+  const targetYear = buildup.threemonthsprevYear;
+  const effectiveThreshold = buildup.threshold;
+  const thresholdResolved = buildup.thresholdResolved;
+
+  // The benefit month's summed hours, as walked by buildup; absent only when
+  // the worker has no hours at or before that month (treated as zero, matching
+  // the previous direct-sum behavior).
+  const targetDetail = buildup.monthDetails.find(
+    (d) => d.year === targetYear && d.month === targetMonth,
   );
-  const effectiveThreshold = options.threshold ?? threshold;
-  const thresholdResolved = options.threshold !== undefined ? true : resolved;
+  const hours = targetDetail?.hours ?? 0;
 
-  // Sum the target month's hours across all employers/statuses.
-  const monthlyRows = await storage.workerHours.getWorkerHoursMonthly(workerId);
-  let hours = 0;
-  for (const row of monthlyRows) {
-    const year = Number(row.year);
-    const month = Number(row.month);
-    if (year === targetYear && month === targetMonth) {
-      hours += Number(row.totalHours) || 0;
-    }
-  }
-
+  // Compare the benefit month's hours (provided by buildup) to the threshold
+  // (also resolved by buildup). This mirrors buildup's own `threemonthsprevElig`
+  // for every threshold > 0, but stays faithful to the prior meet-or-exceed
+  // behavior in the degenerate no-hours + zero-threshold case, where buildup
+  // short-circuits `threemonthsprevElig` to false.
   const success = hours >= effectiveThreshold;
   const thresholdNote = thresholdResolved
     ? ""
@@ -119,8 +116,8 @@ export async function fetchThresholdStatus(
     reason,
     threshold: effectiveThreshold,
     thresholdResolved,
-    asofMonth,
-    asofYear,
+    asofMonth: asOf.month,
+    asofYear: asOf.year,
     targetMonth,
     targetYear,
     hours,

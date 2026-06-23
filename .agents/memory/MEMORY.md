@@ -2,3 +2,4 @@
 - [package-lock empty-version dedupe crash](lockfile-empty-version-dedupe.md) — fresh npm install dies with "Invalid Version:" when lockfile has nested optional platform entries lacking version; strip them, never touch package.json.
 - [Vite HMR vs app WebSocket conflict](vite-hmr-ws-conflict.md) — app WS using `{ server, path }` aborts Vite HMR upgrades with 400 ("preview not loading"); use `noServer` + manual path-routed upgrade, and set HMR clientPort:443/wss on Replit.
 - [Eligibility plugin smoke tests](eligibility-plugin-smoke-tests.md) — standalone tsx tests in scripts/oneoffs; stub storage on the singleton; import storage/database before the plugin to dodge a circular-init crash.
+- [BAO buildup threemonthsprevElig quirk](bao-buildup-threemonthsprev-elig.md) — buildup's threemonthsprevElig short-circuits to false on its no-hours early return; derive a strict hours>=threshold check from monthDetails, don't trust the flag in the degenerate zero-threshold case.
