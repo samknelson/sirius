@@ -101,24 +101,9 @@ import { SchemaForm, sortArrayTableSettings } from "@/components/json-schema-for
  * of truth until then.
  */
 
-// Kinds the unified generic config routes actually serve. `charge` was cut
-// over to the unified plugin_configs tables in Task #355 and is served here via
-// the "Charge Plugins" nav entry (/admin/plugin-configs/charge). The
-// relational kinds (`charge`, `trust-eligibility`, `dispatch-eligibility`)
-// carry envelope fields; `dashboard` has none.
 // Stable empty reference so dialogs whose plugin declares no extra fields don't
 // get a fresh array each render (keeps the seeding effect's deps stable).
 const NO_PLUGIN_FIELDS: PluginConfigEnvelopeField[] = [];
-
-const ALLOWED_KINDS: ArrayManifestPluginKind[] = [
-  "charge",
-  "client-injection",
-  "dashboard",
-  "dispatch-eligibility",
-  "event-notifier",
-  "payment-gateway",
-  "trust-eligibility",
-];
 
 interface ManifestEntry {
   id: string;
@@ -161,13 +146,19 @@ function prettifyKind(kind: string): string {
 export default function GenericPluginConfigsPage() {
   const params = useParams<{ kind: string }>();
   const kind = params.kind as ArrayManifestPluginKind;
-  const isValidKind = ALLOWED_KINDS.includes(kind);
 
-  const { data: kinds = [] } = useQuery<PluginKindSummary[]>({
+  // The server's kinds index (/api/plugins/kinds) is the single source of truth
+  // for which kinds are configurable — it lists every kind that has a registered
+  // config adapter. Validate the URL :kind against it instead of a duplicated
+  // client-side allowlist, so any kind the server serves (cron today, anything
+  // new later) works here automatically with no client edit.
+  const { data: kinds = [], isLoading: isLoadingKinds } = useQuery<
+    PluginKindSummary[]
+  >({
     queryKey: pluginKindsQueryKey(),
-    enabled: isValidKind,
   });
   const kindSummary = kinds.find((k) => k.kind === kind);
+  const isValidKind = kindSummary !== undefined;
   // Fall back to a prettified id when the kinds index has no match yet
   // (loading) or omits this kind, so the page never shows the raw id.
   const kindName = kindSummary?.label ?? prettifyKind(kind);
@@ -250,6 +241,16 @@ export default function GenericPluginConfigsPage() {
   });
 
   const labelMaps = useEnvelopeLabelMaps(envelopeFields);
+
+  // Wait for the server kinds index before judging validity, so a valid kind
+  // never flashes the "unknown" message while the list is still loading.
+  if (isLoadingKinds) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin" data-testid="loading-spinner" />
+      </div>
+    );
+  }
 
   if (!isValidKind) {
     return (
