@@ -1,10 +1,23 @@
+import { useState } from "react";
 import { Link, useParams } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, ArrowLeft } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Loader2, ArrowLeft, Trash2 } from "lucide-react";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 interface DenormStatusCounts {
   ok: number;
@@ -58,10 +71,38 @@ function StatCard({
 export default function DenormConfigDetailPage() {
   const params = useParams<{ plugin_config_id: string }>();
   const configId = params.plugin_config_id;
+  const { toast } = useToast();
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   const { data: config, isLoading, isError } = useQuery<DenormConfigDetail>({
     queryKey: ["/api/denorm/configs", configId],
     enabled: !!configId,
+  });
+
+  const clearMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("POST", `/api/denorm/configs/${configId}/clear`);
+    },
+    onSuccess: (result: { deleted: number }) => {
+      setConfirmOpen(false);
+      queryClient.invalidateQueries({
+        queryKey: ["/api/denorm/configs", configId],
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/denorm/configs"] });
+      toast({
+        title: "Records cleared",
+        description: `Deleted ${result.deleted} record${
+          result.deleted === 1 ? "" : "s"
+        }. The backfill sweep will rebuild them.`,
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Failed to clear records",
+        description: "Something went wrong while clearing this denorm config.",
+        variant: "destructive",
+      });
+    },
   });
 
   usePageTitle(
@@ -110,10 +151,64 @@ export default function DenormConfigDetailPage() {
             {config.pluginName}
           </p>
         </div>
-        <Badge variant={config.enabled ? "default" : "secondary"}>
-          {config.enabled ? "Enabled" : "Disabled"}
-        </Badge>
+        <div className="flex items-center gap-3">
+          <Badge variant={config.enabled ? "default" : "secondary"}>
+            {config.enabled ? "Enabled" : "Disabled"}
+          </Badge>
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={() => setConfirmOpen(true)}
+            disabled={clearMutation.isPending}
+            data-testid="button-clear-records"
+          >
+            {clearMutation.isPending ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Trash2 className="h-4 w-4 mr-2" />
+            )}
+            Clear all records
+          </Button>
+        </div>
       </div>
+
+      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <AlertDialogContent data-testid="dialog-clear-confirm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Clear all denorm records?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This deletes every precomputed record for{" "}
+              <span className="font-medium">
+                {config.name || config.pluginName}
+              </span>
+              {config.counts.total > 0 ? ` (${config.counts.total} total)` : ""}.
+              The next backfill sweep will rebuild them as stale. This can't be
+              undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              disabled={clearMutation.isPending}
+              data-testid="button-cancel-clear"
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                clearMutation.mutate();
+              }}
+              disabled={clearMutation.isPending}
+              data-testid="button-confirm-clear"
+            >
+              {clearMutation.isPending ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : null}
+              Clear records
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {config.counts.total === 0 ? (
         <Card>

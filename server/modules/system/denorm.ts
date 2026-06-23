@@ -7,15 +7,14 @@ type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void 
 type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 
 /**
- * Admin-only, read-only visibility into the denorm system. Each denorm plugin
+ * Admin-only visibility and tooling for the denorm system. Each denorm plugin
  * has a `plugin_configs` row of kind `denorm`, and every record it keeps in
  * sync is tracked in the `denorm` table with a status of ok / stale / error.
  *
- * These endpoints surface the per-config status breakdown so an operator can
- * see, at a glance, how many records each denorm plugin is keeping fresh.
- * They are intentionally read-only — mutating tools (set-all-stale, force
- * backfill) are a later task. Routes stay thin and all DB access goes through
- * the storage layer.
+ * The read endpoints surface the per-config status breakdown so an operator can
+ * see, at a glance, how many records each denorm plugin is keeping fresh. The
+ * clear endpoint deletes a config's records so the next backfill sweep rebuilds
+ * them. Routes stay thin and all DB access goes through the storage layer.
  */
 export function registerDenormRoutes(
   app: Express,
@@ -75,6 +74,26 @@ export function registerDenormRoutes(
       });
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch denorm config" });
+    }
+  });
+
+  // Clear (delete) every denorm record for a single config, forcing a full
+  // rebuild on the next backfill sweep. Destructive; admin-only.
+  app.post("/api/denorm/configs/:id/clear", requireAccess("admin"), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const config = await storage.pluginConfigs.get(id);
+
+      if (!config || config.pluginKind !== "denorm") {
+        res.status(404).json({ message: "Denorm config not found" });
+        return;
+      }
+
+      const deleted = await storage.denorm.clearForConfig(id);
+
+      res.json({ deleted });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to clear denorm config" });
     }
   });
 }

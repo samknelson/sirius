@@ -91,6 +91,15 @@ export interface DenormStorage {
    * automatically by their `ON DELETE CASCADE` foreign key.
    */
   deleteByEntityIdsForConfig(configId: string, entityIds: string[]): Promise<number>;
+  /**
+   * Delete every denorm row for a single plugin config, returning the number of
+   * rows deleted. This is the operator "clear" tool: it wipes a config's
+   * precomputed status so the next backfill sweep re-enqueues all of its
+   * entities as `stale`, forcing a full rebuild. Dependent payload rows (e.g.
+   * `worker_msh_denorm`) are removed automatically by their `ON DELETE CASCADE`
+   * foreign key. A config with no rows is a harmless no-op that returns 0.
+   */
+  clearForConfig(configId: string): Promise<number>;
 }
 
 export function createDenormStorage(): DenormStorage {
@@ -202,6 +211,14 @@ export function createDenormStorage(): DenormStorage {
         .where(and(eq(denorm.configId, configId), inArray(denorm.entityId, entityIds)))
         .returning({ id: denorm.id });
       return deleted.length;
+    },
+
+    async clearForConfig(configId: string): Promise<number> {
+      const client = getClient();
+      const result = await client
+        .delete(denorm)
+        .where(eq(denorm.configId, configId));
+      return result.rowCount ?? 0;
     },
   };
 }
