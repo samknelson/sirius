@@ -69,4 +69,4 @@ export function initializeDenormPluginSystem(): void {
 }
 
 // Plugin registrations (side-effect imports — each file self-registers).
-import "./plugins/workerEmployment";
+import "./plugins/workerMs";

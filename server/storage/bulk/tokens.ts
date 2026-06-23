@@ -130,7 +130,7 @@ export function createBulkTokensStorage(): BulkTokensStorage {
           homeEmployerId: workers.denormHomeEmployerId,
           employerIds: workers.denormEmployerIds,
           wsId: workers.denormWsId,
-          msIds: workers.denormMsIds,
+          msIds: sql<string[] | null>`(SELECT array_agg(wmd.ms_id) FROM worker_msh_denorm wmd WHERE wmd.worker_id = ${workers.id})`,
           bargainingUnitId: workers.bargainingUnitId,
         })
         .from(workers)
@@ -151,7 +151,7 @@ export function createBulkTokensStorage(): BulkTokensStorage {
           homeEmployerId: workers.denormHomeEmployerId,
           employerIds: workers.denormEmployerIds,
           wsId: workers.denormWsId,
-          msIds: workers.denormMsIds,
+          msIds: sql<string[] | null>`(SELECT array_agg(wmd.ms_id) FROM worker_msh_denorm wmd WHERE wmd.worker_id = ${workers.id})`,
           bargainingUnitId: workers.bargainingUnitId,
         })
         .from(workers)

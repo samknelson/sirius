@@ -227,7 +227,7 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
             FROM options_worker_ms oms2
             JOIN employers emp ON emp.id = s.employer_id
             WHERE oms2.industry_id = emp.industry_id
-              AND oms2.id = ANY(w.denorm_ms_ids)
+              AND EXISTS (SELECT 1 FROM worker_msh_denorm wmd WHERE wmd.worker_id = w.id AND wmd.ms_id = oms2.id)
             ORDER BY oms2.sequence ASC NULLS LAST, oms2.name
             LIMIT 1
           ) oms ON true
@@ -284,8 +284,9 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
       const memberStatusJoin = industryId
         ? sql`LEFT JOIN LATERAL (
           SELECT ms.id, ms.code, ms.name
-          FROM UNNEST(w.denorm_ms_ids) AS ms_id
-          INNER JOIN options_worker_ms ms ON ms.id = ms_id AND ms.industry_id = ${industryId}
+          FROM worker_msh_denorm wmd
+          INNER JOIN options_worker_ms ms ON ms.id = wmd.ms_id AND ms.industry_id = ${industryId}
+          WHERE wmd.worker_id = w.id
           LIMIT 1
         ) member_status ON true`
         : sql``;
@@ -400,12 +401,13 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
         ? sql`wr.value as "ratingValue"`
         : sql`NULL::integer as "ratingValue"`;
       
-      // Build member status join - uses UNNEST on denorm_ms_ids to find the member status for the employer's industry
+      // Build member status join - uses worker_msh_denorm to find the member status for the employer's industry
       const memberStatusJoin = industryId
         ? sql`LEFT JOIN LATERAL (
           SELECT ms.id, ms.name, ms.sequence
-          FROM UNNEST(w.denorm_ms_ids) AS ms_id
-          INNER JOIN options_worker_ms ms ON ms.id = ms_id AND ms.industry_id = ${industryId}
+          FROM worker_msh_denorm wmd
+          INNER JOIN options_worker_ms ms ON ms.id = wmd.ms_id AND ms.industry_id = ${industryId}
+          WHERE wmd.worker_id = w.id
           LIMIT 1
         ) member_status ON true`
         : sql``;
@@ -742,7 +744,7 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
           FROM options_worker_ms oms2
           JOIN employers emp ON emp.id = s.employer_id
           WHERE oms2.industry_id = emp.industry_id
-            AND oms2.id = ANY(w.denorm_ms_ids)
+            AND EXISTS (SELECT 1 FROM worker_msh_denorm wmd WHERE wmd.worker_id = w.id AND wmd.ms_id = oms2.id)
           ORDER BY oms2.sequence ASC NULLS LAST, oms2.name
           LIMIT 1
         ) oms ON true

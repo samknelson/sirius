@@ -230,7 +230,6 @@ export const workers = pgTable("workers", {
   contactId: varchar("contact_id").notNull().references(() => contacts.id, { onDelete: 'cascade' }),
   ssn: text("ssn").unique(),
   denormWsId: varchar("denorm_ws_id").references(() => optionsWorkerWs.id, { onDelete: 'set null' }),
-  denormMsIds: varchar("denorm_ms_ids").array(),
   denormJobTitle: text("denorm_job_title"),
   denormHomeEmployerId: varchar("denorm_home_employer_id").references(() => employers.id, { onDelete: 'set null' }),
   denormEmployerIds: varchar("denorm_employer_ids").array(),
@@ -1424,7 +1423,12 @@ export type InsertWorker = z.infer<typeof insertWorkerSchema>;
 // stripped in the storage layer so it never leaks through generic worker
 // endpoints — it is only ever accessed via the dedicated getData/setData
 // accessors and the component-gated beneficiaries storage namespace.
-export type Worker = Omit<typeof workers.$inferSelect, "data">;
+// `denormMsIds` is no longer a physical column on `workers`; it is derived from
+// the `worker_msh_denorm` table by the worker read methods that need it (e.g.
+// `getWorker`). Kept on the DTO so existing consumers see the same shape.
+export type Worker = Omit<typeof workers.$inferSelect, "data"> & {
+  denormMsIds?: string[] | null;
+};
 
 export type InsertWorkerBan = z.infer<typeof insertWorkerBanSchema>;
 export type WorkerBan = typeof workerBans.$inferSelect;
@@ -1955,6 +1959,33 @@ export const insertDenormSchema = createInsertSchema(denorm);
 export type InsertDenorm = z.infer<typeof insertDenormSchema>;
 export type Denorm = typeof denorm.$inferSelect;
 export type DenormStatus = (typeof denormStatusEnum.enumValues)[number];
+
+// Per-worker denormalized current member statuses (payload table for the
+// `worker_ms` denorm plugin). One row per (worker, member-status), where
+// each row is the latest member status for one industry. `denorm_id` ties the
+// rows back to their workflow status row in `denorm`. Replaces the former
+// `workers.denorm_ms_ids` array column.
+export const workerMshDenorm = pgTable("worker_msh_denorm", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  denormId: varchar("denorm_id")
+    .notNull()
+    .references(() => denorm.id, { onDelete: 'cascade' }),
+  workerId: varchar("worker_id")
+    .notNull()
+    .references(() => workers.id, { onDelete: 'cascade' }),
+  msId: varchar("ms_id")
+    .notNull()
+    .references(() => optionsWorkerMs.id, { onDelete: 'cascade' }),
+}, (table) => [
+  uniqueIndex("worker_msh_denorm_worker_ms_uniq").on(table.workerId, table.msId),
+  index("worker_msh_denorm_denorm_idx").on(table.denormId),
+]);
+
+export const insertWorkerMshDenormSchema = createInsertSchema(workerMshDenorm).omit({
+  id: true,
+});
+export type InsertWorkerMshDenorm = z.infer<typeof insertWorkerMshDenormSchema>;
+export type WorkerMshDenorm = typeof workerMshDenorm.$inferSelect;
 
 // Base Rate History Schema - for use in charge plugins
 export const baseRateHistoryEntrySchema = z.object({

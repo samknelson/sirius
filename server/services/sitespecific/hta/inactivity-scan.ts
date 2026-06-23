@@ -3,6 +3,7 @@ import { getClient } from "../../../storage/transaction-context";
 import {
   workers,
   workerWsh,
+  workerMshDenorm,
   optionsWorkerWs,
   optionsWorkerMs,
   contacts,
@@ -107,7 +108,7 @@ export async function runInactivityScan(options?: ScanOptions): Promise<Inactivi
 
   if (targetWorkerId) {
     const [worker] = await client
-      .select({ id: workers.id, denormMsIds: workers.denormMsIds })
+      .select({ id: workers.id })
       .from(workers)
       .where(eq(workers.id, targetWorkerId));
 
@@ -116,7 +117,11 @@ export async function runInactivityScan(options?: ScanOptions): Promise<Inactivi
       return result;
     }
 
-    const msIds = worker.denormMsIds || [];
+    const msRows = await client
+      .select({ msId: workerMshDenorm.msId })
+      .from(workerMshDenorm)
+      .where(eq(workerMshDenorm.workerId, targetWorkerId));
+    const msIds = msRows.map((r) => r.msId);
     if (!msIds.includes(unionMsOption.id)) {
       const workerName = await getWorkerName(client, targetWorkerId);
       const mostRecent = await getMostRecentWshStatus(client, targetWorkerId);
@@ -139,7 +144,9 @@ export async function runInactivityScan(options?: ScanOptions): Promise<Inactivi
     targetWorkers = await client
       .select({ id: workers.id })
       .from(workers)
-      .where(sql`${workers.denormMsIds} @> ARRAY[${unionMsOption.id}]::varchar[]`);
+      .where(
+        sql`EXISTS (SELECT 1 FROM worker_msh_denorm wmd WHERE wmd.worker_id = ${workers.id} AND wmd.ms_id = ${unionMsOption.id})`,
+      );
   }
 
   result.scanned = targetWorkers.length;

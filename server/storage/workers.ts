@@ -4,6 +4,7 @@ import {
   contacts,
   employers,
   optionsWorkerWs,
+  workerMshDenorm,
   type Worker,
   type InsertWorker,
   type TrustBenefit,
@@ -218,7 +219,6 @@ export interface WorkerStorage {
   updateWorkerContactGender(workerId: string, gender: string | null, genderNota: string | null): Promise<Worker | undefined>;
   updateWorkerSSN(workerId: string, ssn: string): Promise<Worker | undefined>;
   updateWorkerStatus(workerId: string, denormWsId: string | null): Promise<Worker | undefined>;
-  updateWorkerMemberStatuses(workerId: string, denormMsIds: string[] | null): Promise<Worker | undefined>;
   setDenormDataProvider(provider: (workerId: string) => Promise<WorkerDenormData>): void;
   syncWorkerEmployerDenorm(workerId: string): Promise<void>;
   updateWorkerBargainingUnit(workerId: string, bargainingUnitId: string | null): Promise<Worker | undefined>;
@@ -382,8 +382,8 @@ async function _searchWorkers(params: InternalSearchParams): Promise<InternalSea
 
   const memberStatusCondition = memberStatusId
     ? memberStatusId === 'none'
-      ? sql`AND (w.denorm_ms_ids IS NULL OR array_length(w.denorm_ms_ids, 1) IS NULL)`
-      : sql`AND ${memberStatusId} = ANY(w.denorm_ms_ids)`
+      ? sql`AND NOT EXISTS (SELECT 1 FROM worker_msh_denorm wmd WHERE wmd.worker_id = w.id)`
+      : sql`AND EXISTS (SELECT 1 FROM worker_msh_denorm wmd WHERE wmd.worker_id = w.id AND wmd.ms_id = ${memberStatusId})`
     : sql``;
 
   const representativeCondition = (representativeId && politicalEnabled)
@@ -494,7 +494,7 @@ async function _searchWorkers(params: InternalSearchParams): Promise<InternalSea
       w.denorm_job_title,
       w.denorm_home_employer_id,
       w.denorm_employer_ids,
-      w.denorm_ms_ids,
+      (SELECT array_agg(wmd.ms_id) FROM worker_msh_denorm wmd WHERE wmd.worker_id = w.id) AS denorm_ms_ids,
       w.bargaining_unit_id,
       c.display_name as contact_name,
       c.email as contact_email,
@@ -695,7 +695,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
           c.given,
           c.family,
           c.email,
-          w.denorm_ms_ids,
+          (SELECT array_agg(wmd.ms_id) FROM worker_msh_denorm wmd WHERE wmd.worker_id = w.id) AS denorm_ms_ids,
           w.denorm_employer_ids,
           (SELECT cp2.phone_number FROM contact_phone cp2 WHERE cp2.contact_id = c.id AND cp2.is_active = true ORDER BY cp2.is_primary DESC NULLS LAST LIMIT 1) as phone_number,
           (SELECT cpo.street FROM contact_postal cpo WHERE cpo.contact_id = c.id AND cpo.is_active = true ORDER BY cpo.is_primary DESC NULLS LAST LIMIT 1) as address_street,
@@ -824,7 +824,15 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
     async getWorker(id: string): Promise<Worker | undefined> {
       const client = getClient();
       const [worker] = await client.select().from(workers).where(eq(workers.id, id));
-      return worker ? stripWorkerData(worker) : undefined;
+      if (!worker) return undefined;
+      const msRows = await client
+        .select({ msId: workerMshDenorm.msId })
+        .from(workerMshDenorm)
+        .where(eq(workerMshDenorm.workerId, id));
+      return {
+        ...stripWorkerData(worker),
+        denormMsIds: msRows.length > 0 ? msRows.map((r) => r.msId) : null,
+      };
     },
 
     async getData(id: string): Promise<Record<string, unknown>> {
@@ -902,7 +910,6 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
           contactId: workers.contactId,
           ssn: workers.ssn,
           denormWsId: workers.denormWsId,
-          denormMsIds: workers.denormMsIds,
           denormJobTitle: workers.denormJobTitle,
           denormHomeEmployerId: workers.denormHomeEmployerId,
           denormEmployerIds: workers.denormEmployerIds,
@@ -1076,17 +1083,6 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       return updatedWorker ? stripWorkerData(updatedWorker) : undefined;
     },
 
-    async updateWorkerMemberStatuses(workerId: string, denormMsIds: string[] | null): Promise<Worker | undefined> {
-      const client = getClient();
-      const [updatedWorker] = await client
-        .update(workers)
-        .set({ denormMsIds })
-        .where(eq(workers.id, workerId))
-        .returning();
-      
-      return updatedWorker ? stripWorkerData(updatedWorker) : undefined;
-    },
-
     async syncWorkerEmployerDenorm(workerId: string): Promise<void> {
       if (!denormDataProvider) {
         throw new Error("Denorm data provider not set. Call setDenormDataProvider first.");
@@ -1147,8 +1143,9 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         FROM workers w
         CROSS JOIN LATERAL (
           SELECT ms.code
-          FROM UNNEST(w.denorm_ms_ids) AS ms_id
-          INNER JOIN options_worker_ms ms ON ms.id = ms_id AND ms.industry_id = ${industryId}
+          FROM worker_msh_denorm wmd
+          INNER JOIN options_worker_ms ms ON ms.id = wmd.ms_id AND ms.industry_id = ${industryId}
+          WHERE wmd.worker_id = w.id
           LIMIT 1
         ) ms
         WHERE w.id IN (${sql.join(workerIdsList.map((id) => sql`${id}`), sql`, `)})
