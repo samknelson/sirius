@@ -2,6 +2,19 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../../storage";
 import { requireAccess } from "../../services/access-policy-evaluator";
 import { denormPluginRegistry } from "../../plugins/system/denorm/registry";
+import { backfillAllDenorm } from "../../plugins/system/denorm/backfill";
+import { recomputeStaleDenorm } from "../../plugins/system/denorm/recompute";
+
+/**
+ * Resolve a request-body `mode` into the wrapper's `"live" | "test"`. An absent
+ * mode defaults to `"live"`; any other value is rejected so a malformed request
+ * never silently triggers a real write run. Mirrors the cron run endpoint.
+ */
+function parseMode(value: unknown): "live" | "test" | null {
+  if (value === undefined || value === "live") return "live";
+  if (value === "test") return "test";
+  return null;
+}
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -94,6 +107,62 @@ export function registerDenormRoutes(
       res.json({ deleted });
     } catch (error) {
       res.status(500).json({ message: "Failed to clear denorm config" });
+    }
+  });
+
+  // Run the backfill sweep for just this config's plugin (enqueue missing rows
+  // as stale, delete widow rows). Accepts mode "live" | "test" (dry-run).
+  // Thin: resolves the config then calls the shared wrapper scoped by pluginId.
+  // Note: per-plugin runs are not recorded in the cron run history.
+  app.post("/api/denorm/configs/:id/backfill", requireAccess("admin"), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const config = await storage.pluginConfigs.get(id);
+
+      if (!config || config.pluginKind !== "denorm") {
+        res.status(404).json({ message: "Denorm config not found" });
+        return;
+      }
+
+      const mode = parseMode(req.body?.mode);
+      if (mode === null) {
+        res.status(400).json({ message: "Invalid mode. Must be 'live' or 'test'" });
+        return;
+      }
+
+      const summary = await backfillAllDenorm({ mode, pluginId: config.pluginId });
+
+      res.json({ mode, ...summary });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to run denorm backfill" });
+    }
+  });
+
+  // Recompute the stale rows for just this config's plugin, marking them ok (or
+  // error on failure). Accepts mode "live" | "test" (dry-run). Thin: resolves
+  // the config then calls the shared wrapper scoped by pluginId.
+  // Note: per-plugin runs are not recorded in the cron run history.
+  app.post("/api/denorm/configs/:id/recompute", requireAccess("admin"), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const config = await storage.pluginConfigs.get(id);
+
+      if (!config || config.pluginKind !== "denorm") {
+        res.status(404).json({ message: "Denorm config not found" });
+        return;
+      }
+
+      const mode = parseMode(req.body?.mode);
+      if (mode === null) {
+        res.status(400).json({ message: "Invalid mode. Must be 'live' or 'test'" });
+        return;
+      }
+
+      const summary = await recomputeStaleDenorm({ mode, pluginId: config.pluginId });
+
+      res.json({ mode, ...summary });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to run denorm recompute" });
     }
   });
 }

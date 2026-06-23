@@ -15,7 +15,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Loader2, ArrowLeft, Trash2 } from "lucide-react";
+import {
+  Loader2,
+  ArrowLeft,
+  Trash2,
+  RefreshCw,
+  PlayCircle,
+  ExternalLink,
+} from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -33,6 +40,18 @@ interface DenormConfigDetail {
   pluginName: string;
   enabled: boolean;
   counts: DenormStatusCounts;
+}
+
+interface DenormBackfillSummary {
+  mode: "live" | "test";
+  totalEnqueued: number;
+  totalDeleted: number;
+}
+
+interface DenormRecomputeSummary {
+  mode: "live" | "test";
+  totalRecomputed: number;
+  totalErrored: number;
 }
 
 function StatCard({
@@ -79,16 +98,20 @@ export default function DenormConfigDetailPage() {
     enabled: !!configId,
   });
 
+  function invalidateCounts() {
+    queryClient.invalidateQueries({
+      queryKey: ["/api/denorm/configs", configId],
+    });
+    queryClient.invalidateQueries({ queryKey: ["/api/denorm/configs"] });
+  }
+
   const clearMutation = useMutation({
     mutationFn: async () => {
       return apiRequest("POST", `/api/denorm/configs/${configId}/clear`);
     },
     onSuccess: (result: { deleted: number }) => {
       setConfirmOpen(false);
-      queryClient.invalidateQueries({
-        queryKey: ["/api/denorm/configs", configId],
-      });
-      queryClient.invalidateQueries({ queryKey: ["/api/denorm/configs"] });
+      invalidateCounts();
       toast({
         title: "Records cleared",
         description: `Deleted ${result.deleted} record${
@@ -104,6 +127,76 @@ export default function DenormConfigDetailPage() {
       });
     },
   });
+
+  const backfillMutation = useMutation({
+    mutationFn: async (mode: "live" | "test") => {
+      return apiRequest("POST", `/api/denorm/configs/${configId}/backfill`, {
+        mode,
+      }) as Promise<DenormBackfillSummary>;
+    },
+    onSuccess: (result) => {
+      invalidateCounts();
+      const dryRun = result.mode === "test";
+      toast({
+        title: dryRun ? "Backfill preview" : "Backfill complete",
+        description: dryRun
+          ? `Would enqueue ${result.totalEnqueued} new record${
+              result.totalEnqueued === 1 ? "" : "s"
+            } and delete ${result.totalDeleted} stray record${
+              result.totalDeleted === 1 ? "" : "s"
+            }. Nothing was changed.`
+          : `Enqueued ${result.totalEnqueued} new record${
+              result.totalEnqueued === 1 ? "" : "s"
+            } as stale and deleted ${result.totalDeleted} stray record${
+              result.totalDeleted === 1 ? "" : "s"
+            }.`,
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Failed to run backfill",
+        description: "Something went wrong while running the backfill.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const recomputeMutation = useMutation({
+    mutationFn: async (mode: "live" | "test") => {
+      return apiRequest("POST", `/api/denorm/configs/${configId}/recompute`, {
+        mode,
+      }) as Promise<DenormRecomputeSummary>;
+    },
+    onSuccess: (result) => {
+      invalidateCounts();
+      const dryRun = result.mode === "test";
+      toast({
+        title: dryRun ? "Recompute preview" : "Recompute complete",
+        description: dryRun
+          ? `Would recompute ${result.totalRecomputed} stale record${
+              result.totalRecomputed === 1 ? "" : "s"
+            }. Nothing was changed.`
+          : `Recomputed ${result.totalRecomputed} record${
+              result.totalRecomputed === 1 ? "" : "s"
+            }${
+              result.totalErrored > 0
+                ? `, ${result.totalErrored} failed and were marked error`
+                : ""
+            }.`,
+        variant: !dryRun && result.totalErrored > 0 ? "destructive" : undefined,
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Failed to run recompute",
+        description: "Something went wrong while running the recompute.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const anyRunPending =
+    backfillMutation.isPending || recomputeMutation.isPending;
 
   usePageTitle(
     config ? `Denorm - ${config.name || config.pluginName}` : "Denorm",
@@ -244,6 +337,128 @@ export default function DenormConfigDetailPage() {
           />
         </div>
       )}
+
+      <Card data-testid="card-maintenance">
+        <CardHeader>
+          <CardTitle>How records stay up to date</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-6 text-sm">
+          <div className="space-y-1">
+            <p className="font-medium text-foreground">Backfill job</p>
+            <p className="text-muted-foreground">
+              Runs every hour. It finds entities that are missing a precomputed
+              record and queues them up as <span className="font-medium">stale</span>,
+              and removes stray records whose entity no longer exists. This is
+              what fills in the <span className="font-medium">Total</span> and
+              creates work for the recompute job to pick up.
+            </p>
+          </div>
+          <div className="space-y-1">
+            <p className="font-medium text-foreground">Stale (recompute) job</p>
+            <p className="text-muted-foreground">
+              Also runs every hour. It takes the{" "}
+              <span className="font-medium">stale</span> records, rebuilds their
+              data, and marks them <span className="font-medium">OK</span>.
+              Anything that fails to rebuild is marked{" "}
+              <span className="font-medium">error</span> so it stays visible.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-3 pt-1">
+            <Link href="/cron-jobs/denorm_backfill/run">
+              <Button
+                variant="outline"
+                size="sm"
+                data-testid="link-cron-backfill"
+              >
+                <ExternalLink className="h-4 w-4 mr-2" />
+                Backfill job (all plugins)
+              </Button>
+            </Link>
+            <Link href="/cron-jobs/denorm_stale/run">
+              <Button variant="outline" size="sm" data-testid="link-cron-stale">
+                <ExternalLink className="h-4 w-4 mr-2" />
+                Stale job (all plugins)
+              </Button>
+            </Link>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card data-testid="card-run-now">
+        <CardHeader>
+          <CardTitle>Run now for this plugin</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4 text-sm">
+          <p className="text-muted-foreground">
+            Trigger the same jobs immediately, but scoped to{" "}
+            <span className="font-medium">
+              {config.name || config.pluginName}
+            </span>{" "}
+            only. Use <span className="font-medium">Preview</span> to see what a
+            run would do without changing anything. These runs are not recorded
+            in the cron job history.
+          </p>
+
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <p className="font-medium text-foreground">Backfill</p>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  onClick={() => backfillMutation.mutate("live")}
+                  disabled={anyRunPending}
+                  data-testid="button-run-backfill"
+                >
+                  {backfillMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <PlayCircle className="h-4 w-4 mr-2" />
+                  )}
+                  Run backfill now
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => backfillMutation.mutate("test")}
+                  disabled={anyRunPending}
+                  data-testid="button-preview-backfill"
+                >
+                  Preview
+                </Button>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <p className="font-medium text-foreground">Recompute stale</p>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  onClick={() => recomputeMutation.mutate("live")}
+                  disabled={anyRunPending}
+                  data-testid="button-run-recompute"
+                >
+                  {recomputeMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                  )}
+                  Run recompute now
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => recomputeMutation.mutate("test")}
+                  disabled={anyRunPending}
+                  data-testid="button-preview-recompute"
+                >
+                  Preview
+                </Button>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

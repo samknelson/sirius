@@ -34,6 +34,11 @@ export interface BackfillAllOptions {
    * enqueue and writes nothing. Defaults to `live`.
    */
   mode?: "live" | "test";
+  /**
+   * When set, only the plugin with this id is processed; every other plugin is
+   * skipped entirely (not even added to `perPlugin`). Omit to sweep all plugins.
+   */
+  pluginId?: string;
 }
 
 /**
@@ -69,6 +74,10 @@ export async function backfillAllDenorm(
 
   for (const plugin of denormPluginRegistry.list()) {
     const pluginId = plugin.metadata.id;
+
+    if (options.pluginId && pluginId !== options.pluginId) {
+      continue;
+    }
 
     if (!plugin.backfill && !plugin.findWidows) {
       perPlugin.push({ pluginId, enqueued: 0, deleted: 0, skipped: "no-backfill" });
