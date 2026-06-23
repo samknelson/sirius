@@ -5,6 +5,7 @@ import {
   employers,
   optionsWorkerWs,
   workerMshDenorm,
+  workerWshDenorm,
   denorm,
   type Worker,
   type InsertWorker,
@@ -232,7 +233,6 @@ export interface WorkerStorage {
   updateWorkerContactBirthDate(workerId: string, birthDate: string | null): Promise<Worker | undefined>;
   updateWorkerContactGender(workerId: string, gender: string | null, genderNota: string | null): Promise<Worker | undefined>;
   updateWorkerSSN(workerId: string, ssn: string): Promise<Worker | undefined>;
-  updateWorkerStatus(workerId: string, denormWsId: string | null): Promise<Worker | undefined>;
   setDenormDataProvider(provider: (workerId: string) => Promise<WorkerDenormData>): void;
   syncWorkerEmployerDenorm(workerId: string): Promise<void>;
   updateWorkerBargainingUnit(workerId: string, bargainingUnitId: string | null): Promise<Worker | undefined>;
@@ -504,7 +504,7 @@ async function _searchWorkers(params: InternalSearchParams): Promise<InternalSea
       w.sirius_id,
       w.contact_id,
       w.ssn,
-      w.denorm_ws_id,
+      wwd.ws_id AS denorm_ws_id,
       w.denorm_job_title,
       w.denorm_home_employer_id,
       w.denorm_employer_ids,
@@ -530,7 +530,8 @@ async function _searchWorkers(params: InternalSearchParams): Promise<InternalSea
       ${benefitColumns}
     FROM workers w
     INNER JOIN contacts c ON w.contact_id = c.id
-    LEFT JOIN options_worker_ws ws ON w.denorm_ws_id = ws.id
+    LEFT JOIN worker_wsh_denorm wwd ON wwd.worker_id = w.id
+    LEFT JOIN options_worker_ws ws ON ws.id = wwd.ws_id
     ${bargainingUnitJoin}
     LEFT JOIN LATERAL (
       SELECT phone_number, is_primary
@@ -868,9 +869,14 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         .select({ msId: workerMshDenorm.msId })
         .from(workerMshDenorm)
         .where(eq(workerMshDenorm.workerId, id));
+      const [wsRow] = await client
+        .select({ wsId: workerWshDenorm.wsId })
+        .from(workerWshDenorm)
+        .where(eq(workerWshDenorm.workerId, id));
       return {
         ...stripWorkerData(worker),
         denormMsIds: msRows.length > 0 ? msRows.map((r) => r.msId) : null,
+        denormWsId: wsRow?.wsId ?? null,
       };
     },
 
@@ -948,7 +954,6 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
           siriusId: workers.siriusId,
           contactId: workers.contactId,
           ssn: workers.ssn,
-          denormWsId: workers.denormWsId,
           denormJobTitle: workers.denormJobTitle,
           denormHomeEmployerId: workers.denormHomeEmployerId,
           denormEmployerIds: workers.denormEmployerIds,
@@ -957,8 +962,13 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         .from(workers)
         .innerJoin(contacts, eq(workers.contactId, contacts.id))
         .where(sql`LOWER(${contacts.email}) = LOWER(${email})`);
-      
-      return result || undefined;
+
+      if (!result) return undefined;
+      const [wsRow] = await client
+        .select({ wsId: workerWshDenorm.wsId })
+        .from(workerWshDenorm)
+        .where(eq(workerWshDenorm.workerId, result.id));
+      return { ...result, denormWsId: wsRow?.wsId ?? null };
     },
 
     async getWorkerByContactId(contactId: string): Promise<Worker | undefined> {
@@ -1111,17 +1121,6 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       return updatedWorker ? stripWorkerData(updatedWorker) : undefined;
     },
 
-    async updateWorkerStatus(workerId: string, denormWsId: string | null): Promise<Worker | undefined> {
-      const client = getClient();
-      const [updatedWorker] = await client
-        .update(workers)
-        .set({ denormWsId })
-        .where(eq(workers.id, workerId))
-        .returning();
-      
-      return updatedWorker ? stripWorkerData(updatedWorker) : undefined;
-    },
-
     async syncWorkerEmployerDenorm(workerId: string): Promise<void> {
       if (!denormDataProvider) {
         throw new Error("Denorm data provider not set. Call setDenormDataProvider first.");
@@ -1135,7 +1134,6 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         .set({
           denormHomeEmployerId: denormData.homeEmployerId,
           denormEmployerIds: denormData.employerIds,
-          denormWsId: denormData.latestWsId,
           denormJobTitle: denormData.jobTitle,
         })
         .where(eq(workers.id, workerId));
@@ -1261,63 +1259,6 @@ export const workerLoggingConfig: StorageLoggingConfig<WorkerStorage> = {
           workerId: args[0],
           metadata: {
             note: 'Worker and associated contact successfully deleted'
-          }
-        };
-      }
-    },
-    updateWorkerStatus: {
-      enabled: true,
-      getEntityId: (args) => args[0],
-      getHostEntityId: (args) => args[0],
-      getDescription: async (args, result, beforeState, afterState) => {
-        const oldStatus = beforeState?.workStatus?.name || 'None';
-        const newStatus = afterState?.workStatus?.name || 'None';
-        return `Updated Current Work Status [${oldStatus} → ${newStatus}]`;
-      },
-      before: async (args, storage) => {
-        const worker = await storage.getWorker(args[0]);
-        if (!worker || !worker.denormWsId) {
-          return null;
-        }
-        
-        const client = getClient();
-        const [workStatus] = await client.select().from(optionsWorkerWs).where(eq(optionsWorkerWs.id, worker.denormWsId));
-        return {
-          worker: worker,
-          workStatus: workStatus,
-          metadata: {
-            workerId: worker.id,
-            currentWsId: worker.denormWsId,
-            currentWorkStatusName: workStatus?.name || 'None'
-          }
-        };
-      },
-      after: async (args, result, storage) => {
-        if (!result) return null;
-        
-        if (!result.denormWsId) {
-          return {
-            worker: result,
-            workStatus: null,
-            metadata: {
-              workerId: result.id,
-              newWsId: null,
-              newWorkStatusName: 'None',
-              note: 'Worker work status cleared (synchronized from work status history)'
-            }
-          };
-        }
-        
-        const client = getClient();
-        const [workStatus] = await client.select().from(optionsWorkerWs).where(eq(optionsWorkerWs.id, result.denormWsId));
-        return {
-          worker: result,
-          workStatus: workStatus,
-          metadata: {
-            workerId: result.id,
-            newWsId: result.denormWsId,
-            newWorkStatusName: workStatus?.name || 'Unknown',
-            note: 'Worker work status updated (synchronized from work status history)'
           }
         };
       }

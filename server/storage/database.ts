@@ -74,6 +74,10 @@ import {
   type WorkerMshDenormStorage,
   createWorkerMshDenormStorage,
 } from "./system/worker-msh-denorm";
+import {
+  type WorkerWshDenormStorage,
+  createWorkerWshDenormStorage,
+} from "./system/worker-wsh-denorm";
 import { type LogsStorage, createLogsStorage } from "./system/logs";
 import { type WorkerWshStorage, createWorkerWshStorage, workerWshLoggingConfig } from "./worker-wsh";
 import { type WorkerMshStorage, createWorkerMshStorage, workerMshLoggingConfig } from "./worker-msh";
@@ -163,6 +167,7 @@ export interface IStorage {
   pluginConfigs: PluginConfigStorage;
   denorm: DenormStorage;
   workerMshDenorm: WorkerMshDenormStorage;
+  workerWshDenorm: WorkerWshDenormStorage;
   logs: LogsStorage;
   workerWsh: WorkerWshStorage;
   workerMsh: WorkerMshStorage;
@@ -255,6 +260,7 @@ export class DatabaseStorage implements IStorage {
   pluginConfigs: PluginConfigStorage;
   denorm: DenormStorage;
   workerMshDenorm: WorkerMshDenormStorage;
+  workerWshDenorm: WorkerWshDenormStorage;
   logs: LogsStorage;
   workerWsh: WorkerWshStorage;
   workerMsh: WorkerMshStorage;
@@ -395,6 +401,7 @@ export class DatabaseStorage implements IStorage {
     // No logging for denorm - high-volume internal workflow state churn.
     this.denorm = createDenormStorage();
     this.workerMshDenorm = createWorkerMshDenormStorage();
+    this.workerWshDenorm = createWorkerWshDenormStorage();
     this.logs = createLogsStorage();
 
     // No logging for wmb scan queue - high-volume internal state changes
@@ -403,7 +410,6 @@ export class DatabaseStorage implements IStorage {
 
     this.workerWsh = withStorageLogging(
       createWorkerWshStorage(
-        this.workers.updateWorkerStatus.bind(this.workers),
         async (workerId: string) => {
           await this.workers.syncWorkerEmployerDenorm(workerId);
           await this.wmbScanQueue.invalidateWorkerScans(workerId);

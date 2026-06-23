@@ -84,3 +84,4 @@ export function initializeDenormPluginSystem(): void {
 
 // Plugin registrations (side-effect imports — each file self-registers).
 import "./plugins/workerMs";
+import "./plugins/workerWs";

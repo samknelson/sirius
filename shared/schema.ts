@@ -229,7 +229,6 @@ export const workers = pgTable("workers", {
   siriusId: serial("sirius_id").notNull().unique(),
   contactId: varchar("contact_id").notNull().references(() => contacts.id, { onDelete: 'cascade' }),
   ssn: text("ssn").unique(),
-  denormWsId: varchar("denorm_ws_id").references(() => optionsWorkerWs.id, { onDelete: 'set null' }),
   denormJobTitle: text("denorm_job_title"),
   denormHomeEmployerId: varchar("denorm_home_employer_id").references(() => employers.id, { onDelete: 'set null' }),
   denormEmployerIds: varchar("denorm_employer_ids").array(),
@@ -1423,11 +1422,13 @@ export type InsertWorker = z.infer<typeof insertWorkerSchema>;
 // stripped in the storage layer so it never leaks through generic worker
 // endpoints — it is only ever accessed via the dedicated getData/setData
 // accessors and the component-gated beneficiaries storage namespace.
-// `denormMsIds` is no longer a physical column on `workers`; it is derived from
-// the `worker_msh_denorm` table by the worker read methods that need it (e.g.
-// `getWorker`). Kept on the DTO so existing consumers see the same shape.
+// `denormMsIds` / `denormWsId` are no longer physical columns on `workers`;
+// they are derived from the `worker_msh_denorm` / `worker_wsh_denorm` tables by
+// the worker read methods that need them (e.g. `getWorker`). Kept on the DTO so
+// existing consumers see the same shape.
 export type Worker = Omit<typeof workers.$inferSelect, "data"> & {
   denormMsIds?: string[] | null;
+  denormWsId?: string | null;
 };
 
 export type InsertWorkerBan = z.infer<typeof insertWorkerBanSchema>;
@@ -1986,6 +1987,34 @@ export const insertWorkerMshDenormSchema = createInsertSchema(workerMshDenorm).o
 });
 export type InsertWorkerMshDenorm = z.infer<typeof insertWorkerMshDenormSchema>;
 export type WorkerMshDenorm = typeof workerMshDenorm.$inferSelect;
+
+// Per-worker denormalized current work status (payload table for the
+// `worker_ws` denorm plugin). A worker has exactly ONE current work status, so
+// `worker_id` is UNIQUE and the table holds 0-or-1 row per worker (the row is
+// only present when the worker has a work status). `denorm_id` ties the row back
+// to its workflow status row in `denorm`. Replaces the former
+// `workers.denorm_ws_id` column.
+export const workerWshDenorm = pgTable("worker_wsh_denorm", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  denormId: varchar("denorm_id")
+    .notNull()
+    .references(() => denorm.id, { onDelete: 'cascade' }),
+  workerId: varchar("worker_id")
+    .notNull()
+    .references(() => workers.id, { onDelete: 'cascade' }),
+  wsId: varchar("ws_id")
+    .notNull()
+    .references(() => optionsWorkerWs.id, { onDelete: 'cascade' }),
+}, (table) => [
+  uniqueIndex("worker_wsh_denorm_worker_uniq").on(table.workerId),
+  index("worker_wsh_denorm_denorm_idx").on(table.denormId),
+]);
+
+export const insertWorkerWshDenormSchema = createInsertSchema(workerWshDenorm).omit({
+  id: true,
+});
+export type InsertWorkerWshDenorm = z.infer<typeof insertWorkerWshDenormSchema>;
+export type WorkerWshDenorm = typeof workerWshDenorm.$inferSelect;
 
 // Base Rate History Schema - for use in charge plugins
 export const baseRateHistoryEntrySchema = z.object({

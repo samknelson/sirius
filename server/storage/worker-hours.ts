@@ -2,7 +2,6 @@ import { createNoopValidator } from './utils/validation';
 import { getClient } from './transaction-context';
 import {
   workerHours,
-  workerWsh,
   employers,
   optionsEmploymentStatus,
   type WorkerHours,
@@ -31,7 +30,6 @@ export interface WorkerHoursDeleteResult {
 export interface WorkerDenormData {
   homeEmployerId: string | null;
   employerIds: string[] | null;
-  latestWsId: string | null;
   jobTitle: string | null;
 }
 
@@ -121,21 +119,9 @@ export function createWorkerHoursStorage(
       const homeHoursRow = homeHoursResult.rows[0] as { job_title: string | null } | undefined;
       const jobTitle = homeHoursRow?.job_title || null;
       
-      // Query 3: Get latest work status
-      const [wsResult] = await client
-        .select({ wsId: workerWsh.wsId })
-        .from(workerWsh)
-        .where(eq(workerWsh.workerId, workerId))
-        .orderBy(desc(workerWsh.date), sql`${workerWsh.createdAt} DESC NULLS LAST`, desc(workerWsh.id))
-        .limit(1);
-      
-      // Only set latestWsId if the worker has a home employer
-      const latestWsId = homeEmployerId ? (wsResult?.wsId || null) : null;
-      
       return {
         homeEmployerId,
         employerIds,
-        latestWsId,
         jobTitle,
       };
     },
