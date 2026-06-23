@@ -29,6 +29,18 @@ export interface DenormStatusInput {
 }
 
 /**
+ * A single backfill seed: an (entity, config) pair to enqueue as `stale`.
+ * `entityType` comes from the owning plugin. The storage method fills in the
+ * status (`stale`), `stale_at` (now), and leaves `computed_at` / `message`
+ * null.
+ */
+export interface DenormStaleSeed {
+  entityId: string;
+  entityType: string;
+  configId: string;
+}
+
+/**
  * Per-config breakdown of denorm record counts by status. `total` is the sum
  * of the three status buckets (every denorm row has exactly one status).
  */
@@ -62,6 +74,15 @@ export interface DenormStorage {
    * status / entity_type / timestamps / message on subsequent writes.
    */
   upsertStatus(input: DenormStatusInput): Promise<Denorm>;
+  /**
+   * Bulk-insert backfill seeds as `stale` rows, skipping any (entity, config)
+   * pair that already has a row (`ON CONFLICT DO NOTHING` on the
+   * (entity_id, config_id) unique index). Returns the number of rows actually
+   * inserted. This is the enqueue half of the backfill sweep: it only ever
+   * *adds* missing rows and never clobbers an existing row (e.g. a freshly
+   * event-written `ok` row), so backfill stays idempotent.
+   */
+  insertStaleBatch(seeds: DenormStaleSeed[]): Promise<number>;
 }
 
 export function createDenormStorage(): DenormStorage {
@@ -142,6 +163,27 @@ export function createDenormStorage(): DenormStorage {
         })
         .returning();
       return row;
+    },
+
+    async insertStaleBatch(seeds: DenormStaleSeed[]): Promise<number> {
+      if (seeds.length === 0) return 0;
+      const client = getClient();
+      const now = new Date();
+      const values: InsertDenorm[] = seeds.map((seed) => ({
+        entityId: seed.entityId,
+        entityType: seed.entityType,
+        configId: seed.configId,
+        status: "stale",
+        computedAt: null,
+        staleAt: now,
+        message: null,
+      }));
+      const inserted = await client
+        .insert(denorm)
+        .values(values)
+        .onConflictDoNothing({ target: [denorm.entityId, denorm.configId] })
+        .returning({ id: denorm.id });
+      return inserted.length;
     },
   };
 }

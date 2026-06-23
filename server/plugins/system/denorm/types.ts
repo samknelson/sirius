@@ -52,6 +52,17 @@ export interface DenormPlugin<TPayload = unknown> {
   compute(entityId: string): Promise<TPayload>;
   /** Persist the denorm payload for an entity. */
   write(entityId: string, payload: TPayload): Promise<void>;
+  /**
+   * Optional backfill source. Enumerate up to `limit` entity ids that SHOULD
+   * have a denorm row for this plugin's config (`configId`) but currently have
+   * none. The registry's `backfillAll` enqueues the returned ids as `stale`.
+   *
+   * This is a read-only anti-join against the plugin's source domain (e.g. the
+   * `workers` table for `worker_ms`); it must not mutate anything. The wrapper
+   * supplies the already-resolved `configId` so the plugin does not re-resolve
+   * it. Plugins that omit this method do not participate in backfill.
+   */
+  backfill?(configId: string, limit: number): Promise<string[]>;
 }
 
 /**

@@ -43,6 +43,12 @@ const workerMsDenormPlugin: DenormPlugin<WorkerMsDenorm> = {
     return { msIds };
   },
 
+  async backfill(configId: string, limit: number): Promise<string[]> {
+    // Every worker should have a worker_ms denorm row; return those that don't
+    // yet (read-only anti-join). The registry enqueues them as `stale`.
+    return storage.workers.findIdsMissingDenorm(configId, limit);
+  },
+
   async write(workerId: string, payload: WorkerMsDenorm): Promise<void> {
     const configs = await storage.pluginConfigs.getByKindAndPlugin("denorm", "worker_ms");
     const config = configs[0];

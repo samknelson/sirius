@@ -5,12 +5,13 @@ import {
   employers,
   optionsWorkerWs,
   workerMshDenorm,
+  denorm,
   type Worker,
   type InsertWorker,
   type TrustBenefit,
   type Employer,
 } from "@shared/schema";
-import { eq, sql, and, ne } from "drizzle-orm";
+import { eq, sql, and, ne, isNull } from "drizzle-orm";
 import type { ContactsStorage } from "./contacts";
 import type { WorkerDenormData } from "./worker-hours";
 import { type StorageLoggingConfig } from "./middleware/logging";
@@ -176,6 +177,12 @@ export interface WorkerSearchResult {
 
 export interface WorkerStorage {
   getAllWorkers(): Promise<Worker[]>;
+  /**
+   * Backfill anti-join: worker ids that have no `denorm` row for the given
+   * config, capped at `limit`. Read-only; used by the denorm backfill sweep to
+   * discover workers that still need a (stale) denorm row enqueued.
+   */
+  findIdsMissingDenorm(configId: string, limit: number): Promise<string[]>;
   searchWorkers(query: string, limit?: number): Promise<WorkerSearchResult>;
   getWorkersWithDetails(): Promise<WorkerWithDetails[]>;
   getWorkersWithDetailsPaginated(params: WorkersPaginationParams): Promise<PaginatedWorkersResult>;
@@ -564,6 +571,20 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       const client = getClient();
       const rows = await client.select().from(workers);
       return rows.map(stripWorkerData);
+    },
+
+    async findIdsMissingDenorm(configId: string, limit: number): Promise<string[]> {
+      const client = getClient();
+      const rows = await client
+        .select({ id: workers.id })
+        .from(workers)
+        .leftJoin(
+          denorm,
+          and(eq(denorm.entityId, workers.id), eq(denorm.configId, configId)),
+        )
+        .where(isNull(denorm.id))
+        .limit(limit);
+      return rows.map((r) => r.id);
     },
 
     async searchWorkers(query: string, limit: number = 10): Promise<WorkerSearchResult> {

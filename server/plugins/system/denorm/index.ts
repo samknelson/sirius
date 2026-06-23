@@ -10,6 +10,13 @@ import { denormPluginRegistry } from "./registry";
 
 export * from "./types";
 export { denormPluginRegistry, registerDenormPlugin, getDenormPlugin } from "./registry";
+export {
+  backfillAllDenorm,
+  DEFAULT_BACKFILL_LIMIT,
+  type DenormBackfillSummary,
+  type DenormBackfillPluginResult,
+  type BackfillAllOptions,
+} from "./backfill";
 
 let kindRegistered = false;
 function registerDenormKind(): void {
