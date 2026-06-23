@@ -1,18 +1,23 @@
 import { logger } from "../../../logger";
 import { PluginRegistry } from "../../_core";
-import type { BasePluginMetadata } from "../../_core";
-import type { CronPlugin, CronJobContext, CronJobResult } from "./types";
+import type { CronPlugin, CronManifestEntry, CronJobContext, CronJobResult } from "./types";
 
 /**
  * Registry of cron plugins. Reuses the generic `PluginRegistry` scaffolding
  * (component gating, access-policy gating, manifest shaping) so cron jobs are
  * first-class plugins like every other kind. Metadata is nested under
- * `.metadata`, matching the charge / trust-eligibility convention.
+ * `.metadata`, matching the charge / trust-eligibility convention. The manifest
+ * entry also carries the per-job `configSchema`/`uiSchema` so the generic admin
+ * Edit modal can render each job's type-specific settings form.
  */
-export const cronPluginRegistry = new PluginRegistry<CronPlugin, BasePluginMetadata>({
+export const cronPluginRegistry = new PluginRegistry<CronPlugin, CronManifestEntry>({
   kind: "cron",
   getMetadata: (p) => p.metadata,
-  toManifestEntry: (p) => p.metadata,
+  toManifestEntry: (p) => ({
+    ...p.metadata,
+    configSchema: p.configSchema,
+    uiSchema: p.uiSchema,
+  }),
 });
 
 /** Self-registration helper used by each plugin file under `./plugins/`. */

@@ -1,12 +1,27 @@
 import { z } from "zod";
+import type { JsonSchema } from "@shared/json-schema-form";
 import { storage } from "../../../../storage";
 import { processBatchQueueJobs } from "../../../../services/wmb-scan-queue";
 import { registerCronPlugin } from "../registry";
-import type { CronJobContext, CronJobResult, CronJobSettingsField } from "../types";
+import type { CronJobContext, CronJobResult } from "../types";
 
 const settingsSchema = z.object({
   batchSize: z.number().int().min(1).max(100).default(10),
 });
+
+const configSchema: JsonSchema = {
+  type: "object",
+  properties: {
+    batchSize: {
+      type: "integer",
+      title: "Batch Size",
+      description: "Number of jobs to process per cron run",
+      minimum: 1,
+      maximum: 100,
+      default: 10,
+    },
+  },
+};
 
 type ProcessWmbBatchSettings = z.infer<typeof settingsSchema>;
 
@@ -26,19 +41,9 @@ registerCronPlugin({
   defaultEnabled: false,
 
   settingsSchema,
+  configSchema,
 
   getDefaultSettings: () => DEFAULT_SETTINGS,
-
-  getSettingsFields: (): CronJobSettingsField[] => [
-    {
-      key: 'batchSize',
-      label: 'Batch Size',
-      type: 'number',
-      description: 'Number of jobs to process per cron run',
-      min: 1,
-      max: 100,
-    },
-  ],
 
   async execute(context: CronJobContext): Promise<CronJobResult> {
     const settings = settingsSchema.parse({

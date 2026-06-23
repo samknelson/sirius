@@ -1,9 +1,10 @@
 import { z } from "zod";
+import type { JsonSchema } from "@shared/json-schema-form";
 import { storage } from "../../../../storage";
 import { createBulkParticipantStorage } from "../../../../storage/bulk/participants";
 import { deliverToParticipant } from "../../../../modules/bulk/deliver";
 import { registerCronPlugin } from "../registry";
-import type { CronJobContext, CronJobResult, CronJobSettingsField } from "../types";
+import type { CronJobContext, CronJobResult } from "../types";
 
 const settingsSchema = z.object({
   emailBatchSize: z.number().int().min(1).max(500).default(25),
@@ -11,6 +12,44 @@ const settingsSchema = z.object({
   postalBatchSize: z.number().int().min(1).max(500).default(25),
   inappBatchSize: z.number().int().min(1).max(500).default(50),
 });
+
+const configSchema: JsonSchema = {
+  type: "object",
+  properties: {
+    emailBatchSize: {
+      type: "integer",
+      title: "Email Batch Size",
+      description: "Number of email participants to deliver per run",
+      minimum: 1,
+      maximum: 500,
+      default: 25,
+    },
+    smsBatchSize: {
+      type: "integer",
+      title: "SMS Batch Size",
+      description: "Number of SMS participants to deliver per run",
+      minimum: 1,
+      maximum: 500,
+      default: 25,
+    },
+    postalBatchSize: {
+      type: "integer",
+      title: "Postal Batch Size",
+      description: "Number of postal participants to deliver per run",
+      minimum: 1,
+      maximum: 500,
+      default: 25,
+    },
+    inappBatchSize: {
+      type: "integer",
+      title: "In-App Batch Size",
+      description: "Number of in-app participants to deliver per run",
+      minimum: 1,
+      maximum: 500,
+      default: 50,
+    },
+  },
+};
 
 type BulkDeliverSettings = z.infer<typeof settingsSchema>;
 
@@ -47,43 +86,9 @@ registerCronPlugin({
   defaultEnabled: false,
 
   settingsSchema,
+  configSchema,
 
   getDefaultSettings: () => DEFAULT_SETTINGS,
-
-  getSettingsFields: (): CronJobSettingsField[] => [
-    {
-      key: 'emailBatchSize',
-      label: 'Email Batch Size',
-      type: 'number',
-      description: 'Number of email participants to deliver per run',
-      min: 1,
-      max: 500,
-    },
-    {
-      key: 'smsBatchSize',
-      label: 'SMS Batch Size',
-      type: 'number',
-      description: 'Number of SMS participants to deliver per run',
-      min: 1,
-      max: 500,
-    },
-    {
-      key: 'postalBatchSize',
-      label: 'Postal Batch Size',
-      type: 'number',
-      description: 'Number of postal participants to deliver per run',
-      min: 1,
-      max: 500,
-    },
-    {
-      key: 'inappBatchSize',
-      label: 'In-App Batch Size',
-      type: 'number',
-      description: 'Number of in-app participants to deliver per run',
-      min: 1,
-      max: 500,
-    },
-  ],
 
   async execute(context: CronJobContext): Promise<CronJobResult> {
     const settings = settingsSchema.parse({

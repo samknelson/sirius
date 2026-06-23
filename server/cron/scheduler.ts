@@ -7,6 +7,7 @@ import {
   executeCronPlugin,
 } from "../plugins/system/cron";
 import { getEnabledComponentIds } from "../modules/components";
+import { eventBus, EventType, type PluginConfigSavedPayload } from "../services/event-bus";
 
 /**
  * Normalized view of a cron job the scheduler operates on, projected from a
@@ -29,8 +30,34 @@ interface ScheduledJob {
 class CronScheduler {
   private scheduledJobs: Map<string, ScheduledJob> = new Map();
   private isRunning: boolean = false;
+  private configSubscriptionRegistered = false;
+
+  /**
+   * Subscribe (once) to cron config saves so edits made through the generic
+   * plugin admin modal — which write `plugin_configs` directly and emit
+   * `PLUGIN_CONFIG_SAVED` after commit — reschedule live instead of waiting for
+   * the next process restart. The legacy `/settings` + `/:name` PATCH routes
+   * used to call `reload()` explicitly; that responsibility now lives here so it
+   * fires no matter which write path edits a cron config.
+   */
+  private registerConfigSubscription(): void {
+    if (this.configSubscriptionRegistered) return;
+    this.configSubscriptionRegistered = true;
+    eventBus.on({
+      name: 'cron-scheduler:reload-on-config-save',
+      description:
+        'Reload scheduled cron tasks when a cron plugin config is created, updated, or deleted.',
+      event: EventType.PLUGIN_CONFIG_SAVED,
+      handler: async (payload: PluginConfigSavedPayload) => {
+        if (payload.kind !== 'cron') return;
+        await this.reload();
+      },
+    });
+  }
 
   async start(): Promise<void> {
+    this.registerConfigSubscription();
+
     if (this.isRunning) {
       logger.warn('Cron scheduler is already running', { service: 'cron-scheduler' });
       return;

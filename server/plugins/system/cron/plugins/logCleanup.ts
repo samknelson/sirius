@@ -1,13 +1,14 @@
 import { z } from "zod";
+import type { JsonSchema } from "@shared/json-schema-form";
 import { storage } from "../../../../storage";
 import { registerCronPlugin } from "../registry";
-import type { CronJobContext, CronJobResult, CronJobSettingsAdapter } from "../types";
+import type { CronJobContext, CronJobResult } from "../types";
 
 const retentionPolicySchema = z.object({
-  module: z.string().nullable(),
-  operation: z.string().nullable(),
+  module: z.string().nullable().default(null),
+  operation: z.string().nullable().default(null),
   retentionDays: z.number().int().min(1).max(3650),
-  enabled: z.boolean(),
+  enabled: z.boolean().default(false),
 });
 
 const settingsSchema = z.object({
@@ -21,57 +22,49 @@ const DEFAULT_SETTINGS: LogCleanupSettings = {
   policies: [],
 };
 
-const logCleanupSettingsAdapter: CronJobSettingsAdapter = {
-  componentId: 'logCleanupPolicies',
-
-  async loadClientState(currentSettings: Record<string, unknown>) {
-    const stats = await storage.logs.getModuleOperationStats();
-    const parsed = settingsSchema.safeParse(currentSettings);
-    const policies = parsed.success ? parsed.data.policies : [];
-
-    const policyMap = new Map<string, RetentionPolicy>();
-    for (const policy of policies) {
-      const key = `${policy.module ?? ''}::${policy.operation ?? ''}`;
-      policyMap.set(key, policy);
-    }
-
-    const mergedRows = stats.map(stat => {
-      const key = `${stat.module ?? ''}::${stat.operation ?? ''}`;
-      const existing = policyMap.get(key);
-      return {
-        module: stat.module,
-        operation: stat.operation,
-        count: stat.count,
-        retentionDays: existing?.retentionDays ?? null,
-        enabled: existing?.enabled ?? false,
-      };
-    });
-
-    for (const policy of policies) {
-      const key = `${policy.module ?? ''}::${policy.operation ?? ''}`;
-      const hasStats = stats.some(s =>
-        `${s.module ?? ''}::${s.operation ?? ''}` === key
-      );
-      if (!hasStats) {
-        mergedRows.push({
-          module: policy.module,
-          operation: policy.operation,
-          count: 0,
-          retentionDays: policy.retentionDays,
-          enabled: policy.enabled,
-        });
-      }
-    }
-
-    return {
-      clientState: { rows: mergedRows },
-      values: { policies },
-    };
-  },
-
-  async applyUpdate(data: unknown) {
-    const validated = settingsSchema.parse(data);
-    return validated;
+/**
+ * Each policy purges log rows older than `retentionDays` for one
+ * module/operation combination. Leave `module`/`operation` blank to match all.
+ * Only policies with `enabled` checked run. Rendered by the generic admin Edit
+ * modal via the default RJSF array editor (boolean → checkbox).
+ */
+const configSchema: JsonSchema = {
+  type: "object",
+  properties: {
+    policies: {
+      type: "array",
+      title: "Retention Policies",
+      description:
+        "Purge log entries older than the retention period for each module/operation. Leave module/operation blank to match all.",
+      default: [],
+      items: {
+        type: "object",
+        required: ["retentionDays"],
+        properties: {
+          module: {
+            type: ["string", "null"],
+            title: "Module",
+            default: null,
+          },
+          operation: {
+            type: ["string", "null"],
+            title: "Operation",
+            default: null,
+          },
+          retentionDays: {
+            type: "integer",
+            title: "Retention Days",
+            minimum: 1,
+            maximum: 3650,
+          },
+          enabled: {
+            type: "boolean",
+            title: "Enabled",
+            default: false,
+          },
+        },
+      },
+    },
   },
 };
 
@@ -86,10 +79,9 @@ registerCronPlugin({
   defaultEnabled: false,
 
   settingsSchema,
+  configSchema,
 
   getDefaultSettings: () => DEFAULT_SETTINGS,
-
-  settingsAdapter: logCleanupSettingsAdapter,
 
   async execute(context: CronJobContext): Promise<CronJobResult> {
     const settings = settingsSchema.parse({

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { JsonSchema, UiSchema } from "@shared/json-schema-form";
 import type { BasePluginMetadata } from "../../_core";
 
 /**
@@ -27,34 +28,6 @@ export interface CronJobResult {
 }
 
 /**
- * One settings input the generic "fields" settings UI renders for a cron
- * plugin. Mirrors the legacy cron settings-field contract verbatim so the
- * existing client settings page keeps working unchanged.
- */
-export interface CronJobSettingsField {
-  key: string;
-  label: string;
-  type: "number" | "string" | "boolean";
-  description?: string;
-  min?: number;
-  max?: number;
-}
-
-/**
- * Custom settings adapter for cron plugins whose settings UI is a bespoke
- * registered frontend component rather than the simple field list. Identical to
- * the legacy contract.
- */
-export interface CronJobSettingsAdapter {
-  componentId: string;
-  loadClientState: (currentSettings: Record<string, unknown>) => Promise<{
-    clientState: Record<string, unknown>;
-    values: Record<string, unknown>;
-  }>;
-  applyUpdate: (data: unknown) => Promise<Record<string, unknown>>;
-}
-
-/**
  * A cron job, expressed as a plugin. Replaces the old `CronJobHandler` +
  * `DefaultCronJob` split: the schedule and enabled defaults that used to live
  * in `bootstrap.ts` now ride on the plugin alongside its execution logic and
@@ -63,8 +36,8 @@ export interface CronJobSettingsAdapter {
  * Cron plugins are singletons (`metadata.singleton === true`): exactly one
  * `plugin_configs` row exists per plugin, created by the boot-time singleton
  * seeder from `defaultSchedule` / `defaultEnabled`. The operator edits that
- * single row's schedule / enabled / settings; they cannot add a second or
- * delete it.
+ * single row's schedule / enabled / settings via the generic plugin admin
+ * page; they cannot add a second or delete it.
  */
 export interface CronPlugin {
   /**
@@ -83,8 +56,22 @@ export interface CronPlugin {
   settingsSchema?: z.ZodSchema;
   /** Optional default settings, merged under the saved settings at run time. */
   getDefaultSettings?(): Record<string, unknown>;
-  /** Optional field definitions for the generic "fields" settings UI. */
-  getSettingsFields?(): CronJobSettingsField[];
-  /** Optional custom settings adapter (bespoke frontend component). */
-  settingsAdapter?: CronJobSettingsAdapter;
+  /**
+   * JSON Schema describing the editable `data` fields the generic plugin admin
+   * UI renders for this job's config row. Omit for jobs with no editable
+   * settings (their Edit modal shows only schedule / enabled / name).
+   */
+  configSchema?: JsonSchema;
+  /** Optional RJSF UI hints paired with {@link configSchema}. */
+  uiSchema?: UiSchema;
+}
+
+/**
+ * Manifest entry shape for cron plugins. Extends the base metadata with the
+ * per-job settings form schema so the generic plugin admin Edit modal can
+ * render each job's type-specific config (mirrors event-notifier).
+ */
+export interface CronManifestEntry extends BasePluginMetadata {
+  configSchema?: JsonSchema;
+  uiSchema?: UiSchema;
 }

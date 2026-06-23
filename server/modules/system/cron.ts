@@ -1,11 +1,9 @@
 import type { Express, Request, Response, NextFunction } from "express";
-import { z } from "zod";
 import { storage } from "../../storage";
 import type { PluginConfigWithSubsidiary } from "../../storage/plugin-configs";
 import { requireAccess } from "../../services/access-policy-evaluator";
 import { cronScheduler } from "../../cron";
 import { cronPluginRegistry } from "../../plugins/system/cron";
-import { runInTransaction } from "../../storage/transaction-context";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -14,7 +12,8 @@ type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Respo
  * Legacy `CronJob` JSON shape the client consumes (see
  * `client/src/lib/cron-types.ts`). Cron jobs now live in `plugin_configs` +
  * `plugin_configs_cron`, but the admin routes keep emitting this flat shape so
- * the existing cron-jobs / cron-job-settings pages need no changes.
+ * the cron-jobs list, view, and run pages need no changes. Editing schedule /
+ * enabled / settings now happens through the generic plugin admin modal.
  */
 interface LegacyCronJob {
   name: string;
@@ -40,16 +39,6 @@ function toLegacyCronJob(envelope: PluginConfigWithSubsidiary): LegacyCronJob {
     updatedAt: config.updatedAt,
   };
 }
-
-/** PATCH /api/cron-jobs/:name body — enable/disable, reschedule, or settings. */
-const updateCronJobSchema = z
-  .object({
-    name: z.string().optional(),
-    isEnabled: z.boolean().optional(),
-    schedule: z.string().min(1).optional(),
-    settings: z.record(z.unknown()).optional(),
-  })
-  .strict();
 
 export function registerCronJobRoutes(
   app: Express,
@@ -97,16 +86,16 @@ export function registerCronJobRoutes(
       const job = toLegacyCronJob(envelope);
       const latestRun = await storage.cronJobRuns.getLatestByJobName(name);
 
-      // Get plugin metadata for settings
+      // Surface the plugin's default settings so read-only views can render the
+      // effective config (defaults overlaid with the saved `data`). Editing now
+      // happens through the generic plugin admin modal, not here.
       const plugin = cronPluginRegistry.get(name);
-      const settingsFields = plugin?.getSettingsFields?.() ?? null;
       const defaultSettings = plugin?.getDefaultSettings?.() ?? {};
 
       res.json({
         ...job,
         latestRun,
-        settingsFields,
-        defaultSettings
+        defaultSettings,
       });
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch cron job" });
@@ -127,59 +116,6 @@ export function registerCronJobRoutes(
       res.json(runs);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch cron job runs" });
-    }
-  });
-
-  // PATCH /api/cron-jobs/:name - Update a cron job (enable/disable, reschedule)
-  app.patch("/api/cron-jobs/:name", requireAccess('admin'), async (req, res) => {
-    try {
-      const { name } = req.params;
-
-      const envelope = await resolveCronConfig(name);
-      if (!envelope) {
-        return res.status(404).json({ message: "Cron job not found" });
-      }
-
-      const validatedData = updateCronJobSchema.parse(req.body);
-
-      // Prevent renaming via this endpoint (name is the stable plugin id)
-      if (validatedData.name && validatedData.name !== name) {
-        return res.status(400).json({ message: "Cannot change job name (it is the primary key)" });
-      }
-
-      await runInTransaction(async () => {
-        if (validatedData.isEnabled !== undefined) {
-          await storage.pluginConfigs.update(envelope.config.id, {
-            enabled: validatedData.isEnabled,
-          });
-        }
-        if (validatedData.schedule !== undefined) {
-          await storage.pluginConfigs.upsertSubsidiary("cron", {
-            id: envelope.config.id,
-            schedule: validatedData.schedule,
-          });
-        }
-        if (validatedData.settings !== undefined) {
-          await storage.pluginConfigs.update(envelope.config.id, {
-            data: validatedData.settings,
-          });
-        }
-      });
-
-      // Reschedule so the edit (enabled/schedule/settings — the latter is
-      // captured in each scheduled task's closure) takes effect immediately
-      // instead of waiting for the next process restart. Runs after the
-      // transaction commits so reload() reads the persisted state.
-      await cronScheduler.reload();
-
-      const updated = await storage.pluginConfigs.getWithSubsidiary(envelope.config.id);
-      res.json(toLegacyCronJob(updated ?? envelope));
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        res.status(400).json({ message: "Invalid cron job data", error });
-      } else {
-        res.status(500).json({ message: "Failed to update cron job" });
-      }
     }
   });
 
@@ -218,97 +154,6 @@ export function registerCronJobRoutes(
       res.status(500).json({
         message: error instanceof Error ? error.message : "Failed to run cron job"
       });
-    }
-  });
-
-  // GET /api/cron-jobs/:name/settings - Get settings with adapter support
-  app.get("/api/cron-jobs/:name/settings", requireAccess('admin'), async (req, res) => {
-    try {
-      const { name } = req.params;
-      const envelope = await resolveCronConfig(name);
-
-      if (!envelope) {
-        return res.status(404).json({ message: "Cron job not found" });
-      }
-
-      const plugin = cronPluginRegistry.get(name);
-      if (!plugin) {
-        return res.status(404).json({ message: "Cron job handler not found" });
-      }
-
-      const currentSettings = (envelope.config.data as Record<string, unknown>) ?? {};
-      const defaultSettings = plugin.getDefaultSettings?.() ?? {};
-      const mergedSettings = { ...defaultSettings, ...currentSettings };
-
-      // Check if plugin has a custom settings adapter
-      if (plugin.settingsAdapter) {
-        const { clientState, values } = await plugin.settingsAdapter.loadClientState(mergedSettings);
-        return res.json({
-          mode: 'custom',
-          componentId: plugin.settingsAdapter.componentId,
-          clientState,
-          values,
-        });
-      }
-
-      // Fall back to standard fields mode
-      const settingsFields = plugin.getSettingsFields?.() ?? [];
-      return res.json({
-        mode: 'fields',
-        fields: settingsFields,
-        values: mergedSettings,
-        defaultSettings,
-      });
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch cron job settings" });
-    }
-  });
-
-  // PATCH /api/cron-jobs/:name/settings - Update settings with adapter support
-  app.patch("/api/cron-jobs/:name/settings", requireAccess('admin'), async (req, res) => {
-    try {
-      const { name } = req.params;
-      const envelope = await resolveCronConfig(name);
-
-      if (!envelope) {
-        return res.status(404).json({ message: "Cron job not found" });
-      }
-
-      const plugin = cronPluginRegistry.get(name);
-      if (!plugin) {
-        return res.status(404).json({ message: "Cron job handler not found" });
-      }
-
-      let newSettings: Record<string, unknown>;
-
-      // Check if plugin has a custom settings adapter
-      if (plugin.settingsAdapter) {
-        newSettings = await plugin.settingsAdapter.applyUpdate(req.body);
-      } else {
-        // Standard settings - validate with schema if available
-        if (plugin.settingsSchema) {
-          newSettings = plugin.settingsSchema.parse(req.body) as Record<string, unknown>;
-        } else {
-          newSettings = req.body;
-        }
-      }
-
-      await storage.pluginConfigs.update(envelope.config.id, { data: newSettings });
-
-      // Reschedule so the new settings (captured in the scheduled task closure)
-      // take effect immediately rather than after the next process restart.
-      await cronScheduler.reload();
-
-      const updated = await storage.pluginConfigs.getWithSubsidiary(envelope.config.id);
-      res.json(toLegacyCronJob(updated ?? envelope));
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        res.status(400).json({ message: "Invalid settings data", error });
-      } else {
-        res.status(500).json({
-          message: error instanceof Error ? error.message : "Failed to update cron job settings"
-        });
-      }
     }
   });
 }

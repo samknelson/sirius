@@ -189,7 +189,7 @@ const AdminQuickstarts = lazy(() => import("@/pages/admin-quickstarts"));
 const CronJobs = lazy(() => import("@/pages/cron-jobs"));
 const EventBusDebug = lazy(() => import("@/pages/admin/debug/event-bus"));
 const CronJobView = lazy(() => import("@/pages/cron-job-view"));
-const CronJobSettings = lazy(() => import("@/pages/cron-job-settings"));
+const CronJobRun = lazy(() => import("@/pages/cron-job-run"));
 const CronJobHistory = lazy(() => import("@/pages/cron-job-history"));
 import AdminLayout from "@/components/layouts/AdminLayout";
 import ConfigurationLayout from "@/components/layouts/ConfigurationLayout";
@@ -3231,12 +3231,16 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/cron-jobs/:name/settings">
+      <Route path="/cron-jobs/:name/run">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
-            <CronJobSettings />
+            <CronJobRun />
           </AuthenticatedLayout>
         </ProtectedRoute>
+      </Route>
+
+      <Route path="/cron-jobs/:name/settings">
+        {(params) => <Redirect to={`/cron-jobs/${params.name}/run`} />}
       </Route>
 
       <Route path="/cron-jobs/:name/history">

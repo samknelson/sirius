@@ -24,6 +24,22 @@ function registerCronKind(): void {
     // legacy /api/cron-jobs routes which were all gated on the admin policy.
     requiredPolicy: "admin",
     sortEntries: (a, b) => a.id.localeCompare(b.id),
+    // Validate a config's editable `data` payload against the plugin's own JSON
+    // schema (when it declares one) when the generic admin Edit modal saves.
+    // The cron envelope keeps `schedule`/`enabled` as first-class fields outside
+    // `data`, so there is nothing to strip before validating — `config` here is
+    // exactly the per-job settings object.
+    validateConfig: async (plugin, config) => {
+      if (!plugin.configSchema) return { valid: true };
+      const { validateAgainstSchema } = await import(
+        "../../../lib/json-schema-validator"
+      );
+      const result = validateAgainstSchema(
+        plugin.configSchema,
+        (config ?? {}) as Record<string, unknown>,
+      );
+      return { valid: result.valid, errors: result.errors };
+    },
   });
   // Cron configs hoist the cron `schedule` into a real subsidiary column
   // (`plugin_configs_cron.schedule`) so it is a first-class, filterable envelope

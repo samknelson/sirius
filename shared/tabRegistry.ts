@@ -297,7 +297,7 @@ export const btuCsgTabTree: HierarchicalTab[] = [
  */
 export const cronJobTabTree: HierarchicalTab[] = [
   { id: 'view', label: 'View', hrefTemplate: '/cron-jobs/{id}/view', permission: 'cron.view' },
-  { id: 'settings', label: 'Settings', hrefTemplate: '/cron-jobs/{id}/settings', permission: 'cron.edit' },
+  { id: 'run', label: 'Run', hrefTemplate: '/cron-jobs/{id}/run', permission: 'cron.edit' },
   { id: 'history', label: 'History', hrefTemplate: '/cron-jobs/{id}/history', permission: 'cron.view' },
 ];
 
