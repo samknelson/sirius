@@ -1,8 +1,9 @@
 import { z } from "zod";
-import { storage } from "../../storage";
-import { createBulkParticipantStorage } from "../../storage/bulk/participants";
-import { deliverToParticipant } from "../../modules/bulk/deliver";
-import type { CronJobHandler, CronJobContext, CronJobResult, CronJobSettingsField } from "../registry";
+import { storage } from "../../../../storage";
+import { createBulkParticipantStorage } from "../../../../storage/bulk/participants";
+import { deliverToParticipant } from "../../../../modules/bulk/deliver";
+import { registerCronPlugin } from "../registry";
+import type { CronJobContext, CronJobResult, CronJobSettingsField } from "../types";
 
 const settingsSchema = z.object({
   emailBatchSize: z.number().int().min(1).max(500).default(25),
@@ -34,9 +35,16 @@ function getBatchSizeForMedium(settings: BulkDeliverSettings, medium: string): n
   return batchKey ? settings[batchKey] : 25;
 }
 
-export const bulkDeliverHandler: CronJobHandler = {
-  description: 'Delivers queued bulk messages to pending participants in batches',
-  requiresComponent: 'bulk',
+registerCronPlugin({
+  metadata: {
+    id: 'bulk-deliver',
+    name: 'Bulk Deliver',
+    description: 'Delivers queued bulk messages to pending participants in batches',
+    requiredComponent: 'bulk',
+    singleton: true,
+  },
+  defaultSchedule: '*/5 * * * *', // Every 5 minutes
+  defaultEnabled: false,
 
   settingsSchema,
 
@@ -163,4 +171,4 @@ export const bulkDeliverHandler: CronJobHandler = {
       },
     };
   },
-};
+});

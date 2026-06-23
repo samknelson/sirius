@@ -1,8 +1,16 @@
-import { scanAllWorkers } from "../../services/member-status-scan";
-import type { CronJobHandler, CronJobContext, CronJobResult } from "../registry";
+import { scanAllWorkers } from "../../../../services/member-status-scan";
+import { registerCronPlugin } from "../registry";
+import type { CronJobContext, CronJobResult } from "../types";
 
-export const memberStatusScanHandler: CronJobHandler = {
-  description: 'Scans all active workers and updates their member status based on card check and dues payment history',
+registerCronPlugin({
+  metadata: {
+    id: 'member-status-scan',
+    name: 'Member Status Scan',
+    description: 'Scans all active workers and updates their member status based on card check and dues payment history',
+    singleton: true,
+  },
+  defaultSchedule: '0 7 * * *', // Daily at 7 AM
+  defaultEnabled: true,
 
   async execute(context: CronJobContext): Promise<CronJobResult> {
     const result = await scanAllWorkers(context.mode);
@@ -23,4 +31,4 @@ export const memberStatusScanHandler: CronJobHandler = {
       },
     };
   },
-};
+});

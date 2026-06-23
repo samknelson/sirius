@@ -1,10 +1,18 @@
-import type { CronJobHandler, CronJobContext, CronJobResult } from "../registry";
-import { t631Fetch } from "../../modules/sitespecific/t631/client/fetch";
-import { syncFacilities } from "../../modules/sitespecific/t631/client/sync-facilities";
+import { registerCronPlugin } from "../registry";
+import type { CronJobContext, CronJobResult } from "../types";
+import { t631Fetch } from "../../../../modules/sitespecific/t631/client/fetch";
+import { syncFacilities } from "../../../../modules/sitespecific/t631/client/sync-facilities";
 
-export const t631FacilityFetchHandler: CronJobHandler = {
-  description: "Fetches the facility dropdown from the T631 server and syncs facilities into the local database",
-  requiresComponent: "sitespecific.t631.client",
+registerCronPlugin({
+  metadata: {
+    id: 'sitespecific-t631-facility-fetch',
+    name: 'T631 Facility Fetch',
+    description: 'Fetches the facility dropdown from the T631 server and syncs facilities into the local database',
+    requiredComponent: 'sitespecific.t631.client',
+    singleton: true,
+  },
+  defaultSchedule: '0 9 * * *', // Daily at 9 AM
+  defaultEnabled: false,
 
   async execute(context: CronJobContext): Promise<CronJobResult> {
     const isDryRun = context.mode === "test";
@@ -48,4 +56,4 @@ export const t631FacilityFetchHandler: CronJobHandler = {
       },
     };
   },
-};
+});

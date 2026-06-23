@@ -18,3 +18,4 @@
 - [Split authz/data config resolution is an IDOR](split-authz-data-idor.md) — auth-check config and data-read config must be the SAME resolved record; separate lookups + canonical fallback = confused-deputy.
 - [Payment-method token enforcement point](payment-method-token-enforcement.md) — create route stores methodToken verbatim; validate/reject sensitive data in plugin attachMethod (runs pre-persist), not in summary/details reads.
 - [Cache-invalidating events must emit after commit](cache-invalidation-emit-after-commit.md) — storage emits that invalidate an in-memory cache must use onAfterCommit, or a concurrent read rebuilds from pre-commit data and stays stale until the next write.
+- [Drift gate index predicate cast matching](drift-gate-index-predicate-casts.md) — drift gate doesn't strip `::text` casts; partial-index WHERE on varchar/text must be declared casted `(col)::text = 'v'::text` in schema or boot refuses.

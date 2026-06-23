@@ -19,6 +19,14 @@ export interface BasePluginMetadata {
   requiredPolicy?: string;
   /** Hide from default manifest listings (still registered/usable). */
   hidden?: boolean;
+  /**
+   * Marks the plugin as a singleton: exactly one config row may exist for it
+   * (keyed by plugin kind + plugin id). The generic CRUD routes refuse to
+   * create a second row or delete the existing one, and the boot-time
+   * singleton seeder creates the single row from the kind adapter's
+   * `seedDefault`. Used by cron plugins, whose scheduled job IS the config.
+   */
+  singleton?: boolean;
 }
 
 /**
@@ -32,4 +40,5 @@ export type PluginKind =
   | "trust-eligibility"
   | "client-injection"
   | "payment-gateway"
-  | "event-notifier";
+  | "event-notifier"
+  | "cron";

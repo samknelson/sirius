@@ -134,6 +134,15 @@ export interface PluginConfigAdapter<TConfig = any, TSearch = any> {
    * account }` 4-tuple). Return `null` to skip the check for a given input.
    */
   uniqueKey?(input: TConfig): Record<string, unknown> | null;
+  /**
+   * Produce the default flat config to seed for a singleton plugin that has no
+   * config row yet. Called by the boot-time singleton seeder
+   * ({@link bootstrapSingletonPluginConfigs}) once per singleton plugin of this
+   * kind, then split via {@link toRows} and inserted. Return `null` to skip
+   * seeding a particular plugin. Only meaningful for kinds whose plugins can be
+   * singletons (e.g. cron); other kinds omit it.
+   */
+  seedDefault?(plugin: unknown): TConfig | null;
 }
 
 /** Reusable schema shape for the base columns every flat config carries. */

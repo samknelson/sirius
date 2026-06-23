@@ -1,10 +1,18 @@
-import type { CronJobHandler, CronJobContext, CronJobResult } from "../registry";
-import { t631Fetch } from "../../modules/sitespecific/t631/client/fetch";
-import { syncJobGroups } from "../../modules/sitespecific/t631/client/sync-job-groups";
+import { registerCronPlugin } from "../registry";
+import type { CronJobContext, CronJobResult } from "../types";
+import { t631Fetch } from "../../../../modules/sitespecific/t631/client/fetch";
+import { syncJobGroups } from "../../../../modules/sitespecific/t631/client/sync-job-groups";
 
-export const t631DispatchJobGroupFetchHandler: CronJobHandler = {
-  description: "Fetches dispatch job groups from the T631 server and syncs them into the local database",
-  requiresComponent: "sitespecific.t631.client",
+registerCronPlugin({
+  metadata: {
+    id: 'sitespecific-t631-dispatch-job-group-fetch',
+    name: 'T631 Dispatch Job Group Fetch',
+    description: 'Fetches dispatch job groups from the T631 server and syncs them into the local database',
+    requiredComponent: 'sitespecific.t631.client',
+    singleton: true,
+  },
+  defaultSchedule: '0 8 * * *', // Daily at 8 AM
+  defaultEnabled: false,
 
   async execute(context: CronJobContext): Promise<CronJobResult> {
     const isDryRun = context.mode === "test";
@@ -48,4 +56,4 @@ export const t631DispatchJobGroupFetchHandler: CronJobHandler = {
       },
     };
   },
-};
+});

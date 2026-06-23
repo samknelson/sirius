@@ -59,8 +59,6 @@ import {
   fileLoggingConfig,
 } from "./files";
 import {
-  type CronJobStorage,
-  createCronJobStorage,
   type CronJobRunStorage,
   createCronJobRunStorage,
 } from "./system/cron";
@@ -153,7 +151,6 @@ export interface IStorage {
   wizardEmployerMonthly: WizardEmployerMonthlyStorage;
   wizardEmploymentStatusMappings: WizardEmploymentStatusMappingStorage;
   files: FileStorage;
-  cronJobs: CronJobStorage;
   cronJobRuns: CronJobRunStorage;
   pluginConfigs: PluginConfigStorage;
   logs: LogsStorage;
@@ -244,7 +241,6 @@ export class DatabaseStorage implements IStorage {
   wizardEmployerMonthly: WizardEmployerMonthlyStorage;
   wizardEmploymentStatusMappings: WizardEmploymentStatusMappingStorage;
   files: FileStorage;
-  cronJobs: CronJobStorage;
   cronJobRuns: CronJobRunStorage;
   pluginConfigs: PluginConfigStorage;
   logs: LogsStorage;
@@ -382,7 +378,6 @@ export class DatabaseStorage implements IStorage {
     this.wizardEmployerMonthly = createWizardEmployerMonthlyStorage();
     this.wizardEmploymentStatusMappings = createWizardEmploymentStatusMappingStorage();
     this.files = withStorageLogging(createFileStorage(), fileLoggingConfig);
-    this.cronJobs = createCronJobStorage();
     this.cronJobRuns = createCronJobRunStorage();
     this.pluginConfigs = createPluginConfigStorage();
     this.logs = createLogsStorage();

@@ -1,10 +1,18 @@
-import type { CronJobHandler, CronJobContext, CronJobResult } from "../registry";
-import { t631Fetch } from "../../modules/sitespecific/t631/client/fetch";
-import { syncTos } from "../../modules/sitespecific/t631/client/sync-tos";
+import { registerCronPlugin } from "../registry";
+import type { CronJobContext, CronJobResult } from "../types";
+import { t631Fetch } from "../../../../modules/sitespecific/t631/client/fetch";
+import { syncTos } from "../../../../modules/sitespecific/t631/client/sync-tos";
 
-export const t631TosFetchHandler: CronJobHandler = {
-  description: "Fetches active Time Off Sick records from the T631 server and syncs them into the local worker_tos table",
-  requiresComponent: "sitespecific.t631.client",
+registerCronPlugin({
+  metadata: {
+    id: 'sitespecific-t631-tos-fetch',
+    name: 'T631 TOS Fetch',
+    description: 'Fetches active Time Off Sick records from the T631 server and syncs them into the local worker_tos table',
+    requiredComponent: 'sitespecific.t631.client',
+    singleton: true,
+  },
+  defaultSchedule: '0 10 * * *', // Daily at 10 AM
+  defaultEnabled: false,
 
   async execute(context: CronJobContext): Promise<CronJobResult> {
     const isDryRun = context.mode === "test";
@@ -56,4 +64,4 @@ export const t631TosFetchHandler: CronJobHandler = {
       },
     };
   },
-};
+});

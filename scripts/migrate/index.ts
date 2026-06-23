@@ -37,6 +37,10 @@ import "./core/1028_provider_generic_payment_methods";
 import "./core/1029_rename_ledger_payment_type_variable";
 import "./core/1030_rename_plugin_type_to_plugin_kind";
 import "./core/1031_create_plugin_configs_event_notifier";
+import "./core/1032_create_plugin_configs_cron";
+import "./core/1033_backfill_cron_plugin_configs";
+import "./core/1034_drop_cron_jobs";
+import "./core/1035_plugin_configs_singleton_unique";
 
 // Per-component migrations — each registered via
 // `registerComponentMigration(componentId, migration)`. Tracked by the

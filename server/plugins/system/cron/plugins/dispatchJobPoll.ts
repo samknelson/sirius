@@ -1,11 +1,19 @@
-import { CronJobHandler, CronJobContext, CronJobResult } from "../registry";
-import { storage } from "../../storage";
-import { runPoll } from "../../services/dispatch/poll";
-import { logger } from "../../logger";
+import { registerCronPlugin } from "../registry";
+import type { CronJobContext, CronJobResult } from "../types";
+import { storage } from "../../../../storage";
+import { runPoll } from "../../../../services/dispatch/poll";
+import { logger } from "../../../../logger";
 
-export const dispatchJobPollHandler: CronJobHandler = {
-  description: 'Polls all open, running dispatch jobs to process eligible workers',
-  requiresComponent: 'dispatch',
+registerCronPlugin({
+  metadata: {
+    id: 'dispatch-job-poll',
+    name: 'Dispatch Job Poll',
+    description: 'Polls active dispatch jobs and processes pending phases',
+    requiredComponent: 'dispatch',
+    singleton: true,
+  },
+  defaultSchedule: '*/5 * * * *', // Every 5 minutes
+  defaultEnabled: true,
 
   async execute(context: CronJobContext): Promise<CronJobResult> {
     const filters = { status: 'open' as const, running: true };
@@ -61,4 +69,4 @@ export const dispatchJobPollHandler: CronJobHandler = {
       metadata: { jobCount: jobs.length, succeeded, failed, results: pollResults },
     };
   },
-};
+});

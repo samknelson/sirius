@@ -1,10 +1,18 @@
-import { CronJobHandler, CronJobContext, CronJobResult } from "../registry";
-import { createWorkerDispatchEbaStorage, workerDispatchEbaLoggingConfig } from "../../storage/dispatch/worker-eba";
-import { withStorageLogging } from "../../storage/middleware/logging";
+import { registerCronPlugin } from "../registry";
+import type { CronJobContext, CronJobResult } from "../types";
+import { createWorkerDispatchEbaStorage, workerDispatchEbaLoggingConfig } from "../../../../storage/dispatch/worker-eba";
+import { withStorageLogging } from "../../../../storage/middleware/logging";
 
-export const dispatchEbaCleanupHandler: CronJobHandler = {
-  description: 'Deletes worker EBA (availability) records that are more than 30 days in the past',
-  requiresComponent: 'dispatch.eba',
+registerCronPlugin({
+  metadata: {
+    id: 'dispatch-eba-cleanup',
+    name: 'Dispatch EBA Cleanup',
+    description: 'Cleans up expired EBA (Employed but Available) dispatch entries',
+    requiredComponent: 'dispatch.eba',
+    singleton: true,
+  },
+  defaultSchedule: '0 4 * * *', // Daily at 4 AM
+  defaultEnabled: true,
 
   async execute(context: CronJobContext): Promise<CronJobResult> {
     const baseStorage = createWorkerDispatchEbaStorage();
@@ -32,4 +40,4 @@ export const dispatchEbaCleanupHandler: CronJobHandler = {
       metadata: { deletedCount },
     };
   },
-};
+});

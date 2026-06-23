@@ -1,7 +1,8 @@
-import { storage } from "../../storage";
-import type { CronJobHandler, CronJobContext, CronJobResult } from "../registry";
+import { storage } from "../../../../storage";
+import { registerCronPlugin } from "../registry";
+import type { CronJobContext, CronJobResult } from "../types";
 import type { RetentionPeriod, ReportData } from "@shared/wizard-types";
-import { wizardRegistry } from "../../wizards/registry";
+import { wizardRegistry } from "../../../../wizards/registry";
 
 function getRetentionDays(retention: RetentionPeriod): number | null {
   switch (retention) {
@@ -33,15 +34,22 @@ interface ReportTypeStats {
   runsDeleted: number;
 }
 
-export const deleteExpiredReportsHandler: CronJobHandler = {
-  description: 'Deletes wizard report data that has exceeded its retention period',
-  
+registerCronPlugin({
+  metadata: {
+    id: 'delete-expired-reports',
+    name: 'Delete Expired Reports',
+    description: 'Deletes wizard report data that has exceeded its retention period',
+    singleton: true,
+  },
+  defaultSchedule: '0 2 * * *', // Daily at 2 AM
+  defaultEnabled: true,
+
   async execute(context: CronJobContext): Promise<CronJobResult> {
     let totalRunsDeleted = 0;
     const statsByType: Record<string, ReportTypeStats> = {};
 
     const allWizards = await storage.wizards.listAll();
-    const reportWizards = allWizards.filter(wizard => 
+    const reportWizards = allWizards.filter(wizard =>
       wizardRegistry.isReportWizard(wizard.type)
     );
 
@@ -94,11 +102,11 @@ export const deleteExpiredReportsHandler: CronJobHandler = {
 
     return {
       message,
-      metadata: { 
-        totalRunsDeleted, 
+      metadata: {
+        totalRunsDeleted,
         reportWizardCount: reportWizards.length,
         reportTypes: typesWithDeletions,
       },
     };
   },
-};
+});

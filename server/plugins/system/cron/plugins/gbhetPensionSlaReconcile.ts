@@ -1,8 +1,9 @@
 import { z } from "zod";
-import { reconcileContributionPctYears } from "../../services/sitespecific/gbhet/pension-sla";
-import { storage } from "../../storage";
-import { pickFirstByAccountOrder, toChargeConfig } from "../../plugins/ledger/charge/charge-config-resolution";
-import type { CronJobHandler, CronJobContext, CronJobResult } from "../registry";
+import { reconcileContributionPctYears } from "../../../../services/sitespecific/gbhet/pension-sla";
+import { storage } from "../../../../storage";
+import { pickFirstByAccountOrder, toChargeConfig } from "../../../ledger/charge/charge-config-resolution";
+import { registerCronPlugin } from "../registry";
+import type { CronJobContext, CronJobResult } from "../types";
 
 const settingsSchema = z.object({});
 
@@ -28,9 +29,16 @@ async function resolveConfigId(): Promise<string> {
   return "batch";
 }
 
-export const gbhetPensionSlaReconcileHandler: CronJobHandler = {
-  description: "Reconciles VDB SLA contribution-percent ledger entries against trigger entries (replaces ledger-cascade plugin)",
-  requiresComponent: "sitespecific.gbhet.pension",
+registerCronPlugin({
+  metadata: {
+    id: 'gbhet-pension-sla-reconcile',
+    name: 'GBHET Pension SLA Reconcile',
+    description: 'Reconciles GBHET VDB pension SLA contribution-percent ledger entries (replaces former cascade plugin)',
+    requiredComponent: 'sitespecific.gbhet.pension',
+    singleton: true,
+  },
+  defaultSchedule: '30 2 * * *', // Daily at 2:30 AM
+  defaultEnabled: false,
 
   settingsSchema,
 
@@ -63,4 +71,4 @@ export const gbhetPensionSlaReconcileHandler: CronJobHandler = {
       },
     };
   },
-};
+});

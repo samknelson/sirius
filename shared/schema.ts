@@ -1796,7 +1796,21 @@ export const pluginConfigs = pgTable("plugin_configs", {
   data: jsonb("data").default('{}'), // kind-specific opaque settings blob
   createdAt: timestamp("created_at").default(sql`now()`).notNull(),
   updatedAt: timestamp("updated_at").default(sql`now()`).notNull(),
-});
+}, (table) => [
+  // Singleton kinds permit exactly one config row per plugin id. Non-singleton
+  // kinds (charge, trust-eligibility, …) legitimately have many rows per
+  // (kind, plugin_id), so this uniqueness is a PARTIAL index scoped to the
+  // singleton kinds only. `cron` is currently the sole singleton kind; extend
+  // the predicate (with a matching migration) when another singleton kind is
+  // added. This is the race-safe backstop behind the app-level singleton check.
+  uniqueIndex("plugin_configs_singleton_cron_uniq")
+    .on(table.pluginKind, table.pluginId)
+    // Match Postgres's reflected, normalized predicate exactly (varchar is cast
+    // to text for the literal comparison) so the startup drift gate — which
+    // compares predicates after normalization but does NOT strip `::text` casts
+    // — sees expected == actual instead of `plugin_kind = 'cron'`.
+    .where(sql`(${table.pluginKind})::text = 'cron'::text`),
+]);
 
 export const insertPluginConfigSchema = createInsertSchema(pluginConfigs)
   .omit({
@@ -1888,6 +1902,21 @@ export const insertPluginConfigEventNotifierSchema = createInsertSchema(pluginCo
 export type InsertPluginConfigEventNotifier = z.infer<typeof insertPluginConfigEventNotifierSchema>;
 export type PluginConfigEventNotifier = typeof pluginConfigsEventNotifier.$inferSelect;
 
+// Cron subsidiary — keeps the cron `schedule` (a cron expression) as a
+// first-class, queryable envelope column rather than burying it in the opaque
+// `data` blob. Cron plugins are singletons, so every cron config gets exactly
+// one row — created by the adapter's `toRows` on write and by the boot-time
+// singleton seeder for built-in jobs — so the generic inner-joined search keeps
+// returning them.
+export const pluginConfigsCron = pgTable("plugin_configs_cron", {
+  id: varchar("id").primaryKey().references(() => pluginConfigs.id, { onDelete: 'cascade' }),
+  schedule: varchar("schedule").notNull(),
+});
+
+export const insertPluginConfigCronSchema = createInsertSchema(pluginConfigsCron);
+export type InsertPluginConfigCron = z.infer<typeof insertPluginConfigCronSchema>;
+export type PluginConfigCron = typeof pluginConfigsCron.$inferSelect;
+
 // Base Rate History Schema - for use in charge plugins
 export const baseRateHistoryEntrySchema = z.object({
   effectiveDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be in YYYY-MM-DD format"),
@@ -1901,20 +1930,13 @@ export const createRateHistorySchema = (minEntries = 1) => {
   return z.array(baseRateHistoryEntrySchema).min(minEntries, `At least ${minEntries} rate entry is required`);
 };
 
-// Cron Jobs
-export const cronJobs = pgTable("cron_jobs", {
-  name: text("name").primaryKey(),
-  description: text("description"),
-  schedule: text("schedule").notNull(), // cron expression
-  isEnabled: boolean("is_enabled").default(false).notNull(),
-  settings: jsonb("settings"), // Job-specific settings (schema defined by handler)
-  createdAt: timestamp("created_at").default(sql`now()`).notNull(),
-  updatedAt: timestamp("updated_at").default(sql`now()`).notNull(),
-});
-
+// Cron job run history. Configuration for cron jobs now lives in
+// plugin_configs (plugin_kind='cron') + plugin_configs_cron; `jobName` here is
+// the cron plugin id (the former cron_jobs.name). No FK — the legacy cron_jobs
+// table has been dropped and run history is retained independently.
 export const cronJobRuns = pgTable("cron_job_runs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  jobName: text("job_name").notNull().references(() => cronJobs.name, { onDelete: 'cascade' }),
+  jobName: text("job_name").notNull(),
   status: varchar("status").notNull(), // 'running', 'success', 'error'
   mode: varchar("mode").notNull().default("live"), // 'live' or 'test'
   output: text("output"),
@@ -1924,18 +1946,11 @@ export const cronJobRuns = pgTable("cron_job_runs", {
   triggeredBy: varchar("triggered_by"), // 'scheduler' or user id
 });
 
-export const insertCronJobSchema = createInsertSchema(cronJobs).omit({
-  createdAt: true,
-  updatedAt: true,
-});
-
 export const insertCronJobRunSchema = createInsertSchema(cronJobRuns).omit({
   id: true,
   startedAt: true,
 });
 
-export type InsertCronJob = z.infer<typeof insertCronJobSchema>;
-export type CronJob = typeof cronJobs.$inferSelect;
 export type InsertCronJobRun = z.infer<typeof insertCronJobRunSchema>;
 export type CronJobRun = typeof cronJobRuns.$inferSelect;
 

@@ -1,6 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { getPluginKind, enforceKindGating, getPluginConfigAdapter, defaultHydrate, type PluginConfigEnvelopeField } from "../plugins/_core";
 import { storage } from "../storage";
+import { SingletonViolationError } from "../storage/plugin-configs";
 import { runInTransaction } from "../storage/transaction-context";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -71,6 +72,19 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
 
   const hydrate = (adapter: ReturnType<typeof getPluginConfigAdapter>, envelope: any) =>
     adapter?.hydrate ? adapter.hydrate(envelope) : defaultHydrate(envelope);
+
+  /**
+   * Whether the plugin identified by `pluginId` is registered as a singleton
+   * (exactly one config row allowed). Unknown plugin ids resolve to false; the
+   * separate plugin-validity check rejects those.
+   */
+  function isSingletonPlugin(
+    registration: NonNullable<Awaited<ReturnType<typeof resolve>>>["registration"],
+    pluginId: string,
+  ): boolean {
+    const plugin = registration.registry.get(pluginId);
+    return !!(plugin && registration.registry.getMetadata(plugin).singleton);
+  }
 
   /**
    * Enforce a kind's uniqueness key (if it declares one). Returns true when a
@@ -232,8 +246,9 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
       base.siriusId = (parsed.data as any).siriusId ?? null;
       if (!(await ensureValidPlugin(registration, parsed.data.pluginId, base.data, res))) return;
       if (await rejectIfDuplicate(kind, adapter, parsed.data, null, res)) return;
+      const enforceSingleton = isSingletonPlugin(registration, parsed.data.pluginId);
       const created = await runInTransaction(async () => {
-        const row = await storage.pluginConfigs.create(base as any);
+        const row = await storage.pluginConfigs.create(base as any, { enforceSingleton });
         if (subsidiary) {
           await storage.pluginConfigs.upsertSubsidiary(kind, { id: row.id, ...subsidiary });
         }
@@ -242,6 +257,10 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
       const envelope = await storage.pluginConfigs.getWithSubsidiary(created.id);
       res.status(201).json(envelope ? hydrate(adapter, envelope) : { id: created.id });
     } catch (error) {
+      if (error instanceof SingletonViolationError) {
+        res.status(409).json({ message: error.message });
+        return;
+      }
       console.error("Failed to create plugin config:", error);
       res.status(500).json({ message: "Failed to create plugin config" });
     }
@@ -308,15 +327,20 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
     try {
       const resolved = await resolve(req, res);
       if (!resolved) return;
-      const { kind } = resolved;
+      const { kind, registration } = resolved;
       const existing = await storage.pluginConfigs.get(req.params.id);
       if (!existing || existing.pluginKind !== kind) {
         res.status(404).json({ message: "Plugin config not found" });
         return;
       }
-      const ok = await storage.pluginConfigs.delete(req.params.id);
+      const enforceSingleton = isSingletonPlugin(registration, existing.pluginId);
+      const ok = await storage.pluginConfigs.delete(req.params.id, { enforceSingleton });
       res.json({ success: ok });
     } catch (error) {
+      if (error instanceof SingletonViolationError) {
+        res.status(409).json({ message: error.message });
+        return;
+      }
       console.error("Failed to delete plugin config:", error);
       res.status(500).json({ message: "Failed to delete plugin config" });
     }

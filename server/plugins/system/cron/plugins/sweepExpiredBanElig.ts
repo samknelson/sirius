@@ -1,5 +1,6 @@
-import { storage } from "../../storage";
-import type { CronJobHandler, CronJobContext, CronJobResult } from "../registry";
+import { storage } from "../../../../storage";
+import { registerCronPlugin } from "../registry";
+import type { CronJobContext, CronJobResult } from "../types";
 
 const BAN_CATEGORY = "ban";
 
@@ -18,9 +19,16 @@ function isBanCurrentlyActive(ban: { startDate: Date; endDate: Date | null }): b
   return endDay >= today;
 }
 
-export const sweepExpiredBanEligHandler: CronJobHandler = {
-  description: 'Clears dispatch eligibility entries for expired worker bans',
-  requiresComponent: 'dispatch.ban',
+registerCronPlugin({
+  metadata: {
+    id: 'sweep-expired-ban-elig',
+    name: 'Sweep Expired Ban Eligibility',
+    description: 'Clears dispatch eligibility entries for expired worker bans',
+    requiredComponent: 'dispatch.ban',
+    singleton: true,
+  },
+  defaultSchedule: '0 5 * * *', // Daily at 5 AM
+  defaultEnabled: true,
 
   async execute(context: CronJobContext): Promise<CronJobResult> {
     let workersProcessed = 0;
@@ -55,4 +63,4 @@ export const sweepExpiredBanEligHandler: CronJobHandler = {
       metadata: { workersProcessed, entriesRemoved },
     };
   },
-};
+});

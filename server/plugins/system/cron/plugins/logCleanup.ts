@@ -1,6 +1,7 @@
 import { z } from "zod";
-import { storage } from "../../storage";
-import type { CronJobHandler, CronJobContext, CronJobResult, CronJobSettingsAdapter } from "../registry";
+import { storage } from "../../../../storage";
+import { registerCronPlugin } from "../registry";
+import type { CronJobContext, CronJobResult, CronJobSettingsAdapter } from "../types";
 
 const retentionPolicySchema = z.object({
   module: z.string().nullable(),
@@ -48,7 +49,7 @@ const logCleanupSettingsAdapter: CronJobSettingsAdapter = {
 
     for (const policy of policies) {
       const key = `${policy.module ?? ''}::${policy.operation ?? ''}`;
-      const hasStats = stats.some(s => 
+      const hasStats = stats.some(s =>
         `${s.module ?? ''}::${s.operation ?? ''}` === key
       );
       if (!hasStats) {
@@ -74,8 +75,15 @@ const logCleanupSettingsAdapter: CronJobSettingsAdapter = {
   },
 };
 
-export const logCleanupHandler: CronJobHandler = {
-  description: 'Purges log entries based on configurable retention policies per module/operation combination',
+registerCronPlugin({
+  metadata: {
+    id: 'log-cleanup',
+    name: 'Log Cleanup',
+    description: 'Purges log entries based on configurable retention policies per module/operation combination',
+    singleton: true,
+  },
+  defaultSchedule: '0 3 * * *', // Daily at 3 AM
+  defaultEnabled: false,
 
   settingsSchema,
 
@@ -114,7 +122,7 @@ export const logCleanupHandler: CronJobHandler = {
           policy.operation,
           policy.retentionDays
         );
-        
+
         results.push({
           module: policy.module,
           operation: policy.operation,
@@ -130,7 +138,7 @@ export const logCleanupHandler: CronJobHandler = {
         );
 
         totalDeleted += result.deleted;
-        
+
         results.push({
           module: policy.module,
           operation: policy.operation,
@@ -144,11 +152,11 @@ export const logCleanupHandler: CronJobHandler = {
 
     return {
       message: `${verb} ${totalDeleted} log entries across ${enabledPolicies.length} policies`,
-      metadata: { 
-        policiesChecked: enabledPolicies.length, 
+      metadata: {
+        policiesChecked: enabledPolicies.length,
         totalDeleted,
         details: results,
       },
     };
   },
-};
+});

@@ -1,8 +1,9 @@
 import { z } from "zod";
-import { reconcileVariableContributionForAllWorkers } from "../../services/sitespecific/gbhet/pension-sla";
-import { storage } from "../../storage";
-import { pickFirstByAccountOrder, toChargeConfig } from "../../plugins/ledger/charge/charge-config-resolution";
-import type { CronJobHandler, CronJobContext, CronJobResult } from "../registry";
+import { reconcileVariableContributionForAllWorkers } from "../../../../services/sitespecific/gbhet/pension-sla";
+import { storage } from "../../../../storage";
+import { pickFirstByAccountOrder, toChargeConfig } from "../../../ledger/charge/charge-config-resolution";
+import { registerCronPlugin } from "../registry";
+import type { CronJobContext, CronJobResult } from "../types";
 
 const settingsSchema = z.object({});
 
@@ -28,9 +29,16 @@ async function resolveConfigId(): Promise<string> {
   return "batch";
 }
 
-export const gbhetPensionSharesReconcileHandler: CronJobHandler = {
-  description: "Reconciles VDB share-based variable contribution ledger entries from per-worker SLA totals (replaces ledger-cascade plugin)",
-  requiresComponent: "sitespecific.gbhet.pension",
+registerCronPlugin({
+  metadata: {
+    id: 'gbhet-pension-shares-reconcile',
+    name: 'GBHET Pension Shares Reconcile',
+    description: 'Reconciles GBHET VDB pension share-based variable contribution ledger entries for all workers (replaces former cascade plugin)',
+    requiredComponent: 'sitespecific.gbhet.pension',
+    singleton: true,
+  },
+  defaultSchedule: '45 2 * * *', // Daily at 2:45 AM
+  defaultEnabled: false,
 
   settingsSchema,
 
@@ -63,4 +71,4 @@ export const gbhetPensionSharesReconcileHandler: CronJobHandler = {
       },
     };
   },
-};
+});

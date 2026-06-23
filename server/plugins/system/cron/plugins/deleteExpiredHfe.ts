@@ -1,11 +1,19 @@
-import { CronJobHandler, CronJobContext, CronJobResult } from "../registry";
-import { createWorkerDispatchHfeStorage, workerDispatchHfeLoggingConfig } from "../../storage/dispatch/worker-hfe";
-import { withStorageLogging } from "../../storage/middleware/logging";
+import { registerCronPlugin } from "../registry";
+import type { CronJobContext, CronJobResult } from "../types";
+import { createWorkerDispatchHfeStorage, workerDispatchHfeLoggingConfig } from "../../../../storage/dispatch/worker-hfe";
+import { withStorageLogging } from "../../../../storage/middleware/logging";
 
-export const deleteExpiredHfeHandler: CronJobHandler = {
-  description: 'Deletes Hold for Employer entries where the hold date has passed',
-  requiresComponent: 'dispatch.hfe',
-  
+registerCronPlugin({
+  metadata: {
+    id: 'delete-expired-hfe',
+    name: 'Delete Expired HFE Entries',
+    description: 'Deletes Hold for Employer entries where the hold date has passed',
+    requiredComponent: 'dispatch.hfe',
+    singleton: true,
+  },
+  defaultSchedule: '0 4 * * *', // Daily at 4 AM
+  defaultEnabled: true,
+
   async execute(context: CronJobContext): Promise<CronJobResult> {
     const baseStorage = createWorkerDispatchHfeStorage();
     const hfeStorage = withStorageLogging(baseStorage, workerDispatchHfeLoggingConfig);
@@ -32,4 +40,4 @@ export const deleteExpiredHfeHandler: CronJobHandler = {
       metadata: { deletedCount },
     };
   },
-};
+});

@@ -1,7 +1,8 @@
 import { z } from "zod";
-import { storage } from "../../storage";
-import { processBatchQueueJobs } from "../../services/wmb-scan-queue";
-import type { CronJobHandler, CronJobContext, CronJobResult, CronJobSettingsField } from "../registry";
+import { storage } from "../../../../storage";
+import { processBatchQueueJobs } from "../../../../services/wmb-scan-queue";
+import { registerCronPlugin } from "../registry";
+import type { CronJobContext, CronJobResult, CronJobSettingsField } from "../types";
 
 const settingsSchema = z.object({
   batchSize: z.number().int().min(1).max(100).default(10),
@@ -13,9 +14,16 @@ const DEFAULT_SETTINGS: ProcessWmbBatchSettings = {
   batchSize: 10,
 };
 
-export const processWmbBatchHandler: CronJobHandler = {
-  description: 'Processes pending WMB scan jobs from the queue in batches',
-  requiresComponent: 'trust.benefits.scan',
+registerCronPlugin({
+  metadata: {
+    id: 'process-wmb-batch',
+    name: 'Process WMB Batch',
+    description: 'Processes pending WMB scan jobs from the queue in batches',
+    requiredComponent: 'trust.benefits.scan',
+    singleton: true,
+  },
+  defaultSchedule: '*/5 * * * *', // Every 5 minutes
+  defaultEnabled: false,
 
   settingsSchema,
 
@@ -79,4 +87,4 @@ export const processWmbBatchHandler: CronJobHandler = {
       },
     };
   },
-};
+});

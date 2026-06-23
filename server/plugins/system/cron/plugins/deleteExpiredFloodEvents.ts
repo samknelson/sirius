@@ -1,9 +1,17 @@
-import { CronJobHandler, CronJobContext, CronJobResult } from "../registry";
-import { storage } from "../../storage";
+import { storage } from "../../../../storage";
+import { registerCronPlugin } from "../registry";
+import type { CronJobContext, CronJobResult } from "../types";
 
-export const deleteExpiredFloodEventsHandler: CronJobHandler = {
-  description: 'Deletes flood control events that have expired',
-  
+registerCronPlugin({
+  metadata: {
+    id: 'delete-expired-flood-events',
+    name: 'Delete Expired Flood Events',
+    description: 'Deletes flood control events that have expired',
+    singleton: true,
+  },
+  defaultSchedule: '0 * * * *', // Every hour at minute 0
+  defaultEnabled: true,
+
   async execute(context: CronJobContext): Promise<CronJobResult> {
     if (context.mode === 'test') {
       const allEvents = await storage.flood.listFloodEvents();
@@ -23,4 +31,4 @@ export const deleteExpiredFloodEventsHandler: CronJobHandler = {
       metadata: { deletedCount },
     };
   },
-};
+});
