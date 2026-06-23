@@ -166,6 +166,12 @@ export function registerCronJobRoutes(
         }
       });
 
+      // Reschedule so the edit (enabled/schedule/settings — the latter is
+      // captured in each scheduled task's closure) takes effect immediately
+      // instead of waiting for the next process restart. Runs after the
+      // transaction commits so reload() reads the persisted state.
+      await cronScheduler.reload();
+
       const updated = await storage.pluginConfigs.getWithSubsidiary(envelope.config.id);
       res.json(toLegacyCronJob(updated ?? envelope));
     } catch (error) {
@@ -288,6 +294,11 @@ export function registerCronJobRoutes(
       }
 
       await storage.pluginConfigs.update(envelope.config.id, { data: newSettings });
+
+      // Reschedule so the new settings (captured in the scheduled task closure)
+      // take effect immediately rather than after the next process restart.
+      await cronScheduler.reload();
+
       const updated = await storage.pluginConfigs.getWithSubsidiary(envelope.config.id);
       res.json(toLegacyCronJob(updated ?? envelope));
     } catch (error) {
