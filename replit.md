@@ -262,6 +262,21 @@ If your tab strip switches the route, gates by access policy /
 component, or names a persistent "view" of an entity, it belongs in
 the registry — not in `@/components/ui/tabs`.
 
+## Config pages use a fixed-width layout
+
+Every page under Config (anything rendered inside
+`client/src/components/layouts/ConfigurationLayout.tsx`) is automatically
+constrained to a centered, fixed max width — the layout wraps its
+`children` in a `max-w-7xl mx-auto` container. **Do not** add a competing
+full-width or differently-sized top-level wrapper to a config page; let
+the layout own the width so every config page looks the same.
+
+If a page needs the canonical inner padding to match older pages, use the
+established wrapper `max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8` (the
+nested `max-w-7xl` is harmless inside the layout's container). New config
+pages can simply render their content directly and rely on the layout for
+width.
+
 # Where to read more
 
 -   **Architecture decisions** (YMD date convention, charge plugin

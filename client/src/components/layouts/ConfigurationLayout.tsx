@@ -203,7 +203,9 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
       </div>
 
       <div className="flex-1 p-6">
-        {children}
+        <div className="max-w-7xl mx-auto">
+          {children}
+        </div>
       </div>
     </div>
   );
