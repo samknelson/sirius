@@ -1,8 +1,8 @@
 import { logger } from "../../../logger";
-import { isComponentEnabledSync, isCacheInitialized } from "../../../services/component-cache";
+import { isCacheInitialized } from "../../../services/component-cache";
 import { eventBus } from "../../../services/event-bus";
 import { storage } from "../../../storage";
-import { PluginRegistry } from "../../_core";
+import { PluginRegistry, isPluginComponentEnabledSync } from "../../_core";
 import { applyComputed } from "./apply";
 import type { DenormPlugin, DenormManifestEntry } from "./types";
 
@@ -62,10 +62,7 @@ class DenormPluginRegistry extends PluginRegistry<DenormPlugin, DenormManifestEn
             );
             return;
           }
-          if (
-            plugin.metadata.requiredComponent &&
-            !isComponentEnabledSync(plugin.metadata.requiredComponent)
-          ) {
+          if (!isPluginComponentEnabledSync(plugin.metadata)) {
             logger.debug(
               `${plugin.metadata.requiredComponent} component not enabled, skipping denorm update`,
               { service: "denorm-registry", pluginId: plugin.metadata.id },

@@ -1,5 +1,5 @@
 import { logger } from "../../../logger";
-import { isComponentEnabledSync } from "../../../services/component-cache";
+import { isPluginComponentEnabledSync } from "../../_core";
 import { storage } from "../../../storage";
 import { applyComputed } from "./apply";
 import { denormPluginRegistry } from "./registry";
@@ -76,10 +76,7 @@ export async function recomputeStaleDenorm(
       continue;
     }
 
-    if (
-      plugin.metadata.requiredComponent &&
-      !isComponentEnabledSync(plugin.metadata.requiredComponent)
-    ) {
+    if (!isPluginComponentEnabledSync(plugin.metadata)) {
       perPlugin.push({ pluginId, recomputed: 0, errored: 0, skipped: "component-disabled" });
       continue;
     }

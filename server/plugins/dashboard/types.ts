@@ -2,6 +2,7 @@ import type { Request } from "express";
 import type { JsonSchema } from "@shared/json-schema-form";
 import type { User } from "@shared/schema";
 import type { storage as storageType } from "../../storage";
+import type { BasePluginMetadata } from "../_core";
 
 export interface DashboardContentContext {
   userId: string;
@@ -49,14 +50,7 @@ export interface DashboardPluginClient {
   enabledByDefault?: boolean;
 }
 
-export interface DashboardPlugin {
-  id: string;
-  name: string;
-  description: string;
-  /** Component gating - if set, plugin is only enabled when this component is on. */
-  requiredComponent?: string;
-  /** Policy gating - if set, the user must satisfy this policy on /content. */
-  requiredPolicy?: string;
+export interface DashboardPlugin extends BasePluginMetadata {
   /** JSON Schema for plugin settings. May be sync or async (e.g. dynamic, role-based). */
   settingsSchema?: JsonSchema | (() => Promise<JsonSchema>);
   /** Optional uiSchema for RJSF. May be sync or async. */

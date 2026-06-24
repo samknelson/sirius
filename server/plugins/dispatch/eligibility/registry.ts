@@ -1,6 +1,5 @@
 import { logger } from "../../../logger";
-import { isComponentEnabledSync } from "../../../services/component-cache";
-import { PluginRegistry } from "../../_core";
+import { PluginRegistry, isPluginComponentEnabledSync } from "../../_core";
 import type { BasePluginMetadata } from "../../_core";
 import type { EligibilityPluginMetadata, EligibilityPluginConfig } from "@shared/schema";
 import type { JsonSchema } from "@shared/json-schema-form";
@@ -33,14 +32,7 @@ export interface EligibilityQueryContext {
  * `server/plugins/system/denorm/plugins/dispatch/*`; the `category`/`value`
  * names are the single point of coupling between the two sides.
  */
-export interface DispatchEligPlugin {
-  id: string;
-  name: string;
-  description: string;
-  /** Canonical component-gate field (renamed from `componentId` in Task #208). */
-  requiredComponent?: string;
-  /** Hide from the job-type-config UI (infrastructure plugins). */
-  hidden?: boolean;
+export interface DispatchEligPlugin extends BasePluginMetadata {
   configSchema?: JsonSchema;
   getEligibilityCondition(
     context: EligibilityQueryContext,
@@ -64,7 +56,7 @@ function pluginToManifestEntry(p: DispatchEligPlugin): EligibilityPluginMetadata
     name: p.name,
     description: p.description,
     componentId: p.requiredComponent ?? "",
-    componentEnabled: !p.requiredComponent || isComponentEnabledSync(p.requiredComponent),
+    componentEnabled: isPluginComponentEnabledSync(p),
     configSchema: p.configSchema,
   };
 }

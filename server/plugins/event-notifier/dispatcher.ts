@@ -1,6 +1,6 @@
 import { eventBus, EventType } from "../../services/event-bus";
 import { logger } from "../../logger";
-import { isComponentEnabledSync } from "../../services/component-cache";
+import { isPluginComponentEnabledSync } from "../_core";
 import { eventNotifierRegistry } from "./registry";
 import { getEnabledConfigsForKind } from "../_core/plugin-config-cache";
 import {
@@ -246,10 +246,7 @@ async function dispatchForConfig(
   const plugin = eventNotifierRegistry.get(pluginId);
   if (!plugin) return;
   if (!plugin.subscribedEvents.includes(ctx.event)) return;
-  if (
-    plugin.requiredComponent &&
-    !isComponentEnabledSync(plugin.requiredComponent)
-  ) {
+  if (!isPluginComponentEnabledSync(plugin)) {
     return;
   }
 
