@@ -260,7 +260,10 @@ function PolicyEligibilityContent() {
                             <div className="text-xs text-muted-foreground">{row.name}</div>
                           )}
                           {pluginSchema && (
-                            <div className="mt-2" data-testid={`summary-config-${row.id}`}>
+                            <div
+                              className="mt-1.5 [&_dl]:text-xs [&_dl]:gap-y-0.5"
+                              data-testid={`summary-config-${row.id}`}
+                            >
                               <SchemaView
                                 schema={pluginSchema}
                                 value={row.data ?? {}}
