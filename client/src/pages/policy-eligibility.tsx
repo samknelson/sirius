@@ -28,6 +28,7 @@ import { queryClient, apiRequest, ApiError } from "@/lib/queryClient";
 import { PolicyLayout, usePolicyLayout } from "@/components/layouts/PolicyLayout";
 import { SchemaForm } from "@/components/json-schema-form";
 import type { IChangeEvent } from "@/components/json-schema-form";
+import { SchemaView } from "@/components/json-schema-form/SchemaView";
 import {
   pluginManifestQueryKey,
   pluginConfigsUrl,
@@ -224,64 +225,80 @@ function PolicyEligibilityContent() {
         </Card>
       ) : (
         <div className="space-y-6">
-          {grouped.map(([pluginId, rows]) => (
-            <Card key={pluginId} data-testid={`card-plugin-${pluginId}`}>
-              <CardHeader>
-                <CardTitle className="text-base" data-testid={`text-plugin-name-${pluginId}`}>
-                  {pluginName(pluginId)}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                {rows.map((row) => {
-                  const phases = splitPhases(row.appliesTo);
-                  return (
-                    <div
-                      key={row.id}
-                      className="flex items-center gap-3 rounded-md border p-3"
-                      data-testid={`row-config-${row.id}`}
-                    >
-                      <Checkbox
-                        checked={selectedIds.has(row.id)}
-                        onCheckedChange={(checked) =>
-                          toggleSelected(row.id, checked === true)
-                        }
-                        data-testid={`checkbox-config-${row.id}`}
-                      />
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium" data-testid={`text-config-benefit-${row.id}`}>
-                          {benefitName(row.benefit)}
-                        </div>
-                        {row.name && (
-                          <div className="text-xs text-muted-foreground">{row.name}</div>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-1">
-                        {phases.length === 0 ? (
-                          <Badge variant="outline">No phase</Badge>
-                        ) : (
-                          phases.map((p) => (
-                            <Badge
-                              key={p}
-                              variant="secondary"
-                              data-testid={`badge-phase-${row.id}-${p}`}
-                            >
-                              {phaseLabel(p)}
-                            </Badge>
-                          ))
-                        )}
-                      </div>
-                      <Badge
-                        variant={row.enabled ? "default" : "outline"}
-                        data-testid={`badge-enabled-${row.id}`}
+          {grouped.map(([pluginId, rows]) => {
+            const pluginSchema =
+              manifest.find((p) => p.id === pluginId)?.configSchema ?? null;
+            return (
+              <Card key={pluginId} data-testid={`card-plugin-${pluginId}`}>
+                <CardHeader>
+                  <CardTitle className="text-base" data-testid={`text-plugin-name-${pluginId}`}>
+                    {pluginName(pluginId)}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {rows.map((row) => {
+                    const phases = splitPhases(row.appliesTo);
+                    return (
+                      <div
+                        key={row.id}
+                        className="flex items-start gap-3 rounded-md border p-3"
+                        data-testid={`row-config-${row.id}`}
                       >
-                        {row.enabled ? "Enabled" : "Disabled"}
-                      </Badge>
-                    </div>
-                  );
-                })}
-              </CardContent>
-            </Card>
-          ))}
+                        <Checkbox
+                          className="mt-0.5"
+                          checked={selectedIds.has(row.id)}
+                          onCheckedChange={(checked) =>
+                            toggleSelected(row.id, checked === true)
+                          }
+                          data-testid={`checkbox-config-${row.id}`}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium" data-testid={`text-config-benefit-${row.id}`}>
+                            {benefitName(row.benefit)}
+                          </div>
+                          {row.name && (
+                            <div className="text-xs text-muted-foreground">{row.name}</div>
+                          )}
+                          {pluginSchema && (
+                            <div className="mt-2" data-testid={`summary-config-${row.id}`}>
+                              <SchemaView
+                                schema={pluginSchema}
+                                value={row.data ?? {}}
+                                omitKeys={["appliesTo"]}
+                                hideEmpty
+                                testIdPrefix={`summary-config-${row.id}`}
+                              />
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1">
+                          {phases.length === 0 ? (
+                            <Badge variant="outline">No phase</Badge>
+                          ) : (
+                            phases.map((p) => (
+                              <Badge
+                                key={p}
+                                variant="secondary"
+                                data-testid={`badge-phase-${row.id}-${p}`}
+                              >
+                                {phaseLabel(p)}
+                              </Badge>
+                            ))
+                          )}
+                        </div>
+                        <Badge
+                          variant={row.enabled ? "default" : "outline"}
+                          data-testid={`badge-enabled-${row.id}`}
+                        >
+                          {row.enabled ? "Enabled" : "Disabled"}
+                        </Badge>
+                      </div>
+                    );
+                  })}
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       )}
 
