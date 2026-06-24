@@ -1,2 +1,4 @@
 - [Employer compliance gating](employer-compliance-gating.md) — /employers/compliance is staff+ledger gated, never bulk.edit (bulk.edit is unsatisfiable: no staff.bulk perm, bulk component often off).
 - [Employer route registration order](employer-route-registration-order.md) — new literal /api/employers/<word> routes must live in routes.ts before its /:id, else captured as :id → 404.
+- [worker_hours upsert constraint](worker-hours-upsert-constraint.md) — upsertWorkerHours ON CONFLICT needs a UNIQUE constraint that can be absent from dev+prod even when schema.ts declares it; fix dev DB then re-Publish.
+- [db:push rename hazard](db-push-interactive-rename-hazard.md) — db:push is interactive (dispatch_jobs.running vs start_date); never --force it; apply single additive constraints to dev via executeSql DDL instead.
