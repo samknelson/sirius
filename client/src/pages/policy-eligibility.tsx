@@ -588,36 +588,65 @@ function BulkEditDialog({
   const { toast } = useToast();
   const submitRef = useRef<HTMLButtonElement>(null);
 
+  type EnabledChoice = "no-change" | "enabled" | "disabled";
+
   const [settings, setSettings] = useState<Record<string, unknown>>({});
+  const [enabledChoice, setEnabledChoice] = useState<EnabledChoice>("no-change");
   const [saving, setSaving] = useState(false);
 
   const prevOpen = useRef(false);
   if (open && !prevOpen.current) {
     setSettings({});
+    setEnabledChoice("no-change");
   }
   prevOpen.current = open;
 
   const settingsSchema: JsonSchema =
     plugin?.configSchema ?? { type: "object", properties: {} };
 
-  const submit = async (validSettings: Record<string, unknown>) => {
+  // Whether the user has entered any settings to push. Empty means "leave each
+  // config's current settings untouched" — useful for a pure enable/disable.
+  const hasSettings = Object.keys(settings).length > 0;
+  const nothingToApply = !hasSettings && enabledChoice === "no-change";
+
+  const submit = async (
+    validSettings: Record<string, unknown>,
+    includeSettings: boolean,
+  ) => {
+    const enabled =
+      enabledChoice === "no-change" ? undefined : enabledChoice === "enabled";
+    if (!includeSettings && enabled === undefined) {
+      toast({
+        title: "Nothing to apply",
+        description: "Change the settings, enable/disable, or both.",
+        variant: "destructive",
+      });
+      return;
+    }
     setSaving(true);
     try {
-      await apiRequest("POST", `${pluginConfigsUrl(KIND)}/bulk-settings`, {
-        ids: configIds,
-        data: validSettings,
-      });
-      toast({ title: "Settings applied", description: `Updated ${count} configuration(s).` });
+      const body: Record<string, unknown> = { ids: configIds };
+      if (includeSettings) body.data = validSettings;
+      if (enabled !== undefined) body.enabled = enabled;
+      await apiRequest("POST", `${pluginConfigsUrl(KIND)}/bulk-settings`, body);
+      toast({ title: "Changes applied", description: `Updated ${count} configuration(s).` });
       onSaved();
     } catch (error) {
       toast({
         title: "Error",
-        description: error instanceof Error ? error.message : "Failed to apply settings.",
+        description: error instanceof Error ? error.message : "Failed to apply changes.",
         variant: "destructive",
       });
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleApply = () => {
+    // When settings were entered, run them through the schema form so invalid
+    // input is caught before submit; otherwise submit the enabled-only change.
+    if (hasSettings) submitRef.current?.click();
+    else submit({}, false);
   };
 
   return (
@@ -626,21 +655,57 @@ function BulkEditDialog({
         <DialogHeader>
           <DialogTitle data-testid="dialog-bulk-edit-title">Edit Selected Configurations</DialogTitle>
           <DialogDescription>
-            {plugin ? plugin.name : ""} — applies one settings change to {count} configuration(s).
+            {plugin ? plugin.name : ""} — applies one change to {count} configuration(s).
             Each configuration keeps its own benefit and phase.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="py-2 flex-1 min-h-0 overflow-y-auto pr-1">
-          <SchemaForm
-            schema={settingsSchema}
-            formData={settings}
-            showErrorList="top"
-            onChange={(e: IChangeEvent) => setSettings(e.formData as Record<string, unknown>)}
-            onSubmit={(e: IChangeEvent) => submit(e.formData as Record<string, unknown>)}
-          >
-            <button ref={submitRef} type="submit" hidden aria-hidden="true" tabIndex={-1} />
-          </SchemaForm>
+        <div className="py-2 flex-1 min-h-0 overflow-y-auto pr-1 space-y-5">
+          <div className="flex items-center justify-between rounded-md border p-3">
+            <div>
+              <Label>Status</Label>
+              <p className="text-sm text-muted-foreground">
+                Enable or disable all selected configurations.
+              </p>
+            </div>
+            <Select
+              value={enabledChoice}
+              onValueChange={(v) => setEnabledChoice(v as EnabledChoice)}
+            >
+              <SelectTrigger className="w-40" data-testid="select-bulk-edit-enabled">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="no-change" data-testid="option-bulk-edit-enabled-no-change">
+                  No change
+                </SelectItem>
+                <SelectItem value="enabled" data-testid="option-bulk-edit-enabled-enable">
+                  Enable all
+                </SelectItem>
+                <SelectItem value="disabled" data-testid="option-bulk-edit-enabled-disable">
+                  Disable all
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="border-t pt-4">
+            <p className="text-sm font-medium mb-1">Plugin settings</p>
+            <p className="text-xs text-muted-foreground mb-3">
+              Optional — leave blank to keep each configuration's current settings.
+            </p>
+            <SchemaForm
+              schema={settingsSchema}
+              formData={settings}
+              showErrorList="top"
+              onChange={(e: IChangeEvent) => setSettings(e.formData as Record<string, unknown>)}
+              onSubmit={(e: IChangeEvent) =>
+                submit(e.formData as Record<string, unknown>, true)
+              }
+            >
+              <button ref={submitRef} type="submit" hidden aria-hidden="true" tabIndex={-1} />
+            </SchemaForm>
+          </div>
         </div>
 
         <DialogFooter>
@@ -653,12 +718,12 @@ function BulkEditDialog({
             Cancel
           </Button>
           <Button
-            onClick={() => submitRef.current?.click()}
-            disabled={saving}
+            onClick={handleApply}
+            disabled={saving || nothingToApply}
             data-testid="button-bulk-edit-submit"
           >
             {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Apply Settings
+            Apply Changes
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -30,6 +30,7 @@ const bulkCreateSchema = z.object({
 const bulkSettingsSchema = z.object({
   ids: z.array(z.string().min(1)).min(1),
   data: z.record(z.unknown()).optional().default({}),
+  enabled: z.boolean().optional(),
 });
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -384,8 +385,18 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
         res.status(400).json({ message: "Invalid bulk request", errors: parsed.error.errors });
         return;
       }
-      const { ids, data } = parsed.data;
+      const { ids, data, enabled } = parsed.data;
       const uniqueIds = Array.from(new Set(ids));
+
+      // Either of two independent changes may be requested: a settings payload
+      // and/or an enabled flip. At least one must be present.
+      const changeSettings = Object.keys(data).length > 0;
+      if (!changeSettings && enabled === undefined) {
+        res.status(400).json({
+          message: "Nothing to apply: provide settings, an enabled change, or both",
+        });
+        return;
+      }
 
       const envelopes = await Promise.all(
         uniqueIds.map((id) => storage.pluginConfigs.getWithSubsidiary(id)),
@@ -405,14 +416,25 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
       }
       const pluginId = found[0].config.pluginId;
 
-      // Merge the new settings with each config's preserved phase array, then
-      // validate the result so we never store settings the plugin rejects.
-      const updates = [] as Array<{ id: string; patch: { data: Record<string, unknown> } }>;
+      // Build a per-config patch. When settings are supplied, merge them with
+      // each config's preserved phase array and validate so we never store
+      // settings the plugin rejects. The enabled flip (when present) is applied
+      // independently, so a pure enable/disable doesn't require re-entering
+      // settings.
+      const updates = [] as Array<{
+        id: string;
+        patch: { data?: Record<string, unknown>; enabled?: boolean };
+      }>;
       for (const env of found) {
-        const existingData = (env.config.data as Record<string, unknown>) ?? {};
-        const mergedData = { ...data, appliesTo: existingData.appliesTo ?? [] };
-        if (!(await ensureValidPlugin(registration, pluginId, mergedData, res))) return;
-        updates.push({ id: env.config.id, patch: { data: mergedData } });
+        const patch: { data?: Record<string, unknown>; enabled?: boolean } = {};
+        if (changeSettings) {
+          const existingData = (env.config.data as Record<string, unknown>) ?? {};
+          const mergedData = { ...data, appliesTo: existingData.appliesTo ?? [] };
+          if (!(await ensureValidPlugin(registration, pluginId, mergedData, res))) return;
+          patch.data = mergedData;
+        }
+        if (enabled !== undefined) patch.enabled = enabled;
+        updates.push({ id: env.config.id, patch });
       }
       const updated = await storage.pluginConfigs.bulkUpdate(updates);
       res.json({ updated: updated.length });
