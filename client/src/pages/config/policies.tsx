@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
-import { FileText, Plus, Loader2, Trash2, Eye } from "lucide-react";
+import { FileText, Plus, Loader2, Trash2, Eye, Copy } from "lucide-react";
 import { Policy } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -33,6 +33,8 @@ export default function PoliciesConfigPage() {
   const queryClient = useQueryClient();
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [duplicateSource, setDuplicateSource] = useState<Policy | null>(null);
+  const [duplicateName, setDuplicateName] = useState("");
   
   const [formSiriusId, setFormSiriusId] = useState("");
   const [formName, setFormName] = useState("");
@@ -63,6 +65,28 @@ export default function PoliciesConfigPage() {
     },
   });
 
+  const duplicateMutation = useMutation({
+    mutationFn: async ({ id, name }: { id: string; name: string }) => {
+      return apiRequest("POST", `/api/policies/${id}/duplicate`, { name });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/policies"] });
+      setDuplicateSource(null);
+      setDuplicateName("");
+      toast({
+        title: "Success",
+        description: "Policy duplicated successfully.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to duplicate policy.",
+        variant: "destructive",
+      });
+    },
+  });
+
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
       return apiRequest("DELETE", `/api/policies/${id}`);
@@ -87,6 +111,27 @@ export default function PoliciesConfigPage() {
   const resetForm = () => {
     setFormSiriusId("");
     setFormName("");
+  };
+
+  const openDuplicate = (policy: Policy) => {
+    setDuplicateSource(policy);
+    setDuplicateName(`${policy.name || policy.siriusId} (Copy)`);
+  };
+
+  const handleDuplicate = () => {
+    if (!duplicateSource) return;
+    if (!duplicateName.trim()) {
+      toast({
+        title: "Validation Error",
+        description: "Name is required.",
+        variant: "destructive",
+      });
+      return;
+    }
+    duplicateMutation.mutate({
+      id: duplicateSource.id,
+      name: duplicateName.trim(),
+    });
   };
 
   const handleCreate = () => {
@@ -188,6 +233,14 @@ export default function PoliciesConfigPage() {
                           <Button
                             variant="ghost"
                             size="icon"
+                            onClick={() => openDuplicate(policy)}
+                            data-testid={`button-duplicate-policy-${policy.id}`}
+                          >
+                            <Copy className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
                             onClick={() => setDeleteId(policy.id)}
                             data-testid={`button-delete-policy-${policy.id}`}
                           >
@@ -252,6 +305,59 @@ export default function PoliciesConfigPage() {
             >
               {createMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Create
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={duplicateSource !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDuplicateSource(null);
+            setDuplicateName("");
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Duplicate Policy</DialogTitle>
+            <DialogDescription>
+              Create a new policy that copies the benefits and eligibility
+              settings from "{duplicateSource?.name || duplicateSource?.siriusId}".
+              A new Sirius ID is generated automatically.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="duplicate-name">New Policy Name</Label>
+              <Input
+                id="duplicate-name"
+                placeholder="e.g., Main Policy (Copy)"
+                value={duplicateName}
+                onChange={(e) => setDuplicateName(e.target.value)}
+                data-testid="input-duplicate-policy-name"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDuplicateSource(null);
+                setDuplicateName("");
+              }}
+              data-testid="button-cancel-duplicate"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleDuplicate}
+              disabled={duplicateMutation.isPending}
+              data-testid="button-confirm-duplicate"
+            >
+              {duplicateMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Duplicate
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -425,7 +425,7 @@ export class DatabaseStorage implements IStorage {
     this.workers.setDenormDataProvider(this.workerHours.getDenormData.bind(this.workerHours));
     
     this.policies = withStorageLogging(
-      createPolicyStorage(),
+      createPolicyStorage(this.pluginConfigs),
       policyLoggingConfig,
     );
     this.bargainingUnits = withStorageLogging(

@@ -8,6 +8,10 @@ type RequireAuth = (req: Request, res: Response, next: () => void) => void;
 
 const updatePolicySchema = insertPolicySchema.partial();
 
+const duplicatePolicySchema = z.object({
+  name: z.string().trim().min(1, "Name is required"),
+});
+
 export function registerPoliciesRoutes(
   app: Express,
   requireAuth: RequireAuth,
@@ -84,6 +88,31 @@ export function registerPoliciesRoutes(
       }
       console.error("Error updating policy:", error);
       res.status(500).json({ message: error.message || "Failed to update policy" });
+    }
+  });
+
+  app.post("/api/policies/:id/duplicate", requireAuth, requireAccess('admin'), async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      const existingPolicy = await storage.policies.getPolicyById(id);
+      if (!existingPolicy) {
+        return res.status(404).json({ message: "Policy not found" });
+      }
+
+      const { name } = duplicatePolicySchema.parse(req.body);
+
+      const newPolicy = await storage.policies.duplicatePolicy(id, name);
+      if (!newPolicy) {
+        return res.status(404).json({ message: "Policy not found" });
+      }
+      res.status(201).json(newPolicy);
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
+      console.error("Error duplicating policy:", error);
+      res.status(500).json({ message: error.message || "Failed to duplicate policy" });
     }
   });
 

@@ -1,8 +1,17 @@
 import { createNoopValidator } from './utils/validation';
-import { getClient } from './transaction-context';
-import { policies, type Policy, type InsertPolicy } from "@shared/schema";
+import { getClient, runInTransaction } from './transaction-context';
+import {
+  policies,
+  type Policy,
+  type InsertPolicy,
+  type PluginConfigBenefitEligibility,
+} from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { defineLoggingConfig } from "./middleware/logging";
+import type { PluginConfigStorage } from "./plugin-configs";
+
+/** Plugin kind that owns the per-policy trust-eligibility configurations. */
+const TRUST_ELIGIBILITY_KIND = "trust-eligibility" as const;
 
 /**
  * Stub validator - add validation logic here when needed
@@ -16,11 +25,20 @@ export interface PolicyStorage {
   createPolicy(data: InsertPolicy): Promise<Policy>;
   updatePolicy(id: string, data: Partial<InsertPolicy>): Promise<Policy | undefined>;
   deletePolicy(id: string): Promise<boolean>;
+  /**
+   * Deep-copy a policy into a brand-new one. Copies the source's `data`
+   * (including its `benefitIds` benefit assignments) under a freshly
+   * generated unique Sirius ID, then recreates every trust-eligibility
+   * plugin config scoped to the source policy (base config + benefit
+   * eligibility subsidiary) re-pointed at the new policy. Runs in a single
+   * transaction and never mutates the source.
+   */
+  duplicatePolicy(sourceId: string, newName: string): Promise<Policy | undefined>;
   getData(id: string): Promise<Record<string, unknown>>;
   setData(id: string, data: Record<string, unknown>): Promise<void>;
 }
 
-export function createPolicyStorage(): PolicyStorage {
+export function createPolicyStorage(pluginConfigs: PluginConfigStorage): PolicyStorage {
   const storage: PolicyStorage = {
     async getAllPolicies(): Promise<Policy[]> {
       const client = getClient();
@@ -73,6 +91,76 @@ export function createPolicyStorage(): PolicyStorage {
         .where(eq(policies.id, id))
         .returning();
       return result.length > 0;
+    },
+
+    async duplicatePolicy(sourceId: string, newName: string): Promise<Policy | undefined> {
+      return runInTransaction(async () => {
+        const client = getClient();
+
+        const [source] = await client
+          .select()
+          .from(policies)
+          .where(eq(policies.id, sourceId));
+        if (!source) {
+          return undefined;
+        }
+
+        // Generate a fresh, unique Sirius ID derived from the source's. The
+        // lookups read through the same transaction client, so they also see
+        // any row inserted earlier in this transaction.
+        const base = `${source.siriusId}-COPY`;
+        let siriusId = base;
+        let suffix = 1;
+        while (await storage.getPolicyBySiriusId(siriusId)) {
+          suffix += 1;
+          siriusId = `${base}-${suffix}`;
+        }
+
+        const [newPolicy] = await client
+          .insert(policies)
+          .values({
+            siriusId,
+            name: newName,
+            data: source.data ?? null,
+          })
+          .returning();
+
+        // Copy every trust-eligibility config scoped to the source policy,
+        // recreating each base config plus its benefit-eligibility subsidiary
+        // re-pointed at the new policy. Reads and writes both go through the
+        // pluginConfigs storage namespace. The unique `siriusId` is
+        // intentionally not copied — the new rows are manual (null) like a
+        // fresh create.
+        const sourceConfigs = await pluginConfigs.search(TRUST_ELIGIBILITY_KIND, {
+          policy: sourceId,
+        });
+
+        if (sourceConfigs.length > 0) {
+          await pluginConfigs.bulkCreateWithSubsidiary(
+            TRUST_ELIGIBILITY_KIND,
+            sourceConfigs.map(({ config, subsidiary }) => {
+              const sub = subsidiary as PluginConfigBenefitEligibility | null;
+              return {
+                base: {
+                  pluginKind: config.pluginKind,
+                  pluginId: config.pluginId,
+                  enabled: config.enabled,
+                  name: config.name,
+                  ordering: config.ordering,
+                  data: config.data,
+                },
+                subsidiary: {
+                  policy: newPolicy.id,
+                  benefit: sub?.benefit ?? null,
+                  appliesTo: sub?.appliesTo ?? null,
+                },
+              };
+            }),
+          );
+        }
+
+        return newPolicy;
+      });
     },
 
     async getData(id: string): Promise<Record<string, unknown>> {
@@ -133,6 +221,16 @@ export const policyLoggingConfig = defineLoggingConfig<PolicyStorage>({
         policyId: result?.id,
         siriusId: result?.siriusId,
         name: result?.name,
+      }),
+    },
+    duplicatePolicy: {
+      state: { fallbackId: 'new policy' },
+      describe: { ...policyDescribe, defaultName: 'Unnamed' },
+      metadata: (args, result) => ({
+        policyId: result?.id,
+        siriusId: result?.siriusId,
+        name: result?.name,
+        sourcePolicyId: args[0],
       }),
     },
     deletePolicy: {
