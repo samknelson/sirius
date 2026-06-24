@@ -1,7 +1,36 @@
 import type { Express, Request, Response, NextFunction } from "express";
+import { z } from "zod";
 import { getPluginKind, enforceKindGating, getPluginConfigAdapter, defaultHydrate, type PluginConfigEnvelopeField } from "../plugins/_core";
 import { storage } from "../storage";
 import { runInTransaction } from "../storage/transaction-context";
+
+/**
+ * Bulk operations are only meaningful for the trust-eligibility kind, whose
+ * configs fan out across policy × benefit × phase. The generic bulk routes
+ * guard on this so other kinds keep their one-config-at-a-time surface.
+ */
+const BULK_SUPPORTED_KIND = "trust-eligibility";
+
+/** Phases a trust-eligibility config can apply to (scan types). */
+const ELIGIBILITY_PHASES = ["start", "continue"] as const;
+
+/** Body schema for POST /configs/bulk (fan one plugin+settings across many). */
+const bulkCreateSchema = z.object({
+  pluginId: z.string().min(1),
+  policy: z.string().min(1),
+  benefits: z.array(z.string().min(1)).min(1),
+  phases: z.array(z.enum(ELIGIBILITY_PHASES)).min(1),
+  data: z.record(z.unknown()).optional().default({}),
+  name: z.string().nullable().optional(),
+  enabled: z.boolean().optional().default(false),
+  ordering: z.number().int().optional().default(0),
+});
+
+/** Body schema for POST /configs/bulk-settings (one settings change → many). */
+const bulkSettingsSchema = z.object({
+  ids: z.array(z.string().min(1)).min(1),
+  data: z.record(z.unknown()).optional().default({}),
+});
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 
@@ -244,6 +273,152 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
     } catch (error) {
       console.error("Failed to create plugin config:", error);
       res.status(500).json({ message: "Failed to create plugin config" });
+    }
+  });
+
+  // Bulk-create: fan ONE plugin + settings across many benefit × phase
+  // combinations. Each (benefit, phase) becomes its own config (single-phase
+  // appliesTo). All-or-nothing: if any target collides with an existing config
+  // for the same policy + plugin + benefit + phase, nothing is created and the
+  // full conflict list is returned. Registered before `/configs/:id` so "bulk"
+  // is never captured as an id.
+  app.post("/api/plugins/:kind/configs/bulk", requireAuth, async (req, res) => {
+    try {
+      const resolved = await resolve(req, res);
+      if (!resolved) return;
+      const { kind, adapter, registration } = resolved;
+      if (kind !== BULK_SUPPORTED_KIND) {
+        res.status(400).json({ message: `Bulk operations are not supported for kind '${kind}'` });
+        return;
+      }
+      const parsed = bulkCreateSchema.safeParse(req.body ?? {});
+      if (!parsed.success) {
+        res.status(400).json({ message: "Invalid bulk request", errors: parsed.error.errors });
+        return;
+      }
+      const { pluginId, policy, benefits, phases, data, name, enabled, ordering } = parsed.data;
+      // De-dupe selections so we don't fan duplicate (benefit, phase) targets.
+      const uniqueBenefits = Array.from(new Set(benefits));
+      const uniquePhases = Array.from(new Set(phases));
+
+      // Validate the plugin + settings once — the settings payload is identical
+      // for every generated config, so a single pass through the plugin's
+      // validator (with the full phase list) is authoritative.
+      const repInput = {
+        pluginId,
+        name: name ?? null,
+        enabled: enabled ?? false,
+        ordering: ordering ?? 0,
+        data,
+        policy,
+        benefit: uniqueBenefits[0],
+        appliesTo: uniquePhases.join(","),
+      };
+      const { base: repBase } = adapter.toRows(repInput);
+      if (!(await ensureValidPlugin(registration, pluginId, repBase.data, res))) return;
+
+      // Conflict detection: for each (benefit, phase) target, a token-aware
+      // search catches existing configs whose appliesTo contains that phase
+      // (including combined "start,continue" rows).
+      const conflicts: Array<{ benefit: string; phase: string }> = [];
+      for (const benefit of uniqueBenefits) {
+        for (const phase of uniquePhases) {
+          const matches = await storage.pluginConfigs.search(kind, {
+            policy,
+            pluginId,
+            benefit,
+            appliesTo: phase,
+          });
+          if (matches.length > 0) conflicts.push({ benefit, phase });
+        }
+      }
+      if (conflicts.length > 0) {
+        res.status(409).json({
+          message: "Some selected benefit/phase combinations already have a configuration for this plugin",
+          conflicts,
+        });
+        return;
+      }
+
+      // Build one base + subsidiary row per (benefit, phase).
+      const rows = [] as Array<{ base: any; subsidiary: any }>;
+      for (const benefit of uniqueBenefits) {
+        for (const phase of uniquePhases) {
+          const { base, subsidiary } = adapter.toRows({
+            pluginId,
+            name: name ?? null,
+            enabled: enabled ?? false,
+            ordering: ordering ?? 0,
+            data,
+            policy,
+            benefit,
+            appliesTo: phase,
+          });
+          base.siriusId = null;
+          rows.push({ base, subsidiary });
+        }
+      }
+      const created = await storage.pluginConfigs.bulkCreateWithSubsidiary(kind, rows);
+      res.status(201).json({ created: created.length });
+    } catch (error) {
+      console.error("Failed to bulk-create plugin configs:", error);
+      res.status(500).json({ message: "Failed to bulk-create plugin configs" });
+    }
+  });
+
+  // Bulk apply-settings: push ONE settings payload across a multi-selection of
+  // existing configs. All selected configs must be this kind and share the same
+  // plugin. The per-config `data.appliesTo` (its phase) is preserved; only the
+  // plugin settings are replaced. All-or-nothing via a single transaction.
+  app.post("/api/plugins/:kind/configs/bulk-settings", requireAuth, async (req, res) => {
+    try {
+      const resolved = await resolve(req, res);
+      if (!resolved) return;
+      const { kind, registration } = resolved;
+      if (kind !== BULK_SUPPORTED_KIND) {
+        res.status(400).json({ message: `Bulk operations are not supported for kind '${kind}'` });
+        return;
+      }
+      const parsed = bulkSettingsSchema.safeParse(req.body ?? {});
+      if (!parsed.success) {
+        res.status(400).json({ message: "Invalid bulk request", errors: parsed.error.errors });
+        return;
+      }
+      const { ids, data } = parsed.data;
+      const uniqueIds = Array.from(new Set(ids));
+
+      const envelopes = await Promise.all(
+        uniqueIds.map((id) => storage.pluginConfigs.getWithSubsidiary(id)),
+      );
+      const found = [] as NonNullable<(typeof envelopes)[number]>[];
+      for (const env of envelopes) {
+        if (!env || env.config.pluginKind !== kind) {
+          res.status(404).json({ message: "One or more configurations were not found" });
+          return;
+        }
+        found.push(env);
+      }
+      const pluginIds = new Set(found.map((e) => e.config.pluginId));
+      if (pluginIds.size > 1) {
+        res.status(400).json({ message: "All selected configurations must use the same plugin" });
+        return;
+      }
+      const pluginId = found[0].config.pluginId;
+
+      // Merge the new settings with each config's preserved phase array, then
+      // validate the result so we never store settings the plugin rejects.
+      const updates = [] as Array<{ id: string; patch: { data: Record<string, unknown> } }>;
+      for (const env of found) {
+        const existingData = (env.config.data as Record<string, unknown>) ?? {};
+        const mergedData = { ...data, appliesTo: existingData.appliesTo ?? [] };
+        if (!(await ensureValidPlugin(registration, pluginId, mergedData, res))) return;
+        updates.push({ id: env.config.id, patch: { data: mergedData } });
+      }
+      const updated = await storage.pluginConfigs.bulkUpdate(updates);
+      res.json({ updated: updated.length });
+    } catch (error) {
+      console.error("Failed to bulk-update plugin config settings:", error);
+      res.status(500).json({ message: "Failed to bulk-update plugin config settings" });
     }
   });
 

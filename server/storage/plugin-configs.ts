@@ -1,5 +1,5 @@
 import { createNoopValidator } from './utils/validation';
-import { getClient, onAfterCommit } from './transaction-context';
+import { getClient, onAfterCommit, runInTransaction } from './transaction-context';
 import {
   pluginConfigs,
   type PluginConfig,
@@ -117,6 +117,32 @@ export interface PluginConfigStorage {
   create(config: InsertPluginConfig): Promise<PluginConfig>;
   update(id: string, config: Partial<InsertPluginConfig>): Promise<PluginConfig | undefined>;
   delete(id: string): Promise<boolean>;
+
+  // --- Bulk write (transactional) ---------------------------------------
+  /**
+   * Create many base configs, each with an optional subsidiary row, in a
+   * single transaction. Either every row is committed or none are. `type`
+   * selects the subsidiary namespace for the `subsidiary` payloads. Used by
+   * the bulk-create route to fan one plugin+settings across many
+   * benefit × phase combinations atomically.
+   */
+  bulkCreateWithSubsidiary(
+    type: string,
+    rows: Array<{
+      base: InsertPluginConfig;
+      subsidiary?: ({ id?: string } & Record<string, unknown>) | null;
+    }>,
+  ): Promise<PluginConfig[]>;
+
+  /**
+   * Apply a partial base-config patch to many configs in a single
+   * transaction. Either every update is committed or none are. Used by the
+   * bulk apply-settings route to push one settings change across a
+   * multi-selection of existing configs.
+   */
+  bulkUpdate(
+    updates: Array<{ id: string; patch: Partial<InsertPluginConfig> }>,
+  ): Promise<PluginConfig[]>;
 
   // --- Subsidiary access (1:1 by base id) --------------------------------
   /**
@@ -243,6 +269,54 @@ export function createPluginConfigStorage(): PluginConfigStorage {
       const deleted = result.length > 0;
       if (deleted && existing) emitConfigSaved(existing.pluginKind, id, "delete");
       return deleted;
+    },
+
+    // --- Bulk write (transactional) -------------------------------------
+    async bulkCreateWithSubsidiary(
+      type: string,
+      rows: Array<{
+        base: InsertPluginConfig;
+        subsidiary?: ({ id?: string } & Record<string, unknown>) | null;
+      }>,
+    ): Promise<PluginConfig[]> {
+      if (rows.length === 0) return [];
+      const ns = subsidiaries[type];
+      return runInTransaction(async () => {
+        const client = getClient();
+        const created: PluginConfig[] = [];
+        for (const { base, subsidiary } of rows) {
+          validate.validateOrThrow(base);
+          const [row] = await client.insert(pluginConfigs).values(base).returning();
+          if (subsidiary && ns) {
+            await ns.upsert({ ...subsidiary, id: row.id });
+          }
+          emitConfigSaved(row.pluginKind, row.id, "create");
+          created.push(row);
+        }
+        return created;
+      });
+    },
+
+    async bulkUpdate(
+      updates: Array<{ id: string; patch: Partial<InsertPluginConfig> }>,
+    ): Promise<PluginConfig[]> {
+      if (updates.length === 0) return [];
+      return runInTransaction(async () => {
+        const client = getClient();
+        const updated: PluginConfig[] = [];
+        for (const { id, patch } of updates) {
+          const [row] = await client
+            .update(pluginConfigs)
+            .set({ ...patch, updatedAt: new Date() })
+            .where(eq(pluginConfigs.id, id))
+            .returning();
+          if (row) {
+            emitConfigSaved(row.pluginKind, row.id, "update");
+            updated.push(row);
+          }
+        }
+        return updated;
+      });
     },
 
     // --- Subsidiary access ----------------------------------------------

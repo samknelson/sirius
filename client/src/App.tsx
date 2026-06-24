@@ -298,6 +298,7 @@ const TerminologyConfigPage = lazy(() => import("@/pages/config/terminology"));
 const PolicyView = lazy(() => import("@/pages/policy-view"));
 const PolicyEdit = lazy(() => import("@/pages/policy-edit"));
 const PolicyBenefits = lazy(() => import("@/pages/policy-benefits"));
+const PolicyEligibility = lazy(() => import("@/pages/policy-eligibility"));
 const PoliciesConfigPage = lazy(() => import("@/pages/config/policies"));
 const BargainingUnitsConfigPage = lazy(() => import("@/pages/config/bargaining-units"));
 const CardcheckDefinitionsPage = lazy(() => import("@/pages/cardcheck-definitions"));
@@ -1748,6 +1749,14 @@ function Router() {
         <ProtectedRoute tabId="benefits" entityType="policy">
           <AuthenticatedLayout>
             <PolicyBenefits />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/policies/:id/eligibility">
+        <ProtectedRoute tabId="eligibility" entityType="policy">
+          <AuthenticatedLayout>
+            <PolicyEligibility />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
