@@ -229,9 +229,6 @@ export const workers = pgTable("workers", {
   siriusId: serial("sirius_id").notNull().unique(),
   contactId: varchar("contact_id").notNull().references(() => contacts.id, { onDelete: 'cascade' }),
   ssn: text("ssn").unique(),
-  denormJobTitle: text("denorm_job_title"),
-  denormHomeEmployerId: varchar("denorm_home_employer_id").references(() => employers.id, { onDelete: 'set null' }),
-  denormEmployerIds: varchar("denorm_employer_ids").array(),
   bargainingUnitId: varchar("bargaining_unit_id").references(() => bargainingUnits.id, { onDelete: 'set null' }),
   data: jsonb("data"),
 });
@@ -1422,13 +1419,20 @@ export type InsertWorker = z.infer<typeof insertWorkerSchema>;
 // stripped in the storage layer so it never leaks through generic worker
 // endpoints — it is only ever accessed via the dedicated getData/setData
 // accessors and the component-gated beneficiaries storage namespace.
-// `denormMsIds` / `denormWsId` are no longer physical columns on `workers`;
-// they are derived from the `worker_msh_denorm` / `worker_wsh_denorm` tables by
-// the worker read methods that need them (e.g. `getWorker`). Kept on the DTO so
-// existing consumers see the same shape.
+// `denormMsIds` / `denormWsId` / `denormHomeEmployerId` / `denormEmployerIds` /
+// `denormJobTitle` are no longer physical columns on `workers`; they are derived
+// from the `worker_msh_denorm` / `worker_wsh_denorm` / `worker_employment_denorm`
+// tables by the worker read methods that need them (e.g. `getWorker`). Kept on
+// the DTO so existing consumers see the same shape. The employment fields reflect
+// the worker's HOME employment row: `denormHomeEmployerId` is the home row's
+// employer, `denormJobTitle` is the home row's job title, and `denormEmployerIds`
+// is the set of all employer ids across employment rows.
 export type Worker = Omit<typeof workers.$inferSelect, "data"> & {
   denormMsIds?: string[] | null;
   denormWsId?: string | null;
+  denormHomeEmployerId?: string | null;
+  denormEmployerIds?: string[] | null;
+  denormJobTitle?: string | null;
 };
 
 export type InsertWorkerBan = z.infer<typeof insertWorkerBanSchema>;
@@ -2015,6 +2019,39 @@ export const insertWorkerWshDenormSchema = createInsertSchema(workerWshDenorm).o
 });
 export type InsertWorkerWshDenorm = z.infer<typeof insertWorkerWshDenormSchema>;
 export type WorkerWshDenorm = typeof workerWshDenorm.$inferSelect;
+
+// Per-worker denormalized current employment (payload table for the
+// `worker_employment` denorm plugin). One row per (worker, employer), where each
+// row is the worker's latest employment with that employer derived from hours
+// history (`worker_hours`). At most one row per worker carries `home = true`
+// (the worker's home employer; a worker may have none), and `job_title` is
+// stored on every row. The
+// `denorm_id` ties the rows back to their workflow status row in `denorm`.
+// Replaces the former `workers.denorm_home_employer_id`,
+// `workers.denorm_employer_ids`, and `workers.denorm_job_title` columns.
+export const workerEmploymentDenorm = pgTable("worker_employment_denorm", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  denormId: varchar("denorm_id")
+    .notNull()
+    .references(() => denorm.id, { onDelete: 'cascade' }),
+  workerId: varchar("worker_id")
+    .notNull()
+    .references(() => workers.id, { onDelete: 'cascade' }),
+  employerId: varchar("employer_id")
+    .notNull()
+    .references(() => employers.id, { onDelete: 'cascade' }),
+  home: boolean("home").notNull().default(false),
+  jobTitle: text("job_title"),
+}, (table) => [
+  uniqueIndex("worker_employment_denorm_worker_employer_uniq").on(table.workerId, table.employerId),
+  index("worker_employment_denorm_denorm_idx").on(table.denormId),
+]);
+
+export const insertWorkerEmploymentDenormSchema = createInsertSchema(workerEmploymentDenorm).omit({
+  id: true,
+});
+export type InsertWorkerEmploymentDenorm = z.infer<typeof insertWorkerEmploymentDenormSchema>;
+export type WorkerEmploymentDenorm = typeof workerEmploymentDenorm.$inferSelect;
 
 // Base Rate History Schema - for use in charge plugins
 export const baseRateHistoryEntrySchema = z.object({

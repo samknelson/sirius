@@ -19,3 +19,4 @@
 - [Payment-method token enforcement point](payment-method-token-enforcement.md) — create route stores methodToken verbatim; validate/reject sensitive data in plugin attachMethod (runs pre-persist), not in summary/details reads.
 - [Cache-invalidating events must emit after commit](cache-invalidation-emit-after-commit.md) — storage emits that invalidate an in-memory cache must use onAfterCommit, or a concurrent read rebuilds from pre-commit data and stays stale until the next write.
 - [Drift gate index predicate cast matching](drift-gate-index-predicate-casts.md) — drift gate doesn't strip `::text` casts; partial-index WHERE on varchar/text must be declared casted `(col)::text = 'v'::text` in schema or boot refuses.
+- [Nullable denorm scalar -> derived table](denorm-column-to-table-null-semantics.md) — replacing a nullable denorm column with a derived flagged table = "at most one" flag, not "exactly one"; preserve absence, don't fabricate a default.

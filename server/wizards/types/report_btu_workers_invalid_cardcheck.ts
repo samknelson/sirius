@@ -1,6 +1,6 @@
 import { WizardReport, ReportConfig, ReportColumn, ReportRecord } from '../report.js';
 import { storage } from '../../storage';
-import { workers, contacts, cardchecks, employers, bargainingUnits } from '@shared/schema';
+import { workers, contacts, cardchecks, employers, bargainingUnits, workerEmploymentDenorm } from '@shared/schema';
 import { eq, and, inArray } from 'drizzle-orm';
 
 interface BTUWorkersInvalidCardcheckConfig extends ReportConfig {
@@ -79,7 +79,7 @@ export class ReportBTUWorkersInvalidCardcheck extends WizardReport {
           siriusId: workers.siriusId,
           displayName: contacts.displayName,
           workerBargainingUnitId: workers.bargainingUnitId,
-          homeEmployerId: workers.denormHomeEmployerId,
+          homeEmployerId: workerEmploymentDenorm.employerId,
           employerName: employers.name,
           cardcheckId: cardchecks.id,
           cardcheckBargainingUnitId: cardchecks.bargainingUnitId,
@@ -87,7 +87,14 @@ export class ReportBTUWorkersInvalidCardcheck extends WizardReport {
         })
         .from(workers)
         .innerJoin(contacts, eq(workers.contactId, contacts.id))
-        .leftJoin(employers, eq(workers.denormHomeEmployerId, employers.id))
+        .leftJoin(
+          workerEmploymentDenorm,
+          and(
+            eq(workerEmploymentDenorm.workerId, workers.id),
+            eq(workerEmploymentDenorm.home, true)
+          )
+        )
+        .leftJoin(employers, eq(workerEmploymentDenorm.employerId, employers.id))
         .leftJoin(
           cardchecks,
           and(
@@ -99,7 +106,7 @@ export class ReportBTUWorkersInvalidCardcheck extends WizardReport {
 
       let results;
       if (employerId) {
-        results = await baseQuery.where(eq(workers.denormHomeEmployerId, employerId));
+        results = await baseQuery.where(eq(workerEmploymentDenorm.employerId, employerId));
       } else {
         results = await baseQuery;
       }

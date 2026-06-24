@@ -45,6 +45,7 @@ import "./core/1036_plugin_configs_singleton_per_type";
 import "./core/1037_create_denorm";
 import "./core/1038_worker_msh_denorm";
 import "./core/1039_worker_wsh_denorm";
+import "./core/1040_worker_employment_denorm";
 
 // Per-component migrations — each registered via
 // `registerComponentMigration(componentId, migration)`. Tracked by the

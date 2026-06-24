@@ -7,6 +7,7 @@ import {
   type WorkerHours,
 } from "@shared/schema";
 import { eq, sql, and, desc, inArray } from "drizzle-orm";
+import type { WorkerEmploymentRow } from "./system/worker-employment-denorm";
 import { type StorageLoggingConfig } from "./middleware/logging";
 import { storageLogger as logger } from "../logger";
 import type { LedgerNotification } from "../plugins/ledger/charge/types";
@@ -27,12 +28,6 @@ export interface WorkerHoursDeleteResult {
   notifications: LedgerNotification[];
 }
 
-export interface WorkerDenormData {
-  homeEmployerId: string | null;
-  employerIds: string[] | null;
-  jobTitle: string | null;
-}
-
 export interface EmployerWorkerCount {
   employerId: string;
   workerCount: number;
@@ -40,7 +35,15 @@ export interface EmployerWorkerCount {
 
 export interface WorkerHoursStorage {
   getDistinctWorkerCountsByEmployer(): Promise<EmployerWorkerCount[]>;
-  getDenormData(workerId: string): Promise<WorkerDenormData>;
+  /**
+   * Compute a worker's current employment from hours history: one row per
+   * employer (that employer's latest hours row), carrying that row's `job_title`.
+   * Exactly one returned row is flagged `home = true` (the first employer, by
+   * employer-id ordering, whose latest row is flagged home), matching the legacy
+   * scalar home-employer derivation. Used by the `worker_employment` denorm
+   * plugin to populate `worker_employment_denorm`.
+   */
+  getCurrentEmployment(workerId: string): Promise<WorkerEmploymentRow[]>;
   getWorkerHoursById(id: string): Promise<any | undefined>;
   getWorkerHours(workerId: string): Promise<any[]>;
   getWorkerHoursCurrent(workerId: string): Promise<any[]>;
@@ -91,39 +94,38 @@ export function createWorkerHoursStorage(
       }));
     },
 
-    async getDenormData(workerId: string): Promise<WorkerDenormData> {
+    async getCurrentEmployment(workerId: string): Promise<WorkerEmploymentRow[]> {
       const client = getClient();
-      
-      // Query 1: Get latest hours per employer (for employer_ids and home_employer_id)
-      const hoursResult = await client.execute(sql`
+
+      // One row per employer: that employer's latest hours row, carrying its
+      // own `home` flag and `job_title`.
+      const result = await client.execute(sql`
         SELECT DISTINCT ON (employer_id)
           employer_id,
-          home
+          home,
+          job_title
         FROM worker_hours
         WHERE worker_id = ${workerId}
         ORDER BY employer_id, year DESC, month DESC, day DESC
       `);
-      
-      const hoursRows = hoursResult.rows as Array<{ employer_id: string; home: boolean | null }>;
-      const employerIds = hoursRows.length > 0 ? hoursRows.map(r => r.employer_id) : null;
-      const homeEmployerId = hoursRows.find(r => r.home === true)?.employer_id || null;
-      
-      // Query 2: Get job title from the most recent home hours record
-      const homeHoursResult = await client.execute(sql`
-        SELECT job_title
-        FROM worker_hours
-        WHERE worker_id = ${workerId} AND home = true
-        ORDER BY year DESC, month DESC, day DESC
-        LIMIT 1
-      `);
-      const homeHoursRow = homeHoursResult.rows[0] as { job_title: string | null } | undefined;
-      const jobTitle = homeHoursRow?.job_title || null;
-      
-      return {
-        homeEmployerId,
-        employerIds,
-        jobTitle,
-      };
+
+      const rows = result.rows as Array<{ employer_id: string; home: boolean | null; job_title: string | null }>;
+
+      // Pick the single home employer: the first employer (by employer-id
+      // ordering) whose latest hours row is flagged home, matching the legacy
+      // scalar derivation exactly. A worker may legitimately have NO home
+      // employer — if no latest row is flagged home, no row carries home = true
+      // and home-derived reads resolve to null, preserving the legacy nullable
+      // `denorm_home_employer_id` behavior that downstream callers branch on.
+      // At most one stored row is ever home = true, so home-row reads stay
+      // unambiguous.
+      const homeEmployerId = rows.find(r => r.home === true)?.employer_id ?? null;
+
+      return rows.map(r => ({
+        employerId: r.employer_id,
+        home: homeEmployerId !== null && r.employer_id === homeEmployerId,
+        jobTitle: r.job_title,
+      }));
     },
 
     async getWorkerHoursById(id: string): Promise<any | undefined> {

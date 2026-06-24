@@ -75,6 +75,10 @@ import {
   createWorkerMshDenormStorage,
 } from "./system/worker-msh-denorm";
 import {
+  type WorkerEmploymentDenormStorage,
+  createWorkerEmploymentDenormStorage,
+} from "./system/worker-employment-denorm";
+import {
   type WorkerWshDenormStorage,
   createWorkerWshDenormStorage,
 } from "./system/worker-wsh-denorm";
@@ -168,6 +172,7 @@ export interface IStorage {
   denorm: DenormStorage;
   workerMshDenorm: WorkerMshDenormStorage;
   workerWshDenorm: WorkerWshDenormStorage;
+  workerEmploymentDenorm: WorkerEmploymentDenormStorage;
   logs: LogsStorage;
   workerWsh: WorkerWshStorage;
   workerMsh: WorkerMshStorage;
@@ -261,6 +266,7 @@ export class DatabaseStorage implements IStorage {
   denorm: DenormStorage;
   workerMshDenorm: WorkerMshDenormStorage;
   workerWshDenorm: WorkerWshDenormStorage;
+  workerEmploymentDenorm: WorkerEmploymentDenormStorage;
   logs: LogsStorage;
   workerWsh: WorkerWshStorage;
   workerMsh: WorkerMshStorage;
@@ -402,6 +408,7 @@ export class DatabaseStorage implements IStorage {
     this.denorm = createDenormStorage();
     this.workerMshDenorm = createWorkerMshDenormStorage();
     this.workerWshDenorm = createWorkerWshDenormStorage();
+    this.workerEmploymentDenorm = createWorkerEmploymentDenormStorage();
     this.logs = createLogsStorage();
 
     // No logging for wmb scan queue - high-volume internal state changes
@@ -411,7 +418,6 @@ export class DatabaseStorage implements IStorage {
     this.workerWsh = withStorageLogging(
       createWorkerWshStorage(
         async (workerId: string) => {
-          await this.workers.syncWorkerEmployerDenorm(workerId);
           await this.wmbScanQueue.invalidateWorkerScans(workerId);
         },
       ),
@@ -420,7 +426,6 @@ export class DatabaseStorage implements IStorage {
     this.workerMsh = withStorageLogging(
       createWorkerMshStorage(
         async (workerId: string) => {
-          await this.workers.syncWorkerEmployerDenorm(workerId);
           await this.wmbScanQueue.invalidateWorkerScans(workerId);
         }
       ),
@@ -429,16 +434,12 @@ export class DatabaseStorage implements IStorage {
     this.workerHours = withStorageLogging(
       createWorkerHoursStorage(
         async (workerId: string) => {
-          await this.workers.syncWorkerEmployerDenorm(workerId);
           await this.wmbScanQueue.invalidateWorkerScans(workerId);
         },
       ),
       workerHoursLoggingConfig,
     );
-    
-    // Inject denorm data provider into workers storage now that workerHours is available
-    this.workers.setDenormDataProvider(this.workerHours.getDenormData.bind(this.workerHours));
-    
+
     this.policies = withStorageLogging(
       createPolicyStorage(),
       policyLoggingConfig,

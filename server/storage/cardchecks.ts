@@ -370,7 +370,7 @@ export function createCardcheckStorage(): CardcheckStorage {
           siriusId: workers.siriusId,
           contactId: workers.contactId,
           bargainingUnitId: workers.bargainingUnitId,
-          denormEmployerIds: workers.denormEmployerIds,
+          denormEmployerIds: sql<string[] | null>`(SELECT array_agg(wed.employer_id) FROM worker_employment_denorm wed WHERE wed.worker_id = ${workers.id})`,
         })
         .from(workers);
       
