@@ -86,3 +86,14 @@ export function initializeDenormPluginSystem(): void {
 import "./plugins/workerMs";
 import "./plugins/workerWs";
 import "./plugins/workerEmployment";
+// Dispatch-eligibility denorm plugins (write side of dispatch eligibility).
+import "./plugins/dispatch/accepted";
+import "./plugins/dispatch/ban";
+import "./plugins/dispatch/dnc";
+import "./plugins/dispatch/eba";
+import "./plugins/dispatch/hfe";
+import "./plugins/dispatch/hta-home-employer";
+import "./plugins/dispatch/singleshift";
+import "./plugins/dispatch/skill";
+import "./plugins/dispatch/status";
+import "./plugins/dispatch/ws";

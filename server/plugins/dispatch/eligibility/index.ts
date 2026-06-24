@@ -81,53 +81,26 @@ function registerDispatchEligKind(): void {
 }
 
 /**
- * Initialize the dispatch-eligibility plugin system.
+ * Initialize the dispatch-eligibility plugin system (READ side).
  *
- * Plugins self-register at module top level — the side-effect imports at
- * the bottom of this file load each plugin once and trigger its
- * `registerDispatchEligPlugin(...)` call. To add a new plugin: drop a
- * file under `./plugins/` and add one `import "./plugins/<name>"` line
- * below.
+ * Registers the `dispatch-eligibility` plugin kind + config adapter (needed by
+ * the eligibility query path and the admin config UI), and loads the read-side
+ * plugins via the side-effect imports at the bottom of this file (each triggers
+ * its `registerDispatchEligPlugin(...)` call). To add a new plugin: drop a file
+ * under `./plugins/` and add one `import "./plugins/<name>"` line below.
  *
- * After registration, this function runs startup backfills for plugins
- * that declare a `backfill()` (in `backfillOrder` ascending). The
- * backfill loop is intentionally kept here (not per-plugin) because it
- * is an orchestration concern, not a registration concern.
- *
- * (This matches the convention used by every other plugin kind in the
- * repo — see `server/plugins/_core/README.md` → "Plugin registration
- * convention".)
+ * The WRITE side — maintaining the `worker_dispatch_elig_denorm` facts these
+ * conditions read — now lives in the denorm plugin framework
+ * (`server/plugins/system/denorm/plugins/dispatch/*`), so there is no longer a
+ * boot-time backfill/recompute loop here; population happens through the denorm
+ * event handlers plus the hourly denorm backfill/stale sweep.
  */
-export async function initializeDispatchEligSystem(): Promise<void> {
+export function initializeDispatchEligSystem(): void {
   registerDispatchEligKind();
   logger.info("Dispatch eligibility plugins registered", {
     service: "dispatch-elig-plugins",
     plugins: dispatchEligPluginRegistry.getAllPluginIds(),
   });
-
-  const plugins = dispatchEligPluginRegistry.getAllPlugins()
-    .filter(p => p.backfill)
-    .sort((a, b) => (a.backfillOrder ?? 0) - (b.backfillOrder ?? 0));
-
-  for (const plugin of plugins) {
-    try {
-      const result = await plugin.backfill!();
-      if (result.workersProcessed > 0) {
-        logger.info(`${plugin.name} eligibility backfill completed during startup`, {
-          service: "dispatch-elig-plugins",
-          pluginId: plugin.id,
-          workersProcessed: result.workersProcessed,
-          entriesCreated: result.entriesCreated,
-        });
-      }
-    } catch (error) {
-      logger.error(`Failed to backfill ${plugin.name} eligibility during startup`, {
-        service: "dispatch-elig-plugins",
-        pluginId: plugin.id,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-  }
 }
 
 // Plugin registrations (side-effect imports — each file self-registers).

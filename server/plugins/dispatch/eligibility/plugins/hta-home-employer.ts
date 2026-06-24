@@ -1,18 +1,11 @@
 import { registerDispatchEligPlugin } from "../registry";
 import { logger } from "../../../../logger";
-import { createWorkerDispatchEligDenormStorage } from "../../../../storage/dispatch/worker-elig-denorm";
-import { createVariableStorage } from "../../../../storage/system/variables";
 import { createDispatchJobStorage } from "../../../../storage/dispatch/jobs";
 import { createEmployerCompanyStorage } from "../../../../storage/employers/companies";
-import { createWorkerHoursStorage } from "../../../../storage/worker-hours";
 import type { DispatchEligPlugin, EligibilityCondition, EligibilityQueryContext } from "../registry";
-import { EventType } from "../../../../services/event-bus";
-import { isComponentEnabledSync, isCacheInitialized } from "../../../../services/component-cache";
 
 const HTA_HOME_EMPLOYER_CATEGORY = "sitespecific:hta:home-employer";
 const HTA_HOME_COMPANY_CATEGORY = "sitespecific:hta:home-company";
-const VARIABLE_NAME = "sitespecific_hta_home_employment_statuses";
-const COMPONENT_ID = "sitespecific.hta";
 
 function getThreeMonthWindow(refYear: number, refMonth: number): Array<{ year: number; month: number; ym: string }> {
   const months: Array<{ year: number; month: number; ym: string }> = [];
@@ -26,108 +19,18 @@ function getThreeMonthWindow(refYear: number, refMonth: number): Array<{ year: n
   return months;
 }
 
-function getCurrentThreeMonthWindow(): Array<{ year: number; month: number; ym: string }> {
-  const now = new Date();
-  return getThreeMonthWindow(now.getFullYear(), now.getMonth() + 1);
-}
-
-async function getConfiguredStatusIds(): Promise<string[]> {
-  const variableStorage = createVariableStorage();
-  const variable = await variableStorage.getByName(VARIABLE_NAME);
-  if (!variable || !variable.value) return [];
-  const val = variable.value;
-  if (Array.isArray(val)) return val.filter((v: unknown) => typeof v === "string" && v.length > 0);
-  if (typeof val === "string") {
-    try {
-      const parsed = JSON.parse(val);
-      if (Array.isArray(parsed)) return parsed.filter((v: unknown) => typeof v === "string" && v.length > 0);
-    } catch {
-    }
-  }
-  return [];
-}
-
+/**
+ * `dispatch_hta_home_employer` — READ side. Prevents dispatching a worker to
+ * their home employer (or any employer in the same company) over the current
+ * 3-month window. The `sitespecific:hta:home-employer` /
+ * `sitespecific:hta:home-company` facts are maintained by the matching denorm
+ * plugin.
+ */
 export const dispatchHtaHomeEmployerPlugin: DispatchEligPlugin = {
   id: "dispatch_hta_home_employer",
   name: "HTA Home Employer",
   description: "Prevents workers from being dispatched to their home employer",
-  requiredComponent: COMPONENT_ID,
-
-  async backfill(): Promise<{ workersProcessed: number; entriesCreated: number }> {
-    if (!isCacheInitialized()) {
-      logger.warn("Component cache not initialized, skipping HTA home employer eligibility backfill", {
-        service: "dispatch-elig-hta-home-employer",
-      });
-      return { workersProcessed: 0, entriesCreated: 0 };
-    }
-
-    if (!isComponentEnabledSync(COMPONENT_ID)) {
-      logger.debug("sitespecific.hta component not enabled, skipping HTA home employer backfill", {
-        service: "dispatch-elig-hta-home-employer",
-      });
-      return { workersProcessed: 0, entriesCreated: 0 };
-    }
-
-    const eligStorage = createWorkerDispatchEligDenormStorage();
-    const deletedEmployer = await eligStorage.deleteAllByCategory(HTA_HOME_EMPLOYER_CATEGORY);
-    const deletedCompany = await eligStorage.deleteAllByCategory(HTA_HOME_COMPANY_CATEGORY);
-    logger.info("Cleared existing HTA home employer eligibility entries before backfill", {
-      service: "dispatch-elig-hta-home-employer",
-      deletedEmployer,
-      deletedCompany,
-    });
-
-    const statusIds = await getConfiguredStatusIds();
-    if (statusIds.length === 0) {
-      logger.info("No home employment statuses configured, skipping HTA home employer backfill", {
-        service: "dispatch-elig-hta-home-employer",
-      });
-      return { workersProcessed: 0, entriesCreated: 0 };
-    }
-
-    const window = getCurrentThreeMonthWindow();
-    const hoursStorage = createWorkerHoursStorage();
-    const workerIds = await hoursStorage.getDistinctWorkerIdsByStatusAndMonths(
-      statusIds,
-      window.map(({ year, month }) => ({ year, month })),
-    );
-
-    if (workerIds.length === 0) {
-      logger.info("No workers with qualifying hours found for HTA home employer backfill", {
-        service: "dispatch-elig-hta-home-employer",
-      });
-      return { workersProcessed: 0, entriesCreated: 0 };
-    }
-
-    logger.info(`Backfilling HTA home employer eligibility for ${workerIds.length} workers`, {
-      service: "dispatch-elig-hta-home-employer",
-      workerCount: workerIds.length,
-    });
-
-    let entriesCreated = 0;
-    for (const workerId of workerIds) {
-      await this.recomputeWorker(workerId);
-      const es = createWorkerDispatchEligDenormStorage();
-      const employerEntries = await es.getByWorkerAndCategory(workerId, HTA_HOME_EMPLOYER_CATEGORY);
-      const companyEntries = await es.getByWorkerAndCategory(workerId, HTA_HOME_COMPANY_CATEGORY);
-      entriesCreated += employerEntries.length + companyEntries.length;
-    }
-
-    logger.info(`Completed HTA home employer eligibility backfill`, {
-      service: "dispatch-elig-hta-home-employer",
-      workersProcessed: workerIds.length,
-      entriesCreated,
-    });
-
-    return { workersProcessed: workerIds.length, entriesCreated };
-  },
-
-  eventHandlers: [
-    {
-      event: EventType.HOURS_SAVED,
-      getWorkerId: (payload) => payload.workerId,
-    },
-  ],
+  requiredComponent: "sitespecific.hta",
 
   async getEligibilityCondition(context: EligibilityQueryContext, _config: Record<string, unknown>): Promise<EligibilityCondition | EligibilityCondition[] | null> {
     const jobStorage = createDispatchJobStorage();
@@ -179,100 +82,6 @@ export const dispatchHtaHomeEmployerPlugin: DispatchEligPlugin = {
     }
 
     return conditions.length === 1 ? conditions[0] : conditions;
-  },
-
-  async recomputeWorker(workerId: string): Promise<void> {
-    const eligStorage = createWorkerDispatchEligDenormStorage();
-
-    logger.debug(`Recomputing HTA home employer eligibility for worker ${workerId}`, {
-      service: "dispatch-elig-hta-home-employer",
-      workerId,
-    });
-
-    await eligStorage.deleteByWorkerAndCategory(workerId, HTA_HOME_EMPLOYER_CATEGORY);
-    await eligStorage.deleteByWorkerAndCategory(workerId, HTA_HOME_COMPANY_CATEGORY);
-
-    if (!isCacheInitialized() || !isComponentEnabledSync(COMPONENT_ID)) {
-      logger.debug(`sitespecific.hta component disabled, cleared entries for worker ${workerId}`, {
-        service: "dispatch-elig-hta-home-employer",
-        workerId,
-      });
-      return;
-    }
-
-    const statusIds = await getConfiguredStatusIds();
-    if (statusIds.length === 0) {
-      logger.debug(`No home employment statuses configured, skipping worker ${workerId}`, {
-        service: "dispatch-elig-hta-home-employer",
-        workerId,
-      });
-      return;
-    }
-
-    const window = getCurrentThreeMonthWindow();
-    const hoursStorage = createWorkerHoursStorage();
-    const rows = await hoursStorage.getEmployerMonthRowsByWorkerStatusAndMonths(
-      workerId,
-      statusIds,
-      window.map(({ year, month }) => ({ year, month })),
-    );
-
-    const uniquePairs = new Map<string, { year: number; month: number; employerId: string }>();
-    for (const row of rows) {
-      const key = `${row.year}-${String(row.month).padStart(2, "0")}:${row.employerId}`;
-      if (!uniquePairs.has(key)) {
-        uniquePairs.set(key, { year: row.year, month: row.month, employerId: row.employerId });
-      }
-    }
-
-    if (uniquePairs.size === 0) {
-      logger.debug(`No qualifying hours for worker ${workerId} in 3-month window`, {
-        service: "dispatch-elig-hta-home-employer",
-        workerId,
-      });
-      return;
-    }
-
-    const ecStorage = createEmployerCompanyStorage();
-    const employerCompanyMap = await ecStorage.getAllWithCompanyName();
-
-    const employerEntries: Array<{ workerId: string; category: string; value: string }> = [];
-    const companyEntries: Array<{ workerId: string; category: string; value: string }> = [];
-    const seenCompanyKeys = new Set<string>();
-
-    for (const [, { year, month, employerId }] of uniquePairs) {
-      const ym = `${year}-${String(month).padStart(2, "0")}`;
-      employerEntries.push({
-        workerId,
-        category: HTA_HOME_EMPLOYER_CATEGORY,
-        value: `${ym}:${employerId}`,
-      });
-
-      const ec = employerCompanyMap.get(employerId);
-      if (ec) {
-        const coKey = `${ym}:${ec.companyId}`;
-        if (!seenCompanyKeys.has(coKey)) {
-          seenCompanyKeys.add(coKey);
-          companyEntries.push({
-            workerId,
-            category: HTA_HOME_COMPANY_CATEGORY,
-            value: coKey,
-          });
-        }
-      }
-    }
-
-    const allEntries = [...employerEntries, ...companyEntries];
-    if (allEntries.length > 0) {
-      await eligStorage.createMany(allEntries);
-    }
-
-    logger.debug(`Created ${allEntries.length} HTA home employer eligibility entries for worker ${workerId}`, {
-      service: "dispatch-elig-hta-home-employer",
-      workerId,
-      employerEntries: employerEntries.length,
-      companyEntries: companyEntries.length,
-    });
   },
 };
 

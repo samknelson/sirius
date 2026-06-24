@@ -46,6 +46,7 @@ import "./core/1037_create_denorm";
 import "./core/1038_worker_msh_denorm";
 import "./core/1039_worker_wsh_denorm";
 import "./core/1040_worker_employment_denorm";
+import "./core/1041_worker_dispatch_elig_denorm_denorm_id";
 
 // Per-component migrations — each registered via
 // `registerComponentMigration(componentId, migration)`. Tracked by the

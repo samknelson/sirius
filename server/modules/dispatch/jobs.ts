@@ -6,6 +6,8 @@ import { requireAccess } from "../../services/access-policy-evaluator";
 import { requireComponent } from "../components";
 import type { DispatchJobFilters } from "../../storage/dispatch/jobs";
 import { dispatchEligPluginRegistry } from "../../plugins/dispatch/eligibility/registry";
+import { getDenormPlugin } from "../../plugins/system/denorm/registry";
+import { backfillAllDenorm } from "../../plugins/system/denorm/backfill";
 import { createDispatchEligibleWorkersStorage } from "../../storage/dispatch/eligible-workers";
 import { isComponentEnabledSync } from "../../services/component-cache";
 import { runPoll } from "../../services/dispatch/poll";
@@ -347,12 +349,17 @@ export function registerDispatchJobsRoutes(
     async (req, res) => {
       try {
         const { pluginId } = req.params;
-        const plugin = dispatchEligPluginRegistry.getPlugin(pluginId);
-        if (!plugin) {
+        // The dispatch-eligibility plugins are now read-only; the write/recompute
+        // side lives in the denorm framework under the same plugin id. Validate
+        // against the read-side registry (drives the admin UI), then delegate the
+        // actual backfill to the matching denorm plugin.
+        const readPlugin = dispatchEligPluginRegistry.getPlugin(pluginId);
+        if (!readPlugin) {
           res.status(404).json({ message: "Dispatch eligibility plugin not found" });
           return;
         }
-        if (!plugin.backfill) {
+        const denormPlugin = getDenormPlugin(pluginId);
+        if (!denormPlugin || !denormPlugin.backfill) {
           res.status(400).json({ message: "This plugin does not support backfill" });
           return;
         }
@@ -371,7 +378,7 @@ export function registerDispatchJobsRoutes(
             contactId,
             userId,
             title: "Backfill Started",
-            body: `Backfill started for plugin "${plugin.name}". You will be notified when it completes.`,
+            body: `Backfill started for plugin "${readPlugin.name}". You will be notified when it completes.`,
             initiatedBy: "system",
           });
         }
@@ -379,22 +386,26 @@ export function registerDispatchJobsRoutes(
         res.status(202).json({ message: "Backfill started" });
 
         const backfillPluginId = pluginId;
-        const backfillPlugin = plugin;
+        const backfillPluginName = readPlugin.name;
         setImmediate(async () => {
           try {
-            const result = await backfillPlugin.backfill!();
+            const summary = await backfillAllDenorm({ pluginId: backfillPluginId });
+            const result = summary.perPlugin.find((p) => p.pluginId === backfillPluginId);
+            const enqueued = result?.enqueued ?? 0;
+            const deleted = result?.deleted ?? 0;
             logger.info(`Admin-triggered backfill for plugin ${backfillPluginId}`, {
               service: "dispatch-elig-plugins",
               pluginId: backfillPluginId,
-              workersProcessed: result.workersProcessed,
-              entriesCreated: result.entriesCreated,
+              enqueued,
+              deleted,
+              skipped: result?.skipped,
             });
             if (contactId && userId) {
               await sendInapp({
                 contactId,
                 userId,
                 title: "Backfill Complete",
-                body: `Backfill for "${backfillPlugin.name}" finished: ${result.workersProcessed} workers processed, ${result.entriesCreated} entries created.`,
+                body: `Backfill for "${backfillPluginName}" finished: ${enqueued} workers enqueued for recompute, ${deleted} stale rows removed.`,
                 initiatedBy: "system",
               });
             }
@@ -409,7 +420,7 @@ export function registerDispatchJobsRoutes(
                 contactId,
                 userId,
                 title: "Backfill Failed",
-                body: `Backfill for "${backfillPlugin.name}" failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+                body: `Backfill for "${backfillPluginName}" failed: ${error instanceof Error ? error.message : "Unknown error"}`,
                 initiatedBy: "system",
               });
             }
