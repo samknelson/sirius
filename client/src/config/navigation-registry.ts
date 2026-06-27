@@ -167,6 +167,7 @@ export const configSections: NavSection[] = [
     description: "Grievance tracking configuration",
     icon: FileText,
     items: [
+      { path: "/grievances", label: "Grievances", icon: FileText, testId: "nav-grievances", permission: "staff", requiresComponent: "grievance" },
       { path: "/config/options/grievance-status", label: "Status Options", icon: List, testId: "nav-config-grievance-status-options", permission: "admin", requiresComponent: "grievance" },
       { path: "/config/options/grievance-category", label: "Category Options", icon: List, testId: "nav-config-grievance-category-options", permission: "admin", requiresComponent: "grievance" },
     ],

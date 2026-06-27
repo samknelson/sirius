@@ -484,3 +484,11 @@ export function useCommTabAccess(commId: string | undefined, enabled = true) {
     enabled,
   });
 }
+
+export function useGrievanceTabAccess(grievanceId: string | undefined, enabled = true) {
+  return useTabAccess({
+    entityType: 'grievance',
+    entityId: grievanceId,
+    enabled,
+  });
+}

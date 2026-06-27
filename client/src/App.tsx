@@ -87,6 +87,11 @@ const WorkerSendPostal = lazy(() => import("@/pages/worker-send-postal"));
 const WorkerSendInApp = lazy(() => import("@/pages/worker-send-inapp"));
 const CommDetail = lazy(() => import("@/pages/comm-detail"));
 const CommEdit = lazy(() => import("@/pages/comm-edit"));
+const Grievances = lazy(() => import("@/pages/grievances"));
+const GrievancesAdd = lazy(() => import("@/pages/grievances-add"));
+const GrievanceView = lazy(() => import("@/pages/grievance-view"));
+const GrievanceEdit = lazy(() => import("@/pages/grievance-edit"));
+const GrievanceLogs = lazy(() => import("@/pages/grievance-logs"));
 const WorkerDelete = lazy(() => import("@/pages/worker-delete"));
 const Companies = lazy(() => import("@/pages/companies"));
 const CompanyView = lazy(() => import("@/pages/company-view"));
@@ -505,6 +510,46 @@ function Router() {
         <ProtectedRoute tabId="edit" entityType="comm">
           <AuthenticatedLayout>
             <CommEdit />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/grievances/add">
+        <ProtectedRoute permission="staff" component="grievance">
+          <AuthenticatedLayout>
+            <GrievancesAdd />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/grievances">
+        <ProtectedRoute permission="staff" component="grievance">
+          <AuthenticatedLayout>
+            <Grievances />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/grievance/:id/edit">
+        <ProtectedRoute tabId="edit" entityType="grievance">
+          <AuthenticatedLayout>
+            <GrievanceEdit />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/grievance/:id/logs">
+        <ProtectedRoute tabId="logs" entityType="grievance">
+          <AuthenticatedLayout>
+            <GrievanceLogs />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/grievance/:id">
+        <ProtectedRoute tabId="details" entityType="grievance">
+          <AuthenticatedLayout>
+            <GrievanceView />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
