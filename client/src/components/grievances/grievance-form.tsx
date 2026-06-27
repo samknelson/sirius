@@ -20,6 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { GRIEVANCE_CARDINALITIES, type GrievanceCardinality } from "@shared/schema";
 
 interface OptionItem {
   id: string;
@@ -27,9 +28,17 @@ interface OptionItem {
   isActive?: boolean;
 }
 
+export const GRIEVANCE_CARDINALITY_LABELS: Record<GrievanceCardinality, string> = {
+  individual: "Individual",
+  multiple: "Multiple",
+  "multiple-with-lead": "Multiple with lead",
+  class: "Class",
+};
+
 const grievanceFormSchema = z.object({
   complaint: z.string().optional(),
   remedy: z.string().optional(),
+  cardinality: z.enum(GRIEVANCE_CARDINALITIES),
   statusId: z.string().uuid("Please select a status"),
   categoryId: z.string().uuid("Please select a category"),
 });
@@ -61,6 +70,7 @@ export function GrievanceForm({
     defaultValues: {
       complaint: defaultValues?.complaint ?? "",
       remedy: defaultValues?.remedy ?? "",
+      cardinality: defaultValues?.cardinality ?? "individual",
       statusId: defaultValues?.statusId ?? "",
       categoryId: defaultValues?.categoryId ?? "",
     },
@@ -116,6 +126,31 @@ export function GrievanceForm({
                         {s.name}
                       </SelectItem>
                     ))}
+                </SelectContent>
+              </Select>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="cardinality"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Cardinality</FormLabel>
+              <Select onValueChange={field.onChange} value={field.value}>
+                <FormControl>
+                  <SelectTrigger data-testid="select-grievance-cardinality">
+                    <SelectValue placeholder="Select cardinality" />
+                  </SelectTrigger>
+                </FormControl>
+                <SelectContent>
+                  {GRIEVANCE_CARDINALITIES.map((c) => (
+                    <SelectItem key={c} value={c} data-testid={`option-cardinality-${c}`}>
+                      {GRIEVANCE_CARDINALITY_LABELS[c]}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
               <FormMessage />

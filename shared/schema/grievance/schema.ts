@@ -40,10 +40,20 @@ export type InsertOptionsGrievanceCategory = z.infer<
   typeof insertOptionsGrievanceCategorySchema
 >;
 
+export const GRIEVANCE_CARDINALITIES = [
+  "individual",
+  "multiple",
+  "multiple-with-lead",
+  "class",
+] as const;
+
+export type GrievanceCardinality = (typeof GRIEVANCE_CARDINALITIES)[number];
+
 export const grievances = pgTable("grievances", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   complaint: text("complaint"),
   remedy: text("remedy"),
+  cardinality: varchar("cardinality").notNull().default("individual"),
   statusId: varchar("status_id")
     .notNull()
     .references(() => optionsGrievanceStatus.id, { onDelete: "restrict" }),

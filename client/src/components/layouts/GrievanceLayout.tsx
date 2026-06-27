@@ -7,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useGrievanceTabAccess } from "@/hooks/useTabAccess";
 import { usePageTitle } from "@/contexts/PageTitleContext";
+import { type GrievanceCardinality } from "@shared/schema";
 
 export interface GrievanceLinkedWorker {
   workerId: string;
@@ -23,6 +24,7 @@ export interface GrievanceWithDetails {
   id: string;
   complaint: string | null;
   remedy: string | null;
+  cardinality: GrievanceCardinality;
   statusId: string;
   categoryId: string;
   data: unknown;

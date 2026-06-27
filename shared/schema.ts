@@ -1003,6 +1003,8 @@ export {
   type InsertOptionsGrievanceCategory,
   grievances,
   insertGrievanceSchema,
+  GRIEVANCE_CARDINALITIES,
+  type GrievanceCardinality,
   type Grievance,
   type InsertGrievance,
   grievanceWorkers,

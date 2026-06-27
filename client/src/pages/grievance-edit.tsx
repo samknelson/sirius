@@ -18,6 +18,7 @@ function GrievanceEditContent() {
       await apiRequest("PATCH", `/api/grievances/${grievance.id}`, {
         complaint: values.complaint?.trim() ? values.complaint.trim() : null,
         remedy: values.remedy?.trim() ? values.remedy.trim() : null,
+        cardinality: values.cardinality,
         statusId: values.statusId,
         categoryId: values.categoryId,
       });
@@ -43,6 +44,7 @@ function GrievanceEditContent() {
           defaultValues={{
             complaint: grievance.complaint ?? "",
             remedy: grievance.remedy ?? "",
+            cardinality: grievance.cardinality,
             statusId: grievance.statusId,
             categoryId: grievance.categoryId,
           }}

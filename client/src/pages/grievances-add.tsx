@@ -24,6 +24,7 @@ export default function GrievancesAdd() {
       const created = await apiRequest("POST", "/api/grievances", {
         complaint: values.complaint?.trim() ? values.complaint.trim() : null,
         remedy: values.remedy?.trim() ? values.remedy.trim() : null,
+        cardinality: values.cardinality,
         statusId: values.statusId,
         categoryId: values.categoryId,
       });

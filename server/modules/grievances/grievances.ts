@@ -2,6 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import { storage } from "../../storage";
 import { requireComponent } from "../components";
+import { GRIEVANCE_CARDINALITIES } from "@shared/schema";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PolicyMiddleware = (
@@ -14,6 +15,7 @@ const createGrievanceSchema = z.object({
   remedy: z.string().trim().min(1).nullish(),
   statusId: z.string().uuid("A valid status is required"),
   categoryId: z.string().uuid("A valid category is required"),
+  cardinality: z.enum(GRIEVANCE_CARDINALITIES).default("individual"),
   workerIds: z.array(z.string().uuid()).optional(),
   employerIds: z.array(z.string().uuid()).optional(),
 });
@@ -24,6 +26,7 @@ const updateGrievanceSchema = z
     remedy: z.string().trim().min(1).nullish(),
     statusId: z.string().uuid().optional(),
     categoryId: z.string().uuid().optional(),
+    cardinality: z.enum(GRIEVANCE_CARDINALITIES).optional(),
   })
   .refine((v) => Object.keys(v).length > 0, {
     message: "At least one field must be provided",
@@ -56,13 +59,15 @@ export function registerGrievanceRoutes(
         return res.status(400).json({ message: "Invalid request body", errors: parsed.error.flatten() });
       }
 
-      const { workerIds, employerIds, complaint, remedy, statusId, categoryId } = parsed.data;
+      const { workerIds, employerIds, complaint, remedy, statusId, categoryId, cardinality } =
+        parsed.data;
 
       const created = await storage.grievances.create({
         complaint: complaint ?? null,
         remedy: remedy ?? null,
         statusId,
         categoryId,
+        cardinality,
       });
 
       for (const workerId of workerIds ?? []) {
@@ -110,6 +115,7 @@ export function registerGrievanceRoutes(
       if (parsed.data.remedy !== undefined) data.remedy = parsed.data.remedy ?? null;
       if (parsed.data.statusId !== undefined) data.statusId = parsed.data.statusId;
       if (parsed.data.categoryId !== undefined) data.categoryId = parsed.data.categoryId;
+      if (parsed.data.cardinality !== undefined) data.cardinality = parsed.data.cardinality;
 
       await storage.grievances.update(req.params.id, data);
       const fresh = await storage.grievances.getWithDetails(req.params.id);

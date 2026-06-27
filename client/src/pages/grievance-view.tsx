@@ -18,6 +18,7 @@ import {
   useGrievanceLayout,
   type GrievanceWithDetails,
 } from "@/components/layouts/GrievanceLayout";
+import { GRIEVANCE_CARDINALITY_LABELS } from "@/components/grievances/grievance-form";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -304,6 +305,12 @@ function GrievanceDetailsContent() {
                     {grievance.statusName || "—"}
                   </Badge>
                 </div>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-muted-foreground">Cardinality</label>
+                <p className="text-foreground" data-testid="text-grievance-cardinality">
+                  {GRIEVANCE_CARDINALITY_LABELS[grievance.cardinality] ?? grievance.cardinality}
+                </p>
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium text-muted-foreground">Record ID</label>
