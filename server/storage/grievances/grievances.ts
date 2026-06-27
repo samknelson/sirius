@@ -49,7 +49,7 @@ export interface GrievanceStorage {
   update(id: string, data: Partial<InsertGrievance>): Promise<Grievance | undefined>;
   delete(id: string): Promise<boolean>;
   listWorkers(grievanceId: string): Promise<GrievanceLinkedWorker[]>;
-  addWorker(grievanceId: string, workerId: string): Promise<GrievanceWorker>;
+  addWorker(grievanceId: string, workerId: string, primary?: boolean): Promise<GrievanceWorker>;
   removeWorker(grievanceId: string, workerId: string): Promise<boolean>;
   listEmployers(grievanceId: string): Promise<GrievanceLinkedEmployer[]>;
   addEmployer(grievanceId: string, employerId: string): Promise<GrievanceEmployer>;
@@ -183,11 +183,15 @@ export function createGrievanceStorage(): GrievanceStorage {
         .orderBy(asc(contacts.displayName));
     },
 
-    async addWorker(grievanceId: string, workerId: string): Promise<GrievanceWorker> {
+    async addWorker(
+      grievanceId: string,
+      workerId: string,
+      primary = false,
+    ): Promise<GrievanceWorker> {
       const client = getClient();
       const [row] = await client
         .insert(grievanceWorkers)
-        .values({ grievanceId, workerId })
+        .values({ grievanceId, workerId, primary })
         .returning();
       return row;
     },

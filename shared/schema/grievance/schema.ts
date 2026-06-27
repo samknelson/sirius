@@ -1,4 +1,4 @@
-import { pgTable, varchar, text, jsonb, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, varchar, text, jsonb, boolean, uniqueIndex } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -80,6 +80,7 @@ export const grievanceWorkers = pgTable(
     grievanceId: varchar("grievance_id")
       .notNull()
       .references(() => grievances.id, { onDelete: "restrict" }),
+    primary: boolean("primary").notNull().default(true),
     data: jsonb("data"),
   },
   (table) => ({
@@ -87,6 +88,14 @@ export const grievanceWorkers = pgTable(
       table.workerId,
       table.grievanceId,
     ),
+    onePrimaryPerGrievance: uniqueIndex("grievance_workers_one_primary_per_grievance")
+      .on(table.grievanceId)
+      // `primary` is a reserved word; Postgres reflects the partial-index
+      // predicate with the identifier quoted (`"primary" = true`). The drift
+      // gate compares predicate strings without stripping per-identifier
+      // quotes, so the declared predicate must carry the quotes literally
+      // rather than interpolating `${table.primary}` (which renders unquoted).
+      .where(sql`"primary" = true`),
   }),
 );
 

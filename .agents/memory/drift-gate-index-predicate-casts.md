@@ -25,3 +25,14 @@ the casted form. Verify by booting — the gate error prints expected vs found.
 (`plugin_configs_singleton_cron_uniq` on `(plugin_kind, plugin_id) WHERE
 plugin_kind = 'cron'`); first boot failed with
 `expected plugin_kind = 'cron', found (plugin_kind)::text = 'cron'::text`.
+
+**Reserved-word identifier quoting (same root cause):** `normalizeIndexExpr`
+also does NOT strip double quotes around an *individual* identifier (it only
+strips quotes on table-qualified `"tbl"."col"` and a wholly-quoted expression).
+A column whose name is a reserved word (e.g. `primary`) is reflected by Postgres
+with the identifier quoted in the predicate. Declaring the Drizzle predicate as
+`.where(sql\`${table.primary} = true\`)` renders the column *unquoted*
+(`primary = true`) → drift: `expected primary = true, found "primary" = true`.
+Fix: write the identifier quoted literally — `.where(sql\`"primary" = true\`)` —
+so expected and reflected both normalize to `"primary" = true`. (Bit the
+`grievance_workers_one_primary_per_grievance` partial unique index.)
