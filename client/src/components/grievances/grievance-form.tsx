@@ -1,3 +1,4 @@
+import { type ReactNode } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -51,6 +52,8 @@ interface GrievanceFormProps {
   onSubmit: (values: GrievanceFormValues) => Promise<void> | void;
   submitLabel: string;
   isSubmitting?: boolean;
+  onCardinalityChange?: (cardinality: GrievanceCardinality) => void;
+  renderWorkerSection?: (cardinality: GrievanceCardinality) => ReactNode;
 }
 
 export function GrievanceForm({
@@ -58,6 +61,8 @@ export function GrievanceForm({
   onSubmit,
   submitLabel,
   isSubmitting,
+  onCardinalityChange,
+  renderWorkerSection,
 }: GrievanceFormProps) {
   const { data: statuses = [] } = useQuery<OptionItem[]>({
     queryKey: ["/api/options/grievance-status"],
@@ -77,6 +82,8 @@ export function GrievanceForm({
       categoryId: defaultValues?.categoryId ?? "",
     },
   });
+
+  const cardinality = form.watch("cardinality");
 
   return (
     <Form {...form}>
@@ -141,7 +148,13 @@ export function GrievanceForm({
           render={({ field }) => (
             <FormItem>
               <FormLabel>Cardinality</FormLabel>
-              <Select onValueChange={field.onChange} value={field.value}>
+              <Select
+                onValueChange={(value) => {
+                  field.onChange(value);
+                  onCardinalityChange?.(value as GrievanceCardinality);
+                }}
+                value={field.value}
+              >
                 <FormControl>
                   <SelectTrigger data-testid="select-grievance-cardinality">
                     <SelectValue placeholder="Select cardinality" />
@@ -198,24 +211,28 @@ export function GrievanceForm({
           )}
         />
 
-        <FormField
-          control={form.control}
-          name="classDescription"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Class Description</FormLabel>
-              <FormControl>
-                <Textarea
-                  rows={6}
-                  placeholder="Describe the affected class"
-                  data-testid="input-grievance-class-description"
-                  {...field}
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+        {cardinality === "class" ? (
+          <FormField
+            control={form.control}
+            name="classDescription"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Class Description</FormLabel>
+                <FormControl>
+                  <Textarea
+                    rows={6}
+                    placeholder="Describe the affected class"
+                    data-testid="input-grievance-class-description"
+                    {...field}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        ) : (
+          renderWorkerSection?.(cardinality)
+        )}
 
         <div className="flex items-center gap-3">
           <Button type="submit" disabled={isSubmitting} data-testid="button-submit-grievance">

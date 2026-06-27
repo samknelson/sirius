@@ -4,8 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { X, Search } from "lucide-react";
+import { X } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -19,149 +18,13 @@ import {
   type GrievanceWithDetails,
 } from "@/components/layouts/GrievanceLayout";
 import { GRIEVANCE_CARDINALITY_LABELS } from "@/components/grievances/grievance-form";
+import { GrievanceWorkerManager } from "@/components/grievances/grievance-worker-section";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-
-interface WorkerSearchResult {
-  id: string;
-  siriusId: number | null;
-  displayName: string | null;
-}
 
 interface EmployerOption {
   id: string;
   name: string;
-}
-
-function WorkerManager({ grievance }: { grievance: GrievanceWithDetails }) {
-  const { toast } = useToast();
-  const [query, setQuery] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  const { data: searchData } = useQuery<{ workers: WorkerSearchResult[]; total: number }>({
-    queryKey: ["/api/workers/search", query],
-    queryFn: async () => {
-      const response = await fetch(`/api/workers/search?q=${encodeURIComponent(query)}`);
-      if (!response.ok) throw new Error("Search failed");
-      return response.json();
-    },
-    enabled: query.trim().length >= 2,
-  });
-
-  const linkedIds = new Set(grievance.workers.map((w) => w.workerId));
-  const results = (searchData?.workers ?? []).filter((w) => !linkedIds.has(w.id));
-
-  const refresh = async () => {
-    await queryClient.invalidateQueries({ queryKey: ["/api/grievances", grievance.id] });
-    await queryClient.invalidateQueries({ queryKey: ["/api/grievances"] });
-  };
-
-  const addWorker = async (workerId: string) => {
-    setBusy(true);
-    try {
-      await apiRequest("POST", `/api/grievances/${grievance.id}/workers`, { workerId });
-      await refresh();
-      setQuery("");
-      toast({ title: "Worker linked" });
-    } catch (error: any) {
-      toast({
-        title: "Failed to link worker",
-        description: error?.message ?? "Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const removeWorker = async (workerId: string) => {
-    setBusy(true);
-    try {
-      await apiRequest("DELETE", `/api/grievances/${grievance.id}/workers/${workerId}`);
-      await refresh();
-      toast({ title: "Worker unlinked" });
-    } catch (error: any) {
-      toast({
-        title: "Failed to unlink worker",
-        description: error?.message ?? "Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Workers</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="relative">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} />
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search workers by name or ID"
-              className="pl-9"
-              data-testid="input-worker-search"
-            />
-          </div>
-          {query.trim().length >= 2 && results.length > 0 && (
-            <div className="mt-2 border rounded-lg divide-y max-h-60 overflow-y-auto">
-              {results.map((w) => (
-                <button
-                  key={w.id}
-                  type="button"
-                  disabled={busy}
-                  onClick={() => addWorker(w.id)}
-                  className="w-full text-left px-3 py-2 hover:bg-muted disabled:opacity-50"
-                  data-testid={`button-add-worker-${w.id}`}
-                >
-                  {w.displayName || "Unknown"}{" "}
-                  <span className="text-muted-foreground text-sm">
-                    {w.siriusId != null ? `#${w.siriusId}` : ""}
-                  </span>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {grievance.workers.length === 0 ? (
-          <p className="text-muted-foreground text-sm" data-testid="text-no-workers">
-            No workers linked.
-          </p>
-        ) : (
-          <div className="flex flex-wrap gap-2">
-            {grievance.workers.map((w) => (
-              <Badge
-                key={w.workerId}
-                variant="secondary"
-                className="flex items-center gap-1"
-                data-testid={`badge-worker-${w.workerId}`}
-              >
-                <Link href={`/workers/${w.workerId}`} className="hover:underline">
-                  {w.displayName || "Unknown"}
-                  {w.siriusId != null ? ` #${w.siriusId}` : ""}
-                </Link>
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => removeWorker(w.workerId)}
-                  className="ml-1 disabled:opacity-50"
-                  data-testid={`button-remove-worker-${w.workerId}`}
-                >
-                  <X size={12} />
-                </button>
-              </Badge>
-            ))}
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
 }
 
 function EmployerManager({ grievance }: { grievance: GrievanceWithDetails }) {
@@ -360,7 +223,13 @@ function GrievanceDetailsContent() {
         </CardContent>
       </Card>
 
-      <WorkerManager grievance={grievance} />
+      {grievance.cardinality !== "class" && (
+        <GrievanceWorkerManager
+          grievanceId={grievance.id}
+          cardinality={grievance.cardinality}
+          workers={grievance.workers}
+        />
+      )}
       <EmployerManager grievance={grievance} />
     </div>
   );

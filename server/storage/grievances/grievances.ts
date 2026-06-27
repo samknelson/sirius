@@ -13,7 +13,7 @@ import {
   type GrievanceWorker,
   type GrievanceEmployer,
 } from "@shared/schema";
-import { eq, and, inArray, asc } from "drizzle-orm";
+import { eq, and, ne, inArray, asc } from "drizzle-orm";
 import { type StorageLoggingConfig } from "../middleware/logging";
 
 export interface GrievanceListItem extends Grievance {
@@ -27,6 +27,7 @@ export interface GrievanceLinkedWorker {
   workerId: string;
   siriusId: number | null;
   displayName: string | null;
+  primary: boolean;
 }
 
 export interface GrievanceLinkedEmployer {
@@ -49,8 +50,20 @@ export interface GrievanceStorage {
   update(id: string, data: Partial<InsertGrievance>): Promise<Grievance | undefined>;
   delete(id: string): Promise<boolean>;
   listWorkers(grievanceId: string): Promise<GrievanceLinkedWorker[]>;
-  addWorker(grievanceId: string, workerId: string, primary?: boolean): Promise<GrievanceWorker>;
+  addWorkerForGrievance(
+    grievanceId: string,
+    workerId: string,
+  ): Promise<
+    | { worker: GrievanceWorker }
+    | { error: "not-found" | "class" | "individual-full" }
+  >;
+  updateWorker(
+    grievanceId: string,
+    workerId: string,
+    data: { primary?: boolean },
+  ): Promise<GrievanceWorker | undefined>;
   removeWorker(grievanceId: string, workerId: string): Promise<boolean>;
+  getWorkerStats(grievanceId: string): Promise<{ count: number; primaryCount: number }>;
   listEmployers(grievanceId: string): Promise<GrievanceLinkedEmployer[]>;
   addEmployer(grievanceId: string, employerId: string): Promise<GrievanceEmployer>;
   removeEmployer(grievanceId: string, employerId: string): Promise<boolean>;
@@ -177,6 +190,7 @@ export function createGrievanceStorage(): GrievanceStorage {
           workerId: grievanceWorkers.workerId,
           siriusId: workers.siriusId,
           displayName: contacts.displayName,
+          primary: grievanceWorkers.primary,
         })
         .from(grievanceWorkers)
         .innerJoin(workers, eq(grievanceWorkers.workerId, workers.id))
@@ -185,17 +199,83 @@ export function createGrievanceStorage(): GrievanceStorage {
         .orderBy(asc(contacts.displayName));
     },
 
-    async addWorker(
+    async addWorkerForGrievance(
       grievanceId: string,
       workerId: string,
-      primary = false,
-    ): Promise<GrievanceWorker> {
-      const client = getClient();
-      const [row] = await client
-        .insert(grievanceWorkers)
-        .values({ grievanceId, workerId, primary })
-        .returning();
-      return row;
+    ): Promise<
+      | { worker: GrievanceWorker }
+      | { error: "not-found" | "class" | "individual-full" }
+    > {
+      // Lock the grievance row so concurrent adds are serialized. This is what
+      // makes the "individual grievance has at most one worker" rule hold
+      // without a dedicated DB constraint: the count check and the insert run
+      // inside one transaction that owns the grievance row.
+      return runInTransaction(async () => {
+        const client = getClient();
+        const [grievance] = await client
+          .select({ cardinality: grievances.cardinality })
+          .from(grievances)
+          .where(eq(grievances.id, grievanceId))
+          .for("update");
+        if (!grievance) {
+          return { error: "not-found" as const };
+        }
+        if (grievance.cardinality === "class") {
+          return { error: "class" as const };
+        }
+
+        let primary = false;
+        if (grievance.cardinality === "individual") {
+          const existing = await client
+            .select({ workerId: grievanceWorkers.workerId })
+            .from(grievanceWorkers)
+            .where(eq(grievanceWorkers.grievanceId, grievanceId));
+          if (existing.length >= 1) {
+            return { error: "individual-full" as const };
+          }
+          // The single worker on an individual grievance is implicitly the lead.
+          primary = true;
+        }
+
+        const [row] = await client
+          .insert(grievanceWorkers)
+          .values({ grievanceId, workerId, primary })
+          .returning();
+        return { worker: row };
+      });
+    },
+
+    async updateWorker(
+      grievanceId: string,
+      workerId: string,
+      data: { primary?: boolean },
+    ): Promise<GrievanceWorker | undefined> {
+      return runInTransaction(async () => {
+        const client = getClient();
+        if (data.primary === true) {
+          // Demote any existing lead so the one-primary-per-grievance index holds.
+          await client
+            .update(grievanceWorkers)
+            .set({ primary: false })
+            .where(
+              and(
+                eq(grievanceWorkers.grievanceId, grievanceId),
+                ne(grievanceWorkers.workerId, workerId),
+              ),
+            );
+        }
+        const [row] = await client
+          .update(grievanceWorkers)
+          .set(data)
+          .where(
+            and(
+              eq(grievanceWorkers.grievanceId, grievanceId),
+              eq(grievanceWorkers.workerId, workerId),
+            ),
+          )
+          .returning();
+        return row || undefined;
+      });
     },
 
     async removeWorker(grievanceId: string, workerId: string): Promise<boolean> {
@@ -205,6 +285,18 @@ export function createGrievanceStorage(): GrievanceStorage {
         .where(and(eq(grievanceWorkers.grievanceId, grievanceId), eq(grievanceWorkers.workerId, workerId)))
         .returning();
       return result.length > 0;
+    },
+
+    async getWorkerStats(grievanceId: string): Promise<{ count: number; primaryCount: number }> {
+      const client = getClient();
+      const rows = await client
+        .select({ primary: grievanceWorkers.primary })
+        .from(grievanceWorkers)
+        .where(eq(grievanceWorkers.grievanceId, grievanceId));
+      return {
+        count: rows.length,
+        primaryCount: rows.filter((r) => r.primary).length,
+      };
     },
 
     async listEmployers(grievanceId: string): Promise<GrievanceLinkedEmployer[]> {
@@ -299,12 +391,18 @@ export const grievanceLoggingConfig: StorageLoggingConfig<GrievanceStorage> = {
         return `Deleted grievance ${typeof id === "string" ? id.slice(0, 8) : id}`;
       },
     },
-    addWorker: {
+    addWorkerForGrievance: {
+      enabled: true,
+      getEntityId: (args) => args[1],
+      getHostEntityId: (args) => args[0],
+      getDescription: async () => `Linked worker to grievance`,
+    },
+    updateWorker: {
       enabled: true,
       getEntityId: (args) => args[1],
       getHostEntityId: (args) => args[0],
       after: async (_args, result) => result,
-      getDescription: async (args) => `Linked worker to grievance`,
+      getDescription: async () => `Updated worker on grievance`,
     },
     removeWorker: {
       enabled: true,

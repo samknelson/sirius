@@ -10,16 +10,28 @@ type PolicyMiddleware = (
   getEntityId?: (req: Request) => string | undefined | Promise<string | undefined>,
 ) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 
-const createGrievanceSchema = z.object({
-  complaint: z.string().trim().min(1, "Complaint is required").nullish(),
-  remedy: z.string().trim().min(1).nullish(),
-  classDescription: z.string().trim().min(1).nullish(),
-  statusId: z.string().uuid("A valid status is required"),
-  categoryId: z.string().uuid("A valid category is required"),
-  cardinality: z.enum(GRIEVANCE_CARDINALITIES).default("individual"),
-  workerIds: z.array(z.string().uuid()).optional(),
-  employerIds: z.array(z.string().uuid()).optional(),
-});
+const createGrievanceSchema = z
+  .object({
+    complaint: z.string().trim().min(1, "Complaint is required").nullish(),
+    remedy: z.string().trim().min(1).nullish(),
+    classDescription: z.string().trim().min(1).nullish(),
+    statusId: z.string().uuid("A valid status is required"),
+    categoryId: z.string().uuid("A valid category is required"),
+    cardinality: z.enum(GRIEVANCE_CARDINALITIES).default("individual"),
+    employerIds: z.array(z.string().uuid()).optional(),
+  })
+  .refine((v) => v.cardinality === "class" || v.classDescription == null, {
+    message: "A class description is only allowed for class grievances",
+    path: ["classDescription"],
+  });
+
+const editWorkerSchema = z
+  .object({
+    primary: z.boolean().optional(),
+  })
+  .refine((v) => Object.keys(v).length > 0, {
+    message: "At least one field must be provided",
+  });
 
 const updateGrievanceSchema = z
   .object({
@@ -62,7 +74,6 @@ export function registerGrievanceRoutes(
       }
 
       const {
-        workerIds,
         employerIds,
         complaint,
         remedy,
@@ -75,15 +86,12 @@ export function registerGrievanceRoutes(
       const created = await storage.grievances.create({
         complaint: complaint ?? null,
         remedy: remedy ?? null,
-        classDescription: classDescription ?? null,
+        classDescription: cardinality === "class" ? (classDescription ?? null) : null,
         statusId,
         categoryId,
         cardinality,
       });
 
-      for (const workerId of workerIds ?? []) {
-        await storage.grievances.addWorker(created.id, workerId);
-      }
       for (const employerId of employerIds ?? []) {
         await storage.grievances.addEmployer(created.id, employerId);
       }
@@ -119,6 +127,45 @@ export function registerGrievanceRoutes(
       const existing = await storage.grievances.get(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Grievance not found" });
+      }
+
+      const newCardinality = parsed.data.cardinality ?? existing.cardinality;
+      const newClassDescription =
+        parsed.data.classDescription !== undefined
+          ? (parsed.data.classDescription ?? null)
+          : existing.classDescription;
+
+      // A class description may only exist on a class grievance. Switching away
+      // from class requires clearing it in the same request.
+      if (newCardinality !== "class" && newClassDescription != null) {
+        return res.status(400).json({
+          message:
+            "A class description is only allowed for class grievances. Clear it before changing the cardinality.",
+        });
+      }
+
+      // Reject cardinality transitions that the currently-linked workers violate.
+      if (
+        parsed.data.cardinality !== undefined &&
+        parsed.data.cardinality !== existing.cardinality
+      ) {
+        const stats = await storage.grievances.getWorkerStats(req.params.id);
+        if (newCardinality === "class" && stats.count > 0) {
+          return res.status(400).json({
+            message: "Remove all workers before changing this grievance to a class grievance.",
+          });
+        }
+        if (newCardinality === "individual" && stats.count > 1) {
+          return res.status(400).json({
+            message:
+              "An individual grievance can have at most one worker. Remove the extra workers first.",
+          });
+        }
+        if (newCardinality === "multiple" && stats.primaryCount > 0) {
+          return res.status(400).json({
+            message: "A multiple grievance cannot have a lead worker. Clear the lead first.",
+          });
+        }
       }
 
       const data: Record<string, unknown> = {};
@@ -162,11 +209,25 @@ export function registerGrievanceRoutes(
       if (!parsed.success) {
         return res.status(400).json({ message: "Invalid request body", errors: parsed.error.flatten() });
       }
-      const grievance = await storage.grievances.get(req.params.id);
-      if (!grievance) {
-        return res.status(404).json({ message: "Grievance not found" });
+      // Cardinality enforcement (class rejection, individual single-worker
+      // limit, and implicit-lead assignment) happens atomically inside the
+      // storage method under a grievance row lock, so concurrent adds cannot
+      // exceed the individual limit.
+      const result = await storage.grievances.addWorkerForGrievance(
+        req.params.id,
+        parsed.data.workerId,
+      );
+      if ("error" in result) {
+        if (result.error === "not-found") {
+          return res.status(404).json({ message: "Grievance not found" });
+        }
+        if (result.error === "class") {
+          return res.status(400).json({ message: "Class grievances cannot have workers." });
+        }
+        return res
+          .status(400)
+          .json({ message: "An individual grievance can have only one worker." });
       }
-      await storage.grievances.addWorker(req.params.id, parsed.data.workerId);
       const workers = await storage.grievances.listWorkers(req.params.id);
       res.status(201).json(workers);
     } catch (error: any) {
@@ -175,6 +236,52 @@ export function registerGrievanceRoutes(
       }
       console.error("Failed to link worker to grievance:", error);
       res.status(500).json({ message: "Failed to link worker" });
+    }
+  });
+
+  app.patch("/api/grievances/:id/workers/:workerId", ...gate, async (req, res) => {
+    try {
+      const parsed = editWorkerSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid request body", errors: parsed.error.flatten() });
+      }
+      const grievance = await storage.grievances.get(req.params.id);
+      if (!grievance) {
+        return res.status(404).json({ message: "Grievance not found" });
+      }
+
+      if (parsed.data.primary === true) {
+        if (grievance.cardinality === "class") {
+          return res.status(400).json({ message: "Class grievances cannot have workers." });
+        }
+        if (grievance.cardinality === "multiple") {
+          return res
+            .status(400)
+            .json({ message: "A multiple grievance cannot have a lead worker." });
+        }
+      }
+
+      // An individual grievance's only worker is always its lead; it cannot be
+      // demoted to a non-lead state.
+      if (parsed.data.primary === false && grievance.cardinality === "individual") {
+        return res
+          .status(400)
+          .json({ message: "The worker on an individual grievance is always the lead." });
+      }
+
+      const updated = await storage.grievances.updateWorker(
+        req.params.id,
+        req.params.workerId,
+        { primary: parsed.data.primary },
+      );
+      if (!updated) {
+        return res.status(404).json({ message: "Worker link not found" });
+      }
+      const workers = await storage.grievances.listWorkers(req.params.id);
+      res.json(workers);
+    } catch (error) {
+      console.error("Failed to update grievance worker:", error);
+      res.status(500).json({ message: "Failed to update worker" });
     }
   });
 

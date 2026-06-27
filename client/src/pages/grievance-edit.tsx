@@ -3,6 +3,7 @@ import { useLocation } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { GrievanceLayout, useGrievanceLayout } from "@/components/layouts/GrievanceLayout";
 import { GrievanceForm, type GrievanceFormValues } from "@/components/grievances/grievance-form";
+import { GrievanceWorkerManager } from "@/components/grievances/grievance-worker-section";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -15,10 +16,11 @@ function GrievanceEditContent() {
   const handleSubmit = async (values: GrievanceFormValues) => {
     setIsSubmitting(true);
     try {
+      const isClass = values.cardinality === "class";
       await apiRequest("PATCH", `/api/grievances/${grievance.id}`, {
         complaint: values.complaint?.trim() ? values.complaint.trim() : null,
         remedy: values.remedy?.trim() ? values.remedy.trim() : null,
-        classDescription: values.classDescription?.trim() ? values.classDescription.trim() : null,
+        classDescription: isClass && values.classDescription?.trim() ? values.classDescription.trim() : null,
         cardinality: values.cardinality,
         statusId: values.statusId,
         categoryId: values.categoryId,
@@ -39,23 +41,33 @@ function GrievanceEditContent() {
   };
 
   return (
-    <Card>
-      <CardContent className="pt-6 max-w-2xl">
-        <GrievanceForm
-          defaultValues={{
-            complaint: grievance.complaint ?? "",
-            remedy: grievance.remedy ?? "",
-            classDescription: grievance.classDescription ?? "",
-            cardinality: grievance.cardinality,
-            statusId: grievance.statusId,
-            categoryId: grievance.categoryId,
-          }}
-          onSubmit={handleSubmit}
-          submitLabel="Save Changes"
-          isSubmitting={isSubmitting}
+    <div className="space-y-6">
+      <Card>
+        <CardContent className="pt-6 max-w-2xl">
+          <GrievanceForm
+            defaultValues={{
+              complaint: grievance.complaint ?? "",
+              remedy: grievance.remedy ?? "",
+              classDescription: grievance.classDescription ?? "",
+              cardinality: grievance.cardinality,
+              statusId: grievance.statusId,
+              categoryId: grievance.categoryId,
+            }}
+            onSubmit={handleSubmit}
+            submitLabel="Save Changes"
+            isSubmitting={isSubmitting}
+          />
+        </CardContent>
+      </Card>
+
+      {grievance.cardinality !== "class" && (
+        <GrievanceWorkerManager
+          grievanceId={grievance.id}
+          cardinality={grievance.cardinality}
+          workers={grievance.workers}
         />
-      </CardContent>
-    </Card>
+      )}
+    </div>
   );
 }
 

@@ -13,6 +13,7 @@ export interface GrievanceLinkedWorker {
   workerId: string;
   siriusId: number | null;
   displayName: string | null;
+  primary: boolean;
 }
 
 export interface GrievanceLinkedEmployer {
