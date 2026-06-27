@@ -65,6 +65,7 @@ export const optionsTypeRegistry: Record<string, OptionsTypeConfig> = {
   "worker-ms": createTypeConfig("worker-ms"),
   "worker-relation-type": createTypeConfig("worker-relation-type"),
   "comm-tag": createTypeConfig("comm-tag"),
+  "grievance-status": createTypeConfig("grievance-status"),
 };
 
 export function getOptionsType(type: string): OptionsTypeConfig | undefined {

@@ -993,6 +993,13 @@ export {
 } from "./schema/sitespecific/freeman/schema";
 
 export {
+  optionsGrievanceStatus,
+  insertOptionsGrievanceStatusSchema,
+  type OptionsGrievanceStatus,
+  type InsertOptionsGrievanceStatus,
+} from "./schema/grievance/schema";
+
+export {
   optionsSkills,
   insertOptionsSkillsSchema,
   type OptionsSkill,

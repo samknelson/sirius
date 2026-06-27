@@ -213,7 +213,13 @@ export const componentRegistry: ComponentDefinition[] = [
     name: "Grievance",
     description: "Functionality for tracking and managing grievances",
     enabledByDefault: false,
-    category: "core"
+    category: "core",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/grievance/schema.ts",
+      tables: ["options_grievance_status"]
+    }
   },
   {
     id: "sitespecific.gbhet",

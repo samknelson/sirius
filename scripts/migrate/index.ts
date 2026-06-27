@@ -58,6 +58,7 @@ import "./components/trust.benefits.eligibility.exemptions/001_create_exemptions
 import "./components/trust.benefits.eligibility.exemptions/002_require_benefit_and_plugins";
 import "./components/sitespecific.bao/001_create_immediate_eligibility";
 import "./components/sitespecific.freeman/001_create_crewleads";
+import "./components/grievance/001_create_options_grievance_status";
 
 // Baseline scripts — one-off, per-deployment scripts that bring a database
 // into sync with the schema BEFORE the drift gate runs. Baseline scripts

@@ -162,6 +162,15 @@ export const configSections: NavSection[] = [
     ],
   },
   {
+    id: "grievance",
+    title: "Grievance",
+    description: "Grievance tracking configuration",
+    icon: FileText,
+    items: [
+      { path: "/config/options/grievance-status", label: "Status Options", icon: List, testId: "nav-config-grievance-status-options", permission: "admin", requiresComponent: "grievance" },
+    ],
+  },
+  {
     id: "ledger",
     title: "Ledger",
     description: "Financial ledger and payment configuration",
