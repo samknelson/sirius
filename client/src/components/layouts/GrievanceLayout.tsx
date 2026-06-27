@@ -24,6 +24,7 @@ export interface GrievanceWithDetails {
   id: string;
   complaint: string | null;
   remedy: string | null;
+  classDescription: string | null;
   cardinality: GrievanceCardinality;
   statusId: string;
   categoryId: string;

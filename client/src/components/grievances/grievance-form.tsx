@@ -38,6 +38,7 @@ export const GRIEVANCE_CARDINALITY_LABELS: Record<GrievanceCardinality, string> 
 const grievanceFormSchema = z.object({
   complaint: z.string().optional(),
   remedy: z.string().optional(),
+  classDescription: z.string().optional(),
   cardinality: z.enum(GRIEVANCE_CARDINALITIES),
   statusId: z.string().uuid("Please select a status"),
   categoryId: z.string().uuid("Please select a category"),
@@ -70,6 +71,7 @@ export function GrievanceForm({
     defaultValues: {
       complaint: defaultValues?.complaint ?? "",
       remedy: defaultValues?.remedy ?? "",
+      classDescription: defaultValues?.classDescription ?? "",
       cardinality: defaultValues?.cardinality ?? "individual",
       statusId: defaultValues?.statusId ?? "",
       categoryId: defaultValues?.categoryId ?? "",
@@ -188,6 +190,25 @@ export function GrievanceForm({
                   rows={4}
                   placeholder="Describe the requested remedy"
                   data-testid="input-grievance-remedy"
+                  {...field}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="classDescription"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Class Description</FormLabel>
+              <FormControl>
+                <Textarea
+                  rows={6}
+                  placeholder="Describe the affected class"
+                  data-testid="input-grievance-class-description"
                   {...field}
                 />
               </FormControl>

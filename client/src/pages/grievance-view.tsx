@@ -335,6 +335,16 @@ function GrievanceDetailsContent() {
             </p>
           </div>
 
+          <div>
+            <h3 className="text-lg font-semibold text-foreground mb-2">Class Description</h3>
+            <p
+              className="text-foreground whitespace-pre-wrap"
+              data-testid="text-grievance-class-description"
+            >
+              {grievance.classDescription || "—"}
+            </p>
+          </div>
+
           <div className="pt-4 border-t border-border">
             <div className="flex items-center space-x-3">
               <Link href="/grievances">

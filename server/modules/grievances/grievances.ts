@@ -13,6 +13,7 @@ type PolicyMiddleware = (
 const createGrievanceSchema = z.object({
   complaint: z.string().trim().min(1, "Complaint is required").nullish(),
   remedy: z.string().trim().min(1).nullish(),
+  classDescription: z.string().trim().min(1).nullish(),
   statusId: z.string().uuid("A valid status is required"),
   categoryId: z.string().uuid("A valid category is required"),
   cardinality: z.enum(GRIEVANCE_CARDINALITIES).default("individual"),
@@ -24,6 +25,7 @@ const updateGrievanceSchema = z
   .object({
     complaint: z.string().trim().min(1).nullish(),
     remedy: z.string().trim().min(1).nullish(),
+    classDescription: z.string().trim().min(1).nullish(),
     statusId: z.string().uuid().optional(),
     categoryId: z.string().uuid().optional(),
     cardinality: z.enum(GRIEVANCE_CARDINALITIES).optional(),
@@ -59,12 +61,21 @@ export function registerGrievanceRoutes(
         return res.status(400).json({ message: "Invalid request body", errors: parsed.error.flatten() });
       }
 
-      const { workerIds, employerIds, complaint, remedy, statusId, categoryId, cardinality } =
-        parsed.data;
+      const {
+        workerIds,
+        employerIds,
+        complaint,
+        remedy,
+        classDescription,
+        statusId,
+        categoryId,
+        cardinality,
+      } = parsed.data;
 
       const created = await storage.grievances.create({
         complaint: complaint ?? null,
         remedy: remedy ?? null,
+        classDescription: classDescription ?? null,
         statusId,
         categoryId,
         cardinality,
@@ -113,6 +124,8 @@ export function registerGrievanceRoutes(
       const data: Record<string, unknown> = {};
       if (parsed.data.complaint !== undefined) data.complaint = parsed.data.complaint ?? null;
       if (parsed.data.remedy !== undefined) data.remedy = parsed.data.remedy ?? null;
+      if (parsed.data.classDescription !== undefined)
+        data.classDescription = parsed.data.classDescription ?? null;
       if (parsed.data.statusId !== undefined) data.statusId = parsed.data.statusId;
       if (parsed.data.categoryId !== undefined) data.categoryId = parsed.data.categoryId;
       if (parsed.data.cardinality !== undefined) data.cardinality = parsed.data.cardinality;

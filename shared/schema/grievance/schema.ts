@@ -53,6 +53,7 @@ export const grievances = pgTable("grievances", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   complaint: text("complaint"),
   remedy: text("remedy"),
+  classDescription: text("class_description"),
   cardinality: varchar("cardinality").notNull().default("individual"),
   statusId: varchar("status_id")
     .notNull()
