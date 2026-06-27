@@ -209,6 +209,13 @@ export const componentRegistry: ComponentDefinition[] = [
     }
   },
   {
+    id: "grievance",
+    name: "Grievance",
+    description: "Functionality for tracking and managing grievances",
+    enabledByDefault: false,
+    category: "core"
+  },
+  {
     id: "sitespecific.gbhet",
     name: "GBHET Customization",
     description: "Custom functionality for GBHET",
