@@ -997,6 +997,10 @@ export {
   insertOptionsGrievanceStatusSchema,
   type OptionsGrievanceStatus,
   type InsertOptionsGrievanceStatus,
+  optionsGrievanceCategory,
+  insertOptionsGrievanceCategorySchema,
+  type OptionsGrievanceCategory,
+  type InsertOptionsGrievanceCategory,
 } from "./schema/grievance/schema";
 
 export {

@@ -20,3 +20,21 @@ export type OptionsGrievanceStatus = typeof optionsGrievanceStatus.$inferSelect;
 export type InsertOptionsGrievanceStatus = z.infer<
   typeof insertOptionsGrievanceStatusSchema
 >;
+
+export const optionsGrievanceCategory = pgTable("options_grievance_category", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name", { length: 255 }).notNull().unique(),
+  description: text("description"),
+  data: jsonb("data"),
+});
+
+export const insertOptionsGrievanceCategorySchema = createInsertSchema(
+  optionsGrievanceCategory,
+).omit({
+  id: true,
+});
+
+export type OptionsGrievanceCategory = typeof optionsGrievanceCategory.$inferSelect;
+export type InsertOptionsGrievanceCategory = z.infer<
+  typeof insertOptionsGrievanceCategorySchema
+>;

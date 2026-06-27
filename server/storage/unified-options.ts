@@ -25,6 +25,7 @@ import {
   optionsWorkerRelationType,
   optionsCommTags,
   optionsGrievanceStatus,
+  optionsGrievanceCategory,
   bulkMediumEnum,
 } from "@shared/schema";
 import { defineLoggingConfig } from "./middleware/logging";
@@ -57,7 +58,8 @@ export type OptionsTypeName =
   | "worker-ms"
   | "worker-relation-type"
   | "comm-tag"
-  | "grievance-status";
+  | "grievance-status"
+  | "grievance-category";
 
 /**
  * Field definition for dynamic form and table rendering
@@ -453,6 +455,24 @@ const optionsMetadata: Record<OptionsTypeName, OptionsTableMetadata<any>> = {
       { name: "icon", label: "Icon", inputType: "icon", required: false, showInTable: true, columnHeader: "Icon", columnWidth: "80px", dataField: true },
       { name: "name", label: "Name", inputType: "text", required: true, placeholder: "e.g., Open, In Review, Resolved", showInTable: true, columnHeader: "Name" },
       { name: "description", label: "Description", inputType: "textarea", required: false, placeholder: "Optional description of this status", showInTable: true, columnHeader: "Description" },
+    ],
+  },
+  "grievance-category": {
+    table: optionsGrievanceCategory,
+    displayName: "Grievance Category Options",
+    description: "Manage category options for grievances",
+    singularName: "Category Option",
+    pluralName: "Category Options",
+    orderByColumn: "name" as const,
+    loggingModule: "options.grievanceCategory",
+    requiredFields: ["name"],
+    optionalFields: ["description", "data"],
+    supportsSequencing: false,
+    requiredComponent: "grievance",
+    fields: [
+      { name: "icon", label: "Icon", inputType: "icon", required: false, showInTable: true, columnHeader: "Icon", columnWidth: "80px", dataField: true },
+      { name: "name", label: "Name", inputType: "text", required: true, placeholder: "e.g., Discipline, Pay, Safety", showInTable: true, columnHeader: "Name" },
+      { name: "description", label: "Description", inputType: "textarea", required: false, placeholder: "Optional description of this category", showInTable: true, columnHeader: "Description" },
     ],
   },
   "skill": {

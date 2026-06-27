@@ -168,6 +168,7 @@ export const configSections: NavSection[] = [
     icon: FileText,
     items: [
       { path: "/config/options/grievance-status", label: "Status Options", icon: List, testId: "nav-config-grievance-status-options", permission: "admin", requiresComponent: "grievance" },
+      { path: "/config/options/grievance-category", label: "Category Options", icon: List, testId: "nav-config-grievance-category-options", permission: "admin", requiresComponent: "grievance" },
     ],
   },
   {
