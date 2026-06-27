@@ -1,5 +1,5 @@
 import type { Express, Request, Response, NextFunction } from "express";
-import { getPluginKind, enforceKindGating, getPluginConfigAdapter, defaultHydrate, type PluginConfigEnvelopeField } from "../plugins/_core";
+import { getPluginKind, enforceKindGating, enforcePluginGating, getPluginConfigAdapter, defaultHydrate, type PluginConfigEnvelopeField } from "../plugins/_core";
 import { storage } from "../storage";
 import { SingletonViolationError } from "../storage/plugin-configs";
 import { runInTransaction } from "../storage/transaction-context";
@@ -72,6 +72,38 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
 
   const hydrate = (adapter: ReturnType<typeof getPluginConfigAdapter>, envelope: any) =>
     adapter?.hydrate ? adapter.hydrate(envelope) : defaultHydrate(envelope);
+
+  /**
+   * Per-plugin component + access-policy gate. `resolve()` only enforces
+   * the kind-level gate, which covers kinds that declare a kind-wide
+   * `requiredComponent` (e.g. charge → ledger). It does NOT cover the
+   * common cases that leak through these generic config routes:
+   *
+   *   - Kinds with NO kind-level component whose individual plugins are
+   *     component-owned (dashboard widgets, trust-eligibility plugins).
+   *   - Component-gated kinds whose sub-plugins belong to finer-grained
+   *     optional components (e.g. charge's `sitespecific.btu` plugins,
+   *     dispatch-eligibility's `dispatch.eba` plugins) — the kind gate
+   *     passes but the plugin's own component is disabled.
+   *
+   * Without this, an authenticated admin could read or mutate a disabled
+   * feature's config rows directly even though the manifest + admin
+   * endpoints already hide them via the same gate. Mirrors
+   * `plugins-admin.ts` (single-plugin endpoints) exactly.
+   *
+   * Unknown plugin ids fall through (`ok`) so the existing 400/404 paths
+   * (`ensureValidPlugin`, kind/id mismatch checks) handle them.
+   */
+  async function pluginGate(
+    registration: NonNullable<ReturnType<typeof getPluginKind>>,
+    pluginId: string | null | undefined,
+    req: Request,
+  ): Promise<{ ok: true } | { ok: false; status: number; message: string }> {
+    if (!pluginId) return { ok: true };
+    const plugin = registration.registry.get(pluginId);
+    if (!plugin) return { ok: true };
+    return enforcePluginGating(registration.registry.getMetadata(plugin), req);
+  }
 
   /**
    * Enforce a kind's uniqueness key (if it declares one). Returns true when a
@@ -152,10 +184,13 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
     try {
       const resolved = await resolve(req, res);
       if (!resolved) return;
-      const { kind, adapter } = resolved;
+      const { kind, adapter, registration } = resolved;
       const configs = await storage.pluginConfigs.getByKind(kind);
       const out = await Promise.all(
         configs.map(async (config) => {
+          // Hide configs whose plugin's component is disabled (or which the
+          // user may not access) so a disabled feature's rows never leak.
+          if (!(await pluginGate(registration, config.pluginId, req)).ok) return null;
           const envelope = await storage.pluginConfigs.getWithSubsidiary(config.id);
           return envelope ? hydrate(adapter, envelope) : null;
         }),
@@ -171,14 +206,20 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
     try {
       const resolved = await resolve(req, res);
       if (!resolved) return;
-      const { kind, adapter } = resolved;
+      const { kind, adapter, registration } = resolved;
       const parsed = adapter.searchParamsSchema.safeParse(req.body ?? {});
       if (!parsed.success) {
         res.status(400).json({ message: "Invalid search parameters", errors: parsed.error.errors });
         return;
       }
       const results = await storage.pluginConfigs.search(kind, parsed.data as any);
-      res.json(results.map((envelope) => hydrate(adapter, envelope)));
+      const out: any[] = [];
+      for (const envelope of results) {
+        // Drop disabled-component (or inaccessible) plugins' rows from results.
+        if (!(await pluginGate(registration, envelope.config.pluginId, req)).ok) continue;
+        out.push(hydrate(adapter, envelope));
+      }
+      res.json(out);
     } catch (error) {
       console.error("Failed to search plugin configs:", error);
       res.status(500).json({ message: "Failed to search plugin configs" });
@@ -199,10 +240,13 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
       // plugin is selected. Values are stored inside the config's `data` json.
       const pluginFields: Record<string, PluginConfigEnvelopeField[]> = {};
       for (const plugin of registration.registry.list()) {
+        const meta = registration.registry.getMetadata(plugin);
+        // Skip field metadata for plugins whose component is disabled (or
+        // which the user may not access) so disabled features stay hidden.
+        if (!(await enforcePluginGating(meta, req)).ok) continue;
         const fields = (plugin as { configFields?: PluginConfigEnvelopeField[] }).configFields;
         if (Array.isArray(fields) && fields.length > 0) {
-          const id = registration.registry.getMetadata(plugin).id;
-          pluginFields[id] = fields;
+          pluginFields[meta.id] = fields;
         }
       }
       res.json({ envelopeFields: adapter.envelopeFields ?? [], pluginFields });
@@ -220,6 +264,13 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
       const parsed = adapter.configSchema.safeParse(req.body ?? {});
       if (!parsed.success) {
         res.status(400).json({ message: "Invalid configuration", errors: parsed.error.errors });
+        return;
+      }
+      // Refuse to create a config for a plugin whose component is disabled
+      // (or which the user may not access) before doing any work.
+      const createGate = await pluginGate(registration, parsed.data.pluginId, req);
+      if (!createGate.ok) {
+        res.status(createGate.status).json({ message: createGate.message });
         return;
       }
       // Run toRows first so plugin validation sees the data that will actually
@@ -258,10 +309,16 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
     try {
       const resolved = await resolve(req, res);
       if (!resolved) return;
-      const { kind, adapter } = resolved;
+      const { kind, adapter, registration } = resolved;
       const envelope = await storage.pluginConfigs.getWithSubsidiary(req.params.id);
       if (!envelope || envelope.config.pluginKind !== kind) {
         res.status(404).json({ message: "Plugin config not found" });
+        return;
+      }
+      // Don't serve a config whose plugin's component is disabled.
+      const gate = await pluginGate(registration, envelope.config.pluginId, req);
+      if (!gate.ok) {
+        res.status(gate.status).json({ message: gate.message });
         return;
       }
       res.json(hydrate(adapter, envelope));
@@ -281,6 +338,13 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
         res.status(404).json({ message: "Plugin config not found" });
         return;
       }
+      // Don't let a disabled feature's config be mutated through this generic
+      // route. Gate the resource's plugin before reading/merging anything.
+      const existingGate = await pluginGate(registration, existingEnvelope.config.pluginId, req);
+      if (!existingGate.ok) {
+        res.status(existingGate.status).json({ message: existingGate.message });
+        return;
+      }
       // Hydrate the FULL existing row (base + subsidiary) and overlay the
       // patch body, so a partial update preserves subsidiary fields the
       // caller didn't send and still satisfies the adapter's config contract.
@@ -288,6 +352,12 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
       const parsed = adapter.configSchema.safeParse(merged);
       if (!parsed.success) {
         res.status(400).json({ message: "Invalid configuration", errors: parsed.error.errors });
+        return;
+      }
+      // Also refuse to retarget a config onto a disabled feature's plugin.
+      const targetGate = await pluginGate(registration, parsed.data.pluginId, req);
+      if (!targetGate.ok) {
+        res.status(targetGate.status).json({ message: targetGate.message });
         return;
       }
       // See POST: validate the post-toRows `data` (what actually gets stored)
@@ -315,10 +385,16 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
     try {
       const resolved = await resolve(req, res);
       if (!resolved) return;
-      const { kind } = resolved;
+      const { kind, registration } = resolved;
       const existing = await storage.pluginConfigs.get(req.params.id);
       if (!existing || existing.pluginKind !== kind) {
         res.status(404).json({ message: "Plugin config not found" });
+        return;
+      }
+      // Don't let a disabled feature's config be deleted through this route.
+      const gate = await pluginGate(registration, existing.pluginId, req);
+      if (!gate.ok) {
+        res.status(gate.status).json({ message: gate.message });
         return;
       }
       // Singleton deletion-refusal is decided by the storage layer from the

@@ -3,7 +3,8 @@ import { storage } from "../../storage";
 import { createUnifiedOptionsStorage } from "../../storage/unified-options";
 import { insertDispatchJobSchema, dispatchJobStatusEnum } from "@shared/schema";
 import { requireAccess } from "../../services/access-policy-evaluator";
-import { requireComponent } from "../components";
+import { requireComponent, isComponentEnabled } from "../components";
+import { getComponentById } from "../../../shared/components";
 import type { DispatchJobFilters } from "../../storage/dispatch/jobs";
 import { dispatchEligPluginRegistry } from "../../plugins/dispatch/eligibility/registry";
 import { getDenormPlugin } from "../../plugins/system/denorm/registry";
@@ -356,6 +357,21 @@ export function registerDispatchJobsRoutes(
         const readPlugin = dispatchEligPluginRegistry.getPlugin(pluginId);
         if (!readPlugin) {
           res.status(404).json({ message: "Dispatch eligibility plugin not found" });
+          return;
+        }
+        // The kind-level `dispatchComponent` gate only proves the `dispatch`
+        // component is on. Individual eligibility plugins belong to finer
+        // optional components (e.g. `dispatch.eba`, `worker.skills`). Refuse
+        // to run a backfill that mutates a disabled feature's denorm facts.
+        const required = readPlugin.requiredComponent;
+        if (required && !(await isComponentEnabled(required))) {
+          const componentName = getComponentById(required)?.name || required;
+          res.status(403).json({
+            message: `Access denied: The "${componentName}" feature is not enabled`,
+            error: "component_disabled",
+            componentId: required,
+            componentName,
+          });
           return;
         }
         const denormPlugin = getDenormPlugin(pluginId);

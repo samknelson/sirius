@@ -39,6 +39,37 @@ export function registerWizardRoutes(
   requireAuth: AuthMiddleware, 
   requirePermission: PermissionMiddleware
 ) {
+  /**
+   * Reject a request for a wizard type whose `requiredComponent` is
+   * disabled. `/api/wizard-types` (the list) already filters these out,
+   * but the per-type sub-routes (`/steps`, `/statuses`, `/fields`,
+   * `/launch-arguments`) resolve the type straight from the URL param and
+   * would otherwise serve a disabled feature's wizard definition (e.g. the
+   * BTU worker-import wizard behind `sitespecific.btu`). Returns true to
+   * proceed; sends a 403 (matching the `component_disabled` shape) and
+   * returns false otherwise. Unknown types fall through so the handler can
+   * return its own 404.
+   */
+  async function requireWizardTypeComponent(typeName: string, res: Response): Promise<boolean> {
+    const wizardType = wizardRegistry.get(typeName);
+    const requiredComponent = wizardType?.requiredComponent;
+    if (!requiredComponent) return true;
+    const { isComponentEnabled } = await import('./components.js');
+    const enabled = await isComponentEnabled(requiredComponent);
+    if (!enabled) {
+      const { getComponentById } = await import('../../shared/components.js');
+      const componentName = getComponentById(requiredComponent)?.name || requiredComponent;
+      res.status(403).json({
+        message: `Access denied: The "${componentName}" feature is not enabled`,
+        error: "component_disabled",
+        componentId: requiredComponent,
+        componentName,
+      });
+      return false;
+    }
+    return true;
+  }
+
   app.get("/api/wizard-types", requireAuth, async (req, res) => {
     try {
       const context = await buildContext(req as any);
@@ -91,6 +122,7 @@ export function registerWizardRoutes(
         }
       }
       const { typeName } = req.params;
+      if (!(await requireWizardTypeComponent(typeName, res))) return;
       const steps = await wizardRegistry.getStepsForType(typeName);
       res.json(steps);
     } catch (error) {
@@ -108,6 +140,7 @@ export function registerWizardRoutes(
         }
       }
       const { typeName } = req.params;
+      if (!(await requireWizardTypeComponent(typeName, res))) return;
       const statuses = await wizardRegistry.getStatusesForType(typeName);
       res.json(statuses);
     } catch (error) {
@@ -125,6 +158,7 @@ export function registerWizardRoutes(
         }
       }
       const { typeName } = req.params;
+      if (!(await requireWizardTypeComponent(typeName, res))) return;
       const fields = await wizardRegistry.getFieldsForType(typeName);
       res.json(fields);
     } catch (error) {
@@ -147,6 +181,7 @@ export function registerWizardRoutes(
       }
 
       const { typeName } = req.params;
+      if (!(await requireWizardTypeComponent(typeName, res))) return;
       const launchArguments = await wizardRegistry.getLaunchArgumentsForType(typeName);
       res.json(launchArguments);
     } catch (error) {
