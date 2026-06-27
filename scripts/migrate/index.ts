@@ -60,6 +60,7 @@ import "./components/sitespecific.bao/001_create_immediate_eligibility";
 import "./components/sitespecific.freeman/001_create_crewleads";
 import "./components/grievance/001_create_options_grievance_status";
 import "./components/grievance/002_create_options_grievance_category";
+import "./components/grievance/003_create_grievances";
 
 // Baseline scripts — one-off, per-deployment scripts that bring a database
 // into sync with the schema BEFORE the drift gate runs. Baseline scripts

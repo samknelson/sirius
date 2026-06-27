@@ -1001,6 +1001,18 @@ export {
   insertOptionsGrievanceCategorySchema,
   type OptionsGrievanceCategory,
   type InsertOptionsGrievanceCategory,
+  grievances,
+  insertGrievanceSchema,
+  type Grievance,
+  type InsertGrievance,
+  grievanceWorkers,
+  insertGrievanceWorkerSchema,
+  type GrievanceWorker,
+  type InsertGrievanceWorker,
+  grievanceEmployers,
+  insertGrievanceEmployerSchema,
+  type GrievanceEmployer,
+  type InsertGrievanceEmployer,
 } from "./schema/grievance/schema";
 
 export {
