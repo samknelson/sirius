@@ -1,9 +1,50 @@
-import type { Express, Request, Response } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import { getOptionsType, getAllOptionsTypes, getOptionsStorage } from "./options-registry";
 import { requireAccess } from "../services/access-policy-evaluator";
 import { OptionsTypeName } from "../storage/unified-options";
 import { storage } from "../storage";
-import { requireComponent } from "./components";
+import { requireComponent, isComponentEnabled } from "./components";
+import { getComponentById } from "../../shared/components";
+
+/**
+ * Middleware for the generic `/api/options/:type*` routes that rejects
+ * requests for an option type whose `requiredComponent` is not enabled.
+ * Without this, an authenticated user could read or mutate a disabled
+ * feature's options by calling the API directly, even though the UI hides
+ * the link and shows a "Feature Not Available" card. Unknown types fall
+ * through so the route handler can return its own 404.
+ */
+function requireOptionTypeComponent() {
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { type } = req.params;
+      const config = getOptionsType(type);
+      const requiredComponent = config?.requiredComponent;
+
+      if (!requiredComponent) {
+        next();
+        return;
+      }
+
+      const enabled = await isComponentEnabled(requiredComponent);
+      if (!enabled) {
+        const component = getComponentById(requiredComponent);
+        const componentName = component?.name || requiredComponent;
+        res.status(403).json({
+          message: `Access denied: The "${componentName}" feature is not enabled`,
+          error: "component_disabled",
+          componentId: requiredComponent,
+          componentName,
+        });
+        return;
+      }
+
+      next();
+    } catch (error) {
+      res.status(500).json({ message: "Failed to check component status" });
+    }
+  };
+}
 
 export function registerConsolidatedOptionsRoutes(app: Express) {
   // GET /api/options - List all available options types
@@ -28,7 +69,7 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
 
   // GET /api/options/:type/definition - Get the resource definition for a specific options type
   // NOTE: This route MUST be defined BEFORE /api/options/:type/:id to avoid routing conflicts
-  app.get("/api/options/:type/definition", requireAccess('authenticated'), async (req: Request, res: Response) => {
+  app.get("/api/options/:type/definition", requireAccess('authenticated'), requireOptionTypeComponent(), async (req: Request, res: Response) => {
     try {
       const { type } = req.params;
       const storage = getOptionsStorage();
@@ -118,7 +159,7 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
   );
 
   // GET /api/options/:type - List all items of a specific options type
-  app.get("/api/options/:type", requireAccess('authenticated'), async (req: Request, res: Response) => {
+  app.get("/api/options/:type", requireAccess('authenticated'), requireOptionTypeComponent(), async (req: Request, res: Response) => {
     try {
       const { type } = req.params;
       const config = getOptionsType(type);
@@ -134,7 +175,7 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
     }
   });
 
-  app.get("/api/options/:type/:id", requireAccess('authenticated'), async (req: Request, res: Response) => {
+  app.get("/api/options/:type/:id", requireAccess('authenticated'), requireOptionTypeComponent(), async (req: Request, res: Response) => {
     try {
       const { type, id } = req.params;
       const config = getOptionsType(type);
@@ -155,7 +196,7 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
     }
   });
 
-  app.post("/api/options/:type", requireAccess('admin'), async (req: Request, res: Response) => {
+  app.post("/api/options/:type", requireAccess('admin'), requireOptionTypeComponent(), async (req: Request, res: Response) => {
     try {
       const { type } = req.params;
       const config = getOptionsType(type);
@@ -195,7 +236,7 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
     }
   });
 
-  app.put("/api/options/:type/:id", requireAccess('admin'), async (req: Request, res: Response) => {
+  app.put("/api/options/:type/:id", requireAccess('admin'), requireOptionTypeComponent(), async (req: Request, res: Response) => {
     try {
       const { type, id } = req.params;
       const config = getOptionsType(type);
@@ -240,7 +281,7 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
     }
   });
 
-  app.delete("/api/options/:type/:id", requireAccess('admin'), async (req: Request, res: Response) => {
+  app.delete("/api/options/:type/:id", requireAccess('admin'), requireOptionTypeComponent(), async (req: Request, res: Response) => {
     try {
       const { type, id } = req.params;
       const config = getOptionsType(type);

@@ -15,6 +15,7 @@ export interface OptionsTypeConfig {
   delete: (id: string) => Promise<boolean>;
   requiredFields: readonly string[];
   optionalFields: readonly string[];
+  requiredComponent?: string;
 }
 
 let unifiedStorage: UnifiedOptionsStorage | null = null;
@@ -40,6 +41,7 @@ function createTypeConfig(type: OptionsTypeName): OptionsTypeConfig {
     delete: (id: string) => storage.delete(type, id),
     requiredFields: metadata.requiredFields,
     optionalFields: metadata.optionalFields,
+    requiredComponent: metadata.requiredComponent,
   };
 }
 
