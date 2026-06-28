@@ -45,9 +45,10 @@ const updateGrievanceSchema = z
     message: "At least one field must be provided",
   });
 
+const emptyToUndefined = (v: unknown) => (v === "" ? undefined : v);
 const searchGrievancesSchema = z.object({
-  workerId: z.string().uuid().optional(),
-  employerId: z.string().uuid().optional(),
+  workerId: z.preprocess(emptyToUndefined, z.string().uuid().optional()),
+  employerId: z.preprocess(emptyToUndefined, z.string().uuid().optional()),
 });
 
 const linkWorkerSchema = z.object({ workerId: z.string().uuid("A valid worker is required") });
