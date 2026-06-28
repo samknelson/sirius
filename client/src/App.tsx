@@ -89,6 +89,7 @@ const CommDetail = lazy(() => import("@/pages/comm-detail"));
 const CommEdit = lazy(() => import("@/pages/comm-edit"));
 const Grievances = lazy(() => import("@/pages/grievances"));
 const WorkerGrievances = lazy(() => import("@/pages/worker-grievances"));
+const EmployerGrievances = lazy(() => import("@/pages/employer-grievances"));
 const GrievancesAdd = lazy(() => import("@/pages/grievances-add"));
 const GrievanceView = lazy(() => import("@/pages/grievance-view"));
 const GrievanceEdit = lazy(() => import("@/pages/grievance-edit"));
@@ -1209,6 +1210,14 @@ function Router() {
         <ProtectedRoute tabId="contacts" entityType="employer">
           <AuthenticatedLayout>
             <EmployerContacts />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/employers/:id/grievances">
+        <ProtectedRoute tabId="grievances" entityType="employer">
+          <AuthenticatedLayout>
+            <EmployerGrievances />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
