@@ -8,6 +8,8 @@ export const optionsGrievanceStatus = pgTable("options_grievance_status", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: varchar("name", { length: 255 }).notNull().unique(),
   description: text("description"),
+  siriusId: varchar("sirius_id").unique(),
+  open: boolean("open").default(true).notNull(),
   data: jsonb("data"),
 });
 

@@ -216,7 +216,7 @@ export const componentRegistry: ComponentDefinition[] = [
     category: "core",
     managesSchema: true,
     schemaManifest: {
-      version: 3,
+      version: 4,
       schemaPath: "./shared/schema/grievance/schema.ts",
       tables: ["options_grievance_status", "options_grievance_category", "grievances", "grievance_workers", "grievance_employers"]
     }

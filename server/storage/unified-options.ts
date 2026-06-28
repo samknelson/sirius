@@ -78,6 +78,12 @@ export interface FieldDefinition {
   selectOptionsType?: OptionsTypeName;
   /** For inputType="multi-enum": the allowed string values (and optional human labels). */
   enumOptions?: Array<{ value: string; label?: string }>;
+  /**
+   * Optional form default for the generated JSON Schema. Currently honored
+   * for `checkbox` fields (otherwise checkboxes default to false). Lets a
+   * field opt into a `true` default so newly created rows come in checked.
+   */
+  default?: boolean;
 }
 
 /**
@@ -140,7 +146,7 @@ export function fieldsToJsonSchema(
         break;
       case "checkbox":
         prop.type = "boolean";
-        prop.default = false;
+        prop.default = f.default ?? false;
         break;
       case "icon":
         prop.type = "string";
@@ -448,13 +454,15 @@ const optionsMetadata: Record<OptionsTypeName, OptionsTableMetadata<any>> = {
     orderByColumn: "name" as const,
     loggingModule: "options.grievanceStatus",
     requiredFields: ["name"],
-    optionalFields: ["description", "data"],
+    optionalFields: ["description", "siriusId", "open", "data"],
     supportsSequencing: false,
     requiredComponent: "grievance",
     fields: [
       { name: "icon", label: "Icon", inputType: "icon", required: false, showInTable: true, columnHeader: "Icon", columnWidth: "80px", dataField: true },
       { name: "name", label: "Name", inputType: "text", required: true, placeholder: "e.g., Open, In Review, Resolved", showInTable: true, columnHeader: "Name" },
       { name: "description", label: "Description", inputType: "textarea", required: false, placeholder: "Optional description of this status", showInTable: true, columnHeader: "Description" },
+      { name: "siriusId", label: "Sirius ID", inputType: "text", required: false, placeholder: "External ID", showInTable: true, columnHeader: "Sirius ID" },
+      { name: "open", label: "Open", inputType: "checkbox", required: false, default: true, helperText: "Marks whether this status represents an open grievance state", showInTable: true, columnHeader: "Open" },
     ],
   },
   "grievance-category": {
