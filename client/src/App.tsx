@@ -88,6 +88,7 @@ const WorkerSendInApp = lazy(() => import("@/pages/worker-send-inapp"));
 const CommDetail = lazy(() => import("@/pages/comm-detail"));
 const CommEdit = lazy(() => import("@/pages/comm-edit"));
 const Grievances = lazy(() => import("@/pages/grievances"));
+const WorkerGrievances = lazy(() => import("@/pages/worker-grievances"));
 const GrievancesAdd = lazy(() => import("@/pages/grievances-add"));
 const GrievanceView = lazy(() => import("@/pages/grievance-view"));
 const GrievanceEdit = lazy(() => import("@/pages/grievance-edit"));
@@ -630,6 +631,14 @@ function Router() {
         <ProtectedRoute tabId="bans" entityType="worker">
           <AuthenticatedLayout>
             <WorkerBans />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/workers/:id/grievances">
+        <ProtectedRoute tabId="grievances" entityType="worker">
+          <AuthenticatedLayout>
+            <WorkerGrievances />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

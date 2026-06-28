@@ -45,6 +45,11 @@ const updateGrievanceSchema = z
     message: "At least one field must be provided",
   });
 
+const searchGrievancesSchema = z.object({
+  workerId: z.string().uuid().optional(),
+  employerId: z.string().uuid().optional(),
+});
+
 const linkWorkerSchema = z.object({ workerId: z.string().uuid("A valid worker is required") });
 const linkEmployerSchema = z.object({ employerId: z.string().uuid("A valid employer is required") });
 
@@ -55,9 +60,13 @@ export function registerGrievanceRoutes(
 ) {
   const gate = [requireAuth, requireComponent("grievance"), requireAccess("staff")] as const;
 
-  app.get("/api/grievances", ...gate, async (_req, res) => {
+  app.get("/api/grievances", ...gate, async (req, res) => {
     try {
-      const records = await storage.grievances.list();
+      const parsed = searchGrievancesSchema.safeParse(req.query);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid query parameters", errors: parsed.error.flatten() });
+      }
+      const records = await storage.grievances.search(parsed.data);
       res.json(records);
     } catch (error) {
       console.error("Failed to fetch grievances:", error);

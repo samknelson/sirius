@@ -42,8 +42,13 @@ export interface GrievanceWithDetails extends Grievance {
   employers: GrievanceLinkedEmployer[];
 }
 
+export interface GrievanceSearchFilters {
+  workerId?: string;
+  employerId?: string;
+}
+
 export interface GrievanceStorage {
-  list(): Promise<GrievanceListItem[]>;
+  search(filters?: GrievanceSearchFilters): Promise<GrievanceListItem[]>;
   get(id: string): Promise<Grievance | undefined>;
   getWithDetails(id: string): Promise<GrievanceWithDetails | undefined>;
   create(data: InsertGrievance): Promise<Grievance>;
@@ -72,9 +77,34 @@ export interface GrievanceStorage {
 
 export function createGrievanceStorage(): GrievanceStorage {
   return {
-    async list(): Promise<GrievanceListItem[]> {
+    async search(filters: GrievanceSearchFilters = {}): Promise<GrievanceListItem[]> {
       const client = getClient();
-      const rows = await client
+
+      const conditions = [];
+      if (filters.workerId) {
+        conditions.push(
+          inArray(
+            grievances.id,
+            client
+              .select({ grievanceId: grievanceWorkers.grievanceId })
+              .from(grievanceWorkers)
+              .where(eq(grievanceWorkers.workerId, filters.workerId)),
+          ),
+        );
+      }
+      if (filters.employerId) {
+        conditions.push(
+          inArray(
+            grievances.id,
+            client
+              .select({ grievanceId: grievanceEmployers.grievanceId })
+              .from(grievanceEmployers)
+              .where(eq(grievanceEmployers.employerId, filters.employerId)),
+          ),
+        );
+      }
+
+      const baseQuery = client
         .select({
           id: grievances.id,
           complaint: grievances.complaint,
@@ -90,6 +120,9 @@ export function createGrievanceStorage(): GrievanceStorage {
         .from(grievances)
         .leftJoin(optionsGrievanceStatus, eq(grievances.statusId, optionsGrievanceStatus.id))
         .leftJoin(optionsGrievanceCategory, eq(grievances.categoryId, optionsGrievanceCategory.id));
+
+      const rows =
+        conditions.length > 0 ? await baseQuery.where(and(...conditions)) : await baseQuery;
 
       if (rows.length === 0) return [];
 
