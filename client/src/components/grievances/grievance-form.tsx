@@ -54,6 +54,7 @@ interface GrievanceFormProps {
   isSubmitting?: boolean;
   onCardinalityChange?: (cardinality: GrievanceCardinality) => void;
   renderWorkerSection?: (cardinality: GrievanceCardinality) => ReactNode;
+  renderEmployerSection?: () => ReactNode;
 }
 
 export function GrievanceForm({
@@ -63,6 +64,7 @@ export function GrievanceForm({
   isSubmitting,
   onCardinalityChange,
   renderWorkerSection,
+  renderEmployerSection,
 }: GrievanceFormProps) {
   const { data: statuses = [] } = useQuery<OptionItem[]>({
     queryKey: ["/api/options/grievance-status"],
@@ -233,6 +235,8 @@ export function GrievanceForm({
         ) : (
           renderWorkerSection?.(cardinality)
         )}
+
+        {renderEmployerSection?.()}
 
         <div className="flex items-center gap-3">
           <Button type="submit" disabled={isSubmitting} data-testid="button-submit-grievance">

@@ -1,149 +1,14 @@
-import { useState } from "react";
 import { Link } from "wouter";
-import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { X } from "lucide-react";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   GrievanceLayout,
   useGrievanceLayout,
-  type GrievanceWithDetails,
 } from "@/components/layouts/GrievanceLayout";
 import { GRIEVANCE_CARDINALITY_LABELS } from "@/components/grievances/grievance-form";
 import { GrievanceWorkerManager } from "@/components/grievances/grievance-worker-section";
-import { apiRequest, queryClient } from "@/lib/queryClient";
-import { useToast } from "@/hooks/use-toast";
-
-interface EmployerOption {
-  id: string;
-  name: string;
-}
-
-function EmployerManager({ grievance }: { grievance: GrievanceWithDetails }) {
-  const { toast } = useToast();
-  const [selected, setSelected] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  const { data: employers = [] } = useQuery<EmployerOption[]>({
-    queryKey: ["/api/employers"],
-  });
-
-  const linkedIds = new Set(grievance.employers.map((e) => e.employerId));
-  const available = employers.filter((e) => !linkedIds.has(e.id));
-
-  const refresh = async () => {
-    await queryClient.invalidateQueries({ queryKey: ["/api/grievances", grievance.id] });
-    await queryClient.invalidateQueries({ queryKey: ["/api/grievances"] });
-  };
-
-  const addEmployer = async () => {
-    if (!selected) return;
-    setBusy(true);
-    try {
-      await apiRequest("POST", `/api/grievances/${grievance.id}/employers`, {
-        employerId: selected,
-      });
-      await refresh();
-      setSelected("");
-      toast({ title: "Employer linked" });
-    } catch (error: any) {
-      toast({
-        title: "Failed to link employer",
-        description: error?.message ?? "Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const removeEmployer = async (employerId: string) => {
-    setBusy(true);
-    try {
-      await apiRequest("DELETE", `/api/grievances/${grievance.id}/employers/${employerId}`);
-      await refresh();
-      toast({ title: "Employer unlinked" });
-    } catch (error: any) {
-      toast({
-        title: "Failed to unlink employer",
-        description: error?.message ?? "Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Employers</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="flex items-center gap-2">
-          <Select value={selected} onValueChange={setSelected}>
-            <SelectTrigger className="flex-1" data-testid="select-employer">
-              <SelectValue placeholder="Select an employer to link" />
-            </SelectTrigger>
-            <SelectContent>
-              {available.map((e) => (
-                <SelectItem key={e.id} value={e.id} data-testid={`option-employer-${e.id}`}>
-                  {e.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button
-            type="button"
-            onClick={addEmployer}
-            disabled={!selected || busy}
-            data-testid="button-add-employer"
-          >
-            Add
-          </Button>
-        </div>
-
-        {grievance.employers.length === 0 ? (
-          <p className="text-muted-foreground text-sm" data-testid="text-no-employers">
-            No employers linked.
-          </p>
-        ) : (
-          <div className="flex flex-wrap gap-2">
-            {grievance.employers.map((e) => (
-              <Badge
-                key={e.employerId}
-                variant="secondary"
-                className="flex items-center gap-1"
-                data-testid={`badge-employer-${e.employerId}`}
-              >
-                <Link href={`/employers/${e.employerId}`} className="hover:underline">
-                  {e.name}
-                </Link>
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => removeEmployer(e.employerId)}
-                  className="ml-1 disabled:opacity-50"
-                  data-testid={`button-remove-employer-${e.employerId}`}
-                >
-                  <X size={12} />
-                </button>
-              </Badge>
-            ))}
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
+import { GrievanceEmployerManager } from "@/components/grievances/grievance-employer-section";
 
 function GrievanceDetailsContent() {
   const { grievance } = useGrievanceLayout();
@@ -230,7 +95,10 @@ function GrievanceDetailsContent() {
           workers={grievance.workers}
         />
       )}
-      <EmployerManager grievance={grievance} />
+      <GrievanceEmployerManager
+        grievanceId={grievance.id}
+        employers={grievance.employers}
+      />
     </div>
   );
 }

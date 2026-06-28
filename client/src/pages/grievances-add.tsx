@@ -9,6 +9,7 @@ import {
   type SectionWorker,
   type WorkerSearchHit,
 } from "@/components/grievances/grievance-worker-section";
+import { GrievanceEmployerSection } from "@/components/grievances/grievance-employer-section";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
@@ -20,6 +21,7 @@ export default function GrievancesAdd() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [cardinality, setCardinality] = useState<GrievanceCardinality>("individual");
   const [staged, setStaged] = useState<SectionWorker[]>([]);
+  const [stagedEmployerId, setStagedEmployerId] = useState<string | null>(null);
 
   const tabs = [
     { id: "list", label: "List", href: "/grievances" },
@@ -118,11 +120,21 @@ export default function GrievancesAdd() {
         }
       }
 
+      if (stagedEmployerId) {
+        try {
+          await apiRequest("POST", `/api/grievances/${created.id}/employers`, {
+            employerId: stagedEmployerId,
+          });
+        } catch {
+          failed++;
+        }
+      }
+
       await queryClient.invalidateQueries({ queryKey: ["/api/grievances"] });
       if (failed > 0) {
         toast({
           title: "Grievance created with issues",
-          description: `${failed} worker change(s) could not be saved. You can fix them on the grievance page.`,
+          description: `${failed} change(s) could not be saved. You can fix them on the grievance page.`,
           variant: "destructive",
         });
       } else {
@@ -181,6 +193,13 @@ export default function GrievancesAdd() {
                   onAdd={addStaged}
                   onRemove={removeStaged}
                   onSetPrimary={setStagedPrimary}
+                  busy={isSubmitting}
+                />
+              )}
+              renderEmployerSection={() => (
+                <GrievanceEmployerSection
+                  employerId={stagedEmployerId}
+                  onChange={setStagedEmployerId}
                   busy={isSubmitting}
                 />
               )}

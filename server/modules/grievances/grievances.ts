@@ -18,7 +18,6 @@ const createGrievanceSchema = z
     statusId: z.string().uuid("A valid status is required"),
     categoryId: z.string().uuid("A valid category is required"),
     cardinality: z.enum(GRIEVANCE_CARDINALITIES).default("individual"),
-    employerIds: z.array(z.string().uuid()).optional(),
   })
   .refine((v) => v.cardinality === "class" || v.classDescription == null, {
     message: "A class description is only allowed for class grievances",
@@ -74,7 +73,6 @@ export function registerGrievanceRoutes(
       }
 
       const {
-        employerIds,
         complaint,
         remedy,
         classDescription,
@@ -91,10 +89,6 @@ export function registerGrievanceRoutes(
         categoryId,
         cardinality,
       });
-
-      for (const employerId of employerIds ?? []) {
-        await storage.grievances.addEmployer(created.id, employerId);
-      }
 
       const fresh = await storage.grievances.getWithDetails(created.id);
       res.status(201).json(fresh);
