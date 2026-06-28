@@ -1,4 +1,4 @@
-import { pgTable, varchar, text, jsonb, boolean, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, varchar, text, jsonb, boolean, integer, uniqueIndex } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -10,6 +10,7 @@ export const optionsGrievanceStatus = pgTable("options_grievance_status", {
   description: text("description"),
   siriusId: varchar("sirius_id").unique(),
   open: boolean("open").default(true).notNull(),
+  sequence: integer("sequence").notNull().default(0),
   data: jsonb("data"),
 });
 
