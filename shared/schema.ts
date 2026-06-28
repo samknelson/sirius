@@ -1019,6 +1019,10 @@ export {
   insertGrievanceEmployerSchema,
   type GrievanceEmployer,
   type InsertGrievanceEmployer,
+  grievanceSteps,
+  insertGrievanceStepSchema,
+  type GrievanceStep,
+  type InsertGrievanceStep,
 } from "./schema/grievance/schema";
 
 export {

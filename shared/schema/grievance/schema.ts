@@ -1,4 +1,4 @@
-import { pgTable, varchar, text, jsonb, boolean, integer, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, varchar, text, jsonb, boolean, integer, date, uniqueIndex } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -157,3 +157,37 @@ export const insertGrievanceEmployerSchema = createInsertSchema(grievanceEmploye
 
 export type GrievanceEmployer = typeof grievanceEmployers.$inferSelect;
 export type InsertGrievanceEmployer = z.infer<typeof insertGrievanceEmployerSchema>;
+
+export const grievanceSteps = pgTable(
+  "grievance_steps",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    grievanceId: varchar("grievance_id")
+      .notNull()
+      .references(() => grievances.id, { onDelete: "cascade" }),
+    stepId: varchar("step_id")
+      .notNull()
+      .references(() => optionsGrievanceSteps.id, { onDelete: "cascade" }),
+    startedYmd: date("started_ymd"),
+    dueYmd: date("due_ymd"),
+    completedYmd: date("completed_ymd"),
+    active: boolean("active").notNull().default(false),
+    data: jsonb("data"),
+  },
+  (table) => ({
+    // At most one active step per grievance. `active` is not a reserved
+    // word, so Postgres reflects the partial-index predicate unquoted; the
+    // drift gate compares predicate strings literally, so the declared
+    // predicate must read `active = true` to match what is reflected.
+    oneActivePerGrievance: uniqueIndex("grievance_steps_one_active_per_grievance")
+      .on(table.grievanceId)
+      .where(sql`active = true`),
+  }),
+);
+
+export const insertGrievanceStepSchema = createInsertSchema(grievanceSteps).omit({
+  id: true,
+});
+
+export type GrievanceStep = typeof grievanceSteps.$inferSelect;
+export type InsertGrievanceStep = z.infer<typeof insertGrievanceStepSchema>;
