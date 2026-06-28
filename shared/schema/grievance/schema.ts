@@ -43,6 +43,27 @@ export type InsertOptionsGrievanceCategory = z.infer<
   typeof insertOptionsGrievanceCategorySchema
 >;
 
+export const optionsGrievanceSteps = pgTable("options_grievance_steps", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name", { length: 255 }).notNull().unique(),
+  description: text("description"),
+  siriusId: varchar("sirius_id").unique(),
+  sequence: integer("sequence").notNull().default(0),
+  actor: varchar("actor").notNull(),
+  data: jsonb("data"),
+});
+
+export const insertOptionsGrievanceStepsSchema = createInsertSchema(
+  optionsGrievanceSteps,
+).omit({
+  id: true,
+});
+
+export type OptionsGrievanceStep = typeof optionsGrievanceSteps.$inferSelect;
+export type InsertOptionsGrievanceStep = z.infer<
+  typeof insertOptionsGrievanceStepsSchema
+>;
+
 export const GRIEVANCE_CARDINALITIES = [
   "individual",
   "multiple",

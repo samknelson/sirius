@@ -26,6 +26,7 @@ import {
   optionsCommTags,
   optionsGrievanceStatus,
   optionsGrievanceCategory,
+  optionsGrievanceSteps,
   bulkMediumEnum,
 } from "@shared/schema";
 import { defineLoggingConfig } from "./middleware/logging";
@@ -59,7 +60,8 @@ export type OptionsTypeName =
   | "worker-relation-type"
   | "comm-tag"
   | "grievance-status"
-  | "grievance-category";
+  | "grievance-category"
+  | "grievance-step";
 
 /**
  * Field definition for dynamic form and table rendering
@@ -67,7 +69,7 @@ export type OptionsTypeName =
 export interface FieldDefinition {
   name: string;
   label: string;
-  inputType: 'text' | 'textarea' | 'number' | 'select-self' | 'icon' | 'checkbox' | 'select-options' | 'color' | 'multi-enum';
+  inputType: 'text' | 'textarea' | 'number' | 'select-self' | 'icon' | 'checkbox' | 'select-options' | 'color' | 'multi-enum' | 'enum';
   required: boolean;
   placeholder?: string;
   helperText?: string;
@@ -76,7 +78,7 @@ export interface FieldDefinition {
   columnWidth?: string;
   dataField?: boolean;
   selectOptionsType?: OptionsTypeName;
-  /** For inputType="multi-enum": the allowed string values (and optional human labels). */
+  /** For inputType="multi-enum" or "enum": the allowed string values (and optional human labels). */
   enumOptions?: Array<{ value: string; label?: string }>;
   /**
    * Optional form default for the generated JSON Schema. Currently honored
@@ -180,6 +182,17 @@ export function fieldsToJsonSchema(
         }
         prop.items = items;
         if (f.required) prop.minItems = 1;
+        break;
+      }
+      case "enum": {
+        prop.type = "string";
+        const values = (f.enumOptions ?? []).map((o) => o.value);
+        prop.enum = values;
+        const labels = (f.enumOptions ?? []).map((o) => o.label ?? o.value);
+        if (labels.some((l, i) => l !== values[i])) {
+          prop.enumNames = labels;
+        }
+        if (f.required) prop.minLength = 1;
         break;
       }
     }
@@ -481,6 +494,26 @@ const optionsMetadata: Record<OptionsTypeName, OptionsTableMetadata<any>> = {
       { name: "icon", label: "Icon", inputType: "icon", required: false, showInTable: true, columnHeader: "Icon", columnWidth: "80px", dataField: true },
       { name: "name", label: "Name", inputType: "text", required: true, placeholder: "e.g., Discipline, Pay, Safety", showInTable: true, columnHeader: "Name" },
       { name: "description", label: "Description", inputType: "textarea", required: false, placeholder: "Optional description of this category", showInTable: true, columnHeader: "Description" },
+    ],
+  },
+  "grievance-step": {
+    table: optionsGrievanceSteps,
+    displayName: "Grievance Step Options",
+    description: "Manage step options for grievances",
+    singularName: "Step Option",
+    pluralName: "Step Options",
+    orderByColumn: "sequence" as const,
+    loggingModule: "options.grievanceStep",
+    requiredFields: ["name", "actor"],
+    optionalFields: ["description", "siriusId", "sequence", "data"],
+    supportsSequencing: true,
+    requiredComponent: "grievance",
+    fields: [
+      { name: "icon", label: "Icon", inputType: "icon", required: false, showInTable: true, columnHeader: "Icon", columnWidth: "80px", dataField: true },
+      { name: "name", label: "Name", inputType: "text", required: true, placeholder: "e.g., Step 1, Mediation", showInTable: true, columnHeader: "Name" },
+      { name: "description", label: "Description", inputType: "textarea", required: false, placeholder: "Optional description of this step", showInTable: true, columnHeader: "Description" },
+      { name: "actor", label: "Actor", inputType: "enum", required: true, enumOptions: [{ value: "union", label: "Union" }, { value: "employer", label: "Employer" }], showInTable: true, columnHeader: "Actor" },
+      { name: "siriusId", label: "Sirius ID", inputType: "text", required: false, placeholder: "External ID", showInTable: true, columnHeader: "Sirius ID" },
     ],
   },
   "skill": {

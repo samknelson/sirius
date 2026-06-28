@@ -16,6 +16,13 @@ export interface OptionsTypeConfig {
   requiredFields: readonly string[];
   optionalFields: readonly string[];
   requiredComponent?: string;
+  /**
+   * Allowed values for single-value `enum` fields, keyed by field name.
+   * Used by the write routes to reject values outside the fixed set
+   * (the UI already constrains these via a select, but a direct API
+   * call must not be able to persist an out-of-range value).
+   */
+  enumConstraints: Record<string, string[]>;
 }
 
 let unifiedStorage: UnifiedOptionsStorage | null = null;
@@ -30,7 +37,14 @@ function getUnifiedStorage(): UnifiedOptionsStorage {
 function createTypeConfig(type: OptionsTypeName): OptionsTypeConfig {
   const storage = getUnifiedStorage();
   const metadata = optionsMetadata[type];
-  
+
+  const enumConstraints: Record<string, string[]> = {};
+  for (const field of metadata.fields) {
+    if (field.inputType === "enum" && field.enumOptions?.length) {
+      enumConstraints[field.name] = field.enumOptions.map((o) => o.value);
+    }
+  }
+
   return {
     name: metadata.displayName,
     type,
@@ -42,6 +56,7 @@ function createTypeConfig(type: OptionsTypeName): OptionsTypeConfig {
     requiredFields: metadata.requiredFields,
     optionalFields: metadata.optionalFields,
     requiredComponent: metadata.requiredComponent,
+    enumConstraints,
   };
 }
 
@@ -69,6 +84,7 @@ export const optionsTypeRegistry: Record<string, OptionsTypeConfig> = {
   "comm-tag": createTypeConfig("comm-tag"),
   "grievance-status": createTypeConfig("grievance-status"),
   "grievance-category": createTypeConfig("grievance-category"),
+  "grievance-step": createTypeConfig("grievance-step"),
 };
 
 export function getOptionsType(type: string): OptionsTypeConfig | undefined {

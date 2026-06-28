@@ -225,6 +225,15 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
           }
         }
       }
+
+      // Enforce fixed-value (enum) fields server-side so a direct API call
+      // cannot persist a value outside the allowed set.
+      for (const [field, allowed] of Object.entries(config.enumConstraints)) {
+        const value = data[field];
+        if (value !== undefined && value !== null && !allowed.includes(value)) {
+          return res.status(400).json({ message: `${field} must be one of: ${allowed.join(', ')}` });
+        }
+      }
       
       const item = await config.create(data);
       res.status(201).json(item);
@@ -264,6 +273,14 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
       
       if (Object.keys(updates).length === 0) {
         return res.status(400).json({ message: "No valid fields to update" });
+      }
+
+      // Enforce fixed-value (enum) fields server-side on update too.
+      for (const [field, allowed] of Object.entries(config.enumConstraints)) {
+        const value = updates[field];
+        if (value !== undefined && value !== null && !allowed.includes(value)) {
+          return res.status(400).json({ message: `${field} must be one of: ${allowed.join(', ')}` });
+        }
       }
       
       const item = await config.update(id, updates);
