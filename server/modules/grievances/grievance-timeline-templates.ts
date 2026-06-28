@@ -30,6 +30,7 @@ const stepBodySchema = z.object({
   stepId: z.string().uuid("A valid step is required"),
   days: z.number().int().min(0, "Days must be zero or greater"),
   dayType: z.enum(GRIEVANCE_TIMELINE_DAY_TYPES),
+  sequence: z.number().int().min(0, "Sequence must be zero or greater").optional(),
 });
 
 export function registerGrievanceTimelineTemplateRoutes(
@@ -151,6 +152,7 @@ export function registerGrievanceTimelineTemplateRoutes(
         stepId: parsed.data.stepId,
         days: parsed.data.days,
         dayType: parsed.data.dayType,
+        sequence: parsed.data.sequence,
       });
       res.status(201).json(created);
     } catch (error) {
@@ -185,6 +187,9 @@ export function registerGrievanceTimelineTemplateRoutes(
           stepId: parsed.data.stepId,
           days: parsed.data.days,
           dayType: parsed.data.dayType,
+          ...(parsed.data.sequence !== undefined
+            ? { sequence: parsed.data.sequence }
+            : {}),
         },
       );
       res.json(updated);

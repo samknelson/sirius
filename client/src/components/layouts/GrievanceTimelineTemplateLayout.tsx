@@ -16,6 +16,7 @@ export interface GrievanceTimelineTemplateStepDetails {
   stepId: string;
   days: number;
   dayType: "calendar" | "business";
+  sequence: number;
   stepName: string | null;
   stepActor: string | null;
 }

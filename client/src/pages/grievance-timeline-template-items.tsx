@@ -32,7 +32,7 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { Plus, Pencil, Trash2, ArrowUp, ArrowDown } from "lucide-react";
 import {
   GrievanceTimelineTemplateLayout,
   useGrievanceTimelineTemplateLayout,
@@ -120,6 +120,8 @@ function ItemsContent() {
   const [deleteTarget, setDeleteTarget] =
     useState<GrievanceTimelineTemplateStepDetails | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  const [reorderingId, setReorderingId] = useState<string | null>(null);
 
   function openAdd() {
     setEditingId(null);
@@ -215,6 +217,41 @@ function ItemsContent() {
     }
   }
 
+  // Reorder by setting this step's sequence to its neighbor's. The storage
+  // layer swaps the two atomically in one transaction (see updateStep), so a
+  // single PATCH to the existing per-step endpoint moves the row Up/Down
+  // without a dedicated reorder route and without colliding sequences.
+  async function handleMove(index: number, direction: "up" | "down") {
+    const current = steps[index];
+    const neighbor = direction === "up" ? steps[index - 1] : steps[index + 1];
+    if (!current || !neighbor) return;
+    setReorderingId(current.id);
+    try {
+      await apiRequest(
+        "PATCH",
+        `/api/grievance-timeline-templates/${template.id}/steps/${current.id}`,
+        {
+          fromStatuses: current.fromStatuses,
+          toStatuses: current.toStatuses,
+          stepId: current.stepId,
+          days: current.days,
+          dayType: current.dayType,
+          sequence: neighbor.sequence,
+        },
+      );
+      await invalidate();
+    } catch (error) {
+      toast({
+        title: "Could not reorder step",
+        description: error instanceof Error ? error.message : undefined,
+        variant: "destructive",
+      });
+      await invalidate();
+    } finally {
+      setReorderingId(null);
+    }
+  }
+
   async function handleDelete() {
     if (!deleteTarget) return;
     setDeleting(true);
@@ -269,11 +306,11 @@ function ItemsContent() {
                   <TableHead>Actor</TableHead>
                   <TableHead>Step</TableHead>
                   <TableHead>To Status</TableHead>
-                  <TableHead className="w-[100px]">Actions</TableHead>
+                  <TableHead className="w-[180px]">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {steps.map((step) => (
+                {steps.map((step, index) => (
                   <TableRow key={step.id} data-testid={`row-step-${step.id}`}>
                     <TableCell>
                       <StatusNames
@@ -300,6 +337,26 @@ function ItemsContent() {
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleMove(index, "up")}
+                          disabled={index === 0 || reorderingId !== null}
+                          data-testid={`button-up-${step.id}`}
+                        >
+                          <ArrowUp size={16} />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleMove(index, "down")}
+                          disabled={
+                            index === steps.length - 1 || reorderingId !== null
+                          }
+                          data-testid={`button-down-${step.id}`}
+                        >
+                          <ArrowDown size={16} />
+                        </Button>
                         <Button
                           variant="ghost"
                           size="icon"

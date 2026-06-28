@@ -1,4 +1,4 @@
-import { getClient } from "../transaction-context";
+import { getClient, runInTransaction } from "../transaction-context";
 import {
   grievanceTimelineTemplates,
   grievanceTimelineTemplateSteps,
@@ -9,7 +9,7 @@ import {
   type GrievanceTimelineTemplateStep,
   type InsertGrievanceTimelineTemplateStep,
 } from "@shared/schema";
-import { eq, and, inArray, asc, sql } from "drizzle-orm";
+import { eq, and, ne, inArray, asc, sql } from "drizzle-orm";
 import { type StorageLoggingConfig } from "../middleware/logging";
 
 export interface GrievanceTimelineTemplateStepWithDetails
@@ -137,6 +137,7 @@ export function createGrievanceTimelineTemplateStorage(): GrievanceTimelineTempl
           stepId: grievanceTimelineTemplateSteps.stepId,
           days: grievanceTimelineTemplateSteps.days,
           dayType: grievanceTimelineTemplateSteps.dayType,
+          sequence: grievanceTimelineTemplateSteps.sequence,
           stepName: optionsGrievanceSteps.name,
           stepActor: optionsGrievanceSteps.actor,
         })
@@ -146,7 +147,10 @@ export function createGrievanceTimelineTemplateStorage(): GrievanceTimelineTempl
           eq(grievanceTimelineTemplateSteps.stepId, optionsGrievanceSteps.id),
         )
         .where(eq(grievanceTimelineTemplateSteps.templateId, templateId))
-        .orderBy(asc(optionsGrievanceSteps.sequence));
+        .orderBy(
+          asc(grievanceTimelineTemplateSteps.sequence),
+          asc(grievanceTimelineTemplateSteps.id),
+        );
     },
 
     async getStep(
@@ -170,9 +174,21 @@ export function createGrievanceTimelineTemplateStorage(): GrievanceTimelineTempl
       data: InsertGrievanceTimelineTemplateStep,
     ): Promise<GrievanceTimelineTemplateStep> {
       const client = getClient();
+      // New steps append to the end of the template unless an explicit
+      // sequence is supplied, mirroring the unified-options sequencing model.
+      let sequence = data.sequence;
+      if (sequence === undefined || sequence === null) {
+        const [maxRow] = await client
+          .select({
+            max: sql<number>`COALESCE(MAX(${grievanceTimelineTemplateSteps.sequence}), -1)`,
+          })
+          .from(grievanceTimelineTemplateSteps)
+          .where(eq(grievanceTimelineTemplateSteps.templateId, data.templateId));
+        sequence = Number(maxRow?.max ?? -1) + 1;
+      }
       const [row] = await client
         .insert(grievanceTimelineTemplateSteps)
-        .values(data)
+        .values({ ...data, sequence })
         .returning();
       return row;
     },
@@ -182,6 +198,61 @@ export function createGrievanceTimelineTemplateStorage(): GrievanceTimelineTempl
       stepRowId: string,
       data: Partial<InsertGrievanceTimelineTemplateStep>,
     ): Promise<GrievanceTimelineTemplateStep | undefined> {
+      // When the sequence changes, swap it atomically with whatever step
+      // currently holds the target sequence. Doing both writes in one
+      // transaction means a single PATCH can reorder Up/Down (no dedicated
+      // reorder route) without ever leaving two steps sharing a sequence.
+      if (data.sequence !== undefined && data.sequence !== null) {
+        const targetSequence = data.sequence;
+        return runInTransaction(async () => {
+          const client = getClient();
+          const [existing] = await client
+            .select()
+            .from(grievanceTimelineTemplateSteps)
+            .where(
+              and(
+                eq(grievanceTimelineTemplateSteps.id, stepRowId),
+                eq(grievanceTimelineTemplateSteps.templateId, templateId),
+              ),
+            );
+          if (!existing) return undefined;
+          if (existing.sequence !== targetSequence) {
+            // Hand exactly one conflicting step this row's old sequence (the
+            // swap counterpart). Picking a single id keeps the swap a true
+            // 1-for-1 even if legacy data left several rows on targetSequence.
+            const [conflict] = await client
+              .select({ id: grievanceTimelineTemplateSteps.id })
+              .from(grievanceTimelineTemplateSteps)
+              .where(
+                and(
+                  eq(grievanceTimelineTemplateSteps.templateId, templateId),
+                  eq(grievanceTimelineTemplateSteps.sequence, targetSequence),
+                  ne(grievanceTimelineTemplateSteps.id, stepRowId),
+                ),
+              )
+              .orderBy(asc(grievanceTimelineTemplateSteps.id))
+              .limit(1);
+            if (conflict) {
+              await client
+                .update(grievanceTimelineTemplateSteps)
+                .set({ sequence: existing.sequence })
+                .where(eq(grievanceTimelineTemplateSteps.id, conflict.id));
+            }
+          }
+          const [row] = await client
+            .update(grievanceTimelineTemplateSteps)
+            .set(data)
+            .where(
+              and(
+                eq(grievanceTimelineTemplateSteps.id, stepRowId),
+                eq(grievanceTimelineTemplateSteps.templateId, templateId),
+              ),
+            )
+            .returning();
+          return row || undefined;
+        });
+      }
+
       const client = getClient();
       const [row] = await client
         .update(grievanceTimelineTemplateSteps)

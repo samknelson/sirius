@@ -230,6 +230,7 @@ export const grievanceTimelineTemplateSteps = pgTable(
       .references(() => optionsGrievanceSteps.id, { onDelete: "restrict" }),
     days: integer("days").notNull(),
     dayType: varchar("day_type").notNull(),
+    sequence: integer("sequence").notNull().default(0),
   },
 );
 
