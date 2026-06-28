@@ -33,8 +33,8 @@ interface GrievanceWorkerSectionProps {
 }
 
 /**
- * Cardinality-aware worker picker shared by the grievance create, edit, and
- * details surfaces. Rendering adapts to the grievance cardinality:
+ * Cardinality-aware worker picker shared by the grievance create and edit
+ * surfaces. Rendering adapts to the grievance cardinality:
  *
  * - `class`         → nothing (the class description replaces the worker list).
  * - `individual`    → at most one worker; the worker is implicitly the lead.
@@ -43,7 +43,7 @@ interface GrievanceWorkerSectionProps {
  *
  * The component is fully controlled: parents wire `onAdd`/`onRemove`/
  * `onSetPrimary` to either local staged state (create) or live API calls
- * (edit / details).
+ * (edit).
  */
 export function GrievanceWorkerSection({
   cardinality,
@@ -188,7 +188,7 @@ interface GrievanceWorkerManagerProps {
 }
 
 /**
- * Live (edit / details) worker manager. Each action issues an immediate API
+ * Live (edit) worker manager. Each action issues an immediate API
  * request against the persisted grievance and refreshes the cache.
  */
 export function GrievanceWorkerManager({

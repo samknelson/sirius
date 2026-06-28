@@ -32,13 +32,12 @@ interface GrievanceEmployerSectionProps {
 }
 
 /**
- * Single-employer picker shared by the grievance create, edit, and details
- * surfaces. The grievance/employer mapping is many-to-many at the database
- * level, but the UX restricts each grievance to a single employer for now.
+ * Single-employer picker shared by the grievance create and edit surfaces.
+ * The grievance/employer mapping is many-to-many at the database level, but
+ * the UX restricts each grievance to a single employer for now.
  *
  * Fully controlled: parents wire `onChange` to either local staged state
- * (create) or a live reconcile against the persisted grievance (edit /
- * details).
+ * (create) or a live reconcile against the persisted grievance (edit).
  */
 export function GrievanceEmployerSection({
   employerId,
@@ -85,7 +84,7 @@ interface GrievanceEmployerManagerProps {
 }
 
 /**
- * Live (edit / details) employer manager. Reconciles the selection to a single
+ * Live (edit) employer manager. Reconciles the selection to a single
  * employer using the existing per-grievance add/remove endpoints, each backed
  * by an atomic single-row storage op: every currently linked employer is
  * removed, then the selected one (if any) is added.

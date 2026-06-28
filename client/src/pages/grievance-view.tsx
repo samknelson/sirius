@@ -1,17 +1,19 @@
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   GrievanceLayout,
   useGrievanceLayout,
 } from "@/components/layouts/GrievanceLayout";
 import { GRIEVANCE_CARDINALITY_LABELS } from "@/components/grievances/grievance-form";
-import { GrievanceWorkerManager } from "@/components/grievances/grievance-worker-section";
-import { GrievanceEmployerManager } from "@/components/grievances/grievance-employer-section";
 
 function GrievanceDetailsContent() {
   const { grievance } = useGrievanceLayout();
+
+  const showLead = grievance.cardinality === "multiple-with-lead";
+  const isSingleWorker = grievance.cardinality === "individual";
+  const employerName = grievance.employers[0]?.name ?? null;
 
   return (
     <div className="space-y-6">
@@ -89,16 +91,54 @@ function GrievanceDetailsContent() {
       </Card>
 
       {grievance.cardinality !== "class" && (
-        <GrievanceWorkerManager
-          grievanceId={grievance.id}
-          cardinality={grievance.cardinality}
-          workers={grievance.workers}
-        />
+        <Card>
+          <CardHeader>
+            <CardTitle>{isSingleWorker ? "Worker" : "Workers"}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {grievance.workers.length === 0 ? (
+              <p className="text-muted-foreground text-sm" data-testid="text-no-workers">
+                No workers linked.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {grievance.workers.map((w) => (
+                  <div
+                    key={w.workerId}
+                    className="flex items-center gap-2 border rounded-lg px-3 py-2"
+                    data-testid={`row-worker-${w.workerId}`}
+                  >
+                    <Link
+                      href={`/workers/${w.workerId}`}
+                      className="hover:underline truncate"
+                      data-testid={`link-worker-${w.workerId}`}
+                    >
+                      {w.displayName || "Unknown"}
+                      {w.siriusId != null ? ` #${w.siriusId}` : ""}
+                    </Link>
+                    {w.primary && showLead && (
+                      <Badge variant="default" data-testid={`badge-lead-${w.workerId}`}>
+                        Lead
+                      </Badge>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       )}
-      <GrievanceEmployerManager
-        grievanceId={grievance.id}
-        employers={grievance.employers}
-      />
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Employer</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-foreground" data-testid="text-grievance-employer">
+            {employerName || "No employer"}
+          </p>
+        </CardContent>
+      </Card>
     </div>
   );
 }
