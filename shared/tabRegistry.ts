@@ -81,7 +81,8 @@ export type TabEntityType =
   | 'facility'
   | 'trust_election'
   | 'comm'
-  | 'grievance';
+  | 'grievance'
+  | 'grievanceTimelineTemplate';
 
 /**
  * Tab check request for batch access evaluation
@@ -447,6 +448,13 @@ export const grievanceTabTree: HierarchicalTab[] = [
   { id: 'logs', label: 'Logs', hrefTemplate: '/grievance/{id}/logs', permission: 'staff', component: 'grievance' },
 ];
 
+export const grievanceTimelineTemplateTabTree: HierarchicalTab[] = [
+  { id: 'details', label: 'Details', hrefTemplate: '/grievance-timeline-template/{id}', permission: 'admin', component: 'grievance' },
+  { id: 'edit', label: 'Edit', hrefTemplate: '/grievance-timeline-template/{id}/edit', permission: 'admin', component: 'grievance' },
+  { id: 'items', label: 'Steps', hrefTemplate: '/grievance-timeline-template/{id}/items', permission: 'admin', component: 'grievance' },
+  { id: 'logs', label: 'Logs', hrefTemplate: '/grievance-timeline-template/{id}/logs', permission: 'admin', component: 'grievance' },
+];
+
 /**
  * Trust benefit entity tab tree
  */
@@ -635,6 +643,7 @@ export const tabTreeRegistry: Record<TabEntityType, HierarchicalTab[]> = {
   trust_election: trustElectionTabTree,
   comm: commTabTree,
   grievance: grievanceTabTree,
+  grievanceTimelineTemplate: grievanceTimelineTemplateTabTree,
 };
 
 /**

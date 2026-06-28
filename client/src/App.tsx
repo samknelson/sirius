@@ -94,6 +94,11 @@ const GrievancesAdd = lazy(() => import("@/pages/grievances-add"));
 const GrievanceView = lazy(() => import("@/pages/grievance-view"));
 const GrievanceEdit = lazy(() => import("@/pages/grievance-edit"));
 const GrievanceLogs = lazy(() => import("@/pages/grievance-logs"));
+const GrievanceTimelineTemplatesPage = lazy(() => import("@/pages/config/grievance-timeline-templates"));
+const GrievanceTimelineTemplateView = lazy(() => import("@/pages/grievance-timeline-template-view"));
+const GrievanceTimelineTemplateEdit = lazy(() => import("@/pages/grievance-timeline-template-edit"));
+const GrievanceTimelineTemplateItems = lazy(() => import("@/pages/grievance-timeline-template-items"));
+const GrievanceTimelineTemplateLogs = lazy(() => import("@/pages/grievance-timeline-template-logs"));
 const WorkerDelete = lazy(() => import("@/pages/worker-delete"));
 const Companies = lazy(() => import("@/pages/companies"));
 const CompanyView = lazy(() => import("@/pages/company-view"));
@@ -552,6 +557,48 @@ function Router() {
         <ProtectedRoute tabId="details" entityType="grievance">
           <AuthenticatedLayout>
             <GrievanceView />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/grievance-timeline-templates">
+        <ProtectedRoute permission="admin" component="grievance">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <GrievanceTimelineTemplatesPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/grievance-timeline-template/:id/edit">
+        <ProtectedRoute tabId="edit" entityType="grievanceTimelineTemplate">
+          <AuthenticatedLayout>
+            <GrievanceTimelineTemplateEdit />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/grievance-timeline-template/:id/items">
+        <ProtectedRoute tabId="items" entityType="grievanceTimelineTemplate">
+          <AuthenticatedLayout>
+            <GrievanceTimelineTemplateItems />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/grievance-timeline-template/:id/logs">
+        <ProtectedRoute tabId="logs" entityType="grievanceTimelineTemplate">
+          <AuthenticatedLayout>
+            <GrievanceTimelineTemplateLogs />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/grievance-timeline-template/:id">
+        <ProtectedRoute tabId="details" entityType="grievanceTimelineTemplate">
+          <AuthenticatedLayout>
+            <GrievanceTimelineTemplateView />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

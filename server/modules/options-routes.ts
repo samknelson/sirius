@@ -306,7 +306,20 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
       if (!config) {
         return res.status(404).json({ message: `Unknown options type: ${type}` });
       }
-      
+
+      // A grievance status that is referenced by any timeline-template step
+      // cannot be deleted — the step stores status ids as plain arrays (no FK),
+      // so we guard the delete here to avoid orphaning those references.
+      if (type === "grievance-status") {
+        const referenced = await storage.grievanceTimelineTemplates.isStatusReferenced(id);
+        if (referenced) {
+          return res.status(409).json({
+            message:
+              "This status is used by a grievance timeline template and cannot be deleted. Remove it from all timeline steps first.",
+          });
+        }
+      }
+
       const deleted = await config.delete(id);
       
       if (!deleted) {

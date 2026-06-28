@@ -191,3 +191,56 @@ export const insertGrievanceStepSchema = createInsertSchema(grievanceSteps).omit
 
 export type GrievanceStep = typeof grievanceSteps.$inferSelect;
 export type InsertGrievanceStep = z.infer<typeof insertGrievanceStepSchema>;
+
+export const GRIEVANCE_TIMELINE_DAY_TYPES = ["calendar", "business"] as const;
+
+export type GrievanceTimelineDayType =
+  (typeof GRIEVANCE_TIMELINE_DAY_TYPES)[number];
+
+export const grievanceTimelineTemplates = pgTable("grievance_timeline_templates", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  title: varchar("title", { length: 255 }).notNull(),
+  description: text("description"),
+  data: jsonb("data"),
+});
+
+export const insertGrievanceTimelineTemplateSchema = createInsertSchema(
+  grievanceTimelineTemplates,
+).omit({
+  id: true,
+});
+
+export type GrievanceTimelineTemplate =
+  typeof grievanceTimelineTemplates.$inferSelect;
+export type InsertGrievanceTimelineTemplate = z.infer<
+  typeof insertGrievanceTimelineTemplateSchema
+>;
+
+export const grievanceTimelineTemplateSteps = pgTable(
+  "grievance_timeline_template_steps",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    templateId: varchar("template_id")
+      .notNull()
+      .references(() => grievanceTimelineTemplates.id, { onDelete: "cascade" }),
+    fromStatuses: varchar("from_statuses").array().notNull(),
+    toStatuses: varchar("to_statuses").array().notNull(),
+    stepId: varchar("step_id")
+      .notNull()
+      .references(() => optionsGrievanceSteps.id, { onDelete: "restrict" }),
+    days: integer("days").notNull(),
+    dayType: varchar("day_type").notNull(),
+  },
+);
+
+export const insertGrievanceTimelineTemplateStepSchema = createInsertSchema(
+  grievanceTimelineTemplateSteps,
+).omit({
+  id: true,
+});
+
+export type GrievanceTimelineTemplateStep =
+  typeof grievanceTimelineTemplateSteps.$inferSelect;
+export type InsertGrievanceTimelineTemplateStep = z.infer<
+  typeof insertGrievanceTimelineTemplateStepSchema
+>;

@@ -492,3 +492,14 @@ export function useGrievanceTabAccess(grievanceId: string | undefined, enabled =
     enabled,
   });
 }
+
+export function useGrievanceTimelineTemplateTabAccess(
+  templateId: string | undefined,
+  enabled = true,
+) {
+  return useTabAccess({
+    entityType: 'grievanceTimelineTemplate',
+    entityId: templateId,
+    enabled,
+  });
+}

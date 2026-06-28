@@ -13,6 +13,7 @@ import { registerContactPostalRoutes } from "./modules/contact-postal";
 import { registerPhoneNumberRoutes } from "./modules/phone-numbers";
 import { registerCommRoutes } from "./modules/comm";
 import { registerGrievanceRoutes } from "./modules/grievances/grievances";
+import { registerGrievanceTimelineTemplateRoutes } from "./modules/grievances/grievance-timeline-templates";
 import { registerEmployerContactRoutes } from "./modules/employers/contacts";
 import { registerTrustBenefitsRoutes } from "./modules/trust/benefits";
 import { registerTrustProvidersRoutes } from "./modules/trust/providers";
@@ -296,6 +297,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register grievance routes
   registerGrievanceRoutes(app, requireAuth, requireAccess);
+
+  // Register grievance timeline template routes
+  registerGrievanceTimelineTemplateRoutes(app, requireAuth, requireAccess);
 
   // Register employer contact routes
   registerEmployerContactRoutes(app, requireAuth, requirePermission);
