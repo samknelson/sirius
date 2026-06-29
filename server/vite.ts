@@ -83,7 +83,34 @@ export function serveStatic(app: Express) {
   app.use(express.static(distPath));
 
   // fall through to index.html if the file doesn't exist
-  app.use("*", (_req, res) => {
-    res.sendFile(path.resolve(distPath, "index.html"));
+  const indexHtml = path.resolve(distPath, "index.html");
+  app.use("*", (req, res) => {
+    // An async Set-Cookie (session persistence on an authenticated request)
+    // can flush the response headers while res.sendFile() is still doing its
+    // async fs.stat. When send() then goes to write headers it throws
+    // ERR_HTTP_HEADERS_SENT from inside its own stream — bypassing the Express
+    // error handler and surfacing to the user as a white "Internal Server
+    // Error" page. Guard before sending, and pass a callback so any streaming
+    // error is handled cleanly instead of crashing the response.
+    if (res.headersSent) {
+      return;
+    }
+    res.sendFile(indexHtml, (err) => {
+      if (!err) return;
+      const code = (err as NodeJS.ErrnoException & { status?: number }).code;
+      log(
+        `index.html send failed: ${req.method} ${req.originalUrl} headersSent=${res.headersSent} code=${code ?? "unknown"}`,
+        "static",
+      );
+      if (res.headersSent) {
+        try {
+          res.end();
+        } catch {
+          // socket already torn down — nothing more to do
+        }
+      } else {
+        res.status((err as NodeJS.ErrnoException & { status?: number }).status ?? 500).end();
+      }
+    });
   });
 }
