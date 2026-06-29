@@ -320,6 +320,7 @@ export function registerLedgerEaRoutes(app: Express) {
       const pdfBuffer = await generateInvoicePdf({
         eaName: entityName,
         accountName: account.name,
+        invoiceNumber: invoice.invoiceNumber,
         month: invoice.month,
         year: invoice.year,
         incomingBalance: invoice.incomingBalance,
@@ -331,12 +332,7 @@ export function registerLedgerEaRoutes(app: Express) {
       });
 
       // Set headers for PDF download
-      const monthNames = [
-        "January", "February", "March", "April", "May", "June",
-        "July", "August", "September", "October", "November", "December"
-      ];
-      const monthName = monthNames[invoice.month - 1];
-      const filename = `invoice-${monthName}-${invoice.year}.pdf`;
+      const filename = `${invoice.invoiceNumber}.pdf`;
 
       res.setHeader("Content-Type", "application/pdf");
       res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);

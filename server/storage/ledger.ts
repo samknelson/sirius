@@ -148,6 +148,7 @@ export interface RawLedgerEntryWithEntity extends Ledger {
 }
 
 export interface InvoiceSummary {
+  invoiceNumber: string;
   month: number;
   year: number;
   totalAmount: string;
@@ -1694,6 +1695,18 @@ function buildInvoicesForEa(entries: SimpleLedgerEntry[]): Map<string, InvoiceBu
   return invoiceMap;
 }
 
+// Deterministic, stable, and unique invoice number for a virtual (computed)
+// invoice. An invoice is uniquely identified by its entity-account (eaId) plus
+// the statement period (year + month). The eaId is globally unique and the
+// period is unique within an EA, so embedding the full eaId guarantees a
+// genuinely unique number (not merely probabilistically unique), while the same
+// inputs always produce the same number. Format: INV-YYYYMM-<eaId hex, no dashes>.
+function buildInvoiceNumber(eaId: string, year: number, month: number): string {
+  const period = `${year}${String(month).padStart(2, "0")}`;
+  const eaCompact = eaId.replace(/-/g, "").toUpperCase();
+  return `INV-${period}-${eaCompact}`;
+}
+
 function createLedgerInvoiceStorage(): LedgerInvoiceStorage {
   return {
     async listForEa(eaId: string): Promise<InvoiceSummary[]> {
@@ -1754,6 +1767,7 @@ function createLedgerInvoiceStorage(): LedgerInvoiceStorage {
         );
 
         summaries.push({
+          invoiceNumber: buildInvoiceNumber(eaId, bucket.year, bucket.month),
           month: bucket.month,
           year: bucket.year,
           totalAmount: fromCents(invoiceBalanceCents),
@@ -1920,6 +1934,7 @@ function createLedgerInvoiceStorage(): LedgerInvoiceStorage {
       const outgoingBalanceCents = bucket.incomingBalanceCents + invoiceBalanceCents;
 
       return {
+        invoiceNumber: buildInvoiceNumber(eaId, bucket.year, bucket.month),
         month: bucket.month,
         year: bucket.year,
         totalAmount: fromCents(invoiceBalanceCents),
