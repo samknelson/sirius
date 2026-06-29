@@ -13,6 +13,7 @@ import type {
 import type { AuthProviderType } from "@shared/schema";
 import { logger } from "../logger";
 import { loadProvider } from "./provider-loader";
+import { pool } from "../storage/db";
 
 const getStorage = () => require("../storage").storage;
 
@@ -66,8 +67,19 @@ export function getSession(): RequestHandler {
   const sessionTtl = config.sessionTtl || 7 * 24 * 60 * 60 * 1000; // Default: 1 week
 
   const pgStore = connectPg(session);
+  // Reuse the single, already-hardened Postgres pool from server/storage/db.ts
+  // instead of letting connect-pg-simple spin up its own second pool from a
+  // connection string. That second pool was the one source of unhandled
+  // "PG Pool error: terminating connection due to administrator command" events
+  // when Neon dropped an idle connection: it had only connect-pg-simple's bare
+  // console.error listener and was a separate, uncoordinated pool. By passing
+  // the shared pool here, every Postgres pool in the process is the same
+  // db.ts pool, which logs and transparently recovers from dropped idle
+  // connections (see the pool.on("error", ...) handler there). This is the one
+  // sanctioned use of the db pool outside the storage layer because the session
+  // store is owned by connect-pg-simple.
   const sessionStore = new pgStore({
-    conString: process.env.NEON_DATABASE_URL ?? process.env.DATABASE_URL,
+    pool,
     createTableIfMissing: false,
     ttl: sessionTtl,
     tableName: "sessions",
