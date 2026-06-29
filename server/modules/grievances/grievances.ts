@@ -40,6 +40,7 @@ const updateGrievanceSchema = z
     statusId: z.string().uuid().optional(),
     categoryId: z.string().uuid().optional(),
     cardinality: z.enum(GRIEVANCE_CARDINALITIES).optional(),
+    timelineTemplateId: z.string().uuid().nullable().optional(),
   })
   .refine((v) => Object.keys(v).length > 0, {
     message: "At least one field must be provided",
@@ -180,6 +181,8 @@ export function registerGrievanceRoutes(
       if (parsed.data.statusId !== undefined) data.statusId = parsed.data.statusId;
       if (parsed.data.categoryId !== undefined) data.categoryId = parsed.data.categoryId;
       if (parsed.data.cardinality !== undefined) data.cardinality = parsed.data.cardinality;
+      if (parsed.data.timelineTemplateId !== undefined)
+        data.timelineTemplateId = parsed.data.timelineTemplateId;
 
       await storage.grievances.update(req.params.id, data);
       const fresh = await storage.grievances.getWithDetails(req.params.id);

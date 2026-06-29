@@ -38,9 +38,11 @@ export function registerGrievanceTimelineTemplateRoutes(
   requireAuth: AuthMiddleware,
   requireAccess: PolicyMiddleware,
 ) {
-  const gate = [requireAuth, requireComponent("grievance"), requireAccess("admin")] as const;
+  // Reads are open to any staff user; mutations remain admin-only.
+  const readGate = [requireAuth, requireComponent("grievance"), requireAccess("staff")] as const;
+  const writeGate = [requireAuth, requireComponent("grievance"), requireAccess("admin")] as const;
 
-  app.get("/api/grievance-timeline-templates", ...gate, async (_req, res) => {
+  app.get("/api/grievance-timeline-templates", ...readGate, async (_req, res) => {
     try {
       const records = await storage.grievanceTimelineTemplates.list();
       res.json(records);
@@ -50,7 +52,7 @@ export function registerGrievanceTimelineTemplateRoutes(
     }
   });
 
-  app.post("/api/grievance-timeline-templates", ...gate, async (req, res) => {
+  app.post("/api/grievance-timeline-templates", ...writeGate, async (req, res) => {
     try {
       const parsed = createTemplateSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -67,7 +69,7 @@ export function registerGrievanceTimelineTemplateRoutes(
     }
   });
 
-  app.get("/api/grievance-timeline-templates/:id", ...gate, async (req, res) => {
+  app.get("/api/grievance-timeline-templates/:id", ...readGate, async (req, res) => {
     try {
       const record = await storage.grievanceTimelineTemplates.getWithSteps(req.params.id);
       if (!record) {
@@ -80,7 +82,7 @@ export function registerGrievanceTimelineTemplateRoutes(
     }
   });
 
-  app.patch("/api/grievance-timeline-templates/:id", ...gate, async (req, res) => {
+  app.patch("/api/grievance-timeline-templates/:id", ...writeGate, async (req, res) => {
     try {
       const parsed = updateTemplateSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -102,7 +104,7 @@ export function registerGrievanceTimelineTemplateRoutes(
     }
   });
 
-  app.delete("/api/grievance-timeline-templates/:id", ...gate, async (req, res) => {
+  app.delete("/api/grievance-timeline-templates/:id", ...writeGate, async (req, res) => {
     try {
       const deleted = await storage.grievanceTimelineTemplates.delete(req.params.id);
       if (!deleted) {
@@ -117,7 +119,7 @@ export function registerGrievanceTimelineTemplateRoutes(
 
   // --- Steps (nested under a template) ---
 
-  app.get("/api/grievance-timeline-templates/:id/steps", ...gate, async (req, res) => {
+  app.get("/api/grievance-timeline-templates/:id/steps", ...readGate, async (req, res) => {
     try {
       const template = await storage.grievanceTimelineTemplates.get(req.params.id);
       if (!template) {
@@ -131,7 +133,7 @@ export function registerGrievanceTimelineTemplateRoutes(
     }
   });
 
-  app.post("/api/grievance-timeline-templates/:id/steps", ...gate, async (req, res) => {
+  app.post("/api/grievance-timeline-templates/:id/steps", ...writeGate, async (req, res) => {
     try {
       const parsed = stepBodySchema.safeParse(req.body);
       if (!parsed.success) {
@@ -161,7 +163,7 @@ export function registerGrievanceTimelineTemplateRoutes(
     }
   });
 
-  app.patch("/api/grievance-timeline-templates/:id/steps/:stepRowId", ...gate, async (req, res) => {
+  app.patch("/api/grievance-timeline-templates/:id/steps/:stepRowId", ...writeGate, async (req, res) => {
     try {
       const parsed = stepBodySchema.safeParse(req.body);
       if (!parsed.success) {
@@ -199,7 +201,7 @@ export function registerGrievanceTimelineTemplateRoutes(
     }
   });
 
-  app.delete("/api/grievance-timeline-templates/:id/steps/:stepRowId", ...gate, async (req, res) => {
+  app.delete("/api/grievance-timeline-templates/:id/steps/:stepRowId", ...writeGate, async (req, res) => {
     try {
       const removed = await storage.grievanceTimelineTemplates.deleteStep(
         req.params.id,

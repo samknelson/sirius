@@ -86,6 +86,10 @@ export const grievances = pgTable("grievances", {
     .notNull()
     .references(() => optionsGrievanceCategory.id, { onDelete: "restrict" }),
   data: jsonb("data"),
+  timelineTemplateId: varchar("timeline_template_id").references(
+    () => grievanceTimelineTemplates.id,
+    { onDelete: "set null" },
+  ),
 });
 
 export const insertGrievanceSchema = createInsertSchema(grievances).omit({

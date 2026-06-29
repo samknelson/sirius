@@ -114,6 +114,7 @@ export function createGrievanceStorage(): GrievanceStorage {
           statusId: grievances.statusId,
           categoryId: grievances.categoryId,
           data: grievances.data,
+          timelineTemplateId: grievances.timelineTemplateId,
           statusName: optionsGrievanceStatus.name,
           categoryName: optionsGrievanceCategory.name,
         })
@@ -170,6 +171,7 @@ export function createGrievanceStorage(): GrievanceStorage {
           statusId: grievances.statusId,
           categoryId: grievances.categoryId,
           data: grievances.data,
+          timelineTemplateId: grievances.timelineTemplateId,
           statusName: optionsGrievanceStatus.name,
           categoryName: optionsGrievanceCategory.name,
         })

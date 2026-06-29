@@ -30,6 +30,7 @@ export interface GrievanceWithDetails {
   statusId: string;
   categoryId: string;
   data: unknown;
+  timelineTemplateId: string | null;
   statusName: string | null;
   categoryName: string | null;
   workers: GrievanceLinkedWorker[];
