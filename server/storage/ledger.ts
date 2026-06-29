@@ -1695,16 +1695,37 @@ function buildInvoicesForEa(entries: SimpleLedgerEntry[]): Map<string, InvoiceBu
   return invoiceMap;
 }
 
+// Resolves a short, human-recognizable key for the entity behind a ledger EA.
+// Employers and workers have a unique numeric Sirius ID; trust providers (and
+// any other entity type) have none, so we fall back to a short, stable segment
+// of their record ID.
+async function resolveEntityKey(entityType: string, entityId: string): Promise<string> {
+  const client = getClient();
+  if (entityType === "employer") {
+    const rows = await client.select({ siriusId: employers.siriusId })
+      .from(employers).where(eq(employers.id, entityId)).limit(1);
+    if (rows[0]?.siriusId != null) return String(rows[0].siriusId);
+  } else if (entityType === "worker") {
+    const rows = await client.select({ siriusId: workers.siriusId })
+      .from(workers).where(eq(workers.id, entityId)).limit(1);
+    if (rows[0]?.siriusId != null) return String(rows[0].siriusId);
+  }
+  // Trust providers (and any other type) have no numeric Sirius ID. Use the
+  // full record ID, compacted, so the key stays unique to that entity.
+  return entityId.replace(/-/g, "").toUpperCase();
+}
+
 // Deterministic, stable, and unique invoice number for a virtual (computed)
-// invoice. An invoice is uniquely identified by its entity-account (eaId) plus
-// the statement period (year + month). The eaId is globally unique and the
-// period is unique within an EA, so embedding the full eaId guarantees a
-// genuinely unique number (not merely probabilistically unique), while the same
-// inputs always produce the same number. Format: INV-YYYYMM-<eaId hex, no dashes>.
-function buildInvoiceNumber(eaId: string, year: number, month: number): string {
+// invoice. An invoice is uniquely identified by its entity + account + statement
+// period. The entity key (Sirius ID) is unique per entity, account names are
+// distinct within the system, and the period is unique within an EA, so the
+// combination is unique while staying short and human-readable. The same inputs
+// always produce the same number. Format: <entityKey>-<ACCOUNTNAME>-<YYYYMM>.
+// The account name is not truncated, so distinct account names cannot collide.
+function buildInvoiceNumber(entityKey: string, accountName: string, year: number, month: number): string {
   const period = `${year}${String(month).padStart(2, "0")}`;
-  const eaCompact = eaId.replace(/-/g, "").toUpperCase();
-  return `INV-${period}-${eaCompact}`;
+  const acct = accountName.toUpperCase().replace(/[^A-Z0-9]+/g, "") || "ACCT";
+  return `${entityKey}-${acct}-${period}`;
 }
 
 function createLedgerInvoiceStorage(): LedgerInvoiceStorage {
@@ -1726,6 +1747,21 @@ function createLedgerInvoiceStorage(): LedgerInvoiceStorage {
       if (entries.length === 0) {
         return [];
       }
+
+      const eaRows = await client.select({
+        entityType: ledgerEa.entityType,
+        entityId: ledgerEa.entityId,
+        accountId: ledgerEa.accountId,
+      }).from(ledgerEa).where(eq(ledgerEa.id, eaId)).limit(1);
+      const eaRow = eaRows[0];
+      const acctRows = eaRow
+        ? await client.select({ name: ledgerAccounts.name })
+            .from(ledgerAccounts).where(eq(ledgerAccounts.id, eaRow.accountId)).limit(1)
+        : [];
+      const accountName = acctRows[0]?.name ?? "";
+      const entityKey = eaRow
+        ? await resolveEntityKey(eaRow.entityType, eaRow.entityId)
+        : eaId.replace(/-/g, "").toUpperCase();
 
       const invoiceMap = buildInvoicesForEa(entries);
 
@@ -1767,7 +1803,7 @@ function createLedgerInvoiceStorage(): LedgerInvoiceStorage {
         );
 
         summaries.push({
-          invoiceNumber: buildInvoiceNumber(eaId, bucket.year, bucket.month),
+          invoiceNumber: buildInvoiceNumber(entityKey, accountName, bucket.year, bucket.month),
           month: bucket.month,
           year: bucket.year,
           totalAmount: fromCents(invoiceBalanceCents),
@@ -1933,8 +1969,11 @@ function createLedgerInvoiceStorage(): LedgerInvoiceStorage {
       );
       const outgoingBalanceCents = bucket.incomingBalanceCents + invoiceBalanceCents;
 
+      const detailEntityKey = await resolveEntityKey(ea[0].entityType, ea[0].entityId);
+      const detailAccountName = account[0]?.name ?? "";
+
       return {
-        invoiceNumber: buildInvoiceNumber(eaId, bucket.year, bucket.month),
+        invoiceNumber: buildInvoiceNumber(detailEntityKey, detailAccountName, bucket.year, bucket.month),
         month: bucket.month,
         year: bucket.year,
         totalAmount: fromCents(invoiceBalanceCents),
