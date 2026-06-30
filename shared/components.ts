@@ -216,9 +216,9 @@ export const componentRegistry: ComponentDefinition[] = [
     category: "core",
     managesSchema: true,
     schemaManifest: {
-      version: 8,
+      version: 9,
       schemaPath: "./shared/schema/grievance/schema.ts",
-      tables: ["options_grievance_status", "options_grievance_category", "options_grievance_steps", "grievances", "grievance_workers", "grievance_employers", "grievance_steps", "grievance_timeline_templates", "grievance_timeline_template_steps"]
+      tables: ["options_grievance_status", "options_grievance_category", "options_grievance_steps", "options_grievance_complaints", "options_grievance_remedies", "grievances", "grievance_workers", "grievance_employers", "grievance_steps", "grievance_timeline_templates", "grievance_timeline_template_steps"]
     }
   },
   {

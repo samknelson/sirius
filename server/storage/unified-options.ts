@@ -27,6 +27,8 @@ import {
   optionsGrievanceStatus,
   optionsGrievanceCategory,
   optionsGrievanceSteps,
+  optionsGrievanceComplaints,
+  optionsGrievanceRemedies,
   bulkMediumEnum,
 } from "@shared/schema";
 import { defineLoggingConfig } from "./middleware/logging";
@@ -61,7 +63,9 @@ export type OptionsTypeName =
   | "comm-tag"
   | "grievance-status"
   | "grievance-category"
-  | "grievance-step";
+  | "grievance-step"
+  | "grievance-complaint"
+  | "grievance-remedy";
 
 /**
  * Field definition for dynamic form and table rendering
@@ -513,6 +517,44 @@ const optionsMetadata: Record<OptionsTypeName, OptionsTableMetadata<any>> = {
       { name: "name", label: "Name", inputType: "text", required: true, placeholder: "e.g., Step 1, Mediation", showInTable: true, columnHeader: "Name" },
       { name: "description", label: "Description", inputType: "textarea", required: false, placeholder: "Optional description of this step", showInTable: true, columnHeader: "Description" },
       { name: "actor", label: "Actor", inputType: "enum", required: true, enumOptions: [{ value: "union", label: "Union" }, { value: "employer", label: "Employer" }], showInTable: true, columnHeader: "Actor" },
+      { name: "siriusId", label: "Sirius ID", inputType: "text", required: false, placeholder: "External ID", showInTable: true, columnHeader: "Sirius ID" },
+    ],
+  },
+  "grievance-complaint": {
+    table: optionsGrievanceComplaints,
+    displayName: "Grievance Complaint Options",
+    description: "Manage complaint options for grievances",
+    singularName: "Complaint Option",
+    pluralName: "Complaint Options",
+    orderByColumn: "sequence" as const,
+    loggingModule: "options.grievanceComplaint",
+    requiredFields: ["name"],
+    optionalFields: ["description", "siriusId", "sequence", "data"],
+    supportsSequencing: true,
+    requiredComponent: "grievance",
+    fields: [
+      { name: "icon", label: "Icon", inputType: "icon", required: false, showInTable: true, columnHeader: "Icon", columnWidth: "80px", dataField: true },
+      { name: "name", label: "Name", inputType: "text", required: true, placeholder: "e.g., Wrongful Termination, Pay Dispute", showInTable: true, columnHeader: "Name" },
+      { name: "description", label: "Description", inputType: "textarea", required: false, placeholder: "Optional description of this complaint", showInTable: true, columnHeader: "Description" },
+      { name: "siriusId", label: "Sirius ID", inputType: "text", required: false, placeholder: "External ID", showInTable: true, columnHeader: "Sirius ID" },
+    ],
+  },
+  "grievance-remedy": {
+    table: optionsGrievanceRemedies,
+    displayName: "Grievance Remedy Options",
+    description: "Manage remedy options for grievances",
+    singularName: "Remedy Option",
+    pluralName: "Remedy Options",
+    orderByColumn: "sequence" as const,
+    loggingModule: "options.grievanceRemedy",
+    requiredFields: ["name"],
+    optionalFields: ["description", "siriusId", "sequence", "data"],
+    supportsSequencing: true,
+    requiredComponent: "grievance",
+    fields: [
+      { name: "icon", label: "Icon", inputType: "icon", required: false, showInTable: true, columnHeader: "Icon", columnWidth: "80px", dataField: true },
+      { name: "name", label: "Name", inputType: "text", required: true, placeholder: "e.g., Reinstatement, Back Pay", showInTable: true, columnHeader: "Name" },
+      { name: "description", label: "Description", inputType: "textarea", required: false, placeholder: "Optional description of this remedy", showInTable: true, columnHeader: "Description" },
       { name: "siriusId", label: "Sirius ID", inputType: "text", required: false, placeholder: "External ID", showInTable: true, columnHeader: "Sirius ID" },
     ],
   },

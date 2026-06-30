@@ -64,6 +64,46 @@ export type InsertOptionsGrievanceStep = z.infer<
   typeof insertOptionsGrievanceStepsSchema
 >;
 
+export const optionsGrievanceComplaints = pgTable("options_grievance_complaints", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name", { length: 255 }).notNull().unique(),
+  description: text("description"),
+  siriusId: varchar("sirius_id").unique(),
+  sequence: integer("sequence").notNull().default(0),
+  data: jsonb("data"),
+});
+
+export const insertOptionsGrievanceComplaintSchema = createInsertSchema(
+  optionsGrievanceComplaints,
+).omit({
+  id: true,
+});
+
+export type OptionsGrievanceComplaint = typeof optionsGrievanceComplaints.$inferSelect;
+export type InsertOptionsGrievanceComplaint = z.infer<
+  typeof insertOptionsGrievanceComplaintSchema
+>;
+
+export const optionsGrievanceRemedies = pgTable("options_grievance_remedies", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name", { length: 255 }).notNull().unique(),
+  description: text("description"),
+  siriusId: varchar("sirius_id").unique(),
+  sequence: integer("sequence").notNull().default(0),
+  data: jsonb("data"),
+});
+
+export const insertOptionsGrievanceRemedySchema = createInsertSchema(
+  optionsGrievanceRemedies,
+).omit({
+  id: true,
+});
+
+export type OptionsGrievanceRemedy = typeof optionsGrievanceRemedies.$inferSelect;
+export type InsertOptionsGrievanceRemedy = z.infer<
+  typeof insertOptionsGrievanceRemedySchema
+>;
+
 export const GRIEVANCE_CARDINALITIES = [
   "individual",
   "multiple",
