@@ -37,7 +37,7 @@ export interface UserStorage {
   deleteUser(id: string): Promise<boolean>;
   getAllUsers(): Promise<User[]>;
   getAllUsersWithRoles(): Promise<(User & { roles: Role[] })[]>;
-  searchUsers(query: string, roleIds?: string[]): Promise<(User & { roles: Role[] })[]>;
+  searchUsers(query: string, roleIds?: string[], limit?: number): Promise<(User & { roles: Role[] })[]>;
   userHasAnyRole(userId: string, roleIds: string[]): Promise<boolean>;
   hasAnyUsers(): Promise<boolean>;
   updateUserData(id: string, data: Record<string, unknown>): Promise<User | undefined>;
@@ -213,17 +213,20 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
     async searchUsers(
       query: string,
       roleIds?: string[],
+      limit = 20,
     ): Promise<(User & { roles: Role[] })[]> {
       const q = query.toLowerCase();
       const all = await this.getAllUsersWithRoles();
       const filtered = all.filter((user) => {
-        if (!user.email?.toLowerCase().includes(q)) return false;
+        // An empty query is a "prefill": return the first batch unfiltered by
+        // email so the picker can open as a dropdown without typing.
+        if (q && !user.email?.toLowerCase().includes(q)) return false;
         if (roleIds && roleIds.length > 0) {
           return user.roles.some((r) => roleIds.includes(r.id));
         }
         return true;
       });
-      return filtered.slice(0, 20);
+      return filtered.slice(0, Math.max(1, limit));
     },
 
     async userHasAnyRole(userId: string, roleIds: string[]): Promise<boolean> {

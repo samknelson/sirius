@@ -23,15 +23,13 @@ export function registerUserRoutes(
   // GET /api/admin/users/search - Search users by email (staff+)
   // Relaxed from admin to staff so staff can pick users to assign on
   // grievance roles. The response is already shaped to safe fields only
-  // (id, email, names, status) and matches require a 2+ character query.
-  // MIGRATED to new access control system
+  // (id, email, names, status). An empty `q` returns the first batch of users
+  // (prefill / dropdown mode); a non-empty `q` filters by email substring.
+  // The optional `limit` lets callers request one extra row to detect
+  // truncation. MIGRATED to new access control system
   app.get("/api/admin/users/search", requireAccess('staff'), async (req, res) => {
     try {
       const query = (req.query.q as string || '').toLowerCase();
-      
-      if (!query || query.length < 2) {
-        return res.json([]);
-      }
 
       // Optional `roleIds` filter (CSV) restricts results to users holding
       // at least one of the given system roles (OR semantics). Used by the
@@ -46,7 +44,19 @@ export function registerUserRoutes(
           .filter(Boolean);
       }
 
-      const matchedUsers = await storage.users.searchUsers(query, roleIds);
+      // Optional `limit` lets the picker request one more than it displays so
+      // it can tell whether the result set is truncated ("type to search").
+      // An empty query returns the first batch (prefill / dropdown mode).
+      let limit = 20;
+      const limitRaw = req.query.limit;
+      if (typeof limitRaw === 'string') {
+        const n = parseInt(limitRaw, 10);
+        if (Number.isFinite(n) && n > 0) {
+          limit = Math.min(n, 50);
+        }
+      }
+
+      const matchedUsers = await storage.users.searchUsers(query, roleIds, limit);
       
       // Shape response to exclude sensitive fields
       const safeUsers = matchedUsers.map(user => ({

@@ -2,7 +2,6 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -10,7 +9,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Search, X } from "lucide-react";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Command,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import { Check, ChevronsUpDown, X } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -46,21 +58,29 @@ function userLabel(u: {
   return name.length > 0 ? `${name} (${u.email})` : u.email;
 }
 
+// How many eligible users the picker shows before switching from a plain
+// dropdown into "type to search" mode. We fetch one extra to detect truncation.
+const PREFILL_LIMIT = 20;
+
 interface GrievanceUserManagerProps {
   grievanceId: string;
   users: SectionUser[];
 }
 
 /**
- * Live "People" manager for a grievance. Staff search for a user by email,
- * pick a role, and assign them. The same user may be assigned several times
- * under different roles (the backend uniqueness is per grievance/user/role).
- * Each existing assignment can have its role changed inline or be removed;
- * every action issues an immediate API call and refreshes the cache.
+ * Live "People" manager for a grievance. Staff pick a grievance role first,
+ * then choose a user from a combobox that opens as a dropdown prefilled with
+ * eligible users (the common small case) and switches to server-backed
+ * search-as-you-type when the eligible pool is large. The same user may be
+ * assigned several times under different roles (the backend uniqueness is per
+ * grievance/user/role). Each existing assignment can have its role changed
+ * inline or be removed; every action issues an immediate API call and
+ * refreshes the cache.
  */
 export function GrievanceUserManager({ grievanceId, users }: GrievanceUserManagerProps) {
   const { toast } = useToast();
   const [busy, setBusy] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [selectedUser, setSelectedUser] = useState<UserSearchHit | null>(null);
   const [newRoleId, setNewRoleId] = useState<string>("");
@@ -70,22 +90,32 @@ export function GrievanceUserManager({ grievanceId, users }: GrievanceUserManage
   });
 
   // The grievance role must be picked first; its permitted system roles
-  // then restrict which users the search returns. Empty list = any user.
+  // then restrict which users are eligible. Empty list = any user.
   const permittedRoleIds =
     roles.find((r) => r.id === newRoleId)?.data?.permittedSystemRoleIds ?? [];
   const roleIdsParam = permittedRoleIds.join(",");
 
-  const { data: searchHits = [] } = useQuery<UserSearchHit[]>({
-    queryKey: ["/api/admin/users/search", query, roleIdsParam],
+  const { data: searchHits = [], isFetching } = useQuery<UserSearchHit[]>({
+    queryKey: ["/api/admin/users/search", newRoleId, roleIdsParam, query],
     queryFn: async () => {
-      const params = new URLSearchParams({ q: query });
+      const params = new URLSearchParams({
+        q: query,
+        limit: String(PREFILL_LIMIT + 1),
+      });
       if (roleIdsParam) params.set("roleIds", roleIdsParam);
       const res = await fetch(`/api/admin/users/search?${params.toString()}`);
       if (!res.ok) throw new Error("Search failed");
       return res.json();
     },
-    enabled: !!newRoleId && query.trim().length >= 2 && !selectedUser,
+    // Only fetch while the picker is open and a role has been chosen. We do
+    // NOT keep previous data: a role change alters eligibility, so showing the
+    // prior role's results while the new request is in flight would briefly
+    // surface ineligible users.
+    enabled: pickerOpen && !!newRoleId,
   });
+
+  const truncated = searchHits.length > PREFILL_LIMIT;
+  const visibleHits = searchHits.slice(0, PREFILL_LIMIT);
 
   const refresh = async () => {
     await queryClient.invalidateQueries({ queryKey: ["/api/grievances", grievanceId] });
@@ -96,6 +126,16 @@ export function GrievanceUserManager({ grievanceId, users }: GrievanceUserManage
     setQuery("");
     setSelectedUser(null);
     setNewRoleId("");
+    setPickerOpen(false);
+  };
+
+  const onRoleChange = (v: string) => {
+    setNewRoleId(v);
+    // Eligible users depend on the role, so clear any in-progress selection
+    // and search state when the role changes.
+    setSelectedUser(null);
+    setQuery("");
+    setPickerOpen(false);
   };
 
   const onAdd = async () => {
@@ -167,17 +207,7 @@ export function GrievanceUserManager({ grievanceId, users }: GrievanceUserManage
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="border rounded-lg p-3 space-y-3" data-testid="form-add-grievance-user">
-          <Select
-            value={newRoleId}
-            onValueChange={(v) => {
-              setNewRoleId(v);
-              // Eligible users depend on the role, so clear any in-progress
-              // user selection / search when the role changes.
-              setSelectedUser(null);
-              setQuery("");
-            }}
-            disabled={busy}
-          >
+          <Select value={newRoleId} onValueChange={onRoleChange} disabled={busy}>
             <SelectTrigger className="w-full" data-testid="select-new-user-role">
               <SelectValue placeholder="Select a role first" />
             </SelectTrigger>
@@ -193,60 +223,82 @@ export function GrievanceUserManager({ grievanceId, users }: GrievanceUserManage
               ))}
             </SelectContent>
           </Select>
-          <div className="relative">
-            <Search
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-              size={16}
-            />
-            <Input
-              value={selectedUser ? userLabel(selectedUser) : query}
-              onChange={(e) => {
-                setSelectedUser(null);
-                setQuery(e.target.value);
-              }}
-              placeholder={
-                newRoleId
-                  ? "Search eligible users by email"
-                  : "Select a role first"
-              }
-              className="pl-9"
-              disabled={busy || !newRoleId}
-              data-testid="input-user-search"
-            />
-            {newRoleId &&
-              !selectedUser &&
-              query.trim().length >= 2 &&
-              searchHits.length > 0 && (
-                <div className="mt-2 border rounded-lg divide-y max-h-60 overflow-y-auto">
-                  {searchHits.map((u) => (
-                    <button
-                      key={u.id}
-                      type="button"
-                      disabled={busy}
-                      onClick={() => {
-                        setSelectedUser(u);
-                        setQuery("");
-                      }}
-                      className="w-full text-left px-3 py-2 hover:bg-muted disabled:opacity-50"
-                      data-testid={`button-select-user-${u.id}`}
+
+          <Popover
+            open={pickerOpen}
+            onOpenChange={(open) => {
+              setPickerOpen(open);
+              if (!open) setQuery("");
+            }}
+          >
+            <PopoverTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                role="combobox"
+                aria-expanded={pickerOpen}
+                disabled={busy || !newRoleId}
+                className="w-full justify-between font-normal"
+                data-testid="button-open-user-picker"
+              >
+                <span className="truncate" data-testid="text-selected-user">
+                  {selectedUser
+                    ? userLabel(selectedUser)
+                    : newRoleId
+                      ? "Select a user"
+                      : "Select a role first"}
+                </span>
+                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent
+              className="w-[var(--radix-popover-trigger-width)] p-0"
+              align="start"
+            >
+              <Command shouldFilter={false}>
+                <CommandInput
+                  value={query}
+                  onValueChange={setQuery}
+                  placeholder="Search users by email"
+                  data-testid="input-user-search"
+                />
+                <CommandList>
+                  {visibleHits.length === 0 ? (
+                    <div
+                      className="py-6 text-center text-sm text-muted-foreground"
+                      data-testid="text-no-eligible-users"
                     >
-                      {userLabel(u)}
-                    </button>
-                  ))}
-                </div>
-              )}
-            {newRoleId &&
-              !selectedUser &&
-              query.trim().length >= 2 &&
-              searchHits.length === 0 && (
-                <p
-                  className="mt-2 text-sm text-muted-foreground"
-                  data-testid="text-no-eligible-users"
-                >
-                  No eligible users match that search.
-                </p>
-              )}
-          </div>
+                      {isFetching ? "Searching…" : "No eligible users found."}
+                    </div>
+                  ) : (
+                    <CommandGroup>
+                      {visibleHits.map((u) => (
+                        <CommandItemSelectable
+                          key={u.id}
+                          user={u}
+                          selected={selectedUser?.id === u.id}
+                          onSelect={() => {
+                            setSelectedUser(u);
+                            setPickerOpen(false);
+                            setQuery("");
+                          }}
+                        />
+                      ))}
+                    </CommandGroup>
+                  )}
+                  {truncated && (
+                    <div
+                      className="border-t px-3 py-2 text-xs text-muted-foreground"
+                      data-testid="text-user-search-hint"
+                    >
+                      Showing first {PREFILL_LIMIT} — type to search
+                    </div>
+                  )}
+                </CommandList>
+              </Command>
+            </PopoverContent>
+          </Popover>
+
           <div className="flex justify-end">
             <Button
               type="button"
@@ -318,5 +370,27 @@ export function GrievanceUserManager({ grievanceId, users }: GrievanceUserManage
         )}
       </CardContent>
     </Card>
+  );
+}
+
+function CommandItemSelectable({
+  user,
+  selected,
+  onSelect,
+}: {
+  user: UserSearchHit;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <CommandItem
+      value={user.id}
+      onSelect={onSelect}
+      className="cursor-pointer"
+      data-testid={`button-select-user-${user.id}`}
+    >
+      <Check className={cn("mr-2 h-4 w-4", selected ? "opacity-100" : "opacity-0")} />
+      <span className="truncate">{userLabel(user)}</span>
+    </CommandItem>
   );
 }
