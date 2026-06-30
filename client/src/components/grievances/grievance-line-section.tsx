@@ -107,6 +107,22 @@ export function GrievanceLineSection({
     }
   };
 
+  // Manually editing the description detaches the line from its option, so the
+  // saved row no longer claims to come from an option it no longer matches.
+  const handleNewDescriptionChange = (value: string) => {
+    setNewDescription(value);
+    if (newOptionId !== CUSTOM_OPTION) {
+      setNewOptionId(CUSTOM_OPTION);
+    }
+  };
+
+  const handleEditDescriptionChange = (value: string) => {
+    setEditDescription(value);
+    if (editOptionId !== CUSTOM_OPTION) {
+      setEditOptionId(CUSTOM_OPTION);
+    }
+  };
+
   const resetAdd = () => {
     setAdding(false);
     setNewOptionId(CUSTOM_OPTION);
@@ -275,7 +291,7 @@ export function GrievanceLineSection({
                     <Textarea
                       rows={3}
                       value={editDescription}
-                      onChange={(e) => setEditDescription(e.target.value)}
+                      onChange={(e) => handleEditDescriptionChange(e.target.value)}
                       placeholder={`Describe the ${noun.toLowerCase()}`}
                       data-testid={`input-${testIdPrefix}-description-${line.id}`}
                     />
@@ -389,7 +405,7 @@ export function GrievanceLineSection({
             <Textarea
               rows={3}
               value={newDescription}
-              onChange={(e) => setNewDescription(e.target.value)}
+              onChange={(e) => handleNewDescriptionChange(e.target.value)}
               placeholder={`Describe the ${noun.toLowerCase()}`}
               data-testid={`input-new-${testIdPrefix}-description`}
             />
