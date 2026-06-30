@@ -37,8 +37,6 @@ export const GRIEVANCE_CARDINALITY_LABELS: Record<GrievanceCardinality, string> 
 };
 
 const grievanceFormSchema = z.object({
-  complaint: z.string().optional(),
-  remedy: z.string().optional(),
   classDescription: z.string().optional(),
   cardinality: z.enum(GRIEVANCE_CARDINALITIES),
   statusId: z.string().uuid("Please select a status"),
@@ -76,8 +74,6 @@ export function GrievanceForm({
   const form = useForm<GrievanceFormValues>({
     resolver: zodResolver(grievanceFormSchema),
     defaultValues: {
-      complaint: defaultValues?.complaint ?? "",
-      remedy: defaultValues?.remedy ?? "",
       classDescription: defaultValues?.classDescription ?? "",
       cardinality: defaultValues?.cardinality ?? "individual",
       statusId: defaultValues?.statusId ?? "",
@@ -170,44 +166,6 @@ export function GrievanceForm({
                   ))}
                 </SelectContent>
               </Select>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        <FormField
-          control={form.control}
-          name="complaint"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Complaint</FormLabel>
-              <FormControl>
-                <Textarea
-                  rows={4}
-                  placeholder="Describe the complaint"
-                  data-testid="input-grievance-complaint"
-                  {...field}
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        <FormField
-          control={form.control}
-          name="remedy"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Remedy</FormLabel>
-              <FormControl>
-                <Textarea
-                  rows={4}
-                  placeholder="Describe the requested remedy"
-                  data-testid="input-grievance-remedy"
-                  {...field}
-                />
-              </FormControl>
               <FormMessage />
             </FormItem>
           )}

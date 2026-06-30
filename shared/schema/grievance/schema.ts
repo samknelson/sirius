@@ -115,8 +115,6 @@ export type GrievanceCardinality = (typeof GRIEVANCE_CARDINALITIES)[number];
 
 export const grievances = pgTable("grievances", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  complaint: text("complaint"),
-  remedy: text("remedy"),
   classDescription: text("class_description"),
   cardinality: varchar("cardinality").notNull().default("individual"),
   statusId: varchar("status_id")
@@ -201,6 +199,54 @@ export const insertGrievanceEmployerSchema = createInsertSchema(grievanceEmploye
 
 export type GrievanceEmployer = typeof grievanceEmployers.$inferSelect;
 export type InsertGrievanceEmployer = z.infer<typeof insertGrievanceEmployerSchema>;
+
+export const grievanceComplaints = pgTable("grievance_complaints", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  grievanceId: varchar("grievance_id")
+    .notNull()
+    .references(() => grievances.id, { onDelete: "cascade" }),
+  complaintId: varchar("complaint_id").references(
+    () => optionsGrievanceComplaints.id,
+    { onDelete: "set null" },
+  ),
+  description: text("description").notNull(),
+  sequence: integer("sequence").notNull().default(0),
+});
+
+export const insertGrievanceComplaintSchema = createInsertSchema(
+  grievanceComplaints,
+).omit({
+  id: true,
+});
+
+export type GrievanceComplaint = typeof grievanceComplaints.$inferSelect;
+export type InsertGrievanceComplaint = z.infer<
+  typeof insertGrievanceComplaintSchema
+>;
+
+export const grievanceRemedies = pgTable("grievance_remedies", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  grievanceId: varchar("grievance_id")
+    .notNull()
+    .references(() => grievances.id, { onDelete: "cascade" }),
+  remedyId: varchar("remedy_id").references(
+    () => optionsGrievanceRemedies.id,
+    { onDelete: "set null" },
+  ),
+  description: text("description").notNull(),
+  sequence: integer("sequence").notNull().default(0),
+});
+
+export const insertGrievanceRemedySchema = createInsertSchema(
+  grievanceRemedies,
+).omit({
+  id: true,
+});
+
+export type GrievanceRemedy = typeof grievanceRemedies.$inferSelect;
+export type InsertGrievanceRemedy = z.infer<
+  typeof insertGrievanceRemedySchema
+>;
 
 export const grievanceSteps = pgTable(
   "grievance_steps",

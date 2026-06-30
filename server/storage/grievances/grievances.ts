@@ -3,8 +3,12 @@ import {
   grievances,
   grievanceWorkers,
   grievanceEmployers,
+  grievanceComplaints,
+  grievanceRemedies,
   optionsGrievanceStatus,
   optionsGrievanceCategory,
+  optionsGrievanceComplaints,
+  optionsGrievanceRemedies,
   workers,
   contacts,
   employers,
@@ -12,8 +16,10 @@ import {
   type InsertGrievance,
   type GrievanceWorker,
   type GrievanceEmployer,
+  type GrievanceComplaint,
+  type GrievanceRemedy,
 } from "@shared/schema";
-import { eq, and, ne, inArray, asc } from "drizzle-orm";
+import { eq, and, ne, inArray, asc, sql } from "drizzle-orm";
 import { type StorageLoggingConfig } from "../middleware/logging";
 
 export interface GrievanceListItem extends Grievance {
@@ -35,11 +41,21 @@ export interface GrievanceLinkedEmployer {
   name: string;
 }
 
+export interface GrievanceComplaintWithDetails extends GrievanceComplaint {
+  complaintName: string | null;
+}
+
+export interface GrievanceRemedyWithDetails extends GrievanceRemedy {
+  remedyName: string | null;
+}
+
 export interface GrievanceWithDetails extends Grievance {
   statusName: string | null;
   categoryName: string | null;
   workers: GrievanceLinkedWorker[];
   employers: GrievanceLinkedEmployer[];
+  complaints: GrievanceComplaintWithDetails[];
+  remedies: GrievanceRemedyWithDetails[];
 }
 
 export interface GrievanceSearchFilters {
@@ -72,6 +88,32 @@ export interface GrievanceStorage {
   listEmployers(grievanceId: string): Promise<GrievanceLinkedEmployer[]>;
   addEmployer(grievanceId: string, employerId: string): Promise<GrievanceEmployer>;
   removeEmployer(grievanceId: string, employerId: string): Promise<boolean>;
+  listComplaints(grievanceId: string): Promise<GrievanceComplaintWithDetails[]>;
+  addComplaint(
+    grievanceId: string,
+    data: { complaintId?: string | null; description: string },
+  ): Promise<GrievanceComplaint>;
+  updateComplaint(
+    grievanceId: string,
+    rowId: string,
+    data: { complaintId?: string | null; description?: string; sequence?: number },
+  ): Promise<GrievanceComplaint | undefined>;
+  removeComplaint(grievanceId: string, rowId: string): Promise<boolean>;
+  listRemedies(grievanceId: string): Promise<GrievanceRemedyWithDetails[]>;
+  addRemedy(
+    grievanceId: string,
+    data: { remedyId?: string | null; description: string },
+  ): Promise<GrievanceRemedy>;
+  updateRemedy(
+    grievanceId: string,
+    rowId: string,
+    data: { remedyId?: string | null; description?: string; sequence?: number },
+  ): Promise<GrievanceRemedy | undefined>;
+  removeRemedy(grievanceId: string, rowId: string): Promise<boolean>;
+  /** Whether the supplied complaint option id currently exists. */
+  complaintOptionExists(id: string): Promise<boolean>;
+  /** Whether the supplied remedy option id currently exists. */
+  remedyOptionExists(id: string): Promise<boolean>;
   getLogLabel(id: string): Promise<string | undefined>;
 }
 
@@ -107,8 +149,6 @@ export function createGrievanceStorage(): GrievanceStorage {
       const baseQuery = client
         .select({
           id: grievances.id,
-          complaint: grievances.complaint,
-          remedy: grievances.remedy,
           classDescription: grievances.classDescription,
           cardinality: grievances.cardinality,
           statusId: grievances.statusId,
@@ -164,8 +204,6 @@ export function createGrievanceStorage(): GrievanceStorage {
       const [row] = await client
         .select({
           id: grievances.id,
-          complaint: grievances.complaint,
-          remedy: grievances.remedy,
           classDescription: grievances.classDescription,
           cardinality: grievances.cardinality,
           statusId: grievances.statusId,
@@ -184,11 +222,15 @@ export function createGrievanceStorage(): GrievanceStorage {
 
       const linkedWorkers = await this.listWorkers(id);
       const linkedEmployers = await this.listEmployers(id);
+      const complaints = await this.listComplaints(id);
+      const remedies = await this.listRemedies(id);
 
       return {
         ...row,
         workers: linkedWorkers,
         employers: linkedEmployers,
+        complaints,
+        remedies,
       };
     },
 
@@ -365,6 +407,289 @@ export function createGrievanceStorage(): GrievanceStorage {
       return result.length > 0;
     },
 
+    async listComplaints(grievanceId: string): Promise<GrievanceComplaintWithDetails[]> {
+      const client = getClient();
+      return client
+        .select({
+          id: grievanceComplaints.id,
+          grievanceId: grievanceComplaints.grievanceId,
+          complaintId: grievanceComplaints.complaintId,
+          description: grievanceComplaints.description,
+          sequence: grievanceComplaints.sequence,
+          complaintName: optionsGrievanceComplaints.name,
+        })
+        .from(grievanceComplaints)
+        .leftJoin(
+          optionsGrievanceComplaints,
+          eq(grievanceComplaints.complaintId, optionsGrievanceComplaints.id),
+        )
+        .where(eq(grievanceComplaints.grievanceId, grievanceId))
+        .orderBy(asc(grievanceComplaints.sequence), asc(grievanceComplaints.id));
+    },
+
+    async addComplaint(
+      grievanceId: string,
+      data: { complaintId?: string | null; description: string },
+    ): Promise<GrievanceComplaint> {
+      const client = getClient();
+      // New lines append to the end of the grievance's complaint list.
+      const [maxRow] = await client
+        .select({
+          max: sql<number>`COALESCE(MAX(${grievanceComplaints.sequence}), -1)`,
+        })
+        .from(grievanceComplaints)
+        .where(eq(grievanceComplaints.grievanceId, grievanceId));
+      const sequence = Number(maxRow?.max ?? -1) + 1;
+      const [row] = await client
+        .insert(grievanceComplaints)
+        .values({
+          grievanceId,
+          complaintId: data.complaintId ?? null,
+          description: data.description,
+          sequence,
+        })
+        .returning();
+      return row;
+    },
+
+    async updateComplaint(
+      grievanceId: string,
+      rowId: string,
+      data: { complaintId?: string | null; description?: string; sequence?: number },
+    ): Promise<GrievanceComplaint | undefined> {
+      const set: Record<string, unknown> = {};
+      if (data.complaintId !== undefined) set.complaintId = data.complaintId ?? null;
+      if (data.description !== undefined) set.description = data.description;
+
+      // When the sequence changes, swap it atomically with whatever line
+      // currently holds the target sequence, mirroring the timeline-template
+      // step reorder model: a single PATCH can move a line Up/Down without
+      // ever leaving two lines sharing a sequence.
+      if (data.sequence !== undefined && data.sequence !== null) {
+        const targetSequence = data.sequence;
+        set.sequence = targetSequence;
+        return runInTransaction(async () => {
+          const client = getClient();
+          const [existing] = await client
+            .select()
+            .from(grievanceComplaints)
+            .where(
+              and(
+                eq(grievanceComplaints.id, rowId),
+                eq(grievanceComplaints.grievanceId, grievanceId),
+              ),
+            );
+          if (!existing) return undefined;
+          if (existing.sequence !== targetSequence) {
+            const [conflict] = await client
+              .select({ id: grievanceComplaints.id })
+              .from(grievanceComplaints)
+              .where(
+                and(
+                  eq(grievanceComplaints.grievanceId, grievanceId),
+                  eq(grievanceComplaints.sequence, targetSequence),
+                  ne(grievanceComplaints.id, rowId),
+                ),
+              )
+              .orderBy(asc(grievanceComplaints.id))
+              .limit(1);
+            if (conflict) {
+              await client
+                .update(grievanceComplaints)
+                .set({ sequence: existing.sequence })
+                .where(eq(grievanceComplaints.id, conflict.id));
+            }
+          }
+          const [row] = await client
+            .update(grievanceComplaints)
+            .set(set)
+            .where(
+              and(
+                eq(grievanceComplaints.id, rowId),
+                eq(grievanceComplaints.grievanceId, grievanceId),
+              ),
+            )
+            .returning();
+          return row || undefined;
+        });
+      }
+
+      const client = getClient();
+      const [row] = await client
+        .update(grievanceComplaints)
+        .set(set)
+        .where(
+          and(
+            eq(grievanceComplaints.id, rowId),
+            eq(grievanceComplaints.grievanceId, grievanceId),
+          ),
+        )
+        .returning();
+      return row || undefined;
+    },
+
+    async removeComplaint(grievanceId: string, rowId: string): Promise<boolean> {
+      const client = getClient();
+      const result = await client
+        .delete(grievanceComplaints)
+        .where(
+          and(
+            eq(grievanceComplaints.id, rowId),
+            eq(grievanceComplaints.grievanceId, grievanceId),
+          ),
+        )
+        .returning();
+      return result.length > 0;
+    },
+
+    async listRemedies(grievanceId: string): Promise<GrievanceRemedyWithDetails[]> {
+      const client = getClient();
+      return client
+        .select({
+          id: grievanceRemedies.id,
+          grievanceId: grievanceRemedies.grievanceId,
+          remedyId: grievanceRemedies.remedyId,
+          description: grievanceRemedies.description,
+          sequence: grievanceRemedies.sequence,
+          remedyName: optionsGrievanceRemedies.name,
+        })
+        .from(grievanceRemedies)
+        .leftJoin(
+          optionsGrievanceRemedies,
+          eq(grievanceRemedies.remedyId, optionsGrievanceRemedies.id),
+        )
+        .where(eq(grievanceRemedies.grievanceId, grievanceId))
+        .orderBy(asc(grievanceRemedies.sequence), asc(grievanceRemedies.id));
+    },
+
+    async addRemedy(
+      grievanceId: string,
+      data: { remedyId?: string | null; description: string },
+    ): Promise<GrievanceRemedy> {
+      const client = getClient();
+      const [maxRow] = await client
+        .select({
+          max: sql<number>`COALESCE(MAX(${grievanceRemedies.sequence}), -1)`,
+        })
+        .from(grievanceRemedies)
+        .where(eq(grievanceRemedies.grievanceId, grievanceId));
+      const sequence = Number(maxRow?.max ?? -1) + 1;
+      const [row] = await client
+        .insert(grievanceRemedies)
+        .values({
+          grievanceId,
+          remedyId: data.remedyId ?? null,
+          description: data.description,
+          sequence,
+        })
+        .returning();
+      return row;
+    },
+
+    async updateRemedy(
+      grievanceId: string,
+      rowId: string,
+      data: { remedyId?: string | null; description?: string; sequence?: number },
+    ): Promise<GrievanceRemedy | undefined> {
+      const set: Record<string, unknown> = {};
+      if (data.remedyId !== undefined) set.remedyId = data.remedyId ?? null;
+      if (data.description !== undefined) set.description = data.description;
+
+      if (data.sequence !== undefined && data.sequence !== null) {
+        const targetSequence = data.sequence;
+        set.sequence = targetSequence;
+        return runInTransaction(async () => {
+          const client = getClient();
+          const [existing] = await client
+            .select()
+            .from(grievanceRemedies)
+            .where(
+              and(
+                eq(grievanceRemedies.id, rowId),
+                eq(grievanceRemedies.grievanceId, grievanceId),
+              ),
+            );
+          if (!existing) return undefined;
+          if (existing.sequence !== targetSequence) {
+            const [conflict] = await client
+              .select({ id: grievanceRemedies.id })
+              .from(grievanceRemedies)
+              .where(
+                and(
+                  eq(grievanceRemedies.grievanceId, grievanceId),
+                  eq(grievanceRemedies.sequence, targetSequence),
+                  ne(grievanceRemedies.id, rowId),
+                ),
+              )
+              .orderBy(asc(grievanceRemedies.id))
+              .limit(1);
+            if (conflict) {
+              await client
+                .update(grievanceRemedies)
+                .set({ sequence: existing.sequence })
+                .where(eq(grievanceRemedies.id, conflict.id));
+            }
+          }
+          const [row] = await client
+            .update(grievanceRemedies)
+            .set(set)
+            .where(
+              and(
+                eq(grievanceRemedies.id, rowId),
+                eq(grievanceRemedies.grievanceId, grievanceId),
+              ),
+            )
+            .returning();
+          return row || undefined;
+        });
+      }
+
+      const client = getClient();
+      const [row] = await client
+        .update(grievanceRemedies)
+        .set(set)
+        .where(
+          and(
+            eq(grievanceRemedies.id, rowId),
+            eq(grievanceRemedies.grievanceId, grievanceId),
+          ),
+        )
+        .returning();
+      return row || undefined;
+    },
+
+    async removeRemedy(grievanceId: string, rowId: string): Promise<boolean> {
+      const client = getClient();
+      const result = await client
+        .delete(grievanceRemedies)
+        .where(
+          and(
+            eq(grievanceRemedies.id, rowId),
+            eq(grievanceRemedies.grievanceId, grievanceId),
+          ),
+        )
+        .returning();
+      return result.length > 0;
+    },
+
+    async complaintOptionExists(id: string): Promise<boolean> {
+      const client = getClient();
+      const [row] = await client
+        .select({ id: optionsGrievanceComplaints.id })
+        .from(optionsGrievanceComplaints)
+        .where(eq(optionsGrievanceComplaints.id, id));
+      return !!row;
+    },
+
+    async remedyOptionExists(id: string): Promise<boolean> {
+      const client = getClient();
+      const [row] = await client
+        .select({ id: optionsGrievanceRemedies.id })
+        .from(optionsGrievanceRemedies)
+        .where(eq(optionsGrievanceRemedies.id, id));
+      return !!row;
+    },
+
     async getLogLabel(id: string): Promise<string | undefined> {
       const client = getClient();
       const [row] = await client
@@ -457,6 +782,46 @@ export const grievanceLoggingConfig: StorageLoggingConfig<GrievanceStorage> = {
       getEntityId: (args) => args[1],
       getHostEntityId: (args) => args[0],
       getDescription: async () => `Unlinked employer from grievance`,
+    },
+    addComplaint: {
+      enabled: true,
+      getEntityId: (_args, result) => result?.id,
+      getHostEntityId: (args) => args[0],
+      after: async (_args, result) => result,
+      getDescription: async () => `Added complaint to grievance`,
+    },
+    updateComplaint: {
+      enabled: true,
+      getEntityId: (args) => args[1],
+      getHostEntityId: (args) => args[0],
+      after: async (_args, result) => result,
+      getDescription: async () => `Updated complaint on grievance`,
+    },
+    removeComplaint: {
+      enabled: true,
+      getEntityId: (args) => args[1],
+      getHostEntityId: (args) => args[0],
+      getDescription: async () => `Removed complaint from grievance`,
+    },
+    addRemedy: {
+      enabled: true,
+      getEntityId: (_args, result) => result?.id,
+      getHostEntityId: (args) => args[0],
+      after: async (_args, result) => result,
+      getDescription: async () => `Added remedy to grievance`,
+    },
+    updateRemedy: {
+      enabled: true,
+      getEntityId: (args) => args[1],
+      getHostEntityId: (args) => args[0],
+      after: async (_args, result) => result,
+      getDescription: async () => `Updated remedy on grievance`,
+    },
+    removeRemedy: {
+      enabled: true,
+      getEntityId: (args) => args[1],
+      getHostEntityId: (args) => args[0],
+      getDescription: async () => `Removed remedy from grievance`,
     },
   },
 };

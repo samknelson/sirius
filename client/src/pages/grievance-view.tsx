@@ -52,17 +52,47 @@ function GrievanceDetailsContent() {
           </div>
 
           <div>
-            <h3 className="text-lg font-semibold text-foreground mb-2">Complaint</h3>
-            <p className="text-foreground whitespace-pre-wrap" data-testid="text-grievance-complaint">
-              {grievance.complaint || "—"}
-            </p>
+            <h3 className="text-lg font-semibold text-foreground mb-2">Complaints</h3>
+            {grievance.complaints.length === 0 ? (
+              <p className="text-muted-foreground" data-testid="text-no-complaints">
+                No complaints added.
+              </p>
+            ) : (
+              <ol className="list-decimal pl-5 space-y-2" data-testid="list-grievance-complaints">
+                {grievance.complaints.map((c) => (
+                  <li key={c.id} data-testid={`item-complaint-${c.id}`}>
+                    {c.complaintName && (
+                      <span className="font-medium text-foreground">{c.complaintName}: </span>
+                    )}
+                    <span className="text-foreground whitespace-pre-wrap break-words">
+                      {c.description}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            )}
           </div>
 
           <div>
-            <h3 className="text-lg font-semibold text-foreground mb-2">Remedy</h3>
-            <p className="text-foreground whitespace-pre-wrap" data-testid="text-grievance-remedy">
-              {grievance.remedy || "—"}
-            </p>
+            <h3 className="text-lg font-semibold text-foreground mb-2">Remedies</h3>
+            {grievance.remedies.length === 0 ? (
+              <p className="text-muted-foreground" data-testid="text-no-remedies">
+                No remedies added.
+              </p>
+            ) : (
+              <ol className="list-decimal pl-5 space-y-2" data-testid="list-grievance-remedies">
+                {grievance.remedies.map((r) => (
+                  <li key={r.id} data-testid={`item-remedy-${r.id}`}>
+                    {r.remedyName && (
+                      <span className="font-medium text-foreground">{r.remedyName}: </span>
+                    )}
+                    <span className="text-foreground whitespace-pre-wrap break-words">
+                      {r.description}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            )}
           </div>
 
           <div>

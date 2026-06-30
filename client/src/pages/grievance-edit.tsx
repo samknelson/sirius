@@ -5,6 +5,7 @@ import { GrievanceLayout, useGrievanceLayout } from "@/components/layouts/Grieva
 import { GrievanceForm, type GrievanceFormValues } from "@/components/grievances/grievance-form";
 import { GrievanceWorkerManager } from "@/components/grievances/grievance-worker-section";
 import { GrievanceEmployerManager } from "@/components/grievances/grievance-employer-section";
+import { GrievanceLineSection } from "@/components/grievances/grievance-line-section";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -19,8 +20,6 @@ function GrievanceEditContent() {
     try {
       const isClass = values.cardinality === "class";
       await apiRequest("PATCH", `/api/grievances/${grievance.id}`, {
-        complaint: values.complaint?.trim() ? values.complaint.trim() : null,
-        remedy: values.remedy?.trim() ? values.remedy.trim() : null,
         classDescription: isClass && values.classDescription?.trim() ? values.classDescription.trim() : null,
         cardinality: values.cardinality,
         statusId: values.statusId,
@@ -47,8 +46,6 @@ function GrievanceEditContent() {
         <CardContent className="pt-6 max-w-2xl">
           <GrievanceForm
             defaultValues={{
-              complaint: grievance.complaint ?? "",
-              remedy: grievance.remedy ?? "",
               classDescription: grievance.classDescription ?? "",
               cardinality: grievance.cardinality,
               statusId: grievance.statusId,
@@ -60,6 +57,36 @@ function GrievanceEditContent() {
           />
         </CardContent>
       </Card>
+
+      <GrievanceLineSection
+        grievanceId={grievance.id}
+        noun="Complaint"
+        resource="complaints"
+        optionsType="grievance-complaint"
+        testIdPrefix="complaint"
+        lines={grievance.complaints.map((c) => ({
+          id: c.id,
+          optionId: c.complaintId,
+          description: c.description,
+          sequence: c.sequence,
+          optionName: c.complaintName,
+        }))}
+      />
+
+      <GrievanceLineSection
+        grievanceId={grievance.id}
+        noun="Remedy"
+        resource="remedies"
+        optionsType="grievance-remedy"
+        testIdPrefix="remedy"
+        lines={grievance.remedies.map((r) => ({
+          id: r.id,
+          optionId: r.remedyId,
+          description: r.description,
+          sequence: r.sequence,
+          optionName: r.remedyName,
+        }))}
+      />
 
       {grievance.cardinality !== "class" && (
         <GrievanceWorkerManager

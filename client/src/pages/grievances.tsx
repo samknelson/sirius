@@ -30,8 +30,6 @@ import { useToast } from "@/hooks/use-toast";
 
 interface GrievanceListItem {
   id: string;
-  complaint: string | null;
-  remedy: string | null;
   statusId: string;
   categoryId: string;
   statusName: string | null;
@@ -127,7 +125,6 @@ export default function Grievances() {
                   <TableRow>
                     <TableHead>Category</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead>Complaint</TableHead>
                     <TableHead className="text-center">Workers</TableHead>
                     <TableHead className="text-center">Employers</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
@@ -143,9 +140,6 @@ export default function Grievances() {
                         <Badge variant="secondary" data-testid={`badge-grievance-status-${g.id}`}>
                           {g.statusName || "—"}
                         </Badge>
-                      </TableCell>
-                      <TableCell className="max-w-md truncate" data-testid={`text-grievance-complaint-${g.id}`}>
-                        {g.complaint || "—"}
                       </TableCell>
                       <TableCell className="text-center" data-testid={`text-grievance-worker-count-${g.id}`}>
                         {g.workerCount}

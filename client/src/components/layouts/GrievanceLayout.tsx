@@ -21,10 +21,26 @@ export interface GrievanceLinkedEmployer {
   name: string;
 }
 
+export interface GrievanceComplaintLine {
+  id: string;
+  grievanceId: string;
+  complaintId: string | null;
+  description: string;
+  sequence: number;
+  complaintName: string | null;
+}
+
+export interface GrievanceRemedyLine {
+  id: string;
+  grievanceId: string;
+  remedyId: string | null;
+  description: string;
+  sequence: number;
+  remedyName: string | null;
+}
+
 export interface GrievanceWithDetails {
   id: string;
-  complaint: string | null;
-  remedy: string | null;
   classDescription: string | null;
   cardinality: GrievanceCardinality;
   statusId: string;
@@ -35,6 +51,8 @@ export interface GrievanceWithDetails {
   categoryName: string | null;
   workers: GrievanceLinkedWorker[];
   employers: GrievanceLinkedEmployer[];
+  complaints: GrievanceComplaintLine[];
+  remedies: GrievanceRemedyLine[];
 }
 
 interface GrievanceLayoutContextValue {

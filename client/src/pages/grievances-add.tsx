@@ -85,8 +85,6 @@ export default function GrievancesAdd() {
     try {
       const isClass = values.cardinality === "class";
       const created = await apiRequest("POST", "/api/grievances", {
-        complaint: values.complaint?.trim() ? values.complaint.trim() : null,
-        remedy: values.remedy?.trim() ? values.remedy.trim() : null,
         classDescription: isClass && values.classDescription?.trim() ? values.classDescription.trim() : null,
         cardinality: values.cardinality,
         statusId: values.statusId,

@@ -12,8 +12,6 @@ type PolicyMiddleware = (
 
 const createGrievanceSchema = z
   .object({
-    complaint: z.string().trim().min(1, "Complaint is required").nullish(),
-    remedy: z.string().trim().min(1).nullish(),
     classDescription: z.string().trim().min(1).nullish(),
     statusId: z.string().uuid("A valid status is required"),
     categoryId: z.string().uuid("A valid category is required"),
@@ -34,8 +32,6 @@ const editWorkerSchema = z
 
 const updateGrievanceSchema = z
   .object({
-    complaint: z.string().trim().min(1).nullish(),
-    remedy: z.string().trim().min(1).nullish(),
     classDescription: z.string().trim().min(1).nullish(),
     statusId: z.string().uuid().optional(),
     categoryId: z.string().uuid().optional(),
@@ -54,6 +50,21 @@ const searchGrievancesSchema = z.object({
 
 const linkWorkerSchema = z.object({ workerId: z.string().uuid("A valid worker is required") });
 const linkEmployerSchema = z.object({ employerId: z.string().uuid("A valid employer is required") });
+
+const addLineSchema = z.object({
+  optionId: z.string().uuid().nullish(),
+  description: z.string().trim().min(1, "A description is required"),
+});
+
+const updateLineSchema = z
+  .object({
+    optionId: z.string().uuid().nullable().optional(),
+    description: z.string().trim().min(1).optional(),
+    sequence: z.number().int().min(0).optional(),
+  })
+  .refine((v) => Object.keys(v).length > 0, {
+    message: "At least one field must be provided",
+  });
 
 export function registerGrievanceRoutes(
   app: Express,
@@ -84,8 +95,6 @@ export function registerGrievanceRoutes(
       }
 
       const {
-        complaint,
-        remedy,
         classDescription,
         statusId,
         categoryId,
@@ -93,8 +102,6 @@ export function registerGrievanceRoutes(
       } = parsed.data;
 
       const created = await storage.grievances.create({
-        complaint: complaint ?? null,
-        remedy: remedy ?? null,
         classDescription: cardinality === "class" ? (classDescription ?? null) : null,
         statusId,
         categoryId,
@@ -174,8 +181,6 @@ export function registerGrievanceRoutes(
       }
 
       const data: Record<string, unknown> = {};
-      if (parsed.data.complaint !== undefined) data.complaint = parsed.data.complaint ?? null;
-      if (parsed.data.remedy !== undefined) data.remedy = parsed.data.remedy ?? null;
       if (parsed.data.classDescription !== undefined)
         data.classDescription = parsed.data.classDescription ?? null;
       if (parsed.data.statusId !== undefined) data.statusId = parsed.data.statusId;
@@ -339,6 +344,150 @@ export function registerGrievanceRoutes(
     } catch (error) {
       console.error("Failed to unlink employer from grievance:", error);
       res.status(500).json({ message: "Failed to unlink employer" });
+    }
+  });
+
+  // ---- Complaints ----------------------------------------------------------
+
+  app.post("/api/grievances/:id/complaints", ...gate, async (req, res) => {
+    try {
+      const parsed = addLineSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid request body", errors: parsed.error.flatten() });
+      }
+      const grievance = await storage.grievances.get(req.params.id);
+      if (!grievance) {
+        return res.status(404).json({ message: "Grievance not found" });
+      }
+      if (parsed.data.optionId) {
+        const exists = await storage.grievances.complaintOptionExists(parsed.data.optionId);
+        if (!exists) {
+          return res.status(400).json({ message: "Selected complaint option does not exist" });
+        }
+      }
+      await storage.grievances.addComplaint(req.params.id, {
+        complaintId: parsed.data.optionId ?? null,
+        description: parsed.data.description,
+      });
+      const complaints = await storage.grievances.listComplaints(req.params.id);
+      res.status(201).json(complaints);
+    } catch (error) {
+      console.error("Failed to add complaint to grievance:", error);
+      res.status(500).json({ message: "Failed to add complaint" });
+    }
+  });
+
+  app.patch("/api/grievances/:id/complaints/:rowId", ...gate, async (req, res) => {
+    try {
+      const parsed = updateLineSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid request body", errors: parsed.error.flatten() });
+      }
+      if (parsed.data.optionId) {
+        const exists = await storage.grievances.complaintOptionExists(parsed.data.optionId);
+        if (!exists) {
+          return res.status(400).json({ message: "Selected complaint option does not exist" });
+        }
+      }
+      const updated = await storage.grievances.updateComplaint(req.params.id, req.params.rowId, {
+        complaintId: parsed.data.optionId,
+        description: parsed.data.description,
+        sequence: parsed.data.sequence,
+      });
+      if (!updated) {
+        return res.status(404).json({ message: "Complaint not found" });
+      }
+      const complaints = await storage.grievances.listComplaints(req.params.id);
+      res.json(complaints);
+    } catch (error) {
+      console.error("Failed to update grievance complaint:", error);
+      res.status(500).json({ message: "Failed to update complaint" });
+    }
+  });
+
+  app.delete("/api/grievances/:id/complaints/:rowId", ...gate, async (req, res) => {
+    try {
+      const removed = await storage.grievances.removeComplaint(req.params.id, req.params.rowId);
+      if (!removed) {
+        return res.status(404).json({ message: "Complaint not found" });
+      }
+      const complaints = await storage.grievances.listComplaints(req.params.id);
+      res.json(complaints);
+    } catch (error) {
+      console.error("Failed to remove grievance complaint:", error);
+      res.status(500).json({ message: "Failed to remove complaint" });
+    }
+  });
+
+  // ---- Remedies ------------------------------------------------------------
+
+  app.post("/api/grievances/:id/remedies", ...gate, async (req, res) => {
+    try {
+      const parsed = addLineSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid request body", errors: parsed.error.flatten() });
+      }
+      const grievance = await storage.grievances.get(req.params.id);
+      if (!grievance) {
+        return res.status(404).json({ message: "Grievance not found" });
+      }
+      if (parsed.data.optionId) {
+        const exists = await storage.grievances.remedyOptionExists(parsed.data.optionId);
+        if (!exists) {
+          return res.status(400).json({ message: "Selected remedy option does not exist" });
+        }
+      }
+      await storage.grievances.addRemedy(req.params.id, {
+        remedyId: parsed.data.optionId ?? null,
+        description: parsed.data.description,
+      });
+      const remedies = await storage.grievances.listRemedies(req.params.id);
+      res.status(201).json(remedies);
+    } catch (error) {
+      console.error("Failed to add remedy to grievance:", error);
+      res.status(500).json({ message: "Failed to add remedy" });
+    }
+  });
+
+  app.patch("/api/grievances/:id/remedies/:rowId", ...gate, async (req, res) => {
+    try {
+      const parsed = updateLineSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid request body", errors: parsed.error.flatten() });
+      }
+      if (parsed.data.optionId) {
+        const exists = await storage.grievances.remedyOptionExists(parsed.data.optionId);
+        if (!exists) {
+          return res.status(400).json({ message: "Selected remedy option does not exist" });
+        }
+      }
+      const updated = await storage.grievances.updateRemedy(req.params.id, req.params.rowId, {
+        remedyId: parsed.data.optionId,
+        description: parsed.data.description,
+        sequence: parsed.data.sequence,
+      });
+      if (!updated) {
+        return res.status(404).json({ message: "Remedy not found" });
+      }
+      const remedies = await storage.grievances.listRemedies(req.params.id);
+      res.json(remedies);
+    } catch (error) {
+      console.error("Failed to update grievance remedy:", error);
+      res.status(500).json({ message: "Failed to update remedy" });
+    }
+  });
+
+  app.delete("/api/grievances/:id/remedies/:rowId", ...gate, async (req, res) => {
+    try {
+      const removed = await storage.grievances.removeRemedy(req.params.id, req.params.rowId);
+      if (!removed) {
+        return res.status(404).json({ message: "Remedy not found" });
+      }
+      const remedies = await storage.grievances.listRemedies(req.params.id);
+      res.json(remedies);
+    } catch (error) {
+      console.error("Failed to remove grievance remedy:", error);
+      res.status(500).json({ message: "Failed to remove remedy" });
     }
   });
 }
