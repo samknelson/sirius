@@ -106,12 +106,12 @@ export interface GrievanceStorage {
   listUsers(grievanceId: string): Promise<GrievanceLinkedUser[]>;
   addUser(
     grievanceId: string,
-    data: { userId: string; roleId: string },
+    data: { userId: string; roleId: string; data?: unknown },
   ): Promise<GrievanceUser>;
   updateUser(
     grievanceId: string,
     rowId: string,
-    data: { roleId: string },
+    data: { roleId?: string; data?: unknown },
   ): Promise<GrievanceUser | undefined>;
   removeUser(grievanceId: string, rowId: string): Promise<boolean>;
   /** Whether the supplied grievance role option id currently exists. */
@@ -461,12 +461,17 @@ export function createGrievanceStorage(): GrievanceStorage {
 
     async addUser(
       grievanceId: string,
-      data: { userId: string; roleId: string },
+      data: { userId: string; roleId: string; data?: unknown },
     ): Promise<GrievanceUser> {
       const client = getClient();
       const [row] = await client
         .insert(grievanceUsers)
-        .values({ grievanceId, userId: data.userId, roleId: data.roleId })
+        .values({
+          grievanceId,
+          userId: data.userId,
+          roleId: data.roleId,
+          data: data.data ?? null,
+        })
         .returning();
       return row;
     },
@@ -474,12 +479,15 @@ export function createGrievanceStorage(): GrievanceStorage {
     async updateUser(
       grievanceId: string,
       rowId: string,
-      data: { roleId: string },
+      data: { roleId?: string; data?: unknown },
     ): Promise<GrievanceUser | undefined> {
       const client = getClient();
+      const updates: Partial<typeof grievanceUsers.$inferInsert> = {};
+      if (data.roleId !== undefined) updates.roleId = data.roleId;
+      if (data.data !== undefined) updates.data = data.data;
       const [row] = await client
         .update(grievanceUsers)
-        .set({ roleId: data.roleId })
+        .set(updates)
         .where(
           and(
             eq(grievanceUsers.id, rowId),

@@ -54,10 +54,16 @@ const linkEmployerSchema = z.object({ employerId: z.string().uuid("A valid emplo
 const addUserSchema = z.object({
   userId: z.string().uuid("A valid user is required"),
   roleId: z.string().uuid("A valid role is required"),
+  data: z.unknown().optional(),
 });
-const updateUserSchema = z.object({
-  roleId: z.string().uuid("A valid role is required"),
-});
+const updateUserSchema = z
+  .object({
+    roleId: z.string().uuid("A valid role is required").optional(),
+    data: z.unknown().optional(),
+  })
+  .refine((v) => v.roleId !== undefined || v.data !== undefined, {
+    message: "Provide a role or data to update",
+  });
 
 const addLineSchema = z.object({
   optionId: z.string().uuid().nullish(),
@@ -376,6 +382,7 @@ export function registerGrievanceRoutes(
       await storage.grievances.addUser(req.params.id, {
         userId: parsed.data.userId,
         roleId: parsed.data.roleId,
+        data: parsed.data.data,
       });
       const usersList = await storage.grievances.listUsers(req.params.id);
       res.status(201).json(usersList);
@@ -405,11 +412,15 @@ export function registerGrievanceRoutes(
       if (!grievance) {
         return res.status(404).json({ message: "Grievance not found" });
       }
-      if (!(await storage.grievances.roleOptionExists(parsed.data.roleId))) {
+      if (
+        parsed.data.roleId !== undefined &&
+        !(await storage.grievances.roleOptionExists(parsed.data.roleId))
+      ) {
         return res.status(400).json({ message: "Role not found" });
       }
       const updated = await storage.grievances.updateUser(req.params.id, req.params.rowId, {
         roleId: parsed.data.roleId,
+        data: parsed.data.data,
       });
       if (!updated) {
         return res.status(404).json({ message: "User assignment not found" });

@@ -299,10 +299,9 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
   });
 
   app.delete("/api/options/:type/:id", requireAccess('admin'), requireOptionTypeComponent(), async (req: Request, res: Response) => {
+    const { type, id } = req.params;
+    const config = getOptionsType(type);
     try {
-      const { type, id } = req.params;
-      const config = getOptionsType(type);
-      
       if (!config) {
         return res.status(404).json({ message: `Unknown options type: ${type}` });
       }
@@ -327,7 +326,15 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
       }
       
       res.status(204).send();
-    } catch (error) {
+    } catch (error: any) {
+      // FK RESTRICT violation: the option is still referenced by another
+      // row (e.g. a grievance role assigned to people on a grievance).
+      // Surface a clear 409 instead of an opaque 500.
+      if (error?.code === "23503") {
+        return res.status(409).json({
+          message: `This ${config?.name ?? "option"} is in use and cannot be deleted. Remove it from everything that references it first.`,
+        });
+      }
       res.status(500).json({ message: `Failed to delete option` });
     }
   });
