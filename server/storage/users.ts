@@ -16,7 +16,7 @@ import {
   type AssignPermission,
 } from "@shared/schema";
 import { permissionRegistry, type PermissionDefinition } from "@shared/permissions";
-import { eq, and, sql, inArray } from "drizzle-orm";
+import { eq, and, sql, inArray, ilike, exists } from "drizzle-orm";
 import { defineLoggingConfig } from "./middleware/logging";
 import type { ContactsStorage } from "./contacts";
 import { createUserContactSyncService } from "../services/user-contact-sync";
@@ -215,18 +215,77 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
       roleIds?: string[],
       limit = 20,
     ): Promise<(User & { roles: Role[] })[]> {
+      const client = getClient();
       const q = query.toLowerCase();
-      const all = await this.getAllUsersWithRoles();
-      const filtered = all.filter((user) => {
-        // An empty query is a "prefill": return the first batch unfiltered by
-        // email so the picker can open as a dropdown without typing.
-        if (q && !user.email?.toLowerCase().includes(q)) return false;
-        if (roleIds && roleIds.length > 0) {
-          return user.roles.some((r) => roleIds.includes(r.id));
-        }
-        return true;
-      });
-      return filtered.slice(0, Math.max(1, limit));
+
+      const conditions = [];
+      if (q) {
+        // Escape LIKE wildcards so the query matches the literal substring,
+        // mirroring the previous in-memory String.includes() behavior. An
+        // empty query skips this and returns the first batch (prefill mode).
+        const escaped = q.replace(/[\\%_]/g, (c) => `\\${c}`);
+        conditions.push(ilike(users.email, `%${escaped}%`));
+      }
+      // OR semantics across role IDs: the user must hold at least one of them.
+      // An empty/absent roleIds list means no role restriction (any user).
+      if (roleIds && roleIds.length > 0) {
+        conditions.push(
+          exists(
+            client
+              .select({ one: sql`1` })
+              .from(userRoles)
+              .where(
+                and(
+                  eq(userRoles.userId, users.id),
+                  inArray(userRoles.roleId, roleIds),
+                ),
+              ),
+          ),
+        );
+      }
+
+      // Filter + cap in the database; order by email for a deterministic batch
+      // (email is NOT NULL + unique, so this is a stable total order).
+      const matchedUsers = await client
+        .select()
+        .from(users)
+        .where(conditions.length > 0 ? and(...conditions) : undefined)
+        .orderBy(users.email)
+        .limit(Math.max(1, limit));
+
+      if (matchedUsers.length === 0) return [];
+
+      // Hydrate roles only for the (≤ limit) matched users.
+      const userIds = matchedUsers.map((u) => u.id);
+      const roleRows = await client
+        .select({
+          userId: userRoles.userId,
+          roleId: roles.id,
+          roleName: roles.name,
+          roleDescription: roles.description,
+          roleSequence: roles.sequence,
+          roleCreatedAt: roles.createdAt,
+        })
+        .from(userRoles)
+        .innerJoin(roles, eq(userRoles.roleId, roles.id))
+        .where(inArray(userRoles.userId, userIds));
+
+      const rolesByUser = roleRows.reduce((acc, row) => {
+        if (!acc[row.userId]) acc[row.userId] = [];
+        acc[row.userId].push({
+          id: row.roleId,
+          name: row.roleName,
+          description: row.roleDescription,
+          sequence: row.roleSequence,
+          createdAt: row.roleCreatedAt,
+        });
+        return acc;
+      }, {} as Record<string, Role[]>);
+
+      return matchedUsers.map((user) => ({
+        ...user,
+        roles: rolesByUser[user.id] || [],
+      }));
     },
 
     async userHasAnyRole(userId: string, roleIds: string[]): Promise<boolean> {
