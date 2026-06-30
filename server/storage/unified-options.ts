@@ -29,6 +29,7 @@ import {
   optionsGrievanceSteps,
   optionsGrievanceComplaints,
   optionsGrievanceRemedies,
+  optionsGrievanceRoles,
   bulkMediumEnum,
 } from "@shared/schema";
 import { defineLoggingConfig } from "./middleware/logging";
@@ -65,7 +66,8 @@ export type OptionsTypeName =
   | "grievance-category"
   | "grievance-step"
   | "grievance-complaint"
-  | "grievance-remedy";
+  | "grievance-remedy"
+  | "grievance-role";
 
 /**
  * Field definition for dynamic form and table rendering
@@ -555,6 +557,25 @@ const optionsMetadata: Record<OptionsTypeName, OptionsTableMetadata<any>> = {
       { name: "icon", label: "Icon", inputType: "icon", required: false, showInTable: true, columnHeader: "Icon", columnWidth: "80px", dataField: true },
       { name: "name", label: "Name", inputType: "text", required: true, placeholder: "e.g., Reinstatement, Back Pay", showInTable: true, columnHeader: "Name" },
       { name: "description", label: "Description", inputType: "textarea", required: false, placeholder: "Optional description of this remedy", showInTable: true, columnHeader: "Description" },
+      { name: "siriusId", label: "Sirius ID", inputType: "text", required: false, placeholder: "External ID", showInTable: true, columnHeader: "Sirius ID" },
+    ],
+  },
+  "grievance-role": {
+    table: optionsGrievanceRoles,
+    displayName: "Grievance Role Options",
+    description: "Manage role options for grievances",
+    singularName: "Role Option",
+    pluralName: "Role Options",
+    orderByColumn: "sequence" as const,
+    loggingModule: "options.grievanceRole",
+    requiredFields: ["name"],
+    optionalFields: ["description", "siriusId", "sequence", "data"],
+    supportsSequencing: true,
+    requiredComponent: "grievance",
+    fields: [
+      { name: "icon", label: "Icon", inputType: "icon", required: false, showInTable: true, columnHeader: "Icon", columnWidth: "80px", dataField: true },
+      { name: "name", label: "Name", inputType: "text", required: true, placeholder: "e.g., Grievant, Steward, Witness", showInTable: true, columnHeader: "Name" },
+      { name: "description", label: "Description", inputType: "textarea", required: false, placeholder: "Optional description of this role", showInTable: true, columnHeader: "Description" },
       { name: "siriusId", label: "Sirius ID", inputType: "text", required: false, placeholder: "External ID", showInTable: true, columnHeader: "Sirius ID" },
     ],
   },
