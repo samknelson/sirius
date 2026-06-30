@@ -3,19 +3,23 @@ import {
   grievances,
   grievanceWorkers,
   grievanceEmployers,
+  grievanceUsers,
   grievanceComplaints,
   grievanceRemedies,
   optionsGrievanceStatus,
   optionsGrievanceCategory,
   optionsGrievanceComplaints,
   optionsGrievanceRemedies,
+  optionsGrievanceRoles,
   workers,
   contacts,
   employers,
+  users,
   type Grievance,
   type InsertGrievance,
   type GrievanceWorker,
   type GrievanceEmployer,
+  type GrievanceUser,
   type GrievanceComplaint,
   type GrievanceRemedy,
 } from "@shared/schema";
@@ -41,6 +45,16 @@ export interface GrievanceLinkedEmployer {
   name: string;
 }
 
+export interface GrievanceLinkedUser {
+  id: string;
+  userId: string;
+  email: string;
+  firstName: string | null;
+  lastName: string | null;
+  roleId: string;
+  roleName: string | null;
+}
+
 export interface GrievanceComplaintWithDetails extends GrievanceComplaint {
   complaintName: string | null;
 }
@@ -54,6 +68,7 @@ export interface GrievanceWithDetails extends Grievance {
   categoryName: string | null;
   workers: GrievanceLinkedWorker[];
   employers: GrievanceLinkedEmployer[];
+  users: GrievanceLinkedUser[];
   complaints: GrievanceComplaintWithDetails[];
   remedies: GrievanceRemedyWithDetails[];
 }
@@ -88,6 +103,21 @@ export interface GrievanceStorage {
   listEmployers(grievanceId: string): Promise<GrievanceLinkedEmployer[]>;
   addEmployer(grievanceId: string, employerId: string): Promise<GrievanceEmployer>;
   removeEmployer(grievanceId: string, employerId: string): Promise<boolean>;
+  listUsers(grievanceId: string): Promise<GrievanceLinkedUser[]>;
+  addUser(
+    grievanceId: string,
+    data: { userId: string; roleId: string },
+  ): Promise<GrievanceUser>;
+  updateUser(
+    grievanceId: string,
+    rowId: string,
+    data: { roleId: string },
+  ): Promise<GrievanceUser | undefined>;
+  removeUser(grievanceId: string, rowId: string): Promise<boolean>;
+  /** Whether the supplied grievance role option id currently exists. */
+  roleOptionExists(id: string): Promise<boolean>;
+  /** Whether the supplied user id currently exists. */
+  userExists(id: string): Promise<boolean>;
   listComplaints(grievanceId: string): Promise<GrievanceComplaintWithDetails[]>;
   addComplaint(
     grievanceId: string,
@@ -222,6 +252,7 @@ export function createGrievanceStorage(): GrievanceStorage {
 
       const linkedWorkers = await this.listWorkers(id);
       const linkedEmployers = await this.listEmployers(id);
+      const linkedUsers = await this.listUsers(id);
       const complaints = await this.listComplaints(id);
       const remedies = await this.listRemedies(id);
 
@@ -229,6 +260,7 @@ export function createGrievanceStorage(): GrievanceStorage {
         ...row,
         workers: linkedWorkers,
         employers: linkedEmployers,
+        users: linkedUsers,
         complaints,
         remedies,
       };
@@ -255,6 +287,7 @@ export function createGrievanceStorage(): GrievanceStorage {
         const client = getClient();
         await client.delete(grievanceWorkers).where(eq(grievanceWorkers.grievanceId, id));
         await client.delete(grievanceEmployers).where(eq(grievanceEmployers.grievanceId, id));
+        await client.delete(grievanceUsers).where(eq(grievanceUsers.grievanceId, id));
         const result = await client.delete(grievances).where(eq(grievances.id, id)).returning();
         return result.length > 0;
       });
@@ -405,6 +438,88 @@ export function createGrievanceStorage(): GrievanceStorage {
         .where(and(eq(grievanceEmployers.grievanceId, grievanceId), eq(grievanceEmployers.employerId, employerId)))
         .returning();
       return result.length > 0;
+    },
+
+    async listUsers(grievanceId: string): Promise<GrievanceLinkedUser[]> {
+      const client = getClient();
+      return client
+        .select({
+          id: grievanceUsers.id,
+          userId: grievanceUsers.userId,
+          email: users.email,
+          firstName: users.firstName,
+          lastName: users.lastName,
+          roleId: grievanceUsers.roleId,
+          roleName: optionsGrievanceRoles.name,
+        })
+        .from(grievanceUsers)
+        .innerJoin(users, eq(grievanceUsers.userId, users.id))
+        .leftJoin(optionsGrievanceRoles, eq(grievanceUsers.roleId, optionsGrievanceRoles.id))
+        .where(eq(grievanceUsers.grievanceId, grievanceId))
+        .orderBy(asc(optionsGrievanceRoles.sequence), asc(users.email));
+    },
+
+    async addUser(
+      grievanceId: string,
+      data: { userId: string; roleId: string },
+    ): Promise<GrievanceUser> {
+      const client = getClient();
+      const [row] = await client
+        .insert(grievanceUsers)
+        .values({ grievanceId, userId: data.userId, roleId: data.roleId })
+        .returning();
+      return row;
+    },
+
+    async updateUser(
+      grievanceId: string,
+      rowId: string,
+      data: { roleId: string },
+    ): Promise<GrievanceUser | undefined> {
+      const client = getClient();
+      const [row] = await client
+        .update(grievanceUsers)
+        .set({ roleId: data.roleId })
+        .where(
+          and(
+            eq(grievanceUsers.id, rowId),
+            eq(grievanceUsers.grievanceId, grievanceId),
+          ),
+        )
+        .returning();
+      return row || undefined;
+    },
+
+    async removeUser(grievanceId: string, rowId: string): Promise<boolean> {
+      const client = getClient();
+      const result = await client
+        .delete(grievanceUsers)
+        .where(
+          and(
+            eq(grievanceUsers.id, rowId),
+            eq(grievanceUsers.grievanceId, grievanceId),
+          ),
+        )
+        .returning();
+      return result.length > 0;
+    },
+
+    async roleOptionExists(id: string): Promise<boolean> {
+      const client = getClient();
+      const [row] = await client
+        .select({ id: optionsGrievanceRoles.id })
+        .from(optionsGrievanceRoles)
+        .where(eq(optionsGrievanceRoles.id, id));
+      return !!row;
+    },
+
+    async userExists(id: string): Promise<boolean> {
+      const client = getClient();
+      const [row] = await client
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.id, id));
+      return !!row;
     },
 
     async listComplaints(grievanceId: string): Promise<GrievanceComplaintWithDetails[]> {
@@ -782,6 +897,26 @@ export const grievanceLoggingConfig: StorageLoggingConfig<GrievanceStorage> = {
       getEntityId: (args) => args[1],
       getHostEntityId: (args) => args[0],
       getDescription: async () => `Unlinked employer from grievance`,
+    },
+    addUser: {
+      enabled: true,
+      getEntityId: (_args, result) => result?.id,
+      getHostEntityId: (args) => args[0],
+      after: async (_args, result) => result,
+      getDescription: async () => `Assigned user to grievance`,
+    },
+    updateUser: {
+      enabled: true,
+      getEntityId: (args) => args[1],
+      getHostEntityId: (args) => args[0],
+      after: async (_args, result) => result,
+      getDescription: async () => `Updated user role on grievance`,
+    },
+    removeUser: {
+      enabled: true,
+      getEntityId: (args) => args[1],
+      getHostEntityId: (args) => args[0],
+      getDescription: async () => `Removed user from grievance`,
     },
     addComplaint: {
       enabled: true,

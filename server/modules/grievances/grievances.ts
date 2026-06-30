@@ -51,6 +51,14 @@ const searchGrievancesSchema = z.object({
 const linkWorkerSchema = z.object({ workerId: z.string().uuid("A valid worker is required") });
 const linkEmployerSchema = z.object({ employerId: z.string().uuid("A valid employer is required") });
 
+const addUserSchema = z.object({
+  userId: z.string().uuid("A valid user is required"),
+  roleId: z.string().uuid("A valid role is required"),
+});
+const updateUserSchema = z.object({
+  roleId: z.string().uuid("A valid role is required"),
+});
+
 const addLineSchema = z.object({
   optionId: z.string().uuid().nullish(),
   description: z.string().trim().min(1, "A description is required"),
@@ -344,6 +352,97 @@ export function registerGrievanceRoutes(
     } catch (error) {
       console.error("Failed to unlink employer from grievance:", error);
       res.status(500).json({ message: "Failed to unlink employer" });
+    }
+  });
+
+  // ---- Users ---------------------------------------------------------------
+
+  app.post("/api/grievances/:id/users", ...gate, async (req, res) => {
+    try {
+      const parsed = addUserSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid request body", errors: parsed.error.flatten() });
+      }
+      const grievance = await storage.grievances.get(req.params.id);
+      if (!grievance) {
+        return res.status(404).json({ message: "Grievance not found" });
+      }
+      if (!(await storage.grievances.userExists(parsed.data.userId))) {
+        return res.status(400).json({ message: "User not found" });
+      }
+      if (!(await storage.grievances.roleOptionExists(parsed.data.roleId))) {
+        return res.status(400).json({ message: "Role not found" });
+      }
+      await storage.grievances.addUser(req.params.id, {
+        userId: parsed.data.userId,
+        roleId: parsed.data.roleId,
+      });
+      const usersList = await storage.grievances.listUsers(req.params.id);
+      res.status(201).json(usersList);
+    } catch (error: any) {
+      if (error?.code === "23505") {
+        return res
+          .status(409)
+          .json({ message: "This user already holds that role on this grievance" });
+      }
+      if (error?.code === "23503") {
+        return res
+          .status(409)
+          .json({ message: "The selected user or role no longer exists" });
+      }
+      console.error("Failed to assign user to grievance:", error);
+      res.status(500).json({ message: "Failed to assign user" });
+    }
+  });
+
+  app.patch("/api/grievances/:id/users/:rowId", ...gate, async (req, res) => {
+    try {
+      const parsed = updateUserSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid request body", errors: parsed.error.flatten() });
+      }
+      const grievance = await storage.grievances.get(req.params.id);
+      if (!grievance) {
+        return res.status(404).json({ message: "Grievance not found" });
+      }
+      if (!(await storage.grievances.roleOptionExists(parsed.data.roleId))) {
+        return res.status(400).json({ message: "Role not found" });
+      }
+      const updated = await storage.grievances.updateUser(req.params.id, req.params.rowId, {
+        roleId: parsed.data.roleId,
+      });
+      if (!updated) {
+        return res.status(404).json({ message: "User assignment not found" });
+      }
+      const usersList = await storage.grievances.listUsers(req.params.id);
+      res.json(usersList);
+    } catch (error: any) {
+      if (error?.code === "23505") {
+        return res
+          .status(409)
+          .json({ message: "This user already holds that role on this grievance" });
+      }
+      if (error?.code === "23503") {
+        return res
+          .status(409)
+          .json({ message: "The selected role no longer exists" });
+      }
+      console.error("Failed to update grievance user:", error);
+      res.status(500).json({ message: "Failed to update user" });
+    }
+  });
+
+  app.delete("/api/grievances/:id/users/:rowId", ...gate, async (req, res) => {
+    try {
+      const removed = await storage.grievances.removeUser(req.params.id, req.params.rowId);
+      if (!removed) {
+        return res.status(404).json({ message: "User assignment not found" });
+      }
+      const usersList = await storage.grievances.listUsers(req.params.id);
+      res.json(usersList);
+    } catch (error) {
+      console.error("Failed to remove user from grievance:", error);
+      res.status(500).json({ message: "Failed to remove user" });
     }
   });
 

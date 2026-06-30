@@ -20,9 +20,12 @@ export function registerUserRoutes(
 ) {
   // Admin routes for user management
   
-  // GET /api/admin/users/search - Search users by email (admin only)
+  // GET /api/admin/users/search - Search users by email (staff+)
+  // Relaxed from admin to staff so staff can pick users to assign on
+  // grievance roles. The response is already shaped to safe fields only
+  // (id, email, names, status) and matches require a 2+ character query.
   // MIGRATED to new access control system
-  app.get("/api/admin/users/search", requireAccess('admin'), async (req, res) => {
+  app.get("/api/admin/users/search", requireAccess('staff'), async (req, res) => {
     try {
       const query = (req.query.q as string || '').toLowerCase();
       

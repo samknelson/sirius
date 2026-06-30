@@ -6,6 +6,7 @@ import { GrievanceForm, type GrievanceFormValues } from "@/components/grievances
 import { GrievanceWorkerManager } from "@/components/grievances/grievance-worker-section";
 import { GrievanceEmployerManager } from "@/components/grievances/grievance-employer-section";
 import { GrievanceLineSection } from "@/components/grievances/grievance-line-section";
+import { GrievanceUserManager } from "@/components/grievances/grievance-user-section";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -57,6 +58,11 @@ function GrievanceEditContent() {
           />
         </CardContent>
       </Card>
+
+      <GrievanceUserManager
+        grievanceId={grievance.id}
+        users={grievance.users}
+      />
 
       <GrievanceLineSection
         grievanceId={grievance.id}

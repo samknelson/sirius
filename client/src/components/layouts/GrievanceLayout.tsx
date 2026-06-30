@@ -21,6 +21,16 @@ export interface GrievanceLinkedEmployer {
   name: string;
 }
 
+export interface GrievanceLinkedUser {
+  id: string;
+  userId: string;
+  email: string;
+  firstName: string | null;
+  lastName: string | null;
+  roleId: string;
+  roleName: string | null;
+}
+
 export interface GrievanceComplaintLine {
   id: string;
   grievanceId: string;
@@ -51,6 +61,7 @@ export interface GrievanceWithDetails {
   categoryName: string | null;
   workers: GrievanceLinkedWorker[];
   employers: GrievanceLinkedEmployer[];
+  users: GrievanceLinkedUser[];
   complaints: GrievanceComplaintLine[];
   remedies: GrievanceRemedyLine[];
 }

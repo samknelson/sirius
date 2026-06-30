@@ -2,7 +2,7 @@ import { pgTable, varchar, text, jsonb, boolean, integer, date, uniqueIndex } fr
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
-import { workers, employers } from "../../schema";
+import { workers, employers, users } from "../../schema";
 
 export const optionsGrievanceStatus = pgTable("options_grievance_status", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -219,6 +219,37 @@ export const insertGrievanceEmployerSchema = createInsertSchema(grievanceEmploye
 
 export type GrievanceEmployer = typeof grievanceEmployers.$inferSelect;
 export type InsertGrievanceEmployer = z.infer<typeof insertGrievanceEmployerSchema>;
+
+export const grievanceUsers = pgTable(
+  "grievance_users",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    grievanceId: varchar("grievance_id")
+      .notNull()
+      .references(() => grievances.id, { onDelete: "cascade" }),
+    userId: varchar("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    roleId: varchar("role_id")
+      .notNull()
+      .references(() => optionsGrievanceRoles.id, { onDelete: "restrict" }),
+    data: jsonb("data"),
+  },
+  (table) => ({
+    grievanceUserRoleUnique: uniqueIndex("grievance_users_grievance_user_role_unique").on(
+      table.grievanceId,
+      table.userId,
+      table.roleId,
+    ),
+  }),
+);
+
+export const insertGrievanceUserSchema = createInsertSchema(grievanceUsers).omit({
+  id: true,
+});
+
+export type GrievanceUser = typeof grievanceUsers.$inferSelect;
+export type InsertGrievanceUser = z.infer<typeof insertGrievanceUserSchema>;
 
 export const grievanceComplaints = pgTable("grievance_complaints", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
