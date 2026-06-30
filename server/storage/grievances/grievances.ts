@@ -114,8 +114,18 @@ export interface GrievanceStorage {
     data: { roleId?: string; data?: unknown },
   ): Promise<GrievanceUser | undefined>;
   removeUser(grievanceId: string, rowId: string): Promise<boolean>;
+  /** A single grievance-user assignment row, scoped to its grievance. */
+  getUserAssignment(
+    grievanceId: string,
+    rowId: string,
+  ): Promise<{ id: string; userId: string; roleId: string } | undefined>;
   /** Whether the supplied grievance role option id currently exists. */
   roleOptionExists(id: string): Promise<boolean>;
+  /**
+   * The system role ids a user must hold (any one of) to be assignable to
+   * the given grievance role. Empty array = no restriction.
+   */
+  rolePermittedSystemRoleIds(roleId: string): Promise<string[]>;
   /** Whether the supplied user id currently exists. */
   userExists(id: string): Promise<boolean>;
   listComplaints(grievanceId: string): Promise<GrievanceComplaintWithDetails[]>;
@@ -512,6 +522,27 @@ export function createGrievanceStorage(): GrievanceStorage {
       return result.length > 0;
     },
 
+    async getUserAssignment(
+      grievanceId: string,
+      rowId: string,
+    ): Promise<{ id: string; userId: string; roleId: string } | undefined> {
+      const client = getClient();
+      const [row] = await client
+        .select({
+          id: grievanceUsers.id,
+          userId: grievanceUsers.userId,
+          roleId: grievanceUsers.roleId,
+        })
+        .from(grievanceUsers)
+        .where(
+          and(
+            eq(grievanceUsers.id, rowId),
+            eq(grievanceUsers.grievanceId, grievanceId),
+          ),
+        );
+      return row || undefined;
+    },
+
     async roleOptionExists(id: string): Promise<boolean> {
       const client = getClient();
       const [row] = await client
@@ -519,6 +550,19 @@ export function createGrievanceStorage(): GrievanceStorage {
         .from(optionsGrievanceRoles)
         .where(eq(optionsGrievanceRoles.id, id));
       return !!row;
+    },
+
+    async rolePermittedSystemRoleIds(roleId: string): Promise<string[]> {
+      const client = getClient();
+      const [row] = await client
+        .select({ data: optionsGrievanceRoles.data })
+        .from(optionsGrievanceRoles)
+        .where(eq(optionsGrievanceRoles.id, roleId));
+      const ids = (row?.data as { permittedSystemRoleIds?: unknown } | null)
+        ?.permittedSystemRoleIds;
+      return Array.isArray(ids)
+        ? ids.filter((x): x is string => typeof x === "string")
+        : [];
     },
 
     async userExists(id: string): Promise<boolean> {

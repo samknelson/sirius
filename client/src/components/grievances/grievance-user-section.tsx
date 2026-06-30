@@ -27,6 +27,7 @@ export interface SectionUser {
 interface RoleOption {
   id: string;
   name: string;
+  data?: { permittedSystemRoleIds?: string[] } | null;
 }
 
 interface UserSearchHit {
@@ -68,14 +69,22 @@ export function GrievanceUserManager({ grievanceId, users }: GrievanceUserManage
     queryKey: ["/api/options/grievance-role"],
   });
 
+  // The grievance role must be picked first; its permitted system roles
+  // then restrict which users the search returns. Empty list = any user.
+  const permittedRoleIds =
+    roles.find((r) => r.id === newRoleId)?.data?.permittedSystemRoleIds ?? [];
+  const roleIdsParam = permittedRoleIds.join(",");
+
   const { data: searchHits = [] } = useQuery<UserSearchHit[]>({
-    queryKey: ["/api/admin/users/search", query],
+    queryKey: ["/api/admin/users/search", query, roleIdsParam],
     queryFn: async () => {
-      const res = await fetch(`/api/admin/users/search?q=${encodeURIComponent(query)}`);
+      const params = new URLSearchParams({ q: query });
+      if (roleIdsParam) params.set("roleIds", roleIdsParam);
+      const res = await fetch(`/api/admin/users/search?${params.toString()}`);
       if (!res.ok) throw new Error("Search failed");
       return res.json();
     },
-    enabled: query.trim().length >= 2 && !selectedUser,
+    enabled: !!newRoleId && query.trim().length >= 2 && !selectedUser,
   });
 
   const refresh = async () => {
@@ -158,6 +167,32 @@ export function GrievanceUserManager({ grievanceId, users }: GrievanceUserManage
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="border rounded-lg p-3 space-y-3" data-testid="form-add-grievance-user">
+          <Select
+            value={newRoleId}
+            onValueChange={(v) => {
+              setNewRoleId(v);
+              // Eligible users depend on the role, so clear any in-progress
+              // user selection / search when the role changes.
+              setSelectedUser(null);
+              setQuery("");
+            }}
+            disabled={busy}
+          >
+            <SelectTrigger className="w-full" data-testid="select-new-user-role">
+              <SelectValue placeholder="Select a role first" />
+            </SelectTrigger>
+            <SelectContent>
+              {roles.map((r) => (
+                <SelectItem
+                  key={r.id}
+                  value={r.id}
+                  data-testid={`option-new-user-role-${r.id}`}
+                >
+                  {r.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <div className="relative">
             <Search
               className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
@@ -169,47 +204,50 @@ export function GrievanceUserManager({ grievanceId, users }: GrievanceUserManage
                 setSelectedUser(null);
                 setQuery(e.target.value);
               }}
-              placeholder="Search users by email"
+              placeholder={
+                newRoleId
+                  ? "Search eligible users by email"
+                  : "Select a role first"
+              }
               className="pl-9"
+              disabled={busy || !newRoleId}
               data-testid="input-user-search"
             />
-            {!selectedUser && query.trim().length >= 2 && searchHits.length > 0 && (
-              <div className="mt-2 border rounded-lg divide-y max-h-60 overflow-y-auto">
-                {searchHits.map((u) => (
-                  <button
-                    key={u.id}
-                    type="button"
-                    disabled={busy}
-                    onClick={() => {
-                      setSelectedUser(u);
-                      setQuery("");
-                    }}
-                    className="w-full text-left px-3 py-2 hover:bg-muted disabled:opacity-50"
-                    data-testid={`button-select-user-${u.id}`}
-                  >
-                    {userLabel(u)}
-                  </button>
-                ))}
-              </div>
-            )}
+            {newRoleId &&
+              !selectedUser &&
+              query.trim().length >= 2 &&
+              searchHits.length > 0 && (
+                <div className="mt-2 border rounded-lg divide-y max-h-60 overflow-y-auto">
+                  {searchHits.map((u) => (
+                    <button
+                      key={u.id}
+                      type="button"
+                      disabled={busy}
+                      onClick={() => {
+                        setSelectedUser(u);
+                        setQuery("");
+                      }}
+                      className="w-full text-left px-3 py-2 hover:bg-muted disabled:opacity-50"
+                      data-testid={`button-select-user-${u.id}`}
+                    >
+                      {userLabel(u)}
+                    </button>
+                  ))}
+                </div>
+              )}
+            {newRoleId &&
+              !selectedUser &&
+              query.trim().length >= 2 &&
+              searchHits.length === 0 && (
+                <p
+                  className="mt-2 text-sm text-muted-foreground"
+                  data-testid="text-no-eligible-users"
+                >
+                  No eligible users match that search.
+                </p>
+              )}
           </div>
-          <div className="flex items-center gap-2">
-            <Select value={newRoleId} onValueChange={setNewRoleId} disabled={busy}>
-              <SelectTrigger className="flex-1" data-testid="select-new-user-role">
-                <SelectValue placeholder="Select a role" />
-              </SelectTrigger>
-              <SelectContent>
-                {roles.map((r) => (
-                  <SelectItem
-                    key={r.id}
-                    value={r.id}
-                    data-testid={`option-new-user-role-${r.id}`}
-                  >
-                    {r.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="flex justify-end">
             <Button
               type="button"
               size="sm"

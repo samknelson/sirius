@@ -17,6 +17,7 @@ import { EnumSelectWidget } from "./widgets/EnumSelectWidget";
 import { HtmlEditorWidget } from "./widgets/HtmlEditorWidget";
 import { ArrayTableField } from "./fields/ArrayTableField";
 import { StaffRecipientsField } from "./fields/StaffRecipientsField";
+import { SystemRolesField } from "./fields/SystemRolesField";
 
 const validator = customizeValidator({
   ajvOptionsOverrides: { $data: true },
@@ -77,6 +78,8 @@ function buildVendorUiSchema(
       field = "arrayTable";
     } else if (subAny["x-widget"] === "staff-recipients") {
       field = "staffRecipients";
+    } else if (subAny["x-widget"] === "system-roles") {
+      field = "systemRoles";
     } else if (typeof subAny["x-options-resource"] === "string") {
       const isArray = (sub as RJSFSchema).type === "array";
       widget = isArray ? "remoteOptionsMulti" : "remoteOptions";
@@ -120,6 +123,7 @@ const baseWidgets = {
 const baseFields = {
   arrayTable: ArrayTableField,
   staffRecipients: StaffRecipientsField,
+  systemRoles: SystemRolesField,
 } as unknown as RegistryFieldsType;
 
 /**

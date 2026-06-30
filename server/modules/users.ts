@@ -32,13 +32,21 @@ export function registerUserRoutes(
       if (!query || query.length < 2) {
         return res.json([]);
       }
-      
-      const usersWithRoles = await storage.users.getAllUsersWithRoles();
-      
-      // Filter users by email (case-insensitive partial match)
-      const matchedUsers = usersWithRoles.filter(user => 
-        user.email?.toLowerCase().includes(query)
-      ).slice(0, 20); // Limit to 20 results
+
+      // Optional `roleIds` filter (CSV) restricts results to users holding
+      // at least one of the given system roles (OR semantics). Used by the
+      // grievance People picker to only surface users eligible for the
+      // selected grievance role.
+      const roleIdsRaw = req.query.roleIds;
+      let roleIds: string[] | undefined;
+      if (typeof roleIdsRaw === 'string' && roleIdsRaw.trim().length > 0) {
+        roleIds = roleIdsRaw
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean);
+      }
+
+      const matchedUsers = await storage.users.searchUsers(query, roleIds);
       
       // Shape response to exclude sensitive fields
       const safeUsers = matchedUsers.map(user => ({

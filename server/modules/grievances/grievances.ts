@@ -379,6 +379,17 @@ export function registerGrievanceRoutes(
       if (!(await storage.grievances.roleOptionExists(parsed.data.roleId))) {
         return res.status(400).json({ message: "Role not found" });
       }
+      const permittedRoleIds =
+        await storage.grievances.rolePermittedSystemRoleIds(parsed.data.roleId);
+      if (
+        permittedRoleIds.length > 0 &&
+        !(await storage.users.userHasAnyRole(parsed.data.userId, permittedRoleIds))
+      ) {
+        return res.status(400).json({
+          message:
+            "This user does not hold a system role permitted for the selected grievance role",
+        });
+      }
       await storage.grievances.addUser(req.params.id, {
         userId: parsed.data.userId,
         roleId: parsed.data.roleId,
@@ -412,11 +423,27 @@ export function registerGrievanceRoutes(
       if (!grievance) {
         return res.status(404).json({ message: "Grievance not found" });
       }
-      if (
-        parsed.data.roleId !== undefined &&
-        !(await storage.grievances.roleOptionExists(parsed.data.roleId))
-      ) {
-        return res.status(400).json({ message: "Role not found" });
+      if (parsed.data.roleId !== undefined) {
+        if (!(await storage.grievances.roleOptionExists(parsed.data.roleId))) {
+          return res.status(400).json({ message: "Role not found" });
+        }
+        const permittedRoleIds =
+          await storage.grievances.rolePermittedSystemRoleIds(parsed.data.roleId);
+        if (permittedRoleIds.length > 0) {
+          const assignment = await storage.grievances.getUserAssignment(
+            req.params.id,
+            req.params.rowId,
+          );
+          if (!assignment) {
+            return res.status(404).json({ message: "User assignment not found" });
+          }
+          if (!(await storage.users.userHasAnyRole(assignment.userId, permittedRoleIds))) {
+            return res.status(400).json({
+              message:
+                "This user does not hold a system role permitted for the selected grievance role",
+            });
+          }
+        }
       }
       const updated = await storage.grievances.updateUser(req.params.id, req.params.rowId, {
         roleId: parsed.data.roleId,

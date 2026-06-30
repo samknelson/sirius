@@ -37,6 +37,8 @@ export interface UserStorage {
   deleteUser(id: string): Promise<boolean>;
   getAllUsers(): Promise<User[]>;
   getAllUsersWithRoles(): Promise<(User & { roles: Role[] })[]>;
+  searchUsers(query: string, roleIds?: string[]): Promise<(User & { roles: Role[] })[]>;
+  userHasAnyRole(userId: string, roleIds: string[]): Promise<boolean>;
   hasAnyUsers(): Promise<boolean>;
   updateUserData(id: string, data: Record<string, unknown>): Promise<User | undefined>;
   getUserData(id: string): Promise<Record<string, unknown> | null>;
@@ -206,6 +208,32 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
         ...user,
         roles: rolesByUser[user.id] || []
       }));
+    },
+
+    async searchUsers(
+      query: string,
+      roleIds?: string[],
+    ): Promise<(User & { roles: Role[] })[]> {
+      const q = query.toLowerCase();
+      const all = await this.getAllUsersWithRoles();
+      const filtered = all.filter((user) => {
+        if (!user.email?.toLowerCase().includes(q)) return false;
+        if (roleIds && roleIds.length > 0) {
+          return user.roles.some((r) => roleIds.includes(r.id));
+        }
+        return true;
+      });
+      return filtered.slice(0, 20);
+    },
+
+    async userHasAnyRole(userId: string, roleIds: string[]): Promise<boolean> {
+      if (roleIds.length === 0) return false;
+      const client = getClient();
+      const [row] = await client
+        .select({ roleId: userRoles.roleId })
+        .from(userRoles)
+        .where(and(eq(userRoles.userId, userId), inArray(userRoles.roleId, roleIds)));
+      return !!row;
     },
 
     async hasAnyUsers(): Promise<boolean> {

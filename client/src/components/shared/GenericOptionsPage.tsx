@@ -56,7 +56,8 @@ interface FieldDefinition {
     | "checkbox"
     | "select-options"
     | "color"
-    | "multi-enum";
+    | "multi-enum"
+    | "system-roles";
   required: boolean;
   placeholder?: string;
   helperText?: string;

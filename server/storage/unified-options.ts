@@ -75,7 +75,7 @@ export type OptionsTypeName =
 export interface FieldDefinition {
   name: string;
   label: string;
-  inputType: 'text' | 'textarea' | 'number' | 'select-self' | 'icon' | 'checkbox' | 'select-options' | 'color' | 'multi-enum' | 'enum';
+  inputType: 'text' | 'textarea' | 'number' | 'select-self' | 'icon' | 'checkbox' | 'select-options' | 'color' | 'multi-enum' | 'enum' | 'system-roles';
   required: boolean;
   placeholder?: string;
   helperText?: string;
@@ -187,6 +187,18 @@ export function fieldsToJsonSchema(
           items.enumNames = labels;
         }
         prop.items = items;
+        if (f.required) prop.minItems = 1;
+        break;
+      }
+      case "system-roles": {
+        // Dynamic multi-select of system roles. The allowed values are
+        // the live roles from the access-control roles table (loaded by
+        // the SystemRolesField widget at render time), so we cannot bake
+        // an enum here. Stored as an array of role-id strings.
+        prop.type = "array";
+        prop.uniqueItems = true;
+        prop.items = { type: "string" };
+        (prop as Record<string, unknown>)["x-widget"] = "system-roles";
         if (f.required) prop.minItems = 1;
         break;
       }
@@ -576,6 +588,7 @@ const optionsMetadata: Record<OptionsTypeName, OptionsTableMetadata<any>> = {
       { name: "icon", label: "Icon", inputType: "icon", required: false, showInTable: true, columnHeader: "Icon", columnWidth: "80px", dataField: true },
       { name: "name", label: "Name", inputType: "text", required: true, placeholder: "e.g., Grievant, Steward, Witness", showInTable: true, columnHeader: "Name" },
       { name: "description", label: "Description", inputType: "textarea", required: false, placeholder: "Optional description of this role", showInTable: true, columnHeader: "Description" },
+      { name: "permittedSystemRoleIds", label: "Permitted System Roles", inputType: "system-roles", required: false, helperText: "Only users holding one of these system roles can be assigned this grievance role. Leave empty to allow any user.", showInTable: false, dataField: true },
       { name: "siriusId", label: "Sirius ID", inputType: "text", required: false, placeholder: "External ID", showInTable: true, columnHeader: "Sirius ID" },
     ],
   },
