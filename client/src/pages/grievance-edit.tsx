@@ -21,6 +21,7 @@ function GrievanceEditContent() {
     try {
       const isClass = values.cardinality === "class";
       await apiRequest("PATCH", `/api/grievances/${grievance.id}`, {
+        siriusId: values.siriusId?.trim() ? values.siriusId.trim() : null,
         classDescription: isClass && values.classDescription?.trim() ? values.classDescription.trim() : null,
         cardinality: values.cardinality,
         statusId: values.statusId,
@@ -47,6 +48,7 @@ function GrievanceEditContent() {
         <CardContent className="pt-6 max-w-2xl">
           <GrievanceForm
             defaultValues={{
+              siriusId: grievance.siriusId ?? "",
               classDescription: grievance.classDescription ?? "",
               cardinality: grievance.cardinality,
               statusId: grievance.statusId,

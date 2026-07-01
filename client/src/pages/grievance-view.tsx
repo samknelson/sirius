@@ -23,6 +23,12 @@ function GrievanceDetailsContent() {
             <h3 className="text-lg font-semibold text-foreground mb-3">Basic Information</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
+                <label className="text-sm font-medium text-muted-foreground">Grievance ID</label>
+                <p className="text-foreground" data-testid="text-grievance-sirius-id">
+                  {grievance.siriusId || "—"}
+                </p>
+              </div>
+              <div className="space-y-2">
                 <label className="text-sm font-medium text-muted-foreground">Category</label>
                 <p className="text-foreground" data-testid="text-grievance-category">
                   {grievance.categoryName || "—"}

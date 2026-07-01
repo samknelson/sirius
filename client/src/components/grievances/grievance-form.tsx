@@ -37,6 +37,7 @@ export const GRIEVANCE_CARDINALITY_LABELS: Record<GrievanceCardinality, string> 
 };
 
 const grievanceFormSchema = z.object({
+  siriusId: z.string().optional(),
   classDescription: z.string().optional(),
   cardinality: z.enum(GRIEVANCE_CARDINALITIES),
   statusId: z.string().uuid("Please select a status"),
@@ -74,6 +75,7 @@ export function GrievanceForm({
   const form = useForm<GrievanceFormValues>({
     resolver: zodResolver(grievanceFormSchema),
     defaultValues: {
+      siriusId: defaultValues?.siriusId ?? "",
       classDescription: defaultValues?.classDescription ?? "",
       cardinality: defaultValues?.cardinality ?? "individual",
       statusId: defaultValues?.statusId ?? "",
@@ -86,6 +88,24 @@ export function GrievanceForm({
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+        <FormField
+          control={form.control}
+          name="siriusId"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Grievance ID</FormLabel>
+              <FormControl>
+                <Input
+                  placeholder="Optional identifier"
+                  data-testid="input-grievance-sirius-id"
+                  {...field}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
         <FormField
           control={form.control}
           name="categoryId"

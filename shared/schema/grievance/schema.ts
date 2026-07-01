@@ -2,7 +2,7 @@ import { pgTable, varchar, text, jsonb, boolean, integer, date, uniqueIndex } fr
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
-import { workers, employers, users } from "../../schema";
+import { workers, employers, users, denorm } from "../../schema";
 
 export const optionsGrievanceStatus = pgTable("options_grievance_status", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -135,6 +135,7 @@ export type GrievanceCardinality = (typeof GRIEVANCE_CARDINALITIES)[number];
 
 export const grievances = pgTable("grievances", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  siriusId: varchar("sirius_id").unique(),
   classDescription: text("class_description"),
   cardinality: varchar("cardinality").notNull().default("individual"),
   statusId: varchar("status_id")
@@ -385,4 +386,33 @@ export type GrievanceTimelineTemplateStep =
   typeof grievanceTimelineTemplateSteps.$inferSelect;
 export type InsertGrievanceTimelineTemplateStep = z.infer<
   typeof insertGrievanceTimelineTemplateStepSchema
+>;
+
+// Per-grievance denormalized display name (payload table for the
+// `grievance_name_denorm` denorm plugin). A grievance has exactly ONE computed
+// name, so `grievance_id` is UNIQUE and the table holds 0-or-1 row per
+// grievance. `denorm_id` ties the row back to its workflow status row in the
+// core `denorm` table.
+export const grievanceNameDenorm = pgTable("grievance_name_denorm", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  denormId: varchar("denorm_id")
+    .notNull()
+    .references(() => denorm.id, { onDelete: "cascade" }),
+  grievanceId: varchar("grievance_id")
+    .notNull()
+    .references(() => grievances.id, { onDelete: "cascade" }),
+  name: varchar("name"),
+}, (table) => [
+  uniqueIndex("grievance_name_denorm_grievance_uniq").on(table.grievanceId),
+  uniqueIndex("grievance_name_denorm_denorm_uniq").on(table.denormId),
+]);
+
+export const insertGrievanceNameDenormSchema = createInsertSchema(
+  grievanceNameDenorm,
+).omit({
+  id: true,
+});
+export type GrievanceNameDenorm = typeof grievanceNameDenorm.$inferSelect;
+export type InsertGrievanceNameDenorm = z.infer<
+  typeof insertGrievanceNameDenormSchema
 >;

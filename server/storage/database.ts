@@ -79,6 +79,10 @@ import {
   createWorkerEmploymentDenormStorage,
 } from "./system/worker-employment-denorm";
 import {
+  type GrievanceNameDenormStorage,
+  createGrievanceNameDenormStorage,
+} from "./system/grievance-name-denorm";
+import {
   type WorkerWshDenormStorage,
   createWorkerWshDenormStorage,
 } from "./system/worker-wsh-denorm";
@@ -179,6 +183,7 @@ export interface IStorage {
   workerMshDenorm: WorkerMshDenormStorage;
   workerWshDenorm: WorkerWshDenormStorage;
   workerEmploymentDenorm: WorkerEmploymentDenormStorage;
+  grievanceNameDenorm: GrievanceNameDenormStorage;
   logs: LogsStorage;
   workerWsh: WorkerWshStorage;
   workerMsh: WorkerMshStorage;
@@ -275,6 +280,7 @@ export class DatabaseStorage implements IStorage {
   workerMshDenorm: WorkerMshDenormStorage;
   workerWshDenorm: WorkerWshDenormStorage;
   workerEmploymentDenorm: WorkerEmploymentDenormStorage;
+  grievanceNameDenorm: GrievanceNameDenormStorage;
   logs: LogsStorage;
   workerWsh: WorkerWshStorage;
   workerMsh: WorkerMshStorage;
@@ -419,6 +425,7 @@ export class DatabaseStorage implements IStorage {
     this.workerMshDenorm = createWorkerMshDenormStorage();
     this.workerWshDenorm = createWorkerWshDenormStorage();
     this.workerEmploymentDenorm = createWorkerEmploymentDenormStorage();
+    this.grievanceNameDenorm = createGrievanceNameDenormStorage();
     this.logs = createLogsStorage();
 
     // No logging for wmb scan queue - high-volume internal state changes

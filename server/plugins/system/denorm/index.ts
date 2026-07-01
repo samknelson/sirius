@@ -86,6 +86,7 @@ export function initializeDenormPluginSystem(): void {
 import "./plugins/workerMs";
 import "./plugins/workerWs";
 import "./plugins/workerEmployment";
+import "./plugins/grievanceName";
 // Dispatch-eligibility denorm plugins (write side of dispatch eligibility).
 import "./plugins/dispatch/accepted";
 import "./plugins/dispatch/ban";

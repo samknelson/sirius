@@ -78,6 +78,9 @@ import "./components/grievance/017_create_grievance_remedies";
 import "./components/grievance/018_drop_complaint_remedy_from_grievances";
 import "./components/grievance/019_create_options_grievance_roles";
 import "./components/grievance/020_create_grievance_users";
+import "./components/grievance/021_add_sirius_id_to_grievances";
+import "./components/grievance/022_create_grievance_name_denorm";
+import "./components/grievance/023_grievance_sirius_id_unique_constraint";
 
 // Baseline scripts — one-off, per-deployment scripts that bring a database
 // into sync with the schema BEFORE the drift gate runs. Baseline scripts

@@ -12,6 +12,7 @@ type PolicyMiddleware = (
 
 const createGrievanceSchema = z
   .object({
+    siriusId: z.string().trim().min(1).nullish(),
     classDescription: z.string().trim().min(1).nullish(),
     statusId: z.string().uuid("A valid status is required"),
     categoryId: z.string().uuid("A valid category is required"),
@@ -32,6 +33,7 @@ const editWorkerSchema = z
 
 const updateGrievanceSchema = z
   .object({
+    siriusId: z.string().trim().min(1).nullish(),
     classDescription: z.string().trim().min(1).nullish(),
     statusId: z.string().uuid().optional(),
     categoryId: z.string().uuid().optional(),
@@ -109,6 +111,7 @@ export function registerGrievanceRoutes(
       }
 
       const {
+        siriusId,
         classDescription,
         statusId,
         categoryId,
@@ -116,6 +119,7 @@ export function registerGrievanceRoutes(
       } = parsed.data;
 
       const created = await storage.grievances.create({
+        siriusId: siriusId ?? null,
         classDescription: cardinality === "class" ? (classDescription ?? null) : null,
         statusId,
         categoryId,
@@ -124,7 +128,10 @@ export function registerGrievanceRoutes(
 
       const fresh = await storage.grievances.getWithDetails(created.id);
       res.status(201).json(fresh);
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.code === "23505") {
+        return res.status(409).json({ message: "Grievance ID already in use" });
+      }
       console.error("Failed to create grievance:", error);
       res.status(500).json({ message: "Failed to create grievance" });
     }
@@ -195,6 +202,7 @@ export function registerGrievanceRoutes(
       }
 
       const data: Record<string, unknown> = {};
+      if (parsed.data.siriusId !== undefined) data.siriusId = parsed.data.siriusId ?? null;
       if (parsed.data.classDescription !== undefined)
         data.classDescription = parsed.data.classDescription ?? null;
       if (parsed.data.statusId !== undefined) data.statusId = parsed.data.statusId;
@@ -206,7 +214,10 @@ export function registerGrievanceRoutes(
       await storage.grievances.update(req.params.id, data);
       const fresh = await storage.grievances.getWithDetails(req.params.id);
       res.json(fresh);
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.code === "23505") {
+        return res.status(409).json({ message: "Grievance ID already in use" });
+      }
       console.error("Failed to update grievance:", error);
       res.status(500).json({ message: "Failed to update grievance" });
     }

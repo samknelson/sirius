@@ -15,6 +15,7 @@ import {
   contacts,
   employers,
   users,
+  denorm,
   type Grievance,
   type InsertGrievance,
   type GrievanceWorker,
@@ -23,8 +24,21 @@ import {
   type GrievanceComplaint,
   type GrievanceRemedy,
 } from "@shared/schema";
-import { eq, and, ne, inArray, asc, sql } from "drizzle-orm";
+import { eq, and, ne, inArray, asc, isNull, sql } from "drizzle-orm";
 import { type StorageLoggingConfig } from "../middleware/logging";
+import { onAfterCommit } from "../transaction-context";
+import { eventBus, EventType } from "../../services/event-bus";
+
+/**
+ * Emit the grievance-saved event once the surrounding transaction (if any)
+ * commits, so the `grievance_name_denorm` denorm plugin recomputes the display
+ * name from committed data. Best-effort: a failed emit never fails the write.
+ */
+function emitGrievanceSaved(grievanceId: string): void {
+  onAfterCommit(() => {
+    void eventBus.emit(EventType.GRIEVANCE_SAVED, { grievanceId });
+  });
+}
 
 export interface GrievanceListItem extends Grievance {
   statusName: string | null;
@@ -43,6 +57,13 @@ export interface GrievanceLinkedWorker {
 export interface GrievanceLinkedEmployer {
   employerId: string;
   name: string;
+}
+
+export interface GrievanceWorkerName {
+  given: string | null;
+  family: string | null;
+  displayName: string | null;
+  primary: boolean;
 }
 
 export interface GrievanceLinkedUser {
@@ -155,6 +176,23 @@ export interface GrievanceStorage {
   /** Whether the supplied remedy option id currently exists. */
   remedyOptionExists(id: string): Promise<boolean>;
   getLogLabel(id: string): Promise<string | undefined>;
+  /**
+   * Grievance ids that SHOULD have a denorm row for `configId` but don't yet
+   * (read-only anti-join). Backfill source for the `grievance_name_denorm`
+   * plugin.
+   */
+  findIdsMissingDenorm(configId: string, limit: number): Promise<string[]>;
+  /**
+   * Grievance-scoped denorm entity ids whose grievance no longer exists
+   * (read-only anti-join). Widow source for the `grievance_name_denorm` plugin.
+   */
+  findDenormWidowIds(configId: string, limit: number): Promise<string[]>;
+  /**
+   * The linked workers' name parts for a grievance, used to build the
+   * denormalized grievance name. Returns given/family/displayName and whether
+   * each worker is the lead (primary).
+   */
+  getWorkersForName(grievanceId: string): Promise<GrievanceWorkerName[]>;
 }
 
 export function createGrievanceStorage(): GrievanceStorage {
@@ -189,6 +227,7 @@ export function createGrievanceStorage(): GrievanceStorage {
       const baseQuery = client
         .select({
           id: grievances.id,
+          siriusId: grievances.siriusId,
           classDescription: grievances.classDescription,
           cardinality: grievances.cardinality,
           statusId: grievances.statusId,
@@ -244,6 +283,7 @@ export function createGrievanceStorage(): GrievanceStorage {
       const [row] = await client
         .select({
           id: grievances.id,
+          siriusId: grievances.siriusId,
           classDescription: grievances.classDescription,
           cardinality: grievances.cardinality,
           statusId: grievances.statusId,
@@ -279,6 +319,7 @@ export function createGrievanceStorage(): GrievanceStorage {
     async create(data: InsertGrievance): Promise<Grievance> {
       const client = getClient();
       const [row] = await client.insert(grievances).values(data).returning();
+      emitGrievanceSaved(row.id);
       return row;
     },
 
@@ -289,6 +330,7 @@ export function createGrievanceStorage(): GrievanceStorage {
         .set(data)
         .where(eq(grievances.id, id))
         .returning();
+      if (row) emitGrievanceSaved(row.id);
       return row || undefined;
     },
 
@@ -361,6 +403,7 @@ export function createGrievanceStorage(): GrievanceStorage {
           .insert(grievanceWorkers)
           .values({ grievanceId, workerId, primary })
           .returning();
+        emitGrievanceSaved(grievanceId);
         return { worker: row };
       });
     },
@@ -394,6 +437,7 @@ export function createGrievanceStorage(): GrievanceStorage {
             ),
           )
           .returning();
+        if (row) emitGrievanceSaved(grievanceId);
         return row || undefined;
       });
     },
@@ -404,6 +448,7 @@ export function createGrievanceStorage(): GrievanceStorage {
         .delete(grievanceWorkers)
         .where(and(eq(grievanceWorkers.grievanceId, grievanceId), eq(grievanceWorkers.workerId, workerId)))
         .returning();
+      if (result.length > 0) emitGrievanceSaved(grievanceId);
       return result.length > 0;
     },
 
@@ -438,6 +483,7 @@ export function createGrievanceStorage(): GrievanceStorage {
         .insert(grievanceEmployers)
         .values({ grievanceId, employerId })
         .returning();
+      emitGrievanceSaved(grievanceId);
       return row;
     },
 
@@ -447,6 +493,7 @@ export function createGrievanceStorage(): GrievanceStorage {
         .delete(grievanceEmployers)
         .where(and(eq(grievanceEmployers.grievanceId, grievanceId), eq(grievanceEmployers.employerId, employerId)))
         .returning();
+      if (result.length > 0) emitGrievanceSaved(grievanceId);
       return result.length > 0;
     },
 
@@ -868,6 +915,47 @@ export function createGrievanceStorage(): GrievanceStorage {
         .where(eq(grievances.id, id));
       if (!row) return undefined;
       return row.categoryName ? `${row.categoryName} grievance` : `grievance ${id.slice(0, 8)}`;
+    },
+
+    async findIdsMissingDenorm(configId: string, limit: number): Promise<string[]> {
+      const client = getClient();
+      const rows = await client
+        .select({ id: grievances.id })
+        .from(grievances)
+        .leftJoin(
+          denorm,
+          and(eq(denorm.entityId, grievances.id), eq(denorm.configId, configId)),
+        )
+        .where(isNull(denorm.id))
+        .limit(limit);
+      return rows.map((r) => r.id);
+    },
+
+    async findDenormWidowIds(configId: string, limit: number): Promise<string[]> {
+      const client = getClient();
+      const rows = await client
+        .select({ entityId: denorm.entityId })
+        .from(denorm)
+        .leftJoin(grievances, eq(grievances.id, denorm.entityId))
+        .where(and(eq(denorm.configId, configId), isNull(grievances.id)))
+        .limit(limit);
+      return rows.map((r) => r.entityId);
+    },
+
+    async getWorkersForName(grievanceId: string): Promise<GrievanceWorkerName[]> {
+      const client = getClient();
+      return client
+        .select({
+          given: contacts.given,
+          family: contacts.family,
+          displayName: contacts.displayName,
+          primary: grievanceWorkers.primary,
+        })
+        .from(grievanceWorkers)
+        .innerJoin(workers, eq(grievanceWorkers.workerId, workers.id))
+        .innerJoin(contacts, eq(workers.contactId, contacts.id))
+        .where(eq(grievanceWorkers.grievanceId, grievanceId))
+        .orderBy(asc(contacts.displayName));
     },
   };
 }

@@ -1057,6 +1057,10 @@ export {
   insertGrievanceTimelineTemplateStepSchema,
   type GrievanceTimelineTemplateStep,
   type InsertGrievanceTimelineTemplateStep,
+  grievanceNameDenorm,
+  insertGrievanceNameDenormSchema,
+  type GrievanceNameDenorm,
+  type InsertGrievanceNameDenorm,
 } from "./schema/grievance/schema";
 
 export {
