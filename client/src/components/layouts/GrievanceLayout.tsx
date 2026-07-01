@@ -59,6 +59,7 @@ export interface GrievanceWithDetails {
   timelineTemplateId: string | null;
   statusName: string | null;
   categoryName: string | null;
+  name: string | null;
   workers: GrievanceLinkedWorker[];
   employers: GrievanceLinkedEmployer[];
   users: GrievanceLinkedUser[];
@@ -83,6 +84,7 @@ export function useGrievanceLayout() {
 }
 
 function grievanceTitle(grievance: GrievanceWithDetails): string {
+  if (grievance.name && grievance.name.trim()) return grievance.name;
   if (grievance.categoryName) return `${grievance.categoryName} Grievance`;
   return `Grievance ${grievance.id.slice(0, 8)}`;
 }

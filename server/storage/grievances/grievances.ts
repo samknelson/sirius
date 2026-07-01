@@ -11,6 +11,7 @@ import {
   optionsGrievanceComplaints,
   optionsGrievanceRemedies,
   optionsGrievanceRoles,
+  grievanceNameDenorm,
   workers,
   contacts,
   employers,
@@ -87,6 +88,8 @@ export interface GrievanceRemedyWithDetails extends GrievanceRemedy {
 export interface GrievanceWithDetails extends Grievance {
   statusName: string | null;
   categoryName: string | null;
+  /** Denormalized display name from `grievance_name_denorm`; null if not yet computed. */
+  name: string | null;
   workers: GrievanceLinkedWorker[];
   employers: GrievanceLinkedEmployer[];
   users: GrievanceLinkedUser[];
@@ -101,7 +104,7 @@ export interface GrievanceSearchFilters {
 
 export interface GrievanceStorage {
   search(filters?: GrievanceSearchFilters): Promise<GrievanceListItem[]>;
-  get(id: string): Promise<Grievance | undefined>;
+  get(id: string): Promise<(Grievance & { name: string | null }) | undefined>;
   getWithDetails(id: string): Promise<GrievanceWithDetails | undefined>;
   create(data: InsertGrievance): Promise<Grievance>;
   update(id: string, data: Partial<InsertGrievance>): Promise<Grievance | undefined>;
@@ -272,9 +275,23 @@ export function createGrievanceStorage(): GrievanceStorage {
       }));
     },
 
-    async get(id: string): Promise<Grievance | undefined> {
+    async get(id: string): Promise<(Grievance & { name: string | null }) | undefined> {
       const client = getClient();
-      const [row] = await client.select().from(grievances).where(eq(grievances.id, id));
+      const [row] = await client
+        .select({
+          id: grievances.id,
+          siriusId: grievances.siriusId,
+          classDescription: grievances.classDescription,
+          cardinality: grievances.cardinality,
+          statusId: grievances.statusId,
+          categoryId: grievances.categoryId,
+          data: grievances.data,
+          timelineTemplateId: grievances.timelineTemplateId,
+          name: grievanceNameDenorm.name,
+        })
+        .from(grievances)
+        .leftJoin(grievanceNameDenorm, eq(grievanceNameDenorm.grievanceId, grievances.id))
+        .where(eq(grievances.id, id));
       return row || undefined;
     },
 
@@ -292,10 +309,12 @@ export function createGrievanceStorage(): GrievanceStorage {
           timelineTemplateId: grievances.timelineTemplateId,
           statusName: optionsGrievanceStatus.name,
           categoryName: optionsGrievanceCategory.name,
+          name: grievanceNameDenorm.name,
         })
         .from(grievances)
         .leftJoin(optionsGrievanceStatus, eq(grievances.statusId, optionsGrievanceStatus.id))
         .leftJoin(optionsGrievanceCategory, eq(grievances.categoryId, optionsGrievanceCategory.id))
+        .leftJoin(grievanceNameDenorm, eq(grievanceNameDenorm.grievanceId, grievances.id))
         .where(eq(grievances.id, id));
 
       if (!row) return undefined;
