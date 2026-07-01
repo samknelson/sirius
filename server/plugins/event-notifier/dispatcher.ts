@@ -3,6 +3,8 @@ import { logger } from "../../logger";
 import { isPluginComponentEnabledSync } from "../_core";
 import { eventNotifierRegistry } from "./registry";
 import { getEnabledConfigsForKind } from "../_core/plugin-config-cache";
+import { checkFlood, recordFloodEvent } from "../../flood/service";
+import { NOTIFICATION_FLOOD_EVENTS } from "../../flood/events";
 import {
   type EventNotifierEventContext,
   type NotificationMedium,
@@ -11,6 +13,50 @@ import {
 } from "./types";
 
 const SERVICE = "event-notifier-dispatcher";
+
+/**
+ * Flood gate for a single (recipient, medium, plugin) send. Counts prior sends
+ * in the medium's rolling window and, if under the admin-configured limit,
+ * records this send and returns true. If over the limit, logs and returns false
+ * so the caller skips just this one send. Fails OPEN: if the check itself errors
+ * (e.g. a transient DB hiccup) the send proceeds, so throttling infrastructure
+ * can never silently swallow legitimate notifications. Must be called only once
+ * we know the send is actually deliverable, so no-op sends don't consume budget.
+ */
+async function passesNotificationFlood(
+  medium: NotificationMedium,
+  contactId: string,
+  pluginId: string,
+): Promise<boolean> {
+  const eventName = NOTIFICATION_FLOOD_EVENTS[medium];
+  if (!eventName) return true;
+  try {
+    const result = await checkFlood(eventName, { contactId, pluginId });
+    if (!result.allowed) {
+      logger.warn("Event-notifier send throttled by flood limit", {
+        service: SERVICE,
+        pluginId,
+        medium,
+        contactId,
+        count: result.count,
+        threshold: result.threshold,
+        windowSeconds: result.windowSeconds,
+      });
+      return false;
+    }
+    await recordFloodEvent(eventName, { contactId, pluginId });
+    return true;
+  } catch (error) {
+    logger.warn("Event-notifier flood check failed; sending anyway (fail open)", {
+      service: SERVICE,
+      pluginId,
+      medium,
+      contactId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return true;
+  }
+}
 
 /**
  * Resolve the destination + send for a single (recipient, medium) pair using
@@ -33,6 +79,7 @@ async function deliver(
       if (!content.subject) return;
       const contact = await storage.contacts.getContact(recipient.contactId);
       if (!contact?.email) return;
+      if (!(await passesNotificationFlood(medium, recipient.contactId, pluginId))) return;
       const { sendEmail } = await import("../../services/comm/senders/email");
       await sendEmail({
         contactId: recipient.contactId,
@@ -54,6 +101,7 @@ async function deliver(
       const active = phones.filter((p) => p.isActive);
       const chosen = active.find((p) => p.isPrimary) ?? active[0];
       if (!chosen) return;
+      if (!(await passesNotificationFlood(medium, recipient.contactId, pluginId))) return;
       const { sendSms } = await import("../../services/comm/senders/sms");
       await sendSms({
         contactId: recipient.contactId,
@@ -78,6 +126,7 @@ async function deliver(
         }
       }
       if (!userId) return;
+      if (!(await passesNotificationFlood(medium, recipient.contactId, pluginId))) return;
       const { sendInapp } = await import("../../services/comm/senders/inapp");
       await sendInapp({
         contactId: recipient.contactId,
@@ -100,6 +149,7 @@ async function deliver(
       const active = addresses.filter((a) => a.isActive);
       const chosen = active.find((a) => a.isPrimary) ?? active[0];
       if (!chosen) return;
+      if (!(await passesNotificationFlood(medium, recipient.contactId, pluginId))) return;
       const { sendPostal } = await import("../../services/comm/senders/postal");
       await sendPostal({
         contactId: recipient.contactId,
