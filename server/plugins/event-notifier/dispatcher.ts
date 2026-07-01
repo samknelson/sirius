@@ -250,6 +250,13 @@ async function dispatchForConfig(
     return;
   }
 
+  // Per-config gate (e.g. a role filter): skip this config when the plugin says
+  // this event doesn't apply to it. Omitted hook = always dispatch.
+  if (plugin.shouldDispatch) {
+    const ok = await plugin.shouldDispatch(ctx, configData);
+    if (!ok) return;
+  }
+
   // Active media = admin selection ∩ what the plugin can actually produce.
   const supported = new Set(plugin.supportedMedia);
   const active = mediaSelection.filter((m) => supported.has(m));

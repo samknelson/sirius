@@ -1,4 +1,5 @@
 - [Component gating on generic param routes](component-gating-generic-routes.md) — generic :type/:kind/:pluginId/:typeName routes must gate component-owned data at BOTH kind and per-plugin/type level, on every verb (list filter ≠ enough).
+- [Event-notifier per-config filtering & link media](event-notifier-per-config-filter.md) — per-config filters need the dispatcher `shouldDispatch(ctx,configData)` hook (getRecipients/getMessage lack config); email/sms need absolute URLs, in-app uses relative linkUrl.
 - [Author-time migration check vs untracked files](migration-check-untracked.md) — check-migrations false-fails on untracked migration files; startup drift gate is the real enforcement.
 - [New jsonb column auto-leaks via storage reads](jsonb-column-pii-leak.md) — a new column on a core table leaks through every star-select/`.returning()` read; strip it at the storage boundary, type omit alone won't stop the runtime leak.
 - [Charge plugin adjustment math (net-total reconcile)](charge-plugin-net-total-reconcile.md) — edit-driven charge deltas must reconcile against sum(base+adjustments), not the immutable base entry, or repeated edits overcharge.

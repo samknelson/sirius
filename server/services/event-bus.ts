@@ -36,6 +36,7 @@ export enum EventType {
   WORKER_MSH_SAVED = "worker.msh.saved",
   STEWARD_ASSIGNMENT_SAVED = "steward.assignment.saved",
   GRIEVANCE_SAVED = "grievance.saved",
+  GRIEVANCE_ASSIGNMENT_SAVED = "grievance.assignment.saved",
   TRUST_WMB_SCAN_COMPLETED = "trust.wmb.scan.completed",
   PLUGIN_CONFIG_SAVED = "plugin.config.saved",
   CRON = "cron",
@@ -165,6 +166,13 @@ export interface GrievanceSavedPayload {
   grievanceId: string;
 }
 
+export interface GrievanceAssignmentSavedPayload {
+  grievanceId: string;
+  userId: string;
+  roleId: string;
+  operation: "created" | "updated" | "deleted";
+}
+
 export interface TrustWmbScanCompletedPayload {
   statusId: string;
   month: number;
@@ -222,6 +230,7 @@ export interface EventPayloadMap {
   [EventType.WORKER_MSH_SAVED]: WorkerMshSavedPayload;
   [EventType.STEWARD_ASSIGNMENT_SAVED]: StewardAssignmentSavedPayload;
   [EventType.GRIEVANCE_SAVED]: GrievanceSavedPayload;
+  [EventType.GRIEVANCE_ASSIGNMENT_SAVED]: GrievanceAssignmentSavedPayload;
   [EventType.TRUST_WMB_SCAN_COMPLETED]: TrustWmbScanCompletedPayload;
   [EventType.PLUGIN_CONFIG_SAVED]: PluginConfigSavedPayload;
   [EventType.CRON]: CronPayload;

@@ -41,6 +41,28 @@ function emitGrievanceSaved(grievanceId: string): void {
   });
 }
 
+/**
+ * Emit the grievance-assignment-saved event once the surrounding transaction
+ * (if any) commits, so the grievance-assignment event-notifier plugin can fan a
+ * notification out to the affected user. Best-effort: a failed emit never fails
+ * the write.
+ */
+function emitGrievanceAssignmentSaved(
+  grievanceId: string,
+  userId: string,
+  roleId: string,
+  operation: "created" | "updated" | "deleted",
+): void {
+  onAfterCommit(() => {
+    void eventBus.emit(EventType.GRIEVANCE_ASSIGNMENT_SAVED, {
+      grievanceId,
+      userId,
+      roleId,
+      operation,
+    });
+  });
+}
+
 export interface GrievanceListItem extends Grievance {
   statusName: string | null;
   categoryName: string | null;
@@ -145,6 +167,17 @@ export interface GrievanceStorage {
   ): Promise<{ id: string; userId: string; roleId: string } | undefined>;
   /** Whether the supplied grievance role option id currently exists. */
   roleOptionExists(id: string): Promise<boolean>;
+  /** The display name of a grievance role option, or null if unknown. */
+  getRoleName(roleId: string): Promise<string | null>;
+  /**
+   * The parts needed to compose a grievance's display title (denorm name and
+   * category name) for notifications. Undefined if the grievance is gone.
+   */
+  getAssignmentTitleInfo(
+    grievanceId: string,
+  ): Promise<
+    { id: string; name: string | null; categoryName: string | null } | undefined
+  >;
   /**
    * The system role ids a user must hold (any one of) to be assignable to
    * the given grievance role. Empty array = no restriction.
@@ -549,6 +582,7 @@ export function createGrievanceStorage(): GrievanceStorage {
           data: data.data ?? null,
         })
         .returning();
+      emitGrievanceAssignmentSaved(grievanceId, row.userId, row.roleId, "created");
       return row;
     },
 
@@ -558,6 +592,7 @@ export function createGrievanceStorage(): GrievanceStorage {
       data: { roleId?: string; data?: unknown },
     ): Promise<GrievanceUser | undefined> {
       const client = getClient();
+      const existing = await this.getUserAssignment(grievanceId, rowId);
       const updates: Partial<typeof grievanceUsers.$inferInsert> = {};
       if (data.roleId !== undefined) updates.roleId = data.roleId;
       if (data.data !== undefined) updates.data = data.data;
@@ -571,11 +606,19 @@ export function createGrievanceStorage(): GrievanceStorage {
           ),
         )
         .returning();
+      // Only notify when the assignment's role actually changed; edits that
+      // touch only the free-form `data` payload are not a role change.
+      if (row && existing && row.roleId !== existing.roleId) {
+        emitGrievanceAssignmentSaved(grievanceId, row.userId, row.roleId, "updated");
+      }
       return row || undefined;
     },
 
     async removeUser(grievanceId: string, rowId: string): Promise<boolean> {
       const client = getClient();
+      // Capture the userId/roleId before the row is gone so the removal can be
+      // notified to the affected user.
+      const existing = await this.getUserAssignment(grievanceId, rowId);
       const result = await client
         .delete(grievanceUsers)
         .where(
@@ -585,6 +628,14 @@ export function createGrievanceStorage(): GrievanceStorage {
           ),
         )
         .returning();
+      if (result.length > 0 && existing) {
+        emitGrievanceAssignmentSaved(
+          grievanceId,
+          existing.userId,
+          existing.roleId,
+          "deleted",
+        );
+      }
       return result.length > 0;
     },
 
@@ -616,6 +667,40 @@ export function createGrievanceStorage(): GrievanceStorage {
         .from(optionsGrievanceRoles)
         .where(eq(optionsGrievanceRoles.id, id));
       return !!row;
+    },
+
+    async getRoleName(roleId: string): Promise<string | null> {
+      const client = getClient();
+      const [row] = await client
+        .select({ name: optionsGrievanceRoles.name })
+        .from(optionsGrievanceRoles)
+        .where(eq(optionsGrievanceRoles.id, roleId));
+      return row?.name ?? null;
+    },
+
+    async getAssignmentTitleInfo(
+      grievanceId: string,
+    ): Promise<
+      { id: string; name: string | null; categoryName: string | null } | undefined
+    > {
+      const client = getClient();
+      const [row] = await client
+        .select({
+          id: grievances.id,
+          name: grievanceNameDenorm.name,
+          categoryName: optionsGrievanceCategory.name,
+        })
+        .from(grievances)
+        .leftJoin(
+          optionsGrievanceCategory,
+          eq(grievances.categoryId, optionsGrievanceCategory.id),
+        )
+        .leftJoin(
+          grievanceNameDenorm,
+          eq(grievanceNameDenorm.grievanceId, grievances.id),
+        )
+        .where(eq(grievances.id, grievanceId));
+      return row || undefined;
     },
 
     async rolePermittedSystemRoleIds(roleId: string): Promise<string[]> {

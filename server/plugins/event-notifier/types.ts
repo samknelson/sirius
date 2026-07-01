@@ -110,6 +110,18 @@ export interface EventNotifierPlugin extends BasePluginMetadata {
   ): Promise<NotifierRecipient[]>;
 
   /**
+   * Optional per-config gate evaluated before recipients are resolved. Receives
+   * the fired event context and the individual config's `data` payload; return
+   * `false` to skip this config for this event (e.g. the config restricts
+   * notifications to a subset of roles that does not include the one on the
+   * payload). Notifiers that omit this hook always dispatch.
+   */
+  shouldDispatch?(
+    ctx: EventNotifierEventContext,
+    configData: unknown,
+  ): boolean | Promise<boolean>;
+
+  /**
    * Compose the message for one recipient on one medium. Return `null` to skip
    * that medium for that recipient (e.g. the recipient has no address on file,
    * or the content does not apply).
