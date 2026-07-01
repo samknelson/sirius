@@ -143,7 +143,9 @@ export const grievanceAssignmentNotifier: EventNotifierPlugin = {
     const hasLink = operation !== "deleted";
     const linkUrl = hasLink ? `/grievance/${grievanceId}` : undefined;
     const absoluteUrl = hasLink ? absoluteGrievanceUrl(grievanceId) : undefined;
-    const title = "Grievance Assignment";
+    // The notification is titled with the grievance's display title; the body
+    // carries the assignment detail (role + operation).
+    const title = grievanceTitle;
 
     switch (medium) {
       case "inapp":
