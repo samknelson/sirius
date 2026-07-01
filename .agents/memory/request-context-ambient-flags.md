@@ -30,6 +30,14 @@ protection) and early-return.
 concurrent browser windows (one bulk, one normal) are naturally isolated —
 each HTTP request is its own ALS scope.
 
+**Related — automatic self-notification suppression:** the same dispatcher also
+drops any recipient whose resolved `userId` equals `getRequestContext()?.userId`
+(the acting user), so a user who triggers an event isn't notified about their own
+action. This is per-recipient (a `.filter` on the resolved recipients), matched by
+user id only, and fail-safe: no acting user (crons) or a recipient with no
+`userId` = notify normally. Distinct from the opt-in `suppressNotifications` flag,
+which suppresses the whole scope.
+
 **Verified gotcha — onAfterCommit propagation:** events emitted via
 `onAfterCommit` (transaction-context) still observe the flag, because the
 after-commit queue is drained synchronously within the awaited `runInTransaction`

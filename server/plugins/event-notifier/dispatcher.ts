@@ -11,7 +11,10 @@ import {
   type NotifierMessageContent,
   type NotifierRecipient,
 } from "./types";
-import { areNotificationsSuppressed } from "../../middleware/request-context";
+import {
+  areNotificationsSuppressed,
+  getRequestContext,
+} from "../../middleware/request-context";
 
 const SERVICE = "event-notifier-dispatcher";
 
@@ -313,11 +316,34 @@ async function dispatchForConfig(
   const active = mediaSelection.filter((m) => supported.has(m));
   if (active.length === 0) return;
 
-  const recipients = plugin.staffNotification
+  const resolved = plugin.staffNotification
     ? await resolveStaffRecipients(staffRecipientUserIds(configData), plugin.id)
     : plugin.getRecipients
       ? await plugin.getRecipients(ctx)
       : [];
+  if (resolved.length === 0) return;
+
+  // Self-notification suppression: when the user who triggered this event is
+  // also a recipient, skip notifying them — they just performed the action, so
+  // the notification would be pure noise. Matched by application user id off the
+  // request context. Fail-safe: with no acting user (e.g. cron-fired events) or
+  // a recipient with no resolved userId, nothing is dropped and we notify as
+  // normal.
+  const actingUserId = getRequestContext()?.userId;
+  const recipients = actingUserId
+    ? resolved.filter((r) => {
+        const isSelf = r.userId === actingUserId;
+        if (isSelf) {
+          logger.debug("Skipping self-notification for acting user", {
+            service: SERVICE,
+            pluginId: plugin.id,
+            event: ctx.event,
+            contactId: r.contactId,
+          });
+        }
+        return !isSelf;
+      })
+    : resolved;
   if (recipients.length === 0) return;
 
   const tagIds = await resolveTagIds(plugin.id, plugin.name);
