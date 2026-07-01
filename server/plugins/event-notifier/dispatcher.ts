@@ -11,6 +11,7 @@ import {
   type NotifierMessageContent,
   type NotifierRecipient,
 } from "./types";
+import { areNotificationsSuppressed } from "../../middleware/request-context";
 
 const SERVICE = "event-notifier-dispatcher";
 
@@ -350,6 +351,13 @@ function parseMedia(value: unknown): NotificationMedium[] {
  */
 function makeHandler(event: EventType) {
   return async (payload: unknown): Promise<void> => {
+    if (areNotificationsSuppressed()) {
+      logger.debug("Notifications suppressed for scope; skipping dispatch", {
+        service: SERVICE,
+        event,
+      });
+      return;
+    }
     const ctx: EventNotifierEventContext = { event, payload };
     const envelopes = await getEnabledConfigsForKind(KIND);
     for (const envelope of envelopes) {
