@@ -1,5 +1,8 @@
 import { logger } from "../../logger";
-import { broadcastNotificationSummary } from "../../services/websocket";
+import {
+  broadcastNotificationSummary,
+  onUserConnected,
+} from "../../services/websocket";
 import type { NotificationMedium } from "./types";
 
 const SERVICE = "event-notifier-flash-summary";
@@ -14,6 +17,15 @@ const SERVICE = "event-notifier-flash-summary";
  */
 const DEBOUNCE_MS = 1000;
 
+/**
+ * How long a summary that could not be delivered (the user had no open socket
+ * when it flushed) is retained for replay on their next reconnect. The toast is
+ * a "your action just sent these" confirmation, so a short window is enough to
+ * survive a momentary disconnect (navigation, dev reload, brief network blip)
+ * without ever showing a stale toast long after the action.
+ */
+const UNDELIVERED_TTL_MS = 30000;
+
 type MediumCounts = Partial<Record<NotificationMedium, number>>;
 
 interface PendingSummary {
@@ -22,6 +34,26 @@ interface PendingSummary {
 }
 
 const pendingByUser = new Map<string, PendingSummary>();
+
+interface UndeliveredSummary {
+  counts: MediumCounts;
+  /** Fires after UNDELIVERED_TTL_MS to drop the summary if never replayed. */
+  timer: NodeJS.Timeout;
+}
+
+/**
+ * Summaries that flushed while the user had no open socket. Held per user and
+ * replayed the next time that user connects (see the onUserConnected hook at
+ * the bottom of this module), then dropped. Bounded by the TTL timer so a user
+ * who never reconnects does not leak an entry.
+ */
+const undeliveredByUser = new Map<string, UndeliveredSummary>();
+
+function mergeCounts(target: MediumCounts, source: MediumCounts): void {
+  for (const medium of Object.keys(source) as NotificationMedium[]) {
+    target[medium] = (target[medium] ?? 0) + (source[medium] ?? 0);
+  }
+}
 
 /**
  * Record one successfully-sent notification, attributed to the acting user who
@@ -55,8 +87,19 @@ function flush(userId: string): void {
   const total = Object.values(counts).reduce((sum, n) => sum + (n ?? 0), 0);
   if (total === 0) return;
 
+  deliverOrRetain(userId, counts);
+}
+
+/**
+ * Try to push the summary over the user's open socket. If they have no open
+ * connection right now, retain it so it can be replayed when they reconnect —
+ * otherwise a momentary disconnect around the action would silently swallow the
+ * toast even though the notifications went out.
+ */
+function deliverOrRetain(userId: string, counts: MediumCounts): void {
+  let delivered = false;
   try {
-    broadcastNotificationSummary(userId, counts);
+    delivered = broadcastNotificationSummary(userId, counts);
   } catch (error) {
     logger.warn("Failed to push notification summary", {
       service: SERVICE,
@@ -64,4 +107,35 @@ function flush(userId: string): void {
       error: error instanceof Error ? error.message : String(error),
     });
   }
+  if (!delivered) retainUndelivered(userId, counts);
 }
+
+/**
+ * Buffer a summary that could not be delivered, merging into any existing
+ * buffered summary for the user, and (re)arm the TTL so it is dropped if the
+ * user never reconnects within the window.
+ */
+function retainUndelivered(userId: string, counts: MediumCounts): void {
+  let entry = undeliveredByUser.get(userId);
+  if (entry) {
+    clearTimeout(entry.timer);
+    mergeCounts(entry.counts, counts);
+  } else {
+    entry = { counts: { ...counts }, timer: undefined as unknown as NodeJS.Timeout };
+    undeliveredByUser.set(userId, entry);
+  }
+  entry.timer = setTimeout(() => {
+    undeliveredByUser.delete(userId);
+  }, UNDELIVERED_TTL_MS);
+}
+
+// Replay a buffered summary the moment the user reconnects. If delivery fails
+// again (e.g. the socket is not usable), deliverOrRetain re-buffers it under a
+// fresh TTL rather than looping.
+onUserConnected((userId: string) => {
+  const entry = undeliveredByUser.get(userId);
+  if (!entry) return;
+  undeliveredByUser.delete(userId);
+  clearTimeout(entry.timer);
+  deliverOrRetain(userId, entry.counts);
+});

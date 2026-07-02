@@ -30,6 +30,34 @@ const connections: Map<string, Set<UserConnection>> = new Map();
 let wss: WebSocketServer | null = null;
 let pingInterval: NodeJS.Timeout | null = null;
 
+type ConnectionListener = (userId: string) => void;
+const connectionListeners: Set<ConnectionListener> = new Set();
+
+/**
+ * Register a callback fired whenever a user establishes a new authenticated
+ * socket. Used by the flash-summary buffer to replay a toast that could not be
+ * delivered while the user was momentarily disconnected. Listeners are held in
+ * module-level state, so registration order relative to {@link initializeWebSocket}
+ * does not matter.
+ */
+export function onUserConnected(listener: ConnectionListener): void {
+  connectionListeners.add(listener);
+}
+
+function notifyConnectionListeners(userId: string): void {
+  connectionListeners.forEach((listener) => {
+    try {
+      listener(userId);
+    } catch (error) {
+      logger.error("WebSocket connection listener failed", {
+        service: "websocket",
+        userId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+}
+
 const PING_INTERVAL = 30000;
 const CONNECTION_TIMEOUT = 60000;
 
@@ -92,6 +120,11 @@ export function initializeWebSocket(
       });
 
       ws.send(JSON.stringify({ type: "connected" }));
+
+      // The socket is now OPEN and the client's message handler is live; let
+      // listeners (e.g. the flash-summary buffer) replay anything that could
+      // not be delivered while this user was disconnected.
+      notifyConnectionListeners(userId);
 
     } catch (error) {
       logger.error("Failed to establish WebSocket connection", {
@@ -168,17 +201,26 @@ function removeConnection(userId: string, connection: UserConnection): void {
   }
 }
 
-export function broadcastToUser(userId: string, message: WebSocketMessage): void {
+/**
+ * Send `message` to every OPEN socket the user currently has. Returns true if
+ * the message was handed to at least one open socket, false if the user has no
+ * open connection right now (nothing was delivered). Callers that need a
+ * delivery guarantee (e.g. the flash-summary toast) use the return value to
+ * decide whether to retain and replay the message when the user reconnects.
+ */
+export function broadcastToUser(userId: string, message: WebSocketMessage): boolean {
   const userConnections = connections.get(userId);
   if (!userConnections || userConnections.size === 0) {
-    return;
+    return false;
   }
 
   const messageStr = JSON.stringify(message);
+  let delivered = false;
   userConnections.forEach((connection) => {
     if (connection.ws.readyState === WebSocket.OPEN) {
       try {
         connection.ws.send(messageStr);
+        delivered = true;
       } catch (error) {
         logger.error("Failed to send WebSocket message", {
           service: "websocket",
@@ -188,6 +230,7 @@ export function broadcastToUser(userId: string, message: WebSocketMessage): void
       }
     }
   });
+  return delivered;
 }
 
 export function broadcastAlertUpdate(userId: string, unreadCount: number): void {
@@ -201,13 +244,14 @@ export function broadcastAlertUpdate(userId: string, unreadCount: number): void 
  * Flash a summary of notifications that a user's action just triggered back to
  * that user (e.g. "3 by SMS, 2 by email"). Delivered over the per-user channel
  * as a message type distinct from alert-count updates so the client can render
- * it as a one-off toast without touching the alert badge.
+ * it as a one-off toast without touching the alert badge. Returns whether it
+ * reached an open socket so the caller can retain and replay it on reconnect.
  */
 export function broadcastNotificationSummary(
   userId: string,
   counts: Partial<Record<"email" | "sms" | "inapp" | "postal", number>>,
-): void {
-  broadcastToUser(userId, {
+): boolean {
+  return broadcastToUser(userId, {
     type: "notification_summary",
     payload: { counts },
   });
