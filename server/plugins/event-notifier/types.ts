@@ -107,6 +107,7 @@ export interface EventNotifierPlugin extends BasePluginMetadata {
    */
   getRecipients?(
     ctx: EventNotifierEventContext,
+    configData?: unknown,
   ): Promise<NotifierRecipient[]>;
 
   /**

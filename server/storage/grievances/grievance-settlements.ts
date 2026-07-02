@@ -1,10 +1,33 @@
-import { getClient } from "../transaction-context";
+import { getClient, onAfterCommit } from "../transaction-context";
 import {
   grievanceSettlements,
   type GrievanceSettlement,
 } from "@shared/schema";
 import { eq, and, asc } from "drizzle-orm";
 import { type StorageLoggingConfig } from "../middleware/logging";
+import { eventBus, EventType } from "../../services/event-bus";
+
+/**
+ * Emit `GRIEVANCE_SETTLEMENT_SAVED` after the current transaction commits so a
+ * concurrent read never observes the change before it is durable. The amount is
+ * captured on the payload — for deletes the row is already gone by the time the
+ * notifier runs, so it must be read before removal and carried here.
+ */
+function emitGrievanceSettlementSaved(
+  grievanceId: string,
+  settlementId: string,
+  operation: "created" | "updated" | "deleted",
+  amount: string | null,
+): void {
+  onAfterCommit(() => {
+    void eventBus.emit(EventType.GRIEVANCE_SETTLEMENT_SAVED, {
+      grievanceId,
+      settlementId,
+      operation,
+      amount,
+    });
+  });
+}
 
 /**
  * Storage for settlements recorded against a grievance. Owned by the
@@ -89,6 +112,7 @@ export function createGrievanceSettlementStorage(): GrievanceSettlementStorage {
           typeIds: data.typeIds ?? null,
         })
         .returning();
+      emitGrievanceSettlementSaved(grievanceId, row.id, "created", row.amount);
       return row;
     },
 
@@ -116,6 +140,9 @@ export function createGrievanceSettlementStorage(): GrievanceSettlementStorage {
           ),
         )
         .returning();
+      if (row) {
+        emitGrievanceSettlementSaved(grievanceId, row.id, "updated", row.amount);
+      }
       return row || undefined;
     },
 
@@ -130,6 +157,15 @@ export function createGrievanceSettlementStorage(): GrievanceSettlementStorage {
           ),
         )
         .returning();
+      const [deleted] = result;
+      if (deleted) {
+        emitGrievanceSettlementSaved(
+          grievanceId,
+          deleted.id,
+          "deleted",
+          deleted.amount,
+        );
+      }
       return result.length > 0;
     },
   };

@@ -319,7 +319,7 @@ async function dispatchForConfig(
   const resolved = plugin.staffNotification
     ? await resolveStaffRecipients(staffRecipientUserIds(configData), plugin.id)
     : plugin.getRecipients
-      ? await plugin.getRecipients(ctx)
+      ? await plugin.getRecipients(ctx, configData)
       : [];
   if (resolved.length === 0) return;
 

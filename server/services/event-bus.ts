@@ -37,6 +37,7 @@ export enum EventType {
   STEWARD_ASSIGNMENT_SAVED = "steward.assignment.saved",
   GRIEVANCE_SAVED = "grievance.saved",
   GRIEVANCE_ASSIGNMENT_SAVED = "grievance.assignment.saved",
+  GRIEVANCE_SETTLEMENT_SAVED = "grievance.settlement.saved",
   TRUST_WMB_SCAN_COMPLETED = "trust.wmb.scan.completed",
   PLUGIN_CONFIG_SAVED = "plugin.config.saved",
   CRON = "cron",
@@ -173,6 +174,18 @@ export interface GrievanceAssignmentSavedPayload {
   operation: "created" | "updated" | "deleted";
 }
 
+export interface GrievanceSettlementSavedPayload {
+  grievanceId: string;
+  settlementId: string;
+  operation: "created" | "updated" | "deleted";
+  /**
+   * The settlement's amount (numeric string, may be null). Carried on the
+   * payload so the message can render it even for deletes, where the row no
+   * longer exists by the time the notifier runs.
+   */
+  amount: string | null;
+}
+
 export interface TrustWmbScanCompletedPayload {
   statusId: string;
   month: number;
@@ -231,6 +244,7 @@ export interface EventPayloadMap {
   [EventType.STEWARD_ASSIGNMENT_SAVED]: StewardAssignmentSavedPayload;
   [EventType.GRIEVANCE_SAVED]: GrievanceSavedPayload;
   [EventType.GRIEVANCE_ASSIGNMENT_SAVED]: GrievanceAssignmentSavedPayload;
+  [EventType.GRIEVANCE_SETTLEMENT_SAVED]: GrievanceSettlementSavedPayload;
   [EventType.TRUST_WMB_SCAN_COMPLETED]: TrustWmbScanCompletedPayload;
   [EventType.PLUGIN_CONFIG_SAVED]: PluginConfigSavedPayload;
   [EventType.CRON]: CronPayload;
