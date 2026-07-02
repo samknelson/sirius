@@ -89,14 +89,25 @@ const settlementAmountSchema = z
   .trim()
   .regex(/^\d{1,8}(\.\d{1,2})?$/, "Amount must be a number with up to 2 decimal places");
 
+// Multi-value reference to `options_grievance_settlement_type`. The client
+// sends the full list of selected type ids; an empty array clears them.
+const settlementTypeIdsSchema = z.array(z.string().trim().min(1));
+
 const addSettlementSchema = z
   .object({
     description: z.preprocess(emptyToUndefined, z.string().trim().min(1).optional()),
     amount: z.preprocess(emptyToUndefined, settlementAmountSchema.optional()),
+    typeIds: settlementTypeIdsSchema.optional(),
   })
-  .refine((v) => v.description !== undefined || v.amount !== undefined, {
-    message: "Provide a description or an amount",
-  });
+  .refine(
+    (v) =>
+      v.description !== undefined ||
+      v.amount !== undefined ||
+      (v.typeIds !== undefined && v.typeIds.length > 0),
+    {
+      message: "Provide a description, an amount, or a settlement type",
+    },
+  );
 
 const updateSettlementSchema = z
   .object({
@@ -105,10 +116,17 @@ const updateSettlementSchema = z
       z.string().trim().min(1).nullable().optional(),
     ),
     amount: z.preprocess(emptyToUndefined, settlementAmountSchema.nullable().optional()),
+    typeIds: settlementTypeIdsSchema.optional(),
   })
-  .refine((v) => v.description !== undefined || v.amount !== undefined, {
-    message: "At least one field must be provided",
-  });
+  .refine(
+    (v) =>
+      v.description !== undefined ||
+      v.amount !== undefined ||
+      v.typeIds !== undefined,
+    {
+      message: "At least one field must be provided",
+    },
+  );
 
 export function registerGrievanceRoutes(
   app: Express,
@@ -704,6 +722,7 @@ export function registerGrievanceRoutes(
       await storage.grievanceSettlements.create(req.params.id, {
         description: parsed.data.description ?? null,
         amount: parsed.data.amount ?? null,
+        typeIds: parsed.data.typeIds ?? null,
       });
       const settlements = await storage.grievanceSettlements.list(req.params.id);
       res.status(201).json(settlements);
@@ -732,6 +751,7 @@ export function registerGrievanceRoutes(
         {
           description: parsed.data.description,
           amount: parsed.data.amount,
+          typeIds: parsed.data.typeIds,
         },
       );
       const settlements = await storage.grievanceSettlements.list(req.params.id);

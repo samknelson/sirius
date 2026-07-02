@@ -12,8 +12,10 @@ import { type StorageLoggingConfig } from "../middleware/logging";
  * first argument so writes are attributed to the grievance as the host entity
  * in the activity log (see `grievanceSettlementLoggingConfig`).
  *
- * This task manages the `description` and `amount` columns only. The
- * `type_ids` multi-value reference is out of scope and left untouched.
+ * Manages the `description`, `amount`, and `type_ids` columns. `type_ids` is a
+ * multi-value reference to `options_grievance_settlement_type` stored as a
+ * plain `text[]`; callers pass the full list of selected ids (an empty array
+ * clears them).
  */
 export interface GrievanceSettlementStorage {
   list(grievanceId: string): Promise<GrievanceSettlement[]>;
@@ -23,12 +25,20 @@ export interface GrievanceSettlementStorage {
   ): Promise<GrievanceSettlement | undefined>;
   create(
     grievanceId: string,
-    data: { description?: string | null; amount?: string | null },
+    data: {
+      description?: string | null;
+      amount?: string | null;
+      typeIds?: string[] | null;
+    },
   ): Promise<GrievanceSettlement>;
   update(
     grievanceId: string,
     settlementId: string,
-    data: { description?: string | null; amount?: string | null },
+    data: {
+      description?: string | null;
+      amount?: string | null;
+      typeIds?: string[] | null;
+    },
   ): Promise<GrievanceSettlement | undefined>;
   delete(grievanceId: string, settlementId: string): Promise<boolean>;
 }
@@ -63,7 +73,11 @@ export function createGrievanceSettlementStorage(): GrievanceSettlementStorage {
 
     async create(
       grievanceId: string,
-      data: { description?: string | null; amount?: string | null },
+      data: {
+        description?: string | null;
+        amount?: string | null;
+        typeIds?: string[] | null;
+      },
     ): Promise<GrievanceSettlement> {
       const client = getClient();
       const [row] = await client
@@ -72,6 +86,7 @@ export function createGrievanceSettlementStorage(): GrievanceSettlementStorage {
           grievanceId,
           description: data.description ?? null,
           amount: data.amount ?? null,
+          typeIds: data.typeIds ?? null,
         })
         .returning();
       return row;
@@ -80,12 +95,17 @@ export function createGrievanceSettlementStorage(): GrievanceSettlementStorage {
     async update(
       grievanceId: string,
       settlementId: string,
-      data: { description?: string | null; amount?: string | null },
+      data: {
+        description?: string | null;
+        amount?: string | null;
+        typeIds?: string[] | null;
+      },
     ): Promise<GrievanceSettlement | undefined> {
       const client = getClient();
       const set: Partial<typeof grievanceSettlements.$inferInsert> = {};
       if (data.description !== undefined) set.description = data.description ?? null;
       if (data.amount !== undefined) set.amount = data.amount ?? null;
+      if (data.typeIds !== undefined) set.typeIds = data.typeIds ?? null;
       const [row] = await client
         .update(grievanceSettlements)
         .set(set)
