@@ -17,7 +17,14 @@ interface AlertUpdateMessage {
   };
 }
 
-type WebSocketMessage = AlertUpdateMessage;
+interface NotificationSummaryMessage {
+  type: "notification_summary";
+  payload: {
+    counts: Partial<Record<"email" | "sms" | "inapp" | "postal", number>>;
+  };
+}
+
+type WebSocketMessage = AlertUpdateMessage | NotificationSummaryMessage;
 
 const connections: Map<string, Set<UserConnection>> = new Map();
 let wss: WebSocketServer | null = null;
@@ -187,6 +194,22 @@ export function broadcastAlertUpdate(userId: string, unreadCount: number): void 
   broadcastToUser(userId, {
     type: "alert_update",
     payload: { unreadCount },
+  });
+}
+
+/**
+ * Flash a summary of notifications that a user's action just triggered back to
+ * that user (e.g. "3 by SMS, 2 by email"). Delivered over the per-user channel
+ * as a message type distinct from alert-count updates so the client can render
+ * it as a one-off toast without touching the alert badge.
+ */
+export function broadcastNotificationSummary(
+  userId: string,
+  counts: Partial<Record<"email" | "sms" | "inapp" | "postal", number>>,
+): void {
+  broadcastToUser(userId, {
+    type: "notification_summary",
+    payload: { counts },
   });
 }
 

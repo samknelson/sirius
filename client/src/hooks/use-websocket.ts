@@ -1,13 +1,44 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { toast } from "@/hooks/use-toast";
 
 interface AlertUpdatePayload {
   unreadCount: number;
 }
 
+type NotificationMedium = "email" | "sms" | "inapp" | "postal";
+
+interface NotificationSummaryPayload {
+  counts: Partial<Record<NotificationMedium, number>>;
+}
+
 interface WebSocketMessage {
-  type: "connected" | "ping" | "alert_update";
-  payload?: AlertUpdatePayload;
+  type: "connected" | "ping" | "alert_update" | "notification_summary";
+  payload?: AlertUpdatePayload | NotificationSummaryPayload;
+}
+
+const MEDIUM_LABELS: Record<NotificationMedium, string> = {
+  sms: "SMS",
+  email: "email",
+  inapp: "in-app",
+  postal: "postal",
+};
+
+const MEDIUM_ORDER: NotificationMedium[] = ["sms", "email", "inapp", "postal"];
+
+/**
+ * Build a human-readable summary of the notifications a user's action triggered
+ * (e.g. "3 by SMS, 2 by email"). Returns null when nothing was sent so no toast
+ * is shown.
+ */
+function formatNotificationSummary(
+  counts: Partial<Record<NotificationMedium, number>>,
+): string | null {
+  const parts = MEDIUM_ORDER.filter((m) => (counts[m] ?? 0) > 0).map(
+    (m) => `${counts[m]} by ${MEDIUM_LABELS[m]}`,
+  );
+  if (parts.length === 0) return null;
+  return parts.join(", ");
 }
 
 interface UseWebSocketReturn {
@@ -85,7 +116,7 @@ export function useWebSocket(): UseWebSocketReturn {
               break;
             case "alert_update":
               if (message.payload) {
-                const newCount = message.payload.unreadCount;
+                const newCount = (message.payload as AlertUpdatePayload).unreadCount;
                 const prevCount = previousAlertCountRef.current;
                 
                 if (prevCount !== null && newCount > prevCount) {
@@ -94,6 +125,19 @@ export function useWebSocket(): UseWebSocketReturn {
                 
                 previousAlertCountRef.current = newCount;
                 setAlertCount(newCount);
+              }
+              break;
+            case "notification_summary":
+              if (message.payload) {
+                const summary = formatNotificationSummary(
+                  (message.payload as NotificationSummaryPayload).counts,
+                );
+                if (summary) {
+                  toast({
+                    title: "Notifications sent",
+                    description: summary,
+                  });
+                }
               }
               break;
           }

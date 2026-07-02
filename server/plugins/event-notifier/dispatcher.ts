@@ -15,6 +15,7 @@ import {
   areNotificationsSuppressed,
   getRequestContext,
 } from "../../middleware/request-context";
+import { recordSentNotification } from "./flash-summary";
 
 const SERVICE = "event-notifier-dispatcher";
 
@@ -68,7 +69,10 @@ async function passesNotificationFlood(
  * destination (email address, phone, in-app user, postal address) off the
  * recipient's contact and skips silently when the contact has nothing on file.
  * All sends are fire-and-forget: failures are logged, never thrown, so one bad
- * medium can't abort the rest of the fan-out.
+ * medium can't abort the rest of the fan-out. Returns true only when a message
+ * was actually handed off to the send layer, so the caller can tally successful
+ * deliveries; every silent skip (no destination on file, throttled, missing
+ * content) and every caught failure returns false.
  */
 async function deliver(
   medium: NotificationMedium,
@@ -76,14 +80,14 @@ async function deliver(
   content: NotifierMessageContent,
   pluginId: string,
   tagIds: string[],
-): Promise<void> {
+): Promise<boolean> {
   const { storage } = await import("../../storage");
   try {
     if (medium === "email") {
-      if (!content.subject) return;
+      if (!content.subject) return false;
       const contact = await storage.contacts.getContact(recipient.contactId);
-      if (!contact?.email) return;
-      if (!(await passesNotificationFlood(medium, recipient.contactId, pluginId))) return;
+      if (!contact?.email) return false;
+      if (!(await passesNotificationFlood(medium, recipient.contactId, pluginId))) return false;
       const { sendEmail } = await import("../../services/comm/senders/email");
       await sendEmail({
         contactId: recipient.contactId,
@@ -94,18 +98,18 @@ async function deliver(
         userId: recipient.userId ?? undefined,
         tagIds,
       });
-      return;
+      return true;
     }
 
     if (medium === "sms") {
-      if (!content.message) return;
+      if (!content.message) return false;
       const phones = await storage.contacts.phoneNumbers.getPhoneNumbersByContact(
         recipient.contactId,
       );
       const active = phones.filter((p) => p.isActive);
       const chosen = active.find((p) => p.isPrimary) ?? active[0];
-      if (!chosen) return;
-      if (!(await passesNotificationFlood(medium, recipient.contactId, pluginId))) return;
+      if (!chosen) return false;
+      if (!(await passesNotificationFlood(medium, recipient.contactId, pluginId))) return false;
       const { sendSms } = await import("../../services/comm/senders/sms");
       await sendSms({
         contactId: recipient.contactId,
@@ -114,11 +118,11 @@ async function deliver(
         userId: recipient.userId ?? undefined,
         tagIds,
       });
-      return;
+      return true;
     }
 
     if (medium === "inapp") {
-      if (!content.title || !content.body) return;
+      if (!content.title || !content.body) return false;
       // In-app messages must target an authenticated user. Prefer the userId the
       // plugin resolved; otherwise resolve it from the contact's email.
       let userId = recipient.userId ?? undefined;
@@ -129,8 +133,8 @@ async function deliver(
           userId = user?.id;
         }
       }
-      if (!userId) return;
-      if (!(await passesNotificationFlood(medium, recipient.contactId, pluginId))) return;
+      if (!userId) return false;
+      if (!(await passesNotificationFlood(medium, recipient.contactId, pluginId))) return false;
       const { sendInapp } = await import("../../services/comm/senders/inapp");
       await sendInapp({
         contactId: recipient.contactId,
@@ -142,18 +146,18 @@ async function deliver(
         initiatedBy: SERVICE,
         tagIds,
       });
-      return;
+      return true;
     }
 
     if (medium === "postal") {
-      if (!content.file && !content.templateId) return;
+      if (!content.file && !content.templateId) return false;
       const addresses = await storage.contacts.addresses.getContactPostalByContact(
         recipient.contactId,
       );
       const active = addresses.filter((a) => a.isActive);
       const chosen = active.find((a) => a.isPrimary) ?? active[0];
-      if (!chosen) return;
-      if (!(await passesNotificationFlood(medium, recipient.contactId, pluginId))) return;
+      if (!chosen) return false;
+      if (!(await passesNotificationFlood(medium, recipient.contactId, pluginId))) return false;
       const { sendPostal } = await import("../../services/comm/senders/postal");
       await sendPostal({
         contactId: recipient.contactId,
@@ -171,7 +175,7 @@ async function deliver(
         userId: recipient.userId ?? undefined,
         tagIds,
       });
-      return;
+      return true;
     }
   } catch (error) {
     logger.warn(`Event-notifier send failed (${medium})`, {
@@ -182,6 +186,7 @@ async function deliver(
       error: error instanceof Error ? error.message : String(error),
     });
   }
+  return false;
 }
 
 /**
@@ -352,7 +357,14 @@ async function dispatchForConfig(
     for (const medium of active) {
       const content = await plugin.getMessage(medium, recipient, ctx);
       if (!content) continue;
-      await deliver(medium, recipient, content, pluginId, tagIds);
+      const sent = await deliver(medium, recipient, content, pluginId, tagIds);
+      // Flash a summary of what went out back to the user who triggered the
+      // event. Only successful sends are tallied; self-notifications are already
+      // filtered out above, and system/cron-fired events have no acting user so
+      // nothing is flashed.
+      if (sent && actingUserId) {
+        recordSentNotification(actingUserId, medium);
+      }
     }
   }
 }
