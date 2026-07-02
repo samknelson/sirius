@@ -1,4 +1,11 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  useCallback,
+} from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "@/hooks/use-toast";
 
@@ -14,6 +21,7 @@ interface NotificationSummaryPayload {
 
 interface WebSocketMessage {
   type: "connected" | "ping" | "alert_update" | "notification_summary";
+  id?: string;
   payload?: AlertUpdatePayload | NotificationSummaryPayload;
 }
 
@@ -41,35 +49,38 @@ function formatNotificationSummary(
   return parts.join(", ");
 }
 
-interface UseWebSocketReturn {
+interface WebSocketContextValue {
   isConnected: boolean;
   alertCount: number | null;
 }
 
+const WebSocketContext = createContext<WebSocketContextValue | null>(null);
+
 const RECONNECT_DELAY = 3000;
 const MAX_RECONNECT_ATTEMPTS = 5;
+const SEEN_SUMMARY_ID_CAP = 200;
 
 function playNotificationChime() {
   try {
     const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-    
+
     const oscillator = audioContext.createOscillator();
     const gainNode = audioContext.createGain();
-    
+
     oscillator.connect(gainNode);
     gainNode.connect(audioContext.destination);
-    
+
     oscillator.type = "sine";
     oscillator.frequency.setValueAtTime(880, audioContext.currentTime);
     oscillator.frequency.setValueAtTime(1100, audioContext.currentTime + 0.1);
     oscillator.frequency.setValueAtTime(880, audioContext.currentTime + 0.2);
-    
+
     gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
     gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.4);
-    
+
     oscillator.start(audioContext.currentTime);
     oscillator.stop(audioContext.currentTime + 0.4);
-    
+
     setTimeout(() => {
       audioContext.close();
     }, 500);
@@ -78,7 +89,14 @@ function playNotificationChime() {
   }
 }
 
-export function useWebSocket(): UseWebSocketReturn {
+/**
+ * Owns the single app-wide WebSocket connection. Mounted once at the app root
+ * (above the router) so navigation never tears the socket down — the previous
+ * design lived inside the header's alerts bell, which re-mounts on every route
+ * change and dropped notification-summary toasts in the reconnect gap around a
+ * save. Consumers read connection state via {@link useWebSocket}.
+ */
+export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
   const [isConnected, setIsConnected] = useState(false);
   const [alertCount, setAlertCount] = useState<number | null>(null);
@@ -86,6 +104,11 @@ export function useWebSocket(): UseWebSocketReturn {
   const reconnectAttemptsRef = useRef(0);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const previousAlertCountRef = useRef<number | null>(null);
+  // Ids of notification-summary messages we have already toasted. The server
+  // re-sends any summary it has not seen an ack for (e.g. it was delivered to a
+  // socket the browser had already abandoned), so we de-dupe here to guarantee
+  // exactly one toast per action even if an ack was lost after the toast showed.
+  const seenSummaryIdsRef = useRef<Set<string>>(new Set());
 
   const connect = useCallback(() => {
     if (!user || wsRef.current?.readyState === WebSocket.OPEN) {
@@ -107,7 +130,7 @@ export function useWebSocket(): UseWebSocketReturn {
       ws.onmessage = (event) => {
         try {
           const message: WebSocketMessage = JSON.parse(event.data);
-          
+
           switch (message.type) {
             case "connected":
               break;
@@ -118,25 +141,48 @@ export function useWebSocket(): UseWebSocketReturn {
               if (message.payload) {
                 const newCount = (message.payload as AlertUpdatePayload).unreadCount;
                 const prevCount = previousAlertCountRef.current;
-                
+
                 if (prevCount !== null && newCount > prevCount) {
                   playNotificationChime();
                 }
-                
+
                 previousAlertCountRef.current = newCount;
                 setAlertCount(newCount);
               }
               break;
             case "notification_summary":
               if (message.payload) {
-                const summary = formatNotificationSummary(
-                  (message.payload as NotificationSummaryPayload).counts,
-                );
-                if (summary) {
-                  toast({
-                    title: "Notifications sent",
-                    description: summary,
-                  });
+                const id = message.id;
+                // Acknowledge receipt so the server stops re-sending this
+                // summary. Sent regardless of whether we toast, so a re-send of
+                // an already-shown summary is also cleared server-side.
+                if (id) {
+                  ws.send(
+                    JSON.stringify({ type: "notification_summary_ack", id }),
+                  );
+                }
+                const alreadyShown = id ? seenSummaryIdsRef.current.has(id) : false;
+                if (!alreadyShown) {
+                  if (id) {
+                    const seen = seenSummaryIdsRef.current;
+                    seen.add(id);
+                    // Bound the set so a very long-lived tab can't grow it without
+                    // limit; evict the oldest ids (insertion order) past the cap.
+                    while (seen.size > SEEN_SUMMARY_ID_CAP) {
+                      const oldest = seen.values().next().value;
+                      if (oldest === undefined) break;
+                      seen.delete(oldest);
+                    }
+                  }
+                  const summary = formatNotificationSummary(
+                    (message.payload as NotificationSummaryPayload).counts,
+                  );
+                  if (summary) {
+                    toast({
+                      title: "Notifications sent",
+                      description: summary,
+                    });
+                  }
                 }
               }
               break;
@@ -169,12 +215,12 @@ export function useWebSocket(): UseWebSocketReturn {
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
     }
-    
+
     if (wsRef.current) {
       wsRef.current.close();
       wsRef.current = null;
     }
-    
+
     setIsConnected(false);
     reconnectAttemptsRef.current = 0;
   }, []);
@@ -191,8 +237,22 @@ export function useWebSocket(): UseWebSocketReturn {
     };
   }, [user, connect, disconnect]);
 
-  return {
-    isConnected,
-    alertCount,
-  };
+  return (
+    <WebSocketContext.Provider value={{ isConnected, alertCount }}>
+      {children}
+    </WebSocketContext.Provider>
+  );
+}
+
+/**
+ * Read the shared WebSocket connection state. Safe to call outside the provider
+ * (returns a disconnected default) so consumers rendered before auth resolves
+ * don't crash.
+ */
+export function useWebSocket(): WebSocketContextValue {
+  const context = useContext(WebSocketContext);
+  if (!context) {
+    return { isConnected: false, alertCount: null };
+  }
+  return context;
 }

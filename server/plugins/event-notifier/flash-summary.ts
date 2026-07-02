@@ -1,6 +1,8 @@
+import { randomUUID } from "crypto";
 import { logger } from "../../logger";
 import {
   broadcastNotificationSummary,
+  onNotificationSummaryAck,
   onUserConnected,
 } from "../../services/websocket";
 import type { NotificationMedium } from "./types";
@@ -18,13 +20,14 @@ const SERVICE = "event-notifier-flash-summary";
 const DEBOUNCE_MS = 1000;
 
 /**
- * How long a summary that could not be delivered (the user had no open socket
- * when it flushed) is retained for replay on their next reconnect. The toast is
- * a "your action just sent these" confirmation, so a short window is enough to
- * survive a momentary disconnect (navigation, dev reload, brief network blip)
- * without ever showing a stale toast long after the action.
+ * How long an unacknowledged summary stays in the outbox waiting for the client
+ * to confirm it rendered the toast. Each summary is re-sent on every reconnect
+ * within this window, so it survives a momentary disconnect (navigation, dev
+ * reload, brief network blip) or delivery to a socket the browser had already
+ * abandoned. After the window it is dropped so a stale toast never appears long
+ * after the action.
  */
-const UNDELIVERED_TTL_MS = 30000;
+const UNACKED_TTL_MS = 30000;
 
 type MediumCounts = Partial<Record<NotificationMedium, number>>;
 
@@ -35,25 +38,21 @@ interface PendingSummary {
 
 const pendingByUser = new Map<string, PendingSummary>();
 
-interface UndeliveredSummary {
+interface OutboxEntry {
+  id: string;
   counts: MediumCounts;
-  /** Fires after UNDELIVERED_TTL_MS to drop the summary if never replayed. */
+  /** Fires after UNACKED_TTL_MS to drop the summary if never acknowledged. */
   timer: NodeJS.Timeout;
 }
 
 /**
- * Summaries that flushed while the user had no open socket. Held per user and
- * replayed the next time that user connects (see the onUserConnected hook at
- * the bottom of this module), then dropped. Bounded by the TTL timer so a user
- * who never reconnects does not leak an entry.
+ * Flushed summaries awaiting a client ack, keyed by user then by summary id. A
+ * socket being server-OPEN is not proof the client received the message, so a
+ * summary is held here until the browser explicitly acks it (or the TTL fires).
+ * Every entry is (re-)sent when the user connects, guaranteeing the toast lands
+ * even if the original send went to a zombie socket.
  */
-const undeliveredByUser = new Map<string, UndeliveredSummary>();
-
-function mergeCounts(target: MediumCounts, source: MediumCounts): void {
-  for (const medium of Object.keys(source) as NotificationMedium[]) {
-    target[medium] = (target[medium] ?? 0) + (source[medium] ?? 0);
-  }
-}
+const outboxByUser = new Map<string, Map<string, OutboxEntry>>();
 
 /**
  * Record one successfully-sent notification, attributed to the acting user who
@@ -87,19 +86,36 @@ function flush(userId: string): void {
   const total = Object.values(counts).reduce((sum, n) => sum + (n ?? 0), 0);
   if (total === 0) return;
 
-  deliverOrRetain(userId, counts);
+  enqueueAndSend(userId, counts);
 }
 
 /**
- * Try to push the summary over the user's open socket. If they have no open
- * connection right now, retain it so it can be replayed when they reconnect —
- * otherwise a momentary disconnect around the action would silently swallow the
- * toast even though the notifications went out.
+ * Give the summary a stable id, park it in the per-user outbox under a fresh
+ * TTL, and attempt a first send. The entry stays in the outbox until the client
+ * acks it (see the onNotificationSummaryAck hook) or the TTL fires, so a send
+ * that lands on a zombie/half-open socket is retried on the next real connect
+ * rather than being silently lost.
  */
-function deliverOrRetain(userId: string, counts: MediumCounts): void {
-  let delivered = false;
+function enqueueAndSend(userId: string, counts: MediumCounts): void {
+  const id = randomUUID();
+  let byId = outboxByUser.get(userId);
+  if (!byId) {
+    byId = new Map();
+    outboxByUser.set(userId, byId);
+  }
+  const entry: OutboxEntry = {
+    id,
+    counts,
+    timer: setTimeout(() => dropOutboxEntry(userId, id), UNACKED_TTL_MS),
+  };
+  byId.set(id, entry);
+  sendEntry(userId, entry);
+}
+
+/** Push one outbox entry to the user's open sockets (best-effort). */
+function sendEntry(userId: string, entry: OutboxEntry): void {
   try {
-    delivered = broadcastNotificationSummary(userId, counts);
+    broadcastNotificationSummary(userId, entry.id, entry.counts);
   } catch (error) {
     logger.warn("Failed to push notification summary", {
       service: SERVICE,
@@ -107,35 +123,33 @@ function deliverOrRetain(userId: string, counts: MediumCounts): void {
       error: error instanceof Error ? error.message : String(error),
     });
   }
-  if (!delivered) retainUndelivered(userId, counts);
 }
 
-/**
- * Buffer a summary that could not be delivered, merging into any existing
- * buffered summary for the user, and (re)arm the TTL so it is dropped if the
- * user never reconnects within the window.
- */
-function retainUndelivered(userId: string, counts: MediumCounts): void {
-  let entry = undeliveredByUser.get(userId);
+/** Remove one outbox entry and clear its TTL timer, tidying empty user maps. */
+function dropOutboxEntry(userId: string, id: string): void {
+  const byId = outboxByUser.get(userId);
+  if (!byId) return;
+  const entry = byId.get(id);
   if (entry) {
     clearTimeout(entry.timer);
-    mergeCounts(entry.counts, counts);
-  } else {
-    entry = { counts: { ...counts }, timer: undefined as unknown as NodeJS.Timeout };
-    undeliveredByUser.set(userId, entry);
+    byId.delete(id);
   }
-  entry.timer = setTimeout(() => {
-    undeliveredByUser.delete(userId);
-  }, UNDELIVERED_TTL_MS);
+  if (byId.size === 0) outboxByUser.delete(userId);
 }
 
-// Replay a buffered summary the moment the user reconnects. If delivery fails
-// again (e.g. the socket is not usable), deliverOrRetain re-buffers it under a
-// fresh TTL rather than looping.
+// A summary is confirmed delivered only when the client acks it; drop it so it
+// is not re-sent on the next reconnect.
+onNotificationSummaryAck((userId: string, id: string) => {
+  dropOutboxEntry(userId, id);
+});
+
+// Re-send every still-unacked summary the moment the user (re)connects. The
+// client de-dupes by id, so replaying one it already showed re-triggers the ack
+// (clearing the outbox) without showing a second toast.
 onUserConnected((userId: string) => {
-  const entry = undeliveredByUser.get(userId);
-  if (!entry) return;
-  undeliveredByUser.delete(userId);
-  clearTimeout(entry.timer);
-  deliverOrRetain(userId, entry.counts);
+  const byId = outboxByUser.get(userId);
+  if (!byId) return;
+  byId.forEach((entry) => {
+    sendEntry(userId, entry);
+  });
 });

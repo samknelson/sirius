@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { TerminologyProvider } from "@/contexts/TerminologyContext";
 import { PageTitleProvider } from "@/contexts/PageTitleContext";
+import { WebSocketProvider } from "@/contexts/WebSocketContext";
 import ProtectedRoute from "@/components/auth/ProtectedRoute";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
@@ -3481,7 +3482,9 @@ function App() {
             <PageTitleProvider>
               <Toaster />
               <ServerInjections />
-              <Router />
+              <WebSocketProvider>
+                <Router />
+              </WebSocketProvider>
             </PageTitleProvider>
           </TerminologyProvider>
         </AuthProvider>

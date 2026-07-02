@@ -19,6 +19,7 @@ interface AlertUpdateMessage {
 
 interface NotificationSummaryMessage {
   type: "notification_summary";
+  id: string;
   payload: {
     counts: Partial<Record<"email" | "sms" | "inapp" | "postal", number>>;
   };
@@ -32,6 +33,34 @@ let pingInterval: NodeJS.Timeout | null = null;
 
 type ConnectionListener = (userId: string) => void;
 const connectionListeners: Set<ConnectionListener> = new Set();
+
+type AckListener = (userId: string, id: string) => void;
+const ackListeners: Set<AckListener> = new Set();
+
+/**
+ * Register a callback fired whenever a client acknowledges receipt of a
+ * notification-summary message (by id). The flash-summary outbox uses this to
+ * stop re-sending a summary once the browser has actually rendered its toast —
+ * a socket being server-OPEN is not proof the client received the message, so
+ * delivery is confirmed by an explicit client ack rather than by send() alone.
+ */
+export function onNotificationSummaryAck(listener: AckListener): void {
+  ackListeners.add(listener);
+}
+
+function notifyAckListeners(userId: string, id: string): void {
+  ackListeners.forEach((listener) => {
+    try {
+      listener(userId, id);
+    } catch (error) {
+      logger.error("WebSocket ack listener failed", {
+        service: "websocket",
+        userId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+}
 
 /**
  * Register a callback fired whenever a user establishes a new authenticated
@@ -96,6 +125,13 @@ export function initializeWebSocket(
           const message = JSON.parse(data.toString());
           if (message.type === "pong") {
             connection.lastPing = Date.now();
+          } else if (
+            message.type === "notification_summary_ack" &&
+            typeof message.id === "string"
+          ) {
+            // The client confirmed it rendered this summary; let the outbox
+            // drop it so it is not re-sent on the next reconnect.
+            notifyAckListeners(userId, message.id);
           }
         } catch {
           // Ignore invalid messages
@@ -140,7 +176,11 @@ export function initializeWebSocket(
     connections.forEach((userConnections, userId) => {
       userConnections.forEach((connection) => {
         if (now - connection.lastPing > CONNECTION_TIMEOUT) {
-          connection.ws.close(4002, "Connection timeout");
+          // Forcibly destroy an unresponsive socket instead of a graceful
+          // close(): a half-open connection never completes the closing
+          // handshake, so close() can leave a zombie in the OPEN state that
+          // silently swallows sends. terminate() drops it immediately.
+          connection.ws.terminate();
           removeConnection(userId, connection);
         } else if (connection.ws.readyState === WebSocket.OPEN) {
           connection.ws.send(JSON.stringify({ type: "ping" }));
@@ -249,10 +289,12 @@ export function broadcastAlertUpdate(userId: string, unreadCount: number): void 
  */
 export function broadcastNotificationSummary(
   userId: string,
+  id: string,
   counts: Partial<Record<"email" | "sms" | "inapp" | "postal", number>>,
 ): boolean {
   return broadcastToUser(userId, {
     type: "notification_summary",
+    id,
     payload: { counts },
   });
 }
