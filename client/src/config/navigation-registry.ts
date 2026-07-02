@@ -173,6 +173,7 @@ export const configSections: NavSection[] = [
       { path: "/config/options/grievance-complaint", label: "Complaint Options", icon: List, testId: "nav-config-grievance-complaint-options", permission: "admin", requiresComponent: "grievance" },
       { path: "/config/options/grievance-remedy", label: "Remedy Options", icon: List, testId: "nav-config-grievance-remedy-options", permission: "admin", requiresComponent: "grievance" },
       { path: "/config/options/grievance-role", label: "Role Options", icon: List, testId: "nav-config-grievance-role-options", permission: "admin", requiresComponent: "grievance" },
+      { path: "/config/options/grievance-settlement-type", label: "Settlement Types", icon: List, testId: "nav-config-grievance-settlement-type-options", permission: "admin", requiresComponent: "grievance.settlement" },
       { path: "/grievance-timeline-templates", label: "Timeline Templates", icon: List, testId: "nav-config-grievance-timeline-templates", permission: "admin", requiresComponent: "grievance" },
     ],
   },

@@ -30,6 +30,7 @@ import {
   optionsGrievanceComplaints,
   optionsGrievanceRemedies,
   optionsGrievanceRoles,
+  optionsGrievanceSettlementType,
   bulkMediumEnum,
 } from "@shared/schema";
 import { defineLoggingConfig } from "./middleware/logging";
@@ -67,7 +68,8 @@ export type OptionsTypeName =
   | "grievance-step"
   | "grievance-complaint"
   | "grievance-remedy"
-  | "grievance-role";
+  | "grievance-role"
+  | "grievance-settlement-type";
 
 /**
  * Field definition for dynamic form and table rendering
@@ -589,6 +591,25 @@ const optionsMetadata: Record<OptionsTypeName, OptionsTableMetadata<any>> = {
       { name: "name", label: "Name", inputType: "text", required: true, placeholder: "e.g., Grievant, Steward, Witness", showInTable: true, columnHeader: "Name" },
       { name: "description", label: "Description", inputType: "textarea", required: false, placeholder: "Optional description of this role", showInTable: true, columnHeader: "Description" },
       { name: "permittedSystemRoleIds", label: "Permitted System Roles", inputType: "system-roles", required: false, helperText: "Only users holding one of these system roles can be assigned this grievance role. Leave empty to allow any user.", showInTable: false, dataField: true },
+      { name: "siriusId", label: "Sirius ID", inputType: "text", required: false, placeholder: "External ID", showInTable: true, columnHeader: "Sirius ID" },
+    ],
+  },
+  "grievance-settlement-type": {
+    table: optionsGrievanceSettlementType,
+    displayName: "Grievance Settlement Type Options",
+    description: "Manage settlement type options for grievances",
+    singularName: "Settlement Type",
+    pluralName: "Settlement Types",
+    orderByColumn: "sequence" as const,
+    loggingModule: "options.grievanceSettlementType",
+    requiredFields: ["name"],
+    optionalFields: ["description", "siriusId", "sequence", "data"],
+    supportsSequencing: true,
+    requiredComponent: "grievance.settlement",
+    fields: [
+      { name: "icon", label: "Icon", inputType: "icon", required: false, showInTable: true, columnHeader: "Icon", columnWidth: "80px", dataField: true },
+      { name: "name", label: "Name", inputType: "text", required: true, placeholder: "e.g., Monetary, Reinstatement, Backpay", showInTable: true, columnHeader: "Name" },
+      { name: "description", label: "Description", inputType: "textarea", required: false, placeholder: "Optional description of this settlement type", showInTable: true, columnHeader: "Description" },
       { name: "siriusId", label: "Sirius ID", inputType: "text", required: false, placeholder: "External ID", showInTable: true, columnHeader: "Sirius ID" },
     ],
   },
