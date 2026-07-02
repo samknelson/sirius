@@ -222,6 +222,19 @@ export const componentRegistry: ComponentDefinition[] = [
     }
   },
   {
+    id: "grievance.settlement",
+    name: "Grievance Settlement",
+    description: "Tracking settlements recorded against grievances. Requires the Grievance component to be enabled — settlements reference grievance records.",
+    enabledByDefault: false,
+    category: "grievance",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/grievance/settlement-schema.ts",
+      tables: ["options_grievance_settlement_type", "grievance_settlements"]
+    }
+  },
+  {
     id: "sitespecific.gbhet",
     name: "GBHET Customization",
     description: "Custom functionality for GBHET",

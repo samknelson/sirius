@@ -1064,6 +1064,17 @@ export {
 } from "./schema/grievance/schema";
 
 export {
+  optionsGrievanceSettlementType,
+  insertOptionsGrievanceSettlementTypeSchema,
+  type OptionsGrievanceSettlementType,
+  type InsertOptionsGrievanceSettlementType,
+  grievanceSettlements,
+  insertGrievanceSettlementSchema,
+  type GrievanceSettlement,
+  type InsertGrievanceSettlement,
+} from "./schema/grievance/settlement-schema";
+
+export {
   optionsSkills,
   insertOptionsSkillsSchema,
   type OptionsSkill,
