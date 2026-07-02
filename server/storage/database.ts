@@ -149,6 +149,11 @@ import { type CommTagsStorage, createCommTagsStorage, commTagsLoggingConfig } fr
 import { type CommStorage, createCommStorage, commLoggingConfig } from "./comm";
 import { type GrievanceStorage, createGrievanceStorage, grievanceLoggingConfig } from "./grievances/grievances";
 import {
+  type GrievanceSettlementStorage,
+  createGrievanceSettlementStorage,
+  grievanceSettlementLoggingConfig,
+} from "./grievances/grievance-settlements";
+import {
   type GrievanceTimelineTemplateStorage,
   createGrievanceTimelineTemplateStorage,
   grievanceTimelineTemplateLoggingConfig,
@@ -253,6 +258,7 @@ export interface IStorage {
   comm: CommStorage;
   grievances: GrievanceStorage;
   grievanceTimelineTemplates: GrievanceTimelineTemplateStorage;
+  grievanceSettlements: GrievanceSettlementStorage;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -350,6 +356,7 @@ export class DatabaseStorage implements IStorage {
   comm: CommStorage;
   grievances: GrievanceStorage;
   grievanceTimelineTemplates: GrievanceTimelineTemplateStorage;
+  grievanceSettlements: GrievanceSettlementStorage;
 
   constructor() {
     this.variables = withStorageLogging(
@@ -669,6 +676,10 @@ export class DatabaseStorage implements IStorage {
     this.grievanceTimelineTemplates = withStorageLogging(
       createGrievanceTimelineTemplateStorage(),
       grievanceTimelineTemplateLoggingConfig,
+    );
+    this.grievanceSettlements = withStorageLogging(
+      createGrievanceSettlementStorage(),
+      grievanceSettlementLoggingConfig,
     );
   }
 }

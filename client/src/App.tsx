@@ -95,6 +95,7 @@ const GrievanceView = lazy(() => import("@/pages/grievance-view"));
 const GrievanceEdit = lazy(() => import("@/pages/grievance-edit"));
 const GrievanceLogs = lazy(() => import("@/pages/grievance-logs"));
 const GrievanceTimeline = lazy(() => import("@/pages/grievance-timeline"));
+const GrievanceSettlements = lazy(() => import("@/pages/grievance-settlements"));
 const GrievanceTimelineTemplatesPage = lazy(() => import("@/pages/config/grievance-timeline-templates"));
 const GrievanceTimelineTemplateView = lazy(() => import("@/pages/grievance-timeline-template-view"));
 const GrievanceTimelineTemplateEdit = lazy(() => import("@/pages/grievance-timeline-template-edit"));
@@ -558,6 +559,14 @@ function Router() {
         <ProtectedRoute tabId="timeline" entityType="grievance">
           <AuthenticatedLayout>
             <GrievanceTimeline />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/grievance/:id/settlements">
+        <ProtectedRoute tabId="settlements" entityType="grievance">
+          <AuthenticatedLayout>
+            <GrievanceSettlements />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
