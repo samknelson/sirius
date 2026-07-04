@@ -134,12 +134,72 @@ export interface WizardStepHandler {
   getState?: (wizard: Wizard) => WizardStepState;
 }
 
+/**
+ * A launch argument collected up-front when a wizard is created (before any
+ * step runs) — e.g. the reporting year + month for a monthly feed. The
+ * create route validates required arguments generically from this
+ * declaration; the client renders inputs from the same list served off the
+ * `/api/wizard-types/:type/launch-arguments` route.
+ */
+export interface LaunchArgument {
+  id: string;
+  name: string;
+  /** UI hint: "text" | "number" | "select" | "month" | "year" | ... */
+  type: string;
+  required?: boolean;
+  description?: string;
+  defaultValue?: unknown;
+  options?: Array<{ value: unknown; label: string }>;
+}
+
+/**
+ * Context handed to a plugin's custom `create` hook. `input` is the
+ * schema-parsed create payload (with the first step + progress already
+ * seeded by the create route). All persistence goes through `storage`.
+ */
+export interface WizardCreateContext {
+  input: Record<string, unknown> & {
+    type: string;
+    entityId?: string | null;
+    data?: Record<string, unknown>;
+  };
+  req: Request;
+  storage: typeof storageType;
+}
+
+/**
+ * Result of a custom `create` hook. Return `{ wizard }` on success or
+ * `{ error, status }` to reject (the create route maps these to the HTTP
+ * response). This is where per-wizard creation side effects live (e.g. the
+ * monthly wizard's duplicate check + `wizard_employer_monthly` row) so the
+ * generic create route stays free of wizard-specific branches.
+ */
+export interface WizardCreateResult {
+  wizard?: Wizard;
+  error?: string;
+  status?: number;
+}
+
 export interface WizardPlugin extends BasePluginMetadata {
   /** Matches wizard.entityType semantics (e.g. "employer"). */
   entityType?: string;
   category?: string;
   /** Report-style wizard: gets a default retention + a Retention tab. */
   isReport?: boolean;
+  /**
+   * Up-front arguments collected at creation. The create route validates
+   * the `required` ones generically before the wizard is persisted.
+   */
+  launchArguments?: LaunchArgument[];
+  /**
+   * Optional custom creation hook. When present, the create route calls it
+   * INSTEAD of the default `storage.wizards.create`, after generic gating,
+   * entity-access, and launch-argument validation. Use it for per-wizard
+   * creation side effects (duplicate/prerequisite checks, subsidiary rows).
+   */
+  create?: (
+    ctx: WizardCreateContext,
+  ) => Promise<WizardCreateResult> | WizardCreateResult;
   steps: WizardStepHandler[];
 }
 

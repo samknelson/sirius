@@ -5,6 +5,7 @@ import { logger } from "../../logger";
 import { validateAgainstSchema } from "../../lib/json-schema-validator";
 import { enforcePluginGating } from "../_core";
 import { wizardPluginRegistry } from "./registry";
+import { enforceWizardEntityAccess } from "./entity-access";
 import type {
   WizardPlugin,
   WizardStepHandler,
@@ -55,6 +56,20 @@ async function loadRegisteredWizard(
   if (!gate.ok) {
     res.status(gate.status).json({ message: gate.message });
     return null;
+  }
+  // Entity-scoped wizards (e.g. employer feeds) must additionally be scoped
+  // to the owning entity's users — the plugin-level gate above does not do
+  // this. Non-entity wizards skip it and keep their plugin-level gating.
+  if (plugin.entityType) {
+    const entityGate = await enforceWizardEntityAccess(
+      plugin,
+      wizard.entityId,
+      req,
+    );
+    if (!entityGate.ok) {
+      res.status(entityGate.status).json({ message: entityGate.message });
+      return null;
+    }
   }
   return { wizard, plugin };
 }

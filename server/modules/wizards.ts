@@ -5,6 +5,7 @@ import { insertWizardSchema, wizardDataSchema, type WizardData } from "@shared/s
 import { requireAccess, buildContext, checkAccess, getAccessStorage } from "../services/access-policy-evaluator";
 import { wizardRegistry } from "../wizards/index.js";
 import { wizardPluginRegistry } from "../plugins/wizards";
+import { enforceWizardEntityAccess } from "../plugins/wizards/entity-access";
 import { enforcePluginGating } from "../plugins/_core";
 import { FeedWizard } from "../wizards/feed.js";
 import { createUnifiedOptionsStorage } from "../storage/unified-options.js";
@@ -202,6 +203,39 @@ export function registerWizardRoutes(
       }
 
       const { typeName } = req.params;
+      // Framework (plugin-based) wizards declare launch arguments on the
+      // plugin; serve those (after plugin gating) so a plugin-only wizard
+      // needs no legacy registration for its launch inputs.
+      const laPlugin = wizardPluginRegistry.get(typeName);
+      if (laPlugin) {
+        const laGate = await enforcePluginGating(
+          wizardPluginRegistry.getMetadata(laPlugin),
+          req as any,
+        );
+        if (!laGate.ok) {
+          return res.status(laGate.status).json({ message: laGate.message });
+        }
+        // Entity-scoped plugins (e.g. employer wizards) must pass the same
+        // admin-OR-<entity>.mine check used on create/dispatch, so launch
+        // inputs aren't disclosed for an entity the user can't access.
+        if (laPlugin.entityType) {
+          const laEntityId =
+            typeof req.query.entityId === "string"
+              ? req.query.entityId
+              : undefined;
+          const laEntity = await enforceWizardEntityAccess(
+            laPlugin,
+            laEntityId,
+            req as any,
+          );
+          if (!laEntity.ok) {
+            return res
+              .status(laEntity.status)
+              .json({ message: laEntity.message });
+          }
+        }
+        return res.json(laPlugin.launchArguments ?? []);
+      }
       if (!(await requireWizardTypeComponent(typeName, res))) return;
       const launchArguments = await wizardRegistry.getLaunchArgumentsForType(typeName);
       res.json(launchArguments);
@@ -347,6 +381,43 @@ export function registerWizardRoutes(
         if (!gate.ok) {
           return res.status(gate.status).json({ message: gate.message });
         }
+        // Entity-scoped wizards (e.g. employer feeds) must additionally be
+        // scoped to the owning entity's users at creation time.
+        if (frameworkPlugin.entityType) {
+          const entityGate = await enforceWizardEntityAccess(
+            frameworkPlugin,
+            validatedData.entityId,
+            req as any,
+          );
+          if (!entityGate.ok) {
+            return res
+              .status(entityGate.status)
+              .json({ message: entityGate.message });
+          }
+        }
+        // Generic required-launch-argument validation from the plugin's
+        // declaration (per-wizard value constraints live in `create`).
+        const launchArgs = frameworkPlugin.launchArguments ?? [];
+        if (launchArgs.length > 0) {
+          const provided =
+            ((validatedData.data as any)?.launchArguments as
+              | Record<string, unknown>
+              | undefined) || {};
+          for (const arg of launchArgs) {
+            if (!arg.required) continue;
+            const value = provided[arg.id];
+            if (
+              value === undefined ||
+              value === null ||
+              value === "" ||
+              value === 0
+            ) {
+              return res.status(400).json({
+                message: `Required launch argument '${arg.name}' is missing or invalid`,
+              });
+            }
+          }
+        }
         const firstStep = frameworkPlugin.steps[0];
         if (!validatedData.currentStep && firstStep) {
           validatedData.currentStep = firstStep.id;
@@ -364,6 +435,21 @@ export function registerWizardRoutes(
         }
         validatedData.data = wdata;
         if (!validatedData.status) validatedData.status = "draft";
+        // Custom creation hook (per-wizard side effects: duplicate/prereq
+        // checks, subsidiary rows). Falls back to the default create.
+        if (frameworkPlugin.create) {
+          const result = await frameworkPlugin.create({
+            input: validatedData as any,
+            req: req as any,
+            storage,
+          });
+          if (result.error || !result.wizard) {
+            return res
+              .status(result.status ?? 400)
+              .json({ message: result.error ?? "Failed to create wizard" });
+          }
+          return res.status(201).json(result.wizard);
+        }
         const created = await storage.wizards.create(validatedData);
         return res.status(201).json(created);
       }

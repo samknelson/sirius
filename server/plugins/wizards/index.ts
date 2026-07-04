@@ -23,6 +23,7 @@ import "./plugins/btu-worker-import";
 import "./plugins/btu-dues-allocation";
 import "./plugins/btu-cardcheck-import";
 import "./plugins/hta-union-import";
+import "./plugins/gbhet-legal-workers";
 
 let kindRegistered = false;
 

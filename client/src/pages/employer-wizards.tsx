@@ -38,10 +38,10 @@ function EmployerWizardsContent() {
   });
 
   const { data: launchArguments } = useQuery<LaunchArgument[]>({
-    queryKey: ["/api/wizard-types", selectedWizardType, "launch-arguments"],
+    queryKey: ["/api/wizard-types", selectedWizardType, "launch-arguments", employer.id],
     queryFn: async () => {
       if (!selectedWizardType) return [];
-      const response = await fetch(`/api/wizard-types/${selectedWizardType}/launch-arguments`, { credentials: "include" });
+      const response = await fetch(`/api/wizard-types/${selectedWizardType}/launch-arguments?entityId=${employer.id}`, { credentials: "include" });
       if (!response.ok) throw new Error("Failed to fetch launch arguments");
       return response.json();
     },

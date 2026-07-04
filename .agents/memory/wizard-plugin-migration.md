@@ -35,3 +35,21 @@ in the framework `ResultsTable`; truly row-specific links (a `viewLink`
 target route, per-worker links from `workerDetails`) belong in a bespoke
 escape-hatch `ResultsTable` under `client/src/plugins/wizards/<type>/`
 that wraps the framework one with a `renderCell` override.
+
+# A migrated wizard often must stay DUAL-registered
+
+A wizard migrated to `wizardPluginRegistry` frequently cannot be
+deregistered from the legacy `wizardRegistry` — some per-type sub-routes
+are NOT plugin-aware and read only the legacy registry.
+**Why:** `/api/wizard-types/:type/fields` calls
+`wizardRegistry.getFieldsForType(type)` with no plugin fallback. A
+framework step that fetches `/fields` (e.g. a benefits/column step) breaks
+the instant the type leaves the legacy registry, even though load / create
+/ dispatch all correctly prefer the plugin (the load route attaches a
+`manifest` and the plugin WINS, so rendering still uses the framework body).
+**How to apply:** keep the type registered in BOTH registries. The plugin
+wins on load/create/dispatch (manifest-driven); the legacy registration
+only backstops the non-plugin-aware `/fields` (and legacy `/launch-arguments`,
+`/steps`, `/statuses`) sub-routes. Only remove the legacy registration once
+those sub-routes are made plugin-aware. Deregistering prematurely is a
+silent break, not a boot failure.
