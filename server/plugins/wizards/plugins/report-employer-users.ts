@@ -17,6 +17,7 @@ export const reportEmployerUsersPlugin: WizardPlugin = {
   requiredPolicy: "admin",
   category: "Employers",
   isReport: true,
+  needsReadOnlyDb: true,
   steps: [
     buildGenericInputsStep(
       "This report analyzes all employer contacts in the system. Continue to run it.",

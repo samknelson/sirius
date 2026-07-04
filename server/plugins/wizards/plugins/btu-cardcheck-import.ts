@@ -26,6 +26,7 @@ export const btuCardcheckImportPlugin: WizardPlugin = {
     "Import card check records from BTU files, matched to workers by BPS employee id",
   requiredComponent: "sitespecific.btu",
   category: "Import",
+  needsReadOnlyDb: true,
   steps: [
     buildUploadStep(feed, "Upload the card check file"),
     buildMapStep(feed, "Map Columns", "Map file columns to card check fields"),

@@ -25,6 +25,7 @@ export const btuDuesAllocationPlugin: WizardPlugin = {
     "Import dues deductions from BTU files, creating payment and ledger records matched to workers",
   requiredComponent: "sitespecific.btu",
   category: "Import",
+  needsReadOnlyDb: true,
   steps: [
     buildUploadStep(feed, "Upload the dues allocation file"),
     buildMapStep(feed, "Map Columns", "Map file columns to dues fields"),

@@ -208,7 +208,6 @@ export interface CardcheckStorage {
   getCardcheckByEsigId(esigId: string): Promise<Cardcheck | undefined>;
   getCardchecksByWorkerId(workerId: string): Promise<Cardcheck[]>;
   getCardchecksByDefinitionId(definitionId: string): Promise<Cardcheck[]>;
-  getCardcheckByExternalId(externalId: string): Promise<Cardcheck | undefined>;
   getCardchecksByExternalIds(externalIds: string[]): Promise<Cardcheck[]>;
   getCardchecksWithExternalIdMissingEsig(cardcheckDefinitionId?: string): Promise<Cardcheck[]>;
   getCardcheckStatusSummary(): Promise<CardcheckStatusSummary[]>;
@@ -274,15 +273,6 @@ export function createCardcheckStorage(): CardcheckStorage {
         .select()
         .from(cardchecks)
         .where(eq(cardchecks.cardcheckDefinitionId, definitionId));
-    },
-
-    async getCardcheckByExternalId(externalId: string): Promise<Cardcheck | undefined> {
-      const client = getClient();
-      const [cardcheck] = await client
-        .select()
-        .from(cardchecks)
-        .where(eq(cardchecks.externalId, externalId));
-      return cardcheck || undefined;
     },
 
     async getCardchecksByExternalIds(externalIds: string[]): Promise<Cardcheck[]> {

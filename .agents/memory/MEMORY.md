@@ -37,3 +37,4 @@
 - [ProtectedRoute vs nav-registry component prop](protectedroute-vs-navregistry-component-prop.md) — gate routes with `component=`; gate sidebar items with `requiresComponent:`; the two spellings diverge, don't swap.
 - [Denorm backfill is enqueue-then-recompute](denorm-backfill-enqueue-semantics.md) — backfillAllDenorm only enqueues stale rows + deletes widows; compute/write happens later in denorm_stale cron, so admin "rebuild now" is async-eventual.
 - [Core migrations vs optional components](core-migrations-optional-components.md) — core migrations must tolerate optional-component tables (enabledByDefault:false) being absent, or the startup runner stops on first failure and the drift gate blocks boot.
+- [Wizard plugin needsReadOnlyDb flag](wizard-plugin-readonly-db-flag.md) — wizard read lives in engine/types/*.ts but the needsReadOnlyDb flag lives on the plugins/*.ts wrapper; engine file must also be added to READONLY_FLAG_EXEMPT_FILES.

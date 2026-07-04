@@ -11,6 +11,8 @@ import { parse as parseCSV } from 'csv-parse/sync';
 import * as XLSX from 'xlsx';
 import { objectStorageService } from '../../../../services/objectStorage.js';
 import { logger } from '../../../../logger.js';
+import { workerIds } from '@shared/schema';
+import { eq, sql } from 'drizzle-orm';
 
 export interface CardCheckComparisonEntry {
   workerId: string;
@@ -615,7 +617,12 @@ export class BtuDuesAllocationWizard extends FeedWizard {
     const btuStorage = createBtuWorkerImportStorage();
     const bpsIdType = await btuStorage.ensureBpsEmployeeIdType();
 
-    const workerIdRows = await storage.workerIds.getByType(bpsIdType.id);
+    const workerIdRows = await storage.readOnly.query(async (db) =>
+      db
+        .select({ workerId: workerIds.workerId, value: workerIds.value })
+        .from(workerIds)
+        .where(eq(workerIds.typeId, bpsIdType.id)),
+    );
     const bpsIdByWorkerId = new Map<string, string>();
     for (const row of workerIdRows) {
       bpsIdByWorkerId.set(row.workerId, row.value);
@@ -667,7 +674,21 @@ export class BtuDuesAllocationWizard extends FeedWizard {
       }
     }
 
-    const employedWorkerIds = await storage.workerHours.getCurrentlyEmployedWorkerIds();
+    const employedWorkerIds = await storage.readOnly.query(async (db) => {
+      const result = await db.execute(sql`
+        SELECT latest.worker_id
+        FROM (
+          SELECT DISTINCT ON (wh.worker_id) wh.worker_id, wh.employment_status_id
+          FROM worker_hours wh
+          ORDER BY wh.worker_id, wh.year DESC, wh.month DESC, wh.day DESC
+        ) latest
+        JOIN options_employment_status es ON es.id = latest.employment_status_id
+        WHERE es.employed = true
+      `);
+      return new Set(
+        (result.rows as Array<{ worker_id: string }>).map((r) => r.worker_id),
+      );
+    });
 
     for (const cardCheck of signedCardchecks) {
       if (!allocatedWorkerIds.has(cardCheck.workerId) && employedWorkerIds.has(cardCheck.workerId)) {

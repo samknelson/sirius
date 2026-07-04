@@ -14,6 +14,7 @@ export const reportBtuWorkersInvalidCardcheckPlugin: WizardPlugin = {
   requiredComponent: "sitespecific.btu",
   category: "Workers",
   isReport: true,
+  needsReadOnlyDb: true,
   steps: [
     {
       id: "inputs",

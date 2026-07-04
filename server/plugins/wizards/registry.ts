@@ -35,6 +35,7 @@ function pluginToMetadata(p: WizardPlugin): BasePluginMetadata {
     requiredComponent: p.requiredComponent,
     requiredPolicy: p.requiredPolicy,
     hidden: p.hidden,
+    needsReadOnlyDb: p.needsReadOnlyDb,
   };
 }
 
@@ -45,6 +46,7 @@ function pluginToManifestEntry(p: WizardPlugin): WizardManifestEntry {
     description: p.description,
     requiredComponent: p.requiredComponent,
     requiredPolicy: p.requiredPolicy,
+    needsReadOnlyDb: p.needsReadOnlyDb,
     entityType: p.entityType,
     category: p.category,
     isReport: p.isReport ?? false,

@@ -17,6 +17,7 @@ export const reportWorkersMissingSsnPlugin: WizardPlugin = {
   requiredPolicy: "admin",
   category: "Workers",
   isReport: true,
+  needsReadOnlyDb: true,
   steps: [
     buildGenericInputsStep(
       "This report analyzes all workers in the system. Continue to run it.",

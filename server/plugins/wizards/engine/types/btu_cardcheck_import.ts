@@ -5,6 +5,8 @@ import { createBtuWorkerImportStorage } from '../../../../storage/sitespecific/b
 import { parse as parseCSV } from 'csv-parse/sync';
 import * as XLSX from 'xlsx';
 import { objectStorageService } from '../../../../services/objectStorage.js';
+import { cardchecks } from '@shared/schema/cardcheck/schema';
+import { eq } from 'drizzle-orm';
 
 export interface CardcheckImportWorkerInfo {
   workerId: string;
@@ -354,7 +356,13 @@ export class BtuCardcheckImportWizard extends FeedWizard {
           };
 
           if (externalId) {
-            const existingByExternalId = await storage.cardchecks.getCardcheckByExternalId(externalId);
+            const [existingByExternalId] = await storage.readOnly.query(
+              async (db) =>
+                db
+                  .select()
+                  .from(cardchecks)
+                  .where(eq(cardchecks.externalId, externalId)),
+            );
             if (existingByExternalId) {
               skippedDuplicate.push(workerInfo);
               updatedCount++;

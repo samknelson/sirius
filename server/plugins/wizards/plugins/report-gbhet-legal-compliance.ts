@@ -43,6 +43,7 @@ export const reportGbhetLegalCompliancePlugin: WizardPlugin = {
   requiredPolicy: "admin",
   category: "Compliance",
   isReport: true,
+  needsReadOnlyDb: true,
   steps: [
     {
       id: "inputs",
