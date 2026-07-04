@@ -4,6 +4,8 @@ import { storage } from "../storage";
 import { insertWizardSchema, wizardDataSchema, type WizardData } from "@shared/schema";
 import { requireAccess, buildContext, checkAccess, getAccessStorage } from "../services/access-policy-evaluator";
 import { wizardRegistry } from "../wizards/index.js";
+import { wizardPluginRegistry } from "../plugins/wizards";
+import { enforcePluginGating } from "../plugins/_core";
 import { FeedWizard } from "../wizards/feed.js";
 import { createUnifiedOptionsStorage } from "../storage/unified-options.js";
 import { BtuWorkerImportWizard } from "../wizards/types/btu_worker_import.js";
@@ -106,6 +108,25 @@ export function registerWizardRoutes(
           requiredComponent: type.requiredComponent
         });
       }
+
+      // Merge in framework (plugin-based) wizard kinds. `listVisibleTo`
+      // applies the same component + per-user access-policy gating.
+      const visiblePlugins = await wizardPluginRegistry.listVisibleTo(req as any);
+      for (const plugin of visiblePlugins) {
+        if (filteredTypes.some((t) => t.name === plugin.id)) continue;
+        filteredTypes.push({
+          name: plugin.id,
+          displayName: plugin.name,
+          description: plugin.description,
+          isFeed: false,
+          isMonthly: false,
+          isReport: plugin.isReport ?? false,
+          entityType: plugin.entityType,
+          category: plugin.category,
+          requiredComponent: plugin.requiredComponent,
+        });
+      }
+
       res.json(filteredTypes);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch wizard types" });
@@ -296,6 +317,15 @@ export function registerWizardRoutes(
         }
       }
 
+      // Framework (plugin-based) wizards carry a computed manifest so the
+      // client can render steps generically and poll progress off this
+      // same load route (no bespoke poll route).
+      const plugin = wizardPluginRegistry.get(wizard.type);
+      if (plugin) {
+        const manifest = wizardPluginRegistry.computeManifest(plugin, wizard);
+        return res.json({ ...wizard, manifest });
+      }
+
       res.json(wizard);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch wizard" });
@@ -305,6 +335,38 @@ export function registerWizardRoutes(
   app.post("/api/wizards", requireAuth, async (req, res) => {
     try {
       const validatedData = insertWizardSchema.parse(req.body);
+
+      // Framework (plugin-based) wizard creation path. Gating (component →
+      // access policy) is enforced here from the plugin declaration alone.
+      const frameworkPlugin = wizardPluginRegistry.get(validatedData.type);
+      if (frameworkPlugin) {
+        const gate = await enforcePluginGating(
+          wizardPluginRegistry.getMetadata(frameworkPlugin),
+          req as any,
+        );
+        if (!gate.ok) {
+          return res.status(gate.status).json({ message: gate.message });
+        }
+        const firstStep = frameworkPlugin.steps[0];
+        if (!validatedData.currentStep && firstStep) {
+          validatedData.currentStep = firstStep.id;
+        }
+        const wdata: any = (validatedData.data as any) || {};
+        wdata.progress = wdata.progress || {};
+        if (validatedData.currentStep) {
+          wdata.progress[validatedData.currentStep] = {
+            ...wdata.progress[validatedData.currentStep],
+            status: "in_progress",
+          };
+        }
+        if (frameworkPlugin.isReport && !wdata.retention) {
+          wdata.retention = "30days";
+        }
+        validatedData.data = wdata;
+        if (!validatedData.status) validatedData.status = "draft";
+        const created = await storage.wizards.create(validatedData);
+        return res.status(201).json(created);
+      }
 
       const context = await buildContext(req as any);
       const adminAccess = await checkAccess('admin', context.user);

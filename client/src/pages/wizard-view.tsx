@@ -14,6 +14,8 @@ import { useToast } from "@/hooks/use-toast";
 import { WizardStepper } from "@/components/wizards/WizardStepper";
 import { RetentionSettings } from "@/components/wizards/RetentionSettings";
 import { getStepComponent, getStepController } from "@/components/wizards/steps/registry";
+import { FrameworkWizardBody } from "@/components/wizards/framework/FrameworkWizardBody";
+import type { WizardManifest } from "@/components/wizards/framework/types";
 import type { WizardData } from "@shared/schema";
 import type { ReportData } from "@shared/wizard-types";
 import { Wizard, WizardType, WizardStatus, WizardStep } from "@/lib/wizard-types";
@@ -27,7 +29,17 @@ export default function WizardView() {
   const { data: wizard, isLoading: wizardLoading, error: wizardError } = useQuery<Wizard>({
     queryKey: [`/api/wizards/${id}`],
     enabled: !!id,
+    // Framework wizards attach a manifest; poll while a run step is in
+    // progress so progress updates flow off this same load route.
+    refetchInterval: (query) => {
+      const m = (query.state.data as any)?.manifest as WizardManifest | undefined;
+      if (!m) return false;
+      const current = m.steps.find((s) => s.id === m.currentStep);
+      return current?.progress?.status === "in_progress" ? 1000 : false;
+    },
   });
+
+  const manifest = (wizard as any)?.manifest as WizardManifest | undefined;
 
   const { data: allWizardTypes } = useQuery<WizardType[]>({
     queryKey: ["/api/wizard-types"],
@@ -38,12 +50,12 @@ export default function WizardView() {
 
   const { data: wizardStatuses } = useQuery<WizardStatus[]>({
     queryKey: [`/api/wizard-types/${wizard?.type}/statuses`],
-    enabled: !!wizard,
+    enabled: !!wizard && !manifest,
   });
 
   const { data: wizardSteps } = useQuery<WizardStep[]>({
     queryKey: [`/api/wizard-types/${wizard?.type}/steps`],
-    enabled: !!wizard,
+    enabled: !!wizard && !manifest,
   });
 
   const { data: employer } = useQuery<Employer>({
@@ -250,28 +262,40 @@ export default function WizardView() {
         </TabsList>
 
         <TabsContent value="wizard">
-          {/* Stepper with Navigation */}
-          {wizardSteps && wizardSteps.length > 0 && (
-            <Card className="mb-6">
-              <CardContent className="pt-6">
-                <WizardStepper
-                  steps={wizardSteps}
-                  currentStep={wizard.currentStep || wizardSteps[0].id}
-                  progress={wizardData?.progress}
-                  onNext={() => nextStepMutation.mutate(undefined)}
-                  onPrevious={() => previousStepMutation.mutate(undefined)}
-                  isLoading={nextStepMutation.isPending || previousStepMutation.isPending}
-                  canProceed={canProceed}
-                />
-              </CardContent>
-            </Card>
-          )}
+          {manifest ? (
+            /* Framework (plugin-based) wizard: manifest-driven stepper + body */
+            <FrameworkWizardBody
+              wizardId={wizard.id}
+              wizardType={wizard.type}
+              data={wizardData}
+              manifest={manifest}
+            />
+          ) : (
+            <>
+              {/* Stepper with Navigation */}
+              {wizardSteps && wizardSteps.length > 0 && (
+                <Card className="mb-6">
+                  <CardContent className="pt-6">
+                    <WizardStepper
+                      steps={wizardSteps}
+                      currentStep={wizard.currentStep || wizardSteps[0].id}
+                      progress={wizardData?.progress}
+                      onNext={() => nextStepMutation.mutate(undefined)}
+                      onPrevious={() => previousStepMutation.mutate(undefined)}
+                      isLoading={nextStepMutation.isPending || previousStepMutation.isPending}
+                      canProceed={canProceed}
+                    />
+                  </CardContent>
+                </Card>
+              )}
 
-          {/* Active Step Content */}
-          {StepComponent && wizard && (
-            <div>
-              <StepComponent wizardId={wizard.id} wizardType={wizard.type} data={wizardData} />
-            </div>
+              {/* Active Step Content */}
+              {StepComponent && wizard && (
+                <div>
+                  <StepComponent wizardId={wizard.id} wizardType={wizard.type} data={wizardData} />
+                </div>
+              )}
+            </>
           )}
         </TabsContent>
 

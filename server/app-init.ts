@@ -34,6 +34,7 @@ import { initializeDispatchEligSystem } from "./plugins/dispatch/eligibility";
 import { initializeDashboardPluginSystem } from "./plugins/dashboard";
 import { initializeClientInjectionPluginSystem } from "./plugins/client-injection";
 import { initializeEventNotifierPluginSystem } from "./plugins/event-notifier";
+import { initializeWizardPluginSystem } from "./plugins/wizards";
 import { initWorkerBanNotifications } from "./services/worker-ban-notifications";
 import { initDispatchNotifications } from "./services/dispatch/notifications";
 import "@shared/access-policies/loader";
@@ -328,6 +329,10 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
   // Register denorm plugins (kind + adapter + self-registering plugin imports)
   initializeDenormPluginSystem();
   logger.info("Denorm plugins registered", { source: "startup" });
+
+  // Register wizards as the sixth plugin kind (self-registering plugin imports)
+  initializeWizardPluginSystem();
+  logger.info("Wizard plugins registered", { source: "startup" });
 
   // Register flood events
   registerFloodEvents();

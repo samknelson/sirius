@@ -37,6 +37,7 @@ import { registerTrustProviderUserSettingsRoutes } from "./modules/trust/provide
 import { registerWorkerUserSettingsRoutes } from "./modules/worker-user-settings";
 import { registerWorkerUsersRoutes } from "./modules/workers/users";
 import { registerWizardRoutes } from "./modules/wizards";
+import { registerWizardDispatcherRoutes } from "./plugins/wizards";
 import { registerEmployerOnboardingWizardRoutes } from "./modules/employer-onboarding-wizard";
 import { registerFileRoutes } from "./modules/files";
 import { registerLedgerPaymentMethodRoutes } from "./modules/ledger/payment-methods";
@@ -355,6 +356,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Register wizard routes
   registerWizardRoutes(app, requireAuth, requirePermission);
   registerEmployerOnboardingWizardRoutes(app, requireAuth, requirePermission);
+  // Fixed dispatcher route set for framework (plugin-based) wizards.
+  // Adding a wizard plugin adds ZERO routes.
+  registerWizardDispatcherRoutes(app, requireAuth);
 
   // Register file management routes
   registerFileRoutes(app, requireAuth, requirePermission);

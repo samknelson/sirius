@@ -28,6 +28,7 @@ _Populate as you build_
 -   **Access Control Policies**: `server/modules/*/access.ts` (implied by entity-based policy architecture)
 -   **UI Theme**: `tailwind.config.ts` (implied by Tailwind CSS with "new-york" theme)
 -   **Wizards**: `server/wizards/types/`, `client/src/components/wizards/steps/`
+-   **Wizard Plugin Framework (spike)**: `server/plugins/wizards/` (sixth plugin kind on `server/plugins/_core/`; fixed dispatcher routes so adding a wizard adds zero routes), pilot at `server/plugins/wizards/plugins/report-gbhet-legal-compliance.ts`; client generic renderers `client/src/components/wizards/framework/`, escape-hatch component registry `client/src/plugins/wizards/`
 -   **Dispatch System**: `server/modules/dispatch/`, `client/src/pages/dispatch/`
 -   **Ledger System**: `server/modules/ledger/`, `client/src/pages/ledger/`
 -   **SFTP Client Destinations**: `server/modules/sftp-client-destination/`, `client/src/pages/config/sftp-client-destinations/`
