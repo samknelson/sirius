@@ -45,6 +45,26 @@ function GrievanceDetailsContent() {
                   </Badge>
                 </div>
               </div>
+              {showBargainingUnit && (
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-muted-foreground">Bargaining Unit</label>
+                  {grievance.bargainingUnitId ? (
+                    <p>
+                      <Link
+                        href={`/bargaining-units/${grievance.bargainingUnitId}`}
+                        className="text-foreground hover:underline"
+                        data-testid="link-grievance-bargaining-unit"
+                      >
+                        {grievance.bargainingUnitName || "Unknown"}
+                      </Link>
+                    </p>
+                  ) : (
+                    <p className="text-foreground" data-testid="text-grievance-bargaining-unit">
+                      No bargaining unit
+                    </p>
+                  )}
+                </div>
+              )}
               <div className="space-y-2">
                 <label className="text-sm font-medium text-muted-foreground">Cardinality</label>
                 <p className="text-foreground" data-testid="text-grievance-cardinality">
@@ -178,29 +198,6 @@ function GrievanceDetailsContent() {
           </p>
         </CardContent>
       </Card>
-
-      {showBargainingUnit && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Bargaining Unit</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {grievance.bargainingUnitId ? (
-              <Link
-                href={`/bargaining-units/${grievance.bargainingUnitId}`}
-                className="text-foreground hover:underline"
-                data-testid="link-grievance-bargaining-unit"
-              >
-                {grievance.bargainingUnitName || "Unknown"}
-              </Link>
-            ) : (
-              <p className="text-foreground" data-testid="text-grievance-bargaining-unit">
-                No bargaining unit
-              </p>
-            )}
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 }
