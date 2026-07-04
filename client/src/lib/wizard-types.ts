@@ -14,16 +14,6 @@ export interface Wizard {
   data: any;
 }
 
-export interface LaunchArgument {
-  id: string;
-  name: string;
-  type: string;
-  required?: boolean;
-  description?: string;
-  options?: Array<{ value: string | number; label: string }>;
-  defaultValue?: any;
-}
-
 export interface WizardType {
   name: string;
   displayName: string;
@@ -33,7 +23,6 @@ export interface WizardType {
   isMonthly?: boolean;
   entityType?: string;
   category?: string;
-  launchArguments?: LaunchArgument[];
 }
 
 export interface WizardStatus {

@@ -8,6 +8,7 @@ import { enforceWizardEntityAccess } from "../plugins/wizards/entity-access";
 import { enforcePluginGating } from "../plugins/_core";
 import { createUnifiedOptionsStorage } from "../storage/unified-options.js";
 import { objectStorageService } from "../services/objectStorage.js";
+import { validateAgainstSchema } from "../lib/json-schema-validator";
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -106,7 +107,7 @@ export function registerWizardRoutes(
     }
   });
 
-  app.get("/api/wizard-types/:typeName/launch-arguments", requireAuth, async (req, res) => {
+  app.get("/api/wizard-types/:typeName/launch-schema", requireAuth, async (req, res) => {
     try {
       const laCtx = await buildContext(req as any);
       const laAdmin = await checkAccess('admin', laCtx.user);
@@ -118,9 +119,10 @@ export function registerWizardRoutes(
       }
 
       const { typeName } = req.params;
-      // Framework (plugin-based) wizards declare launch arguments on the
-      // plugin; serve those (after plugin gating) so a plugin-only wizard
-      // needs no legacy registration for its launch inputs.
+      // Framework (plugin-based) wizards declare their up-front launch
+      // inputs as a JSON Schema on the plugin; serve that (after plugin
+      // gating) so the generic client launcher can render it with the
+      // shared SchemaForm. `schema` is null when the wizard has no inputs.
       const laPlugin = wizardPluginRegistry.get(typeName);
       if (laPlugin) {
         const laGate = await enforcePluginGating(
@@ -149,7 +151,11 @@ export function registerWizardRoutes(
               .json({ message: laEntity.message });
           }
         }
-        return res.json(laPlugin.launchArguments ?? []);
+        const launch = wizardPluginRegistry.resolveLaunchSchema(laPlugin);
+        return res.json({
+          schema: launch?.schema ?? null,
+          uiSchema: launch?.uiSchema,
+        });
       }
       return res.status(404).json({ message: "Wizard type not found" });
     } catch (error) {
@@ -289,27 +295,19 @@ export function registerWizardRoutes(
               .json({ message: entityGate.message });
           }
         }
-        // Generic required-launch-argument validation from the plugin's
-        // declaration (per-wizard value constraints live in `create`).
-        const launchArgs = frameworkPlugin.launchArguments ?? [];
-        if (launchArgs.length > 0) {
+        // Generic launch-input validation against the plugin's launch
+        // schema (per-wizard value constraints still live in `create`).
+        const launch = wizardPluginRegistry.resolveLaunchSchema(frameworkPlugin);
+        if (launch) {
           const provided =
             ((validatedData.data as any)?.launchArguments as
               | Record<string, unknown>
               | undefined) || {};
-          for (const arg of launchArgs) {
-            if (!arg.required) continue;
-            const value = provided[arg.id];
-            if (
-              value === undefined ||
-              value === null ||
-              value === "" ||
-              value === 0
-            ) {
-              return res.status(400).json({
-                message: `Required launch argument '${arg.name}' is missing or invalid`,
-              });
-            }
+          const result = validateAgainstSchema(launch.schema, provided);
+          if (!result.valid) {
+            return res.status(400).json({
+              message: `Invalid launch arguments: ${(result.errors ?? []).join("; ")}`,
+            });
           }
         }
         const firstStep = frameworkPlugin.steps[0];

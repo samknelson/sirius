@@ -5,11 +5,10 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Employer } from "@shared/schema";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { apiRequest, queryClient } from "@/lib/queryClient";
-import { useToast } from "@/hooks/use-toast";
+import { WizardLauncher } from "@/components/wizards/WizardLauncher";
 import { format } from "date-fns";
 import type { Wizard } from "@/lib/wizard-types";
 
@@ -36,7 +35,6 @@ function getStepLabel(step: string | null | undefined): string {
 
 export default function EmployersOnboarding() {
   const [location, setLocation] = useLocation();
-  const { toast } = useToast();
 
   const { data: employers = [] } = useQuery<Employer[]>({
     queryKey: ["/api/employers"],
@@ -49,29 +47,6 @@ export default function EmployersOnboarding() {
   const onboardingWizards = allWizards
     .filter(w => w.type === "employer_onboarding")
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-
-  const onboardMutation = useMutation({
-    mutationFn: async () => {
-      return await apiRequest("POST", "/api/wizards", {
-        type: "employer_onboarding",
-        status: "draft",
-        data: {
-          progress: {
-            employer_name: { status: "in_progress" },
-          },
-        },
-        currentStep: "employer_name",
-      });
-    },
-    onSuccess: (wizard: any) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/wizards"] });
-      toast({ title: "Onboarding wizard created" });
-      setLocation(`/wizards/${wizard.id}`);
-    },
-    onError: (error: Error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-    },
-  });
 
   const tabs = [
     { id: "list", label: "List", href: "/employers" },
@@ -113,15 +88,21 @@ export default function EmployersOnboarding() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
             <CardTitle className="text-lg font-medium">Employer Onboarding Wizards</CardTitle>
-            <Button
-              size="sm"
-              onClick={() => onboardMutation.mutate()}
-              disabled={onboardMutation.isPending}
-              data-testid="button-new-onboarding"
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              {onboardMutation.isPending ? "Creating..." : "New Onboarding"}
-            </Button>
+            <WizardLauncher
+              type="employer_onboarding"
+              successTitle="Onboarding wizard created"
+              renderTrigger={({ onClick, disabled, isPending }) => (
+                <Button
+                  size="sm"
+                  onClick={onClick}
+                  disabled={disabled}
+                  data-testid="button-new-onboarding"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  {isPending ? "Creating..." : "New Onboarding"}
+                </Button>
+              )}
+            />
           </CardHeader>
           <CardContent>
             {wizardsLoading ? (
@@ -139,15 +120,21 @@ export default function EmployersOnboarding() {
                 <p className="text-muted-foreground mb-4">
                   Start a new employer onboarding to get started
                 </p>
-                <Button
-                  variant="outline"
-                  onClick={() => onboardMutation.mutate()}
-                  disabled={onboardMutation.isPending}
-                  data-testid="button-create-first-onboarding"
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Start First Onboarding
-                </Button>
+                <WizardLauncher
+                  type="employer_onboarding"
+                  successTitle="Onboarding wizard created"
+                  renderTrigger={({ onClick, disabled, isPending }) => (
+                    <Button
+                      variant="outline"
+                      onClick={onClick}
+                      disabled={disabled}
+                      data-testid="button-create-first-onboarding"
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      {isPending ? "Creating..." : "Start First Onboarding"}
+                    </Button>
+                  )}
+                />
               </div>
             ) : (
               <div className="border rounded-lg overflow-hidden">

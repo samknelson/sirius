@@ -1,6 +1,7 @@
 import { PluginRegistry } from "../_core";
 import type { BasePluginMetadata } from "../_core";
 import type { Wizard } from "@shared/schema";
+import type { JsonSchema } from "@shared/json-schema-form";
 import type {
   WizardPlugin,
   WizardStepHandler,
@@ -83,6 +84,21 @@ export class WizardPluginRegistry extends PluginRegistry<
 
   firstStepId(plugin: WizardPlugin): string | undefined {
     return plugin.steps[0]?.id;
+  }
+
+  /**
+   * Resolve the plugin's up-front launch schema (inputs collected before
+   * any step runs). `getLaunchSchema` wins over the static `launchSchema`.
+   * Returns `undefined` when the wizard collects no launch inputs.
+   */
+  resolveLaunchSchema(
+    plugin: WizardPlugin,
+  ): { schema: JsonSchema; uiSchema?: Record<string, unknown> } | undefined {
+    const schema = plugin.getLaunchSchema
+      ? plugin.getLaunchSchema()
+      : plugin.launchSchema;
+    if (!schema) return undefined;
+    return { schema, uiSchema: plugin.launchUiSchema };
   }
 
   /**

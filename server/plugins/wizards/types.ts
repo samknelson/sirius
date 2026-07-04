@@ -136,24 +136,6 @@ export interface WizardStepHandler {
 }
 
 /**
- * A launch argument collected up-front when a wizard is created (before any
- * step runs) — e.g. the reporting year + month for a monthly feed. The
- * create route validates required arguments generically from this
- * declaration; the client renders inputs from the same list served off the
- * `/api/wizard-types/:type/launch-arguments` route.
- */
-export interface LaunchArgument {
-  id: string;
-  name: string;
-  /** UI hint: "text" | "number" | "select" | "month" | "year" | ... */
-  type: string;
-  required?: boolean;
-  description?: string;
-  defaultValue?: unknown;
-  options?: Array<{ value: unknown; label: string }>;
-}
-
-/**
  * Context handed to a plugin's custom `create` hook. `input` is the
  * schema-parsed create payload (with the first step + progress already
  * seeded by the create route). All persistence goes through `storage`.
@@ -221,10 +203,20 @@ export interface WizardPlugin extends BasePluginMetadata {
    */
   getFields?: () => FeedField[];
   /**
-   * Up-front arguments collected at creation. The create route validates
-   * the `required` ones generically before the wizard is persisted.
+   * JSON Schema describing inputs collected up-front at creation (before
+   * any step runs) — e.g. a monthly feed's reporting year + month. The
+   * generic client launcher renders it with the shared SchemaForm and the
+   * create route validates the submitted values against it. Collected
+   * values are stored under `wizard.data.launchArguments`.
    */
-  launchArguments?: LaunchArgument[];
+  launchSchema?: JsonSchema;
+  /** Optional RJSF uiSchema companion to `launchSchema`. */
+  launchUiSchema?: Record<string, unknown>;
+  /**
+   * Dynamic launch schema computed at request time. When present it wins
+   * over the static `launchSchema`.
+   */
+  getLaunchSchema?: () => JsonSchema | undefined;
   /**
    * Optional custom creation hook. When present, the create route calls it
    * INSTEAD of the default `storage.wizards.create`, after generic gating,

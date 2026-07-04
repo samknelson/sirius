@@ -1,5 +1,4 @@
-import { useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -7,46 +6,18 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DollarSign, Plus, Clock, CheckCircle, AlertTriangle, ArrowRight } from "lucide-react";
 import { format } from "date-fns";
-import { queryClient, apiRequest } from "@/lib/queryClient";
-import { useToast } from "@/hooks/use-toast";
+import { WizardLauncher } from "@/components/wizards/WizardLauncher";
 import type { Wizard } from "@/lib/wizard-types";
 import { standardWizardStatuses } from "@/lib/wizard-types";
 
 export default function BtuDuesAllocationPage() {
   const [, setLocation] = useLocation();
-  const { toast } = useToast();
 
   const { data: wizards, isLoading } = useQuery<Wizard[]>({
     queryKey: ["/api/wizards", { type: "btu_dues_allocation" }],
   });
 
   const statuses = standardWizardStatuses;
-
-  const createWizardMutation = useMutation({
-    mutationFn: async () => {
-      return await apiRequest("POST", `/api/wizards`, {
-        type: "btu_dues_allocation",
-        status: "draft",
-        entityId: null,
-        data: {}
-      });
-    },
-    onSuccess: (newWizard: Wizard) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/wizards"] });
-      toast({
-        title: "Import Started",
-        description: "New BTU Dues Allocation wizard created.",
-      });
-      setLocation(`/wizards/${newWizard.id}`);
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to create wizard",
-        variant: "destructive",
-      });
-    },
-  });
 
   const getStatusBadge = (status: string) => {
     const statusConfig: Record<string, { variant: "default" | "secondary" | "destructive" | "outline"; icon: typeof CheckCircle }> = {
@@ -72,14 +43,22 @@ export default function BtuDuesAllocationPage() {
           <h1 className="text-xl md:text-2xl font-bold" data-testid="page-title">BTU Dues Allocation</h1>
           <p className="text-muted-foreground">Import dues allocations from payroll deduction files</p>
         </div>
-        <Button
-          onClick={() => createWizardMutation.mutate()}
-          disabled={createWizardMutation.isPending}
-          data-testid="button-new-import"
-        >
-          <Plus className="h-4 w-4 mr-2" />
-          {createWizardMutation.isPending ? "Creating..." : "New Import"}
-        </Button>
+        <WizardLauncher
+          type="btu_dues_allocation"
+          successTitle="Import Started"
+          successDescription="New BTU Dues Allocation wizard created."
+          dialogTitle="New BTU Dues Allocation"
+          renderTrigger={({ onClick, disabled, isPending }) => (
+            <Button
+              onClick={onClick}
+              disabled={disabled}
+              data-testid="button-new-import"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              {isPending ? "Creating..." : "New Import"}
+            </Button>
+          )}
+        />
       </div>
 
       <Card>

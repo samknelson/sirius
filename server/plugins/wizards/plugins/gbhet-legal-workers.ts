@@ -7,6 +7,7 @@ import type {
   WizardCreateResult,
 } from "../types";
 import type { FeedWizard, FeedField } from "../engine/feed";
+import type { JsonSchema } from "@shared/json-schema-form";
 import { gbhetLegalWorkersMonthly } from "../engine/types/gbhet_legal_workers_monthly";
 import { gbhetLegalWorkersCorrections } from "../engine/types/gbhet_legal_workers_corrections";
 import { createUnifiedOptionsStorage } from "../../../storage/unified-options";
@@ -274,10 +275,37 @@ async function createCorrections(
   return { wizard };
 }
 
-const LAUNCH_ARGUMENTS = [
-  { id: "year", name: "Year", type: "year", required: true },
-  { id: "month", name: "Month", type: "month", required: true },
-];
+const LAUNCH_SCHEMA: JsonSchema = {
+  type: "object",
+  required: ["year", "month"],
+  properties: {
+    year: {
+      type: "integer",
+      title: "Year",
+      minimum: 1900,
+      maximum: 2100,
+    },
+    month: {
+      type: "integer",
+      title: "Month",
+      enum: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+      enumNames: [
+        "January",
+        "February",
+        "March",
+        "April",
+        "May",
+        "June",
+        "July",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December",
+      ],
+    },
+  },
+};
 
 export const gbhetLegalWorkersMonthlyPlugin: WizardPlugin = {
   id: "gbhet_legal_workers_monthly",
@@ -287,7 +315,7 @@ export const gbhetLegalWorkersMonthlyPlugin: WizardPlugin = {
   entityType: "employer",
   category: "Feed",
   isMonthly: true,
-  launchArguments: LAUNCH_ARGUMENTS,
+  launchSchema: LAUNCH_SCHEMA,
   create: createMonthly,
   prepareUpdate: prepareFeedDataUpdate,
   getFields: () => gbhetLegalWorkersMonthly.getFields?.() ?? [],
@@ -302,7 +330,7 @@ export const gbhetLegalWorkersCorrectionsPlugin: WizardPlugin = {
   entityType: "employer",
   category: "Feed",
   isMonthly: true,
-  launchArguments: LAUNCH_ARGUMENTS,
+  launchSchema: LAUNCH_SCHEMA,
   create: createCorrections,
   prepareUpdate: prepareFeedDataUpdate,
   getFields: () => gbhetLegalWorkersCorrections.getFields?.() ?? [],
