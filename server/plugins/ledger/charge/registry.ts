@@ -16,6 +16,7 @@ function pluginToBaseMetadata(p: ChargePlugin): BasePluginMetadata {
     name: p.metadata.name,
     description: p.metadata.description,
     requiredComponent: p.metadata.requiredComponent,
+    needsReadOnlyDb: p.metadata.needsReadOnlyDb,
   };
 }
 
@@ -34,6 +35,7 @@ export interface ChargePluginManifestEntry {
   supportedScopes: readonly ("global" | "employer")[];
   configSchema?: ChargePluginMetadata["configSchema"];
   requiredComponent?: string;
+  needsReadOnlyDb?: boolean;
 }
 
 function pluginToManifestEntry(p: ChargePlugin): ChargePluginManifestEntry {
@@ -46,6 +48,7 @@ function pluginToManifestEntry(p: ChargePlugin): ChargePluginManifestEntry {
     supportedScopes: p.metadata.supportedScopes ?? ["global"],
     configSchema: p.metadata.configSchema,
     requiredComponent: p.metadata.requiredComponent,
+    needsReadOnlyDb: p.metadata.needsReadOnlyDb,
   };
 }
 

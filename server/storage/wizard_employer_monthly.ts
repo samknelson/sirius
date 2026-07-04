@@ -1,7 +1,7 @@
 import { createNoopValidator } from './utils/validation';
 import { getClient } from './transaction-context';
 import { wizardEmployerMonthly, wizards, employers, insertWizardEmployerMonthlySchema } from "@shared/schema";
-import { eq, and, or, inArray, desc } from "drizzle-orm";
+import { eq, and, or } from "drizzle-orm";
 import { z } from "zod";
 
 /**
@@ -29,19 +29,6 @@ export interface EmployerWithUploads {
   }>;
 }
 
-export interface EmployerMonthlyStats {
-  totalActiveEmployers: number;
-  byStatus: Record<string, number>;
-}
-
-export interface LatestCompletedWizardForEmployer {
-  employerId: string;
-  year: number;
-  month: number;
-  wizardType: string;
-  completedAt: Date | null;
-}
-
 export interface WizardEmployerMonthlyStorage {
   create(data: InsertWizardEmployerMonthly): Promise<WizardEmployerMonthly>;
   getByWizardId(wizardId: string): Promise<WizardEmployerMonthly | undefined>;
@@ -49,9 +36,7 @@ export interface WizardEmployerMonthlyStorage {
   listByEmployer(employerId: string, year?: number, month?: number): Promise<WizardEmployerMonthly[]>;
   listAllEmployersWithUploads(year: number, month: number, wizardType: string): Promise<EmployerWithUploads[]>;
   listAllEmployersWithUploadsForRange(year: number, month: number, wizardType: string, monthsBack?: number): Promise<EmployerWithUploads[]>;
-  getMonthlyStats(year: number, month: number, wizardType: string): Promise<EmployerMonthlyStats>;
   findWizards(employerId: string, wizardType: string, year: number, month: number, status?: string | string[]): Promise<any[]>;
-  getLatestCompletedByEmployers(employerIds: string[], wizardTypes: string[]): Promise<LatestCompletedWizardForEmployer[]>;
   delete(wizardId: string): Promise<boolean>;
 }
 
@@ -211,55 +196,6 @@ export function createWizardEmployerMonthlyStorage(): WizardEmployerMonthlyStora
       }));
     },
 
-    async getMonthlyStats(year: number, month: number, wizardType: string): Promise<EmployerMonthlyStats> {
-      const client = getClient();
-      const allActiveEmployers = await client
-        .select()
-        .from(employers)
-        .where(eq(employers.isActive, true));
-      
-      const totalActiveEmployers = allActiveEmployers.length;
-      
-      const uploadsForPeriod = await client
-        .select({
-          employerId: wizardEmployerMonthly.employerId,
-          status: wizards.status,
-        })
-        .from(wizardEmployerMonthly)
-        .innerJoin(wizards, eq(wizardEmployerMonthly.wizardId, wizards.id))
-        .where(
-          and(
-            eq(wizardEmployerMonthly.year, year),
-            eq(wizardEmployerMonthly.month, month),
-            eq(wizards.type, wizardType)
-          )
-        );
-      
-      const byStatus: Record<string, number> = {
-        draft: 0,
-        in_progress: 0,
-        completed: 0,
-        cancelled: 0,
-        error: 0,
-      };
-      
-      const employersWithUploads = new Set<string>();
-      
-      for (const upload of uploadsForPeriod) {
-        employersWithUploads.add(upload.employerId);
-        if (byStatus[upload.status] !== undefined) {
-          byStatus[upload.status]++;
-        }
-      }
-      
-      byStatus['no_upload'] = totalActiveEmployers - employersWithUploads.size;
-      
-      return {
-        totalActiveEmployers,
-        byStatus,
-      };
-    },
-
     async findWizards(
       employerId: string,
       wizardType: string,
@@ -304,47 +240,6 @@ export function createWizardEmployerMonthlyStorage(): WizardEmployerMonthlyStora
         .where(and(...conditions));
       
       return results;
-    },
-
-    async getLatestCompletedByEmployers(
-      employerIds: string[],
-      wizardTypes: string[]
-    ): Promise<LatestCompletedWizardForEmployer[]> {
-      if (employerIds.length === 0 || wizardTypes.length === 0) {
-        return [];
-      }
-      const client = getClient();
-      const rows = await client
-        .select({
-          employerId: wizardEmployerMonthly.employerId,
-          year: wizardEmployerMonthly.year,
-          month: wizardEmployerMonthly.month,
-          wizardType: wizards.type,
-          completedAt: wizards.date,
-        })
-        .from(wizardEmployerMonthly)
-        .innerJoin(wizards, eq(wizardEmployerMonthly.wizardId, wizards.id))
-        .where(
-          and(
-            inArray(wizardEmployerMonthly.employerId, employerIds),
-            or(eq(wizards.status, "complete"), eq(wizards.status, "completed")),
-            inArray(wizards.type, wizardTypes)
-          )
-        )
-        .orderBy(
-          desc(wizardEmployerMonthly.year),
-          desc(wizardEmployerMonthly.month),
-          desc(wizards.date)
-        );
-
-      const seen = new Set<string>();
-      const result: LatestCompletedWizardForEmployer[] = [];
-      for (const row of rows) {
-        if (seen.has(row.employerId)) continue;
-        seen.add(row.employerId);
-        result.push(row);
-      }
-      return result;
     },
 
     async delete(wizardId: string): Promise<boolean> {

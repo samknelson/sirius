@@ -2,12 +2,23 @@ import { registerDashboardPlugin } from "../registry";
 import { getAccessStorage } from "../../../services/access-policy-evaluator";
 import { isComponentEnabledSync } from "../../../services/component-cache";
 import type { DashboardPlugin } from "../types";
+import { wizardEmployerMonthly, wizards } from "@shared/schema";
+import { and, or, inArray, eq, desc } from "drizzle-orm";
+
+interface LatestCompletedWizardForEmployer {
+  employerId: string;
+  year: number;
+  month: number;
+  wizardType: string;
+  completedAt: Date | null;
+}
 
 export const myShopsPlugin: DashboardPlugin = {
   id: "my-shops",
   name: "My Shops",
   description:
     "Display employers the current user is a contact for, with latest GBHET legal wizard and ledger balances",
+  needsReadOnlyDb: true,
 
   async content(ctx) {
     const dbUser = ctx.dbUser;
@@ -49,9 +60,43 @@ export const myShopsPlugin: DashboardPlugin = {
     const activeIds = activeEmployers.map((e) => e.id);
     const gbhetLegalTypes = ["gbhet_legal_workers_monthly", "gbhet_legal_workers_corrections"];
 
-    const latestWizards = await ctx.storage.wizardEmployerMonthly.getLatestCompletedByEmployers(
-      activeIds,
-      gbhetLegalTypes,
+    const latestWizards = await ctx.storage.readOnly.query(
+      async (client): Promise<LatestCompletedWizardForEmployer[]> => {
+        if (activeIds.length === 0 || gbhetLegalTypes.length === 0) {
+          return [];
+        }
+        const rows = await client
+          .select({
+            employerId: wizardEmployerMonthly.employerId,
+            year: wizardEmployerMonthly.year,
+            month: wizardEmployerMonthly.month,
+            wizardType: wizards.type,
+            completedAt: wizards.date,
+          })
+          .from(wizardEmployerMonthly)
+          .innerJoin(wizards, eq(wizardEmployerMonthly.wizardId, wizards.id))
+          .where(
+            and(
+              inArray(wizardEmployerMonthly.employerId, activeIds),
+              or(eq(wizards.status, "complete"), eq(wizards.status, "completed")),
+              inArray(wizards.type, gbhetLegalTypes),
+            ),
+          )
+          .orderBy(
+            desc(wizardEmployerMonthly.year),
+            desc(wizardEmployerMonthly.month),
+            desc(wizards.date),
+          );
+
+        const seen = new Set<string>();
+        const result: LatestCompletedWizardForEmployer[] = [];
+        for (const row of rows) {
+          if (seen.has(row.employerId)) continue;
+          seen.add(row.employerId);
+          result.push(row);
+        }
+        return result;
+      },
     );
 
     const latestByEmployer = new Map<string, (typeof latestWizards)[0]>();

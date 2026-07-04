@@ -184,6 +184,21 @@ Routes stay thin; all SQL lives in storage.
 It is acceptable **only inside a storage method**, never inside a
 route handler, service, plugin, or cron job.
 
+**Plugin opt-in for direct read-only DB access:** Plugins are the one
+sanctioned exception. A plugin whose only database need is a single,
+pure-read query it alone uses may run that query inline with
+`storage.readOnly.query(...)` instead of adding a one-off storage
+method — but it MUST opt in by declaring `needsReadOnlyDb: true` in its
+metadata (`BasePluginMetadata` in `server/plugins/_core/types.ts`,
+surfaced by the dashboard, trust-eligibility, charge, and
+event-notifier registries). This keeps the escape hatch visible and
+auditable. **Mutations always stay in storage** — the opt-in covers
+reads only. The author-time guard
+`scripts/dev/check-storage-encapsulation.ts` fails any file under
+`server/plugins/` that calls `readOnly.query(...)` without declaring
+`needsReadOnlyDb` (shared plugin-kind infrastructure such as
+`server/plugins/trust/eligibility/executor.ts` is allowlisted there).
+
 **Cross-domain query helpers:** When a feature needs to query several
 unrelated tables (for example, contact-link resolution touches
 `workers`, `employer_contacts`, and `trust_provider_contacts`), do

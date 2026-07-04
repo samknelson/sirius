@@ -37,6 +37,7 @@ export interface DashboardManifestEntry {
   enabledByDefault: boolean;
   enabled: boolean;
   hidden?: boolean;
+  needsReadOnlyDb?: boolean;
   /**
    * Resolved JSON Schema for the plugin's settings, populated in
    * `decorateEntries`. The generic plugin-config admin UI reads this to
@@ -70,6 +71,7 @@ function pluginToMetadata(p: DashboardPlugin): BasePluginMetadata {
     requiredComponent: p.requiredComponent,
     requiredPolicy: p.requiredPolicy,
     hidden: !p.client, // headless plugins never appear on the manifest
+    needsReadOnlyDb: p.needsReadOnlyDb,
   };
 }
 
@@ -93,6 +95,7 @@ function pluginToManifestEntry(p: DashboardPlugin): DashboardManifestEntry {
       enabledByDefault: false,
       enabled: false,
       hidden: true,
+      needsReadOnlyDb: p.needsReadOnlyDb,
     };
   }
   return {
@@ -109,6 +112,7 @@ function pluginToManifestEntry(p: DashboardPlugin): DashboardManifestEntry {
     hasSettings: !!p.settingsSchema,
     enabledByDefault: client.enabledByDefault !== false,
     enabled: client.enabledByDefault !== false, // overridden in decorateEntries
+    needsReadOnlyDb: p.needsReadOnlyDb,
   };
 }
 

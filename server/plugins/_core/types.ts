@@ -20,6 +20,14 @@ export interface BasePluginMetadata {
   /** Hide from default manifest listings (still registered/usable). */
   hidden?: boolean;
   /**
+   * Opt-in: allow this plugin to run its own read-only queries directly via
+   * `storage.readOnly.query(...)` instead of a bespoke storage method. When
+   * true the storage-encapsulation check permits `readOnly.query` (and the
+   * schema-table imports it needs) inside the plugin's file. Mutations still
+   * MUST go through the storage layer regardless of this flag. Default-off.
+   */
+  needsReadOnlyDb?: boolean;
+  /**
    * Marks the plugin as a singleton: exactly one config row may exist for it
    * (keyed by plugin kind + plugin id). The generic CRUD routes refuse to
    * create a second row or delete the existing one, and the boot-time

@@ -16,6 +16,8 @@ import { logger } from "../../../../logger";
 import { getCurrentEffectiveRate } from "../../../../utils/rateHistory";
 import { storage } from "../../../../storage/database";
 import type { Ledger, ChargePluginConfig } from "@shared/schema";
+import { workerHours } from "@shared/schema";
+import { and, eq, inArray, sql } from "drizzle-orm";
 
 const rateHistoryEntrySchema = z.object({
   effectiveDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be in YYYY-MM-DD format"),
@@ -47,6 +49,7 @@ class GbhetLegalHourlyPlugin extends ChargePlugin {
     description: "Charges a monthly rate for GBHET Legal benefits when there are qualifying hours in a month.",
     triggers: [TriggerType.HOURS_SAVED],
     defaultScope: "global" as const,
+    needsReadOnlyDb: true,
     configSchema: {
       type: "object",
       required: ["rateHistory"],
@@ -75,15 +78,27 @@ class GbhetLegalHourlyPlugin extends ChargePlugin {
       return null;
     }
 
-    const totalHours = await storage.workers.getMonthlyHoursTotal(
-      hoursContext.workerId,
-      hoursContext.employerId,
-      hoursContext.year,
-      hoursContext.month,
-      settings.employmentStatusIds && settings.employmentStatusIds.length > 0 
-        ? settings.employmentStatusIds 
-        : undefined
-    );
+    const employmentStatusIds =
+      settings.employmentStatusIds && settings.employmentStatusIds.length > 0
+        ? settings.employmentStatusIds
+        : undefined;
+    const totalHours = await storage.readOnly.query(async (client) => {
+      const [result] = await client
+        .select({ totalHours: sql<number>`COALESCE(SUM(${workerHours.hours}), 0)` })
+        .from(workerHours)
+        .where(
+          and(
+            eq(workerHours.workerId, hoursContext.workerId),
+            eq(workerHours.employerId, hoursContext.employerId),
+            eq(workerHours.year, hoursContext.year),
+            eq(workerHours.month, hoursContext.month),
+            ...(employmentStatusIds
+              ? [inArray(workerHours.employmentStatusId, employmentStatusIds)]
+              : []),
+          ),
+        );
+      return Number(result?.totalHours || 0);
+    });
 
     if (totalHours <= 0) {
       return null;

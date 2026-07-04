@@ -10,6 +10,8 @@ import {
   type NotifierMessageContent,
   type NotifierRecipient,
 } from "../types";
+import { optionsGrievanceRoles } from "@shared/schema";
+import { eq } from "drizzle-orm";
 
 function payloadOf(ctx: EventNotifierEventContext): GrievanceAssignmentSavedPayload {
   return ctx.payload as GrievanceAssignmentSavedPayload;
@@ -92,6 +94,7 @@ export const grievanceAssignmentNotifier: EventNotifierPlugin = {
     "Notifies a user when they are assigned to, unassigned from, or have their role changed on a grievance.",
   order: 100,
   requiredComponent: "grievance",
+  needsReadOnlyDb: true,
   subscribedEvents: [EventType.GRIEVANCE_ASSIGNMENT_SAVED],
   supportedMedia: ["inapp", "email", "sms"],
   configSchema: {
@@ -134,7 +137,13 @@ export const grievanceAssignmentNotifier: EventNotifierPlugin = {
     const { storage } = await import("../../../storage");
     const [info, roleName] = await Promise.all([
       storage.grievances.getAssignmentTitleInfo(grievanceId),
-      storage.grievances.getRoleName(roleId),
+      storage.readOnly.query(async (client) => {
+        const [row] = await client
+          .select({ name: optionsGrievanceRoles.name })
+          .from(optionsGrievanceRoles)
+          .where(eq(optionsGrievanceRoles.id, roleId));
+        return row?.name ?? null;
+      }),
     ]);
     const grievanceTitle = composeTitle(grievanceId, info);
     const body = bodyFor(operation, grievanceTitle, roleName);

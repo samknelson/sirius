@@ -167,8 +167,6 @@ export interface GrievanceStorage {
   ): Promise<{ id: string; userId: string; roleId: string } | undefined>;
   /** Whether the supplied grievance role option id currently exists. */
   roleOptionExists(id: string): Promise<boolean>;
-  /** The display name of a grievance role option, or null if unknown. */
-  getRoleName(roleId: string): Promise<string | null>;
   /**
    * The parts needed to compose a grievance's display title (denorm name and
    * category name) for notifications. Undefined if the grievance is gone.
@@ -667,15 +665,6 @@ export function createGrievanceStorage(): GrievanceStorage {
         .from(optionsGrievanceRoles)
         .where(eq(optionsGrievanceRoles.id, id));
       return !!row;
-    },
-
-    async getRoleName(roleId: string): Promise<string | null> {
-      const client = getClient();
-      const [row] = await client
-        .select({ name: optionsGrievanceRoles.name })
-        .from(optionsGrievanceRoles)
-        .where(eq(optionsGrievanceRoles.id, roleId));
-      return row?.name ?? null;
     },
 
     async getAssignmentTitleInfo(

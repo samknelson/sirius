@@ -6,6 +6,8 @@ import type {
   ScanType,
 } from "./types";
 import type { Worker, Contact, Employer, PluginConfig } from "@shared/schema";
+import { trustBenefitEligibilityExemptions } from "@shared/schema";
+import { and, eq, gte, isNull, lte, or } from "drizzle-orm";
 import { storage } from "../../../storage/database";
 import { logger } from "../../../logger";
 import { getEnabledComponentIds } from "../../../modules/components";
@@ -165,12 +167,29 @@ async function loadExemptedPlugins(
   if (!benefitId) return map;
   if (!enabledComponents.includes(ELIGIBILITY_EXEMPTIONS_COMPONENT_ID)) return map;
 
-  const exemptions =
-    await storage.trustBenefitEligibilityExemptions.listActiveForWorkerAndBenefit(
-      workerId,
-      benefitId,
-      asOfDate(asOfYear, asOfMonth),
-    );
+  const asOf = asOfDate(asOfYear, asOfMonth);
+  const asOfYmd = `${asOf.getFullYear()}-${String(asOf.getMonth() + 1).padStart(2, "0")}-${String(asOf.getDate()).padStart(2, "0")}`;
+  // Selects only the columns this loader reads — the `data` jsonb is never
+  // fetched, matching the storage layer's stripData contract.
+  const exemptions = await storage.readOnly.query(async (client) =>
+    client
+      .select({
+        eligibilityPlugins: trustBenefitEligibilityExemptions.eligibilityPlugins,
+        description: trustBenefitEligibilityExemptions.description,
+      })
+      .from(trustBenefitEligibilityExemptions)
+      .where(
+        and(
+          eq(trustBenefitEligibilityExemptions.subscriberWorkerId, workerId),
+          eq(trustBenefitEligibilityExemptions.benefitId, benefitId),
+          lte(trustBenefitEligibilityExemptions.startYmd, asOfYmd),
+          or(
+            isNull(trustBenefitEligibilityExemptions.endYmd),
+            gte(trustBenefitEligibilityExemptions.endYmd, asOfYmd),
+          ),
+        ),
+      ),
+  );
 
   for (const exemption of exemptions) {
     for (const pluginKey of exemption.eligibilityPlugins ?? []) {

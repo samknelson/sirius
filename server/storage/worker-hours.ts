@@ -49,8 +49,6 @@ export interface WorkerHoursStorage {
   getWorkerHoursCurrent(workerId: string): Promise<any[]>;
   getWorkerHoursHistory(workerId: string): Promise<any[]>;
   getWorkerHoursMonthly(workerId: string): Promise<any[]>;
-  getMonthlyHoursTotal(workerId: string, employerId: string, year: number, month: number, employmentStatusIds?: string[]): Promise<number>;
-  getWorkerMonthlyHoursAllEmployers(workerId: string, year: number, month: number): Promise<number>;
   getWorkerYearlyHoursTotal(workerId: string, year: number): Promise<number>;
   createWorkerHours(data: { workerId: string; month: number; year: number; day: number; employerId: string; employmentStatusId: string; hours: number | null; home?: boolean; jobTitle?: string | null }): Promise<WorkerHoursResult>;
   updateWorkerHours(id: string, data: { year?: number; month?: number; day?: number; employerId?: string; employmentStatusId?: string; hours?: number | null; home?: boolean; jobTitle?: string | null }): Promise<WorkerHoursResult | undefined>;
@@ -364,50 +362,6 @@ export function createWorkerHoursStorage(
           },
         };
       });
-    },
-
-    async getMonthlyHoursTotal(workerId: string, employerId: string, year: number, month: number, employmentStatusIds?: string[]): Promise<number> {
-      const client = getClient();
-      let query = client
-        .select({ totalHours: sql<number>`COALESCE(SUM(${workerHours.hours}), 0)` })
-        .from(workerHours)
-        .where(and(
-          eq(workerHours.workerId, workerId),
-          eq(workerHours.employerId, employerId),
-          eq(workerHours.year, year),
-          eq(workerHours.month, month)
-        ));
-
-      if (employmentStatusIds && employmentStatusIds.length > 0) {
-        const { inArray } = await import("drizzle-orm");
-        query = client
-          .select({ totalHours: sql<number>`COALESCE(SUM(${workerHours.hours}), 0)` })
-          .from(workerHours)
-          .where(and(
-            eq(workerHours.workerId, workerId),
-            eq(workerHours.employerId, employerId),
-            eq(workerHours.year, year),
-            eq(workerHours.month, month),
-            inArray(workerHours.employmentStatusId, employmentStatusIds)
-          ));
-      }
-
-      const [result] = await query;
-      return Number(result?.totalHours || 0);
-    },
-
-    async getWorkerMonthlyHoursAllEmployers(workerId: string, year: number, month: number): Promise<number> {
-      const client = getClient();
-      const [result] = await client
-        .select({ totalHours: sql<number>`COALESCE(SUM(${workerHours.hours}), 0)` })
-        .from(workerHours)
-        .where(and(
-          eq(workerHours.workerId, workerId),
-          eq(workerHours.year, year),
-          eq(workerHours.month, month)
-        ));
-
-      return Number(result?.totalHours || 0);
     },
 
     async getWorkerYearlyHoursTotal(workerId: string, year: number): Promise<number> {

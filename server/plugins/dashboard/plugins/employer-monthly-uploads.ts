@@ -3,6 +3,13 @@ import { storage } from "../../../storage";
 import { wizardPluginRegistry } from "../../wizards";
 import type { JsonSchema } from "@shared/json-schema-form";
 import type { DashboardPlugin } from "../types";
+import { employers, wizardEmployerMonthly, wizards } from "@shared/schema";
+import { and, eq } from "drizzle-orm";
+
+interface EmployerMonthlyStats {
+  totalActiveEmployers: number;
+  byStatus: Record<string, number>;
+}
 
 async function buildSchema(): Promise<JsonSchema> {
   const roles = await storage.users.getAllRoles();
@@ -62,6 +69,7 @@ export const employerMonthlyUploadsPlugin: DashboardPlugin = {
   defaultSettings: {},
 
   requiredPolicy: "admin",
+  needsReadOnlyDb: true,
 
   async migrateLegacySettings() {
     const legacy = await storage.variables.getByName("employer_monthly_plugin_config");
@@ -109,10 +117,51 @@ export const employerMonthlyUploadsPlugin: DashboardPlugin = {
     > = {};
     await Promise.all(
       wizardTypes.map(async (wt) => {
-        statsByType[wt.name] = await ctx.storage.wizardEmployerMonthly.getMonthlyStats(
-          yearNum,
-          monthNum,
-          wt.name,
+        statsByType[wt.name] = await ctx.storage.readOnly.query(
+          async (client): Promise<EmployerMonthlyStats> => {
+            const allActiveEmployers = await client
+              .select()
+              .from(employers)
+              .where(eq(employers.isActive, true));
+
+            const totalActiveEmployers = allActiveEmployers.length;
+
+            const uploadsForPeriod = await client
+              .select({
+                employerId: wizardEmployerMonthly.employerId,
+                status: wizards.status,
+              })
+              .from(wizardEmployerMonthly)
+              .innerJoin(wizards, eq(wizardEmployerMonthly.wizardId, wizards.id))
+              .where(
+                and(
+                  eq(wizardEmployerMonthly.year, yearNum),
+                  eq(wizardEmployerMonthly.month, monthNum),
+                  eq(wizards.type, wt.name),
+                ),
+              );
+
+            const byStatus: Record<string, number> = {
+              draft: 0,
+              in_progress: 0,
+              completed: 0,
+              cancelled: 0,
+              error: 0,
+            };
+
+            const employersWithUploads = new Set<string>();
+
+            for (const upload of uploadsForPeriod) {
+              employersWithUploads.add(upload.employerId);
+              if (byStatus[upload.status] !== undefined) {
+                byStatus[upload.status]++;
+              }
+            }
+
+            byStatus["no_upload"] = totalActiveEmployers - employersWithUploads.size;
+
+            return { totalActiveEmployers, byStatus };
+          },
         );
       }),
     );

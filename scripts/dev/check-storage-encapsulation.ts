@@ -55,6 +55,16 @@ const ALLOWED_FILES = [
   'server/services/quickstart.ts',
 ];
 
+// Files under server/plugins/ that call storage.readOnly.query(...) but are
+// shared plugin-kind infrastructure rather than an individual plugin carrying
+// its own `needsReadOnlyDb` metadata flag. These are exempt from the
+// needsReadOnlyDb declaration requirement below.
+const READONLY_FLAG_EXEMPT_FILES = [
+  // Trust-eligibility executor: shared infra that loads exemptions across all
+  // eligibility plugins; it is not itself a plugin with a metadata flag.
+  'server/plugins/trust/eligibility/executor.ts',
+];
+
 function isInAllowedDirectory(filePath: string): boolean {
   const normalized = filePath.replace(/\\/g, '/');
   return ALLOWED_DIRECTORIES.some(dir => normalized.startsWith(dir + '/'));
@@ -127,7 +137,29 @@ function checkFile(filePath: string): Violation[] {
       }
     }
   });
-  
+
+  // Plugins that reach for direct read-only DB access via
+  // storage.readOnly.query(...) must opt in explicitly by declaring
+  // `needsReadOnlyDb: true` in their metadata. This keeps the escape hatch
+  // visible and auditable. Shared plugin-kind infrastructure is exempt via
+  // READONLY_FLAG_EXEMPT_FILES.
+  const normalized = relativePath.replace(/\\/g, '/');
+  if (
+    normalized.startsWith('server/plugins/') &&
+    /readOnly\.query\s*\(/.test(content) &&
+    !content.includes('needsReadOnlyDb') &&
+    !READONLY_FLAG_EXEMPT_FILES.includes(normalized)
+  ) {
+    const lineIndex = lines.findIndex((l) => /readOnly\.query\s*\(/.test(l));
+    violations.push({
+      file: relativePath,
+      line: lineIndex >= 0 ? lineIndex + 1 : 1,
+      importPath: 'storage.readOnly.query',
+      suggestion:
+        'A plugin using storage.readOnly.query(...) must declare `needsReadOnlyDb: true` in its metadata.',
+    });
+  }
+
   return violations;
 }
 
