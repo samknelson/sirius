@@ -218,54 +218,6 @@ function SettlementsContent() {
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle>Add Settlement</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="grid grid-cols-1 md:grid-cols-[1fr_180px_auto] gap-3 items-start">
-            <Textarea
-              placeholder="Description"
-              value={newDescription}
-              onChange={(e) => setNewDescription(e.target.value)}
-              data-testid="input-new-settlement-description"
-            />
-            <Input
-              placeholder="Amount"
-              inputMode="decimal"
-              value={newAmount}
-              onChange={(e) => setNewAmount(e.target.value)}
-              data-testid="input-new-settlement-amount"
-            />
-            <Button
-              onClick={() =>
-                createMutation.mutate({
-                  description: newDescription.trim(),
-                  amount: newAmount.trim(),
-                  typeIds: newTypeIds,
-                })
-              }
-              disabled={!canAdd || createMutation.isPending}
-              data-testid="button-add-settlement"
-            >
-              <Plus size={16} className="mr-2" />
-              Add
-            </Button>
-          </div>
-          <div>
-            <Label className="text-muted-foreground text-sm mb-2 block">
-              Settlement Types
-            </Label>
-            <TypeSelector
-              types={settlementTypes}
-              selected={newTypeIds}
-              onToggle={toggleNewType}
-              idPrefix="toggle-new-settlement-type"
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
           <CardTitle>Settlements</CardTitle>
         </CardHeader>
         <CardContent>
@@ -415,6 +367,54 @@ function SettlementsContent() {
               })}
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Add Settlement</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="grid grid-cols-1 md:grid-cols-[1fr_180px_auto] gap-3 items-start">
+            <Textarea
+              placeholder="Description"
+              value={newDescription}
+              onChange={(e) => setNewDescription(e.target.value)}
+              data-testid="input-new-settlement-description"
+            />
+            <Input
+              placeholder="Amount"
+              inputMode="decimal"
+              value={newAmount}
+              onChange={(e) => setNewAmount(e.target.value)}
+              data-testid="input-new-settlement-amount"
+            />
+            <Button
+              onClick={() =>
+                createMutation.mutate({
+                  description: newDescription.trim(),
+                  amount: newAmount.trim(),
+                  typeIds: newTypeIds,
+                })
+              }
+              disabled={!canAdd || createMutation.isPending}
+              data-testid="button-add-settlement"
+            >
+              <Plus size={16} className="mr-2" />
+              Add
+            </Button>
+          </div>
+          <div>
+            <Label className="text-muted-foreground text-sm mb-2 block">
+              Settlement Types
+            </Label>
+            <TypeSelector
+              types={settlementTypes}
+              selected={newTypeIds}
+              onToggle={toggleNewType}
+              idPrefix="toggle-new-settlement-type"
+            />
+          </div>
         </CardContent>
       </Card>
 
