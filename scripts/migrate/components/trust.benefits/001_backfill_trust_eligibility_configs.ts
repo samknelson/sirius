@@ -1,8 +1,10 @@
 import { randomUUID } from "crypto";
-import { db } from "../../../server/db";
+import { db } from "../../../../server/db";
 import { sql } from "drizzle-orm";
-import { registerMigration, type Migration } from "../../../server/services/migration-runner";
-import { logger } from "../../../server/logger";
+import { registerComponentMigration, type Migration } from "../../../../server/services/migration-runner";
+import { logger } from "../../../../server/logger";
+
+const COMPONENT_ID = "trust.benefits";
 
 interface LegacyRule {
   pluginKey: string;
@@ -13,7 +15,7 @@ interface LegacyRule {
 /**
  * Backfill the legacy `policies.data.eligibilityRules` JSON blob (a map of
  * benefitId → ordered EligibilityRule[]) into the unified plugin_configs
- * (plugin_type = 'trust-eligibility') base table plus its
+ * (plugin_kind = 'trust-eligibility') base table plus its
  * plugin_configs_benefit_eligibility subsidiary, then retire the blob.
  *
  * Each rule becomes one base row (plugin_id = pluginKey, enabled = true,
@@ -21,6 +23,10 @@ interface LegacyRule {
  * evaluation order is preserved, data = the rule's config object including the
  * authoritative `appliesTo` array) plus one subsidiary row (policy, benefit,
  * applies_to = the comma-joined denormalized copy of appliesTo).
+ *
+ * Owned by the `trust.benefits` component. The component schema-push creates
+ * `plugin_configs_benefit_eligibility` before this runs (policies + trust_benefits
+ * are core tables that always exist), so no table-existence guard is needed.
  *
  * Atomic + idempotent: the whole backfill (inserts AND the blob strip) runs in
  * a single transaction, so a partial failure rolls back entirely and leaves the
@@ -55,7 +61,7 @@ async function up(): Promise<void> {
       SELECT be.policy, be.benefit
       FROM plugin_configs pc
       JOIN plugin_configs_benefit_eligibility be ON be.id = pc.id
-      WHERE pc.plugin_type = 'trust-eligibility'
+      WHERE pc.plugin_kind = 'trust-eligibility'
     `);
     const existingPairs = new Set(
       ((existingRes.rows ?? []) as Array<{ policy: string; benefit: string }>).map(
@@ -80,7 +86,7 @@ async function up(): Promise<void> {
           skippedBenefits += 1;
           logger.warn(
             `Skipping eligibility rules for unknown benefit ${benefitId} on policy ${policy.id}`,
-            { service: "migration-1019" },
+            { service: "migration-trust.benefits-001" },
           );
           continue;
         }
@@ -111,7 +117,7 @@ async function up(): Promise<void> {
           const id = randomUUID();
 
           await tx.execute(sql`
-            INSERT INTO plugin_configs (id, plugin_type, plugin_id, enabled, name, ordering, data)
+            INSERT INTO plugin_configs (id, plugin_kind, plugin_id, enabled, name, ordering, data)
             VALUES (${id}, 'trust-eligibility', ${rule.pluginKey}, true, NULL, ${i}, ${JSON.stringify(config)}::jsonb)
           `);
           await tx.execute(sql`
@@ -130,7 +136,7 @@ async function up(): Promise<void> {
     `);
 
     logger.info("Backfilled trust eligibility rules into unified plugin_configs", {
-      service: "migration-1019",
+      service: "migration-trust.benefits-001",
       rulesInserted: baseInserted,
       skippedBenefits,
       policiesStripped: stripped.rowCount ?? 0,
@@ -139,13 +145,13 @@ async function up(): Promise<void> {
 }
 
 const migration: Migration = {
-  version: 1019,
+  version: 1,
   name: "backfill_trust_eligibility_configs",
   description:
-    "Copy policies.data.eligibilityRules into the unified plugin_configs (plugin_type='trust-eligibility') + plugin_configs_benefit_eligibility tables, preserving per-benefit order; then strip the eligibilityRules blob. Idempotent.",
+    "Copy policies.data.eligibilityRules into the unified plugin_configs (plugin_kind='trust-eligibility') + plugin_configs_benefit_eligibility tables, preserving per-benefit order; then strip the eligibilityRules blob. Idempotent.",
   up,
 };
 
-registerMigration(migration);
+registerComponentMigration(COMPONENT_ID, migration);
 
 export default migration;

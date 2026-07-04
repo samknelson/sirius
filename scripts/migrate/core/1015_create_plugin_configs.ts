@@ -49,56 +49,20 @@ async function up(): Promise<void> {
     logger.info("plugin_configs_charge table already exists, skipping", { service: "migration-1015" });
   }
 
-  // Trust benefit eligibility subsidiary (policy / benefit / applies_to).
-  if (!(await tableExists("plugin_configs_benefit_eligibility"))) {
-    await db.execute(sql`
-      CREATE TABLE plugin_configs_benefit_eligibility (
-        id varchar PRIMARY KEY REFERENCES plugin_configs(id) ON DELETE CASCADE,
-        policy varchar REFERENCES policies(id) ON DELETE CASCADE,
-        benefit varchar REFERENCES trust_benefits(id) ON DELETE CASCADE,
-        applies_to varchar
-      )
-    `);
-    logger.info("Created plugin_configs_benefit_eligibility table", { service: "migration-1015" });
-  } else {
-    logger.info("plugin_configs_benefit_eligibility table already exists, skipping", { service: "migration-1015" });
-  }
-
-  // Dispatch eligibility subsidiary (job_type).
-  //
-  // `job_type` references `options_dispatch_job_type`, which is owned by the
-  // optional `dispatch` component (enabledByDefault: false). On a deployment
-  // where dispatch has never been enabled that table does not exist, so the
-  // foreign key is only declared when the target table is present — mirroring
-  // how the baseline scripts treat FKs to disabled-component tables as safely
-  // skippable. The enabled-dispatch path is unchanged.
-  if (!(await tableExists("plugin_configs_dispatch"))) {
-    if (await tableExists("options_dispatch_job_type")) {
-      await db.execute(sql`
-        CREATE TABLE plugin_configs_dispatch (
-          id varchar PRIMARY KEY REFERENCES plugin_configs(id) ON DELETE CASCADE,
-          job_type varchar REFERENCES options_dispatch_job_type(id) ON DELETE CASCADE
-        )
-      `);
-    } else {
-      await db.execute(sql`
-        CREATE TABLE plugin_configs_dispatch (
-          id varchar PRIMARY KEY REFERENCES plugin_configs(id) ON DELETE CASCADE,
-          job_type varchar
-        )
-      `);
-    }
-    logger.info("Created plugin_configs_dispatch table", { service: "migration-1015" });
-  } else {
-    logger.info("plugin_configs_dispatch table already exists, skipping", { service: "migration-1015" });
-  }
+  // NOTE: the `plugin_configs_benefit_eligibility` (trust.benefits) and
+  // `plugin_configs_dispatch` (dispatch) subsidiaries used to be created here.
+  // They are now component-owned — created by component schema-push on first
+  // enable and populated by per-component migrations under
+  // scripts/migrate/components/{trust.benefits,dispatch}/. Core no longer
+  // touches them, so a fresh deployment with those components disabled never
+  // creates them.
 }
 
 const migration: Migration = {
   version: 1015,
   name: "create_plugin_configs",
   description:
-    "Create the unified plugin config base table (plugin_configs) and its per-kind subsidiary tables (charge, benefit eligibility, dispatch) — additive foundation, no data migrated",
+    "Create the unified plugin config base table (plugin_configs) and its core charge subsidiary (plugin_configs_charge) — additive foundation, no data migrated. The benefit-eligibility and dispatch subsidiaries are component-owned and created on enable.",
   up,
 };
 

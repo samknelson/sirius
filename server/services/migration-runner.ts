@@ -302,6 +302,33 @@ export async function runPendingComponentMigrationsAtStartup(): Promise<void> {
     if (!component.managesSchema) continue;
     if (!isComponentEnabledSync(component.id)) continue;
     if ((componentMigrations.get(component.id) ?? []).length === 0) continue;
+
+    // A component that gains schema management while it is ALREADY enabled on a
+    // deployment has no `component_schema_state_<id>` variable yet — that
+    // variable is normally created by the enable flow. Without it,
+    // runComponentMigrations refuses to run (by design) and boot fails. Bring
+    // it up to the state the enable flow would have left it in, then let the
+    // enable flow run its pending migrations. enableComponentSchema is
+    // idempotent for an already-present, drift-free table: it creates-if-missing,
+    // reflects table state, preserves any existing migrationVersion, and runs
+    // pending migrations itself.
+    const { state } = await readComponentSchemaState(component.id);
+    if (!state) {
+      const { enableComponentSchema } = await import("./component-lifecycle");
+      const enable = await enableComponentSchema(component.id);
+      if (enable.success) {
+        logger.info("Initialized schema state for newly schema-managing enabled component at startup", {
+          service: "migration-runner",
+          componentId: component.id,
+        });
+      } else {
+        errors.push(
+          `Component ${component.id}: failed to initialize schema state at startup: ${enable.error ?? "unknown error"}`,
+        );
+      }
+      continue;
+    }
+
     const result = await runComponentMigrations(component.id);
     totalRan += result.ran;
     errors.push(...result.errors);

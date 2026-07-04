@@ -1941,18 +1941,15 @@ export const insertPluginConfigChargeSchema = createInsertSchema(pluginConfigsCh
 export type InsertPluginConfigCharge = z.infer<typeof insertPluginConfigChargeSchema>;
 export type PluginConfigCharge = typeof pluginConfigsCharge.$inferSelect;
 
-// Trust benefit eligibility subsidiary — relational dimensions hoisted out of
-// the policies.data blob (policy / benefit / applies_to).
-export const pluginConfigsBenefitEligibility = pgTable("plugin_configs_benefit_eligibility", {
-  id: varchar("id").primaryKey().references(() => pluginConfigs.id, { onDelete: 'cascade' }),
-  policy: varchar("policy").references(() => policies.id, { onDelete: 'cascade' }),
-  benefit: varchar("benefit").references(() => trustBenefits.id, { onDelete: 'cascade' }),
-  appliesTo: varchar("applies_to"),
-});
-
-export const insertPluginConfigBenefitEligibilitySchema = createInsertSchema(pluginConfigsBenefitEligibility);
-export type InsertPluginConfigBenefitEligibility = z.infer<typeof insertPluginConfigBenefitEligibilitySchema>;
-export type PluginConfigBenefitEligibility = typeof pluginConfigsBenefitEligibility.$inferSelect;
+// Trust benefit eligibility subsidiary — owned by the `trust.benefits`
+// component. Defined in shared/schema/trust/benefit-eligibility-schema.ts and
+// re-exported here so existing `@shared/schema` importers keep working.
+export {
+  pluginConfigsBenefitEligibility,
+  insertPluginConfigBenefitEligibilitySchema,
+  type InsertPluginConfigBenefitEligibility,
+  type PluginConfigBenefitEligibility,
+} from "./schema/trust/benefit-eligibility-schema";
 
 // Dashboard subsidiary — role-based visibility hoisted out of the opaque
 // settings blob. Each dashboard config targets exactly one role; a viewer

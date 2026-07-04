@@ -41,6 +41,8 @@ Preferred communication style: Simple, everyday language.
 -   **Facility Contact Sync**: Renaming a facility must go through `storage.facilities.updateContactName` to keep the facility and its associated contact in sync.
 -   **Wizard Access Control**: While `/wizards/:id` only requires authentication, the API endpoints enforce granular authorization.
 -   **T631 Facility Sync**: The `sitespecific-t631-facility-fetch` cron job is disabled by default and gated by the `sitespecific.t631.client` component. It only syncs `name` and `sirius_id` and does not delete local-only rows or write arbitrary `data` jsonb.
+-   **Component-owned plugin-config subsidiaries**: `plugin_configs_dispatch` (dispatch) and `plugin_configs_benefit_eligibility` (trust.benefits) are owned by their components' `schemaManifest` and created by schema-push on enable — they are NOT core tables. `plugin_configs_event_notifier` and the charge / dashboard / cron / payment_gateway subsidiaries stay core.
+-   **A component becoming schema-managing while already enabled**: the startup component-migration runner self-heals. If an enabled component gains a `schemaManifest`/migrations but has no `component_schema_state_<id>` variable yet (that variable is normally created by the enable flow), the runner initializes it via `enableComponentSchema` (idempotent for an already-present, drift-free table) instead of hard-failing boot. This is what lets already-enabled deployments pick up a newly component-owned table without a per-deployment baseline.
 
 ## Always restart the `Start application` workflow after server-side or shared changes
 

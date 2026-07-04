@@ -24,8 +24,6 @@ import "./core/1015_create_plugin_configs";
 import "./core/1016_backfill_charge_plugin_configs";
 import "./core/1017_drop_charge_plugin_configs";
 import "./core/1018_charge_subsidiary_plugin_id_unique";
-import "./core/1019_backfill_trust_eligibility_configs";
-import "./core/1020_backfill_dispatch_eligibility_configs";
 import "./core/1021_charge_account_required";
 import "./core/1022_drop_charge_subsidiary_plugin_id";
 import "./core/1023_add_plugin_configs_sirius_id";
@@ -46,7 +44,6 @@ import "./core/1037_create_denorm";
 import "./core/1038_worker_msh_denorm";
 import "./core/1039_worker_wsh_denorm";
 import "./core/1040_worker_employment_denorm";
-import "./core/1041_worker_dispatch_elig_denorm_denorm_id";
 
 // Per-component migrations — each registered via
 // `registerComponentMigration(componentId, migration)`. Tracked by the
@@ -82,6 +79,9 @@ import "./components/grievance/021_add_sirius_id_to_grievances";
 import "./components/grievance/022_create_grievance_name_denorm";
 import "./components/grievance/023_grievance_sirius_id_unique_constraint";
 import "./components/grievance.settlement/001_create_grievance_settlement";
+import "./components/dispatch/001_backfill_dispatch_eligibility_configs";
+import "./components/dispatch/002_worker_dispatch_elig_denorm_denorm_id";
+import "./components/trust.benefits/001_backfill_trust_eligibility_configs";
 
 // Baseline scripts — one-off, per-deployment scripts that bring a database
 // into sync with the schema BEFORE the drift gate runs. Baseline scripts
