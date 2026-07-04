@@ -84,12 +84,6 @@ export interface BtuWorkerImportStorage {
     employmentStatusId?: string;
     jobTitle?: string;
   }): Promise<WorkerHours>;
-  getActiveEmploymentsForBargainingUnit(bargainingUnitId: string, asOfDate: Date): Promise<Array<{
-    workerId: string;
-    employerId: string;
-    employmentStatusCode: string;
-    isHome: boolean;
-  }>>;
   terminateEmployment(data: {
     workerId: string;
     employerId: string;
@@ -434,52 +428,6 @@ export function createBtuWorkerImportStorage(): BtuWorkerImportStorage {
       });
       
       return result.data;
-    },
-
-    async getActiveEmploymentsForBargainingUnit(bargainingUnitId: string, asOfDate: Date): Promise<Array<{
-      workerId: string;
-      employerId: string;
-      employmentStatusCode: string;
-      isHome: boolean;
-    }>> {
-      const year = asOfDate.getFullYear();
-      const month = asOfDate.getMonth() + 1;
-      
-      const activeStatus = await this.getEmploymentStatusByCode('A');
-      const activeSecondaryStatus = await this.getEmploymentStatusByCode('A2');
-      
-      if (!activeStatus && !activeSecondaryStatus) {
-        return [];
-      }
-      
-      const statusIds = [activeStatus?.id, activeSecondaryStatus?.id].filter(Boolean) as string[];
-      
-      const results = await db
-        .select({
-          workerId: workerHours.workerId,
-          employerId: workerHours.employerId,
-          employmentStatusId: workerHours.employmentStatusId,
-          home: workerHours.home,
-          statusCode: optionsEmploymentStatus.code,
-        })
-        .from(workerHours)
-        .innerJoin(workers, eq(workerHours.workerId, workers.id))
-        .innerJoin(optionsEmploymentStatus, eq(workerHours.employmentStatusId, optionsEmploymentStatus.id))
-        .where(
-          and(
-            eq(workers.bargainingUnitId, bargainingUnitId),
-            eq(workerHours.year, year),
-            eq(workerHours.month, month),
-            inArray(workerHours.employmentStatusId, statusIds)
-          )
-        );
-      
-      return results.map(r => ({
-        workerId: r.workerId,
-        employerId: r.employerId,
-        employmentStatusCode: r.statusCode,
-        isHome: r.home,
-      }));
     },
 
     async terminateEmployment(data: {

@@ -32,9 +32,7 @@ export interface EmployerWithUploads {
 export interface WizardEmployerMonthlyStorage {
   create(data: InsertWizardEmployerMonthly): Promise<WizardEmployerMonthly>;
   getByWizardId(wizardId: string): Promise<WizardEmployerMonthly | undefined>;
-  listByPeriod(year: number, month: number): Promise<any[]>;
   listByEmployer(employerId: string, year?: number, month?: number): Promise<WizardEmployerMonthly[]>;
-  listAllEmployersWithUploads(year: number, month: number, wizardType: string): Promise<EmployerWithUploads[]>;
   listAllEmployersWithUploadsForRange(year: number, month: number, wizardType: string, monthsBack?: number): Promise<EmployerWithUploads[]>;
   findWizards(employerId: string, wizardType: string, year: number, month: number, status?: string | string[]): Promise<any[]>;
   delete(wizardId: string): Promise<boolean>;
@@ -61,34 +59,6 @@ export function createWizardEmployerMonthlyStorage(): WizardEmployerMonthlyStora
       return record || undefined;
     },
 
-    async listByPeriod(year: number, month: number): Promise<any[]> {
-      const client = getClient();
-      const results = await client
-        .select({
-          wizardId: wizardEmployerMonthly.wizardId,
-          employerId: wizardEmployerMonthly.employerId,
-          year: wizardEmployerMonthly.year,
-          month: wizardEmployerMonthly.month,
-          id: wizards.id,
-          type: wizards.type,
-          status: wizards.status,
-          currentStep: wizards.currentStep,
-          entityId: wizards.entityId,
-          data: wizards.data,
-          createdAt: wizards.date,
-        })
-        .from(wizardEmployerMonthly)
-        .innerJoin(wizards, eq(wizardEmployerMonthly.wizardId, wizards.id))
-        .where(
-          and(
-            eq(wizardEmployerMonthly.year, year),
-            eq(wizardEmployerMonthly.month, month)
-          )
-        );
-      
-      return results;
-    },
-
     async listByEmployer(
       employerId: string,
       year?: number,
@@ -110,40 +80,6 @@ export function createWizardEmployerMonthlyStorage(): WizardEmployerMonthlyStora
         .select()
         .from(wizardEmployerMonthly)
         .where(whereClause);
-    },
-
-    async listAllEmployersWithUploads(year: number, month: number, wizardType: string): Promise<EmployerWithUploads[]> {
-      const client = getClient();
-      const allEmployers = await client.select().from(employers);
-      
-      const uploadsForPeriod = await client
-        .select({
-          wizardId: wizardEmployerMonthly.wizardId,
-          employerId: wizardEmployerMonthly.employerId,
-          year: wizardEmployerMonthly.year,
-          month: wizardEmployerMonthly.month,
-          id: wizards.id,
-          type: wizards.type,
-          status: wizards.status,
-          currentStep: wizards.currentStep,
-          entityId: wizards.entityId,
-          data: wizards.data,
-          createdAt: wizards.date,
-        })
-        .from(wizardEmployerMonthly)
-        .innerJoin(wizards, eq(wizardEmployerMonthly.wizardId, wizards.id))
-        .where(
-          and(
-            eq(wizardEmployerMonthly.year, year),
-            eq(wizardEmployerMonthly.month, month),
-            eq(wizards.type, wizardType)
-          )
-        );
-      
-      return allEmployers.map(employer => ({
-        employer,
-        uploads: uploadsForPeriod.filter(upload => upload.employerId === employer.id)
-      }));
     },
 
     async listAllEmployersWithUploadsForRange(year: number, month: number, wizardType: string, monthsBack: number = 5): Promise<EmployerWithUploads[]> {

@@ -9,7 +9,6 @@ import { eq, and, desc } from "drizzle-orm";
 export const validate = createNoopValidator();
 
 export interface WizardFeedMappingStorage {
-  findByUserTypeAndHash(userId: string, type: string, firstRowHash: string): Promise<WizardFeedMapping | undefined>;
   create(mapping: InsertWizardFeedMapping): Promise<WizardFeedMapping>;
   update(id: string, updates: Partial<Omit<InsertWizardFeedMapping, 'id'>>): Promise<WizardFeedMapping | undefined>;
   delete(id: string): Promise<boolean>;
@@ -18,28 +17,6 @@ export interface WizardFeedMappingStorage {
 
 export function createWizardFeedMappingStorage(): WizardFeedMappingStorage {
   return {
-    async findByUserTypeAndHash(
-      userId: string, 
-      type: string, 
-      firstRowHash: string
-    ): Promise<WizardFeedMapping | undefined> {
-      const client = getClient();
-      const [mapping] = await client
-        .select()
-        .from(wizardFeedMappings)
-        .where(
-          and(
-            eq(wizardFeedMappings.userId, userId),
-            eq(wizardFeedMappings.type, type),
-            eq(wizardFeedMappings.firstRowHash, firstRowHash)
-          )
-        )
-        .orderBy(desc(wizardFeedMappings.updatedAt))
-        .limit(1);
-      
-      return mapping || undefined;
-    },
-
     async create(insertMapping: InsertWizardFeedMapping): Promise<WizardFeedMapping> {
       validate.validateOrThrow(insertMapping);
       const client = getClient();

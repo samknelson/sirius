@@ -188,25 +188,6 @@ export function registerWizardRoutes(
     }
   });
 
-  app.get("/api/wizards/employer-monthly/by-period", requireAccess('admin'), async (req, res) => {
-    try {
-      const { year, month } = req.query;
-      
-      // Validate year and month parameters
-      const yearNum = Number(year);
-      const monthNum = Number(month);
-      
-      if (!year || !month || !Number.isInteger(yearNum) || !Number.isInteger(monthNum) || monthNum < 1 || monthNum > 12) {
-        return res.status(400).json({ message: "Valid year and month parameters are required" });
-      }
-      
-      const monthlyWizards = await storage.wizardEmployerMonthly.listByPeriod(yearNum, monthNum);
-      res.json(monthlyWizards);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch employer monthly wizards" });
-    }
-  });
-
   app.get("/api/wizards/employer-monthly/employers", requireAccess('admin'), async (req, res) => {
     try {
       const { year, month, wizardType } = req.query;
