@@ -51,6 +51,7 @@ interface GrievanceFormProps {
   onSubmit: (values: GrievanceFormValues) => Promise<void> | void;
   submitLabel: string;
   isSubmitting?: boolean;
+  canEditSiriusId?: boolean;
   onCardinalityChange?: (cardinality: GrievanceCardinality) => void;
   renderWorkerSection?: (cardinality: GrievanceCardinality) => ReactNode;
   renderEmployerSection?: () => ReactNode;
@@ -61,6 +62,7 @@ export function GrievanceForm({
   onSubmit,
   submitLabel,
   isSubmitting,
+  canEditSiriusId = true,
   onCardinalityChange,
   renderWorkerSection,
   renderEmployerSection,
@@ -96,11 +98,18 @@ export function GrievanceForm({
               <FormLabel>Grievance ID</FormLabel>
               <FormControl>
                 <Input
-                  placeholder="Optional identifier"
+                  placeholder={canEditSiriusId ? "Leave blank to auto-generate" : "Assigned automatically"}
                   data-testid="input-grievance-sirius-id"
+                  readOnly={!canEditSiriusId}
+                  className={!canEditSiriusId ? "bg-muted text-muted-foreground" : undefined}
                   {...field}
                 />
               </FormControl>
+              <p className="text-sm text-muted-foreground">
+                {canEditSiriusId
+                  ? "Leave blank to auto-generate (format: year + sequence, e.g. 20260097)."
+                  : "Only admins can set the grievance ID; it is generated automatically."}
+              </p>
               <FormMessage />
             </FormItem>
           )}

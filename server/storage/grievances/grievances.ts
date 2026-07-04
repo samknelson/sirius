@@ -26,6 +26,7 @@ import {
   type GrievanceRemedy,
 } from "@shared/schema";
 import { eq, and, ne, inArray, asc, isNull, sql } from "drizzle-orm";
+import { generateGrievanceSiriusId } from "./sirius-id-generator";
 import { type StorageLoggingConfig } from "../middleware/logging";
 import { onAfterCommit } from "../transaction-context";
 import { eventBus, EventType } from "../../services/event-bus";
@@ -367,10 +368,16 @@ export function createGrievanceStorage(): GrievanceStorage {
     },
 
     async create(data: InsertGrievance): Promise<Grievance> {
-      const client = getClient();
-      const [row] = await client.insert(grievances).values(data).returning();
-      emitGrievanceSaved(row.id);
-      return row;
+      return runInTransaction(async () => {
+        const client = getClient();
+        const values: InsertGrievance = { ...data };
+        if (values.siriusId == null || values.siriusId === "") {
+          values.siriusId = await generateGrievanceSiriusId();
+        }
+        const [row] = await client.insert(grievances).values(values).returning();
+        emitGrievanceSaved(row.id);
+        return row;
+      });
     },
 
     async update(id: string, data: Partial<InsertGrievance>): Promise<Grievance | undefined> {

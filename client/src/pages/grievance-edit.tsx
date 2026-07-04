@@ -9,11 +9,14 @@ import { GrievanceLineSection } from "@/components/grievances/grievance-line-sec
 import { GrievanceUserManager } from "@/components/grievances/grievance-user-section";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 
 function GrievanceEditContent() {
   const { grievance } = useGrievanceLayout();
   const [, navigate] = useLocation();
   const { toast } = useToast();
+  const { hasPermission } = useAuth();
+  const isAdmin = hasPermission("admin");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async (values: GrievanceFormValues) => {
@@ -57,6 +60,7 @@ function GrievanceEditContent() {
             onSubmit={handleSubmit}
             submitLabel="Save Changes"
             isSubmitting={isSubmitting}
+            canEditSiriusId={isAdmin}
           />
         </CardContent>
       </Card>

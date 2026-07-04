@@ -12,12 +12,15 @@ import {
 import { GrievanceEmployerSection } from "@/components/grievances/grievance-employer-section";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 import { useState } from "react";
 import { type GrievanceCardinality } from "@shared/schema";
 
 export default function GrievancesAdd() {
   const [location, navigate] = useLocation();
   const { toast } = useToast();
+  const { hasPermission } = useAuth();
+  const isAdmin = hasPermission("admin");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [cardinality, setCardinality] = useState<GrievanceCardinality>("individual");
   const [staged, setStaged] = useState<SectionWorker[]>([]);
@@ -184,6 +187,7 @@ export default function GrievancesAdd() {
               onSubmit={handleSubmit}
               submitLabel="Create Grievance"
               isSubmitting={isSubmitting}
+              canEditSiriusId={isAdmin}
               onCardinalityChange={handleCardinalityChange}
               renderWorkerSection={(c) => (
                 <GrievanceWorkerSection
