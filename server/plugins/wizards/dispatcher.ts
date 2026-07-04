@@ -22,9 +22,14 @@ type AuthMiddleware = (
 
 const SERVICE = "wizard-dispatcher";
 
+// This is the single upload path for EVERY wizard plugin, so the limit
+// must accommodate the largest legacy wizard upload. The BTU signature
+// import ships a ZIP of PDF signature images, which the legacy route
+// allowed up to 500MB — keep parity here so consolidating onto the
+// dispatcher does not silently shrink that ceiling.
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 50 * 1024 * 1024 },
+  limits: { fileSize: 500 * 1024 * 1024 },
 });
 
 /**

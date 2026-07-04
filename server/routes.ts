@@ -38,7 +38,6 @@ import { registerWorkerUserSettingsRoutes } from "./modules/worker-user-settings
 import { registerWorkerUsersRoutes } from "./modules/workers/users";
 import { registerWizardRoutes } from "./modules/wizards";
 import { registerWizardDispatcherRoutes } from "./plugins/wizards";
-import { registerEmployerOnboardingWizardRoutes } from "./modules/employer-onboarding-wizard";
 import { registerFileRoutes } from "./modules/files";
 import { registerLedgerPaymentMethodRoutes } from "./modules/ledger/payment-methods";
 import { registerLedgerPaymentGatewayRoutes } from "./modules/ledger/payment-gateways";
@@ -107,9 +106,6 @@ import { registerBtuSchoolRoutes } from "./modules/sitespecific/btu/school";
 import { registerBaoImmediateEligibilityRoutes } from "./modules/sitespecific/bao/immediate-eligibility";
 import { registerBaoBeneficiariesRoutes } from "./modules/sitespecific/bao/beneficiaries";
 import { registerBaoEchpRoutes } from "./modules/sitespecific/bao/echp";
-import { registerBtuSigImportRoutes } from "./modules/sitespecific/btu/sig-import";
-import { registerBtuScraperImportRoutes } from "./modules/sitespecific/btu/scraper-import";
-import { registerBtuBuildingRepImportRoutes } from "./modules/sitespecific/btu/building-rep-import";
 import { registerBtuPoliticalRoutes } from "./modules/sitespecific/btu/political";
 import { registerT631ClientFetchRoutes } from "./modules/sitespecific/t631/client/fetch";
 import { registerFreemanSecondShiftRoutes } from "./modules/sitespecific/freeman/second-shift";
@@ -355,7 +351,6 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register wizard routes
   registerWizardRoutes(app, requireAuth, requirePermission);
-  registerEmployerOnboardingWizardRoutes(app, requireAuth, requirePermission);
   // Fixed dispatcher route set for framework (plugin-based) wizards.
   // Adding a wizard plugin adds ZERO routes.
   registerWizardDispatcherRoutes(app, requireAuth);
@@ -1737,9 +1732,6 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   registerBaoImmediateEligibilityRoutes(app, requireAuth, requirePermission, requireAccess);
   registerBaoBeneficiariesRoutes(app, requireAuth, requirePermission, requireAccess);
   registerBaoEchpRoutes(app, requireAuth, requirePermission, requireAccess);
-  registerBtuSigImportRoutes(app, requireAuth, requirePermission);
-  registerBtuScraperImportRoutes(app, requireAuth, requirePermission);
-  registerBtuBuildingRepImportRoutes(app, requireAuth, requirePermission);
 
   // Register BTU Political Profile routes
   registerBtuPoliticalRoutes(app, requireAuth, requirePermission);
