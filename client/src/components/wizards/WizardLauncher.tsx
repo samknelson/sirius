@@ -12,6 +12,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { JsonSchema } from "@shared/json-schema-form";
 import type { Wizard } from "@/lib/wizard-types";
+import { wizardLaunchComponentRegistry } from "@/plugins/wizards/registry";
 
 interface LaunchSchemaResponse {
   schema: JsonSchema | null;
@@ -157,6 +158,26 @@ export function WizardLauncher({
   });
 
   const busy = schemaLoading || createMutation.isPending || !!disabled;
+
+  // Escape hatch: a wizard may ship a bespoke launch component
+  // (`client/src/plugins/wizards/<type>/Launch.tsx`, resolved as
+  // `<type>:Launch`). When present it fully owns the launch UI, replacing
+  // the generic schema-driven path below.
+  const launchComponentId = `${type}:Launch`;
+  if (wizardLaunchComponentRegistry.has(launchComponentId)) {
+    const CustomLaunch = wizardLaunchComponentRegistry.resolve(launchComponentId);
+    return (
+      <CustomLaunch
+        type={type}
+        entityId={entityId}
+        defaults={defaults}
+        onCreated={
+          onCreated ?? ((wizard) => setLocation(`/wizards/${wizard.id}`))
+        }
+        onCancel={onCancel}
+      />
+    );
+  }
 
   // Inline mode: form (if any) + confirm button, no trigger.
   if (inline) {
