@@ -2,7 +2,7 @@ import { pgTable, text, timestamp, varchar, jsonb, index, integer, boolean, date
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
-import { employers, workers } from "../../schema";
+import { employers, workers, pluginConfigs, denorm } from "../../schema";
 
 export const optionsDispatchJobType = pgTable("options_dispatch_job_type", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -10,6 +10,19 @@ export const optionsDispatchJobType = pgTable("options_dispatch_job_type", {
   description: text("description"),
   data: jsonb("data"),
 });
+
+// Dispatch eligibility subsidiary for the unified plugin config base table
+// (Task #353 — additive foundation). Relational dimension hoisted out of the
+// dispatch job type's data blob (the job type the eligibility config applies
+// to). Keyed 1:1 by the base `plugin_configs.id` via a cascade-delete FK.
+export const pluginConfigsDispatch = pgTable("plugin_configs_dispatch", {
+  id: varchar("id").primaryKey().references(() => pluginConfigs.id, { onDelete: 'cascade' }),
+  jobType: varchar("job_type").references(() => optionsDispatchJobType.id, { onDelete: 'cascade' }),
+});
+
+export const insertPluginConfigDispatchSchema = createInsertSchema(pluginConfigsDispatch);
+export type InsertPluginConfigDispatch = z.infer<typeof insertPluginConfigDispatchSchema>;
+export type PluginConfigDispatch = typeof pluginConfigsDispatch.$inferSelect;
 
 export const dispatchJobStatusEnum = ["draft", "open", "closed", "archived"] as const;
 export type DispatchJobStatus = typeof dispatchJobStatusEnum[number];
@@ -106,12 +119,14 @@ export type WorkerDispatchStatus = typeof workerDispatchStatus.$inferSelect;
 // Worker Dispatch Eligibility Denormalized (EAV-style facts for eligibility queries)
 export const workerDispatchEligDenorm = pgTable("worker_dispatch_elig_denorm", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  denormId: varchar("denorm_id").notNull().references(() => denorm.id, { onDelete: 'cascade' }),
   workerId: varchar("worker_id").notNull().references(() => workers.id, { onDelete: 'cascade' }),
   category: varchar("category").notNull(),
   value: varchar("value").notNull(),
 }, (table) => ({
   categoryValueWorkerIdx: index("idx_worker_dispatch_elig_denorm_cat_val_worker").on(table.category, table.value, table.workerId),
   workerCategoryIdx: index("idx_worker_dispatch_elig_denorm_worker_cat").on(table.workerId, table.category),
+  denormIdx: index("idx_worker_dispatch_elig_denorm_denorm").on(table.denormId),
 }));
 
 export const insertWorkerDispatchEligDenormSchema = createInsertSchema(workerDispatchEligDenorm).omit({

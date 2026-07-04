@@ -3,6 +3,7 @@ import { getClient } from './transaction-context';
 import { workerStewardAssignments, employers, bargainingUnits, workers, contacts, type WorkerStewardAssignment, type InsertWorkerStewardAssignment } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { type StorageLoggingConfig } from "./middleware/logging";
+import { eventBus, EventType } from "../services/event-bus";
 
 /**
  * Stub validator - add validation logic here when needed
@@ -177,6 +178,15 @@ export function createWorkerStewardAssignmentStorage(): WorkerStewardAssignmentS
         .insert(workerStewardAssignments)
         .values(data)
         .returning();
+
+      eventBus.emit(EventType.STEWARD_ASSIGNMENT_SAVED, {
+        assignmentId: assignment.id,
+        workerId: assignment.workerId,
+        employerId: assignment.employerId,
+        bargainingUnitId: assignment.bargainingUnitId,
+        operation: "created",
+      });
+
       return assignment;
     },
 
@@ -188,16 +198,45 @@ export function createWorkerStewardAssignmentStorage(): WorkerStewardAssignmentS
         .set(data)
         .where(eq(workerStewardAssignments.id, id))
         .returning();
+
+      if (updated) {
+        eventBus.emit(EventType.STEWARD_ASSIGNMENT_SAVED, {
+          assignmentId: updated.id,
+          workerId: updated.workerId,
+          employerId: updated.employerId,
+          bargainingUnitId: updated.bargainingUnitId,
+          operation: "updated",
+        });
+      }
+
       return updated || undefined;
     },
 
     async deleteAssignment(id: string): Promise<boolean> {
       const client = getClient();
+      // Capture the row before deleting so the emitted event still carries the
+      // worker/employer/bargaining-unit ids notifiers need to resolve recipients.
+      const [existing] = await client
+        .select()
+        .from(workerStewardAssignments)
+        .where(eq(workerStewardAssignments.id, id));
       const result = await client
         .delete(workerStewardAssignments)
         .where(eq(workerStewardAssignments.id, id))
         .returning();
-      return result.length > 0;
+      const deleted = result.length > 0;
+
+      if (deleted && existing) {
+        eventBus.emit(EventType.STEWARD_ASSIGNMENT_SAVED, {
+          assignmentId: existing.id,
+          workerId: existing.workerId,
+          employerId: existing.employerId,
+          bargainingUnitId: existing.bargainingUnitId,
+          operation: "deleted",
+        });
+      }
+
+      return deleted;
     },
 
     async findExistingAssignment(workerId: string, employerId: string, bargainingUnitId: string): Promise<WorkerStewardAssignment | undefined> {

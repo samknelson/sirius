@@ -1,5 +1,5 @@
-import { sendEmail } from "./email-sender";
-import { sendInapp } from "./inapp-sender";
+import { sendEmail } from "./comm/senders/email";
+import { sendInapp } from "./comm/senders/inapp";
 import { storage } from "../storage";
 import { logger } from "../logger";
 

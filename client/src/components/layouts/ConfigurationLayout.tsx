@@ -14,6 +14,7 @@ import {
   getAllPoliciesNeeded,
   getAccessibleSections,
   isPathInSection,
+  findActiveItemPath,
   type NavItem,
   type NavSection,
   type AccessContext,
@@ -84,7 +85,13 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
     [accessContext]
   );
 
-  const isSectionActive = (section: NavSection) => isPathInSection(location, section);
+  // The single most-specific nav item that matches the current location.
+  // Highlighting is keyed off this so sub-paths (e.g. plugin-config kinds at
+  // /admin/plugin-configs/:kind) light up their own item rather than the
+  // generic parent, and never highlight two items at once.
+  const activeItemPath = useMemo(() => findActiveItemPath(location), [location]);
+
+  const isSectionActive = (section: NavSection) => isPathInSection(activeItemPath, section);
 
   const toggleSection = (sectionId: string) => {
     setOpenSections(prev => ({
@@ -99,7 +106,7 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
 
   const renderNavItem = (item: NavItem, isNested: boolean = false) => {
     const Icon = item.icon;
-    const isActive = location === item.path || location.startsWith(item.path + "/");
+    const isActive = activeItemPath === item.path;
     
     return (
       <Link key={item.path} href={item.path}>
@@ -116,7 +123,7 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
   };
 
   const renderSubsection = (subsection: NavSection, parentActive: boolean) => {
-    const isActive = isPathInSection(location, subsection);
+    const isActive = isPathInSection(activeItemPath, subsection);
     const isOpen = openSections[subsection.id] || isActive;
     const Icon = subsection.icon;
 
@@ -196,7 +203,9 @@ export default function ConfigurationLayout({ children }: ConfigurationLayoutPro
       </div>
 
       <div className="flex-1 p-6">
-        {children}
+        <div className="max-w-7xl mx-auto">
+          {children}
+        </div>
       </div>
     </div>
   );

@@ -15,6 +15,14 @@ export interface OptionsTypeConfig {
   delete: (id: string) => Promise<boolean>;
   requiredFields: readonly string[];
   optionalFields: readonly string[];
+  requiredComponent?: string;
+  /**
+   * Allowed values for single-value `enum` fields, keyed by field name.
+   * Used by the write routes to reject values outside the fixed set
+   * (the UI already constrains these via a select, but a direct API
+   * call must not be able to persist an out-of-range value).
+   */
+  enumConstraints: Record<string, string[]>;
 }
 
 let unifiedStorage: UnifiedOptionsStorage | null = null;
@@ -29,7 +37,14 @@ function getUnifiedStorage(): UnifiedOptionsStorage {
 function createTypeConfig(type: OptionsTypeName): OptionsTypeConfig {
   const storage = getUnifiedStorage();
   const metadata = optionsMetadata[type];
-  
+
+  const enumConstraints: Record<string, string[]> = {};
+  for (const field of metadata.fields) {
+    if (field.inputType === "enum" && field.enumOptions?.length) {
+      enumConstraints[field.name] = field.enumOptions.map((o) => o.value);
+    }
+  }
+
   return {
     name: metadata.displayName,
     type,
@@ -40,6 +55,8 @@ function createTypeConfig(type: OptionsTypeName): OptionsTypeConfig {
     delete: (id: string) => storage.delete(type, id),
     requiredFields: metadata.requiredFields,
     optionalFields: metadata.optionalFields,
+    requiredComponent: metadata.requiredComponent,
+    enumConstraints,
   };
 }
 
@@ -64,6 +81,14 @@ export const optionsTypeRegistry: Record<string, OptionsTypeConfig> = {
   "industry": createTypeConfig("industry"),
   "worker-ms": createTypeConfig("worker-ms"),
   "worker-relation-type": createTypeConfig("worker-relation-type"),
+  "comm-tag": createTypeConfig("comm-tag"),
+  "grievance-status": createTypeConfig("grievance-status"),
+  "grievance-category": createTypeConfig("grievance-category"),
+  "grievance-step": createTypeConfig("grievance-step"),
+  "grievance-complaint": createTypeConfig("grievance-complaint"),
+  "grievance-remedy": createTypeConfig("grievance-remedy"),
+  "grievance-role": createTypeConfig("grievance-role"),
+  "grievance-settlement-type": createTypeConfig("grievance-settlement-type"),
 };
 
 export function getOptionsType(type: string): OptionsTypeConfig | undefined {

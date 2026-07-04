@@ -1,60 +1,84 @@
 import { EligibilityPlugin } from "./base";
 import { logger } from "../../../logger";
+import type { EligibilityPluginMetadata as TrustEligibilityMetadata } from "./types";
+import { PluginRegistry } from "../../_core";
+import type { BasePluginMetadata } from "../../_core";
 
 export interface RegisteredEligibilityPlugin {
   id: string;
   plugin: EligibilityPlugin;
-  metadata: EligibilityPlugin['metadata'];
+  metadata: EligibilityPlugin["metadata"];
 }
 
-class EligibilityPluginRegistry {
-  private plugins: Map<string, EligibilityPlugin> = new Map();
+function pluginToBaseMetadata(p: EligibilityPlugin): BasePluginMetadata {
+  return {
+    id: p.metadata.id,
+    name: p.metadata.name,
+    description: p.metadata.description,
+    requiredComponent: p.metadata.requiredComponent,
+  };
+}
 
-  register(plugin: EligibilityPlugin): void {
-    const id = plugin.metadata.id;
-    if (this.plugins.has(id)) {
-      throw new Error(`Eligibility plugin "${id}" is already registered`);
-    }
-    this.plugins.set(id, plugin);
-    logger.info(`Registered eligibility plugin: ${id}`, { 
-      service: 'eligibility-plugin-registry',
+interface TrustEligibilityManifestEntry {
+  id: string;
+  name: string;
+  description: string;
+  configSchema: TrustEligibilityMetadata["configSchema"];
+  requiredComponent?: string;
+}
+
+function pluginToManifestEntry(p: EligibilityPlugin): TrustEligibilityManifestEntry {
+  return {
+    id: p.metadata.id,
+    name: p.metadata.name,
+    description: p.metadata.description,
+    configSchema: p.metadata.configSchema,
+    requiredComponent: p.metadata.requiredComponent,
+  };
+}
+
+class EligibilityPluginRegistry extends PluginRegistry<EligibilityPlugin, TrustEligibilityManifestEntry> {
+  constructor() {
+    super({
+      kind: "trust-eligibility",
+      getMetadata: pluginToBaseMetadata,
+      toManifestEntry: pluginToManifestEntry,
     });
   }
 
-  get(id: string): EligibilityPlugin | undefined {
-    return this.plugins.get(id);
+  register(plugin: EligibilityPlugin): void {
+    super.register(plugin);
+    logger.info(`Registered eligibility plugin: ${plugin.metadata.id}`, {
+      service: "eligibility-plugin-registry",
+    });
   }
 
   getAll(): RegisteredEligibilityPlugin[] {
-    return Array.from(this.plugins.entries()).map(([id, plugin]) => ({
-      id,
+    return this.list().map((plugin) => ({
+      id: plugin.metadata.id,
       plugin,
       metadata: plugin.metadata,
     }));
   }
 
   getAllFiltered(enabledComponents: string[]): RegisteredEligibilityPlugin[] {
-    return this.getAll().filter(p => {
-      const requiredComponent = p.metadata.requiresComponent;
-      if (!requiredComponent) return true;
-      return enabledComponents.includes(requiredComponent);
+    return this.getAll().filter((p) => {
+      const required = p.metadata.requiredComponent;
+      if (!required) return true;
+      return enabledComponents.includes(required);
     });
   }
 
   getAllIds(): string[] {
-    return Array.from(this.plugins.keys());
-  }
-
-  has(id: string): boolean {
-    return this.plugins.has(id);
+    return this.listIds();
   }
 
   isPluginEnabled(id: string, enabledComponents: string[]): boolean {
-    const plugin = this.plugins.get(id);
+    const plugin = this.get(id);
     if (!plugin) return false;
-    const requiredComponent = plugin.metadata.requiresComponent;
-    if (!requiredComponent) return true;
-    return enabledComponents.includes(requiredComponent);
+    const required = plugin.metadata.requiredComponent;
+    if (!required) return true;
+    return enabledComponents.includes(required);
   }
 }
 

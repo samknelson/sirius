@@ -38,8 +38,23 @@ export interface CommPostalDetails {
   fromZip: string | null;
   fromCountry: string | null;
   description: string | null;
+  body: string | null;
   mailType: string | null;
   data: Record<string, unknown> | null;
+}
+
+export interface ContactMainLink {
+  type: "worker" | "employer_contact" | "trust_provider_contact";
+  url: string;
+  label: string;
+  entityName: string;
+}
+
+export interface CommTag {
+  id: string;
+  name: string;
+  description?: string | null;
+  data?: { icon?: string; applicableCommTypes?: string[] } | null;
 }
 
 export interface CommWithDetails {
@@ -53,6 +68,8 @@ export interface CommWithDetails {
   smsDetails?: CommSmsDetails | null;
   emailDetails?: CommEmailDetails | null;
   postalDetails?: CommPostalDetails | null;
+  tags?: CommTag[];
+  contactMainLink?: ContactMainLink | null;
 }
 
 export interface CommWithSms {
@@ -64,4 +81,5 @@ export interface CommWithSms {
   received: string | null;
   data: Record<string, unknown> | null;
   smsDetails?: CommSmsDetails | null;
+  tags?: CommTag[];
 }

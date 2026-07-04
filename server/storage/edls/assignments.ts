@@ -15,7 +15,7 @@ import {
   type InsertEdlsAssignment
 } from "@shared/schema";
 import { eq, and, sql, gte, lte, asc, inArray, ne } from "drizzle-orm";
-import { StorageLoggingConfig } from "../middleware/logging";
+import { defineLoggingConfig } from "../middleware/logging";
 import { getClient, runInTransaction } from "../transaction-context";
 import { createUnifiedOptionsStorage } from "../unified-options";
 import { createEdlsCrewsStorage } from "./crews";
@@ -227,7 +227,7 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
             FROM options_worker_ms oms2
             JOIN employers emp ON emp.id = s.employer_id
             WHERE oms2.industry_id = emp.industry_id
-              AND oms2.id = ANY(w.denorm_ms_ids)
+              AND EXISTS (SELECT 1 FROM worker_msh_denorm wmd WHERE wmd.worker_id = w.id AND wmd.ms_id = oms2.id)
             ORDER BY oms2.sequence ASC NULLS LAST, oms2.name
             LIMIT 1
           ) oms ON true
@@ -284,8 +284,9 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
       const memberStatusJoin = industryId
         ? sql`LEFT JOIN LATERAL (
           SELECT ms.id, ms.code, ms.name
-          FROM UNNEST(w.denorm_ms_ids) AS ms_id
-          INNER JOIN options_worker_ms ms ON ms.id = ms_id AND ms.industry_id = ${industryId}
+          FROM worker_msh_denorm wmd
+          INNER JOIN options_worker_ms ms ON ms.id = wmd.ms_id AND ms.industry_id = ${industryId}
+          WHERE wmd.worker_id = w.id
           LIMIT 1
         ) member_status ON true`
         : sql``;
@@ -400,12 +401,13 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
         ? sql`wr.value as "ratingValue"`
         : sql`NULL::integer as "ratingValue"`;
       
-      // Build member status join - uses UNNEST on denorm_ms_ids to find the member status for the employer's industry
+      // Build member status join - uses worker_msh_denorm to find the member status for the employer's industry
       const memberStatusJoin = industryId
         ? sql`LEFT JOIN LATERAL (
           SELECT ms.id, ms.name, ms.sequence
-          FROM UNNEST(w.denorm_ms_ids) AS ms_id
-          INNER JOIN options_worker_ms ms ON ms.id = ms_id AND ms.industry_id = ${industryId}
+          FROM worker_msh_denorm wmd
+          INNER JOIN options_worker_ms ms ON ms.id = wmd.ms_id AND ms.industry_id = ${industryId}
+          WHERE wmd.worker_id = w.id
           LIMIT 1
         ) member_status ON true`
         : sql``;
@@ -742,7 +744,7 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
           FROM options_worker_ms oms2
           JOIN employers emp ON emp.id = s.employer_id
           WHERE oms2.industry_id = emp.industry_id
-            AND oms2.id = ANY(w.denorm_ms_ids)
+            AND EXISTS (SELECT 1 FROM worker_msh_denorm wmd WHERE wmd.worker_id = w.id AND wmd.ms_id = oms2.id)
           ORDER BY oms2.sequence ASC NULLS LAST, oms2.name
           LIMIT 1
         ) oms ON true
@@ -784,12 +786,15 @@ async function getWorkerDescription(workerId: string): Promise<string> {
   return row.siriusId ? `${name} (${row.siriusId})` : name;
 }
 
-export const edlsAssignmentsLoggingConfig: StorageLoggingConfig<EdlsAssignmentsStorage> = {
+export const edlsAssignmentsLoggingConfig = defineLoggingConfig<EdlsAssignmentsStorage>({
   module: 'edls-assignments',
+  // No module-level stateKey — `before` for delete/updateData augments the
+  // raw assignment row with a `workerDesc` lookup, and `after` is suppressed
+  // (set explicitly to undefined) so legacy logs stay byte-identical.
   methods: {
     create: {
-      enabled: true,
-      getEntityId: (args, result) => result?.id || 'new',
+      state: { fallbackId: 'new' },
+      after: undefined,
       getHostEntityId: async (args) => {
         const crewId = args[0]?.crewId;
         if (!crewId) return undefined;
@@ -803,42 +808,39 @@ export const edlsAssignmentsLoggingConfig: StorageLoggingConfig<EdlsAssignmentsS
       },
     },
     delete: {
-      enabled: true,
-      getEntityId: (args) => args[0],
       before: async (args, storage) => {
         const assignment = await storage.get(args[0]);
         if (!assignment) return undefined;
         const workerDesc = await getWorkerDescription(assignment.workerId);
         return { ...assignment, workerDesc };
       },
-      getHostEntityId: async (args, result, beforeState) => {
+      getHostEntityId: async (_args, _result, beforeState) => {
         const crewId = beforeState?.crewId;
         if (!crewId) return undefined;
         return getSheetIdFromCrewId(crewId);
       },
-      getDescription: async (args, result, beforeState) => {
+      getDescription: async (_args, _result, beforeState) => {
         const workerDesc = beforeState?.workerDesc || 'unknown worker';
         return `Deleted assignment for ${workerDesc}`;
       },
     },
     updateData: {
-      enabled: true,
-      getEntityId: (args) => args[0],
       before: async (args, storage) => {
         const assignment = await storage.get(args[0]);
         if (!assignment) return undefined;
         const workerDesc = await getWorkerDescription(assignment.workerId);
         return { ...assignment, workerDesc };
       },
-      getHostEntityId: async (args, result, beforeState) => {
+      after: undefined,
+      getHostEntityId: async (_args, result, beforeState) => {
         const crewId = beforeState?.crewId || result?.crewId;
         if (!crewId) return undefined;
         return getSheetIdFromCrewId(crewId);
       },
-      getDescription: async (args, result, beforeState) => {
+      getDescription: async (_args, _result, beforeState) => {
         const workerDesc = beforeState?.workerDesc || 'unknown worker';
         return `Updated assignment for ${workerDesc}`;
       },
     },
   },
-};
+});

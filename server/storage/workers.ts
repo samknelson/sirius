@@ -2,22 +2,21 @@ import { getClient } from './transaction-context';
 import {
   workers,
   contacts,
-  trustWmb,
-  trustBenefits,
   employers,
   optionsWorkerWs,
+  workerMshDenorm,
+  workerWshDenorm,
+  workerEmploymentDenorm,
+  denorm,
   type Worker,
   type InsertWorker,
-  type TrustWmb,
   type TrustBenefit,
   type Employer,
 } from "@shared/schema";
-import { eq, sql, desc, and, ne } from "drizzle-orm";
+import { eq, sql, and, ne, isNull } from "drizzle-orm";
 import type { ContactsStorage } from "./contacts";
-import type { WorkerDenormData } from "./worker-hours";
 import { type StorageLoggingConfig } from "./middleware/logging";
 import { logger } from "../logger";
-import { eventBus, EventType } from "../services/event-bus";
 import { 
   type ValidationError,
   createAsyncStorageValidator
@@ -81,6 +80,20 @@ export const ssnValidate = createAsyncStorageValidator<{ ssn: string | null; wor
 export interface WorkerEmployerSummary {
   workerId: string;
   employers: Array<{ id: string; name: string; isHome: boolean }>;
+}
+
+export interface WorkerContactExportRow {
+  id: string;
+  given: string | null;
+  family: string | null;
+  email: string | null;
+  denorm_ms_ids: string[] | null;
+  denorm_employer_ids: string[] | null;
+  phone_number: string | null;
+  address_street: string | null;
+  address_city: string | null;
+  address_state: string | null;
+  address_postal_code: string | null;
 }
 
 export interface WorkerCurrentBenefits {
@@ -165,15 +178,35 @@ export interface WorkerSearchResult {
 
 export interface WorkerStorage {
   getAllWorkers(): Promise<Worker[]>;
+  /**
+   * Backfill anti-join: worker ids that have no `denorm` row for the given
+   * config, capped at `limit`. Read-only; used by the denorm backfill sweep to
+   * discover workers that still need a (stale) denorm row enqueued.
+   */
+  findIdsMissingDenorm(configId: string, limit: number): Promise<string[]>;
+  /**
+   * Widow anti-join (the mirror of {@link findIdsMissingDenorm}): entity ids of
+   * `denorm` rows for the given config whose worker no longer exists, capped at
+   * `limit`. Read-only; used by the denorm backfill sweep to discover orphaned
+   * denorm rows to delete.
+   */
+  findDenormWidowIds(configId: string, limit: number): Promise<string[]>;
   searchWorkers(query: string, limit?: number): Promise<WorkerSearchResult>;
   getWorkersWithDetails(): Promise<WorkerWithDetails[]>;
   getWorkersWithDetailsPaginated(params: WorkersPaginationParams): Promise<PaginatedWorkersResult>;
   getWorkersForExport(params: WorkersExportParams): Promise<WorkerWithDetails[]>;
   getAllMatchingContactIds(params: Omit<WorkersPaginationParams, 'page' | 'pageSize' | 'sortField'>): Promise<string[]>;
   getWorkersEmployersSummary(): Promise<WorkerEmployerSummary[]>;
+  getContactExportDataByIds(workerIdsList: string[]): Promise<WorkerContactExportRow[]>;
   getWorkersCurrentBenefits(month?: number, year?: number): Promise<WorkerCurrentBenefits[]>;
   getWorker(id: string): Promise<Worker | undefined>;
-  getWorkerDisplayName(id: string): Promise<string | undefined>;
+  // Generic, feature-agnostic accessors for the worker's `data` jsonb blob.
+  // These know nothing about any particular feature's JSON path; the only
+  // legitimate writer is a validated, feature-specific storage namespace that
+  // performs an atomic read-modify-write. Do NOT use as a general escape hatch.
+  getData(id: string): Promise<Record<string, unknown>>;
+  setData(id: string, data: Record<string, unknown>): Promise<void>;
+  getWorkerDisplayName(id: string | undefined | null): Promise<string>;
   getWorkerBySSN(ssn: string): Promise<Worker | undefined>;
   getWorkerByContactEmail(email: string): Promise<Worker | undefined>;
   getWorkerByContactId(contactId: string): Promise<Worker | undefined>;
@@ -200,18 +233,10 @@ export interface WorkerStorage {
   updateWorkerContactBirthDate(workerId: string, birthDate: string | null): Promise<Worker | undefined>;
   updateWorkerContactGender(workerId: string, gender: string | null, genderNota: string | null): Promise<Worker | undefined>;
   updateWorkerSSN(workerId: string, ssn: string): Promise<Worker | undefined>;
-  updateWorkerStatus(workerId: string, denormWsId: string | null): Promise<Worker | undefined>;
-  updateWorkerMemberStatuses(workerId: string, denormMsIds: string[] | null): Promise<Worker | undefined>;
-  setDenormDataProvider(provider: (workerId: string) => Promise<WorkerDenormData>): void;
-  syncWorkerEmployerDenorm(workerId: string): Promise<void>;
   updateWorkerBargainingUnit(workerId: string, bargainingUnitId: string | null): Promise<Worker | undefined>;
   deleteWorker(id: string): Promise<boolean>;
   updateWorkerBargainingUnit(workerId: string, bargainingUnitId: string | null): Promise<Worker | undefined>;
   // Worker benefits methods
-  getWorkerBenefits(workerId: string): Promise<any[]>;
-  createWorkerBenefit(data: { workerId: string; month: number; year: number; employerId: string; benefitId: string }): Promise<TrustWmb>;
-  deleteWorkerBenefit(id: string): Promise<boolean>;
-  workerBenefitExists(workerId: string, benefitId: string, month: number, year: number): Promise<boolean>;
   getMemberStatusCodesByIndustry(industryId: string, workerIdsList: string[]): Promise<Array<{ workerId: string; code: string }>>;
 }
 
@@ -332,13 +357,17 @@ async function _searchWorkers(params: InternalSearchParams): Promise<InternalSea
   })();
 
   const employerCondition = employerId 
-    ? sql`AND ${employerId} = ANY(w.denorm_employer_ids)`
+    ? sql`AND EXISTS (
+        SELECT 1 FROM worker_employment_denorm wed
+        WHERE wed.worker_id = w.id AND wed.employer_id = ${employerId}
+      )`
     : sql``;
 
   const employerTypeCondition = employerTypeId
     ? sql`AND EXISTS (
-        SELECT 1 FROM employers e 
-        WHERE e.id = ANY(w.denorm_employer_ids) 
+        SELECT 1 FROM worker_employment_denorm wed
+        JOIN employers e ON e.id = wed.employer_id
+        WHERE wed.worker_id = w.id
         AND e.type_id = ${employerTypeId}
       )`
     : sql``;
@@ -360,17 +389,21 @@ async function _searchWorkers(params: InternalSearchParams): Promise<InternalSea
   const contactStatusCondition = _buildContactStatusCondition(contactStatus);
 
   const multipleEmployersCondition = hasMultipleEmployers
-    ? sql`AND array_length(w.denorm_employer_ids, 1) > 1`
+    ? sql`AND (SELECT COUNT(*) FROM worker_employment_denorm wed WHERE wed.worker_id = w.id) > 1`
     : sql``;
 
   const jobTitleCondition = jobTitle
-    ? sql`AND LOWER(w.denorm_job_title) LIKE ${`%${jobTitle.toLowerCase()}%`}`
+    ? sql`AND EXISTS (
+        SELECT 1 FROM worker_employment_denorm wed
+        WHERE wed.worker_id = w.id AND wed.home = true
+        AND LOWER(wed.job_title) LIKE ${`%${jobTitle.toLowerCase()}%`}
+      )`
     : sql``;
 
   const memberStatusCondition = memberStatusId
     ? memberStatusId === 'none'
-      ? sql`AND (w.denorm_ms_ids IS NULL OR array_length(w.denorm_ms_ids, 1) IS NULL)`
-      : sql`AND ${memberStatusId} = ANY(w.denorm_ms_ids)`
+      ? sql`AND NOT EXISTS (SELECT 1 FROM worker_msh_denorm wmd WHERE wmd.worker_id = w.id)`
+      : sql`AND EXISTS (SELECT 1 FROM worker_msh_denorm wmd WHERE wmd.worker_id = w.id AND wmd.ms_id = ${memberStatusId})`
     : sql``;
 
   const representativeCondition = (representativeId && politicalEnabled)
@@ -403,7 +436,9 @@ async function _searchWorkers(params: InternalSearchParams): Promise<InternalSea
     orderByClause = sql`ORDER BY c.given ${orderDirection}, c.family ${orderDirection}`;
   } else if (sortBy === 'employer') {
     orderByClause = sql`ORDER BY (
-      SELECT MIN(e.name) FROM employers e WHERE e.id = ANY(w.denorm_employer_ids)
+      SELECT MIN(e.name) FROM employers e
+      JOIN worker_employment_denorm wed ON e.id = wed.employer_id
+      WHERE wed.worker_id = w.id
     ) ${orderDirection} NULLS LAST, c.family ${orderDirection}, c.given ${orderDirection}`;
   } else {
     orderByClause = sql`ORDER BY c.family ${orderDirection}, c.given ${orderDirection}`;
@@ -477,11 +512,11 @@ async function _searchWorkers(params: InternalSearchParams): Promise<InternalSea
       w.sirius_id,
       w.contact_id,
       w.ssn,
-      w.denorm_ws_id,
-      w.denorm_job_title,
-      w.denorm_home_employer_id,
-      w.denorm_employer_ids,
-      w.denorm_ms_ids,
+      wwd.ws_id AS denorm_ws_id,
+      (SELECT wed.job_title FROM worker_employment_denorm wed WHERE wed.worker_id = w.id AND wed.home = true LIMIT 1) AS denorm_job_title,
+      (SELECT wed.employer_id FROM worker_employment_denorm wed WHERE wed.worker_id = w.id AND wed.home = true LIMIT 1) AS denorm_home_employer_id,
+      (SELECT array_agg(wed.employer_id) FROM worker_employment_denorm wed WHERE wed.worker_id = w.id) AS denorm_employer_ids,
+      (SELECT array_agg(wmd.ms_id) FROM worker_msh_denorm wmd WHERE wmd.worker_id = w.id) AS denorm_ms_ids,
       w.bargaining_unit_id,
       c.display_name as contact_name,
       c.email as contact_email,
@@ -503,7 +538,8 @@ async function _searchWorkers(params: InternalSearchParams): Promise<InternalSea
       ${benefitColumns}
     FROM workers w
     INNER JOIN contacts c ON w.contact_id = c.id
-    LEFT JOIN options_worker_ws ws ON w.denorm_ws_id = ws.id
+    LEFT JOIN worker_wsh_denorm wwd ON wwd.worker_id = w.id
+    LEFT JOIN options_worker_ws ws ON ws.id = wwd.ws_id
     ${bargainingUnitJoin}
     LEFT JOIN LATERAL (
       SELECT phone_number, is_primary
@@ -530,17 +566,46 @@ async function _searchWorkers(params: InternalSearchParams): Promise<InternalSea
   };
 }
 
+// Strip the internal `data` jsonb blob from a worker row before it leaves the
+// storage layer. `data` (beneficiary PII, etc.) must never ride along on generic
+// worker responses; it is only exposed via the dedicated getData/baoBeneficiaries
+// paths. Applied to every method that returns a worker row to callers.
+function stripWorkerData<T extends { data?: unknown }>(row: T): Omit<T, "data"> {
+  const { data: _data, ...rest } = row;
+  return rest;
+}
+
 export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerStorage {
-  let denormDataProvider: ((workerId: string) => Promise<WorkerDenormData>) | null = null;
-
   const storage = {
-    setDenormDataProvider(provider: (workerId: string) => Promise<WorkerDenormData>): void {
-      denormDataProvider = provider;
-    },
-
     async getAllWorkers(): Promise<Worker[]> {
       const client = getClient();
-      return await client.select().from(workers);
+      const rows = await client.select().from(workers);
+      return rows.map(stripWorkerData);
+    },
+
+    async findIdsMissingDenorm(configId: string, limit: number): Promise<string[]> {
+      const client = getClient();
+      const rows = await client
+        .select({ id: workers.id })
+        .from(workers)
+        .leftJoin(
+          denorm,
+          and(eq(denorm.entityId, workers.id), eq(denorm.configId, configId)),
+        )
+        .where(isNull(denorm.id))
+        .limit(limit);
+      return rows.map((r) => r.id);
+    },
+
+    async findDenormWidowIds(configId: string, limit: number): Promise<string[]> {
+      const client = getClient();
+      const rows = await client
+        .select({ entityId: denorm.entityId })
+        .from(denorm)
+        .leftJoin(workers, eq(workers.id, denorm.entityId))
+        .where(and(eq(denorm.configId, configId), isNull(workers.id)))
+        .limit(limit);
+      return rows.map((r) => r.entityId);
     },
 
     async searchWorkers(query: string, limit: number = 10): Promise<WorkerSearchResult> {
@@ -663,6 +728,53 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       return ordered;
     },
 
+    async getContactExportDataByIds(workerIdsList: string[]): Promise<WorkerContactExportRow[]> {
+      if (workerIdsList.length === 0) return [];
+      const client = getClient();
+      const result = await client.execute(sql`
+        SELECT
+          w.id,
+          c.given,
+          c.family,
+          c.email,
+          (SELECT array_agg(wmd.ms_id) FROM worker_msh_denorm wmd WHERE wmd.worker_id = w.id) AS denorm_ms_ids,
+          (SELECT array_agg(wed.employer_id) FROM worker_employment_denorm wed WHERE wed.worker_id = w.id) AS denorm_employer_ids,
+          (SELECT cp2.phone_number FROM contact_phone cp2 WHERE cp2.contact_id = c.id AND cp2.is_active = true ORDER BY cp2.is_primary DESC NULLS LAST LIMIT 1) as phone_number,
+          (SELECT cpo.street FROM contact_postal cpo WHERE cpo.contact_id = c.id AND cpo.is_active = true ORDER BY cpo.is_primary DESC NULLS LAST LIMIT 1) as address_street,
+          (SELECT cpo.city FROM contact_postal cpo WHERE cpo.contact_id = c.id AND cpo.is_active = true ORDER BY cpo.is_primary DESC NULLS LAST LIMIT 1) as address_city,
+          (SELECT cpo.state FROM contact_postal cpo WHERE cpo.contact_id = c.id AND cpo.is_active = true ORDER BY cpo.is_primary DESC NULLS LAST LIMIT 1) as address_state,
+          (SELECT cpo.postal_code FROM contact_postal cpo WHERE cpo.contact_id = c.id AND cpo.is_active = true ORDER BY cpo.is_primary DESC NULLS LAST LIMIT 1) as address_postal_code
+        FROM workers w
+        INNER JOIN contacts c ON w.contact_id = c.id
+        WHERE w.id = ANY(${workerIdsList})
+      `);
+      return (result.rows as Array<{
+        id: string;
+        given: string | null;
+        family: string | null;
+        email: string | null;
+        denorm_ms_ids: string[] | null;
+        denorm_employer_ids: string[] | null;
+        phone_number: string | null;
+        address_street: string | null;
+        address_city: string | null;
+        address_state: string | null;
+        address_postal_code: string | null;
+      }>).map(row => ({
+        id: row.id,
+        given: row.given,
+        family: row.family,
+        email: row.email,
+        denorm_ms_ids: row.denorm_ms_ids,
+        denorm_employer_ids: row.denorm_employer_ids,
+        phone_number: row.phone_number,
+        address_street: row.address_street,
+        address_city: row.address_city,
+        address_state: row.address_state,
+        address_postal_code: row.address_postal_code,
+      }));
+    },
+
     async getWorkersEmployersSummary(): Promise<WorkerEmployerSummary[]> {
       const client = getClient();
       const result = await client.execute(sql`
@@ -754,10 +866,63 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
     async getWorker(id: string): Promise<Worker | undefined> {
       const client = getClient();
       const [worker] = await client.select().from(workers).where(eq(workers.id, id));
-      return worker || undefined;
+      if (!worker) return undefined;
+      const msRows = await client
+        .select({ msId: workerMshDenorm.msId })
+        .from(workerMshDenorm)
+        .where(eq(workerMshDenorm.workerId, id));
+      const [wsRow] = await client
+        .select({ wsId: workerWshDenorm.wsId })
+        .from(workerWshDenorm)
+        .where(eq(workerWshDenorm.workerId, id));
+      const empRows = await client
+        .select({
+          employerId: workerEmploymentDenorm.employerId,
+          home: workerEmploymentDenorm.home,
+          jobTitle: workerEmploymentDenorm.jobTitle,
+        })
+        .from(workerEmploymentDenorm)
+        .where(eq(workerEmploymentDenorm.workerId, id));
+      const homeRow = empRows.find((r) => r.home);
+      return {
+        ...stripWorkerData(worker),
+        denormMsIds: msRows.length > 0 ? msRows.map((r) => r.msId) : null,
+        denormWsId: wsRow?.wsId ?? null,
+        denormHomeEmployerId: homeRow?.employerId ?? null,
+        denormEmployerIds: empRows.length > 0 ? empRows.map((r) => r.employerId) : null,
+        denormJobTitle: homeRow?.jobTitle ?? null,
+      };
     },
 
-    async getWorkerDisplayName(id: string): Promise<string | undefined> {
+    async getData(id: string): Promise<Record<string, unknown>> {
+      const client = getClient();
+      const [row] = await client
+        .select({ data: workers.data })
+        .from(workers)
+        .where(eq(workers.id, id));
+      if (!row) {
+        throw new Error("WORKER_NOT_FOUND");
+      }
+      const data = row.data;
+      return data && typeof data === "object" && !Array.isArray(data)
+        ? (data as Record<string, unknown>)
+        : {};
+    },
+
+    async setData(id: string, data: Record<string, unknown>): Promise<void> {
+      const client = getClient();
+      const result = await client
+        .update(workers)
+        .set({ data })
+        .where(eq(workers.id, id))
+        .returning({ id: workers.id });
+      if (result.length === 0) {
+        throw new Error("WORKER_NOT_FOUND");
+      }
+    },
+
+    async getWorkerDisplayName(id: string | undefined | null): Promise<string> {
+      if (!id) return '';
       const client = getClient();
       const [row] = await client
         .select({
@@ -768,9 +933,9 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         .from(workers)
         .leftJoin(contacts, eq(workers.contactId, contacts.id))
         .where(eq(workers.id, id));
-      if (!row) return undefined;
+      if (!row) return id;
       const composed = [row.given, row.family].filter(Boolean).join(' ').trim();
-      return composed || row.displayName || undefined;
+      return composed || row.displayName || id;
     },
 
     async getWorkerBySSN(ssn: string): Promise<Worker | undefined> {
@@ -792,7 +957,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         .from(workers)
         .where(sql`regexp_replace(${workers.ssn}, '[^0-9]', '', 'g') = ${normalizedSSN}`);
       
-      return worker || undefined;
+      return worker ? stripWorkerData(worker) : undefined;
     },
 
     async getWorkerByContactEmail(email: string): Promise<Worker | undefined> {
@@ -803,18 +968,33 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
           siriusId: workers.siriusId,
           contactId: workers.contactId,
           ssn: workers.ssn,
-          denormWsId: workers.denormWsId,
-          denormMsIds: workers.denormMsIds,
-          denormJobTitle: workers.denormJobTitle,
-          denormHomeEmployerId: workers.denormHomeEmployerId,
-          denormEmployerIds: workers.denormEmployerIds,
           bargainingUnitId: workers.bargainingUnitId,
         })
         .from(workers)
         .innerJoin(contacts, eq(workers.contactId, contacts.id))
         .where(sql`LOWER(${contacts.email}) = LOWER(${email})`);
-      
-      return result || undefined;
+
+      if (!result) return undefined;
+      const [wsRow] = await client
+        .select({ wsId: workerWshDenorm.wsId })
+        .from(workerWshDenorm)
+        .where(eq(workerWshDenorm.workerId, result.id));
+      const empRows = await client
+        .select({
+          employerId: workerEmploymentDenorm.employerId,
+          home: workerEmploymentDenorm.home,
+          jobTitle: workerEmploymentDenorm.jobTitle,
+        })
+        .from(workerEmploymentDenorm)
+        .where(eq(workerEmploymentDenorm.workerId, result.id));
+      const homeRow = empRows.find((r) => r.home);
+      return {
+        ...result,
+        denormWsId: wsRow?.wsId ?? null,
+        denormHomeEmployerId: homeRow?.employerId ?? null,
+        denormEmployerIds: empRows.length > 0 ? empRows.map((r) => r.employerId) : null,
+        denormJobTitle: homeRow?.jobTitle ?? null,
+      };
     },
 
     async getWorkerByContactId(contactId: string): Promise<Worker | undefined> {
@@ -823,7 +1003,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         .select()
         .from(workers)
         .where(eq(workers.contactId, contactId));
-      return worker || undefined;
+      return worker ? stripWorkerData(worker) : undefined;
     },
 
     async getWorkersByHomeEmployerId(employerId: string): Promise<Array<{
@@ -846,7 +1026,14 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         })
         .from(workers)
         .innerJoin(contacts, eq(workers.contactId, contacts.id))
-        .where(eq(workers.denormHomeEmployerId, employerId))
+        .innerJoin(
+          workerEmploymentDenorm,
+          and(
+            eq(workerEmploymentDenorm.workerId, workers.id),
+            eq(workerEmploymentDenorm.home, true),
+          ),
+        )
+        .where(eq(workerEmploymentDenorm.employerId, employerId))
         .orderBy(contacts.family, contacts.given);
       return result;
     },
@@ -871,7 +1058,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         .values({ contactId: contact.id })
         .returning();
       
-      return worker;
+      return stripWorkerData(worker);
     },
 
     async updateWorkerContactName(workerId: string, name: string): Promise<Worker | undefined> {
@@ -885,7 +1072,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       // Update the contact's name using contact storage
       await contactsStorage.updateName(currentWorker.contactId, name);
       
-      return currentWorker;
+      return stripWorkerData(currentWorker);
     },
 
     async updateWorkerContactNameComponents(
@@ -909,7 +1096,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       // Update the contact's name components using contact storage
       await contactsStorage.updateNameComponents(currentWorker.contactId, components);
       
-      return currentWorker;
+      return stripWorkerData(currentWorker);
     },
 
     async updateWorkerContactEmail(workerId: string, email: string): Promise<Worker | undefined> {
@@ -923,7 +1110,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       // Update the contact's email using contact storage
       await contactsStorage.updateEmail(currentWorker.contactId, email);
       
-      return currentWorker;
+      return stripWorkerData(currentWorker);
     },
 
     async updateWorkerContactBirthDate(workerId: string, birthDate: string | null): Promise<Worker | undefined> {
@@ -937,7 +1124,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       // Update the contact's birth date using contact storage
       await contactsStorage.updateBirthDate(currentWorker.contactId, birthDate);
       
-      return currentWorker;
+      return stripWorkerData(currentWorker);
     },
 
     async updateWorkerContactGender(workerId: string, gender: string | null, genderNota: string | null): Promise<Worker | undefined> {
@@ -951,7 +1138,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       // Update the contact's gender using contact storage
       await contactsStorage.updateGender(currentWorker.contactId, gender, genderNota);
       
-      return currentWorker;
+      return stripWorkerData(currentWorker);
     },
 
     async updateWorkerSSN(workerId: string, ssn: string): Promise<Worker | undefined> {
@@ -964,48 +1151,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         .where(eq(workers.id, workerId))
         .returning();
       
-      return updatedWorker || undefined;
-    },
-
-    async updateWorkerStatus(workerId: string, denormWsId: string | null): Promise<Worker | undefined> {
-      const client = getClient();
-      const [updatedWorker] = await client
-        .update(workers)
-        .set({ denormWsId })
-        .where(eq(workers.id, workerId))
-        .returning();
-      
-      return updatedWorker || undefined;
-    },
-
-    async updateWorkerMemberStatuses(workerId: string, denormMsIds: string[] | null): Promise<Worker | undefined> {
-      const client = getClient();
-      const [updatedWorker] = await client
-        .update(workers)
-        .set({ denormMsIds })
-        .where(eq(workers.id, workerId))
-        .returning();
-      
-      return updatedWorker || undefined;
-    },
-
-    async syncWorkerEmployerDenorm(workerId: string): Promise<void> {
-      if (!denormDataProvider) {
-        throw new Error("Denorm data provider not set. Call setDenormDataProvider first.");
-      }
-      
-      const denormData = await denormDataProvider(workerId);
-      
-      const client = getClient();
-      await client
-        .update(workers)
-        .set({
-          denormHomeEmployerId: denormData.homeEmployerId,
-          denormEmployerIds: denormData.employerIds,
-          denormWsId: denormData.latestWsId,
-          denormJobTitle: denormData.jobTitle,
-        })
-        .where(eq(workers.id, workerId));
+      return updatedWorker ? stripWorkerData(updatedWorker) : undefined;
     },
 
     async updateWorkerBargainingUnit(workerId: string, bargainingUnitId: string | null): Promise<Worker | undefined> {
@@ -1019,7 +1165,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         .where(eq(workers.id, workerId))
         .returning();
       
-      return updatedWorker || undefined;
+      return updatedWorker ? stripWorkerData(updatedWorker) : undefined;
     },
 
     async deleteWorker(id: string): Promise<boolean> {
@@ -1041,122 +1187,6 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       return result.length > 0;
     },
 
-    // Worker benefits methods
-    async getWorkerBenefits(workerId: string): Promise<any[]> {
-      const client = getClient();
-      const results = await client
-        .select({
-          id: trustWmb.id,
-          month: trustWmb.month,
-          year: trustWmb.year,
-          workerId: trustWmb.workerId,
-          employerId: trustWmb.employerId,
-          benefitId: trustWmb.benefitId,
-          benefit: trustBenefits,
-          employer: employers,
-        })
-        .from(trustWmb)
-        .leftJoin(trustBenefits, eq(trustWmb.benefitId, trustBenefits.id))
-        .leftJoin(employers, eq(trustWmb.employerId, employers.id))
-        .where(eq(trustWmb.workerId, workerId))
-        .orderBy(desc(trustWmb.year), desc(trustWmb.month));
-
-      return results;
-    },
-
-    async createWorkerBenefit(data: { workerId: string; month: number; year: number; employerId: string; benefitId: string }): Promise<TrustWmb> {
-      const client = getClient();
-      const [wmb] = await client
-        .insert(trustWmb)
-        .values(data)
-        .returning();
-
-      if (wmb) {
-        const payload = {
-          wmbId: wmb.id,
-          workerId: wmb.workerId,
-          employerId: wmb.employerId,
-          benefitId: wmb.benefitId,
-          year: wmb.year,
-          month: wmb.month,
-        };
-
-        // Emit event for any listeners (future notification plugins, etc.)
-        eventBus.emit(EventType.WMB_SAVED, payload).catch(err => {
-          logger.error("Failed to emit WMB_SAVED event", {
-            service: "worker-storage",
-            wmbId: wmb.id,
-            error: err instanceof Error ? err.message : String(err),
-          });
-        });
-
-        // Execute charge plugins directly (for backwards compatibility)
-        try {
-          const { executeChargePlugins, TriggerType } = await import("../plugins/ledger/charge");
-          await executeChargePlugins({
-            trigger: TriggerType.WMB_SAVED,
-            ...payload,
-          });
-        } catch (error) {
-          logger.error("Failed to execute charge plugins for WMB create", {
-            service: "worker-storage",
-            wmbId: wmb.id,
-            error: error instanceof Error ? error.message : String(error),
-          });
-        }
-      }
-
-      return wmb;
-    },
-
-    async deleteWorkerBenefit(id: string): Promise<boolean> {
-      const client = getClient();
-      const result = await client
-        .delete(trustWmb)
-        .where(eq(trustWmb.id, id))
-        .returning();
-      
-      const deleted = result[0];
-      
-      if (deleted) {
-        const payload = {
-          wmbId: deleted.id,
-          workerId: deleted.workerId,
-          employerId: deleted.employerId,
-          benefitId: deleted.benefitId,
-          year: deleted.year,
-          month: deleted.month,
-          isDeleted: true,
-        };
-
-        // Emit event for any listeners (future notification plugins, etc.)
-        eventBus.emit(EventType.WMB_SAVED, payload).catch(err => {
-          logger.error("Failed to emit WMB_SAVED event", {
-            service: "worker-storage",
-            wmbId: deleted.id,
-            error: err instanceof Error ? err.message : String(err),
-          });
-        });
-
-        // Execute charge plugins directly (for backwards compatibility)
-        try {
-          const { executeChargePlugins, TriggerType } = await import("../plugins/ledger/charge");
-          await executeChargePlugins({
-            trigger: TriggerType.WMB_SAVED,
-            ...payload,
-          });
-        } catch (error) {
-          logger.error("Failed to execute charge plugins for WMB delete", {
-            service: "worker-storage",
-            wmbId: deleted.id,
-            error: error instanceof Error ? error.message : String(error),
-          });
-        }
-      }
-      
-      return result.length > 0;
-    },
-
     async getMemberStatusCodesByIndustry(industryId: string, workerIdsList: string[]): Promise<Array<{ workerId: string; code: string }>> {
       if (workerIdsList.length === 0) return [];
       const client = getClient();
@@ -1165,8 +1195,9 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         FROM workers w
         CROSS JOIN LATERAL (
           SELECT ms.code
-          FROM UNNEST(w.denorm_ms_ids) AS ms_id
-          INNER JOIN options_worker_ms ms ON ms.id = ms_id AND ms.industry_id = ${industryId}
+          FROM worker_msh_denorm wmd
+          INNER JOIN options_worker_ms ms ON ms.id = wmd.ms_id AND ms.industry_id = ${industryId}
+          WHERE wmd.worker_id = w.id
           LIMIT 1
         ) ms
         WHERE w.id IN (${sql.join(workerIdsList.map((id) => sql`${id}`), sql`, `)})
@@ -1175,23 +1206,6 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       return rows
         .filter((r): r is { workerId: string; code: string } => r.code !== null)
         .map((r) => ({ workerId: r.workerId, code: r.code }));
-    },
-
-    async workerBenefitExists(workerId: string, benefitId: string, month: number, year: number): Promise<boolean> {
-      const client = getClient();
-      const result = await client
-        .select({ id: trustWmb.id })
-        .from(trustWmb)
-        .where(
-          and(
-            eq(trustWmb.workerId, workerId),
-            eq(trustWmb.benefitId, benefitId),
-            eq(trustWmb.month, month),
-            eq(trustWmb.year, year)
-          )
-        )
-        .limit(1);
-      return result.length > 0;
     },
   };
 
@@ -1264,62 +1278,11 @@ export const workerLoggingConfig: StorageLoggingConfig<WorkerStorage> = {
         };
       }
     },
-    updateWorkerStatus: {
+    setData: {
       enabled: true,
       getEntityId: (args) => args[0],
       getHostEntityId: (args) => args[0],
-      getDescription: async (args, result, beforeState, afterState) => {
-        const oldStatus = beforeState?.workStatus?.name || 'None';
-        const newStatus = afterState?.workStatus?.name || 'None';
-        return `Updated Current Work Status [${oldStatus} → ${newStatus}]`;
-      },
-      before: async (args, storage) => {
-        const worker = await storage.getWorker(args[0]);
-        if (!worker || !worker.denormWsId) {
-          return null;
-        }
-        
-        const client = getClient();
-        const [workStatus] = await client.select().from(optionsWorkerWs).where(eq(optionsWorkerWs.id, worker.denormWsId));
-        return {
-          worker: worker,
-          workStatus: workStatus,
-          metadata: {
-            workerId: worker.id,
-            currentWsId: worker.denormWsId,
-            currentWorkStatusName: workStatus?.name || 'None'
-          }
-        };
-      },
-      after: async (args, result, storage) => {
-        if (!result) return null;
-        
-        if (!result.denormWsId) {
-          return {
-            worker: result,
-            workStatus: null,
-            metadata: {
-              workerId: result.id,
-              newWsId: null,
-              newWorkStatusName: 'None',
-              note: 'Worker work status cleared (synchronized from work status history)'
-            }
-          };
-        }
-        
-        const client = getClient();
-        const [workStatus] = await client.select().from(optionsWorkerWs).where(eq(optionsWorkerWs.id, result.denormWsId));
-        return {
-          worker: result,
-          workStatus: workStatus,
-          metadata: {
-            workerId: result.id,
-            newWsId: result.denormWsId,
-            newWorkStatusName: workStatus?.name || 'Unknown',
-            note: 'Worker work status updated (synchronized from work status history)'
-          }
-        };
-      }
+      getDescription: () => 'Updated worker data',
     }
   }
 };

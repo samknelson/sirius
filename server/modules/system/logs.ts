@@ -92,6 +92,12 @@ export function registerLogRoutes(
       return requireAccess('employer.manage', () => employer.id)(req, res, next);
     }
 
+    const grievance = await safeGet(() => storage.grievances.get(hostEntityId));
+    if (grievance) {
+      (req as any).logHostIds = [grievance.id];
+      return requireAccess('staff')(req, res, next);
+    }
+
     // Unknown entity type - fall back to staff and use the id as-is.
     (req as any).logHostIds = [hostEntityId];
     return requireAccess('staff')(req, res, next);

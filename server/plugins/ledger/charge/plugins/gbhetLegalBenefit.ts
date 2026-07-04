@@ -9,6 +9,8 @@ import {
   LedgerEntryVerification,
 } from "../types";
 import { registerChargePlugin } from "../registry";
+import type { ChargePluginMetadata } from "../types";
+import { rateHistoryField } from "../config-schema-helpers";
 import { z } from "zod";
 import { logger } from "../../../../logger";
 import { getCurrentEffectiveRate } from "../../../../utils/rateHistory";
@@ -21,7 +23,6 @@ const rateHistoryEntrySchema = z.object({
 });
 
 const gbhetLegalBenefitSettingsSchema = z.object({
-  accountId: z.string().uuid("Account ID must be a valid UUID"),
   benefitId: z.string().uuid("Benefit ID must be a valid UUID"),
   rateHistory: z.array(rateHistoryEntrySchema).min(1, "At least one rate entry is required"),
   billingOffsetMonths: z.number().int().default(-3),
@@ -41,13 +42,32 @@ interface ExpectedEntry {
 }
 
 class GbhetLegalBenefitPlugin extends ChargePlugin {
-  readonly metadata = {
+  readonly metadata: ChargePluginMetadata = {
     id: "gbhet-legal-benefit",
     name: "GBHET Legal Benefit",
     description: "Charges a monthly rate for GBHET Legal benefits when a worker has the configured benefit in a given month.",
     triggers: [TriggerType.WMB_SAVED],
     defaultScope: "global" as const,
-    settingsSchema: gbhetLegalBenefitSettingsSchema,
+    configSchema: {
+      type: "object",
+      required: ["benefitId", "rateHistory"],
+      properties: {
+        benefitId: {
+          type: "string",
+          title: "Trust Benefit",
+          format: "uuid",
+          "x-options-resource": "trust-benefit",
+        },
+        billingOffsetMonths: {
+          type: "integer",
+          title: "Billing Offset Months",
+          description:
+            "Number of months to offset the billing date from the benefit month (e.g. -3 bills three months earlier).",
+          default: -3,
+        },
+        rateHistory: rateHistoryField(),
+      },
+    },
     requiredComponent: "sitespecific.gbhet.legal",
   };
 
@@ -56,6 +76,10 @@ class GbhetLegalBenefitPlugin extends ChargePlugin {
     config: any,
     settings: GbhetLegalBenefitSettings
   ): Promise<ExpectedEntry | null> {
+    if (!config.account) {
+      return null;
+    }
+
     if (wmbContext.benefitId !== settings.benefitId) {
       return null;
     }
@@ -82,7 +106,7 @@ class GbhetLegalBenefitPlugin extends ChargePlugin {
     const ea = await storage.ledger.ea.getOrCreate(
       "employer",
       wmbContext.employerId,
-      settings.accountId
+      config.account
     );
 
     const chargePluginKey = `${config.id}:${ea.id}:${wmbContext.workerId}:${wmbContext.year}:${wmbContext.month}`;
@@ -158,6 +182,15 @@ class GbhetLegalBenefitPlugin extends ChargePlugin {
 
       const settings = config.settings as GbhetLegalBenefitSettings;
 
+      // No account configured => plugin is inert (produces no new entries).
+      if (!config.account) {
+        return {
+          success: true,
+          transactions: [],
+          message: "No ledger account configured for this charge plugin",
+        };
+      }
+
       if (wmbContext.benefitId !== settings.benefitId) {
         logger.debug("WMB benefit does not match configured benefit, skipping", {
           service: "charge-plugin-gbhet-legal-benefit",
@@ -175,7 +208,7 @@ class GbhetLegalBenefitPlugin extends ChargePlugin {
       const ea = await storage.ledger.ea.getOrCreate(
         "employer",
         wmbContext.employerId,
-        settings.accountId
+        config.account
       );
 
       const chargePluginKey = `${config.id}:${ea.id}:${wmbContext.workerId}:${wmbContext.year}:${wmbContext.month}`;
@@ -234,7 +267,7 @@ class GbhetLegalBenefitPlugin extends ChargePlugin {
           chargePlugin: this.metadata.id,
           chargePluginKey: expectedEntry.chargePluginKey,
           chargePluginConfigId: config.id,
-          accountId: settings.accountId,
+          accountId: config.account,
           entityType: "employer",
           entityId: wmbContext.employerId,
           amount: expectedEntry.amount,

@@ -1,3 +1,4 @@
+import { pluginManifestQueryKey } from "@/plugins/_core";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -41,7 +42,7 @@ export function LedgerIntegrityInputsStep({
   const [dateTo, setDateTo] = useState(config.dateTo || "");
 
   const { data: plugins = [], isLoading: pluginsLoading } = useQuery<ChargePluginMetadata[]>({
-    queryKey: ["/api/charge-plugins"],
+    queryKey: pluginManifestQueryKey("charge"),
   });
 
   const saveConfigMutation = useMutation({

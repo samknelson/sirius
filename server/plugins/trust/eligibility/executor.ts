@@ -5,10 +5,37 @@ import type {
   EligibilityRule,
   ScanType,
 } from "./types";
-import type { Worker, Contact } from "@shared/schema";
+import type { Worker, Contact, Employer, PluginConfig } from "@shared/schema";
 import { storage } from "../../../storage/database";
 import { logger } from "../../../logger";
 import { getEnabledComponentIds } from "../../../modules/components";
+
+/**
+ * Reconstruct the in-memory `EligibilityRule` shape the executor evaluates
+ * from a unified `plugin_configs` base row (plugin_kind = 'trust-eligibility').
+ *
+ * The base row's `data` jsonb IS the rule config, with the authoritative
+ * `appliesTo` scan-type list mirrored inside it. The `pluginId` column is the
+ * plugin key. Callers fetch ordered rows via
+ * `storage.pluginConfigs.search("trust-eligibility", …)` (already sorted by
+ * `ordering, id`, preserving the exact per-benefit evaluation order) and map
+ * each `.config` through this helper. `enabled` is intentionally NOT consulted:
+ * every configured rule participates in evaluation, exactly as the legacy blob
+ * behaved.
+ */
+export function pluginConfigToEligibilityRule(
+  config: PluginConfig,
+): EligibilityRule {
+  const data = (config.data ?? {}) as Record<string, unknown>;
+  const appliesTo = Array.isArray(data.appliesTo)
+    ? (data.appliesTo as ScanType[])
+    : [];
+  return {
+    pluginKey: config.pluginId,
+    appliesTo,
+    config: data,
+  };
+}
 
 /**
  * Thrown when an eligibility evaluation is requested with a
@@ -41,6 +68,14 @@ export interface EligibilityEvaluationInput {
   relationship?: {
     dependentWorkerId: string;
   };
+  /**
+   * Optionally evaluate as if the subscriber's employer is this one
+   * ("evaluate as if the subscriber's employer is X"). When omitted, the
+   * executor resolves the employer from the subscriber's active trust
+   * election as of the evaluation date. When neither yields an employer,
+   * the context employer is simply absent.
+   */
+  employerId?: string;
 }
 
 export interface BenefitEligibilityResult {
@@ -74,6 +109,83 @@ function asOfDate(asOfYear: number, asOfMonth: number): Date {
   // plugins (e.g. workStatus) for "as of this scan window".
   const d = new Date(asOfYear, asOfMonth, 0);
   return d;
+}
+
+function asOfYmd(asOfYear: number, asOfMonth: number): string {
+  const d = asOfDate(asOfYear, asOfMonth);
+  const yr = d.getFullYear();
+  const mo = String(d.getMonth() + 1).padStart(2, "0");
+  const dy = String(d.getDate()).padStart(2, "0");
+  return `${yr}-${mo}-${dy}`;
+}
+
+/**
+ * Resolve the subscriber's employer for an evaluation. Prefers an
+ * externally-supplied employer id; otherwise looks it up from the
+ * subscriber's trust election active as of the evaluation date. Returns
+ * undefined when neither yields an employer (or the id no longer exists).
+ * Tolerant of a missing election/employer — this runs on every
+ * evaluation (test page and monthly scan), so it must never throw.
+ */
+async function resolveEmployer(
+  input: EligibilityEvaluationInput,
+  asOfMonth: number,
+  asOfYear: number,
+): Promise<Employer | undefined> {
+  if (input.employerId) {
+    const supplied = await storage.employers.getEmployer(input.employerId);
+    return supplied ?? undefined;
+  }
+  const election = await storage.workerTrustElections.getActiveByWorkerAsOf(
+    input.workerId,
+    asOfYmd(asOfYear, asOfMonth),
+  );
+  if (!election?.employerId) return undefined;
+  const fromElection = await storage.employers.getEmployer(election.employerId);
+  return fromElection ?? undefined;
+}
+
+const ELIGIBILITY_EXEMPTIONS_COMPONENT_ID = "trust.benefits.eligibility.exemptions";
+
+/**
+ * When the eligibility-exemptions component is enabled, resolves the set of
+ * eligibility plugin keys the SUBSCRIBER worker is exempted from for this
+ * benefit on the as-of date. Maps each exempted plugin key to the exemption's
+ * description (or null) so callers can surface a reason. Returns an empty map
+ * when the component is disabled, no benefit is in scope, or nothing matches.
+ */
+async function loadExemptedPlugins(
+  workerId: string,
+  benefitId: string | undefined,
+  enabledComponents: string[],
+  asOfYear: number,
+  asOfMonth: number,
+): Promise<Map<string, string | null>> {
+  const map = new Map<string, string | null>();
+  if (!benefitId) return map;
+  if (!enabledComponents.includes(ELIGIBILITY_EXEMPTIONS_COMPONENT_ID)) return map;
+
+  const exemptions =
+    await storage.trustBenefitEligibilityExemptions.listActiveForWorkerAndBenefit(
+      workerId,
+      benefitId,
+      asOfDate(asOfYear, asOfMonth),
+    );
+
+  for (const exemption of exemptions) {
+    for (const pluginKey of exemption.eligibilityPlugins ?? []) {
+      if (!map.has(pluginKey)) {
+        map.set(pluginKey, exemption.description ?? null);
+      }
+    }
+  }
+  return map;
+}
+
+function exemptionReason(description: string | null | undefined): string {
+  return description
+    ? `Exempted: ${description}`
+    : "Exempted by an eligibility exemption";
 }
 
 /**
@@ -125,9 +237,11 @@ async function buildContextParts(
   dependentWorker: Worker;
   dependentContact: Contact | null;
   relationship?: EligibilityContext["relationship"];
+  employer?: Employer;
 }> {
   const subscriberWorker = await loadWorker(input.workerId, input.worker);
   const subscriberContact = await loadContactFor(subscriberWorker);
+  const employer = await resolveEmployer(input, asOfMonth, asOfYear);
 
   if (!input.relationship) {
     return {
@@ -135,6 +249,7 @@ async function buildContextParts(
       subscriberContact,
       dependentWorker: subscriberWorker,
       dependentContact: subscriberContact,
+      employer,
     };
   }
 
@@ -169,6 +284,7 @@ async function buildContextParts(
       dependentWorkerId,
       relationType: row.relationType,
     },
+    employer,
   };
 }
 
@@ -185,9 +301,24 @@ export async function evaluateEligibilityRules(
   const results: EligibilityResult[] = [];
 
   const enabledComponents = await getEnabledComponentIds();
+  const exemptedPlugins = await loadExemptedPlugins(
+    input.workerId,
+    input.benefitId,
+    enabledComponents,
+    asOfYear,
+    asOfMonth,
+  );
 
   for (const rule of rules) {
     if (!rule.appliesTo.includes(input.scanType)) {
+      continue;
+    }
+
+    if (exemptedPlugins.has(rule.pluginKey)) {
+      results.push({
+        eligible: true,
+        reason: exemptionReason(exemptedPlugins.get(rule.pluginKey)),
+      });
       continue;
     }
 
@@ -205,7 +336,7 @@ export async function evaluateEligibilityRules(
 
     const isPluginEnabled = eligibilityPluginRegistry.isPluginEnabled(rule.pluginKey, enabledComponents);
     if (!isPluginEnabled) {
-      const componentId = plugin.metadata.requiresComponent || 'unknown';
+      const componentId = plugin.metadata.requiredComponent || 'unknown';
       logger.warn(`Eligibility plugin disabled: ${rule.pluginKey} (requires component: ${componentId})`, {
         service: 'eligibility-executor',
       });
@@ -264,9 +395,25 @@ export async function evaluateBenefitEligibility(
   let overallEligible = true;
 
   const enabledComponents = await getEnabledComponentIds();
+  const exemptedPlugins = await loadExemptedPlugins(
+    input.workerId,
+    benefitId,
+    enabledComponents,
+    asOfYear,
+    asOfMonth,
+  );
 
   for (const rule of rules) {
     if (!rule.appliesTo.includes(input.scanType)) {
+      continue;
+    }
+
+    if (exemptedPlugins.has(rule.pluginKey)) {
+      pluginResults.push({
+        pluginKey: rule.pluginKey,
+        eligible: true,
+        reason: exemptionReason(exemptedPlugins.get(rule.pluginKey)),
+      });
       continue;
     }
 
@@ -283,7 +430,7 @@ export async function evaluateBenefitEligibility(
 
     const isPluginEnabled = eligibilityPluginRegistry.isPluginEnabled(rule.pluginKey, enabledComponents);
     if (!isPluginEnabled) {
-      const componentId = plugin.metadata.requiresComponent || 'unknown';
+      const componentId = plugin.metadata.requiredComponent || 'unknown';
       logger.warn(`Eligibility plugin disabled: ${rule.pluginKey} (requires component: ${componentId})`, {
         service: 'eligibility-executor',
       });

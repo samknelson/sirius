@@ -132,7 +132,10 @@ export function createBtuWorkerImportStorage(): BtuWorkerImportStorage {
       const bpsIdType = await this.ensureBpsEmployeeIdType();
       
       const [result] = await db
-        .select({ worker: workers })
+        .select({
+          worker: workers,
+          denormEmployerIds: sql<string[] | null>`(SELECT array_agg(wed.employer_id) FROM worker_employment_denorm wed WHERE wed.worker_id = ${workers.id})`,
+        })
         .from(workerIds)
         .innerJoin(workers, eq(workerIds.workerId, workers.id))
         .where(
@@ -142,7 +145,8 @@ export function createBtuWorkerImportStorage(): BtuWorkerImportStorage {
           )
         );
       
-      return result?.worker;
+      if (!result) return undefined;
+      return { ...result.worker, denormEmployerIds: result.denormEmployerIds };
     },
 
     async findEmployerMapping(deptId: string, locationId: string, jobCode: string): Promise<EmployerMappingResult | null> {

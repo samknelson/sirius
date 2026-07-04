@@ -2,14 +2,12 @@ import { createNoopValidator } from '../utils/validation';
 import { getClient } from '../transaction-context';
 import { 
   workerDispatchDnc,
-  workers,
-  contacts,
   employers,
   type WorkerDispatchDnc, 
   type InsertWorkerDispatchDnc
 } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
-import { type StorageLoggingConfig } from "../middleware/logging";
+import { defineLoggingConfig, type StorageLoggingConfig } from "../middleware/logging";
 import { eventBus, EventType } from "../../services/event-bus";
 
 /**
@@ -45,23 +43,6 @@ export interface WorkerDispatchDncStorage {
   delete(id: string): Promise<boolean>;
 }
 
-async function getWorkerName(workerId: string): Promise<string> {
-  const client = getClient();
-  const [worker] = await client
-    .select({ contactId: workers.contactId, siriusId: workers.siriusId })
-    .from(workers)
-    .where(eq(workers.id, workerId));
-  if (!worker) return 'Unknown Worker';
-  
-  const [contact] = await client
-    .select({ given: contacts.given, family: contacts.family, displayName: contacts.displayName })
-    .from(contacts)
-    .where(eq(contacts.id, worker.contactId));
-  
-  const name = contact ? `${contact.given || ''} ${contact.family || ''}`.trim() : '';
-  return name || contact?.displayName || `Worker #${worker.siriusId}`;
-}
-
 async function getEmployerName(employerId: string): Promise<string> {
   const client = getClient();
   const [employer] = await client
@@ -71,62 +52,42 @@ async function getEmployerName(employerId: string): Promise<string> {
   return employer?.name || 'Unknown Employer';
 }
 
-export const workerDispatchDncLoggingConfig: StorageLoggingConfig<WorkerDispatchDncStorage> = {
+export const workerDispatchDncLoggingConfig = defineLoggingConfig<WorkerDispatchDncStorage>({
   module: 'worker-dispatch-dnc',
+  state: { key: 'dnc' },
+  hostEntityId: (args, result, before) =>
+    result?.workerId ?? before?.dnc?.workerId ?? args[0]?.workerId,
   methods: {
     create: {
-      enabled: true,
       getEntityId: (args, result) => result?.id || 'new dispatch worker dnc',
-      getHostEntityId: (args, result) => result?.workerId || args[0]?.workerId,
       getDescription: async (args, result) => {
-        const workerName = await getWorkerName(result?.workerId || args[0]?.workerId);
+        const { storage } = await import('../index');
+        const workerName = await storage.workers.getWorkerDisplayName(result?.workerId || args[0]?.workerId);
         const employerName = await getEmployerName(result?.employerId || args[0]?.employerId);
         return `Created DNC entry (${result?.type}) for ${workerName} at ${employerName}`;
       },
-      after: async (args, result) => {
-        return { dnc: result };
-      }
     },
     update: {
-      enabled: true,
-      getEntityId: (args) => args[0],
-      getHostEntityId: async (args, result, beforeState) => {
-        return result?.workerId || beforeState?.dnc?.workerId;
-      },
       getDescription: async (args, result, beforeState) => {
-        const workerName = await getWorkerName(result?.workerId || beforeState?.dnc?.workerId);
+        const { storage } = await import('../index');
+        const workerName = await storage.workers.getWorkerDisplayName(result?.workerId || beforeState?.dnc?.workerId);
         const employerName = await getEmployerName(result?.employerId || beforeState?.dnc?.employerId);
         return `Updated DNC entry for ${workerName} at ${employerName}`;
       },
-      before: async (args, storage) => {
-        const dnc = await storage.get(args[0]);
-        return { dnc };
-      },
-      after: async (args, result) => {
-        return { dnc: result };
-      }
     },
     delete: {
-      enabled: true,
-      getEntityId: (args) => args[0],
-      getHostEntityId: async (args, result, beforeState) => {
-        return beforeState?.dnc?.workerId;
-      },
       getDescription: async (args, result, beforeState) => {
         if (beforeState?.dnc) {
-          const workerName = await getWorkerName(beforeState.dnc.workerId);
+          const { storage } = await import('../index');
+          const workerName = await storage.workers.getWorkerDisplayName(beforeState.dnc.workerId);
           const employerName = await getEmployerName(beforeState.dnc.employerId);
           return `Deleted DNC entry (${beforeState.dnc.type}) for ${workerName} at ${employerName}`;
         }
         return 'Deleted dispatch worker DNC entry';
       },
-      before: async (args, storage) => {
-        const dnc = await storage.get(args[0]);
-        return { dnc };
-      }
-    }
-  }
-};
+    },
+  },
+});
 
 export function createWorkerDispatchDncStorage(): WorkerDispatchDncStorage {
   return {

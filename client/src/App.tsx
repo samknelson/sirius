@@ -6,14 +6,14 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { TerminologyProvider } from "@/contexts/TerminologyContext";
 import { PageTitleProvider } from "@/contexts/PageTitleContext";
+import { WebSocketProvider } from "@/contexts/WebSocketContext";
 import ProtectedRoute from "@/components/auth/ProtectedRoute";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import { useEffect, lazy, Suspense } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 
-// Import charge plugin UIs to register them (side effect import)
-import "@/plugins/charge-plugins";
+import { ServerInjections } from "@/components/ServerInjections";
 
 // Essential pages loaded eagerly for fast initial render
 import LoginPage from "@/pages/login";
@@ -52,6 +52,7 @@ const WorkerDispatchEba = lazy(() => import("@/pages/workers/dispatch-eba"));
 const WorkerBans = lazy(() => import("@/pages/workers/bans"));
 const WorkerEdls = lazy(() => import("@/pages/worker-edls"));
 const WorkerSecondShift = lazy(() => import("@/pages/worker-sitespecific-freeman-2shift"));
+const WorkerBaoBeneficiaries = lazy(() => import("@/pages/worker-sitespecific-bao-beneficiaries"));
 const WorkerSkills = lazy(() => import("@/pages/worker-skills"));
 const WorkerRelations = lazy(() => import("@/pages/workers/relations"));
 const WorkerElectionsCurrent = lazy(() => import("@/pages/workers/elections-current"));
@@ -63,9 +64,11 @@ const WorkerCertifications = lazy(() => import("@/pages/worker-certifications"))
 const WorkerCertificationView = lazy(() => import("@/pages/worker-certification-view"));
 const WorkerRatings = lazy(() => import("@/pages/worker-ratings"));
 const WorkerLedgerAccounts = lazy(() => import("@/pages/worker-ledger-accounts"));
+const WorkerSitespecificBaoEchp = lazy(() => import("@/pages/worker-sitespecific-bao-echp"));
 const Stewards = lazy(() => import("@/pages/stewards"));
 const WorkerBenefitsHistory = lazy(() => import("@/pages/worker-benefits-history"));
 const WorkerBenefitsEligibility = lazy(() => import("@/pages/worker-benefits-eligibility"));
+const WorkerBenefitsExemptions = lazy(() => import("@/pages/worker-benefits-exemptions"));
 const WorkerBenefitsScan = lazy(() => import("@/pages/worker-benefits-scan"));
 const WorkerCurrentEmployment = lazy(() => import("@/pages/worker-current-employment"));
 const WorkerEmploymentHistory = lazy(() => import("@/pages/worker-employment-history"));
@@ -84,6 +87,21 @@ const WorkerSendEmail = lazy(() => import("@/pages/worker-send-email"));
 const WorkerSendPostal = lazy(() => import("@/pages/worker-send-postal"));
 const WorkerSendInApp = lazy(() => import("@/pages/worker-send-inapp"));
 const CommDetail = lazy(() => import("@/pages/comm-detail"));
+const CommEdit = lazy(() => import("@/pages/comm-edit"));
+const Grievances = lazy(() => import("@/pages/grievances"));
+const WorkerGrievances = lazy(() => import("@/pages/worker-grievances"));
+const EmployerGrievances = lazy(() => import("@/pages/employer-grievances"));
+const GrievancesAdd = lazy(() => import("@/pages/grievances-add"));
+const GrievanceView = lazy(() => import("@/pages/grievance-view"));
+const GrievanceEdit = lazy(() => import("@/pages/grievance-edit"));
+const GrievanceLogs = lazy(() => import("@/pages/grievance-logs"));
+const GrievanceTimeline = lazy(() => import("@/pages/grievance-timeline"));
+const GrievanceSettlements = lazy(() => import("@/pages/grievance-settlements"));
+const GrievanceTimelineTemplatesPage = lazy(() => import("@/pages/config/grievance-timeline-templates"));
+const GrievanceTimelineTemplateView = lazy(() => import("@/pages/grievance-timeline-template-view"));
+const GrievanceTimelineTemplateEdit = lazy(() => import("@/pages/grievance-timeline-template-edit"));
+const GrievanceTimelineTemplateItems = lazy(() => import("@/pages/grievance-timeline-template-items"));
+const GrievanceTimelineTemplateLogs = lazy(() => import("@/pages/grievance-timeline-template-logs"));
 const WorkerDelete = lazy(() => import("@/pages/worker-delete"));
 const Companies = lazy(() => import("@/pages/companies"));
 const CompanyView = lazy(() => import("@/pages/company-view"));
@@ -121,9 +139,10 @@ const EmployerPolicyHistory = lazy(() => import("@/pages/employer-policy-history
 const EmployerStewards = lazy(() => import("@/pages/employer-stewards"));
 const EmployerDispatchPage = lazy(() => import("@/pages/employers/dispatch"));
 const WizardView = lazy(() => import("@/pages/wizard-view"));
-const StripeCustomerPage = lazy(() => import("@/pages/employers/stripe-customer"));
-const StripePaymentMethodsPage = lazy(() => import("@/pages/employers/stripe-payment-methods"));
+const CustomerPage = lazy(() => import("@/pages/employers/customer"));
+const PaymentMethodsPage = lazy(() => import("@/pages/employers/payment-methods"));
 const EmployerSchoolAttributesPage = lazy(() => import("@/pages/employers/school-attributes"));
+const EmployerBaoImmediateEligibilityPage = lazy(() => import("@/pages/employers/sitespecific-bao-immediate-eligibility"));
 const EmployerLedgerAccountsWrapper = lazy(() => import("@/pages/employer-ledger-accounts-wrapper"));
 const EAView = lazy(() => import("@/pages/ea-view"));
 const EAInvoices = lazy(() => import("@/pages/ea-invoices"));
@@ -183,8 +202,9 @@ const WmbScanQueue = lazy(() => import("@/pages/admin/wmb-scan-queue"));
 const WmbScanDetail = lazy(() => import("@/pages/admin/wmb-scan-detail"));
 const AdminQuickstarts = lazy(() => import("@/pages/admin-quickstarts"));
 const CronJobs = lazy(() => import("@/pages/cron-jobs"));
+const EventBusDebug = lazy(() => import("@/pages/admin/debug/event-bus"));
 const CronJobView = lazy(() => import("@/pages/cron-job-view"));
-const CronJobSettings = lazy(() => import("@/pages/cron-job-settings"));
+const CronJobRun = lazy(() => import("@/pages/cron-job-run"));
 const CronJobHistory = lazy(() => import("@/pages/cron-job-history"));
 import AdminLayout from "@/components/layouts/AdminLayout";
 import ConfigurationLayout from "@/components/layouts/ConfigurationLayout";
@@ -207,16 +227,17 @@ const DispatchJobTypesPage = lazy(() => import("@/pages/config/dispatch-job-type
 const DispatchJobTypeViewPage = lazy(() => import("@/pages/config/dispatch-job-type-view"));
 const DispatchJobTypeEditPage = lazy(() => import("@/pages/config/dispatch-job-type-edit"));
 const DispatchJobTypeDeletePage = lazy(() => import("@/pages/config/dispatch-job-type-delete"));
-const DispatchJobTypePluginsPage = lazy(() => import("@/pages/config/dispatch-job-type-plugins"));
 const DispatchJobTypeNotificationsPage = lazy(() => import("@/pages/config/dispatch-job-type-notifications"));
 const DispatchDncConfigPage = lazy(() => import("@/pages/config/dispatch-dnc"));
 const DispatchJobTypeRunSettingsPage = lazy(() => import("@/pages/config/dispatch-job-type-run-settings"));
 const DispatchEbaSettingsPage = lazy(() => import("@/pages/config/dispatch-eba-settings"));
-const DispatchPluginsPage = lazy(() => import("@/pages/config/dispatch-plugins"));
+const DispatchSeniorityResetConfigPage = lazy(() => import("@/pages/config/dispatch-seniority-reset"));
+const DispatchBackfillPage = lazy(() => import("@/pages/config/dispatch-backfill"));
 const HtaHomeEmploymentStatusesPage = lazy(() => import("@/pages/config/hta-home-employment-statuses"));
 const EdlsSettingsPage = lazy(() => import("@/pages/config/edls/settings"));
 const EdlsTasksPage = lazy(() => import("@/pages/config/edls/tasks"));
 const T631FetchPage = lazy(() => import("@/pages/config/edls/t631-fetch"));
+const BaoMemberStatusThresholdsPage = lazy(() => import("@/pages/config/trust/sitespecific/bao/thresholds"));
 const WsBundlesPage = lazy(() => import("@/pages/config/ws/bundles"));
 const WsClientsPage = lazy(() => import("@/pages/config/ws/clients"));
 const WsClientSettingsPage = lazy(() => import("@/pages/config/ws/client-settings"));
@@ -265,16 +286,17 @@ const TwilioConfigPage = lazy(() => import("@/pages/config/twilio"));
 const EmailConfigPage = lazy(() => import("@/pages/config/email"));
 const PostalConfigPage = lazy(() => import("@/pages/config/postal"));
 const LogsPage = lazy(() => import("@/pages/config/logs"));
-const DashboardPluginsConfigPage = lazy(() => import("@/pages/config/dashboard-plugins"));
-const PluginSettingsPage = lazy(() => import("@/pages/config/plugin-settings"));
 const ComponentsConfigPage = lazy(() => import("@/pages/config/components"));
-const StripeTestPage = lazy(() => import("@/pages/config/ledger/stripe/test"));
-const StripeSettingsPage = lazy(() => import("@/pages/config/ledger/stripe/settings"));
-const PaymentTypesPage = lazy(() => import("@/pages/config/ledger/stripe/payment-types"));
+const GatewayTestPage = lazy(() => import("@/pages/config/ledger/payment-gateway-test"));
+const LedgerSettingsPage = lazy(() => import("@/pages/config/ledger/settings"));
+const PaymentTypesPage = lazy(() => import("@/pages/config/ledger/payment-gateway-payment-types"));
 const LedgerPaymentTypesPage = lazy(() => import("@/pages/config/ledger-payment-types"));
-const ChargePluginsListPage = lazy(() => import("@/pages/config/ledger/charge-plugins-list"));
-const ChargePluginConfigPage = lazy(() => import("@/pages/config/ledger/charge-plugin-config"));
-const ChargePluginFormPage = lazy(() => import("@/pages/config/ledger/charge-plugin-form"));
+// Hidden, nav-less generic plugin-config admin (Task #353 foundation). Not in
+// any navigation registry; reachable only via this route for verification.
+const GenericPluginConfigsPage = lazy(() => import("@/pages/admin/plugin-configs"));
+const PluginConfigsIndexPage = lazy(() => import("@/pages/admin/plugin-configs-index"));
+const DenormConfigsPage = lazy(() => import("@/pages/admin/denorm"));
+const DenormConfigDetailPage = lazy(() => import("@/pages/admin/denorm-detail"));
 const ConfigurationLandingPage = lazy(() => import("@/pages/config/index"));
 const LedgerAccountsPage = lazy(() => import("@/pages/config/ledger/accounts"));
 const LedgerAccountView = lazy(() => import("@/pages/config/ledger/account-view"));
@@ -488,9 +510,115 @@ function Router() {
       </Route>
 
       <Route path="/comm/:commId">
-        <ProtectedRoute permission="staff">
+        <ProtectedRoute tabId="details" entityType="comm">
           <AuthenticatedLayout>
             <CommDetail />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/comm/:commId/edit">
+        <ProtectedRoute tabId="edit" entityType="comm">
+          <AuthenticatedLayout>
+            <CommEdit />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/grievances/add">
+        <ProtectedRoute permission="staff" component="grievance">
+          <AuthenticatedLayout>
+            <GrievancesAdd />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/grievances">
+        <ProtectedRoute permission="staff" component="grievance">
+          <AuthenticatedLayout>
+            <Grievances />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/grievance/:id/edit">
+        <ProtectedRoute tabId="edit" entityType="grievance">
+          <AuthenticatedLayout>
+            <GrievanceEdit />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/grievance/:id/logs">
+        <ProtectedRoute tabId="logs" entityType="grievance">
+          <AuthenticatedLayout>
+            <GrievanceLogs />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/grievance/:id/timeline">
+        <ProtectedRoute tabId="timeline" entityType="grievance">
+          <AuthenticatedLayout>
+            <GrievanceTimeline />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/grievance/:id/settlements">
+        <ProtectedRoute tabId="settlements" entityType="grievance">
+          <AuthenticatedLayout>
+            <GrievanceSettlements />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/grievance/:id">
+        <ProtectedRoute tabId="details" entityType="grievance">
+          <AuthenticatedLayout>
+            <GrievanceView />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/grievance-timeline-templates">
+        <ProtectedRoute permission="admin" component="grievance">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <GrievanceTimelineTemplatesPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/grievance-timeline-template/:id/edit">
+        <ProtectedRoute tabId="edit" entityType="grievanceTimelineTemplate">
+          <AuthenticatedLayout>
+            <GrievanceTimelineTemplateEdit />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/grievance-timeline-template/:id/items">
+        <ProtectedRoute tabId="items" entityType="grievanceTimelineTemplate">
+          <AuthenticatedLayout>
+            <GrievanceTimelineTemplateItems />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/grievance-timeline-template/:id/logs">
+        <ProtectedRoute tabId="logs" entityType="grievanceTimelineTemplate">
+          <AuthenticatedLayout>
+            <GrievanceTimelineTemplateLogs />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/grievance-timeline-template/:id">
+        <ProtectedRoute tabId="details" entityType="grievanceTimelineTemplate">
+          <AuthenticatedLayout>
+            <GrievanceTimelineTemplateView />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -575,6 +703,14 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/workers/:id/grievances">
+        <ProtectedRoute tabId="grievances" entityType="worker">
+          <AuthenticatedLayout>
+            <WorkerGrievances />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/workers/:id/edls">
         <ProtectedRoute tabId="edls" entityType="worker">
           <AuthenticatedLayout>
@@ -587,6 +723,14 @@ function Router() {
         <ProtectedRoute tabId="sitespecific-freeman-2shift" entityType="worker">
           <AuthenticatedLayout>
             <WorkerSecondShift />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/workers/:id/sitespecific/bao/beneficiaries">
+        <ProtectedRoute tabId="sitespecific-bao-beneficiaries" entityType="worker">
+          <AuthenticatedLayout>
+            <WorkerBaoBeneficiaries />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -695,6 +839,14 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/workers/:id/benefits/exemptions">
+        <ProtectedRoute tabId="benefits-exemptions" entityType="worker">
+          <AuthenticatedLayout>
+            <WorkerBenefitsExemptions />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/workers/:id/benefits/scan">
         <ProtectedRoute tabId="benefits-scan" entityType="worker">
           <AuthenticatedLayout>
@@ -752,9 +904,17 @@ function Router() {
       </Route>
 
       <Route path="/workers/:id/ledger/accounts">
-        <ProtectedRoute tabId="accounting" entityType="worker">
+        <ProtectedRoute tabId="accounts" entityType="worker">
           <AuthenticatedLayout>
             <WorkerLedgerAccounts />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/workers/:id/ledger/sitespecific/bao/echp">
+        <ProtectedRoute tabId="sitespecific-bao-echp" entityType="worker">
+          <AuthenticatedLayout>
+            <WorkerSitespecificBaoEchp />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -1121,6 +1281,14 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/employers/:id/grievances">
+        <ProtectedRoute tabId="grievances" entityType="employer">
+          <AuthenticatedLayout>
+            <EmployerGrievances />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/employers/:id/wizards">
         <ProtectedRoute tabId="wizards" entityType="employer">
           <AuthenticatedLayout>
@@ -1337,18 +1505,18 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/employers/:id/ledger/stripe/customer">
+      <Route path="/employers/:id/ledger/customer">
         <ProtectedRoute tabId="customer" entityType="employer">
           <AuthenticatedLayout>
-            <StripeCustomerPage />
+            <CustomerPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
 
-      <Route path="/employers/:id/ledger/stripe/payment_methods">
+      <Route path="/employers/:id/ledger/payment_methods">
         <ProtectedRoute tabId="payment-methods" entityType="employer">
           <AuthenticatedLayout>
-            <StripePaymentMethodsPage />
+            <PaymentMethodsPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -1397,6 +1565,14 @@ function Router() {
         <ProtectedRoute tabId="school-attributes" entityType="employer">
           <AuthenticatedLayout>
             <EmployerSchoolAttributesPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/employers/:id/sitespecific-bao-immediate-eligibility">
+        <ProtectedRoute tabId="sitespecific-bao-immediate-eligibility" entityType="employer">
+          <AuthenticatedLayout>
+            <EmployerBaoImmediateEligibilityPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -2233,14 +2409,6 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/dispatch-job-type/:id/plugins">
-        <ProtectedRoute tabId="plugins" entityType="dispatch_job_type">
-          <AuthenticatedLayout>
-            <DispatchJobTypePluginsPage />
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
       <Route path="/config/dispatch-job-type/:id/notifications">
         <ProtectedRoute tabId="notifications" entityType="dispatch_job_type">
           <AuthenticatedLayout>
@@ -2277,6 +2445,16 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/config/dispatch/seniority-reset">
+        <ProtectedRoute permission="admin" component="dispatch">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <DispatchSeniorityResetConfigPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/config/dispatch-job-type/:id/run-settings">
         <ProtectedRoute tabId="run-settings" entityType="dispatch_job_type">
           <AuthenticatedLayout>
@@ -2287,11 +2465,11 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/dispatch/plugins">
+      <Route path="/config/dispatch/backfill">
         <ProtectedRoute permission="admin" component="dispatch">
           <AuthenticatedLayout>
             <ConfigurationLayout>
-              <DispatchPluginsPage />
+              <DispatchBackfillPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
@@ -2332,6 +2510,16 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <T631FetchPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/trust/sitespecific/bao/thresholds">
+        <ProtectedRoute permission="admin" component="sitespecific.bao">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <BaoMemberStatusThresholdsPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
@@ -2750,25 +2938,6 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/dashboard-plugins">
-        <ProtectedRoute permission="admin">
-          <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <DashboardPluginsConfigPage />
-            </ConfigurationLayout>
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
-
-      <Route path="/config/dashboard-plugins/:pluginId">
-        <ProtectedRoute permission="admin">
-          <AuthenticatedLayout>
-            <ConfigurationLayout>
-              <PluginSettingsPage />
-            </ConfigurationLayout>
-          </AuthenticatedLayout>
-        </ProtectedRoute>
-      </Route>
 
       <Route path="/config/components">
         <ProtectedRoute permission="admin">
@@ -2868,27 +3037,27 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/ledger/stripe/settings">
+      <Route path="/config/ledger/settings">
         <ProtectedRoute policy="admin" component="ledger">
           <AuthenticatedLayout>
             <ConfigurationLayout>
-              <StripeSettingsPage />
+              <LedgerSettingsPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/ledger/stripe/test">
+      <Route path="/config/ledger/payment-gateways/test">
         <ProtectedRoute policy="admin" component="ledger">
           <AuthenticatedLayout>
             <ConfigurationLayout>
-              <StripeTestPage />
+              <GatewayTestPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/ledger/stripe/payment-types">
+      <Route path="/config/ledger/payment-gateways/payment-types">
         <ProtectedRoute policy="admin" component="ledger">
           <AuthenticatedLayout>
             <ConfigurationLayout>
@@ -2908,41 +3077,49 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/ledger/charge-plugins">
-        <ProtectedRoute permission="admin" component="ledger">
+      {/* Navigation-only index linking to every configurable plugin kind.
+          Registered before the :kind route so it isn't shadowed. */}
+      <Route path="/admin/plugin-configs">
+        <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <ConfigurationLayout>
-              <ChargePluginsListPage />
+              <PluginConfigsIndexPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/ledger/charge-plugins/:pluginId/new">
-        <ProtectedRoute permission="admin" component="ledger">
+      {/* Generic plugin-config admin (unified config surface). Dashboard
+          plugins are served here via the "Dashboard Plugins" nav entry
+          (/admin/plugin-configs/dashboard); other kinds remain reachable by
+          direct URL. */}
+      <Route path="/admin/plugin-configs/:kind">
+        <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <ConfigurationLayout>
-              <ChargePluginFormPage />
+              <GenericPluginConfigsPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/ledger/charge-plugins/:pluginId/edit/:configId">
-        <ProtectedRoute permission="admin" component="ledger">
+      {/* Denorm system visibility. The list page is registered before the
+          :plugin_config_id detail route so it isn't shadowed. */}
+      <Route path="/admin/denorm">
+        <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <ConfigurationLayout>
-              <ChargePluginFormPage />
+              <DenormConfigsPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
 
-      <Route path="/config/ledger/charge-plugins/:pluginId">
-        <ProtectedRoute permission="admin" component="ledger">
+      <Route path="/admin/denorm/:plugin_config_id">
+        <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
             <ConfigurationLayout>
-              <ChargePluginConfigPage />
+              <DenormConfigDetailPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
@@ -3216,12 +3393,16 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/cron-jobs/:name/settings">
+      <Route path="/cron-jobs/:name/run">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
-            <CronJobSettings />
+            <CronJobRun />
           </AuthenticatedLayout>
         </ProtectedRoute>
+      </Route>
+
+      <Route path="/cron-jobs/:name/settings">
+        {(params) => <Redirect to={`/cron-jobs/${params.name}/run`} />}
       </Route>
 
       <Route path="/cron-jobs/:name/history">
@@ -3246,6 +3427,14 @@ function Router() {
 
       <Route path="/admin/cron-jobs">
         <Redirect to="/cron-jobs" />
+      </Route>
+
+      <Route path="/admin/debug/event-bus">
+        <ProtectedRoute permission="admin" component="debug">
+          <AuthenticatedLayout>
+            <EventBusDebug />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
       </Route>
 
       {/* Legacy admin route - redirect to configuration */}
@@ -3301,7 +3490,10 @@ function App() {
           <TerminologyProvider>
             <PageTitleProvider>
               <Toaster />
-              <Router />
+              <ServerInjections />
+              <WebSocketProvider>
+                <Router />
+              </WebSocketProvider>
             </PageTitleProvider>
           </TerminologyProvider>
         </AuthProvider>

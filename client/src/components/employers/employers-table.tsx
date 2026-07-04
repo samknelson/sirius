@@ -92,7 +92,7 @@ export function EmployersTable({ employers, isLoading, includeInactive, onToggle
         const query = searchQuery.toLowerCase();
         const id = employer.id.toLowerCase();
         const name = employer.name.toLowerCase();
-        const siriusId = String(employer.siriusId);
+        const siriusId = String(employer.siriusId ?? "");
         
         if (!id.includes(query) && !name.includes(query) && !siriusId.includes(query)) {
           return false;

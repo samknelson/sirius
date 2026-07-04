@@ -18,13 +18,20 @@ export interface TabDefinition {
   policyId?: string;
   permission?: string;
   component?: string;
-  /** Optional capability name; tab is hidden when capability is unavailable */
-  capability?: string;
   parent?: string;
   /** Terminology key for dynamic label substitution (e.g., 'steward', 'union') */
   termKey?: string;
   /** Whether to use plural form for terminology substitution */
   termPlural?: boolean;
+  /**
+   * For a parent tab, navigate to its first ACCESSIBLE child instead of its
+   * own hrefTemplate. Use this when the parent's hrefTemplate points at a child
+   * that some audiences can't access (e.g. Accounting -> Accounts is gated by
+   * worker.ledger, but a worker.mine-only user should land on the ECHP child).
+   * Leave unset for parents whose hrefTemplate already matches their first
+   * child for every audience.
+   */
+  navigateToFirstAccessibleChild?: boolean;
 }
 
 /**
@@ -72,7 +79,10 @@ export type TabEntityType =
   | 'bulk_message'
   | 'ledger_payment_batch'
   | 'facility'
-  | 'trust_election';
+  | 'trust_election'
+  | 'comm'
+  | 'grievance'
+  | 'grievanceTimelineTemplate';
 
 /**
  * Tab check request for batch access evaluation
@@ -151,6 +161,7 @@ export const workerTabTree: HierarchicalTab[] = [
       { id: 'benefits-history', label: 'History', hrefTemplate: '/workers/{id}/benefits/history', policyId: 'worker.view' },
       { id: 'benefits-eligibility', label: 'Eligibility', hrefTemplate: '/workers/{id}/benefits/eligibility', policyId: 'worker.view' },
       { id: 'benefits-scan', label: 'Scan', hrefTemplate: '/workers/{id}/benefits/scan', permission: 'staff' },
+      { id: 'benefits-exemptions', label: 'Exemptions', hrefTemplate: '/workers/{id}/benefits/exemptions', permission: 'staff', component: 'trust.benefits.eligibility.exemptions' },
     ]
   },
   {
@@ -179,10 +190,18 @@ export const workerTabTree: HierarchicalTab[] = [
     ]
   },
   { id: 'political', label: 'Political', hrefTemplate: '/workers/{id}/political', permission: 'staff', component: 'sitespecific.btu.political' },
-  { id: 'edls', label: 'EDLS', hrefTemplate: '/workers/{id}/edls', policyId: 'edls.coordinator', component: 'edls', capability: 'workerEdls' },
+  { id: 'edls', label: 'EDLS', hrefTemplate: '/workers/{id}/edls', policyId: 'edls.coordinator', component: 'edls' },
   { id: 'sitespecific-freeman-2shift', label: 'Second Shift', hrefTemplate: '/workers/{id}/sitespecific-freeman-2shift', policyId: 'edls.any', component: 'sitespecific.freeman' },
-  { id: 'accounting', label: 'Accounting', hrefTemplate: '/workers/{id}/ledger/accounts', policyId: 'worker.ledger', component: 'ledger' },
+  { id: 'sitespecific-bao-beneficiaries', label: 'Beneficiaries', hrefTemplate: '/workers/{id}/sitespecific/bao/beneficiaries', policyId: 'worker.view', component: 'sitespecific.bao' },
+  {
+    id: 'accounting', label: 'Accounting', hrefTemplate: '/workers/{id}/ledger/accounts', policyId: 'worker.mine', component: 'ledger|sitespecific.bao', navigateToFirstAccessibleChild: true,
+    children: [
+      { id: 'accounts', label: 'Accounts', hrefTemplate: '/workers/{id}/ledger/accounts', policyId: 'worker.ledger', component: 'ledger' },
+      { id: 'sitespecific-bao-echp', label: 'Event Center Hours Purchase', hrefTemplate: '/workers/{id}/ledger/sitespecific/bao/echp', policyId: 'worker.mine', component: 'sitespecific.bao' },
+    ]
+  },
   { id: 'vdb-pension', label: 'VDB Pension', hrefTemplate: '/workers/{id}/vdb-pension', permission: 'staff', component: 'sitespecific.gbhet.pension' },
+  { id: 'grievances', label: 'Grievances', hrefTemplate: '/workers/{id}/grievances', permission: 'staff', component: 'grievance' },
   { id: 'logs', label: 'Logs', hrefTemplate: '/workers/{id}/logs', permission: 'staff' },
   { id: 'delete', label: 'Delete', hrefTemplate: '/workers/{id}/delete', permission: 'workers.delete' },
 ];
@@ -202,8 +221,8 @@ export const employerTabTree: HierarchicalTab[] = [
     id: 'accounting', label: 'Accounting', hrefTemplate: '/employers/{id}/ledger/accounts', policyId: 'employer.ledger', component: 'ledger',
     children: [
       { id: 'accounts', label: 'Accounts', hrefTemplate: '/employers/{id}/ledger/accounts', policyId: 'employer.ledger' },
-      { id: 'payment-methods', label: 'Payment Methods', hrefTemplate: '/employers/{id}/ledger/stripe/payment_methods', policyId: 'employer.ledger' },
-      { id: 'customer', label: 'Customer', hrefTemplate: '/employers/{id}/ledger/stripe/customer', policyId: 'employer.ledger' },
+      { id: 'payment-methods', label: 'Payment Methods', hrefTemplate: '/employers/{id}/ledger/payment_methods', policyId: 'employer.ledger' },
+      { id: 'customer', label: 'Customer', hrefTemplate: '/employers/{id}/ledger/customer', policyId: 'employer.ledger' },
     ]
   },
   { 
@@ -213,7 +232,9 @@ export const employerTabTree: HierarchicalTab[] = [
     ]
   },
   { id: 'dispatch', label: 'Dispatch', hrefTemplate: '/employers/{id}/dispatch', permission: 'staff', component: 'dispatch' },
+  { id: 'grievances', label: 'Grievances', hrefTemplate: '/employers/{id}/grievances', permission: 'staff', component: 'grievance' },
   { id: 'school-attributes', label: 'School Attributes', hrefTemplate: '/employers/{id}/school-attributes', policyId: 'employer.steward.view', component: 'sitespecific.btu' },
+  { id: 'sitespecific-bao-immediate-eligibility', label: 'Immediate Eligibility', hrefTemplate: '/employers/{id}/sitespecific-bao-immediate-eligibility', permission: 'staff', component: 'sitespecific.bao' },
 ];
 
 /**
@@ -280,7 +301,7 @@ export const btuCsgTabTree: HierarchicalTab[] = [
  */
 export const cronJobTabTree: HierarchicalTab[] = [
   { id: 'view', label: 'View', hrefTemplate: '/cron-jobs/{id}/view', permission: 'cron.view' },
-  { id: 'settings', label: 'Settings', hrefTemplate: '/cron-jobs/{id}/settings', permission: 'cron.edit' },
+  { id: 'run', label: 'Run', hrefTemplate: '/cron-jobs/{id}/run', permission: 'cron.edit' },
   { id: 'history', label: 'History', hrefTemplate: '/cron-jobs/{id}/history', permission: 'cron.view' },
 ];
 
@@ -340,7 +361,6 @@ export const dispatchJobTabTree: HierarchicalTab[] = [
 export const dispatchJobTypeTabTree: HierarchicalTab[] = [
   { id: 'view', label: 'View', hrefTemplate: '/config/dispatch-job-type/{id}', permission: 'staff', component: 'dispatch' },
   { id: 'edit', label: 'Edit', hrefTemplate: '/config/dispatch-job-type/{id}/edit', permission: 'staff', component: 'dispatch' },
-  { id: 'plugins', label: 'Plugins', hrefTemplate: '/config/dispatch-job-type/{id}/plugins', permission: 'staff', component: 'dispatch' },
   { id: 'notifications', label: 'Notifications', hrefTemplate: '/config/dispatch-job-type/{id}/notifications', permission: 'staff', component: 'dispatch' },
   { id: 'run-settings', label: 'Run Settings', hrefTemplate: '/config/dispatch-job-type/{id}/run-settings', permission: 'staff', component: 'dispatch' },
   { id: 'delete', label: 'Delete', hrefTemplate: '/config/dispatch-job-type/{id}/delete', permission: 'staff', component: 'dispatch' },
@@ -413,6 +433,32 @@ export const trustElectionTabTree: HierarchicalTab[] = [
 ];
 
 /**
+ * Communication record entity tab tree
+ */
+export const commTabTree: HierarchicalTab[] = [
+  { id: 'details', label: 'Details', hrefTemplate: '/comm/{id}', permission: 'staff' },
+  { id: 'edit', label: 'Edit', hrefTemplate: '/comm/{id}/edit', permission: 'staff' },
+];
+
+/**
+ * Grievance entity tab tree
+ */
+export const grievanceTabTree: HierarchicalTab[] = [
+  { id: 'details', label: 'Details', hrefTemplate: '/grievance/{id}', permission: 'staff', component: 'grievance' },
+  { id: 'edit', label: 'Edit', hrefTemplate: '/grievance/{id}/edit', permission: 'staff', component: 'grievance' },
+  { id: 'logs', label: 'Logs', hrefTemplate: '/grievance/{id}/logs', permission: 'staff', component: 'grievance' },
+  { id: 'timeline', label: 'Timeline', hrefTemplate: '/grievance/{id}/timeline', permission: 'staff', component: 'grievance' },
+  { id: 'settlements', label: 'Settlements', hrefTemplate: '/grievance/{id}/settlements', permission: 'staff', component: 'grievance.settlement' },
+];
+
+export const grievanceTimelineTemplateTabTree: HierarchicalTab[] = [
+  { id: 'details', label: 'Details', hrefTemplate: '/grievance-timeline-template/{id}', permission: 'admin', component: 'grievance' },
+  { id: 'edit', label: 'Edit', hrefTemplate: '/grievance-timeline-template/{id}/edit', permission: 'admin', component: 'grievance' },
+  { id: 'items', label: 'Steps', hrefTemplate: '/grievance-timeline-template/{id}/items', permission: 'admin', component: 'grievance' },
+  { id: 'logs', label: 'Logs', hrefTemplate: '/grievance-timeline-template/{id}/logs', permission: 'admin', component: 'grievance' },
+];
+
+/**
  * Trust benefit entity tab tree
  */
 export const trustBenefitTabTree: HierarchicalTab[] = [
@@ -444,13 +490,13 @@ export const employerContactTabTree: HierarchicalTab[] = [
     id: 'comm', 
     label: 'Comm', 
     hrefTemplate: '/employer-contacts/{id}/comm/history', 
-    permission: 'communication.view',
+    permission: 'staff',
     children: [
-      { id: 'comm-history', label: 'History', hrefTemplate: '/employer-contacts/{id}/comm/history', permission: 'communication.view' },
-      { id: 'send-sms', label: 'Send SMS', hrefTemplate: '/employer-contacts/{id}/comm/send-sms', permission: 'communication.send' },
-      { id: 'send-email', label: 'Send Email', hrefTemplate: '/employer-contacts/{id}/comm/send-email', permission: 'communication.send' },
-      { id: 'send-postal', label: 'Send Postal', hrefTemplate: '/employer-contacts/{id}/comm/send-postal', permission: 'communication.send' },
-      { id: 'send-inapp', label: 'Send In-App', hrefTemplate: '/employer-contacts/{id}/comm/send-inapp', permission: 'communication.send' },
+      { id: 'comm-history', label: 'History', hrefTemplate: '/employer-contacts/{id}/comm/history', permission: 'staff' },
+      { id: 'send-sms', label: 'Send SMS', hrefTemplate: '/employer-contacts/{id}/comm/send-sms', permission: 'staff' },
+      { id: 'send-email', label: 'Send Email', hrefTemplate: '/employer-contacts/{id}/comm/send-email', permission: 'staff' },
+      { id: 'send-postal', label: 'Send Postal', hrefTemplate: '/employer-contacts/{id}/comm/send-postal', permission: 'staff' },
+      { id: 'send-inapp', label: 'Send In-App', hrefTemplate: '/employer-contacts/{id}/comm/send-inapp', permission: 'staff' },
     ],
   },
   { id: 'user', label: 'User', hrefTemplate: '/employer-contacts/{id}/user', policyId: 'employer.manage' },
@@ -471,13 +517,13 @@ export const providerContactTabTree: HierarchicalTab[] = [
     id: 'comm', 
     label: 'Comm', 
     hrefTemplate: '/trust-provider-contacts/{id}/comm/history', 
-    permission: 'communication.view',
+    permission: 'staff',
     children: [
-      { id: 'comm-history', label: 'History', hrefTemplate: '/trust-provider-contacts/{id}/comm/history', permission: 'communication.view' },
-      { id: 'send-sms', label: 'Send SMS', hrefTemplate: '/trust-provider-contacts/{id}/comm/send-sms', permission: 'communication.send' },
-      { id: 'send-email', label: 'Send Email', hrefTemplate: '/trust-provider-contacts/{id}/comm/send-email', permission: 'communication.send' },
-      { id: 'send-postal', label: 'Send Postal', hrefTemplate: '/trust-provider-contacts/{id}/comm/send-postal', permission: 'communication.send' },
-      { id: 'send-inapp', label: 'Send In-App', hrefTemplate: '/trust-provider-contacts/{id}/comm/send-inapp', permission: 'communication.send' },
+      { id: 'comm-history', label: 'History', hrefTemplate: '/trust-provider-contacts/{id}/comm/history', permission: 'staff' },
+      { id: 'send-sms', label: 'Send SMS', hrefTemplate: '/trust-provider-contacts/{id}/comm/send-sms', permission: 'staff' },
+      { id: 'send-email', label: 'Send Email', hrefTemplate: '/trust-provider-contacts/{id}/comm/send-email', permission: 'staff' },
+      { id: 'send-postal', label: 'Send Postal', hrefTemplate: '/trust-provider-contacts/{id}/comm/send-postal', permission: 'staff' },
+      { id: 'send-inapp', label: 'Send In-App', hrefTemplate: '/trust-provider-contacts/{id}/comm/send-inapp', permission: 'staff' },
     ],
   },
   { id: 'user', label: 'User', hrefTemplate: '/trust-provider-contacts/{id}/user', permission: 'admin' },
@@ -503,13 +549,13 @@ export const userTabTree: HierarchicalTab[] = [
     id: 'comm', 
     label: 'Comm', 
     hrefTemplate: '/users/{id}/comm/history', 
-    permission: 'communication.view',
+    permission: 'staff',
     children: [
-      { id: 'comm-history', label: 'History', hrefTemplate: '/users/{id}/comm/history', permission: 'communication.view' },
-      { id: 'send-sms', label: 'Send SMS', hrefTemplate: '/users/{id}/comm/send-sms', permission: 'communication.send' },
-      { id: 'send-email', label: 'Send Email', hrefTemplate: '/users/{id}/comm/send-email', permission: 'communication.send' },
-      { id: 'send-postal', label: 'Send Postal', hrefTemplate: '/users/{id}/comm/send-postal', permission: 'communication.send' },
-      { id: 'send-inapp', label: 'Send In-App', hrefTemplate: '/users/{id}/comm/send-inapp', permission: 'communication.send' },
+      { id: 'comm-history', label: 'History', hrefTemplate: '/users/{id}/comm/history', permission: 'staff' },
+      { id: 'send-sms', label: 'Send SMS', hrefTemplate: '/users/{id}/comm/send-sms', permission: 'staff' },
+      { id: 'send-email', label: 'Send Email', hrefTemplate: '/users/{id}/comm/send-email', permission: 'staff' },
+      { id: 'send-postal', label: 'Send Postal', hrefTemplate: '/users/{id}/comm/send-postal', permission: 'staff' },
+      { id: 'send-inapp', label: 'Send In-App', hrefTemplate: '/users/{id}/comm/send-inapp', permission: 'staff' },
     ],
   },
   { id: 'logs', label: 'Logs', hrefTemplate: '/users/{id}/logs', permission: 'admin' },
@@ -598,6 +644,9 @@ export const tabTreeRegistry: Record<TabEntityType, HierarchicalTab[]> = {
   ledger_payment_batch: ledgerPaymentBatchTabTree,
   facility: facilityTabTree,
   trust_election: trustElectionTabTree,
+  comm: commTabTree,
+  grievance: grievanceTabTree,
+  grievanceTimelineTemplate: grievanceTimelineTemplateTabTree,
 };
 
 /**

@@ -18,7 +18,7 @@ import {
   inArray,
   type SQL,
 } from 'drizzle-orm';
-import { type StorageLoggingConfig } from '../middleware/logging';
+import { defineLoggingConfig, type StorageLoggingConfig } from '../middleware/logging';
 import { normalizeToDateOnly, getTodayDateOnly } from '@shared/utils';
 
 export interface WorkerRelationOtherWorker {
@@ -148,49 +148,34 @@ interface WorkerRelationsBeforeState {
   relation: WorkerRelation | undefined;
 }
 
-export const workerRelationsLoggingConfig: StorageLoggingConfig<WorkerRelationsStorage> = {
+export const workerRelationsLoggingConfig = defineLoggingConfig<WorkerRelationsStorage>({
   module: 'worker-relations',
+  state: { key: 'relation' },
+  hostEntityId: (args, result, before) =>
+    (before as WorkerRelationsBeforeState | undefined)?.relation?.worker1
+    ?? result?.worker1
+    ?? args[0]?.worker1,
   methods: {
     create: {
-      enabled: true,
       getEntityId: (_args, result) => result?.id || 'new worker relation',
-      getHostEntityId: (args, result) => result?.worker1 ?? args[0]?.worker1,
       getDescription: async (_args, result) => {
         return `Created worker relation (${result?.worker1} → ${result?.worker2})`;
       },
-      after: async (_args, result) => ({ relation: result }),
     },
     update: {
-      enabled: true,
-      getEntityId: (args) => args[0],
-      getHostEntityId: async (_args, _result, beforeState) =>
-        (beforeState as WorkerRelationsBeforeState | undefined)?.relation?.worker1,
       getDescription: async (_args, result, beforeState) => {
         const r = result || (beforeState as WorkerRelationsBeforeState | undefined)?.relation;
         return `Updated worker relation (${r?.worker1} → ${r?.worker2})`;
       },
-      before: async (args, storage) => {
-        const relation = await storage.get(args[0]);
-        return { relation };
-      },
-      after: async (_args, result) => ({ relation: result }),
     },
     delete: {
-      enabled: true,
-      getEntityId: (args) => args[0],
-      getHostEntityId: async (_args, _result, beforeState) =>
-        (beforeState as WorkerRelationsBeforeState | undefined)?.relation?.worker1,
       getDescription: async (_args, _result, beforeState) => {
         const r = (beforeState as WorkerRelationsBeforeState | undefined)?.relation;
         return r ? `Deleted worker relation (${r.worker1} → ${r.worker2})` : 'Deleted worker relation';
       },
-      before: async (args, storage) => {
-        const relation = await storage.get(args[0]);
-        return { relation };
-      },
     },
   },
-};
+});
 
 export function createWorkerRelationsStorage(): WorkerRelationsStorage {
   return {

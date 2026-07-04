@@ -1,6 +1,6 @@
 import type { IStorage } from "../../storage";
-import { sendPostal, type SendPostalResult } from "../../services/postal-sender";
-import type { PostalAddress } from "../../services/providers/postal";
+import { sendPostal, type SendPostalResult } from "../../services/comm/senders/postal";
+import type { PostalAddress } from "../../services/comm/providers/postal";
 import type { DeliverContactResult } from "./deliver";
 import { renderTemplate, TOKEN_REGISTRY } from "../../../shared/bulk-tokens";
 import { buildRecipientContext } from "./token-context";
@@ -27,6 +27,8 @@ export async function deliverPostal(
   messageId: string,
   contactId: string,
   userId?: string,
+  tagIds?: string[],
+  offline?: boolean,
 ): Promise<DeliverContactResult> {
   const postalContent = await storage.bulkMessagesPostal.getByBulkId(messageId);
   if (!postalContent) {
@@ -69,6 +71,8 @@ export async function deliverPostal(
     color: postalContent.color || undefined,
     doubleSided: postalContent.doubleSided || undefined,
     userId,
+    tagIds,
+    sendOffline: offline,
   });
   const addrStr = [addr.name, addr.addressLine1, addr.city, addr.state, addr.zip].filter(Boolean).join(", ");
   return {

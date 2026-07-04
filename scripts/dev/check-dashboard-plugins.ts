@@ -23,10 +23,8 @@
 import express, { type Request, type Response, type NextFunction } from "express";
 import { createServer } from "http";
 import { AddressInfo } from "net";
-import {
-  registerDashboardPlugins,
-  dashboardPluginRegistry,
-} from "../../server/plugins/dashboard";
+// Importing the kind's index runs the side-effect plugin registrations.
+import { dashboardPluginRegistry } from "../../server/plugins/dashboard";
 import { registerDashboardRoutes } from "../../server/modules/dashboard";
 
 interface SmokeAuthRequest extends Request {
@@ -50,8 +48,6 @@ const HTTP_CHECKS: { url: string; label: string }[] = [
 ];
 
 async function main() {
-  registerDashboardPlugins();
-
   // ---- Static check ----
   const failures: string[] = [];
   for (const id of REQUIRED_WITH_CONTENT) {

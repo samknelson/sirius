@@ -42,8 +42,9 @@ export function TrustBenefitsTable({ benefits, isLoading, includeInactive, onTog
       result = result.filter(benefit => {
         const id = benefit.id.toLowerCase();
         const name = benefit.name.toLowerCase();
+        const siriusId = (benefit.siriusId || "").toLowerCase();
         
-        return id.includes(query) || name.includes(query);
+        return id.includes(query) || name.includes(query) || siriusId.includes(query);
       });
     }
     
@@ -109,7 +110,7 @@ export function TrustBenefitsTable({ benefits, isLoading, includeInactive, onTog
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" size={16} />
             <Input
               type="text"
-              placeholder="Search by Record ID or name..."
+              placeholder="Search by ID, Record ID, or name..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-10"
@@ -171,6 +172,9 @@ export function TrustBenefitsTable({ benefits, isLoading, includeInactive, onTog
                   </div>
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  <span>ID</span>
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   <span>Type</span>
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
@@ -196,6 +200,14 @@ export function TrustBenefitsTable({ benefits, isLoading, includeInactive, onTog
                         {benefit.name}
                       </span>
                     </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <span 
+                      className="text-sm text-muted-foreground"
+                      data-testid={`text-benefit-sirius-id-${benefit.id}`}
+                    >
+                      {benefit.siriusId || '—'}
+                    </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span 

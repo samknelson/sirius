@@ -1,7 +1,7 @@
 import { createNoopValidator } from '../utils/validation';
 import { getClient } from '../transaction-context';
 import type { db } from '../db';
-import { workers, contacts, workerDispatchEligDenorm, dispatches, workerDispatchStatus, type EligibilityPluginConfig, type JobTypeData } from "@shared/schema";
+import { workers, contacts, workerDispatchEligDenorm, dispatches, workerDispatchStatus, type EligibilityPluginConfig } from "@shared/schema";
 import { sql, eq, and, exists, notExists, or, ilike, inArray } from "drizzle-orm";
 import { logger } from "../../logger";
 import { 
@@ -11,6 +11,7 @@ import {
 } from "../../plugins/dispatch/eligibility/registry";
 import { createDispatchJobStorage } from "./jobs";
 import { createUnifiedOptionsStorage, type OptionsTypeName } from "../unified-options";
+import { createPluginConfigStorage } from "../plugin-configs";
 
 /**
  * Stub validator - add validation logic here when needed
@@ -82,7 +83,7 @@ interface QueryBuildResult {
 async function buildEligibleWorkersQuery(jobId: string, filters?: EligibleWorkersFilters): Promise<QueryBuildResult | null> {
   const client = getClient();
   const jobStorage = createDispatchJobStorage();
-  const unifiedOptionsStorage = createUnifiedOptionsStorage();
+  const pluginConfigStorage = createPluginConfigStorage();
 
   const job = await jobStorage.getWithRelations(jobId);
   if (!job) {
@@ -102,11 +103,14 @@ async function buildEligibleWorkersQuery(jobId: string, filters?: EligibleWorker
   let enabledPluginConfigs: EligibilityPluginConfig[] = [];
   
   if (job.jobTypeId) {
-    const jobType = await unifiedOptionsStorage.get("dispatch-job-type", job.jobTypeId);
-    if (jobType?.data) {
-      const jobTypeData = jobType.data as JobTypeData;
-      enabledPluginConfigs = (jobTypeData.eligibility || []).filter((p: EligibilityPluginConfig) => p.enabled);
-    }
+    const rows = await pluginConfigStorage.search("dispatch-eligibility", { jobType: job.jobTypeId });
+    enabledPluginConfigs = rows
+      .filter((r) => r.config.enabled)
+      .map((r) => ({
+        pluginId: r.config.pluginId,
+        enabled: true,
+        config: (r.config.data ?? {}) as Record<string, unknown>,
+      }));
   }
 
   const appliedConditions: Array<{ pluginId: string; condition: EligibilityCondition }> = [];
@@ -486,6 +490,7 @@ export function createDispatchEligibleWorkersStorage(): DispatchEligibleWorkersS
       const client = getClient();
       const jobStorage = createDispatchJobStorage();
       const unifiedOptionsStorage = createUnifiedOptionsStorage();
+      const pluginConfigStorage = createPluginConfigStorage();
 
       const job = await jobStorage.getWithRelations(jobId);
       if (!job) {
@@ -526,11 +531,14 @@ export function createDispatchEligibleWorkersStorage(): DispatchEligibleWorkersS
       let enabledPluginConfigs: EligibilityPluginConfig[] = [];
       
       if (job.jobTypeId) {
-        const jobType = await unifiedOptionsStorage.get("dispatch-job-type", job.jobTypeId);
-        if (jobType?.data) {
-          const jobTypeData = jobType.data as JobTypeData;
-          enabledPluginConfigs = (jobTypeData.eligibility || []).filter((p: EligibilityPluginConfig) => p.enabled);
-        }
+        const rows = await pluginConfigStorage.search("dispatch-eligibility", { jobType: job.jobTypeId });
+        enabledPluginConfigs = rows
+          .filter((r) => r.config.enabled)
+          .map((r) => ({
+            pluginId: r.config.pluginId,
+            enabled: true,
+            config: (r.config.data ?? {}) as Record<string, unknown>,
+          }));
       }
 
       const pluginResults: PluginCheckResult[] = [];
@@ -548,8 +556,11 @@ export function createDispatchEligibleWorkersStorage(): DispatchEligibleWorkersS
           continue;
         }
 
-        const condition = await Promise.resolve(plugin.getEligibilityCondition(context, pluginConfig.config));
-        if (!condition) {
+        const conditionResult = await Promise.resolve(plugin.getEligibilityCondition(context, pluginConfig.config));
+        const conditions = conditionResult
+          ? (Array.isArray(conditionResult) ? conditionResult : [conditionResult])
+          : [];
+        if (conditions.length === 0) {
           pluginResults.push({
             pluginId: plugin.id,
             pluginName: plugin.name,
@@ -560,13 +571,22 @@ export function createDispatchEligibleWorkersStorage(): DispatchEligibleWorkersS
           continue;
         }
 
-        const checkResult = await checkConditionForWorker(client, workerId, condition);
+        // A plugin may contribute several conditions (e.g. hta-home-employer).
+        // The query path ANDs them together, so a worker passes the plugin only
+        // when every condition passes; surface the first failing one.
+        const checkResults: Array<{ condition: EligibilityCondition; passed: boolean; explanation: string }> = [];
+        for (const condition of conditions) {
+          const result = await checkConditionForWorker(client, workerId, condition);
+          checkResults.push({ condition, passed: result.passed, explanation: result.explanation });
+        }
+        const failed = checkResults.find((cr) => !cr.passed);
+        const chosen = failed ?? checkResults[0];
         pluginResults.push({
           pluginId: plugin.id,
           pluginName: plugin.name,
-          passed: checkResult.passed,
-          explanation: checkResult.explanation,
-          condition,
+          passed: !failed,
+          explanation: failed ? failed.explanation : checkResults.map((cr) => cr.explanation).join("; "),
+          condition: chosen.condition,
         });
       }
 

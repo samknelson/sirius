@@ -1,8 +1,5 @@
 import { storage } from "../../../../storage";
 import { logger } from "../../../../logger";
-import { optionsWorkerIdType } from "@shared/schema";
-import { eq } from "drizzle-orm";
-import { db } from "../../../../storage/db";
 import { WorkerTosConflictError } from "../../../../storage/workers/tos";
 
 interface T631TosNode {
@@ -72,20 +69,14 @@ export async function syncTos(
   }
 
   // Resolve t631 worker_id type id (sirius_id = "t631")
-  const [t631Type] = await db
-    .select({ id: optionsWorkerIdType.id })
-    .from(optionsWorkerIdType)
-    .where(eq(optionsWorkerIdType.siriusId, "t631"))
-    .limit(1);
-
-  if (!t631Type) {
+  const t631TypeId = await storage.workerIds.getTypeIdBySiriusId("t631");
+  if (!t631TypeId) {
     const msg = "Cannot sync T631 TOS: no options_worker_id_type row with sirius_id='t631'";
     logger.error(msg, { service: "t631-sync-tos" });
     result.errors++;
     result.details.push({ siriusId: "(config)", action: "error", error: msg });
     return result;
   }
-  const t631TypeId = t631Type.id;
 
   const remoteSiriusIds = new Set<string>();
 

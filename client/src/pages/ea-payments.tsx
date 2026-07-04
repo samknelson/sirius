@@ -15,6 +15,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { stringify } from "csv-stringify/browser/esm/sync";
 import { formatAmount } from "@shared/currency";
+import { isValidYmd, ymdToDateForPicker } from "@shared/utils/date";
 
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
@@ -28,11 +29,9 @@ function formatStatementPeriods(details: Record<string, unknown> | null, fallbac
   if (!pa || pa.length === 0) return fallback;
   const uniquePeriods = new Set<string>();
   for (const alloc of pa) {
-    if (alloc.statementYmd) {
-      const [y, m] = alloc.statementYmd.split("-").map(Number);
-      if (y && m && m >= 1 && m <= 12) {
-        uniquePeriods.add(`${MONTH_NAMES[m - 1]} ${y}`);
-      }
+    if (alloc.statementYmd && isValidYmd(alloc.statementYmd)) {
+      const d = ymdToDateForPicker(alloc.statementYmd);
+      uniquePeriods.add(`${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`);
     }
   }
   if (uniquePeriods.size === 0) return fallback;

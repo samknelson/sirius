@@ -1,3 +1,4 @@
+import { runInTransaction } from "./transaction-context";
 import { type VariableStorage, createVariableStorage, variableLoggingConfig } from "./system/variables";
 import { type UserStorage, createUserStorage, userLoggingConfig } from "./users";
 import { type WorkerStorage, createWorkerStorage, workerLoggingConfig } from "./workers";
@@ -5,7 +6,7 @@ import { type EmployerStorage, createEmployerStorage, employerLoggingConfig } fr
 import { type ContactsStorage, createContactsStorage, type AddressStorage, type PhoneNumberStorage, contactLoggingConfig, addressLoggingConfig, phoneNumberLoggingConfig } from "./contacts";
 import { type TrustBenefitStorage, createTrustBenefitStorage, trustBenefitLoggingConfig } from "./trust/benefits";
 import { type TrustProviderStorage, createTrustProviderStorage } from "./trust/providers";
-import { type TrustWmbStorage, createTrustWmbStorage } from "./trust/wmb";
+import { type TrustWmbStorage, createTrustWmbStorage, trustWmbLoggingConfig } from "./trust/wmb";
 import { type TrustProviderContactStorage, createTrustProviderContactStorage, trustProviderContactLoggingConfig } from "./trust/provider/contacts";
 import { type WorkerIdStorage, createWorkerIdStorage, workerIdLoggingConfig } from "./workers/ids";
 import { type BookmarkStorage, createBookmarkStorage } from "./bookmarks";
@@ -13,10 +14,23 @@ import {
   type LedgerStorage,
   createLedgerStorage,
   ledgerAccountLoggingConfig,
-  stripePaymentMethodLoggingConfig,
   ledgerPaymentLoggingConfig,
   ledgerPaymentBatchLoggingConfig,
 } from "./ledger";
+import {
+  type PaymentMethodStorage,
+  createPaymentMethodStorage,
+  paymentMethodLoggingConfig,
+} from "./ledger/payment_methods";
+import {
+  createGatewayCustomerStorage,
+  gatewayCustomerLoggingConfig,
+} from "./ledger/gateway_customers";
+
+type LedgerStorageWithPaymentMethods = LedgerStorage & {
+  paymentMethods: PaymentMethodStorage;
+  gatewayCustomers: ReturnType<typeof createGatewayCustomerStorage>;
+};
 import {
   type EmployerContactStorage,
   createEmployerContactStorage,
@@ -45,15 +59,33 @@ import {
   fileLoggingConfig,
 } from "./files";
 import {
-  type CronJobStorage,
-  createCronJobStorage,
   type CronJobRunStorage,
   createCronJobRunStorage,
 } from "./system/cron";
 import {
-  type ChargePluginConfigStorage,
-  createChargePluginConfigStorage,
-} from "./charge-plugins";
+  type PluginConfigStorage,
+  createPluginConfigStorage,
+} from "./plugin-configs";
+import {
+  type DenormStorage,
+  createDenormStorage,
+} from "./system/denorm";
+import {
+  type WorkerMshDenormStorage,
+  createWorkerMshDenormStorage,
+} from "./system/worker-msh-denorm";
+import {
+  type WorkerEmploymentDenormStorage,
+  createWorkerEmploymentDenormStorage,
+} from "./system/worker-employment-denorm";
+import {
+  type GrievanceNameDenormStorage,
+  createGrievanceNameDenormStorage,
+} from "./system/grievance-name-denorm";
+import {
+  type WorkerWshDenormStorage,
+  createWorkerWshDenormStorage,
+} from "./system/worker-wsh-denorm";
 import { type LogsStorage, createLogsStorage } from "./system/logs";
 import { type WorkerWshStorage, createWorkerWshStorage, workerWshLoggingConfig } from "./worker-wsh";
 import { type WorkerMshStorage, createWorkerMshStorage, workerMshLoggingConfig } from "./worker-msh";
@@ -68,6 +100,7 @@ import { type BulkMessagesSmsStorage, createBulkMessagesSmsStorage, bulkMessages
 import { type BulkMessagesPostalStorage, createBulkMessagesPostalStorage, bulkMessagesPostalLoggingConfig } from "./bulk/messages/postal";
 import { type BulkMessagesInappStorage, createBulkMessagesInappStorage, bulkMessagesInappLoggingConfig } from "./bulk/messages/inapp";
 import { type BulkParticipantStorage, createBulkParticipantStorage, bulkParticipantLoggingConfig } from "./bulk/participants";
+import { type BulkTokensStorage, createBulkTokensStorage } from "./bulk/tokens";
 import { type EmployerPolicyHistoryStorage, createEmployerPolicyHistoryStorage, employerPolicyHistoryLoggingConfig } from "./employers/policy-history";
 import { type WmbScanQueueStorage, createWmbScanQueueStorage } from "./wmb-scan-queue";
 import { type CardcheckDefinitionStorage, createCardcheckDefinitionStorage, cardcheckDefinitionLoggingConfig } from "./cardcheck-definitions";
@@ -89,6 +122,8 @@ import { type FreemanCrewleadsStorage, createFreemanCrewleadsStorage, freemanCre
 import { type BtuSchoolTypesStorage, createBtuSchoolTypesStorage } from "./sitespecific/btu/school-types";
 import { type BtuRegionsStorage, createBtuRegionsStorage } from "./sitespecific/btu/regions";
 import { type BtuSchoolAttributesStorage, createBtuSchoolAttributesStorage } from "./sitespecific/btu/school-attributes";
+import { type BaoImmediateEligibilityStorage, createBaoImmediateEligibilityStorage, baoImmediateEligibilityLoggingConfig } from "./sitespecific/bao/immediate-eligibility";
+import { type BaoBeneficiariesStorage, createBaoBeneficiariesStorage, baoBeneficiariesLoggingConfig } from "./sitespecific/bao/beneficiaries";
 import { type WorkerBanStorage, createWorkerBanStorage, workerBanLoggingConfig } from "./worker-bans";
 import { type WorkerDispatchDncStorage, createWorkerDispatchDncStorage, workerDispatchDncLoggingConfig } from "./dispatch/worker-dnc";
 import { type WorkerSkillStorage, createWorkerSkillStorage, workerSkillLoggingConfig } from "./workers/skills";
@@ -97,6 +132,7 @@ import { type WorkerCertificationStorage, createWorkerCertificationStorage, work
 import { type WorkerRatingStorage, createWorkerRatingStorage, workerRatingLoggingConfig } from "./workers/ratings";
 import { type WorkerRelationsStorage, createWorkerRelationsStorage, workerRelationsLoggingConfig } from "./workers/relations";
 import { type WorkerTrustElectionsStorage, createWorkerTrustElectionsStorage, workerTrustElectionsLoggingConfig } from "./trust/elections";
+import { type TrustBenefitEligibilityExemptionsStorage, createTrustBenefitEligibilityExemptionsStorage, trustBenefitEligibilityExemptionsLoggingConfig } from "./trust/eligibility-exemptions";
 import { type EdlsSheetsStorage, createEdlsSheetsStorage, edlsSheetsLoggingConfig } from "./edls/sheets";
 import { type EdlsCrewsStorage, createEdlsCrewsStorage, edlsCrewsLoggingConfig } from "./edls/crews";
 import { type EdlsAssignmentsStorage, createEdlsAssignmentsStorage, edlsAssignmentsLoggingConfig } from "./edls/assignments";
@@ -109,6 +145,19 @@ import { type BtuPoliticalStorage, createBtuPoliticalStorage, btuPoliticalLoggin
 import { type WsBundleStorage, type WsClientStorage, type WsClientCredentialStorage, type WsClientIpRuleStorage, createWsBundleStorage, createWsClientStorage, createWsClientCredentialStorage, createWsClientIpRuleStorage } from "./webservices";
 import { type CompanyStorage, createCompanyStorage, companyLoggingConfig, type EmployerCompanyStorage, createEmployerCompanyStorage, employerCompanyLoggingConfig } from "./employers/companies";
 import { type ContactLinkStorage, createContactLinkStorage } from "./contact-links";
+import { type CommTagsStorage, createCommTagsStorage, commTagsLoggingConfig } from "./comm-tags";
+import { type CommStorage, createCommStorage, commLoggingConfig } from "./comm";
+import { type GrievanceStorage, createGrievanceStorage, grievanceLoggingConfig } from "./grievances/grievances";
+import {
+  type GrievanceSettlementStorage,
+  createGrievanceSettlementStorage,
+  grievanceSettlementLoggingConfig,
+} from "./grievances/grievance-settlements";
+import {
+  type GrievanceTimelineTemplateStorage,
+  createGrievanceTimelineTemplateStorage,
+  grievanceTimelineTemplateLoggingConfig,
+} from "./grievances/grievance-timeline-templates";
 import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
 import { db } from "./db";
 import { employers, workers, contacts } from "@shared/schema";
@@ -126,16 +175,20 @@ export interface IStorage {
   trust: { wmb: TrustWmbStorage };
   workerIds: WorkerIdStorage;
   bookmarks: BookmarkStorage;
-  ledger: LedgerStorage;
+  ledger: LedgerStorageWithPaymentMethods;
   employerContacts: EmployerContactStorage;
   wizards: WizardStorage;
   wizardFeedMappings: WizardFeedMappingStorage;
   wizardEmployerMonthly: WizardEmployerMonthlyStorage;
   wizardEmploymentStatusMappings: WizardEmploymentStatusMappingStorage;
   files: FileStorage;
-  cronJobs: CronJobStorage;
   cronJobRuns: CronJobRunStorage;
-  chargePluginConfigs: ChargePluginConfigStorage;
+  pluginConfigs: PluginConfigStorage;
+  denorm: DenormStorage;
+  workerMshDenorm: WorkerMshDenormStorage;
+  workerWshDenorm: WorkerWshDenormStorage;
+  workerEmploymentDenorm: WorkerEmploymentDenormStorage;
+  grievanceNameDenorm: GrievanceNameDenormStorage;
   logs: LogsStorage;
   workerWsh: WorkerWshStorage;
   workerMsh: WorkerMshStorage;
@@ -162,6 +215,8 @@ export interface IStorage {
   btuSchoolTypes: BtuSchoolTypesStorage;
   btuRegions: BtuRegionsStorage;
   btuSchoolAttributes: BtuSchoolAttributesStorage;
+  baoImmediateEligibility: BaoImmediateEligibilityStorage;
+  baoBeneficiaries: BaoBeneficiariesStorage;
   freemanCrewleads: FreemanCrewleadsStorage;
   workerBans: WorkerBanStorage;
   workerDispatchDnc: WorkerDispatchDncStorage;
@@ -171,6 +226,7 @@ export interface IStorage {
   workerRatings: WorkerRatingStorage;
   workerRelations: WorkerRelationsStorage;
   workerTrustElections: WorkerTrustElectionsStorage;
+  trustBenefitEligibilityExemptions: TrustBenefitEligibilityExemptionsStorage;
   edlsSheets: EdlsSheetsStorage;
   edlsCrews: EdlsCrewsStorage;
   edlsAssignments: EdlsAssignmentsStorage;
@@ -194,9 +250,15 @@ export interface IStorage {
   bulkMessagesPostal: BulkMessagesPostalStorage;
   bulkMessagesInapp: BulkMessagesInappStorage;
   bulkParticipants: BulkParticipantStorage;
+  bulkTokens: BulkTokensStorage;
   facilities: FacilityStorage;
   gbhetPension: GbhetPensionStorage;
   contactLinks: ContactLinkStorage;
+  commTags: CommTagsStorage;
+  comm: CommStorage;
+  grievances: GrievanceStorage;
+  grievanceTimelineTemplates: GrievanceTimelineTemplateStorage;
+  grievanceSettlements: GrievanceSettlementStorage;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -211,16 +273,20 @@ export class DatabaseStorage implements IStorage {
   trust: { wmb: TrustWmbStorage };
   workerIds: WorkerIdStorage;
   bookmarks: BookmarkStorage;
-  ledger: LedgerStorage;
+  ledger: LedgerStorageWithPaymentMethods;
   employerContacts: EmployerContactStorage;
   wizards: WizardStorage;
   wizardFeedMappings: WizardFeedMappingStorage;
   wizardEmployerMonthly: WizardEmployerMonthlyStorage;
   wizardEmploymentStatusMappings: WizardEmploymentStatusMappingStorage;
   files: FileStorage;
-  cronJobs: CronJobStorage;
   cronJobRuns: CronJobRunStorage;
-  chargePluginConfigs: ChargePluginConfigStorage;
+  pluginConfigs: PluginConfigStorage;
+  denorm: DenormStorage;
+  workerMshDenorm: WorkerMshDenormStorage;
+  workerWshDenorm: WorkerWshDenormStorage;
+  workerEmploymentDenorm: WorkerEmploymentDenormStorage;
+  grievanceNameDenorm: GrievanceNameDenormStorage;
   logs: LogsStorage;
   workerWsh: WorkerWshStorage;
   workerMsh: WorkerMshStorage;
@@ -247,6 +313,8 @@ export class DatabaseStorage implements IStorage {
   btuSchoolTypes: BtuSchoolTypesStorage;
   btuRegions: BtuRegionsStorage;
   btuSchoolAttributes: BtuSchoolAttributesStorage;
+  baoImmediateEligibility: BaoImmediateEligibilityStorage;
+  baoBeneficiaries: BaoBeneficiariesStorage;
   freemanCrewleads: FreemanCrewleadsStorage;
   workerBans: WorkerBanStorage;
   workerDispatchDnc: WorkerDispatchDncStorage;
@@ -256,6 +324,7 @@ export class DatabaseStorage implements IStorage {
   workerRatings: WorkerRatingStorage;
   workerRelations: WorkerRelationsStorage;
   workerTrustElections: WorkerTrustElectionsStorage;
+  trustBenefitEligibilityExemptions: TrustBenefitEligibilityExemptionsStorage;
   edlsSheets: EdlsSheetsStorage;
   edlsCrews: EdlsCrewsStorage;
   edlsAssignments: EdlsAssignmentsStorage;
@@ -279,9 +348,15 @@ export class DatabaseStorage implements IStorage {
   bulkMessagesPostal: BulkMessagesPostalStorage;
   bulkMessagesInapp: BulkMessagesInappStorage;
   bulkParticipants: BulkParticipantStorage;
+  bulkTokens: BulkTokensStorage;
   facilities: FacilityStorage;
   gbhetPension: GbhetPensionStorage;
   contactLinks: ContactLinkStorage;
+  commTags: CommTagsStorage;
+  comm: CommStorage;
+  grievances: GrievanceStorage;
+  grievanceTimelineTemplates: GrievanceTimelineTemplateStorage;
+  grievanceSettlements: GrievanceSettlementStorage;
 
   constructor() {
     this.variables = withStorageLogging(
@@ -310,7 +385,7 @@ export class DatabaseStorage implements IStorage {
     );
     this.trustProviders = createTrustProviderStorage();
     this.trust = {
-      wmb: createTrustWmbStorage(),
+      wmb: withStorageLogging(createTrustWmbStorage(), trustWmbLoggingConfig),
     };
     this.trustProviderContacts = withStorageLogging(
       createTrustProviderContactStorage(this.contacts),
@@ -321,14 +396,23 @@ export class DatabaseStorage implements IStorage {
       workerIdLoggingConfig,
     );
     this.bookmarks = createBookmarkStorage();
-    this.ledger = createLedgerStorage(
-      ledgerAccountLoggingConfig,
-      stripePaymentMethodLoggingConfig,
-      undefined,
-      ledgerPaymentLoggingConfig,
-      undefined,
-      ledgerPaymentBatchLoggingConfig,
-    );
+    this.ledger = {
+      ...createLedgerStorage(
+        ledgerAccountLoggingConfig,
+        undefined,
+        ledgerPaymentLoggingConfig,
+        undefined,
+        ledgerPaymentBatchLoggingConfig,
+      ),
+      paymentMethods: withStorageLogging(
+        createPaymentMethodStorage(),
+        paymentMethodLoggingConfig,
+      ),
+      gatewayCustomers: withStorageLogging(
+        createGatewayCustomerStorage(),
+        gatewayCustomerLoggingConfig,
+      ),
+    };
     this.employerContacts = withStorageLogging(
       createEmployerContactStorage(this.contacts),
       employerContactLoggingConfig,
@@ -341,9 +425,14 @@ export class DatabaseStorage implements IStorage {
     this.wizardEmployerMonthly = createWizardEmployerMonthlyStorage();
     this.wizardEmploymentStatusMappings = createWizardEmploymentStatusMappingStorage();
     this.files = withStorageLogging(createFileStorage(), fileLoggingConfig);
-    this.cronJobs = createCronJobStorage();
     this.cronJobRuns = createCronJobRunStorage();
-    this.chargePluginConfigs = createChargePluginConfigStorage();
+    this.pluginConfigs = createPluginConfigStorage();
+    // No logging for denorm - high-volume internal workflow state churn.
+    this.denorm = createDenormStorage();
+    this.workerMshDenorm = createWorkerMshDenormStorage();
+    this.workerWshDenorm = createWorkerWshDenormStorage();
+    this.workerEmploymentDenorm = createWorkerEmploymentDenormStorage();
+    this.grievanceNameDenorm = createGrievanceNameDenormStorage();
     this.logs = createLogsStorage();
 
     // No logging for wmb scan queue - high-volume internal state changes
@@ -352,9 +441,7 @@ export class DatabaseStorage implements IStorage {
 
     this.workerWsh = withStorageLogging(
       createWorkerWshStorage(
-        this.workers.updateWorkerStatus.bind(this.workers),
         async (workerId: string) => {
-          await this.workers.syncWorkerEmployerDenorm(workerId);
           await this.wmbScanQueue.invalidateWorkerScans(workerId);
         },
       ),
@@ -362,9 +449,7 @@ export class DatabaseStorage implements IStorage {
     );
     this.workerMsh = withStorageLogging(
       createWorkerMshStorage(
-        this.workers.updateWorkerMemberStatuses.bind(this.workers),
         async (workerId: string) => {
-          await this.workers.syncWorkerEmployerDenorm(workerId);
           await this.wmbScanQueue.invalidateWorkerScans(workerId);
         }
       ),
@@ -373,16 +458,12 @@ export class DatabaseStorage implements IStorage {
     this.workerHours = withStorageLogging(
       createWorkerHoursStorage(
         async (workerId: string) => {
-          await this.workers.syncWorkerEmployerDenorm(workerId);
           await this.wmbScanQueue.invalidateWorkerScans(workerId);
         },
       ),
       workerHoursLoggingConfig,
     );
-    
-    // Inject denorm data provider into workers storage now that workerHours is available
-    this.workers.setDenormDataProvider(this.workerHours.getDenormData.bind(this.workerHours));
-    
+
     this.policies = withStorageLogging(
       createPolicyStorage(),
       policyLoggingConfig,
@@ -432,6 +513,14 @@ export class DatabaseStorage implements IStorage {
     this.btuSchoolTypes = createBtuSchoolTypesStorage();
     this.btuRegions = createBtuRegionsStorage();
     this.btuSchoolAttributes = createBtuSchoolAttributesStorage();
+    this.baoImmediateEligibility = withStorageLogging(
+      createBaoImmediateEligibilityStorage(),
+      baoImmediateEligibilityLoggingConfig,
+    );
+    this.baoBeneficiaries = withStorageLogging(
+      createBaoBeneficiariesStorage(this.workers),
+      baoBeneficiariesLoggingConfig,
+    );
     this.freemanCrewleads = withStorageLogging(
       createFreemanCrewleadsStorage(),
       freemanCrewleadsLoggingConfig,
@@ -447,6 +536,7 @@ export class DatabaseStorage implements IStorage {
     this.workerRatings = withStorageLogging(createWorkerRatingStorage(), workerRatingLoggingConfig);
     this.workerRelations = withStorageLogging(createWorkerRelationsStorage(), workerRelationsLoggingConfig);
     this.workerTrustElections = withStorageLogging(createWorkerTrustElectionsStorage(), workerTrustElectionsLoggingConfig);
+    this.trustBenefitEligibilityExemptions = withStorageLogging(createTrustBenefitEligibilityExemptionsStorage(), trustBenefitEligibilityExemptionsLoggingConfig);
     this.edlsSheets = withStorageLogging(createEdlsSheetsStorage(), edlsSheetsLoggingConfig);
     this.edlsCrews = withStorageLogging(createEdlsCrewsStorage(), edlsCrewsLoggingConfig);
     this.edlsAssignments = withStorageLogging(createEdlsAssignmentsStorage(), edlsAssignmentsLoggingConfig);
@@ -494,9 +584,103 @@ export class DatabaseStorage implements IStorage {
       createBulkParticipantStorage(),
       bulkParticipantLoggingConfig
     );
+    this.bulkTokens = createBulkTokensStorage();
     this.facilities = withStorageLogging(createFacilityStorage(this.contacts), facilityLoggingConfig);
     this.gbhetPension = createGbhetPensionStorage();
     this.contactLinks = createContactLinkStorage();
+    this.commTags = withStorageLogging(
+      createCommTagsStorage({
+        resolveCommLabel: (id) => this.comm.getLogLabel(id),
+      }),
+      commTagsLoggingConfig,
+    );
+    const rawComm = createCommStorage(this.commTags);
+    const baseComm = withStorageLogging(rawComm, commLoggingConfig);
+    const commTags = this.commTags;
+    this.comm = withStorageLogging(
+      {
+        ...baseComm,
+        async updateWithTags(id, data, tagIds) {
+          return runInTransaction(async () => {
+            // Use the unwrapped rawComm here so the inner updateComm
+            // does NOT emit its own log line — the orchestrator-level
+            // log below is the single high-level summary for this
+            // edit. Calling baseComm.updateComm would double-log.
+            let updated;
+            if (data && Object.keys(data).length > 0) {
+              updated = await rawComm.updateComm(id, data);
+            } else {
+              updated = await rawComm.getComm(id);
+            }
+            if (!updated) return undefined;
+            if (tagIds !== undefined) {
+              await commTags.setTags(id, tagIds);
+            }
+            return updated;
+          });
+        },
+      },
+      {
+        module: 'comm',
+        methods: {
+          updateWithTags: {
+            enabled: true,
+            getEntityId: (args) => args[0],
+            before: async (args, storage) => {
+              const id = args[0];
+              const data = (args[1] ?? {}) as Record<string, unknown>;
+              const tagIds = args[2];
+              const c = data.status !== undefined ? await storage.getComm(id) : undefined;
+              const tags = tagIds !== undefined ? await commTags.listForComm(id) : [];
+              return { status: c?.status, tags };
+            },
+            after: async (args, result, storage) => {
+              const id = args[0];
+              const data = (args[1] ?? {}) as Record<string, unknown>;
+              const tagIds = args[2];
+              const status =
+                data.status !== undefined
+                  ? (result?.status ?? (await storage.getComm(id))?.status)
+                  : undefined;
+              const tags = tagIds !== undefined ? await commTags.listForComm(id) : [];
+              return { status, tags };
+            },
+            getDescription: async (args, _result, beforeState, afterState, storage) => {
+              const id = args[0];
+              const label = (await storage.getLogLabel(id)) ?? `comm ${id.slice(0, 8)}`;
+              const parts: string[] = [];
+              const fromStatus = beforeState?.status;
+              const toStatus = afterState?.status;
+              if (fromStatus !== toStatus) {
+                parts.push(`status ${fromStatus ?? '∅'} → ${toStatus ?? '∅'}`);
+              }
+              const beforeTags: Array<{ id: string; name: string }> = beforeState?.tags ?? [];
+              const afterTags: Array<{ id: string; name: string }> = afterState?.tags ?? [];
+              const beforeIds = new Set(beforeTags.map((t) => t.id));
+              const afterIds = new Set(afterTags.map((t) => t.id));
+              const added = afterTags.filter((t) => !beforeIds.has(t.id)).map((t) => t.name);
+              const removed = beforeTags.filter((t) => !afterIds.has(t.id)).map((t) => t.name);
+              for (const name of added) parts.push(`+${name}`);
+              for (const name of removed) parts.push(`-${name}`);
+              if (parts.length === 0) return `Updated ${label} (no changes)`;
+              return `Updated ${label}: ${parts.join(', ')}`;
+            },
+          },
+        },
+      },
+    );
+    this.grievances = withStorageLogging(
+      createGrievanceStorage(),
+      grievanceLoggingConfig,
+    );
+    this.grievanceTimelineTemplates = withStorageLogging(
+      createGrievanceTimelineTemplateStorage(),
+      grievanceTimelineTemplateLoggingConfig,
+    );
+    this.grievanceSettlements = withStorageLogging(
+      createGrievanceSettlementStorage(),
+      grievanceSettlementLoggingConfig,
+    );
   }
 }
 

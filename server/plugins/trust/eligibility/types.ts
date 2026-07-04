@@ -1,6 +1,7 @@
 import { z } from "zod";
-import type { Worker, Contact } from "@shared/schema";
+import type { Worker, Contact, Employer } from "@shared/schema";
 import type { JsonSchema } from "@shared/json-schema-form";
+import type { BasePluginMetadata } from "../../_core";
 
 export type ScanType = "start" | "continue";
 
@@ -58,6 +59,15 @@ export interface EligibilityContext {
     dependentWorkerId: string;
     relationType: string;
   };
+  /**
+   * Subscriber's employer resolved once by the executor before any plugin
+   * runs. It is the externally-supplied employer when one is provided to
+   * the evaluation, otherwise the employer on the subscriber's trust
+   * election active as of the evaluation date. Absent when neither yields
+   * an employer; plugins that depend on it (e.g. BAO immediate
+   * eligibility) must tolerate it being undefined rather than crash.
+   */
+  employer?: Employer;
 }
 
 export interface EligibilityResult {
@@ -80,12 +90,8 @@ export interface EligibilityResult {
  * come from `default` on each property and are applied automatically
  * by both the form renderer and the AJV validator.
  */
-export interface EligibilityPluginMetadata {
-  id: string;
-  name: string;
-  description: string;
+export interface EligibilityPluginMetadata extends BasePluginMetadata {
   configSchema: JsonSchema;
-  requiresComponent?: string;
 }
 
 export interface EligibilityRule {

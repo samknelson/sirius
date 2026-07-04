@@ -2,7 +2,7 @@ import { createNoopValidator } from './utils/validation';
 import { getClient } from './transaction-context';
 import { policies, type Policy, type InsertPolicy } from "@shared/schema";
 import { eq } from "drizzle-orm";
-import type { StorageLoggingConfig } from "./middleware/logging";
+import { defineLoggingConfig } from "./middleware/logging";
 
 /**
  * Stub validator - add validation logic here when needed
@@ -16,6 +16,8 @@ export interface PolicyStorage {
   createPolicy(data: InsertPolicy): Promise<Policy>;
   updatePolicy(id: string, data: Partial<InsertPolicy>): Promise<Policy | undefined>;
   deletePolicy(id: string): Promise<boolean>;
+  getData(id: string): Promise<Record<string, unknown>>;
+  setData(id: string, data: Record<string, unknown>): Promise<void>;
 }
 
 export function createPolicyStorage(): PolicyStorage {
@@ -72,84 +74,81 @@ export function createPolicyStorage(): PolicyStorage {
         .returning();
       return result.length > 0;
     },
+
+    async getData(id: string): Promise<Record<string, unknown>> {
+      const client = getClient();
+      const [row] = await client
+        .select({ data: policies.data })
+        .from(policies)
+        .where(eq(policies.id, id));
+      if (!row) {
+        throw new Error("POLICY_NOT_FOUND");
+      }
+      const data = row.data;
+      return data && typeof data === "object" && !Array.isArray(data)
+        ? (data as Record<string, unknown>)
+        : {};
+    },
+
+    async setData(id: string, data: Record<string, unknown>): Promise<void> {
+      const client = getClient();
+      const result = await client
+        .update(policies)
+        .set({ data })
+        .where(eq(policies.id, id))
+        .returning({ id: policies.id });
+      if (result.length === 0) {
+        throw new Error("POLICY_NOT_FOUND");
+      }
+    },
   };
 
   return storage;
 }
 
-export const policyLoggingConfig: StorageLoggingConfig<PolicyStorage> = {
+const policyDescribe = {
+  label: 'Policy',
+  name: 'name',
+  id: 'siriusId',
+} as const;
+
+export const policyLoggingConfig = defineLoggingConfig<PolicyStorage>({
   module: 'policies',
+  state: { key: 'policy' },
+  getter: 'getPolicyById',
   methods: {
     createPolicy: {
-      enabled: true,
-      getEntityId: (args, result) => result?.id || 'new policy',
-      getDescription: async (args, result) => {
-        const name = result?.name || args[0]?.name || 'Unnamed';
-        const siriusId = result?.siriusId || args[0]?.siriusId || '';
-        return `Created Policy [${siriusId}] ${name}`;
-      },
-      after: async (args, result) => {
-        return {
-          policy: result,
-          metadata: {
-            policyId: result?.id,
-            siriusId: result?.siriusId,
-            name: result?.name,
-          }
-        };
-      }
+      state: { fallbackId: 'new policy' },
+      describe: { ...policyDescribe, defaultName: 'Unnamed' },
+      metadata: (_args, result) => ({
+        policyId: result?.id,
+        siriusId: result?.siriusId,
+        name: result?.name,
+      }),
     },
     updatePolicy: {
-      enabled: true,
-      getEntityId: (args) => args[0],
-      getDescription: async (args, result, beforeState) => {
-        const oldName = beforeState?.policy?.name || 'Unknown';
-        const newName = result?.name || oldName;
-        const siriusId = result?.siriusId || beforeState?.policy?.siriusId || '';
-        if (oldName !== newName) {
-          return `Updated Policy [${siriusId}] ${oldName} → ${newName}`;
-        }
-        return `Updated Policy [${siriusId}] ${newName}`;
-      },
-      before: async (args, storage) => {
-        const policy = await storage.getPolicyById(args[0]);
-        return { policy };
-      },
-      after: async (args, result, _storage, beforeState) => {
-        return {
-          policy: result,
-          previousPolicy: beforeState?.policy,
-          metadata: {
-            policyId: result?.id,
-            siriusId: result?.siriusId,
-            name: result?.name,
-          }
-        };
-      }
+      state: { previousKey: 'previousPolicy' },
+      describe: policyDescribe,
+      metadata: (_args, result) => ({
+        policyId: result?.id,
+        siriusId: result?.siriusId,
+        name: result?.name,
+      }),
     },
     deletePolicy: {
-      enabled: true,
-      getEntityId: (args) => args[0],
-      getDescription: async (args, result, beforeState) => {
-        const name = beforeState?.policy?.name || 'Unknown';
-        const siriusId = beforeState?.policy?.siriusId || '';
-        return `Deleted Policy [${siriusId}] ${name}`;
-      },
-      before: async (args, storage) => {
-        const policy = await storage.getPolicyById(args[0]);
-        return { policy };
-      },
-      after: async (args, result, _storage, beforeState) => {
-        return {
-          deleted: result,
-          policy: beforeState?.policy,
-          metadata: {
-            policyId: args[0],
-            siriusId: beforeState?.policy?.siriusId,
-            name: beforeState?.policy?.name,
-          }
-        };
-      }
+      state: { includeOnDelete: true },
+      describe: policyDescribe,
+      metadata: (args, _result, beforeState) => ({
+        policyId: args[0],
+        siriusId: beforeState?.policy?.siriusId,
+        name: beforeState?.policy?.name,
+      }),
     },
-  }
-};
+    setData: {
+      getEntityId: (args) => args[0],
+      getHostEntityId: (args) => args[0],
+      getDescription: () => 'Updated policy data',
+      metadata: (args) => ({ policyId: args[0] }),
+    },
+  },
+});

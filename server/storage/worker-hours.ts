@@ -2,12 +2,12 @@ import { createNoopValidator } from './utils/validation';
 import { getClient } from './transaction-context';
 import {
   workerHours,
-  workerWsh,
   employers,
   optionsEmploymentStatus,
   type WorkerHours,
 } from "@shared/schema";
-import { eq, sql, and, desc } from "drizzle-orm";
+import { eq, sql, and, desc, inArray } from "drizzle-orm";
+import type { WorkerEmploymentRow } from "./system/worker-employment-denorm";
 import { type StorageLoggingConfig } from "./middleware/logging";
 import { storageLogger as logger } from "../logger";
 import type { LedgerNotification } from "../plugins/ledger/charge/types";
@@ -28,13 +28,6 @@ export interface WorkerHoursDeleteResult {
   notifications: LedgerNotification[];
 }
 
-export interface WorkerDenormData {
-  homeEmployerId: string | null;
-  employerIds: string[] | null;
-  latestWsId: string | null;
-  jobTitle: string | null;
-}
-
 export interface EmployerWorkerCount {
   employerId: string;
   workerCount: number;
@@ -42,7 +35,15 @@ export interface EmployerWorkerCount {
 
 export interface WorkerHoursStorage {
   getDistinctWorkerCountsByEmployer(): Promise<EmployerWorkerCount[]>;
-  getDenormData(workerId: string): Promise<WorkerDenormData>;
+  /**
+   * Compute a worker's current employment from hours history: one row per
+   * employer (that employer's latest hours row), carrying that row's `job_title`.
+   * Exactly one returned row is flagged `home = true` (the first employer, by
+   * employer-id ordering, whose latest row is flagged home), matching the legacy
+   * scalar home-employer derivation. Used by the `worker_employment` denorm
+   * plugin to populate `worker_employment_denorm`.
+   */
+  getCurrentEmployment(workerId: string): Promise<WorkerEmploymentRow[]>;
   getWorkerHoursById(id: string): Promise<any | undefined>;
   getWorkerHours(workerId: string): Promise<any[]>;
   getWorkerHoursCurrent(workerId: string): Promise<any[]>;
@@ -55,6 +56,16 @@ export interface WorkerHoursStorage {
   updateWorkerHours(id: string, data: { year?: number; month?: number; day?: number; employerId?: string; employmentStatusId?: string; hours?: number | null; home?: boolean; jobTitle?: string | null }): Promise<WorkerHoursResult | undefined>;
   deleteWorkerHours(id: string): Promise<WorkerHoursDeleteResult>;
   upsertWorkerHours(data: { workerId: string; month: number; year: number; employerId: string; employmentStatusId: string; hours: number | null; home?: boolean; jobTitle?: string | null }): Promise<WorkerHoursResult>;
+  getDistinctWorkerIdsByStatusAndMonths(
+    statusIds: string[],
+    months: Array<{ year: number; month: number }>,
+  ): Promise<string[]>;
+  getEmployerMonthRowsByWorkerStatusAndMonths(
+    workerId: string,
+    statusIds: string[],
+    months: Array<{ year: number; month: number }>,
+  ): Promise<Array<{ year: number; month: number; employerId: string }>>;
+  getCurrentlyEmployedWorkerIds(): Promise<Set<string>>;
 }
 
 export function createWorkerHoursStorage(
@@ -83,51 +94,38 @@ export function createWorkerHoursStorage(
       }));
     },
 
-    async getDenormData(workerId: string): Promise<WorkerDenormData> {
+    async getCurrentEmployment(workerId: string): Promise<WorkerEmploymentRow[]> {
       const client = getClient();
-      
-      // Query 1: Get latest hours per employer (for employer_ids and home_employer_id)
-      const hoursResult = await client.execute(sql`
+
+      // One row per employer: that employer's latest hours row, carrying its
+      // own `home` flag and `job_title`.
+      const result = await client.execute(sql`
         SELECT DISTINCT ON (employer_id)
           employer_id,
-          home
+          home,
+          job_title
         FROM worker_hours
         WHERE worker_id = ${workerId}
         ORDER BY employer_id, year DESC, month DESC, day DESC
       `);
-      
-      const hoursRows = hoursResult.rows as Array<{ employer_id: string; home: boolean | null }>;
-      const employerIds = hoursRows.length > 0 ? hoursRows.map(r => r.employer_id) : null;
-      const homeEmployerId = hoursRows.find(r => r.home === true)?.employer_id || null;
-      
-      // Query 2: Get job title from the most recent home hours record
-      const homeHoursResult = await client.execute(sql`
-        SELECT job_title
-        FROM worker_hours
-        WHERE worker_id = ${workerId} AND home = true
-        ORDER BY year DESC, month DESC, day DESC
-        LIMIT 1
-      `);
-      const homeHoursRow = homeHoursResult.rows[0] as { job_title: string | null } | undefined;
-      const jobTitle = homeHoursRow?.job_title || null;
-      
-      // Query 3: Get latest work status
-      const [wsResult] = await client
-        .select({ wsId: workerWsh.wsId })
-        .from(workerWsh)
-        .where(eq(workerWsh.workerId, workerId))
-        .orderBy(desc(workerWsh.date), sql`${workerWsh.createdAt} DESC NULLS LAST`, desc(workerWsh.id))
-        .limit(1);
-      
-      // Only set latestWsId if the worker has a home employer
-      const latestWsId = homeEmployerId ? (wsResult?.wsId || null) : null;
-      
-      return {
-        homeEmployerId,
-        employerIds,
-        latestWsId,
-        jobTitle,
-      };
+
+      const rows = result.rows as Array<{ employer_id: string; home: boolean | null; job_title: string | null }>;
+
+      // Pick the single home employer: the first employer (by employer-id
+      // ordering) whose latest hours row is flagged home, matching the legacy
+      // scalar derivation exactly. A worker may legitimately have NO home
+      // employer — if no latest row is flagged home, no row carries home = true
+      // and home-derived reads resolve to null, preserving the legacy nullable
+      // `denorm_home_employer_id` behavior that downstream callers branch on.
+      // At most one stored row is ever home = true, so home-row reads stay
+      // unambiguous.
+      const homeEmployerId = rows.find(r => r.home === true)?.employer_id ?? null;
+
+      return rows.map(r => ({
+        employerId: r.employer_id,
+        home: homeEmployerId !== null && r.employer_id === homeEmployerId,
+        jobTitle: r.job_title,
+      }));
     },
 
     async getWorkerHoursById(id: string): Promise<any | undefined> {
@@ -197,7 +195,6 @@ export function createWorkerHoursStorage(
           e.sirius_id AS "employer.siriusId",
           e.name AS "employer.name",
           e.is_active AS "employer.isActive",
-          e.stripe_customer_id AS "employer.stripeCustomerId",
           es.id AS "employmentStatus.id",
           es.name AS "employmentStatus.name",
           es.code AS "employmentStatus.code",
@@ -224,7 +221,6 @@ export function createWorkerHoursStorage(
           siriusId: row['employer.siriusId'],
           name: row['employer.name'],
           isActive: row['employer.isActive'],
-          stripeCustomerId: row['employer.stripeCustomerId'],
         },
         employmentStatus: {
           id: row['employmentStatus.id'],
@@ -269,7 +265,6 @@ export function createWorkerHoursStorage(
           e.sirius_id AS "employer.siriusId",
           e.name AS "employer.name",
           e.is_active AS "employer.isActive",
-          e.stripe_customer_id AS "employer.stripeCustomerId",
           es.id AS "employmentStatus.id",
           es.name AS "employmentStatus.name",
           es.code AS "employmentStatus.code",
@@ -296,7 +291,6 @@ export function createWorkerHoursStorage(
           siriusId: row['employer.siriusId'],
           name: row['employer.name'],
           isActive: row['employer.isActive'],
-          stripeCustomerId: row['employer.stripeCustomerId'],
         },
         employmentStatus: {
           id: row['employmentStatus.id'],
@@ -323,7 +317,6 @@ export function createWorkerHoursStorage(
           e.sirius_id AS "employer.siriusId",
           e.name AS "employer.name",
           e.is_active AS "employer.isActive",
-          e.stripe_customer_id AS "employer.stripeCustomerId",
           es.id AS "employmentStatus.id",
           es.name AS "employmentStatus.name",
           es.code AS "employmentStatus.code",
@@ -334,7 +327,7 @@ export function createWorkerHoursStorage(
         LEFT JOIN options_employment_status es ON wh.employment_status_id = es.id
         WHERE wh.worker_id = ${workerId}
         GROUP BY wh.employer_id, wh.year, wh.month, wh.employment_status_id,
-                 e.id, e.sirius_id, e.name, e.is_active, e.stripe_customer_id,
+                 e.id, e.sirius_id, e.name, e.is_active,
                  es.id, es.name, es.code, es.employed, es.description
         ORDER BY wh.year DESC, wh.month DESC, wh.employer_id
       `);
@@ -361,7 +354,6 @@ export function createWorkerHoursStorage(
             siriusId: row['employer.siriusId'],
             name: row['employer.name'],
             isActive: row['employer.isActive'],
-            stripeCustomerId: row['employer.stripeCustomerId'],
           },
           employmentStatus: {
             id: row['employmentStatus.id'],
@@ -656,6 +648,69 @@ export function createWorkerHoursStorage(
 
       await notifyWorkerDataChanged(savedHours.workerId);
       return { data: savedHours, notifications };
+    },
+
+    async getDistinctWorkerIdsByStatusAndMonths(
+      statusIds: string[],
+      months: Array<{ year: number; month: number }>,
+    ): Promise<string[]> {
+      if (statusIds.length === 0 || months.length === 0) return [];
+      const client = getClient();
+      const monthConditions = months.map(
+        ({ year, month }) => sql`(${workerHours.year} = ${year} AND ${workerHours.month} = ${month})`,
+      );
+      const rows = await client
+        .selectDistinct({ workerId: workerHours.workerId })
+        .from(workerHours)
+        .where(
+          and(
+            inArray(workerHours.employmentStatusId, statusIds),
+            sql`(${sql.join(monthConditions, sql` OR `)})`,
+          ),
+        );
+      return rows.map((r) => r.workerId);
+    },
+
+    async getEmployerMonthRowsByWorkerStatusAndMonths(
+      workerId: string,
+      statusIds: string[],
+      months: Array<{ year: number; month: number }>,
+    ): Promise<Array<{ year: number; month: number; employerId: string }>> {
+      if (statusIds.length === 0 || months.length === 0) return [];
+      const client = getClient();
+      const monthConditions = months.map(
+        ({ year, month }) => sql`(${workerHours.year} = ${year} AND ${workerHours.month} = ${month})`,
+      );
+      const rows = await client
+        .select({
+          year: workerHours.year,
+          month: workerHours.month,
+          employerId: workerHours.employerId,
+        })
+        .from(workerHours)
+        .where(
+          and(
+            eq(workerHours.workerId, workerId),
+            inArray(workerHours.employmentStatusId, statusIds),
+            sql`(${sql.join(monthConditions, sql` OR `)})`,
+          ),
+        );
+      return rows as Array<{ year: number; month: number; employerId: string }>;
+    },
+
+    async getCurrentlyEmployedWorkerIds(): Promise<Set<string>> {
+      const client = getClient();
+      const result = await client.execute(sql`
+        SELECT latest.worker_id
+        FROM (
+          SELECT DISTINCT ON (wh.worker_id) wh.worker_id, wh.employment_status_id
+          FROM worker_hours wh
+          ORDER BY wh.worker_id, wh.year DESC, wh.month DESC, wh.day DESC
+        ) latest
+        JOIN options_employment_status es ON es.id = latest.employment_status_id
+        WHERE es.employed = true
+      `);
+      return new Set((result.rows as Array<{ worker_id: string }>).map(r => r.worker_id));
     },
   };
 

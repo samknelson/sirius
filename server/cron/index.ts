@@ -1,23 +1,4 @@
-export { cronJobRegistry, registerCronJob, getCronJobHandler, getAllCronJobs } from './registry';
-export type { CronJobHandler, CronJobContext, CronJobSummary, CronJobSettingsField, CronJobSettingsAdapter, RegisteredCronJob } from './registry';
+// Cron job configuration and handlers now live on the plugin framework under
+// `server/plugins/system/cron/`. This module only re-exports the scheduler,
+// which reads its job list from plugin_configs (plugin_kind='cron').
 export { cronScheduler } from './scheduler';
-export { bootstrapCronJobs } from './bootstrap';
-export { deleteExpiredReportsHandler } from './jobs/deleteExpiredReports';
-export { deleteOldCronLogsHandler } from './jobs/deleteOldCronLogs';
-export { processWmbBatchHandler } from './jobs/processWmbBatch';
-export { deleteExpiredFloodEventsHandler } from './jobs/deleteExpiredFloodEvents';
-export { deleteExpiredHfeHandler } from './jobs/deleteExpiredHfe';
-export { sweepExpiredBanEligHandler } from './jobs/sweepExpiredBanElig';
-export { workerBanActiveScanHandler } from './jobs/workerBanActiveScan';
-export { workerCertificationActiveScanHandler } from './jobs/workerCertificationActiveScan';
-export { logCleanupHandler } from './jobs/logCleanup';
-export type { RetentionPolicy, LogCleanupSettings } from './jobs/logCleanup';
-export { memberStatusScanHandler } from './jobs/memberStatusScan';
-export { dispatchEbaCleanupHandler } from './jobs/dispatchEbaCleanup';
-export { dispatchJobPollHandler } from './jobs/dispatchJobPoll';
-export { bulkDeliverHandler } from './jobs/bulkDeliver';
-export { t631DispatchJobGroupFetchHandler } from './jobs/t631DispatchJobGroupFetch';
-export { t631FacilityFetchHandler } from './jobs/t631FacilityFetch';
-export { t631TosFetchHandler } from './jobs/t631TosFetch';
-export { gbhetPensionSlaReconcileHandler } from './jobs/gbhetPensionSlaReconcile';
-export { gbhetPensionSharesReconcileHandler } from './jobs/gbhetPensionSharesReconcile';

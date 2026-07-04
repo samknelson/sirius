@@ -33,7 +33,8 @@ import {
   Phone,
   Mail,
   Eye,
-  Bell
+  Bell,
+  Tag
 } from "lucide-react";
 import { format } from "date-fns";
 import { formatPhoneNumberForDisplay } from "@/lib/phone-utils";
@@ -78,6 +79,7 @@ interface CommPostalDetails {
   fromZip: string | null;
   fromCountry: string | null;
   description: string | null;
+  body: string | null;
   mailType: string | null;
   data: Record<string, unknown> | null;
 }
@@ -94,6 +96,13 @@ interface CommInappDetails {
   createdAt: string;
 }
 
+interface CommTag {
+  id: string;
+  name: string;
+  description?: string | null;
+  data?: { icon?: string; applicableCommTypes?: string[] } | null;
+}
+
 interface CommWithDetails {
   id: string;
   medium: string;
@@ -106,6 +115,7 @@ interface CommWithDetails {
   emailDetails?: CommEmailDetails | null;
   postalDetails?: CommPostalDetails | null;
   inappDetails?: CommInappDetails | null;
+  tags?: CommTag[];
 }
 
 type SortField = "sent" | "medium" | "status";
@@ -320,6 +330,12 @@ export function CommList({
     return body.substring(0, maxLength) + "...";
   };
 
+  const stripHtml = (html: string | null) => {
+    if (!html) return null;
+    const text = html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    return text.length > 0 ? text : null;
+  };
+
   if (isLoading) {
     return (
       <Card>
@@ -512,12 +528,27 @@ export function CommList({
                       <span className="text-sm text-muted-foreground">
                         {record.medium === 'email' && record.emailDetails?.subject
                           ? truncateBody(record.emailDetails.subject)
-                          : record.medium === 'postal' && record.postalDetails?.description
-                            ? truncateBody(record.postalDetails.description)
+                          : record.medium === 'postal' && record.postalDetails
+                            ? truncateBody(stripHtml(record.postalDetails.body) || record.postalDetails.description)
                             : record.medium === 'inapp' && record.inappDetails?.title
                               ? truncateBody(record.inappDetails.title)
                               : truncateBody(record.smsDetails?.body || null)}
                       </span>
+                      {record.tags && record.tags.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1" data-testid={`tags-comm-${record.id}`}>
+                          {record.tags.map((tag) => (
+                            <Badge
+                              key={tag.id}
+                              variant="secondary"
+                              className="gap-1 text-xs"
+                              data-testid={`badge-tag-${record.id}-${tag.id}`}
+                            >
+                              <Tag className="h-3 w-3" />
+                              {tag.name}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
                     </TableCell>
                     <TableCell className="text-right">
                       <Button

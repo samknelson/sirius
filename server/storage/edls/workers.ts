@@ -1,8 +1,6 @@
 import { getClient } from '../transaction-context';
 import {
   workerEdls,
-  workers,
-  contacts,
   type WorkerEdls,
   type InsertWorkerEdls,
 } from "@shared/schema";
@@ -13,23 +11,6 @@ export interface WorkerEdlsStorage {
   getByWorker(workerId: string): Promise<WorkerEdls | undefined>;
   setActive(workerId: string, active: boolean): Promise<WorkerEdls>;
   ensure(workerId: string): Promise<WorkerEdls>;
-}
-
-async function getWorkerName(workerId: string): Promise<string> {
-  const client = getClient();
-  const [worker] = await client
-    .select({ contactId: workers.contactId, siriusId: workers.siriusId })
-    .from(workers)
-    .where(eq(workers.id, workerId));
-  if (!worker) return 'Unknown Worker';
-
-  const [contact] = await client
-    .select({ given: contacts.given, family: contacts.family, displayName: contacts.displayName })
-    .from(contacts)
-    .where(eq(contacts.id, worker.contactId));
-
-  const name = contact ? `${contact.given || ''} ${contact.family || ''}`.trim() : '';
-  return name || contact?.displayName || `Worker #${worker.siriusId}`;
 }
 
 export function createWorkerEdlsStorage(): WorkerEdlsStorage {
@@ -86,7 +67,8 @@ export const workerEdlsLoggingConfig: StorageLoggingConfig<WorkerEdlsStorage> = 
         return { row };
       },
       getDescription: async (args, result, beforeState) => {
-        const workerName = await getWorkerName(args[0]);
+        const { storage } = await import('../index');
+        const workerName = await storage.workers.getWorkerDisplayName(args[0]);
         const prev = beforeState?.row?.active;
         const next = result?.active;
         if (prev === next) {

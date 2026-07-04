@@ -109,10 +109,21 @@ export function useTabAccess({
             ? term(tab.termKey, { plural: tab.termPlural })
             : tab.label;
           
+          // Opt-in: a parent flagged navigateToFirstAccessibleChild points at
+          // its first accessible child rather than its own hrefTemplate, so the
+          // section never links to a sub-page the user can't access (e.g.
+          // Accounting -> Accounts is worker.ledger-gated, but a worker.mine
+          // user should land on the ECHP child). Other parents keep their own
+          // hrefTemplate to preserve established navigation semantics.
+          const href = tab.navigateToFirstAccessibleChild
+            && filteredChildren && filteredChildren.length > 0
+            ? filteredChildren[0].href
+            : buildTabHref(tab.hrefTemplate, entityId);
+
           return {
             id: tab.id,
             label,
-            href: buildTabHref(tab.hrefTemplate, entityId),
+            href,
             hasChildren: (filteredChildren?.length ?? 0) > 0,
             children: filteredChildren && filteredChildren.length > 0 ? filteredChildren : undefined,
           };
@@ -462,6 +473,33 @@ export function useFacilityTabAccess(facilityId: string | undefined, enabled = t
   return useTabAccess({
     entityType: 'facility',
     entityId: facilityId,
+    enabled,
+  });
+}
+
+export function useCommTabAccess(commId: string | undefined, enabled = true) {
+  return useTabAccess({
+    entityType: 'comm',
+    entityId: commId,
+    enabled,
+  });
+}
+
+export function useGrievanceTabAccess(grievanceId: string | undefined, enabled = true) {
+  return useTabAccess({
+    entityType: 'grievance',
+    entityId: grievanceId,
+    enabled,
+  });
+}
+
+export function useGrievanceTimelineTemplateTabAccess(
+  templateId: string | undefined,
+  enabled = true,
+) {
+  return useTabAccess({
+    entityType: 'grievanceTimelineTemplate',
+    entityId: templateId,
     enabled,
   });
 }

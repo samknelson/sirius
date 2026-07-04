@@ -27,6 +27,30 @@ export interface ComponentPolicyRule {
   attributes?: ComponentPolicyRuleAttribute[];
 }
 
+/**
+ * A `plugin_configs` row a component owns and materializes through its
+ * enable/disable lifecycle (Task #397). On enable the row is created if
+ * missing (keyed by its stable {@link siriusId}) else re-activated
+ * (`enabled = true`) while preserving any admin edits to name/ordering/data.
+ * On disable the row is set `enabled = false` and retained so edits survive a
+ * disable/enable cycle. The `auto.<componentId>.<localId>` siriusId scheme
+ * marks the row as component-owned.
+ */
+export interface ComponentManagedPluginConfig {
+  /** PluginKind discriminator, e.g. "client-injection". */
+  pluginKind: string;
+  /** Registered impl id, e.g. "weglot-sdk". */
+  pluginId: string;
+  /** Stable, unique, editable identifier. Use `auto.<componentId>.<localId>`. */
+  siriusId: string;
+  /** Initial display name (admin may rename; preserved on re-enable). */
+  name?: string;
+  /** Initial ordering (admin may change; preserved on re-enable). */
+  ordering?: number;
+  /** Initial editable settings payload (admin may edit; preserved on re-enable). */
+  data?: Record<string, unknown>;
+}
+
 export interface ComponentDefinition {
   id: string;
   name: string;
@@ -37,6 +61,11 @@ export interface ComponentDefinition {
   schemaManifest?: ComponentSchemaManifest;
   permissions?: ComponentPermission[];
   policies?: ComponentPolicy[];
+  /**
+   * Plugin configs this component owns and materializes via its lifecycle.
+   * See {@link ComponentManagedPluginConfig}.
+   */
+  pluginConfigs?: ComponentManagedPluginConfig[];
 }
 
 export interface ComponentConfig {
@@ -73,6 +102,23 @@ export interface ComponentSchemaState {
   lastSyncedAt: string;
   tables: ComponentTableState[];
   drift: ComponentSchemaDrift | null;
+  /**
+   * Highest per-component migration version that has been applied to this
+   * deployment. Missing/absent is treated as 0. This counter PERSISTS across
+   * component disable/enable cycles, so re-enabling a component whose tables
+   * were retained will not re-run migrations it has already applied.
+   *
+   * Per-component migrations live under
+   * `scripts/migrate/components/<component-id>/` and are registered via
+   * `registerComponentMigration(componentId, migration)`.
+   */
+  migrationVersion?: number;
+  /**
+   * Optional audit trail of applied per-component migrations. Each entry is
+   * appended after a successful `up()`. Older deployments will not have this
+   * field; downstream consumers must treat it as optional.
+   */
+  migrationsApplied?: { version: number; name: string; appliedAt: string }[];
 }
 
 // Central registry of all available components
@@ -99,7 +145,42 @@ export const componentRegistry: ComponentDefinition[] = [
     name: "Stripe Integration",
     description: "Integration with the Stripe payment processing system",
     enabledByDefault: false,
-    category: "ledger"
+    category: "ledger",
+    // Seed a default payment-gateway config naming the secret that holds the
+    // Stripe API credentials. Materialized on enable (and at boot for an
+    // already-enabled component); admin edits to name/ordering/data are
+    // preserved on re-enable. Mirrors how internationalization.weglot seeds
+    // its client-injection rows.
+    pluginConfigs: [
+      {
+        pluginKind: "payment-gateway",
+        pluginId: "stripe",
+        siriusId: "auto.ledger.stripe.default",
+        name: "Stripe (Default)",
+        data: { secretName: "STRIPE_DEFAULT" },
+      },
+    ],
+  },
+  {
+    id: "ledger.dummy_gateway",
+    name: "Dummy Gateway (Testing)",
+    description:
+      "A fake payment gateway for exercising the full payment-method lifecycle without real provider credentials. Accepts a hand-typed test card and stores only its brand, expiry, and last 4 digits.",
+    enabledByDefault: false,
+    category: "ledger",
+    // Seed a default payment-gateway config. It names a DUMMY_GATEWAY secret to
+    // exercise the secret-naming path, but the dummy plugin opts out of
+    // actually requiring the secret to be set (requiresSecret: false on the
+    // plugin), so the gateway works whether or not the env var exists.
+    pluginConfigs: [
+      {
+        pluginKind: "payment-gateway",
+        pluginId: "dummy",
+        siriusId: "auto.ledger.dummy_gateway.default",
+        name: "Dummy (Default)",
+        data: { secretName: "DUMMY_GATEWAY", paymentTypes: ["card"] },
+      },
+    ],
   },
   {
     id: "ledger.payment.batch",
@@ -125,6 +206,32 @@ export const componentRegistry: ComponentDefinition[] = [
       version: 1,
       schemaPath: "./shared/schema/cardcheck/schema.ts",
       tables: ["cardcheck_definitions", "cardchecks"]
+    }
+  },
+  {
+    id: "grievance",
+    name: "Grievance",
+    description: "Functionality for tracking and managing grievances",
+    enabledByDefault: false,
+    category: "core",
+    managesSchema: true,
+    schemaManifest: {
+      version: 13,
+      schemaPath: "./shared/schema/grievance/schema.ts",
+      tables: ["options_grievance_status", "options_grievance_category", "options_grievance_steps", "options_grievance_complaints", "options_grievance_remedies", "options_grievance_roles", "grievances", "grievance_workers", "grievance_employers", "grievance_users", "grievance_complaints", "grievance_remedies", "grievance_steps", "grievance_timeline_templates", "grievance_timeline_template_steps", "grievance_name_denorm"]
+    }
+  },
+  {
+    id: "grievance.settlement",
+    name: "Grievance Settlement",
+    description: "Tracking settlements recorded against grievances. Requires the Grievance component to be enabled — settlements reference grievance records.",
+    enabledByDefault: false,
+    category: "grievance",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/grievance/settlement-schema.ts",
+      tables: ["options_grievance_settlement_type", "grievance_settlements"]
     }
   },
   {
@@ -394,6 +501,19 @@ export const componentRegistry: ComponentDefinition[] = [
     category: "trust.benefits"
   },
   {
+    id: "trust.benefits.eligibility.exemptions",
+    name: "Eligibility Exemptions",
+    description: "Exempt individual members from specified eligibility plugins",
+    enabledByDefault: false,
+    category: "trust.benefits.eligibility",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/trust/eligibility-exemptions-schema.ts",
+      tables: ["trust_benefit_eligibility_exemptions"]
+    }
+  },
+  {
     id: "trust.elections",
     name: "Trust Elections",
     description: "Worker elections (stub)",
@@ -598,7 +718,13 @@ export const componentRegistry: ComponentDefinition[] = [
     name: "Freeman Customization",
     description: "Custom functionality for Freeman",
     enabledByDefault: false,
-    category: "site-specific"
+    category: "site-specific",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/sitespecific/freeman/schema.ts",
+      tables: ["sitespecific_freeman_crewleads"]
+    }
   },
   {
     id: "sitespecific.t631.client",
@@ -612,7 +738,13 @@ export const componentRegistry: ComponentDefinition[] = [
     name: "BAO Customization",
     description: "Custom functionality for Unite Here Local 11 Health Benefits Administration",
     enabledByDefault: false,
-    category: "site-specific"
+    category: "site-specific",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/sitespecific/bao/schema.ts",
+      tables: ["sitespecific_bao_employer_immediate_eligibility"]
+    }
   },
   {
     id: "bulk",
@@ -629,6 +761,36 @@ export const componentRegistry: ComponentDefinition[] = [
     permissions: [
       { key: "staff.bulk", description: "Access to bulk messaging functionality" }
     ]
+  },
+  {
+    id: "internationalization",
+    name: "Internationalization",
+    description: "Umbrella feature flag for translation and localization providers.",
+    enabledByDefault: false,
+    category: "core"
+  },
+  {
+    id: "internationalization.weglot",
+    name: "Weglot Translation",
+    description: "Injects the Weglot SDK and initializer so site content can be translated on the fly.",
+    enabledByDefault: false,
+    category: "internationalization",
+    pluginConfigs: [
+      {
+        pluginKind: "client-injection",
+        pluginId: "weglot-sdk",
+        siriusId: "auto.internationalization.weglot.sdk",
+        name: "Weglot SDK",
+        ordering: 10,
+      },
+      {
+        pluginKind: "client-injection",
+        pluginId: "weglot-init",
+        siriusId: "auto.internationalization.weglot.init",
+        name: "Weglot Initialization",
+        ordering: 20,
+      },
+    ],
   },
   {
     id: "system.sftp.client",

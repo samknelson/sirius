@@ -34,14 +34,4 @@ export function registerSessionRoutes(
       res.status(500).json({ message: "Failed to delete session" });
     }
   });
-
-  app.get("/api/sessions/active-stats", requireAccess('admin'), async (req, res) => {
-    try {
-      const stats = await storage.sessions.getActiveUsersStats(4);
-      res.json(stats);
-    } catch (error) {
-      console.error("Error fetching active user stats:", error);
-      res.status(500).json({ message: "Failed to fetch active user stats" });
-    }
-  });
 }

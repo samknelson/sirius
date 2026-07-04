@@ -1,16 +1,19 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { stringify } from "csv-stringify/sync";
-import { sql } from "drizzle-orm";
 import multer from "multer";
 import { storage } from "./storage";
+import { pickFirstByAccountOrder, toChargeConfig } from "./plugins/ledger/charge/charge-config-resolution";
 import { insertWorkerSchema, insertWorkerDispatchHfeSchema, type WorkerId, type ContactPostal, type PhoneNumber } from "@shared/schema";
 import { z } from "zod";
 import { registerUserRoutes } from "./modules/users";
 import { registerVariableRoutes } from "./modules/system/variables";
+import { registerDenormRoutes } from "./modules/system/denorm";
 import { registerContactPostalRoutes } from "./modules/contact-postal";
 import { registerPhoneNumberRoutes } from "./modules/phone-numbers";
 import { registerCommRoutes } from "./modules/comm";
+import { registerGrievanceRoutes } from "./modules/grievances/grievances";
+import { registerGrievanceTimelineTemplateRoutes } from "./modules/grievances/grievance-timeline-templates";
 import { registerEmployerContactRoutes } from "./modules/employers/contacts";
 import { registerTrustBenefitsRoutes } from "./modules/trust/benefits";
 import { registerTrustProvidersRoutes } from "./modules/trust/providers";
@@ -36,7 +39,8 @@ import { registerWorkerUsersRoutes } from "./modules/workers/users";
 import { registerWizardRoutes } from "./modules/wizards";
 import { registerEmployerOnboardingWizardRoutes } from "./modules/employer-onboarding-wizard";
 import { registerFileRoutes } from "./modules/files";
-import { registerLedgerStripeRoutes } from "./modules/ledger/stripe";
+import { registerLedgerPaymentMethodRoutes } from "./modules/ledger/payment-methods";
+import { registerLedgerPaymentGatewayRoutes } from "./modules/ledger/payment-gateways";
 import { registerLedgerAccountRoutes } from "./modules/ledger/accounts";
 import { registerLedgerEaRoutes } from "./modules/ledger/ea";
 import { registerLedgerPaymentRoutes } from "./modules/ledger/payments";
@@ -48,7 +52,7 @@ import { registerWorkerMshRoutes } from "./modules/worker-msh";
 import { registerWorkerHoursRoutes } from "./modules/worker-hours";
 import { registerQuickstartRoutes } from "./modules/quickstart";
 import { registerCronJobRoutes } from "./modules/system/cron";
-import { registerChargePluginRoutes } from "./modules/charge-plugins";
+import { registerEventBusIntrospectRoutes } from "./modules/dev/event-bus-introspect";
 import { registerEligibilityPluginRoutes } from "./modules/eligibility-plugins";
 import { registerTwilioRoutes } from "./modules/twilio";
 import { registerEmailConfigRoutes } from "./modules/email-config";
@@ -65,9 +69,10 @@ import { registerEmployerRoutes } from "./modules/employers/employers";
 import { registerEmployerPolicyHistoryRoutes } from "./modules/employers/policy-history";
 import { registerWorkerBenefitsScanRoutes } from "./modules/worker-benefits-scan";
 import { registerWmbScanQueueRoutes } from "./modules/wmb-scan-queue";
-import { registerStaffAlertRoutes } from "./modules/staff-alerts";
+import { registerEventNotifierMetaRoutes } from "./modules/event-notifier-meta";
 import { registerDispatchDncConfigRoutes } from "./modules/dispatch/dnc-config";
 import { registerDispatchEbaConfigRoutes } from "./modules/dispatch/eba-config";
+import { registerDispatchSeniorityResetConfigRoutes } from "./modules/dispatch/seniority-reset-config";
 import { registerWorkerBanConfigRoutes } from "./modules/worker-ban-config";
 import { registerCardcheckDefinitionsRoutes } from "./modules/cardcheck-definitions";
 import { registerCardchecksRoutes } from "./modules/cardchecks";
@@ -87,6 +92,7 @@ import { registerWorkerBansRoutes } from "./modules/worker-bans";
 import { registerWorkerSkillsRoutes } from "./modules/workers/skills";
 import { registerWorkerRelationsRoutes } from "./modules/workers/relations";
 import { registerWorkerTrustElectionsRoutes } from "./modules/trust/elections";
+import { registerTrustBenefitEligibilityExemptionsRoutes } from "./modules/trust/eligibility-exemptions";
 import { registerWorkerTosRoutes } from "./modules/workers/tos";
 import { registerWorkerCertificationsRoutes } from "./modules/workers/certifications";
 import { registerWorkerRatingsRoutes } from "./modules/workers/ratings";
@@ -97,6 +103,9 @@ import { registerHtaRoutes } from "./modules/hta";
 import { registerGbhetPensionRoutes } from "./modules/sitespecific/gbhet/pension";
 import { registerBtuTerritoriesRoutes } from "./modules/sitespecific/btu/territories";
 import { registerBtuSchoolRoutes } from "./modules/sitespecific/btu/school";
+import { registerBaoImmediateEligibilityRoutes } from "./modules/sitespecific/bao/immediate-eligibility";
+import { registerBaoBeneficiariesRoutes } from "./modules/sitespecific/bao/beneficiaries";
+import { registerBaoEchpRoutes } from "./modules/sitespecific/bao/echp";
 import { registerBtuSigImportRoutes } from "./modules/sitespecific/btu/sig-import";
 import { registerBtuScraperImportRoutes } from "./modules/sitespecific/btu/scraper-import";
 import { registerBtuBuildingRepImportRoutes } from "./modules/sitespecific/btu/building-rep-import";
@@ -114,8 +123,8 @@ import { registerTerminologyRoutes } from "./modules/terminology";
 import { registerCompaniesRoutes } from "./modules/employers/companies";
 import { registerPoliciesRoutes } from "./modules/policies";
 import { requireAccess } from "./services/access-policy-evaluator";
-import { addressValidationService } from "./services/address-validation";
-import { phoneValidationService } from "./services/phone-validation";
+import { addressValidationService } from "./services/comm/validators/address";
+import { phoneValidationService } from "./services/comm/validators/phone";
 import { serviceRegistry } from "./services/service-registry";
 import { isAuthenticated } from "./auth";
 
@@ -228,9 +237,6 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         },
         permissions: userPermissions.map((p) => p.key),
         components: enabledComponents,
-        capabilities: {
-          workerEdls: await (await import('./modules/edls/capability')).isWorkerEdlsAvailable(),
-        },
         masquerade: session.masqueradeUserId
           ? {
               isMasquerading: true,
@@ -289,6 +295,12 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Register communication routes
   registerCommRoutes(app, requireAuth, requirePermission, requireAccess);
 
+  // Register grievance routes
+  registerGrievanceRoutes(app, requireAuth, requireAccess);
+
+  // Register grievance timeline template routes
+  registerGrievanceTimelineTemplateRoutes(app, requireAuth, requireAccess);
+
   // Register employer contact routes
   registerEmployerContactRoutes(app, requireAuth, requirePermission);
 
@@ -318,6 +330,25 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Register dashboard routes
   registerDashboardRoutes(app, requireAuth, requirePermission);
 
+  // Client-injection kind ships a grouped `{ head, bodyEnd }` shape, so
+  // it overrides the generic flat-array manifest. Register first so this
+  // handler wins the path match.
+  const { registerClientInjectionManifestRoute } = await import(
+    "./plugins/client-injection"
+  );
+  registerClientInjectionManifestRoute(app, requireAuth);
+
+  // Unified plugin manifest endpoint (Task #208) — replaces the four
+  // legacy per-kind manifest URLs.
+  const { registerPluginsManifestRoutes } = await import("./modules/plugins-manifest");
+  registerPluginsManifestRoutes(app, requireAuth);
+
+  // Generic plugin admin endpoints (Task #209) — replaces the per-kind
+  // enable / settings / validate-config endpoints across dashboard,
+  // charge, trust-eligibility, and dispatch-eligibility.
+  const { registerPluginsAdminRoutes } = await import("./modules/plugins-admin");
+  registerPluginsAdminRoutes(app, requireAuth);
+
   // Register bookmark routes
   registerBookmarkRoutes(app, requireAuth, requirePermission);
 
@@ -331,8 +362,11 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Register component configuration routes
   registerComponentRoutes(app, requireAuth, requirePermission);
 
-  // Register ledger/stripe routes
-  registerLedgerStripeRoutes(app);
+  // Register provider-generic ledger payment-method routes
+  registerLedgerPaymentMethodRoutes(app);
+
+  // Register provider-generic ledger payment-gateway admin routes (connection test)
+  registerLedgerPaymentGatewayRoutes(app);
 
   // Register ledger/accounts routes
   registerLedgerAccountRoutes(app);
@@ -357,11 +391,23 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Register cron job management routes
   registerCronJobRoutes(app, requireAuth, requirePermission);
 
-  // Register charge plugin configuration routes
-  registerChargePluginRoutes(app, requireAuth, requirePermission);
+  // Register event bus introspection routes (debug component)
+  registerEventBusIntrospectRoutes(app);
+
+  // Charge plugin configs are served by the unified generic config routes
+  // (registerPluginsConfigRoutes); the bespoke charge route was removed in
+  // Task #355.
 
   // Register eligibility plugin routes
   registerEligibilityPluginRoutes(app, requireAuth, requirePermission);
+
+  // Generic plugin config CRUD + search endpoints. Registered AFTER every
+  // per-kind config route so any existing kind-specific handlers take
+  // precedence. These generic routes operate solely on the unified
+  // plugin_configs tables and remain dormant for any kind that still owns
+  // specific routes.
+  const { registerPluginsConfigRoutes } = await import("./modules/plugins-config");
+  registerPluginsConfigRoutes(app, requireAuth);
 
   // Register Twilio configuration routes
   registerTwilioRoutes(app);
@@ -414,14 +460,15 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Register WMB scan queue routes (admin only)
   registerWmbScanQueueRoutes(app, requireAuth, requireAccess, storage);
   
-  // Register staff alert configuration routes
-  registerStaffAlertRoutes(app, requireAuth, requireAccess, storage);
+  // Register event-notifier admin metadata routes (staff user picker source)
+  registerEventNotifierMetaRoutes(app, requireAuth, requireAccess, storage);
   
   // Register dispatch DNC configuration routes
   registerDispatchDncConfigRoutes(app, requireAuth, requireAccess, storage);
   
   // Register dispatch EBA configuration routes
   registerDispatchEbaConfigRoutes(app, requireAuth, requireAccess, storage);
+  registerDispatchSeniorityResetConfigRoutes(app, requireAuth, requireAccess, storage);
   
   // Register worker ban configuration routes
   registerWorkerBanConfigRoutes(app, requireAuth, requireAccess, storage);
@@ -535,37 +582,21 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         return res.json({});
       }
       const limitedWorkerIds = workerIds.slice(0, 100);
-      const duesMap = await storage.readOnly.query(async (client) => {
-        const configResult = await client.execute(sql`
-          SELECT settings FROM charge_plugin_configs WHERE plugin_id = 'btu-dues-allocation' AND enabled = true LIMIT 1
-        `);
-        if (configResult.rows.length === 0) {
-          return {};
+      const config = pickFirstByAccountOrder(
+        (await storage.pluginConfigs.search("charge", {
+          pluginId: 'btu-dues-allocation',
+          enabled: true,
+        })).map(toChargeConfig),
+      );
+      const settings = (config?.settings ?? null) as { accountIds?: string[] } | null;
+      const duesAccountId = settings?.accountIds?.[0];
+      const duesMap: Record<string, { amount: string; date: string }> = {};
+      if (duesAccountId) {
+        const latest = await storage.ledger.entries.getLatestByAccountAndEntities(duesAccountId, 'worker', limitedWorkerIds);
+        for (const row of latest) {
+          duesMap[row.entityId] = { amount: row.amount, date: row.date };
         }
-        const settings = (configResult.rows[0] as any).settings as { accountIds?: string[] } | null;
-        const duesAccountId = settings?.accountIds?.[0];
-        if (!duesAccountId) {
-          return {};
-        }
-        const workerIdArray = sql`ARRAY[${sql.join(limitedWorkerIds.map(id => sql`${id}`), sql`, `)}]::varchar[]`;
-        const result = await client.execute(sql`
-          SELECT DISTINCT ON (ea.entity_id)
-            ea.entity_id as worker_id,
-            l.amount,
-            l.date
-          FROM ledger_ea ea
-          INNER JOIN ledger l ON l.ea_id = ea.id
-          WHERE ea.entity_type = 'worker'
-            AND ea.account_id = ${duesAccountId}
-            AND ea.entity_id = ANY(${workerIdArray})
-          ORDER BY ea.entity_id, l.date DESC
-        `);
-        const map: Record<string, { amount: string; date: string }> = {};
-        for (const row of result.rows as any[]) {
-          map[row.worker_id] = { amount: row.amount, date: row.date };
-        }
-        return map;
-      });
+      }
       res.json(duesMap);
     } catch (error) {
       console.error("Failed to fetch latest dues:", error);
@@ -764,19 +795,11 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         return res.status(400).json({ message: "File contains more than 10,000 IDs. Please split into smaller batches." });
       }
 
-      const workerIdRecords = await storage.readOnly.query(async (queryClient: any) => {
-        const result = await queryClient.execute(sql`
-          SELECT wi.value, wi.worker_id
-          FROM worker_ids wi
-          WHERE wi.type_id = ${typeId}
-            AND wi.value = ANY(ARRAY[${sql.join(rawIds.map((id: string) => sql`${id}`), sql`, `)}]::text[])
-        `);
-        return result.rows as Array<{ value: string; worker_id: string }>;
-      });
+      const workerIdRecords = await storage.workerIds.getByTypeAndValues(typeId, rawIds);
 
       const idToWorkerMap = new Map<string, string>();
       for (const rec of workerIdRecords) {
-        idToWorkerMap.set(rec.value, rec.worker_id);
+        idToWorkerMap.set(rec.value, rec.workerId);
       }
 
       const matchedIds: string[] = [];
@@ -804,38 +827,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         });
       }
 
-      const workerData = await storage.readOnly.query(async (queryClient: any) => {
-        const result = await queryClient.execute(sql`
-          SELECT
-            w.id,
-            c.given,
-            c.family,
-            c.email,
-            w.denorm_ms_ids,
-            w.denorm_employer_ids,
-            (SELECT cp2.phone_number FROM contact_phone cp2 WHERE cp2.contact_id = c.id AND cp2.is_active = true ORDER BY cp2.is_primary DESC NULLS LAST LIMIT 1) as phone_number,
-            (SELECT cpo.street FROM contact_postal cpo WHERE cpo.contact_id = c.id AND cpo.is_active = true ORDER BY cpo.is_primary DESC NULLS LAST LIMIT 1) as address_street,
-            (SELECT cpo.city FROM contact_postal cpo WHERE cpo.contact_id = c.id AND cpo.is_active = true ORDER BY cpo.is_primary DESC NULLS LAST LIMIT 1) as address_city,
-            (SELECT cpo.state FROM contact_postal cpo WHERE cpo.contact_id = c.id AND cpo.is_active = true ORDER BY cpo.is_primary DESC NULLS LAST LIMIT 1) as address_state,
-            (SELECT cpo.postal_code FROM contact_postal cpo WHERE cpo.contact_id = c.id AND cpo.is_active = true ORDER BY cpo.is_primary DESC NULLS LAST LIMIT 1) as address_postal_code
-          FROM workers w
-          INNER JOIN contacts c ON w.contact_id = c.id
-          WHERE w.id = ANY(ARRAY[${sql.join(workerIds.map((id: string) => sql`${id}`), sql`, `)}]::varchar[])
-        `);
-        return result.rows as Array<{
-          id: string;
-          given: string | null;
-          family: string | null;
-          email: string | null;
-          denorm_ms_ids: string[] | null;
-          denorm_employer_ids: string[] | null;
-          phone_number: string | null;
-          address_street: string | null;
-          address_city: string | null;
-          address_state: string | null;
-          address_postal_code: string | null;
-        }>;
-      });
+      const workerData = await storage.workers.getContactExportDataByIds(workerIds);
 
       const workerMap = new Map<string, (typeof workerData)[0]>();
       for (const w of workerData) {
@@ -1244,54 +1236,23 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // trust.benefits component is enabled) latest-period worker counts per employer x benefit.
   app.get("/api/employers/counts", requireAuth, requireAccess('staff'), async (_req, res) => {
     try {
-      const { sql } = await import("drizzle-orm");
-      const { getClient } = await import("./storage/transaction-context");
       const { isComponentEnabled } = await import("./modules/components");
-      const client = getClient();
 
-      const workerCountsResult = await client.execute(sql`
-        SELECT employer_id, COUNT(DISTINCT worker_id)::int AS worker_count
-        FROM worker_hours
-        WHERE employer_id IS NOT NULL
-        GROUP BY employer_id
-      `);
-
+      const workerCountRows = await storage.workerHours.getDistinctWorkerCountsByEmployer();
       const workerCounts: Record<string, number> = {};
-      for (const row of workerCountsResult.rows as Array<{ employer_id: string; worker_count: number }>) {
-        workerCounts[row.employer_id] = Number(row.worker_count) || 0;
+      for (const row of workerCountRows) {
+        workerCounts[row.employerId] = row.workerCount;
       }
 
       const trustBenefitsEnabled = await isComponentEnabled("trust.benefits");
       let benefitCounts: Record<string, Record<string, number>> | undefined;
 
       if (trustBenefitsEnabled) {
-        const benefitCountsResult = await client.execute(sql`
-          WITH latest_period AS (
-            SELECT
-              employer_id,
-              benefit_id,
-              MAX(year * 12 + month) AS period_key
-            FROM trust_wmb
-            GROUP BY employer_id, benefit_id
-          )
-          SELECT
-            wmb.employer_id,
-            wmb.benefit_id,
-            COUNT(DISTINCT wmb.worker_id)::int AS worker_count
-          FROM trust_wmb wmb
-          INNER JOIN latest_period lp
-            ON lp.employer_id = wmb.employer_id
-           AND lp.benefit_id = wmb.benefit_id
-           AND (wmb.year * 12 + wmb.month) = lp.period_key
-          INNER JOIN trust_benefits tb ON tb.id = wmb.benefit_id
-          WHERE tb.is_active = true
-          GROUP BY wmb.employer_id, wmb.benefit_id
-        `);
-
+        const benefitCountRows = await storage.trust.wmb.getActiveBenefitWorkerCountsByEmployerLatestPeriod();
         benefitCounts = {};
-        for (const row of benefitCountsResult.rows as Array<{ employer_id: string; benefit_id: string; worker_count: number }>) {
-          if (!benefitCounts[row.employer_id]) benefitCounts[row.employer_id] = {};
-          benefitCounts[row.employer_id][row.benefit_id] = Number(row.worker_count) || 0;
+        for (const row of benefitCountRows) {
+          if (!benefitCounts[row.employerId]) benefitCounts[row.employerId] = {};
+          benefitCounts[row.employerId][row.benefitId] = row.workerCount;
         }
       }
 
@@ -1655,7 +1616,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   app.get("/api/workers/:workerId/benefits", requireAccess('worker.view', req => req.params.workerId), async (req, res) => {
     try {
       const { workerId } = req.params;
-      const benefits = await storage.workers.getWorkerBenefits(workerId);
+      const benefits = await storage.trust.wmb.getWorkerBenefits(workerId);
       res.json(benefits);
     } catch (error) {
       console.error("Failed to fetch worker benefits:", error);
@@ -1675,7 +1636,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         });
       }
 
-      const wmb = await storage.workers.createWorkerBenefit({
+      const wmb = await storage.trust.wmb.createWorkerBenefit({
         workerId,
         month,
         year,
@@ -1699,7 +1660,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   app.delete("/api/worker-benefits/:id", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
       const { id } = req.params;
-      const deleted = await storage.workers.deleteWorkerBenefit(id);
+      const deleted = await storage.trust.wmb.deleteWorkerBenefit(id);
 
       if (!deleted) {
         return res.status(404).json({ message: "Worker benefit not found" });
@@ -1714,6 +1675,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register generic variable management routes (MUST come after specific routes)
   registerVariableRoutes(app, requireAuth, requirePermission);
+  registerDenormRoutes(app, requireAuth, requirePermission);
 
   // Register events routes
   registerEventsRoutes(app, requireAuth, requirePermission);
@@ -1752,6 +1714,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Register worker trust elections routes (handles all access control internally)
   registerWorkerTrustElectionsRoutes(app, requireAuth, requireAccess);
 
+  // Register trust benefit eligibility exemptions routes (handles all access control internally)
+  registerTrustBenefitEligibilityExemptionsRoutes(app, requireAuth, requireAccess);
+
   // Register worker time-off-sick (TOS) routes
   registerWorkerTosRoutes(app, requireAuth, requireAccess);
 
@@ -1765,6 +1730,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   registerBtuCsgRoutes(app, requireAuth, requirePermission);
   registerBtuTerritoriesRoutes(app, requireAuth, requirePermission);
   registerBtuSchoolRoutes(app, requireAuth, requirePermission);
+  registerBaoImmediateEligibilityRoutes(app, requireAuth, requirePermission, requireAccess);
+  registerBaoBeneficiariesRoutes(app, requireAuth, requirePermission, requireAccess);
+  registerBaoEchpRoutes(app, requireAuth, requirePermission, requireAccess);
   registerBtuSigImportRoutes(app, requireAuth, requirePermission);
   registerBtuScraperImportRoutes(app, requireAuth, requirePermission);
   registerBtuBuildingRepImportRoutes(app, requireAuth, requirePermission);

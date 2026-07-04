@@ -1,3 +1,4 @@
+import { registerDashboardPlugin } from "../registry";
 import type { DashboardPlugin } from "../types";
 
 export const edlsSummaryPlugin: DashboardPlugin = {
@@ -5,7 +6,7 @@ export const edlsSummaryPlugin: DashboardPlugin = {
   name: "EDLS Daily Summary",
   description:
     "Worker assignment counts by member status and sheet status for a selected day",
-  componentId: "edls",
+  requiredComponent: "edls",
   requiredPolicy: "edls.coordinator",
 
   async content(ctx) {
@@ -36,4 +37,12 @@ export const edlsSummaryPlugin: DashboardPlugin = {
 
     return { memberStatuses, grid };
   },
+
+  client: {
+    component: "edls-summary:EdlsSummary",
+    order: 11,
+    fullWidth: true,
+  },
 };
+
+registerDashboardPlugin(edlsSummaryPlugin);

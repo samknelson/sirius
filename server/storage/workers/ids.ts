@@ -30,6 +30,9 @@ export interface WorkerIdStorage {
   getWorkerIdsForListByWorkerIds(workerIdsList: string[]): Promise<WorkerIdForList[]>;
   getWorkerIdsByTypeForWorkerIds(typeId: string, workerIdsList: string[]): Promise<{ workerId: string; value: string }[]>;
   getWorkerIdByTypeAndValue(typeId: string, value: string): Promise<WorkerId | undefined>;
+  getByTypeAndValues(typeId: string, values: string[]): Promise<Array<{ value: string; workerId: string }>>;
+  getByType(typeId: string): Promise<Array<{ workerId: string; value: string }>>;
+  getTypeIdBySiriusId(siriusId: string): Promise<string | null>;
 }
 
 export function createWorkerIdStorage(): WorkerIdStorage {
@@ -70,6 +73,35 @@ export function createWorkerIdStorage(): WorkerIdStorage {
       const client = getClient();
       const result = await client.delete(workerIds).where(eq(workerIds.id, id)).returning();
       return result.length > 0;
+    },
+
+    async getByTypeAndValues(typeId: string, values: string[]): Promise<Array<{ value: string; workerId: string }>> {
+      if (values.length === 0) return [];
+      const client = getClient();
+      const results = await client
+        .select({ value: workerIds.value, workerId: workerIds.workerId })
+        .from(workerIds)
+        .where(and(eq(workerIds.typeId, typeId), inArray(workerIds.value, values)));
+      return results;
+    },
+
+    async getByType(typeId: string): Promise<Array<{ workerId: string; value: string }>> {
+      const client = getClient();
+      const rows = await client
+        .select({ workerId: workerIds.workerId, value: workerIds.value })
+        .from(workerIds)
+        .where(eq(workerIds.typeId, typeId));
+      return rows;
+    },
+
+    async getTypeIdBySiriusId(siriusId: string): Promise<string | null> {
+      const client = getClient();
+      const [row] = await client
+        .select({ id: optionsWorkerIdType.id })
+        .from(optionsWorkerIdType)
+        .where(eq(optionsWorkerIdType.siriusId, siriusId))
+        .limit(1);
+      return row?.id ?? null;
     },
 
     async getWorkerIdByTypeAndValue(typeId: string, value: string): Promise<WorkerId | undefined> {

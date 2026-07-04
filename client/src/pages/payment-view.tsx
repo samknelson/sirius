@@ -7,6 +7,7 @@ import type { LedgerPayment } from "@shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
 import { LedgerTransactionsView } from "@/components/ledger/LedgerTransactionsView";
 import { formatAmount } from "@shared/currency";
+import { isValidYmd, ymdToDateForPicker } from "@shared/utils/date";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 const MONTH_NAMES = [
@@ -41,12 +42,9 @@ function PaymentViewContent() {
   const currencyCode = paymentType?.currencyCode || 'USD';
 
   const formatYmd = (ymd: string) => {
-    if (!ymd) return "";
-    const [y, m] = ymd.split("-").map(Number);
-    if (y && m && m >= 1 && m <= 12) {
-      return `${MONTH_NAMES[m - 1]} ${y}`;
-    }
-    return ymd;
+    if (!ymd || !isValidYmd(ymd)) return ymd ?? "";
+    const d = ymdToDateForPicker(ymd);
+    return `${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`;
   };
 
   const getStatusBadgeVariant = (status: string): "default" | "secondary" | "destructive" | "outline" => {

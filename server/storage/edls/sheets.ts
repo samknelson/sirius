@@ -19,7 +19,7 @@ import {
 } from "@shared/schema";
 import { eq, ne, desc, sql, and, gte, lte, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import { StorageLoggingConfig } from "../middleware/logging";
+import { defineLoggingConfig } from "../middleware/logging";
 import { getClient, runInTransaction } from "../transaction-context";
 import { storage } from "../index";
 
@@ -416,67 +416,56 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
   };
 }
 
-export const edlsSheetsLoggingConfig: StorageLoggingConfig<EdlsSheetsStorage> = {
+export const edlsSheetsLoggingConfig = defineLoggingConfig<EdlsSheetsStorage>({
   module: 'edls-sheets',
+  // Note: no module-level stateKey — `before` for update/delete stores the raw
+  // sheet row (legacy shape). The explicit `after` hooks on create/update
+  // wrap the result as `{ sheet, crews, metadata }` to preserve byte-identical
+  // log payloads.
   methods: {
     create: {
-      enabled: true,
-      getEntityId: (args, result) => result?.id || 'new sheet',
-      getHostEntityId: (args, result) => result?.id,
+      state: { fallbackId: 'new sheet' },
+      getHostEntityId: (_args, result) => result?.id,
       getDescription: async (args, result) => {
         const title = result?.title || args[0]?.title || 'Untitled';
         const ymd = result?.ymd || args[0]?.ymd || 'Unknown';
         return `Created sheet [${title}] [${ymd}]`;
       },
-      after: async (args, result) => {
-        return {
-          sheet: result,
-          crews: result?.crews,
-          metadata: {
-            sheetId: result?.id,
-            title: result?.title,
-            ymd: result?.ymd,
-            crewCount: result?.crews?.length,
-          }
-        };
-      }
+      after: async (_args, result) => ({
+        sheet: result,
+        crews: result?.crews,
+        metadata: {
+          sheetId: result?.id,
+          title: result?.title,
+          ymd: result?.ymd,
+          crewCount: result?.crews?.length,
+        },
+      }),
     },
     update: {
-      enabled: true,
-      getEntityId: (args) => args[0],
       getHostEntityId: (args) => args[0],
-      before: async (args, storage) => {
-        return await storage.get(args[0]);
-      },
-      getDescription: async (args, result, beforeState) => {
+      getDescription: async (_args, result, beforeState) => {
         const title = result?.title || beforeState?.title || 'Untitled';
         const ymd = result?.ymd || beforeState?.ymd || 'Unknown';
         return `Updated sheet [${title}] [${ymd}]`;
       },
-      after: async (args, result) => {
-        return {
-          sheet: result,
-          crews: result?.crews,
-          metadata: {
-            sheetId: result?.id,
-            title: result?.title,
-            crewCount: result?.crews?.length,
-          }
-        };
-      }
+      after: async (_args, result) => ({
+        sheet: result,
+        crews: result?.crews,
+        metadata: {
+          sheetId: result?.id,
+          title: result?.title,
+          crewCount: result?.crews?.length,
+        },
+      }),
     },
     delete: {
-      enabled: true,
-      getEntityId: (args) => args[0],
       getHostEntityId: (args) => args[0],
-      before: async (args, storage) => {
-        return await storage.get(args[0]);
-      },
-      getDescription: async (args, result, beforeState) => {
+      getDescription: async (_args, _result, beforeState) => {
         const title = beforeState?.title || 'Untitled';
         const ymd = beforeState?.ymd || 'Unknown';
         return `Deleted sheet [${title}] [${ymd}]`;
-      }
-    }
-  }
-};
+      },
+    },
+  },
+});

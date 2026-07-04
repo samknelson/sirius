@@ -31,6 +31,7 @@ import {
   FileCode
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { CommTagPicker } from "./CommTagPicker";
 import { useToast } from "@/hooks/use-toast";
 import { Address } from "@/lib/entity-types";
 
@@ -140,6 +141,7 @@ export function CommPostal({ contactId, addresses, contactName, onSendSuccess }:
   const [mailType, setMailType] = useState<"usps_first_class" | "usps_standard">("usps_first_class");
   const [isOptinDialogOpen, setIsOptinDialogOpen] = useState(false);
   const [verificationResult, setVerificationResult] = useState<VerifyAddressResult | null>(null);
+  const [tagIds, setTagIds] = useState<string[]>([]);
   
   const selectedAddress = addresses.find(a => a.id === selectedAddressId);
 
@@ -261,25 +263,30 @@ export function CommPostal({ contactId, addresses, contactName, onSendSuccess }:
       templateId?: string;
       file?: string;
       mailType?: string;
+      tagIds?: string[];
+      sendOffline?: boolean;
     }) => {
       return await apiRequest("POST", `/api/contacts/${contactId}/postal`, data);
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       toast({
-        title: "Postal Mail Sent",
-        description: "Your letter has been submitted for mailing.",
+        title: variables.sendOffline ? "Recorded as Sent Offline" : "Postal Mail Sent",
+        description: variables.sendOffline
+          ? "The letter has been recorded as sent offline."
+          : "Your letter has been submitted for mailing.",
       });
       setDescription("");
       setTemplateId("");
       setComposeBody("");
       setRawHtml("");
+      setTagIds([]);
       queryClient.invalidateQueries({ queryKey: ["/api/contacts", contactId, "comm"] });
       onSendSuccess?.();
     },
-    onError: (error: any) => {
+    onError: (error: any, variables) => {
       const errorMessage = error?.message || "Failed to send postal mail";
       toast({
-        title: "Failed to Send Postal Mail",
+        title: variables.sendOffline ? "Failed to Record Offline Letter" : "Failed to Send Postal Mail",
         description: errorMessage,
         variant: "destructive",
       });
@@ -295,7 +302,7 @@ export function CommPostal({ contactId, addresses, contactName, onSendSuccess }:
     }
   };
 
-  const handleSend = () => {
+  const handleSend = (sendOffline = false) => {
     if (!selectedAddress) return;
     
     const toAddress = {
@@ -314,10 +321,14 @@ export function CommPostal({ contactId, addresses, contactName, onSendSuccess }:
       templateId?: string;
       file?: string;
       mailType: string;
+      tagIds?: string[];
+      sendOffline?: boolean;
     } = {
       toAddress,
       description: description.trim() || undefined,
       mailType,
+      tagIds: tagIds.length > 0 ? tagIds : undefined,
+      sendOffline: sendOffline || undefined,
     };
 
     if (contentMode === "template") {
@@ -346,6 +357,8 @@ export function CommPostal({ contactId, addresses, contactName, onSendSuccess }:
     !isLoadingOptin &&
     postalOptinData?.optin === true &&
     (systemMode?.mode === "live" || postalOptinData?.allowlist === true);
+
+  const canSendOffline = !!selectedAddress && hasContent;
 
   const getValidationMessage = () => {
     if (!selectedAddress) {
@@ -804,6 +817,8 @@ export function CommPostal({ contactId, addresses, contactName, onSendSuccess }:
                   data-testid="input-postal-description"
                 />
               </div>
+
+              <CommTagPicker medium="postal" value={tagIds} onChange={setTagIds} />
             </>
           )}
         </CardContent>
@@ -818,6 +833,7 @@ export function CommPostal({ contactId, addresses, contactName, onSendSuccess }:
                 setComposeBody("");
                 setRawHtml("");
                 setVerificationResult(null);
+                setTagIds([]);
               }}
               disabled={sendPostalMutation.isPending}
               data-testid="button-clear-postal"
@@ -825,7 +841,16 @@ export function CommPostal({ contactId, addresses, contactName, onSendSuccess }:
               Clear
             </Button>
             <Button
-              onClick={handleSend}
+              variant="secondary"
+              onClick={() => handleSend(true)}
+              disabled={!canSendOffline || sendPostalMutation.isPending}
+              data-testid="button-send-postal-offline"
+            >
+              <Send className="h-4 w-4 mr-2" />
+              Send offline
+            </Button>
+            <Button
+              onClick={() => handleSend(false)}
               disabled={!canSend || sendPostalMutation.isPending}
               data-testid="button-send-postal"
             >

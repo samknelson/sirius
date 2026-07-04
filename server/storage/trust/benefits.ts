@@ -2,7 +2,7 @@ import { createNoopValidator } from '../utils/validation';
 import { getClient } from '../transaction-context';
 import { trustBenefits, optionsTrustBenefitType, type TrustBenefit, type InsertTrustBenefit } from "@shared/schema";
 import { eq, asc } from "drizzle-orm";
-import { type StorageLoggingConfig } from "../middleware/logging";
+import { defineLoggingConfig, type StorageLoggingConfig } from "../middleware/logging";
 
 /**
  * Stub validator - add validation logic here when needed
@@ -25,6 +25,7 @@ export function createTrustBenefitStorage(): TrustBenefitStorage {
       const results = await client
         .select({
           id: trustBenefits.id,
+          siriusId: trustBenefits.siriusId,
           name: trustBenefits.name,
           benefitType: trustBenefits.benefitType,
           benefitTypeName: optionsTrustBenefitType.name,
@@ -57,6 +58,7 @@ export function createTrustBenefitStorage(): TrustBenefitStorage {
       const [result] = await client
         .select({
           id: trustBenefits.id,
+          siriusId: trustBenefits.siriusId,
           name: trustBenefits.name,
           benefitType: trustBenefits.benefitType,
           benefitTypeName: optionsTrustBenefitType.name,
@@ -120,32 +122,14 @@ export function createTrustBenefitStorage(): TrustBenefitStorage {
   };
 }
 
-export const trustBenefitLoggingConfig: StorageLoggingConfig<TrustBenefitStorage> = {
+export const trustBenefitLoggingConfig = defineLoggingConfig<TrustBenefitStorage>({
   module: 'trustBenefits',
+  getter: 'getTrustBenefit',
   methods: {
     createTrustBenefit: {
-      enabled: true,
       getEntityId: (args) => args[0]?.name || 'new trust benefit',
-      after: async (args, result, storage) => {
-        return result; // Capture created trust benefit
-      }
     },
-    updateTrustBenefit: {
-      enabled: true,
-      getEntityId: (args) => args[0], // Trust benefit ID
-      before: async (args, storage) => {
-        return await storage.getTrustBenefit(args[0]); // Current state
-      },
-      after: async (args, result, storage) => {
-        return result; // New state (diff auto-calculated)
-      }
-    },
-    deleteTrustBenefit: {
-      enabled: true,
-      getEntityId: (args) => args[0], // Trust benefit ID
-      before: async (args, storage) => {
-        return await storage.getTrustBenefit(args[0]); // Capture what's being deleted
-      }
-    }
-  }
-};
+    updateTrustBenefit: {},
+    deleteTrustBenefit: {},
+  },
+});

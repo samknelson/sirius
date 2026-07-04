@@ -1,4 +1,23 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { logger } from "../logger";
+
+export const EVENT_BUS_MAX_EMIT_DEPTH = 100;
+
+export class EventBusEmitDepthExceededError extends Error {
+  readonly depth: number;
+  readonly rootEventType: string;
+  readonly attemptedEventType: string;
+
+  constructor(opts: { depth: number; rootEventType: string; attemptedEventType: string }) {
+    super(
+      `Event bus emit depth exceeded: refusing to emit "${opts.attemptedEventType}" at depth ${opts.depth} (root="${opts.rootEventType}", cap=${EVENT_BUS_MAX_EMIT_DEPTH})`,
+    );
+    this.name = "EventBusEmitDepthExceededError";
+    this.depth = opts.depth;
+    this.rootEventType = opts.rootEventType;
+    this.attemptedEventType = opts.attemptedEventType;
+  }
+}
 
 export enum EventType {
   HOURS_SAVED = "hours.saved",
@@ -13,6 +32,14 @@ export enum EventType {
   WORKER_BAN_SAVED = "worker.ban.saved",
   WORKER_SKILL_SAVED = "worker.skill.saved",
   WORKER_WS_CHANGED = "worker.ws.changed",
+  WORKER_WSH_SAVED = "worker.wsh.saved",
+  WORKER_MSH_SAVED = "worker.msh.saved",
+  STEWARD_ASSIGNMENT_SAVED = "steward.assignment.saved",
+  GRIEVANCE_SAVED = "grievance.saved",
+  GRIEVANCE_ASSIGNMENT_SAVED = "grievance.assignment.saved",
+  GRIEVANCE_SETTLEMENT_SAVED = "grievance.settlement.saved",
+  TRUST_WMB_SCAN_COMPLETED = "trust.wmb.scan.completed",
+  PLUGIN_CONFIG_SAVED = "plugin.config.saved",
   CRON = "cron",
   LOG = "log",
 }
@@ -120,9 +147,66 @@ export interface WorkerWsChangedPayload {
   previousWsId: string | null;
 }
 
+export interface WorkerWshSavedPayload {
+  workerId: string;
+}
+
+export interface WorkerMshSavedPayload {
+  workerId: string;
+}
+
+export interface StewardAssignmentSavedPayload {
+  assignmentId: string;
+  workerId: string;
+  employerId: string;
+  bargainingUnitId: string;
+  operation: "created" | "updated" | "deleted";
+}
+
+export interface GrievanceSavedPayload {
+  grievanceId: string;
+}
+
+export interface GrievanceAssignmentSavedPayload {
+  grievanceId: string;
+  userId: string;
+  roleId: string;
+  operation: "created" | "updated" | "deleted";
+}
+
+export interface GrievanceSettlementSavedPayload {
+  grievanceId: string;
+  settlementId: string;
+  operation: "created" | "updated" | "deleted";
+  /**
+   * The settlement's amount (numeric string, may be null). Carried on the
+   * payload so the message can render it even for deletes, where the row no
+   * longer exists by the time the notifier runs.
+   */
+  amount: string | null;
+}
+
+export interface TrustWmbScanCompletedPayload {
+  statusId: string;
+  month: number;
+  year: number;
+  totalProcessed: number;
+  successCount: number;
+  failedCount: number;
+  benefitsStarted: number;
+  benefitsContinued: number;
+  benefitsTerminated: number;
+}
+
 export interface CronPayload {
   jobId: string;
   mode: "live" | "test";
+}
+
+export interface PluginConfigSavedPayload {
+  kind: string;
+  id: string;
+  operation: "create" | "update" | "delete";
 }
 
 export interface LogPayload {
@@ -155,42 +239,124 @@ export interface EventPayloadMap {
   [EventType.WORKER_BAN_SAVED]: WorkerBanSavedPayload;
   [EventType.WORKER_SKILL_SAVED]: WorkerSkillSavedPayload;
   [EventType.WORKER_WS_CHANGED]: WorkerWsChangedPayload;
+  [EventType.WORKER_WSH_SAVED]: WorkerWshSavedPayload;
+  [EventType.WORKER_MSH_SAVED]: WorkerMshSavedPayload;
+  [EventType.STEWARD_ASSIGNMENT_SAVED]: StewardAssignmentSavedPayload;
+  [EventType.GRIEVANCE_SAVED]: GrievanceSavedPayload;
+  [EventType.GRIEVANCE_ASSIGNMENT_SAVED]: GrievanceAssignmentSavedPayload;
+  [EventType.GRIEVANCE_SETTLEMENT_SAVED]: GrievanceSettlementSavedPayload;
+  [EventType.TRUST_WMB_SCAN_COMPLETED]: TrustWmbScanCompletedPayload;
+  [EventType.PLUGIN_CONFIG_SAVED]: PluginConfigSavedPayload;
   [EventType.CRON]: CronPayload;
   [EventType.LOG]: LogPayload;
 }
 
 export type EventHandler<T extends EventType> = (payload: EventPayloadMap[T]) => Promise<void>;
 
+export interface OnOptions<T extends EventType> {
+  name: string;
+  description: string;
+  event: T;
+  handler: EventHandler<T>;
+}
+
 interface RegisteredHandler {
   id: string;
+  name: string;
+  description: string;
   handler: (payload: any) => Promise<void>;
+}
+
+export interface HandlerInfo {
+  id: string;
+  name: string;
+  description: string;
+}
+
+export interface EmitFailure {
+  handlerId: string;
+  handlerName: string;
+  message: string;
+}
+
+export interface RecentEmitEntry {
+  emittedAt: Date;
+  eventType: EventType;
+  payload: unknown;
+  payloadTruncated: boolean;
+  handlerCount: number;
+  successCount: number;
+  failureCount: number;
+  durationMs: number;
+  failures: EmitFailure[];
+}
+
+const RECENT_EMITS_PER_TYPE = 100;
+const PAYLOAD_MAX_SERIALIZED_BYTES = 4096;
+
+function capturePayload(payload: unknown): { value: unknown; truncated: boolean } {
+  try {
+    const serialized = JSON.stringify(payload);
+    if (serialized === undefined) {
+      return { value: String(payload), truncated: false };
+    }
+    if (serialized.length > PAYLOAD_MAX_SERIALIZED_BYTES) {
+      return {
+        value: {
+          __truncated: true,
+          originalBytes: serialized.length,
+          preview: serialized.slice(0, PAYLOAD_MAX_SERIALIZED_BYTES),
+        },
+        truncated: true,
+      };
+    }
+    return { value: JSON.parse(serialized), truncated: false };
+  } catch (err) {
+    return {
+      value: { __unserializable: true, error: err instanceof Error ? err.message : String(err) },
+      truncated: true,
+    };
+  }
+}
+
+interface EmitDepthStore {
+  depth: number;
+  rootEventType: EventType;
 }
 
 class EventBus {
   private handlers = new Map<EventType, RegisteredHandler[]>();
   private handlerIdCounter = 0;
+  private recentEmits = new Map<EventType, RecentEmitEntry[]>();
+  private emitDepthAls = new AsyncLocalStorage<EmitDepthStore>();
 
-  on<T extends EventType>(eventType: T, handler: EventHandler<T>): string {
-    if (!this.handlers.has(eventType)) {
-      this.handlers.set(eventType, []);
+  on<T extends EventType>(opts: OnOptions<T>): string {
+    const { name, description, event, handler } = opts;
+    if (!name || !description) {
+      throw new Error(`eventBus.on requires name and description (event=${event})`);
     }
-    
+    if (!this.handlers.has(event)) {
+      this.handlers.set(event, []);
+    }
+
     const handlerId = `handler_${++this.handlerIdCounter}`;
-    this.handlers.get(eventType)!.push({
+    this.handlers.get(event)!.push({
       id: handlerId,
+      name,
+      description,
       handler: handler as (payload: any) => Promise<void>,
     });
-    
-    logger.debug(`Event handler registered: ${handlerId} for ${eventType}`, {
+
+    logger.debug(`Event handler registered: ${name} (${handlerId}) for ${event}`, {
       service: "event-bus",
     });
-    
+
     return handlerId;
   }
 
   off(handlerId: string): boolean {
     const entries = Array.from(this.handlers.entries());
-    for (const [eventType, handlers] of entries) {
+    for (const [, handlers] of entries) {
       const index = handlers.findIndex((h: RegisteredHandler) => h.id === handlerId);
       if (index !== -1) {
         handlers.splice(index, 1);
@@ -204,38 +370,122 @@ class EventBus {
   }
 
   async emit<T extends EventType>(eventType: T, payload: EventPayloadMap[T]): Promise<void> {
-    const handlers = this.handlers.get(eventType) || [];
-    
-    if (handlers.length === 0) {
-      logger.debug(`No handlers for event: ${eventType}`, {
-        service: "event-bus",
+    // Storm protection: per-async-chain emit depth tracking.
+    const parent = this.emitDepthAls.getStore();
+    const nextDepth = parent ? parent.depth + 1 : 1;
+    const rootEventType = parent ? parent.rootEventType : eventType;
+
+    if (nextDepth > EVENT_BUS_MAX_EMIT_DEPTH) {
+      logger.error(
+        `Event bus emit depth exceeded: refusing "${eventType}" at depth ${nextDepth} (root="${rootEventType}", cap=${EVENT_BUS_MAX_EMIT_DEPTH})`,
+        {
+          service: "event-bus",
+          depth: nextDepth,
+          rootEventType,
+          attemptedEventType: eventType,
+          cap: EVENT_BUS_MAX_EMIT_DEPTH,
+        },
+      );
+      throw new EventBusEmitDepthExceededError({
+        depth: nextDepth,
+        rootEventType,
+        attemptedEventType: eventType,
       });
-      return;
     }
 
-    logger.debug(`Emitting event: ${eventType} to ${handlers.length} handler(s)`, {
-      service: "event-bus",
-    });
+    return this.emitDepthAls.run({ depth: nextDepth, rootEventType }, async () => {
+      const handlers = this.handlers.get(eventType) || [];
 
-    const results = await Promise.allSettled(
-      handlers.map(({ id, handler }) => 
-        handler(payload).catch(error => {
-          logger.error(`Event handler ${id} failed for ${eventType}`, {
-            service: "event-bus",
-            handlerId: id,
-            eventType,
-            error: error instanceof Error ? error.message : String(error),
-          });
-          throw error;
-        })
-      )
-    );
+      if (handlers.length === 0) {
+        logger.debug(`No handlers for event: ${eventType}`, {
+          service: "event-bus",
+        });
+        this.recordEmit(eventType, payload, [], 0);
+        return;
+      }
 
-    const failures = results.filter(r => r.status === "rejected");
-    if (failures.length > 0) {
-      logger.warn(`${failures.length}/${handlers.length} handlers failed for event: ${eventType}`, {
+      logger.debug(`Emitting event: ${eventType} to ${handlers.length} handler(s)`, {
         service: "event-bus",
       });
+
+      const startedAt = Date.now();
+      const results = await Promise.allSettled(
+        handlers.map(({ id, name, handler }) =>
+          handler(payload).catch(error => {
+            logger.error(`Event handler ${name} (${id}) failed for ${eventType}`, {
+              service: "event-bus",
+              handlerId: id,
+              handlerName: name,
+              eventType,
+              error: error instanceof Error ? error.message : String(error),
+            });
+            throw error;
+          })
+        )
+      );
+      const durationMs = Date.now() - startedAt;
+
+      const failures = results.filter(r => r.status === "rejected");
+      if (failures.length > 0) {
+        logger.warn(`${failures.length}/${handlers.length} handlers failed for event: ${eventType}`, {
+          service: "event-bus",
+        });
+      }
+
+      this.recordEmit(eventType, payload, handlers, durationMs, results);
+    });
+  }
+
+  private recordEmit<T extends EventType>(
+    eventType: T,
+    payload: EventPayloadMap[T],
+    handlers: RegisteredHandler[],
+    durationMs: number,
+    results?: PromiseSettledResult<void>[],
+  ): void {
+    // Exclude LOG to avoid feedback loop with log-notifier.
+    if (eventType === EventType.LOG) return;
+
+    const failures: EmitFailure[] = [];
+    let successCount = 0;
+    let failureCount = 0;
+    if (results) {
+      results.forEach((r, idx) => {
+        if (r.status === "fulfilled") {
+          successCount++;
+        } else {
+          failureCount++;
+          const h = handlers[idx];
+          failures.push({
+            handlerId: h?.id ?? "unknown",
+            handlerName: h?.name ?? "unknown",
+            message: r.reason instanceof Error ? r.reason.message : String(r.reason),
+          });
+        }
+      });
+    }
+
+    const captured = capturePayload(payload);
+    const entry: RecentEmitEntry = {
+      emittedAt: new Date(),
+      eventType,
+      payload: captured.value,
+      payloadTruncated: captured.truncated,
+      handlerCount: handlers.length,
+      successCount,
+      failureCount,
+      durationMs,
+      failures,
+    };
+
+    let bucket = this.recentEmits.get(eventType);
+    if (!bucket) {
+      bucket = [];
+      this.recentEmits.set(eventType, bucket);
+    }
+    bucket.push(entry);
+    if (bucket.length > RECENT_EMITS_PER_TYPE) {
+      bucket.splice(0, bucket.length - RECENT_EMITS_PER_TYPE);
     }
   }
 
@@ -250,6 +500,33 @@ class EventBus {
     }
     return total;
   }
+
+  getRegistry(): Record<string, HandlerInfo[]> {
+    const out: Record<string, HandlerInfo[]> = {};
+    for (const eventType of Object.values(EventType)) {
+      const handlers = this.handlers.get(eventType) || [];
+      out[eventType] = handlers.map(h => ({ id: h.id, name: h.name, description: h.description }));
+    }
+    return out;
+  }
+
+  getRecentEmits(eventType?: EventType, limit?: number): RecentEmitEntry[] {
+    const collect: RecentEmitEntry[] = [];
+    if (eventType) {
+      collect.push(...(this.recentEmits.get(eventType) || []));
+    } else {
+      const buckets = Array.from(this.recentEmits.values());
+      for (const b of buckets) collect.push(...b);
+    }
+    collect.sort((a, b) => b.emittedAt.getTime() - a.emittedAt.getTime());
+    if (limit && limit > 0) return collect.slice(0, limit);
+    return collect;
+  }
+
+  clearRecentEmits(): void {
+    this.recentEmits.clear();
+  }
 }
 
 export const eventBus = new EventBus();
+export const EVENT_BUS_RING_BUFFER_CAP = RECENT_EMITS_PER_TYPE;

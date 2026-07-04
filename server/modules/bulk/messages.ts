@@ -7,9 +7,7 @@ import {
   insertBulkMessagesPostalSchema,
   insertBulkMessagesInappSchema,
 } from "../../../shared/schema/bulk/schema";
-import { contacts, workers, employers, employerContacts } from "../../../shared/schema";
-import { eq, inArray, and } from "drizzle-orm";
-import { getClient, runInTransaction } from "../../storage/transaction-context";
+import { runInTransaction } from "../../storage/transaction-context";
 import { createBulkParticipantStorage } from "../../storage/bulk/participants";
 import { deliverToContact, deliverToParticipant, resolveAddressForMedium } from "./deliver";
 import { storageLogger } from "../../logger";
@@ -82,7 +80,8 @@ export function registerBulkMessageRoutes(
       for (const m of item.medium) {
         mediumRecords[m] = await getMediumRecord(storage, m, item.id) || null;
       }
-      res.json({ ...item, mediumRecords });
+      const deliveryStarted = await rawParticipantStorage.hasNonPendingForMessage(item.id);
+      res.json({ ...item, mediumRecords, deliveryStarted });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Failed to fetch bulk message";
       res.status(500).json({ message });
@@ -110,13 +109,9 @@ export function registerBulkMessageRoutes(
       const autoName = `${sourceLabel} — ${dateLabel} — ${contactIds.length} recipient${contactIds.length === 1 ? '' : 's'}`;
       const finalName = requestedName ?? autoName;
 
-      const db = getClient();
       const uniqueIds = Array.from(new Set(contactIds as string[]));
-      const existingContacts = await db
-        .select({ id: contacts.id })
-        .from(contacts)
-        .where(inArray(contacts.id, uniqueIds));
-      const validContactIds = new Set(existingContacts.map(c => c.id));
+      const existingIds = await storage.contacts.getExistingIds(uniqueIds);
+      const validContactIds = new Set(existingIds);
       const missingCount = uniqueIds.length - validContactIds.size;
       if (missingCount > 0) {
         const unresolvedIds = uniqueIds.filter(id => !validContactIds.has(id));
@@ -196,6 +191,20 @@ export function registerBulkMessageRoutes(
       const parsed = insertBulkMessageSchema.partial().safeParse(body);
       if (!parsed.success) {
         return res.status(400).json({ message: "Validation failed", errors: parsed.error.issues });
+      }
+      if (parsed.data.data !== undefined) {
+        const existingData = (existing.data ?? {}) as Record<string, unknown>;
+        const newData = (parsed.data.data ?? {}) as Record<string, unknown>;
+        const existingOffline = existingData.offline === true;
+        const newOffline = newData.offline === true;
+        if (existingOffline !== newOffline) {
+          const deliveryStarted = await rawParticipantStorage.hasNonPendingForMessage(existing.id);
+          if (deliveryStarted) {
+            return res.status(409).json({
+              message: "Cannot change the offline delivery flag after delivery has started for this message.",
+            });
+          }
+        }
       }
       if (parsed.data.medium) {
         const oldMedia = new Set(existing.medium);
@@ -639,7 +648,7 @@ export function registerBulkMessageRoutes(
       }
       const participants = await storage.bulkParticipants.getByMessageId(req.params.id);
       const contactIds = Array.from(new Set(participants.map((p) => p.contactId).filter(Boolean) as string[]));
-      const scopes = await detectAudienceScopes(contactIds);
+      const scopes = await detectAudienceScopes(storage, contactIds);
       const tokens = TOKEN_REGISTRY.filter((t) => scopes.has(t.scope));
       res.json({ tokens, scopes: Array.from(scopes) });
     } catch (error: unknown) {
@@ -694,35 +703,14 @@ export function registerBulkMessageRoutes(
         });
       }
 
-      const db = getClient();
-
       // Batch-load every data source once instead of per-recipient.
-      const contactRows = await db
-        .select({
-          id: contacts.id,
-          given: contacts.given,
-          family: contacts.family,
-          displayName: contacts.displayName,
-          email: contacts.email,
-        })
-        .from(contacts)
-        .where(inArray(contacts.id, contactIds));
+      const contactRows = await storage.bulkTokens.getContactsBasicByIds(contactIds);
       const contactById = new Map(contactRows.map((c) => [c.id, c]));
       const nameById = new Map(
         contactRows.map((c) => [c.id, c.displayName || `${c.given || ''} ${c.family || ''}`.trim() || c.id]),
       );
 
-      const workerRows = await db
-        .select({
-          contactId: workers.contactId,
-          id: workers.id,
-          jobTitle: workers.denormJobTitle,
-          siriusId: workers.siriusId,
-          homeEmployerId: workers.denormHomeEmployerId,
-          employerIds: workers.denormEmployerIds,
-        })
-        .from(workers)
-        .where(inArray(workers.contactId, contactIds));
+      const workerRows = await storage.bulkTokens.getWorkersByContactIds(contactIds);
       const workerByContactId = new Map(workerRows.map((w) => [w.contactId, w]));
 
       // Collect all employer ids the workers reference, then batch-load.
@@ -738,15 +726,7 @@ export function registerBulkMessageRoutes(
         if (!w) return true;
         return !(w.homeEmployerId || (w.employerIds && w.employerIds[0]));
       });
-      const ecRows = contactsNeedingEmployerLink.length > 0
-        ? await db
-            .select({
-              contactId: employerContacts.contactId,
-              employerId: employerContacts.employerId,
-            })
-            .from(employerContacts)
-            .where(inArray(employerContacts.contactId, contactsNeedingEmployerLink))
-        : [];
+      const ecRows = await storage.bulkTokens.getFirstEmployerLinksByContactIds(contactsNeedingEmployerLink);
       const employerLinkByContactId = new Map<string, string>();
       for (const r of ecRows) {
         if (!employerLinkByContactId.has(r.contactId)) {
@@ -758,12 +738,7 @@ export function registerBulkMessageRoutes(
         ...workerEmployerIds,
         ...employerLinkByContactId.values(),
       ]));
-      const employerRows = allEmployerIds.length > 0
-        ? await db
-            .select({ id: employers.id, name: employers.name })
-            .from(employers)
-            .where(inArray(employers.id, allEmployerIds))
-        : [];
+      const employerRows = await storage.bulkTokens.getEmployersByIds(allEmployerIds);
       const employerById = new Map(employerRows.map((e) => [e.id, e]));
 
       const now = new Date();
@@ -844,16 +819,8 @@ export function registerBulkMessageRoutes(
       // participant of this bulk message — prevents leaking arbitrary
       // contact PII through the preview endpoint.
       if (contactId) {
-        const db = getClient();
-        const membership = await db
-          .select({ id: bulkParticipants.id })
-          .from(bulkParticipants)
-          .where(and(
-            eq(bulkParticipants.messageId, req.params.id),
-            eq(bulkParticipants.contactId, contactId),
-          ))
-          .limit(1);
-        if (membership.length === 0) {
+        const isMember = await storage.bulkParticipants.existsForMessageAndContact(req.params.id, contactId);
+        if (!isMember) {
           return res.status(403).json({ message: "Contact is not a participant of this message" });
         }
       }

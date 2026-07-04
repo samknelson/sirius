@@ -6,7 +6,7 @@ import {
   type FreemanCrewlead,
   type InsertFreemanCrewlead,
 } from "../../../../shared/schema/sitespecific/freeman/schema";
-import { type StorageLoggingConfig } from "../../middleware/logging";
+import { defineLoggingConfig, type StorageLoggingConfig } from "../../middleware/logging";
 
 export type { FreemanCrewlead, InsertFreemanCrewlead };
 
@@ -109,22 +109,16 @@ function describeCrewlead(record?: {
   return `${name} (${sid})`;
 }
 
-export const freemanCrewleadsLoggingConfig: StorageLoggingConfig<FreemanCrewleadsStorage> = {
+export const freemanCrewleadsLoggingConfig = defineLoggingConfig<FreemanCrewleadsStorage>({
   module: "sitespecific.freeman.crewleads",
+  state: { key: "crewlead" },
   methods: {
     create: {
-      enabled: true,
-      getEntityId: (_args, result) => result?.id,
+      after: async (_args, result) => result,
       getDescription: (_args, result) =>
         `Created Freeman crew lead ${describeCrewlead(result)}`,
-      after: async (_args, result) => result,
     },
     update: {
-      enabled: true,
-      getEntityId: (args) => args[0],
-      before: async (args, storage) => ({
-        crewlead: await storage.get(args[0]),
-      }),
       after: async (_args, result) => result,
       getDescription: (_args, result, beforeState) => {
         const r = result || (beforeState as CrewleadBeforeState | undefined)?.crewlead;
@@ -132,15 +126,10 @@ export const freemanCrewleadsLoggingConfig: StorageLoggingConfig<FreemanCrewlead
       },
     },
     delete: {
-      enabled: true,
-      getEntityId: (args) => args[0],
-      before: async (args, storage) => ({
-        crewlead: await storage.get(args[0]),
-      }),
       getDescription: (_args, _result, beforeState) => {
         const r = (beforeState as CrewleadBeforeState | undefined)?.crewlead;
         return `Deleted Freeman crew lead ${describeCrewlead(r ?? undefined)}`;
       },
     },
   },
-};
+});

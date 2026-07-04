@@ -1,10 +1,12 @@
+import { registerDashboardPlugin } from "../registry";
 import type { DashboardPlugin } from "../types";
 
 export const btuBuSummaryPlugin: DashboardPlugin = {
   id: "btu-bu-summary",
   name: "BTU Bargaining Unit Summary",
   description: "Display workers per bargaining unit with signed card check percentages",
-  componentId: "sitespecific.btu",
+  requiredComponent: "sitespecific.btu",
+  requiredPolicy: "admin",
 
   content: {
     data: async (ctx) => {
@@ -95,4 +97,12 @@ export const btuBuSummaryPlugin: DashboardPlugin = {
       };
     },
   },
+
+  client: {
+    component: "btu-bu-summary:BtuBuSummary",
+    order: 10,
+    requiredPermissions: ["admin"],
+  },
 };
+
+registerDashboardPlugin(btuBuSummaryPlugin);

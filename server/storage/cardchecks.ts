@@ -370,7 +370,7 @@ export function createCardcheckStorage(): CardcheckStorage {
           siriusId: workers.siriusId,
           contactId: workers.contactId,
           bargainingUnitId: workers.bargainingUnitId,
-          denormEmployerIds: workers.denormEmployerIds,
+          denormEmployerIds: sql<string[] | null>`(SELECT array_agg(wed.employer_id) FROM worker_employment_denorm wed WHERE wed.worker_id = ${workers.id})`,
         })
         .from(workers);
       
@@ -1188,23 +1188,6 @@ export function createCardcheckStorage(): CardcheckStorage {
   return storage;
 }
 
-async function getWorkerName(workerId: string): Promise<string> {
-  const client = getClient();
-  const [worker] = await client
-    .select({ contactId: workers.contactId, siriusId: workers.siriusId })
-    .from(workers)
-    .where(eq(workers.id, workerId));
-  if (!worker) return 'Unknown Worker';
-  
-  const [contact] = await client
-    .select({ given: contacts.given, family: contacts.family, displayName: contacts.displayName })
-    .from(contacts)
-    .where(eq(contacts.id, worker.contactId));
-  
-  const name = contact ? `${contact.given || ''} ${contact.family || ''}`.trim() : '';
-  return name || contact?.displayName || `Worker #${worker.siriusId}`;
-}
-
 async function getDefinitionName(definitionId: string): Promise<string> {
   const client = getClient();
   const [definition] = await client
@@ -1222,7 +1205,8 @@ export const cardcheckLoggingConfig: StorageLoggingConfig<CardcheckStorage> = {
       getEntityId: (args, result) => result?.id || 'new cardcheck',
       getHostEntityId: (args, result) => result?.workerId || args[0]?.workerId,
       getDescription: async (args, result) => {
-        const workerName = await getWorkerName(result?.workerId || args[0]?.workerId);
+        const { storage } = await import('./index');
+        const workerName = await storage.workers.getWorkerDisplayName(result?.workerId || args[0]?.workerId);
         const definitionName = await getDefinitionName(result?.cardcheckDefinitionId || args[0]?.cardcheckDefinitionId);
         return `Created Cardcheck for ${workerName} - ${definitionName}`;
       },
@@ -1251,7 +1235,8 @@ export const cardcheckLoggingConfig: StorageLoggingConfig<CardcheckStorage> = {
       },
       getDescription: async (args, result, beforeState) => {
         const workerId = result?.workerId || beforeState?.cardcheck?.workerId;
-        const workerName = workerId ? await getWorkerName(workerId) : 'Unknown Worker';
+        const { storage } = await import('./index');
+        const workerName = await storage.workers.getWorkerDisplayName(workerId);
         const definitionId = result?.cardcheckDefinitionId || beforeState?.cardcheck?.cardcheckDefinitionId;
         const definitionName = definitionId ? await getDefinitionName(definitionId) : 'Unknown Definition';
         
@@ -1288,7 +1273,8 @@ export const cardcheckLoggingConfig: StorageLoggingConfig<CardcheckStorage> = {
       },
       getDescription: async (args, result, beforeState) => {
         const workerId = beforeState?.cardcheck?.workerId;
-        const workerName = workerId ? await getWorkerName(workerId) : 'Unknown Worker';
+        const { storage } = await import('./index');
+        const workerName = await storage.workers.getWorkerDisplayName(workerId);
         const definitionId = beforeState?.cardcheck?.cardcheckDefinitionId;
         const definitionName = definitionId ? await getDefinitionName(definitionId) : 'Unknown Definition';
         return `Deleted Cardcheck for ${workerName} - ${definitionName}`;
@@ -1323,7 +1309,8 @@ export const cardcheckLoggingConfig: StorageLoggingConfig<CardcheckStorage> = {
         const workerId = result?.cardcheck?.workerId;
         const definitionId = result?.cardcheck?.cardcheckDefinitionId;
         if (!workerId || !definitionId) return 'Signed Cardcheck';
-        const workerName = await getWorkerName(workerId);
+        const { storage } = await import('./index');
+        const workerName = await storage.workers.getWorkerDisplayName(workerId);
         const definitionName = await getDefinitionName(definitionId);
         return `Signed Cardcheck for ${workerName} - ${definitionName}`;
       },

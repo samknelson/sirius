@@ -2,7 +2,7 @@ import { createNoopValidator } from '../utils/validation';
 import { getClient } from '../transaction-context';
 import { employers, type Employer, type InsertEmployer } from "@shared/schema";
 import { eq, sql, inArray } from "drizzle-orm";
-import { type StorageLoggingConfig } from "../middleware/logging";
+import { defineLoggingConfig, type StorageLoggingConfig } from "../middleware/logging";
 
 /**
  * Stub validator - add validation logic here when needed
@@ -24,6 +24,7 @@ export interface EmployerWorker {
 export interface EmployerStorage {
   getAllEmployers(): Promise<Employer[]>;
   getEmployer(id: string): Promise<Employer | undefined>;
+  getBySiriusId(siriusId: string): Promise<Employer | undefined>;
   getByIds(ids: string[]): Promise<Employer[]>;
   getEmployerWorkers(employerId: string): Promise<EmployerWorker[]>;
   createEmployer(employer: InsertEmployer): Promise<Employer>;
@@ -42,6 +43,12 @@ export function createEmployerStorage(): EmployerStorage {
     async getEmployer(id: string): Promise<Employer | undefined> {
       const client = getClient();
       const [employer] = await client.select().from(employers).where(eq(employers.id, id));
+      return employer || undefined;
+    },
+
+    async getBySiriusId(siriusId: string): Promise<Employer | undefined> {
+      const client = getClient();
+      const [employer] = await client.select().from(employers).where(eq(employers.siriusId, siriusId));
       return employer || undefined;
     },
 
@@ -129,35 +136,13 @@ export function createEmployerStorage(): EmployerStorage {
   };
 }
 
-export const employerLoggingConfig: StorageLoggingConfig<EmployerStorage> = {
+export const employerLoggingConfig = defineLoggingConfig<EmployerStorage>({
   module: 'employers',
+  getter: 'getEmployer',
+  hostEntityId: (args, result, before) => result?.id ?? before?.id ?? args[0],
   methods: {
-    createEmployer: {
-      enabled: true,
-      getEntityId: (args, result) => result?.id || args[0]?.name || 'new employer',
-      getHostEntityId: (args, result) => result?.id,
-      after: async (args, result, storage) => {
-        return result;
-      }
-    },
-    updateEmployer: {
-      enabled: true,
-      getEntityId: (args) => args[0],
-      getHostEntityId: (args) => args[0],
-      before: async (args, storage) => {
-        return await storage.getEmployer(args[0]);
-      },
-      after: async (args, result, storage) => {
-        return result;
-      }
-    },
-    deleteEmployer: {
-      enabled: true,
-      getEntityId: (args) => args[0],
-      getHostEntityId: (args, result, beforeState) => beforeState?.id || args[0],
-      before: async (args, storage) => {
-        return await storage.getEmployer(args[0]);
-      }
-    }
-  }
-};
+    createEmployer: { getEntityId: (args, result) => result?.id || args[0]?.name || 'new employer' },
+    updateEmployer: {},
+    deleteEmployer: {},
+  },
+});

@@ -13,7 +13,7 @@ import { Link, useLocation } from "wouter";
 import { formatDistanceToNow } from "date-fns";
 import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { useWebSocket } from "@/hooks/use-websocket";
+import { useWebSocket } from "@/contexts/WebSocketContext";
 
 interface CommInapp {
   id: string;

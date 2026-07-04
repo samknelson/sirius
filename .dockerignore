@@ -1,0 +1,42 @@
+# Dependencies & build output (reinstalled / rebuilt inside the image)
+node_modules
+dist
+server/public
+
+# Version control & CI
+.git
+.gitignore
+.github
+
+# Replit-specific tooling & local state (not needed to build/run)
+.replit
+replit.nix
+.config
+.upm
+.cache
+.canvas
+.agents
+.local
+generated-icon.png
+
+# Local env files — secrets are passed at runtime, never baked in
+.env
+.env.*
+
+# Large / non-build assets and generated material
+attached_assets
+exports
+docs
+design_guidelines.md
+*.md
+
+# Docker artifacts
+Dockerfile
+.dockerignore
+
+# Misc
+.DS_Store
+*.tar.gz
+*.log
+.drizzle-runtime.json
+.drizzle-runtime-schema.ts

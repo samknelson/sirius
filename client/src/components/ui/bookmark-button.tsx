@@ -41,6 +41,7 @@ export function BookmarkButton({ entityType, entityId, entityName }: BookmarkBut
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/bookmarks/check", entityType, entityId] });
       queryClient.invalidateQueries({ queryKey: ["/api/bookmarks"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard-plugins", "bookmarks", "content"] });
       toast({
         title: "Bookmarked",
         description: `${entityName || "Item"} has been added to your bookmarks.`,
@@ -62,6 +63,7 @@ export function BookmarkButton({ entityType, entityId, entityName }: BookmarkBut
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/bookmarks/check", entityType, entityId] });
       queryClient.invalidateQueries({ queryKey: ["/api/bookmarks"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard-plugins", "bookmarks", "content"] });
       toast({
         title: "Removed",
         description: `${entityName || "Item"} has been removed from your bookmarks.`,

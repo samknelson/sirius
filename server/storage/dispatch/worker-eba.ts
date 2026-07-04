@@ -2,8 +2,6 @@ import { createNoopValidator } from '../utils/validation';
 import { getClient } from '../transaction-context';
 import { 
   workerDispatchEba,
-  workers,
-  contacts,
   type WorkerDispatchEba, 
   type InsertWorkerDispatchEba
 } from "@shared/schema";
@@ -22,23 +20,6 @@ export interface WorkerDispatchEbaStorage {
   delete(id: string): Promise<boolean>;
 }
 
-async function getWorkerName(workerId: string): Promise<string> {
-  const client = getClient();
-  const [worker] = await client
-    .select({ contactId: workers.contactId, siriusId: workers.siriusId })
-    .from(workers)
-    .where(eq(workers.id, workerId));
-  if (!worker) return 'Unknown Worker';
-  
-  const [contact] = await client
-    .select({ given: contacts.given, family: contacts.family, displayName: contacts.displayName })
-    .from(contacts)
-    .where(eq(contacts.id, worker.contactId));
-  
-  const name = contact ? `${contact.given || ''} ${contact.family || ''}`.trim() : '';
-  return name || contact?.displayName || `Worker #${worker.siriusId}`;
-}
-
 export const workerDispatchEbaLoggingConfig: StorageLoggingConfig<WorkerDispatchEbaStorage> = {
   module: 'worker-dispatch-eba',
   methods: {
@@ -47,7 +28,8 @@ export const workerDispatchEbaLoggingConfig: StorageLoggingConfig<WorkerDispatch
       getEntityId: (args: any[]) => args[0],
       getHostEntityId: (args: any[]) => args[0],
       getDescription: async (args, result) => {
-        const workerName = await getWorkerName(args[0]);
+        const { storage } = await import('../index');
+        const workerName = await storage.workers.getWorkerDisplayName(args[0]);
         const dateCount = result?.length ?? 0;
         return `Synced ${dateCount} availability date(s) for ${workerName}`;
       },
@@ -63,7 +45,8 @@ export const workerDispatchEbaLoggingConfig: StorageLoggingConfig<WorkerDispatch
       },
       getDescription: async (args, result, beforeState) => {
         if (beforeState?.entry) {
-          const workerName = await getWorkerName(beforeState.entry.workerId);
+          const { storage } = await import('../index');
+          const workerName = await storage.workers.getWorkerDisplayName(beforeState.entry.workerId);
           return `Deleted availability date ${beforeState.entry.ymd} for ${workerName}`;
         }
         return 'Deleted availability date entry';

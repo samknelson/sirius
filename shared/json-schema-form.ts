@@ -56,6 +56,8 @@ export type JsonSchema = {
   default?: unknown;
   minimum?: number | { $data: string };
   maximum?: number | { $data: string };
+  exclusiveMinimum?: number | { $data: string };
+  exclusiveMaximum?: number | { $data: string };
   minLength?: number;
   maxLength?: number;
   format?: string;

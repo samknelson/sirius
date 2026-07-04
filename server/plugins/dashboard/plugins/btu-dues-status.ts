@@ -1,3 +1,4 @@
+import { registerDashboardPlugin } from "../registry";
 import type { DashboardPlugin } from "../types";
 
 export const btuDuesStatusPlugin: DashboardPlugin = {
@@ -5,7 +6,8 @@ export const btuDuesStatusPlugin: DashboardPlugin = {
   name: "BTU Dues Status",
   description:
     "Display summary of most recent BTU dues allocation import with card check comparison",
-  componentId: "sitespecific.btu",
+  requiredComponent: "sitespecific.btu",
+  requiredPolicy: "admin",
 
   content: {
     summary: async (ctx) => {
@@ -67,4 +69,12 @@ export const btuDuesStatusPlugin: DashboardPlugin = {
       };
     },
   },
+
+  client: {
+    component: "btu-dues-status:BtuDuesStatus",
+    order: 9,
+    requiredPermissions: ["admin"],
+  },
 };
+
+registerDashboardPlugin(btuDuesStatusPlugin);

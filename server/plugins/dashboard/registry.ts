@@ -1,11 +1,13 @@
 import type { Request, Response } from "express";
 import { logger } from "../../logger";
 import { storage } from "../../storage";
-import { isComponentEnabled } from "../../modules/components";
-import { checkAccessInline } from "../../services/access-policy-evaluator";
+import { runInTransaction } from "../../storage/transaction-context";
 import { getEffectiveUser } from "../../modules/masquerade";
 import { validateAgainstSchema } from "../../lib/json-schema-validator";
 import type { JsonSchema } from "@shared/json-schema-form";
+import type { PluginConfig } from "@shared/schema";
+import { PluginRegistry, enforcePluginGating } from "../_core";
+import type { BasePluginMetadata } from "../_core";
 import type {
   DashboardPlugin,
   DashboardContentContext,
@@ -15,26 +17,114 @@ import type {
 
 const SERVICE = "dashboard-plugin-registry";
 
-class DashboardPluginRegistry {
-  private plugins = new Map<string, DashboardPlugin>();
+/**
+ * Manifest entry shape for dashboard plugins. Matches the legacy
+ * `/api/dashboard-plugins/manifest` response shape so the dashboard /
+ * config UIs need no payload changes — only the URL changes.
+ */
+export interface DashboardManifestEntry {
+  id: string;
+  name: string;
+  description: string;
+  componentId: string;
+  componentProps: Record<string, unknown> | null;
+  order: number;
+  fullWidth: boolean;
+  requiredPermissions: string[];
+  requiredPolicy?: string;
+  requiredComponent?: string;
+  hasSettings: boolean;
+  enabledByDefault: boolean;
+  enabled: boolean;
+  hidden?: boolean;
+  /**
+   * Resolved JSON Schema for the plugin's settings, populated in
+   * `decorateEntries`. The generic plugin-config admin UI reads this to
+   * render the settings form for a dashboard config row.
+   */
+  configSchema?: JsonSchema;
+  /** Resolved RJSF uiSchema companion to `configSchema`. */
+  uiSchema?: DashboardPluginUiSchema;
+}
 
-  register(plugin: DashboardPlugin): void {
-    if (this.plugins.has(plugin.id)) {
-      logger.warn(`Dashboard plugin ${plugin.id} already registered, overwriting`, { service: SERVICE });
-    }
-    this.plugins.set(plugin.id, plugin);
+/**
+ * One rendered dashboard item, derived from a single `plugin_configs` row
+ * joined with its owning plugin's display metadata. The dashboard renders
+ * one widget per item (in `ordering` order), so a plugin with several config
+ * rows produces several items — each scoped to its own config via `configId`.
+ */
+export interface DashboardConfigItem extends DashboardManifestEntry {
+  /** The owning `plugin_configs` row id. Used to scope `/content` reads. */
+  configId: string;
+  /** Per-config display name (admin-set), or null to fall back to plugin name. */
+  configName: string | null;
+  /** The config row's ordering (primary sort key for items). */
+  ordering: number;
+}
+
+function pluginToMetadata(p: DashboardPlugin): BasePluginMetadata {
+  return {
+    id: p.id,
+    name: p.name,
+    description: p.description,
+    requiredComponent: p.requiredComponent,
+    requiredPolicy: p.requiredPolicy,
+    hidden: !p.client, // headless plugins never appear on the manifest
+  };
+}
+
+function pluginToManifestEntry(p: DashboardPlugin): DashboardManifestEntry {
+  const client = p.client;
+  if (!client) {
+    // Headless plugins are filtered out by `hidden: true` from
+    // pluginToMetadata, but TS still needs a value. Return a stub.
+    return {
+      id: p.id,
+      name: p.name,
+      description: p.description,
+      componentId: "",
+      componentProps: null,
+      order: 0,
+      fullWidth: false,
+      requiredPermissions: [],
+      requiredPolicy: p.requiredPolicy,
+      requiredComponent: p.requiredComponent,
+      hasSettings: !!p.settingsSchema,
+      enabledByDefault: false,
+      enabled: false,
+      hidden: true,
+    };
+  }
+  return {
+    id: p.id,
+    name: p.name,
+    description: p.description,
+    componentId: client.component,
+    componentProps: client.componentProps ?? null,
+    order: client.order,
+    fullWidth: client.fullWidth === true,
+    requiredPermissions: client.requiredPermissions ?? [],
+    requiredPolicy: p.requiredPolicy,
+    requiredComponent: p.requiredComponent,
+    hasSettings: !!p.settingsSchema,
+    enabledByDefault: client.enabledByDefault !== false,
+    enabled: client.enabledByDefault !== false, // overridden in decorateEntries
+  };
+}
+
+class DashboardPluginRegistry extends PluginRegistry<DashboardPlugin, DashboardManifestEntry> {
+  constructor() {
+    super({
+      kind: "dashboard",
+      getMetadata: pluginToMetadata,
+      toManifestEntry: pluginToManifestEntry,
+      allowOverwrite: true,
+    });
   }
 
-  get(id: string): DashboardPlugin | undefined {
-    return this.plugins.get(id);
-  }
-
+  // Backwards-compatible aliases for legacy call sites.
   getAll(): DashboardPlugin[] {
-    return Array.from(this.plugins.values());
-  }
-
-  variableName(pluginId: string): string {
-    return `dashboard_plugin_${pluginId}_settings`;
+    return this.list();
   }
 
   async resolveSchema(plugin: DashboardPlugin): Promise<JsonSchema | undefined> {
@@ -49,35 +139,89 @@ class DashboardPluginRegistry {
     return typeof plugin.uiSchema === "function" ? await plugin.uiSchema() : plugin.uiSchema;
   }
 
-  async getSettingsValue(plugin: DashboardPlugin): Promise<any> {
-    const variable = await storage.variables.getByName(this.variableName(plugin.id));
-    if (variable) return variable.value;
-    return plugin.defaultSettings ?? {};
+  /**
+   * The canonical config row for a plugin: the first by `(ordering, id)`.
+   * Under the unified multi-config model an operator may create several rows
+   * for one dashboard plugin; the runtime resolves to a single deterministic
+   * one. Returns undefined when the plugin has no config row at all.
+   */
+  async getCanonicalConfig(plugin: DashboardPlugin): Promise<PluginConfig | undefined> {
+    const rows = await storage.pluginConfigs.getByKindAndPlugin("dashboard", plugin.id);
+    return rows[0];
   }
 
-  async saveSettings(plugin: DashboardPlugin, value: any): Promise<void> {
-    const name = this.variableName(plugin.id);
-    const existing = await storage.variables.getByName(name);
-    if (existing) {
-      await storage.variables.update(existing.id, { value });
-    } else {
-      await storage.variables.create({ name, value });
+  /** Enabled state to assume when a plugin has no explicit config row. */
+  defaultEnabled(plugin: DashboardPlugin): boolean {
+    return plugin.client ? plugin.client.enabledByDefault !== false : false;
+  }
+
+
+  /**
+   * One dashboard item per dashboard config row, joined with its owning
+   * plugin's display metadata. Headless plugins (no `client` block) and rows
+   * whose plugin is no longer registered are skipped. Sorted by the config
+   * row's `ordering`, then the plugin's default order, then config id — so the
+   * default ordering (all rows at ordering 0) follows each plugin's declared
+   * order until an admin overrides it.
+   */
+  async getConfigItems(roleIds: string[]): Promise<DashboardConfigItem[]> {
+    // Role-filtered: the unified search inner-joins the dashboard subsidiary and
+    // returns only configs whose required role is one of the viewer's roles.
+    // A viewer with no roles sees no widgets (empty `roleIn` matches nothing).
+    const envelopes = await storage.pluginConfigs.search("dashboard", {
+      roleIn: roleIds,
+    });
+    const items: DashboardConfigItem[] = [];
+    for (const { config: cfg } of envelopes) {
+      const plugin = this.get(cfg.pluginId);
+      if (!plugin || !plugin.client) continue;
+      const entry = pluginToManifestEntry(plugin);
+      items.push({
+        ...entry,
+        enabled: cfg.enabled,
+        configId: cfg.id,
+        configName: cfg.name ?? null,
+        ordering: cfg.ordering,
+      });
     }
+    items.sort(
+      (a, b) =>
+        a.ordering - b.ordering ||
+        a.order - b.order ||
+        a.configId.localeCompare(b.configId),
+    );
+    return items;
   }
 
-  async runLegacyMigrations(): Promise<void> {
-    for (const plugin of this.plugins.values()) {
-      if (!plugin.migrateLegacySettings) continue;
+  /**
+   * Idempotently ensure every registered, renderable (non-headless) plugin
+   * has at least one config row, so no dashboard item disappears once the
+   * dashboard renders per-config instead of per-plugin. Runs at boot after
+   * the legacy backfill; plugins that already have a row (backfilled or
+   * admin-created) are left untouched.
+   */
+  async seedDefaultConfigs(): Promise<void> {
+    for (const plugin of this.list()) {
+      if (!plugin.client) continue;
       try {
-        const existing = await storage.variables.getByName(this.variableName(plugin.id));
-        if (existing) continue;
-        const migrated = await plugin.migrateLegacySettings();
-        if (migrated && typeof migrated === "object" && Object.keys(migrated).length > 0) {
-          await storage.variables.create({ name: this.variableName(plugin.id), value: migrated });
-          logger.info(`Migrated legacy settings for dashboard plugin ${plugin.id}`, { service: SERVICE });
-        }
+        const existing = await storage.pluginConfigs.getByKindAndPlugin(
+          "dashboard",
+          plugin.id,
+        );
+        if (existing.length > 0) continue;
+        await storage.pluginConfigs.create({
+          pluginKind: "dashboard",
+          pluginId: plugin.id,
+          enabled: this.defaultEnabled(plugin),
+          name: null,
+          ordering: 0,
+          data: plugin.defaultSettings ?? {},
+        });
+        logger.info(`Seeded default dashboard config for ${plugin.id}`, {
+          service: SERVICE,
+        });
       } catch (error) {
-        logger.error(`Failed to migrate legacy settings for dashboard plugin ${plugin.id}`, {
+        logger.error(`Failed to seed default dashboard config for ${plugin.id}`, {
           service: SERVICE,
           error: error instanceof Error ? error.message : String(error),
         });
@@ -85,25 +229,151 @@ class DashboardPluginRegistry {
     }
   }
 
-  async checkGating(
-    plugin: DashboardPlugin,
-    req: Request,
-  ): Promise<{ ok: true } | { ok: false; status: number; message: string }> {
-    if (plugin.componentId) {
-      const enabled = await isComponentEnabled(plugin.componentId);
-      if (!enabled) {
-        return { ok: false, status: 403, message: `Component '${plugin.componentId}' not enabled` };
+  /**
+   * Idempotently ensure every dashboard config has a role subsidiary row.
+   * Runs at boot AFTER the legacy/welcome backfills and the default seed, so
+   * any config created by those steps also gets a role. The render and search
+   * paths inner-join the subsidiary, so a config without one would silently
+   * vanish — this guarantees the invariant holds.
+   *
+   * Role selection per config without an existing row:
+   *   - welcome-messages configs adopt their legacy `data.roles[0]` (when it
+   *     names a still-valid role), then have `roles` stripped from `data`.
+   *   - everything else defaults to the first role in the roles table.
+   *
+   * Configs that already have a subsidiary row are left untouched, so
+   * re-running is a no-op.
+   */
+  async backfillRoleSubsidiaries(): Promise<void> {
+    const roles = await storage.users.getAllRoles();
+    if (roles.length === 0) {
+      logger.warn("No roles exist; skipping dashboard role backfill", {
+        service: SERVICE,
+      });
+      return;
+    }
+    const validRoleIds = new Set(roles.map((r) => r.id));
+    const firstRoleId = roles[0].id;
+    const configs = await storage.pluginConfigs.getByKind("dashboard");
+    for (const cfg of configs) {
+      try {
+        const envelope = await storage.pluginConfigs.getWithSubsidiary(cfg.id);
+        if (!envelope || envelope.subsidiary) continue; // already has a role
+
+        let roleId = firstRoleId;
+        let stripRoles = false;
+        if (cfg.pluginId === "welcome-messages") {
+          const data = (cfg.data ?? {}) as Record<string, unknown>;
+          if ("roles" in data) stripRoles = true;
+          const list = Array.isArray(data.roles) ? data.roles : [];
+          const candidate = list.find(
+            (r): r is string => typeof r === "string" && validRoleIds.has(r),
+          );
+          if (candidate) roleId = candidate;
+        }
+
+        await runInTransaction(async () => {
+          await storage.pluginConfigs.upsertSubsidiary("dashboard", {
+            id: cfg.id,
+            role: roleId,
+          });
+          if (stripRoles) {
+            const data = { ...((cfg.data ?? {}) as Record<string, unknown>) };
+            delete data.roles;
+            await storage.pluginConfigs.update(cfg.id, { data });
+          }
+        });
+        logger.info(`Backfilled dashboard role for config ${cfg.id}`, {
+          service: SERVICE,
+        });
+      } catch (error) {
+        logger.error(`Failed to backfill dashboard role for config ${cfg.id}`, {
+          service: SERVICE,
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
     }
-    if (plugin.requiredPolicy) {
-      const result = await checkAccessInline(req, plugin.requiredPolicy);
-      if (!result.granted) {
-        return { ok: false, status: 403, message: result.reason || "Access denied" };
-      }
-    }
-    return { ok: true };
   }
 
+  /**
+   * One-shot, idempotent backfill from the legacy `variables` store
+   * (`dashboard_plugin_<id>` enabled flag + `dashboard_plugin_<id>_settings`
+   * JSON) into unified `plugin_configs` rows, then retirement of the old keys.
+   *
+   * Runs at boot. For each registered plugin without a config row it creates
+   * one from whatever legacy state exists (or, absent any, from
+   * `migrateLegacySettings`), with `enabled` defaulting to the plugin's
+   * enabledByDefault when no toggle was ever stored — preserving the
+   * pre-migration runtime behavior. After backfilling it deletes every
+   * `dashboard_plugin_*` variable for handled plugins plus any orphans
+   * (variables for plugins no longer registered). Re-running is a no-op.
+   */
+  async backfillFromLegacyVariables(): Promise<void> {
+    const plugins = this.list();
+    const handled = new Set<string>();
+    for (const plugin of plugins) {
+      try {
+        const existing = await storage.pluginConfigs.getByKindAndPlugin("dashboard", plugin.id);
+        if (existing.length > 0) {
+          handled.add(plugin.id);
+          continue;
+        }
+        const enabledVar = await storage.variables.getByName(`dashboard_plugin_${plugin.id}`);
+        const settingsVar = await storage.variables.getByName(
+          `dashboard_plugin_${plugin.id}_settings`,
+        );
+        let data: unknown = settingsVar ? settingsVar.value : undefined;
+        const hasLegacy = !!enabledVar || !!settingsVar;
+        if (!hasLegacy && plugin.migrateLegacySettings) {
+          const migrated = await plugin.migrateLegacySettings();
+          if (migrated && typeof migrated === "object" && Object.keys(migrated).length > 0) {
+            data = migrated;
+          }
+        }
+        if (data !== undefined || enabledVar) {
+          const enabled = enabledVar ? Boolean(enabledVar.value) : this.defaultEnabled(plugin);
+          await storage.pluginConfigs.create({
+            pluginKind: "dashboard",
+            pluginId: plugin.id,
+            enabled,
+            name: null,
+            ordering: 0,
+            data: data ?? {},
+          });
+          logger.info(`Backfilled dashboard plugin config for ${plugin.id}`, { service: SERVICE });
+        }
+        handled.add(plugin.id);
+      } catch (error) {
+        logger.error(`Failed to backfill dashboard plugin config for ${plugin.id}`, {
+          service: SERVICE,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    // Retire legacy keys for handled plugins + orphans (unregistered plugins).
+    try {
+      const all = await storage.variables.getAll();
+      const known = new Set(plugins.map((p) => p.id));
+      for (const v of all) {
+        if (!v.name.startsWith("dashboard_plugin_")) continue;
+        const pid = v.name.replace(/^dashboard_plugin_/, "").replace(/_settings$/, "");
+        if (handled.has(pid) || !known.has(pid)) {
+          await storage.variables.delete(v.id);
+        }
+      }
+    } catch (error) {
+      logger.error("Failed to retire legacy dashboard plugin variables", {
+        service: SERVICE,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /**
+   * Dashboard `/content` front-door. Authoritative enforcement point for
+   * component + access-policy gating, expressed via the shared helpers
+   * in `server/plugins/_core/gating.ts`.
+   */
   async runContent(
     plugin: DashboardPlugin,
     action: string | undefined,
@@ -135,7 +405,7 @@ class DashboardPluginRegistry {
       }
     }
 
-    const gating = await this.checkGating(plugin, req);
+    const gating = await enforcePluginGating(pluginToMetadata(plugin), req);
     if (!gating.ok) {
       res.status(gating.status).json({ message: gating.message });
       return;
@@ -150,7 +420,51 @@ class DashboardPluginRegistry {
     }
 
     const userRoles = await storage.users.getUserRoles(dbUser.id);
-    const settings = await this.getSettingsValue(plugin);
+    const configIdRaw = req.query.configId;
+    const configId =
+      typeof configIdRaw === "string" && configIdRaw ? configIdRaw : undefined;
+
+    // Resolve the ONE authoritative config envelope this request reads, and use
+    // it for BOTH role authorization and settings — never split the two, or a
+    // caller could pass a configId from another plugin (whose role they hold) to
+    // clear the role check and then receive this plugin's canonical content.
+    //
+    // A supplied configId MUST be a dashboard config belonging to this plugin;
+    // otherwise fall back to the canonical first row. A request that resolves to
+    // no config (e.g. all rows deleted) is denied — there is no "show everyone".
+    let envelope: Awaited<ReturnType<typeof storage.pluginConfigs.getWithSubsidiary>>;
+    if (configId) {
+      envelope = await storage.pluginConfigs.getWithSubsidiary(configId);
+      if (
+        !envelope ||
+        envelope.config.pluginKind !== "dashboard" ||
+        envelope.config.pluginId !== plugin.id
+      ) {
+        res.status(404).json({ message: "Dashboard config not found" });
+        return;
+      }
+    } else {
+      const canonical = await this.getCanonicalConfig(plugin);
+      envelope = canonical
+        ? await storage.pluginConfigs.getWithSubsidiary(canonical.id)
+        : undefined;
+    }
+    if (!envelope) {
+      res.status(404).json({ message: "No dashboard config for this widget" });
+      return;
+    }
+
+    // Authoritative role enforcement: a widget is visible only to viewers who
+    // hold its config's role. A missing role or a role the viewer doesn't hold
+    // means the content is hidden.
+    const userRoleIds = new Set(userRoles.map((r) => r.id));
+    const role = (envelope.subsidiary as { role?: string } | null)?.role;
+    if (!role || !userRoleIds.has(role)) {
+      res.status(403).json({ message: "Not authorized to view this dashboard widget" });
+      return;
+    }
+
+    const settings = envelope.config.data ?? plugin.defaultSettings ?? {};
 
     const ctx: DashboardContentContext = {
       userId: dbUser.id,
@@ -179,3 +493,11 @@ class DashboardPluginRegistry {
 }
 
 export const dashboardPluginRegistry = new DashboardPluginRegistry();
+
+/**
+ * Convenience helper used by individual plugin files to self-register
+ * at module top level. Mirrors `registerChargePlugin` / `registerEligibilityPlugin`.
+ */
+export function registerDashboardPlugin(plugin: DashboardPlugin): void {
+  dashboardPluginRegistry.register(plugin);
+}

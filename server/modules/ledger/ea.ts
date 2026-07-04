@@ -4,6 +4,7 @@ import { insertLedgerEaSchema } from "@shared/schema";
 import { requireAccess, checkAccessInline } from "../../services/access-policy-evaluator";
 import { requireComponent } from "../components";
 import { generateInvoicePdf } from "../../utils/pdfGenerator";
+import { isValidYmd, ymdToDateForPicker } from "@shared/utils/date";
 
 async function checkEaAccessInline(req: Request, res: Response, ea: { entityType: string; entityId: string }, policyId: string): Promise<boolean> {
   const result = await checkAccessInline(req, policyId, ea.entityId, { entityType: ea.entityType, entityId: ea.entityId });
@@ -492,8 +493,9 @@ export function registerLedgerEaRoutes(app: Express) {
       };
 
       const parseBucketFromStmtYmd = (ymd: string, fallbackMonth: number, fallbackYear: number) => {
-        const [sy, sm] = ymd.split("-").map(Number);
-        return (sy && sm) ? { month: sm, year: sy } : { month: fallbackMonth, year: fallbackYear };
+        if (!isValidYmd(ymd)) return { month: fallbackMonth, year: fallbackYear };
+        const d = ymdToDateForPicker(ymd);
+        return { month: d.getMonth() + 1, year: d.getFullYear() };
       };
 
       for (const entry of entries) {

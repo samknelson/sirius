@@ -21,6 +21,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 const mediumLabels: Record<string, string> = {
   email: "Email",
@@ -35,6 +36,8 @@ interface EnrichedParticipant {
   contactId: string;
   medium: string;
   commId: string | null;
+  status: string;
+  message: string | null;
   data: unknown;
   contactDisplayName: string;
   contactGiven: string | null;
@@ -42,6 +45,11 @@ interface EnrichedParticipant {
   workerId: string | null;
   workerSiriusId: number | null;
   commStatus: string | null;
+}
+
+function effectiveStatus(p: EnrichedParticipant): string {
+  if (p.status === "send_failed") return "Failed";
+  return p.commStatus ?? "";
 }
 
 function BulkMessageRecipientsListContent() {
@@ -62,6 +70,8 @@ function BulkMessageRecipientsListContent() {
       p.contactGiven?.toLowerCase().includes(q) ||
       p.contactFamily?.toLowerCase().includes(q) ||
       p.commStatus?.toLowerCase().includes(q) ||
+      effectiveStatus(p).toLowerCase().includes(q) ||
+      p.message?.toLowerCase().includes(q) ||
       p.medium?.toLowerCase().includes(q)
     );
   }, [participants, search]);
@@ -69,11 +79,12 @@ function BulkMessageRecipientsListContent() {
   const handleExportCsv = () => {
     const rows = filtered.length > 0 ? filtered : participants;
     const csvContent = [
-      ["Name", "Medium", "Status", "Worker ID", "Comm ID"].join(","),
+      ["Name", "Medium", "Status", "Failure Reason", "Worker ID", "Comm ID"].join(","),
       ...rows.map(p => [
         `"${(p.contactDisplayName || "").replace(/"/g, '""')}"`,
         mediumLabels[p.medium] || p.medium || "",
-        p.commStatus || "",
+        effectiveStatus(p) || "",
+        p.status === "send_failed" ? `"${(p.message || "").replace(/"/g, '""')}"` : "",
         p.workerSiriusId != null ? String(p.workerSiriusId) : "",
         p.commId || "",
       ].join(","))
@@ -189,8 +200,33 @@ function BulkMessageRecipientsListContent() {
                           {mediumLabels[p.medium] || p.medium}
                         </Badge>
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        {p.commStatus ? (
+                      <td className="px-4 py-3">
+                        {p.status === "send_failed" ? (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <div className="flex flex-col items-start gap-1 max-w-xs cursor-help" data-testid={`status-failed-${p.id}`}>
+                                  <Badge variant="destructive" data-testid={`badge-participant-status-${p.id}`}>
+                                    Failed
+                                  </Badge>
+                                  {p.message && (
+                                    <span
+                                      className="text-xs text-muted-foreground line-clamp-2"
+                                      data-testid={`text-failure-message-${p.id}`}
+                                    >
+                                      {p.message}
+                                    </span>
+                                  )}
+                                </div>
+                              </TooltipTrigger>
+                              {p.message && (
+                                <TooltipContent className="max-w-sm">
+                                  <p className="text-sm">{p.message}</p>
+                                </TooltipContent>
+                              )}
+                            </Tooltip>
+                          </TooltipProvider>
+                        ) : p.commStatus ? (
                           <Badge
                             variant={p.commStatus === "sent" ? "default" : "secondary"}
                             data-testid={`badge-comm-status-${p.id}`}

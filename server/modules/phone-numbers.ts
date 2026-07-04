@@ -1,7 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { storage, createCommSmsOptinStorage } from "../storage";
 import { insertPhoneNumberSchema, insertCommSmsOptinSchema } from "@shared/schema";
-import { phoneValidationService, type PhoneValidationResult } from "../services/phone-validation";
+import { phoneValidationService, type PhoneValidationResult } from "../services/comm/validators/phone";
 import { z } from "zod";
 
 const updateSmsOptinSchema = z.object({

@@ -203,6 +203,7 @@ export interface ContactStorage {
   getContact(id: string): Promise<Contact | undefined>;
   getContactByEmail(email: string): Promise<Contact | undefined>;
   searchWithPrimaryContactInfo(query: string, limit: number): Promise<ContactSearchResult[]>;
+  getExistingIds(ids: string[]): Promise<string[]>;
   createContact(contact: InsertContact): Promise<Contact>;
   updateName(contactId: string, name: string): Promise<Contact | undefined>;
   updateNameComponents(contactId: string, components: {
@@ -224,6 +225,7 @@ export interface ContactsStorage {
   getContact(id: string): Promise<Contact | undefined>;
   getContactByEmail(email: string): Promise<Contact | undefined>;
   searchWithPrimaryContactInfo(query: string, limit: number): Promise<ContactSearchResult[]>;
+  getExistingIds(ids: string[]): Promise<string[]>;
   createContact(contact: InsertContact): Promise<Contact>;
   updateName(contactId: string, name: string): Promise<Contact | undefined>;
   updateNameComponents(contactId: string, components: {
@@ -429,6 +431,20 @@ export function createAddressStorage(): AddressStorage {
               .where(and(eq(contactPostal.contactId, contactId), eq(contactPostal.isPrimary, true)));
             matchUpdates.isPrimary = true;
           }
+        }
+
+        // Backfill coordinates onto a matched record that lacks them. Address
+        // fields are immutable, so re-saving an address "matches" the existing
+        // row; this is how a previously un-geocoded address gets coordinates.
+        // Coordinates are not immutable, and we never overwrite existing ones.
+        if (existing.latitude == null && metadata?.latitude != null) {
+          matchUpdates.latitude = metadata.latitude;
+        }
+        if (existing.longitude == null && metadata?.longitude != null) {
+          matchUpdates.longitude = metadata.longitude;
+        }
+        if (existing.accuracy == null && metadata?.accuracy != null) {
+          matchUpdates.accuracy = metadata.accuracy;
         }
 
         const [updated] = await getClient()
@@ -686,6 +702,16 @@ export function createContactStorage(): ContactStorage {
           )
         );
       return contact || undefined;
+    },
+
+    async getExistingIds(ids: string[]): Promise<string[]> {
+      if (ids.length === 0) return [];
+      const client = getClient();
+      const rows = await client
+        .select({ id: contacts.id })
+        .from(contacts)
+        .where(inArray(contacts.id, ids));
+      return rows.map((r) => r.id);
     },
 
     async searchWithPrimaryContactInfo(query: string, limit: number): Promise<ContactSearchResult[]> {
@@ -982,6 +1008,7 @@ export function createContactsStorage(
     getContact: contactStorage.getContact,
     getContactByEmail: contactStorage.getContactByEmail,
     searchWithPrimaryContactInfo: contactStorage.searchWithPrimaryContactInfo,
+    getExistingIds: contactStorage.getExistingIds,
     createContact: contactStorage.createContact,
     updateName: contactStorage.updateName,
     updateNameComponents: contactStorage.updateNameComponents,

@@ -18,15 +18,10 @@ interface MasqueradeInfo {
   };
 }
 
-interface Capabilities {
-  workerEdls?: boolean;
-}
-
 interface AuthContextType {
   user: User | null;
   permissions: string[];
   components: string[];
-  capabilities: Capabilities;
   masquerade: MasqueradeInfo;
   login: () => void;
   logout: () => void;
@@ -36,7 +31,6 @@ interface AuthContextType {
   authReady: boolean; // True when auth state has been definitively resolved
   hasPermission: (permission: string) => boolean;
   hasComponent: (componentId: string) => boolean;
-  hasCapability: (capability: keyof Capabilities) => boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -53,7 +47,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [permissions, setPermissions] = useState<string[]>([]);
   const [components, setComponents] = useState<string[]>([]);
-  const [capabilities, setCapabilities] = useState<Capabilities>({});
   const [masquerade, setMasquerade] = useState<MasqueradeInfo>({ isMasquerading: false });
 
   // Check if user is authenticated on app start
@@ -84,13 +77,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser((authData as any).user);
       setPermissions((authData as any).permissions || []);
       setComponents((authData as any).components || []);
-      setCapabilities((authData as any).capabilities || {});
       setMasquerade((authData as any).masquerade || { isMasquerading: false });
     } else {
       setUser(null);
       setPermissions([]);
       setComponents([]);
-      setCapabilities({});
       setMasquerade({ isMasquerading: false });
     }
   }, [authData]);
@@ -139,10 +130,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return components.includes(componentId);
   };
 
-  const hasCapability = (capability: keyof Capabilities) => {
-    return capabilities[capability] === true;
-  };
-
   const authReady = !isLoading; // Auth state is ready when loading is complete
 
   return (
@@ -151,7 +138,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         user,
         permissions,
         components,
-        capabilities,
         masquerade,
         login,
         logout,
@@ -161,7 +147,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         authReady,
         hasPermission,
         hasComponent,
-        hasCapability,
       }}
     >
       {children}

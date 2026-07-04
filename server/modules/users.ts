@@ -20,22 +20,43 @@ export function registerUserRoutes(
 ) {
   // Admin routes for user management
   
-  // GET /api/admin/users/search - Search users by email (admin only)
-  // MIGRATED to new access control system
-  app.get("/api/admin/users/search", requireAccess('admin'), async (req, res) => {
+  // GET /api/admin/users/search - Search users by email (staff+)
+  // Relaxed from admin to staff so staff can pick users to assign on
+  // grievance roles. The response is already shaped to safe fields only
+  // (id, email, names, status). An empty `q` returns the first batch of users
+  // (prefill / dropdown mode); a non-empty `q` filters by email substring.
+  // The optional `limit` lets callers request one extra row to detect
+  // truncation. MIGRATED to new access control system
+  app.get("/api/admin/users/search", requireAccess('staff'), async (req, res) => {
     try {
       const query = (req.query.q as string || '').toLowerCase();
-      
-      if (!query || query.length < 2) {
-        return res.json([]);
+
+      // Optional `roleIds` filter (CSV) restricts results to users holding
+      // at least one of the given system roles (OR semantics). Used by the
+      // grievance People picker to only surface users eligible for the
+      // selected grievance role.
+      const roleIdsRaw = req.query.roleIds;
+      let roleIds: string[] | undefined;
+      if (typeof roleIdsRaw === 'string' && roleIdsRaw.trim().length > 0) {
+        roleIds = roleIdsRaw
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean);
       }
-      
-      const usersWithRoles = await storage.users.getAllUsersWithRoles();
-      
-      // Filter users by email (case-insensitive partial match)
-      const matchedUsers = usersWithRoles.filter(user => 
-        user.email?.toLowerCase().includes(query)
-      ).slice(0, 20); // Limit to 20 results
+
+      // Optional `limit` lets the picker request one more than it displays so
+      // it can tell whether the result set is truncated ("type to search").
+      // An empty query returns the first batch (prefill / dropdown mode).
+      let limit = 20;
+      const limitRaw = req.query.limit;
+      if (typeof limitRaw === 'string') {
+        const n = parseInt(limitRaw, 10);
+        if (Number.isFinite(n) && n > 0) {
+          limit = Math.min(n, 50);
+        }
+      }
+
+      const matchedUsers = await storage.users.searchUsers(query, roleIds, limit);
       
       // Shape response to exclude sensitive fields
       const safeUsers = matchedUsers.map(user => ({

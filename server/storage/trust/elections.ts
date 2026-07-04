@@ -3,6 +3,7 @@ import {
   workerTrustElections,
   workers,
   policies,
+  employers,
   contacts,
   trustBenefits,
   workerRelations,
@@ -13,7 +14,7 @@ import {
   type WorkerTrustElectionView,
 } from '@shared/schema';
 import { eq, and, asc, desc, isNull, lt, lte, gte, or, ne, inArray, type SQL } from 'drizzle-orm';
-import { type StorageLoggingConfig } from '../middleware/logging';
+import { defineLoggingConfig, type StorageLoggingConfig } from '../middleware/logging';
 import { normalizeToDateOnly, getTodayDateOnly } from '@shared/utils';
 
 export interface WorkerTrustElectionSearchParams {
@@ -45,20 +46,28 @@ async function hydrateElections(rows: WorkerTrustElection[]): Promise<WorkerTrus
   const client = getClient();
 
   const policyIdSet = new Set<string>();
+  const employerIdSet = new Set<string>();
   const benefitIdSet = new Set<string>();
   const relIdSet = new Set<string>();
   for (const row of rows) {
     if (row.policyId) policyIdSet.add(row.policyId);
+    if (row.employerId) employerIdSet.add(row.employerId);
     for (const id of row.benefitIds ?? []) benefitIdSet.add(id);
     for (const id of row.relationshipIds ?? []) relIdSet.add(id);
   }
 
-  const [policyRows, benefitRows, relRows] = await Promise.all([
+  const [policyRows, employerRows, benefitRows, relRows] = await Promise.all([
     policyIdSet.size
       ? client
           .select({ id: policies.id, name: policies.name })
           .from(policies)
           .where(inArray(policies.id, Array.from(policyIdSet)))
+      : Promise.resolve([] as { id: string; name: string | null }[]),
+    employerIdSet.size
+      ? client
+          .select({ id: employers.id, name: employers.name })
+          .from(employers)
+          .where(inArray(employers.id, Array.from(employerIdSet)))
       : Promise.resolve([] as { id: string; name: string | null }[]),
     benefitIdSet.size
       ? client
@@ -105,6 +114,7 @@ async function hydrateElections(rows: WorkerTrustElection[]): Promise<WorkerTrus
     : [];
 
   const policyMap = new Map(policyRows.map((p) => [p.id, p.name ?? null]));
+  const employerMap = new Map(employerRows.map((e) => [e.id, e.name ?? null]));
   const benefitMap = new Map(benefitRows.map((b) => [b.id, b.name ?? b.id]));
   const relMap = new Map(relRows.map((r) => [r.id, r]));
   const workerNameMap = new Map(workerNameRows.map((w) => [w.id, w]));
@@ -128,6 +138,7 @@ async function hydrateElections(rows: WorkerTrustElection[]): Promise<WorkerTrus
     return {
       ...election,
       policyName: policyMap.get(election.policyId) ?? null,
+      employerName: employerMap.get(election.employerId) ?? null,
       benefits,
       relationships,
     };
@@ -162,6 +173,7 @@ function ymdMinusOneDay(ymd: string): string {
 
 interface ValidationInput {
   workerId?: string | null;
+  employerId?: string | null;
   policyId?: string | null;
   startYmd?: Date | string | null;
   endYmd?: Date | string | null;
@@ -170,8 +182,9 @@ interface ValidationInput {
 async function validateElection(
   data: ValidationInput,
   existing?: WorkerTrustElection,
-): Promise<{ workerId: string; policyId: string; startYmd: string; endYmd: string | null }> {
+): Promise<{ workerId: string; employerId: string; policyId: string; startYmd: string; endYmd: string | null }> {
   const workerId = data.workerId ?? existing?.workerId ?? undefined;
+  const employerId = data.employerId ?? existing?.employerId ?? undefined;
   const policyId = data.policyId ?? existing?.policyId ?? undefined;
   const startSource = data.startYmd !== undefined ? data.startYmd : existing?.startYmd ?? null;
   const endSource = data.endYmd !== undefined ? data.endYmd : existing?.endYmd ?? null;
@@ -179,6 +192,7 @@ async function validateElection(
   const endYmd = toYmd(endSource);
 
   if (!workerId) throw new WorkerTrustElectionValidationError('workerId', 'workerId is required');
+  if (!employerId) throw new WorkerTrustElectionValidationError('employerId', 'employerId is required');
   if (!policyId) throw new WorkerTrustElectionValidationError('policyId', 'policyId is required');
   if (!startYmd) throw new WorkerTrustElectionValidationError('startYmd', 'startYmd is required');
 
@@ -193,10 +207,12 @@ async function validateElection(
   const client = getClient();
   const [foundWorker] = await client.select({ id: workers.id }).from(workers).where(eq(workers.id, workerId));
   if (!foundWorker) throw new WorkerTrustElectionValidationError('workerId', 'worker does not exist');
+  const [foundEmployer] = await client.select({ id: employers.id }).from(employers).where(eq(employers.id, employerId));
+  if (!foundEmployer) throw new WorkerTrustElectionValidationError('employerId', 'employer does not exist');
   const [foundPolicy] = await client.select({ id: policies.id }).from(policies).where(eq(policies.id, policyId));
   if (!foundPolicy) throw new WorkerTrustElectionValidationError('policyId', 'policy does not exist');
 
-  return { workerId, policyId, startYmd, endYmd };
+  return { workerId, employerId, policyId, startYmd, endYmd };
 }
 
 interface ElectionBeforeState {
@@ -209,53 +225,40 @@ async function describeElection(
 ): Promise<string> {
   const startPart = startYmd ? ` (start ${startYmd})` : '';
   if (!workerId) return `unknown worker${startPart}`;
-  try {
-    const { storage } = await import('../index');
-    const name = await storage.workers.getWorkerDisplayName(workerId);
-    if (name) return `${name}${startPart}`;
-  } catch {
-    // fall through to id-based fallback
-  }
-  return `worker ${workerId}${startPart}`;
+  const { storage } = await import('../index');
+  const name = await storage.workers.getWorkerDisplayName(workerId);
+  return `${name}${startPart}`;
 }
 
-export const workerTrustElectionsLoggingConfig: StorageLoggingConfig<WorkerTrustElectionsStorage> = {
+export const workerTrustElectionsLoggingConfig = defineLoggingConfig<WorkerTrustElectionsStorage>({
   module: 'worker-trust-elections',
+  state: { key: 'election' },
+  getter: 'getById',
+  hostEntityId: (args, result, before) =>
+    (before as ElectionBeforeState | undefined)?.election?.workerId
+    ?? result?.workerId
+    ?? args[0],
   methods: {
     create: {
-      enabled: true,
       getEntityId: (_args, result) => result?.id || 'new election',
-      getHostEntityId: (args, result) => result?.workerId ?? args[0],
       getDescription: async (_args, result) =>
         `Created trust election for ${await describeElection(result?.workerId, result?.startYmd)}`,
-      after: async (_args, result) => ({ election: result }),
     },
     update: {
-      enabled: true,
-      getEntityId: (args) => args[0],
-      getHostEntityId: async (_args, _result, beforeState) =>
-        (beforeState as ElectionBeforeState | undefined)?.election?.workerId,
       getDescription: async (_args, result, beforeState) => {
         const r = result || (beforeState as ElectionBeforeState | undefined)?.election;
         return `Updated trust election for ${await describeElection(r?.workerId, r?.startYmd)}`;
       },
-      before: async (args, storage) => ({ election: await storage.getById(args[0]) }),
-      after: async (_args, result) => ({ election: result }),
     },
     delete: {
-      enabled: true,
-      getEntityId: (args) => args[0],
-      getHostEntityId: async (_args, _result, beforeState) =>
-        (beforeState as ElectionBeforeState | undefined)?.election?.workerId,
       getDescription: async (_args, _result, beforeState) => {
         const r = (beforeState as ElectionBeforeState | undefined)?.election;
         if (!r) return 'Deleted trust election';
         return `Deleted trust election for ${await describeElection(r.workerId, r.startYmd)}`;
       },
-      before: async (args, storage) => ({ election: await storage.getById(args[0]) }),
     },
   },
-};
+});
 
 export function createWorkerTrustElectionsStorage(): WorkerTrustElectionsStorage {
   const storage: WorkerTrustElectionsStorage = {
@@ -345,6 +348,7 @@ export function createWorkerTrustElectionsStorage(): WorkerTrustElectionsStorage
           .insert(workerTrustElections)
           .values({
             workerId: validated.workerId,
+            employerId: validated.employerId,
             policyId: validated.policyId,
             startYmd: validated.startYmd,
             endYmd: validated.endYmd,
@@ -373,6 +377,7 @@ export function createWorkerTrustElectionsStorage(): WorkerTrustElectionsStorage
         }
 
         const updateValues: Record<string, unknown> = {
+          employerId: validated.employerId,
           policyId: validated.policyId,
           startYmd: validated.startYmd,
           endYmd: validated.endYmd,

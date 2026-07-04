@@ -25,6 +25,7 @@ import {
 import { formatPhoneNumberForDisplay } from "@/lib/phone-utils";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { CommTagPicker } from "./CommTagPicker";
 import { PhoneNumber } from "@/lib/entity-types";
 import { SystemModeResponse } from "@/lib/system-types";
 
@@ -51,6 +52,7 @@ export function CommSms({ contactId, phoneNumbers, onSendSuccess }: CommSmsProps
   const { toast } = useToast();
   const [selectedPhoneId, setSelectedPhoneId] = useState<string>("");
   const [message, setMessage] = useState("");
+  const [tagIds, setTagIds] = useState<string[]>([]);
   
   const selectedPhone = phoneNumbers.find(p => p.id === selectedPhoneId);
   
@@ -72,25 +74,30 @@ export function CommSms({ contactId, phoneNumbers, onSendSuccess }: CommSmsProps
   });
 
   const sendSmsMutation = useMutation({
-    mutationFn: async ({ phoneNumber, message }: { phoneNumber: string; message: string }) => {
+    mutationFn: async ({ phoneNumber, message, tagIds, sendOffline }: { phoneNumber: string; message: string; tagIds: string[]; sendOffline?: boolean }) => {
       return await apiRequest("POST", `/api/contacts/${contactId}/sms`, {
         phoneNumber,
         message,
+        tagIds: tagIds.length > 0 ? tagIds : undefined,
+        sendOffline: sendOffline || undefined,
       });
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       toast({
-        title: "SMS Sent",
-        description: "Your message has been sent successfully.",
+        title: variables.sendOffline ? "Recorded as Sent Offline" : "SMS Sent",
+        description: variables.sendOffline
+          ? "The message has been recorded as sent offline."
+          : "Your message has been sent successfully.",
       });
       setMessage("");
+      setTagIds([]);
       queryClient.invalidateQueries({ queryKey: ["/api/contacts", contactId, "comm"] });
       onSendSuccess?.();
     },
-    onError: (error: any) => {
+    onError: (error: any, variables) => {
       const errorMessage = error?.message || "Failed to send SMS";
       toast({
-        title: "Failed to Send SMS",
+        title: variables.sendOffline ? "Failed to Record Offline SMS" : "Failed to Send SMS",
         description: errorMessage,
         variant: "destructive",
       });
@@ -102,6 +109,17 @@ export function CommSms({ contactId, phoneNumbers, onSendSuccess }: CommSmsProps
     sendSmsMutation.mutate({
       phoneNumber: selectedPhone.phoneNumber,
       message: message.trim(),
+      tagIds,
+    });
+  };
+
+  const handleSendOffline = () => {
+    if (!selectedPhone || !message.trim()) return;
+    sendSmsMutation.mutate({
+      phoneNumber: selectedPhone.phoneNumber,
+      message: message.trim(),
+      tagIds,
+      sendOffline: true,
     });
   };
 
@@ -111,6 +129,8 @@ export function CommSms({ contactId, phoneNumbers, onSendSuccess }: CommSmsProps
     !isLoadingOptin &&
     optinStatus?.optin === true &&
     (systemMode?.mode === "live" || optinStatus?.allowlist === true);
+
+  const canSendOffline = !!selectedPhone && message.trim().length > 0;
 
   const getValidationMessage = () => {
     if (!selectedPhone) {
@@ -278,6 +298,8 @@ export function CommSms({ contactId, phoneNumbers, onSendSuccess }: CommSmsProps
                 data-testid="input-sms-message"
               />
             </div>
+
+            <CommTagPicker medium="sms" value={tagIds} onChange={setTagIds} />
           </>
         )}
       </CardContent>
@@ -288,11 +310,21 @@ export function CommSms({ contactId, phoneNumbers, onSendSuccess }: CommSmsProps
             onClick={() => {
               setSelectedPhoneId("");
               setMessage("");
+              setTagIds([]);
             }}
             disabled={sendSmsMutation.isPending}
             data-testid="button-clear-sms"
           >
             Clear
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={handleSendOffline}
+            disabled={!canSendOffline || sendSmsMutation.isPending}
+            data-testid="button-send-sms-offline"
+          >
+            <Send className="h-4 w-4 mr-2" />
+            Send offline
           </Button>
           <Button
             onClick={handleSend}

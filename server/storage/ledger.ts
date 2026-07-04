@@ -1,14 +1,12 @@
 import { createNoopValidator } from './utils/validation';
 import { getClient } from './transaction-context';
 import { logger } from "../logger";
-import { ledgerAccounts, ledgerStripePaymentMethods, ledgerEa, ledgerPayments, ledger, employers, workers, contacts, trustProviders, optionsLedgerPaymentType } from "@shared/schema";
+import { ledgerAccounts, ledgerEa, ledgerPayments, ledger, employers, workers, contacts, trustProviders, optionsLedgerPaymentType } from "@shared/schema";
 import { ledgerPaymentBatches, ledgerPaymentBatchAssignments } from "@shared/schema/ledger/payment-batch/schema";
 import type { LedgerPaymentBatch, InsertLedgerPaymentBatch, LedgerPaymentBatchAssignment } from "@shared/schema/ledger/payment-batch/schema";
 import type { 
   LedgerAccount, 
   InsertLedgerAccount,
-  LedgerStripePaymentMethod,
-  InsertLedgerStripePaymentMethod,
   SelectLedgerEa,
   InsertLedgerEa,
   LedgerPayment,
@@ -19,23 +17,14 @@ import type {
 } from "@shared/schema";
 import { eq, ne, and, desc, or, isNull, asc, sql as sqlRaw, sum, min, max, count, inArray, notInArray, gte, lte, lt } from "drizzle-orm";
 import { alias as pgAlias } from "drizzle-orm/pg-core";
-import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
+import { defineLoggingConfig, withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
 import { formatAmount, getCurrency } from "@shared/currency";
+import { dateToYmd, ymdToDateForPicker, isValidYmd } from "@shared/utils/date";
 
 /**
  * Stub validator - add validation logic here when needed
  */
 export const validate = createNoopValidator();
-
-export interface StripePaymentMethodStorage {
-  getAll(): Promise<LedgerStripePaymentMethod[]>;
-  get(id: string): Promise<LedgerStripePaymentMethod | undefined>;
-  getByEntity(entityType: string, entityId: string): Promise<LedgerStripePaymentMethod[]>;
-  create(method: InsertLedgerStripePaymentMethod): Promise<LedgerStripePaymentMethod>;
-  update(id: string, method: Partial<InsertLedgerStripePaymentMethod>): Promise<LedgerStripePaymentMethod | undefined>;
-  delete(id: string): Promise<boolean>;
-  setAsDefault(paymentMethodId: string, entityType: string, entityId: string): Promise<LedgerStripePaymentMethod | undefined>;
-}
 
 export type LedgerEaWithBalance = SelectLedgerEa & { balance: string };
 
@@ -131,6 +120,7 @@ export interface LedgerEntryStorage {
   deleteByChargePluginKey(chargePlugin: string, chargePluginKey: string): Promise<boolean>;
   deleteOrphansByChargePluginAndKnownKeys(chargePlugin: string, accountId: string, knownKeys: Set<string>): Promise<number>;
   findByAccountEntityDatePlugin(accountId: string, entityId: string, date: Date, chargePlugin: string, chargePluginConfigId?: string, amount?: string): Promise<Ledger | undefined>;
+  getLatestByAccountAndEntities(accountId: string, entityType: string, entityIds: string[]): Promise<Array<{ entityId: string; amount: string; date: string }>>;
 }
 
 export interface LedgerEntryWithDetails extends Ledger {
@@ -234,7 +224,6 @@ export interface LedgerPaymentBatchAssignmentStorage {
 
 export interface LedgerStorage {
   accounts: LedgerAccountStorage;
-  stripePaymentMethods: StripePaymentMethodStorage;
   ea: LedgerEaStorage;
   payments: LedgerPaymentStorage;
   paymentTypes: LedgerPaymentTypeStorage;
@@ -389,83 +378,6 @@ export function createLedgerAccountStorage(): LedgerAccountStorage {
       const paginatedParticipants = enrichedParticipants.slice(offset, offset + limit);
 
       return { data: paginatedParticipants, total };
-    }
-  };
-}
-
-export function createStripePaymentMethodStorage(): StripePaymentMethodStorage {
-  return {
-    async getAll(): Promise<LedgerStripePaymentMethod[]> {
-      const client = getClient();
-      return await client.select().from(ledgerStripePaymentMethods)
-        .orderBy(desc(ledgerStripePaymentMethods.createdAt));
-    },
-
-    async get(id: string): Promise<LedgerStripePaymentMethod | undefined> {
-      const client = getClient();
-      const [paymentMethod] = await client.select().from(ledgerStripePaymentMethods)
-        .where(eq(ledgerStripePaymentMethods.id, id));
-      return paymentMethod || undefined;
-    },
-
-    async getByEntity(entityType: string, entityId: string): Promise<LedgerStripePaymentMethod[]> {
-      const client = getClient();
-      return await client.select().from(ledgerStripePaymentMethods)
-        .where(and(
-          eq(ledgerStripePaymentMethods.entityType, entityType),
-          eq(ledgerStripePaymentMethods.entityId, entityId)
-        ))
-        .orderBy(desc(ledgerStripePaymentMethods.isDefault), desc(ledgerStripePaymentMethods.createdAt));
-    },
-
-    async create(insertPaymentMethod: InsertLedgerStripePaymentMethod): Promise<LedgerStripePaymentMethod> {
-      validate.validateOrThrow(insertPaymentMethod);
-      const client = getClient();
-      const [paymentMethod] = await client.insert(ledgerStripePaymentMethods)
-        .values(insertPaymentMethod)
-        .returning();
-      return paymentMethod;
-    },
-
-    async update(id: string, paymentMethodUpdate: Partial<InsertLedgerStripePaymentMethod>): Promise<LedgerStripePaymentMethod | undefined> {
-      validate.validateOrThrow(id);
-      const client = getClient();
-      const [paymentMethod] = await client.update(ledgerStripePaymentMethods)
-        .set(paymentMethodUpdate)
-        .where(eq(ledgerStripePaymentMethods.id, id))
-        .returning();
-      return paymentMethod || undefined;
-    },
-
-    async delete(id: string): Promise<boolean> {
-      const client = getClient();
-      const result = await client.delete(ledgerStripePaymentMethods)
-        .where(eq(ledgerStripePaymentMethods.id, id))
-        .returning();
-      return result.length > 0;
-    },
-
-    async setAsDefault(paymentMethodId: string, entityType: string, entityId: string): Promise<LedgerStripePaymentMethod | undefined> {
-      const client = getClient();
-      await client
-        .update(ledgerStripePaymentMethods)
-        .set({ isDefault: false })
-        .where(and(
-          eq(ledgerStripePaymentMethods.entityType, entityType),
-          eq(ledgerStripePaymentMethods.entityId, entityId)
-        ));
-      
-      const [paymentMethod] = await client
-        .update(ledgerStripePaymentMethods)
-        .set({ isDefault: true })
-        .where(and(
-          eq(ledgerStripePaymentMethods.id, paymentMethodId),
-          eq(ledgerStripePaymentMethods.entityType, entityType),
-          eq(ledgerStripePaymentMethods.entityId, entityId)
-        ))
-        .returning();
-      
-      return paymentMethod || undefined;
     }
   };
 }
@@ -867,6 +779,28 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
       return balances;
     },
 
+    async getLatestByAccountAndEntities(accountId: string, entityType: string, entityIds: string[]): Promise<Array<{ entityId: string; amount: string; date: string }>> {
+      if (entityIds.length === 0) return [];
+      const client = getClient();
+      const result = await client.execute(sqlRaw`
+        SELECT DISTINCT ON (ea.entity_id)
+          ea.entity_id,
+          l.amount,
+          l.date
+        FROM ledger_ea ea
+        INNER JOIN ledger l ON l.ea_id = ea.id
+        WHERE ea.entity_type = ${entityType}
+          AND ea.account_id = ${accountId}
+          AND ea.entity_id = ANY(${entityIds})
+        ORDER BY ea.entity_id, l.date DESC
+      `);
+      return (result.rows as Array<{ entity_id: string; amount: string; date: string }>).map(row => ({
+        entityId: row.entity_id,
+        amount: row.amount,
+        date: row.date,
+      }));
+    },
+
     async getBalancesByEntityAndAccount(entityType: string, entityIds: string[], accountIds: string[]): Promise<Array<{ entityId: string; accountId: string; total: string }>> {
       if (entityIds.length === 0 || accountIds.length === 0) return [];
       const client = getClient();
@@ -896,7 +830,7 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
     async getMonthlyDeltasByEntityAndAccount(entityType: string, entityIds: string[], accountIds: string[], monthKeys: string[]): Promise<Array<{ entityId: string; ym: string; total: string }>> {
       if (entityIds.length === 0 || accountIds.length === 0 || monthKeys.length === 0) return [];
       const client = getClient();
-      const ymExpr = sqlRaw<string>`substring(${ledger.statementYmd}, 1, 7)`;
+      const ymExpr = sqlRaw<string>`to_char(${ledger.statementYmd}, 'YYYY-MM')`;
       const rows = await client
         .select({
           entityId: ledgerEa.entityId,
@@ -1379,9 +1313,8 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
         : insertEntry.date
           ? new Date(insertEntry.date)
           : new Date();
-      const statementYmd = insertEntry.statementYmd
-        ?? `${resolvedDate.getFullYear()}-${String(resolvedDate.getMonth() + 1).padStart(2, "0")}-${String(resolvedDate.getDate()).padStart(2, "0")}`;
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(statementYmd)) {
+      const statementYmd = insertEntry.statementYmd ?? dateToYmd(resolvedDate);
+      if (!isValidYmd(statementYmd)) {
         throw new Error("statementYmd must be in YYYY-MM-DD format");
       }
       const client = getClient();
@@ -1597,7 +1530,7 @@ function classifyEntriesForPeriod(
       const payInfo = paymentInfoMap.get(entry.referenceId);
       if (payInfo?.category !== 'adjustment') {
         const stmtYmd = entry.statementYmd;
-        const stmtDate = stmtYmd ? new Date(stmtYmd) : null;
+        const stmtDate = stmtYmd && isValidYmd(stmtYmd) ? ymdToDateForPicker(stmtYmd) : null;
         const entryInPeriod = stmtDate &&
           stmtDate.getMonth() + 1 === month &&
           stmtDate.getFullYear() === year;
@@ -1620,7 +1553,7 @@ function classifyEntriesForPeriod(
       if (!payInfo) continue;
 
       const stmtYmd = entry.statementYmd;
-      const stmtDate = stmtYmd ? new Date(stmtYmd) : null;
+      const stmtDate = stmtYmd && isValidYmd(stmtYmd) ? ymdToDateForPicker(stmtYmd) : null;
       const stmtMonth = stmtDate ? stmtDate.getMonth() + 1 : null;
       const stmtYear = stmtDate ? stmtDate.getFullYear() : null;
 
@@ -1656,8 +1589,8 @@ function buildInvoicesForEa(entries: SimpleLedgerEntry[]): Map<string, InvoiceBu
   const invoiceMap = new Map<string, InvoiceBucket>();
   
   const sortedEntries = [...entries].sort((a, b) => {
-    const aYmd = a.statementYmd || (a.date ? new Date(a.date).toISOString().split('T')[0] : null);
-    const bYmd = b.statementYmd || (b.date ? new Date(b.date).toISOString().split('T')[0] : null);
+    const aYmd = a.statementYmd || (a.date ? dateToYmd(new Date(a.date)) : null);
+    const bYmd = b.statementYmd || (b.date ? dateToYmd(new Date(b.date)) : null);
     if (!aYmd && !bYmd) return a.id.localeCompare(b.id);
     if (!aYmd) return 1;
     if (!bYmd) return -1;
@@ -1669,10 +1602,10 @@ function buildInvoicesForEa(entries: SimpleLedgerEntry[]): Map<string, InvoiceBu
   let runningBalanceCents = BigInt(0);
 
   for (const entry of sortedEntries) {
-    const ymd = entry.statementYmd || (entry.date ? new Date(entry.date).toISOString().split('T')[0] : null);
-    if (!ymd) continue;
+    const ymd = entry.statementYmd || (entry.date ? dateToYmd(new Date(entry.date)) : null);
+    if (!ymd || !isValidYmd(ymd)) continue;
 
-    const d = new Date(ymd);
+    const d = ymdToDateForPicker(ymd);
     const month = d.getMonth() + 1;
     const year = d.getFullYear();
     const key = `${year}-${month}`;
@@ -1898,7 +1831,7 @@ function createLedgerInvoiceStorage(): LedgerInvoiceStorage {
         if (entry.referenceType === 'payment' && entry.referenceId) {
           const payInfo = paymentInfoMap.get(entry.referenceId);
           const stmtYmd = entry.statementYmd;
-          const stmtDate = stmtYmd ? new Date(stmtYmd) : null;
+          const stmtDate = stmtYmd && isValidYmd(stmtYmd) ? ymdToDateForPicker(stmtYmd) : null;
           const sectionEntry: InvoiceSectionEntry = {
             ...entry,
             paymentTypeCategory: payInfo?.category ?? 'financial',
@@ -1930,7 +1863,7 @@ function createLedgerInvoiceStorage(): LedgerInvoiceStorage {
           if (!payInfo) continue;
 
           const stmtYmd = entry.statementYmd;
-          const stmtDate = stmtYmd ? new Date(stmtYmd) : null;
+          const stmtDate = stmtYmd && isValidYmd(stmtYmd) ? ymdToDateForPicker(stmtYmd) : null;
           const stmtMonth = stmtDate ? stmtDate.getMonth() + 1 : null;
           const stmtYear = stmtDate ? stmtDate.getFullYear() : null;
 
@@ -2130,7 +2063,6 @@ export function createLedgerPaymentBatchAssignmentStorage(): LedgerPaymentBatchA
 
 export function createLedgerStorage(
   accountLoggingConfig?: StorageLoggingConfig<LedgerAccountStorage>,
-  stripePaymentMethodLoggingConfig?: StorageLoggingConfig<StripePaymentMethodStorage>,
   eaLoggingConfig?: StorageLoggingConfig<LedgerEaStorage>,
   paymentLoggingConfig?: StorageLoggingConfig<LedgerPaymentStorage>,
   entryLoggingConfig?: StorageLoggingConfig<LedgerEntryStorage>,
@@ -2140,10 +2072,6 @@ export function createLedgerStorage(
   const accountStorage = accountLoggingConfig
     ? withStorageLogging(createLedgerAccountStorage(), accountLoggingConfig)
     : createLedgerAccountStorage();
-  
-  const stripePaymentMethodStorage = stripePaymentMethodLoggingConfig
-    ? withStorageLogging(createStripePaymentMethodStorage(), stripePaymentMethodLoggingConfig)
-    : createStripePaymentMethodStorage();
 
   const eaStorage = eaLoggingConfig
     ? withStorageLogging(createLedgerEaStorage(), eaLoggingConfig)
@@ -2167,7 +2095,6 @@ export function createLedgerStorage(
 
   return {
     accounts: accountStorage,
-    stripePaymentMethods: stripePaymentMethodStorage,
     ea: eaStorage,
     payments: paymentStorage,
     paymentTypes: paymentTypeStorage,
@@ -2183,80 +2110,15 @@ export function createLedgerStorage(
  * 
  * Logs all ledger account mutations with full argument capture and change tracking.
  */
-export const ledgerAccountLoggingConfig: StorageLoggingConfig<LedgerAccountStorage> = {
+export const ledgerAccountLoggingConfig = defineLoggingConfig<LedgerAccountStorage>({
   module: 'ledger.accounts',
   methods: {
-    create: {
-      enabled: true,
-      getEntityId: (args, result) => result?.id || args[0]?.name || 'new account',
-      after: async (args, result, storage) => {
-        return result; // Capture created account
-      }
-    },
-    update: {
-      enabled: true,
-      getEntityId: (args) => args[0], // Account ID
-      before: async (args, storage) => {
-        return await storage.get(args[0]); // Current state
-      },
-      after: async (args, result, storage) => {
-        return result; // New state (diff auto-calculated)
-      }
-    },
-    delete: {
-      enabled: true,
-      getEntityId: (args) => args[0], // Account ID
-      before: async (args, storage) => {
-        return await storage.get(args[0]); // Capture what's being deleted
-      }
-    }
-  }
-};
+    create: { getEntityId: (args, result) => result?.id || args[0]?.name || 'new account' },
+    update: {},
+    delete: {},
+  },
+});
 
-/**
- * Logging configuration for Stripe payment method storage operations
- * 
- * Logs all Stripe payment method mutations with full argument capture and change tracking.
- */
-export const stripePaymentMethodLoggingConfig: StorageLoggingConfig<StripePaymentMethodStorage> = {
-  module: 'ledger.stripePaymentMethods',
-  methods: {
-    create: {
-      enabled: true,
-      getEntityId: (args, result) => result?.id || 'new payment method',
-      after: async (args, result, storage) => {
-        return result; // Capture created payment method
-      }
-    },
-    update: {
-      enabled: true,
-      getEntityId: (args) => args[0], // Payment method ID
-      before: async (args, storage) => {
-        return await storage.get(args[0]); // Current state
-      },
-      after: async (args, result, storage) => {
-        return result; // New state (diff auto-calculated)
-      }
-    },
-    delete: {
-      enabled: true,
-      getEntityId: (args) => args[0], // Payment method ID
-      before: async (args, storage) => {
-        return await storage.get(args[0]); // Capture what's being deleted
-      }
-    },
-    setAsDefault: {
-      enabled: true,
-      getEntityId: (args) => args[0], // Payment method ID
-      before: async (args, storage) => {
-        return await storage.get(args[0]); // Current state
-      },
-      after: async (args, result, storage) => {
-        return result; // New state (diff auto-calculated)
-      }
-    }
-  }
-};
 
 /**
  * Helper to format a payment for logging display
@@ -2268,30 +2130,15 @@ function formatPaymentForLog(payment: LedgerPayment | undefined): string {
   return amount ? `${amount} payment${memo}` : 'payment';
 }
 
-export const ledgerPaymentBatchLoggingConfig: StorageLoggingConfig<LedgerPaymentBatchStorage> = {
+export const ledgerPaymentBatchLoggingConfig = defineLoggingConfig<LedgerPaymentBatchStorage>({
   module: 'ledger.paymentBatches',
+  hostEntityId: (args, result) => result?.id ?? args[0],
   methods: {
-    create: {
-      enabled: true,
-      getEntityId: (args, result) => result?.id || args[0]?.name || 'new batch',
-      getHostEntityId: (args, result) => result?.id,
-      after: async (args, result) => result,
-    },
-    update: {
-      enabled: true,
-      getEntityId: (args) => args[0],
-      getHostEntityId: (args) => args[0],
-      before: async (args, storage) => await storage.get(args[0]),
-      after: async (args, result) => result,
-    },
-    delete: {
-      enabled: true,
-      getEntityId: (args) => args[0],
-      getHostEntityId: (args) => args[0],
-      before: async (args, storage) => await storage.get(args[0]),
-    },
+    create: { getEntityId: (args, result) => result?.id || args[0]?.name || 'new batch' },
+    update: {},
+    delete: {},
   },
-};
+});
 
 /**
  * Logging configuration for ledger payment storage operations

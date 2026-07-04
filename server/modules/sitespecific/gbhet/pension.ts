@@ -13,8 +13,8 @@ import {
   insertGbhetPensionEarlyRetirementFactorSchema,
   insertGbhetPensionInterestRateSchema,
 } from "../../../../shared/schema/sitespecific/gbhet-pension/schema";
-import { computeSlaForWorker, computeSlaForAllWorkers, SLA_ACCOUNT_VARIABLE, SLA_TRIGGER_ACCOUNT_VARIABLE, clearAccountCache, SlaConfigError, VAR_CONTRIB_SOURCE_ACCOUNT_VARIABLE, VAR_CONTRIB_TARGET_ACCOUNT_VARIABLE } from "../../../services/gbhet-pension-sla";
-import { computePayout, computeAllPayouts, getWorkerPensionSummary } from "../../../services/gbhet-pension-payout-calculator";
+import { computeSlaForWorker, computeSlaForAllWorkers, SLA_ACCOUNT_VARIABLE, SLA_TRIGGER_ACCOUNT_VARIABLE, clearAccountCache, SlaConfigError, VAR_CONTRIB_SOURCE_ACCOUNT_VARIABLE, VAR_CONTRIB_TARGET_ACCOUNT_VARIABLE } from "../../../services/sitespecific/gbhet/pension-sla";
+import { computePayout, computeAllPayouts, getWorkerPensionSummary } from "../../../services/sitespecific/gbhet/pension-payout-calculator";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;

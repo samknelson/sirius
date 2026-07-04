@@ -7,6 +7,7 @@ import { requireComponent } from "../components";
 import { executeChargePlugins, TriggerType, PaymentSavedContext, LedgerNotification } from "../../plugins/ledger/charge";
 import { logger } from "../../logger";
 import { eventBus, EventType } from "../../services/event-bus";
+import { isValidYmd, ymdToDateForPicker, dateToYmd } from "@shared/utils/date";
 
 const unifiedOptionsStorage = createUnifiedOptionsStorage();
 
@@ -105,13 +106,12 @@ export function validateProposedAllocation(
       return { valid: false, error: "Each allocation must have a valid amount" };
     }
     const ymd = typeof item.statementYmd === "string" ? item.statementYmd : "";
-    if (ymd && !/^\d{4}-\d{2}-\d{2}$/.test(ymd)) {
+    if (ymd && !isValidYmd(ymd)) {
       return { valid: false, error: "statementYmd must be in YYYY-MM-DD format" };
     }
     if (ymd) {
-      const [y, m, d] = ymd.split("-").map(Number);
-      const parsed = new Date(y, m - 1, d);
-      if (parsed.getFullYear() !== y || parsed.getMonth() !== m - 1 || parsed.getDate() !== d) {
+      const parsed = ymdToDateForPicker(ymd);
+      if (dateToYmd(parsed) !== ymd) {
         return { valid: false, error: `Invalid calendar date: ${ymd}` };
       }
     }

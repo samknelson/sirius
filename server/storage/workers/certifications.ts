@@ -2,14 +2,12 @@ import { getClient, runInTransaction } from '../transaction-context';
 import { 
   workerCertifications,
   optionsCertifications,
-  workers,
-  contacts,
   type WorkerCertification, 
   type InsertWorkerCertification,
   type OptionsCertification
 } from "@shared/schema";
 import { eq } from "drizzle-orm";
-import { type StorageLoggingConfig } from "../middleware/logging";
+import { defineLoggingConfig, type StorageLoggingConfig } from "../middleware/logging";
 import { 
   type ValidationError,
   createStorageValidator
@@ -174,23 +172,6 @@ export interface WorkerCertificationStorage {
   findNotExpiredButInactive(): Promise<WorkerCertification[]>;
 }
 
-async function getWorkerName(workerId: string): Promise<string> {
-  const client = getClient();
-  const [worker] = await client
-    .select({ contactId: workers.contactId, siriusId: workers.siriusId })
-    .from(workers)
-    .where(eq(workers.id, workerId));
-  if (!worker) return 'Unknown Worker';
-  
-  const [contact] = await client
-    .select({ given: contacts.given, family: contacts.family, displayName: contacts.displayName })
-    .from(contacts)
-    .where(eq(contacts.id, worker.contactId));
-  
-  const name = contact ? `${contact.given || ''} ${contact.family || ''}`.trim() : '';
-  return name || contact?.displayName || `Worker #${worker.siriusId}`;
-}
-
 async function getCertificationName(certificationId: string): Promise<string> {
   const client = getClient();
   const [cert] = await client
@@ -200,62 +181,46 @@ async function getCertificationName(certificationId: string): Promise<string> {
   return cert?.name || 'Unknown Certification';
 }
 
-export const workerCertificationLoggingConfig: StorageLoggingConfig<WorkerCertificationStorage> = {
+export const workerCertificationLoggingConfig = defineLoggingConfig<WorkerCertificationStorage>({
   module: 'worker-certifications',
+  state: { key: 'workerCertification' },
+  hostEntityId: (args, result, before) =>
+    before?.workerCertification?.workerId ?? result?.workerId ?? args[0]?.workerId,
   methods: {
     create: {
-      enabled: true,
       getEntityId: (args, result) => result?.id || 'new worker certification',
-      getHostEntityId: (args, result) => result?.workerId || args[0]?.workerId,
       getDescription: async (args, result) => {
-        const workerName = await getWorkerName(result?.workerId || args[0]?.workerId);
+        const { storage } = await import('../index');
+        const workerName = await storage.workers.getWorkerDisplayName(result?.workerId || args[0]?.workerId);
         const certName = await getCertificationName(result?.certificationId || args[0]?.certificationId);
         const message = args[0]?.message;
         const baseDesc = `Added certification "${certName}" to ${workerName}`;
         return message ? `${baseDesc}: ${message}` : baseDesc;
       },
-      after: async (args, result) => {
-        return { workerCertification: result };
-      }
     },
     update: {
-      enabled: true,
-      getEntityId: (args) => args[0],
-      getHostEntityId: async (args, result, beforeState) => {
-        return beforeState?.workerCertification?.workerId || result?.workerId;
-      },
+      after: undefined,
       getDescription: async (args, result, beforeState) => {
-        const workerName = await getWorkerName(beforeState?.workerCertification?.workerId || result?.workerId || '');
+        const { storage } = await import('../index');
+        const workerName = await storage.workers.getWorkerDisplayName(beforeState?.workerCertification?.workerId || result?.workerId);
         const certName = await getCertificationName(beforeState?.workerCertification?.certificationId || result?.certificationId || '');
         const message = args[1]?.message;
         const baseDesc = `Updated certification "${certName}" for ${workerName}`;
         return message ? `${baseDesc}: ${message}` : baseDesc;
       },
-      before: async (args, storage) => {
-        const workerCertification = await storage.get(args[0]);
-        return { workerCertification };
-      }
     },
     delete: {
-      enabled: true,
-      getEntityId: (args) => args[0],
-      getHostEntityId: async (args, result, beforeState) => {
-        return beforeState?.workerCertification?.workerId;
-      },
       getDescription: async (args, result, beforeState) => {
-        const workerName = await getWorkerName(beforeState?.workerCertification?.workerId || '');
+        const { storage } = await import('../index');
+        const workerName = await storage.workers.getWorkerDisplayName(beforeState?.workerCertification?.workerId);
         const certName = await getCertificationName(beforeState?.workerCertification?.certificationId || '');
         const message = args[1];
         const baseDesc = `Removed certification "${certName}" from ${workerName}`;
         return message ? `${baseDesc}: ${message}` : baseDesc;
       },
-      before: async (args, storage) => {
-        const workerCertification = await storage.get(args[0]);
-        return { workerCertification };
-      }
-    }
-  }
-};
+    },
+  },
+});
 
 export function createWorkerCertificationStorage(deps: WorkerCertificationDependencies): WorkerCertificationStorage {
   return {

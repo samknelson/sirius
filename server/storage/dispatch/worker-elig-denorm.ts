@@ -17,6 +17,18 @@ export interface WorkerDispatchEligDenormStorage {
   createMany(entries: InsertWorkerDispatchEligDenorm[]): Promise<WorkerDispatchEligDenorm[]>;
   deleteByWorkerAndCategory(workerId: string, category: string): Promise<number>;
   deleteAllByCategory(category: string): Promise<number>;
+  /**
+   * Replace-by-`denorm_id`: delete every eligibility row owned by the given
+   * `denorm` status row, then insert the supplied entries stamped with it. This
+   * is the sole write path used by the dispatch-eligibility denorm plugins —
+   * each plugin's `compute` produces the full set of entries for one worker's
+   * one concept, and the denorm wrapper supplies the `denormId` (already
+   * upserted to `ok`) that scopes the replace.
+   */
+  replaceForDenorm(
+    denormId: string,
+    entries: Array<{ workerId: string; category: string; value: string }>,
+  ): Promise<void>;
 }
 
 export function createWorkerDispatchEligDenormStorage(): WorkerDispatchEligDenormStorage {
@@ -102,6 +114,26 @@ export function createWorkerDispatchEligDenormStorage(): WorkerDispatchEligDenor
         .where(eq(workerDispatchEligDenorm.category, category))
         .returning();
       return result.length;
+    },
+
+    async replaceForDenorm(
+      denormId: string,
+      entries: Array<{ workerId: string; category: string; value: string }>,
+    ): Promise<void> {
+      const client = getClient();
+      await client
+        .delete(workerDispatchEligDenorm)
+        .where(eq(workerDispatchEligDenorm.denormId, denormId));
+      if (entries.length > 0) {
+        await client.insert(workerDispatchEligDenorm).values(
+          entries.map((e) => ({
+            denormId,
+            workerId: e.workerId,
+            category: e.category,
+            value: e.value,
+          })),
+        );
+      }
     }
   };
 }

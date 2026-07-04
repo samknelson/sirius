@@ -643,7 +643,7 @@ export class HtaUnionImportWizard extends FeedWizard {
             });
           }
 
-          const { runInactivityScan } = await import('../../services/hta-inactivity-scan.js');
+          const { runInactivityScan } = await import('../../services/sitespecific/hta/inactivity-scan.js');
           const scanResult = await runInactivityScan({ mode: 'live' });
 
           results.inactivityScan = {

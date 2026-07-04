@@ -4,9 +4,9 @@ import { storage } from '../../storage/index.js';
 import { createBtuWorkerImportStorage } from '../../storage/sitespecific/btu/worker-import.js';
 import { createCardcheckStorage, SignedCardcheckWithDetails } from '../../storage/cardchecks.js';
 import { createBargainingUnitStorage, type BargainingUnitData } from '../../storage/bargaining-units.js';
+import { toChargeConfig } from '../../plugins/ledger/charge/charge-config-resolution.js';
 import { executeChargePlugins, TriggerType, DuesImportSavedContext } from '../../plugins/ledger/charge/index.js';
 import { scanWorkerMemberStatus } from '../../services/member-status-scan.js';
-import { sql } from 'drizzle-orm';
 import { parse as parseCSV } from 'csv-parse/sync';
 import * as XLSX from 'xlsx';
 import { objectStorageService } from '../../services/objectStorage.js';
@@ -273,7 +273,11 @@ export class BtuDuesAllocationWizard extends FeedWizard {
       throw new Error('No uploaded file found');
     }
 
-    const pluginConfigs = await storage.chargePluginConfigs.getEnabledForPlugin('btu-dues-allocation', null);
+    const pluginConfigs = (await storage.pluginConfigs.search("charge", {
+      pluginId: 'btu-dues-allocation',
+      enabled: true,
+      scope: "global",
+    })).map(toChargeConfig);
     if (pluginConfigs.length === 0) {
       throw new Error('BTU Dues Allocation plugin is not configured. Please configure it in Ledger > Charge Plugins.');
     }
@@ -611,15 +615,10 @@ export class BtuDuesAllocationWizard extends FeedWizard {
     const btuStorage = createBtuWorkerImportStorage();
     const bpsIdType = await btuStorage.ensureBpsEmployeeIdType();
 
-    const workerIdRows = await storage.readOnly.query(async (client) => {
-      const rows = await client.execute(sql`
-        SELECT worker_id, value FROM worker_ids WHERE type_id = ${bpsIdType.id}
-      `);
-      return rows.rows as Array<{ worker_id: string; value: string }>;
-    });
+    const workerIdRows = await storage.workerIds.getByType(bpsIdType.id);
     const bpsIdByWorkerId = new Map<string, string>();
     for (const row of workerIdRows) {
-      bpsIdByWorkerId.set(row.worker_id, row.value);
+      bpsIdByWorkerId.set(row.workerId, row.value);
     }
 
     const allocatedWorkerIds = new Set<string>();
@@ -668,19 +667,7 @@ export class BtuDuesAllocationWizard extends FeedWizard {
       }
     }
 
-    const employedWorkerIds = await storage.readOnly.query(async (client) => {
-      const rows = await client.execute(sql`
-        SELECT latest.worker_id
-        FROM (
-          SELECT DISTINCT ON (wh.worker_id) wh.worker_id, wh.employment_status_id
-          FROM worker_hours wh
-          ORDER BY wh.worker_id, wh.year DESC, wh.month DESC, wh.day DESC
-        ) latest
-        JOIN options_employment_status es ON es.id = latest.employment_status_id
-        WHERE es.employed = true
-      `);
-      return new Set((rows.rows as Array<{ worker_id: string }>).map(r => r.worker_id));
-    });
+    const employedWorkerIds = await storage.workerHours.getCurrentlyEmployedWorkerIds();
 
     for (const cardCheck of signedCardchecks) {
       if (!allocatedWorkerIds.has(cardCheck.workerId) && employedWorkerIds.has(cardCheck.workerId)) {
@@ -727,7 +714,11 @@ export class BtuDuesAllocationWizard extends FeedWizard {
 
     let accountId = wizardData?.accountId;
     if (!accountId) {
-      const pluginConfigs = await storage.chargePluginConfigs.getEnabledForPlugin('btu-dues-allocation', null);
+      const pluginConfigs = (await storage.pluginConfigs.search("charge", {
+        pluginId: 'btu-dues-allocation',
+        enabled: true,
+        scope: "global",
+      })).map(toChargeConfig);
       const settings = pluginConfigs[0]?.settings as { accountIds?: string[] } | null;
       accountId = settings?.accountIds?.[0];
       if (!accountId) throw new Error('No account ID found in wizard data or plugin configuration');

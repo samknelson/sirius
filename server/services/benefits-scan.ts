@@ -1,12 +1,15 @@
-import { evaluateBenefitEligibility, type BenefitEligibilityResult } from "../plugins/trust/eligibility/executor";
+import {
+  evaluateBenefitEligibility,
+  pluginConfigToEligibilityRule,
+  type BenefitEligibilityResult,
+} from "../plugins/trust/eligibility/executor";
 import type { EligibilityRule, ScanType } from "../plugins/trust/eligibility/types";
 import type { IStorage } from "../storage";
-import type { Worker, Policy, TrustBenefit } from "@shared/schema";
+import type { Worker, Policy, TrustBenefit, PluginConfigBenefitEligibility } from "@shared/schema";
 import { logger } from "../logger";
 
 interface PolicyData {
   benefitIds?: string[];
-  eligibilityRules?: Record<string, EligibilityRule[]>;
 }
 
 export interface BenefitScanAction {
@@ -77,14 +80,28 @@ export async function runBenefitsScan(
 
   const policyData = (policy.data as PolicyData) || {};
   const policyBenefitIds = policyData.benefitIds || [];
-  const eligibilityRules = policyData.eligibilityRules || {};
+
+  // Load every trust-eligibility rule for this policy in one query and group
+  // by benefit, preserving the search dispatcher's `ordering, id` sort so each
+  // benefit's rules evaluate in their exact configured sequence.
+  const ruleRows = await storage.pluginConfigs.search("trust-eligibility", {
+    policy: policy.id,
+  });
+  const rulesByBenefit = new Map<string, EligibilityRule[]>();
+  for (const row of ruleRows) {
+    const benefitId = (row.subsidiary as PluginConfigBenefitEligibility | null)?.benefit;
+    if (!benefitId) continue;
+    const list = rulesByBenefit.get(benefitId) ?? [];
+    list.push(pluginConfigToEligibilityRule(row.config));
+    rulesByBenefit.set(benefitId, list);
+  }
 
   const allBenefits = await storage.trustBenefits.getAllTrustBenefits();
   const benefitsMap = new Map<string, TrustBenefit>(
     allBenefits.map((b: TrustBenefit) => [b.id, b])
   );
 
-  const workerWmbRecords = await storage.workers.getWorkerBenefits(workerId);
+  const workerWmbRecords = await storage.trust.wmb.getWorkerBenefits(workerId);
   const prevMonth = getPreviousMonth(month, year);
   const previousMonthWmb = workerWmbRecords.filter(
     (wmb: any) => wmb.month === prevMonth.month && wmb.year === prevMonth.year
@@ -109,7 +126,7 @@ export async function runBenefitsScan(
 
     const hadPreviousMonth = previousMonthBenefitIds.includes(benefitId);
     const scanType: ScanType = hadPreviousMonth ? "continue" : "start";
-    const rules = eligibilityRules[benefitId] || [];
+    const rules = rulesByBenefit.get(benefitId) || [];
 
     const eligibilityResult = await evaluateBenefitEligibility(benefitId, rules, {
       scanType,
@@ -157,7 +174,7 @@ export async function runBenefitsScan(
     for (const action of actions) {
       try {
         if (action.action === "create") {
-          await storage.workers.createWorkerBenefit({
+          await storage.trust.wmb.createWorkerBenefit({
             workerId,
             month,
             year,
@@ -168,7 +185,7 @@ export async function runBenefitsScan(
         } else if (action.action === "delete") {
           const existingRecord = currentMonthBenefitMap.get(action.benefitId);
           if (existingRecord) {
-            await storage.workers.deleteWorkerBenefit(existingRecord.id);
+            await storage.trust.wmb.deleteWorkerBenefit(existingRecord.id);
             action.executed = true;
           }
         }

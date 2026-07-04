@@ -1,5 +1,5 @@
 import { createNoopValidator } from './utils/validation';
-import { getClient } from './transaction-context';
+import { getClient, onAfterCommit } from './transaction-context';
 import {
   workerMsh,
   optionsWorkerMs,
@@ -8,53 +8,76 @@ import {
 } from "@shared/schema";
 import { eq, desc, sql } from "drizzle-orm";
 import type { StorageLoggingConfig } from "./middleware/logging";
+import { eventBus, EventType } from "../services/event-bus";
+import { logger } from "../logger";
 
 export const validate = createNoopValidator();
 
 export interface WorkerMshStorage {
   getWorkerMsh(workerId: string): Promise<any[]>;
+  /**
+   * The worker's current member statuses: the latest member status per industry,
+   * derived from the member-status history. This is the source of truth the
+   * `worker_ms` denorm plugin reads when recomputing `worker_msh_denorm`.
+   */
+  getCurrentMemberStatusIds(workerId: string): Promise<string[]>;
   createWorkerMsh(data: { workerId: string; date: string; msId: string; industryId: string; data?: any }): Promise<WorkerMsh>;
   updateWorkerMsh(id: string, data: { date?: string; msId?: string; industryId?: string; data?: any }): Promise<WorkerMsh | undefined>;
   deleteWorkerMsh(id: string): Promise<boolean>;
 }
 
 export function createWorkerMshStorage(
-  updateWorkerMemberStatuses: (workerId: string, denormMsIds: string[] | null) => Promise<any>,
   onWorkerDataChanged?: (workerId: string) => Promise<void>
 ): WorkerMshStorage {
-  async function syncWorkerCurrentMemberStatuses(workerId: string): Promise<void> {
-    const client = getClient();
-    
-    const allEntries = await client
-      .select({
-        id: workerMsh.id,
-        date: workerMsh.date,
-        msId: workerMsh.msId,
-        industryId: workerMsh.industryId,
-        createdAt: workerMsh.createdAt,
-      })
-      .from(workerMsh)
-      .where(eq(workerMsh.workerId, workerId))
-      .orderBy(desc(workerMsh.date), sql`${workerMsh.createdAt} DESC NULLS LAST`, desc(workerMsh.id));
-    
-    const latestByIndustry = new Map<string, string>();
-    for (const entry of allEntries) {
-      if (!latestByIndustry.has(entry.industryId)) {
-        latestByIndustry.set(entry.industryId, entry.msId);
-      }
-    }
-    
-    const msIds = Array.from(latestByIndustry.values());
-    await updateWorkerMemberStatuses(workerId, msIds.length > 0 ? msIds : null);
-    
+  // After a member-status history change, kick off the dependent denorm work.
+  // The employer denorm + scan invalidation run inline (preserving prior
+  // behaviour), and the member-status denorm is recomputed asynchronously by
+  // the `worker_ms` plugin, which subscribes to WORKER_MSH_SAVED. The event is
+  // emitted only AFTER the surrounding transaction commits so the plugin reads
+  // committed history rows (eventually consistent by design).
+  async function onMemberStatusHistoryChanged(workerId: string): Promise<void> {
     if (onWorkerDataChanged) {
       await onWorkerDataChanged(workerId).catch(err => {
         console.error("Failed to trigger scan invalidation for worker", workerId, err);
       });
     }
+
+    onAfterCommit(() => {
+      void eventBus.emit(EventType.WORKER_MSH_SAVED, { workerId }).catch((err) => {
+        logger.error("Failed to emit WORKER_MSH_SAVED", {
+          service: "worker-msh",
+          workerId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+    });
   }
 
   const storage: WorkerMshStorage = {
+    async getCurrentMemberStatusIds(workerId: string): Promise<string[]> {
+      const client = getClient();
+      const allEntries = await client
+        .select({
+          id: workerMsh.id,
+          date: workerMsh.date,
+          msId: workerMsh.msId,
+          industryId: workerMsh.industryId,
+          createdAt: workerMsh.createdAt,
+        })
+        .from(workerMsh)
+        .where(eq(workerMsh.workerId, workerId))
+        .orderBy(desc(workerMsh.date), sql`${workerMsh.createdAt} DESC NULLS LAST`, desc(workerMsh.id));
+
+      const latestByIndustry = new Map<string, string>();
+      for (const entry of allEntries) {
+        if (!latestByIndustry.has(entry.industryId)) {
+          latestByIndustry.set(entry.industryId, entry.msId);
+        }
+      }
+
+      return Array.from(latestByIndustry.values());
+    },
+
     async getWorkerMsh(workerId: string): Promise<any[]> {
       const client = getClient();
       const results = await client
@@ -85,7 +108,7 @@ export function createWorkerMshStorage(
         .values(data)
         .returning();
       
-      await syncWorkerCurrentMemberStatuses(data.workerId);
+      await onMemberStatusHistoryChanged(data.workerId);
       
       return msh;
     },
@@ -100,7 +123,7 @@ export function createWorkerMshStorage(
         .returning();
       
       if (updated) {
-        await syncWorkerCurrentMemberStatuses(updated.workerId);
+        await onMemberStatusHistoryChanged(updated.workerId);
       }
       
       return updated || undefined;
@@ -114,7 +137,7 @@ export function createWorkerMshStorage(
         .returning();
       
       if (result.length > 0 && result[0].workerId) {
-        await syncWorkerCurrentMemberStatuses(result[0].workerId);
+        await onMemberStatusHistoryChanged(result[0].workerId);
       }
       
       return result.length > 0;

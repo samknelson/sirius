@@ -2,7 +2,7 @@ import { createNoopValidator } from '../../utils/validation';
 import { getClient } from '../../transaction-context';
 import { bulkMessagesPostal, type BulkMessagesPostal, type InsertBulkMessagesPostal } from "../../../../shared/schema/bulk/schema";
 import { eq } from "drizzle-orm";
-import type { StorageLoggingConfig } from "../../middleware/logging";
+import { defineLoggingConfig } from "../../middleware/logging";
 
 export const validate = createNoopValidator<InsertBulkMessagesPostal, BulkMessagesPostal>();
 
@@ -67,45 +67,30 @@ export function createBulkMessagesPostalStorage(): BulkMessagesPostalStorage {
   return storage;
 }
 
-export const bulkMessagesPostalLoggingConfig: StorageLoggingConfig<BulkMessagesPostalStorage> = {
+export const bulkMessagesPostalLoggingConfig = defineLoggingConfig<BulkMessagesPostalStorage>({
   module: 'bulkMessagesPostal',
+  state: { key: 'bulkMessagesPostal' },
+  getter: 'getById',
+  hostEntityIdField: 'bulkId',
   methods: {
     create: {
-      enabled: true,
-      getEntityId: (args, result) => result?.id || 'new bulk postal',
-      getHostEntityId: (args, result) => result?.bulkId,
+      state: { fallbackId: 'new bulk postal' },
+      metadata: (_args, result) => ({ bulkId: result?.bulkId }),
       getDescription: async () => `Created bulk postal message content`,
-      after: async (args, result) => {
-        return {
-          bulkMessagesPostal: result,
-          metadata: { bulkId: result?.bulkId }
-        };
-      }
     },
     update: {
-      enabled: true,
-      getEntityId: (args) => args[0],
-      getHostEntityId: (args, result) => result?.bulkId,
+      before: async () => undefined,
+      metadata: (_args, result) => ({ bulkId: result?.bulkId }),
       getDescription: async () => `Updated bulk postal message content`,
-      after: async (args, result) => {
-        return {
-          bulkMessagesPostal: result,
-          metadata: { bulkId: result?.bulkId }
-        };
-      }
     },
     delete: {
-      enabled: true,
-      getEntityId: (args) => args[0],
+      before: async (args, storage) => ({ record: await storage.getById(args[0]) }),
       getHostEntityId: (_args, _result, beforeState) => beforeState?.record?.bulkId,
+      after: async (_args, result, _storage, beforeState) => ({
+        deleted: result,
+        metadata: { bulkId: beforeState?.record?.bulkId },
+      }),
       getDescription: async () => `Deleted bulk postal message content`,
-      before: async (args, storage) => {
-        const record = await storage.getById(args[0]);
-        return { record };
-      },
-      after: async (args, result, _storage, beforeState) => {
-        return { deleted: result, metadata: { bulkId: beforeState?.record?.bulkId } };
-      }
     },
-  }
-};
+  },
+});

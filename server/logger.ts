@@ -43,7 +43,7 @@ const storageTransports: winston.transport[] = [
 ];
 
 // Add custom logs transport for storage operations (writes via logs storage, emits LOG events)
-if (process.env.NEON_DATABASE_URL ?? process.env.DATABASE_URL) {
+if (process.env.DATABASE_URL) {
   try {
     const logsTransport = new LogsTransport({
       level: "info",
