@@ -87,6 +87,7 @@ export const btuBuildingRepImportPlugin: WizardPlugin = {
   description:
     "Import building representatives from a CSV file (Name, ID/Badge #, Phone, Email) and create shop steward assignments",
   requiredComponent: "sitespecific.btu",
+  requiredPolicy: "admin",
   category: "Import",
   steps: [
     {

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   Card,
@@ -76,10 +76,13 @@ export function WorkerLoadStep({ wizardId, step, data }: WizardStepComponentProp
   const runProgress = wdata.progress?.worker_load;
   const runFailed = runProgress?.status === "failed";
 
-  // Stop the "creating" spinner once the employer exists or the run failed.
-  if (isStarting && (employerId || runFailed)) {
-    setIsStarting(false);
-  }
+  // Stop the "creating" spinner (and polling) once the employer exists or
+  // the run failed.
+  useEffect(() => {
+    if (isStarting && (employerId || runFailed)) {
+      setIsStarting(false);
+    }
+  }, [isStarting, employerId, runFailed]);
 
   const { data: childWizard } = useQuery<any>({
     queryKey: [`/api/wizards/${childWizardId}`],

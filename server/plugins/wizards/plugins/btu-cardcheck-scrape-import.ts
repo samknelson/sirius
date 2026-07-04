@@ -118,6 +118,7 @@ export const btuCardcheckScrapeImportPlugin: WizardPlugin = {
   description:
     "Fetch PDF signatures from the external BTU site for card checks that have a NID but are missing a signature",
   requiredComponent: "sitespecific.btu",
+  requiredPolicy: "admin",
   category: "Import",
   steps: [
     {

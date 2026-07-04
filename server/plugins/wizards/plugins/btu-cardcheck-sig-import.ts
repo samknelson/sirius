@@ -68,6 +68,7 @@ export const btuCardcheckSigImportPlugin: WizardPlugin = {
   description:
     "Import signed card check signature images from a ZIP file, matching workers by BPS Employee ID",
   requiredComponent: "sitespecific.btu",
+  requiredPolicy: "admin",
   category: "Import",
   steps: [
     {
