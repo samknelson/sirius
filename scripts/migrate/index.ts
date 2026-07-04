@@ -91,6 +91,7 @@ import "./components/grievance.settlement/001_create_grievance_settlement";
 //
 import "./baseline/sirius-dev-20260518";
 import "./baseline/sirius-dev-20260524";
+import "./baseline/sirius-dev-20260704";
 
 export {
   runMigrations,

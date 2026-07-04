@@ -32,6 +32,25 @@ interface LegacyEligibilityEntry {
  * workers, offer ratio/timeout, notificationMedia, etc.) STAY on the blob.
  */
 async function up(): Promise<void> {
+  // `options_dispatch_job_type` is owned by the optional `dispatch` component
+  // (enabledByDefault: false). If dispatch has never been enabled on this
+  // deployment the table does not exist and there is nothing to backfill.
+  const jobTypeTableRes = await db.execute(sql`
+    SELECT EXISTS (
+      SELECT 1 FROM information_schema.tables
+      WHERE table_schema = 'public' AND table_name = 'options_dispatch_job_type'
+    ) AS ok
+  `);
+  const jobTypeTableExists =
+    jobTypeTableRes.rows?.[0]?.ok === true || jobTypeTableRes.rows?.[0]?.ok === "t";
+  if (!jobTypeTableExists) {
+    logger.info(
+      "Skipping dispatch eligibility backfill — options_dispatch_job_type not present (dispatch component not enabled)",
+      { service: "migration-1020" },
+    );
+    return;
+  }
+
   await db.transaction(async (tx) => {
     const jobTypesRes = await tx.execute(
       sql`SELECT id, data FROM options_dispatch_job_type`,

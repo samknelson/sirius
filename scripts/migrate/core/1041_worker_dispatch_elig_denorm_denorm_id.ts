@@ -22,6 +22,25 @@ import { logger } from "../../../server/logger";
  * refills — consistent with the purge + lazy-repopulate design.
  */
 async function up(): Promise<void> {
+  // `worker_dispatch_elig_denorm` is owned by the optional `dispatch` component
+  // (enabledByDefault: false). If dispatch has never been enabled on this
+  // deployment the table does not exist; nothing to purge or alter.
+  const tableRes = await db.execute(sql`
+    SELECT EXISTS (
+      SELECT 1 FROM information_schema.tables
+      WHERE table_schema = 'public' AND table_name = 'worker_dispatch_elig_denorm'
+    ) AS ok
+  `);
+  const tableExists =
+    tableRes.rows?.[0]?.ok === true || tableRes.rows?.[0]?.ok === "t";
+  if (!tableExists) {
+    logger.info(
+      "Skipping worker_dispatch_elig_denorm migration — table not present (dispatch component not enabled)",
+      { service: "migration-1041" },
+    );
+    return;
+  }
+
   await db.execute(sql`TRUNCATE TABLE worker_dispatch_elig_denorm`);
   await db.execute(
     sql`ALTER TABLE worker_dispatch_elig_denorm ADD COLUMN IF NOT EXISTS denorm_id varchar NOT NULL REFERENCES denorm(id) ON DELETE CASCADE`,
