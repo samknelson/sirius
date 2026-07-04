@@ -95,7 +95,6 @@ function SectionDetailModal({ state, onClose, eaId }: { state: SectionModalState
   });
 
   const title = section === "invoicedAmount" ? "Invoiced Amount"
-    : section === "paymentsReceived" ? "Payments Received"
     : "Payments Applied";
 
   const periodLabel = `${MONTH_NAMES[invoice.month - 1]} ${invoice.year}`;

@@ -96,6 +96,9 @@ async function createEmployerFromWizard(
   for (const contactData of data.contacts) {
     try {
       const contact = await storage.contacts.createContact({
+        displayName:
+          [contactData.firstName, contactData.lastName].filter(Boolean).join(" ") ||
+          contactData.email,
         given: contactData.firstName || null,
         family: contactData.lastName || null,
         email: contactData.email,

@@ -50,6 +50,7 @@ async function up(): Promise<void> {
 const migration: Migration = {
   version: 5,
   name: "add_edls_sheet_job_group",
+  description: "Add job_group_id column to edls_sheets",
   up,
 };
 

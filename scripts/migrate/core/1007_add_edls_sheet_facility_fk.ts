@@ -78,6 +78,7 @@ async function up(): Promise<void> {
 const migration: Migration = {
   version: 1007,
   name: "add_edls_sheet_facility_fk",
+  description: "Add facility_id -> facilities FK to edls_sheets",
   up,
 };
 

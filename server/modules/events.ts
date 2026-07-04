@@ -644,7 +644,7 @@ export function registerEventsRoutes(
       }
 
       // Get the event type to determine category
-      const eventType = await storage.options.eventTypes.get(event.eventTypeId);
+      const eventType = await unifiedOptionsStorage.get("event-type", event.eventTypeId);
       if (!eventType) {
         res.status(400).json({ 
           success: false,

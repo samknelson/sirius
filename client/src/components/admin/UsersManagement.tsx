@@ -85,8 +85,8 @@ export default function UsersManagement() {
           bValue = b.email;
           break;
         case 'createdAt':
-          aValue = new Date(a.createdAt);
-          bValue = new Date(b.createdAt);
+          aValue = a.createdAt ? new Date(a.createdAt) : new Date(0);
+          bValue = b.createdAt ? new Date(b.createdAt) : new Date(0);
           break;
         case 'lastLogin':
           // Handle null/undefined lastLogin values - put them at end when desc, beginning when asc
@@ -332,7 +332,7 @@ export default function UsersManagement() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredAndSortedUsers.map((user: User) => (
+            {filteredAndSortedUsers.map((user) => (
               <TableRow key={user.id} data-testid={`row-user-${user.id}`}>
                 <TableCell data-testid={`text-user-info-${user.id}`}>
                   <div className="flex flex-col">
@@ -388,7 +388,7 @@ export default function UsersManagement() {
                   </div>
                 </TableCell>
                 <TableCell data-testid={`text-created-${user.id}`}>
-                  {new Date(user.createdAt).toLocaleDateString()}
+                  {user.createdAt ? new Date(user.createdAt).toLocaleDateString() : '—'}
                 </TableCell>
                 <TableCell data-testid={`text-lastlogin-${user.id}`}>
                   {user.lastLogin ? new Date(user.lastLogin).toLocaleDateString() : 'Never'}

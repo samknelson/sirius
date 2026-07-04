@@ -39,7 +39,7 @@ export interface BulkTokenWorkerRow {
 export interface BulkTokenCardcheckRow {
   type: string | null;
   status: string | null;
-  signedDate: string | null;
+  signedDate: Date | null;
 }
 
 export interface BulkTokenEmployerRow {

@@ -604,7 +604,8 @@ export function createLedgerPaymentStorage(): LedgerPaymentStorage {
         ...row.payment,
         entityType: row.ea.entityType,
         entityId: row.ea.entityId,
-        entityName: row.employer?.name || null
+        entityName: row.employer?.name || null,
+        allocatedEntities: []
       }));
     },
 
@@ -648,7 +649,8 @@ export function createLedgerPaymentStorage(): LedgerPaymentStorage {
         ...row.payment,
         entityType: row.ea.entityType,
         entityId: row.ea.entityId,
-        entityName: row.employer?.name || null
+        entityName: row.employer?.name || null,
+        allocatedEntities: []
       }));
 
       return { data, total };
@@ -1914,6 +1916,10 @@ function createLedgerInvoiceStorage(): LedgerInvoiceStorage {
         incomingBalance: fromCents(bucket.incomingBalanceCents),
         invoiceBalance: fromCents(invoiceBalanceCents),
         outgoingBalance: fromCents(outgoingBalanceCents),
+        chargesSubtotal: calcSubtotal(charges),
+        adjustmentsSubtotal: calcSubtotal(adjustments),
+        paymentsReceivedSubtotal: calcSubtotal(paymentsReceived),
+        paymentsAppliedSubtotal: calcSubtotal(paymentsApplied),
         entries: monthEntries,
         sections: {
           charges: { entries: charges, subtotal: calcSubtotal(charges) },

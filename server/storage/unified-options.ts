@@ -831,7 +831,7 @@ function createUnifiedOptionsStorageImpl(): UnifiedOptionsStorage {
       
       const client = getClient();
       const { table } = getTable(type);
-      const [result] = await client.insert(table).values(data as any).returning();
+      const [result] = (await client.insert(table as any).values(data as any).returning()) as any[];
       return result;
     },
 
@@ -888,7 +888,7 @@ function createUnifiedOptionsStorageImpl(): UnifiedOptionsStorage {
       const client = getClient();
       const { table } = getTable(type);
       const tableAny = table as any;
-      const result = await client.delete(table).where(eq(tableAny.id, id)).returning();
+      const result = (await client.delete(tableAny).where(eq(tableAny.id, id)).returning()) as any[];
       return result.length > 0;
     },
 

@@ -207,8 +207,8 @@ export function registerBulkMessageRoutes(
         }
       }
       if (parsed.data.medium) {
-        const oldMedia = new Set(existing.medium);
-        const newMedia = new Set(parsed.data.medium);
+        const oldMedia = new Set<string>(existing.medium);
+        const newMedia = new Set<string>(parsed.data.medium);
         for (const m of oldMedia) {
           if (!newMedia.has(m)) {
             await deleteMediumRecord(storage, m, existing.id);

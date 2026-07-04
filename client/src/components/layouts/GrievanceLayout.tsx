@@ -51,6 +51,7 @@ export interface GrievanceRemedyLine {
 
 export interface GrievanceWithDetails {
   id: string;
+  siriusId: string | null;
   classDescription: string | null;
   cardinality: GrievanceCardinality;
   statusId: string;

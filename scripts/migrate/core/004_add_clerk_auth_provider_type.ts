@@ -31,6 +31,7 @@ async function up(): Promise<void> {
 const migration: Migration = {
   version: 4,
   name: "add_clerk_auth_provider_type",
+  description: "Add 'clerk' to the auth_provider_type enum",
   up,
 };
 

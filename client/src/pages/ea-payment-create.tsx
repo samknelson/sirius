@@ -89,7 +89,7 @@ function EAPaymentCreateContent() {
       paymentType: "",
       ledgerEaId: eaId || "",
       details: null,
-      dateReceived: null,
+      dateReceived: new Date(),
       dateCleared: null,
       memo: null,
     },
@@ -540,7 +540,7 @@ function EAPaymentCreateContent() {
 
 export default function EAPaymentCreate() {
   return (
-    <EALayout>
+    <EALayout activeTab="payments">
       <EAPaymentCreateContent />
     </EALayout>
   );

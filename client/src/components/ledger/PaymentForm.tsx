@@ -217,7 +217,7 @@ export function PaymentForm({
             paymentType: "",
             ledgerEaId: "",
             details: null,
-            dateReceived: null,
+            dateReceived: new Date(),
             dateCleared: null,
             memo: null,
           },

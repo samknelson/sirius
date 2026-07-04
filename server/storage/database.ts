@@ -600,7 +600,7 @@ export class DatabaseStorage implements IStorage {
     this.comm = withStorageLogging(
       {
         ...baseComm,
-        async updateWithTags(id, data, tagIds) {
+        async updateWithTags(id: string, data: Partial<import("@shared/schema").InsertComm>, tagIds?: string[]) {
           return runInTransaction(async () => {
             // Use the unwrapped rawComm here so the inner updateComm
             // does NOT emit its own log line — the orchestrator-level

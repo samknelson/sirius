@@ -193,7 +193,7 @@ export function createWizardStorage(): WizardStorage {
     },
 
     async update(id: string, updates: Partial<Omit<InsertWizard, 'id'>>): Promise<Wizard | undefined> {
-      validate.validateOrThrow(id);
+      validate.validateOrThrow(updates);
       const client = getClient();
       const [wizard] = await client
         .update(wizards)

@@ -408,6 +408,7 @@ class PaymentSimpleAllocationPlugin extends ChargePlugin {
         accountId: ea.accountId,
         entityType: ea.entityType,
         entityId: ea.entityId,
+        dateReceived: payment.dateReceived,
         dateCleared: payment.dateCleared,
         memo: payment.memo,
         paymentTypeId: payment.paymentType,

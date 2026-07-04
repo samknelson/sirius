@@ -487,7 +487,12 @@ export function WorkersTable({
         latitude: null,
         longitude: null,
         accuracy: null,
+        source: 'admin',
+        deliverabilityStatus: 'unknown',
+        lastVerifiedAt: null,
+        needsReview: false,
         createdAt: new Date(),
+        updatedAt: new Date(),
       };
     }
     
@@ -790,7 +795,7 @@ export function WorkersTable({
           <div className="mb-3">
             <Select
               value={selectedEmployerId}
-              onValueChange={(value) => setFilters(prev => ({ ...prev, employerId: value }))}
+              onValueChange={(value) => setFilters({ ...filters, employerId: value })}
             >
               <SelectTrigger data-testid="select-employer-filter">
                 <div className="flex items-center gap-2">

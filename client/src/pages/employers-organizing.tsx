@@ -1192,6 +1192,7 @@ export default function EmployersOrganizing() {
     employers: OrganizingEmployer[];
     distinctTotalWorkers: number;
     distinctSignedWorkers: number;
+    distinctMissingDuesRevenue?: number;
     secondaryGroups?: SecondaryGroupData[];
     statusGroups?: StatusGroup[];
     newMembers?: NewMember[];

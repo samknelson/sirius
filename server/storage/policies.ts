@@ -56,7 +56,7 @@ export function createPolicyStorage(): PolicyStorage {
     },
 
     async updatePolicy(id: string, data: Partial<InsertPolicy>): Promise<Policy | undefined> {
-      validate.validateOrThrow(id);
+      validate.validateOrThrow(data);
       const client = getClient();
       const [updated] = await client
         .update(policies)

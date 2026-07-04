@@ -12,7 +12,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useLocation } from "wouter";
 import { EmployerType } from "@shared/schema";
 
-const iconMap: Record<string, React.ComponentType<{ className?: string; size?: number }>> = {
+const iconMap: Record<string, React.ComponentType<{ className?: string; size?: number | string }>> = {
   Building,
   Building2,
   Factory,

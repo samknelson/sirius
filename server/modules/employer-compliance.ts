@@ -19,7 +19,7 @@ interface MonthCell {
 interface ComplianceRow {
   employerId: string;
   employerName: string;
-  siriusId: number;
+  siriusId: string | null;
   isActive: boolean;
   companyId: string | null;
   companyName: string | null;

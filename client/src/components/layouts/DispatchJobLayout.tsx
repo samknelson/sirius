@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import type { DispatchJobWithRelations } from "../../../../server/storage/dispatch-jobs";
+import type { DispatchJobWithRelations } from "../../../../server/storage/dispatch/jobs";
 import { useDispatchJobTabAccess } from "@/hooks/useTabAccess";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 

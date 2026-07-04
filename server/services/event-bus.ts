@@ -64,6 +64,7 @@ export interface PaymentSavedPayload {
   accountId: string;
   entityType: string;
   entityId: string;
+  dateReceived: Date | null;
   dateCleared: Date | null;
   memo: string | null;
   paymentTypeId: string;

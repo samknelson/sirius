@@ -44,8 +44,8 @@ export function GoogleMap({
         }
 
         setOptions({
-          apiKey,
-          version: "weekly"
+          key: apiKey,
+          v: "weekly"
         });
 
         const { Map } = await importLibrary("maps") as google.maps.MapsLibrary;
