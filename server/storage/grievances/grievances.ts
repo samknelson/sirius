@@ -27,6 +27,7 @@ import {
 } from "@shared/schema";
 import { eq, and, ne, inArray, asc, isNull, sql } from "drizzle-orm";
 import { generateGrievanceSiriusId } from "./sirius-id-generator";
+import { grievantSummary, type GrievantSummaryWorker } from "./grievant-summary";
 import { type StorageLoggingConfig } from "../middleware/logging";
 import { onAfterCommit } from "../transaction-context";
 import { eventBus, EventType } from "../../services/event-bus";
@@ -69,6 +70,8 @@ export interface GrievanceListItem extends Grievance {
   categoryName: string | null;
   workerCount: number;
   employerCount: number;
+  grievantSummary: string;
+  employerName: string | null;
 }
 
 export interface GrievanceLinkedWorker {
@@ -283,28 +286,63 @@ export function createGrievanceStorage(): GrievanceStorage {
 
       const ids = rows.map((r) => r.id);
       const workerLinks = await client
-        .select({ grievanceId: grievanceWorkers.grievanceId })
+        .select({
+          grievanceId: grievanceWorkers.grievanceId,
+          given: contacts.given,
+          family: contacts.family,
+          displayName: contacts.displayName,
+          primary: grievanceWorkers.primary,
+        })
         .from(grievanceWorkers)
-        .where(inArray(grievanceWorkers.grievanceId, ids));
+        .innerJoin(workers, eq(grievanceWorkers.workerId, workers.id))
+        .innerJoin(contacts, eq(workers.contactId, contacts.id))
+        .where(inArray(grievanceWorkers.grievanceId, ids))
+        .orderBy(asc(contacts.displayName));
       const employerLinks = await client
-        .select({ grievanceId: grievanceEmployers.grievanceId })
+        .select({
+          grievanceId: grievanceEmployers.grievanceId,
+          name: employers.name,
+        })
         .from(grievanceEmployers)
-        .where(inArray(grievanceEmployers.grievanceId, ids));
+        .innerJoin(employers, eq(grievanceEmployers.employerId, employers.id))
+        .where(inArray(grievanceEmployers.grievanceId, ids))
+        .orderBy(asc(employers.name));
 
-      const workerCounts = new Map<string, number>();
+      const workersByGrievance = new Map<string, GrievantSummaryWorker[]>();
       for (const l of workerLinks) {
-        workerCounts.set(l.grievanceId, (workerCounts.get(l.grievanceId) ?? 0) + 1);
+        const arr = workersByGrievance.get(l.grievanceId) ?? [];
+        arr.push({
+          given: l.given,
+          family: l.family,
+          displayName: l.displayName,
+          primary: l.primary,
+        });
+        workersByGrievance.set(l.grievanceId, arr);
       }
-      const employerCounts = new Map<string, number>();
+      const employersByGrievance = new Map<string, string[]>();
       for (const l of employerLinks) {
-        employerCounts.set(l.grievanceId, (employerCounts.get(l.grievanceId) ?? 0) + 1);
+        const arr = employersByGrievance.get(l.grievanceId) ?? [];
+        arr.push(l.name);
+        employersByGrievance.set(l.grievanceId, arr);
       }
 
-      return rows.map((r) => ({
-        ...r,
-        workerCount: workerCounts.get(r.id) ?? 0,
-        employerCount: employerCounts.get(r.id) ?? 0,
-      }));
+      return rows.map((r) => {
+        const gWorkers = workersByGrievance.get(r.id) ?? [];
+        const gEmployers = employersByGrievance.get(r.id) ?? [];
+        const employerName =
+          gEmployers.length === 0
+            ? null
+            : gEmployers.length === 1
+              ? gEmployers[0]
+              : `${gEmployers[0]} (+${gEmployers.length - 1})`;
+        return {
+          ...r,
+          workerCount: gWorkers.length,
+          employerCount: gEmployers.length,
+          grievantSummary: grievantSummary(r.cardinality, gWorkers, r.classDescription),
+          employerName,
+        };
+      });
     },
 
     async get(id: string): Promise<(Grievance & { name: string | null }) | undefined> {

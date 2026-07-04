@@ -30,12 +30,11 @@ import { useToast } from "@/hooks/use-toast";
 
 interface GrievanceListItem {
   id: string;
+  siriusId: string | null;
   statusId: string;
-  categoryId: string;
   statusName: string | null;
-  categoryName: string | null;
-  workerCount: number;
-  employerCount: number;
+  grievantSummary: string;
+  employerName: string | null;
 }
 
 export default function Grievances() {
@@ -123,29 +122,29 @@ export default function Grievances() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Category</TableHead>
+                    <TableHead>ID</TableHead>
+                    <TableHead>Grievant</TableHead>
+                    <TableHead>Employer</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead className="text-center">Workers</TableHead>
-                    <TableHead className="text-center">Employers</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {grievances.map((g) => (
                     <TableRow key={g.id} data-testid={`row-grievance-${g.id}`}>
-                      <TableCell className="font-medium" data-testid={`text-grievance-category-${g.id}`}>
-                        {g.categoryName || "—"}
+                      <TableCell className="font-medium" data-testid={`text-grievance-id-${g.id}`}>
+                        {g.siriusId || "—"}
+                      </TableCell>
+                      <TableCell data-testid={`text-grievance-grievant-${g.id}`}>
+                        {g.grievantSummary || "—"}
+                      </TableCell>
+                      <TableCell data-testid={`text-grievance-employer-${g.id}`}>
+                        {g.employerName || "—"}
                       </TableCell>
                       <TableCell>
                         <Badge variant="secondary" data-testid={`badge-grievance-status-${g.id}`}>
                           {g.statusName || "—"}
                         </Badge>
-                      </TableCell>
-                      <TableCell className="text-center" data-testid={`text-grievance-worker-count-${g.id}`}>
-                        {g.workerCount}
-                      </TableCell>
-                      <TableCell className="text-center" data-testid={`text-grievance-employer-count-${g.id}`}>
-                        {g.employerCount}
                       </TableCell>
                       <TableCell className="text-right space-x-2">
                         <Link href={`/grievance/${g.id}`}>
