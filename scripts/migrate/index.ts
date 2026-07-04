@@ -79,6 +79,7 @@ import "./components/grievance/021_add_sirius_id_to_grievances";
 import "./components/grievance/022_create_grievance_name_denorm";
 import "./components/grievance/023_grievance_sirius_id_unique_constraint";
 import "./components/grievance/024_add_bargaining_unit_id_to_grievances";
+import "./components/grievance/025_make_grievance_sirius_id_not_null";
 import "./components/grievance.settlement/001_create_grievance_settlement";
 import "./components/dispatch/001_backfill_dispatch_eligibility_configs";
 import "./components/dispatch/002_worker_dispatch_elig_denorm_denorm_id";

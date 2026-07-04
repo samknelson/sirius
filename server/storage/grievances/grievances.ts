@@ -415,11 +415,14 @@ export function createGrievanceStorage(): GrievanceStorage {
     async create(data: InsertGrievance): Promise<Grievance> {
       return runInTransaction(async () => {
         const client = getClient();
-        const values: InsertGrievance = { ...data };
-        if (values.siriusId == null || values.siriusId === "") {
-          values.siriusId = await generateGrievanceSiriusId();
-        }
-        const [row] = await client.insert(grievances).values(values).returning();
+        const siriusId =
+          data.siriusId == null || data.siriusId === ""
+            ? await generateGrievanceSiriusId()
+            : data.siriusId;
+        const [row] = await client
+          .insert(grievances)
+          .values({ ...data, siriusId })
+          .returning();
         emitGrievanceSaved(row.id);
         return row;
       });
@@ -428,10 +431,11 @@ export function createGrievanceStorage(): GrievanceStorage {
     async update(id: string, data: Partial<InsertGrievance>): Promise<Grievance | undefined> {
       return runInTransaction(async () => {
         const client = getClient();
-        const values: Partial<InsertGrievance> = { ...data };
+        const { siriusId: rawSiriusId, ...restData } = data;
+        const values: Partial<typeof grievances.$inferInsert> = { ...restData };
 
         const providedId =
-          typeof values.siriusId === "string" ? values.siriusId.trim() : values.siriusId;
+          typeof rawSiriusId === "string" ? rawSiriusId.trim() : rawSiriusId;
 
         if (typeof providedId === "string" && providedId !== "") {
           // Explicit non-empty ID (admin override) — use it as given.
@@ -448,11 +452,9 @@ export function createGrievanceStorage(): GrievanceStorage {
 
           if (existing && (existing.siriusId == null || existing.siriusId === "")) {
             values.siriusId = await generateGrievanceSiriusId();
-          } else {
-            // Row missing, or it already has an ID the caller didn't change:
-            // leave the stored ID untouched.
-            delete values.siriusId;
           }
+          // Otherwise (row missing, or it already has an ID the caller didn't
+          // change): leave siriusId out entirely so the stored ID is untouched.
         }
 
         const [row] = await client

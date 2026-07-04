@@ -135,7 +135,7 @@ export type GrievanceCardinality = (typeof GRIEVANCE_CARDINALITIES)[number];
 
 export const grievances = pgTable("grievances", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  siriusId: varchar("sirius_id").unique(),
+  siriusId: varchar("sirius_id").notNull().unique(),
   classDescription: text("class_description"),
   cardinality: varchar("cardinality").notNull().default("individual"),
   statusId: varchar("status_id")
@@ -155,9 +155,16 @@ export const grievances = pgTable("grievances", {
   ),
 });
 
-export const insertGrievanceSchema = createInsertSchema(grievances).omit({
-  id: true,
-});
+export const insertGrievanceSchema = createInsertSchema(grievances)
+  .omit({
+    id: true,
+  })
+  // The DB column is NOT NULL, but the app never requires the caller to supply
+  // an ID: the storage layer auto-generates one on create when it is absent or
+  // empty. Keep siriusId optional/nullable here so that flow still type-checks.
+  .extend({
+    siriusId: z.string().trim().min(1).nullish(),
+  });
 
 export type Grievance = typeof grievances.$inferSelect;
 export type InsertGrievance = z.infer<typeof insertGrievanceSchema>;
