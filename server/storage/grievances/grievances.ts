@@ -381,14 +381,43 @@ export function createGrievanceStorage(): GrievanceStorage {
     },
 
     async update(id: string, data: Partial<InsertGrievance>): Promise<Grievance | undefined> {
-      const client = getClient();
-      const [row] = await client
-        .update(grievances)
-        .set(data)
-        .where(eq(grievances.id, id))
-        .returning();
-      if (row) emitGrievanceSaved(row.id);
-      return row || undefined;
+      return runInTransaction(async () => {
+        const client = getClient();
+        const values: Partial<InsertGrievance> = { ...data };
+
+        const providedId =
+          typeof values.siriusId === "string" ? values.siriusId.trim() : values.siriusId;
+
+        if (typeof providedId === "string" && providedId !== "") {
+          // Explicit non-empty ID (admin override) — use it as given.
+          values.siriusId = providedId;
+        } else {
+          // No usable ID was supplied. Fill one in only when the grievance would
+          // otherwise be left without an ID; never overwrite an existing one and
+          // never blank one out (a grievance is never left ID-less after a save).
+          const [existing] = await client
+            .select({ siriusId: grievances.siriusId })
+            .from(grievances)
+            .where(eq(grievances.id, id))
+            .limit(1);
+
+          if (existing && (existing.siriusId == null || existing.siriusId === "")) {
+            values.siriusId = await generateGrievanceSiriusId();
+          } else {
+            // Row missing, or it already has an ID the caller didn't change:
+            // leave the stored ID untouched.
+            delete values.siriusId;
+          }
+        }
+
+        const [row] = await client
+          .update(grievances)
+          .set(values)
+          .where(eq(grievances.id, id))
+          .returning();
+        if (row) emitGrievanceSaved(row.id);
+        return row || undefined;
+      });
     },
 
     async delete(id: string): Promise<boolean> {
