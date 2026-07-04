@@ -22,6 +22,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { GRIEVANCE_CARDINALITIES, type GrievanceCardinality } from "@shared/schema";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface OptionItem {
   id: string;
@@ -42,7 +43,10 @@ const grievanceFormSchema = z.object({
   cardinality: z.enum(GRIEVANCE_CARDINALITIES),
   statusId: z.string().uuid("Please select a status"),
   categoryId: z.string().uuid("Please select a category"),
+  bargainingUnitId: z.string().optional(),
 });
+
+const NO_BARGAINING_UNIT = "none";
 
 export type GrievanceFormValues = z.infer<typeof grievanceFormSchema>;
 
@@ -74,6 +78,13 @@ export function GrievanceForm({
     queryKey: ["/api/options/grievance-category"],
   });
 
+  const { hasComponent } = useAuth();
+  const showBargainingUnit = hasComponent("bargainingunits");
+  const { data: bargainingUnits = [] } = useQuery<OptionItem[]>({
+    queryKey: ["/api/bargaining-units"],
+    enabled: showBargainingUnit,
+  });
+
   const form = useForm<GrievanceFormValues>({
     resolver: zodResolver(grievanceFormSchema),
     defaultValues: {
@@ -82,6 +93,7 @@ export function GrievanceForm({
       cardinality: defaultValues?.cardinality ?? "individual",
       statusId: defaultValues?.statusId ?? "",
       categoryId: defaultValues?.categoryId ?? "",
+      bargainingUnitId: defaultValues?.bargainingUnitId ?? "",
     },
   });
 
@@ -168,6 +180,41 @@ export function GrievanceForm({
             </FormItem>
           )}
         />
+
+        {showBargainingUnit && (
+          <FormField
+            control={form.control}
+            name="bargainingUnitId"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Bargaining Unit</FormLabel>
+                <Select
+                  onValueChange={(value) =>
+                    field.onChange(value === NO_BARGAINING_UNIT ? "" : value)
+                  }
+                  value={field.value ? field.value : NO_BARGAINING_UNIT}
+                >
+                  <FormControl>
+                    <SelectTrigger data-testid="select-grievance-bargaining-unit">
+                      <SelectValue placeholder="Select a bargaining unit" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    <SelectItem value={NO_BARGAINING_UNIT} data-testid="option-bargaining-unit-none">
+                      None
+                    </SelectItem>
+                    {bargainingUnits.map((bu) => (
+                      <SelectItem key={bu.id} value={bu.id} data-testid={`option-bargaining-unit-${bu.id}`}>
+                        {bu.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        )}
 
         <FormField
           control={form.control}

@@ -19,8 +19,9 @@ import { type GrievanceCardinality } from "@shared/schema";
 export default function GrievancesAdd() {
   const [location, navigate] = useLocation();
   const { toast } = useToast();
-  const { hasPermission } = useAuth();
+  const { hasPermission, hasComponent } = useAuth();
   const isAdmin = hasPermission("admin");
+  const showBargainingUnit = hasComponent("bargainingunits");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [cardinality, setCardinality] = useState<GrievanceCardinality>("individual");
   const [staged, setStaged] = useState<SectionWorker[]>([]);
@@ -93,6 +94,9 @@ export default function GrievancesAdd() {
         cardinality: values.cardinality,
         statusId: values.statusId,
         categoryId: values.categoryId,
+        ...(showBargainingUnit
+          ? { bargainingUnitId: values.bargainingUnitId ? values.bargainingUnitId : null }
+          : {}),
       });
 
       // Flush staged workers. The grievance already exists, so a partial

@@ -17,6 +17,7 @@ import {
   employers,
   users,
   denorm,
+  bargainingUnits,
   type Grievance,
   type InsertGrievance,
   type GrievanceWorker,
@@ -114,6 +115,7 @@ export interface GrievanceRemedyWithDetails extends GrievanceRemedy {
 export interface GrievanceWithDetails extends Grievance {
   statusName: string | null;
   categoryName: string | null;
+  bargainingUnitName: string | null;
   /** Denormalized display name from `grievance_name_denorm`; null if not yet computed. */
   name: string | null;
   workers: GrievanceLinkedWorker[];
@@ -272,6 +274,7 @@ export function createGrievanceStorage(): GrievanceStorage {
           categoryId: grievances.categoryId,
           data: grievances.data,
           timelineTemplateId: grievances.timelineTemplateId,
+          bargainingUnitId: grievances.bargainingUnitId,
           statusName: optionsGrievanceStatus.name,
           categoryName: optionsGrievanceCategory.name,
         })
@@ -357,6 +360,7 @@ export function createGrievanceStorage(): GrievanceStorage {
           categoryId: grievances.categoryId,
           data: grievances.data,
           timelineTemplateId: grievances.timelineTemplateId,
+          bargainingUnitId: grievances.bargainingUnitId,
           name: grievanceNameDenorm.name,
         })
         .from(grievances)
@@ -377,13 +381,16 @@ export function createGrievanceStorage(): GrievanceStorage {
           categoryId: grievances.categoryId,
           data: grievances.data,
           timelineTemplateId: grievances.timelineTemplateId,
+          bargainingUnitId: grievances.bargainingUnitId,
           statusName: optionsGrievanceStatus.name,
           categoryName: optionsGrievanceCategory.name,
+          bargainingUnitName: bargainingUnits.name,
           name: grievanceNameDenorm.name,
         })
         .from(grievances)
         .leftJoin(optionsGrievanceStatus, eq(grievances.statusId, optionsGrievanceStatus.id))
         .leftJoin(optionsGrievanceCategory, eq(grievances.categoryId, optionsGrievanceCategory.id))
+        .leftJoin(bargainingUnits, eq(grievances.bargainingUnitId, bargainingUnits.id))
         .leftJoin(grievanceNameDenorm, eq(grievanceNameDenorm.grievanceId, grievances.id))
         .where(eq(grievances.id, id));
 

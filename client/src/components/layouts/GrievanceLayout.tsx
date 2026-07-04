@@ -58,8 +58,10 @@ export interface GrievanceWithDetails {
   categoryId: string;
   data: unknown;
   timelineTemplateId: string | null;
+  bargainingUnitId: string | null;
   statusName: string | null;
   categoryName: string | null;
+  bargainingUnitName: string | null;
   name: string | null;
   workers: GrievanceLinkedWorker[];
   employers: GrievanceLinkedEmployer[];

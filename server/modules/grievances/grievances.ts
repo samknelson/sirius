@@ -18,6 +18,7 @@ const createGrievanceSchema = z
     statusId: z.string().uuid("A valid status is required"),
     categoryId: z.string().uuid("A valid category is required"),
     cardinality: z.enum(GRIEVANCE_CARDINALITIES).default("individual"),
+    bargainingUnitId: z.string().uuid().nullish(),
   })
   .refine((v) => v.cardinality === "class" || v.classDescription == null, {
     message: "A class description is only allowed for class grievances",
@@ -40,6 +41,7 @@ const updateGrievanceSchema = z
     categoryId: z.string().uuid().optional(),
     cardinality: z.enum(GRIEVANCE_CARDINALITIES).optional(),
     timelineTemplateId: z.string().uuid().nullable().optional(),
+    bargainingUnitId: z.string().uuid().nullable().optional(),
   })
   .refine((v) => Object.keys(v).length > 0, {
     message: "At least one field must be provided",
@@ -163,6 +165,7 @@ export function registerGrievanceRoutes(
         statusId,
         categoryId,
         cardinality,
+        bargainingUnitId,
       } = parsed.data;
 
       // Only admins may set the grievance ID by hand. For everyone else it is
@@ -180,6 +183,7 @@ export function registerGrievanceRoutes(
         statusId,
         categoryId,
         cardinality,
+        bargainingUnitId: bargainingUnitId ?? null,
       });
 
       const fresh = await storage.grievances.getWithDetails(created.id);
@@ -282,6 +286,8 @@ export function registerGrievanceRoutes(
       if (parsed.data.cardinality !== undefined) data.cardinality = parsed.data.cardinality;
       if (parsed.data.timelineTemplateId !== undefined)
         data.timelineTemplateId = parsed.data.timelineTemplateId;
+      if (parsed.data.bargainingUnitId !== undefined)
+        data.bargainingUnitId = parsed.data.bargainingUnitId;
 
       await storage.grievances.update(req.params.id, data);
       const fresh = await storage.grievances.getWithDetails(req.params.id);

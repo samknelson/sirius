@@ -15,8 +15,9 @@ function GrievanceEditContent() {
   const { grievance } = useGrievanceLayout();
   const [, navigate] = useLocation();
   const { toast } = useToast();
-  const { hasPermission } = useAuth();
+  const { hasPermission, hasComponent } = useAuth();
   const isAdmin = hasPermission("admin");
+  const showBargainingUnit = hasComponent("bargainingunits");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async (values: GrievanceFormValues) => {
@@ -29,6 +30,9 @@ function GrievanceEditContent() {
         cardinality: values.cardinality,
         statusId: values.statusId,
         categoryId: values.categoryId,
+        ...(showBargainingUnit
+          ? { bargainingUnitId: values.bargainingUnitId ? values.bargainingUnitId : null }
+          : {}),
       });
       await queryClient.invalidateQueries({ queryKey: ["/api/grievances"] });
       await queryClient.invalidateQueries({ queryKey: ["/api/grievances", grievance.id] });
@@ -56,6 +60,7 @@ function GrievanceEditContent() {
               cardinality: grievance.cardinality,
               statusId: grievance.statusId,
               categoryId: grievance.categoryId,
+              bargainingUnitId: grievance.bargainingUnitId ?? "",
             }}
             onSubmit={handleSubmit}
             submitLabel="Save Changes"

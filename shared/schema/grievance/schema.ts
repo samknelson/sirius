@@ -2,7 +2,7 @@ import { pgTable, varchar, text, jsonb, boolean, integer, date, uniqueIndex } fr
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
-import { workers, employers, users, denorm } from "../../schema";
+import { workers, employers, users, denorm, bargainingUnits } from "../../schema";
 
 export const optionsGrievanceStatus = pgTable("options_grievance_status", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -147,6 +147,10 @@ export const grievances = pgTable("grievances", {
   data: jsonb("data"),
   timelineTemplateId: varchar("timeline_template_id").references(
     () => grievanceTimelineTemplates.id,
+    { onDelete: "set null" },
+  ),
+  bargainingUnitId: varchar("bargaining_unit_id").references(
+    () => bargainingUnits.id,
     { onDelete: "set null" },
   ),
 });

@@ -7,9 +7,12 @@ import {
   useGrievanceLayout,
 } from "@/components/layouts/GrievanceLayout";
 import { GRIEVANCE_CARDINALITY_LABELS } from "@/components/grievances/grievance-form";
+import { useAuth } from "@/contexts/AuthContext";
 
 function GrievanceDetailsContent() {
   const { grievance } = useGrievanceLayout();
+  const { hasComponent } = useAuth();
+  const showBargainingUnit = hasComponent("bargainingunits");
 
   const showLead = grievance.cardinality === "multiple-with-lead";
   const isSingleWorker = grievance.cardinality === "individual";
@@ -175,6 +178,29 @@ function GrievanceDetailsContent() {
           </p>
         </CardContent>
       </Card>
+
+      {showBargainingUnit && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Bargaining Unit</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {grievance.bargainingUnitId ? (
+              <Link
+                href={`/bargaining-units/${grievance.bargainingUnitId}`}
+                className="text-foreground hover:underline"
+                data-testid="link-grievance-bargaining-unit"
+              >
+                {grievance.bargainingUnitName || "Unknown"}
+              </Link>
+            ) : (
+              <p className="text-foreground" data-testid="text-grievance-bargaining-unit">
+                No bargaining unit
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
