@@ -19,19 +19,22 @@ export interface MonthlyWizardCreateParams {
   month: number;
 }
 
-export interface MonthlyWizardCreateResult {
-  success: boolean;
-  wizard?: Wizard;
-  error?: string;
-}
-
 export interface WizardStorage {
   list(filters?: { type?: string; status?: string; entityId?: string }): Promise<Wizard[]>;
   listAll(): Promise<Pick<Wizard, 'id' | 'type' | 'data'>[]>;
   getById(id: string): Promise<Wizard | undefined>;
   create(wizard: InsertWizard): Promise<Wizard>;
-  createMonthlyWizard(params: MonthlyWizardCreateParams): Promise<MonthlyWizardCreateResult>;
-  createCorrectionsWizard(params: MonthlyWizardCreateParams): Promise<MonthlyWizardCreateResult>;
+  /**
+   * Insert a wizard and its `wizard_employer_monthly` subsidiary row
+   * atomically. Type-agnostic: any monthly (employer/year/month) wizard uses
+   * it. Per-wizard gating (duplicate / prerequisite checks) lives in the
+   * wizard's own create hook, composed from the find* primitives below.
+   */
+  createMonthlyWizard(params: MonthlyWizardCreateParams): Promise<Wizard>;
+  /** All wizards of `type` for a given employer + reporting period. */
+  findMonthlyWizardsForPeriod(employerId: string, year: number, month: number, type: string): Promise<Wizard[]>;
+  /** The completed wizard of `type` for a given employer + reporting period, if any. */
+  findCompletedMonthlyWizardForPeriod(employerId: string, year: number, month: number, type: string): Promise<Wizard | undefined>;
   update(id: string, updates: Partial<Omit<InsertWizard, 'id'>>): Promise<Wizard | undefined>;
   delete(id: string): Promise<boolean>;
   saveReportData(wizardId: string, pk: string, data: any): Promise<WizardReportData>;
@@ -99,97 +102,58 @@ export function createWizardStorage(): WizardStorage {
       return wizard;
     },
 
-    async createMonthlyWizard(params: MonthlyWizardCreateParams): Promise<MonthlyWizardCreateResult> {
+    async createMonthlyWizard(params: MonthlyWizardCreateParams): Promise<Wizard> {
       const { wizard: wizardData, employerId, year, month } = params;
-      
-      try {
-        const createdWizard = await db.transaction(async (tx) => {
-          const existingWizards = await tx
-            .select()
-            .from(wizardEmployerMonthly)
-            .innerJoin(wizards, eq(wizardEmployerMonthly.wizardId, wizards.id))
-            .where(
-              and(
-                eq(wizardEmployerMonthly.employerId, employerId),
-                eq(wizardEmployerMonthly.year, year),
-                eq(wizardEmployerMonthly.month, month),
-                eq(wizards.type, 'gbhet_legal_workers_monthly')
-              )
-            );
-          
-          if (existingWizards.length > 0) {
-            throw new Error(`DUPLICATE: A legal workers monthly wizard already exists for this employer in ${month}/${year}`);
-          }
-          
-          const [wizard] = await tx
-            .insert(wizards)
-            .values(wizardData)
-            .returning();
-          
-          await tx.insert(wizardEmployerMonthly).values({
-            wizardId: wizard.id,
-            employerId,
-            year,
-            month,
-          });
-          
-          return wizard;
+      return db.transaction(async (tx) => {
+        const [wizard] = await tx
+          .insert(wizards)
+          .values(wizardData)
+          .returning();
+
+        await tx.insert(wizardEmployerMonthly).values({
+          wizardId: wizard.id,
+          employerId,
+          year,
+          month,
         });
-        
-        return { success: true, wizard: createdWizard };
-      } catch (error) {
-        if (error instanceof Error && error.message.startsWith('DUPLICATE:')) {
-          return { success: false, error: error.message.replace('DUPLICATE: ', '') };
-        }
-        throw error;
-      }
+
+        return wizard;
+      });
     },
 
-    async createCorrectionsWizard(params: MonthlyWizardCreateParams): Promise<MonthlyWizardCreateResult> {
-      const { wizard: wizardData, employerId, year, month } = params;
-      
-      try {
-        const createdWizard = await db.transaction(async (tx) => {
-          const [completedMonthly] = await tx
-            .select()
-            .from(wizardEmployerMonthly)
-            .innerJoin(wizards, eq(wizardEmployerMonthly.wizardId, wizards.id))
-            .where(
-              and(
-                eq(wizardEmployerMonthly.employerId, employerId),
-                eq(wizardEmployerMonthly.year, year),
-                eq(wizardEmployerMonthly.month, month),
-                eq(wizards.type, 'gbhet_legal_workers_monthly'),
-                or(eq(wizards.status, 'completed'), eq(wizards.status, 'complete'))
-              )
-            );
-          
-          if (!completedMonthly) {
-            throw new Error(`PREREQUISITE: Cannot create legal workers corrections wizard: no completed legal workers monthly wizard found for ${month}/${year}`);
-          }
-          
-          const [wizard] = await tx
-            .insert(wizards)
-            .values(wizardData)
-            .returning();
-          
-          await tx.insert(wizardEmployerMonthly).values({
-            wizardId: wizard.id,
-            employerId,
-            year,
-            month,
-          });
-          
-          return wizard;
-        });
-        
-        return { success: true, wizard: createdWizard };
-      } catch (error) {
-        if (error instanceof Error && error.message.startsWith('PREREQUISITE:')) {
-          return { success: false, error: error.message.replace('PREREQUISITE: ', '') };
-        }
-        throw error;
-      }
+    async findMonthlyWizardsForPeriod(employerId: string, year: number, month: number, type: string): Promise<Wizard[]> {
+      const client = getClient();
+      const rows = await client
+        .select({ wizard: wizards })
+        .from(wizardEmployerMonthly)
+        .innerJoin(wizards, eq(wizardEmployerMonthly.wizardId, wizards.id))
+        .where(
+          and(
+            eq(wizardEmployerMonthly.employerId, employerId),
+            eq(wizardEmployerMonthly.year, year),
+            eq(wizardEmployerMonthly.month, month),
+            eq(wizards.type, type)
+          )
+        );
+      return rows.map((r) => r.wizard);
+    },
+
+    async findCompletedMonthlyWizardForPeriod(employerId: string, year: number, month: number, type: string): Promise<Wizard | undefined> {
+      const client = getClient();
+      const [row] = await client
+        .select({ wizard: wizards })
+        .from(wizardEmployerMonthly)
+        .innerJoin(wizards, eq(wizardEmployerMonthly.wizardId, wizards.id))
+        .where(
+          and(
+            eq(wizardEmployerMonthly.employerId, employerId),
+            eq(wizardEmployerMonthly.year, year),
+            eq(wizardEmployerMonthly.month, month),
+            eq(wizards.type, type),
+            or(eq(wizards.status, 'completed'), eq(wizards.status, 'complete'))
+          )
+        );
+      return row?.wizard;
     },
 
     async update(id: string, updates: Partial<Omit<InsertWizard, 'id'>>): Promise<Wizard | undefined> {

@@ -7,6 +7,7 @@ import {
   buildValidateStep,
   buildProcessStep,
   buildFeedResultsStep,
+  prepareFeedDataUpdate,
 } from "./feed-steps";
 
 const feed = new BtuDuesAllocationWizard();
@@ -26,6 +27,7 @@ export const btuDuesAllocationPlugin: WizardPlugin = {
   requiredComponent: "sitespecific.btu",
   category: "Import",
   needsReadOnlyDb: true,
+  prepareUpdate: prepareFeedDataUpdate,
   steps: [
     buildUploadStep(feed, "Upload the dues allocation file"),
     buildMapStep(feed, "Map Columns", "Map file columns to dues fields"),

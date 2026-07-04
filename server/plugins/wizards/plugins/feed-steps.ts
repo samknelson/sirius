@@ -7,6 +7,8 @@ import type {
   WizardStepHandler,
   WizardStepContext,
   WizardStepResult,
+  WizardUpdateContext,
+  WizardUpdateResult,
 } from "../types";
 
 /**
@@ -412,4 +414,94 @@ export function buildFeedResultsStep(opts?: {
   };
   if (opts?.run) handler.run = opts.run;
   return handler;
+}
+
+/**
+ * Feed wizards' `prepareUpdate` hook for the generic `PATCH /api/wizards/:id`
+ * route. It validates an incoming column mapping (rejecting duplicate
+ * assignments in either the canonical `{ fieldId: colKey }` shape or the
+ * legacy `{ col_N: fieldId }` shape) and clears downstream step data when the
+ * upstream input changes: a new upload clears map/validate/process/review; a
+ * changed mapping / header flag / mode clears validate/process/review. This
+ * keeps the feed reset behavior with the feed wizards instead of the route.
+ */
+export function prepareFeedDataUpdate(
+  ctx: WizardUpdateContext,
+): WizardUpdateResult {
+  const existingData = (ctx.existing.data || {}) as any;
+  const incomingData = ctx.incoming as any;
+  const mergedData: any = { ...ctx.merged };
+
+  if (incomingData.columnMapping) {
+    const cmKeys = Object.keys(incomingData.columnMapping);
+    const isOldFormat =
+      cmKeys.length > 0 && cmKeys.every((k: string) => k.startsWith("col_"));
+    if (isOldFormat) {
+      const fieldIds = Object.values(incomingData.columnMapping).filter(
+        (id: any) => id && id !== "_unmapped",
+      );
+      const duplicates = fieldIds.filter(
+        (id: any, index: number) => fieldIds.indexOf(id) !== index,
+      );
+      if (duplicates.length > 0) {
+        const uniqueDuplicates = Array.from(new Set(duplicates));
+        return {
+          error: `Duplicate field mappings detected: ${uniqueDuplicates.join(
+            ", ",
+          )}. Each field can only be mapped once.`,
+          status: 400,
+        };
+      }
+    } else {
+      const colValues = Object.values(incomingData.columnMapping).filter(
+        (v: any) => v && v !== "_unmapped",
+      );
+      const duplicates = colValues.filter(
+        (v: any, index: number) => colValues.indexOf(v) !== index,
+      );
+      if (duplicates.length > 0) {
+        const uniqueDuplicates = Array.from(new Set(duplicates));
+        return {
+          error: `Duplicate column mappings detected: ${uniqueDuplicates.join(
+            ", ",
+          )}. Each column can only be mapped once.`,
+          status: 400,
+        };
+      }
+    }
+  }
+
+  // A new upload invalidates everything downstream of it.
+  if (
+    incomingData.uploadedFileId &&
+    incomingData.uploadedFileId !== existingData.uploadedFileId
+  ) {
+    delete mergedData.columnMapping;
+    delete mergedData.hasHeaders;
+    delete mergedData.validationResults;
+    if (mergedData.progress) {
+      delete mergedData.progress.map;
+      delete mergedData.progress.validate;
+      delete mergedData.progress.process;
+      delete mergedData.progress.review;
+    }
+  }
+  // A changed mapping / header flag / mode invalidates validate onward.
+  else if (
+    (incomingData.columnMapping &&
+      JSON.stringify(incomingData.columnMapping) !==
+        JSON.stringify(existingData.columnMapping)) ||
+    (incomingData.hasHeaders !== undefined &&
+      incomingData.hasHeaders !== existingData.hasHeaders) ||
+    (incomingData.mode && incomingData.mode !== existingData.mode)
+  ) {
+    delete mergedData.validationResults;
+    if (mergedData.progress) {
+      delete mergedData.progress.validate;
+      delete mergedData.progress.process;
+      delete mergedData.progress.review;
+    }
+  }
+
+  return { data: mergedData };
 }

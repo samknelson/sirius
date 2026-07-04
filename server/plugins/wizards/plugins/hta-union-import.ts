@@ -7,6 +7,7 @@ import {
   buildValidateStep,
   buildProcessStep,
   buildFeedResultsStep,
+  prepareFeedDataUpdate,
 } from "./feed-steps";
 
 const feed = new HtaUnionImportWizard();
@@ -27,6 +28,7 @@ export const htaUnionImportPlugin: WizardPlugin = {
     "Import union or apprentice members from HTA files, updating worker, employment, and contact records",
   requiredComponent: "sitespecific.hta",
   category: "Import",
+  prepareUpdate: prepareFeedDataUpdate,
   steps: [
     buildUploadStep(feed, "Upload the member data file"),
     {

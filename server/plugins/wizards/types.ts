@@ -181,6 +181,31 @@ export interface WizardCreateResult {
   status?: number;
 }
 
+/**
+ * Context handed to a plugin's optional `prepareUpdate` hook. `incoming` is
+ * the parsed `data` patch from the request; `merged` is the generic route's
+ * shallow merge (with `progress` deep-merged). The hook may validate the
+ * patch and/or adjust `merged` (e.g. a feed wizard clearing downstream step
+ * data when the upload or mapping changes), so wizard-type-specific update
+ * logic stays out of the generic route.
+ */
+export interface WizardUpdateContext {
+  existing: Wizard;
+  incoming: Record<string, unknown>;
+  merged: Record<string, unknown>;
+}
+
+/**
+ * Result of a plugin's `prepareUpdate` hook. Return `{ data }` with the
+ * final `wizard.data` to persist, or `{ error, status }` to reject (the
+ * route maps these to the HTTP response).
+ */
+export interface WizardUpdateResult {
+  data?: Record<string, unknown>;
+  error?: string;
+  status?: number;
+}
+
 export interface WizardPlugin extends BasePluginMetadata {
   /** Matches wizard.entityType semantics (e.g. "employer"). */
   entityType?: string;
@@ -209,6 +234,16 @@ export interface WizardPlugin extends BasePluginMetadata {
   create?: (
     ctx: WizardCreateContext,
   ) => Promise<WizardCreateResult> | WizardCreateResult;
+  /**
+   * Optional update hook. When present, the generic `PATCH /api/wizards/:id`
+   * route calls it after its generic merge so the wizard can validate the
+   * data patch and own its own reset behavior (e.g. a feed wizard clearing
+   * downstream step data). Keeps wizard-type-specific update logic out of
+   * the generic route.
+   */
+  prepareUpdate?: (
+    ctx: WizardUpdateContext,
+  ) => Promise<WizardUpdateResult> | WizardUpdateResult;
   steps: WizardStepHandler[];
 }
 

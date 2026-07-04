@@ -7,6 +7,7 @@ import {
   buildValidateStep,
   buildProcessStep,
   buildFeedResultsStep,
+  prepareFeedDataUpdate,
 } from "./feed-steps";
 
 const feed = new BtuCardcheckImportWizard();
@@ -27,6 +28,7 @@ export const btuCardcheckImportPlugin: WizardPlugin = {
   requiredComponent: "sitespecific.btu",
   category: "Import",
   needsReadOnlyDb: true,
+  prepareUpdate: prepareFeedDataUpdate,
   steps: [
     buildUploadStep(feed, "Upload the card check file"),
     buildMapStep(feed, "Map Columns", "Map file columns to card check fields"),

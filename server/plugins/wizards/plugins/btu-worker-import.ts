@@ -7,6 +7,7 @@ import {
   buildValidateStep,
   buildProcessStep,
   buildFeedResultsStep,
+  prepareFeedDataUpdate,
 } from "./feed-steps";
 
 const feed = new BtuWorkerImportWizard();
@@ -24,6 +25,7 @@ export const btuWorkerImportPlugin: WizardPlugin = {
     "Import workers from BTU roster files, creating employment records based on employer mappings",
   requiredComponent: "sitespecific.btu",
   category: "Import",
+  prepareUpdate: prepareFeedDataUpdate,
   steps: [
     buildUploadStep(feed, "Upload the worker roster file"),
     buildMapStep(feed, "Map Columns", "Map file columns to worker fields"),

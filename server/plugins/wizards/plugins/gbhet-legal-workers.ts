@@ -15,6 +15,7 @@ import {
   buildMapStep,
   buildProcessStep,
   buildFeedResultsStep,
+  prepareFeedDataUpdate,
 } from "./feed-steps";
 
 /**
@@ -218,16 +219,25 @@ async function createMonthly(
   }
   const parsed = parseYearMonth(ctx.input);
   if ("error" in parsed) return parsed;
-  const result = await ctx.storage.wizards.createMonthlyWizard({
+  const existing = await ctx.storage.wizards.findMonthlyWizardsForPeriod(
+    entityId,
+    parsed.year,
+    parsed.month,
+    "gbhet_legal_workers_monthly",
+  );
+  if (existing.length > 0) {
+    return {
+      error: `A legal workers monthly wizard already exists for this employer in ${parsed.month}/${parsed.year}`,
+      status: 400,
+    };
+  }
+  const wizard = await ctx.storage.wizards.createMonthlyWizard({
     wizard: ctx.input as any,
     employerId: entityId,
     year: parsed.year,
     month: parsed.month,
   });
-  if (!result.success || !result.wizard) {
-    return { error: result.error ?? "Failed to create wizard", status: 400 };
-  }
-  return { wizard: result.wizard };
+  return { wizard };
 }
 
 async function createCorrections(
@@ -242,16 +252,26 @@ async function createCorrections(
   }
   const parsed = parseYearMonth(ctx.input);
   if ("error" in parsed) return parsed;
-  const result = await ctx.storage.wizards.createCorrectionsWizard({
+  const completedMonthly =
+    await ctx.storage.wizards.findCompletedMonthlyWizardForPeriod(
+      entityId,
+      parsed.year,
+      parsed.month,
+      "gbhet_legal_workers_monthly",
+    );
+  if (!completedMonthly) {
+    return {
+      error: `Cannot create legal workers corrections wizard: no completed legal workers monthly wizard found for ${parsed.month}/${parsed.year}`,
+      status: 400,
+    };
+  }
+  const wizard = await ctx.storage.wizards.createMonthlyWizard({
     wizard: ctx.input as any,
     employerId: entityId,
     year: parsed.year,
     month: parsed.month,
   });
-  if (!result.success || !result.wizard) {
-    return { error: result.error ?? "Failed to create wizard", status: 400 };
-  }
-  return { wizard: result.wizard };
+  return { wizard };
 }
 
 const LAUNCH_ARGUMENTS = [
@@ -269,6 +289,7 @@ export const gbhetLegalWorkersMonthlyPlugin: WizardPlugin = {
   isMonthly: true,
   launchArguments: LAUNCH_ARGUMENTS,
   create: createMonthly,
+  prepareUpdate: prepareFeedDataUpdate,
   getFields: () => gbhetLegalWorkersMonthly.getFields?.() ?? [],
   steps: buildGbhetSteps(gbhetLegalWorkersMonthly),
 };
@@ -283,6 +304,7 @@ export const gbhetLegalWorkersCorrectionsPlugin: WizardPlugin = {
   isMonthly: true,
   launchArguments: LAUNCH_ARGUMENTS,
   create: createCorrections,
+  prepareUpdate: prepareFeedDataUpdate,
   getFields: () => gbhetLegalWorkersCorrections.getFields?.() ?? [],
   steps: buildGbhetSteps(gbhetLegalWorkersCorrections),
 };

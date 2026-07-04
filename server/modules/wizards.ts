@@ -403,37 +403,16 @@ export function registerWizardRoutes(
         }
       }
       
-      // If data is being updated, check if we need to clear downstream step data
+      // If data is being updated, merge it generically, then let the wizard's
+      // own plugin hook validate the patch and own any reset behavior (e.g. a
+      // feed wizard clearing downstream steps). The route stays wizard-agnostic.
       if (validatedData.data) {
         const existingData = (existing.data || {}) as any;
         const incomingData = validatedData.data as any;
-        
-        if (incomingData.columnMapping) {
-          const cmKeys = Object.keys(incomingData.columnMapping);
-          const isOldFormat = cmKeys.length > 0 && cmKeys.every((k: string) => k.startsWith('col_'));
-          if (isOldFormat) {
-            const fieldIds = Object.values(incomingData.columnMapping).filter((id: any) => id && id !== '_unmapped');
-            const duplicates = fieldIds.filter((id: any, index: number) => fieldIds.indexOf(id) !== index);
-            if (duplicates.length > 0) {
-              const uniqueDuplicates = Array.from(new Set(duplicates));
-              return res.status(400).json({ 
-                message: `Duplicate field mappings detected: ${uniqueDuplicates.join(', ')}. Each field can only be mapped once.` 
-              });
-            }
-          } else {
-            const colValues = Object.values(incomingData.columnMapping).filter((v: any) => v && v !== '_unmapped');
-            const duplicates = colValues.filter((v: any, index: number) => colValues.indexOf(v) !== index);
-            if (duplicates.length > 0) {
-              const uniqueDuplicates = Array.from(new Set(duplicates));
-              return res.status(400).json({ 
-                message: `Duplicate column mappings detected: ${uniqueDuplicates.join(', ')}. Each column can only be mapped once.` 
-              });
-            }
-          }
-        }
-        
-        // Merge existing data with incoming data
-        // Only deep-merge the progress field to avoid overwriting other fields like reportDataId
+
+        // Merge existing data with incoming data.
+        // Only deep-merge the progress field to avoid overwriting other fields
+        // like reportDataId.
         const mergedData = {
           ...existingData,
           ...incomingData,
@@ -445,41 +424,23 @@ export function registerWizardRoutes(
             }
           } : {})
         };
-        
-        // Check if upload-related data changed (uploadedFileId)
-        if (incomingData.uploadedFileId && incomingData.uploadedFileId !== existingData.uploadedFileId) {
-          // Clear all downstream data: map, validate, process, review
-          delete mergedData.columnMapping;
-          delete mergedData.hasHeaders;
-          delete mergedData.validationResults;
-          
-          // Clear progress for downstream steps
-          if (mergedData.progress) {
-            delete mergedData.progress.map;
-            delete mergedData.progress.validate;
-            delete mergedData.progress.process;
-            delete mergedData.progress.review;
+
+        const plugin = wizardPluginRegistry.get(existing.type);
+        if (plugin?.prepareUpdate) {
+          const prep = await plugin.prepareUpdate({
+            existing,
+            incoming: incomingData,
+            merged: mergedData,
+          });
+          if (prep.error) {
+            return res
+              .status(prep.status ?? 400)
+              .json({ message: prep.error });
           }
+          validatedData.data = prep.data ?? mergedData;
+        } else {
+          validatedData.data = mergedData;
         }
-        
-        // Check if map-related data changed (columnMapping, hasHeaders, mode)
-        else if (
-          (incomingData.columnMapping && JSON.stringify(incomingData.columnMapping) !== JSON.stringify(existingData.columnMapping)) ||
-          (incomingData.hasHeaders !== undefined && incomingData.hasHeaders !== existingData.hasHeaders) ||
-          (incomingData.mode && incomingData.mode !== existingData.mode)
-        ) {
-          // Clear downstream data: validate, process, review
-          delete mergedData.validationResults;
-          
-          // Clear progress for downstream steps
-          if (mergedData.progress) {
-            delete mergedData.progress.validate;
-            delete mergedData.progress.process;
-            delete mergedData.progress.review;
-          }
-        }
-        
-        validatedData.data = mergedData;
       }
       
       const wizard = await storage.wizards.update(id, validatedData);
