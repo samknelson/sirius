@@ -1,7 +1,7 @@
 import { registerWizardPlugin } from "../registry";
 import type { WizardPlugin, WizardStepContext } from "../types";
 import type { Wizard } from "@shared/schema";
-import { ReportGbhetLegalCompliance } from "../../../wizards/types/report_gbhet_legal_compliance";
+import { ReportGbhetLegalCompliance } from "../engine/types/report_gbhet_legal_compliance";
 
 /**
  * Pilot: the GBHET Legal Compliance report ported to run "in a box" on

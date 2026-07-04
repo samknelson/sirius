@@ -2,7 +2,7 @@ import { storage } from "../../../../storage";
 import { registerCronPlugin } from "../registry";
 import type { CronJobContext, CronJobResult } from "../types";
 import type { RetentionPeriod, ReportData } from "@shared/wizard-types";
-import { wizardRegistry } from "../../../../wizards/registry";
+import { wizardPluginRegistry } from "../../../wizards";
 
 function getRetentionDays(retention: RetentionPeriod): number | null {
   switch (retention) {
@@ -50,15 +50,15 @@ registerCronPlugin({
 
     const allWizards = await storage.wizards.listAll();
     const reportWizards = allWizards.filter(wizard =>
-      wizardRegistry.isReportWizard(wizard.type)
+      wizardPluginRegistry.get(wizard.type)?.isReport ?? false
     );
 
     for (const wizard of reportWizards) {
       if (!statsByType[wizard.type]) {
-        const wizardDef = wizardRegistry.get(wizard.type);
+        const wizardDef = wizardPluginRegistry.get(wizard.type);
         statsByType[wizard.type] = {
           reportType: wizard.type,
-          reportTypeName: wizardDef?.displayName || wizard.type,
+          reportTypeName: wizardDef?.name || wizard.type,
           totalReports: 0,
           runsDeleted: 0,
         };

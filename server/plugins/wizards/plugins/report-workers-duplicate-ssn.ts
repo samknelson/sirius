@@ -1,6 +1,6 @@
 import { registerWizardPlugin } from "../registry";
 import type { WizardPlugin } from "../types";
-import { ReportWorkersDuplicateSSN } from "../../../wizards/types/report_workers_duplicate_ssn";
+import { ReportWorkersDuplicateSSN } from "../engine/types/report_workers_duplicate_ssn";
 import {
   buildGenericInputsStep,
   buildReportRunStep,

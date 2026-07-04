@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { EmployerLayout, useEmployerLayout } from "@/components/layouts/EmployerLayout";
@@ -13,17 +13,7 @@ import { Wand2, Plus } from "lucide-react";
 import { format } from "date-fns";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Wizard, WizardType } from "@/lib/wizard-types";
-
-interface LaunchArgument {
-  id: string;
-  name: string;
-  type: 'text' | 'number' | 'select' | 'month' | 'year';
-  required: boolean;
-  description?: string;
-  options?: Array<{ value: string | number; label: string }>;
-  defaultValue?: any;
-}
+import { Wizard, WizardType, LaunchArgument } from "@/lib/wizard-types";
 
 function EmployerWizardsContent() {
   const { employer } = useEmployerLayout();
@@ -37,16 +27,11 @@ function EmployerWizardsContent() {
     queryKey: ["/api/wizard-types"],
   });
 
-  const { data: launchArguments } = useQuery<LaunchArgument[]>({
-    queryKey: ["/api/wizard-types", selectedWizardType, "launch-arguments", employer.id],
-    queryFn: async () => {
-      if (!selectedWizardType) return [];
-      const response = await fetch(`/api/wizard-types/${selectedWizardType}/launch-arguments?entityId=${employer.id}`, { credentials: "include" });
-      if (!response.ok) throw new Error("Failed to fetch launch arguments");
-      return response.json();
-    },
-    enabled: !!selectedWizardType,
-  });
+  const launchArguments = useMemo<LaunchArgument[]>(() => {
+    if (!selectedWizardType) return [];
+    const wt = wizardTypes?.find((t) => t.name === selectedWizardType);
+    return wt?.launchArguments ?? [];
+  }, [wizardTypes, selectedWizardType]);
 
   useEffect(() => {
     if (launchArguments && launchArguments.length > 0) {

@@ -3,7 +3,7 @@ import { getClient } from './transaction-context';
 import { wizards, wizardReportData, wizardEmployerMonthly, type Wizard, type InsertWizard, type WizardReportData, type InsertWizardReportData } from "@shared/schema";
 import { eq, and, desc, or, lt } from "drizzle-orm";
 import { type StorageLoggingConfig } from "./middleware/logging";
-import { wizardRegistry } from "../wizards";
+import { wizardPluginRegistry } from "../plugins/wizards";
 import { db } from './db';
 import { runInTransaction } from './transaction-context';
 
@@ -296,8 +296,8 @@ export const wizardLoggingConfig: StorageLoggingConfig<WizardStorage> = {
       },
       getDescription: async (args, result) => {
         const wizard = result;
-        const wizardType = wizardRegistry.get(wizard?.type);
-        const displayName = wizardType?.displayName || wizard?.type || 'Unknown wizard';
+        const wizardType = wizardPluginRegistry.get(wizard?.type);
+        const displayName = wizardType?.name || wizard?.type || 'Unknown wizard';
         const date = wizard?.date ? new Date(wizard.date).toISOString() : 'unknown date';
         return `${displayName}, ${date}`;
       },
@@ -313,8 +313,8 @@ export const wizardLoggingConfig: StorageLoggingConfig<WizardStorage> = {
       },
       getDescription: async (args, result, beforeState) => {
         const wizard = result ?? beforeState;
-        const wizardType = wizardRegistry.get(wizard?.type);
-        const displayName = wizardType?.displayName || wizard?.type || 'Unknown wizard';
+        const wizardType = wizardPluginRegistry.get(wizard?.type);
+        const displayName = wizardType?.name || wizard?.type || 'Unknown wizard';
         const date = wizard?.date ? new Date(wizard.date).toISOString() : 'unknown date';
         return `${displayName}, ${date}`;
       },
@@ -333,8 +333,8 @@ export const wizardLoggingConfig: StorageLoggingConfig<WizardStorage> = {
       },
       getDescription: async (args, result, beforeState) => {
         const wizard = beforeState;
-        const wizardType = wizardRegistry.get(wizard?.type);
-        const displayName = wizardType?.displayName || wizard?.type || 'Unknown wizard';
+        const wizardType = wizardPluginRegistry.get(wizard?.type);
+        const displayName = wizardType?.name || wizard?.type || 'Unknown wizard';
         const date = wizard?.date ? new Date(wizard.date).toISOString() : 'unknown date';
         return `${displayName}, ${date}`;
       },

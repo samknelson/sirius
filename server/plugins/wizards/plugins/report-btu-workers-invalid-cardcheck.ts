@@ -1,6 +1,6 @@
 import { registerWizardPlugin } from "../registry";
 import type { WizardPlugin, WizardStepContext } from "../types";
-import { ReportBTUWorkersInvalidCardcheck } from "../../../wizards/types/report_btu_workers_invalid_cardcheck";
+import { ReportBTUWorkersInvalidCardcheck } from "../engine/types/report_btu_workers_invalid_cardcheck";
 import { buildReportRunStep, buildReportResultsStep } from "./report-steps";
 
 const report = new ReportBTUWorkersInvalidCardcheck();

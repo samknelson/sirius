@@ -8,7 +8,8 @@ import { FileSignature, Plus, Clock, CheckCircle, AlertTriangle, ArrowRight } fr
 import { format } from "date-fns";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { Wizard, WizardStatus } from "@/lib/wizard-types";
+import type { Wizard } from "@/lib/wizard-types";
+import { standardWizardStatuses } from "@/lib/wizard-types";
 
 export default function BtuCardcheckSigImportPage() {
   const [, setLocation] = useLocation();
@@ -18,9 +19,7 @@ export default function BtuCardcheckSigImportPage() {
     queryKey: ["/api/wizards", { type: "btu_cardcheck_sig_import" }],
   });
 
-  const { data: statuses } = useQuery<WizardStatus[]>({
-    queryKey: ["/api/wizard-types/btu_cardcheck_sig_import/statuses"],
-  });
+  const statuses = standardWizardStatuses;
 
   const createWizardMutation = useMutation({
     mutationFn: async () => {

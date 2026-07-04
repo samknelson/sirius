@@ -1,6 +1,6 @@
 import { parse as parseCSV } from "csv-parse/sync";
 import * as XLSX from "xlsx";
-import type { FeedWizard, FeedField } from "../../../wizards/feed";
+import type { FeedWizard, FeedField } from "../engine/feed";
 import { objectStorageService } from "../../../services/objectStorage";
 import { getEffectiveUser } from "../../../modules/masquerade";
 import type {

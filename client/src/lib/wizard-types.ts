@@ -14,6 +14,16 @@ export interface Wizard {
   data: any;
 }
 
+export interface LaunchArgument {
+  id: string;
+  name: string;
+  type: string;
+  required?: boolean;
+  description?: string;
+  options?: Array<{ value: string | number; label: string }>;
+  defaultValue?: any;
+}
+
 export interface WizardType {
   name: string;
   displayName: string;
@@ -23,6 +33,7 @@ export interface WizardType {
   isMonthly?: boolean;
   entityType?: string;
   category?: string;
+  launchArguments?: LaunchArgument[];
 }
 
 export interface WizardStatus {
@@ -30,3 +41,16 @@ export interface WizardStatus {
   name: string;
   description?: string;
 }
+
+/**
+ * The standard wizard workflow statuses. Mirrors the server-side
+ * `createStandardStatuses()` used by the BTU import wizards. Launcher pages
+ * use it to render a status badge label without a per-type API call.
+ */
+export const standardWizardStatuses: WizardStatus[] = [
+  { id: "draft", name: "Draft", description: "Initial state" },
+  { id: "in_progress", name: "In Progress", description: "Wizard is actively being worked on" },
+  { id: "completed", name: "Completed", description: "Wizard has been completed" },
+  { id: "cancelled", name: "Cancelled", description: "Wizard was cancelled" },
+  { id: "error", name: "Error", description: "An error occurred during processing" },
+];

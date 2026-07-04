@@ -1,14 +1,14 @@
 import { registerDashboardPlugin } from "../registry";
 import { storage } from "../../../storage";
-import { wizardRegistry } from "../../../wizards";
+import { wizardPluginRegistry } from "../../wizards";
 import type { JsonSchema } from "@shared/json-schema-form";
 import type { DashboardPlugin } from "../types";
 
 async function buildSchema(): Promise<JsonSchema> {
   const roles = await storage.users.getAllRoles();
-  const monthlyTypes = wizardRegistry.getAll().filter((t) => t.isMonthly);
-  const enumValues = monthlyTypes.map((t) => t.name);
-  const enumNames = monthlyTypes.map((t) => t.displayName || t.name);
+  const monthlyTypes = wizardPluginRegistry.list().filter((p) => p.isMonthly);
+  const enumValues = monthlyTypes.map((p) => p.id);
+  const enumNames = monthlyTypes.map((p) => p.name);
   const properties: Record<string, JsonSchema> = {};
   for (const role of roles) {
     properties[role.id] = {
@@ -94,12 +94,12 @@ export const employerMonthlyUploadsPlugin: DashboardPlugin = {
       config,
       ctx.userRoles.map((r) => r.id),
     );
-    const wizardTypes = wizardRegistry
-      .getAll()
-      .filter((t) => t.isMonthly && allowed.has(t.name))
-      .map((t) => ({
-        name: t.name,
-        displayName: t.displayName || t.name,
+    const wizardTypes = wizardPluginRegistry
+      .list()
+      .filter((p) => p.isMonthly && allowed.has(p.id))
+      .map((p) => ({
+        name: p.id,
+        displayName: p.name,
         isMonthly: true,
       }));
 

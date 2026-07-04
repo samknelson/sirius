@@ -1,6 +1,6 @@
 import { registerWizardPlugin } from "../registry";
 import type { WizardPlugin, WizardStepContext } from "../types";
-import { BtuCardcheckImportWizard } from "../../../wizards/types/btu_cardcheck_import";
+import { BtuCardcheckImportWizard } from "../engine/types/btu_cardcheck_import";
 import {
   buildUploadStep,
   buildMapStep,

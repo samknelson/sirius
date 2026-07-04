@@ -9,7 +9,8 @@ import { DollarSign, Plus, Clock, CheckCircle, AlertTriangle, ArrowRight } from 
 import { format } from "date-fns";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { Wizard, WizardStatus } from "@/lib/wizard-types";
+import type { Wizard } from "@/lib/wizard-types";
+import { standardWizardStatuses } from "@/lib/wizard-types";
 
 export default function BtuDuesAllocationPage() {
   const [, setLocation] = useLocation();
@@ -19,9 +20,7 @@ export default function BtuDuesAllocationPage() {
     queryKey: ["/api/wizards", { type: "btu_dues_allocation" }],
   });
 
-  const { data: statuses } = useQuery<WizardStatus[]>({
-    queryKey: ["/api/wizard-types/btu_dues_allocation/statuses"],
-  });
+  const statuses = standardWizardStatuses;
 
   const createWizardMutation = useMutation({
     mutationFn: async () => {

@@ -1,6 +1,6 @@
 import { registerWizardPlugin } from "../registry";
 import type { WizardPlugin, WizardStepContext } from "../types";
-import { BtuWorkerImportWizard } from "../../../wizards/types/btu_worker_import";
+import { BtuWorkerImportWizard } from "../engine/types/btu_worker_import";
 import {
   buildUploadStep,
   buildMapStep,

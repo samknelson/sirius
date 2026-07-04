@@ -1,6 +1,5 @@
 import { registerDashboardPlugin } from "../registry";
 import { storage } from "../../../storage";
-import { wizardRegistry } from "../../../wizards";
 import { wizardPluginRegistry } from "../../wizards";
 import type { JsonSchema } from "@shared/json-schema-form";
 import type { DashboardPlugin } from "../types";
@@ -12,17 +11,11 @@ interface ReportTypeInfo {
 }
 
 /**
- * Report wizards now live in two places: legacy ones on `wizardRegistry`
- * and migrated ones on the plugin `wizardPluginRegistry`. The dashboard
- * must show both, deduped by type id, so a report stays configurable and
- * visible after it moves into the plugin framework.
+ * Report wizards are plugins on `wizardPluginRegistry`. The dashboard lists
+ * every report-style wizard so it stays configurable and visible.
  */
 function listReportTypes(): ReportTypeInfo[] {
   const byId = new Map<string, ReportTypeInfo>();
-  for (const t of wizardRegistry.getAll()) {
-    if (!t.isReport) continue;
-    byId.set(t.name, { name: t.name, displayName: t.displayName || t.name });
-  }
   for (const p of wizardPluginRegistry.list()) {
     if (!(p.isReport ?? false)) continue;
     if (byId.has(p.id)) continue;

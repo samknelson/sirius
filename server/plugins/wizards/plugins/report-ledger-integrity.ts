@@ -1,6 +1,6 @@
 import { registerWizardPlugin } from "../registry";
 import type { WizardPlugin, WizardStepContext } from "../types";
-import { ReportLedgerIntegrity } from "../../../wizards/types/report_ledger_integrity";
+import { ReportLedgerIntegrity } from "../engine/types/report_ledger_integrity";
 import { buildReportRunStep, buildReportResultsStep } from "./report-steps";
 
 const report = new ReportLedgerIntegrity();

@@ -6,9 +6,9 @@ import type {
   WizardCreateContext,
   WizardCreateResult,
 } from "../types";
-import type { FeedWizard, FeedField } from "../../../wizards/feed";
-import { gbhetLegalWorkersMonthly } from "../../../wizards/types/gbhet_legal_workers_monthly";
-import { gbhetLegalWorkersCorrections } from "../../../wizards/types/gbhet_legal_workers_corrections";
+import type { FeedWizard, FeedField } from "../engine/feed";
+import { gbhetLegalWorkersMonthly } from "../engine/types/gbhet_legal_workers_monthly";
+import { gbhetLegalWorkersCorrections } from "../engine/types/gbhet_legal_workers_corrections";
 import { createUnifiedOptionsStorage } from "../../../storage/unified-options";
 import {
   buildUploadStep,
@@ -266,8 +266,10 @@ export const gbhetLegalWorkersMonthlyPlugin: WizardPlugin = {
   requiredComponent: "sitespecific.gbhet.legal",
   entityType: "employer",
   category: "Feed",
+  isMonthly: true,
   launchArguments: LAUNCH_ARGUMENTS,
   create: createMonthly,
+  getFields: () => gbhetLegalWorkersMonthly.getFields?.() ?? [],
   steps: buildGbhetSteps(gbhetLegalWorkersMonthly),
 };
 
@@ -278,8 +280,10 @@ export const gbhetLegalWorkersCorrectionsPlugin: WizardPlugin = {
   requiredComponent: "sitespecific.gbhet.legal",
   entityType: "employer",
   category: "Feed",
+  isMonthly: true,
   launchArguments: LAUNCH_ARGUMENTS,
   create: createCorrections,
+  getFields: () => gbhetLegalWorkersCorrections.getFields?.() ?? [],
   steps: buildGbhetSteps(gbhetLegalWorkersCorrections),
 };
 

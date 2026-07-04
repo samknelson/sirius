@@ -1,6 +1,6 @@
 import { registerWizardPlugin } from "../registry";
 import type { WizardPlugin, WizardStepContext } from "../types";
-import { BtuDuesAllocationWizard } from "../../../wizards/types/btu_dues_allocation";
+import { BtuDuesAllocationWizard } from "../engine/types/btu_dues_allocation";
 import {
   buildUploadStep,
   buildMapStep,

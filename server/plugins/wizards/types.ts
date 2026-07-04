@@ -3,6 +3,7 @@ import type { JsonSchema } from "@shared/json-schema-form";
 import type { Wizard } from "@shared/schema";
 import type { storage as storageType } from "../../storage";
 import type { BasePluginMetadata } from "../_core";
+import type { FeedField } from "./engine/feed";
 
 /**
  * The kinds of step a wizard plugin can declare. The fixed dispatcher
@@ -186,6 +187,14 @@ export interface WizardPlugin extends BasePluginMetadata {
   category?: string;
   /** Report-style wizard: gets a default retention + a Retention tab. */
   isReport?: boolean;
+  /** Monthly feed wizard: surfaced by the employer monthly uploads dashboard. */
+  isMonthly?: boolean;
+  /**
+   * Feed field definitions for feed-backed wizards, surfaced by
+   * `/api/wizard-types/:type/fields` and consumed by the benefits step UI.
+   * Absent on non-feed wizards.
+   */
+  getFields?: () => FeedField[];
   /**
    * Up-front arguments collected at creation. The create route validates
    * the `required` ones generically before the wizard is persisted.

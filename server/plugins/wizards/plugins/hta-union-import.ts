@@ -1,6 +1,6 @@
 import { registerWizardPlugin } from "../registry";
 import type { WizardPlugin, WizardStepContext } from "../types";
-import { HtaUnionImportWizard } from "../../../wizards/types/hta_union_import";
+import { HtaUnionImportWizard } from "../engine/types/hta_union_import";
 import {
   buildUploadStep,
   buildMapStep,

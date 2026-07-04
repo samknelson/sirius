@@ -3,22 +3,18 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Wand2, ArrowLeft, Building2, Trash2, AlertTriangle, Clock } from "lucide-react";
+import { Wand2, ArrowLeft, Trash2, AlertTriangle, Clock } from "lucide-react";
 import { format } from "date-fns";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { WizardStepper } from "@/components/wizards/WizardStepper";
 import { RetentionSettings } from "@/components/wizards/RetentionSettings";
-import { getStepComponent, getStepController } from "@/components/wizards/steps/registry";
 import { FrameworkWizardBody } from "@/components/wizards/framework/FrameworkWizardBody";
 import type { WizardManifest } from "@/components/wizards/framework/types";
 import type { WizardData } from "@shared/schema";
 import type { ReportData } from "@shared/wizard-types";
-import { Wizard, WizardType, WizardStatus, WizardStep } from "@/lib/wizard-types";
+import { Wizard, WizardType } from "@/lib/wizard-types";
 import { Employer } from "@/lib/employer-types";
 
 export default function WizardView() {
@@ -48,16 +44,6 @@ export default function WizardView() {
 
   const wizardType = allWizardTypes?.find(t => t.name === wizard?.type);
 
-  const { data: wizardStatuses } = useQuery<WizardStatus[]>({
-    queryKey: [`/api/wizard-types/${wizard?.type}/statuses`],
-    enabled: !!wizard && !manifest,
-  });
-
-  const { data: wizardSteps } = useQuery<WizardStep[]>({
-    queryKey: [`/api/wizard-types/${wizard?.type}/steps`],
-    enabled: !!wizard && !manifest,
-  });
-
   const { data: employer } = useQuery<Employer>({
     queryKey: [`/api/employers/${wizard?.entityId}`],
     enabled: !!wizard?.entityId && wizardType?.entityType === 'employer',
@@ -66,71 +52,6 @@ export default function WizardView() {
   const { data: wizardFiles = [] } = useQuery<any[]>({
     queryKey: ["/api/wizards", id, "files"],
     enabled: !!wizard && !!id,
-  });
-
-  const { data: wizardFields = [] } = useQuery<any[]>({
-    queryKey: [`/api/wizard-types/${wizard?.type}/fields`],
-    enabled: !!wizard && !!wizardType?.isFeed,
-  });
-
-  const updateStatusMutation = useMutation({
-    mutationFn: async (newStatus: string) => {
-      return await apiRequest("PATCH", `/api/wizards/${id}`, { status: newStatus });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/wizards/${id}`] });
-      toast({
-        title: "Status Updated",
-        description: "Wizard status has been updated successfully.",
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to update status",
-        variant: "destructive",
-      });
-    },
-  });
-
-  const nextStepMutation = useMutation({
-    mutationFn: async (payload?: any) => {
-      return await apiRequest("POST", `/api/wizards/${id}/steps/next`, { payload });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/wizards/${id}`] });
-      toast({
-        title: "Step Advanced",
-        description: "Moved to next step successfully.",
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to advance to next step",
-        variant: "destructive",
-      });
-    },
-  });
-
-  const previousStepMutation = useMutation({
-    mutationFn: async () => {
-      return await apiRequest("POST", `/api/wizards/${id}/steps/previous`, {});
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/wizards/${id}`] });
-      toast({
-        title: "Step Returned",
-        description: "Moved to previous step successfully.",
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to return to previous step",
-        variant: "destructive",
-      });
-    },
   });
 
   const deleteWizardMutation = useMutation({
@@ -144,7 +65,7 @@ export default function WizardView() {
       if (wizard?.entityId) {
         queryClient.invalidateQueries({ queryKey: ['/api/wizards', { entityId: wizard.entityId }] });
       }
-      
+
       toast({
         title: "Wizard Deleted",
         description: "The wizard and all associated files have been deleted successfully.",
@@ -166,14 +87,6 @@ export default function WizardView() {
   });
 
   const wizardData = wizard?.data as WizardData | undefined;
-  const StepComponent = wizard && wizardSteps ? getStepComponent(wizard.type, wizard.currentStep || wizardSteps[0]?.id || '') : null;
-  
-  // Evaluate step completion
-  const currentStepId = wizard?.currentStep || wizardSteps?.[0]?.id || '';
-  const stepController = wizard && wizardSteps ? getStepController(wizard.type, currentStepId) : null;
-  const canProceed = stepController 
-    ? stepController.evaluateCompletion({ wizard, files: wizardFiles, fields: wizardFields })
-    : true;
 
   if (wizardError) {
     return (
@@ -271,31 +184,11 @@ export default function WizardView() {
               manifest={manifest}
             />
           ) : (
-            <>
-              {/* Stepper with Navigation */}
-              {wizardSteps && wizardSteps.length > 0 && (
-                <Card className="mb-6">
-                  <CardContent className="pt-6">
-                    <WizardStepper
-                      steps={wizardSteps}
-                      currentStep={wizard.currentStep || wizardSteps[0].id}
-                      progress={wizardData?.progress}
-                      onNext={() => nextStepMutation.mutate(undefined)}
-                      onPrevious={() => previousStepMutation.mutate(undefined)}
-                      isLoading={nextStepMutation.isPending || previousStepMutation.isPending}
-                      canProceed={canProceed}
-                    />
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Active Step Content */}
-              {StepComponent && wizard && (
-                <div>
-                  <StepComponent wizardId={wizard.id} wizardType={wizard.type} data={wizardData} />
-                </div>
-              )}
-            </>
+            <Card>
+              <CardContent className="py-12 text-center text-muted-foreground">
+                This wizard is not available.
+              </CardContent>
+            </Card>
           )}
         </TabsContent>
 

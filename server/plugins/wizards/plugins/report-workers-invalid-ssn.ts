@@ -1,6 +1,6 @@
 import { registerWizardPlugin } from "../registry";
 import type { WizardPlugin } from "../types";
-import { ReportWorkersInvalidSSN } from "../../../wizards/types/report_workers_invalid_ssn";
+import { ReportWorkersInvalidSSN } from "../engine/types/report_workers_invalid_ssn";
 import {
   buildGenericInputsStep,
   buildReportRunStep,

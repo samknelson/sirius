@@ -1,6 +1,6 @@
 import { registerWizardPlugin } from "../registry";
 import type { WizardPlugin } from "../types";
-import { ReportEmployerUsers } from "../../../wizards/types/report_employer_users";
+import { ReportEmployerUsers } from "../engine/types/report_employer_users";
 import {
   buildGenericInputsStep,
   buildReportRunStep,

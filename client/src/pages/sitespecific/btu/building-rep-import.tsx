@@ -9,7 +9,8 @@ import { Upload, Plus, Clock, CheckCircle, AlertTriangle, ArrowRight } from "luc
 import { format } from "date-fns";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { Wizard, WizardStatus } from "@/lib/wizard-types";
+import type { Wizard } from "@/lib/wizard-types";
+import { standardWizardStatuses } from "@/lib/wizard-types";
 
 export default function BtuBuildingRepImportPage() {
   const [, setLocation] = useLocation();
@@ -19,9 +20,7 @@ export default function BtuBuildingRepImportPage() {
     queryKey: ["/api/wizards", { type: "btu_building_rep_import" }],
   });
 
-  const { data: statuses } = useQuery<WizardStatus[]>({
-    queryKey: ["/api/wizard-types/btu_building_rep_import/statuses"],
-  });
+  const statuses = standardWizardStatuses;
 
   const createWizardMutation = useMutation({
     mutationFn: async () => {
