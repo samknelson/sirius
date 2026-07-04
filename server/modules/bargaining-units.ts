@@ -14,7 +14,7 @@ export function registerBargainingUnitsRoutes(
   requireAccess: RequireAccess,
   storage: IStorage
 ) {
-  app.get("/api/bargaining-units", requireAuth, requireAccess('admin'), async (req, res) => {
+  app.get("/api/bargaining-units", requireAuth, async (req, res) => {
     try {
       const allBargainingUnits = await storage.bargainingUnits.getAllBargainingUnits();
       res.json(allBargainingUnits);
