@@ -52,7 +52,10 @@ export const btuCardcheckImportPlugin: WizardPlugin = {
         return { data: { cardcheckDefinitionId: input.cardcheckDefinitionId } };
       },
     },
-    buildValidateStep(feed),
+    // Cardcheck uses the legacy "skip invalid" rule: the step completes as
+    // long as at least one valid row exists (invalid rows are skipped, not
+    // blocking). Mirrors legacy `evaluateValidateCompleteSkipInvalid`.
+    buildValidateStep(feed, { isComplete: (vr) => (vr.validRows ?? 0) > 0 }),
     buildProcessStep(feed),
     buildFeedResultsStep(),
   ],

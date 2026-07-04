@@ -268,19 +268,62 @@ function runStepState(stepId: string) {
   };
 }
 
+/**
+ * Result-aware completion predicate over the persisted `validationResults`.
+ * The DEFAULT mirrors the legacy `evaluateValidateComplete`: the step only
+ * completes when there are no invalid rows AND no unmapped employment
+ * statuses. The cardcheck "skip invalid" feed overrides this with the legacy
+ * `evaluateValidateCompleteSkipInvalid` rule (`validRows > 0`).
+ */
+export type ValidateComplete = (vr: any) => boolean;
+
+const defaultValidateComplete: ValidateComplete = (vr) =>
+  (vr.invalidRows ?? 0) === 0 &&
+  !(vr.unmappedStatuses && vr.unmappedStatuses.length > 0);
+
 /** `run` validate step: batched row validation via the feed base. */
 export function buildValidateStep(
   feed: FeedWizard,
-  component = "RunView",
-  description = "Validate the data before processing",
+  opts?: {
+    component?: string;
+    description?: string;
+    /**
+     * Result-aware completion. Defaults to the standard rule (no invalid
+     * rows, no unmapped statuses). Gating the step on the validation
+     * OUTCOME — not merely on the async run finishing — is what stops a
+     * user from advancing past a file that still has invalid rows.
+     */
+    isComplete?: ValidateComplete;
+  },
 ): WizardStepHandler {
+  const component = opts?.component ?? "RunView";
+  const description =
+    opts?.description ?? "Validate the data before processing";
+  const isComplete = opts?.isComplete ?? defaultValidateComplete;
   return {
     id: "validate",
     name: "Validate",
     description,
     kind: "run",
     component,
-    getState: runStepState("validate"),
+    getState: (wizard) => {
+      const data = (wizard as any).data || {};
+      const status = data.progress?.validate?.status;
+      if (status === "failed") return "failed";
+      if (status === "in_progress") return "in_progress";
+      const vr = data.validationResults;
+      if (!vr) {
+        return (wizard as any).currentStep === "validate"
+          ? "in_progress"
+          : "pending";
+      }
+      if (isComplete(vr)) return "completed";
+      // Ran, but the outcome doesn't satisfy the gate (invalid rows,
+      // unmapped statuses, or zero valid rows) — keep the user on the step.
+      return (wizard as any).currentStep === "validate"
+        ? "in_progress"
+        : "pending";
+    },
     run: async (ctx: WizardStepContext) => {
       await feed.validateFeedData(ctx.wizardId, 100, (p) => {
         const pct =
