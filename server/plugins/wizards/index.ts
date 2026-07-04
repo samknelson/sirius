@@ -13,6 +13,12 @@ export { registerWizardDispatcherRoutes } from "./dispatcher";
 // Side-effect: register the bundled wizard plugins so they appear in the
 // registry as soon as this module is imported.
 import "./plugins/report-gbhet-legal-compliance";
+import "./plugins/report-workers-missing-ssn";
+import "./plugins/report-workers-invalid-ssn";
+import "./plugins/report-workers-duplicate-ssn";
+import "./plugins/report-employer-users";
+import "./plugins/report-ledger-integrity";
+import "./plugins/report-btu-workers-invalid-cardcheck";
 
 let kindRegistered = false;
 

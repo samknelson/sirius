@@ -1,14 +1,41 @@
 import { registerDashboardPlugin } from "../registry";
 import { storage } from "../../../storage";
 import { wizardRegistry } from "../../../wizards";
+import { wizardPluginRegistry } from "../../wizards";
 import type { JsonSchema } from "@shared/json-schema-form";
 import type { DashboardPlugin } from "../types";
 
+interface ReportTypeInfo {
+  /** The wizard type identifier used as the report key. */
+  name: string;
+  displayName: string;
+}
+
+/**
+ * Report wizards now live in two places: legacy ones on `wizardRegistry`
+ * and migrated ones on the plugin `wizardPluginRegistry`. The dashboard
+ * must show both, deduped by type id, so a report stays configurable and
+ * visible after it moves into the plugin framework.
+ */
+function listReportTypes(): ReportTypeInfo[] {
+  const byId = new Map<string, ReportTypeInfo>();
+  for (const t of wizardRegistry.getAll()) {
+    if (!t.isReport) continue;
+    byId.set(t.name, { name: t.name, displayName: t.displayName || t.name });
+  }
+  for (const p of wizardPluginRegistry.list()) {
+    if (!(p.isReport ?? false)) continue;
+    if (byId.has(p.id)) continue;
+    byId.set(p.id, { name: p.id, displayName: p.name });
+  }
+  return Array.from(byId.values());
+}
+
 async function buildSchema(): Promise<JsonSchema> {
   const roles = await storage.users.getAllRoles();
-  const reportTypes = wizardRegistry.getAll().filter((t) => t.isReport);
+  const reportTypes = listReportTypes();
   const enumValues = reportTypes.map((t) => t.name);
-  const enumNames = reportTypes.map((t) => t.displayName || t.name);
+  const enumNames = reportTypes.map((t) => t.displayName);
   const properties: Record<string, JsonSchema> = {};
   for (const role of roles) {
     properties[role.id] = {
@@ -59,10 +86,7 @@ export const reportsPlugin: DashboardPlugin = {
     if (userReportTypeNames.size === 0) return { reports: [] };
 
     const allReportTypes = new Map(
-      wizardRegistry
-        .getAll()
-        .filter((t) => t.isReport)
-        .map((t) => [t.name, t]),
+      listReportTypes().map((t) => [t.name, t]),
     );
 
     interface ReportMeta {

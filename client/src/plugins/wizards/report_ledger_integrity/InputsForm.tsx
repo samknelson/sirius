@@ -1,14 +1,22 @@
 import { pluginManifestQueryKey } from "@/plugins/_core";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Info, Filter } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import type { WizardStepComponentProps } from "@/components/wizards/framework/types";
 
 interface ChargePluginMetadata {
   id: string;
@@ -16,77 +24,59 @@ interface ChargePluginMetadata {
   description: string;
 }
 
-interface LedgerIntegrityInputsStepProps {
-  wizardId: string;
-  wizardType: string;
-  data?: {
-    config?: {
-      chargePlugins?: string[];
-      dateFrom?: string;
-      dateTo?: string;
-    };
-  };
-  onDataChange?: (data: any) => void;
-}
+/**
+ * Escape-hatch Inputs step for the Ledger Integrity report wizard. Ported
+ * from the legacy report step: the charge-plugin multiselect + optional
+ * date range. Instead of auto-saving via a wizard PUT/PATCH, it persists
+ * through the fixed dispatcher submit route so the wizard stays "in a box"
+ * with no wizard-specific endpoints.
+ */
+export function InputsForm({ wizardId, step, data }: WizardStepComponentProps) {
+  const { toast } = useToast();
+  const config = (data?.config as {
+    chargePlugins?: string[];
+    dateFrom?: string;
+    dateTo?: string;
+  }) || {};
 
-export function LedgerIntegrityInputsStep({ 
-  wizardId, 
-  wizardType, 
-  data,
-  onDataChange 
-}: LedgerIntegrityInputsStepProps) {
-  const config = data?.config || {};
-  
-  const [selectedPlugins, setSelectedPlugins] = useState<string[]>(config.chargePlugins || []);
+  const [selectedPlugins, setSelectedPlugins] = useState<string[]>(
+    config.chargePlugins || [],
+  );
   const [dateFrom, setDateFrom] = useState(config.dateFrom || "");
   const [dateTo, setDateTo] = useState(config.dateTo || "");
 
-  const { data: plugins = [], isLoading: pluginsLoading } = useQuery<ChargePluginMetadata[]>({
+  const { data: plugins = [], isLoading: pluginsLoading } = useQuery<
+    ChargePluginMetadata[]
+  >({
     queryKey: pluginManifestQueryKey("charge"),
   });
 
-  const saveConfigMutation = useMutation({
-    mutationFn: async (newConfig: any) => {
-      return await apiRequest("PUT", `/api/wizards/${wizardId}`, {
-        data: {
-          ...data,
-          config: newConfig,
+  const saveMutation = useMutation({
+    mutationFn: async () =>
+      apiRequest("POST", `/api/wizards/${wizardId}/dispatch/${step.id}/submit`, {
+        input: {
+          chargePlugins: selectedPlugins,
+          dateFrom: dateFrom || undefined,
+          dateTo: dateTo || undefined,
         },
-      });
-    },
+      }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/wizards", wizardId] });
+      queryClient.invalidateQueries({ queryKey: [`/api/wizards/${wizardId}`] });
+      toast({ title: "Saved", description: "Report configuration saved." });
+    },
+    onError: (err: Error) => {
+      toast({
+        title: "Error",
+        description: err.message || "Failed to save configuration",
+        variant: "destructive",
+      });
     },
   });
 
-  useEffect(() => {
-    const newConfig = {
-      chargePlugins: selectedPlugins,
-      dateFrom: dateFrom || undefined,
-      dateTo: dateTo || undefined,
-    };
-
-    const timer = setTimeout(() => {
-      saveConfigMutation.mutate(newConfig);
-    }, 500);
-
-    return () => clearTimeout(timer);
-  }, [selectedPlugins, dateFrom, dateTo]);
-
   const handlePluginToggle = (pluginId: string, checked: boolean) => {
-    if (checked) {
-      setSelectedPlugins([...selectedPlugins, pluginId]);
-    } else {
-      setSelectedPlugins(selectedPlugins.filter(id => id !== pluginId));
-    }
-  };
-
-  const handleSelectAll = () => {
-    setSelectedPlugins(plugins.map(p => p.id));
-  };
-
-  const handleClearAll = () => {
-    setSelectedPlugins([]);
+    setSelectedPlugins((prev) =>
+      checked ? [...prev, pluginId] : prev.filter((id) => id !== pluginId),
+    );
   };
 
   if (pluginsLoading) {
@@ -112,7 +102,8 @@ export function LedgerIntegrityInputsStep({
       <CardHeader>
         <CardTitle>Ledger Integrity Check Configuration</CardTitle>
         <CardDescription>
-          Configure which charge plugins and date range to include in the verification
+          Configure which charge plugins and date range to include in the
+          verification
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -123,8 +114,9 @@ export function LedgerIntegrityInputsStep({
               Report Description
             </p>
             <p className="text-sm text-blue-800 dark:text-blue-200">
-              This report verifies that ledger entries match what the charge plugins would compute 
-              based on the source data. It reports any discrepancies without making changes.
+              This report verifies that ledger entries match what the charge
+              plugins would compute based on the source data. It reports any
+              discrepancies without making changes.
             </p>
           </div>
         </div>
@@ -136,20 +128,20 @@ export function LedgerIntegrityInputsStep({
               Charge Plugins to Verify
             </Label>
             <div className="flex gap-2">
-              <Button 
-                type="button" 
-                variant="outline" 
+              <Button
+                type="button"
+                variant="outline"
                 size="sm"
-                onClick={handleSelectAll}
+                onClick={() => setSelectedPlugins(plugins.map((p) => p.id))}
                 data-testid="button-select-all-plugins"
               >
                 Select All
               </Button>
-              <Button 
-                type="button" 
-                variant="outline" 
+              <Button
+                type="button"
+                variant="outline"
                 size="sm"
-                onClick={handleClearAll}
+                onClick={() => setSelectedPlugins([])}
                 data-testid="button-clear-all-plugins"
               >
                 Clear All
@@ -168,12 +160,14 @@ export function LedgerIntegrityInputsStep({
                   <Checkbox
                     id={`plugin-${plugin.id}`}
                     checked={selectedPlugins.includes(plugin.id)}
-                    onCheckedChange={(checked) => handlePluginToggle(plugin.id, checked === true)}
+                    onCheckedChange={(checked) =>
+                      handlePluginToggle(plugin.id, checked === true)
+                    }
                     data-testid={`checkbox-plugin-${plugin.id}`}
                   />
                   <div className="grid gap-1">
-                    <Label 
-                      htmlFor={`plugin-${plugin.id}`} 
+                    <Label
+                      htmlFor={`plugin-${plugin.id}`}
                       className="text-sm font-medium cursor-pointer"
                     >
                       {plugin.name}
@@ -188,10 +182,9 @@ export function LedgerIntegrityInputsStep({
           )}
 
           <p className="text-xs text-muted-foreground">
-            {selectedPlugins.length === 0 
+            {selectedPlugins.length === 0
               ? "All plugins will be included when none are selected."
-              : `${selectedPlugins.length} plugin(s) selected.`
-            }
+              : `${selectedPlugins.length} plugin(s) selected.`}
           </p>
         </div>
 
@@ -199,7 +192,9 @@ export function LedgerIntegrityInputsStep({
           <Label className="text-base font-medium">Date Range (Optional)</Label>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="dateFrom" className="text-sm">From Date</Label>
+              <Label htmlFor="dateFrom" className="text-sm">
+                From Date
+              </Label>
               <Input
                 id="dateFrom"
                 type="date"
@@ -209,7 +204,9 @@ export function LedgerIntegrityInputsStep({
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="dateTo" className="text-sm">To Date</Label>
+              <Label htmlFor="dateTo" className="text-sm">
+                To Date
+              </Label>
               <Input
                 id="dateTo"
                 type="date"
@@ -220,9 +217,19 @@ export function LedgerIntegrityInputsStep({
             </div>
           </div>
           <p className="text-xs text-muted-foreground">
-            Filter ledger entries by transaction date. Leave blank to include all dates.
+            Filter ledger entries by transaction date. Leave blank to include
+            all dates.
           </p>
         </div>
+
+        <Button
+          type="button"
+          onClick={() => saveMutation.mutate()}
+          disabled={saveMutation.isPending}
+          data-testid="button-save-inputs"
+        >
+          {saveMutation.isPending ? "Saving…" : "Save"}
+        </Button>
       </CardContent>
     </Card>
   );

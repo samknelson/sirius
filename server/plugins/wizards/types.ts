@@ -91,6 +91,14 @@ export interface WizardStepHandler {
   requiredPolicy?: string;
   /** JSON Schema for `form` steps, rendered client-side by SchemaForm. */
   schema?: JsonSchema;
+  /**
+   * Dynamic per-step schema computed from the live wizard row. When
+   * present it wins over the static `schema` — the manifest surfaces the
+   * resolved schema and the dispatcher validates submits against it. Use
+   * this when a form's options depend on earlier steps (e.g. the map step
+   * of a feed wizard whose fields are the just-uploaded file's columns).
+   */
+  getSchema?: (wizard: Wizard) => JsonSchema | undefined;
   /** Optional RJSF uiSchema companion to `schema`. */
   uiSchema?: Record<string, unknown>;
   /**
@@ -107,6 +115,18 @@ export interface WizardStepHandler {
   run?: (
     ctx: WizardStepContext,
   ) => Promise<WizardStepResult | void> | WizardStepResult | void;
+  /**
+   * Generic computed step output, read via GET .../dispatch/:stepId/data
+   * and exported via .../export. When present the dispatcher calls it and
+   * returns its payload verbatim; the payload should carry `columns` and
+   * `records` for the shared table + CSV export. When omitted, only
+   * `results`-kind steps expose data (from the persisted report rows).
+   * This lets feed/custom steps surface computed data through the SAME
+   * generic route instead of any wizard-specific endpoint.
+   */
+  getData?: (
+    ctx: WizardStepContext,
+  ) => Promise<Record<string, unknown>> | Record<string, unknown>;
   /**
    * Server-computed completion state, derived from the wizard row. When
    * omitted, the dispatcher derives a default from progress + currentStep.

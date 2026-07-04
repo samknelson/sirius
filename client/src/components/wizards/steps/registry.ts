@@ -4,12 +4,6 @@ import { BenefitsStep } from './gbhet-legal-workers/BenefitsStep';
 import { ValidateStep } from './gbhet-legal-workers/ValidateStep';
 import { ProcessStep } from './gbhet-legal-workers/ProcessStep';
 import { ReviewStep } from './gbhet-legal-workers/ReviewStep';
-import { InputsStep } from './report/InputsStep';
-import { RunStep } from './report/RunStep';
-import { ResultsStep } from './report/ResultsStep';
-import { LedgerIntegrityInputsStep } from './report/LedgerIntegrityInputsStep';
-import { GbhetLegalComplianceInputsStep } from './report/GbhetLegalComplianceInputsStep';
-import { BTUWorkersInvalidCardcheckInputsStep } from './report/BTUWorkersInvalidCardcheckInputsStep';
 import { EmployerNameStep } from './employer-onboarding/EmployerNameStep';
 import { AttributesStep } from './employer-onboarding/AttributesStep';
 import { ContactsStep } from './employer-onboarding/ContactsStep';
@@ -126,16 +120,6 @@ const evaluateWorkerLoadComplete: StepCompletionEvaluator = ({ wizard }) => {
   return !!wizard?.data?.employerId;
 };
 
-const evaluateRunComplete: StepCompletionEvaluator = ({ wizard }) => {
-  const progress = wizard?.data?.progress?.run;
-  return progress?.status === 'completed';
-};
-
-const evaluateBTUInputsComplete: StepCompletionEvaluator = ({ wizard }) => {
-  const cardcheckDefinitionId = wizard?.data?.config?.filters?.cardcheckDefinitionId;
-  return !!cardcheckDefinitionId;
-};
-
 const evaluateConfigureComplete: StepCompletionEvaluator = ({ wizard }) => {
   return !!wizard?.data?.asOfDate;
 };
@@ -203,41 +187,6 @@ export const stepControllerRegistry: StepControllerRegistry = {
     'process': { Component: ProcessStep, evaluateCompletion: alwaysComplete },
     'review': { Component: ReviewStep, evaluateCompletion: alwaysComplete },
   },
-  'report_workers_missing_ssn': {
-    'inputs': { Component: InputsStep, evaluateCompletion: alwaysComplete },
-    'run': { Component: RunStep, evaluateCompletion: evaluateRunComplete },
-    'results': { Component: ResultsStep, evaluateCompletion: alwaysComplete },
-  },
-  'report_workers_invalid_ssn': {
-    'inputs': { Component: InputsStep, evaluateCompletion: alwaysComplete },
-    'run': { Component: RunStep, evaluateCompletion: evaluateRunComplete },
-    'results': { Component: ResultsStep, evaluateCompletion: alwaysComplete },
-  },
-  'report_workers_duplicate_ssn': {
-    'inputs': { Component: InputsStep, evaluateCompletion: alwaysComplete },
-    'run': { Component: RunStep, evaluateCompletion: evaluateRunComplete },
-    'results': { Component: ResultsStep, evaluateCompletion: alwaysComplete },
-  },
-  'report_employer_users': {
-    'inputs': { Component: InputsStep, evaluateCompletion: alwaysComplete },
-    'run': { Component: RunStep, evaluateCompletion: evaluateRunComplete },
-    'results': { Component: ResultsStep, evaluateCompletion: alwaysComplete },
-  },
-  'report_ledger_integrity': {
-    'inputs': { Component: LedgerIntegrityInputsStep, evaluateCompletion: alwaysComplete },
-    'run': { Component: RunStep, evaluateCompletion: evaluateRunComplete },
-    'results': { Component: ResultsStep, evaluateCompletion: alwaysComplete },
-  },
-  'report_gbhet_legal_compliance': {
-    'inputs': { Component: GbhetLegalComplianceInputsStep, evaluateCompletion: alwaysComplete },
-    'run': { Component: RunStep, evaluateCompletion: evaluateRunComplete },
-    'results': { Component: ResultsStep, evaluateCompletion: alwaysComplete },
-  },
-  'report_btu_workers_invalid_cardcheck': {
-    'inputs': { Component: BTUWorkersInvalidCardcheckInputsStep, evaluateCompletion: evaluateBTUInputsComplete },
-    'run': { Component: RunStep, evaluateCompletion: evaluateRunComplete },
-    'results': { Component: ResultsStep, evaluateCompletion: alwaysComplete },
-  },
   'btu_worker_import': {
     'upload': { Component: UploadStep, evaluateCompletion: evaluateUploadComplete },
     'map': { Component: MapStep, evaluateCompletion: evaluateMapComplete },
@@ -304,41 +253,6 @@ export const stepComponentRegistry: StepComponentRegistry = {
     'validate': ValidateStep,
     'process': ProcessStep,
     'review': ReviewStep,
-  },
-  'report_workers_missing_ssn': {
-    'inputs': InputsStep,
-    'run': RunStep,
-    'results': ResultsStep,
-  },
-  'report_workers_invalid_ssn': {
-    'inputs': InputsStep,
-    'run': RunStep,
-    'results': ResultsStep,
-  },
-  'report_workers_duplicate_ssn': {
-    'inputs': InputsStep,
-    'run': RunStep,
-    'results': ResultsStep,
-  },
-  'report_employer_users': {
-    'inputs': InputsStep,
-    'run': RunStep,
-    'results': ResultsStep,
-  },
-  'report_ledger_integrity': {
-    'inputs': LedgerIntegrityInputsStep,
-    'run': RunStep,
-    'results': ResultsStep,
-  },
-  'report_gbhet_legal_compliance': {
-    'inputs': GbhetLegalComplianceInputsStep,
-    'run': RunStep,
-    'results': ResultsStep,
-  },
-  'report_btu_workers_invalid_cardcheck': {
-    'inputs': BTUWorkersInvalidCardcheckInputsStep,
-    'run': RunStep,
-    'results': ResultsStep,
   },
   'btu_worker_import': {
     'upload': UploadStep,

@@ -9,7 +9,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Download, FileText } from "lucide-react";
+import { Download, FileText, Eye } from "lucide-react";
+import { Link } from "wouter";
+import { format } from "date-fns";
+import type { ReactNode } from "react";
 import type { WizardStepComponentProps } from "./types";
 
 interface ReportColumn {
@@ -17,6 +20,50 @@ interface ReportColumn {
   header: string;
   type?: string;
   width?: number;
+}
+
+type ResultsTableProps = WizardStepComponentProps & {
+  /**
+   * Optional per-cell override. Return a node to render a bespoke cell
+   * (e.g. a report-specific link); return `undefined` to fall back to the
+   * generic, type-driven rendering below. Report plugins that need
+   * row-specific links wrap this component from their escape-hatch dir.
+   */
+  renderCell?: (
+    col: ReportColumn,
+    row: Record<string, unknown>,
+  ) => ReactNode | undefined;
+};
+
+/**
+ * Generic, type-driven cell rendering shared by every report. Mirrors the
+ * legacy report ResultsStep: `link`-typed cells hold a `{ url, label }`
+ * object, `date` cells are formatted, `boolean` cells read Yes/No, and
+ * everything else is stringified.
+ */
+function defaultCell(col: ReportColumn, row: Record<string, unknown>): ReactNode {
+  const value = row[col.id];
+  if (value === null || value === undefined) return "";
+  if (col.type === "link" && typeof value === "object") {
+    const link = value as { url?: string; label?: string };
+    if (link.url) {
+      return (
+        <Link
+          href={link.url}
+          className="inline-flex items-center gap-1 text-primary hover:text-primary/80 hover:underline"
+        >
+          <Eye className="h-4 w-4" />
+          <span className="text-sm">{link.label ?? link.url}</span>
+        </Link>
+      );
+    }
+  }
+  if (col.type === "date") {
+    const d = new Date(value as string);
+    return isNaN(d.getTime()) ? String(value) : format(d, "PP");
+  }
+  if (col.type === "boolean") return value ? "Yes" : "No";
+  return String(value);
 }
 
 interface StepData {
@@ -31,7 +78,7 @@ interface StepData {
  * a CSV export via GET .../dispatch/:stepId/export. Columns-driven, so
  * any report wizard reuses it unchanged.
  */
-export function ResultsTable({ wizardId, step }: WizardStepComponentProps) {
+export function ResultsTable({ wizardId, step, renderCell }: ResultsTableProps) {
   const { data, isLoading } = useQuery<StepData>({
     queryKey: [`/api/wizards/${wizardId}/dispatch/${step.id}/data`],
     enabled: !!wizardId,
@@ -97,13 +144,16 @@ export function ResultsTable({ wizardId, step }: WizardStepComponentProps) {
                   ) : (
                     records.map((row, idx) => (
                       <TableRow key={idx} data-testid={`results-row-${idx}`}>
-                        {columns.map((col) => (
-                          <TableCell key={col.id}>
-                            {row[col.id] === null || row[col.id] === undefined
-                              ? ""
-                              : String(row[col.id])}
-                          </TableCell>
-                        ))}
+                        {columns.map((col) => {
+                          const custom = renderCell?.(col, row);
+                          return (
+                            <TableCell key={col.id}>
+                              {custom !== undefined
+                                ? custom
+                                : defaultCell(col, row)}
+                            </TableCell>
+                          );
+                        })}
                       </TableRow>
                     ))
                   )}

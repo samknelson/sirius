@@ -1,104 +1,86 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Info, Users } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import { Employer } from "@/lib/employer-types";
+import type { WizardStepComponentProps } from "@/components/wizards/framework/types";
 
 interface CardcheckDefinition {
   id: string;
   name: string;
 }
 
-interface BTUWorkersInvalidCardcheckInputsStepProps {
-  wizardId: string;
-  wizardType: string;
-  data?: {
-    config?: {
-      filters?: {
-        cardcheckDefinitionId?: string;
-        employerId?: string;
-      };
-    };
-  };
-  onDataChange?: (data: any) => void;
-}
+/**
+ * Escape-hatch Inputs step for the BTU invalid-cardcheck report wizard.
+ * Ported from the legacy report step: cardcheck-definition (required) +
+ * optional employer pickers. Persists through the fixed dispatcher submit
+ * route instead of a wizard-specific save endpoint.
+ */
+export function InputsForm({ wizardId, step, data }: WizardStepComponentProps) {
+  const { toast } = useToast();
+  const filters = (data?.config?.filters as {
+    cardcheckDefinitionId?: string;
+    employerId?: string;
+  }) || {};
 
-export function BTUWorkersInvalidCardcheckInputsStep({
-  wizardId,
-  wizardType,
-  data,
-  onDataChange
-}: BTUWorkersInvalidCardcheckInputsStepProps) {
-  const config = data?.config || {};
-  const filters = config.filters || {};
+  const [cardcheckDefinitionId, setCardcheckDefinitionId] = useState<string>(
+    filters.cardcheckDefinitionId || "",
+  );
+  const [employerId, setEmployerId] = useState<string>(
+    filters.employerId || "__none__",
+  );
 
-  const [cardcheckDefinitionId, setCardcheckDefinitionId] = useState<string>(filters.cardcheckDefinitionId || "");
-  const [employerId, setEmployerId] = useState<string>(filters.employerId || "__none__");
-  const [hasUserInteracted, setHasUserInteracted] = useState(false);
+  const { data: cardcheckDefinitions = [], isLoading: definitionsLoading } =
+    useQuery<CardcheckDefinition[]>({
+      queryKey: ["/api/cardcheck/definitions"],
+    });
 
-  // Sync local state when data prop changes (e.g., after refetch)
-  useEffect(() => {
-    if (filters.cardcheckDefinitionId && filters.cardcheckDefinitionId !== cardcheckDefinitionId) {
-      setCardcheckDefinitionId(filters.cardcheckDefinitionId);
-    }
-    if (filters.employerId && filters.employerId !== employerId) {
-      setEmployerId(filters.employerId);
-    }
-  }, [filters.cardcheckDefinitionId, filters.employerId]);
-
-  const { data: cardcheckDefinitions = [], isLoading: definitionsLoading } = useQuery<CardcheckDefinition[]>({
-    queryKey: ["/api/cardcheck/definitions"],
-  });
-
-  const { data: employers = [], isLoading: employersLoading } = useQuery<Employer[]>({
+  const { data: employers = [], isLoading: employersLoading } = useQuery<
+    Employer[]
+  >({
     queryKey: ["/api/employers"],
   });
 
-  const saveConfigMutation = useMutation({
-    mutationFn: async (newConfig: any) => {
-      return await apiRequest("PATCH", `/api/wizards/${wizardId}`, {
-        data: {
-          ...data,
-          config: newConfig,
+  const saveMutation = useMutation({
+    mutationFn: async () =>
+      apiRequest("POST", `/api/wizards/${wizardId}/dispatch/${step.id}/submit`, {
+        input: {
+          filters: {
+            cardcheckDefinitionId: cardcheckDefinitionId || undefined,
+            employerId: employerId === "__none__" ? undefined : employerId,
+          },
         },
-      });
-    },
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/wizards/${wizardId}`] });
+      toast({ title: "Saved", description: "Report configuration saved." });
+    },
+    onError: (err: Error) => {
+      toast({
+        title: "Error",
+        description: err.message || "Failed to save configuration",
+        variant: "destructive",
+      });
     },
   });
-
-  // Only save when user has actually interacted with the form
-  useEffect(() => {
-    if (!hasUserInteracted) return;
-
-    const newConfig = {
-      filters: {
-        cardcheckDefinitionId: cardcheckDefinitionId || undefined,
-        employerId: employerId === "__none__" ? undefined : employerId,
-      },
-    };
-
-    const timer = setTimeout(() => {
-      saveConfigMutation.mutate(newConfig);
-    }, 500);
-
-    return () => clearTimeout(timer);
-  }, [cardcheckDefinitionId, employerId, hasUserInteracted]);
-
-  const handleCardcheckChange = (value: string) => {
-    setHasUserInteracted(true);
-    setCardcheckDefinitionId(value);
-  };
-
-  const handleEmployerChange = (value: string) => {
-    setHasUserInteracted(true);
-    setEmployerId(value);
-  };
 
   if (definitionsLoading || employersLoading) {
     return (
@@ -125,7 +107,8 @@ export function BTUWorkersInvalidCardcheckInputsStep({
           BTU Workers Without Valid Cardchecks
         </CardTitle>
         <CardDescription>
-          Configure the parameters to find workers with missing or mismatched cardchecks
+          Configure the parameters to find workers with missing or mismatched
+          cardchecks
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -136,9 +119,10 @@ export function BTUWorkersInvalidCardcheckInputsStep({
               Report Description
             </p>
             <p className="text-sm text-blue-800 dark:text-blue-200">
-              This report identifies workers who either do not have a signed cardcheck of the 
-              specified type, or who have a signed cardcheck with a bargaining unit that differs 
-              from their current worker bargaining unit.
+              This report identifies workers who either do not have a signed
+              cardcheck of the specified type, or who have a signed cardcheck
+              with a bargaining unit that differs from their current worker
+              bargaining unit.
             </p>
           </div>
         </div>
@@ -146,18 +130,26 @@ export function BTUWorkersInvalidCardcheckInputsStep({
         <div className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="cardcheckDefinition" className="text-sm font-medium">
-              Cardcheck Definition <span className="text-destructive">*</span>
+              Cardcheck Definition{" "}
+              <span className="text-destructive">*</span>
             </Label>
             <Select
               value={cardcheckDefinitionId}
-              onValueChange={handleCardcheckChange}
+              onValueChange={setCardcheckDefinitionId}
             >
-              <SelectTrigger id="cardcheckDefinition" data-testid="select-cardcheck-definition">
+              <SelectTrigger
+                id="cardcheckDefinition"
+                data-testid="select-cardcheck-definition"
+              >
                 <SelectValue placeholder="Select a cardcheck definition" />
               </SelectTrigger>
               <SelectContent>
                 {cardcheckDefinitions.map((def) => (
-                  <SelectItem key={def.id} value={def.id} data-testid={`option-definition-${def.id}`}>
+                  <SelectItem
+                    key={def.id}
+                    value={def.id}
+                    data-testid={`option-definition-${def.id}`}
+                  >
                     {def.name}
                   </SelectItem>
                 ))}
@@ -172,10 +164,7 @@ export function BTUWorkersInvalidCardcheckInputsStep({
             <Label htmlFor="employer" className="text-sm font-medium">
               Home Employer (Optional)
             </Label>
-            <Select
-              value={employerId}
-              onValueChange={handleEmployerChange}
-            >
+            <Select value={employerId} onValueChange={setEmployerId}>
               <SelectTrigger id="employer" data-testid="select-employer">
                 <SelectValue placeholder="All employers" />
               </SelectTrigger>
@@ -184,7 +173,11 @@ export function BTUWorkersInvalidCardcheckInputsStep({
                   All Employers
                 </SelectItem>
                 {employers.map((emp) => (
-                  <SelectItem key={emp.id} value={emp.id} data-testid={`option-employer-${emp.id}`}>
+                  <SelectItem
+                    key={emp.id}
+                    value={emp.id}
+                    data-testid={`option-employer-${emp.id}`}
+                  >
                     {emp.name}
                   </SelectItem>
                 ))}
@@ -203,6 +196,15 @@ export function BTUWorkersInvalidCardcheckInputsStep({
             </p>
           </div>
         )}
+
+        <Button
+          type="button"
+          onClick={() => saveMutation.mutate()}
+          disabled={saveMutation.isPending || !cardcheckDefinitionId}
+          data-testid="button-save-inputs"
+        >
+          {saveMutation.isPending ? "Saving…" : "Save"}
+        </Button>
       </CardContent>
     </Card>
   );

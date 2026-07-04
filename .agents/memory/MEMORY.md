@@ -1,5 +1,6 @@
 - [Employer compliance gating](employer-compliance-gating.md) — /employers/compliance is staff+ledger gated, never bulk.edit (bulk.edit is unsatisfiable: no staff.bulk perm, bulk component often off).
 - [Employer route registration order](employer-route-registration-order.md) — new literal /api/employers/<word> routes must live in routes.ts before its /:id, else captured as :id → 404.
+- [Wizard plugin migration](wizard-plugin-migration.md) — moving a wizard to wizardPluginRegistry needs every enumerating surface (reports dashboard, catalogue) to merge both registries; report cells carry display types (link/date/boolean).
 - [Plugin-config subsidiary ownership](plugin-config-subsidiary-ownership.md) — dispatch/benefit_eligibility subsidiaries are component-owned; startup runner self-heals state when a component becomes schema-managing while already enabled.
 - [SPA catch-all sendFile race](spa-sendfile-headers-race.md) — prod index.html fallback must guard headersSent + pass a sendFile callback; async Set-Cookie races send()'s fs.stat → white "Internal Server Error".
 - [worker_hours upsert constraint](worker-hours-upsert-constraint.md) — upsertWorkerHours ON CONFLICT needs a UNIQUE constraint that can be absent from dev+prod even when schema.ts declares it; fix dev DB then re-Publish.

@@ -1,12 +1,11 @@
 import { wizardRegistry } from './registry.js';
 import { gbhetLegalWorkersMonthly } from './types/gbhet_legal_workers_monthly.js';
 import { gbhetLegalWorkersCorrections } from './types/gbhet_legal_workers_corrections.js';
-import { ReportWorkersMissingSSN } from './types/report_workers_missing_ssn.js';
-import { ReportWorkersInvalidSSN } from './types/report_workers_invalid_ssn.js';
-import { ReportWorkersDuplicateSSN } from './types/report_workers_duplicate_ssn.js';
-import { ReportEmployerUsers } from './types/report_employer_users.js';
-import { ReportLedgerIntegrity } from './types/report_ledger_integrity.js';
-import { ReportBTUWorkersInvalidCardcheck } from './types/report_btu_workers_invalid_cardcheck.js';
+// Report wizards (missing/invalid/duplicate SSN, employer users, ledger
+// integrity, BTU invalid cardcheck) now live in the plugin framework under
+// server/plugins/wizards/plugins/. The legacy report classes in ./types are
+// reused by those plugins but are no longer registered on the legacy
+// wizardRegistry.
 import { btuWorkerImport } from './types/btu_worker_import.js';
 import { btuDuesAllocation } from './types/btu_dues_allocation.js';
 import { btuCardcheckImport } from './types/btu_cardcheck_import.js';
@@ -18,12 +17,6 @@ import { employerOnboarding } from './types/employer_onboarding.js';
 
 wizardRegistry.register(gbhetLegalWorkersMonthly);
 wizardRegistry.register(gbhetLegalWorkersCorrections);
-wizardRegistry.register(new ReportWorkersMissingSSN());
-wizardRegistry.register(new ReportWorkersInvalidSSN());
-wizardRegistry.register(new ReportWorkersDuplicateSSN());
-wizardRegistry.register(new ReportEmployerUsers());
-wizardRegistry.register(new ReportLedgerIntegrity());
-wizardRegistry.register(new ReportBTUWorkersInvalidCardcheck());
 wizardRegistry.register(btuWorkerImport);
 wizardRegistry.register(btuDuesAllocation);
 wizardRegistry.register(btuCardcheckImport);

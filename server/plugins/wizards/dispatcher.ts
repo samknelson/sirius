@@ -206,8 +206,11 @@ export function registerWizardDispatcherRoutes(
             .json({ message: `Step '${step.id}' does not support submit` });
         }
         const input = (req.body?.input ?? {}) as Record<string, unknown>;
-        if (step.schema) {
-          const result = validateAgainstSchema(step.schema, input);
+        const schema = step.getSchema
+          ? step.getSchema(loaded.wizard)
+          : step.schema;
+        if (schema) {
+          const result = validateAgainstSchema(schema, input);
           if (!result.valid) {
             return res
               .status(400)
@@ -360,9 +363,17 @@ export function registerWizardDispatcherRoutes(
           res,
         );
         if (!step) return;
-        // Data reads are a `results`-step capability only. This keeps the
-        // "who can invoke this step?" answer honest: a laxer step cannot
-        // be used to read results a stricter `results` step would gate.
+        // A step opts into exposing data by defining `getData`; the
+        // dispatcher returns its payload verbatim. Otherwise only a
+        // `results` step exposes data (from the persisted report rows).
+        // This keeps the "who can invoke this step?" answer honest: a
+        // laxer step cannot be used to read results a stricter `results`
+        // step would gate unless it explicitly opts in.
+        if (step.getData) {
+          const ctx = buildStepContext(loaded.wizard, step.id, {}, req);
+          const payload = await step.getData(ctx);
+          return res.json(payload);
+        }
         if (step.kind !== "results") {
           return res
             .status(400)
@@ -402,24 +413,44 @@ export function registerWizardDispatcherRoutes(
           res,
         );
         if (!step) return;
-        if (step.kind !== "results") {
+        let columns: Array<{ id: string; header: string; type?: string }>;
+        let rows: Array<Record<string, unknown>>;
+        // Mirror the data route: a `getData` step builds the CSV from its
+        // returned { columns, records }; otherwise fall back to the
+        // persisted report rows of a `results` step.
+        if (step.getData) {
+          const ctx = buildStepContext(loaded.wizard, step.id, {}, req);
+          const payload = (await step.getData(ctx)) as {
+            columns?: Array<{ id: string; header: string; type?: string }>;
+            records?: Array<Record<string, unknown>>;
+          };
+          columns = payload.columns ?? [];
+          rows = payload.records ?? [];
+        } else if (step.kind === "results") {
+          const data: any = loaded.wizard.data || {};
+          columns = data.reportMeta?.columns ?? [];
+          rows = (
+            await storage.wizards.getReportData(loaded.wizard.id)
+          ).map((r) => r.data as Record<string, unknown>);
+        } else {
           return res
             .status(400)
             .json({ message: `Step '${step.id}' does not expose results` });
         }
-        const data: any = loaded.wizard.data || {};
-        const columns: Array<{ id: string; header: string }> =
-          data.reportMeta?.columns ?? [];
-        const rows = (
-          await storage.wizards.getReportData(loaded.wizard.id)
-        ).map((r) => r.data as Record<string, unknown>);
-        const header = columns.map((c) => csvEscape(c.header)).join(",");
+        // Action / link columns hold a UI-only object or id (e.g. a
+        // `{ url, label }` link or a `viewLink` action) that has no
+        // meaningful CSV representation. Drop them from the export, matching
+        // the legacy report ResultsStep behavior.
+        const exportColumns = columns.filter(
+          (c) => c.id !== "viewLink" && c.type !== "link",
+        );
+        const header = exportColumns.map((c) => csvEscape(c.header)).join(",");
         const body = rows
           .map((row) =>
-            columns.map((c) => csvEscape(row?.[c.id])).join(","),
+            exportColumns.map((c) => csvEscape(row?.[c.id])).join(","),
           )
           .join("\n");
-        const csv = columns.length ? `${header}\n${body}` : "";
+        const csv = exportColumns.length ? `${header}\n${body}` : "";
         const filename = `${loaded.plugin.id}-${loaded.wizard.id}.csv`;
         res.setHeader("Content-Type", "text/csv");
         res.setHeader(
