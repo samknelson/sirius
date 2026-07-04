@@ -22,14 +22,15 @@ split:
 payment_gateway are entangled with the core ledger schema; dashboard and cron are
 genuine core infra.
 
-**How to apply:** a component-owned subsidiary's Drizzle definition lives in the
-component's schema module (e.g. `shared/schema/trust/benefit-eligibility-schema.ts`)
-and is re-exported from `shared/schema.ts` for import compatibility. Per-component
-data/structure migrations live under `scripts/migrate/components/<id>/` and are
-registered with `registerComponentMigration(id, migration)` (versioned per
-component, independent of the core counter). They must be idempotent: on a
-deployment where the component was already enabled under the old core-migration
-layout, the relocated migration runs again under the per-component counter.
+**How to apply:** a component-owned subsidiary's Drizzle definition lives in that
+component's schema module and is re-exported from the central schema barrel for
+import compatibility. Per-component migrations are registered per component and
+versioned on a counter independent of the core counter. Critically, when a table
+moves from core-owned to component-owned, its relocated data/structure migration
+will run AGAIN under the per-component counter on a deployment where the component
+was already enabled — so it MUST be idempotent AND non-destructive on replay
+(gate any TRUNCATE/purge on the actual schema state it is trying to reach, not run
+it unconditionally).
 
 # Startup self-heal: component becomes schema-managing while already enabled
 
@@ -39,11 +40,10 @@ variable yet (that variable is normally created by the enable flow). The
 per-component migration runner refuses to run migrations without that variable —
 by design, so it never invents state and loses the table-state audit trail.
 
-The startup runner (`runPendingComponentMigrationsAtStartup` in
-`server/services/migration-runner.ts`) bridges this gap: for an enabled,
-schema-managing component whose state variable is missing, it calls
-`enableComponentSchema(id)` (the same primitive the enable flow uses) to create
-the state (create-if-missing tables, reflect table state, preserve any existing
+The startup component-migration runner bridges this gap: for an enabled,
+schema-managing component whose state variable is missing, it calls the same
+enable-flow primitive (`enableComponentSchema`) to create the state
+(create-if-missing tables, reflect table state, preserve any existing
 `migrationVersion`) and run pending migrations, then continues — instead of
 throwing and blocking boot.
 
