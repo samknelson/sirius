@@ -475,6 +475,7 @@ export const contractTabTree: HierarchicalTab[] = [
   },
   { id: 'outline', label: 'Outline', hrefTemplate: '/contract/{id}/outline', permission: 'staff', component: 'contract' },
   { id: 'fulltext', label: 'Full text', hrefTemplate: '/contract/{id}/full-text', permission: 'staff', component: 'contract' },
+  { id: 'logs', label: 'Logs', hrefTemplate: '/contract/{id}/logs', permission: 'staff', component: 'contract' },
 ];
 
 /**

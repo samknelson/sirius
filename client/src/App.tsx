@@ -168,6 +168,7 @@ const ContractArticlesEditPage = lazy(() => import("@/pages/contracts/articles-e
 const ContractOutlinePage = lazy(() => import("@/pages/contracts/outline"));
 const ContractFullTextPage = lazy(() => import("@/pages/contracts/full-text"));
 const ContractSectionManagePage = lazy(() => import("@/pages/contracts/section-manage"));
+const ContractLogsPage = lazy(() => import("@/pages/contracts/logs"));
 const TrustProvidersPage = lazy(() => import("@/pages/trust-providers"));
 const TrustProviderViewPage = lazy(() => import("@/pages/trust-provider-view"));
 const TrustProviderEditPage = lazy(() => import("@/pages/trust-provider-edit"));
@@ -686,6 +687,14 @@ function Router() {
         <ProtectedRoute tabId="fulltext" entityType="contract">
           <AuthenticatedLayout>
             <ContractFullTextPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/contract/:id/logs">
+        <ProtectedRoute tabId="logs" entityType="contract">
+          <AuthenticatedLayout>
+            <ContractLogsPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

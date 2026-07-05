@@ -31,6 +31,7 @@ export interface ContractStorage {
   getById(id: string): Promise<Contract | undefined>;
   getByName(name: string): Promise<Contract | undefined>;
   getCounts(contractId: string): Promise<ContractCounts>;
+  listLogHostIds(contractId: string): Promise<string[]>;
   createContract(contract: InsertContract): Promise<Contract>;
   update(id: string, input: UpdateContractInput): Promise<Contract | undefined>;
   delete(id: string): Promise<boolean>;
@@ -93,6 +94,24 @@ export function createContractStorage(): ContractStorage {
         articleCount: Number(articleRow?.value ?? 0),
         sectionCount: Number(sectionRow?.value ?? 0),
       };
+    },
+
+    async listLogHostIds(contractId: string): Promise<string[]> {
+      const client = getClient();
+      const articleRows = await client
+        .select({ id: contractArticles.id })
+        .from(contractArticles)
+        .where(eq(contractArticles.contractId, contractId));
+      const sectionRows = await client
+        .select({ id: contractSections.id })
+        .from(contractSections)
+        .innerJoin(contractArticles, eq(contractSections.articleId, contractArticles.id))
+        .where(eq(contractArticles.contractId, contractId));
+      return [
+        contractId,
+        ...articleRows.map((r) => r.id),
+        ...sectionRows.map((r) => r.id),
+      ];
     },
 
     async createContract(contract: InsertContract): Promise<Contract> {
@@ -326,11 +345,25 @@ export const contractLoggingConfig: StorageLoggingConfig<ContractStorage> = {
       getHostEntityId: (args, result) => result?.contractId,
       getDescription: async (args, result) => `Updated Article "${result?.name || 'Unknown'}"`,
     },
+    moveArticle: {
+      enabled: true,
+      getEntityId: (args) => args[0],
+      // Capture the article before the reorder so the log rolls up under the
+      // parent contract (the result is the sibling list, not the moved row).
+      before: async (args, storage) => storage.getArticle(args[0]),
+      getHostEntityId: (args, result, beforeState) => beforeState?.contractId,
+      getDescription: async (args, result, beforeState) =>
+        `Reordered Article "${beforeState?.name || args[0]}" ${args[1]}`,
+    },
     deleteArticle: {
       enabled: true,
       getEntityId: (args) => args[0],
-      getHostEntityId: (args) => args[0],
-      getDescription: async (args) => `Deleted Article ${args[0]}`,
+      // Capture the article before deletion so the log rolls up under the
+      // parent contract instead of the now-gone article id.
+      before: async (args, storage) => storage.getArticle(args[0]),
+      getHostEntityId: (args, result, beforeState) => beforeState?.contractId,
+      getDescription: async (args, result, beforeState) =>
+        `Deleted Article "${beforeState?.name || args[0]}"`,
     },
     createSection: {
       enabled: true,
@@ -345,11 +378,25 @@ export const contractLoggingConfig: StorageLoggingConfig<ContractStorage> = {
       getHostEntityId: (args, result) => result?.articleId,
       getDescription: async (args, result) => `Updated Section "${result?.name || 'Unknown'}"`,
     },
+    moveSection: {
+      enabled: true,
+      getEntityId: (args) => args[0],
+      // Capture the section before the reorder so the log rolls up under the
+      // parent article (the result is the sibling list, not the moved row).
+      before: async (args, storage) => storage.getSection(args[0]),
+      getHostEntityId: (args, result, beforeState) => beforeState?.articleId,
+      getDescription: async (args, result, beforeState) =>
+        `Reordered Section "${beforeState?.name || args[0]}" ${args[1]}`,
+    },
     deleteSection: {
       enabled: true,
       getEntityId: (args) => args[0],
-      getHostEntityId: (args) => args[0],
-      getDescription: async (args) => `Deleted Section ${args[0]}`,
+      // Capture the section before deletion so the log rolls up under the
+      // parent article instead of the now-gone section id.
+      before: async (args, storage) => storage.getSection(args[0]),
+      getHostEntityId: (args, result, beforeState) => beforeState?.articleId,
+      getDescription: async (args, result, beforeState) =>
+        `Deleted Section "${beforeState?.name || args[0]}"`,
     },
   },
 };
