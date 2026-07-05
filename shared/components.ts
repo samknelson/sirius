@@ -235,6 +235,19 @@ export const componentRegistry: ComponentDefinition[] = [
     }
   },
   {
+    id: "contract",
+    name: "Contract",
+    description: "Management of contract text (contracts, their articles, and the sections within each article)",
+    enabledByDefault: false,
+    category: "core",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/contract/schema.ts",
+      tables: ["contracts", "contract_articles", "contract_sections"]
+    }
+  },
+  {
     id: "sitespecific.gbhet",
     name: "GBHET Customization",
     description: "Custom functionality for GBHET",
