@@ -271,9 +271,46 @@ function SectionManageBody() {
   const [newNumber, setNewNumber] = useState("");
   const [creating, setCreating] = useState(false);
 
+  const [articleName, setArticleName] = useState("");
+  const [articleNumber, setArticleNumber] = useState("");
+  const [savingArticle, setSavingArticle] = useState(false);
+
+  useEffect(() => {
+    if (article) {
+      setArticleName(article.name);
+      setArticleNumber(article.articleNumber ?? "");
+    }
+  }, [article?.id, article?.name, article?.articleNumber]);
+
+  const articleDirty =
+    !!article &&
+    (articleName.trim() !== article.name || articleNumber !== (article.articleNumber ?? ""));
+
   const refreshSections = async () => {
     await queryClient.invalidateQueries({ queryKey: sectionsKey });
     await queryClient.invalidateQueries({ queryKey: ["/api/contracts", id] });
+  };
+
+  const handleSaveArticle = async () => {
+    if (!articleName.trim()) return;
+    setSavingArticle(true);
+    try {
+      await apiRequest("PATCH", `/api/contracts/articles/${articleId}`, {
+        name: articleName.trim(),
+        articleNumber: articleNumber.trim(),
+      });
+      await queryClient.invalidateQueries({ queryKey: ["/api/contracts/articles", articleId] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/contracts", id] });
+      toast({ title: "Article saved" });
+    } catch (error) {
+      toast({
+        title: "Failed to save article",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setSavingArticle(false);
+    }
   };
 
   const handleCreate = async () => {
@@ -301,29 +338,59 @@ function SectionManageBody() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div>
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Link href={`/contract/${id}/articles/edit`}>
-              <Button variant="ghost" size="sm" data-testid="button-back-to-articles">
-                <ArrowLeft size={14} className="mr-2" />
-                Back to Articles
-              </Button>
-            </Link>
-          </div>
-          <h2 className="text-lg font-semibold mt-1" data-testid="text-manage-article-name">
-            {articleLoading ? (
-              <Skeleton className="h-6 w-48" />
-            ) : (
-              <>
-                Sections —{" "}
-                {article?.articleNumber ? `${article.articleNumber}. ` : ""}
-                {article?.name}
-              </>
-            )}
-          </h2>
-        </div>
+      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <Link href={`/contract/${id}/articles/edit`}>
+          <Button variant="ghost" size="sm" data-testid="button-back-to-articles">
+            <ArrowLeft size={14} className="mr-2" />
+            Back to Articles
+          </Button>
+        </Link>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Article details</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {articleLoading ? (
+            <Skeleton className="h-10 w-full" />
+          ) : (
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="space-y-1 w-24">
+                <Label htmlFor="article-number">Number</Label>
+                <Input
+                  id="article-number"
+                  value={articleNumber}
+                  onChange={(e) => setArticleNumber(e.target.value)}
+                  placeholder="1"
+                  data-testid="input-article-number"
+                />
+              </div>
+              <div className="space-y-1 flex-1 min-w-[200px]">
+                <Label htmlFor="article-name">Name</Label>
+                <Input
+                  id="article-name"
+                  value={articleName}
+                  onChange={(e) => setArticleName(e.target.value)}
+                  data-testid="input-article-name"
+                />
+              </div>
+              <Button
+                onClick={handleSaveArticle}
+                disabled={!articleDirty || !articleName.trim() || savingArticle}
+                data-testid="button-save-article"
+              >
+                {savingArticle ? (
+                  <Loader2 size={16} className="mr-2 animate-spin" />
+                ) : (
+                  <Save size={16} className="mr-2" />
+                )}
+                Save
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

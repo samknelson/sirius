@@ -7,6 +7,12 @@ import { ContractHtml } from "@/components/contracts/ContractHtml";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import {
+  Accordion,
+  AccordionItem,
+  AccordionTrigger,
+  AccordionContent,
+} from "@/components/ui/accordion";
 
 function ArticleFullText({ article }: { article: ContractArticle }) {
   const { data: sections, isLoading } = useQuery<ContractSection[]>({
@@ -19,32 +25,36 @@ function ArticleFullText({ article }: { article: ContractArticle }) {
   });
 
   return (
-    <section className="space-y-4" data-testid={`fulltext-article-${article.id}`}>
-      <h2 className="text-xl font-semibold text-foreground border-b border-border pb-2">
-        {article.articleNumber ? `Article ${article.articleNumber} — ` : ""}
-        {article.name}
-      </h2>
-      {isLoading ? (
-        <Skeleton className="h-24 w-full" />
-      ) : sections && sections.length > 0 ? (
-        <div className="space-y-6">
-          {sections.map((section) => (
-            <div key={section.id} className="space-y-2" data-testid={`fulltext-section-${section.id}`}>
-              <h3 className="text-base font-medium flex items-center gap-2">
-                <span>
-                  {section.sectionNumber ? `${section.sectionNumber}. ` : ""}
-                  {section.name}
-                </span>
-                {section.isStub && <Badge variant="secondary">stub</Badge>}
-              </h3>
-              <ContractHtml html={section.body} />
-            </div>
-          ))}
-        </div>
-      ) : (
-        <p className="text-sm text-muted-foreground italic">No sections.</p>
-      )}
-    </section>
+    <AccordionItem value={article.id} data-testid={`fulltext-article-${article.id}`}>
+      <AccordionTrigger className="text-left" data-testid={`fulltext-article-trigger-${article.id}`}>
+        <span className="text-base font-semibold text-foreground">
+          {article.articleNumber ? `Article ${article.articleNumber} — ` : ""}
+          {article.name}
+        </span>
+      </AccordionTrigger>
+      <AccordionContent>
+        {isLoading ? (
+          <Skeleton className="h-24 w-full" />
+        ) : sections && sections.length > 0 ? (
+          <div className="space-y-6">
+            {sections.map((section) => (
+              <div key={section.id} className="space-y-2" data-testid={`fulltext-section-${section.id}`}>
+                <h3 className="text-base font-medium flex items-center gap-2">
+                  <span>
+                    {section.sectionNumber ? `${section.sectionNumber}. ` : ""}
+                    {section.name}
+                  </span>
+                  {section.isStub && <Badge variant="secondary">stub</Badge>}
+                </h3>
+                <ContractHtml html={section.body} />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground italic">No sections.</p>
+        )}
+      </AccordionContent>
+    </AccordionItem>
   );
 }
 
@@ -86,11 +96,15 @@ function FullTextBody() {
   }
 
   return (
-    <div className="space-y-10 max-w-3xl">
-      {articles.map((article) => (
-        <ArticleFullText key={article.id} article={article} />
-      ))}
-    </div>
+    <Card className="max-w-3xl">
+      <CardContent className="py-2">
+        <Accordion type="multiple" className="w-full">
+          {articles.map((article) => (
+            <ArticleFullText key={article.id} article={article} />
+          ))}
+        </Accordion>
+      </CardContent>
+    </Card>
   );
 }
 

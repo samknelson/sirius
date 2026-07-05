@@ -4,8 +4,14 @@ import type { ContractArticle, ContractSection } from "@shared/schema";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import {
+  Accordion,
+  AccordionItem,
+  AccordionTrigger,
+  AccordionContent,
+} from "@/components/ui/accordion";
 
-function ArticleOutline({ article }: { article: ContractArticle }) {
+function ArticleOutlineContent({ article }: { article: ContractArticle }) {
   const { data: sections, isLoading } = useQuery<ContractSection[]>({
     queryKey: ["/api/contracts/articles", article.id, "sections"],
     queryFn: async () => {
@@ -15,44 +21,33 @@ function ArticleOutline({ article }: { article: ContractArticle }) {
     },
   });
 
+  if (isLoading) {
+    return <Skeleton className="h-4 w-40 ml-6" />;
+  }
+  if (!sections || sections.length === 0) {
+    return <p className="ml-6 text-sm text-muted-foreground italic">No sections.</p>;
+  }
   return (
-    <Card data-testid={`outline-article-${article.id}`}>
-      <CardContent className="py-4 space-y-2">
-        <div className="flex items-center gap-2 font-medium">
-          <Layers size={16} className="text-primary shrink-0" />
+    <ul className="ml-6 space-y-1">
+      {sections.map((section) => (
+        <li
+          key={section.id}
+          className="flex items-center gap-2 text-sm text-muted-foreground"
+          data-testid={`outline-section-${section.id}`}
+        >
+          <List size={13} className="shrink-0" />
           <span>
-            {article.articleNumber ? `${article.articleNumber}. ` : ""}
-            {article.name}
+            {section.sectionNumber ? `${section.sectionNumber}. ` : ""}
+            {section.name}
           </span>
-        </div>
-        {isLoading ? (
-          <Skeleton className="h-4 w-40 ml-6" />
-        ) : sections && sections.length > 0 ? (
-          <ul className="ml-6 space-y-1">
-            {sections.map((section) => (
-              <li
-                key={section.id}
-                className="flex items-center gap-2 text-sm text-muted-foreground"
-                data-testid={`outline-section-${section.id}`}
-              >
-                <List size={13} className="shrink-0" />
-                <span>
-                  {section.sectionNumber ? `${section.sectionNumber}. ` : ""}
-                  {section.name}
-                </span>
-                {section.isStub && (
-                  <Badge variant="secondary" className="text-[10px] px-1 py-0">
-                    stub
-                  </Badge>
-                )}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="ml-6 text-sm text-muted-foreground italic">No sections.</p>
-        )}
-      </CardContent>
-    </Card>
+          {section.isStub && (
+            <Badge variant="secondary" className="text-[10px] px-1 py-0">
+              stub
+            </Badge>
+          )}
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -93,10 +88,31 @@ export function ContractOutline({ contractId }: { contractId: string }) {
   }
 
   return (
-    <div className="space-y-3">
-      {articles.map((article) => (
-        <ArticleOutline key={article.id} article={article} />
-      ))}
-    </div>
+    <Card>
+      <CardContent className="py-2">
+        <Accordion type="multiple" className="w-full">
+          {articles.map((article) => (
+            <AccordionItem
+              key={article.id}
+              value={article.id}
+              data-testid={`outline-article-${article.id}`}
+            >
+              <AccordionTrigger className="text-left" data-testid={`outline-article-trigger-${article.id}`}>
+                <span className="flex items-center gap-2">
+                  <Layers size={16} className="text-primary shrink-0" />
+                  <span>
+                    {article.articleNumber ? `${article.articleNumber}. ` : ""}
+                    {article.name}
+                  </span>
+                </span>
+              </AccordionTrigger>
+              <AccordionContent>
+                <ArticleOutlineContent article={article} />
+              </AccordionContent>
+            </AccordionItem>
+          ))}
+        </Accordion>
+      </CardContent>
+    </Card>
   );
 }
