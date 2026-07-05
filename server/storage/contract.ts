@@ -310,6 +310,22 @@ function swapInOrder<T extends { id: string; sequence: number }>(
   return next;
 }
 
+/**
+ * Resolve the owning contract id for an article, so section/article logs can be
+ * keyed permanently to the contract. Keying to the contract (rather than the
+ * intermediate article) keeps section history attributable even after the
+ * parent article is deleted — otherwise the article id disappears and those
+ * logs would fall out of the contract-level Logs view.
+ */
+async function resolveContractIdFromArticle(
+  storage: ContractStorage,
+  articleId: string | undefined,
+): Promise<string | undefined> {
+  if (!articleId) return undefined;
+  const article = await storage.getArticle(articleId);
+  return article?.contractId;
+}
+
 export const contractLoggingConfig: StorageLoggingConfig<ContractStorage> = {
   module: 'contracts',
   methods: {
@@ -368,33 +384,60 @@ export const contractLoggingConfig: StorageLoggingConfig<ContractStorage> = {
     createSection: {
       enabled: true,
       getEntityId: (args, result) => result?.id || 'new section',
-      getHostEntityId: (args, result) => result?.articleId,
+      // Resolve the owning contract up front so the log is keyed to the
+      // contract, not the intermediate article (durable across article delete).
+      before: async (args, storage) => ({
+        contractId: await resolveContractIdFromArticle(storage, args[0]?.articleId),
+      }),
+      getHostEntityId: (args, result, beforeState) => beforeState?.contractId,
       getDescription: async (args, result) =>
         `Created Section "${result?.name || args[0]?.name || 'Unnamed'}"`,
     },
     updateSection: {
       enabled: true,
       getEntityId: (args) => args[0],
-      getHostEntityId: (args, result) => result?.articleId,
-      getDescription: async (args, result) => `Updated Section "${result?.name || 'Unknown'}"`,
+      // Resolve the owning contract (via the section's article) before update so
+      // the log is keyed to the contract for durable roll-up.
+      before: async (args, storage) => {
+        const section = await storage.getSection(args[0]);
+        return {
+          name: section?.name,
+          contractId: await resolveContractIdFromArticle(storage, section?.articleId),
+        };
+      },
+      getHostEntityId: (args, result, beforeState) => beforeState?.contractId,
+      getDescription: async (args, result, beforeState) =>
+        `Updated Section "${result?.name || beforeState?.name || 'Unknown'}"`,
     },
     moveSection: {
       enabled: true,
       getEntityId: (args) => args[0],
-      // Capture the section before the reorder so the log rolls up under the
-      // parent article (the result is the sibling list, not the moved row).
-      before: async (args, storage) => storage.getSection(args[0]),
-      getHostEntityId: (args, result, beforeState) => beforeState?.articleId,
+      // Capture the section (and its owning contract) before the reorder so the
+      // log rolls up under the contract (the result is the sibling list).
+      before: async (args, storage) => {
+        const section = await storage.getSection(args[0]);
+        return {
+          name: section?.name,
+          contractId: await resolveContractIdFromArticle(storage, section?.articleId),
+        };
+      },
+      getHostEntityId: (args, result, beforeState) => beforeState?.contractId,
       getDescription: async (args, result, beforeState) =>
         `Reordered Section "${beforeState?.name || args[0]}" ${args[1]}`,
     },
     deleteSection: {
       enabled: true,
       getEntityId: (args) => args[0],
-      // Capture the section before deletion so the log rolls up under the
-      // parent article instead of the now-gone section id.
-      before: async (args, storage) => storage.getSection(args[0]),
-      getHostEntityId: (args, result, beforeState) => beforeState?.articleId,
+      // Capture the section (and its owning contract) before deletion so the log
+      // rolls up under the contract instead of the now-gone section/article id.
+      before: async (args, storage) => {
+        const section = await storage.getSection(args[0]);
+        return {
+          name: section?.name,
+          contractId: await resolveContractIdFromArticle(storage, section?.articleId),
+        };
+      },
+      getHostEntityId: (args, result, beforeState) => beforeState?.contractId,
       getDescription: async (args, result, beforeState) =>
         `Deleted Section "${beforeState?.name || args[0]}"`,
     },
