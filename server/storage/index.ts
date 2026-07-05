@@ -11,3 +11,4 @@ export { type LogsStorage, type LogsQueryParams, type LogsResult, type LogFilter
 export { type WorkerBanStorage, createWorkerBanStorage } from "./worker-bans";
 export { type WsBundleStorage, type WsClientStorage, type WsClientWithBundle, type WsClientCredentialStorage, type CredentialCreateResult, type WsClientIpRuleStorage, createWsBundleStorage, createWsClientStorage, createWsClientCredentialStorage, createWsClientIpRuleStorage } from "./webservices";
 export { type CompanyStorage, createCompanyStorage, companyLoggingConfig, type EmployerCompanyStorage, createEmployerCompanyStorage, employerCompanyLoggingConfig } from "./employers/companies";
+export { type ContractStorage, createContractStorage } from "./contract";

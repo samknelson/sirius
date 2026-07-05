@@ -144,6 +144,7 @@ import { type ReadOnlyStorage, createReadOnlyStorage } from "./read-only";
 import { type BtuPoliticalStorage, createBtuPoliticalStorage, btuPoliticalLoggingConfig } from "./sitespecific/btu/political";
 import { type WsBundleStorage, type WsClientStorage, type WsClientCredentialStorage, type WsClientIpRuleStorage, createWsBundleStorage, createWsClientStorage, createWsClientCredentialStorage, createWsClientIpRuleStorage } from "./webservices";
 import { type CompanyStorage, createCompanyStorage, companyLoggingConfig, type EmployerCompanyStorage, createEmployerCompanyStorage, employerCompanyLoggingConfig } from "./employers/companies";
+import { type ContractStorage, createContractStorage } from "./contract";
 import { type ContactLinkStorage, createContactLinkStorage } from "./contact-links";
 import { type CommTagsStorage, createCommTagsStorage, commTagsLoggingConfig } from "./comm-tags";
 import { type CommStorage, createCommStorage, commLoggingConfig } from "./comm";
@@ -242,6 +243,7 @@ export interface IStorage {
   btuPolitical: BtuPoliticalStorage;
   companies: CompanyStorage;
   employerCompanies: EmployerCompanyStorage;
+  contracts: ContractStorage;
   sftpClientDestinations: SftpClientDestinationStorage;
   trustProviderEdi: TrustProviderEdiStorage;
   bulkMessages: BulkMessageStorage;
@@ -340,6 +342,7 @@ export class DatabaseStorage implements IStorage {
   btuPolitical: BtuPoliticalStorage;
   companies: CompanyStorage;
   employerCompanies: EmployerCompanyStorage;
+  contracts: ContractStorage;
   sftpClientDestinations: SftpClientDestinationStorage;
   trustProviderEdi: TrustProviderEdiStorage;
   bulkMessages: BulkMessageStorage;
@@ -552,6 +555,7 @@ export class DatabaseStorage implements IStorage {
     this.btuPolitical = withStorageLogging(createBtuPoliticalStorage(), btuPoliticalLoggingConfig);
     this.companies = withStorageLogging(createCompanyStorage(), companyLoggingConfig);
     this.employerCompanies = withStorageLogging(createEmployerCompanyStorage(), employerCompanyLoggingConfig);
+    this.contracts = createContractStorage();
     this.sftpClientDestinations = withStorageLogging(
       createSftpClientDestinationStorage(),
       sftpClientDestinationLoggingConfig
