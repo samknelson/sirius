@@ -20,7 +20,10 @@
 import { execFileSync } from "child_process";
 import { storage } from "../../server/storage/database";
 import { runInTransaction } from "../../server/storage/transaction-context";
-import { enableComponentSchema } from "../../server/services/component-lifecycle";
+import { enableComponentSchema, reconcileComponentPluginConfigs } from "../../server/services/component-lifecycle";
+import { updateComponentCache, isComponentEnabledSync } from "../../server/services/component-cache";
+import { syncComponentPermissions } from "../../server/services/component-permissions";
+import { clearAccessCache } from "../../server/services/access-policy-evaluator";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -388,13 +391,39 @@ async function importContract(cfg: ContractConfig): Promise<void> {
   });
 }
 
-async function main(): Promise<void> {
+async function enableContractComponent(): Promise<void> {
+  const componentId = "contract";
+
+  // Mirror the canonical enable lifecycle from server/modules/components.ts so
+  // the component ends up BOTH schema-present AND marked enabled. Running only
+  // the schema push would leave the component disabled in the component cache.
   console.log("Enabling `contract` component schema (idempotent)...");
-  const result = await enableComponentSchema("contract");
+  const result = await enableComponentSchema(componentId);
   if (!result.success) {
-    console.error(`Failed to enable contract component: ${result.error}`);
+    console.error(`Failed to enable contract component schema: ${result.error}`);
     process.exit(1);
   }
+
+  // Materialize any plugin_configs the component owns (no-op if it owns none).
+  await reconcileComponentPluginConfigs(componentId, true);
+
+  // Flip the persisted component-enabled state + in-memory cache.
+  await updateComponentCache(componentId, true);
+
+  // Register any permissions the newly-enabled component contributes, and
+  // invalidate the access-policy cache since policy results depend on it.
+  syncComponentPermissions();
+  clearAccessCache();
+
+  if (!isComponentEnabledSync(componentId)) {
+    console.error("Component `contract` is still not enabled after lifecycle run.");
+    process.exit(1);
+  }
+  console.log("Component `contract` is enabled.");
+}
+
+async function main(): Promise<void> {
+  await enableContractComponent();
 
   await importContract(WHITSETT);
   await importContract(NSTEC);
