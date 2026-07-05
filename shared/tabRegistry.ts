@@ -82,7 +82,8 @@ export type TabEntityType =
   | 'trust_election'
   | 'comm'
   | 'grievance'
-  | 'grievanceTimelineTemplate';
+  | 'grievanceTimelineTemplate'
+  | 'contract';
 
 /**
  * Tab check request for batch access evaluation
@@ -459,6 +460,24 @@ export const grievanceTimelineTemplateTabTree: HierarchicalTab[] = [
 ];
 
 /**
+ * Contract entity tab tree
+ */
+export const contractTabTree: HierarchicalTab[] = [
+  { id: 'details', label: 'Details', hrefTemplate: '/contract/{id}', permission: 'staff', component: 'contract' },
+  { id: 'edit', label: 'Edit', hrefTemplate: '/contract/{id}/edit', permission: 'staff', component: 'contract' },
+  {
+    id: 'articles', label: 'Articles', hrefTemplate: '/contract/{id}/articles', permission: 'staff', component: 'contract',
+    children: [
+      { id: 'articles-overview', label: 'Overview', hrefTemplate: '/contract/{id}/articles', permission: 'staff', component: 'contract' },
+      { id: 'articles-outline', label: 'Outline', hrefTemplate: '/contract/{id}/articles/outline', permission: 'staff', component: 'contract' },
+      { id: 'articles-edit', label: 'Edit', hrefTemplate: '/contract/{id}/articles/edit', permission: 'staff', component: 'contract' },
+    ],
+  },
+  { id: 'outline', label: 'Outline', hrefTemplate: '/contract/{id}/outline', permission: 'staff', component: 'contract' },
+  { id: 'fulltext', label: 'Full text', hrefTemplate: '/contract/{id}/full-text', permission: 'staff', component: 'contract' },
+];
+
+/**
  * Trust benefit entity tab tree
  */
 export const trustBenefitTabTree: HierarchicalTab[] = [
@@ -647,6 +666,7 @@ export const tabTreeRegistry: Record<TabEntityType, HierarchicalTab[]> = {
   comm: commTabTree,
   grievance: grievanceTabTree,
   grievanceTimelineTemplate: grievanceTimelineTemplateTabTree,
+  contract: contractTabTree,
 };
 
 /**

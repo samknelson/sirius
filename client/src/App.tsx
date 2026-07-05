@@ -159,6 +159,15 @@ const TrustBenefits = lazy(() => import("@/pages/trust-benefits"));
 const TrustBenefitsAdd = lazy(() => import("@/pages/trust-benefits-add"));
 const TrustBenefitView = lazy(() => import("@/pages/trust-benefit-view"));
 const TrustBenefitEdit = lazy(() => import("@/pages/trust-benefit-edit"));
+const ContractsListPage = lazy(() => import("@/pages/contracts/list"));
+const ContractViewPage = lazy(() => import("@/pages/contracts/view"));
+const ContractEditPage = lazy(() => import("@/pages/contracts/edit"));
+const ContractArticlesOverviewPage = lazy(() => import("@/pages/contracts/articles-overview"));
+const ContractArticlesOutlinePage = lazy(() => import("@/pages/contracts/articles-outline"));
+const ContractArticlesEditPage = lazy(() => import("@/pages/contracts/articles-edit"));
+const ContractOutlinePage = lazy(() => import("@/pages/contracts/outline"));
+const ContractFullTextPage = lazy(() => import("@/pages/contracts/full-text"));
+const ContractSectionManagePage = lazy(() => import("@/pages/contracts/section-manage"));
 const TrustProvidersPage = lazy(() => import("@/pages/trust-providers"));
 const TrustProviderViewPage = lazy(() => import("@/pages/trust-provider-view"));
 const TrustProviderEditPage = lazy(() => import("@/pages/trust-provider-edit"));
@@ -619,6 +628,80 @@ function Router() {
         <ProtectedRoute tabId="details" entityType="grievanceTimelineTemplate">
           <AuthenticatedLayout>
             <GrievanceTimelineTemplateView />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/contracts">
+        <ProtectedRoute permission="staff" component="contract">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <ContractsListPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/contract/:id/article/:articleId/edit">
+        <ProtectedRoute tabId="articles" entityType="contract">
+          <AuthenticatedLayout>
+            <ContractSectionManagePage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/contract/:id/articles/outline">
+        <ProtectedRoute tabId="articles-outline" entityType="contract">
+          <AuthenticatedLayout>
+            <ContractArticlesOutlinePage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/contract/:id/articles/edit">
+        <ProtectedRoute tabId="articles-edit" entityType="contract">
+          <AuthenticatedLayout>
+            <ContractArticlesEditPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/contract/:id/articles">
+        <ProtectedRoute tabId="articles-overview" entityType="contract">
+          <AuthenticatedLayout>
+            <ContractArticlesOverviewPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/contract/:id/outline">
+        <ProtectedRoute tabId="outline" entityType="contract">
+          <AuthenticatedLayout>
+            <ContractOutlinePage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/contract/:id/full-text">
+        <ProtectedRoute tabId="fulltext" entityType="contract">
+          <AuthenticatedLayout>
+            <ContractFullTextPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/contract/:id/edit">
+        <ProtectedRoute tabId="edit" entityType="contract">
+          <AuthenticatedLayout>
+            <ContractEditPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/contract/:id">
+        <ProtectedRoute tabId="details" entityType="contract">
+          <AuthenticatedLayout>
+            <ContractViewPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

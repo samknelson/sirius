@@ -33,6 +33,7 @@ export const configSections: NavSection[] = [
     items: [
       { path: "/config/policies", label: "Policies", icon: FileText, testId: "nav-config-policies", permission: "admin" },
       { path: "/config/default-policy", label: "Default Policy", icon: Settings, testId: "nav-config-default-policy", permission: "admin" },
+      { path: "/contracts", label: "Contracts", icon: FileText, testId: "nav-config-contracts", permission: "staff", requiresComponent: "contract" },
     ],
   },
   {

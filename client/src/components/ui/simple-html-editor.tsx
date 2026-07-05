@@ -41,10 +41,20 @@ interface SimpleHtmlEditorProps {
   "data-testid"?: string;
 }
 
-const ALLOWED_TAGS = ['strong', 'b', 'em', 'i', 'u', 'ul', 'ol', 'li', 'br', 'p', 'a'];
+const ALLOWED_TAGS = [
+  'strong', 'b', 'em', 'i', 'u', 'ul', 'ol', 'li', 'br', 'p', 'a',
+  'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+  'table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td',
+];
 const ALLOWED_ATTRIBUTES: Record<string, string[]> = {
-  'a': ['href', 'target', 'rel']
+  'a': ['href', 'target', 'rel'],
+  'th': ['colspan', 'rowspan', 'scope'],
+  'td': ['colspan', 'rowspan'],
 };
+
+export function sanitizeContractHtml(html: string): string {
+  return sanitizeHtml(html);
+}
 
 function sanitizeHtml(html: string): string {
   const temp = document.createElement('div');
@@ -69,6 +79,15 @@ function sanitizeHtml(html: string): string {
           element.removeAttribute(attr.name);
         }
       });
+
+      // Neutralize dangerous URI schemes on anchors (javascript:, data:, etc.).
+      if (tagName === 'a' && element.hasAttribute('href')) {
+        if (!isSafeHref(element.getAttribute('href'))) {
+          element.removeAttribute('href');
+        } else if (element.getAttribute('target') === '_blank') {
+          element.setAttribute('rel', 'noopener noreferrer');
+        }
+      }
     }
 
     Array.from(node.childNodes).forEach(child => cleanNode(child));
@@ -76,6 +95,16 @@ function sanitizeHtml(html: string): string {
 
   Array.from(temp.childNodes).forEach(child => cleanNode(child));
   return temp.innerHTML;
+}
+
+function isSafeHref(href: string | null): boolean {
+  if (!href) return false;
+  const value = href.trim();
+  if (value === '') return false;
+  // Allow relative URLs, anchors, and query/path-only links.
+  if (/^(?:[/#?]|[^:]*$)/.test(value)) return true;
+  // Otherwise require an explicit safe scheme.
+  return /^(?:https?:|mailto:|tel:)/i.test(value);
 }
 
 function escapeHtml(s: string): string {
