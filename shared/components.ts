@@ -242,9 +242,9 @@ export const componentRegistry: ComponentDefinition[] = [
     category: "grievance",
     managesSchema: true,
     schemaManifest: {
-      version: 1,
+      version: 2,
       schemaPath: "./shared/schema/grievance/contract-schema.ts",
-      tables: ["grievance_contract_sections"]
+      tables: ["grievance_contract_sections", "grievance_contracts"]
     }
   },
   {

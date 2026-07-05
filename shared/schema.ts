@@ -1079,6 +1079,10 @@ export {
   insertGrievanceContractSectionSchema,
   type GrievanceContractSection,
   type InsertGrievanceContractSection,
+  grievanceContracts,
+  insertGrievanceContractSchema,
+  type GrievanceContract,
+  type InsertGrievanceContract,
 } from "./schema/grievance/contract-schema";
 
 export {
