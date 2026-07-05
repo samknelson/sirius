@@ -235,6 +235,19 @@ export const componentRegistry: ComponentDefinition[] = [
     }
   },
   {
+    id: "grievance.contract",
+    name: "Grievance Contract",
+    description: "Linking grievances to contract sections. Requires the Grievance and Contract components to be enabled — its foreign keys reference the grievances and contract_sections tables.",
+    enabledByDefault: false,
+    category: "grievance",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/grievance/contract-schema.ts",
+      tables: ["grievance_contract_sections"]
+    }
+  },
+  {
     id: "contract",
     name: "Contract",
     description: "Management of contract text (contracts, their articles, and the sections within each article)",

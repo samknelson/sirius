@@ -1075,6 +1075,13 @@ export {
 } from "./schema/grievance/settlement-schema";
 
 export {
+  grievanceContractSections,
+  insertGrievanceContractSectionSchema,
+  type GrievanceContractSection,
+  type InsertGrievanceContractSection,
+} from "./schema/grievance/contract-schema";
+
+export {
   contracts,
   insertContractSchema,
   type Contract,
