@@ -7,12 +7,14 @@ import {
   useGrievanceLayout,
 } from "@/components/layouts/GrievanceLayout";
 import { GRIEVANCE_CARDINALITY_LABELS } from "@/components/grievances/grievance-form";
+import { GrievanceContractSummary } from "@/components/grievances/grievance-contract-section";
 import { useAuth } from "@/contexts/AuthContext";
 
 function GrievanceDetailsContent() {
   const { grievance } = useGrievanceLayout();
   const { hasComponent } = useAuth();
   const showBargainingUnit = hasComponent("bargainingunits");
+  const showContract = hasComponent("grievance.contract");
 
   const showLead = grievance.cardinality === "multiple-with-lead";
   const isSingleWorker = grievance.cardinality === "individual";
@@ -192,6 +194,8 @@ function GrievanceDetailsContent() {
           </p>
         </CardContent>
       </Card>
+
+      {showContract && <GrievanceContractSummary grievanceId={grievance.id} />}
     </div>
   );
 }

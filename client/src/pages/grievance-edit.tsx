@@ -7,6 +7,7 @@ import { GrievanceWorkerManager } from "@/components/grievances/grievance-worker
 import { GrievanceEmployerManager } from "@/components/grievances/grievance-employer-section";
 import { GrievanceLineSection } from "@/components/grievances/grievance-line-section";
 import { GrievanceUserManager } from "@/components/grievances/grievance-user-section";
+import { GrievanceContractSection } from "@/components/grievances/grievance-contract-section";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
@@ -18,6 +19,7 @@ function GrievanceEditContent() {
   const { hasPermission, hasComponent } = useAuth();
   const isAdmin = hasPermission("admin");
   const showBargainingUnit = hasComponent("bargainingunits");
+  const showContract = hasComponent("grievance.contract");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async (values: GrievanceFormValues) => {
@@ -117,6 +119,8 @@ function GrievanceEditContent() {
         grievanceId={grievance.id}
         employers={grievance.employers}
       />
+
+      {showContract && <GrievanceContractSection grievanceId={grievance.id} />}
     </div>
   );
 }
