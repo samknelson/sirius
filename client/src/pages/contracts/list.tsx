@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { FileText, Plus, Search, Loader2 } from "lucide-react";
 import type { Contract } from "@shared/schema";
@@ -30,6 +30,7 @@ import { usePageTitle } from "@/contexts/PageTitleContext";
 export default function ContractsListPage() {
   usePageTitle("Contracts");
   const { toast } = useToast();
+  const [, navigate] = useLocation();
   const [search, setSearch] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [newName, setNewName] = useState("");
@@ -53,6 +54,7 @@ export default function ContractsListPage() {
       toast({ title: "Contract created", description: `"${created.name}" was created.` });
       setCreateOpen(false);
       setNewName("");
+      navigate(`/contract/${created.id}`);
     } catch (error) {
       toast({
         title: "Failed to create contract",
