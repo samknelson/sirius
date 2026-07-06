@@ -59,8 +59,6 @@ import {
   fileLoggingConfig,
 } from "./files";
 import {
-  type CronJobStorage,
-  createCronJobStorage,
   type CronJobRunStorage,
   createCronJobRunStorage,
 } from "./system/cron";
@@ -68,6 +66,26 @@ import {
   type PluginConfigStorage,
   createPluginConfigStorage,
 } from "./plugin-configs";
+import {
+  type DenormStorage,
+  createDenormStorage,
+} from "./system/denorm";
+import {
+  type WorkerMshDenormStorage,
+  createWorkerMshDenormStorage,
+} from "./system/worker-msh-denorm";
+import {
+  type WorkerEmploymentDenormStorage,
+  createWorkerEmploymentDenormStorage,
+} from "./system/worker-employment-denorm";
+import {
+  type GrievanceNameDenormStorage,
+  createGrievanceNameDenormStorage,
+} from "./system/grievance-name-denorm";
+import {
+  type WorkerWshDenormStorage,
+  createWorkerWshDenormStorage,
+} from "./system/worker-wsh-denorm";
 import { type LogsStorage, createLogsStorage } from "./system/logs";
 import { type WorkerWshStorage, createWorkerWshStorage, workerWshLoggingConfig } from "./worker-wsh";
 import { type WorkerMshStorage, createWorkerMshStorage, workerMshLoggingConfig } from "./worker-msh";
@@ -129,6 +147,17 @@ import { type CompanyStorage, createCompanyStorage, companyLoggingConfig, type E
 import { type ContactLinkStorage, createContactLinkStorage } from "./contact-links";
 import { type CommTagsStorage, createCommTagsStorage, commTagsLoggingConfig } from "./comm-tags";
 import { type CommStorage, createCommStorage, commLoggingConfig } from "./comm";
+import { type GrievanceStorage, createGrievanceStorage, grievanceLoggingConfig } from "./grievances/grievances";
+import {
+  type GrievanceSettlementStorage,
+  createGrievanceSettlementStorage,
+  grievanceSettlementLoggingConfig,
+} from "./grievances/grievance-settlements";
+import {
+  type GrievanceTimelineTemplateStorage,
+  createGrievanceTimelineTemplateStorage,
+  grievanceTimelineTemplateLoggingConfig,
+} from "./grievances/grievance-timeline-templates";
 import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
 import { db } from "./db";
 import { employers, workers, contacts } from "@shared/schema";
@@ -153,9 +182,13 @@ export interface IStorage {
   wizardEmployerMonthly: WizardEmployerMonthlyStorage;
   wizardEmploymentStatusMappings: WizardEmploymentStatusMappingStorage;
   files: FileStorage;
-  cronJobs: CronJobStorage;
   cronJobRuns: CronJobRunStorage;
   pluginConfigs: PluginConfigStorage;
+  denorm: DenormStorage;
+  workerMshDenorm: WorkerMshDenormStorage;
+  workerWshDenorm: WorkerWshDenormStorage;
+  workerEmploymentDenorm: WorkerEmploymentDenormStorage;
+  grievanceNameDenorm: GrievanceNameDenormStorage;
   logs: LogsStorage;
   workerWsh: WorkerWshStorage;
   workerMsh: WorkerMshStorage;
@@ -223,6 +256,9 @@ export interface IStorage {
   contactLinks: ContactLinkStorage;
   commTags: CommTagsStorage;
   comm: CommStorage;
+  grievances: GrievanceStorage;
+  grievanceTimelineTemplates: GrievanceTimelineTemplateStorage;
+  grievanceSettlements: GrievanceSettlementStorage;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -244,9 +280,13 @@ export class DatabaseStorage implements IStorage {
   wizardEmployerMonthly: WizardEmployerMonthlyStorage;
   wizardEmploymentStatusMappings: WizardEmploymentStatusMappingStorage;
   files: FileStorage;
-  cronJobs: CronJobStorage;
   cronJobRuns: CronJobRunStorage;
   pluginConfigs: PluginConfigStorage;
+  denorm: DenormStorage;
+  workerMshDenorm: WorkerMshDenormStorage;
+  workerWshDenorm: WorkerWshDenormStorage;
+  workerEmploymentDenorm: WorkerEmploymentDenormStorage;
+  grievanceNameDenorm: GrievanceNameDenormStorage;
   logs: LogsStorage;
   workerWsh: WorkerWshStorage;
   workerMsh: WorkerMshStorage;
@@ -314,6 +354,9 @@ export class DatabaseStorage implements IStorage {
   contactLinks: ContactLinkStorage;
   commTags: CommTagsStorage;
   comm: CommStorage;
+  grievances: GrievanceStorage;
+  grievanceTimelineTemplates: GrievanceTimelineTemplateStorage;
+  grievanceSettlements: GrievanceSettlementStorage;
 
   constructor() {
     this.variables = withStorageLogging(
@@ -382,9 +425,14 @@ export class DatabaseStorage implements IStorage {
     this.wizardEmployerMonthly = createWizardEmployerMonthlyStorage();
     this.wizardEmploymentStatusMappings = createWizardEmploymentStatusMappingStorage();
     this.files = withStorageLogging(createFileStorage(), fileLoggingConfig);
-    this.cronJobs = createCronJobStorage();
     this.cronJobRuns = createCronJobRunStorage();
     this.pluginConfigs = createPluginConfigStorage();
+    // No logging for denorm - high-volume internal workflow state churn.
+    this.denorm = createDenormStorage();
+    this.workerMshDenorm = createWorkerMshDenormStorage();
+    this.workerWshDenorm = createWorkerWshDenormStorage();
+    this.workerEmploymentDenorm = createWorkerEmploymentDenormStorage();
+    this.grievanceNameDenorm = createGrievanceNameDenormStorage();
     this.logs = createLogsStorage();
 
     // No logging for wmb scan queue - high-volume internal state changes
@@ -393,9 +441,7 @@ export class DatabaseStorage implements IStorage {
 
     this.workerWsh = withStorageLogging(
       createWorkerWshStorage(
-        this.workers.updateWorkerStatus.bind(this.workers),
         async (workerId: string) => {
-          await this.workers.syncWorkerEmployerDenorm(workerId);
           await this.wmbScanQueue.invalidateWorkerScans(workerId);
         },
       ),
@@ -403,9 +449,7 @@ export class DatabaseStorage implements IStorage {
     );
     this.workerMsh = withStorageLogging(
       createWorkerMshStorage(
-        this.workers.updateWorkerMemberStatuses.bind(this.workers),
         async (workerId: string) => {
-          await this.workers.syncWorkerEmployerDenorm(workerId);
           await this.wmbScanQueue.invalidateWorkerScans(workerId);
         }
       ),
@@ -414,16 +458,12 @@ export class DatabaseStorage implements IStorage {
     this.workerHours = withStorageLogging(
       createWorkerHoursStorage(
         async (workerId: string) => {
-          await this.workers.syncWorkerEmployerDenorm(workerId);
           await this.wmbScanQueue.invalidateWorkerScans(workerId);
         },
       ),
       workerHoursLoggingConfig,
     );
-    
-    // Inject denorm data provider into workers storage now that workerHours is available
-    this.workers.setDenormDataProvider(this.workerHours.getDenormData.bind(this.workerHours));
-    
+
     this.policies = withStorageLogging(
       createPolicyStorage(this.pluginConfigs),
       policyLoggingConfig,
@@ -560,7 +600,7 @@ export class DatabaseStorage implements IStorage {
     this.comm = withStorageLogging(
       {
         ...baseComm,
-        async updateWithTags(id, data, tagIds) {
+        async updateWithTags(id: string, data: Partial<import("@shared/schema").InsertComm>, tagIds?: string[]) {
           return runInTransaction(async () => {
             // Use the unwrapped rawComm here so the inner updateComm
             // does NOT emit its own log line — the orchestrator-level
@@ -628,6 +668,18 @@ export class DatabaseStorage implements IStorage {
           },
         },
       },
+    );
+    this.grievances = withStorageLogging(
+      createGrievanceStorage(),
+      grievanceLoggingConfig,
+    );
+    this.grievanceTimelineTemplates = withStorageLogging(
+      createGrievanceTimelineTemplateStorage(),
+      grievanceTimelineTemplateLoggingConfig,
+    );
+    this.grievanceSettlements = withStorageLogging(
+      createGrievanceSettlementStorage(),
+      grievanceSettlementLoggingConfig,
     );
   }
 }

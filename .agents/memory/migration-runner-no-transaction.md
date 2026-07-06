@@ -19,3 +19,10 @@ copying, must wrap the entire body in `await db.transaction(async (tx) => { ... 
 and issue all statements via `tx.execute`. Then a partial failure rolls back
 atomically, leaving the source intact for a clean rerun, and the
 already-fully-migrated case is still skipped correctly.
+
+**DDL corollary (table + its indexes):** Do NOT gate index creation behind a
+single `if (!tableExists)` check. A crash after `CREATE TABLE` but before the
+indexes leaves the table without its indexes, and the existence check then skips
+index creation forever → missing uniqueness + drift-gate failure. Make each DDL
+statement independently self-healing: `CREATE TABLE IF NOT EXISTS`,
+`CREATE [UNIQUE] INDEX IF NOT EXISTS`, `ALTER TABLE ... DROP COLUMN IF EXISTS`.

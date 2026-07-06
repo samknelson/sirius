@@ -23,6 +23,10 @@ export function registerTrustEligibilityKind(): void {
       "Rules that determine worker eligibility for trust benefits at election start and continuation.",
     // Mirror legacy auth on /api/eligibility-plugins: requireAccess("admin").
     requiredPolicy: "admin",
+    // The trust-eligibility subsidiary table (plugin_configs_benefit_eligibility)
+    // is owned by the trust.benefits component, so the rule engine only makes
+    // sense — and only has a table to query — when trust benefits are enabled.
+    requiredComponent: "trust.benefits",
     sortEntries: (a, b) => a.id.localeCompare(b.id),
     // Backs POST /api/plugins/trust-eligibility/:id/validate-config
     // (replaces the legacy POST /api/eligibility/validate-config).

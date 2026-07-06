@@ -55,6 +55,31 @@ const ALLOWED_FILES = [
   'server/services/quickstart.ts',
 ];
 
+// Files under server/plugins/ that call storage.readOnly.query(...) but are
+// shared plugin-kind infrastructure rather than an individual plugin carrying
+// its own `needsReadOnlyDb` metadata flag. These are exempt from the
+// needsReadOnlyDb declaration requirement below.
+const READONLY_FLAG_EXEMPT_FILES = [
+  // Trust-eligibility executor: shared infra that loads exemptions across all
+  // eligibility plugins; it is not itself a plugin with a metadata flag.
+  'server/plugins/trust/eligibility/executor.ts',
+  // Wizard engine internals. A wizard's direct read query lives in its
+  // engine/types/*.ts implementation, while the `needsReadOnlyDb: true`
+  // opt-in flag is declared on the thin plugins/*.ts wrapper's metadata (and
+  // surfaced by the wizard registry). These engine files are that wizard's
+  // implementation, not a separate plugin carrying its own flag, so they are
+  // exempt from the per-file flag requirement. Each entry corresponds to a
+  // plugin wrapper that declares `needsReadOnlyDb: true`.
+  'server/plugins/wizards/engine/types/report_workers_missing_ssn.ts',
+  'server/plugins/wizards/engine/types/report_workers_invalid_ssn.ts',
+  'server/plugins/wizards/engine/types/report_workers_duplicate_ssn.ts',
+  'server/plugins/wizards/engine/types/report_gbhet_legal_compliance.ts',
+  'server/plugins/wizards/engine/types/report_employer_users.ts',
+  'server/plugins/wizards/engine/types/report_btu_workers_invalid_cardcheck.ts',
+  'server/plugins/wizards/engine/types/btu_dues_allocation.ts',
+  'server/plugins/wizards/engine/types/btu_cardcheck_import.ts',
+];
+
 function isInAllowedDirectory(filePath: string): boolean {
   const normalized = filePath.replace(/\\/g, '/');
   return ALLOWED_DIRECTORIES.some(dir => normalized.startsWith(dir + '/'));
@@ -127,7 +152,29 @@ function checkFile(filePath: string): Violation[] {
       }
     }
   });
-  
+
+  // Plugins that reach for direct read-only DB access via
+  // storage.readOnly.query(...) must opt in explicitly by declaring
+  // `needsReadOnlyDb: true` in their metadata. This keeps the escape hatch
+  // visible and auditable. Shared plugin-kind infrastructure is exempt via
+  // READONLY_FLAG_EXEMPT_FILES.
+  const normalized = relativePath.replace(/\\/g, '/');
+  if (
+    normalized.startsWith('server/plugins/') &&
+    /readOnly\.query\s*\(/.test(content) &&
+    !content.includes('needsReadOnlyDb') &&
+    !READONLY_FLAG_EXEMPT_FILES.includes(normalized)
+  ) {
+    const lineIndex = lines.findIndex((l) => /readOnly\.query\s*\(/.test(l));
+    violations.push({
+      file: relativePath,
+      line: lineIndex >= 0 ? lineIndex + 1 : 1,
+      importPath: 'storage.readOnly.query',
+      suggestion:
+        'A plugin using storage.readOnly.query(...) must declare `needsReadOnlyDb: true` in its metadata.',
+    });
+  }
+
   return violations;
 }
 

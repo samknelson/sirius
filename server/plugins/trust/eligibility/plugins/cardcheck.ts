@@ -7,6 +7,8 @@ import {
 } from "../types";
 import { registerEligibilityPlugin } from "../registry";
 import { storage } from "../../../../storage/database";
+import { cardchecks } from "@shared/schema";
+import { and, eq } from "drizzle-orm";
 
 interface CardcheckConfig extends BaseEligibilityConfig {
   cardcheckDefinitionId: string;
@@ -19,6 +21,7 @@ class CardcheckPlugin extends EligibilityPlugin<CardcheckConfig> {
     description:
       "Worker must have a signed cardcheck of the specified definition to be eligible.",
     requiredComponent: "cardcheck",
+    needsReadOnlyDb: true,
     configSchema: {
       type: "object",
       required: ["cardcheckDefinitionId"],
@@ -68,10 +71,20 @@ class CardcheckPlugin extends EligibilityPlugin<CardcheckConfig> {
       };
     }
 
-    const hasSigned = await storage.cardchecks.hasSignedCardcheckOfDefinition(
-      context.subscriberWorker.id,
-      config.cardcheckDefinitionId,
-    );
+    const hasSigned = await storage.readOnly.query(async (client) => {
+      const [row] = await client
+        .select({ id: cardchecks.id })
+        .from(cardchecks)
+        .where(
+          and(
+            eq(cardchecks.workerId, context.subscriberWorker.id),
+            eq(cardchecks.cardcheckDefinitionId, config.cardcheckDefinitionId),
+            eq(cardchecks.status, "signed"),
+          ),
+        )
+        .limit(1);
+      return !!row;
+    });
 
     if (hasSigned) {
       return {

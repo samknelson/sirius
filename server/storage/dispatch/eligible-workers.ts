@@ -556,8 +556,11 @@ export function createDispatchEligibleWorkersStorage(): DispatchEligibleWorkersS
           continue;
         }
 
-        const condition = await Promise.resolve(plugin.getEligibilityCondition(context, pluginConfig.config));
-        if (!condition) {
+        const conditionResult = await Promise.resolve(plugin.getEligibilityCondition(context, pluginConfig.config));
+        const conditions = conditionResult
+          ? (Array.isArray(conditionResult) ? conditionResult : [conditionResult])
+          : [];
+        if (conditions.length === 0) {
           pluginResults.push({
             pluginId: plugin.id,
             pluginName: plugin.name,
@@ -568,13 +571,22 @@ export function createDispatchEligibleWorkersStorage(): DispatchEligibleWorkersS
           continue;
         }
 
-        const checkResult = await checkConditionForWorker(client, workerId, condition);
+        // A plugin may contribute several conditions (e.g. hta-home-employer).
+        // The query path ANDs them together, so a worker passes the plugin only
+        // when every condition passes; surface the first failing one.
+        const checkResults: Array<{ condition: EligibilityCondition; passed: boolean; explanation: string }> = [];
+        for (const condition of conditions) {
+          const result = await checkConditionForWorker(client, workerId, condition);
+          checkResults.push({ condition, passed: result.passed, explanation: result.explanation });
+        }
+        const failed = checkResults.find((cr) => !cr.passed);
+        const chosen = failed ?? checkResults[0];
         pluginResults.push({
           pluginId: plugin.id,
           pluginName: plugin.name,
-          passed: checkResult.passed,
-          explanation: checkResult.explanation,
-          condition,
+          passed: !failed,
+          explanation: failed ? failed.explanation : checkResults.map((cr) => cr.explanation).join("; "),
+          condition: chosen.condition,
         });
       }
 

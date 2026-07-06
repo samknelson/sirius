@@ -36,6 +36,7 @@ interface InvoiceEntry {
 interface InvoiceData {
   eaName: string;
   accountName: string;
+  invoiceNumber: string;
   month: number;
   year: number;
   incomingBalance: string;
@@ -110,6 +111,13 @@ export function generateInvoicePdf(invoiceData: InvoiceData): Promise<Buffer> {
           text: `${monthName} ${invoiceData.year}`,
           style: "subheader",
           alignment: "center",
+          margin: [0, 0, 0, 4],
+        },
+        {
+          text: `Invoice No. ${invoiceData.invoiceNumber}`,
+          alignment: "center",
+          fontSize: 11,
+          bold: true,
           margin: [0, 0, 0, 20],
         },
       ];

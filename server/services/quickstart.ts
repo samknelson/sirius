@@ -44,7 +44,6 @@ const TABLE_ORDER = [
   'ledgerAccounts',
   'employers',
   'trustProviders',
-  'cronJobs',
   
   // Level 2: Depends on level 1
   'contacts',

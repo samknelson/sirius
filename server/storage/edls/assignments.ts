@@ -19,7 +19,6 @@ import { defineLoggingConfig } from "../middleware/logging";
 import { getClient, runInTransaction } from "../transaction-context";
 import { createUnifiedOptionsStorage } from "../unified-options";
 import { createEdlsCrewsStorage } from "./crews";
-import { createReadOnlyStorage } from "../read-only";
 
 export const validate = createAsyncStorageValidator<InsertEdlsAssignment, EdlsAssignment, {}>(
   async (data, existing) => {
@@ -152,7 +151,6 @@ export interface DailySummaryByMemberStatusRow {
 export type MemberStatusSummaryRow = DailySummaryByMemberStatusRow;
 
 export interface EdlsAssignmentsStorage {
-  getDailySummaryByMemberStatus(ymd: string): Promise<DailySummaryByMemberStatusRow[]>;
   getByCrewId(crewId: string): Promise<EdlsAssignmentWithWorker[]>;
   getBySheetId(sheetId: string, industryId?: string | null): Promise<EdlsAssignmentWithWorker[]>;
   get(id: string): Promise<EdlsAssignment | undefined>;
@@ -209,42 +207,6 @@ async function sortAssignmentsByClassification(
 
 export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
   return {
-    async getDailySummaryByMemberStatus(ymd: string): Promise<DailySummaryByMemberStatusRow[]> {
-      const readOnly = createReadOnlyStorage();
-      return readOnly.query(async (client) => {
-        const result = await client.execute(sql`
-          SELECT
-            COALESCE(oms.name, 'Unassigned') AS member_status,
-            oms.sequence AS ms_sequence,
-            s.status AS sheet_status,
-            COUNT(DISTINCT a.worker_id)::int AS worker_count
-          FROM edls_assignments a
-          JOIN edls_crews c ON c.id = a.crew_id
-          JOIN edls_sheets s ON s.id = c.sheet_id
-          JOIN workers w ON w.id = a.worker_id
-          LEFT JOIN LATERAL (
-            SELECT oms2.name, oms2.sequence
-            FROM options_worker_ms oms2
-            JOIN employers emp ON emp.id = s.employer_id
-            WHERE oms2.industry_id = emp.industry_id
-              AND oms2.id = ANY(w.denorm_ms_ids)
-            ORDER BY oms2.sequence ASC NULLS LAST, oms2.name
-            LIMIT 1
-          ) oms ON true
-          WHERE a.ymd = ${ymd}
-            AND s.status != 'trash'
-          GROUP BY oms.name, oms.sequence, s.status
-          ORDER BY oms.sequence NULLS LAST, oms.name
-        `);
-        return (result.rows as Array<Record<string, unknown>>).map((row) => ({
-          memberStatus: row.member_status as string,
-          msSequence: row.ms_sequence === null ? null : Number(row.ms_sequence),
-          sheetStatus: row.sheet_status as string,
-          workerCount: Number(row.worker_count ?? 0),
-        }));
-      });
-    },
-
     async getByCrewId(crewId: string): Promise<EdlsAssignmentWithWorker[]> {
       const client = getClient();
       const rows = await client
@@ -284,8 +246,9 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
       const memberStatusJoin = industryId
         ? sql`LEFT JOIN LATERAL (
           SELECT ms.id, ms.code, ms.name
-          FROM UNNEST(w.denorm_ms_ids) AS ms_id
-          INNER JOIN options_worker_ms ms ON ms.id = ms_id AND ms.industry_id = ${industryId}
+          FROM worker_msh_denorm wmd
+          INNER JOIN options_worker_ms ms ON ms.id = wmd.ms_id AND ms.industry_id = ${industryId}
+          WHERE wmd.worker_id = w.id
           LIMIT 1
         ) member_status ON true`
         : sql``;
@@ -400,12 +363,13 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
         ? sql`wr.value as "ratingValue"`
         : sql`NULL::integer as "ratingValue"`;
       
-      // Build member status join - uses UNNEST on denorm_ms_ids to find the member status for the employer's industry
+      // Build member status join - uses worker_msh_denorm to find the member status for the employer's industry
       const memberStatusJoin = industryId
         ? sql`LEFT JOIN LATERAL (
           SELECT ms.id, ms.name, ms.sequence
-          FROM UNNEST(w.denorm_ms_ids) AS ms_id
-          INNER JOIN options_worker_ms ms ON ms.id = ms_id AND ms.industry_id = ${industryId}
+          FROM worker_msh_denorm wmd
+          INNER JOIN options_worker_ms ms ON ms.id = wmd.ms_id AND ms.industry_id = ${industryId}
+          WHERE wmd.worker_id = w.id
           LIMIT 1
         ) member_status ON true`
         : sql``;
@@ -742,7 +706,7 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
           FROM options_worker_ms oms2
           JOIN employers emp ON emp.id = s.employer_id
           WHERE oms2.industry_id = emp.industry_id
-            AND oms2.id = ANY(w.denorm_ms_ids)
+            AND EXISTS (SELECT 1 FROM worker_msh_denorm wmd WHERE wmd.worker_id = w.id AND wmd.ms_id = oms2.id)
           ORDER BY oms2.sequence ASC NULLS LAST, oms2.name
           LIMIT 1
         ) oms ON true

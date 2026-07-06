@@ -1,5 +1,6 @@
 import type { ChargePluginConfig } from "@shared/schema";
 import type { JsonSchema } from "@shared/json-schema-form";
+import type { BasePluginMetadata } from "../../_core";
 
 export enum TriggerType {
   HOURS_SAVED = "hours_saved",
@@ -120,10 +121,7 @@ export interface PluginExecutionResult {
   error?: string;
 }
 
-export interface ChargePluginMetadata {
-  id: string;
-  name: string;
-  description: string;
+export interface ChargePluginMetadata extends BasePluginMetadata {
   triggers: TriggerType[];
   defaultScope: "global" | "employer";
   /**
@@ -140,7 +138,6 @@ export interface ChargePluginMetadata {
    * the plugin's `validateConfig` override.
    */
   configSchema?: JsonSchema;
-  requiredComponent?: string; // Component ID that must be enabled for this plugin to function
 }
 
 export interface LedgerEntryVerification {

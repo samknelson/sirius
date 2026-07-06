@@ -9,6 +9,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
 interface InvoiceSummary {
+  invoiceNumber: string;
   month: number;
   year: number;
   totalAmount: string;
@@ -94,7 +95,6 @@ function SectionDetailModal({ state, onClose, eaId }: { state: SectionModalState
   });
 
   const title = section === "invoicedAmount" ? "Invoiced Amount"
-    : section === "paymentsReceived" ? "Payments Received"
     : "Payments Applied";
 
   const periodLabel = `${MONTH_NAMES[invoice.month - 1]} ${invoice.year}`;
@@ -274,6 +274,7 @@ function EAInvoicesContent() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead>Invoice No.</TableHead>
                   <TableHead>Period</TableHead>
                   <TableHead className="text-right">Incoming Balance</TableHead>
                   <TableHead className="text-right">
@@ -304,6 +305,12 @@ function EAInvoicesContent() {
                       key={`${invoice.year}-${invoice.month}`}
                       data-testid={`row-invoice-${invoice.year}-${invoice.month}`}
                     >
+                      <TableCell
+                        className="font-mono text-xs whitespace-nowrap"
+                        data-testid={`cell-invoice-number-${invoice.year}-${invoice.month}`}
+                      >
+                        {invoice.invoiceNumber}
+                      </TableCell>
                       <TableCell data-testid={`cell-period-${invoice.year}-${invoice.month}`}>
                         {MONTH_NAMES[invoice.month - 1]} {invoice.year}
                       </TableCell>

@@ -1,24 +1,19 @@
-import { useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useLocation, useRoute, Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { FileText, Plus, ChevronLeft, Play, Info } from "lucide-react";
+import { FileText, Plus, ChevronLeft } from "lucide-react";
 import { format } from "date-fns";
-import { queryClient, apiRequest } from "@/lib/queryClient";
-import { useToast } from "@/hooks/use-toast";
+import { WizardLauncher } from "@/components/wizards/WizardLauncher";
 import { Wizard, WizardType } from "@/lib/wizard-types";
 
 export default function ReportType() {
   const [, params] = useRoute("/reports/:reportType");
   const [, setLocation] = useLocation();
-  const { toast } = useToast();
-  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
 
   const reportTypeName = params?.reportType || "";
 
@@ -34,37 +29,6 @@ export default function ReportType() {
 
   const reportWizards = (allWizards?.filter(w => w.type === reportTypeName) || [])
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-
-  const createReportMutation = useMutation<Wizard, Error>({
-    mutationFn: async () => {
-      return await apiRequest("POST", `/api/wizards`, {
-        type: reportTypeName,
-        status: "draft",
-        entityId: null,
-        data: {}
-      });
-    },
-    onSuccess: (newWizard: Wizard) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/wizards"] });
-      setIsCreateDialogOpen(false);
-      toast({
-        title: "Report Created",
-        description: "The report wizard has been created successfully.",
-      });
-      setLocation(`/wizards/${newWizard.id}`);
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to create report",
-        variant: "destructive",
-      });
-    },
-  });
-
-  const handleCreateReport = () => {
-    createReportMutation.mutate();
-  };
 
   // Show loading state while wizard types are loading
   if (typesLoading) {
@@ -118,48 +82,21 @@ export default function ReportType() {
               </div>
             </div>
           </div>
-          <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-            <DialogTrigger asChild>
-              <Button data-testid="button-create-report">
+          <WizardLauncher
+            type={reportTypeName}
+            successTitle="Report Created"
+            successDescription="The report wizard has been created successfully."
+            renderTrigger={({ onClick, disabled, isPending }) => (
+              <Button
+                onClick={onClick}
+                disabled={disabled}
+                data-testid="button-create-report"
+              >
                 <Plus className="h-4 w-4 mr-2" />
-                New Report
+                {isPending ? "Creating..." : "New Report"}
               </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Create New Report</DialogTitle>
-                <DialogDescription>
-                  Create a new {reportType.displayName} report
-                </DialogDescription>
-              </DialogHeader>
-              <div className="py-4">
-                <Alert>
-                  <Info className="h-4 w-4" />
-                  <AlertDescription>
-                    This will create a new report wizard. You'll be able to configure and run it on the next page.
-                  </AlertDescription>
-                </Alert>
-                
-                <div className="flex justify-end gap-2 pt-6">
-                  <Button
-                    variant="outline"
-                    onClick={() => setIsCreateDialogOpen(false)}
-                    data-testid="button-cancel-create"
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    onClick={handleCreateReport}
-                    disabled={createReportMutation.isPending}
-                    data-testid="button-confirm-create"
-                  >
-                    <Play className="h-4 w-4 mr-2" />
-                    {createReportMutation.isPending ? "Creating..." : "Create Report"}
-                  </Button>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
+            )}
+          />
         </div>
       </div>
 
@@ -183,14 +120,22 @@ export default function ReportType() {
               <p className="text-muted-foreground mb-4">
                 Create your first {reportType.displayName} report to get started
               </p>
-              <Button 
-                variant="outline" 
-                onClick={() => setIsCreateDialogOpen(true)}
-                data-testid="button-create-first-report"
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Create Your First Report
-              </Button>
+              <WizardLauncher
+                type={reportTypeName}
+                successTitle="Report Created"
+                successDescription="The report wizard has been created successfully."
+                renderTrigger={({ onClick, disabled, isPending }) => (
+                  <Button
+                    variant="outline"
+                    onClick={onClick}
+                    disabled={disabled}
+                    data-testid="button-create-first-report"
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    {isPending ? "Creating..." : "Create Your First Report"}
+                  </Button>
+                )}
+              />
             </div>
           ) : (
             <div className="border rounded-lg overflow-hidden">

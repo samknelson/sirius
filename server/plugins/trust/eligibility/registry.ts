@@ -16,6 +16,7 @@ function pluginToBaseMetadata(p: EligibilityPlugin): BasePluginMetadata {
     name: p.metadata.name,
     description: p.metadata.description,
     requiredComponent: p.metadata.requiredComponent,
+    needsReadOnlyDb: p.metadata.needsReadOnlyDb,
   };
 }
 
@@ -25,6 +26,7 @@ interface TrustEligibilityManifestEntry {
   description: string;
   configSchema: TrustEligibilityMetadata["configSchema"];
   requiredComponent?: string;
+  needsReadOnlyDb?: boolean;
 }
 
 function pluginToManifestEntry(p: EligibilityPlugin): TrustEligibilityManifestEntry {
@@ -34,6 +36,7 @@ function pluginToManifestEntry(p: EligibilityPlugin): TrustEligibilityManifestEn
     description: p.metadata.description,
     configSchema: p.metadata.configSchema,
     requiredComponent: p.metadata.requiredComponent,
+    needsReadOnlyDb: p.metadata.needsReadOnlyDb,
   };
 }
 

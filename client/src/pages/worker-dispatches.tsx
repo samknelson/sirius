@@ -5,7 +5,7 @@ import { WorkerLayout } from "@/components/layouts/WorkerLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DispatchListTable } from "@/components/dispatch/DispatchListTable";
-import type { DispatchWithRelations } from "../../../server/storage/dispatches";
+import type { DispatchWithRelations } from "../../../server/storage/dispatch/dispatches";
 
 function WorkerDispatchesContent() {
   const { id: workerId } = useParams<{ id: string }>();

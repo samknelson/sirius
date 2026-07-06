@@ -443,7 +443,7 @@ export function registerTrustProviderContactRoutes(
         
         if (isOptional && !isRequired && !isStillSelected) {
           await storage.users.unassignRoleFromUser(user.id, currentRoleId);
-          const role = await storage.getRole(currentRoleId);
+          const role = await storage.users.getRole(currentRoleId);
           if (role) {
             rolesRemoved.push(role.name);
           }

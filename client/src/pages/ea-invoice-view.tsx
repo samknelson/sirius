@@ -33,6 +33,7 @@ interface InvoiceSection {
 }
 
 interface InvoiceDetails {
+  invoiceNumber: string;
   month: number;
   year: number;
   totalAmount: string;
@@ -207,6 +208,9 @@ function EAInvoiceViewContent() {
         <h2 className="text-2xl font-bold">
           Statement: {MONTH_NAMES[invoiceDetails.month - 1]} {invoiceDetails.year}
         </h2>
+        <p className="text-sm text-muted-foreground" data-testid="invoice-number">
+          Invoice No. {invoiceDetails.invoiceNumber}
+        </p>
       </div>
 
       {invoiceDetails.invoiceHeader && (

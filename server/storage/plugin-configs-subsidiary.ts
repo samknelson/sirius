@@ -18,6 +18,9 @@ import {
   type InsertPluginConfigPaymentGateway,
   type PluginConfigEventNotifier,
   type InsertPluginConfigEventNotifier,
+  pluginConfigsCron,
+  type PluginConfigCron,
+  type InsertPluginConfigCron,
 } from "@shared/schema";
 import { eq, isNull, inArray, sql, type SQL } from "drizzle-orm";
 import type { AnyPgTable, PgColumn } from "drizzle-orm/pg-core";
@@ -64,6 +67,9 @@ export interface SubsidiarySearchParams {
   // Event-notifier: a single active medium (token-matched against the
   // comma-joined `media` list).
   media?: string | null;
+  // Cron: exact cron-expression match (rarely filtered on; present for
+  // completeness so the schedule is a real, searchable column).
+  schedule?: string;
 }
 
 /** `col = val`, or `col IS NULL` when val is explicitly null; skip undefined. */
@@ -313,6 +319,40 @@ export function createEventNotifierSubsidiaryStorage(): SubsidiaryStorage<
       // `media` is a comma-joined multi-value list, so a single-value filter
       // must match any row whose list *contains* the token (token-safe LIKE).
       containsToken(out, pluginConfigsEventNotifier.media, params.media);
+      return out;
+    },
+  };
+}
+
+export function createCronSubsidiaryStorage(): SubsidiaryStorage<
+  PluginConfigCron,
+  InsertPluginConfigCron
+> {
+  return {
+    table: pluginConfigsCron,
+    async get(id) {
+      const client = getClient();
+      const [row] = await client
+        .select()
+        .from(pluginConfigsCron)
+        .where(eq(pluginConfigsCron.id, id));
+      return row || undefined;
+    },
+    async upsert(row) {
+      const client = getClient();
+      const [result] = await client
+        .insert(pluginConfigsCron)
+        .values(row)
+        .onConflictDoUpdate({
+          target: pluginConfigsCron.id,
+          set: { schedule: row.schedule },
+        })
+        .returning();
+      return result;
+    },
+    buildConditions(params) {
+      const out: SQL[] = [];
+      if (params.schedule !== undefined) out.push(eq(pluginConfigsCron.schedule, params.schedule));
       return out;
     },
   };

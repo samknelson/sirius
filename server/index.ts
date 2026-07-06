@@ -92,6 +92,9 @@ server.listen({
   // sequence, routes, websocket, cron scheduler, error middleware). This is
   // the single source of truth shared with the production entry point
   // (`server/production-entry.ts` -> `startApp()` in `server/app-init.ts`).
+  // The session-expiration fix (res.headersSent guard in the error middleware
+  // and awaited provider logout) now lives inside bootstrapApp / the auth
+  // provider, so it is preserved by this consolidation.
   await bootstrapApp(app, server);
 
   // importantly only setup vite in development and after

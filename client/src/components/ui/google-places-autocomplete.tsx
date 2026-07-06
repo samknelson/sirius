@@ -65,8 +65,8 @@ export function GooglePlacesAutocomplete({
       try {
         // Set options for the Google Maps API
         setOptions({
-          apiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "",
-          version: "weekly"
+          key: import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "",
+          v: "weekly"
         });
 
         // Import the Places library

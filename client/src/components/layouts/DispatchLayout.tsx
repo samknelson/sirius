@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import type { DispatchWithRelations } from "../../../../server/storage/dispatches";
+import type { DispatchWithRelations } from "../../../../server/storage/dispatch/dispatches";
 import { useDispatchTabAccess } from "@/hooks/useTabAccess";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 

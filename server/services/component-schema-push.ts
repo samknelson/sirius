@@ -852,8 +852,8 @@ export async function generateDriftFixStatements(
     const tag = `FK ${fk.name ?? ref.name ?? "(unnamed)"}: ${cols.join(",")} -> ${ftName}(${fcols.join(",")})`;
     if (!missingSet.has(tag)) continue;
     const name = fk.name ?? ref.name ?? `${tableName}_${cols.join("_")}_fkey`;
-    const colsQ = cols.map((c) => `"${c}"`).join(", ");
-    const fcolsQ = fcols.map((c) => `"${c}"`).join(", ");
+    const colsQ = cols.map((c: string) => `"${c}"`).join(", ");
+    const fcolsQ = fcols.map((c: string) => `"${c}"`).join(", ");
     let s = `ALTER TABLE "${tableName}" ADD CONSTRAINT "${name}" FOREIGN KEY (${colsQ}) REFERENCES "${ftName}" (${fcolsQ})`;
     if (fk.onDelete) s += ` ON DELETE ${fk.onDelete.toUpperCase()}`;
     if (fk.onUpdate) s += ` ON UPDATE ${fk.onUpdate.toUpperCase()}`;
@@ -883,7 +883,7 @@ export async function generateDriftFixStatements(
         const name = item.name ?? `${tableName}_${cols.join("_")}_unique`;
         const tag = `UNIQUE ${item.name ?? "(unnamed)"}: (${cols.join(",")})`;
         if (!missingSet.has(tag)) continue;
-        const colsQ = cols.map((c) => `"${c}"`).join(", ");
+        const colsQ = cols.map((c: string) => `"${c}"`).join(", ");
         let s = `ALTER TABLE "${tableName}" ADD CONSTRAINT "${name}" UNIQUE`;
         if (item.nullsNotDistinctConfig) s += " NULLS NOT DISTINCT";
         s += ` (${colsQ})`;
@@ -898,8 +898,8 @@ export async function generateDriftFixStatements(
         const tag = `FK ${built.name ?? ref.name ?? "(unnamed)"}: ${cols.join(",")} -> ${ftName}(${fcols.join(",")})`;
         if (!missingSet.has(tag)) continue;
         const name = built.name ?? ref.name ?? `${tableName}_${cols.join("_")}_fkey`;
-        const colsQ = cols.map((c) => `"${c}"`).join(", ");
-        const fcolsQ = fcols.map((c) => `"${c}"`).join(", ");
+        const colsQ = cols.map((c: string) => `"${c}"`).join(", ");
+        const fcolsQ = fcols.map((c: string) => `"${c}"`).join(", ");
         let s = `ALTER TABLE "${tableName}" ADD CONSTRAINT "${name}" FOREIGN KEY (${colsQ}) REFERENCES "${ftName}" (${fcolsQ})`;
         if (built.onDelete) s += ` ON DELETE ${built.onDelete.toUpperCase()}`;
         if (built.onUpdate) s += ` ON UPDATE ${built.onUpdate.toUpperCase()}`;
@@ -915,7 +915,7 @@ export async function generateDriftFixStatements(
         const tag = `PRIMARY KEY ${item.name ?? "(unnamed)"}: (${cols.join(",")})`;
         if (!missingSet.has(tag)) continue;
         const name = item.name ?? `${tableName}_pk`;
-        const colsQ = cols.map((c) => `"${c}"`).join(", ");
+        const colsQ = cols.map((c: string) => `"${c}"`).join(", ");
         stmts.push(wrapDo(`ALTER TABLE "${tableName}" ADD CONSTRAINT "${name}" PRIMARY KEY (${colsQ})`));
       } else if (ctor === "IndexBuilder" || ctor === "UniqueIndexBuilder") {
         const name = item.config?.name;

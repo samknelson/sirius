@@ -209,6 +209,32 @@ export const componentRegistry: ComponentDefinition[] = [
     }
   },
   {
+    id: "grievance",
+    name: "Grievance",
+    description: "Functionality for tracking and managing grievances",
+    enabledByDefault: false,
+    category: "core",
+    managesSchema: true,
+    schemaManifest: {
+      version: 13,
+      schemaPath: "./shared/schema/grievance/schema.ts",
+      tables: ["options_grievance_status", "options_grievance_category", "options_grievance_steps", "options_grievance_complaints", "options_grievance_remedies", "options_grievance_roles", "grievances", "grievance_workers", "grievance_employers", "grievance_users", "grievance_complaints", "grievance_remedies", "grievance_steps", "grievance_timeline_templates", "grievance_timeline_template_steps", "grievance_name_denorm"]
+    }
+  },
+  {
+    id: "grievance.settlement",
+    name: "Grievance Settlement",
+    description: "Tracking settlements recorded against grievances. Requires the Grievance component to be enabled — settlements reference grievance records.",
+    enabledByDefault: false,
+    category: "grievance",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/grievance/settlement-schema.ts",
+      tables: ["options_grievance_settlement_type", "grievance_settlements"]
+    }
+  },
+  {
     id: "sitespecific.gbhet",
     name: "GBHET Customization",
     description: "Custom functionality for GBHET",
@@ -465,7 +491,13 @@ export const componentRegistry: ComponentDefinition[] = [
     name: "Trust Benefits",
     description: "Management of trust benefits and eligibility",
     enabledByDefault: false,
-    category: "core"
+    category: "core",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/trust/benefit-eligibility-schema.ts",
+      tables: ["plugin_configs_benefit_eligibility"]
+    }
   },
   {
     id: "trust.benefits.scan",
@@ -522,9 +554,9 @@ export const componentRegistry: ComponentDefinition[] = [
     category: "core",
     managesSchema: true,
     schemaManifest: {
-      version: 1,
+      version: 2,
       schemaPath: "./shared/schema/dispatch/schema.ts",
-      tables: ["options_dispatch_job_type", "dispatch_jobs", "dispatches", "worker_dispatch_status", "worker_dispatch_elig_denorm"]
+      tables: ["options_dispatch_job_type", "dispatch_jobs", "dispatches", "worker_dispatch_status", "worker_dispatch_elig_denorm", "plugin_configs_dispatch"]
     },
     permissions: [
       { key: "employer.dispatch", description: "Employer access to dispatch functionality" },

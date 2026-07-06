@@ -5,6 +5,7 @@ import {
   PluginExecutionResult, 
   HoursSavedContext,
   LedgerTransaction,
+  LedgerEntryVerification,
 } from "../types";
 import { registerChargePlugin } from "../registry";
 import type { ChargePluginMetadata } from "../types";
@@ -13,6 +14,7 @@ import { z } from "zod";
 import { logger } from "../../../../logger";
 import { getCurrentEffectiveRate } from "../../../../utils/rateHistory";
 import { storage } from "../../../../storage/database";
+import type { ChargePluginConfig, Ledger } from "@shared/schema";
 
 // Settings schema for Hour - Fixed plugin
 const rateHistoryEntrySchema = z.object({
@@ -219,6 +221,9 @@ class HourFixedPlugin extends ChargePlugin {
 
       // Create ledger transaction
       const transaction: LedgerTransaction = {
+        chargePlugin: this.metadata.id,
+        chargePluginKey: `${config.id}:${entityType}:${entityId}:${hoursContext.hoursId}`,
+        chargePluginConfigId: config.id,
         accountId: config.account,
         entityType,
         entityId,
@@ -361,6 +366,37 @@ class HourFixedPlugin extends ChargePlugin {
       // Return null to allow the charge to proceed (fail open)
       return null;
     }
+  }
+
+  async verifyEntry(
+    entry: Ledger,
+    config: ChargePluginConfig
+  ): Promise<LedgerEntryVerification> {
+    const baseResult: LedgerEntryVerification = {
+      entryId: entry.id,
+      chargePlugin: entry.chargePlugin,
+      chargePluginKey: entry.chargePluginKey,
+      isValid: true,
+      discrepancies: [],
+      actualAmount: entry.amount,
+      expectedAmount: null,
+      actualDescription: entry.memo,
+      expectedDescription: null,
+      referenceType: entry.referenceType,
+      referenceId: entry.referenceId,
+      transactionDate: entry.date,
+    };
+
+    const validationResult = this.validateSettings(config.settings);
+    if (!validationResult.valid) {
+      return {
+        ...baseResult,
+        isValid: false,
+        discrepancies: [`Invalid plugin configuration: ${validationResult.errors?.join(", ")}`],
+      };
+    }
+
+    return baseResult;
   }
 }
 

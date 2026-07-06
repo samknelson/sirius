@@ -1,20 +1,12 @@
 import { createNoopValidator } from '../utils/validation';
 import { getClient } from '../transaction-context';
-import { cronJobs, cronJobRuns, users, type CronJob, type InsertCronJob, type CronJobRun, type InsertCronJobRun } from "@shared/schema";
+import { cronJobRuns, users, type CronJobRun, type InsertCronJobRun } from "@shared/schema";
 import { eq, desc, and, lt } from "drizzle-orm";
-import { sql } from "drizzle-orm";
 
 /**
  * Stub validator - add validation logic here when needed
  */
-export const validate = createNoopValidator<InsertCronJob, CronJob>();
-
-export interface CronJobStorage {
-  list(): Promise<CronJob[]>;
-  getByName(name: string): Promise<CronJob | undefined>;
-  create(job: InsertCronJob): Promise<CronJob>;
-  update(name: string, updates: Partial<InsertCronJob>): Promise<CronJob | undefined>;
-}
+export const validate = createNoopValidator<InsertCronJobRun, CronJobRun>();
 
 export type CronJobRunWithUser = CronJobRun & {
   userFirstName?: string | null;
@@ -32,45 +24,6 @@ export interface CronJobRunStorage {
   deleteByJobName(jobName: string): Promise<number>;
   countOldRuns(cutoffDate: Date): Promise<number>;
   deleteOldRuns(cutoffDate: Date): Promise<number>;
-}
-
-export function createCronJobStorage(): CronJobStorage {
-  return {
-    async list(): Promise<CronJob[]> {
-      const client = getClient();
-      return client
-        .select()
-        .from(cronJobs)
-        .orderBy(cronJobs.name);
-    },
-
-    async getByName(name: string): Promise<CronJob | undefined> {
-      const client = getClient();
-      const [job] = await client.select().from(cronJobs).where(eq(cronJobs.name, name));
-      return job || undefined;
-    },
-
-    async create(insertJob: InsertCronJob): Promise<CronJob> {
-      validate.validateOrThrow(insertJob);
-      const client = getClient();
-      const [job] = await client
-        .insert(cronJobs)
-        .values(insertJob)
-        .returning();
-      return job;
-    },
-
-    async update(name: string, updates: Partial<InsertCronJob>): Promise<CronJob | undefined> {
-      validate.validateOrThrow(name);
-      const client = getClient();
-      const [job] = await client
-        .update(cronJobs)
-        .set({ ...updates, updatedAt: new Date() })
-        .where(eq(cronJobs.name, name))
-        .returning();
-      return job || undefined;
-    },
-  };
 }
 
 export function createCronJobRunStorage(): CronJobRunStorage {
@@ -171,7 +124,6 @@ export function createCronJobRunStorage(): CronJobRunStorage {
     },
 
     async update(id: string, updates: Partial<Omit<InsertCronJobRun, 'id'>>): Promise<CronJobRun | undefined> {
-      validate.validateOrThrow(id);
       const client = getClient();
       const [run] = await client
         .update(cronJobRuns)

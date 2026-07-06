@@ -1,11 +1,22 @@
 import { registerDashboardPlugin } from "../registry";
 import type { DashboardPlugin } from "../types";
+import { workerStewardAssignments, workers, contacts } from "@shared/schema";
+import { and, eq } from "drizzle-orm";
+
+interface MyStewardDetails {
+  id: string;
+  workerId: string;
+  displayName: string;
+  email: string | null;
+  phone: string | null;
+}
 
 export const myStewardPlugin: DashboardPlugin = {
   id: "my-steward",
   name: "My Steward",
   description: "Display stewards assigned to your home employer and bargaining unit",
   requiredComponent: "worker.steward",
+  needsReadOnlyDb: true,
 
   async content(ctx) {
     const dbUser = ctx.dbUser;
@@ -36,11 +47,36 @@ export const myStewardPlugin: DashboardPlugin = {
       };
     }
 
-    const assignments =
-      await ctx.storage.workerStewardAssignments.getStewardsByEmployerAndBargainingUnit(
-        worker.denormHomeEmployerId,
-        worker.bargainingUnitId,
-      );
+    const homeEmployerId = worker.denormHomeEmployerId;
+    const workerBargainingUnitId = worker.bargainingUnitId;
+    const assignments = await ctx.storage.readOnly.query(
+      async (client): Promise<MyStewardDetails[]> => {
+        const rows = await client
+          .select({
+            id: workerStewardAssignments.id,
+            workerId: workerStewardAssignments.workerId,
+            displayName: contacts.displayName,
+            email: contacts.email,
+          })
+          .from(workerStewardAssignments)
+          .innerJoin(workers, eq(workerStewardAssignments.workerId, workers.id))
+          .innerJoin(contacts, eq(workers.contactId, contacts.id))
+          .where(
+            and(
+              eq(workerStewardAssignments.employerId, homeEmployerId),
+              eq(workerStewardAssignments.bargainingUnitId, workerBargainingUnitId),
+            ),
+          );
+
+        return rows.map((row) => ({
+          id: row.id,
+          workerId: row.workerId,
+          displayName: row.displayName,
+          email: row.email,
+          phone: null,
+        }));
+      },
+    );
 
     const stewardsWithPhones = await Promise.all(
       assignments.map(async (steward) => {

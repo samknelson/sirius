@@ -29,7 +29,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { formatYmd } from "@shared/utils/date";
 import { dispatchJobStatusEnum, type Employer, type DispatchJobType } from "@shared/schema";
-import type { PaginatedDispatchJobs } from "../../../../server/storage/dispatch-jobs";
+import type { PaginatedDispatchJobs } from "../../../../server/storage/dispatch/jobs";
 
 const ITEMS_PER_PAGE = 100;
 

@@ -32,7 +32,7 @@ import {
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { DispatchStatus } from "@shared/schema";
-import type { CommSummary } from "../../../../server/storage/dispatches";
+import type { CommSummary } from "../../../../server/storage/dispatch/dispatches";
 
 const statusColors: Record<string, string> = {
   pending: "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300",

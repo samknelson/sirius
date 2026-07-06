@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Link } from "wouter";
 import { ListBulkAction } from "@/components/bulk/list-bulk-action";
+import { BulkProvisionUsersAction } from "@/components/bulk/bulk-provision-users-action";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { 
@@ -184,9 +185,14 @@ export default function AllEmployerContacts() {
     [employerContacts],
   );
 
-  const allVisibleSelected = visibleContactIds.length > 0 && visibleContactIds.every(id => selectedIds.has(id));
-  const visibleSelectedCount = visibleContactIds.filter(id => selectedIds.has(id)).length;
-  const totalMatching = employerContacts?.length ?? 0;
+  const uniqueContactIds = useMemo(
+    () => Array.from(new Set(visibleContactIds)),
+    [visibleContactIds],
+  );
+
+  const allVisibleSelected = uniqueContactIds.length > 0 && uniqueContactIds.every(id => selectedIds.has(id));
+  const visibleSelectedCount = uniqueContactIds.filter(id => selectedIds.has(id)).length;
+  const totalMatching = uniqueContactIds.length;
 
   const toggleAllVisible = (checked: boolean) => {
     setSelectedIds(prev => {
@@ -262,6 +268,14 @@ export default function AllEmployerContacts() {
             <Download className="h-4 w-4 mr-2" />
             Export CSV
           </Button>
+          <BulkProvisionUsersAction
+            selectedContactIds={Array.from(selectedIds)}
+            totalMatching={totalMatching}
+            visibleSelectedCount={visibleSelectedCount}
+            onSelectAllMatching={handleSelectAllMatching}
+            isSelectingAllMatching={isSelectingAll}
+            onCompleted={() => setSelectedIds(new Set())}
+          />
           <ListBulkAction
             selectedContactIds={Array.from(selectedIds)}
             totalMatching={totalMatching}

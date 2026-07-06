@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { Worker, Contact, Employer } from "@shared/schema";
 import type { JsonSchema } from "@shared/json-schema-form";
+import type { BasePluginMetadata } from "../../_core";
 
 export type ScanType = "start" | "continue";
 
@@ -89,12 +90,8 @@ export interface EligibilityResult {
  * come from `default` on each property and are applied automatically
  * by both the form renderer and the AJV validator.
  */
-export interface EligibilityPluginMetadata {
-  id: string;
-  name: string;
-  description: string;
+export interface EligibilityPluginMetadata extends BasePluginMetadata {
   configSchema: JsonSchema;
-  requiredComponent?: string;
 }
 
 export interface EligibilityRule {

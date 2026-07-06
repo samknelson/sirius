@@ -19,7 +19,7 @@ interface MonthCell {
 interface ComplianceRow {
   employerId: string;
   employerName: string;
-  siriusId: number;
+  siriusId: string | null;
   isActive: boolean;
   companyId: string | null;
   companyName: string | null;
@@ -203,7 +203,7 @@ export function registerEmployerComplianceRoutes(
     "/api/employer-compliance/resolve-contacts",
     requireAuth,
     requireComponent("ledger"),
-    requireAccess("bulk.edit"),
+    requireAccess("staff"),
     async (req, res) => {
       try {
         const { employerIds, contactTypeIds } = req.body ?? {};

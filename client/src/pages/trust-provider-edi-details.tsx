@@ -54,7 +54,7 @@ function EdiDetailsContent() {
         </CardContent>
       </Card>
 
-      {edi.data && Object.keys(edi.data as Record<string, unknown>).length > 0 && (
+      {!!edi.data && Object.keys(edi.data as Record<string, unknown>).length > 0 && (
         <Card data-testid="card-edi-data">
           <CardHeader>
             <CardTitle>Additional Data</CardTitle>

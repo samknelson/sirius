@@ -87,7 +87,7 @@ function TrustProviderEditContent() {
             </div>
           </div>
 
-          {provider.data && (
+          {!!provider.data && (
             <div>
               <h3 className="text-sm font-medium text-muted-foreground mb-3">Additional Data</h3>
               <pre className="text-sm bg-muted p-4 rounded-md overflow-x-auto" data-testid="text-provider-data">

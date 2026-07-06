@@ -15,7 +15,7 @@ import type {
   Ledger,
   InsertLedger
 } from "@shared/schema";
-import { eq, and, desc, or, isNull, asc, sql as sqlRaw, sum, min, max, count, inArray, notInArray, gte, lte } from "drizzle-orm";
+import { eq, ne, and, desc, or, isNull, asc, sql as sqlRaw, sum, min, max, count, inArray, notInArray, gte, lte, lt } from "drizzle-orm";
 import { alias as pgAlias } from "drizzle-orm/pg-core";
 import { defineLoggingConfig, withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
 import { formatAmount, getCurrency } from "@shared/currency";
@@ -102,6 +102,17 @@ export interface LedgerEntryStorage {
   getByAccountId(accountId: string): Promise<LedgerEntryWithDetails[]>;
   getRawByAccountId(accountId: string): Promise<RawLedgerEntryWithEntity[]>;
   getByAccountIdPaginated(accountId: string, limit: number, offset: number): Promise<{ data: LedgerEntryWithDetails[]; total: number }>;
+  getAccountMonthlySummary(
+    accountId: string,
+    basis: 'cash' | 'accrual',
+    monthKeys: string[],
+  ): Promise<Array<{ ym: string; charges: string; payments: string }>>;
+  getAccountMonthDrilldown(
+    accountId: string,
+    basis: 'cash' | 'accrual',
+    ym: string,
+    side: 'charges' | 'payments',
+  ): Promise<Ledger[]>;
   create(entry: InsertLedger): Promise<Ledger>;
   update(id: string, entry: Partial<InsertLedger>): Promise<Ledger | undefined>;
   delete(id: string): Promise<boolean>;
@@ -127,6 +138,7 @@ export interface RawLedgerEntryWithEntity extends Ledger {
 }
 
 export interface InvoiceSummary {
+  invoiceNumber: string;
   month: number;
   year: number;
   totalAmount: string;
@@ -592,7 +604,8 @@ export function createLedgerPaymentStorage(): LedgerPaymentStorage {
         ...row.payment,
         entityType: row.ea.entityType,
         entityId: row.ea.entityId,
-        entityName: row.employer?.name || null
+        entityName: row.employer?.name || null,
+        allocatedEntities: []
       }));
     },
 
@@ -636,7 +649,8 @@ export function createLedgerPaymentStorage(): LedgerPaymentStorage {
         ...row.payment,
         entityType: row.ea.entityType,
         entityId: row.ea.entityId,
-        entityName: row.employer?.name || null
+        entityName: row.employer?.name || null,
+        allocatedEntities: []
       }));
 
       return { data, total };
@@ -1181,6 +1195,100 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
       return this.getTransactionsPaginated({ accountId }, limit, offset);
     },
 
+    async getAccountMonthlySummary(
+      accountId: string,
+      basis: 'cash' | 'accrual',
+      monthKeys: string[],
+    ): Promise<Array<{ ym: string; charges: string; payments: string }>> {
+      if (monthKeys.length === 0) return [];
+      const client = getClient();
+
+      const sorted = [...monthKeys].sort();
+      const firstMonth = sorted[0];
+      const lastMonth = sorted[sorted.length - 1];
+      const [ly, lm] = lastMonth.split('-').map(Number);
+      const nextYm = lm === 12
+        ? `${ly + 1}-01`
+        : `${ly}-${String(lm + 1).padStart(2, '0')}`;
+      const startStr = `${firstMonth}-01`;
+      const endExclusiveStr = `${nextYm}-01`;
+
+      const bucketExpr = basis === 'cash'
+        ? sqlRaw<string>`to_char(${ledger.date}, 'YYYY-MM')`
+        : sqlRaw<string>`substring(${ledger.statementYmd}, 1, 7)`;
+      const isPaymentExpr = sqlRaw<boolean>`${ledger.chargePlugin} = 'payment-simple-allocation'`;
+
+      const whereConds = [eq(ledgerEa.accountId, accountId)];
+      if (basis === 'cash') {
+        whereConds.push(gte(ledger.date, new Date(startStr)));
+        whereConds.push(lt(ledger.date, new Date(endExclusiveStr)));
+      } else {
+        whereConds.push(gte(ledger.statementYmd, startStr));
+        whereConds.push(lt(ledger.statementYmd, endExclusiveStr));
+      }
+
+      const rows = await client
+        .select({
+          ym: bucketExpr,
+          isPayment: isPaymentExpr,
+          total: sum(ledger.amount),
+        })
+        .from(ledger)
+        .innerJoin(ledgerEa, eq(ledger.eaId, ledgerEa.id))
+        .where(and(...whereConds))
+        .groupBy(bucketExpr, isPaymentExpr);
+
+      const map = new Map<string, { charges: string; payments: string }>();
+      for (const k of monthKeys) map.set(k, { charges: '0.00', payments: '0.00' });
+      for (const r of rows) {
+        const entry = map.get(r.ym);
+        if (!entry) continue;
+        const total = r.total ? String(r.total) : '0.00';
+        if (r.isPayment) entry.payments = total;
+        else entry.charges = total;
+      }
+      return monthKeys.map(ym => ({ ym, ...map.get(ym)! }));
+    },
+
+    async getAccountMonthDrilldown(
+      accountId: string,
+      basis: 'cash' | 'accrual',
+      ym: string,
+      side: 'charges' | 'payments',
+    ): Promise<Ledger[]> {
+      if (!/^\d{4}-\d{2}$/.test(ym)) return [];
+      const client = getClient();
+
+      const [yy, mm] = ym.split('-').map(Number);
+      const nextYm = mm === 12
+        ? `${yy + 1}-01`
+        : `${yy}-${String(mm + 1).padStart(2, '0')}`;
+      const startStr = `${ym}-01`;
+      const endExclusiveStr = `${nextYm}-01`;
+
+      const sideCond = side === 'payments'
+        ? eq(ledger.chargePlugin, 'payment-simple-allocation')
+        : ne(ledger.chargePlugin, 'payment-simple-allocation');
+
+      const whereConds = [eq(ledgerEa.accountId, accountId), sideCond];
+      if (basis === 'cash') {
+        whereConds.push(gte(ledger.date, new Date(startStr)));
+        whereConds.push(lt(ledger.date, new Date(endExclusiveStr)));
+      } else {
+        whereConds.push(gte(ledger.statementYmd, startStr));
+        whereConds.push(lt(ledger.statementYmd, endExclusiveStr));
+      }
+
+      const rows = await client
+        .select({ entry: ledger })
+        .from(ledger)
+        .innerJoin(ledgerEa, eq(ledger.eaId, ledgerEa.id))
+        .where(and(...whereConds))
+        .orderBy(desc(ledger.date), desc(ledger.id))
+        .limit(1000);
+      return rows.map(r => r.entry);
+    },
+
     async getRawByAccountId(accountId: string): Promise<RawLedgerEntryWithEntity[]> {
       const client = getClient();
       const rows = await client
@@ -1522,6 +1630,39 @@ function buildInvoicesForEa(entries: SimpleLedgerEntry[]): Map<string, InvoiceBu
   return invoiceMap;
 }
 
+// Resolves a short, human-recognizable key for the entity behind a ledger EA.
+// Employers and workers have a unique numeric Sirius ID; trust providers (and
+// any other entity type) have none, so we fall back to a short, stable segment
+// of their record ID.
+async function resolveEntityKey(entityType: string, entityId: string): Promise<string> {
+  const client = getClient();
+  if (entityType === "employer") {
+    const rows = await client.select({ siriusId: employers.siriusId })
+      .from(employers).where(eq(employers.id, entityId)).limit(1);
+    if (rows[0]?.siriusId != null) return String(rows[0].siriusId);
+  } else if (entityType === "worker") {
+    const rows = await client.select({ siriusId: workers.siriusId })
+      .from(workers).where(eq(workers.id, entityId)).limit(1);
+    if (rows[0]?.siriusId != null) return String(rows[0].siriusId);
+  }
+  // Trust providers (and any other type) have no numeric Sirius ID. Use the
+  // full record ID, compacted, so the key stays unique to that entity.
+  return entityId.replace(/-/g, "").toUpperCase();
+}
+
+// Deterministic, stable, and unique invoice number for a virtual (computed)
+// invoice. An invoice is uniquely identified by its entity + account + statement
+// period. The entity key (Sirius ID) is unique per entity, account names are
+// distinct within the system, and the period is unique within an EA, so the
+// combination is unique while staying short and human-readable. The same inputs
+// always produce the same number. Format: <entityKey>-<ACCOUNTNAME>-<YYYYMM>.
+// The account name is not truncated, so distinct account names cannot collide.
+function buildInvoiceNumber(entityKey: string, accountName: string, year: number, month: number): string {
+  const period = `${year}${String(month).padStart(2, "0")}`;
+  const acct = accountName.toUpperCase().replace(/[^A-Z0-9]+/g, "") || "ACCT";
+  return `${entityKey}-${acct}-${period}`;
+}
+
 function createLedgerInvoiceStorage(): LedgerInvoiceStorage {
   return {
     async listForEa(eaId: string): Promise<InvoiceSummary[]> {
@@ -1541,6 +1682,21 @@ function createLedgerInvoiceStorage(): LedgerInvoiceStorage {
       if (entries.length === 0) {
         return [];
       }
+
+      const eaRows = await client.select({
+        entityType: ledgerEa.entityType,
+        entityId: ledgerEa.entityId,
+        accountId: ledgerEa.accountId,
+      }).from(ledgerEa).where(eq(ledgerEa.id, eaId)).limit(1);
+      const eaRow = eaRows[0];
+      const acctRows = eaRow
+        ? await client.select({ name: ledgerAccounts.name })
+            .from(ledgerAccounts).where(eq(ledgerAccounts.id, eaRow.accountId)).limit(1)
+        : [];
+      const accountName = acctRows[0]?.name ?? "";
+      const entityKey = eaRow
+        ? await resolveEntityKey(eaRow.entityType, eaRow.entityId)
+        : eaId.replace(/-/g, "").toUpperCase();
 
       const invoiceMap = buildInvoicesForEa(entries);
 
@@ -1582,6 +1738,7 @@ function createLedgerInvoiceStorage(): LedgerInvoiceStorage {
         );
 
         summaries.push({
+          invoiceNumber: buildInvoiceNumber(entityKey, accountName, bucket.year, bucket.month),
           month: bucket.month,
           year: bucket.year,
           totalAmount: fromCents(invoiceBalanceCents),
@@ -1747,7 +1904,11 @@ function createLedgerInvoiceStorage(): LedgerInvoiceStorage {
       );
       const outgoingBalanceCents = bucket.incomingBalanceCents + invoiceBalanceCents;
 
+      const detailEntityKey = await resolveEntityKey(ea[0].entityType, ea[0].entityId);
+      const detailAccountName = account[0]?.name ?? "";
+
       return {
+        invoiceNumber: buildInvoiceNumber(detailEntityKey, detailAccountName, bucket.year, bucket.month),
         month: bucket.month,
         year: bucket.year,
         totalAmount: fromCents(invoiceBalanceCents),
@@ -1755,6 +1916,10 @@ function createLedgerInvoiceStorage(): LedgerInvoiceStorage {
         incomingBalance: fromCents(bucket.incomingBalanceCents),
         invoiceBalance: fromCents(invoiceBalanceCents),
         outgoingBalance: fromCents(outgoingBalanceCents),
+        chargesSubtotal: calcSubtotal(charges),
+        adjustmentsSubtotal: calcSubtotal(adjustments),
+        paymentsReceivedSubtotal: calcSubtotal(paymentsReceived),
+        paymentsAppliedSubtotal: calcSubtotal(paymentsApplied),
         entries: monthEntries,
         sections: {
           charges: { entries: charges, subtotal: calcSubtotal(charges) },

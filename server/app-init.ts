@@ -9,7 +9,10 @@ import { setupAuth } from "./auth";
 import { initAccessControl, registerEntityLoader } from "./services/access-policy-evaluator";
 import { storage } from "./storage";
 import { captureRequestContext } from "./middleware/request-context";
-import { registerCronJob, bootstrapCronJobs, cronScheduler, deleteExpiredReportsHandler, deleteOldCronLogsHandler, processWmbBatchHandler, deleteExpiredFloodEventsHandler, deleteExpiredHfeHandler, sweepExpiredBanEligHandler, workerBanActiveScanHandler, workerCertificationActiveScanHandler, logCleanupHandler, memberStatusScanHandler, dispatchEbaCleanupHandler, dispatchJobPollHandler, bulkDeliverHandler, t631DispatchJobGroupFetchHandler, t631FacilityFetchHandler, t631TosFetchHandler, gbhetPensionSlaReconcileHandler, gbhetPensionSharesReconcileHandler } from "./cron";
+import { cronScheduler } from "./cron";
+import { initializeCronPluginSystem } from "./plugins/system/cron";
+import { initializeDenormPluginSystem } from "./plugins/system/denorm";
+import { bootstrapSingletonPluginConfigs } from "./plugins/_core";
 import { initDispatchSeniorityReset } from "./services/dispatch/seniority-reset";
 import { loadComponentCache } from "./services/component-cache";
 import { syncComponentPermissions } from "./services/component-permissions";
@@ -31,6 +34,7 @@ import { initializeDispatchEligSystem } from "./plugins/dispatch/eligibility";
 import { initializeDashboardPluginSystem } from "./plugins/dashboard";
 import { initializeClientInjectionPluginSystem } from "./plugins/client-injection";
 import { initializeEventNotifierPluginSystem } from "./plugins/event-notifier";
+import { initializeWizardPluginSystem } from "./plugins/wizards";
 import { initWorkerBanNotifications } from "./services/worker-ban-notifications";
 import { initDispatchNotifications } from "./services/dispatch/notifications";
 import "@shared/access-policies/loader";
@@ -318,26 +322,17 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
   // registerChargePluginListeners() would double-charge them.
   registerWmbChargePluginListener();
 
-  // Register cron job handlers
-  registerCronJob('delete-expired-reports', deleteExpiredReportsHandler);
-  registerCronJob('delete-old-cron-logs', deleteOldCronLogsHandler);
-  registerCronJob('process-wmb-batch', processWmbBatchHandler);
-  registerCronJob('delete-expired-flood-events', deleteExpiredFloodEventsHandler);
-  registerCronJob('delete-expired-hfe', deleteExpiredHfeHandler);
-  registerCronJob('sweep-expired-ban-elig', sweepExpiredBanEligHandler);
-  registerCronJob('worker-ban-active-scan', workerBanActiveScanHandler);
-  registerCronJob('worker-certification-active-scan', workerCertificationActiveScanHandler);
-  registerCronJob('log-cleanup', logCleanupHandler);
-  registerCronJob('member-status-scan', memberStatusScanHandler);
-  registerCronJob('dispatch-eba-cleanup', dispatchEbaCleanupHandler);
-  registerCronJob('dispatch-job-poll', dispatchJobPollHandler);
-  registerCronJob('bulk-deliver', bulkDeliverHandler);
-  registerCronJob('sitespecific-t631-dispatch-job-group-fetch', t631DispatchJobGroupFetchHandler);
-  registerCronJob('sitespecific-t631-facility-fetch', t631FacilityFetchHandler);
-  registerCronJob('sitespecific-t631-tos-fetch', t631TosFetchHandler);
-  registerCronJob('gbhet-pension-sla-reconcile', gbhetPensionSlaReconcileHandler);
-  registerCronJob('gbhet-pension-shares-reconcile', gbhetPensionSharesReconcileHandler);
-  logger.info("Cron job handlers registered", { source: "startup" });
+  // Register cron plugins (kind + adapter + self-registering plugin imports)
+  initializeCronPluginSystem();
+  logger.info("Cron plugins registered", { source: "startup" });
+
+  // Register denorm plugins (kind + adapter + self-registering plugin imports)
+  initializeDenormPluginSystem();
+  logger.info("Denorm plugins registered", { source: "startup" });
+
+  // Register wizards as the sixth plugin kind (self-registering plugin imports)
+  initializeWizardPluginSystem();
+  logger.info("Wizard plugins registered", { source: "startup" });
 
   // Register flood events
   registerFloodEvents();
@@ -347,9 +342,9 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
   await loadFloodConfigFromVariables();
   logger.info("Flood configs loaded from variables", { source: "startup" });
 
-  // Bootstrap default cron jobs
-  await bootstrapCronJobs();
-  logger.info("Default cron jobs bootstrapped", { source: "startup" });
+  // Seed singleton plugin configs (e.g. cron jobs) that have no config row yet
+  await bootstrapSingletonPluginConfigs();
+  logger.info("Singleton plugin configs bootstrapped", { source: "startup" });
 
   // Setup multi-provider auth
   await setupAuth(app);
@@ -392,7 +387,21 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
       error: err.stack || err.toString(),
       url: _req.url,
       method: _req.method,
+      headersSent: res.headersSent,
     });
+
+    // If headers were already sent (e.g. async Set-Cookie raced with the
+    // response writer), writing a JSON body throws and falls through to
+    // Express's default handler — which emits a plain-text "Internal Server
+    // Error" page. End the connection cleanly instead.
+    if (res.headersSent) {
+      try {
+        res.end();
+      } catch {
+        // ignore
+      }
+      return;
+    }
 
     res.status(status).json({ message });
   });

@@ -5,6 +5,7 @@ import {
   PluginExecutionResult,
   HoursSavedContext,
   LedgerTransaction,
+  LedgerEntryVerification,
 } from "../types";
 import { registerChargePlugin } from "../registry";
 import type { ChargePluginMetadata } from "../types";
@@ -12,7 +13,7 @@ import { z } from "zod";
 import { logger } from "../../../../logger";
 import { storage } from "../../../../storage/database";
 import { computeSlaForWorkerYear } from "../../../../services/sitespecific/gbhet/pension-sla";
-import type { ChargePluginConfig } from "@shared/schema";
+import type { ChargePluginConfig, Ledger } from "@shared/schema";
 
 const PLUGIN_ID = "gbhet-pension-sla-hourly";
 
@@ -90,6 +91,37 @@ class GbhetPensionSlaHourlyPlugin extends ChargePlugin {
       });
       return { success: false, transactions: [], error: message };
     }
+  }
+
+  async verifyEntry(
+    entry: Ledger,
+    config: ChargePluginConfig
+  ): Promise<LedgerEntryVerification> {
+    const baseResult: LedgerEntryVerification = {
+      entryId: entry.id,
+      chargePlugin: entry.chargePlugin,
+      chargePluginKey: entry.chargePluginKey,
+      isValid: true,
+      discrepancies: [],
+      actualAmount: entry.amount,
+      expectedAmount: null,
+      actualDescription: entry.memo,
+      expectedDescription: null,
+      referenceType: entry.referenceType,
+      referenceId: entry.referenceId,
+      transactionDate: entry.date,
+    };
+
+    const validationResult = this.validateSettings(config.settings);
+    if (!validationResult.valid) {
+      return {
+        ...baseResult,
+        isValid: false,
+        discrepancies: [`Invalid plugin configuration: ${validationResult.errors?.join(", ")}`],
+      };
+    }
+
+    return baseResult;
   }
 }
 

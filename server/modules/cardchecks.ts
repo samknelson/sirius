@@ -123,7 +123,7 @@ export function registerCardchecksRoutes(
         return;
       }
 
-      if (req.body.status === "revoked" && existing.status !== "revoked") {
+      if (req.body.status === "revoked") {
         const def = await storage.cardcheckDefinitions.getCardcheckDefinitionById(existing.cardcheckDefinitionId);
         const defName = def?.name || "Unknown";
         setImmediate(() => {

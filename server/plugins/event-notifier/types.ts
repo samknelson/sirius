@@ -1,5 +1,6 @@
 import type { JsonSchema, UiSchema } from "@shared/json-schema-form";
 import type { EventType } from "../../services/event-bus";
+import type { BasePluginMetadata } from "../_core";
 
 /**
  * The communication media an event-notifier can fan out to. Each maps to one
@@ -73,13 +74,7 @@ export interface EventNotifierEventContext {
  *   - resolves recipients for a fired event (`getRecipients`), and
  *   - composes the message for one recipient on one medium (`getMessage`).
  */
-export interface EventNotifierPlugin {
-  id: string;
-  name: string;
-  description?: string;
-  requiredComponent?: string;
-  requiredPolicy?: string;
-  hidden?: boolean;
+export interface EventNotifierPlugin extends BasePluginMetadata {
   /** Ordering hint mirrored onto manifest entries (ascending). */
   order?: number;
   /**
@@ -112,7 +107,20 @@ export interface EventNotifierPlugin {
    */
   getRecipients?(
     ctx: EventNotifierEventContext,
+    configData?: unknown,
   ): Promise<NotifierRecipient[]>;
+
+  /**
+   * Optional per-config gate evaluated before recipients are resolved. Receives
+   * the fired event context and the individual config's `data` payload; return
+   * `false` to skip this config for this event (e.g. the config restricts
+   * notifications to a subset of roles that does not include the one on the
+   * payload). Notifiers that omit this hook always dispatch.
+   */
+  shouldDispatch?(
+    ctx: EventNotifierEventContext,
+    configData: unknown,
+  ): boolean | Promise<boolean>;
 
   /**
    * Compose the message for one recipient on one medium. Return `null` to skip
@@ -132,6 +140,7 @@ export interface EventNotifierManifestEntry {
   description?: string;
   order: number;
   requiredComponent?: string;
+  needsReadOnlyDb?: boolean;
   /** Attached by the kind's `decorateEntries` for the generic admin UI. */
   enabled?: boolean;
   configSchema?: JsonSchema;

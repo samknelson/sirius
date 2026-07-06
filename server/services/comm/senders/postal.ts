@@ -319,13 +319,13 @@ export async function sendPostal(request: SendPostalRequest): Promise<SendPostal
       });
 
       await commPostalStorage.updateCommPostal(commPostal.id, {
-        letterId: sendResult.letterId || null,
+        lobLetterId: sendResult.letterId || null,
         expectedDeliveryDate: sendResult.expectedDeliveryDate || null,
-        trackingNumber: sendResult.trackingNumber || null,
-        carrier: sendResult.carrier || null,
         data: {
           ...commPostal.data as object,
           providerDetails: sendResult.details,
+          trackingNumber: sendResult.trackingNumber || null,
+          carrier: sendResult.carrier || null,
         },
       });
 

@@ -8,9 +8,12 @@ import { insertWorkerSchema, insertWorkerDispatchHfeSchema, type WorkerId, type 
 import { z } from "zod";
 import { registerUserRoutes } from "./modules/users";
 import { registerVariableRoutes } from "./modules/system/variables";
+import { registerDenormRoutes } from "./modules/system/denorm";
 import { registerContactPostalRoutes } from "./modules/contact-postal";
 import { registerPhoneNumberRoutes } from "./modules/phone-numbers";
 import { registerCommRoutes } from "./modules/comm";
+import { registerGrievanceRoutes } from "./modules/grievances/grievances";
+import { registerGrievanceTimelineTemplateRoutes } from "./modules/grievances/grievance-timeline-templates";
 import { registerEmployerContactRoutes } from "./modules/employers/contacts";
 import { registerTrustBenefitsRoutes } from "./modules/trust/benefits";
 import { registerTrustProvidersRoutes } from "./modules/trust/providers";
@@ -34,7 +37,7 @@ import { registerTrustProviderUserSettingsRoutes } from "./modules/trust/provide
 import { registerWorkerUserSettingsRoutes } from "./modules/worker-user-settings";
 import { registerWorkerUsersRoutes } from "./modules/workers/users";
 import { registerWizardRoutes } from "./modules/wizards";
-import { registerEmployerOnboardingWizardRoutes } from "./modules/employer-onboarding-wizard";
+import { registerWizardDispatcherRoutes } from "./plugins/wizards";
 import { registerFileRoutes } from "./modules/files";
 import { registerLedgerPaymentMethodRoutes } from "./modules/ledger/payment-methods";
 import { registerLedgerPaymentGatewayRoutes } from "./modules/ledger/payment-gateways";
@@ -103,9 +106,6 @@ import { registerBtuSchoolRoutes } from "./modules/sitespecific/btu/school";
 import { registerBaoImmediateEligibilityRoutes } from "./modules/sitespecific/bao/immediate-eligibility";
 import { registerBaoBeneficiariesRoutes } from "./modules/sitespecific/bao/beneficiaries";
 import { registerBaoEchpRoutes } from "./modules/sitespecific/bao/echp";
-import { registerBtuSigImportRoutes } from "./modules/sitespecific/btu/sig-import";
-import { registerBtuScraperImportRoutes } from "./modules/sitespecific/btu/scraper-import";
-import { registerBtuBuildingRepImportRoutes } from "./modules/sitespecific/btu/building-rep-import";
 import { registerBtuPoliticalRoutes } from "./modules/sitespecific/btu/political";
 import { registerT631ClientFetchRoutes } from "./modules/sitespecific/t631/client/fetch";
 import { registerFreemanSecondShiftRoutes } from "./modules/sitespecific/freeman/second-shift";
@@ -296,6 +296,12 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Register communication routes
   registerCommRoutes(app, requireAuth, requirePermission, requireAccess);
 
+  // Register grievance routes
+  registerGrievanceRoutes(app, requireAuth, requireAccess);
+
+  // Register grievance timeline template routes
+  registerGrievanceTimelineTemplateRoutes(app, requireAuth, requireAccess);
+
   // Register employer contact routes
   registerEmployerContactRoutes(app, requireAuth, requirePermission);
 
@@ -349,7 +355,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register wizard routes
   registerWizardRoutes(app, requireAuth, requirePermission);
-  registerEmployerOnboardingWizardRoutes(app, requireAuth, requirePermission);
+  // Fixed dispatcher route set for framework (plugin-based) wizards.
+  // Adding a wizard plugin adds ZERO routes.
+  registerWizardDispatcherRoutes(app, requireAuth);
 
   // Register file management routes
   registerFileRoutes(app, requireAuth, requirePermission);
@@ -1258,6 +1266,29 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
+  // GET /api/employers/contact-indicators - Must be registered BEFORE /api/employers/:id
+  // so it isn't matched as :id="contact-indicators". Returns one indicator per contact
+  // per employer, keyed by employerId.
+  app.get("/api/employers/contact-indicators", requireAuth, requireAccess('staff'), async (_req, res) => {
+    try {
+      const rows = await storage.employerContacts.getContactIndicatorsByEmployer();
+      const byEmployer: Record<string, Array<{ contactId: string; contactName: string | null; contactTypeName: string | null; icon: string | null; hasActiveUser: boolean }>> = {};
+      for (const row of rows) {
+        (byEmployer[row.employerId] ??= []).push({
+          contactId: row.contactId,
+          contactName: row.contactName,
+          contactTypeName: row.contactTypeName,
+          icon: row.icon,
+          hasActiveUser: row.hasActiveUser,
+        });
+      }
+      res.json(byEmployer);
+    } catch (error) {
+      console.error("Failed to fetch employer contact indicators:", error);
+      res.status(500).json({ message: "Failed to fetch employer contact indicators" });
+    }
+  });
+
   // GET /api/employers/:id - Get a specific employer (requires employer.steward.view policy)
   app.get("/api/employers/:id", requireAuth, requireAccess('employer.steward.view', (req) => req.params.id), async (req, res) => {
     try {
@@ -1647,6 +1678,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register generic variable management routes (MUST come after specific routes)
   registerVariableRoutes(app, requireAuth, requirePermission);
+  registerDenormRoutes(app, requireAuth, requirePermission);
 
   // Register events routes
   registerEventsRoutes(app, requireAuth, requirePermission);
@@ -1704,9 +1736,6 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   registerBaoImmediateEligibilityRoutes(app, requireAuth, requirePermission, requireAccess);
   registerBaoBeneficiariesRoutes(app, requireAuth, requirePermission, requireAccess);
   registerBaoEchpRoutes(app, requireAuth, requirePermission, requireAccess);
-  registerBtuSigImportRoutes(app, requireAuth, requirePermission);
-  registerBtuScraperImportRoutes(app, requireAuth, requirePermission);
-  registerBtuBuildingRepImportRoutes(app, requireAuth, requirePermission);
 
   // Register BTU Political Profile routes
   registerBtuPoliticalRoutes(app, requireAuth, requirePermission);

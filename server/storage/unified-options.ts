@@ -24,6 +24,13 @@ import {
   optionsWorkerMs,
   optionsWorkerRelationType,
   optionsCommTags,
+  optionsGrievanceStatus,
+  optionsGrievanceCategory,
+  optionsGrievanceSteps,
+  optionsGrievanceComplaints,
+  optionsGrievanceRemedies,
+  optionsGrievanceRoles,
+  optionsGrievanceSettlementType,
   bulkMediumEnum,
 } from "@shared/schema";
 import { defineLoggingConfig } from "./middleware/logging";
@@ -55,7 +62,14 @@ export type OptionsTypeName =
   | "industry"
   | "worker-ms"
   | "worker-relation-type"
-  | "comm-tag";
+  | "comm-tag"
+  | "grievance-status"
+  | "grievance-category"
+  | "grievance-step"
+  | "grievance-complaint"
+  | "grievance-remedy"
+  | "grievance-role"
+  | "grievance-settlement-type";
 
 /**
  * Field definition for dynamic form and table rendering
@@ -63,7 +77,7 @@ export type OptionsTypeName =
 export interface FieldDefinition {
   name: string;
   label: string;
-  inputType: 'text' | 'textarea' | 'number' | 'select-self' | 'icon' | 'checkbox' | 'select-options' | 'color' | 'multi-enum';
+  inputType: 'text' | 'textarea' | 'number' | 'select-self' | 'icon' | 'checkbox' | 'select-options' | 'color' | 'multi-enum' | 'enum' | 'system-roles';
   required: boolean;
   placeholder?: string;
   helperText?: string;
@@ -72,8 +86,14 @@ export interface FieldDefinition {
   columnWidth?: string;
   dataField?: boolean;
   selectOptionsType?: OptionsTypeName;
-  /** For inputType="multi-enum": the allowed string values (and optional human labels). */
+  /** For inputType="multi-enum" or "enum": the allowed string values (and optional human labels). */
   enumOptions?: Array<{ value: string; label?: string }>;
+  /**
+   * Optional form default for the generated JSON Schema. Currently honored
+   * for `checkbox` fields (otherwise checkboxes default to false). Lets a
+   * field opt into a `true` default so newly created rows come in checked.
+   */
+  default?: boolean;
 }
 
 /**
@@ -136,7 +156,7 @@ export function fieldsToJsonSchema(
         break;
       case "checkbox":
         prop.type = "boolean";
-        prop.default = false;
+        prop.default = f.default ?? false;
         break;
       case "icon":
         prop.type = "string";
@@ -170,6 +190,29 @@ export function fieldsToJsonSchema(
         }
         prop.items = items;
         if (f.required) prop.minItems = 1;
+        break;
+      }
+      case "system-roles": {
+        // Dynamic multi-select of system roles. The allowed values are
+        // the live roles from the access-control roles table (loaded by
+        // the SystemRolesField widget at render time), so we cannot bake
+        // an enum here. Stored as an array of role-id strings.
+        prop.type = "array";
+        prop.uniqueItems = true;
+        prop.items = { type: "string" };
+        (prop as Record<string, unknown>)["x-widget"] = "system-roles";
+        if (f.required) prop.minItems = 1;
+        break;
+      }
+      case "enum": {
+        prop.type = "string";
+        const values = (f.enumOptions ?? []).map((o) => o.value);
+        prop.enum = values;
+        const labels = (f.enumOptions ?? []).map((o) => o.label ?? o.value);
+        if (labels.some((l, i) => l !== values[i])) {
+          prop.enumNames = labels;
+        }
+        if (f.required) prop.minLength = 1;
         break;
       }
     }
@@ -255,10 +298,11 @@ const optionsMetadata: Record<OptionsTypeName, OptionsTableMetadata<any>> = {
     orderByColumn: "name" as const,
     loggingModule: "options.employerContactTypes",
     requiredFields: ["name"],
-    optionalFields: ["description"],
+    optionalFields: ["description", "data"],
     supportsSequencing: false,
     fields: [
       { name: "name", label: "Name", inputType: "text", required: true, placeholder: "Contact type name", showInTable: true, columnHeader: "Name" },
+      { name: "icon", label: "Icon", inputType: "icon", required: false, placeholder: "Select an icon", showInTable: true, columnHeader: "Icon", columnWidth: "80px", dataField: true },
       { name: "description", label: "Description", inputType: "textarea", required: false, placeholder: "Optional description", showInTable: true, columnHeader: "Description" },
     ],
   },
@@ -433,6 +477,141 @@ const optionsMetadata: Record<OptionsTypeName, OptionsTableMetadata<any>> = {
       { name: "category", label: "Category", inputType: "text", required: true, placeholder: "Payment category", showInTable: true, columnHeader: "Category" },
       { name: "description", label: "Description", inputType: "textarea", required: false, placeholder: "Optional description", showInTable: false },
       { name: "currencyCode", label: "Currency Code", inputType: "text", required: false, placeholder: "e.g., USD", showInTable: true, columnHeader: "Currency" },
+    ],
+  },
+  "grievance-status": {
+    table: optionsGrievanceStatus,
+    displayName: "Grievance Status Options",
+    description: "Manage status options for grievances",
+    singularName: "Status Option",
+    pluralName: "Status Options",
+    orderByColumn: "sequence" as const,
+    loggingModule: "options.grievanceStatus",
+    requiredFields: ["name"],
+    optionalFields: ["description", "siriusId", "open", "sequence", "data"],
+    supportsSequencing: true,
+    requiredComponent: "grievance",
+    fields: [
+      { name: "icon", label: "Icon", inputType: "icon", required: false, showInTable: true, columnHeader: "Icon", columnWidth: "80px", dataField: true },
+      { name: "name", label: "Name", inputType: "text", required: true, placeholder: "e.g., Open, In Review, Resolved", showInTable: true, columnHeader: "Name" },
+      { name: "description", label: "Description", inputType: "textarea", required: false, placeholder: "Optional description of this status", showInTable: true, columnHeader: "Description" },
+      { name: "siriusId", label: "Sirius ID", inputType: "text", required: false, placeholder: "External ID", showInTable: true, columnHeader: "Sirius ID" },
+      { name: "open", label: "Open", inputType: "checkbox", required: false, default: true, helperText: "Marks whether this status represents an open grievance state", showInTable: true, columnHeader: "Open" },
+    ],
+  },
+  "grievance-category": {
+    table: optionsGrievanceCategory,
+    displayName: "Grievance Category Options",
+    description: "Manage category options for grievances",
+    singularName: "Category Option",
+    pluralName: "Category Options",
+    orderByColumn: "name" as const,
+    loggingModule: "options.grievanceCategory",
+    requiredFields: ["name"],
+    optionalFields: ["description", "data"],
+    supportsSequencing: false,
+    requiredComponent: "grievance",
+    fields: [
+      { name: "icon", label: "Icon", inputType: "icon", required: false, showInTable: true, columnHeader: "Icon", columnWidth: "80px", dataField: true },
+      { name: "name", label: "Name", inputType: "text", required: true, placeholder: "e.g., Discipline, Pay, Safety", showInTable: true, columnHeader: "Name" },
+      { name: "description", label: "Description", inputType: "textarea", required: false, placeholder: "Optional description of this category", showInTable: true, columnHeader: "Description" },
+    ],
+  },
+  "grievance-step": {
+    table: optionsGrievanceSteps,
+    displayName: "Grievance Step Options",
+    description: "Manage step options for grievances",
+    singularName: "Step Option",
+    pluralName: "Step Options",
+    orderByColumn: "sequence" as const,
+    loggingModule: "options.grievanceStep",
+    requiredFields: ["name", "actor"],
+    optionalFields: ["description", "siriusId", "sequence", "data"],
+    supportsSequencing: true,
+    requiredComponent: "grievance",
+    fields: [
+      { name: "icon", label: "Icon", inputType: "icon", required: false, showInTable: true, columnHeader: "Icon", columnWidth: "80px", dataField: true },
+      { name: "name", label: "Name", inputType: "text", required: true, placeholder: "e.g., Step 1, Mediation", showInTable: true, columnHeader: "Name" },
+      { name: "description", label: "Description", inputType: "textarea", required: false, placeholder: "Optional description of this step", showInTable: true, columnHeader: "Description" },
+      { name: "actor", label: "Actor", inputType: "enum", required: true, enumOptions: [{ value: "union", label: "Union" }, { value: "employer", label: "Employer" }], showInTable: true, columnHeader: "Actor" },
+      { name: "siriusId", label: "Sirius ID", inputType: "text", required: false, placeholder: "External ID", showInTable: true, columnHeader: "Sirius ID" },
+    ],
+  },
+  "grievance-complaint": {
+    table: optionsGrievanceComplaints,
+    displayName: "Grievance Complaint Options",
+    description: "Manage complaint options for grievances",
+    singularName: "Complaint Option",
+    pluralName: "Complaint Options",
+    orderByColumn: "sequence" as const,
+    loggingModule: "options.grievanceComplaint",
+    requiredFields: ["name"],
+    optionalFields: ["description", "siriusId", "sequence", "data"],
+    supportsSequencing: true,
+    requiredComponent: "grievance",
+    fields: [
+      { name: "icon", label: "Icon", inputType: "icon", required: false, showInTable: true, columnHeader: "Icon", columnWidth: "80px", dataField: true },
+      { name: "name", label: "Name", inputType: "text", required: true, placeholder: "e.g., Wrongful Termination, Pay Dispute", showInTable: true, columnHeader: "Name" },
+      { name: "description", label: "Description", inputType: "textarea", required: false, placeholder: "Optional description of this complaint", showInTable: true, columnHeader: "Description" },
+      { name: "siriusId", label: "Sirius ID", inputType: "text", required: false, placeholder: "External ID", showInTable: true, columnHeader: "Sirius ID" },
+    ],
+  },
+  "grievance-remedy": {
+    table: optionsGrievanceRemedies,
+    displayName: "Grievance Remedy Options",
+    description: "Manage remedy options for grievances",
+    singularName: "Remedy Option",
+    pluralName: "Remedy Options",
+    orderByColumn: "sequence" as const,
+    loggingModule: "options.grievanceRemedy",
+    requiredFields: ["name"],
+    optionalFields: ["description", "siriusId", "sequence", "data"],
+    supportsSequencing: true,
+    requiredComponent: "grievance",
+    fields: [
+      { name: "icon", label: "Icon", inputType: "icon", required: false, showInTable: true, columnHeader: "Icon", columnWidth: "80px", dataField: true },
+      { name: "name", label: "Name", inputType: "text", required: true, placeholder: "e.g., Reinstatement, Back Pay", showInTable: true, columnHeader: "Name" },
+      { name: "description", label: "Description", inputType: "textarea", required: false, placeholder: "Optional description of this remedy", showInTable: true, columnHeader: "Description" },
+      { name: "siriusId", label: "Sirius ID", inputType: "text", required: false, placeholder: "External ID", showInTable: true, columnHeader: "Sirius ID" },
+    ],
+  },
+  "grievance-role": {
+    table: optionsGrievanceRoles,
+    displayName: "Grievance Role Options",
+    description: "Manage role options for grievances",
+    singularName: "Role Option",
+    pluralName: "Role Options",
+    orderByColumn: "sequence" as const,
+    loggingModule: "options.grievanceRole",
+    requiredFields: ["name"],
+    optionalFields: ["description", "siriusId", "sequence", "data"],
+    supportsSequencing: true,
+    requiredComponent: "grievance",
+    fields: [
+      { name: "icon", label: "Icon", inputType: "icon", required: false, showInTable: true, columnHeader: "Icon", columnWidth: "80px", dataField: true },
+      { name: "name", label: "Name", inputType: "text", required: true, placeholder: "e.g., Grievant, Steward, Witness", showInTable: true, columnHeader: "Name" },
+      { name: "description", label: "Description", inputType: "textarea", required: false, placeholder: "Optional description of this role", showInTable: true, columnHeader: "Description" },
+      { name: "permittedSystemRoleIds", label: "Permitted System Roles", inputType: "system-roles", required: false, helperText: "Only users holding one of these system roles can be assigned this grievance role. Leave empty to allow any user.", showInTable: false, dataField: true },
+      { name: "siriusId", label: "Sirius ID", inputType: "text", required: false, placeholder: "External ID", showInTable: true, columnHeader: "Sirius ID" },
+    ],
+  },
+  "grievance-settlement-type": {
+    table: optionsGrievanceSettlementType,
+    displayName: "Grievance Settlement Type Options",
+    description: "Manage settlement type options for grievances",
+    singularName: "Settlement Type",
+    pluralName: "Settlement Types",
+    orderByColumn: "sequence" as const,
+    loggingModule: "options.grievanceSettlementType",
+    requiredFields: ["name"],
+    optionalFields: ["description", "siriusId", "sequence", "data"],
+    supportsSequencing: true,
+    requiredComponent: "grievance.settlement",
+    fields: [
+      { name: "icon", label: "Icon", inputType: "icon", required: false, showInTable: true, columnHeader: "Icon", columnWidth: "80px", dataField: true },
+      { name: "name", label: "Name", inputType: "text", required: true, placeholder: "e.g., Monetary, Reinstatement, Backpay", showInTable: true, columnHeader: "Name" },
+      { name: "description", label: "Description", inputType: "textarea", required: false, placeholder: "Optional description of this settlement type", showInTable: true, columnHeader: "Description" },
+      { name: "siriusId", label: "Sirius ID", inputType: "text", required: false, placeholder: "External ID", showInTable: true, columnHeader: "Sirius ID" },
     ],
   },
   "skill": {
@@ -652,7 +831,7 @@ function createUnifiedOptionsStorageImpl(): UnifiedOptionsStorage {
       
       const client = getClient();
       const { table } = getTable(type);
-      const [result] = await client.insert(table).values(data as any).returning();
+      const [result] = (await client.insert(table as any).values(data as any).returning()) as any[];
       return result;
     },
 
@@ -709,7 +888,7 @@ function createUnifiedOptionsStorageImpl(): UnifiedOptionsStorage {
       const client = getClient();
       const { table } = getTable(type);
       const tableAny = table as any;
-      const result = await client.delete(table).where(eq(tableAny.id, id)).returning();
+      const result = (await client.delete(tableAny).where(eq(tableAny.id, id)).returning()) as any[];
       return result.length > 0;
     },
 

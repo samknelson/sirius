@@ -7,6 +7,7 @@ import type { EligibilityRule, ScanType } from "../plugins/trust/eligibility/typ
 import type { IStorage } from "../storage";
 import type { Worker, Policy, TrustBenefit, PluginConfigBenefitEligibility } from "@shared/schema";
 import { logger } from "../logger";
+import { isComponentEnabledSync } from "./component-cache";
 
 interface PolicyData {
   benefitIds?: string[];
@@ -60,6 +61,17 @@ export async function runBenefitsScan(
   year: number,
   mode: "test" | "live"
 ): Promise<BenefitsScanResult> {
+  // The trust-eligibility rules and their subsidiary table
+  // (plugin_configs_benefit_eligibility) are owned by the trust.benefits
+  // component. Scans are only ever triggered under trust.benefits.scan (a child
+  // of trust.benefits), so this is a defensive guard: never query the subsidiary
+  // when trust benefits are disabled.
+  if (!isComponentEnabledSync("trust.benefits")) {
+    throw new Error(
+      "Trust Benefits component is disabled; benefits scan cannot run",
+    );
+  }
+
   logger.info(`Starting benefits scan for worker ${workerId}`, {
     service: "benefits-scan",
     workerId,

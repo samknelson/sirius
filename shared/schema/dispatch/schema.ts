@@ -2,7 +2,7 @@ import { pgTable, text, timestamp, varchar, jsonb, index, integer, boolean, date
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
-import { employers, workers, pluginConfigs } from "../../schema";
+import { employers, workers, pluginConfigs, denorm } from "../../schema";
 
 export const optionsDispatchJobType = pgTable("options_dispatch_job_type", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -119,12 +119,14 @@ export type WorkerDispatchStatus = typeof workerDispatchStatus.$inferSelect;
 // Worker Dispatch Eligibility Denormalized (EAV-style facts for eligibility queries)
 export const workerDispatchEligDenorm = pgTable("worker_dispatch_elig_denorm", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  denormId: varchar("denorm_id").notNull().references(() => denorm.id, { onDelete: 'cascade' }),
   workerId: varchar("worker_id").notNull().references(() => workers.id, { onDelete: 'cascade' }),
   category: varchar("category").notNull(),
   value: varchar("value").notNull(),
 }, (table) => ({
   categoryValueWorkerIdx: index("idx_worker_dispatch_elig_denorm_cat_val_worker").on(table.category, table.value, table.workerId),
   workerCategoryIdx: index("idx_worker_dispatch_elig_denorm_worker_cat").on(table.workerId, table.category),
+  denormIdx: index("idx_worker_dispatch_elig_denorm_denorm").on(table.denormId),
 }));
 
 export const insertWorkerDispatchEligDenormSchema = createInsertSchema(workerDispatchEligDenorm).omit({

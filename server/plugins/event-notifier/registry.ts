@@ -16,6 +16,7 @@ export const eventNotifierRegistry = new PluginRegistry<
     requiredComponent: p.requiredComponent,
     requiredPolicy: p.requiredPolicy,
     hidden: p.hidden,
+    needsReadOnlyDb: p.needsReadOnlyDb,
   }),
   toManifestEntry: (p) => ({
     id: p.id,
@@ -23,6 +24,7 @@ export const eventNotifierRegistry = new PluginRegistry<
     description: p.description,
     order: p.order ?? 100,
     requiredComponent: p.requiredComponent,
+    needsReadOnlyDb: p.needsReadOnlyDb,
   }),
 });
 

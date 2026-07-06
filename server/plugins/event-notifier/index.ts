@@ -268,3 +268,5 @@ export { ALL_NOTIFICATION_MEDIA };
 // Plugin registrations (side-effect imports — each file self-registers).
 import "./plugins/steward-assignment-notifier";
 import "./plugins/trust-wmb-scan";
+import "./plugins/grievance-assignment-notifier";
+import "./plugins/grievance-settlement-notifier";

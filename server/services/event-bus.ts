@@ -32,7 +32,12 @@ export enum EventType {
   WORKER_BAN_SAVED = "worker.ban.saved",
   WORKER_SKILL_SAVED = "worker.skill.saved",
   WORKER_WS_CHANGED = "worker.ws.changed",
+  WORKER_WSH_SAVED = "worker.wsh.saved",
+  WORKER_MSH_SAVED = "worker.msh.saved",
   STEWARD_ASSIGNMENT_SAVED = "steward.assignment.saved",
+  GRIEVANCE_SAVED = "grievance.saved",
+  GRIEVANCE_ASSIGNMENT_SAVED = "grievance.assignment.saved",
+  GRIEVANCE_SETTLEMENT_SAVED = "grievance.settlement.saved",
   TRUST_WMB_SCAN_COMPLETED = "trust.wmb.scan.completed",
   PLUGIN_CONFIG_SAVED = "plugin.config.saved",
   CRON = "cron",
@@ -59,6 +64,7 @@ export interface PaymentSavedPayload {
   accountId: string;
   entityType: string;
   entityId: string;
+  dateReceived: Date | null;
   dateCleared: Date | null;
   memo: string | null;
   paymentTypeId: string;
@@ -142,12 +148,43 @@ export interface WorkerWsChangedPayload {
   previousWsId: string | null;
 }
 
+export interface WorkerWshSavedPayload {
+  workerId: string;
+}
+
+export interface WorkerMshSavedPayload {
+  workerId: string;
+}
+
 export interface StewardAssignmentSavedPayload {
   assignmentId: string;
   workerId: string;
   employerId: string;
   bargainingUnitId: string;
   operation: "created" | "updated" | "deleted";
+}
+
+export interface GrievanceSavedPayload {
+  grievanceId: string;
+}
+
+export interface GrievanceAssignmentSavedPayload {
+  grievanceId: string;
+  userId: string;
+  roleId: string;
+  operation: "created" | "updated" | "deleted";
+}
+
+export interface GrievanceSettlementSavedPayload {
+  grievanceId: string;
+  settlementId: string;
+  operation: "created" | "updated" | "deleted";
+  /**
+   * The settlement's amount (numeric string, may be null). Carried on the
+   * payload so the message can render it even for deletes, where the row no
+   * longer exists by the time the notifier runs.
+   */
+  amount: string | null;
 }
 
 export interface TrustWmbScanCompletedPayload {
@@ -203,7 +240,12 @@ export interface EventPayloadMap {
   [EventType.WORKER_BAN_SAVED]: WorkerBanSavedPayload;
   [EventType.WORKER_SKILL_SAVED]: WorkerSkillSavedPayload;
   [EventType.WORKER_WS_CHANGED]: WorkerWsChangedPayload;
+  [EventType.WORKER_WSH_SAVED]: WorkerWshSavedPayload;
+  [EventType.WORKER_MSH_SAVED]: WorkerMshSavedPayload;
   [EventType.STEWARD_ASSIGNMENT_SAVED]: StewardAssignmentSavedPayload;
+  [EventType.GRIEVANCE_SAVED]: GrievanceSavedPayload;
+  [EventType.GRIEVANCE_ASSIGNMENT_SAVED]: GrievanceAssignmentSavedPayload;
+  [EventType.GRIEVANCE_SETTLEMENT_SAVED]: GrievanceSettlementSavedPayload;
   [EventType.TRUST_WMB_SCAN_COMPLETED]: TrustWmbScanCompletedPayload;
   [EventType.PLUGIN_CONFIG_SAVED]: PluginConfigSavedPayload;
   [EventType.CRON]: CronPayload;

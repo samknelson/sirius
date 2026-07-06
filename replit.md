@@ -28,6 +28,7 @@ _Populate as you build_
 -   **Access Control Policies**: `server/modules/*/access.ts` (implied by entity-based policy architecture)
 -   **UI Theme**: `tailwind.config.ts` (implied by Tailwind CSS with "new-york" theme)
 -   **Wizards**: `server/wizards/types/`, `client/src/components/wizards/steps/`
+-   **Wizard Plugin Framework (spike)**: `server/plugins/wizards/` (sixth plugin kind on `server/plugins/_core/`; fixed dispatcher routes so adding a wizard adds zero routes), pilot at `server/plugins/wizards/plugins/report-gbhet-legal-compliance.ts`; client generic renderers `client/src/components/wizards/framework/`, escape-hatch component registry `client/src/plugins/wizards/`
 -   **Dispatch System**: `server/modules/dispatch/`, `client/src/pages/dispatch/`
 -   **Ledger System**: `server/modules/ledger/`, `client/src/pages/ledger/`
 -   **SFTP Client Destinations**: `server/modules/sftp-client-destination/`, `client/src/pages/config/sftp-client-destinations/`
@@ -41,6 +42,8 @@ Preferred communication style: Simple, everyday language.
 -   **Facility Contact Sync**: Renaming a facility must go through `storage.facilities.updateContactName` to keep the facility and its associated contact in sync.
 -   **Wizard Access Control**: While `/wizards/:id` only requires authentication, the API endpoints enforce granular authorization.
 -   **T631 Facility Sync**: The `sitespecific-t631-facility-fetch` cron job is disabled by default and gated by the `sitespecific.t631.client` component. It only syncs `name` and `sirius_id` and does not delete local-only rows or write arbitrary `data` jsonb.
+-   **Component-owned plugin-config subsidiaries**: `plugin_configs_dispatch` (dispatch) and `plugin_configs_benefit_eligibility` (trust.benefits) are owned by their components' `schemaManifest` and created by schema-push on enable — they are NOT core tables. `plugin_configs_event_notifier` and the charge / dashboard / cron / payment_gateway subsidiaries stay core.
+-   **A component becoming schema-managing while already enabled**: the startup component-migration runner self-heals. If an enabled component gains a `schemaManifest`/migrations but has no `component_schema_state_<id>` variable yet (that variable is normally created by the enable flow), the runner initializes it via `enableComponentSchema` (idempotent for an already-present, drift-free table) instead of hard-failing boot. This is what lets already-enabled deployments pick up a newly component-owned table without a per-deployment baseline.
 
 ## Always restart the `Start application` workflow after server-side or shared changes
 
@@ -181,6 +184,21 @@ Routes stay thin; all SQL lives in storage.
 It is acceptable **only inside a storage method**, never inside a
 route handler, service, plugin, or cron job.
 
+**Plugin opt-in for direct read-only DB access:** Plugins are the one
+sanctioned exception. A plugin whose only database need is a single,
+pure-read query it alone uses may run that query inline with
+`storage.readOnly.query(...)` instead of adding a one-off storage
+method — but it MUST opt in by declaring `needsReadOnlyDb: true` in its
+metadata (`BasePluginMetadata` in `server/plugins/_core/types.ts`,
+surfaced by the dashboard, trust-eligibility, charge, and
+event-notifier registries). This keeps the escape hatch visible and
+auditable. **Mutations always stay in storage** — the opt-in covers
+reads only. The author-time guard
+`scripts/dev/check-storage-encapsulation.ts` fails any file under
+`server/plugins/` that calls `readOnly.query(...)` without declaring
+`needsReadOnlyDb` (shared plugin-kind infrastructure such as
+`server/plugins/trust/eligibility/executor.ts` is allowlisted there).
+
 **Cross-domain query helpers:** When a feature needs to query several
 unrelated tables (for example, contact-link resolution touches
 `workers`, `employer_contacts`, and `trust_provider_contacts`), do
@@ -261,6 +279,21 @@ prohibition. Adding new such usages should be rare and well-justified.
 If your tab strip switches the route, gates by access policy /
 component, or names a persistent "view" of an entity, it belongs in
 the registry — not in `@/components/ui/tabs`.
+
+## Config pages use a fixed-width layout
+
+Every page under Config (anything rendered inside
+`client/src/components/layouts/ConfigurationLayout.tsx`) is automatically
+constrained to a centered, fixed max width — the layout wraps its
+`children` in a `max-w-7xl mx-auto` container. **Do not** add a competing
+full-width or differently-sized top-level wrapper to a config page; let
+the layout own the width so every config page looks the same.
+
+If a page needs the canonical inner padding to match older pages, use the
+established wrapper `max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8` (the
+nested `max-w-7xl` is harmless inside the layout's container). New config
+pages can simply render their content directly and rely on the layout for
+width.
 
 # Where to read more
 

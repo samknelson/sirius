@@ -163,6 +163,83 @@ export function registerLedgerAccountRoutes(app: Express) {
     }
   });
 
+  // GET /api/ledger/accounts/:id/summary - Monthly summary grid (charges/payments per month)
+  app.get("/api/ledger/accounts/:id/summary", requireComponent("ledger"), requireAccess('staff'), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const basisRaw = (req.query.basis as string) || 'accrual';
+      const monthsRaw = parseInt((req.query.months as string) || '12', 10);
+
+      const basis: 'cash' | 'accrual' = basisRaw === 'cash' ? 'cash' : 'accrual';
+      const months = monthsRaw === 6 ? 6 : 12;
+
+      const account = await storage.ledger.accounts.get(id);
+      if (!account) {
+        res.status(404).json({ message: "Ledger account not found" });
+        return;
+      }
+
+      // Build N month keys ending at the current month, oldest first
+      const now = new Date();
+      const monthKeys: string[] = [];
+      for (let i = months - 1; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        monthKeys.push(ym);
+      }
+
+      const rows = await storage.ledger.entries.getAccountMonthlySummary(id, basis, monthKeys);
+      res.json({
+        accountId: id,
+        currencyCode: account.currencyCode,
+        basis,
+        months,
+        monthKeys,
+        rows,
+      });
+    } catch (error) {
+      console.error("Error fetching account summary:", error);
+      res.status(500).json({ message: "Failed to fetch account summary" });
+    }
+  });
+
+  // GET /api/ledger/accounts/:id/summary/drilldown - Ledger rows for a single month + side
+  app.get("/api/ledger/accounts/:id/summary/drilldown", requireComponent("ledger"), requireAccess('staff'), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const basisRaw = (req.query.basis as string) || 'accrual';
+      const sideRaw = (req.query.side as string) || 'charges';
+      const ym = (req.query.ym as string) || '';
+
+      if (!/^\d{4}-\d{2}$/.test(ym)) {
+        res.status(400).json({ message: "ym must be in YYYY-MM format" });
+        return;
+      }
+
+      const basis: 'cash' | 'accrual' = basisRaw === 'cash' ? 'cash' : 'accrual';
+      const side: 'charges' | 'payments' = sideRaw === 'payments' ? 'payments' : 'charges';
+
+      const account = await storage.ledger.accounts.get(id);
+      if (!account) {
+        res.status(404).json({ message: "Ledger account not found" });
+        return;
+      }
+
+      const entries = await storage.ledger.entries.getAccountMonthDrilldown(id, basis, ym, side);
+      res.json({
+        accountId: id,
+        currencyCode: account.currencyCode,
+        basis,
+        side,
+        ym,
+        entries,
+      });
+    } catch (error) {
+      console.error("Error fetching account summary drilldown:", error);
+      res.status(500).json({ message: "Failed to fetch drilldown" });
+    }
+  });
+
   // GET /api/ledger/accounts/:id/transactions - Get ledger entries for an account (paginated)
   app.get("/api/ledger/accounts/:id/transactions", requireComponent("ledger"), requireAccess('staff'), async (req, res) => {
     try {

@@ -1,16 +1,67 @@
 import { eventBus, EventType } from "../../services/event-bus";
 import { logger } from "../../logger";
-import { isComponentEnabledSync } from "../../services/component-cache";
+import { isPluginComponentEnabledSync } from "../_core";
 import { eventNotifierRegistry } from "./registry";
 import { getEnabledConfigsForKind } from "../_core/plugin-config-cache";
+import { checkFlood, recordFloodEvent } from "../../flood/service";
+import { NOTIFICATION_FLOOD_EVENTS } from "../../flood/events";
 import {
   type EventNotifierEventContext,
   type NotificationMedium,
   type NotifierMessageContent,
   type NotifierRecipient,
 } from "./types";
+import {
+  areNotificationsSuppressed,
+  getRequestContext,
+} from "../../middleware/request-context";
+import { recordSentNotification } from "./flash-summary";
 
 const SERVICE = "event-notifier-dispatcher";
+
+/**
+ * Flood gate for a single (recipient, medium, plugin) send. Counts prior sends
+ * in the medium's rolling window and, if under the admin-configured limit,
+ * records this send and returns true. If over the limit, logs and returns false
+ * so the caller skips just this one send. Fails OPEN: if the check itself errors
+ * (e.g. a transient DB hiccup) the send proceeds, so throttling infrastructure
+ * can never silently swallow legitimate notifications. Must be called only once
+ * we know the send is actually deliverable, so no-op sends don't consume budget.
+ */
+async function passesNotificationFlood(
+  medium: NotificationMedium,
+  contactId: string,
+  pluginId: string,
+): Promise<boolean> {
+  const eventName = NOTIFICATION_FLOOD_EVENTS[medium];
+  if (!eventName) return true;
+  try {
+    const result = await checkFlood(eventName, { contactId, pluginId });
+    if (!result.allowed) {
+      logger.warn("Event-notifier send throttled by flood limit", {
+        service: SERVICE,
+        pluginId,
+        medium,
+        contactId,
+        count: result.count,
+        threshold: result.threshold,
+        windowSeconds: result.windowSeconds,
+      });
+      return false;
+    }
+    await recordFloodEvent(eventName, { contactId, pluginId });
+    return true;
+  } catch (error) {
+    logger.warn("Event-notifier flood check failed; sending anyway (fail open)", {
+      service: SERVICE,
+      pluginId,
+      medium,
+      contactId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return true;
+  }
+}
 
 /**
  * Resolve the destination + send for a single (recipient, medium) pair using
@@ -18,7 +69,10 @@ const SERVICE = "event-notifier-dispatcher";
  * destination (email address, phone, in-app user, postal address) off the
  * recipient's contact and skips silently when the contact has nothing on file.
  * All sends are fire-and-forget: failures are logged, never thrown, so one bad
- * medium can't abort the rest of the fan-out.
+ * medium can't abort the rest of the fan-out. Returns true only when a message
+ * was actually handed off to the send layer, so the caller can tally successful
+ * deliveries; every silent skip (no destination on file, throttled, missing
+ * content) and every caught failure returns false.
  */
 async function deliver(
   medium: NotificationMedium,
@@ -26,13 +80,14 @@ async function deliver(
   content: NotifierMessageContent,
   pluginId: string,
   tagIds: string[],
-): Promise<void> {
+): Promise<boolean> {
   const { storage } = await import("../../storage");
   try {
     if (medium === "email") {
-      if (!content.subject) return;
+      if (!content.subject) return false;
       const contact = await storage.contacts.getContact(recipient.contactId);
-      if (!contact?.email) return;
+      if (!contact?.email) return false;
+      if (!(await passesNotificationFlood(medium, recipient.contactId, pluginId))) return false;
       const { sendEmail } = await import("../../services/comm/senders/email");
       await sendEmail({
         contactId: recipient.contactId,
@@ -43,17 +98,18 @@ async function deliver(
         userId: recipient.userId ?? undefined,
         tagIds,
       });
-      return;
+      return true;
     }
 
     if (medium === "sms") {
-      if (!content.message) return;
+      if (!content.message) return false;
       const phones = await storage.contacts.phoneNumbers.getPhoneNumbersByContact(
         recipient.contactId,
       );
       const active = phones.filter((p) => p.isActive);
       const chosen = active.find((p) => p.isPrimary) ?? active[0];
-      if (!chosen) return;
+      if (!chosen) return false;
+      if (!(await passesNotificationFlood(medium, recipient.contactId, pluginId))) return false;
       const { sendSms } = await import("../../services/comm/senders/sms");
       await sendSms({
         contactId: recipient.contactId,
@@ -62,11 +118,11 @@ async function deliver(
         userId: recipient.userId ?? undefined,
         tagIds,
       });
-      return;
+      return true;
     }
 
     if (medium === "inapp") {
-      if (!content.title || !content.body) return;
+      if (!content.title || !content.body) return false;
       // In-app messages must target an authenticated user. Prefer the userId the
       // plugin resolved; otherwise resolve it from the contact's email.
       let userId = recipient.userId ?? undefined;
@@ -77,7 +133,8 @@ async function deliver(
           userId = user?.id;
         }
       }
-      if (!userId) return;
+      if (!userId) return false;
+      if (!(await passesNotificationFlood(medium, recipient.contactId, pluginId))) return false;
       const { sendInapp } = await import("../../services/comm/senders/inapp");
       await sendInapp({
         contactId: recipient.contactId,
@@ -89,17 +146,18 @@ async function deliver(
         initiatedBy: SERVICE,
         tagIds,
       });
-      return;
+      return true;
     }
 
     if (medium === "postal") {
-      if (!content.file && !content.templateId) return;
+      if (!content.file && !content.templateId) return false;
       const addresses = await storage.contacts.addresses.getContactPostalByContact(
         recipient.contactId,
       );
       const active = addresses.filter((a) => a.isActive);
       const chosen = active.find((a) => a.isPrimary) ?? active[0];
-      if (!chosen) return;
+      if (!chosen) return false;
+      if (!(await passesNotificationFlood(medium, recipient.contactId, pluginId))) return false;
       const { sendPostal } = await import("../../services/comm/senders/postal");
       await sendPostal({
         contactId: recipient.contactId,
@@ -117,7 +175,7 @@ async function deliver(
         userId: recipient.userId ?? undefined,
         tagIds,
       });
-      return;
+      return true;
     }
   } catch (error) {
     logger.warn(`Event-notifier send failed (${medium})`, {
@@ -128,6 +186,7 @@ async function deliver(
       error: error instanceof Error ? error.message : String(error),
     });
   }
+  return false;
 }
 
 /**
@@ -246,11 +305,15 @@ async function dispatchForConfig(
   const plugin = eventNotifierRegistry.get(pluginId);
   if (!plugin) return;
   if (!plugin.subscribedEvents.includes(ctx.event)) return;
-  if (
-    plugin.requiredComponent &&
-    !isComponentEnabledSync(plugin.requiredComponent)
-  ) {
+  if (!isPluginComponentEnabledSync(plugin)) {
     return;
+  }
+
+  // Per-config gate (e.g. a role filter): skip this config when the plugin says
+  // this event doesn't apply to it. Omitted hook = always dispatch.
+  if (plugin.shouldDispatch) {
+    const ok = await plugin.shouldDispatch(ctx, configData);
+    if (!ok) return;
   }
 
   // Active media = admin selection ∩ what the plugin can actually produce.
@@ -258,11 +321,34 @@ async function dispatchForConfig(
   const active = mediaSelection.filter((m) => supported.has(m));
   if (active.length === 0) return;
 
-  const recipients = plugin.staffNotification
+  const resolved = plugin.staffNotification
     ? await resolveStaffRecipients(staffRecipientUserIds(configData), plugin.id)
     : plugin.getRecipients
-      ? await plugin.getRecipients(ctx)
+      ? await plugin.getRecipients(ctx, configData)
       : [];
+  if (resolved.length === 0) return;
+
+  // Self-notification suppression: when the user who triggered this event is
+  // also a recipient, skip notifying them — they just performed the action, so
+  // the notification would be pure noise. Matched by application user id off the
+  // request context. Fail-safe: with no acting user (e.g. cron-fired events) or
+  // a recipient with no resolved userId, nothing is dropped and we notify as
+  // normal.
+  const actingUserId = getRequestContext()?.userId;
+  const recipients = actingUserId
+    ? resolved.filter((r) => {
+        const isSelf = r.userId === actingUserId;
+        if (isSelf) {
+          logger.debug("Skipping self-notification for acting user", {
+            service: SERVICE,
+            pluginId: plugin.id,
+            event: ctx.event,
+            contactId: r.contactId,
+          });
+        }
+        return !isSelf;
+      })
+    : resolved;
   if (recipients.length === 0) return;
 
   const tagIds = await resolveTagIds(plugin.id, plugin.name);
@@ -271,7 +357,14 @@ async function dispatchForConfig(
     for (const medium of active) {
       const content = await plugin.getMessage(medium, recipient, ctx);
       if (!content) continue;
-      await deliver(medium, recipient, content, pluginId, tagIds);
+      const sent = await deliver(medium, recipient, content, pluginId, tagIds);
+      // Flash a summary of what went out back to the user who triggered the
+      // event. Only successful sends are tallied; self-notifications are already
+      // filtered out above, and system/cron-fired events have no acting user so
+      // nothing is flashed.
+      if (sent && actingUserId) {
+        recordSentNotification(actingUserId, medium);
+      }
     }
   }
 }
@@ -296,6 +389,13 @@ function parseMedia(value: unknown): NotificationMedium[] {
  */
 function makeHandler(event: EventType) {
   return async (payload: unknown): Promise<void> => {
+    if (areNotificationsSuppressed()) {
+      logger.debug("Notifications suppressed for scope; skipping dispatch", {
+        service: SERVICE,
+        event,
+      });
+      return;
+    }
     const ctx: EventNotifierEventContext = { event, payload };
     const envelopes = await getEnabledConfigsForKind(KIND);
     for (const envelope of envelopes) {

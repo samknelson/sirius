@@ -18,6 +18,14 @@ import { renderIcon } from "@/components/ui/icon-picker";
 type EmployerWithCompany = Employer & { companyId?: string | null; companyName?: string | null };
 type BenefitWithIcon = TrustBenefit & { benefitTypeIcon?: string | null };
 
+interface ContactIndicator {
+  contactId: string;
+  contactName: string | null;
+  contactTypeName: string | null;
+  icon: string | null;
+  hasActiveUser: boolean;
+}
+
 interface EmployersTableProps {
   employers: EmployerWithCompany[];
   isLoading: boolean;
@@ -30,6 +38,7 @@ interface EmployersTableProps {
   onSelectionChange?: (selectedIds: Set<string>) => void;
   workerCounts?: Record<string, number>;
   benefitCounts?: Record<string, Record<string, number>>;
+  contactIndicators?: Record<string, ContactIndicator[]>;
   countsLoading?: boolean;
   showBenefits?: boolean;
   benefits?: BenefitWithIcon[];
@@ -49,7 +58,7 @@ interface EmployerType {
   data?: { icon?: string } | null;
 }
 
-export function EmployersTable({ employers, isLoading, includeInactive, onToggleInactive, showCompany, companies = [], selectable = false, selectedIds, onSelectionChange, workerCounts, benefitCounts, countsLoading = false, showBenefits = false, benefits = [] }: EmployersTableProps) {
+export function EmployersTable({ employers, isLoading, includeInactive, onToggleInactive, showCompany, companies = [], selectable = false, selectedIds, onSelectionChange, workerCounts, benefitCounts, contactIndicators, countsLoading = false, showBenefits = false, benefits = [] }: EmployersTableProps) {
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedTypeId, setSelectedTypeId] = useState<string>("all");
@@ -289,6 +298,9 @@ export function EmployersTable({ employers, isLoading, includeInactive, onToggle
                   </div>
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  <span>Contacts</span>
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   <span>Status</span>
                 </th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider whitespace-nowrap">
@@ -348,6 +360,43 @@ export function EmployersTable({ employers, isLoading, includeInactive, onToggle
                     >
                       {employer.name}
                     </span>
+                  </td>
+                  <td className="px-6 py-4" data-testid={`cell-employer-contacts-${employer.id}`}>
+                    {(() => {
+                      const list = contactIndicators?.[employer.id] ?? [];
+                      if (list.length === 0) {
+                        return <span className="text-sm text-muted-foreground">—</span>;
+                      }
+                      return (
+                        <div className="flex flex-wrap items-center gap-1.5 max-w-[220px]">
+                          {list.map((c, i) => (
+                            <Tooltip key={`${c.contactId}-${i}`}>
+                              <TooltipTrigger asChild>
+                                <span
+                                  className={
+                                    c.hasActiveUser
+                                      ? "text-green-600 dark:text-green-400"
+                                      : "text-muted-foreground/60"
+                                  }
+                                  data-testid={`contact-indicator-${employer.id}-${c.contactId}`}
+                                >
+                                  {renderIcon(c.icon || "User", "w-4 h-4") || renderIcon("User", "w-4 h-4")}
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <div className="text-xs">
+                                  <div className="font-medium">{c.contactName || "Unnamed contact"}</div>
+                                  {c.contactTypeName && (
+                                    <div className="text-muted-foreground">{c.contactTypeName}</div>
+                                  )}
+                                  <div>{c.hasActiveUser ? "Active user" : "No active user"}</div>
+                                </div>
+                              </TooltipContent>
+                            </Tooltip>
+                          ))}
+                        </div>
+                      );
+                    })()}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span 

@@ -3,17 +3,12 @@ import multer from "multer";
 import { storage } from "../storage";
 import { insertWizardSchema, wizardDataSchema, type WizardData } from "@shared/schema";
 import { requireAccess, buildContext, checkAccess, getAccessStorage } from "../services/access-policy-evaluator";
-import { wizardRegistry } from "../wizards/index.js";
-import { FeedWizard } from "../wizards/feed.js";
+import { wizardPluginRegistry } from "../plugins/wizards";
+import { enforceWizardEntityAccess } from "../plugins/wizards/entity-access";
+import { enforcePluginGating } from "../plugins/_core";
 import { createUnifiedOptionsStorage } from "../storage/unified-options.js";
-import { BtuWorkerImportWizard } from "../wizards/types/btu_worker_import.js";
-import { BtuDuesAllocationWizard } from "../wizards/types/btu_dues_allocation.js";
 import { objectStorageService } from "../services/objectStorage.js";
-import { hashHeaderRow } from "../utils/hash.js";
-import { getEffectiveUser } from "./masquerade";
-import { sendInapp } from "../services/comm/senders/inapp.js";
-import { sendEmail } from "../services/comm/senders/email.js";
-import { logger } from "../logger.js";
+import { validateAgainstSchema } from "../lib/json-schema-validator";
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -52,66 +47,29 @@ export function registerWizardRoutes(
         }
       }
 
-      const { isComponentEnabled } = await import('./components.js');
-      const allTypes = wizardRegistry.getAll();
-      
-      const filteredTypes = [];
-      for (const type of allTypes) {
-        if (type.requiredComponent) {
-          const enabled = await isComponentEnabled(type.requiredComponent);
-          if (!enabled) {
-            continue;
-          }
-        }
+      const filteredTypes: any[] = [];
+
+      // Merge in framework (plugin-based) wizard kinds. `listVisibleTo`
+      // applies the same component + per-user access-policy gating.
+      const visiblePlugins = await wizardPluginRegistry.listVisibleTo(req as any);
+      for (const plugin of visiblePlugins) {
+        if (filteredTypes.some((t) => t.name === plugin.id)) continue;
         filteredTypes.push({
-          name: type.name,
-          displayName: type.displayName,
-          description: type.description,
-          isFeed: type.isFeed,
-          isMonthly: type.isMonthly,
-          isReport: (type as any).isReport || false,
-          entityType: type.entityType,
-          category: type.category,
-          requiredComponent: type.requiredComponent
+          name: plugin.id,
+          displayName: plugin.name,
+          description: plugin.description,
+          isFeed: false,
+          isMonthly: false,
+          isReport: plugin.isReport ?? false,
+          entityType: plugin.entityType,
+          category: plugin.category,
+          requiredComponent: plugin.requiredComponent,
         });
       }
+
       res.json(filteredTypes);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch wizard types" });
-    }
-  });
-
-  app.get("/api/wizard-types/:typeName/steps", requireAuth, async (req, res) => {
-    try {
-      const ctx = await buildContext(req as any);
-      const isAdmin = await checkAccess('admin', ctx.user);
-      if (!isAdmin.granted) {
-        if (!ctx.user || !await getAccessStorage()!.hasPermission(ctx.user.id, 'employer')) {
-          return res.status(403).json({ message: "Access denied" });
-        }
-      }
-      const { typeName } = req.params;
-      const steps = await wizardRegistry.getStepsForType(typeName);
-      res.json(steps);
-    } catch (error) {
-      res.status(404).json({ message: error instanceof Error ? error.message : "Wizard type not found" });
-    }
-  });
-
-  app.get("/api/wizard-types/:typeName/statuses", requireAuth, async (req, res) => {
-    try {
-      const ctx = await buildContext(req as any);
-      const isAdmin = await checkAccess('admin', ctx.user);
-      if (!isAdmin.granted) {
-        if (!ctx.user || !await getAccessStorage()!.hasPermission(ctx.user.id, 'employer')) {
-          return res.status(403).json({ message: "Access denied" });
-        }
-      }
-      const { typeName } = req.params;
-      const statuses = await wizardRegistry.getStatusesForType(typeName);
-      res.json(statuses);
-    } catch (error) {
-      res.status(404).json({ message: error instanceof Error ? error.message : "Wizard type not found" });
     }
   });
 
@@ -125,7 +83,21 @@ export function registerWizardRoutes(
         }
       }
       const { typeName } = req.params;
-      const fields = await wizardRegistry.getFieldsForType(typeName);
+      const plugin = wizardPluginRegistry.get(typeName);
+      if (!plugin) {
+        return res.status(404).json({ message: "Wizard type not found" });
+      }
+      const gate = await enforcePluginGating(
+        wizardPluginRegistry.getMetadata(plugin),
+        req as any,
+      );
+      if (!gate.ok) {
+        return res.status(gate.status).json({ message: gate.message });
+      }
+      const fields = plugin.getFields?.();
+      if (!fields) {
+        return res.status(400).json({ message: "This wizard type does not support fields" });
+      }
       res.json(fields);
     } catch (error) {
       if (error instanceof Error && error.name === 'WizardFieldsUnsupportedError') {
@@ -135,7 +107,7 @@ export function registerWizardRoutes(
     }
   });
 
-  app.get("/api/wizard-types/:typeName/launch-arguments", requireAuth, async (req, res) => {
+  app.get("/api/wizard-types/:typeName/launch-schema", requireAuth, async (req, res) => {
     try {
       const laCtx = await buildContext(req as any);
       const laAdmin = await checkAccess('admin', laCtx.user);
@@ -147,8 +119,45 @@ export function registerWizardRoutes(
       }
 
       const { typeName } = req.params;
-      const launchArguments = await wizardRegistry.getLaunchArgumentsForType(typeName);
-      res.json(launchArguments);
+      // Framework (plugin-based) wizards declare their up-front launch
+      // inputs as a JSON Schema on the plugin; serve that (after plugin
+      // gating) so the generic client launcher can render it with the
+      // shared SchemaForm. `schema` is null when the wizard has no inputs.
+      const laPlugin = wizardPluginRegistry.get(typeName);
+      if (laPlugin) {
+        const laGate = await enforcePluginGating(
+          wizardPluginRegistry.getMetadata(laPlugin),
+          req as any,
+        );
+        if (!laGate.ok) {
+          return res.status(laGate.status).json({ message: laGate.message });
+        }
+        // Entity-scoped plugins (e.g. employer wizards) must pass the same
+        // admin-OR-<entity>.mine check used on create/dispatch, so launch
+        // inputs aren't disclosed for an entity the user can't access.
+        if (laPlugin.entityType) {
+          const laEntityId =
+            typeof req.query.entityId === "string"
+              ? req.query.entityId
+              : undefined;
+          const laEntity = await enforceWizardEntityAccess(
+            laPlugin,
+            laEntityId,
+            req as any,
+          );
+          if (!laEntity.ok) {
+            return res
+              .status(laEntity.status)
+              .json({ message: laEntity.message });
+          }
+        }
+        const launch = wizardPluginRegistry.resolveLaunchSchema(laPlugin);
+        return res.json({
+          schema: launch?.schema ?? null,
+          uiSchema: launch?.uiSchema,
+        });
+      }
+      return res.status(404).json({ message: "Wizard type not found" });
     } catch (error) {
       res.status(404).json({ message: error instanceof Error ? error.message : "Wizard type not found" });
     }
@@ -182,25 +191,6 @@ export function registerWizardRoutes(
       res.json(wizards);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch wizards" });
-    }
-  });
-
-  app.get("/api/wizards/employer-monthly/by-period", requireAccess('admin'), async (req, res) => {
-    try {
-      const { year, month } = req.query;
-      
-      // Validate year and month parameters
-      const yearNum = Number(year);
-      const monthNum = Number(month);
-      
-      if (!year || !month || !Number.isInteger(yearNum) || !Number.isInteger(monthNum) || monthNum < 1 || monthNum > 12) {
-        return res.status(400).json({ message: "Valid year and month parameters are required" });
-      }
-      
-      const monthlyWizards = await storage.wizardEmployerMonthly.listByPeriod(yearNum, monthNum);
-      res.json(monthlyWizards);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch employer monthly wizards" });
     }
   });
 
@@ -261,6 +251,15 @@ export function registerWizardRoutes(
         }
       }
 
+      // Framework (plugin-based) wizards carry a computed manifest so the
+      // client can render steps generically and poll progress off this
+      // same load route (no bespoke poll route).
+      const plugin = wizardPluginRegistry.get(wizard.type);
+      if (plugin) {
+        const manifest = wizardPluginRegistry.computeManifest(plugin, wizard);
+        return res.json({ ...wizard, manifest });
+      }
+
       res.json(wizard);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch wizard" });
@@ -271,201 +270,84 @@ export function registerWizardRoutes(
     try {
       const validatedData = insertWizardSchema.parse(req.body);
 
-      const context = await buildContext(req as any);
-      const adminAccess = await checkAccess('admin', context.user);
-
-      if (!adminAccess.granted) {
-        if (!validatedData.entityId) {
-          return res.status(403).json({ message: "Access denied" });
+      // Framework (plugin-based) wizard creation path. Gating (component →
+      // access policy) is enforced here from the plugin declaration alone.
+      const frameworkPlugin = wizardPluginRegistry.get(validatedData.type);
+      if (frameworkPlugin) {
+        const gate = await enforcePluginGating(
+          wizardPluginRegistry.getMetadata(frameworkPlugin),
+          req as any,
+        );
+        if (!gate.ok) {
+          return res.status(gate.status).json({ message: gate.message });
         }
-        const employerAccess = await checkAccess('employer.mine', context.user, validatedData.entityId);
-        if (!employerAccess.granted) {
-          return res.status(403).json({ message: "Access denied" });
-        }
-        const wizardType = wizardRegistry.get(validatedData.type);
-        if (!wizardType || wizardType.entityType !== 'employer') {
-          return res.status(403).json({ message: "Access denied: wizard type not available" });
-        }
-      }
-      
-      const typeValidation = await wizardRegistry.validateType(validatedData.type);
-      if (!typeValidation.valid) {
-        return res.status(400).json({ message: typeValidation.error });
-      }
-      
-      // Validate launch arguments if the wizard type defines them
-      const launchArguments = await wizardRegistry.getLaunchArgumentsForType(validatedData.type);
-      if (launchArguments && launchArguments.length > 0) {
-        const wizardData = validatedData.data as any;
-        const providedArgs = wizardData?.launchArguments || {};
-        
-        for (const arg of launchArguments) {
-          if (arg.required) {
-            const value = providedArgs[arg.id];
-            if (value === undefined || value === null || value === '' || value === 0) {
-              return res.status(400).json({ 
-                message: `Required launch argument '${arg.name}' is missing or invalid` 
-              });
-            }
+        // Entity-scoped wizards (e.g. employer feeds) must additionally be
+        // scoped to the owning entity's users at creation time.
+        if (frameworkPlugin.entityType) {
+          const entityGate = await enforceWizardEntityAccess(
+            frameworkPlugin,
+            validatedData.entityId,
+            req as any,
+          );
+          if (!entityGate.ok) {
+            return res
+              .status(entityGate.status)
+              .json({ message: entityGate.message });
           }
         }
-      }
-      
-      if (!validatedData.currentStep) {
-        const steps = await wizardRegistry.getStepsForType(validatedData.type);
-        if (steps && steps.length > 0) {
-          validatedData.currentStep = steps[0].id;
-          
-          const wizardData: WizardData = (validatedData.data as WizardData) || {};
-          wizardData.progress = wizardData.progress || {};
-          wizardData.progress[steps[0].id] = {
-            status: 'in_progress',
+        // Generic launch-input validation against the plugin's launch
+        // schema (per-wizard value constraints still live in `create`).
+        const launch = wizardPluginRegistry.resolveLaunchSchema(frameworkPlugin);
+        if (launch) {
+          const provided =
+            ((validatedData.data as any)?.launchArguments as
+              | Record<string, unknown>
+              | undefined) || {};
+          const result = validateAgainstSchema(launch.schema, provided);
+          if (!result.valid) {
+            return res.status(400).json({
+              message: `Invalid launch arguments: ${(result.errors ?? []).join("; ")}`,
+            });
+          }
+        }
+        const firstStep = frameworkPlugin.steps[0];
+        if (!validatedData.currentStep && firstStep) {
+          validatedData.currentStep = firstStep.id;
+        }
+        const wdata: any = (validatedData.data as any) || {};
+        wdata.progress = wdata.progress || {};
+        if (validatedData.currentStep) {
+          wdata.progress[validatedData.currentStep] = {
+            ...wdata.progress[validatedData.currentStep],
+            status: "in_progress",
           };
-          validatedData.data = wizardData;
         }
-      }
-      
-      // Set default retention period for report wizards
-      const isReportWizard = wizardRegistry.isReportWizard(validatedData.type);
-      if (isReportWizard) {
-        const wizardData: any = (validatedData.data as any) || {};
-        if (!wizardData.retention) {
-          wizardData.retention = '30days';
-          validatedData.data = wizardData;
+        if (frameworkPlugin.isReport && !wdata.retention) {
+          wdata.retention = "30days";
         }
-      }
-      
-      // Create wizard and wizard_employer_monthly record in a transaction if needed
-      const isMonthlyWizard = wizardRegistry.isMonthlyWizard(validatedData.type);
-      
-      // Pre-validate monthly wizard requirements before starting transaction
-      if (isMonthlyWizard) {
-        // Ensure entityId is present
-        if (!validatedData.entityId) {
-          return res.status(400).json({ 
-            message: "Entity ID is required for monthly employer wizards" 
+        validatedData.data = wdata;
+        if (!validatedData.status) validatedData.status = "draft";
+        // Custom creation hook (per-wizard side effects: duplicate/prereq
+        // checks, subsidiary rows). Falls back to the default create.
+        if (frameworkPlugin.create) {
+          const result = await frameworkPlugin.create({
+            input: validatedData as any,
+            req: req as any,
+            storage,
           });
-        }
-        
-        // Ensure data and launchArguments structure exists
-        const wizardData = validatedData.data as any;
-        if (!wizardData || typeof wizardData !== 'object') {
-          return res.status(400).json({ 
-            message: "Wizard data is required for monthly employer wizards" 
-          });
-        }
-        
-        if (!wizardData.launchArguments || typeof wizardData.launchArguments !== 'object') {
-          return res.status(400).json({ 
-            message: "Launch arguments are required for monthly employer wizards" 
-          });
-        }
-        
-        // Validate year and month from launch arguments
-        const launchArgs = wizardData.launchArguments;
-        
-        if (launchArgs.year === undefined || launchArgs.year === null) {
-          return res.status(400).json({ 
-            message: "Year is required in launch arguments for monthly employer wizards" 
-          });
-        }
-        
-        if (launchArgs.month === undefined || launchArgs.month === null) {
-          return res.status(400).json({ 
-            message: "Month is required in launch arguments for monthly employer wizards" 
-          });
-        }
-        
-        const year = Number(launchArgs.year);
-        const month = Number(launchArgs.month);
-        
-        if (!Number.isInteger(year) || year < 1900 || year > 2100) {
-          return res.status(400).json({ 
-            message: "Year must be a valid integer between 1900 and 2100" 
-          });
-        }
-        
-        if (!Number.isInteger(month) || month < 1 || month > 12) {
-          return res.status(400).json({ 
-            message: "Month must be an integer between 1 and 12" 
-          });
-        }
-        
-        // Type-specific constraint validation
-        if (validatedData.type === 'gbhet_legal_workers_monthly') {
-          // Check for duplicate monthly wizard
-          const existingWizards = await storage.wizardEmployerMonthly.findWizards(
-            validatedData.entityId,
-            'gbhet_legal_workers_monthly',
-            year,
-            month
-          );
-          
-          if (existingWizards.length > 0) {
-            return res.status(400).json({ 
-              message: `A legal workers monthly wizard already exists for this employer in ${month}/${year}` 
-            });
+          if (result.error || !result.wizard) {
+            return res
+              .status(result.status ?? 400)
+              .json({ message: result.error ?? "Failed to create wizard" });
           }
-        } else if (validatedData.type === 'gbhet_legal_workers_corrections') {
-          // Check for completed monthly wizard prerequisite
-          const completedMonthlyWizards = await storage.wizardEmployerMonthly.findWizards(
-            validatedData.entityId,
-            'gbhet_legal_workers_monthly',
-            year,
-            month,
-            ['completed', 'complete']
-          );
-          
-          if (completedMonthlyWizards.length === 0) {
-            return res.status(400).json({ 
-              message: `Cannot create legal workers corrections wizard: no completed legal workers monthly wizard found for ${month}/${year}` 
-            });
-          }
+          return res.status(201).json(result.wizard);
         }
+        const created = await storage.wizards.create(validatedData);
+        return res.status(201).json(created);
       }
-      
-      let wizard;
-      
-      if (isMonthlyWizard && validatedData.entityId) {
-        const wizardData = validatedData.data as any;
-        const launchArgs = wizardData?.launchArguments || {};
-        const year = Number(launchArgs.year);
-        const month = Number(launchArgs.month);
-        
-        if (validatedData.type === 'gbhet_legal_workers_monthly') {
-          const result = await storage.wizards.createMonthlyWizard({
-            wizard: validatedData,
-            employerId: validatedData.entityId,
-            year,
-            month,
-          });
-          
-          if (!result.success) {
-            return res.status(400).json({ message: result.error });
-          }
-          wizard = result.wizard;
-        } else if (validatedData.type === 'gbhet_legal_workers_corrections') {
-          const result = await storage.wizards.createCorrectionsWizard({
-            wizard: validatedData,
-            employerId: validatedData.entityId,
-            year,
-            month,
-          });
-          
-          if (!result.success) {
-            return res.status(400).json({ message: result.error });
-          }
-          wizard = result.wizard;
-        } else {
-          // For other monthly wizard types, use the simple create
-          wizard = await storage.wizards.create(validatedData);
-        }
-      } else {
-        // For non-monthly wizards, use the simple create
-        wizard = await storage.wizards.create(validatedData);
-      }
-      
-      res.status(201).json(wizard);
+
+      return res.status(404).json({ message: "Unknown wizard type" });
+
     } catch (error) {
       if (error instanceof HttpError) {
         res.status(error.statusCode).json({ message: error.message });
@@ -501,9 +383,8 @@ export function registerWizardRoutes(
       const validatedData = insertWizardSchema.partial().parse(req.body);
       
       if (validatedData.type) {
-        const typeValidation = await wizardRegistry.validateType(validatedData.type);
-        if (!typeValidation.valid) {
-          return res.status(400).json({ message: typeValidation.error });
+        if (!wizardPluginRegistry.get(validatedData.type)) {
+          return res.status(400).json({ message: `Unknown wizard type: ${validatedData.type}` });
         }
       }
       
@@ -511,8 +392,7 @@ export function registerWizardRoutes(
       if (validatedData.data) {
         const incomingData = validatedData.data as any;
         if (incomingData.retention !== undefined) {
-          const wizardType = existing.type;
-          const isReportWizard = wizardRegistry.isReportWizard(wizardType);
+          const isReportWizard = wizardPluginRegistry.get(existing.type)?.isReport ?? false;
           if (!isReportWizard) {
             return res.status(400).json({ 
               message: "Retention settings can only be set on report wizards" 
@@ -521,37 +401,16 @@ export function registerWizardRoutes(
         }
       }
       
-      // If data is being updated, check if we need to clear downstream step data
+      // If data is being updated, merge it generically, then let the wizard's
+      // own plugin hook validate the patch and own any reset behavior (e.g. a
+      // feed wizard clearing downstream steps). The route stays wizard-agnostic.
       if (validatedData.data) {
         const existingData = (existing.data || {}) as any;
         const incomingData = validatedData.data as any;
-        
-        if (incomingData.columnMapping) {
-          const cmKeys = Object.keys(incomingData.columnMapping);
-          const isOldFormat = cmKeys.length > 0 && cmKeys.every((k: string) => k.startsWith('col_'));
-          if (isOldFormat) {
-            const fieldIds = Object.values(incomingData.columnMapping).filter((id: any) => id && id !== '_unmapped');
-            const duplicates = fieldIds.filter((id: any, index: number) => fieldIds.indexOf(id) !== index);
-            if (duplicates.length > 0) {
-              const uniqueDuplicates = Array.from(new Set(duplicates));
-              return res.status(400).json({ 
-                message: `Duplicate field mappings detected: ${uniqueDuplicates.join(', ')}. Each field can only be mapped once.` 
-              });
-            }
-          } else {
-            const colValues = Object.values(incomingData.columnMapping).filter((v: any) => v && v !== '_unmapped');
-            const duplicates = colValues.filter((v: any, index: number) => colValues.indexOf(v) !== index);
-            if (duplicates.length > 0) {
-              const uniqueDuplicates = Array.from(new Set(duplicates));
-              return res.status(400).json({ 
-                message: `Duplicate column mappings detected: ${uniqueDuplicates.join(', ')}. Each column can only be mapped once.` 
-              });
-            }
-          }
-        }
-        
-        // Merge existing data with incoming data
-        // Only deep-merge the progress field to avoid overwriting other fields like reportDataId
+
+        // Merge existing data with incoming data.
+        // Only deep-merge the progress field to avoid overwriting other fields
+        // like reportDataId.
         const mergedData = {
           ...existingData,
           ...incomingData,
@@ -563,41 +422,23 @@ export function registerWizardRoutes(
             }
           } : {})
         };
-        
-        // Check if upload-related data changed (uploadedFileId)
-        if (incomingData.uploadedFileId && incomingData.uploadedFileId !== existingData.uploadedFileId) {
-          // Clear all downstream data: map, validate, process, review
-          delete mergedData.columnMapping;
-          delete mergedData.hasHeaders;
-          delete mergedData.validationResults;
-          
-          // Clear progress for downstream steps
-          if (mergedData.progress) {
-            delete mergedData.progress.map;
-            delete mergedData.progress.validate;
-            delete mergedData.progress.process;
-            delete mergedData.progress.review;
+
+        const plugin = wizardPluginRegistry.get(existing.type);
+        if (plugin?.prepareUpdate) {
+          const prep = await plugin.prepareUpdate({
+            existing,
+            incoming: incomingData,
+            merged: mergedData,
+          });
+          if (prep.error) {
+            return res
+              .status(prep.status ?? 400)
+              .json({ message: prep.error });
           }
+          validatedData.data = prep.data ?? mergedData;
+        } else {
+          validatedData.data = mergedData;
         }
-        
-        // Check if map-related data changed (columnMapping, hasHeaders, mode)
-        else if (
-          (incomingData.columnMapping && JSON.stringify(incomingData.columnMapping) !== JSON.stringify(existingData.columnMapping)) ||
-          (incomingData.hasHeaders !== undefined && incomingData.hasHeaders !== existingData.hasHeaders) ||
-          (incomingData.mode && incomingData.mode !== existingData.mode)
-        ) {
-          // Clear downstream data: validate, process, review
-          delete mergedData.validationResults;
-          
-          // Clear progress for downstream steps
-          if (mergedData.progress) {
-            delete mergedData.progress.validate;
-            delete mergedData.progress.process;
-            delete mergedData.progress.review;
-          }
-        }
-        
-        validatedData.data = mergedData;
       }
       
       const wizard = await storage.wizards.update(id, validatedData);
@@ -659,214 +500,6 @@ export function registerWizardRoutes(
     }
   });
 
-  // Helper function to evaluate if a step is complete
-  async function isStepComplete(wizard: any, stepId: string): Promise<boolean> {
-    const wizardData = wizard.data || {};
-    
-    // Upload step validation
-    if (stepId === 'upload') {
-      if (!wizardData.uploadedFileId) return false;
-      
-      // Check if the uploaded file exists
-      const file = await storage.files.getById(wizardData.uploadedFileId);
-      return !!file;
-    }
-    
-    // Map step validation
-    if (stepId === 'map') {
-      const mode = wizardData.mode || 'create';
-      const columnMapping = wizardData.columnMapping || {};
-      
-      try {
-        const fields = await wizardRegistry.getFieldsForType(wizard.type);
-        
-        // Get required fields based on mode
-        const requiredFields = fields.filter((f: any) => {
-          if (f.required) return true;
-          if (mode === 'create' && f.requiredForCreate) return true;
-          if (mode === 'update' && f.requiredForUpdate) return true;
-          return false;
-        });
-        
-        // If no required fields, step is complete
-        if (requiredFields.length === 0) return true;
-        
-        const keys = Object.keys(columnMapping);
-        const isOldFormat = keys.length > 0 && keys.every((k: string) => k.startsWith('col_'));
-
-        if (isOldFormat) {
-          const mappedFieldIds = Object.values(columnMapping).filter((v: any) => v && v !== '_unmapped');
-          const mappedRequiredFields = requiredFields.filter((f: any) => mappedFieldIds.includes(f.id));
-          return requiredFields.length === mappedRequiredFields.length;
-        }
-
-        const mappedRequiredFields = requiredFields.filter((f: any) => {
-          const colValue = columnMapping[f.id];
-          return colValue && colValue !== '_unmapped';
-        });
-        return requiredFields.length === mappedRequiredFields.length;
-      } catch (error) {
-        // If fields aren't available (not a feed wizard), consider step complete
-        return true;
-      }
-    }
-    
-    // Validate step validation
-    if (stepId === 'validate') {
-      const validationResults = wizardData.validationResults;
-      
-      // Validation must have been run
-      if (!validationResults) return false;
-      
-      // All rows must be valid (no invalid rows) and no unmapped statuses pending
-      if (validationResults.invalidRows !== 0) return false;
-      if (validationResults.unmappedStatuses && validationResults.unmappedStatuses.length > 0) return false;
-      return true;
-    }
-    
-    // Other steps are always considered complete
-    return true;
-  }
-
-  app.post("/api/wizards/:id/steps/next", requireAuth, async (req, res) => {
-    try {
-      const { id } = req.params;
-      const { payload } = req.body;
-      
-      const wizard = await storage.wizards.getById(id);
-      if (!wizard) {
-        return res.status(404).json({ message: "Wizard not found" });
-      }
-
-      const nextCtx = await buildContext(req as any);
-      const nextAdmin = await checkAccess('admin', nextCtx.user);
-      if (!nextAdmin.granted) {
-        if (!wizard.entityId) {
-          return res.status(403).json({ message: "Access denied" });
-        }
-        const empAccess = await checkAccess('employer.mine', nextCtx.user, wizard.entityId);
-        if (!empAccess.granted) {
-          return res.status(403).json({ message: "Access denied" });
-        }
-      }
-
-      const steps = await wizardRegistry.getStepsForType(wizard.type);
-      
-      const currentStepId = wizard.currentStep || steps[0]?.id;
-      if (!currentStepId) {
-        return res.status(400).json({ message: "No steps available for this wizard type" });
-      }
-      
-      const currentIndex = steps.findIndex(s => s.id === currentStepId);
-      
-      if (currentIndex === -1) {
-        return res.status(400).json({ message: "Current step not found in wizard type" });
-      }
-      
-      if (currentIndex >= steps.length - 1) {
-        return res.status(400).json({ message: "Already on last step" });
-      }
-
-      // Validate current step is complete before advancing
-      const stepComplete = await isStepComplete(wizard, currentStepId);
-      if (!stepComplete) {
-        return res.status(400).json({ 
-          message: "Cannot proceed to next step. Please complete all required items in the current step." 
-        });
-      }
-
-      const nextStep = steps[currentIndex + 1];
-      
-      const wizardData: WizardData = (wizard.data as WizardData) || {};
-      const progress = wizardData.progress || {};
-      
-      progress[currentStepId] = {
-        status: 'completed',
-        completedAt: new Date().toISOString(),
-        payload: payload || progress[currentStepId]?.payload,
-      };
-      
-      progress[nextStep.id] = {
-        status: 'in_progress',
-      };
-
-      const updatedWizard = await storage.wizards.update(id, {
-        currentStep: nextStep.id,
-        data: { ...wizardData, progress },
-      });
-
-      res.json(updatedWizard);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to navigate to next step" });
-    }
-  });
-
-  app.post("/api/wizards/:id/steps/previous", requireAuth, async (req, res) => {
-    try {
-      const { id } = req.params;
-      
-      const wizard = await storage.wizards.getById(id);
-      if (!wizard) {
-        return res.status(404).json({ message: "Wizard not found" });
-      }
-
-      const prevCtx = await buildContext(req as any);
-      const prevAdmin = await checkAccess('admin', prevCtx.user);
-      if (!prevAdmin.granted) {
-        if (!wizard.entityId) {
-          return res.status(403).json({ message: "Access denied" });
-        }
-        const empAccess = await checkAccess('employer.mine', prevCtx.user, wizard.entityId);
-        if (!empAccess.granted) {
-          return res.status(403).json({ message: "Access denied" });
-        }
-      }
-
-      const steps = await wizardRegistry.getStepsForType(wizard.type);
-      
-      const currentStepId = wizard.currentStep || steps[0]?.id;
-      if (!currentStepId) {
-        return res.status(400).json({ message: "No steps available for this wizard type" });
-      }
-      
-      const currentIndex = steps.findIndex(s => s.id === currentStepId);
-      
-      if (currentIndex === -1) {
-        return res.status(400).json({ message: "Current step not found in wizard type" });
-      }
-      
-      if (currentIndex <= 0) {
-        return res.status(400).json({ message: "Already on first step" });
-      }
-
-      const previousStep = steps[currentIndex - 1];
-      
-      const wizardData: WizardData = (wizard.data as WizardData) || {};
-      const progress = wizardData.progress || {};
-      
-      if (progress[currentStepId]) {
-        progress[currentStepId] = {
-          status: 'pending',
-        };
-      }
-      
-      progress[previousStep.id] = {
-        ...progress[previousStep.id],
-        status: 'in_progress',
-        completedAt: undefined,
-      };
-
-      const updatedWizard = await storage.wizards.update(id, {
-        currentStep: previousStep.id,
-        data: { ...wizardData, progress },
-      });
-
-      res.json(updatedWizard);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to navigate to previous step" });
-    }
-  });
-
   // Middleware to check wizard access based on entity type
   const checkWizardAccess = async (req: any, res: any, next: any) => {
     try {
@@ -878,7 +511,7 @@ export function registerWizardRoutes(
       }
 
       // Get wizard type to determine entityType
-      const wizardType = wizardRegistry.get(wizard.type);
+      const wizardType = wizardPluginRegistry.get(wizard.type);
       if (!wizardType) {
         return res.status(400).json({ message: "Invalid wizard type" });
       }
@@ -913,82 +546,6 @@ export function registerWizardRoutes(
     }
   };
 
-  // File upload for wizards
-  app.post("/api/wizards/:id/files",
-    requireAuth,
-    upload.single('file'),
-    checkWizardAccess,
-    async (req, res) => {
-      try {
-        if (!req.file) {
-          return res.status(400).json({ message: "No file provided" });
-        }
-
-        // Wizard is already attached to request by middleware
-        const wizard = (req as any).wizard;
-
-        // Get wizard type instance to validate file and associate
-        const wizardType = wizardRegistry.get(wizard.type);
-        if (!wizardType || !(wizardType instanceof FeedWizard)) {
-          return res.status(400).json({ message: "This wizard type does not support file uploads" });
-        }
-
-        // Validate file type
-        const allowedMimeTypes = [
-          'text/csv',
-          'application/vnd.ms-excel',
-          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        ];
-
-        if (req.file.mimetype && !allowedMimeTypes.includes(req.file.mimetype)) {
-          return res.status(400).json({ message: "Invalid file type. Only CSV and XLSX files are supported." });
-        }
-
-        // Get wizard ID from params
-        const wizardId = req.params.id;
-        
-        // Get wizard type to determine entityType
-        const wizardTypeInstance = wizardRegistry.get(wizard.type);
-        
-        // Upload file to object storage
-        const customPath = `wizards/${wizardId}/${Date.now()}_${req.file.originalname}`;
-        const uploadResult = await objectStorageService.uploadFile({
-          fileName: req.file.originalname,
-          fileContent: req.file.buffer,
-          mimeType: req.file.mimetype,
-          accessLevel: 'private',
-          customPath
-        });
-
-        // Get current user for uploadedBy
-        const user = (req as any).user;
-        const session = req.session as any;
-        const { dbUser } = await getEffectiveUser(session, user);
-
-        if (!dbUser) {
-          return res.status(401).json({ message: "User not found" });
-        }
-
-        // Associate file with wizard using FeedWizard method
-        const file = await wizardType.associateFile(wizardId, {
-          fileName: req.file.originalname,
-          storagePath: uploadResult.storagePath,
-          mimeType: req.file.mimetype,
-          size: req.file.size,
-          uploadedBy: dbUser.id,
-          entityType: 'wizard',
-          entityId: wizardId,
-          accessLevel: 'private'
-        });
-
-        res.status(201).json(file);
-      } catch (error) {
-        console.error("File upload error:", error);
-        res.status(500).json({ message: error instanceof Error ? error.message : "Failed to upload file" });
-      }
-    }
-  );
-
   // List files for a wizard
   app.get("/api/wizards/:id/files",
     checkWizardAccess,
@@ -996,329 +553,13 @@ export function registerWizardRoutes(
       try {
         const { id } = req.params;
         
-        // Wizard is already attached to request by middleware
-        const wizard = (req as any).wizard;
-
-        // Get wizard type instance
-        const wizardType = wizardRegistry.get(wizard.type);
-        if (!wizardType || !(wizardType instanceof FeedWizard)) {
-          return res.status(400).json({ message: "This wizard type does not support file uploads" });
-        }
-
-        const files = await wizardType.getAssociatedFiles(id);
+        const allFiles = await storage.files.list();
+        const files = allFiles.filter(
+          (file) => (file.metadata as any)?.wizardId === id,
+        );
         res.json(files);
       } catch (error) {
         res.status(500).json({ message: "Failed to fetch files" });
-      }
-    }
-  );
-
-  // Parse uploaded file to extract column information
-  app.get("/api/wizards/:id/files/:fileId/parse",
-    checkWizardAccess,
-    async (req, res) => {
-      try {
-        const { id, fileId } = req.params;
-        const { previewRows = '5' } = req.query;
-        
-        // Wizard is already attached to request by middleware
-        const wizard = (req as any).wizard;
-
-        // Get wizard type instance
-        const wizardType = wizardRegistry.get(wizard.type);
-        if (!wizardType || !(wizardType instanceof FeedWizard)) {
-          return res.status(400).json({ message: "This wizard type does not support file uploads" });
-        }
-
-        // Get file metadata
-        const file = await storage.files.getById(fileId);
-        if (!file) {
-          return res.status(404).json({ message: "File not found" });
-        }
-
-        // Verify file association
-        const metadata = file.metadata as any;
-        if (metadata?.wizardId !== id) {
-          return res.status(403).json({ message: "File is not associated with this wizard" });
-        }
-
-        // Download file from object storage
-        const fileBuffer = await objectStorageService.downloadFile(file.storagePath);
-
-        // Parse file based on type - read ALL rows first to properly detect non-empty columns
-        let allRows: any[][] = [];
-        const rowLimit = parseInt(previewRows as string) || 5;
-
-        if (file.mimeType === 'text/csv') {
-          // Parse CSV - read all rows
-          const { parse } = await import('csv-parse/sync');
-          allRows = parse(fileBuffer, {
-            relax_column_count: true,
-            skip_empty_lines: true
-          });
-        } else if (
-          file.mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
-          file.mimeType === 'application/vnd.ms-excel'
-        ) {
-          // Parse XLSX - read all rows to properly detect non-empty columns
-          const XLSX = await import('xlsx');
-          const workbook = XLSX.read(fileBuffer, { type: 'buffer' });
-          const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-          const jsonData = XLSX.utils.sheet_to_json(firstSheet, { 
-            header: 1,
-            defval: '',
-            blankrows: false
-          });
-          allRows = jsonData as any[][];
-        } else {
-          return res.status(400).json({ message: "Unsupported file type for parsing" });
-        }
-
-        // Filter out completely empty columns based on ALL rows (not just preview)
-        // A column is considered empty if all cells in that column are null, undefined, or empty string
-        let filteredRows = allRows;
-        if (allRows.length > 0) {
-          const maxCols = Math.max(...allRows.map(row => row.length));
-          const nonEmptyColIndices: number[] = [];
-          
-          for (let colIdx = 0; colIdx < maxCols; colIdx++) {
-            const hasData = allRows.some(row => {
-              const cell = row[colIdx];
-              return cell !== null && cell !== undefined && cell !== '';
-            });
-            if (hasData) {
-              nonEmptyColIndices.push(colIdx);
-            }
-          }
-          
-          // Filter rows to only include non-empty columns
-          filteredRows = allRows.map(row => nonEmptyColIndices.map(colIdx => row[colIdx] ?? ''));
-        }
-
-        // Return parsed data - only the preview rows but column count reflects filtered columns
-        res.json({
-          fileName: file.fileName,
-          totalRows: filteredRows.length,
-          previewRows: filteredRows.slice(0, rowLimit + 1),
-          columnCount: filteredRows[0]?.length || 0
-        });
-      } catch (error) {
-        console.error("File parse error:", error);
-        res.status(500).json({ message: error instanceof Error ? error.message : "Failed to parse file" });
-      }
-    }
-  );
-
-  // Get suggested mapping based on header row hash
-  app.get("/api/wizards/:id/suggested-mapping",
-    requireAuth,
-    checkWizardAccess,
-    async (req, res) => {
-      try {
-        const { id } = req.params;
-        const wizard = (req as any).wizard;
-        const user = (req as any).user;
-
-        if (!user) {
-          return res.status(401).json({ message: "User not authenticated" });
-        }
-
-        // Get database user from Replit user
-        const session = req.session as any;
-        const { dbUser } = await getEffectiveUser(session, user);
-
-        if (!dbUser) {
-          return res.status(401).json({ message: "User not found" });
-        }
-
-        // Get wizard type instance
-        const wizardType = wizardRegistry.get(wizard.type);
-        if (!wizardType || !(wizardType instanceof FeedWizard)) {
-          return res.status(400).json({ message: "This wizard type does not support mappings" });
-        }
-
-        // Get wizard data
-        const wizardData = wizard.data as any;
-        const fileId = wizardData?.uploadedFileId;
-
-        if (!fileId) {
-          return res.json({ mapping: null });
-        }
-
-        // Get file and parse header row
-        const file = await storage.files.getById(fileId);
-        if (!file) {
-          return res.status(404).json({ message: "File not found" });
-        }
-
-        // Download and parse file to get header row
-        const fileBuffer = await objectStorageService.downloadFile(file.storagePath);
-        let headerRow: any[] = [];
-
-        if (file.mimeType === 'text/csv') {
-          const { parse } = await import('csv-parse/sync');
-          const rows = parse(fileBuffer, {
-            relax_column_count: true,
-            skip_empty_lines: true,
-            to: 1 // Just get first row
-          });
-          headerRow = rows[0] || [];
-        } else if (
-          file.mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
-          file.mimeType === 'application/vnd.ms-excel'
-        ) {
-          const XLSX = await import('xlsx');
-          const workbook = XLSX.read(fileBuffer, { type: 'buffer' });
-          const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-          const jsonData = XLSX.utils.sheet_to_json(firstSheet, { 
-            header: 1,
-            defval: '',
-            range: 'A1:ZZ1' // Just first row
-          });
-          headerRow = (jsonData as any[][])[0] || [];
-        }
-
-        if (headerRow.length === 0) {
-          return res.json({ mapping: null });
-        }
-
-        // Hash the header row
-        const headerHash = hashHeaderRow(headerRow);
-
-        // Look for existing mapping
-        const existingMapping = await storage.wizardFeedMappings.findByUserTypeAndHash(
-          dbUser.id,
-          wizard.type,
-          headerHash
-        );
-
-        if (existingMapping) {
-          res.json({ 
-            mapping: existingMapping.mapping,
-            headerHash,
-            savedAt: existingMapping.updatedAt
-          });
-        } else {
-          res.json({ mapping: null, headerHash });
-        }
-      } catch (error) {
-        console.error("Error fetching suggested mapping:", error);
-        res.status(500).json({ message: error instanceof Error ? error.message : "Failed to fetch suggested mapping" });
-      }
-    }
-  );
-
-  // Save column mapping for future use
-  app.post("/api/wizards/:id/save-mapping",
-    requireAuth,
-    checkWizardAccess,
-    async (req, res) => {
-      try {
-        const { id } = req.params;
-        const { headerHash, mapping } = req.body;
-        const wizard = (req as any).wizard;
-        const user = (req as any).user;
-
-        if (!user) {
-          return res.status(401).json({ message: "User not authenticated" });
-        }
-
-        // Get database user from Replit user
-        const session = req.session as any;
-        const { dbUser } = await getEffectiveUser(session, user);
-
-        if (!dbUser) {
-          return res.status(401).json({ message: "User not found" });
-        }
-
-        if (!headerHash || !mapping) {
-          return res.status(400).json({ message: "Header hash and mapping are required" });
-        }
-
-        // Check if mapping already exists
-        const existingMapping = await storage.wizardFeedMappings.findByUserTypeAndHash(
-          dbUser.id,
-          wizard.type,
-          headerHash
-        );
-
-        if (existingMapping) {
-          // Update existing mapping
-          const updated = await storage.wizardFeedMappings.update(existingMapping.id, {
-            mapping,
-          });
-          res.json(updated);
-        } else {
-          // Create new mapping
-          const created = await storage.wizardFeedMappings.create({
-            userId: dbUser.id,
-            type: wizard.type,
-            firstRowHash: headerHash,
-            mapping,
-          });
-          res.json(created);
-        }
-      } catch (error) {
-        console.error("Error saving mapping:", error);
-        res.status(500).json({ message: error instanceof Error ? error.message : "Failed to save mapping" });
-      }
-    }
-  );
-
-  app.post("/api/wizards/:id/status-mappings",
-    requireAuth,
-    checkWizardAccess,
-    async (req, res) => {
-      try {
-        const wizard = (req as any).wizard;
-        const employerId = wizard.entityId;
-        if (!employerId) {
-          return res.status(400).json({ message: "Wizard is not linked to an employer" });
-        }
-
-        const { mappings } = req.body;
-        if (!Array.isArray(mappings) || mappings.length === 0) {
-          return res.status(400).json({ message: "mappings array is required" });
-        }
-
-        for (const m of mappings) {
-          if (!m.sourceStatus || !m.targetStatusId) {
-            return res.status(400).json({ message: "Each mapping must have sourceStatus and targetStatusId" });
-          }
-        }
-
-        const validStatuses = await optionsStorage.list("employment-status");
-        const validStatusIds = new Set(validStatuses.map(s => s.id));
-        for (const m of mappings) {
-          if (!validStatusIds.has(m.targetStatusId)) {
-            return res.status(400).json({ message: `Invalid target status ID: ${m.targetStatusId}` });
-          }
-        }
-
-        const results = await storage.wizardEmploymentStatusMappings.upsertBatch(employerId, mappings);
-        res.json({ saved: results.length, mappings: results });
-      } catch (error) {
-        console.error("Error saving status mappings:", error);
-        res.status(500).json({ message: error instanceof Error ? error.message : "Failed to save status mappings" });
-      }
-    }
-  );
-
-  app.get("/api/wizards/:id/status-mappings",
-    requireAuth,
-    checkWizardAccess,
-    async (req, res) => {
-      try {
-        const wizard = (req as any).wizard;
-        const employerId = wizard.entityId;
-        if (!employerId) {
-          return res.status(400).json({ message: "Wizard is not linked to an employer" });
-        }
-        const mappings = await storage.wizardEmploymentStatusMappings.getByEmployer(employerId);
-        res.json(mappings);
-      } catch (error) {
-        console.error("Error fetching status mappings:", error);
-        res.status(500).json({ message: error instanceof Error ? error.message : "Failed to fetch status mappings" });
       }
     }
   );
@@ -1333,640 +574,6 @@ export function registerWizardRoutes(
       } catch (error) {
         console.error("Error fetching employment status options:", error);
         res.status(500).json({ message: error instanceof Error ? error.message : "Failed to fetch employment status options" });
-      }
-    }
-  );
-
-  // Validate wizard data with SSE for progress tracking
-  app.get("/api/wizards/:id/validate",
-    checkWizardAccess,
-    async (req, res) => {
-      try {
-        const { id } = req.params;
-        const wizard = (req as any).wizard;
-
-        // Get wizard type instance
-        const wizardType = wizardRegistry.get(wizard.type);
-        if (!wizardType || !(wizardType instanceof FeedWizard)) {
-          return res.status(400).json({ message: "This wizard type does not support validation" });
-        }
-
-        // Set up SSE headers
-        res.setHeader('Content-Type', 'text/event-stream');
-        res.setHeader('Cache-Control', 'no-cache');
-        res.setHeader('Connection', 'keep-alive');
-        res.flushHeaders();
-
-        // Send initial event
-        res.write(`data: ${JSON.stringify({ type: 'start', message: 'Starting validation...' })}\n\n`);
-
-        // Start heartbeat to keep connection alive through proxies
-        const heartbeatInterval = setInterval(() => {
-          try { res.write(`: heartbeat\n\n`); } catch (_e) { /* connection closed */ }
-        }, 15000);
-
-        // Run validation with progress callback
-        try {
-          const results = await wizardType.validateFeedData(
-            id,
-            100, // batch size
-            (progress) => {
-              // Send progress event
-              res.write(`data: ${JSON.stringify({ 
-                type: 'progress', 
-                ...progress 
-              })}\n\n`);
-            }
-          );
-
-          clearInterval(heartbeatInterval);
-
-          // Send completion event
-          res.write(`data: ${JSON.stringify({ 
-            type: 'complete', 
-            results 
-          })}\n\n`);
-          res.end();
-        } catch (validationError) {
-          clearInterval(heartbeatInterval);
-          // Send error event
-          res.write(`data: ${JSON.stringify({ 
-            type: 'error', 
-            message: validationError instanceof Error ? validationError.message : 'Validation failed' 
-          })}\n\n`);
-          res.end();
-        }
-      } catch (error) {
-        console.error("Validation error:", error);
-        if (!res.headersSent) {
-          res.status(500).json({ message: error instanceof Error ? error.message : "Failed to start validation" });
-        } else {
-          res.write(`data: ${JSON.stringify({ 
-            type: 'error', 
-            message: error instanceof Error ? error.message : 'Validation failed' 
-          })}\n\n`);
-          res.end();
-        }
-      }
-    }
-  );
-
-  async function sendWizardCompletionNotifications(
-    wizardId: string,
-    userId: string,
-    wizardDisplayName: string,
-    results: { successCount: number; failureCount: number; createdCount: number; updatedCount: number },
-    isReprocess: boolean = false,
-  ) {
-    try {
-      const user = await storage.users.getUser(userId);
-      if (!user) {
-        logger.warn('Cannot send wizard notification: user not found', { service: 'wizard-notifications', userId, wizardId });
-        return;
-      }
-
-      const actionLabel = isReprocess ? 'Reprocessing' : 'Processing';
-      const statusLabel = results.failureCount > 0 ? 'completed with errors' : 'completed successfully';
-      const title = `${wizardDisplayName} ${actionLabel} Complete`;
-      const body = `${actionLabel} ${statusLabel}. ${results.createdCount} created, ${results.updatedCount} updated${results.failureCount > 0 ? `, ${results.failureCount} errors` : ''}.`;
-      const linkUrl = `/wizards/${wizardId}`;
-      const linkLabel = 'View Results';
-
-      if (user.email) {
-        const contact = await storage.contacts.getContactByEmail(user.email);
-        if (contact) {
-          const inappResult = await sendInapp({
-            contactId: contact.id,
-            userId: user.id,
-            title,
-            body,
-            linkUrl,
-            linkLabel,
-            initiatedBy: 'system',
-          });
-          if (!inappResult.success) {
-            logger.warn('Failed to send in-app wizard notification', { service: 'wizard-notifications', wizardId, error: inappResult.error });
-          }
-
-          const emailResult = await sendEmail({
-            contactId: contact.id,
-            toEmail: user.email,
-            toName: `${user.firstName || ''} ${user.lastName || ''}`.trim() || undefined,
-            subject: title,
-            bodyText: `${body}\n\nView results: ${linkUrl}`,
-            bodyHtml: `<p>${body}</p><p><a href="${linkUrl}">View Results</a></p>`,
-            userId: user.id,
-          });
-          if (!emailResult.success && emailResult.errorCode !== 'NOT_OPTED_IN' && emailResult.errorCode !== 'NOT_ALLOWLISTED' && emailResult.errorCode !== 'EMAIL_NOT_SUPPORTED') {
-            logger.warn('Failed to send email wizard notification', { service: 'wizard-notifications', wizardId, error: emailResult.error });
-          }
-        }
-      }
-    } catch (err) {
-      logger.error('Error sending wizard completion notifications', { service: 'wizard-notifications', wizardId, error: err instanceof Error ? err.message : 'Unknown' });
-    }
-  }
-
-  // Start background wizard processing
-  app.post("/api/wizards/:id/process",
-    checkWizardAccess,
-    async (req, res) => {
-      try {
-        const { id } = req.params;
-        const wizard = (req as any).wizard;
-
-        const wizardType = wizardRegistry.get(wizard.type);
-        if (!wizardType || !(wizardType instanceof FeedWizard)) {
-          return res.status(400).json({ message: "This wizard type does not support processing" });
-        }
-
-        if (wizard.status === 'processing' || 
-            wizard.data?.progress?.process?.status === 'processing') {
-          return res.status(409).json({ message: "This wizard is already being processed" });
-        }
-
-        const { dbUser } = await getEffectiveUser(req.session, (req as any).user);
-        const initiatingUserId = dbUser?.id;
-
-        const allTypes = wizardRegistry.getAll();
-        const typeConfig = allTypes.find(t => t.name === wizard.type);
-        const wizardDisplayName = typeConfig?.displayName || wizard.type;
-
-        await storage.wizards.update(id, {
-          status: 'processing',
-          data: {
-            ...wizard.data,
-            progress: {
-              ...(wizard.data as any)?.progress,
-              process: {
-                status: 'processing',
-                startedAt: new Date().toISOString()
-              }
-            }
-          }
-        });
-
-        res.json({ message: "Processing started", status: "processing" });
-
-        setImmediate(async () => {
-          try {
-            const results = await wizardType.processFeedData(id, 100);
-
-            const finalStatus = results.failureCount > 0 ? 'needs_review' : 'completed';
-            const updatedWizard = await storage.wizards.getById(id);
-            const latestData = updatedWizard?.data || wizard.data;
-
-            await storage.wizards.update(id, {
-              status: finalStatus,
-              data: {
-                ...latestData,
-                processResults: results,
-                progress: {
-                  ...(latestData as any)?.progress,
-                  process: {
-                    status: 'completed',
-                    completedAt: new Date().toISOString()
-                  }
-                }
-              }
-            });
-
-            if (initiatingUserId) {
-              await sendWizardCompletionNotifications(id, initiatingUserId, wizardDisplayName, results);
-            }
-          } catch (processingError) {
-            logger.error('Background wizard processing failed', {
-              service: 'wizard-process',
-              wizardId: id,
-              error: processingError instanceof Error ? processingError.message : 'Unknown error',
-            });
-
-            try {
-              const failedWizard = await storage.wizards.getById(id);
-              const failedData = failedWizard?.data || wizard.data;
-              await storage.wizards.update(id, {
-                status: 'error',
-                data: {
-                  ...failedData,
-                  progress: {
-                    ...(failedData as any)?.progress,
-                    process: {
-                      status: 'error',
-                      error: processingError instanceof Error ? processingError.message : 'Processing failed',
-                      completedAt: new Date().toISOString()
-                    }
-                  }
-                }
-              });
-            } catch { /* best effort status update */ }
-
-            if (initiatingUserId) {
-              try {
-                const user = await storage.users.getUser(initiatingUserId);
-                if (user?.email) {
-                  const contact = await storage.contacts.getContactByEmail(user.email);
-                  if (contact) {
-                    await sendInapp({
-                      contactId: contact.id,
-                      userId: initiatingUserId,
-                      title: `${wizardDisplayName} Processing Failed`,
-                      body: processingError instanceof Error ? processingError.message : 'Processing encountered an error.',
-                      linkUrl: `/wizards/${id}`,
-                      linkLabel: 'View Wizard',
-                      initiatedBy: 'system',
-                    });
-                  }
-                }
-              } catch { /* best effort notification */ }
-            }
-          }
-        });
-      } catch (error) {
-        console.error("Processing error:", error);
-        res.status(500).json({ message: error instanceof Error ? error.message : "Failed to start processing" });
-      }
-    }
-  );
-
-  // Start background reprocessing of unmatched workers
-  app.post("/api/wizards/:id/reprocess-unmatched",
-    checkWizardAccess,
-    async (req, res) => {
-      try {
-        const { id } = req.params;
-        const wizard = (req as any).wizard;
-
-        const wizardType = wizardRegistry.get(wizard.type);
-        if (!wizardType || !(wizardType instanceof BtuWorkerImportWizard)) {
-          return res.status(400).json({ message: "This wizard type does not support reprocessing" });
-        }
-
-        if (wizard.status === 'processing' || 
-            wizard.data?.progress?.process?.status === 'processing') {
-          return res.status(409).json({ message: "This wizard is already being processed" });
-        }
-
-        const { dbUser } = await getEffectiveUser(req.session, (req as any).user);
-        const initiatingUserId = dbUser?.id;
-
-        const allTypes = wizardRegistry.getAll();
-        const typeConfig = allTypes.find(t => t.name === wizard.type);
-        const wizardDisplayName = typeConfig?.displayName || wizard.type;
-
-        await storage.wizards.update(id, {
-          status: 'processing',
-          data: {
-            ...wizard.data,
-            progress: {
-              ...(wizard.data as any)?.progress,
-              process: {
-                status: 'reprocessing',
-                startedAt: new Date().toISOString()
-              }
-            }
-          }
-        });
-
-        res.json({ message: "Reprocessing started", status: "processing" });
-
-        setImmediate(async () => {
-          try {
-            const results = await wizardType.reprocessUnmatched(id);
-
-            const finalStatus = results.failureCount > 0 ? 'needs_review' : 'completed';
-            const updatedWizard = await storage.wizards.getById(id);
-            const latestData = updatedWizard?.data || wizard.data;
-
-            await storage.wizards.update(id, {
-              status: finalStatus,
-              data: {
-                ...latestData,
-                processResults: results,
-                progress: {
-                  ...(latestData as any)?.progress,
-                  process: {
-                    status: 'completed',
-                    completedAt: new Date().toISOString()
-                  }
-                }
-              }
-            });
-
-            if (initiatingUserId) {
-              await sendWizardCompletionNotifications(id, initiatingUserId, wizardDisplayName, results, true);
-            }
-          } catch (processingError) {
-            logger.error('Background wizard reprocessing failed', {
-              service: 'wizard-reprocess',
-              wizardId: id,
-              error: processingError instanceof Error ? processingError.message : 'Unknown error',
-            });
-
-            try {
-              const failedWizard = await storage.wizards.getById(id);
-              const failedData = failedWizard?.data || wizard.data;
-              await storage.wizards.update(id, {
-                status: 'error',
-                data: {
-                  ...failedData,
-                  progress: {
-                    ...(failedData as any)?.progress,
-                    process: {
-                      status: 'error',
-                      error: processingError instanceof Error ? processingError.message : 'Reprocessing failed',
-                      completedAt: new Date().toISOString()
-                    }
-                  }
-                }
-              });
-            } catch { /* best effort status update */ }
-
-            if (initiatingUserId) {
-              try {
-                const user = await storage.users.getUser(initiatingUserId);
-                if (user?.email) {
-                  const contact = await storage.contacts.getContactByEmail(user.email);
-                  if (contact) {
-                    await sendInapp({
-                      contactId: contact.id,
-                      userId: initiatingUserId,
-                      title: `${wizardDisplayName} Reprocessing Failed`,
-                      body: processingError instanceof Error ? processingError.message : 'Reprocessing encountered an error.',
-                      linkUrl: `/wizards/${id}`,
-                      linkLabel: 'View Wizard',
-                      initiatedBy: 'system',
-                    });
-                  }
-                }
-              } catch { /* best effort notification */ }
-            }
-          }
-        });
-      } catch (error) {
-        console.error("Reprocessing error:", error);
-        res.status(500).json({ message: error instanceof Error ? error.message : "Failed to start reprocessing" });
-      }
-    }
-  );
-
-  app.post("/api/wizards/:id/rescan-comparison",
-    checkWizardAccess,
-    async (req, res) => {
-      try {
-        const { id } = req.params;
-        const wizard = (req as any).wizard;
-
-        const wizardType = wizardRegistry.get(wizard.type);
-        if (!wizardType || !(wizardType instanceof BtuDuesAllocationWizard)) {
-          return res.status(400).json({ message: "This wizard type does not support comparison rescan" });
-        }
-
-        if (!['completed', 'completed_with_errors', 'needs_review'].includes(wizard.status)) {
-          return res.status(400).json({ message: "Wizard must be in a completed state to rescan" });
-        }
-
-        const comparisonReport = await wizardType.rescanComparison(id);
-        res.json({ message: "Comparison rescan completed", comparisonReport });
-      } catch (error) {
-        logger.error("Comparison rescan error:", {
-          service: 'wizard-rescan',
-          wizardId: req.params.id,
-          error: error instanceof Error ? error.message : 'Unknown error',
-        });
-        res.status(500).json({ message: error instanceof Error ? error.message : "Failed to rescan comparison" });
-      }
-    }
-  );
-
-  // Delete a file from a wizard
-  app.delete("/api/wizards/:id/files/:fileId",
-    checkWizardAccess,
-    async (req, res) => {
-      try {
-        const { id, fileId } = req.params;
-        
-        // Wizard is already attached to request by middleware
-        const wizard = (req as any).wizard;
-
-        // Get wizard type instance
-        const wizardType = wizardRegistry.get(wizard.type);
-        if (!wizardType || !(wizardType instanceof FeedWizard)) {
-          return res.status(400).json({ message: "This wizard type does not support file uploads" });
-        }
-
-        // Verify file association BEFORE deleting from object storage
-        const file = await storage.files.getById(fileId);
-        if (!file) {
-          return res.status(404).json({ message: "File not found" });
-        }
-
-        const metadata = file.metadata as any;
-        if (metadata?.wizardId !== id) {
-          return res.status(403).json({ message: "File is not associated with this wizard" });
-        }
-
-        // Now safe to delete from object storage
-        await objectStorageService.deleteFile(file.storagePath);
-
-        // Delete from database and update wizard data
-        const success = await wizardType.deleteAssociatedFile(fileId, id);
-        if (!success) {
-          return res.status(404).json({ message: "Failed to delete file record" });
-        }
-
-        res.status(204).send();
-      } catch (error) {
-        res.status(500).json({ message: error instanceof Error ? error.message : "Failed to delete file" });
-      }
-    }
-  );
-
-  // Export BTU Dues Allocation comparison report as Excel
-  app.get("/api/wizards/:id/export-comparison-report",
-    checkWizardAccess,
-    async (req, res) => {
-      try {
-        const { id } = req.params;
-        const wizard = (req as any).wizard;
-
-        if (wizard.type !== 'btu_dues_allocation') {
-          return res.status(400).json({ message: "Export only available for BTU Dues Allocation wizards" });
-        }
-
-        const wizardData = wizard.data as any;
-        const comparisonReport = wizardData?.cardCheckComparisonReport;
-        const processResults = wizardData?.processResults;
-
-        if (!comparisonReport) {
-          return res.status(400).json({ message: "No comparison report available for export" });
-        }
-
-        const XLSX = await import('xlsx');
-        const workbook = XLSX.utils.book_new();
-
-        // Summary sheet
-        const summaryData = [
-          ['BTU Dues Allocation - Comparison Report'],
-          [''],
-          ['Generated:', new Date().toISOString()],
-          ['Wizard ID:', id],
-          [''],
-          ['Import Summary'],
-          ['Total Rows Processed:', processResults?.totalRows || 0],
-          ['Entries Created:', processResults?.createdCount || 0],
-          ['Successful:', processResults?.successCount || 0],
-          ['Errors:', processResults?.failureCount || 0],
-          [''],
-          ['Comparison Summary'],
-          ['Matching Rate:', comparisonReport.matchingRate?.length || 0],
-          ['Mismatched Rate:', comparisonReport.mismatchingRate?.length || 0],
-          ['No Card Check:', comparisonReport.noCardCheck?.length || 0],
-          ['Card Check No Allocation:', comparisonReport.cardCheckNoAllocation?.length || 0],
-          ['Worker Not Found:', comparisonReport.workerNotFound?.length || 0],
-        ];
-        const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
-        summarySheet['!cols'] = [{ wch: 30 }, { wch: 40 }];
-        XLSX.utils.book_append_sheet(workbook, summarySheet, 'Summary');
-
-        const createComparisonSheet = (entries: any[], includeAmount: boolean, includeCardRate: boolean) => {
-          const headers = ['Worker Name', 'Worker ID', 'BPS Employee ID', 'Bargaining Unit', 'Employers'];
-          if (includeAmount) headers.push('Allocated Amount');
-          if (includeCardRate) headers.push('Card Check Rate');
-
-          const rows = entries.map((entry: any) => {
-            const row: any[] = [
-              entry.workerName || '',
-              entry.workerSiriusId || '',
-              entry.bpsEmployeeId || '',
-              entry.bargainingUnitName || '',
-              (entry.employerNames || []).join(', '),
-            ];
-            if (includeAmount) row.push(entry.allocatedAmount != null ? entry.allocatedAmount : '');
-            if (includeCardRate) row.push(entry.cardCheckRate != null ? entry.cardCheckRate : '');
-            return row;
-          });
-
-          const sheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-          sheet['!cols'] = [{ wch: 35 }, { wch: 12 }, { wch: 18 }, { wch: 25 }, { wch: 40 }, { wch: 15 }, { wch: 15 }];
-          return sheet;
-        };
-
-        // Add sheets for each category
-        if (comparisonReport.matchingRate?.length > 0) {
-          XLSX.utils.book_append_sheet(workbook, 
-            createComparisonSheet(comparisonReport.matchingRate, true, true), 
-            'Matching Rate');
-        }
-
-        if (comparisonReport.mismatchingRate?.length > 0) {
-          XLSX.utils.book_append_sheet(workbook, 
-            createComparisonSheet(comparisonReport.mismatchingRate, true, true), 
-            'Mismatched Rate');
-        }
-
-        if (comparisonReport.noCardCheck?.length > 0) {
-          XLSX.utils.book_append_sheet(workbook, 
-            createComparisonSheet(comparisonReport.noCardCheck, true, false), 
-            'No Card Check');
-        }
-
-        if (comparisonReport.cardCheckNoAllocation?.length > 0) {
-          XLSX.utils.book_append_sheet(workbook, 
-            createComparisonSheet(comparisonReport.cardCheckNoAllocation, false, true), 
-            'Card Check No Allocation');
-        }
-
-        // Worker Not Found sheet has different columns
-        if (comparisonReport.workerNotFound?.length > 0) {
-          const notFoundHeaders = ['Row', 'Employee ID', 'Name (from file)', 'Amount', 'Date', 'Deduction Code'];
-          const notFoundRows = comparisonReport.workerNotFound.map((entry: any) => [
-            entry.rowIndex + 1,
-            entry.bpsEmployeeId || '',
-            entry.workerNameFromFile || '',
-            entry.amount != null ? `$${entry.amount.toFixed(2)}` : '',
-            entry.date || '',
-            entry.deductionCode || '',
-          ]);
-          const notFoundSheet = XLSX.utils.aoa_to_sheet([notFoundHeaders, ...notFoundRows]);
-          notFoundSheet['!cols'] = [{ wch: 8 }, { wch: 15 }, { wch: 30 }, { wch: 12 }, { wch: 12 }, { wch: 15 }];
-          XLSX.utils.book_append_sheet(workbook, notFoundSheet, 'Worker Not Found');
-        }
-
-        // Generate buffer and send
-        const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
-        const filename = `btu-dues-comparison-report-${new Date().toISOString().split('T')[0]}.xlsx`;
-
-        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-        res.send(buffer);
-      } catch (error) {
-        console.error("Error exporting comparison report:", error);
-        res.status(500).json({ message: error instanceof Error ? error.message : "Failed to export comparison report" });
-      }
-    }
-  );
-
-  // Generate a report for a report wizard
-  app.post("/api/wizards/:id/generate-report",
-    requireAccess('admin'),
-    async (req, res) => {
-      try {
-        const { id } = req.params;
-        const wizard = await storage.wizards.getById(id);
-        
-        if (!wizard) {
-          return res.status(404).json({ message: "Wizard not found" });
-        }
-
-        // Get wizard type instance
-        const { WizardReport } = await import('../wizards/report.js');
-        const wizardType = wizardRegistry.get(wizard.type);
-        if (!wizardType || !(wizardType instanceof WizardReport)) {
-          return res.status(400).json({ message: "This wizard type does not support report generation" });
-        }
-
-        // Generate the report
-        const results = await wizardType.generateReport(id);
-        
-        // Return full results for frontend error handling and data access
-        res.json(results);
-      } catch (error) {
-        console.error("Error generating report:", error);
-        res.status(500).json({ message: error instanceof Error ? error.message : "Failed to generate report" });
-      }
-    }
-  );
-
-  // Get report data for a wizard
-  app.get("/api/wizards/:id/report-data",
-    requireAccess('admin'),
-    async (req, res) => {
-      try {
-        const { id } = req.params;
-        const wizard = await storage.wizards.getById(id);
-        
-        if (!wizard) {
-          return res.status(404).json({ message: "Wizard not found" });
-        }
-
-        // Get wizard type instance
-        const { WizardReport } = await import('../wizards/report.js');
-        const wizardType = wizardRegistry.get(wizard.type);
-        if (!wizardType || !(wizardType instanceof WizardReport)) {
-          return res.status(400).json({ message: "This wizard type does not support reports" });
-        }
-
-        // Get the latest report data
-        const reportData = await wizardType.getReportResults(id);
-        
-        if (!reportData) {
-          return res.status(404).json({ message: "No report data found for this wizard" });
-        }
-
-        res.json(reportData);
-      } catch (error) {
-        console.error("Error fetching report data:", error);
-        res.status(500).json({ message: error instanceof Error ? error.message : "Failed to fetch report data" });
       }
     }
   );

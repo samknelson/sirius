@@ -1,30 +1,22 @@
 import { registerDispatchEligPlugin } from "../registry";
 import { logger } from "../../../../logger";
-import { createDispatchStorage } from "../../../../storage/dispatch/dispatches";
 import { createDispatchJobStorage } from "../../../../storage/dispatch/jobs";
-import { createWorkerDispatchEligDenormStorage } from "../../../../storage/dispatch/worker-elig-denorm";
 import type { DispatchEligPlugin, EligibilityCondition, EligibilityQueryContext } from "../registry";
-import { EventType } from "../../../../services/event-bus";
-import { isComponentEnabledSync, isCacheInitialized } from "../../../../services/component-cache";
 
 const SINGLESHIFT_CATEGORY = "singleshift";
 const ACCEPTED_CATEGORY = "accepted";
-const COMPONENT_ID = "dispatch.singleshift";
 
+/**
+ * `dispatch_singleshift` — READ side. Prevents a worker from accepting two
+ * dispatches starting on the same date (unless they already accepted this exact
+ * job). Reads `singleshift` + `accepted` facts maintained by the matching denorm
+ * plugins.
+ */
 export const dispatchSingleshiftPlugin: DispatchEligPlugin = {
   id: "dispatch_singleshift",
   name: "Single Shift Dispatch",
   description: "Prevents a worker from accepting two dispatches that start on the same date",
-  requiredComponent: COMPONENT_ID,
-  backfill: () => backfillDispatchSingleshiftEligibility(),
-  backfillOrder: 10,
-
-  eventHandlers: [
-    {
-      event: EventType.DISPATCH_SAVED,
-      getWorkerId: (payload) => payload.workerId,
-    },
-  ],
+  requiredComponent: "dispatch.singleshift",
 
   async getEligibilityCondition(context: EligibilityQueryContext, _config: Record<string, unknown>): Promise<EligibilityCondition | null> {
     const jobStorage = createDispatchJobStorage();
@@ -46,111 +38,6 @@ export const dispatchSingleshiftPlugin: DispatchEligPlugin = {
       unlessValue: job.id,
     };
   },
-
-  async recomputeWorker(workerId: string): Promise<void> {
-    const dispatchStorage = createDispatchStorage();
-    const jobStorage = createDispatchJobStorage();
-    const eligStorage = createWorkerDispatchEligDenormStorage();
-
-    logger.debug(`Recomputing singleshift eligibility for worker ${workerId}`, {
-      service: "dispatch-elig-singleshift",
-      workerId,
-    });
-
-    await eligStorage.deleteByWorkerAndCategory(workerId, SINGLESHIFT_CATEGORY);
-
-    if (!isCacheInitialized() || !isComponentEnabledSync(COMPONENT_ID)) {
-      logger.debug(`dispatch.singleshift component disabled, cleared entries for worker ${workerId}`, {
-        service: "dispatch-elig-singleshift",
-        workerId,
-      });
-      return;
-    }
-
-    const allDispatches = await dispatchStorage.getByWorker(workerId);
-    const acceptedDispatches = allDispatches.filter(d => d.status === "accepted");
-
-    if (acceptedDispatches.length === 0) {
-      logger.debug(`No accepted dispatches for worker ${workerId}`, {
-        service: "dispatch-elig-singleshift",
-        workerId,
-      });
-      return;
-    }
-
-    const entries: { workerId: string; category: string; value: string }[] = [];
-
-    for (const dispatch of acceptedDispatches) {
-      const job = await jobStorage.getWithRelations(dispatch.jobId);
-      if (job) {
-        entries.push({
-          workerId,
-          category: SINGLESHIFT_CATEGORY,
-          value: String(job.startYmd).split(' ')[0].split('T')[0],
-        });
-      }
-    }
-
-    if (entries.length > 0) {
-      await eligStorage.createMany(entries);
-    }
-
-    logger.debug(`Created ${entries.length} singleshift eligibility entries for worker ${workerId}`, {
-      service: "dispatch-elig-singleshift",
-      workerId,
-      count: entries.length,
-    });
-  },
 };
-
-export async function backfillDispatchSingleshiftEligibility(): Promise<{ workersProcessed: number; entriesCreated: number }> {
-  if (!isCacheInitialized()) {
-    logger.warn("Component cache not initialized, skipping singleshift eligibility backfill", {
-      service: "dispatch-elig-singleshift",
-    });
-    return { workersProcessed: 0, entriesCreated: 0 };
-  }
-
-  if (!isComponentEnabledSync(COMPONENT_ID)) {
-    logger.debug("dispatch.singleshift component not enabled, skipping backfill", {
-      service: "dispatch-elig-singleshift",
-    });
-    return { workersProcessed: 0, entriesCreated: 0 };
-  }
-
-  const dispatchStorage = createDispatchStorage();
-  const allDispatches = await dispatchStorage.getAll();
-  const acceptedDispatches = allDispatches.filter(d => d.status === "accepted");
-
-  if (acceptedDispatches.length === 0) {
-    logger.info("No accepted dispatches found for singleshift backfill", {
-      service: "dispatch-elig-singleshift",
-    });
-    return { workersProcessed: 0, entriesCreated: 0 };
-  }
-
-  const uniqueWorkerIds = Array.from(new Set(acceptedDispatches.map(d => d.workerId)));
-
-  logger.info(`Backfilling singleshift eligibility for ${uniqueWorkerIds.length} workers with ${acceptedDispatches.length} accepted dispatches`, {
-    service: "dispatch-elig-singleshift",
-    workerCount: uniqueWorkerIds.length,
-    dispatchCount: acceptedDispatches.length,
-  });
-
-  let entriesCreated = 0;
-  for (const workerId of uniqueWorkerIds) {
-    await dispatchSingleshiftPlugin.recomputeWorker(workerId);
-    const workerDispatches = acceptedDispatches.filter(d => d.workerId === workerId);
-    entriesCreated += workerDispatches.length;
-  }
-
-  logger.info(`Completed singleshift eligibility backfill`, {
-    service: "dispatch-elig-singleshift",
-    workersProcessed: uniqueWorkerIds.length,
-    entriesCreated,
-  });
-
-  return { workersProcessed: uniqueWorkerIds.length, entriesCreated };
-}
 
 registerDispatchEligPlugin(dispatchSingleshiftPlugin);

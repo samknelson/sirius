@@ -1,5 +1,6 @@
 import type { Request } from "express";
 import type { JsonSchema, UiSchema } from "@shared/json-schema-form";
+import type { BasePluginMetadata } from "../_core";
 
 export type InjectionSlot = "head" | "bodyEnd";
 export type InjectionKind = "js-src" | "js-inline" | "css-href" | "css-inline";
@@ -31,13 +32,7 @@ export interface ClientInjectionResolved {
   attrs?: Record<string, string | boolean>;
 }
 
-export interface ClientInjectionPlugin {
-  id: string;
-  name: string;
-  description?: string;
-  requiredComponent?: string;
-  requiredPolicy?: string;
-  hidden?: boolean;
+export interface ClientInjectionPlugin extends BasePluginMetadata {
   slot: InjectionSlot;
   kind: InjectionKind;
   order?: number;

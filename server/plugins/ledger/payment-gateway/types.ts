@@ -19,6 +19,7 @@
  */
 import type { PluginConfig } from "@shared/schema";
 import type {
+  BasePluginMetadata,
   PluginConfigEnvelopeField,
   PluginValidationResult,
 } from "../../_core";
@@ -145,16 +146,7 @@ export interface PaymentTypeOption {
   setupEligible?: boolean;
 }
 
-export interface PaymentGatewayPlugin {
-  id: string;
-  name: string;
-  description?: string;
-  /** Component-feature-flag gate (e.g. "ledger.stripe"). */
-  requiredComponent?: string;
-  /** Access-policy gate. */
-  requiredPolicy?: string;
-  /** Hide from default manifest listings (still registered/usable). */
-  hidden?: boolean;
+export interface PaymentGatewayPlugin extends BasePluginMetadata {
   /**
    * Whether resolving this gateway requires the named credential secret to be
    * present in the environment. Defaults to `true` (the historical behaviour:

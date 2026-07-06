@@ -24,7 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { DispatchWithRelations, CommSummary } from "../../../../server/storage/dispatches";
+import type { DispatchWithRelations, CommSummary } from "../../../../server/storage/dispatch/dispatches";
 
 const statusColors: Record<string, string> = {
   pending: "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300",

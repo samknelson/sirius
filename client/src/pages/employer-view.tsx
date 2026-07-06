@@ -13,7 +13,7 @@ interface Industry {
   name: string;
 }
 
-const iconMap: Record<string, React.ComponentType<{ className?: string; size?: number }>> = {
+const iconMap: Record<string, React.ComponentType<{ className?: string; size?: number | string }>> = {
   Building,
   Building2,
   Factory,

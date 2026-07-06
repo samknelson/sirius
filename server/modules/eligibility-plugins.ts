@@ -1,6 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 import { requireAccess } from "../services/access-policy-evaluator";
+import { requireComponent } from "./components";
 import {
   evaluateBenefitEligibility,
   validateEligibilityRelationship,
@@ -41,7 +42,7 @@ export function registerEligibilityPluginRoutes(
   // replaced by the generic POST /api/plugins/trust-eligibility/:id/validate-config
   // (see `server/modules/plugins-admin.ts`).
 
-  app.post("/api/eligibility/evaluate", requireAuth, requireAccess('admin'), async (req, res) => {
+  app.post("/api/eligibility/evaluate", requireAuth, requireComponent("trust.benefits"), requireAccess('admin'), async (req, res) => {
     try {
       const input = evaluateEligibilitySchema.parse(req.body);
       

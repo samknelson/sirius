@@ -229,11 +229,6 @@ export const workers = pgTable("workers", {
   siriusId: serial("sirius_id").notNull().unique(),
   contactId: varchar("contact_id").notNull().references(() => contacts.id, { onDelete: 'cascade' }),
   ssn: text("ssn").unique(),
-  denormWsId: varchar("denorm_ws_id").references(() => optionsWorkerWs.id, { onDelete: 'set null' }),
-  denormMsIds: varchar("denorm_ms_ids").array(),
-  denormJobTitle: text("denorm_job_title"),
-  denormHomeEmployerId: varchar("denorm_home_employer_id").references(() => employers.id, { onDelete: 'set null' }),
-  denormEmployerIds: varchar("denorm_employer_ids").array(),
   bargainingUnitId: varchar("bargaining_unit_id").references(() => bargainingUnits.id, { onDelete: 'set null' }),
   data: jsonb("data"),
 });
@@ -998,6 +993,88 @@ export {
 } from "./schema/sitespecific/freeman/schema";
 
 export {
+  optionsGrievanceStatus,
+  insertOptionsGrievanceStatusSchema,
+  type OptionsGrievanceStatus,
+  type InsertOptionsGrievanceStatus,
+  optionsGrievanceCategory,
+  insertOptionsGrievanceCategorySchema,
+  type OptionsGrievanceCategory,
+  type InsertOptionsGrievanceCategory,
+  optionsGrievanceSteps,
+  insertOptionsGrievanceStepsSchema,
+  type OptionsGrievanceStep,
+  type InsertOptionsGrievanceStep,
+  optionsGrievanceComplaints,
+  insertOptionsGrievanceComplaintSchema,
+  type OptionsGrievanceComplaint,
+  type InsertOptionsGrievanceComplaint,
+  optionsGrievanceRemedies,
+  insertOptionsGrievanceRemedySchema,
+  type OptionsGrievanceRemedy,
+  type InsertOptionsGrievanceRemedy,
+  optionsGrievanceRoles,
+  insertOptionsGrievanceRoleSchema,
+  type OptionsGrievanceRole,
+  type InsertOptionsGrievanceRole,
+  grievances,
+  insertGrievanceSchema,
+  GRIEVANCE_CARDINALITIES,
+  type GrievanceCardinality,
+  type Grievance,
+  type InsertGrievance,
+  grievanceWorkers,
+  insertGrievanceWorkerSchema,
+  type GrievanceWorker,
+  type InsertGrievanceWorker,
+  grievanceEmployers,
+  insertGrievanceEmployerSchema,
+  type GrievanceEmployer,
+  type InsertGrievanceEmployer,
+  grievanceUsers,
+  insertGrievanceUserSchema,
+  type GrievanceUser,
+  type InsertGrievanceUser,
+  grievanceComplaints,
+  insertGrievanceComplaintSchema,
+  type GrievanceComplaint,
+  type InsertGrievanceComplaint,
+  grievanceRemedies,
+  insertGrievanceRemedySchema,
+  type GrievanceRemedy,
+  type InsertGrievanceRemedy,
+  grievanceSteps,
+  insertGrievanceStepSchema,
+  type GrievanceStep,
+  type InsertGrievanceStep,
+  GRIEVANCE_TIMELINE_DAY_TYPES,
+  type GrievanceTimelineDayType,
+  grievanceTimelineTemplates,
+  insertGrievanceTimelineTemplateSchema,
+  type GrievanceTimelineTemplate,
+  type InsertGrievanceTimelineTemplate,
+  grievanceTimelineTemplateSteps,
+  insertGrievanceTimelineTemplateStepSchema,
+  type GrievanceTimelineTemplateStep,
+  type InsertGrievanceTimelineTemplateStep,
+  grievanceNameDenorm,
+  insertGrievanceNameDenormSchema,
+  type GrievanceNameDenorm,
+  type InsertGrievanceNameDenorm,
+} from "./schema/grievance/schema";
+
+export {
+  optionsGrievanceSettlementType,
+  insertOptionsGrievanceSettlementTypeSchema,
+  type OptionsGrievanceSettlementType,
+  type InsertOptionsGrievanceSettlementType,
+  grievanceSettlements,
+  insertGrievanceSettlementSchema,
+  type GrievanceSettlement,
+  type InsertGrievanceSettlement,
+} from "./schema/grievance/settlement-schema";
+
+export {
   optionsSkills,
   insertOptionsSkillsSchema,
   type OptionsSkill,
@@ -1424,7 +1501,21 @@ export type InsertWorker = z.infer<typeof insertWorkerSchema>;
 // stripped in the storage layer so it never leaks through generic worker
 // endpoints — it is only ever accessed via the dedicated getData/setData
 // accessors and the component-gated beneficiaries storage namespace.
-export type Worker = Omit<typeof workers.$inferSelect, "data">;
+// `denormMsIds` / `denormWsId` / `denormHomeEmployerId` / `denormEmployerIds` /
+// `denormJobTitle` are no longer physical columns on `workers`; they are derived
+// from the `worker_msh_denorm` / `worker_wsh_denorm` / `worker_employment_denorm`
+// tables by the worker read methods that need them (e.g. `getWorker`). Kept on
+// the DTO so existing consumers see the same shape. The employment fields reflect
+// the worker's HOME employment row: `denormHomeEmployerId` is the home row's
+// employer, `denormJobTitle` is the home row's job title, and `denormEmployerIds`
+// is the set of all employer ids across employment rows.
+export type Worker = Omit<typeof workers.$inferSelect, "data"> & {
+  denormMsIds?: string[] | null;
+  denormWsId?: string | null;
+  denormHomeEmployerId?: string | null;
+  denormEmployerIds?: string[] | null;
+  denormJobTitle?: string | null;
+};
 
 export type InsertWorkerBan = z.infer<typeof insertWorkerBanSchema>;
 export type WorkerBan = typeof workerBans.$inferSelect;
@@ -1793,16 +1884,39 @@ export const pluginConfigs = pgTable("plugin_configs", {
   // CORE ordering dimension (deterministic listing / precedence) shared by
   // every kind — intentionally on the base table, not a subsidiary.
   ordering: integer("ordering").default(0).notNull(),
+  // Per-row singleton marker. Set by the storage layer from the plugin type's
+  // manifest `singleton` flag at create time (omitted from the insert schema so
+  // it can never be set from request input). Drives the partial unique index
+  // below, making the singleton backstop fully per-TYPE instead of hardcoded to
+  // a specific kind: any plugin type that declares `singleton: true` is covered
+  // with no schema/migration change.
+  isSingleton: boolean("is_singleton").default(false).notNull(),
   data: jsonb("data").default('{}'), // kind-specific opaque settings blob
   createdAt: timestamp("created_at").default(sql`now()`).notNull(),
   updatedAt: timestamp("updated_at").default(sql`now()`).notNull(),
-});
+}, (table) => [
+  // Singleton plugin types permit exactly one config row per plugin id.
+  // Non-singleton types (charge, trust-eligibility, …) legitimately have many
+  // rows per (kind, plugin_id), so this uniqueness is a PARTIAL index scoped to
+  // rows the storage layer flagged `is_singleton`. This is the race-safe
+  // backstop behind the app-level singleton check, and it covers EVERY
+  // singleton type (any kind) without a predicate that names a specific kind.
+  // The reflected predicate for a boolean column is just the bare column name
+  // (`WHERE is_singleton`), which normalizes cleanly for the startup drift gate
+  // — no `::text` cast needed (unlike the previous string-literal predicate).
+  uniqueIndex("plugin_configs_singleton_uniq")
+    .on(table.pluginKind, table.pluginId)
+    .where(sql`${table.isSingleton}`),
+]);
 
 export const insertPluginConfigSchema = createInsertSchema(pluginConfigs)
   .omit({
     id: true,
     createdAt: true,
     updatedAt: true,
+    // Derived by the storage layer from the plugin type's manifest singleton
+    // flag — never accepted from request input.
+    isSingleton: true,
   })
   .extend({
     data: z.unknown().optional().default({}),
@@ -1827,18 +1941,15 @@ export const insertPluginConfigChargeSchema = createInsertSchema(pluginConfigsCh
 export type InsertPluginConfigCharge = z.infer<typeof insertPluginConfigChargeSchema>;
 export type PluginConfigCharge = typeof pluginConfigsCharge.$inferSelect;
 
-// Trust benefit eligibility subsidiary — relational dimensions hoisted out of
-// the policies.data blob (policy / benefit / applies_to).
-export const pluginConfigsBenefitEligibility = pgTable("plugin_configs_benefit_eligibility", {
-  id: varchar("id").primaryKey().references(() => pluginConfigs.id, { onDelete: 'cascade' }),
-  policy: varchar("policy").references(() => policies.id, { onDelete: 'cascade' }),
-  benefit: varchar("benefit").references(() => trustBenefits.id, { onDelete: 'cascade' }),
-  appliesTo: varchar("applies_to"),
-});
-
-export const insertPluginConfigBenefitEligibilitySchema = createInsertSchema(pluginConfigsBenefitEligibility);
-export type InsertPluginConfigBenefitEligibility = z.infer<typeof insertPluginConfigBenefitEligibilitySchema>;
-export type PluginConfigBenefitEligibility = typeof pluginConfigsBenefitEligibility.$inferSelect;
+// Trust benefit eligibility subsidiary — owned by the `trust.benefits`
+// component. Defined in shared/schema/trust/benefit-eligibility-schema.ts and
+// re-exported here so existing `@shared/schema` importers keep working.
+export {
+  pluginConfigsBenefitEligibility,
+  insertPluginConfigBenefitEligibilitySchema,
+  type InsertPluginConfigBenefitEligibility,
+  type PluginConfigBenefitEligibility,
+} from "./schema/trust/benefit-eligibility-schema";
 
 // Dashboard subsidiary — role-based visibility hoisted out of the opaque
 // settings blob. Each dashboard config targets exactly one role; a viewer
@@ -1888,6 +1999,139 @@ export const insertPluginConfigEventNotifierSchema = createInsertSchema(pluginCo
 export type InsertPluginConfigEventNotifier = z.infer<typeof insertPluginConfigEventNotifierSchema>;
 export type PluginConfigEventNotifier = typeof pluginConfigsEventNotifier.$inferSelect;
 
+// Cron subsidiary — keeps the cron `schedule` (a cron expression) as a
+// first-class, queryable envelope column rather than burying it in the opaque
+// `data` blob. Cron plugins are singletons, so every cron config gets exactly
+// one row — created by the adapter's `toRows` on write and by the boot-time
+// singleton seeder for built-in jobs — so the generic inner-joined search keeps
+// returning them.
+export const pluginConfigsCron = pgTable("plugin_configs_cron", {
+  id: varchar("id").primaryKey().references(() => pluginConfigs.id, { onDelete: 'cascade' }),
+  schedule: varchar("schedule").notNull(),
+});
+
+export const insertPluginConfigCronSchema = createInsertSchema(pluginConfigsCron);
+export type InsertPluginConfigCron = z.infer<typeof insertPluginConfigCronSchema>;
+export type PluginConfigCron = typeof pluginConfigsCron.$inferSelect;
+
+// Denorm workflow status spine. One row per (entity, plugin-config): tracks
+// whether an entity's denormalized data for a given plugin config is current,
+// stale, or errored — NOT the payload itself (each plugin owns its own payload
+// table(s) and may write as many rows as it likes). `config_id` is ON DELETE
+// CASCADE so a config's denorm rows die with it. `entity_type` is a plain
+// plugin-defined string (no enum) — each plugin decides what to write.
+export const denormStatusEnum = pgEnum("denorm_status", ["ok", "stale", "error"]);
+
+export const denorm = pgTable("denorm", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  entityId: varchar("entity_id").notNull(),
+  entityType: varchar("entity_type").notNull(),
+  configId: varchar("config_id")
+    .notNull()
+    .references(() => pluginConfigs.id, { onDelete: 'cascade' }),
+  status: denormStatusEnum("status").notNull(),
+  computedAt: timestamp("computed_at"),
+  staleAt: timestamp("stale_at"),
+  message: varchar("message"),
+}, (table) => [
+  uniqueIndex("denorm_entity_config_uniq").on(table.entityId, table.configId),
+  index("denorm_status_idx").on(table.status),
+  index("denorm_config_idx").on(table.configId),
+]);
+
+export const insertDenormSchema = createInsertSchema(denorm);
+export type InsertDenorm = z.infer<typeof insertDenormSchema>;
+export type Denorm = typeof denorm.$inferSelect;
+export type DenormStatus = (typeof denormStatusEnum.enumValues)[number];
+
+// Per-worker denormalized current member statuses (payload table for the
+// `worker_ms` denorm plugin). One row per (worker, member-status), where
+// each row is the latest member status for one industry. `denorm_id` ties the
+// rows back to their workflow status row in `denorm`. Replaces the former
+// `workers.denorm_ms_ids` array column.
+export const workerMshDenorm = pgTable("worker_msh_denorm", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  denormId: varchar("denorm_id")
+    .notNull()
+    .references(() => denorm.id, { onDelete: 'cascade' }),
+  workerId: varchar("worker_id")
+    .notNull()
+    .references(() => workers.id, { onDelete: 'cascade' }),
+  msId: varchar("ms_id")
+    .notNull()
+    .references(() => optionsWorkerMs.id, { onDelete: 'cascade' }),
+}, (table) => [
+  uniqueIndex("worker_msh_denorm_worker_ms_uniq").on(table.workerId, table.msId),
+  index("worker_msh_denorm_denorm_idx").on(table.denormId),
+]);
+
+export const insertWorkerMshDenormSchema = createInsertSchema(workerMshDenorm).omit({
+  id: true,
+});
+export type InsertWorkerMshDenorm = z.infer<typeof insertWorkerMshDenormSchema>;
+export type WorkerMshDenorm = typeof workerMshDenorm.$inferSelect;
+
+// Per-worker denormalized current work status (payload table for the
+// `worker_ws` denorm plugin). A worker has exactly ONE current work status, so
+// `worker_id` is UNIQUE and the table holds 0-or-1 row per worker (the row is
+// only present when the worker has a work status). `denorm_id` ties the row back
+// to its workflow status row in `denorm`. Replaces the former
+// `workers.denorm_ws_id` column.
+export const workerWshDenorm = pgTable("worker_wsh_denorm", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  denormId: varchar("denorm_id")
+    .notNull()
+    .references(() => denorm.id, { onDelete: 'cascade' }),
+  workerId: varchar("worker_id")
+    .notNull()
+    .references(() => workers.id, { onDelete: 'cascade' }),
+  wsId: varchar("ws_id")
+    .notNull()
+    .references(() => optionsWorkerWs.id, { onDelete: 'cascade' }),
+}, (table) => [
+  uniqueIndex("worker_wsh_denorm_worker_uniq").on(table.workerId),
+  index("worker_wsh_denorm_denorm_idx").on(table.denormId),
+]);
+
+export const insertWorkerWshDenormSchema = createInsertSchema(workerWshDenorm).omit({
+  id: true,
+});
+export type InsertWorkerWshDenorm = z.infer<typeof insertWorkerWshDenormSchema>;
+export type WorkerWshDenorm = typeof workerWshDenorm.$inferSelect;
+
+// Per-worker denormalized current employment (payload table for the
+// `worker_employment` denorm plugin). One row per (worker, employer), where each
+// row is the worker's latest employment with that employer derived from hours
+// history (`worker_hours`). At most one row per worker carries `home = true`
+// (the worker's home employer; a worker may have none), and `job_title` is
+// stored on every row. The
+// `denorm_id` ties the rows back to their workflow status row in `denorm`.
+// Replaces the former `workers.denorm_home_employer_id`,
+// `workers.denorm_employer_ids`, and `workers.denorm_job_title` columns.
+export const workerEmploymentDenorm = pgTable("worker_employment_denorm", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  denormId: varchar("denorm_id")
+    .notNull()
+    .references(() => denorm.id, { onDelete: 'cascade' }),
+  workerId: varchar("worker_id")
+    .notNull()
+    .references(() => workers.id, { onDelete: 'cascade' }),
+  employerId: varchar("employer_id")
+    .notNull()
+    .references(() => employers.id, { onDelete: 'cascade' }),
+  home: boolean("home").notNull().default(false),
+  jobTitle: text("job_title"),
+}, (table) => [
+  uniqueIndex("worker_employment_denorm_worker_employer_uniq").on(table.workerId, table.employerId),
+  index("worker_employment_denorm_denorm_idx").on(table.denormId),
+]);
+
+export const insertWorkerEmploymentDenormSchema = createInsertSchema(workerEmploymentDenorm).omit({
+  id: true,
+});
+export type InsertWorkerEmploymentDenorm = z.infer<typeof insertWorkerEmploymentDenormSchema>;
+export type WorkerEmploymentDenorm = typeof workerEmploymentDenorm.$inferSelect;
+
 // Base Rate History Schema - for use in charge plugins
 export const baseRateHistoryEntrySchema = z.object({
   effectiveDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be in YYYY-MM-DD format"),
@@ -1901,20 +2145,13 @@ export const createRateHistorySchema = (minEntries = 1) => {
   return z.array(baseRateHistoryEntrySchema).min(minEntries, `At least ${minEntries} rate entry is required`);
 };
 
-// Cron Jobs
-export const cronJobs = pgTable("cron_jobs", {
-  name: text("name").primaryKey(),
-  description: text("description"),
-  schedule: text("schedule").notNull(), // cron expression
-  isEnabled: boolean("is_enabled").default(false).notNull(),
-  settings: jsonb("settings"), // Job-specific settings (schema defined by handler)
-  createdAt: timestamp("created_at").default(sql`now()`).notNull(),
-  updatedAt: timestamp("updated_at").default(sql`now()`).notNull(),
-});
-
+// Cron job run history. Configuration for cron jobs now lives in
+// plugin_configs (plugin_kind='cron') + plugin_configs_cron; `jobName` here is
+// the cron plugin id (the former cron_jobs.name). No FK — the legacy cron_jobs
+// table has been dropped and run history is retained independently.
 export const cronJobRuns = pgTable("cron_job_runs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  jobName: text("job_name").notNull().references(() => cronJobs.name, { onDelete: 'cascade' }),
+  jobName: text("job_name").notNull(),
   status: varchar("status").notNull(), // 'running', 'success', 'error'
   mode: varchar("mode").notNull().default("live"), // 'live' or 'test'
   output: text("output"),
@@ -1924,18 +2161,11 @@ export const cronJobRuns = pgTable("cron_job_runs", {
   triggeredBy: varchar("triggered_by"), // 'scheduler' or user id
 });
 
-export const insertCronJobSchema = createInsertSchema(cronJobs).omit({
-  createdAt: true,
-  updatedAt: true,
-});
-
 export const insertCronJobRunSchema = createInsertSchema(cronJobRuns).omit({
   id: true,
   startedAt: true,
 });
 
-export type InsertCronJob = z.infer<typeof insertCronJobSchema>;
-export type CronJob = typeof cronJobs.$inferSelect;
 export type InsertCronJobRun = z.infer<typeof insertCronJobRunSchema>;
 export type CronJobRun = typeof cronJobRuns.$inferSelect;
 

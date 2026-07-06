@@ -208,11 +208,8 @@ export interface CardcheckStorage {
   getCardcheckByEsigId(esigId: string): Promise<Cardcheck | undefined>;
   getCardchecksByWorkerId(workerId: string): Promise<Cardcheck[]>;
   getCardchecksByDefinitionId(definitionId: string): Promise<Cardcheck[]>;
-  getCardcheckByExternalId(externalId: string): Promise<Cardcheck | undefined>;
-  getCardchecksByExternalIds(externalIds: string[]): Promise<Cardcheck[]>;
   getCardchecksWithExternalIdMissingEsig(cardcheckDefinitionId?: string): Promise<Cardcheck[]>;
   getCardcheckStatusSummary(): Promise<CardcheckStatusSummary[]>;
-  getAllSignedCardchecksWithDetails(): Promise<SignedCardcheckWithDetails[]>;
   getCardcheckReport(filters: CardcheckReportFilters): Promise<CardcheckReportItem[]>;
   createCardcheck(data: InsertCardcheck): Promise<Cardcheck>;
   updateCardcheck(id: string, data: Partial<InsertCardcheck>): Promise<Cardcheck | undefined>;
@@ -227,7 +224,6 @@ export interface CardcheckStorage {
   getOrganizingDistinctStats(primaryStatusIds: string[]): Promise<OrganizingDistinctStat[]>;
   getOrganizingNewMembers(days: number): Promise<OrganizingNewMember[]>;
   getMissingCardchecksForEmployer(employerId: string, primaryStatusIds: string[]): Promise<MissingCardcheckWorkerRow[]>;
-  hasSignedCardcheckOfDefinition(workerId: string, cardcheckDefinitionId: string): Promise<boolean>;
 }
 
 let storedDeps: CardcheckStorageDependencies | null = null;
@@ -275,24 +271,6 @@ export function createCardcheckStorage(): CardcheckStorage {
         .select()
         .from(cardchecks)
         .where(eq(cardchecks.cardcheckDefinitionId, definitionId));
-    },
-
-    async getCardcheckByExternalId(externalId: string): Promise<Cardcheck | undefined> {
-      const client = getClient();
-      const [cardcheck] = await client
-        .select()
-        .from(cardchecks)
-        .where(eq(cardchecks.externalId, externalId));
-      return cardcheck || undefined;
-    },
-
-    async getCardchecksByExternalIds(externalIds: string[]): Promise<Cardcheck[]> {
-      if (externalIds.length === 0) return [];
-      const client = getClient();
-      return await client
-        .select()
-        .from(cardchecks)
-        .where(inArray(cardchecks.externalId, externalIds));
     },
 
     async getCardchecksWithExternalIdMissingEsig(cardcheckDefinitionId?: string): Promise<Cardcheck[]> {
@@ -353,91 +331,6 @@ export function createCardcheckStorage(): CardcheckStorage {
       }
       
       return summaries;
-    },
-
-    async getAllSignedCardchecksWithDetails(): Promise<SignedCardcheckWithDetails[]> {
-      const client = getClient();
-      const signedCards = await client
-        .select()
-        .from(cardchecks)
-        .where(eq(cardchecks.status, "signed"));
-      
-      if (signedCards.length === 0) return [];
-      
-      const workersData = await client
-        .select({
-          id: workers.id,
-          siriusId: workers.siriusId,
-          contactId: workers.contactId,
-          bargainingUnitId: workers.bargainingUnitId,
-          denormEmployerIds: workers.denormEmployerIds,
-        })
-        .from(workers);
-      
-      const workerMap = new Map(workersData.map(w => [w.id, w]));
-      
-      const contactsData = await client
-        .select({
-          id: contacts.id,
-          given: contacts.given,
-          family: contacts.family,
-          displayName: contacts.displayName,
-        })
-        .from(contacts);
-      
-      const contactMap = new Map(contactsData.map(c => [c.id, c]));
-      
-      const buData = await client
-        .select({
-          id: bargainingUnits.id,
-          name: bargainingUnits.name,
-        })
-        .from(bargainingUnits);
-      
-      const buMap = new Map(buData.map(b => [b.id, b.name]));
-      
-      const employerData = await client
-        .select({
-          id: employers.id,
-          name: employers.name,
-        })
-        .from(employers);
-      
-      const employerMap = new Map(employerData.map(e => [e.id, e.name]));
-      
-      const results: SignedCardcheckWithDetails[] = [];
-      
-      for (const card of signedCards) {
-        const worker = workerMap.get(card.workerId);
-        if (!worker) continue;
-        
-        const contact = contactMap.get(worker.contactId);
-        const workerName = contact 
-          ? `${contact.family || ''}, ${contact.given || ''}`.trim().replace(/^,\s*|,\s*$/g, '') || contact.displayName || `Worker #${worker.siriusId}`
-          : `Worker #${worker.siriusId}`;
-        
-        const employerNames: string[] = [];
-        if (worker.denormEmployerIds) {
-          for (const empId of worker.denormEmployerIds) {
-            const name = employerMap.get(empId);
-            if (name) employerNames.push(name);
-          }
-        }
-        
-        results.push({
-          cardcheckId: card.id,
-          workerId: card.workerId,
-          workerSiriusId: worker.siriusId,
-          workerName,
-          bargainingUnitId: worker.bargainingUnitId,
-          bargainingUnitName: worker.bargainingUnitId ? buMap.get(worker.bargainingUnitId) || null : null,
-          employerNames,
-          rate: card.rate,
-          signedDate: card.signedDate,
-        });
-      }
-      
-      return results;
     },
 
     async getCardcheckReport(filters: CardcheckReportFilters): Promise<CardcheckReportItem[]> {
@@ -783,20 +676,6 @@ export function createCardcheckStorage(): CardcheckStorage {
       }
 
       return { esig: newEsig, cardcheck: updatedCardcheck };
-    },
-
-    async hasSignedCardcheckOfDefinition(workerId: string, cardcheckDefinitionId: string): Promise<boolean> {
-      const client = getClient();
-      const [row] = await client
-        .select({ id: cardchecks.id })
-        .from(cardchecks)
-        .where(and(
-          eq(cardchecks.workerId, workerId),
-          eq(cardchecks.cardcheckDefinitionId, cardcheckDefinitionId),
-          eq(cardchecks.status, "signed"),
-        ))
-        .limit(1);
-      return !!row;
     },
 
     async getOrganizingEmployerList(): Promise<OrganizingEmployerRow[]> {

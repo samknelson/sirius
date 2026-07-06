@@ -127,14 +127,14 @@ function PaymentViewContent() {
               </p>
             </div>
 
-            {details.merchant && (
+            {!!details.merchant && (
               <div>
                 <label className="text-sm font-medium text-muted-foreground">Merchant</label>
                 <p className="mt-1" data-testid="text-merchant">{details.merchant as string}</p>
               </div>
             )}
 
-            {details.checkTransactionNumber && (
+            {!!details.checkTransactionNumber && (
               <div>
                 <label className="text-sm font-medium text-muted-foreground">Check or Transaction Number</label>
                 <p className="mt-1" data-testid="text-check-transaction-number">{details.checkTransactionNumber as string}</p>

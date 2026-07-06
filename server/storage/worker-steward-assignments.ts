@@ -42,20 +42,11 @@ export interface StewardAssignmentListItem extends WorkerStewardAssignment {
   worker?: { id: string; displayName: string };
 }
 
-export interface MyStewardDetails {
-  id: string;
-  workerId: string;
-  displayName: string;
-  email: string | null;
-  phone: string | null;
-}
-
 export interface WorkerStewardAssignmentStorage {
   getAssignmentsByWorkerId(workerId: string): Promise<WorkerStewardAssignmentWithDetails[]>;
   getAssignmentsByEmployerId(employerId: string): Promise<WorkerStewardAssignment[]>;
   getAssignmentById(id: string): Promise<WorkerStewardAssignment | undefined>;
   getAllAssignments(): Promise<StewardAssignmentListItem[]>;
-  getStewardsByEmployerAndBargainingUnit(employerId: string, bargainingUnitId: string): Promise<MyStewardDetails[]>;
   createAssignment(data: InsertWorkerStewardAssignment): Promise<WorkerStewardAssignment>;
   updateAssignment(id: string, data: Partial<InsertWorkerStewardAssignment>): Promise<WorkerStewardAssignment | undefined>;
   deleteAssignment(id: string): Promise<boolean>;
@@ -142,32 +133,6 @@ export function createWorkerStewardAssignmentStorage(): WorkerStewardAssignmentS
           id: row.worker.id,
           displayName: row.contact.displayName,
         } : undefined,
-      }));
-    },
-
-    async getStewardsByEmployerAndBargainingUnit(employerId: string, bargainingUnitId: string): Promise<MyStewardDetails[]> {
-      const client = getClient();
-      const assignments = await client
-        .select({
-          id: workerStewardAssignments.id,
-          workerId: workerStewardAssignments.workerId,
-          displayName: contacts.displayName,
-          email: contacts.email,
-        })
-        .from(workerStewardAssignments)
-        .innerJoin(workers, eq(workerStewardAssignments.workerId, workers.id))
-        .innerJoin(contacts, eq(workers.contactId, contacts.id))
-        .where(and(
-          eq(workerStewardAssignments.employerId, employerId),
-          eq(workerStewardAssignments.bargainingUnitId, bargainingUnitId)
-        ));
-
-      return assignments.map(row => ({
-        id: row.id,
-        workerId: row.workerId,
-        displayName: row.displayName,
-        email: row.email,
-        phone: null,
       }));
     },
 

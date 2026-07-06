@@ -49,6 +49,16 @@ const policy = definePolicy({
           return { granted: true, reason: `Has view access to associated ${entityType}` };
         }
       }
+
+      if (entityType === 'wizard') {
+        const wizard = await ctx.storage.wizards?.getById?.(entityId);
+        if (wizard?.entityId) {
+          const hasWizardAccess = await ctx.checkPolicy('employer.mine', wizard.entityId);
+          if (hasWizardAccess) {
+            return { granted: true, reason: 'Has access to associated wizard' };
+          }
+        }
+      }
     }
     
     return { granted: false, reason: 'No access to this file' };

@@ -109,7 +109,7 @@ export default function WorkerUserSettingsPage() {
     );
   }
 
-  const sortedRoles = [...roles].sort((a, b) => a.sequence - b.sequence);
+  const sortedRoles = [...roles].sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0));
 
   return (
     <div className="space-y-6">

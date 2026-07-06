@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { TerminologyProvider } from "@/contexts/TerminologyContext";
 import { PageTitleProvider } from "@/contexts/PageTitleContext";
+import { WebSocketProvider } from "@/contexts/WebSocketContext";
 import ProtectedRoute from "@/components/auth/ProtectedRoute";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
@@ -87,6 +88,20 @@ const WorkerSendPostal = lazy(() => import("@/pages/worker-send-postal"));
 const WorkerSendInApp = lazy(() => import("@/pages/worker-send-inapp"));
 const CommDetail = lazy(() => import("@/pages/comm-detail"));
 const CommEdit = lazy(() => import("@/pages/comm-edit"));
+const Grievances = lazy(() => import("@/pages/grievances"));
+const WorkerGrievances = lazy(() => import("@/pages/worker-grievances"));
+const EmployerGrievances = lazy(() => import("@/pages/employer-grievances"));
+const GrievancesAdd = lazy(() => import("@/pages/grievances-add"));
+const GrievanceView = lazy(() => import("@/pages/grievance-view"));
+const GrievanceEdit = lazy(() => import("@/pages/grievance-edit"));
+const GrievanceLogs = lazy(() => import("@/pages/grievance-logs"));
+const GrievanceTimeline = lazy(() => import("@/pages/grievance-timeline"));
+const GrievanceSettlements = lazy(() => import("@/pages/grievance-settlements"));
+const GrievanceTimelineTemplatesPage = lazy(() => import("@/pages/config/grievance-timeline-templates"));
+const GrievanceTimelineTemplateView = lazy(() => import("@/pages/grievance-timeline-template-view"));
+const GrievanceTimelineTemplateEdit = lazy(() => import("@/pages/grievance-timeline-template-edit"));
+const GrievanceTimelineTemplateItems = lazy(() => import("@/pages/grievance-timeline-template-items"));
+const GrievanceTimelineTemplateLogs = lazy(() => import("@/pages/grievance-timeline-template-logs"));
 const WorkerDelete = lazy(() => import("@/pages/worker-delete"));
 const Companies = lazy(() => import("@/pages/companies"));
 const CompanyView = lazy(() => import("@/pages/company-view"));
@@ -189,7 +204,7 @@ const AdminQuickstarts = lazy(() => import("@/pages/admin-quickstarts"));
 const CronJobs = lazy(() => import("@/pages/cron-jobs"));
 const EventBusDebug = lazy(() => import("@/pages/admin/debug/event-bus"));
 const CronJobView = lazy(() => import("@/pages/cron-job-view"));
-const CronJobSettings = lazy(() => import("@/pages/cron-job-settings"));
+const CronJobRun = lazy(() => import("@/pages/cron-job-run"));
 const CronJobHistory = lazy(() => import("@/pages/cron-job-history"));
 import AdminLayout from "@/components/layouts/AdminLayout";
 import ConfigurationLayout from "@/components/layouts/ConfigurationLayout";
@@ -280,12 +295,15 @@ const LedgerPaymentTypesPage = lazy(() => import("@/pages/config/ledger-payment-
 // any navigation registry; reachable only via this route for verification.
 const GenericPluginConfigsPage = lazy(() => import("@/pages/admin/plugin-configs"));
 const PluginConfigsIndexPage = lazy(() => import("@/pages/admin/plugin-configs-index"));
+const DenormConfigsPage = lazy(() => import("@/pages/admin/denorm"));
+const DenormConfigDetailPage = lazy(() => import("@/pages/admin/denorm-detail"));
 const ConfigurationLandingPage = lazy(() => import("@/pages/config/index"));
 const LedgerAccountsPage = lazy(() => import("@/pages/config/ledger/accounts"));
 const LedgerAccountView = lazy(() => import("@/pages/config/ledger/account-view"));
 const LedgerAccountEdit = lazy(() => import("@/pages/config/ledger/account-edit"));
 const AccountPayments = lazy(() => import("@/pages/config/ledger/account-payments"));
 const AccountTransactions = lazy(() => import("@/pages/config/ledger/account-transactions"));
+const AccountSummary = lazy(() => import("@/pages/config/ledger/account-summary"));
 const AccountParticipants = lazy(() => import("@/pages/account-participants"));
 const AccountSettings = lazy(() => import("@/pages/config/ledger/account-settings"));
 const AccountBatches = lazy(() => import("@/pages/config/ledger/account-batches"));
@@ -508,6 +526,104 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/grievances/add">
+        <ProtectedRoute permission="staff" component="grievance">
+          <AuthenticatedLayout>
+            <GrievancesAdd />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/grievances">
+        <ProtectedRoute permission="staff" component="grievance">
+          <AuthenticatedLayout>
+            <Grievances />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/grievance/:id/edit">
+        <ProtectedRoute tabId="edit" entityType="grievance">
+          <AuthenticatedLayout>
+            <GrievanceEdit />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/grievance/:id/logs">
+        <ProtectedRoute tabId="logs" entityType="grievance">
+          <AuthenticatedLayout>
+            <GrievanceLogs />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/grievance/:id/timeline">
+        <ProtectedRoute tabId="timeline" entityType="grievance">
+          <AuthenticatedLayout>
+            <GrievanceTimeline />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/grievance/:id/settlements">
+        <ProtectedRoute tabId="settlements" entityType="grievance">
+          <AuthenticatedLayout>
+            <GrievanceSettlements />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/grievance/:id">
+        <ProtectedRoute tabId="details" entityType="grievance">
+          <AuthenticatedLayout>
+            <GrievanceView />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/grievance-timeline-templates">
+        <ProtectedRoute permission="admin" component="grievance">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <GrievanceTimelineTemplatesPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/grievance-timeline-template/:id/edit">
+        <ProtectedRoute tabId="edit" entityType="grievanceTimelineTemplate">
+          <AuthenticatedLayout>
+            <GrievanceTimelineTemplateEdit />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/grievance-timeline-template/:id/items">
+        <ProtectedRoute tabId="items" entityType="grievanceTimelineTemplate">
+          <AuthenticatedLayout>
+            <GrievanceTimelineTemplateItems />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/grievance-timeline-template/:id/logs">
+        <ProtectedRoute tabId="logs" entityType="grievanceTimelineTemplate">
+          <AuthenticatedLayout>
+            <GrievanceTimelineTemplateLogs />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/grievance-timeline-template/:id">
+        <ProtectedRoute tabId="details" entityType="grievanceTimelineTemplate">
+          <AuthenticatedLayout>
+            <GrievanceTimelineTemplateView />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/workers/:id/addresses">
         <ProtectedRoute tabId="addresses" entityType="worker">
           <AuthenticatedLayout>
@@ -584,6 +700,14 @@ function Router() {
         <ProtectedRoute tabId="bans" entityType="worker">
           <AuthenticatedLayout>
             <WorkerBans />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/workers/:id/grievances">
+        <ProtectedRoute tabId="grievances" entityType="worker">
+          <AuthenticatedLayout>
+            <WorkerGrievances />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -1154,6 +1278,14 @@ function Router() {
         <ProtectedRoute tabId="contacts" entityType="employer">
           <AuthenticatedLayout>
             <EmployerContacts />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/employers/:id/grievances">
+        <ProtectedRoute tabId="grievances" entityType="employer">
+          <AuthenticatedLayout>
+            <EmployerGrievances />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -2980,6 +3112,28 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      {/* Denorm system visibility. The list page is registered before the
+          :plugin_config_id detail route so it isn't shadowed. */}
+      <Route path="/admin/denorm">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <DenormConfigsPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/admin/denorm/:plugin_config_id">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <DenormConfigDetailPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       {/* Payment batch detail pages */}
       <Route path="/ledger/payment-batch/:id/edit">
         <ProtectedRoute tabId="edit" entityType="ledger_payment_batch">
@@ -3034,6 +3188,14 @@ function Router() {
         <ProtectedRoute tabId="transactions" entityType="ledger_account">
           <AuthenticatedLayout>
             <AccountTransactions />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/ledger/accounts/:id/summary">
+        <ProtectedRoute tabId="summary" entityType="ledger_account">
+          <AuthenticatedLayout>
+            <AccountSummary />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -3240,12 +3402,16 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      <Route path="/cron-jobs/:name/settings">
+      <Route path="/cron-jobs/:name/run">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
-            <CronJobSettings />
+            <CronJobRun />
           </AuthenticatedLayout>
         </ProtectedRoute>
+      </Route>
+
+      <Route path="/cron-jobs/:name/settings">
+        {(params) => <Redirect to={`/cron-jobs/${params.name}/run`} />}
       </Route>
 
       <Route path="/cron-jobs/:name/history">
@@ -3334,7 +3500,9 @@ function App() {
             <PageTitleProvider>
               <Toaster />
               <ServerInjections />
-              <Router />
+              <WebSocketProvider>
+                <Router />
+              </WebSocketProvider>
             </PageTitleProvider>
           </TerminologyProvider>
         </AuthProvider>

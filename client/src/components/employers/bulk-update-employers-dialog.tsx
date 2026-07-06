@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { SUPPRESS_NOTIFICATIONS_HEADER } from "@shared/notification-headers";
 import type { EmployerType } from "@shared/schema";
 
 interface Industry {
@@ -98,7 +99,9 @@ export function BulkUpdateEmployersDialog({
       const results = await Promise.all(
         ids.map(async (id) => {
           try {
-            await apiRequest("PUT", `/api/employers/${id}`, payload);
+            await apiRequest("PUT", `/api/employers/${id}`, payload, {
+              headers: { [SUPPRESS_NOTIFICATIONS_HEADER]: "true" },
+            });
             return { id, ok: true as const };
           } catch (error: unknown) {
             return { id, ok: false as const, error: errorMessage(error) };

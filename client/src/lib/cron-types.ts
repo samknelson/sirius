@@ -1,12 +1,3 @@
-export interface CronJobSettingsField {
-  key: string;
-  label: string;
-  type: "number" | "string" | "boolean";
-  description?: string;
-  min?: number;
-  max?: number;
-}
-
 export interface CronJobRun {
   id: string;
   jobName: string;
@@ -28,7 +19,6 @@ export interface CronJob {
   schedule: string;
   isEnabled: boolean;
   settings?: Record<string, unknown> | null;
-  settingsFields?: CronJobSettingsField[] | null;
   defaultSettings?: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;

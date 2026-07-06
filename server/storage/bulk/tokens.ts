@@ -39,7 +39,7 @@ export interface BulkTokenWorkerRow {
 export interface BulkTokenCardcheckRow {
   type: string | null;
   status: string | null;
-  signedDate: string | null;
+  signedDate: Date | null;
 }
 
 export interface BulkTokenEmployerRow {
@@ -125,12 +125,12 @@ export function createBulkTokensStorage(): BulkTokensStorage {
         .select({
           contactId: workers.contactId,
           id: workers.id,
-          jobTitle: workers.denormJobTitle,
+          jobTitle: sql<string | null>`(SELECT wed.job_title FROM worker_employment_denorm wed WHERE wed.worker_id = ${workers.id} AND wed.home = true LIMIT 1)`,
           siriusId: workers.siriusId,
-          homeEmployerId: workers.denormHomeEmployerId,
-          employerIds: workers.denormEmployerIds,
-          wsId: workers.denormWsId,
-          msIds: workers.denormMsIds,
+          homeEmployerId: sql<string | null>`(SELECT wed.employer_id FROM worker_employment_denorm wed WHERE wed.worker_id = ${workers.id} AND wed.home = true LIMIT 1)`,
+          employerIds: sql<string[] | null>`(SELECT array_agg(wed.employer_id) FROM worker_employment_denorm wed WHERE wed.worker_id = ${workers.id})`,
+          wsId: sql<string | null>`(SELECT wwd.ws_id FROM worker_wsh_denorm wwd WHERE wwd.worker_id = ${workers.id})`,
+          msIds: sql<string[] | null>`(SELECT array_agg(wmd.ms_id) FROM worker_msh_denorm wmd WHERE wmd.worker_id = ${workers.id})`,
           bargainingUnitId: workers.bargainingUnitId,
         })
         .from(workers)
@@ -146,12 +146,12 @@ export function createBulkTokensStorage(): BulkTokensStorage {
         .select({
           contactId: workers.contactId,
           id: workers.id,
-          jobTitle: workers.denormJobTitle,
+          jobTitle: sql<string | null>`(SELECT wed.job_title FROM worker_employment_denorm wed WHERE wed.worker_id = ${workers.id} AND wed.home = true LIMIT 1)`,
           siriusId: workers.siriusId,
-          homeEmployerId: workers.denormHomeEmployerId,
-          employerIds: workers.denormEmployerIds,
-          wsId: workers.denormWsId,
-          msIds: workers.denormMsIds,
+          homeEmployerId: sql<string | null>`(SELECT wed.employer_id FROM worker_employment_denorm wed WHERE wed.worker_id = ${workers.id} AND wed.home = true LIMIT 1)`,
+          employerIds: sql<string[] | null>`(SELECT array_agg(wed.employer_id) FROM worker_employment_denorm wed WHERE wed.worker_id = ${workers.id})`,
+          wsId: sql<string | null>`(SELECT wwd.ws_id FROM worker_wsh_denorm wwd WHERE wwd.worker_id = ${workers.id})`,
+          msIds: sql<string[] | null>`(SELECT array_agg(wmd.ms_id) FROM worker_msh_denorm wmd WHERE wmd.worker_id = ${workers.id})`,
           bargainingUnitId: workers.bargainingUnitId,
         })
         .from(workers)
@@ -281,8 +281,8 @@ export function createBulkTokensStorage(): BulkTokensStorage {
       const client = getClient();
       return await client
         .select({
-          homeEmployerId: workers.denormHomeEmployerId,
-          employerIds: workers.denormEmployerIds,
+          homeEmployerId: sql<string | null>`(SELECT wed.employer_id FROM worker_employment_denorm wed WHERE wed.worker_id = ${workers.id} AND wed.home = true LIMIT 1)`,
+          employerIds: sql<string[] | null>`(SELECT array_agg(wed.employer_id) FROM worker_employment_denorm wed WHERE wed.worker_id = ${workers.id})`,
         })
         .from(workers)
         .where(inArray(workers.contactId, contactIds));

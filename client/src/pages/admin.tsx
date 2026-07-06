@@ -5,7 +5,6 @@ import { Users, Shield, Key, UserCheck } from 'lucide-react';
 import UsersManagement from '@/components/admin/UsersManagement';
 import RolesManagement from '@/components/admin/RolesManagement';
 import PermissionsManagement from '@/components/admin/PermissionsManagement';
-import RoleAssignments from '@/components/admin/RoleAssignments';
 
 export default function AdminPage() {
   return (
@@ -20,7 +19,7 @@ export default function AdminPage() {
       </div>
 
       <Tabs defaultValue="users" className="w-full">
-        <TabsList className="grid w-full grid-cols-4 mb-6">
+        <TabsList className="grid w-full grid-cols-3 mb-6">
           <TabsTrigger value="users" className="flex items-center gap-2" data-testid="tab-users">
             <Users className="h-4 w-4" />
             Users
@@ -32,10 +31,6 @@ export default function AdminPage() {
           <TabsTrigger value="permissions" className="flex items-center gap-2" data-testid="tab-permissions">
             <Key className="h-4 w-4" />
             Permissions
-          </TabsTrigger>
-          <TabsTrigger value="assignments" className="flex items-center gap-2" data-testid="tab-assignments">
-            <UserCheck className="h-4 w-4" />
-            Assignments
           </TabsTrigger>
         </TabsList>
 
@@ -90,22 +85,6 @@ export default function AdminPage() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="assignments">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <UserCheck className="h-5 w-5" />
-                Role Assignments
-              </CardTitle>
-              <CardDescription>
-                Assign roles to users and manage their permissions
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <RoleAssignments />
-            </CardContent>
-          </Card>
-        </TabsContent>
       </Tabs>
     </div>
   );

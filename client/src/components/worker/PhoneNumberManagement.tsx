@@ -617,7 +617,7 @@ export function PhoneNumberManagement({ contactId, canEdit = true }: PhoneNumber
               {/* Footer Actions */}
               <div className="flex justify-between items-center gap-2 pt-4 border-t flex-wrap">
                 <div className="flex gap-2 flex-wrap">
-                  {viewingPhoneNumber.validationResponse && (
+                  {!!viewingPhoneNumber.validationResponse && (
                     <Button
                       variant="outline"
                       onClick={() => {

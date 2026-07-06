@@ -651,6 +651,19 @@ export default function Header() {
                   </Link>
                 )}
 
+                {hasComponent("grievance") && staffPolicy?.access?.granted && (
+                  <Link href="/grievances" onClick={() => setMobileMenuOpen(false)}>
+                    <Button
+                      variant={location.startsWith("/grievance") ? "default" : "ghost"}
+                      className="w-full justify-start"
+                      data-testid="mobile-nav-grievances"
+                    >
+                      <FileText className="h-4 w-4 mr-2" />
+                      Grievances
+                    </Button>
+                  </Link>
+                )}
+
                 {(hasPermission("admin") || hasPermission("staff")) && (
                   <>
                     <div className="border-t border-gray-100 dark:border-gray-800 my-2" />
@@ -1425,6 +1438,19 @@ export default function Header() {
                 >
                   <BookOpen className="h-4 w-4 mr-2" />
                   Accounts
+                </Button>
+              </Link>
+            )}
+
+            {hasComponent("grievance") && staffPolicy?.access?.granted && (
+              <Link href="/grievances">
+                <Button
+                  variant={location.startsWith("/grievance") ? "default" : "ghost"}
+                  size="sm"
+                  data-testid="nav-grievances-top"
+                >
+                  <FileText className="h-4 w-4 mr-2" />
+                  Grievances
                 </Button>
               </Link>
             )}

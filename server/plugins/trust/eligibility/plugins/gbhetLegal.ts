@@ -7,6 +7,8 @@ import {
 } from "../types";
 import { registerEligibilityPlugin } from "../registry";
 import { storage } from "../../../../storage/database";
+import { workerHours } from "@shared/schema";
+import { and, eq, sql } from "drizzle-orm";
 
 interface GbhetLegalConfig extends BaseEligibilityConfig {
   monthsOffset: number;
@@ -19,6 +21,7 @@ class GbhetLegalPlugin extends EligibilityPlugin<GbhetLegalConfig> {
     description:
       "Worker must have nonzero hours in the month that is a specified number of months prior (default: 4 months).",
     requiredComponent: "sitespecific.gbhet.legal",
+    needsReadOnlyDb: true,
     configSchema: {
       type: "object",
       required: ["monthsOffset"],
@@ -49,11 +52,19 @@ class GbhetLegalPlugin extends EligibilityPlugin<GbhetLegalConfig> {
       targetYear -= 1;
     }
 
-    const totalHours = await storage.workerHours.getWorkerMonthlyHoursAllEmployers(
-      context.subscriberWorker.id,
-      targetYear,
-      targetMonth,
-    );
+    const totalHours = await storage.readOnly.query(async (client) => {
+      const [result] = await client
+        .select({ totalHours: sql<number>`COALESCE(SUM(${workerHours.hours}), 0)` })
+        .from(workerHours)
+        .where(
+          and(
+            eq(workerHours.workerId, context.subscriberWorker.id),
+            eq(workerHours.year, targetYear),
+            eq(workerHours.month, targetMonth),
+          ),
+        );
+      return Number(result?.totalHours || 0);
+    });
 
     const monthName = new Date(targetYear, targetMonth - 1, 1).toLocaleString("default", {
       month: "long",
