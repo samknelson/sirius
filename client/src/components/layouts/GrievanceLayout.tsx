@@ -59,6 +59,7 @@ export interface GrievanceWithDetails {
   data: unknown;
   timelineTemplateId: string | null;
   bargainingUnitId: string | null;
+  employerContactId: string | null;
   statusName: string | null;
   categoryName: string | null;
   bargainingUnitName: string | null;

@@ -8,6 +8,7 @@ import { GrievanceEmployerManager } from "@/components/grievances/grievance-empl
 import { GrievanceLineSection } from "@/components/grievances/grievance-line-section";
 import { GrievanceUserManager } from "@/components/grievances/grievance-user-section";
 import { GrievanceContractSection } from "@/components/grievances/grievance-contract-section";
+import { GrievanceRepresentativeSection } from "@/components/grievances/grievance-representative-section";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
@@ -119,6 +120,14 @@ function GrievanceEditContent() {
         grievanceId={grievance.id}
         employers={grievance.employers}
       />
+
+      {grievance.employers[0] && (
+        <GrievanceRepresentativeSection
+          grievanceId={grievance.id}
+          employerId={grievance.employers[0].employerId}
+          employerContactId={grievance.employerContactId}
+        />
+      )}
 
       {showContract && <GrievanceContractSection grievanceId={grievance.id} />}
     </div>

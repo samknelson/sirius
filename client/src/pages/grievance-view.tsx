@@ -8,6 +8,7 @@ import {
 } from "@/components/layouts/GrievanceLayout";
 import { GRIEVANCE_CARDINALITY_LABELS } from "@/components/grievances/grievance-form";
 import { GrievanceContractSummary } from "@/components/grievances/grievance-contract-section";
+import { GrievanceRepresentativeSummary } from "@/components/grievances/grievance-representative-section";
 import { useAuth } from "@/contexts/AuthContext";
 
 function GrievanceDetailsContent() {
@@ -194,6 +195,11 @@ function GrievanceDetailsContent() {
           </p>
         </CardContent>
       </Card>
+
+      <GrievanceRepresentativeSummary
+        employerId={grievance.employers[0]?.employerId ?? null}
+        employerContactId={grievance.employerContactId}
+      />
 
       {showContract && <GrievanceContractSummary grievanceId={grievance.id} />}
     </div>

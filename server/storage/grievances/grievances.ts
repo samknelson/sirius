@@ -382,6 +382,7 @@ export function createGrievanceStorage(): GrievanceStorage {
           data: grievances.data,
           timelineTemplateId: grievances.timelineTemplateId,
           bargainingUnitId: grievances.bargainingUnitId,
+          employerContactId: grievances.employerContactId,
           statusName: optionsGrievanceStatus.name,
           categoryName: optionsGrievanceCategory.name,
           bargainingUnitName: bargainingUnits.name,
