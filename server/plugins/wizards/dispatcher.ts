@@ -536,7 +536,14 @@ export function registerWizardDispatcherRoutes(
             status: "completed",
             completedAt: new Date().toISOString(),
           };
-          if (data.progress[next.id]?.status !== "completed") {
+          // Run steps own their progress lifecycle: only the run route may
+          // stamp `in_progress` (it means "a run is executing right now").
+          // Stamping it on navigation makes the client show a phantom
+          // "Running…" state with the Run button disabled.
+          if (
+            next.kind !== "run" &&
+            data.progress[next.id]?.status !== "completed"
+          ) {
             data.progress[next.id] = {
               ...data.progress[next.id],
               status: "in_progress",
@@ -554,10 +561,14 @@ export function registerWizardDispatcherRoutes(
             return res.status(400).json({ message: "Already on first step" });
           }
           const prev = steps[idx - 1];
-          data.progress[prev.id] = {
-            ...data.progress[prev.id],
-            status: "in_progress",
-          };
+          // Same run-step guard as "next": never fabricate a running state,
+          // and never downgrade a completed/failed run by going back to it.
+          if (prev.kind !== "run") {
+            data.progress[prev.id] = {
+              ...data.progress[prev.id],
+              status: "in_progress",
+            };
+          }
           const updated = await storage.wizards.update(wizard.id, {
             currentStep: prev.id,
             data,
