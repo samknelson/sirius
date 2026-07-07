@@ -155,6 +155,11 @@ import {
   grievanceSettlementLoggingConfig,
 } from "./grievances/grievance-settlements";
 import {
+  type GrievanceStatusHistoryStorage,
+  createGrievanceStatusHistoryStorage,
+  grievanceStatusHistoryLoggingConfig,
+} from "./grievances/grievance-status-history";
+import {
   type GrievanceContractStorage,
   createGrievanceContractStorage,
   grievanceContractLoggingConfig,
@@ -264,6 +269,7 @@ export interface IStorage {
   commTags: CommTagsStorage;
   comm: CommStorage;
   grievances: GrievanceStorage;
+  grievanceStatusHistory: GrievanceStatusHistoryStorage;
   grievanceTimelineTemplates: GrievanceTimelineTemplateStorage;
   grievanceSettlements: GrievanceSettlementStorage;
   grievanceContracts: GrievanceContractStorage;
@@ -364,6 +370,7 @@ export class DatabaseStorage implements IStorage {
   commTags: CommTagsStorage;
   comm: CommStorage;
   grievances: GrievanceStorage;
+  grievanceStatusHistory: GrievanceStatusHistoryStorage;
   grievanceTimelineTemplates: GrievanceTimelineTemplateStorage;
   grievanceSettlements: GrievanceSettlementStorage;
   grievanceContracts: GrievanceContractStorage;
@@ -683,6 +690,10 @@ export class DatabaseStorage implements IStorage {
     this.grievances = withStorageLogging(
       createGrievanceStorage(),
       grievanceLoggingConfig,
+    );
+    this.grievanceStatusHistory = withStorageLogging(
+      createGrievanceStatusHistoryStorage(),
+      grievanceStatusHistoryLoggingConfig,
     );
     this.grievanceTimelineTemplates = withStorageLogging(
       createGrievanceTimelineTemplateStorage(),

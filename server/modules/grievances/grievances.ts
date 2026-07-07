@@ -15,7 +15,6 @@ const createGrievanceSchema = z
   .object({
     siriusId: z.string().trim().min(1).nullish(),
     classDescription: z.string().trim().min(1).nullish(),
-    statusId: z.string().uuid("A valid status is required"),
     categoryId: z.string().uuid("A valid category is required"),
     cardinality: z.enum(GRIEVANCE_CARDINALITIES).default("individual"),
     bargainingUnitId: z.string().uuid().nullish(),
@@ -37,7 +36,6 @@ const updateGrievanceSchema = z
   .object({
     siriusId: z.string().trim().min(1).nullish(),
     classDescription: z.string().trim().min(1).nullish(),
-    statusId: z.string().uuid().optional(),
     categoryId: z.string().uuid().optional(),
     cardinality: z.enum(GRIEVANCE_CARDINALITIES).optional(),
     timelineTemplateId: z.string().uuid().nullable().optional(),
@@ -132,6 +130,22 @@ const updateSettlementSchema = z
     },
   );
 
+// Status history. `date` is an ISO timestamp; it may be omitted on create
+// (the server stamps "now") but is required to be in the past when given.
+const addStatusHistorySchema = z.object({
+  statusId: z.string().uuid("A valid status is required"),
+  date: z.coerce.date().optional(),
+});
+
+const updateStatusHistorySchema = z
+  .object({
+    statusId: z.string().uuid("A valid status is required").optional(),
+    date: z.coerce.date().optional(),
+  })
+  .refine((v) => v.statusId !== undefined || v.date !== undefined, {
+    message: "At least one field must be provided",
+  });
+
 const setContractSchema = z.object({
   contractId: z.string().uuid("A valid contract is required"),
 });
@@ -177,7 +191,6 @@ export function registerGrievanceRoutes(
       const {
         siriusId,
         classDescription,
-        statusId,
         categoryId,
         cardinality,
         bargainingUnitId,
@@ -195,7 +208,6 @@ export function registerGrievanceRoutes(
       const created = await storage.grievances.create({
         siriusId: isAdmin ? (siriusId ?? null) : null,
         classDescription: cardinality === "class" ? (classDescription ?? null) : null,
-        statusId,
         categoryId,
         cardinality,
         bargainingUnitId: bargainingUnitId ?? null,
@@ -296,7 +308,6 @@ export function registerGrievanceRoutes(
         data.siriusId = parsed.data.siriusId ?? null;
       if (parsed.data.classDescription !== undefined)
         data.classDescription = parsed.data.classDescription ?? null;
-      if (parsed.data.statusId !== undefined) data.statusId = parsed.data.statusId;
       if (parsed.data.categoryId !== undefined) data.categoryId = parsed.data.categoryId;
       if (parsed.data.cardinality !== undefined) data.cardinality = parsed.data.cardinality;
       if (parsed.data.timelineTemplateId !== undefined)
@@ -332,6 +343,122 @@ export function registerGrievanceRoutes(
     } catch (error) {
       console.error("Failed to delete grievance:", error);
       res.status(500).json({ message: "Failed to delete grievance" });
+    }
+  });
+
+  // ----- Status history -----
+  // The grievance's current status is derived from these entries (latest date
+  // wins); mutations recompute `is_current` transactionally in storage.
+
+  app.get("/api/grievances/:id/status-history", ...gate, async (req, res) => {
+    try {
+      const grievance = await storage.grievances.get(req.params.id);
+      if (!grievance) {
+        return res.status(404).json({ message: "Grievance not found" });
+      }
+      const entries = await storage.grievanceStatusHistory.list(req.params.id);
+      res.json(entries);
+    } catch (error) {
+      console.error("Failed to fetch grievance status history:", error);
+      res.status(500).json({ message: "Failed to fetch status history" });
+    }
+  });
+
+  app.post("/api/grievances/:id/status-history", ...gate, async (req, res) => {
+    try {
+      const parsed = addStatusHistorySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid request body", errors: parsed.error.flatten() });
+      }
+      const grievance = await storage.grievances.get(req.params.id);
+      if (!grievance) {
+        return res.status(404).json({ message: "Grievance not found" });
+      }
+      // When no date is supplied (the edit page's "set status now" card), the
+      // server stamps the time — this avoids a client clock ahead of the DB
+      // tripping the not-in-the-future CHECK constraint.
+      const date = parsed.data.date ?? new Date();
+      if (date.getTime() > Date.now()) {
+        return res.status(400).json({ message: "The date cannot be in the future" });
+      }
+      const created = await storage.grievanceStatusHistory.create(req.params.id, {
+        statusId: parsed.data.statusId,
+        date,
+      });
+      res.status(201).json(created);
+    } catch (error: any) {
+      if (error?.code === "23503") {
+        return res.status(400).json({ message: "Unknown status" });
+      }
+      if (
+        error?.code === "23505" &&
+        error?.constraint === "grievance_status_history_grievance_date_unique"
+      ) {
+        return res.status(409).json({ message: "An entry with that date already exists for this grievance" });
+      }
+      if (error?.code === "23505") {
+        return res.status(409).json({ message: "The status history changed concurrently. Please try again." });
+      }
+      if (error?.code === "23514") {
+        return res.status(400).json({ message: "The date cannot be in the future" });
+      }
+      console.error("Failed to add grievance status history entry:", error);
+      res.status(500).json({ message: "Failed to add status history entry" });
+    }
+  });
+
+  app.patch("/api/grievances/:id/status-history/:entryId", ...gate, async (req, res) => {
+    try {
+      const parsed = updateStatusHistorySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid request body", errors: parsed.error.flatten() });
+      }
+      if (parsed.data.date !== undefined && parsed.data.date.getTime() > Date.now()) {
+        return res.status(400).json({ message: "The date cannot be in the future" });
+      }
+      const updated = await storage.grievanceStatusHistory.update(
+        req.params.id,
+        req.params.entryId,
+        parsed.data,
+      );
+      if (!updated) {
+        return res.status(404).json({ message: "Status history entry not found" });
+      }
+      res.json(updated);
+    } catch (error: any) {
+      if (error?.code === "23503") {
+        return res.status(400).json({ message: "Unknown status" });
+      }
+      if (
+        error?.code === "23505" &&
+        error?.constraint === "grievance_status_history_grievance_date_unique"
+      ) {
+        return res.status(409).json({ message: "An entry with that date already exists for this grievance" });
+      }
+      if (error?.code === "23505") {
+        return res.status(409).json({ message: "The status history changed concurrently. Please try again." });
+      }
+      if (error?.code === "23514") {
+        return res.status(400).json({ message: "The date cannot be in the future" });
+      }
+      console.error("Failed to update grievance status history entry:", error);
+      res.status(500).json({ message: "Failed to update status history entry" });
+    }
+  });
+
+  app.delete("/api/grievances/:id/status-history/:entryId", ...gate, async (req, res) => {
+    try {
+      const deleted = await storage.grievanceStatusHistory.delete(
+        req.params.id,
+        req.params.entryId,
+      );
+      if (!deleted) {
+        return res.status(404).json({ message: "Status history entry not found" });
+      }
+      res.status(204).end();
+    } catch (error) {
+      console.error("Failed to delete grievance status history entry:", error);
+      res.status(500).json({ message: "Failed to delete status history entry" });
     }
   });
 

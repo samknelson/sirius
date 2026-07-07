@@ -1,4 +1,4 @@
-import { pgTable, varchar, text, jsonb, boolean, integer, date, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, varchar, text, jsonb, boolean, integer, date, timestamp, uniqueIndex, check } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -138,9 +138,6 @@ export const grievances = pgTable("grievances", {
   siriusId: varchar("sirius_id").notNull().unique(),
   classDescription: text("class_description"),
   cardinality: varchar("cardinality").notNull().default("individual"),
-  statusId: varchar("status_id")
-    .notNull()
-    .references(() => optionsGrievanceStatus.id, { onDelete: "restrict" }),
   categoryId: varchar("category_id")
     .notNull()
     .references(() => optionsGrievanceCategory.id, { onDelete: "restrict" }),
@@ -172,6 +169,56 @@ export const insertGrievanceSchema = createInsertSchema(grievances)
 
 export type Grievance = typeof grievances.$inferSelect;
 export type InsertGrievance = z.infer<typeof insertGrievanceSchema>;
+
+/**
+ * Per-grievance status history. The grievance's "current" status is derived:
+ * the entry with the latest `date` is current. `is_current` is recomputed
+ * transactionally by the storage layer on every add/edit/delete; the partial
+ * unique index guarantees at most one current row per grievance, and the
+ * unique (grievance_id, date) pair forbids two entries at the same instant.
+ * A grievance may have zero history entries (status shows blank).
+ */
+export const grievanceStatusHistory = pgTable(
+  "grievance_status_history",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    grievanceId: varchar("grievance_id")
+      .notNull()
+      .references(() => grievances.id, { onDelete: "cascade" }),
+    statusId: varchar("status_id")
+      .notNull()
+      .references(() => optionsGrievanceStatus.id, { onDelete: "restrict" }),
+    date: timestamp("date").notNull(),
+    isCurrent: boolean("is_current").notNull().default(false),
+    data: jsonb("data"),
+  },
+  (table) => ({
+    oneCurrentPerGrievance: uniqueIndex(
+      "grievance_status_history_one_current_per_grievance",
+    )
+      .on(table.grievanceId)
+      .where(sql`${table.isCurrent} = true`),
+    grievanceDateUnique: uniqueIndex(
+      "grievance_status_history_grievance_date_unique",
+    ).on(table.grievanceId, table.date),
+    dateNotInFuture: check(
+      "grievance_status_history_date_not_future",
+      sql`${table.date} <= now()`,
+    ),
+  }),
+);
+
+export const insertGrievanceStatusHistorySchema = createInsertSchema(
+  grievanceStatusHistory,
+).omit({
+  id: true,
+  isCurrent: true,
+});
+
+export type GrievanceStatusHistory = typeof grievanceStatusHistory.$inferSelect;
+export type InsertGrievanceStatusHistory = z.infer<
+  typeof insertGrievanceStatusHistorySchema
+>;
 
 export const grievanceWorkers = pgTable(
   "grievance_workers",

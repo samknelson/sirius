@@ -1061,6 +1061,10 @@ export {
   insertGrievanceNameDenormSchema,
   type GrievanceNameDenorm,
   type InsertGrievanceNameDenorm,
+  grievanceStatusHistory,
+  insertGrievanceStatusHistorySchema,
+  type GrievanceStatusHistory,
+  type InsertGrievanceStatusHistory,
 } from "./schema/grievance/schema";
 
 export {

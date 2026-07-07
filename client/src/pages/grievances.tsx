@@ -31,7 +31,7 @@ import { useToast } from "@/hooks/use-toast";
 interface GrievanceListItem {
   id: string;
   siriusId: string | null;
-  statusId: string;
+  statusId: string | null;
   statusName: string | null;
   grievantSummary: string;
   employerName: string | null;

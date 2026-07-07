@@ -54,7 +54,8 @@ export interface GrievanceWithDetails {
   siriusId: string | null;
   classDescription: string | null;
   cardinality: GrievanceCardinality;
-  statusId: string;
+  /** Derived from the current status-history entry; null when there is no history. */
+  statusId: string | null;
   categoryId: string;
   data: unknown;
   timelineTemplateId: string | null;

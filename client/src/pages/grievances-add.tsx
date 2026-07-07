@@ -92,7 +92,6 @@ export default function GrievancesAdd() {
         siriusId: values.siriusId?.trim() ? values.siriusId.trim() : null,
         classDescription: isClass && values.classDescription?.trim() ? values.classDescription.trim() : null,
         cardinality: values.cardinality,
-        statusId: values.statusId,
         categoryId: values.categoryId,
         ...(showBargainingUnit
           ? { bargainingUnitId: values.bargainingUnitId ? values.bargainingUnitId : null }

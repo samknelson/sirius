@@ -41,7 +41,6 @@ const grievanceFormSchema = z.object({
   siriusId: z.string().optional(),
   classDescription: z.string().optional(),
   cardinality: z.enum(GRIEVANCE_CARDINALITIES),
-  statusId: z.string().uuid("Please select a status"),
   categoryId: z.string().uuid("Please select a category"),
   bargainingUnitId: z.string().optional(),
 });
@@ -71,9 +70,6 @@ export function GrievanceForm({
   renderWorkerSection,
   renderEmployerSection,
 }: GrievanceFormProps) {
-  const { data: statuses = [] } = useQuery<OptionItem[]>({
-    queryKey: ["/api/options/grievance-status"],
-  });
   const { data: categories = [] } = useQuery<OptionItem[]>({
     queryKey: ["/api/options/grievance-category"],
   });
@@ -91,7 +87,6 @@ export function GrievanceForm({
       siriusId: defaultValues?.siriusId ?? "",
       classDescription: defaultValues?.classDescription ?? "",
       cardinality: defaultValues?.cardinality ?? "individual",
-      statusId: defaultValues?.statusId ?? "",
       categoryId: defaultValues?.categoryId ?? "",
       bargainingUnitId: defaultValues?.bargainingUnitId ?? "",
     },
@@ -145,33 +140,6 @@ export function GrievanceForm({
                     .map((c) => (
                       <SelectItem key={c.id} value={c.id} data-testid={`option-category-${c.id}`}>
                         {c.name}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        <FormField
-          control={form.control}
-          name="statusId"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Status</FormLabel>
-              <Select onValueChange={field.onChange} value={field.value}>
-                <FormControl>
-                  <SelectTrigger data-testid="select-grievance-status">
-                    <SelectValue placeholder="Select a status" />
-                  </SelectTrigger>
-                </FormControl>
-                <SelectContent>
-                  {statuses
-                    .filter((s) => s.isActive !== false)
-                    .map((s) => (
-                      <SelectItem key={s.id} value={s.id} data-testid={`option-status-${s.id}`}>
-                        {s.name}
                       </SelectItem>
                     ))}
                 </SelectContent>

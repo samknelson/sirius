@@ -12,6 +12,7 @@ import {
   optionsGrievanceRemedies,
   optionsGrievanceRoles,
   grievanceNameDenorm,
+  grievanceStatusHistory,
   workers,
   contacts,
   employers,
@@ -67,6 +68,8 @@ function emitGrievanceAssignmentSaved(
 }
 
 export interface GrievanceListItem extends Grievance {
+  /** Derived from the current status-history entry; null when there is no history. */
+  statusId: string | null;
   statusName: string | null;
   categoryName: string | null;
   workerCount: number;
@@ -113,6 +116,8 @@ export interface GrievanceRemedyWithDetails extends GrievanceRemedy {
 }
 
 export interface GrievanceWithDetails extends Grievance {
+  /** Derived from the current status-history entry; null when there is no history. */
+  statusId: string | null;
   statusName: string | null;
   categoryName: string | null;
   bargainingUnitName: string | null;
@@ -270,7 +275,7 @@ export function createGrievanceStorage(): GrievanceStorage {
           siriusId: grievances.siriusId,
           classDescription: grievances.classDescription,
           cardinality: grievances.cardinality,
-          statusId: grievances.statusId,
+          statusId: grievanceStatusHistory.statusId,
           categoryId: grievances.categoryId,
           data: grievances.data,
           timelineTemplateId: grievances.timelineTemplateId,
@@ -279,7 +284,14 @@ export function createGrievanceStorage(): GrievanceStorage {
           categoryName: optionsGrievanceCategory.name,
         })
         .from(grievances)
-        .leftJoin(optionsGrievanceStatus, eq(grievances.statusId, optionsGrievanceStatus.id))
+        .leftJoin(
+          grievanceStatusHistory,
+          and(
+            eq(grievanceStatusHistory.grievanceId, grievances.id),
+            eq(grievanceStatusHistory.isCurrent, true),
+          ),
+        )
+        .leftJoin(optionsGrievanceStatus, eq(grievanceStatusHistory.statusId, optionsGrievanceStatus.id))
         .leftJoin(optionsGrievanceCategory, eq(grievances.categoryId, optionsGrievanceCategory.id));
 
       const rows =
@@ -356,7 +368,6 @@ export function createGrievanceStorage(): GrievanceStorage {
           siriusId: grievances.siriusId,
           classDescription: grievances.classDescription,
           cardinality: grievances.cardinality,
-          statusId: grievances.statusId,
           categoryId: grievances.categoryId,
           data: grievances.data,
           timelineTemplateId: grievances.timelineTemplateId,
@@ -377,7 +388,7 @@ export function createGrievanceStorage(): GrievanceStorage {
           siriusId: grievances.siriusId,
           classDescription: grievances.classDescription,
           cardinality: grievances.cardinality,
-          statusId: grievances.statusId,
+          statusId: grievanceStatusHistory.statusId,
           categoryId: grievances.categoryId,
           data: grievances.data,
           timelineTemplateId: grievances.timelineTemplateId,
@@ -389,7 +400,14 @@ export function createGrievanceStorage(): GrievanceStorage {
           name: grievanceNameDenorm.name,
         })
         .from(grievances)
-        .leftJoin(optionsGrievanceStatus, eq(grievances.statusId, optionsGrievanceStatus.id))
+        .leftJoin(
+          grievanceStatusHistory,
+          and(
+            eq(grievanceStatusHistory.grievanceId, grievances.id),
+            eq(grievanceStatusHistory.isCurrent, true),
+          ),
+        )
+        .leftJoin(optionsGrievanceStatus, eq(grievanceStatusHistory.statusId, optionsGrievanceStatus.id))
         .leftJoin(optionsGrievanceCategory, eq(grievances.categoryId, optionsGrievanceCategory.id))
         .leftJoin(bargainingUnits, eq(grievances.bargainingUnitId, bargainingUnits.id))
         .leftJoin(grievanceNameDenorm, eq(grievanceNameDenorm.grievanceId, grievances.id))

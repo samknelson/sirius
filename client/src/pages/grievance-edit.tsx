@@ -1,6 +1,15 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
-import { Card, CardContent } from "@/components/ui/card";
+import { useQuery } from "@tanstack/react-query";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { GrievanceLayout, useGrievanceLayout } from "@/components/layouts/GrievanceLayout";
 import { GrievanceForm, type GrievanceFormValues } from "@/components/grievances/grievance-form";
 import { GrievanceWorkerManager } from "@/components/grievances/grievance-worker-section";
@@ -31,7 +40,6 @@ function GrievanceEditContent() {
         siriusId: values.siriusId?.trim() ? values.siriusId.trim() : null,
         classDescription: isClass && values.classDescription?.trim() ? values.classDescription.trim() : null,
         cardinality: values.cardinality,
-        statusId: values.statusId,
         categoryId: values.categoryId,
         ...(showBargainingUnit
           ? { bargainingUnitId: values.bargainingUnitId ? values.bargainingUnitId : null }
@@ -61,7 +69,6 @@ function GrievanceEditContent() {
               siriusId: grievance.siriusId ?? "",
               classDescription: grievance.classDescription ?? "",
               cardinality: grievance.cardinality,
-              statusId: grievance.statusId,
               categoryId: grievance.categoryId,
               bargainingUnitId: grievance.bargainingUnitId ?? "",
             }}
@@ -72,6 +79,11 @@ function GrievanceEditContent() {
           />
         </CardContent>
       </Card>
+
+      <GrievanceStatusCard
+        grievanceId={grievance.id}
+        currentStatusId={grievance.statusId}
+      />
 
       <GrievanceUserManager
         grievanceId={grievance.id}
@@ -131,6 +143,92 @@ function GrievanceEditContent() {
 
       {showContract && <GrievanceContractSection grievanceId={grievance.id} />}
     </div>
+  );
+}
+
+interface StatusOption {
+  id: string;
+  name: string;
+  isActive?: boolean;
+}
+
+/**
+ * Dedicated status card with its own Save. Saving appends a new status-history
+ * entry stamped "now" by the server (the current status is derived from the
+ * latest-dated entry). Backdated entries are managed on the Status History tab.
+ */
+function GrievanceStatusCard({
+  grievanceId,
+  currentStatusId,
+}: {
+  grievanceId: string;
+  currentStatusId: string | null;
+}) {
+  const { toast } = useToast();
+  const [selectedStatusId, setSelectedStatusId] = useState<string>(currentStatusId ?? "");
+  const [isSaving, setIsSaving] = useState(false);
+
+  const { data: statuses = [] } = useQuery<StatusOption[]>({
+    queryKey: ["/api/options/grievance-status"],
+  });
+
+  const handleSave = async () => {
+    if (!selectedStatusId) return;
+    setIsSaving(true);
+    try {
+      await apiRequest("POST", `/api/grievances/${grievanceId}/status-history`, {
+        statusId: selectedStatusId,
+      });
+      await queryClient.invalidateQueries({ queryKey: ["/api/grievances"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/grievances", grievanceId] });
+      await queryClient.invalidateQueries({
+        queryKey: ["/api/grievances", grievanceId, "status-history"],
+      });
+      toast({ title: "Status updated" });
+    } catch (error: any) {
+      toast({
+        title: "Failed to update status",
+        description: error?.message ?? "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-lg">Status</CardTitle>
+      </CardHeader>
+      <CardContent className="max-w-2xl space-y-4">
+        <Select value={selectedStatusId} onValueChange={setSelectedStatusId}>
+          <SelectTrigger data-testid="select-grievance-status">
+            <SelectValue placeholder="Select a status" />
+          </SelectTrigger>
+          <SelectContent>
+            {statuses
+              .filter((s) => s.isActive !== false)
+              .map((s) => (
+                <SelectItem key={s.id} value={s.id} data-testid={`option-status-${s.id}`}>
+                  {s.name}
+                </SelectItem>
+              ))}
+          </SelectContent>
+        </Select>
+        <p className="text-sm text-muted-foreground">
+          Saving records a new status history entry dated now. To backdate or
+          correct entries, use the Status History tab.
+        </p>
+        <Button
+          onClick={handleSave}
+          disabled={isSaving || !selectedStatusId || selectedStatusId === (currentStatusId ?? "")}
+          data-testid="button-save-status"
+        >
+          {isSaving ? "Saving..." : "Save Status"}
+        </Button>
+      </CardContent>
+    </Card>
   );
 }
 
