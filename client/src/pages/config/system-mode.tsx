@@ -1,5 +1,3 @@
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { queryClient, apiRequest } from "@/lib/queryClient";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -8,7 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Server, AlertTriangle, CheckCircle } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SystemMode } from "@/lib/system-types";
-import { useSystemMode } from "@/lib/use-variable";
+import { useSystemMode, useSetVariable } from "@/lib/use-variable";
 
 const modeDescriptions: Record<SystemMode, { label: string; description: string; color: string }> = {
   dev: {
@@ -34,15 +32,11 @@ export default function SystemModePage() {
 
   const { mode: currentMode, isLoading } = useSystemMode();
 
-  const updateModeMutation = useMutation({
-    mutationFn: async (mode: SystemMode) => {
-      return await apiRequest("PUT", "/api/system-mode", { mode });
-    },
-    onSuccess: (_, mode) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/variables/by-name", "system_mode"] });
+  const updateModeMutation = useSetVariable("system_mode", {
+    onSuccess: () => {
       toast({
         title: "System Mode Updated",
-        description: `System mode has been changed to ${modeDescriptions[mode].label}`,
+        description: "System mode has been changed.",
       });
     },
     onError: (error) => {

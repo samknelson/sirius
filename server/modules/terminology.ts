@@ -9,6 +9,11 @@ import {
   type TerminologyDictionary 
 } from "@shared/terminology";
 
+// Reads and writes of the site_terminology variable now go through the
+// generic variable routes (GET/PUT/DELETE /api/variables/by-name/
+// site_terminology), governed by the variable registry, which also runs
+// the cache-invalidation hook after writes.
+
 let terminologyCache: TerminologyDictionary | null = null;
 
 export async function loadTerminology(): Promise<TerminologyDictionary> {
@@ -58,66 +63,4 @@ export function registerTerminologyRoutes(
     }
   });
 
-  app.put("/api/terminology", requireAccess('admin'), async (req, res) => {
-    try {
-      const { terminology } = req.body;
-      
-      if (!terminology || typeof terminology !== 'object') {
-        res.status(400).json({ message: "Invalid terminology data" });
-        return;
-      }
-
-      const validTerms: Partial<TerminologyDictionary> = {};
-      for (const [key, value] of Object.entries(terminology)) {
-        if (key in TERM_REGISTRY && value && typeof value === 'object') {
-          const term = value as any;
-          if (term.singular && term.plural) {
-            validTerms[key] = {
-              singular: String(term.singular).trim(),
-              plural: String(term.plural).trim(),
-            };
-          }
-        }
-      }
-
-      const existingVariable = await storage.variables.getByName(TERMINOLOGY_VARIABLE_NAME);
-      
-      if (existingVariable) {
-        await storage.variables.update(existingVariable.id, { 
-          value: JSON.stringify(validTerms) 
-        });
-      } else {
-        await storage.variables.create({ 
-          name: TERMINOLOGY_VARIABLE_NAME, 
-          value: JSON.stringify(validTerms) 
-        });
-      }
-
-      invalidateTerminologyCache();
-      const updatedTerminology = await loadTerminology();
-      
-      res.json({ terminology: updatedTerminology });
-    } catch (error) {
-      console.error("Failed to update terminology:", error);
-      res.status(500).json({ message: "Failed to update terminology" });
-    }
-  });
-
-  app.post("/api/terminology/reset", requireAccess('admin'), async (req, res) => {
-    try {
-      const existingVariable = await storage.variables.getByName(TERMINOLOGY_VARIABLE_NAME);
-      
-      if (existingVariable) {
-        await storage.variables.delete(existingVariable.id);
-      }
-
-      invalidateTerminologyCache();
-      const defaultTerminology = getDefaultTerminology();
-      
-      res.json({ terminology: defaultTerminology });
-    } catch (error) {
-      console.error("Failed to reset terminology:", error);
-      res.status(500).json({ message: "Failed to reset terminology" });
-    }
-  });
 }

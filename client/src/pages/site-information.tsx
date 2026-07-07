@@ -1,14 +1,12 @@
 import { useState, useEffect } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Loader2, Save } from "lucide-react";
 import { SimpleHtmlEditor } from "@/components/ui/simple-html-editor";
-import { useSiteSettings, SITE_SETTING_VARIABLE_KEYS } from "@/lib/use-variable";
+import { useSiteSettings, useSetVariable } from "@/lib/use-variable";
 
 export default function SiteInformation() {
   const { toast } = useToast();
@@ -31,30 +29,30 @@ export default function SiteInformation() {
     }
   }, [isLoading, settings.siteName, settings.siteTitle, settings.footer, isEditingName, isEditingTitle, isEditingFooter]);
 
-  const updateMutation = useMutation({
-    mutationFn: async (updates: { siteName?: string; siteTitle?: string; footer?: string }) => {
-      return await apiRequest("PUT", "/api/site-settings", updates);
-    },
-    onSuccess: () => {
-      for (const key of SITE_SETTING_VARIABLE_KEYS) {
-        queryClient.invalidateQueries({ queryKey: [...key] });
-      }
-      setIsEditingName(false);
-      setIsEditingTitle(false);
-      setIsEditingFooter(false);
-      toast({
-        title: "Settings saved",
-        description: "Site settings have been updated successfully.",
-      });
-    },
-    onError: () => {
-      toast({
-        title: "Error",
-        description: "Failed to update site settings.",
-        variant: "destructive",
-      });
-    },
-  });
+  const onSaved = () => {
+    setIsEditingName(false);
+    setIsEditingTitle(false);
+    setIsEditingFooter(false);
+    toast({
+      title: "Settings saved",
+      description: "Site settings have been updated successfully.",
+    });
+  };
+  const onSaveError = () => {
+    toast({
+      title: "Error",
+      description: "Failed to update site settings.",
+      variant: "destructive",
+    });
+  };
+
+  const saveNameMutation = useSetVariable("site_name", { onSuccess: onSaved, onError: onSaveError });
+  const saveTitleMutation = useSetVariable("site_title", { onSuccess: onSaved, onError: onSaveError });
+  const saveFooterMutation = useSetVariable("site_footer", { onSuccess: onSaved, onError: onSaveError });
+
+  const updateMutation = {
+    isPending: saveNameMutation.isPending || saveTitleMutation.isPending || saveFooterMutation.isPending,
+  };
 
   const handleSaveName = () => {
     if (!siteName.trim()) {
@@ -65,7 +63,7 @@ export default function SiteInformation() {
       });
       return;
     }
-    updateMutation.mutate({ siteName });
+    saveNameMutation.mutate(siteName);
   };
 
   const handleSaveTitle = () => {
@@ -77,11 +75,11 @@ export default function SiteInformation() {
       });
       return;
     }
-    updateMutation.mutate({ siteTitle });
+    saveTitleMutation.mutate(siteTitle);
   };
 
   const handleSaveFooter = () => {
-    updateMutation.mutate({ footer });
+    saveFooterMutation.mutate(footer);
   };
 
   const handleCancelName = () => {

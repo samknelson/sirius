@@ -1,4 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { SystemMode } from "@/lib/system-types";
 
 /**
@@ -67,6 +68,52 @@ export function useSiteSettings(): {
     footer: typeof footerQuery.data === "string" ? footerQuery.data : "",
     isLoading: nameQuery.isLoading || titleQuery.isLoading || footerQuery.isLoading,
   };
+}
+
+/**
+ * Write a variable's value via PUT /api/variables/by-name/:name.
+ * The server validates the value against the variable registry schema
+ * and enforces per-variable write access. Invalidates the matching
+ * read query on success before calling the caller's onSuccess.
+ */
+export function useSetVariable(
+  name: string,
+  options?: { onSuccess?: () => void; onError?: (error: Error) => void },
+) {
+  return useMutation({
+    mutationFn: async (value: unknown) => {
+      return apiRequest("PUT", `/api/variables/by-name/${encodeURIComponent(name)}`, { value });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/variables/by-name", name] });
+      options?.onSuccess?.();
+    },
+    onError: (error: Error) => {
+      options?.onError?.(error);
+    },
+  });
+}
+
+/**
+ * Delete a variable via DELETE /api/variables/by-name/:name (used e.g.
+ * for terminology reset). Invalidates the matching read query.
+ */
+export function useDeleteVariable(
+  name: string,
+  options?: { onSuccess?: () => void; onError?: (error: Error) => void },
+) {
+  return useMutation({
+    mutationFn: async () => {
+      return apiRequest("DELETE", `/api/variables/by-name/${encodeURIComponent(name)}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/variables/by-name", name] });
+      options?.onSuccess?.();
+    },
+    onError: (error: Error) => {
+      options?.onError?.(error);
+    },
+  });
 }
 
 /** Invalidate helpers for the write pages (PUT routes are unchanged). */

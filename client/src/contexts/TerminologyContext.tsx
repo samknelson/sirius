@@ -57,9 +57,15 @@ export function TerminologyProvider({ children }: { children: React.ReactNode })
     return resolveTerm(terminology, key, options);
   }, [terminology]);
 
+  // Writes go through the generic variable routes; the server-side
+  // variable registry validates the value and refreshes its cache.
   const updateMutation = useMutation({
     mutationFn: async (terms: Partial<TerminologyDictionary>) => {
-      return await apiRequest('PUT', '/api/terminology', { terminology: terms });
+      return await apiRequest(
+        'PUT',
+        `/api/variables/by-name/${TERMINOLOGY_VARIABLE_NAME}`,
+        { value: terms },
+      );
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/variables/by-name', TERMINOLOGY_VARIABLE_NAME] });
@@ -68,7 +74,15 @@ export function TerminologyProvider({ children }: { children: React.ReactNode })
 
   const resetMutation = useMutation({
     mutationFn: async () => {
-      return await apiRequest('POST', '/api/terminology/reset');
+      try {
+        return await apiRequest('DELETE', `/api/variables/by-name/${TERMINOLOGY_VARIABLE_NAME}`);
+      } catch (error) {
+        // 404 = no custom terminology stored; already at defaults.
+        if (error instanceof Error && error.message.startsWith('404')) {
+          return undefined;
+        }
+        throw error;
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/variables/by-name', TERMINOLOGY_VARIABLE_NAME] });

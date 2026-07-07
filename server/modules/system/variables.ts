@@ -2,7 +2,12 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../../storage";
 import { insertVariableSchema } from "@shared/schema";
 import { requireAccess } from "../../services/access-policy-evaluator";
-import { checkVariableReadAccess } from "./variable-read-access";
+import {
+  checkVariableReadAccess,
+  checkVariableWriteAccess,
+  validateVariableValue,
+  runVariableOnWrite,
+} from "./variable-registry";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -22,7 +27,7 @@ export function registerVariableRoutes(
   });
 
   // Per-variable read access: no blanket auth middleware. The registry in
-  // variable-read-access.ts decides who may read each variable; unlisted
+  // variable-registry.ts decides who may read each variable; unlisted
   // names require the admin policy exactly as before.
   app.get("/api/variables/:id", async (req, res) => {
     try {
@@ -79,6 +84,69 @@ export function registerVariableRoutes(
     }
   });
 
+  // Upsert a variable by name. Access + value validation come from the
+  // variable registry: writeTier (default admin), optional component gate,
+  // optional zod schema for the value, optional onWrite hook.
+  app.put("/api/variables/by-name/:name", async (req, res) => {
+    try {
+      const { name } = req.params;
+
+      const decision = await checkVariableWriteAccess(req, name);
+      if (!decision.granted) {
+        res.status(decision.status).json({ message: decision.message });
+        return;
+      }
+
+      if (!Object.prototype.hasOwnProperty.call(req.body ?? {}, "value")) {
+        res.status(400).json({ message: "Request body must include a value" });
+        return;
+      }
+
+      const validation = validateVariableValue(name, req.body.value);
+      if (!validation.ok) {
+        res.status(400).json({ message: "Invalid variable value", errors: validation.errors });
+        return;
+      }
+
+      const existing = await storage.variables.getByName(name);
+      const variable = existing
+        ? await storage.variables.update(existing.id, { value: validation.value })
+        : await storage.variables.create({ name, value: validation.value });
+
+      await runVariableOnWrite(name);
+      res.json(variable);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to save variable" });
+    }
+  });
+
+  // Delete a variable by name (used e.g. for terminology reset). Same
+  // registry-driven write access; deleting a missing variable is a 404
+  // only after access is granted, so existence is never leaked.
+  app.delete("/api/variables/by-name/:name", async (req, res) => {
+    try {
+      const { name } = req.params;
+
+      const decision = await checkVariableWriteAccess(req, name);
+      if (!decision.granted) {
+        res.status(decision.status).json({ message: decision.message });
+        return;
+      }
+
+      const existing = await storage.variables.getByName(name);
+      if (!existing) {
+        res.status(404).json({ message: "Variable not found" });
+        return;
+      }
+
+      await storage.variables.delete(existing.id);
+      await runVariableOnWrite(name);
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ message: "Failed to delete variable" });
+    }
+  });
+
   app.post("/api/variables", requireAccess('admin'), async (req, res) => {
     try {
       const validatedData = insertVariableSchema.parse(req.body);
@@ -88,8 +156,17 @@ export function registerVariableRoutes(
         res.status(409).json({ message: "Variable name already exists" });
         return;
       }
-      
-      const variable = await storage.variables.create(validatedData);
+
+      // Registered variables get their value validated even on the
+      // generic admin route, so the Options page can't write garbage.
+      const validation = validateVariableValue(validatedData.name, validatedData.value);
+      if (!validation.ok) {
+        res.status(400).json({ message: "Invalid variable value", errors: validation.errors });
+        return;
+      }
+
+      const variable = await storage.variables.create({ ...validatedData, value: validation.value });
+      await runVariableOnWrite(validatedData.name);
       res.status(201).json(variable);
     } catch (error) {
       if (error instanceof Error && error.name === "ZodError") {
@@ -114,14 +191,34 @@ export function registerVariableRoutes(
           return;
         }
       }
-      
+
+      const current = await storage.variables.get(id);
+      if (!current) {
+        res.status(404).json({ message: "Variable not found" });
+        return;
+      }
+
+      // Validate the FINAL persisted value against the registry schema for
+      // the variable's effective (possibly renamed) name — including
+      // rename-only updates, where the existing stored value must satisfy
+      // the target name's schema.
+      const effectiveName = validatedData.name ?? current.name;
+      const finalValue = validatedData.value !== undefined ? validatedData.value : current.value;
+      const validation = validateVariableValue(effectiveName, finalValue);
+      if (!validation.ok) {
+        res.status(400).json({ message: "Invalid variable value", errors: validation.errors });
+        return;
+      }
+      validatedData.value = validation.value;
+
       const variable = await storage.variables.update(id, validatedData);
       
       if (!variable) {
         res.status(404).json({ message: "Variable not found" });
         return;
       }
-      
+
+      await runVariableOnWrite(effectiveName);
       res.json(variable);
     } catch (error) {
       if (error instanceof Error && error.name === "ZodError") {
@@ -137,11 +234,18 @@ export function registerVariableRoutes(
   app.delete("/api/variables/:id", requireAccess('admin'), async (req, res) => {
     try {
       const { id } = req.params;
+      const current = await storage.variables.get(id);
       const deleted = await storage.variables.delete(id);
       
       if (!deleted) {
         res.status(404).json({ message: "Variable not found" });
         return;
+      }
+
+      // Keep by-id deletion consistent with by-name deletion: run any
+      // registry onWrite hook (e.g. terminology cache invalidation).
+      if (current) {
+        await runVariableOnWrite(current.name);
       }
       
       res.status(204).send();

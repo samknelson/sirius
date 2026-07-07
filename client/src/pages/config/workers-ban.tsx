@@ -1,4 +1,3 @@
-import { useQuery, useMutation } from "@tanstack/react-query";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -9,7 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useVariableValue, useSetVariable } from "@/lib/use-variable";
 import { Save, Mail, MessageSquare, Bell } from "lucide-react";
 import { useEffect } from "react";
 
@@ -21,17 +20,13 @@ const configSchema = z.object({
 
 type ConfigFormValues = z.infer<typeof configSchema>;
 
-interface ConfigResponse {
-  config: ConfigFormValues;
-}
+const VARIABLE_NAME = "worker_ban_notifications";
 
 export default function WorkerBanConfigPage() {
   usePageTitle("Worker Bans");
   const { toast } = useToast();
 
-  const { data, isLoading } = useQuery<ConfigResponse>({
-    queryKey: ["/api/config/workers/ban"],
-  });
+  const { data: value, isLoading } = useVariableValue(VARIABLE_NAME);
 
   const form = useForm<ConfigFormValues>({
     resolver: zodResolver(configSchema),
@@ -43,21 +38,18 @@ export default function WorkerBanConfigPage() {
   });
 
   useEffect(() => {
-    if (data?.config) {
-      form.reset(data.config);
+    const parsed = configSchema.safeParse(value);
+    if (parsed.success) {
+      form.reset(parsed.data);
     }
-  }, [data, form]);
+  }, [value, form]);
 
-  const saveMutation = useMutation({
-    mutationFn: async (values: ConfigFormValues) => {
-      return apiRequest("PUT", "/api/config/workers/ban", values);
-    },
+  const saveMutation = useSetVariable(VARIABLE_NAME, {
     onSuccess: () => {
       toast({
         title: "Settings saved",
         description: "Worker ban notification preferences have been updated.",
       });
-      queryClient.invalidateQueries({ queryKey: ["/api/config/workers/ban"] });
     },
     onError: (error: Error) => {
       toast({

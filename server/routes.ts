@@ -57,8 +57,6 @@ import { registerEligibilityPluginRoutes } from "./modules/eligibility-plugins";
 import { registerTwilioRoutes } from "./modules/twilio";
 import { registerEmailConfigRoutes } from "./modules/email-config";
 import { registerPostalConfigRoutes } from "./modules/postal-config";
-import { registerSiteSettingsRoutes } from "./modules/site-settings";
-import { registerSystemModeRoutes } from "./modules/system/system-mode";
 import { registerBootstrapRoutes } from "./modules/system/bootstrap";
 import { registerBargainingUnitsRoutes } from "./modules/bargaining-units";
 import { registerSftpClientDestinationRoutes } from "./modules/sftp-client-destinations";
@@ -70,10 +68,6 @@ import { registerEmployerPolicyHistoryRoutes } from "./modules/employers/policy-
 import { registerWorkerBenefitsScanRoutes } from "./modules/worker-benefits-scan";
 import { registerWmbScanQueueRoutes } from "./modules/wmb-scan-queue";
 import { registerEventNotifierMetaRoutes } from "./modules/event-notifier-meta";
-import { registerDispatchDncConfigRoutes } from "./modules/dispatch/dnc-config";
-import { registerDispatchEbaConfigRoutes } from "./modules/dispatch/eba-config";
-import { registerDispatchSeniorityResetConfigRoutes } from "./modules/dispatch/seniority-reset-config";
-import { registerWorkerBanConfigRoutes } from "./modules/worker-ban-config";
 import { registerCardcheckDefinitionsRoutes } from "./modules/cardcheck-definitions";
 import { registerCardchecksRoutes } from "./modules/cardchecks";
 import { registerEsigsRoutes } from "./modules/esigs";
@@ -418,14 +412,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Register Postal configuration routes
   registerPostalConfigRoutes(app);
 
-  // Register site settings routes
-  registerSiteSettingsRoutes(app, requireAuth, requirePermission, requireAccess);
-
   // Register terminology routes
   registerTerminologyRoutes(app, requireAuth, requirePermission, requireAccess);
-
-  // Register system mode routes
-  registerSystemModeRoutes(app, requireAuth, requirePermission, requireAccess);
 
   // Register bootstrap routes (no auth required - intentionally public for initial setup)
   registerBootstrapRoutes(app);
@@ -462,16 +450,6 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   
   // Register event-notifier admin metadata routes (staff user picker source)
   registerEventNotifierMetaRoutes(app, requireAuth, requireAccess, storage);
-  
-  // Register dispatch DNC configuration routes
-  registerDispatchDncConfigRoutes(app, requireAuth, requireAccess, storage);
-  
-  // Register dispatch EBA configuration routes
-  registerDispatchEbaConfigRoutes(app, requireAuth, requireAccess, storage);
-  registerDispatchSeniorityResetConfigRoutes(app, requireAuth, requireAccess, storage);
-  
-  // Register worker ban configuration routes
-  registerWorkerBanConfigRoutes(app, requireAuth, requireAccess, storage);
   
   // Register cardcheck definitions routes
   registerCardcheckDefinitionsRoutes(
