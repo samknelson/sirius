@@ -280,6 +280,7 @@ export function createGrievanceStorage(): GrievanceStorage {
           data: grievances.data,
           timelineTemplateId: grievances.timelineTemplateId,
           bargainingUnitId: grievances.bargainingUnitId,
+          employerContactId: grievances.employerContactId,
           statusName: optionsGrievanceStatus.name,
           categoryName: optionsGrievanceCategory.name,
         })
@@ -372,6 +373,7 @@ export function createGrievanceStorage(): GrievanceStorage {
           data: grievances.data,
           timelineTemplateId: grievances.timelineTemplateId,
           bargainingUnitId: grievances.bargainingUnitId,
+          employerContactId: grievances.employerContactId,
           name: grievanceNameDenorm.name,
         })
         .from(grievances)
