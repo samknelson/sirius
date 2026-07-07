@@ -3,8 +3,17 @@ import { getClient } from './transaction-context';
 import { wizards, wizardReportData, wizardEmployerMonthly, type Wizard, type InsertWizard, type WizardReportData, type InsertWizardReportData } from "@shared/schema";
 import { eq, and, desc, or, lt } from "drizzle-orm";
 import { type StorageLoggingConfig } from "./middleware/logging";
-import { wizardPluginRegistry } from "../plugins/wizards";
 import { db } from './db';
+
+// NOTE: Do NOT statically import from ../plugins/wizards here. The wizard
+// plugin registry (and the plugins it loads) import back into the storage
+// layer, and that circular import makes the esbuild production bundle fail
+// at boot ("Class extends value undefined"). Resolve the registry lazily
+// inside the async logging callbacks instead.
+async function getWizardDisplayName(type: string | undefined | null): Promise<string | undefined> {
+  const { wizardPluginRegistry } = await import("../plugins/wizards/registry");
+  return type ? wizardPluginRegistry.get(type)?.name : undefined;
+}
 import { runInTransaction } from './transaction-context';
 
 /**
@@ -260,8 +269,7 @@ export const wizardLoggingConfig: StorageLoggingConfig<WizardStorage> = {
       },
       getDescription: async (args, result) => {
         const wizard = result;
-        const wizardType = wizardPluginRegistry.get(wizard?.type);
-        const displayName = wizardType?.name || wizard?.type || 'Unknown wizard';
+        const displayName = (await getWizardDisplayName(wizard?.type)) || wizard?.type || 'Unknown wizard';
         const date = wizard?.date ? new Date(wizard.date).toISOString() : 'unknown date';
         return `${displayName}, ${date}`;
       },
@@ -277,8 +285,7 @@ export const wizardLoggingConfig: StorageLoggingConfig<WizardStorage> = {
       },
       getDescription: async (args, result, beforeState) => {
         const wizard = result ?? beforeState;
-        const wizardType = wizardPluginRegistry.get(wizard?.type);
-        const displayName = wizardType?.name || wizard?.type || 'Unknown wizard';
+        const displayName = (await getWizardDisplayName(wizard?.type)) || wizard?.type || 'Unknown wizard';
         const date = wizard?.date ? new Date(wizard.date).toISOString() : 'unknown date';
         return `${displayName}, ${date}`;
       },
@@ -297,8 +304,7 @@ export const wizardLoggingConfig: StorageLoggingConfig<WizardStorage> = {
       },
       getDescription: async (args, result, beforeState) => {
         const wizard = beforeState;
-        const wizardType = wizardPluginRegistry.get(wizard?.type);
-        const displayName = wizardType?.name || wizard?.type || 'Unknown wizard';
+        const displayName = (await getWizardDisplayName(wizard?.type)) || wizard?.type || 'Unknown wizard';
         const date = wizard?.date ? new Date(wizard.date).toISOString() : 'unknown date';
         return `${displayName}, ${date}`;
       },
