@@ -7,6 +7,7 @@ import {
   type GrievanceStepsDenorm,
 } from "@shared/schema";
 import { eq, and, asc, isNull, isNotNull, or } from "drizzle-orm";
+import type { GrievanceTimelineAdjustment } from "@shared/schema";
 
 /** One computed timeline step row, ready for insertion (plugin-supplied). */
 export interface GrievanceTimelineStepRow {
@@ -17,6 +18,13 @@ export interface GrievanceTimelineStepRow {
   isCurrent: boolean;
   /** Template-step ordering so the UI can render steps in sequence. */
   sequence: number;
+  /**
+   * When the step's start entry carried a timeline adjustment: the adjustment
+   * itself plus the original (unadjusted) computed due date, recorded in the
+   * row's `data` json so the timeline tab can show both.
+   */
+  adjustment?: GrievanceTimelineAdjustment | null;
+  originalDueYmd?: string | null;
 }
 
 export interface GrievanceTimelineStepItem extends GrievanceStepsDenorm {
@@ -112,7 +120,12 @@ export function createGrievanceStepsDenormStorage(): GrievanceStepsDenormStorage
           dueYmd: row.dueYmd,
           completedYmd: row.completedYmd,
           isCurrent: row.isCurrent,
-          data: { sequence: row.sequence },
+          data: {
+            sequence: row.sequence,
+            ...(row.adjustment
+              ? { adjustment: row.adjustment, originalDueYmd: row.originalDueYmd ?? null }
+              : {}),
+          },
         })),
       );
     },

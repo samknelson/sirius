@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { CalendarClock, Pencil, Plus, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -44,7 +44,12 @@ import {
 import { GrievanceLayout, useGrievanceLayout } from "@/components/layouts/GrievanceLayout";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { GrievanceTimelineTemplate } from "@shared/schema";
+import {
+  readTimelineAdjustment,
+  type GrievanceTimelineAdjustment,
+  type GrievanceTimelineTemplate,
+} from "@shared/schema";
+import { formatYmd as formatYmdLong } from "@shared/utils/date";
 
 const NONE_VALUE = "__none__";
 
@@ -55,6 +60,16 @@ interface StatusHistoryEntry {
   date: string;
   isCurrent: boolean;
   statusName: string | null;
+  data: unknown;
+}
+
+/** Human-readable description of a timeline adjustment. */
+export function describeAdjustment(adj: GrievanceTimelineAdjustment): string {
+  if (adj.kind === "relative") {
+    const abs = Math.abs(adj.days);
+    return `${adj.days > 0 ? "+" : "-"}${abs} day${abs === 1 ? "" : "s"}`;
+  }
+  return `due set to ${formatYmdLong(adj.date, "short")}`;
 }
 
 interface StatusOption {
@@ -170,6 +185,11 @@ function GrievanceStatusHistoryContent() {
   const [formDate, setFormDate] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<StatusHistoryEntry | null>(null);
 
+  const [adjustTarget, setAdjustTarget] = useState<StatusHistoryEntry | null>(null);
+  const [adjustMode, setAdjustMode] = useState<"relative" | "explicit">("relative");
+  const [adjustDays, setAdjustDays] = useState("");
+  const [adjustDate, setAdjustDate] = useState("");
+
   const { data: entries = [], isLoading } = useQuery<StatusHistoryEntry[]>({
     queryKey: ["/api/grievances", grievance.id, "status-history"],
   });
@@ -251,6 +271,59 @@ function GrievanceStatusHistoryContent() {
     },
   });
 
+  const openAdjust = (entry: StatusHistoryEntry) => {
+    const existing = readTimelineAdjustment(entry.data);
+    if (existing?.kind === "explicit") {
+      setAdjustMode("explicit");
+      setAdjustDate(existing.date);
+      setAdjustDays("");
+    } else {
+      setAdjustMode("relative");
+      setAdjustDays(existing?.kind === "relative" ? String(existing.days) : "");
+      setAdjustDate("");
+    }
+    setAdjustTarget(entry);
+  };
+
+  const adjustMutation = useMutation({
+    mutationFn: async (adjustment: GrievanceTimelineAdjustment | null) => {
+      if (!adjustTarget) return;
+      return apiRequest(
+        "PUT",
+        `/api/grievances/${grievance.id}/status-history/${adjustTarget.id}/timeline-adjustment`,
+        { adjustment },
+      );
+    },
+    onSuccess: async (_data, adjustment) => {
+      await invalidate();
+      setAdjustTarget(null);
+      toast({
+        title: adjustment === null ? "Timeline adjustment removed" : "Timeline adjustment saved",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Failed to save timeline adjustment",
+        description: error?.message ?? "Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const parsedAdjustDays = Number(adjustDays);
+  const canSaveAdjustment =
+    adjustMode === "relative"
+      ? adjustDays.trim() !== "" && Number.isInteger(parsedAdjustDays) && parsedAdjustDays !== 0
+      : /^\d{4}-\d{2}-\d{2}$/.test(adjustDate);
+
+  const saveAdjustment = () => {
+    const adjustment: GrievanceTimelineAdjustment =
+      adjustMode === "relative"
+        ? { kind: "relative", days: parsedAdjustDays }
+        : { kind: "explicit", date: adjustDate };
+    adjustMutation.mutate(adjustment);
+  };
+
   const canSave =
     formStatusId !== "" &&
     formDate !== "" &&
@@ -282,12 +355,15 @@ function GrievanceStatusHistoryContent() {
               <TableRow>
                 <TableHead>Status</TableHead>
                 <TableHead>Date</TableHead>
+                <TableHead>Timeline Adjustment</TableHead>
                 <TableHead></TableHead>
-                <TableHead className="w-24"></TableHead>
+                <TableHead className="w-32"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {entries.map((entry) => (
+              {entries.map((entry) => {
+                const adjustment = readTimelineAdjustment(entry.data);
+                return (
                 <TableRow key={entry.id} data-testid={`row-status-entry-${entry.id}`}>
                   <TableCell data-testid={`text-status-name-${entry.id}`}>
                     {entry.statusName ?? "—"}
@@ -296,12 +372,32 @@ function GrievanceStatusHistoryContent() {
                     {format(new Date(entry.date), "PPp")}
                   </TableCell>
                   <TableCell>
+                    {adjustment && (
+                      <Badge
+                        variant="outline"
+                        data-testid={`badge-adjustment-${entry.id}`}
+                      >
+                        <CalendarClock className="h-3 w-3 mr-1" />
+                        {describeAdjustment(adjustment)}
+                      </Badge>
+                    )}
+                  </TableCell>
+                  <TableCell>
                     {entry.isCurrent && (
                       <Badge data-testid={`badge-current-${entry.id}`}>Current</Badge>
                     )}
                   </TableCell>
                   <TableCell>
                     <div className="flex justify-end gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        title="Adjust timeline"
+                        onClick={() => openAdjust(entry)}
+                        data-testid={`button-adjust-timeline-${entry.id}`}
+                      >
+                        <CalendarClock className="h-4 w-4" />
+                      </Button>
                       <Button
                         variant="ghost"
                         size="icon"
@@ -321,7 +417,8 @@ function GrievanceStatusHistoryContent() {
                     </div>
                   </TableCell>
                 </TableRow>
-              ))}
+                );
+              })}
             </TableBody>
           </Table>
         )}
@@ -381,6 +478,98 @@ function GrievanceStatusHistoryContent() {
             >
               {saveMutation.isPending ? "Saving..." : "Save"}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={adjustTarget !== null}
+        onOpenChange={(open) => !open && setAdjustTarget(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Adjust Timeline</DialogTitle>
+            <DialogDescription>
+              Extend or shorten the deadline of the timeline step this entry
+              starts. Add or subtract days (business-day steps count business
+              days), or set an exact due date.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Adjustment type</Label>
+              <Select
+                value={adjustMode}
+                onValueChange={(v) => setAdjustMode(v as "relative" | "explicit")}
+              >
+                <SelectTrigger data-testid="select-adjustment-mode">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="relative" data-testid="option-adjustment-relative">
+                    Add / subtract days
+                  </SelectItem>
+                  <SelectItem value="explicit" data-testid="option-adjustment-explicit">
+                    Set exact due date
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {adjustMode === "relative" ? (
+              <div className="space-y-2">
+                <Label htmlFor="adjust-days">Days (+ extends, − shortens)</Label>
+                <Input
+                  id="adjust-days"
+                  type="number"
+                  step="1"
+                  placeholder="e.g. 5 or -3"
+                  value={adjustDays}
+                  onChange={(e) => setAdjustDays(e.target.value)}
+                  data-testid="input-adjustment-days"
+                />
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <Label htmlFor="adjust-date">Due date</Label>
+                <Input
+                  id="adjust-date"
+                  type="date"
+                  value={adjustDate}
+                  onChange={(e) => setAdjustDate(e.target.value)}
+                  data-testid="input-adjustment-date"
+                />
+              </div>
+            )}
+          </div>
+          <DialogFooter className="gap-2 sm:justify-between">
+            <div>
+              {adjustTarget && readTimelineAdjustment(adjustTarget.data) && (
+                <Button
+                  variant="destructive"
+                  onClick={() => adjustMutation.mutate(null)}
+                  disabled={adjustMutation.isPending}
+                  data-testid="button-remove-adjustment"
+                >
+                  Remove adjustment
+                </Button>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setAdjustTarget(null)}
+                data-testid="button-cancel-adjustment"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={saveAdjustment}
+                disabled={!canSaveAdjustment || adjustMutation.isPending}
+                data-testid="button-save-adjustment"
+              >
+                {adjustMutation.isPending ? "Saving..." : "Save"}
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>

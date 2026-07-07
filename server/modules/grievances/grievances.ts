@@ -3,7 +3,7 @@ import { z } from "zod";
 import { storage } from "../../storage";
 import { requireComponent } from "../components";
 import { buildContext, getAccessStorage } from "../../services/access-policy-evaluator";
-import { GRIEVANCE_CARDINALITIES } from "@shared/schema";
+import { GRIEVANCE_CARDINALITIES, grievanceTimelineAdjustmentSchema } from "@shared/schema";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PolicyMiddleware = (
@@ -145,6 +145,11 @@ const updateStatusHistorySchema = z
   .refine((v) => v.statusId !== undefined || v.date !== undefined, {
     message: "At least one field must be provided",
   });
+
+// Timeline adjustment on a status history entry: null clears it.
+const setTimelineAdjustmentSchema = z.object({
+  adjustment: grievanceTimelineAdjustmentSchema.nullable(),
+});
 
 const setContractSchema = z.object({
   contractId: z.string().uuid("A valid contract is required"),
@@ -470,6 +475,33 @@ export function registerGrievanceRoutes(
       res.status(500).json({ message: "Failed to update status history entry" });
     }
   });
+
+  app.put(
+    "/api/grievances/:id/status-history/:entryId/timeline-adjustment",
+    ...gate,
+    async (req, res) => {
+      try {
+        const parsed = setTimelineAdjustmentSchema.safeParse(req.body);
+        if (!parsed.success) {
+          return res
+            .status(400)
+            .json({ message: "Invalid request body", errors: parsed.error.flatten() });
+        }
+        const updated = await storage.grievanceStatusHistory.setTimelineAdjustment(
+          req.params.id,
+          req.params.entryId,
+          parsed.data.adjustment,
+        );
+        if (!updated) {
+          return res.status(404).json({ message: "Status history entry not found" });
+        }
+        res.json(updated);
+      } catch (error) {
+        console.error("Failed to set grievance timeline adjustment:", error);
+        res.status(500).json({ message: "Failed to set timeline adjustment" });
+      }
+    },
+  );
 
   app.delete("/api/grievances/:id/status-history/:entryId", ...gate, async (req, res) => {
     try {

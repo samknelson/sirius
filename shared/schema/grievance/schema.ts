@@ -220,6 +220,51 @@ export type InsertGrievanceStatusHistory = z.infer<
   typeof insertGrievanceStatusHistorySchema
 >;
 
+/**
+ * Timeline adjustment attached to a status history entry, stored under the
+ * `timelineAdjustment` key of the entry's `data` jsonb. Applied by the
+ * `grievance_timeline` denorm plugin to the due date of the step this entry
+ * STARTS:
+ *  - `relative` shifts the computed due date by +/- days, following the
+ *    step's dayType (business steps add/subtract business days);
+ *  - `explicit` replaces the computed due date outright with a Ymd date.
+ */
+export const grievanceTimelineAdjustmentSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("relative"),
+    days: z
+      .number()
+      .int("Days must be a whole number")
+      .refine((d) => d !== 0, "Days cannot be zero"),
+    note: z.string().max(500).optional(),
+  }),
+  z.object({
+    kind: z.literal("explicit"),
+    date: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be in YYYY-MM-DD format"),
+    note: z.string().max(500).optional(),
+  }),
+]);
+
+export type GrievanceTimelineAdjustment = z.infer<
+  typeof grievanceTimelineAdjustmentSchema
+>;
+
+/** The `data` jsonb key the adjustment lives under on a status history entry. */
+export const TIMELINE_ADJUSTMENT_DATA_KEY = "timelineAdjustment";
+
+/** Read (and validate) an entry's timeline adjustment from its `data` jsonb. */
+export function readTimelineAdjustment(
+  data: unknown,
+): GrievanceTimelineAdjustment | null {
+  if (!data || typeof data !== "object") return null;
+  const raw = (data as Record<string, unknown>)[TIMELINE_ADJUSTMENT_DATA_KEY];
+  if (raw === undefined || raw === null) return null;
+  const parsed = grievanceTimelineAdjustmentSchema.safeParse(raw);
+  return parsed.success ? parsed.data : null;
+}
+
 export const grievanceWorkers = pgTable(
   "grievance_workers",
   {

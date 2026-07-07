@@ -10,8 +10,19 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { CalendarClock } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { GrievanceLayout, useGrievanceLayout } from "@/components/layouts/GrievanceLayout";
-import type { GrievanceTimelineTemplateStep, OptionsGrievanceStep } from "@shared/schema";
+import type {
+  GrievanceTimelineAdjustment,
+  GrievanceTimelineTemplateStep,
+  OptionsGrievanceStep,
+} from "@shared/schema";
+import { grievanceTimelineAdjustmentSchema } from "@shared/schema";
 import {
   type GrievanceTimelineStepItem,
   type DeadlineThresholds,
@@ -30,6 +41,32 @@ interface TimelineRow {
   completedYmd: string | null;
   isCurrent: boolean;
   pending: boolean;
+  adjustment: GrievanceTimelineAdjustment | null;
+  originalDueYmd: string | null;
+}
+
+/** Read the adjustment info the denorm plugin recorded in the row's `data` json. */
+function readRowAdjustment(data: unknown): {
+  adjustment: GrievanceTimelineAdjustment | null;
+  originalDueYmd: string | null;
+} {
+  if (!data || typeof data !== "object") return { adjustment: null, originalDueYmd: null };
+  const d = data as Record<string, unknown>;
+  const parsed = grievanceTimelineAdjustmentSchema.safeParse(d.adjustment);
+  if (!parsed.success) return { adjustment: null, originalDueYmd: null };
+  return {
+    adjustment: parsed.data,
+    originalDueYmd: typeof d.originalDueYmd === "string" ? d.originalDueYmd : null,
+  };
+}
+
+/** Human-readable description of a timeline adjustment. */
+function describeAdjustment(adj: GrievanceTimelineAdjustment): string {
+  if (adj.kind === "relative") {
+    const abs = Math.abs(adj.days);
+    return `Deadline ${adj.days > 0 ? "extended" : "shortened"} by ${abs} day${abs === 1 ? "" : "s"}`;
+  }
+  return `Deadline set to ${formatYmd(adj.date)}`;
 }
 
 function buildRows(
@@ -54,6 +91,7 @@ function buildRows(
   for (const ts of ordered) {
     const match = takeComputed(ts.stepId);
     if (match) {
+      const adj = readRowAdjustment(match.data);
       rows.push({
         key: match.id,
         stepName: match.stepName,
@@ -63,6 +101,8 @@ function buildRows(
         completedYmd: match.completedYmd,
         isCurrent: match.isCurrent,
         pending: false,
+        adjustment: adj.adjustment,
+        originalDueYmd: adj.originalDueYmd,
       });
     } else {
       const option = optionById.get(ts.stepId);
@@ -75,6 +115,8 @@ function buildRows(
         completedYmd: null,
         isCurrent: false,
         pending: true,
+        adjustment: null,
+        originalDueYmd: null,
       });
     }
   }
@@ -82,6 +124,7 @@ function buildRows(
   // Any computed rows not matched to a template step (e.g. the template was
   // edited after the steps were computed) still get shown, at the end.
   for (const c of remaining) {
+    const adj = readRowAdjustment(c.data);
     rows.push({
       key: c.id,
       stepName: c.stepName,
@@ -91,6 +134,8 @@ function buildRows(
       completedYmd: c.completedYmd,
       isCurrent: c.isCurrent,
       pending: false,
+      adjustment: adj.adjustment,
+      originalDueYmd: adj.originalDueYmd,
     });
   }
 
@@ -107,9 +152,29 @@ function rowStatus(row: TimelineRow): { label: string; variant: "default" | "sec
 
 function DeadlineCell({ row, thresholds }: { row: TimelineRow; thresholds: DeadlineThresholds }) {
   if (!row.dueYmd) return <span className="text-muted-foreground">—</span>;
-  // Completed steps get no urgency coloring — the deadline no longer matters.
-  if (row.completedYmd) return <span>{formatYmd(row.dueYmd)}</span>;
-  return <span className={deadlineColorClass(row.dueYmd, thresholds)}>{formatYmd(row.dueYmd)}</span>;
+  // Urgency coloring keys to the ADJUSTED due date; completed steps get none.
+  const adjustedEl = row.completedYmd ? (
+    <span>{formatYmd(row.dueYmd)}</span>
+  ) : (
+    <span className={deadlineColorClass(row.dueYmd, thresholds)}>{formatYmd(row.dueYmd)}</span>
+  );
+  if (!row.adjustment) return adjustedEl;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="inline-flex items-center gap-1.5" data-testid={`deadline-adjusted-${row.key}`}>
+          {row.originalDueYmd && row.originalDueYmd !== row.dueYmd && (
+            <span className="text-muted-foreground line-through">
+              {formatYmd(row.originalDueYmd)}
+            </span>
+          )}
+          {adjustedEl}
+          <CalendarClock className="h-3.5 w-3.5 text-muted-foreground" />
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>{describeAdjustment(row.adjustment)}</TooltipContent>
+    </Tooltip>
+  );
 }
 
 function TimelineTable({

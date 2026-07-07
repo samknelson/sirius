@@ -4,6 +4,7 @@ import { EventType } from "../../../../services/event-bus";
 import { storage } from "../../../../storage";
 import type { GrievanceTimelineStepRow } from "../../../../storage/system/grievance-steps-denorm";
 import { dateToYmd, addDaysYmd, addBusinessDaysYmd } from "@shared/utils/date";
+import { readTimelineAdjustment } from "@shared/schema";
 
 /**
  * Denorm payload for a grievance's computed timeline steps: zero or more rows
@@ -83,10 +84,25 @@ const grievanceTimelinePlugin: DenormPlugin<GrievanceTimelinePayload> = {
         (h) => new Date(h.date).getTime() >= startTime && toSet.has(h.statusId),
       );
 
-      const dueYmd =
+      const computedDueYmd =
         step.dayType === "business"
           ? addBusinessDaysYmd(startedYmd, step.days)
           : addDaysYmd(startedYmd, step.days);
+
+      // A timeline adjustment on the START entry shifts (or replaces) this
+      // step's due date. Relative days follow the step's dayType; an explicit
+      // date overrides the computed due date outright. Prior steps this entry
+      // COMPLETES are unaffected.
+      const adjustment = readTimelineAdjustment(startEntry.data);
+      let dueYmd = computedDueYmd;
+      if (adjustment) {
+        dueYmd =
+          adjustment.kind === "explicit"
+            ? adjustment.date
+            : step.dayType === "business"
+              ? addBusinessDaysYmd(computedDueYmd, adjustment.days)
+              : addDaysYmd(computedDueYmd, adjustment.days);
+      }
 
       rows.push({
         stepId: step.stepId,
@@ -95,6 +111,7 @@ const grievanceTimelinePlugin: DenormPlugin<GrievanceTimelinePayload> = {
         completedYmd: completeEntry ? dateToYmd(new Date(completeEntry.date)) : null,
         isCurrent: false,
         sequence: step.sequence,
+        ...(adjustment ? { adjustment, originalDueYmd: computedDueYmd } : {}),
       });
     }
 

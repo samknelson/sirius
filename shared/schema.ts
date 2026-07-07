@@ -1065,6 +1065,10 @@ export {
   insertGrievanceStatusHistorySchema,
   type GrievanceStatusHistory,
   type InsertGrievanceStatusHistory,
+  grievanceTimelineAdjustmentSchema,
+  type GrievanceTimelineAdjustment,
+  TIMELINE_ADJUSTMENT_DATA_KEY,
+  readTimelineAdjustment,
 } from "./schema/grievance/schema";
 
 export {

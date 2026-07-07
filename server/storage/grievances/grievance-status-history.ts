@@ -3,7 +3,9 @@ import {
   grievances,
   grievanceStatusHistory,
   optionsGrievanceStatus,
+  TIMELINE_ADJUSTMENT_DATA_KEY,
   type GrievanceStatusHistory,
+  type GrievanceTimelineAdjustment,
 } from "@shared/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { type StorageLoggingConfig } from "../middleware/logging";
@@ -52,6 +54,17 @@ export interface GrievanceStatusHistoryStorage {
     data: { statusId?: string; date?: Date },
   ): Promise<GrievanceStatusHistory | undefined>;
   delete(grievanceId: string, entryId: string): Promise<boolean>;
+  /**
+   * Set or clear (pass null) the timeline adjustment stored under the
+   * `timelineAdjustment` key of the entry's `data` jsonb. Merges — other keys
+   * in `data` are preserved. Fires the status-history-saved event so the
+   * timeline denorm recomputes.
+   */
+  setTimelineAdjustment(
+    grievanceId: string,
+    entryId: string,
+    adjustment: GrievanceTimelineAdjustment | null,
+  ): Promise<GrievanceStatusHistory | undefined>;
 }
 
 /**
@@ -222,6 +235,46 @@ export function createGrievanceStatusHistoryStorage(): GrievanceStatusHistorySto
         return true;
       });
     },
+
+    async setTimelineAdjustment(
+      grievanceId: string,
+      entryId: string,
+      adjustment: GrievanceTimelineAdjustment | null,
+    ): Promise<GrievanceStatusHistory | undefined> {
+      return runInTransaction(async () => {
+        const client = getClient();
+        await lockGrievance(grievanceId);
+        const [existing] = await client
+          .select()
+          .from(grievanceStatusHistory)
+          .where(
+            and(
+              eq(grievanceStatusHistory.id, entryId),
+              eq(grievanceStatusHistory.grievanceId, grievanceId),
+            ),
+          )
+          .for("update");
+        if (!existing) return undefined;
+        // Merge into the existing `data` jsonb — preserve unrelated keys.
+        const currentData =
+          existing.data && typeof existing.data === "object"
+            ? { ...(existing.data as Record<string, unknown>) }
+            : {};
+        if (adjustment === null) {
+          delete currentData[TIMELINE_ADJUSTMENT_DATA_KEY];
+        } else {
+          currentData[TIMELINE_ADJUSTMENT_DATA_KEY] = adjustment;
+        }
+        const newData = Object.keys(currentData).length > 0 ? currentData : null;
+        const [row] = await client
+          .update(grievanceStatusHistory)
+          .set({ data: newData })
+          .where(eq(grievanceStatusHistory.id, existing.id))
+          .returning();
+        emitStatusHistorySaved(grievanceId);
+        return row || undefined;
+      });
+    },
   };
 }
 
@@ -248,6 +301,16 @@ export const grievanceStatusHistoryLoggingConfig: StorageLoggingConfig<Grievance
         getEntityId: (args) => args[1],
         getHostEntityId: (args) => args[0],
         getDescription: async () => `Removed status history entry from grievance`,
+      },
+      setTimelineAdjustment: {
+        enabled: true,
+        getEntityId: (args) => args[1],
+        getHostEntityId: (args) => args[0],
+        after: async (_args, result) => result,
+        getDescription: async (args) =>
+          args[2] === null
+            ? `Removed timeline adjustment from grievance status history entry`
+            : `Set timeline adjustment on grievance status history entry`,
       },
     },
   };
