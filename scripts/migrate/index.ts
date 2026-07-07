@@ -47,6 +47,7 @@ import "./core/1040_worker_employment_denorm";
 import "./core/1043_recreate_cron_jobs_for_publish";
 import "./core/1044_recreate_charge_plugin_configs_for_publish";
 import "./core/1045_create_missing_bulk_component_tables";
+import "./core/1046_recreate_bulk_tables_after_publish_drop";
 
 // Per-component migrations — each registered via
 // `registerComponentMigration(componentId, migration)`. Tracked by the
