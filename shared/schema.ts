@@ -2179,6 +2179,27 @@ export const createRateHistorySchema = (minEntries = 1) => {
 // plugin_configs (plugin_kind='cron') + plugin_configs_cron; `jobName` here is
 // the cron plugin id (the former cron_jobs.name). No FK — the legacy cron_jobs
 // table has been dropped and run history is retained independently.
+//
+// TEMPORARY (publish-migration workaround, July 2026): `cronJobs` below is a
+// short-lived resurrection of the legacy table, matching the PRODUCTION shape
+// exactly and deliberately WITHOUT the old cron_job_runs FK. The Publish
+// flow's generated diff ordered `DROP TABLE cron_jobs CASCADE` before
+// `ALTER TABLE cron_job_runs DROP CONSTRAINT ..._fk`, which self-destructs
+// (CASCADE removes the FK first) and aborts every publish. Keeping the table
+// present in dev for ONE publish makes that publish drop only the FK in prod;
+// a follow-up change (migration + schema removal) then drops the table in a
+// second publish. Do NOT build anything on this table — it is dead and will
+// be removed again immediately after the two-step publish completes.
+export const cronJobs = pgTable("cron_jobs", {
+  name: text("name").primaryKey(),
+  description: text("description"),
+  schedule: text("schedule").notNull(),
+  isEnabled: boolean("is_enabled").default(false).notNull(),
+  createdAt: timestamp("created_at").default(sql`now()`).notNull(),
+  updatedAt: timestamp("updated_at").default(sql`now()`).notNull(),
+  settings: jsonb("settings"),
+});
+
 export const cronJobRuns = pgTable("cron_job_runs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   jobName: text("job_name").notNull(),

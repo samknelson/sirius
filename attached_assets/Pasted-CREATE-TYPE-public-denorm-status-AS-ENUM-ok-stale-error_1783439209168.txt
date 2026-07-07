@@ -1,0 +1,180 @@
+CREATE TYPE "public"."denorm_status" AS ENUM('ok', 'stale', 'error');
+CREATE TABLE "options_comm_tags" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"name" varchar(255) NOT NULL,
+	"description" text,
+	"sirius_id" varchar(255),
+	"data" jsonb,
+	CONSTRAINT "options_comm_tags_sirius_id_unique" UNIQUE("sirius_id")
+);
+CREATE TABLE "plugin_configs_charge" (
+	"id" varchar PRIMARY KEY NOT NULL,
+	"scope" varchar NOT NULL,
+	"employer_id" varchar,
+	"account" varchar NOT NULL
+);
+CREATE TABLE "plugin_configs" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"plugin_kind" varchar NOT NULL,
+	"plugin_id" text NOT NULL,
+	"enabled" boolean DEFAULT false NOT NULL,
+	"name" text,
+	"ordering" integer DEFAULT 0 NOT NULL,
+	"data" jsonb DEFAULT '{}'::jsonb,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"sirius_id" varchar,
+	"is_singleton" boolean DEFAULT false NOT NULL,
+	CONSTRAINT "plugin_configs_sirius_id_unique" UNIQUE("sirius_id")
+);
+CREATE TABLE "plugin_configs_benefit_eligibility" (
+	"id" varchar PRIMARY KEY NOT NULL,
+	"policy" varchar,
+	"benefit" varchar,
+	"applies_to" varchar
+);
+CREATE TABLE "plugin_configs_payment_gateway" (
+	"id" varchar PRIMARY KEY NOT NULL
+);
+CREATE TABLE "plugin_configs_dispatch" (
+	"id" varchar PRIMARY KEY NOT NULL,
+	"job_type" varchar
+);
+CREATE TABLE "ledger_gateway_customers" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"entity_type" text NOT NULL,
+	"entity_id" varchar NOT NULL,
+	"gateway_config_id" varchar NOT NULL,
+	"customer_ref" text NOT NULL,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	CONSTRAINT "ledger_gateway_customers_entity_gateway_unique" UNIQUE("entity_type","entity_id","gateway_config_id")
+);
+CREATE TABLE "ledger_paymentmethods" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"entity_type" text NOT NULL,
+	"entity_id" varchar NOT NULL,
+	"payment_method" text NOT NULL,
+	"is_active" boolean DEFAULT true NOT NULL,
+	"is_default" boolean DEFAULT false NOT NULL,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"data" jsonb DEFAULT '{}'::jsonb,
+	"gateway_config_id" varchar NOT NULL
+);
+CREATE TABLE "plugin_configs_dashboard" (
+	"id" varchar PRIMARY KEY NOT NULL,
+	"role" varchar NOT NULL
+);
+CREATE TABLE "plugin_configs_event_notifier" (
+	"id" varchar PRIMARY KEY NOT NULL,
+	"media" text
+);
+CREATE TABLE "denorm" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"entity_id" varchar NOT NULL,
+	"entity_type" varchar NOT NULL,
+	"config_id" varchar NOT NULL,
+	"status" "denorm_status" NOT NULL,
+	"computed_at" timestamp,
+	"stale_at" timestamp,
+	"message" varchar
+);
+CREATE TABLE "worker_employment_denorm" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"denorm_id" varchar NOT NULL,
+	"worker_id" varchar NOT NULL,
+	"employer_id" varchar NOT NULL,
+	"home" boolean DEFAULT false NOT NULL,
+	"job_title" text
+);
+CREATE TABLE "plugin_configs_cron" (
+	"id" varchar PRIMARY KEY NOT NULL,
+	"schedule" varchar NOT NULL
+);
+CREATE TABLE "worker_msh_denorm" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"denorm_id" varchar NOT NULL,
+	"worker_id" varchar NOT NULL,
+	"ms_id" varchar NOT NULL
+);
+CREATE TABLE "worker_wsh_denorm" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"denorm_id" varchar NOT NULL,
+	"worker_id" varchar NOT NULL,
+	"ws_id" varchar NOT NULL
+);
+CREATE TABLE "comm_tags" (
+	"comm_id" varchar NOT NULL,
+	"comm_tag_id" varchar NOT NULL,
+	CONSTRAINT "comm_tags_pkey" PRIMARY KEY("comm_id","comm_tag_id")
+);
+ALTER TABLE "ledger_stripe_paymentmethods" DISABLE ROW LEVEL SECURITY;
+ALTER TABLE "charge_plugin_configs" DISABLE ROW LEVEL SECURITY;
+ALTER TABLE "cron_jobs" DISABLE ROW LEVEL SECURITY;
+DROP TABLE "ledger_stripe_paymentmethods" CASCADE;
+DROP TABLE "charge_plugin_configs" CASCADE;
+DROP TABLE "cron_jobs" CASCADE;
+ALTER TABLE "cron_job_runs" DROP CONSTRAINT "cron_job_runs_job_name_cron_jobs_name_fk";
+ALTER TABLE "workers" DROP CONSTRAINT "workers_denorm_home_employer_id_employers_id_fk";
+ALTER TABLE "workers" DROP CONSTRAINT "workers_denorm_ws_id_options_worker_ws_id_fk";
+ALTER TABLE "ledger" ALTER COLUMN "statement_ymd" SET DATA TYPE date;
+ALTER TABLE "employers" ALTER COLUMN "sirius_id" SET DATA TYPE varchar;
+ALTER TABLE "employers" ALTER COLUMN "sirius_id" DROP NOT NULL;
+ALTER TABLE "comm_postal" ADD COLUMN "body" text;
+ALTER TABLE "workers" ADD COLUMN "data" jsonb;
+ALTER TABLE "ledger_accounts" ADD COLUMN "gateway_config_id" varchar;
+ALTER TABLE "trust_benefits" ADD COLUMN "sirius_id" varchar;
+ALTER TABLE "options_trust_benefit_type" ADD COLUMN "sirius_id" varchar(255);
+ALTER TABLE "plugin_configs_charge" ADD CONSTRAINT "plugin_configs_charge_account_ledger_accounts_id_fk" FOREIGN KEY ("account") REFERENCES "public"."ledger_accounts"("id") ON DELETE restrict ON UPDATE no action;
+ALTER TABLE "plugin_configs_charge" ADD CONSTRAINT "plugin_configs_charge_employer_id_fkey" FOREIGN KEY ("employer_id") REFERENCES "public"."employers"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "plugin_configs_charge" ADD CONSTRAINT "plugin_configs_charge_id_fkey" FOREIGN KEY ("id") REFERENCES "public"."plugin_configs"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "plugin_configs_benefit_eligibility" ADD CONSTRAINT "plugin_configs_benefit_eligibility_benefit_fkey" FOREIGN KEY ("benefit") REFERENCES "public"."trust_benefits"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "plugin_configs_benefit_eligibility" ADD CONSTRAINT "plugin_configs_benefit_eligibility_id_fkey" FOREIGN KEY ("id") REFERENCES "public"."plugin_configs"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "plugin_configs_benefit_eligibility" ADD CONSTRAINT "plugin_configs_benefit_eligibility_policy_fkey" FOREIGN KEY ("policy") REFERENCES "public"."policies"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "plugin_configs_payment_gateway" ADD CONSTRAINT "plugin_configs_payment_gateway_id_fkey" FOREIGN KEY ("id") REFERENCES "public"."plugin_configs"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "plugin_configs_dispatch" ADD CONSTRAINT "plugin_configs_dispatch_id_fkey" FOREIGN KEY ("id") REFERENCES "public"."plugin_configs"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "ledger_gateway_customers" ADD CONSTRAINT "ledger_gateway_customers_gateway_config_id_fkey" FOREIGN KEY ("gateway_config_id") REFERENCES "public"."plugin_configs_payment_gateway"("id") ON DELETE restrict ON UPDATE no action;
+ALTER TABLE "ledger_paymentmethods" ADD CONSTRAINT "ledger_paymentmethods_gateway_config_id_fkey" FOREIGN KEY ("gateway_config_id") REFERENCES "public"."plugin_configs_payment_gateway"("id") ON DELETE restrict ON UPDATE no action;
+ALTER TABLE "plugin_configs_dashboard" ADD CONSTRAINT "plugin_configs_dashboard_id_fkey" FOREIGN KEY ("id") REFERENCES "public"."plugin_configs"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "plugin_configs_dashboard" ADD CONSTRAINT "plugin_configs_dashboard_role_fkey" FOREIGN KEY ("role") REFERENCES "public"."roles"("id") ON DELETE restrict ON UPDATE no action;
+ALTER TABLE "plugin_configs_event_notifier" ADD CONSTRAINT "plugin_configs_event_notifier_id_fkey" FOREIGN KEY ("id") REFERENCES "public"."plugin_configs"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "denorm" ADD CONSTRAINT "denorm_config_id_fkey" FOREIGN KEY ("config_id") REFERENCES "public"."plugin_configs"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "worker_employment_denorm" ADD CONSTRAINT "worker_employment_denorm_denorm_id_fkey" FOREIGN KEY ("denorm_id") REFERENCES "public"."denorm"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "worker_employment_denorm" ADD CONSTRAINT "worker_employment_denorm_employer_id_fkey" FOREIGN KEY ("employer_id") REFERENCES "public"."employers"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "worker_employment_denorm" ADD CONSTRAINT "worker_employment_denorm_worker_id_fkey" FOREIGN KEY ("worker_id") REFERENCES "public"."workers"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "plugin_configs_cron" ADD CONSTRAINT "plugin_configs_cron_id_fkey" FOREIGN KEY ("id") REFERENCES "public"."plugin_configs"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "worker_msh_denorm" ADD CONSTRAINT "worker_msh_denorm_denorm_id_fkey" FOREIGN KEY ("denorm_id") REFERENCES "public"."denorm"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "worker_msh_denorm" ADD CONSTRAINT "worker_msh_denorm_ms_id_fkey" FOREIGN KEY ("ms_id") REFERENCES "public"."options_worker_ms"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "worker_msh_denorm" ADD CONSTRAINT "worker_msh_denorm_worker_id_fkey" FOREIGN KEY ("worker_id") REFERENCES "public"."workers"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "worker_wsh_denorm" ADD CONSTRAINT "worker_wsh_denorm_denorm_id_fkey" FOREIGN KEY ("denorm_id") REFERENCES "public"."denorm"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "worker_wsh_denorm" ADD CONSTRAINT "worker_wsh_denorm_worker_id_fkey" FOREIGN KEY ("worker_id") REFERENCES "public"."workers"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "worker_wsh_denorm" ADD CONSTRAINT "worker_wsh_denorm_ws_id_fkey" FOREIGN KEY ("ws_id") REFERENCES "public"."options_worker_ws"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "comm_tags" ADD CONSTRAINT "comm_tags_comm_id_fkey" FOREIGN KEY ("comm_id") REFERENCES "public"."comm"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "comm_tags" ADD CONSTRAINT "comm_tags_comm_tag_id_fkey" FOREIGN KEY ("comm_tag_id") REFERENCES "public"."options_comm_tags"("id") ON DELETE cascade ON UPDATE no action;
+CREATE UNIQUE INDEX "plugin_configs_singleton_uniq" ON "plugin_configs" USING btree ("plugin_kind","plugin_id") WHERE is_singleton;
+CREATE INDEX "denorm_config_idx" ON "denorm" USING btree ("config_id");
+CREATE UNIQUE INDEX "denorm_entity_config_uniq" ON "denorm" USING btree ("entity_id","config_id");
+CREATE INDEX "denorm_status_idx" ON "denorm" USING btree ("status");
+CREATE INDEX "worker_employment_denorm_denorm_idx" ON "worker_employment_denorm" USING btree ("denorm_id");
+CREATE UNIQUE INDEX "worker_employment_denorm_worker_employer_uniq" ON "worker_employment_denorm" USING btree ("worker_id","employer_id");
+CREATE INDEX "worker_msh_denorm_denorm_idx" ON "worker_msh_denorm" USING btree ("denorm_id");
+CREATE UNIQUE INDEX "worker_msh_denorm_worker_ms_uniq" ON "worker_msh_denorm" USING btree ("worker_id","ms_id");
+CREATE INDEX "worker_wsh_denorm_denorm_idx" ON "worker_wsh_denorm" USING btree ("denorm_id");
+CREATE UNIQUE INDEX "worker_wsh_denorm_worker_uniq" ON "worker_wsh_denorm" USING btree ("worker_id");
+CREATE INDEX "comm_tags_comm_tag_id_idx" ON "comm_tags" USING btree ("comm_tag_id");
+ALTER TABLE "ledger_accounts" ADD CONSTRAINT "ledger_accounts_gateway_config_id_fkey" FOREIGN KEY ("gateway_config_id") REFERENCES "public"."plugin_configs_payment_gateway"("id") ON DELETE set null ON UPDATE no action;
+ALTER TABLE "ledger_payment_batch_assignments" ADD CONSTRAINT "ledger_payment_batch_assignments_batch_id_fkey" FOREIGN KEY ("batch_id") REFERENCES "public"."ledger_payment_batches"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "ledger_payment_batch_assignments" ADD CONSTRAINT "ledger_payment_batch_assignments_payment_id_fkey" FOREIGN KEY ("payment_id") REFERENCES "public"."ledger_payments"("id") ON DELETE restrict ON UPDATE no action;
+ALTER TABLE "gbhet_pension_annual_summary" ADD CONSTRAINT "gbhet_pension_annual_summary_classification_id_fkey" FOREIGN KEY ("classification_id") REFERENCES "public"."options_classifications"("id") ON DELETE set null ON UPDATE no action;
+ALTER TABLE "gbhet_pension_annual_summary" ADD CONSTRAINT "gbhet_pension_annual_summary_tier_id_fkey" FOREIGN KEY ("tier_id") REFERENCES "public"."gbhet_pension_accrual_tiers"("id") ON DELETE set null ON UPDATE no action;
+ALTER TABLE "employers" DROP COLUMN "stripe_customer_id";
+ALTER TABLE "workers" DROP COLUMN "denorm_ws_id";
+ALTER TABLE "workers" DROP COLUMN "denorm_home_employer_id";
+ALTER TABLE "workers" DROP COLUMN "denorm_employer_ids";
+ALTER TABLE "workers" DROP COLUMN "denorm_ms_ids";
+ALTER TABLE "workers" DROP COLUMN "denorm_job_title";
+ALTER TABLE "trust_benefits" ADD CONSTRAINT "trust_benefits_sirius_id_unique" UNIQUE("sirius_id");
+ALTER TABLE "options_trust_benefit_type" ADD CONSTRAINT "options_trust_benefit_type_sirius_id_unique" UNIQUE("sirius_id");
+ALTER TABLE "trust_wmb_scan_queue" ADD CONSTRAINT "trust_wmb_scan_queue_worker_id_year_month_unique" UNIQUE("worker_id","month","year");
+ALTER TABLE "trust_wmb" ADD CONSTRAINT "trust_wmb_worker_id_employer_id_benefit_id_month_year_unique" UNIQUE("month","year","worker_id","employer_id","benefit_id");
+ALTER TABLE "options_worker_id_type" ADD CONSTRAINT "options_worker_id_type_sirius_id_unique" UNIQUE("sirius_id");
+ALTER TABLE "worker_msh" ADD CONSTRAINT "worker_msh_worker_id_industry_id_date_unique" UNIQUE("date","worker_id","industry_id");
