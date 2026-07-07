@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { Pencil, Plus, Trash2 } from "lucide-react";
@@ -44,6 +44,9 @@ import {
 import { GrievanceLayout, useGrievanceLayout } from "@/components/layouts/GrievanceLayout";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import type { GrievanceTimelineTemplate } from "@shared/schema";
+
+const NONE_VALUE = "__none__";
 
 interface StatusHistoryEntry {
   id: string;
@@ -63,6 +66,98 @@ interface StatusOption {
 /** Format a date for a `datetime-local` input (local time, minute precision). */
 function toDatetimeLocal(value: string | Date): string {
   return format(new Date(value), "yyyy-MM-dd'T'HH:mm");
+}
+
+/**
+ * Timeline-template selector. Lives on this (editable) tab; the Timeline tab
+ * is view-only and just renders the computed steps.
+ */
+function TimelineTemplateCard() {
+  const { grievance } = useGrievanceLayout();
+  const { toast } = useToast();
+  const currentValue = grievance.timelineTemplateId ?? NONE_VALUE;
+  const [selected, setSelected] = useState<string>(currentValue);
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    setSelected(grievance.timelineTemplateId ?? NONE_VALUE);
+  }, [grievance.timelineTemplateId]);
+
+  const { data: templates, isLoading } = useQuery<GrievanceTimelineTemplate[]>({
+    queryKey: ["/api/grievance-timeline-templates"],
+  });
+
+  const isDirty = selected !== currentValue;
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    try {
+      await apiRequest("PATCH", `/api/grievances/${grievance.id}`, {
+        timelineTemplateId: selected === NONE_VALUE ? null : selected,
+      });
+      await queryClient.invalidateQueries({ queryKey: ["/api/grievances", grievance.id] });
+      // The timeline denorm plugin recomputes steps right after the save
+      // commits; refetch so the Timeline tab reflects the new template.
+      await queryClient.invalidateQueries({
+        queryKey: ["/api/grievances", grievance.id, "timeline-steps"],
+      });
+      toast({ title: "Timeline template updated" });
+    } catch (error: any) {
+      toast({
+        title: "Failed to update timeline template",
+        description: error?.message ?? "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-lg">Timeline Template</CardTitle>
+      </CardHeader>
+      <CardContent className="max-w-2xl space-y-4">
+        <div className="space-y-2">
+          {isLoading ? (
+            <Skeleton className="h-10 w-full" data-testid="skeleton-timeline-template" />
+          ) : (
+            <Select value={selected} onValueChange={setSelected}>
+              <SelectTrigger id="timeline-template" data-testid="select-timeline-template">
+                <SelectValue placeholder="Select a timeline template" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NONE_VALUE} data-testid="option-timeline-template-none">
+                  None
+                </SelectItem>
+                {(templates ?? []).map((t) => (
+                  <SelectItem
+                    key={t.id}
+                    value={t.id}
+                    data-testid={`option-timeline-template-${t.id}`}
+                  >
+                    {t.title}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          <p className="text-sm text-muted-foreground">
+            Associate a timeline template with this grievance, or choose None to
+            clear it. Computed steps appear on the Timeline tab.
+          </p>
+        </div>
+        <Button
+          onClick={handleSave}
+          disabled={!isDirty || isSaving}
+          data-testid="button-save-timeline-template"
+        >
+          {isSaving ? "Saving..." : "Save"}
+        </Button>
+      </CardContent>
+    </Card>
+  );
 }
 
 function GrievanceStatusHistoryContent() {
@@ -89,6 +184,11 @@ function GrievanceStatusHistoryContent() {
     });
     await queryClient.invalidateQueries({ queryKey: ["/api/grievances", grievance.id] });
     await queryClient.invalidateQueries({ queryKey: ["/api/grievances"] });
+    // Status changes recompute the denorm timeline steps; refetch so the
+    // Timeline tab reflects them.
+    await queryClient.invalidateQueries({
+      queryKey: ["/api/grievances", grievance.id, "timeline-steps"],
+    });
   };
 
   const openAdd = () => {
@@ -316,7 +416,10 @@ function GrievanceStatusHistoryContent() {
 export default function GrievanceStatusHistory() {
   return (
     <GrievanceLayout activeTab="status-history">
-      <GrievanceStatusHistoryContent />
+      <div className="space-y-6">
+        <GrievanceStatusHistoryContent />
+        <TimelineTemplateCard />
+      </div>
     </GrievanceLayout>
   );
 }
