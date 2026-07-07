@@ -1215,7 +1215,7 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
 
       const bucketExpr = basis === 'cash'
         ? sqlRaw<string>`to_char(${ledger.date}, 'YYYY-MM')`
-        : sqlRaw<string>`substring(${ledger.statementYmd}, 1, 7)`;
+        : sqlRaw<string>`to_char(${ledger.statementYmd}, 'YYYY-MM')`;
       const isPaymentExpr = sqlRaw<boolean>`${ledger.chargePlugin} = 'payment-simple-allocation'`;
 
       const whereConds = [eq(ledgerEa.accountId, accountId)];
