@@ -60,3 +60,17 @@ export function formatYmd(ymd: string | null): string {
   if (!ymd) return "—";
   return ymdToDateForPicker(ymd).toLocaleDateString();
 }
+
+/** Localized date plus a calendar-day countdown, e.g. "8/9/2026 (20 days)". */
+export function formatYmdWithCountdown(ymd: string | null): string {
+  if (!ymd) return "—";
+  const date = ymdToDateForPicker(ymd).toLocaleDateString();
+  const days = daysUntilYmd(ymd);
+  let suffix: string;
+  if (days === 0) suffix = "today";
+  else if (days === 1) suffix = "1 day";
+  else if (days === -1) suffix = "1 day overdue";
+  else if (days < 0) suffix = `${-days} days overdue`;
+  else suffix = `${days} days`;
+  return `${date} (${suffix})`;
+}

@@ -12,7 +12,7 @@ import {
   type GrievanceTimelineStepItem,
   useDeadlineThresholds,
   deadlineColorClass,
-  formatYmd,
+  formatYmdWithCountdown,
 } from "@/lib/grievance-deadlines";
 
 export interface GrievanceLinkedWorker {
@@ -142,7 +142,7 @@ function GrievanceSummaryBox({ grievance }: { grievance: GrievanceWithDetails })
               className={deadline ? deadlineColorClass(deadline, thresholds) : "font-medium"}
               data-testid="text-summary-deadline"
             >
-              {formatYmd(deadline)}
+              {formatYmdWithCountdown(deadline)}
             </p>
           </div>
         </div>
