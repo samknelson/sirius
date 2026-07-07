@@ -59,7 +59,7 @@ export function registerWizardRoutes(
           displayName: plugin.name,
           description: plugin.description,
           isFeed: false,
-          isMonthly: false,
+          isMonthly: plugin.isMonthly ?? false,
           isReport: plugin.isReport ?? false,
           entityType: plugin.entityType,
           category: plugin.category,
