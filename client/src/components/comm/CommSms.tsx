@@ -27,7 +27,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { CommTagPicker } from "./CommTagPicker";
 import { PhoneNumber } from "@/lib/entity-types";
-import { SystemModeResponse } from "@/lib/system-types";
+import { useSystemMode } from "@/lib/use-variable";
 
 interface SmsOptinStatus {
   exists: boolean;
@@ -56,9 +56,7 @@ export function CommSms({ contactId, phoneNumbers, onSendSuccess }: CommSmsProps
   
   const selectedPhone = phoneNumbers.find(p => p.id === selectedPhoneId);
   
-  const { data: systemMode } = useQuery<SystemModeResponse>({
-    queryKey: ["/api/system-mode"],
-  });
+  const systemMode = useSystemMode();
 
   const { data: optinStatus, isLoading: isLoadingOptin } = useQuery<SmsOptinStatus>({
     queryKey: ["/api/phone-numbers", selectedPhone?.phoneNumber, "sms-optin"],

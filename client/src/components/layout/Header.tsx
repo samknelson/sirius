@@ -57,7 +57,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { SiteSettings, SystemModeResponse } from "@/lib/system-types";
+import { useSiteSettings, useSystemMode } from "@/lib/use-variable";
 
 export default function Header() {
   const { user, logout, hasPermission, hasComponent, masquerade, stopMasquerade } = useAuth();
@@ -67,13 +67,9 @@ export default function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mobileExpanded, setMobileExpanded] = useState<Record<string, boolean>>({});
 
-  const { data: settings } = useQuery<SiteSettings>({
-    queryKey: ["/api/site-settings"],
-  });
+  const settings = useSiteSettings();
 
-  const { data: systemMode } = useQuery<SystemModeResponse>({
-    queryKey: ["/api/system-mode"],
-  });
+  const systemMode = useSystemMode();
 
   // Type for policy access check response
   type PolicyAccessResponse = { access: { granted: boolean } };
@@ -929,7 +925,7 @@ export default function Header() {
           >
             {settings?.siteName || "Sirius"}
           </h1>
-          {systemMode?.mode && systemMode.mode !== "live" && (
+          {!systemMode.isLoading && systemMode.mode !== "live" && (
             <Badge
               variant="secondary"
               className={`text-xs uppercase font-medium ${

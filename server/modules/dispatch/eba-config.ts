@@ -85,17 +85,6 @@ export function registerDispatchEbaConfigRoutes(
     }
   );
 
-  app.get(
-    "/api/dispatch-eba/settings",
-    requireAuth,
-    async (_req, res) => {
-      try {
-        const settings = await getEbaSettings(storage);
-        res.json({ advanceDays: settings.advanceDays });
-      } catch (error: any) {
-        console.error("Error fetching EBA settings:", error);
-        res.status(500).json({ message: error.message || "Failed to fetch settings" });
-      }
-    }
-  );
+  // Non-admin reads go through GET /api/variables/by-name/dispatch_eba_settings
+  // (authenticated + dispatch component in the variable read-access registry).
 }

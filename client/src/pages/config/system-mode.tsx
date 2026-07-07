@@ -7,7 +7,8 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useToast } from "@/hooks/use-toast";
 import { Server, AlertTriangle, CheckCircle } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
-import { SystemMode, SystemModeResponse } from "@/lib/system-types";
+import { SystemMode } from "@/lib/system-types";
+import { useSystemMode } from "@/lib/use-variable";
 
 const modeDescriptions: Record<SystemMode, { label: string; description: string; color: string }> = {
   dev: {
@@ -31,16 +32,14 @@ export default function SystemModePage() {
   usePageTitle("System Mode");
   const { toast } = useToast();
 
-  const { data: systemMode, isLoading } = useQuery<SystemModeResponse>({
-    queryKey: ["/api/system-mode"],
-  });
+  const { mode: currentMode, isLoading } = useSystemMode();
 
   const updateModeMutation = useMutation({
     mutationFn: async (mode: SystemMode) => {
       return await apiRequest("PUT", "/api/system-mode", { mode });
     },
     onSuccess: (_, mode) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/system-mode"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/variables/by-name", "system_mode"] });
       toast({
         title: "System Mode Updated",
         description: `System mode has been changed to ${modeDescriptions[mode].label}`,
@@ -87,14 +86,14 @@ export default function SystemModePage() {
             </div>
           ) : (
             <RadioGroup
-              value={systemMode?.mode || "dev"}
+              value={currentMode}
               onValueChange={handleModeChange}
               className="space-y-4"
               disabled={updateModeMutation.isPending}
             >
               {(Object.keys(modeDescriptions) as SystemMode[]).map((mode) => {
                 const { label, description, color } = modeDescriptions[mode];
-                const isSelected = systemMode?.mode === mode;
+                const isSelected = currentMode === mode;
                 
                 return (
                   <div

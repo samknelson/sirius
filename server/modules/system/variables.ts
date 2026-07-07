@@ -2,6 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../../storage";
 import { insertVariableSchema } from "@shared/schema";
 import { requireAccess } from "../../services/access-policy-evaluator";
+import { checkVariableReadAccess } from "./variable-read-access";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -20,32 +21,58 @@ export function registerVariableRoutes(
     }
   });
 
-  app.get("/api/variables/:id", requireAccess('admin'), async (req, res) => {
+  // Per-variable read access: no blanket auth middleware. The registry in
+  // variable-read-access.ts decides who may read each variable; unlisted
+  // names require the admin policy exactly as before.
+  app.get("/api/variables/:id", async (req, res) => {
     try {
       const { id } = req.params;
       const variable = await storage.variables.get(id);
-      
+
       if (!variable) {
+        // Don't reveal existence/non-existence to non-admins: run the
+        // default (admin) check before returning 404.
+        const decision = await checkVariableReadAccess(req, "");
+        if (!decision.granted) {
+          res.status(decision.status).json({ message: decision.message });
+          return;
+        }
         res.status(404).json({ message: "Variable not found" });
         return;
       }
-      
+
+      // Same-record authz: check against the resolved row's name.
+      const decision = await checkVariableReadAccess(req, variable.name);
+      if (!decision.granted) {
+        res.status(decision.status).json({ message: decision.message });
+        return;
+      }
+
       res.json(variable);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch variable" });
     }
   });
 
-  app.get("/api/variables/by-name/:name", requireAccess('admin'), async (req, res) => {
+  app.get("/api/variables/by-name/:name", async (req, res) => {
     try {
       const { name } = req.params;
+
+      // Check access BEFORE fetching so 401/403 comes before any 404,
+      // never revealing whether a restricted variable exists.
+      const decision = await checkVariableReadAccess(req, name);
+      if (!decision.granted) {
+        res.status(decision.status).json({ message: decision.message });
+        return;
+      }
+
       const variable = await storage.variables.getByName(name);
-      
+
       if (!variable) {
         res.status(404).json({ message: "Variable not found" });
         return;
       }
-      
+
       res.json(variable);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch variable" });

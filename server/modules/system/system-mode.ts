@@ -7,16 +7,8 @@ export function registerSystemModeRoutes(
   requirePermission: any,
   requireAccess: any
 ) {
-  // GET /api/system-mode - Get current system mode (no auth required for indicator display)
-  app.get("/api/system-mode", async (req, res) => {
-    try {
-      const modeVar = await storage.variables.getByName("system_mode");
-      const mode = modeVar ? (modeVar.value as string) : "dev";
-      res.json({ mode });
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch system mode" });
-    }
-  });
+  // Reads go through GET /api/variables/by-name/system_mode (public in the
+  // variable read-access registry); this module only keeps the write route.
 
   // PUT /api/system-mode - Update system mode (requires admin policy)
   app.put("/api/system-mode", requireAccess('admin'), async (req, res) => {

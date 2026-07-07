@@ -7,23 +7,8 @@ export function registerSiteSettingsRoutes(
   requirePermission: any,
   requireAccess: any
 ) {
-  // GET /api/site-settings - Get site settings (no auth required for public settings)
-  app.get("/api/site-settings", async (req, res) => {
-    try {
-      const siteNameVar = await storage.variables.getByName("site_name");
-      const siteName = siteNameVar ? (siteNameVar.value as string) : "Sirius";
-      
-      const siteTitleVar = await storage.variables.getByName("site_title");
-      const siteTitle = siteTitleVar ? (siteTitleVar.value as string) : "";
-      
-      const siteFooterVar = await storage.variables.getByName("site_footer");
-      const footer = siteFooterVar ? (siteFooterVar.value as string) : "";
-      
-      res.json({ siteName, siteTitle, footer });
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch site settings" });
-    }
-  });
+  // Reads go through GET /api/variables/by-name/site_name|site_title|site_footer
+  // (public in the variable read-access registry); only the write route remains.
 
   // PUT /api/site-settings - Update site settings (requires admin permissions)
   app.put("/api/site-settings", requireAccess('admin'), async (req, res) => {

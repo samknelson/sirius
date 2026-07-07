@@ -1,6 +1,6 @@
-import { useQuery } from "@tanstack/react-query";
 import { ymdToDateForPicker } from "@shared/utils/date";
 import type { GrievanceStepsDenorm } from "@shared/schema";
+import { useVariableValue } from "@/lib/use-variable";
 
 /** One computed timeline step as returned by GET /api/grievances/:id/timeline-steps. */
 export interface GrievanceTimelineStepItem extends GrievanceStepsDenorm {
@@ -18,12 +18,25 @@ export interface DeadlineThresholds {
 
 export const DEFAULT_DEADLINE_THRESHOLDS: DeadlineThresholds = { green: 20, red: 5 };
 
+function isValidThresholds(value: unknown): value is DeadlineThresholds {
+  if (!value || typeof value !== "object") return false;
+  const v = value as Record<string, unknown>;
+  return (
+    typeof v.green === "number" &&
+    Number.isInteger(v.green) &&
+    v.green >= 0 &&
+    typeof v.red === "number" &&
+    Number.isInteger(v.red) &&
+    v.red >= 0 &&
+    v.green >= v.red
+  );
+}
+
 export function useDeadlineThresholds(): DeadlineThresholds {
-  const { data } = useQuery<DeadlineThresholds>({
-    queryKey: ["/api/config/grievances/deadline-thresholds"],
-    staleTime: 5 * 60 * 1000,
-  });
-  return data ?? DEFAULT_DEADLINE_THRESHOLDS;
+  // Staff-readable variable (grievance component); 401/403/404 or invalid
+  // values all fall back to the defaults.
+  const { data } = useVariableValue("grievance.deadline_thresholds");
+  return isValidThresholds(data) ? data : DEFAULT_DEADLINE_THRESHOLDS;
 }
 
 /** Whole days from today (local midnight) until the given YMD date; negative when overdue. */

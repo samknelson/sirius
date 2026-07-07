@@ -1,12 +1,16 @@
-import { createContext, useContext, useCallback } from 'react';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { createContext, useContext, useCallback, useMemo } from 'react';
+import { useMutation } from '@tanstack/react-query';
 import { queryClient, apiRequest } from '@/lib/queryClient';
 import { 
   type TerminologyDictionary, 
   type TermOptions,
   resolveTerm,
-  getDefaultTerminology 
+  getDefaultTerminology,
+  mergeTerminology,
+  terminologySchema,
+  TERMINOLOGY_VARIABLE_NAME,
 } from '@shared/terminology';
+import { useVariableValue, parseVariableJson } from '@/lib/use-variable';
 
 interface TerminologyContextType {
   terminology: TerminologyDictionary;
@@ -33,12 +37,21 @@ export function useTerm() {
 }
 
 export function TerminologyProvider({ children }: { children: React.ReactNode }) {
-  const { data, isLoading } = useQuery<{ terminology: TerminologyDictionary }>({
-    queryKey: ['/api/terminology'],
+  // Public variable; the value may be stored as a JSON string. Merge with
+  // the shared default term registry client-side; invalid/missing values
+  // fall back to defaults.
+  const { data, isLoading } = useVariableValue(TERMINOLOGY_VARIABLE_NAME, {
     staleTime: 1000 * 60 * 30,
   });
 
-  const terminology = data?.terminology ?? getDefaultTerminology();
+  const terminology = useMemo(() => {
+    const parsed = parseVariableJson(data);
+    const result = terminologySchema.safeParse(parsed);
+    if (result.success) {
+      return mergeTerminology(result.data);
+    }
+    return getDefaultTerminology();
+  }, [data]);
 
   const term = useCallback((key: string, options: TermOptions = {}): string => {
     return resolveTerm(terminology, key, options);
@@ -49,7 +62,7 @@ export function TerminologyProvider({ children }: { children: React.ReactNode })
       return await apiRequest('PUT', '/api/terminology', { terminology: terms });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/terminology'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/variables/by-name', TERMINOLOGY_VARIABLE_NAME] });
     },
   });
 
@@ -58,7 +71,7 @@ export function TerminologyProvider({ children }: { children: React.ReactNode })
       return await apiRequest('POST', '/api/terminology/reset');
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/terminology'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/variables/by-name', TERMINOLOGY_VARIABLE_NAME] });
     },
   });
 

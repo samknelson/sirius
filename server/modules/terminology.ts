@@ -47,15 +47,8 @@ export function registerTerminologyRoutes(
   requirePermission: any,
   requireAccess: any
 ) {
-  app.get("/api/terminology", async (req, res) => {
-    try {
-      const terminology = await loadTerminology();
-      res.json({ terminology });
-    } catch (error) {
-      console.error("Failed to fetch terminology:", error);
-      res.status(500).json({ message: "Failed to fetch terminology" });
-    }
-  });
+  // Reads go through GET /api/variables/by-name/site_terminology (public in
+  // the variable read-access registry); the client merges shared defaults.
 
   app.get("/api/terminology/registry", requireAuth, async (req, res) => {
     try {

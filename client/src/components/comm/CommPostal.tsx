@@ -34,6 +34,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { CommTagPicker } from "./CommTagPicker";
 import { useToast } from "@/hooks/use-toast";
 import { Address } from "@/lib/entity-types";
+import { useSystemMode } from "@/lib/use-variable";
 
 type ContentMode = "template" | "compose" | "rawHtml";
 
@@ -92,10 +93,6 @@ interface PostalOptinResponse {
   } | null;
 }
 
-interface SystemModeResponse {
-  mode: "dev" | "test" | "live";
-}
-
 interface PostalTemplate {
   id: string;
   description: string;
@@ -145,9 +142,7 @@ export function CommPostal({ contactId, addresses, contactName, onSendSuccess }:
   
   const selectedAddress = addresses.find(a => a.id === selectedAddressId);
 
-  const { data: systemMode } = useQuery<SystemModeResponse>({
-    queryKey: ["/api/system-mode"],
-  });
+  const systemMode = useSystemMode();
 
   const { data: templatesData, isLoading: isLoadingTemplates } = useQuery<PostalTemplatesResponse>({
     queryKey: ["/api/postal/templates"],

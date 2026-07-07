@@ -8,7 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Loader2, Save } from "lucide-react";
 import { SimpleHtmlEditor } from "@/components/ui/simple-html-editor";
-import { SiteSettings } from "@/lib/system-types";
+import { useSiteSettings, SITE_SETTING_VARIABLE_KEYS } from "@/lib/use-variable";
 
 export default function SiteInformation() {
   const { toast } = useToast();
@@ -19,25 +19,26 @@ export default function SiteInformation() {
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [isEditingFooter, setIsEditingFooter] = useState(false);
 
-  const { data: settings, isLoading } = useQuery<SiteSettings>({
-    queryKey: ["/api/site-settings"],
-  });
+  const settings = useSiteSettings();
+  const isLoading = settings.isLoading;
 
   // Update local state when settings are loaded
   useEffect(() => {
-    if (settings && !isEditingName && !isEditingTitle && !isEditingFooter) {
+    if (!isLoading && !isEditingName && !isEditingTitle && !isEditingFooter) {
       setSiteName(settings.siteName);
       setSiteTitle(settings.siteTitle || "");
       setFooter(settings.footer || "");
     }
-  }, [settings, isEditingName, isEditingTitle, isEditingFooter]);
+  }, [isLoading, settings.siteName, settings.siteTitle, settings.footer, isEditingName, isEditingTitle, isEditingFooter]);
 
   const updateMutation = useMutation({
     mutationFn: async (updates: { siteName?: string; siteTitle?: string; footer?: string }) => {
       return await apiRequest("PUT", "/api/site-settings", updates);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/site-settings"] });
+      for (const key of SITE_SETTING_VARIABLE_KEYS) {
+        queryClient.invalidateQueries({ queryKey: [...key] });
+      }
       setIsEditingName(false);
       setIsEditingTitle(false);
       setIsEditingFooter(false);

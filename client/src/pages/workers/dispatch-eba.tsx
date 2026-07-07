@@ -8,6 +8,7 @@ import { useRef, useMemo, useCallback } from "react";
 import { CalendarDays, Loader2 } from "lucide-react";
 import { addDays, startOfDay, isSameDay } from "date-fns";
 import type { WorkerDispatchEba } from "@shared/schema";
+import { useVariableValue } from "@/lib/use-variable";
 
 function formatYmd(date: Date): string {
   const y = date.getFullYear();
@@ -85,10 +86,12 @@ function DispatchEbaContent() {
   const { toast } = useToast();
   const pendingDateRef = useRef<string | null>(null);
 
-  const { data: ebaSettings } = useQuery<{ advanceDays: number }>({
-    queryKey: ["/api/dispatch-eba/settings"],
-  });
-  const advanceDays = ebaSettings?.advanceDays ?? 30;
+  const { data: ebaSettingsValue } = useVariableValue("dispatch_eba_settings");
+  const rawAdvanceDays = (ebaSettingsValue as { advanceDays?: unknown } | null)?.advanceDays;
+  const advanceDays =
+    typeof rawAdvanceDays === "number" && Number.isInteger(rawAdvanceDays) && rawAdvanceDays >= 1
+      ? rawAdvanceDays
+      : 30;
 
   const { data: entries = [], isLoading } = useQuery<WorkerDispatchEba[]>({
     queryKey: ["/api/worker-dispatch-eba/worker", worker.id],

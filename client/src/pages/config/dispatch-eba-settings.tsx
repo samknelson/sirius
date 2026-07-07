@@ -54,7 +54,7 @@ export default function DispatchEbaSettingsPage() {
         description: "EBA settings have been updated.",
       });
       queryClient.invalidateQueries({ queryKey: ["/api/config/dispatch/eba"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dispatch-eba/settings"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/variables/by-name", "dispatch_eba_settings"] });
     },
     onError: (error: Error) => {
       toast({
