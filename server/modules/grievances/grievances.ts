@@ -146,6 +146,24 @@ const updateStatusHistorySchema = z
     message: "At least one field must be provided",
   });
 
+// Deadline highlighting thresholds (in days) for grievance timeline deadlines.
+// Stored in the `grievance.deadline_thresholds` variable; invalid or missing
+// values fall back to the defaults. `green` = more than this many days out is
+// green; `red` = fewer than this many days out (or overdue) is red; in
+// between is yellow.
+const DEADLINE_THRESHOLDS_VARIABLE = "grievance.deadline_thresholds";
+
+const deadlineThresholdsSchema = z
+  .object({
+    green: z.number().int().min(0),
+    red: z.number().int().min(0),
+  })
+  .refine((v) => v.green >= v.red, {
+    message: "green must be greater than or equal to red",
+  });
+
+const DEFAULT_DEADLINE_THRESHOLDS = { green: 20, red: 5 } as const;
+
 const setContractSchema = z.object({
   contractId: z.string().uuid("A valid contract is required"),
 });
@@ -343,6 +361,27 @@ export function registerGrievanceRoutes(
     } catch (error) {
       console.error("Failed to delete grievance:", error);
       res.status(500).json({ message: "Failed to delete grievance" });
+    }
+  });
+
+  // ----- Deadline threshold config (read-only for staff) -----
+  // The variable itself is edited through the admin variables UI; this
+  // endpoint just exposes the validated value (with defaults) to the client.
+
+  app.get("/api/config/grievances/deadline-thresholds", ...gate, async (_req, res) => {
+    try {
+      const variable = await storage.variables.getByName(DEADLINE_THRESHOLDS_VARIABLE);
+      let thresholds: { green: number; red: number } = { ...DEFAULT_DEADLINE_THRESHOLDS };
+      if (variable) {
+        const parsed = deadlineThresholdsSchema.safeParse(variable.value);
+        if (parsed.success) {
+          thresholds = parsed.data;
+        }
+      }
+      res.json(thresholds);
+    } catch (error) {
+      console.error("Failed to fetch grievance deadline thresholds:", error);
+      res.status(500).json({ message: "Failed to fetch deadline thresholds" });
     }
   });
 

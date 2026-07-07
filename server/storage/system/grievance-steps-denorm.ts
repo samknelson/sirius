@@ -22,6 +22,7 @@ export interface GrievanceTimelineStepRow {
 export interface GrievanceTimelineStepItem extends GrievanceStepsDenorm {
   stepName: string | null;
   stepActor: string | null;
+  stepDescription: string | null;
 }
 
 /**
@@ -75,6 +76,7 @@ export function createGrievanceStepsDenormStorage(): GrievanceStepsDenormStorage
           data: grievanceStepsDenorm.data,
           stepName: optionsGrievanceSteps.name,
           stepActor: optionsGrievanceSteps.actor,
+          stepDescription: optionsGrievanceSteps.description,
         })
         .from(grievanceStepsDenorm)
         .leftJoin(

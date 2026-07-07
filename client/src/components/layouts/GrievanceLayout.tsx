@@ -8,6 +8,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useGrievanceTabAccess } from "@/hooks/useTabAccess";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import { type GrievanceCardinality } from "@shared/schema";
+import {
+  type GrievanceTimelineStepItem,
+  useDeadlineThresholds,
+  deadlineColorClass,
+  formatYmd,
+} from "@/lib/grievance-deadlines";
 
 export interface GrievanceLinkedWorker {
   workerId: string;
@@ -92,6 +98,57 @@ function grievanceTitle(grievance: GrievanceWithDetails): string {
   if (grievance.name && grievance.name.trim()) return grievance.name;
   if (grievance.categoryName) return `${grievance.categoryName} Grievance`;
   return `Grievance ${grievance.id.slice(0, 8)}`;
+}
+
+/**
+ * At-a-glance summary shown on every grievance tab: current status, current
+ * timeline step (from the computed steps), its description, and its deadline
+ * (color-coded by proximity via the configurable thresholds).
+ */
+function GrievanceSummaryBox({ grievance }: { grievance: GrievanceWithDetails }) {
+  const { data: steps } = useQuery<GrievanceTimelineStepItem[]>({
+    queryKey: ["/api/grievances", grievance.id, "timeline-steps"],
+  });
+  const thresholds = useDeadlineThresholds();
+
+  const currentStep = steps?.find((s) => s.isCurrent) ?? null;
+  const deadline = currentStep?.dueYmd ?? null;
+
+  return (
+    <Card data-testid="card-grievance-summary">
+      <CardContent className="pt-6">
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+          <div>
+            <p className="text-sm text-muted-foreground">Current Status</p>
+            <p className="font-medium" data-testid="text-summary-status">
+              {grievance.statusName ?? "—"}
+            </p>
+          </div>
+          <div>
+            <p className="text-sm text-muted-foreground">Current Step</p>
+            <p className="font-medium" data-testid="text-summary-step">
+              {currentStep?.stepName ?? "—"}
+            </p>
+          </div>
+          <div>
+            <p className="text-sm text-muted-foreground">Step Description</p>
+            <p className="text-sm" data-testid="text-summary-step-description">
+              {currentStep?.stepDescription ?? "—"}
+            </p>
+          </div>
+          <div>
+            <p className="text-sm text-muted-foreground">Deadline</p>
+            <p
+              className={deadline ? deadlineColorClass(deadline, thresholds) : "font-medium"}
+              data-testid="text-summary-deadline"
+            >
+              {formatYmd(deadline)}
+            </p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
 interface GrievanceLayoutProps {
@@ -269,7 +326,8 @@ export function GrievanceLayout({ activeTab, children }: GrievanceLayoutProps) {
           </div>
         </div>
 
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+          <GrievanceSummaryBox grievance={grievance} />
           {children}
         </main>
       </div>
