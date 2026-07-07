@@ -447,8 +447,13 @@ export const commTabTree: HierarchicalTab[] = [
 export const grievanceTabTree: HierarchicalTab[] = [
   { id: 'details', label: 'Details', hrefTemplate: '/grievance/{id}', permission: 'staff', component: 'grievance' },
   { id: 'edit', label: 'Edit', hrefTemplate: '/grievance/{id}/edit', permission: 'staff', component: 'grievance' },
-  { id: 'timeline', label: 'Timeline', hrefTemplate: '/grievance/{id}/timeline', permission: 'staff', component: 'grievance' },
-  { id: 'status-history', label: 'Status History', hrefTemplate: '/grievance/{id}/status-history', permission: 'staff', component: 'grievance' },
+  {
+    id: 'timeline', label: 'Timeline', hrefTemplate: '/grievance/{id}/timeline', permission: 'staff', component: 'grievance',
+    children: [
+      { id: 'timeline-view', label: 'View', hrefTemplate: '/grievance/{id}/timeline', permission: 'staff', component: 'grievance' },
+      { id: 'status-history', label: 'Edit', hrefTemplate: '/grievance/{id}/status-history', permission: 'staff', component: 'grievance' },
+    ],
+  },
   { id: 'settlements', label: 'Settlements', hrefTemplate: '/grievance/{id}/settlements', permission: 'staff', component: 'grievance.settlement' },
   { id: 'logs', label: 'Logs', hrefTemplate: '/grievance/{id}/logs', permission: 'staff', component: 'grievance' },
 ];

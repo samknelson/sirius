@@ -171,7 +171,10 @@ export function GrievanceLayout({ activeTab, children }: GrievanceLayoutProps) {
       },
     });
 
-  const { tabs } = useGrievanceTabAccess(id || "");
+  const { tabs, getActiveRoot } = useGrievanceTabAccess(id || "");
+
+  const activeRoot = getActiveRoot(activeTab);
+  const subTabs = activeRoot?.children;
 
   usePageTitle(grievance ? grievanceTitle(grievance) : undefined);
 
@@ -300,7 +303,7 @@ export function GrievanceLayout({ activeTab, children }: GrievanceLayoutProps) {
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex flex-wrap items-center gap-2 py-3">
               {tabs.map((tab) => {
-                const isActive = tab.id === activeTab;
+                const isActive = tab.id === (activeRoot?.id ?? activeTab);
                 return isActive ? (
                   <Button
                     key={tab.id}
@@ -325,6 +328,38 @@ export function GrievanceLayout({ activeTab, children }: GrievanceLayoutProps) {
             </div>
           </div>
         </div>
+
+        {/* Sub-Tab Navigation - rendered when the active root tab has children */}
+        {subTabs && subTabs.length > 0 && (
+          <div className="bg-muted/30 border-b border-border">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+              <div className="flex flex-wrap items-center gap-2 py-2 pl-4">
+                {subTabs.map((tab) =>
+                  tab.id === activeTab ? (
+                    <Button
+                      key={tab.id}
+                      variant="secondary"
+                      size="sm"
+                      data-testid={`button-grievance-${tab.id}`}
+                    >
+                      {tab.label}
+                    </Button>
+                  ) : (
+                    <Link key={tab.id} href={tab.href}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        data-testid={`button-grievance-${tab.id}`}
+                      >
+                        {tab.label}
+                      </Button>
+                    </Link>
+                  )
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
           <GrievanceSummaryBox grievance={grievance} />

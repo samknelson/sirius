@@ -278,7 +278,7 @@ function GrievanceTimelineContent() {
 
 export default function GrievanceTimeline() {
   return (
-    <GrievanceLayout activeTab="timeline">
+    <GrievanceLayout activeTab="timeline-view">
       <GrievanceTimelineContent />
     </GrievanceLayout>
   );
