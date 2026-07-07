@@ -808,29 +808,41 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
     // Only process address if at least street (addressLine1) and city are provided
     // These are minimum required fields for a valid address
     if (addressLine1 && city && state && postalCode) {
-      // Check if contact already has addresses
+      const incoming = {
+        street: addressLine1,
+        city,
+        state,
+        postalCode,
+        country: 'US', // Default to US
+      };
+      // Address records are immutable (street/city/state/postalCode/country
+      // can never be edited in place — see storage.contacts.addresses
+      // .updateContactPostal). So: if the contact already has this exact
+      // address, do nothing; otherwise create a NEW address record.
       const existingAddresses = await storage.contacts.addresses.getContactPostalByContact(contactId);
-      
-      if (existingAddresses.length > 0) {
-        // Update the primary address
-        const primaryAddress = existingAddresses.find((a: { isPrimary: boolean }) => a.isPrimary) || existingAddresses[0];
-        await storage.contacts.addresses.updateContactPostal(primaryAddress.id, {
-          street: addressLine1,
-          city,
-          state,
-          postalCode,
-          country: 'US' // Default to US
-        });
-      } else {
-        // Create a new primary address
+      const norm = (v: string | null | undefined) => (v ?? '').trim().toUpperCase();
+      const alreadyPresent = existingAddresses.some(
+        (a: { street: string; city: string; state: string; postalCode: string; country: string; isActive: boolean }) =>
+          a.isActive &&
+          norm(a.street) === norm(incoming.street) &&
+          norm(a.city) === norm(incoming.city) &&
+          norm(a.state) === norm(incoming.state) &&
+          norm(a.postalCode) === norm(incoming.postalCode) &&
+          norm(a.country) === norm(incoming.country),
+      );
+
+      if (!alreadyPresent) {
+        // Never steal primary from a worker-reported address (mirrors the
+        // guard enforced by updateContactPostal for primary changes).
+        const currentPrimary = existingAddresses.find(
+          (a: { isPrimary: boolean; isActive: boolean }) => a.isPrimary && a.isActive,
+        );
+        const makePrimary = !currentPrimary || currentPrimary.source !== 'worker_self';
         await storage.contacts.addresses.createContactPostal({
           contactId,
-          street: addressLine1,
-          city,
-          state,
-          postalCode,
-          country: 'US', // Default to US
-          isPrimary: true
+          ...incoming,
+          source: 'employer_feed',
+          isPrimary: makePrimary,
         });
       }
     }
