@@ -87,6 +87,7 @@ import "./plugins/workerMs";
 import "./plugins/workerWs";
 import "./plugins/workerEmployment";
 import "./plugins/grievanceName";
+import "./plugins/grievanceTimeline";
 // Dispatch-eligibility denorm plugins (write side of dispatch eligibility).
 import "./plugins/dispatch/accepted";
 import "./plugins/dispatch/ban";

@@ -82,6 +82,7 @@ import "./components/grievance/024_add_bargaining_unit_id_to_grievances";
 import "./components/grievance/025_make_grievance_sirius_id_not_null";
 import "./components/grievance/026_add_employer_contact_id_to_grievances";
 import "./components/grievance/027_create_grievance_status_history_drop_status_id";
+import "./components/grievance/028_replace_grievance_steps_with_denorm";
 import "./components/grievance.settlement/001_create_grievance_settlement";
 import "./components/grievance.contract/001_create_grievance_contract_sections";
 import "./components/grievance.contract/002_create_grievance_contracts";

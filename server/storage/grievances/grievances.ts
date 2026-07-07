@@ -46,6 +46,19 @@ function emitGrievanceSaved(grievanceId: string): void {
 }
 
 /**
+ * Emit the timeline-changed event once the surrounding transaction commits,
+ * so the `grievance_timeline` denorm plugin recomputes the grievance's
+ * timeline steps. Emitted ONLY when `timeline_template_id` actually changed
+ * (set, swapped, or cleared) — never on unrelated grievance edits.
+ * Best-effort: a failed emit never fails the write.
+ */
+function emitGrievanceTimelineChanged(grievanceId: string): void {
+  onAfterCommit(() => {
+    void eventBus.emit(EventType.GRIEVANCE_TIMELINE_CHANGED, { grievanceId });
+  });
+}
+
+/**
  * Emit the grievance-assignment-saved event once the surrounding transaction
  * (if any) commits, so the grievance-assignment event-notifier plugin can fan a
  * notification out to the affected user. Best-effort: a failed emit never fails
@@ -455,6 +468,20 @@ export function createGrievanceStorage(): GrievanceStorage {
         const { siriusId: rawSiriusId, ...restData } = data;
         const values: Partial<typeof grievances.$inferInsert> = { ...restData };
 
+        // Detect a real timeline-template change so the timeline denorm
+        // plugin only recomputes when the reference itself moved.
+        let timelineChanged = false;
+        if ("timelineTemplateId" in data) {
+          const [before] = await client
+            .select({ timelineTemplateId: grievances.timelineTemplateId })
+            .from(grievances)
+            .where(eq(grievances.id, id))
+            .limit(1);
+          timelineChanged =
+            !!before &&
+            (before.timelineTemplateId ?? null) !== (data.timelineTemplateId ?? null);
+        }
+
         const providedId =
           typeof rawSiriusId === "string" ? rawSiriusId.trim() : rawSiriusId;
 
@@ -483,7 +510,10 @@ export function createGrievanceStorage(): GrievanceStorage {
           .set(values)
           .where(eq(grievances.id, id))
           .returning();
-        if (row) emitGrievanceSaved(row.id);
+        if (row) {
+          emitGrievanceSaved(row.id);
+          if (timelineChanged) emitGrievanceTimelineChanged(row.id);
+        }
         return row || undefined;
       });
     },

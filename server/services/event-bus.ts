@@ -36,6 +36,8 @@ export enum EventType {
   WORKER_MSH_SAVED = "worker.msh.saved",
   STEWARD_ASSIGNMENT_SAVED = "steward.assignment.saved",
   GRIEVANCE_SAVED = "grievance.saved",
+  GRIEVANCE_STATUS_HISTORY_SAVED = "grievance.status-history.saved",
+  GRIEVANCE_TIMELINE_CHANGED = "grievance.timeline.changed",
   GRIEVANCE_ASSIGNMENT_SAVED = "grievance.assignment.saved",
   GRIEVANCE_SETTLEMENT_SAVED = "grievance.settlement.saved",
   TRUST_WMB_SCAN_COMPLETED = "trust.wmb.scan.completed",
@@ -168,6 +170,25 @@ export interface GrievanceSavedPayload {
   grievanceId: string;
 }
 
+/**
+ * Emitted after any grievance status-history mutation (create/update/delete)
+ * commits. Consumed by the `grievance_timeline` denorm plugin to recompute the
+ * grievance's timeline steps.
+ */
+export interface GrievanceStatusHistorySavedPayload {
+  grievanceId: string;
+}
+
+/**
+ * Emitted after a grievance save commits ONLY when the grievance's
+ * `timeline_template_id` actually changed (set, swapped, or cleared) — so the
+ * `grievance_timeline` denorm plugin does not recompute on every unrelated
+ * grievance edit.
+ */
+export interface GrievanceTimelineChangedPayload {
+  grievanceId: string;
+}
+
 export interface GrievanceAssignmentSavedPayload {
   grievanceId: string;
   userId: string;
@@ -244,6 +265,8 @@ export interface EventPayloadMap {
   [EventType.WORKER_MSH_SAVED]: WorkerMshSavedPayload;
   [EventType.STEWARD_ASSIGNMENT_SAVED]: StewardAssignmentSavedPayload;
   [EventType.GRIEVANCE_SAVED]: GrievanceSavedPayload;
+  [EventType.GRIEVANCE_STATUS_HISTORY_SAVED]: GrievanceStatusHistorySavedPayload;
+  [EventType.GRIEVANCE_TIMELINE_CHANGED]: GrievanceTimelineChangedPayload;
   [EventType.GRIEVANCE_ASSIGNMENT_SAVED]: GrievanceAssignmentSavedPayload;
   [EventType.GRIEVANCE_SETTLEMENT_SAVED]: GrievanceSettlementSavedPayload;
   [EventType.TRUST_WMB_SCAN_COMPLETED]: TrustWmbScanCompletedPayload;

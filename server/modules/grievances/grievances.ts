@@ -346,6 +346,25 @@ export function registerGrievanceRoutes(
     }
   });
 
+  // ----- Timeline steps (read-only) -----
+  // Computed rows from grievance_steps_denorm — written ONLY by the
+  // grievance_timeline denorm plugin (recomputes on status-history saves and
+  // timeline-template changes). There are deliberately NO mutation routes.
+
+  app.get("/api/grievances/:id/timeline-steps", ...gate, async (req, res) => {
+    try {
+      const grievance = await storage.grievances.get(req.params.id);
+      if (!grievance) {
+        return res.status(404).json({ message: "Grievance not found" });
+      }
+      const steps = await storage.grievanceStepsDenorm.listForGrievance(req.params.id);
+      res.json(steps);
+    } catch (error) {
+      console.error("Failed to fetch grievance timeline steps:", error);
+      res.status(500).json({ message: "Failed to fetch timeline steps" });
+    }
+  });
+
   // ----- Status history -----
   // The grievance's current status is derived from these entries (latest date
   // wins); mutations recompute `is_current` transactionally in storage.

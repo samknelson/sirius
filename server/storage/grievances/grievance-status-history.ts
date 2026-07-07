@@ -1,4 +1,4 @@
-import { getClient, runInTransaction } from "../transaction-context";
+import { getClient, runInTransaction, onAfterCommit } from "../transaction-context";
 import {
   grievances,
   grievanceStatusHistory,
@@ -7,6 +7,19 @@ import {
 } from "@shared/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { type StorageLoggingConfig } from "../middleware/logging";
+import { eventBus, EventType } from "../../services/event-bus";
+
+/**
+ * Emit the status-history-saved event once the surrounding transaction
+ * commits, so the `grievance_timeline` denorm plugin recomputes the
+ * grievance's timeline steps from committed data. Best-effort: a failed emit
+ * never fails the write.
+ */
+function emitStatusHistorySaved(grievanceId: string): void {
+  onAfterCommit(() => {
+    void eventBus.emit(EventType.GRIEVANCE_STATUS_HISTORY_SAVED, { grievanceId });
+  });
+}
 
 export interface GrievanceStatusHistoryItem extends GrievanceStatusHistory {
   statusName: string | null;
@@ -153,6 +166,7 @@ export function createGrievanceStatusHistoryStorage(): GrievanceStatusHistorySto
           .select()
           .from(grievanceStatusHistory)
           .where(eq(grievanceStatusHistory.id, row.id));
+        emitStatusHistorySaved(grievanceId);
         return fresh;
       });
     },
@@ -184,6 +198,7 @@ export function createGrievanceStatusHistoryStorage(): GrievanceStatusHistorySto
           .select()
           .from(grievanceStatusHistory)
           .where(eq(grievanceStatusHistory.id, row.id));
+        emitStatusHistorySaved(grievanceId);
         return fresh || undefined;
       });
     },
@@ -203,6 +218,7 @@ export function createGrievanceStatusHistoryStorage(): GrievanceStatusHistorySto
           .returning();
         if (result.length === 0) return false;
         await recomputeIsCurrent(grievanceId);
+        emitStatusHistorySaved(grievanceId);
         return true;
       });
     },

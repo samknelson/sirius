@@ -362,10 +362,18 @@ export type InsertGrievanceRemedy = z.infer<
   typeof insertGrievanceRemedySchema
 >;
 
-export const grievanceSteps = pgTable(
-  "grievance_steps",
+// Per-grievance computed timeline steps (payload table for the
+// `grievance_timeline` denorm plugin). Rows are derived from the grievance's
+// timeline template + status history; NO route may write this table — the
+// plugin is its sole maintainer. `denorm_id` ties rows back to the grievance's
+// workflow status row in the core `denorm` table.
+export const grievanceStepsDenorm = pgTable(
+  "grievance_steps_denorm",
   {
     id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    denormId: varchar("denorm_id")
+      .notNull()
+      .references(() => denorm.id, { onDelete: "cascade" }),
     grievanceId: varchar("grievance_id")
       .notNull()
       .references(() => grievances.id, { onDelete: "cascade" }),
@@ -375,26 +383,26 @@ export const grievanceSteps = pgTable(
     startedYmd: date("started_ymd"),
     dueYmd: date("due_ymd"),
     completedYmd: date("completed_ymd"),
-    active: boolean("active").notNull().default(false),
+    isCurrent: boolean("is_current").notNull().default(false),
     data: jsonb("data"),
   },
   (table) => ({
-    // At most one active step per grievance. `active` is not a reserved
+    // At most one current step per grievance. `is_current` is not a reserved
     // word, so Postgres reflects the partial-index predicate unquoted; the
     // drift gate compares predicate strings literally, so the declared
-    // predicate must read `active = true` to match what is reflected.
-    oneActivePerGrievance: uniqueIndex("grievance_steps_one_active_per_grievance")
+    // predicate must read `is_current = true` to match what is reflected.
+    oneCurrentPerGrievance: uniqueIndex("grievance_steps_denorm_one_current_per_grievance")
       .on(table.grievanceId)
-      .where(sql`active = true`),
+      .where(sql`is_current = true`),
   }),
 );
 
-export const insertGrievanceStepSchema = createInsertSchema(grievanceSteps).omit({
+export const insertGrievanceStepsDenormSchema = createInsertSchema(grievanceStepsDenorm).omit({
   id: true,
 });
 
-export type GrievanceStep = typeof grievanceSteps.$inferSelect;
-export type InsertGrievanceStep = z.infer<typeof insertGrievanceStepSchema>;
+export type GrievanceStepsDenorm = typeof grievanceStepsDenorm.$inferSelect;
+export type InsertGrievanceStepsDenorm = z.infer<typeof insertGrievanceStepsDenormSchema>;
 
 export const GRIEVANCE_TIMELINE_DAY_TYPES = ["calendar", "business"] as const;
 
