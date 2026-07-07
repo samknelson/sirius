@@ -1,5 +1,6 @@
 import type { Request } from "express";
 import { z } from "zod";
+import type { InsertVariable } from "@shared/schema";
 import { TERMINOLOGY_VARIABLE_NAME, terminologySchema, TERM_REGISTRY } from "@shared/terminology";
 import { buildContext, checkAccess } from "../../services/access-policy-evaluator";
 import { isComponentEnabled } from "../components";
@@ -157,8 +158,11 @@ export async function checkVariableWriteAccess(
   return checkTier(req, tier === "public" ? "admin" : tier, entry?.component);
 }
 
+/** Storage-compatible value type for the jsonb `variables.value` column. */
+export type VariableJsonValue = InsertVariable["value"];
+
 export type VariableValueValidation =
-  | { ok: true; value: unknown }
+  | { ok: true; value: VariableJsonValue }
   | { ok: false; errors: z.ZodIssue[] };
 
 /**
@@ -168,13 +172,13 @@ export type VariableValueValidation =
 export function validateVariableValue(name: string, value: unknown): VariableValueValidation {
   const entry = VARIABLE_REGISTRY[name];
   if (!entry?.schema) {
-    return { ok: true, value };
+    return { ok: true, value: value as VariableJsonValue };
   }
   const result = entry.schema.safeParse(value);
   if (!result.success) {
     return { ok: false, errors: result.error.errors };
   }
-  return { ok: true, value: result.data };
+  return { ok: true, value: result.data as VariableJsonValue };
 }
 
 /** Run the variable's onWrite hook (if any) after a successful write/delete. */

@@ -157,6 +157,15 @@ export function registerVariableRoutes(
         return;
       }
 
+      // Enforce the registry writeTier (incl. component gates) on top of
+      // the blanket admin requirement, so the generic route can never be
+      // a softer path than the by-name route.
+      const writeDecision = await checkVariableWriteAccess(req, validatedData.name);
+      if (!writeDecision.granted) {
+        res.status(writeDecision.status).json({ message: writeDecision.message });
+        return;
+      }
+
       // Registered variables get their value validated even on the
       // generic admin route, so the Options page can't write garbage.
       const validation = validateVariableValue(validatedData.name, validatedData.value);
@@ -203,6 +212,18 @@ export function registerVariableRoutes(
       // rename-only updates, where the existing stored value must satisfy
       // the target name's schema.
       const effectiveName = validatedData.name ?? current.name;
+
+      // Enforce the registry writeTier for BOTH the current and the
+      // effective (possibly renamed) name, on top of the blanket admin
+      // requirement, so renames can't dodge a stricter gate.
+      for (const gateName of Array.from(new Set([current.name, effectiveName]))) {
+        const writeDecision = await checkVariableWriteAccess(req, gateName);
+        if (!writeDecision.granted) {
+          res.status(writeDecision.status).json({ message: writeDecision.message });
+          return;
+        }
+      }
+
       const finalValue = validatedData.value !== undefined ? validatedData.value : current.value;
       const validation = validateVariableValue(effectiveName, finalValue);
       if (!validation.ok) {
