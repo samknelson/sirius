@@ -2220,8 +2220,19 @@ export const chargePluginConfigs = pgTable(
     settings: jsonb("settings").default(sql`'{}'::jsonb`),
     createdAt: timestamp("created_at").default(sql`now()`).notNull(),
     updatedAt: timestamp("updated_at").default(sql`now()`).notNull(),
+    name: text("name"),
+    account: varchar("account").references(() => ledgerAccounts.id, { onDelete: "set null" }),
   },
-  (t) => [unique("charge_plugin_configs_plugin_id_scope_employer_id_unique").on(t.pluginId, t.scope, t.employerId)],
+  // NOTE: the constraint name below is the 63-char Postgres-truncated name that
+  // actually exists in prod — declare it verbatim so the drift gate matches.
+  (t) => [
+    unique("charge_plugin_configs_plugin_id_scope_employer_id_account_uniqu").on(
+      t.pluginId,
+      t.scope,
+      t.employerId,
+      t.account,
+    ),
+  ],
 );
 
 export const cronJobRuns = pgTable("cron_job_runs", {

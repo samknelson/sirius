@@ -19,12 +19,16 @@ async function up(): Promise<void> {
       plugin_id text NOT NULL,
       enabled boolean NOT NULL DEFAULT false,
       scope varchar NOT NULL,
-      employer_id varchar REFERENCES employers(id) ON DELETE CASCADE,
+      employer_id varchar CONSTRAINT charge_plugin_configs_employer_id_employers_id_fk
+        REFERENCES employers(id) ON DELETE CASCADE,
       settings jsonb DEFAULT '{}'::jsonb,
       created_at timestamp NOT NULL DEFAULT now(),
       updated_at timestamp NOT NULL DEFAULT now(),
-      CONSTRAINT charge_plugin_configs_plugin_id_scope_employer_id_unique
-        UNIQUE (plugin_id, scope, employer_id)
+      name text,
+      account varchar CONSTRAINT charge_plugin_configs_account_ledger_accounts_id_fk
+        REFERENCES ledger_accounts(id) ON DELETE SET NULL,
+      CONSTRAINT charge_plugin_configs_plugin_id_scope_employer_id_account_uniqu
+        UNIQUE (plugin_id, scope, employer_id, account)
     )
   `);
   logger.info("Ensured legacy charge_plugin_configs table exists (publish workaround)", {
