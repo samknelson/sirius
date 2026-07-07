@@ -2200,6 +2200,30 @@ export const cronJobs = pgTable("cron_jobs", {
   settings: jsonb("settings"),
 });
 
+// TEMPORARY (publish-migration workaround, July 2026): `chargePluginConfigs`
+// below mirrors the legacy prod table for the same two-step publish. Prod
+// still holds 2 live charge-config rows that boot-time migration 1016 must
+// backfill into plugin_configs BEFORE 1017 drops the table. If the table were
+// absent from dev, the publish diff would DROP it in prod first and the data
+// would be lost. Keeping it in dev makes the diff a no-op for this table; the
+// prod boot then backfills, drops, and migration 1044 recreates it empty so
+// the drift gate stays satisfied. Removed again after the two-step publish.
+// Do NOT build anything on this table — it is dead.
+export const chargePluginConfigs = pgTable(
+  "charge_plugin_configs",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    pluginId: text("plugin_id").notNull(),
+    enabled: boolean("enabled").default(false).notNull(),
+    scope: varchar("scope").notNull(),
+    employerId: varchar("employer_id").references(() => employers.id, { onDelete: "cascade" }),
+    settings: jsonb("settings").default(sql`'{}'::jsonb`),
+    createdAt: timestamp("created_at").default(sql`now()`).notNull(),
+    updatedAt: timestamp("updated_at").default(sql`now()`).notNull(),
+  },
+  (t) => [unique("charge_plugin_configs_plugin_id_scope_employer_id_unique").on(t.pluginId, t.scope, t.employerId)],
+);
+
 export const cronJobRuns = pgTable("cron_job_runs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   jobName: text("job_name").notNull(),

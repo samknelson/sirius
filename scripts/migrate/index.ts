@@ -45,6 +45,7 @@ import "./core/1038_worker_msh_denorm";
 import "./core/1039_worker_wsh_denorm";
 import "./core/1040_worker_employment_denorm";
 import "./core/1043_recreate_cron_jobs_for_publish";
+import "./core/1044_recreate_charge_plugin_configs_for_publish";
 
 // Per-component migrations — each registered via
 // `registerComponentMigration(componentId, migration)`. Tracked by the
