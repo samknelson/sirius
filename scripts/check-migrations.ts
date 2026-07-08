@@ -46,6 +46,17 @@ function changedFiles(base: string | undefined): string[] {
     // Fall back to uncommitted changes only if the base isn't reachable.
     output = execSync(`git diff --name-only HEAD`, { encoding: "utf8" });
   }
+  // Also include untracked files: a brand-new migration file (or schema
+  // file) is invisible to `git diff` until it is committed, which used to
+  // make this check false-fail ("schema change without migration") even
+  // though the migration existed, and false-pass on untracked schema files.
+  let untracked = "";
+  try {
+    untracked = execSync("git ls-files --others --exclude-standard", { encoding: "utf8" });
+  } catch {
+    // If git is unavailable for listing untracked files, proceed with diffs only.
+  }
+  output = output + "\n" + untracked;
   return Array.from(new Set(output.split("\n").map(s => s.trim()).filter(Boolean)));
 }
 

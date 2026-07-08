@@ -4,7 +4,15 @@ Sirius is a full-stack web application designed for comprehensive worker managem
 
 ## Run & Operate
 
-_Populate as you build_
+-   **Automated validations** (registered, run on every task completion —
+    no manual invocation needed): `constraint-names`
+    (`scripts/dev/check-constraint-names.ts`), `migrations`
+    (`scripts/check-migrations.ts --base=origin/main`), and
+    `storage-encapsulation` (`scripts/dev/check-storage-encapsulation.ts`).
+    A violation blocks completion with the script's actionable error.
+    `check-migrations` now also sees untracked files (`git ls-files
+    --others`), so a freshly written migration counts before it is
+    committed.
 
 ## Stack
 
