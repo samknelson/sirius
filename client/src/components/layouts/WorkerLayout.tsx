@@ -1,8 +1,11 @@
 import { createContext, useContext, ReactNode, useMemo } from "react";
-import { User, ArrowLeft } from "lucide-react";
+import { User, ArrowLeft, CalendarOff } from "lucide-react";
 import { Link, useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { Worker, Contact } from "@shared/schema";
+import { Worker, Contact, WorkerTos } from "@shared/schema";
+import { sanitizeContractHtml } from "@/components/ui/simple-html-editor";
+import { useVariableValue } from "@/lib/use-variable";
+import { TOS_BANNER_VARIABLE_NAME, TOS_BANNER_DEFAULT_HTML } from "@/lib/worker-tos-banner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -61,6 +64,58 @@ function WorkerEdlsBadgeInner({ workerId }: { workerId: string }) {
     >
       EDLS: {data.active ? "Active" : "Inactive"}
     </Badge>
+  );
+}
+
+function WorkerTosBanner({ workerId }: { workerId: string }) {
+  const { hasComponent } = useAuth();
+  if (!hasComponent("worker.tos")) return null;
+  return <WorkerTosBannerInner workerId={workerId} />;
+}
+
+function WorkerTosBannerInner({ workerId }: { workerId: string }) {
+  // Same query key as the worker TOS page so starting/stopping an
+  // absence updates the banner immediately. Fail quiet: while loading
+  // or on error (e.g. insufficient access) render nothing.
+  const { data: records, isError } = useQuery<WorkerTos[]>({
+    queryKey: ["/api/workers", workerId, "tos"],
+    retry: false,
+  });
+
+  const { data: bannerValue } = useVariableValue(TOS_BANNER_VARIABLE_NAME);
+
+  const openAbsence = records?.find((r) => r.endDate === null);
+
+  const html = useMemo(() => {
+    const raw =
+      typeof bannerValue === "string" && bannerValue ? bannerValue : TOS_BANNER_DEFAULT_HTML;
+    return sanitizeContractHtml(raw);
+  }, [bannerValue]);
+
+  if (isError || !openAbsence) return null;
+
+  return (
+    <div
+      className="rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950 text-amber-900 dark:text-amber-100 px-4 py-3 mb-6 flex items-start gap-3"
+      role="alert"
+      data-testid={`banner-worker-tos-${workerId}`}
+    >
+      <CalendarOff className="h-5 w-5 mt-0.5 shrink-0" />
+      <div className="flex-1 min-w-0">
+        <div
+          className="text-sm [&_a]:underline [&_a]:font-medium"
+          data-testid="text-tos-banner-message"
+          dangerouslySetInnerHTML={{ __html: html }}
+        />
+        <Link
+          href={`/workers/${workerId}/employment/tos`}
+          className="text-sm font-medium underline mt-1 inline-block"
+          data-testid="link-tos-banner-page"
+        >
+          Go to Time Off Sick
+        </Link>
+      </div>
+    </div>
   );
 }
 
@@ -301,6 +356,7 @@ export function WorkerLayout({ activeTab, children }: WorkerLayoutProps) {
 
         {/* Main Content */}
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <WorkerTosBanner workerId={worker.id} />
           {children}
         </main>
       </div>

@@ -77,6 +77,15 @@ const VARIABLE_REGISTRY: Record<string, VariableRegistryEntry> = {
   // Worker ban notification settings (admin read/write)
   worker_ban_notifications: { schema: workerBanNotificationConfigSchema },
 
+  // Worker TOS absence banner HTML (any authenticated user can read,
+  // staff can write; gated by the worker.tos component)
+  "worker.tos.absent_banner": {
+    readTier: "authenticated",
+    writeTier: "staff",
+    component: "worker.tos",
+    schema: z.string(),
+  },
+
   // Fully public — needed by logged-out pages (login screen, header badge)
   system_mode: { readTier: "public", schema: z.enum(["dev", "test", "live"]) },
   site_name: { readTier: "public", schema: z.string() },
