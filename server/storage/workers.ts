@@ -3,6 +3,7 @@ import {
   workers,
   contacts,
   employers,
+  workerHours,
   optionsWorkerWs,
   workerMshDenorm,
   workerWshDenorm,
@@ -13,7 +14,7 @@ import {
   type TrustBenefit,
   type Employer,
 } from "@shared/schema";
-import { eq, sql, and, ne, isNull } from "drizzle-orm";
+import { eq, sql, and, or, ne, isNull } from "drizzle-orm";
 import type { ContactsStorage } from "./contacts";
 import { type StorageLoggingConfig } from "./middleware/logging";
 import { logger } from "../logger";
@@ -208,6 +209,26 @@ export interface WorkerStorage {
   setData(id: string, data: Record<string, unknown>): Promise<void>;
   getWorkerDisplayName(id: string | undefined | null): Promise<string>;
   getWorkerBySSN(ssn: string): Promise<Worker | undefined>;
+  /**
+   * Near-match candidates for new-worker verification: existing workers whose
+   * contact matches at least two of (given name, family name, birth date),
+   * case-insensitively for names. Used to catch changed-SSN / duplicate rows
+   * before a feed blindly creates a new worker record.
+   */
+  findPotentialSsnMatches(criteria: {
+    given?: string | null;
+    family?: string | null;
+    birthDate?: string | null;
+    employerId?: string | null;
+  }): Promise<Array<{
+    id: string;
+    siriusId: number | null;
+    displayName: string | null;
+    given: string | null;
+    family: string | null;
+    birthDate: string | null;
+    ssnLast4: string | null;
+  }>>;
   getWorkerByContactEmail(email: string): Promise<Worker | undefined>;
   getWorkersByContactEmail(email: string): Promise<Worker[]>;
   getWorkerByContactId(contactId: string): Promise<Worker | undefined>;
@@ -959,6 +980,80 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         .where(sql`regexp_replace(${workers.ssn}, '[^0-9]', '', 'g') = ${normalizedSSN}`);
       
       return worker ? stripWorkerData(worker) : undefined;
+    },
+
+    async findPotentialSsnMatches(criteria: {
+      given?: string | null;
+      family?: string | null;
+      birthDate?: string | null;
+      employerId?: string | null;
+    }): Promise<Array<{
+      id: string;
+      siriusId: number | null;
+      displayName: string | null;
+      given: string | null;
+      family: string | null;
+      birthDate: string | null;
+      ssnLast4: string | null;
+    }>> {
+      const client = getClient();
+      const given = criteria.given?.trim() || null;
+      const family = criteria.family?.trim() || null;
+      const birthDate = criteria.birthDate?.trim() || null;
+
+      // Require at least two matching signals to call something a candidate:
+      // (given + family), (family + DOB), or (given + DOB).
+      const pairs: ReturnType<typeof and>[] = [];
+      const givenMatch = given
+        ? sql`LOWER(${contacts.given}) = LOWER(${given})`
+        : null;
+      const familyMatch = family
+        ? sql`LOWER(${contacts.family}) = LOWER(${family})`
+        : null;
+      const dobMatch = birthDate ? eq(contacts.birthDate, birthDate) : null;
+      if (givenMatch && familyMatch) pairs.push(and(givenMatch, familyMatch));
+      if (familyMatch && dobMatch) pairs.push(and(familyMatch, dobMatch));
+      if (givenMatch && dobMatch) pairs.push(and(givenMatch, dobMatch));
+      if (pairs.length === 0) return [];
+
+      // When an employer scope is given, only surface workers that already
+      // have a relationship with that employer (any reported hours). This
+      // keeps employer-facing verify flows from leaking other entities' PII.
+      const employerId = criteria.employerId?.trim() || null;
+      const where = employerId
+        ? and(
+            or(...pairs),
+            sql`EXISTS (SELECT 1 FROM ${workerHours} WHERE ${workerHours.workerId} = ${workers.id} AND ${workerHours.employerId} = ${employerId})`,
+          )
+        : or(...pairs);
+
+      const rows = await client
+        .select({
+          id: workers.id,
+          siriusId: workers.siriusId,
+          displayName: contacts.displayName,
+          given: contacts.given,
+          family: contacts.family,
+          birthDate: contacts.birthDate,
+          ssn: workers.ssn,
+        })
+        .from(workers)
+        .innerJoin(contacts, eq(workers.contactId, contacts.id))
+        .where(where)
+        .limit(20);
+
+      return rows.map((r) => {
+        const digits = (r.ssn || "").replace(/[^0-9]/g, "");
+        return {
+          id: r.id,
+          siriusId: r.siriusId,
+          displayName: r.displayName,
+          given: r.given,
+          family: r.family,
+          birthDate: r.birthDate,
+          ssnLast4: digits.length >= 4 ? digits.slice(-4) : null,
+        };
+      });
     },
 
     async getWorkerByContactEmail(email: string): Promise<Worker | undefined> {

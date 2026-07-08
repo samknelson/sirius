@@ -522,25 +522,20 @@ export abstract class FeedWizard extends BaseWizard {
   }
 
   /**
-   * Process validated feed data to create/update workers
-   * @param wizardId The wizard instance ID
-   * @param batchSize Number of rows to process per batch (default: 100)
-   * @param onProgress Callback for progress updates
-   * @returns Processing results
+   * Download the uploaded file for a wizard, parse it, and apply the saved
+   * column mapping. Shared by `processFeedData` and by steps (e.g. a
+   * verify-new-workers step) that need the mapped rows WITHOUT mutating
+   * anything.
    */
-  async processFeedData(
-    wizardId: string,
-    batchSize: number = 100,
-    onProgress?: (progress: { 
-      processed: number; 
-      total: number;
-      createdCount: number;
-      updatedCount: number;
-      successCount: number; 
-      failureCount: number;
-      currentRow?: { index: number; status: 'success' | 'error'; error?: string };
-    }) => void
-  ): Promise<ProcessResults> {
+  async loadMappedRows(wizardId: string): Promise<{
+    wizard: NonNullable<Awaited<ReturnType<typeof storage.wizards.getById>>>;
+    wizardData: any;
+    file: NonNullable<Awaited<ReturnType<typeof storage.files.getById>>>;
+    rawRows: any[];
+    hasHeaders: boolean;
+    mode: string;
+    mappedRows: Record<string, any>[];
+  }> {
     const wizard = await storage.wizards.getById(wizardId);
     if (!wizard) {
       throw new Error('Wizard not found');
@@ -553,11 +548,6 @@ export abstract class FeedWizard extends BaseWizard {
     const columnMapping = normalizeColumnMapping(rawColumnMapping);
     const hasHeaders = wizardData?.hasHeaders ?? true;
     const mode = wizardData?.mode || 'create';
-    const validationResults = wizardData?.validationResults;
-
-    if (!validationResults) {
-      throw new Error('No validation results found. Please validate the data first.');
-    }
 
     if (!fileId) {
       throw new Error('No uploaded file found');
@@ -599,6 +589,37 @@ export abstract class FeedWizard extends BaseWizard {
       });
       return mapped;
     });
+
+    return { wizard, wizardData, file, rawRows, hasHeaders, mode, mappedRows };
+  }
+
+  /**
+   * Process validated feed data to create/update workers
+   * @param wizardId The wizard instance ID
+   * @param batchSize Number of rows to process per batch (default: 100)
+   * @param onProgress Callback for progress updates
+   * @returns Processing results
+   */
+  async processFeedData(
+    wizardId: string,
+    batchSize: number = 100,
+    onProgress?: (progress: { 
+      processed: number; 
+      total: number;
+      createdCount: number;
+      updatedCount: number;
+      successCount: number; 
+      failureCount: number;
+      currentRow?: { index: number; status: 'success' | 'error'; error?: string };
+    }) => void
+  ): Promise<ProcessResults> {
+    const { wizard, wizardData, file, rawRows, hasHeaders, mode, mappedRows } =
+      await this.loadMappedRows(wizardId);
+
+    const validationResults = wizardData?.validationResults;
+    if (!validationResults) {
+      throw new Error('No validation results found. Please validate the data first.');
+    }
 
     // Process in batches
     const totalRows = mappedRows.length;
@@ -708,11 +729,22 @@ export abstract class FeedWizard extends BaseWizard {
               }
             }
 
+            // Process worker payments if this wizard type supports it (e.g. BAO withholding)
+            let paymentsError: string | undefined;
+            if (typeof (this as any).processWorkerPayments === 'function') {
+              try {
+                await (this as any).processWorkerPayments(existingWorker.id, row, wizard);
+              } catch (err: any) {
+                paymentsError = err.message || 'Payments processing failed';
+              }
+            }
+
             updatedCount++;
             const processingIssues: string[] = [];
             if (!hoursProcessed) processingIssues.push(`hours: ${hoursError}`);
             if (!contactInfoProcessed) processingIssues.push(`contact info: ${contactInfoError}`);
             if (benefitsErrors.length > 0) processingIssues.push(`benefits: ${benefitsErrors.join(', ')}`);
+            if (paymentsError) processingIssues.push(`payments: ${paymentsError}`);
             
             rowResults.push({
               rowIndex,
@@ -752,6 +784,11 @@ export abstract class FeedWizard extends BaseWizard {
               // Worker exists, update it
               workerId = existingWorker.id;
             } else {
+              // Give the wizard type a chance to veto creation (e.g. BAO's
+              // verify-new-workers step). Throwing here fails the row.
+              if (typeof (this as any).canCreateWorker === 'function') {
+                await (this as any).canCreateWorker(ssn, row, wizard);
+              }
               // Worker doesn't exist, create new one
               const fullName = [firstName, lastName].filter(Boolean).join(' ');
               const newWorker = await storage.workers.createWorker(fullName);
@@ -818,6 +855,16 @@ export abstract class FeedWizard extends BaseWizard {
               }
             }
 
+            // Process worker payments if this wizard type supports it (e.g. BAO withholding)
+            let paymentsError: string | undefined;
+            if (typeof (this as any).processWorkerPayments === 'function') {
+              try {
+                await (this as any).processWorkerPayments(workerId, row, wizard);
+              } catch (err: any) {
+                paymentsError = err.message || 'Payments processing failed';
+              }
+            }
+
             // Increment appropriate counter and add row result
             if (isNewWorker) {
               createdCount++;
@@ -830,6 +877,7 @@ export abstract class FeedWizard extends BaseWizard {
             if (!hoursProcessed) processingIssues.push(`hours: ${hoursError}`);
             if (!contactInfoProcessed) processingIssues.push(`contact info: ${contactInfoError}`);
             if (benefitsErrors.length > 0) processingIssues.push(`benefits: ${benefitsErrors.join(', ')}`);
+            if (paymentsError) processingIssues.push(`payments: ${paymentsError}`);
             
             rowResults.push({
               rowIndex,

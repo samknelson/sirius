@@ -100,7 +100,7 @@ function buildBenefitsStep(feed: FeedWizard): WizardStepHandler {
  * fixed dispatcher routes. The step is `completed` (Next enabled) only once
  * validation has run clean AND every employment status is mapped.
  */
-function buildGbhetValidateStep(feed: FeedWizard): WizardStepHandler {
+export function buildGbhetValidateStep(feed: FeedWizard): WizardStepHandler {
   return {
     id: "validate",
     name: "Validate",
