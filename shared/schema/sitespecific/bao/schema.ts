@@ -1,9 +1,9 @@
-import { pgTable, varchar, jsonb, date } from "drizzle-orm/pg-core";
+import { pgTable, varchar, jsonb, date, numeric, unique } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { parsePhoneNumber } from "libphonenumber-js";
-import { employers } from "../../../schema";
+import { employers, ledgerAccounts } from "../../../schema";
 import { validateSSN } from "../../../utils/ssn";
 
 export const sitespecificBaoEmployerImmediateEligibility = pgTable(
@@ -30,6 +30,128 @@ export type BaoEmployerImmediateEligibility =
   typeof sitespecificBaoEmployerImmediateEligibility.$inferSelect;
 export type InsertBaoEmployerImmediateEligibility = z.infer<
   typeof insertBaoEmployerImmediateEligibilitySchema
+>;
+
+// ---------------------------------------------------------------------------
+// Employer hourly rates (per employer, per fund account, effective-dated).
+// This is the rate source the BAO Hourly charge plugin bills from.
+// ---------------------------------------------------------------------------
+
+export const sitespecificBaoEmployerRates = pgTable(
+  "sitespecific_bao_employer_rates",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    employerId: varchar("employer_id")
+      .notNull()
+      .references(() => employers.id, { onDelete: "cascade" }),
+    accountId: varchar("account_id")
+      .notNull()
+      .references(() => ledgerAccounts.id, { onDelete: "cascade" }),
+    rate: numeric("rate", { precision: 10, scale: 4 }).notNull(),
+    effectiveYmd: date("effective_ymd").notNull(),
+    data: jsonb("data"),
+  },
+  (table) => [
+    unique("sitespecific_bao_employer_rates_employer_account_effective_uq").on(
+      table.employerId,
+      table.accountId,
+      table.effectiveYmd,
+    ),
+  ],
+);
+
+export const insertBaoEmployerRateSchema = createInsertSchema(
+  sitespecificBaoEmployerRates,
+).omit({
+  id: true,
+});
+
+export type BaoEmployerRate = typeof sitespecificBaoEmployerRates.$inferSelect;
+export type InsertBaoEmployerRate = z.infer<typeof insertBaoEmployerRateSchema>;
+
+const rateNumber = z.coerce
+  .number({ invalid_type_error: "Rate must be a number" })
+  .nonnegative("Rate must be at least 0")
+  .refine((v) => Number.isFinite(v), { message: "Rate must be a number" });
+
+const ymdString = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be in YYYY-MM-DD format")
+  .refine(
+    (val) => {
+      const [y, m, d] = val.split("-").map(Number);
+      const dt = new Date(Date.UTC(y, m - 1, d));
+      return (
+        dt.getUTCFullYear() === y &&
+        dt.getUTCMonth() === m - 1 &&
+        dt.getUTCDate() === d
+      );
+    },
+    { message: "Date must be a valid calendar date" },
+  );
+
+/**
+ * Bulk create/update request: apply one effective-dated rate per fund account
+ * to many employers at once. Existing rows with the same (employer, account,
+ * effective date) are updated (upsert); everything else is inserted.
+ */
+export const bulkUpsertBaoEmployerRatesRequestSchema = z
+  .object({
+    employerIds: z.array(z.string().min(1)).min(1, "Select at least one employer"),
+    effectiveYmd: ymdString,
+    rates: z
+      .array(
+        z.object({
+          accountId: z.string().min(1, "An account is required"),
+          rate: rateNumber,
+        }),
+      )
+      .min(1, "Add at least one rate"),
+  })
+  .strict()
+  .superRefine((val, ctx) => {
+    const seen = new Set<string>();
+    for (const [i, r] of val.rates.entries()) {
+      if (seen.has(r.accountId)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["rates", i, "accountId"],
+          message: "Duplicate fund account",
+        });
+      }
+      seen.add(r.accountId);
+    }
+  });
+
+export const updateBaoEmployerRateRequestSchema = z
+  .object({
+    rate: rateNumber.optional(),
+    effectiveYmd: ymdString.optional(),
+  })
+  .strict()
+  .refine((val) => val.rate !== undefined || val.effectiveYmd !== undefined, {
+    message: "Provide at least one of rate or effectiveYmd",
+  });
+
+export type BulkUpsertBaoEmployerRatesRequest = z.infer<
+  typeof bulkUpsertBaoEmployerRatesRequestSchema
+>;
+export type UpdateBaoEmployerRateRequest = z.infer<
+  typeof updateBaoEmployerRateRequestSchema
+>;
+
+/** Filters accepted by the rates listing endpoint. */
+export const listBaoEmployerRatesQuerySchema = z.object({
+  employerId: z.string().min(1).optional(),
+  accountId: z.string().min(1).optional(),
+  fromYmd: ymdString.optional(),
+  toYmd: ymdString.optional(),
+  /** "active" returns only the currently-effective rate per (employer, account). */
+  mode: z.enum(["active", "history"]).default("history"),
+});
+
+export type ListBaoEmployerRatesQuery = z.infer<
+  typeof listBaoEmployerRatesQuerySchema
 >;
 
 function toYmdString(value: string | Date): string {
