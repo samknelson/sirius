@@ -304,6 +304,9 @@ width.
     `docs/architecture.md`
 -   **Baselining a deployment** (procedure for a new Repl whose DB
     predates the per-component migration framework) — `docs/baselining.md`
+-   **Aurora / plain-Postgres support** (automatic Neon-vs-pg driver
+    selection, `DATABASE_DRIVER` override, `sslmode` handling, and the
+    `ALLOW_EMPTY_DB_BOOTSTRAP=1` empty-database bootstrap) — `docs/aurora.md`
 -   **Plugin Framework contract** — `server/plugins/_core/README.md`
 
 ## External docs
