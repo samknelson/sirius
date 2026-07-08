@@ -22,6 +22,15 @@ export interface BaoEmployerRateFilters {
 export interface BaoEmployerRatesStorage {
   list(filters: BaoEmployerRateFilters): Promise<BaoEmployerRate[]>;
   get(id: string): Promise<BaoEmployerRate | undefined>;
+  /**
+   * The effective rate for an employer + account as of a date: the row with
+   * the greatest effective_ymd <= asOfYmd, or undefined when none exists.
+   */
+  getEffectiveRate(
+    employerId: string,
+    accountId: string,
+    asOfYmd: string,
+  ): Promise<BaoEmployerRate | undefined>;
   bulkUpsert(entries: InsertBaoEmployerRate[]): Promise<BaoEmployerRate[]>;
   update(
     id: string,
@@ -102,6 +111,30 @@ export function createBaoEmployerRatesStorage(): BaoEmployerRatesStorage {
         .select()
         .from(sitespecificBaoEmployerRates)
         .where(eq(sitespecificBaoEmployerRates.id, id));
+      return results[0];
+    },
+
+    async getEffectiveRate(
+      employerId: string,
+      accountId: string,
+      asOfYmd: string,
+    ): Promise<BaoEmployerRate | undefined> {
+      if (!(await this.tableExists())) {
+        throw new Error("COMPONENT_TABLE_NOT_FOUND");
+      }
+      const client = getClient();
+      const results = await client
+        .select()
+        .from(sitespecificBaoEmployerRates)
+        .where(
+          and(
+            eq(sitespecificBaoEmployerRates.employerId, employerId),
+            eq(sitespecificBaoEmployerRates.accountId, accountId),
+            lte(sitespecificBaoEmployerRates.effectiveYmd, asOfYmd),
+          ),
+        )
+        .orderBy(desc(sitespecificBaoEmployerRates.effectiveYmd))
+        .limit(1);
       return results[0];
     },
 
