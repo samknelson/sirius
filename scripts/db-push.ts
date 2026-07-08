@@ -29,12 +29,8 @@
 import { spawn } from "node:child_process";
 import { writeFileSync, unlinkSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { Pool, neonConfig } from "@neondatabase/serverless";
-import ws from "ws";
 import * as fullSchema from "../shared/schema";
 import { getSchemaManagingComponents } from "../shared/components";
-
-neonConfig.webSocketConstructor = ws;
 
 const RUNTIME_SCHEMA_FILE = resolve(process.cwd(), ".drizzle-runtime-schema.ts");
 const RUNTIME_CONFIG_FILE = resolve(process.cwd(), ".drizzle-runtime.json");
@@ -44,7 +40,16 @@ interface PgError extends Error {
   code?: string;
 }
 
-async function getDisabledComponentTables(pool: Pool): Promise<string[]> {
+/**
+ * Minimal query surface shared by the Neon serverless Pool and pg.Pool —
+ * whichever one `server/storage/db.ts` picked for this DATABASE_URL.
+ */
+interface QueryablePool {
+  query<R>(text: string, values?: unknown[]): Promise<{ rows: R[] }>;
+  end(): Promise<void>;
+}
+
+async function getDisabledComponentTables(pool: QueryablePool): Promise<string[]> {
   let componentMap: Record<string, boolean> = {};
   try {
     const result = await pool.query<{ value: unknown }>(
@@ -184,11 +189,15 @@ async function main() {
   cleanupRuntimeFiles();
 
   const extraArgs = process.argv.slice(2);
-  const pool = new Pool({ connectionString: databaseUrl });
+  // Reuse the shared pool from server/storage/db.ts so driver selection
+  // (Neon serverless vs node-postgres, DATABASE_DRIVER override, sslmode
+  // handling) stays in one place. Imported lazily so the ALLOW_DB_PUSH
+  // refusal above still prints even without a DATABASE_URL.
+  const { pool } = await import("../server/storage/db");
 
   let disabledTables: string[] = [];
   try {
-    disabledTables = await getDisabledComponentTables(pool);
+    disabledTables = await getDisabledComponentTables(pool as QueryablePool);
   } finally {
     await pool.end();
   }

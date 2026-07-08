@@ -141,6 +141,9 @@ before anything else touches the database, the app checks its state:
   bootstrap ever produced a schema that drifts from the Drizzle
   definitions, the app would refuse to boot, exactly as it would for
   any other drift.
-- `npm run db:push` (`scripts/db-push.ts`) remains Neon-only and is not
-  part of any supported flow for Aurora databases. All schema changes
-  ship as migrations (see `replit.md`).
+- `npm run db:push` (`scripts/db-push.ts`) reuses the shared pool from
+  `server/storage/db.ts`, so it follows the same driver selection
+  (Neon vs `pg`, `DATABASE_DRIVER` override, `sslmode` handling) and
+  works against Aurora / plain Postgres too. It is still a dev-only
+  DDL-preview escape hatch gated behind `ALLOW_DB_PUSH=1`; all schema
+  changes ship as migrations (see `replit.md`).
