@@ -1,4 +1,4 @@
-import { pgTable, varchar, jsonb, date } from "drizzle-orm/pg-core";
+import { pgTable, varchar, jsonb, date, foreignKey } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -12,12 +12,27 @@ export const sitespecificBaoEmployerImmediateEligibility = pgTable(
     id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
     employerId: varchar("employer_id")
       .notNull()
-      .unique()
-      .references(() => employers.id, { onDelete: "cascade" }),
+      // Explicit name, on purpose: the auto-generated name
+      // "sitespecific_bao_employer_immediate_eligibility_employer_id_unique"
+      // exceeds Postgres's 63-char identifier limit, so the live DB stores it
+      // truncated. drizzle-kit push compares by full (untruncated) name and
+      // false-positives an "add constraint" on every db-push preview run
+      // unless the declared name matches what Postgres actually kept.
+      .unique("sitespecific_bao_employer_immediate_eligibility_employer_id_uni"),
     startYmd: date("start_ymd").notNull(),
     endYmd: date("end_ymd").notNull(),
     data: jsonb("data"),
   },
+  (table) => [
+    // Explicit name for the same 63-char truncation reason as the unique
+    // constraint above: the auto-generated FK name exceeds the limit, so
+    // drizzle-kit push would drop/re-add it on every run.
+    foreignKey({
+      name: "sitespecific_bao_employer_immediate_eligibility_employer_id_emp",
+      columns: [table.employerId],
+      foreignColumns: [employers.id],
+    }).onDelete("cascade"),
+  ],
 );
 
 export const insertBaoEmployerImmediateEligibilitySchema = createInsertSchema(

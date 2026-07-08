@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, varchar, jsonb, index, integer, boolean, date, numeric, time } from "drizzle-orm/pg-core";
+import { foreignKey, pgTable, text, timestamp, varchar, jsonb, index, integer, boolean, date, numeric, time } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -17,8 +17,14 @@ export const optionsDispatchJobType = pgTable("options_dispatch_job_type", {
 // to). Keyed 1:1 by the base `plugin_configs.id` via a cascade-delete FK.
 export const pluginConfigsDispatch = pgTable("plugin_configs_dispatch", {
   id: varchar("id").primaryKey().references(() => pluginConfigs.id, { onDelete: 'cascade' }),
-  jobType: varchar("job_type").references(() => optionsDispatchJobType.id, { onDelete: 'cascade' }),
-});
+  jobType: varchar("job_type"),
+}, (table) => [
+  foreignKey({
+    name: "plugin_configs_dispatch_job_type_options_dispatch_job_type_id_f",
+    columns: [table.jobType],
+    foreignColumns: [optionsDispatchJobType.id],
+  }).onDelete("cascade"),
+]);
 
 export const insertPluginConfigDispatchSchema = createInsertSchema(pluginConfigsDispatch);
 export type InsertPluginConfigDispatch = z.infer<typeof insertPluginConfigDispatchSchema>;

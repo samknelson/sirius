@@ -1,5 +1,5 @@
 import { sql, relations } from "drizzle-orm";
-import { pgTable, pgEnum, text, varchar, boolean, timestamp, date, primaryKey, jsonb, doublePrecision, integer, unique, serial, index, uniqueIndex, numeric, check } from "drizzle-orm/pg-core";
+import { foreignKey, pgTable, pgEnum, text, varchar, boolean, timestamp, date, primaryKey, jsonb, doublePrecision, integer, unique, serial, index, uniqueIndex, numeric, check } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { isValidYmd, type Ymd } from "./utils/date";
@@ -281,8 +281,14 @@ export const employerContacts = pgTable("employer_contacts", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   employerId: varchar("employer_id").notNull().references(() => employers.id, { onDelete: 'cascade' }),
   contactId: varchar("contact_id").notNull().references(() => contacts.id, { onDelete: 'cascade' }),
-  contactTypeId: varchar("contact_type_id").references(() => optionsEmployerContactType.id, { onDelete: 'set null' }),
-});
+  contactTypeId: varchar("contact_type_id"),
+}, (table) => [
+  foreignKey({
+    name: "employer_contacts_contact_type_id_options_employer_contact_type",
+    columns: [table.contactTypeId],
+    foreignColumns: [optionsEmployerContactType.id],
+  }).onDelete("set null"),
+]);
 
 export const workerHours = pgTable("worker_hours", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -291,12 +297,20 @@ export const workerHours = pgTable("worker_hours", {
   day: integer("day").notNull(),
   workerId: varchar("worker_id").notNull().references(() => workers.id, { onDelete: 'cascade' }),
   employerId: varchar("employer_id").notNull().references(() => employers.id, { onDelete: 'cascade' }),
-  employmentStatusId: varchar("employment_status_id").notNull().references(() => optionsEmploymentStatus.id, { onDelete: 'cascade' }),
+  employmentStatusId: varchar("employment_status_id").notNull(),
   hours: doublePrecision("hours"),
   home: boolean("home").default(false).notNull(),
   jobTitle: text("job_title"),
 }, (table) => ({
-  uniqueWorkerEmployerYearMonthDay: unique().on(table.workerId, table.employerId, table.year, table.month, table.day),
+  // Declared in TABLE-column order with an explicit name (see trust_wmb's
+  // constraint comment): drizzle-kit push introspects constraint columns in
+  // table order, so any other declared order false-positives on db-push runs.
+  uniqueWorkerEmployerYearMonthDay: unique("worker_hours_worker_id_employer_id_year_month_day_unique").on(table.year, table.month, table.day, table.workerId, table.employerId),
+  fkEmploymentStatusId: foreignKey({
+    name: "worker_hours_employment_status_id_options_employment_status_id_",
+    columns: [table.employmentStatusId],
+    foreignColumns: [optionsEmploymentStatus.id],
+  }).onDelete("cascade"),
 }));
 
 export const trustProviders = pgTable("trust_providers", {
@@ -309,8 +323,14 @@ export const trustProviderContacts = pgTable("trust_provider_contacts", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   providerId: varchar("provider_id").notNull().references(() => trustProviders.id, { onDelete: 'cascade' }),
   contactId: varchar("contact_id").notNull().references(() => contacts.id, { onDelete: 'cascade' }),
-  contactTypeId: varchar("contact_type_id").references(() => optionsTrustProviderType.id, { onDelete: 'set null' }),
-});
+  contactTypeId: varchar("contact_type_id"),
+}, (table) => [
+  foreignKey({
+    name: "trust_provider_contacts_contact_type_id_options_trust_provider_",
+    columns: [table.contactTypeId],
+    foreignColumns: [optionsTrustProviderType.id],
+  }).onDelete("set null"),
+]);
 
 export const trustBenefits = pgTable("trust_benefits", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -329,7 +349,17 @@ export const trustWmb = pgTable("trust_wmb", {
   employerId: varchar("employer_id").notNull().references(() => employers.id, { onDelete: 'cascade' }),
   benefitId: varchar("benefit_id").notNull().references(() => trustBenefits.id, { onDelete: 'cascade' }),
 }, (table) => ({
-  uniqueWorkerEmployerBenefitMonthYear: unique().on(table.workerId, table.employerId, table.benefitId, table.month, table.year),
+  // Declared in TABLE-column order (month, year, worker, employer, benefit)
+  // with an explicit name, on purpose. drizzle-kit push's diff is
+  // column-order-sensitive, but its introspection returns constraint columns
+  // in table order (its information_schema query has no ORDER BY on the
+  // constraint ordinal). Declaring the constraint in any other order makes
+  // every `ALLOW_DB_PUSH=1 npx tsx scripts/db-push.ts` run false-positive an
+  // "add constraint" + interactive truncate prompt. The live DB constraint
+  // remains (worker_id, employer_id, benefit_id, month, year) — the startup
+  // drift gate compares column SETS (order-insensitive), so both orders are
+  // accepted and no migration is needed. Do not "fix" this order back.
+  uniqueWorkerEmployerBenefitMonthYear: unique("trust_wmb_worker_id_employer_id_benefit_id_month_year_unique").on(table.month, table.year, table.workerId, table.employerId, table.benefitId),
 }));
 
 // WMB Scan Status - tracks scan status per month/year
@@ -368,7 +398,10 @@ export const trustWmbScanQueue = pgTable("trust_wmb_scan_queue", {
   attempts: integer("attempts").notNull().default(0),
   lastError: text("last_error"),
 }, (table) => ({
-  uniqueWorkerYearMonth: unique().on(table.workerId, table.year, table.month),
+  // Declared in TABLE-column order with an explicit name (see trust_wmb's
+  // constraint comment): drizzle-kit push introspects constraint columns in
+  // table order, so any other declared order false-positives on db-push runs.
+  uniqueWorkerYearMonth: unique("trust_wmb_scan_queue_worker_id_year_month_unique").on(table.workerId, table.month, table.year),
 }));
 
 export const variables = pgTable("variables", {
@@ -563,7 +596,10 @@ export const workerMsh = pgTable("worker_msh", {
   data: jsonb("data"),
   createdAt: timestamp("created_at").default(sql`now()`).notNull(),
 }, (table) => ({
-  uniqueWorkerIndustryDate: unique().on(table.workerId, table.industryId, table.date),
+  // Declared in TABLE-column order with an explicit name (see trust_wmb's
+  // constraint comment): drizzle-kit push introspects constraint columns in
+  // table order, so any other declared order false-positives on db-push runs.
+  uniqueWorkerIndustryDate: unique("worker_msh_worker_id_industry_id_date_unique").on(table.date, table.workerId, table.industryId),
 }));
 
 export const contactPostal = pgTable("contact_postal", {
@@ -634,13 +670,19 @@ export const ledgerPaymentMethods = pgTable("ledger_paymentmethods", {
   // than the polymorphic plugin_configs id. NOT NULL — a payment method is
   // unusable without knowing its gateway. ON DELETE RESTRICT prevents deleting
   // a gateway config that still has payment methods attached.
-  gatewayConfigId: varchar("gateway_config_id").notNull().references(() => pluginConfigsPaymentGateway.id, { onDelete: 'restrict' }),
+  gatewayConfigId: varchar("gateway_config_id").notNull(),
   // Generic, gateway-agnostic opaque settings blob.
-  data: jsonb("data").default('{}'),
+  data: jsonb("data").default(sql`'{}'::jsonb`),
   isActive: boolean("is_active").default(true).notNull(),
   isDefault: boolean("is_default").default(false).notNull(),
   createdAt: timestamp("created_at").default(sql`now()`).notNull(),
-});
+}, (table) => [
+  foreignKey({
+    name: "ledger_paymentmethods_gateway_config_id_plugin_configs_payment_",
+    columns: [table.gatewayConfigId],
+    foreignColumns: [pluginConfigsPaymentGateway.id],
+  }).onDelete("restrict"),
+]);
 
 // Per-(entity, gateway config) provider customer mapping. Replaces the old
 // single `employers.stripe_customer_id` column so an entity can have a distinct
@@ -653,7 +695,7 @@ export const ledgerGatewayCustomers = pgTable("ledger_gateway_customers", {
   // than the polymorphic plugin_configs base. ON DELETE RESTRICT mirrors the
   // payment-method link: a gateway config with customer mappings cannot be
   // deleted out from under them.
-  gatewayConfigId: varchar("gateway_config_id").notNull().references(() => pluginConfigsPaymentGateway.id, { onDelete: 'restrict' }),
+  gatewayConfigId: varchar("gateway_config_id").notNull(),
   // Opaque provider customer reference (e.g. Stripe `cus_...`).
   customerRef: text("customer_ref").notNull(),
   createdAt: timestamp("created_at").default(sql`now()`).notNull(),
@@ -663,6 +705,11 @@ export const ledgerGatewayCustomers = pgTable("ledger_gateway_customers", {
     table.entityId,
     table.gatewayConfigId,
   ),
+  fkGatewayConfigId: foreignKey({
+    name: "ledger_gateway_customers_gateway_config_id_plugin_configs_payme",
+    columns: [table.gatewayConfigId],
+    foreignColumns: [pluginConfigsPaymentGateway.id],
+  }).onDelete("restrict"),
 }));
 
 export const insertLedgerGatewayCustomerSchema = createInsertSchema(ledgerGatewayCustomers).omit({
@@ -683,8 +730,14 @@ export const ledgerAccounts = pgTable("ledger_accounts", {
   // FK targets the payment-gateway subsidiary (a type-safe FK target) rather
   // than the polymorphic plugin_configs base, and is ON DELETE SET NULL so
   // deleting the gateway config simply unlinks the account.
-  gatewayConfigId: varchar("gateway_config_id").references(() => pluginConfigsPaymentGateway.id, { onDelete: 'set null' }),
-});
+  gatewayConfigId: varchar("gateway_config_id"),
+}, (table) => [
+  foreignKey({
+    name: "ledger_accounts_gateway_config_id_plugin_configs_payment_gatewa",
+    columns: [table.gatewayConfigId],
+    foreignColumns: [pluginConfigsPaymentGateway.id],
+  }).onDelete("set null"),
+]);
 
 export const ledgerPayments = pgTable("ledger_payments", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -695,7 +748,7 @@ export const ledgerPayments = pgTable("ledger_payments", {
   ledgerEaId: varchar("ledger_ea_id").notNull().references(() => ledgerEa.id),
   details: jsonb("details"),
   dateCreated: timestamp("date_created").default(sql`now()`).notNull(),
-  dateReceived: timestamp("date_received").notNull(),
+  dateReceived: timestamp("date_received"),
   dateCleared: timestamp("date_cleared"),
   memo: text("memo"),
 });
@@ -763,12 +816,17 @@ export const wizardEmploymentStatusMappings = pgTable("wizard_employment_status_
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   employerId: varchar("employer_id").notNull().references(() => employers.id, { onDelete: 'cascade' }),
   sourceStatus: text("source_status").notNull(),
-  targetStatusId: varchar("target_status_id").notNull().references(() => optionsEmploymentStatus.id, { onDelete: 'cascade' }),
+  targetStatusId: varchar("target_status_id").notNull(),
   createdAt: timestamp("created_at").default(sql`now()`).notNull(),
   updatedAt: timestamp("updated_at").default(sql`now()`).notNull(),
 }, (table) => [
   unique("idx_wizard_esm_employer_source").on(table.employerId, table.sourceStatus),
   index("idx_wizard_esm_employer").on(table.employerId),
+  foreignKey({
+    name: "wizard_employment_status_mappings_target_status_id_options_empl",
+    columns: [table.targetStatusId],
+    foreignColumns: [optionsEmploymentStatus.id],
+  }).onDelete("cascade"),
 ]);
 
 export const wizardReportData = pgTable("wizard_report_data", {
@@ -1925,7 +1983,7 @@ export const pluginConfigs = pgTable("plugin_configs", {
   // a specific kind: any plugin type that declares `singleton: true` is covered
   // with no schema/migration change.
   isSingleton: boolean("is_singleton").default(false).notNull(),
-  data: jsonb("data").default('{}'), // kind-specific opaque settings blob
+  data: jsonb("data").default(sql`'{}'::jsonb`), // kind-specific opaque settings blob
   createdAt: timestamp("created_at").default(sql`now()`).notNull(),
   updatedAt: timestamp("updated_at").default(sql`now()`).notNull(),
 }, (table) => [
