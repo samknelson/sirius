@@ -74,6 +74,21 @@ function main(): void {
     process.exit(0);
   }
 
+  // Schema files were touched — also enforce the 63-char constraint-name
+  // limit. Over-length drizzle auto-generated FK/unique names churn forever
+  // under scripts/db-push.ts (Postgres truncates identifiers to 63 chars but
+  // drizzle-kit diffs by the full name). This runs regardless of the
+  // [skip-migration-check] marker: that escape hatch covers pure type
+  // refactors, not naming hazards.
+  try {
+    execSync("npx tsx scripts/dev/check-constraint-names.ts", {
+      stdio: "inherit",
+    });
+  } catch {
+    console.error("[check-migrations] FAILED — over-length constraint name(s) detected (see above).");
+    process.exit(1);
+  }
+
   const migrationsTouched = files.filter(
     f =>
       CORE_MIGRATION_PREFIX.test(f) ||

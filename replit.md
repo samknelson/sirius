@@ -134,6 +134,17 @@ missing, extra, or mistyped.
     `[skip-migration-check]` marker in the commit message or the
     `--skip` flag — use it sparingly and explain why in the PR.
 
+    Whenever a `shared/schema*` file is touched, `check-migrations.ts`
+    also runs `scripts/dev/check-constraint-names.ts`, which fails if
+    any FK / unique / index / primary-key name drizzle would generate
+    exceeds Postgres's 63-char identifier limit (over-length names
+    churn forever under db-push). The fix is to pin an explicit name:
+    convert inline `.references()` to an extraConfig
+    `foreignKey({ name, columns, foreignColumns })` builder, or use
+    `unique("name").on(...)`. The name-length check is NOT skipped by
+    `[skip-migration-check]`, and can be run standalone via
+    `npx tsx scripts/dev/check-constraint-names.ts`.
+
 **Dev-only escape hatch for the startup gate:** setting
 `SKIP_SCHEMA_DRIFT_CHECK=1` skips the check at boot. This exists so a
 developer can get into the app to inspect a broken state. It is NEVER
