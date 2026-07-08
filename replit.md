@@ -7,8 +7,11 @@ Sirius is a full-stack web application designed for comprehensive worker managem
 -   **Automated validations** (registered, run on every task completion —
     no manual invocation needed): `constraint-names`
     (`scripts/dev/check-constraint-names.ts`), `migrations`
-    (`scripts/check-migrations.ts --base=origin/main`), and
-    `storage-encapsulation` (`scripts/dev/check-storage-encapsulation.ts`).
+    (`scripts/check-migrations.ts --base=origin/main`),
+    `storage-encapsulation` (`scripts/dev/check-storage-encapsulation.ts`),
+    and `typecheck` (`NODE_OPTIONS=--max-old-space-size=8192 npm run check`
+    — tsc with the memory headroom it needs; incremental, so re-runs are
+    fast).
     A violation blocks completion with the script's actionable error.
     `check-migrations` now also sees untracked files (`git ls-files
     --others`), so a freshly written migration counts before it is

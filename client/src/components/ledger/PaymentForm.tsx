@@ -203,7 +203,7 @@ export function PaymentForm({
                 paymentType: payment.paymentType,
                 ledgerEaId: payment.ledgerEaId,
                 details: payment.details as PaymentDetails,
-                dateReceived: new Date(payment.dateReceived),
+                dateReceived: payment.dateReceived ? new Date(payment.dateReceived) : null,
                 dateCleared: payment.dateCleared ? new Date(payment.dateCleared) : null,
                 memo: payment.memo,
               }
