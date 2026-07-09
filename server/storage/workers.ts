@@ -25,7 +25,7 @@ import {
 import { parseSSN, validateSSN } from "@shared/utils/ssn";
 import { isComponentEnabledSync } from "../services/component-cache";
 
-export const ssnValidate = createAsyncStorageValidator<{ ssn: string | null; workerId?: string }, never, { ssn: string | null }>(
+export const ssnValidate = createAsyncStorageValidator<{ ssn: string | null; workerId?: string; allowSsaRuleInvalid?: boolean }, never, { ssn: string | null }>(
   async (data) => {
     const errors: ValidationError[] = [];
     
@@ -47,14 +47,20 @@ export const ssnValidate = createAsyncStorageValidator<{ ssn: string | null; wor
       return { ok: false, errors };
     }
     
-    const validation = validateSSN(parsedSSN);
-    if (!validation.valid) {
-      errors.push({
-        field: 'ssn',
-        code: 'INVALID_SSN',
-        message: validation.error || "Invalid SSN"
-      });
-      return { ok: false, errors };
+    // SSA issuance rules (area 000/666/9xx, group 00, serial 0000). Callers
+    // that ingest external feeds may opt out via allowSsaRuleInvalid to
+    // accept well-formed 9-digit but SSA-rule-invalid values (e.g. ITINs).
+    // Parse and duplicate checks always remain blocking.
+    if (!data.allowSsaRuleInvalid) {
+      const validation = validateSSN(parsedSSN);
+      if (!validation.valid) {
+        errors.push({
+          field: 'ssn',
+          code: 'INVALID_SSN',
+          message: validation.error || "Invalid SSN"
+        });
+        return { ok: false, errors };
+      }
     }
     
     if (data.workerId) {
@@ -254,7 +260,7 @@ export interface WorkerStorage {
   updateWorkerContactEmail(workerId: string, email: string): Promise<Worker | undefined>;
   updateWorkerContactBirthDate(workerId: string, birthDate: string | null): Promise<Worker | undefined>;
   updateWorkerContactGender(workerId: string, gender: string | null, genderNota: string | null): Promise<Worker | undefined>;
-  updateWorkerSSN(workerId: string, ssn: string): Promise<Worker | undefined>;
+  updateWorkerSSN(workerId: string, ssn: string, options?: { allowSsaRuleInvalid?: boolean }): Promise<Worker | undefined>;
   updateWorkerBargainingUnit(workerId: string, bargainingUnitId: string | null): Promise<Worker | undefined>;
   deleteWorker(id: string): Promise<boolean>;
   updateWorkerBargainingUnit(workerId: string, bargainingUnitId: string | null): Promise<Worker | undefined>;
@@ -1284,9 +1290,9 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       return stripWorkerData(currentWorker);
     },
 
-    async updateWorkerSSN(workerId: string, ssn: string): Promise<Worker | undefined> {
+    async updateWorkerSSN(workerId: string, ssn: string, options?: { allowSsaRuleInvalid?: boolean }): Promise<Worker | undefined> {
       const client = getClient();
-      const validated = await ssnValidate.validateOrThrow({ ssn, workerId });
+      const validated = await ssnValidate.validateOrThrow({ ssn, workerId, allowSsaRuleInvalid: options?.allowSsaRuleInvalid });
       
       const [updatedWorker] = await client
         .update(workers)

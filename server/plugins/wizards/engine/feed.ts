@@ -648,13 +648,21 @@ export abstract class FeedWizard extends BaseWizard {
           const rawBirthDate = row.dateOfBirth?.toString().trim();
 
           // Parse SSN early to normalize format (strips non-digits, pads with zeros)
-          const { parseSSN } = await import('@shared/utils/ssn');
+          const { parseSSN, validateSSN } = await import('@shared/utils/ssn');
           let ssn: string | undefined;
+          let ssnSsaWarning: string | null = null;
           if (rawSSN) {
             try {
               ssn = parseSSN(rawSSN);
             } catch (error) {
               throw new Error(`Invalid SSN format: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            }
+            // Well-formed but SSA-rule-invalid SSNs (e.g. ITIN-style values
+            // whose area starts with 9) are accepted with a warning rather
+            // than failing the row; malformed SSNs above still fail.
+            const ssaCheck = validateSSN(ssn);
+            if (!ssaCheck.valid) {
+              ssnSsaWarning = `SSN accepted with warning: ${ssaCheck.error || 'does not follow SSA issuance rules'}`;
             }
           }
 
@@ -741,6 +749,7 @@ export abstract class FeedWizard extends BaseWizard {
 
             updatedCount++;
             const processingIssues: string[] = [];
+            if (ssnSsaWarning) processingIssues.push(ssnSsaWarning);
             if (!hoursProcessed) processingIssues.push(`hours: ${hoursError}`);
             if (!contactInfoProcessed) processingIssues.push(`contact info: ${contactInfoError}`);
             if (benefitsErrors.length > 0) processingIssues.push(`benefits: ${benefitsErrors.join(', ')}`);
@@ -799,8 +808,10 @@ export abstract class FeedWizard extends BaseWizard {
               const fullName = [firstName, lastName].filter(Boolean).join(' ');
               const newWorker = await storage.workers.createWorker(fullName);
               workerId = newWorker.id;
-              // Set SSN for the new worker
-              await storage.workers.updateWorkerSSN(workerId, ssn);
+              // Set SSN for the new worker. SSA-rule-invalid (e.g. ITIN-style)
+              // SSNs are accepted here with a per-row warning; parse and
+              // duplicate checks remain blocking in storage.
+              await storage.workers.updateWorkerSSN(workerId, ssn, { allowSsaRuleInvalid: !!ssnSsaWarning });
               isNewWorker = true;
             }
 
@@ -881,6 +892,7 @@ export abstract class FeedWizard extends BaseWizard {
             const workerAction = isNewWorker ? 'created' : 'updated';
             const processingIssues: string[] = [];
             if (creationWarning) processingIssues.push(creationWarning);
+            if (ssnSsaWarning) processingIssues.push(ssnSsaWarning);
             if (!hoursProcessed) processingIssues.push(`hours: ${hoursError}`);
             if (!contactInfoProcessed) processingIssues.push(`contact info: ${contactInfoError}`);
             if (benefitsErrors.length > 0) processingIssues.push(`benefits: ${benefitsErrors.join(', ')}`);
