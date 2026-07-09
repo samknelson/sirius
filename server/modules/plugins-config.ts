@@ -25,6 +25,11 @@ const bulkCreateSchema = z.object({
   name: z.string().nullable().optional(),
   enabled: z.boolean().optional().default(false),
   ordering: z.number().int().optional().default(0),
+  // When true, targets that collide with an existing config replace it
+  // instead of failing: the targeted phase is carved out of the existing
+  // row (a combined "start,continue" row keeps its untargeted phase), and
+  // rows left with no phases are deleted before the new configs are created.
+  overwrite: z.boolean().optional().default(false),
 });
 
 /** Body schema for POST /configs/bulk-settings (one settings change → many). */
@@ -443,7 +448,8 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
         res.status(400).json({ message: "Invalid bulk request", errors: parsed.error.errors });
         return;
       }
-      const { pluginId, policy, benefits, phases, data, name, enabled, ordering } = parsed.data;
+      const { pluginId, policy, benefits, phases, data, name, enabled, ordering, overwrite } =
+        parsed.data;
       // De-dupe selections so we don't fan duplicate (benefit, phase) targets.
       const uniqueBenefits = Array.from(new Set(benefits));
       const uniquePhases = Array.from(new Set(phases));
@@ -483,24 +489,88 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
         }
       }
 
-      const created = await runInTransaction(async () => {
-        // Conflict detection INSIDE the write transaction, serialized on the
+      const { created, replaced } = await runInTransaction(async () => {
+        // Conflict handling INSIDE the write transaction, serialized on the
         // plugin's advisory lock: for each (benefit, phase) target, a
         // token-aware search catches existing configs whose appliesTo
         // contains that phase (including combined "start,continue" rows).
-        // Two simultaneous bulk-creates queue on the lock, so the second one
-        // sees the first one's committed rows and 409s instead of duplicating.
+        // With overwrite, colliding rows are carved/replaced; without it,
+        // any collision 409s. Two simultaneous bulk-creates queue on the
+        // lock, so the second one sees the first one's committed rows.
         await storage.pluginConfigs.acquireWriteLock(eligibilityLockKey(pluginId));
-        const conflicts = await findPhaseConflicts(
-          kind,
-          pluginId,
-          uniqueBenefits.map((benefit) => ({ policy, benefit, phases: uniquePhases })),
-          new Set(),
-        );
-        if (conflicts.length > 0) throw new PhaseConflictError(conflicts);
-        return storage.pluginConfigs.bulkCreateWithSubsidiary(kind, rows);
+
+        let replacedCount = 0;
+        if (overwrite) {
+          // Overwrite mode: instead of 409ing, carve every targeted
+          // (benefit, phase) out of the existing configs that cover it. A
+          // config whose phases are all targeted is deleted outright; a
+          // combined row that also covers an untargeted phase keeps that
+          // phase (its settings are untouched — only the targeted phase now
+          // belongs to the freshly created config).
+          const phasesToRemove = new Map<string, { env: any; benefit: string; remove: Set<string> }>();
+          for (const benefit of uniqueBenefits) {
+            for (const phase of uniquePhases) {
+              const matches = await storage.pluginConfigs.search(kind, {
+                policy,
+                pluginId,
+                benefit,
+                appliesTo: phase,
+              } as any);
+              for (const env of matches) {
+                const entry = phasesToRemove.get(env.config.id) ?? {
+                  env,
+                  benefit,
+                  remove: new Set<string>(),
+                };
+                entry.remove.add(phase);
+                phasesToRemove.set(env.config.id, entry);
+              }
+            }
+          }
+          for (const { env, remove } of phasesToRemove.values()) {
+            const existingData = (env.config.data as Record<string, unknown>) ?? {};
+            const rawApplies = (env.subsidiary as any)?.appliesTo ?? existingData.appliesTo;
+            const existingPhases = (
+              Array.isArray(rawApplies)
+                ? rawApplies.map(String)
+                : String(rawApplies ?? "").split(",")
+            )
+              .map((s: string) => s.trim())
+              .filter(Boolean);
+            const remaining = existingPhases.filter((p: string) => !remove.has(p));
+            if (remaining.length === 0) {
+              await storage.pluginConfigs.delete(env.config.id);
+            } else {
+              const hydrated = hydrate(adapter, env) as Record<string, unknown>;
+              const trimmedData = { ...existingData, appliesTo: remaining };
+              const { subsidiary } = adapter.toRows({
+                ...hydrated,
+                data: trimmedData,
+                appliesTo: remaining.join(","),
+              } as any);
+              await storage.pluginConfigs.update(env.config.id, { data: trimmedData } as any);
+              if (subsidiary) {
+                await storage.pluginConfigs.upsertSubsidiary(kind, {
+                  id: env.config.id,
+                  ...subsidiary,
+                });
+              }
+            }
+            replacedCount += 1;
+          }
+        } else {
+          const conflicts = await findPhaseConflicts(
+            kind,
+            pluginId,
+            uniqueBenefits.map((benefit) => ({ policy, benefit, phases: uniquePhases })),
+            new Set(),
+          );
+          if (conflicts.length > 0) throw new PhaseConflictError(conflicts);
+        }
+        const createdRows = await storage.pluginConfigs.bulkCreateWithSubsidiary(kind, rows);
+        return { created: createdRows, replaced: replacedCount };
       });
-      res.status(201).json({ created: created.length });
+      res.status(201).json({ created: created.length, replaced });
     } catch (error) {
       if (error instanceof PhaseConflictError) {
         res.status(409).json({

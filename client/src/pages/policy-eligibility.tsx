@@ -1113,7 +1113,7 @@ function BulkCreateDialog({
     setConflicts([]);
     setSaving(true);
     try {
-      await apiRequest("POST", `${pluginConfigsUrl(KIND)}/bulk`, {
+      const result = (await apiRequest("POST", `${pluginConfigsUrl(KIND)}/bulk`, {
         pluginId,
         policy: policyId,
         benefits: Array.from(selectedBenefits),
@@ -1121,8 +1121,17 @@ function BulkCreateDialog({
         name: name.trim() || null,
         enabled,
         data: validSettings,
+        // Combos that already have a configuration are replaced by the new
+        // one instead of failing the whole request.
+        overwrite: true,
+      })) as { created: number; replaced?: number };
+      toast({
+        title: "Configurations created",
+        description:
+          result.replaced && result.replaced > 0
+            ? `${result.replaced} existing configuration${result.replaced === 1 ? " was" : "s were"} replaced.`
+            : undefined,
       });
-      toast({ title: "Configurations created" });
       onCreated();
     } catch (error) {
       if (error instanceof ApiError && error.status === 409 && error.data?.conflicts) {
@@ -1151,6 +1160,7 @@ function BulkCreateDialog({
           <DialogTitle data-testid="dialog-bulk-create-title">New Configurations</DialogTitle>
           <DialogDescription>
             One plugin and settings applied across every selected benefit × phase.
+            Combinations that already have a configuration are replaced.
           </DialogDescription>
         </DialogHeader>
 
