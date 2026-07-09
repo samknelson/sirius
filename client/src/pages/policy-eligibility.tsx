@@ -93,6 +93,7 @@ function PolicyEligibilityContent() {
 
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const [singleEditRow, setSingleEditRow] = useState<EligibilityConfigRow | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const { data: benefits = [] } = useQuery<TrustBenefit[]>({
@@ -295,6 +296,15 @@ function PolicyEligibilityContent() {
                         >
                           {row.enabled ? "Enabled" : "Disabled"}
                         </Badge>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 -my-1"
+                          onClick={() => setSingleEditRow(row)}
+                          data-testid={`button-edit-config-${row.id}`}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
                       </div>
                     );
                   })}
@@ -323,13 +333,219 @@ function PolicyEligibilityContent() {
         plugin={editPlugin}
         configIds={Array.from(selectedIds)}
         count={selectedConfigs.length}
+        benefits={benefits}
         onSaved={() => {
           setEditOpen(false);
           setSelectedIds(new Set());
           refresh();
         }}
       />
+
+      <SingleEditDialog
+        row={singleEditRow}
+        onOpenChange={(open) => {
+          if (!open) setSingleEditRow(null);
+        }}
+        plugin={
+          singleEditRow
+            ? manifest.find((p) => p.id === singleEditRow.pluginId) ?? null
+            : null
+        }
+        benefits={benefits}
+        onSaved={() => {
+          setSingleEditRow(null);
+          refresh();
+        }}
+      />
     </div>
+  );
+}
+
+interface SingleEditDialogProps {
+  row: EligibilityConfigRow | null;
+  onOpenChange: (open: boolean) => void;
+  plugin: EligibilityManifestEntry | null;
+  benefits: TrustBenefit[];
+  onSaved: () => void;
+}
+
+/**
+ * Per-rule edit dialog: change the rule's phases (Start/Continue) and its
+ * plugin settings. Phases live OUTSIDE the RJSF form (the plugin's JSON
+ * Schema doesn't include appliesTo, so RJSF would strip it) and are sent as
+ * the top-level `appliesTo` envelope field the adapter already understands.
+ */
+function SingleEditDialog({
+  row,
+  onOpenChange,
+  plugin,
+  benefits,
+  onSaved,
+}: SingleEditDialogProps) {
+  const { toast } = useToast();
+  const submitRef = useRef<HTMLButtonElement>(null);
+
+  const [selectedPhases, setSelectedPhases] = useState<Set<string>>(new Set());
+  const [settings, setSettings] = useState<Record<string, unknown>>({});
+  const [saving, setSaving] = useState(false);
+  const [conflicts, setConflicts] = useState<{ benefit: string; phase: string }[]>([]);
+
+  const open = row !== null;
+
+  // Prefill from the row each time the dialog opens for a (possibly new) row.
+  const prevRowId = useRef<string | null>(null);
+  if (row && prevRowId.current !== row.id) {
+    setSelectedPhases(new Set(splitPhases(row.appliesTo)));
+    const { appliesTo: _omit, ...rest } = (row.data ?? {}) as Record<string, unknown>;
+    setSettings(rest);
+    setConflicts([]);
+  }
+  prevRowId.current = row?.id ?? null;
+
+  const settingsSchema: JsonSchema =
+    plugin?.configSchema ?? { type: "object", properties: {} };
+
+  const benefitName = (id: string): string =>
+    benefits.find((b) => b.id === id)?.name ?? id;
+
+  const togglePhase = (id: string, checked: boolean) =>
+    setSelectedPhases((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+
+  const submit = async (validSettings: Record<string, unknown>) => {
+    if (!row) return;
+    if (selectedPhases.size === 0) {
+      toast({ title: "Select at least one phase", variant: "destructive" });
+      return;
+    }
+    setConflicts([]);
+    setSaving(true);
+    try {
+      await apiRequest("PATCH", `${pluginConfigsUrl(KIND)}/${row.id}`, {
+        appliesTo: PHASES.filter((p) => selectedPhases.has(p.value))
+          .map((p) => p.value)
+          .join(","),
+        data: validSettings,
+      });
+      toast({ title: "Configuration updated" });
+      onSaved();
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 409 && error.data?.conflicts) {
+        setConflicts(error.data.conflicts as { benefit: string; phase: string }[]);
+        toast({
+          title: "Conflict found",
+          description:
+            "Another configuration already covers a selected phase for this benefit. Nothing was changed.",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Error",
+          description:
+            error instanceof Error ? error.message : "Failed to update the configuration.",
+          variant: "destructive",
+        });
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="flex flex-col max-h-[85vh] sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle data-testid="dialog-single-edit-title">Edit Configuration</DialogTitle>
+          <DialogDescription>
+            {plugin ? plugin.name : ""}
+            {row?.benefit ? ` — ${benefitName(row.benefit)}` : ""}. Change the
+            phases and plugin settings for this rule.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="py-2 flex-1 min-h-0 overflow-y-auto pr-1 space-y-5">
+          <div className="space-y-2">
+            <Label>Phases</Label>
+            <div className="space-y-2 rounded-md border p-3" data-testid="group-single-edit-phases">
+              {PHASES.map((p) => (
+                <div key={p.value} className="flex items-center gap-2">
+                  <Checkbox
+                    id={`single-edit-phase-${p.value}`}
+                    checked={selectedPhases.has(p.value)}
+                    onCheckedChange={(checked) => togglePhase(p.value, checked === true)}
+                    data-testid={`checkbox-single-edit-phase-${p.value}`}
+                  />
+                  <Label
+                    htmlFor={`single-edit-phase-${p.value}`}
+                    className="font-normal cursor-pointer"
+                  >
+                    {p.label}
+                  </Label>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="border-t pt-4">
+            <p className="text-sm font-medium mb-2">Plugin settings</p>
+            <SchemaForm
+              schema={settingsSchema}
+              formData={settings}
+              showErrorList="top"
+              onChange={(e: IChangeEvent) => setSettings(e.formData as Record<string, unknown>)}
+              onSubmit={(e: IChangeEvent) => submit(e.formData as Record<string, unknown>)}
+            >
+              <button ref={submitRef} type="submit" hidden aria-hidden="true" tabIndex={-1} />
+            </SchemaForm>
+          </div>
+
+          {conflicts.length > 0 && (
+            <div
+              className="rounded-md border border-destructive/40 bg-destructive/5 p-3 space-y-1"
+              data-testid="list-single-edit-conflicts"
+            >
+              <div className="flex items-center gap-2 text-destructive font-medium text-sm">
+                <AlertTriangle className="h-4 w-4" />
+                Existing configurations conflict
+              </div>
+              <ul className="text-sm text-muted-foreground list-disc pl-5">
+                {conflicts.map((c, i) => (
+                  <li
+                    key={`${c.benefit}-${c.phase}-${i}`}
+                    data-testid={`single-edit-conflict-${c.benefit}-${c.phase}`}
+                  >
+                    {benefitName(c.benefit)} — {phaseLabel(c.phase)}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button
+            variant="ghost"
+            onClick={() => onOpenChange(false)}
+            disabled={saving}
+            data-testid="button-single-edit-cancel"
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={() => submitRef.current?.click()}
+            disabled={saving}
+            data-testid="button-single-edit-submit"
+          >
+            {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Save
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -594,6 +810,7 @@ interface BulkEditDialogProps {
   plugin: EligibilityManifestEntry | null;
   configIds: string[];
   count: number;
+  benefits: TrustBenefit[];
   onSaved: () => void;
 }
 
@@ -603,31 +820,47 @@ function BulkEditDialog({
   plugin,
   configIds,
   count,
+  benefits,
   onSaved,
 }: BulkEditDialogProps) {
   const { toast } = useToast();
   const submitRef = useRef<HTMLButtonElement>(null);
 
   type EnabledChoice = "no-change" | "enabled" | "disabled";
+  type PhasesChoice = "no-change" | "start" | "continue" | "both";
+
+  const PHASES_BY_CHOICE: Record<Exclude<PhasesChoice, "no-change">, string[]> = {
+    start: ["start"],
+    continue: ["continue"],
+    both: ["start", "continue"],
+  };
 
   const [settings, setSettings] = useState<Record<string, unknown>>({});
   const [enabledChoice, setEnabledChoice] = useState<EnabledChoice>("no-change");
+  const [phasesChoice, setPhasesChoice] = useState<PhasesChoice>("no-change");
   const [saving, setSaving] = useState(false);
+  const [conflicts, setConflicts] = useState<{ benefit: string; phase: string }[]>([]);
 
   const prevOpen = useRef(false);
   if (open && !prevOpen.current) {
     setSettings({});
     setEnabledChoice("no-change");
+    setPhasesChoice("no-change");
+    setConflicts([]);
   }
   prevOpen.current = open;
 
   const settingsSchema: JsonSchema =
     plugin?.configSchema ?? { type: "object", properties: {} };
 
+  const benefitName = (id: string): string =>
+    benefits.find((b) => b.id === id)?.name ?? id;
+
   // Whether the user has entered any settings to push. Empty means "leave each
   // config's current settings untouched" — useful for a pure enable/disable.
   const hasSettings = Object.keys(settings).length > 0;
-  const nothingToApply = !hasSettings && enabledChoice === "no-change";
+  const nothingToApply =
+    !hasSettings && enabledChoice === "no-change" && phasesChoice === "no-change";
 
   const submit = async (
     validSettings: Record<string, unknown>,
@@ -635,28 +868,42 @@ function BulkEditDialog({
   ) => {
     const enabled =
       enabledChoice === "no-change" ? undefined : enabledChoice === "enabled";
-    if (!includeSettings && enabled === undefined) {
+    const phases =
+      phasesChoice === "no-change" ? undefined : PHASES_BY_CHOICE[phasesChoice];
+    if (!includeSettings && enabled === undefined && phases === undefined) {
       toast({
         title: "Nothing to apply",
-        description: "Change the settings, enable/disable, or both.",
+        description: "Change the settings, enable/disable, phases, or a combination.",
         variant: "destructive",
       });
       return;
     }
+    setConflicts([]);
     setSaving(true);
     try {
       const body: Record<string, unknown> = { ids: configIds };
       if (includeSettings) body.data = validSettings;
       if (enabled !== undefined) body.enabled = enabled;
+      if (phases !== undefined) body.phases = phases;
       await apiRequest("POST", `${pluginConfigsUrl(KIND)}/bulk-settings`, body);
       toast({ title: "Changes applied", description: `Updated ${count} configuration(s).` });
       onSaved();
     } catch (error) {
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to apply changes.",
-        variant: "destructive",
-      });
+      if (error instanceof ApiError && error.status === 409 && error.data?.conflicts) {
+        setConflicts(error.data.conflicts as { benefit: string; phase: string }[]);
+        toast({
+          title: "Conflicts found",
+          description:
+            "Some benefit/phase combinations already have a configuration. Nothing was changed.",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Error",
+          description: error instanceof Error ? error.message : "Failed to apply changes.",
+          variant: "destructive",
+        });
+      }
     } finally {
       setSaving(false);
     }
@@ -676,7 +923,7 @@ function BulkEditDialog({
           <DialogTitle data-testid="dialog-bulk-edit-title">Edit Selected Configurations</DialogTitle>
           <DialogDescription>
             {plugin ? plugin.name : ""} — applies one change to {count} configuration(s).
-            Each configuration keeps its own benefit and phase.
+            Each configuration keeps its own benefit; phases change only if you set them below.
           </DialogDescription>
         </DialogHeader>
 
@@ -709,6 +956,37 @@ function BulkEditDialog({
             </Select>
           </div>
 
+          <div className="flex items-center justify-between rounded-md border p-3">
+            <div>
+              <Label>Phases</Label>
+              <p className="text-sm text-muted-foreground">
+                Optionally set the Start/Continue phases on all selected configurations.
+              </p>
+            </div>
+            <Select
+              value={phasesChoice}
+              onValueChange={(v) => setPhasesChoice(v as PhasesChoice)}
+            >
+              <SelectTrigger className="w-48" data-testid="select-bulk-edit-phases">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="no-change" data-testid="option-bulk-edit-phases-no-change">
+                  No change
+                </SelectItem>
+                <SelectItem value="start" data-testid="option-bulk-edit-phases-start">
+                  Start only
+                </SelectItem>
+                <SelectItem value="continue" data-testid="option-bulk-edit-phases-continue">
+                  Continue only
+                </SelectItem>
+                <SelectItem value="both" data-testid="option-bulk-edit-phases-both">
+                  Start + Continue
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
           <div className="border-t pt-4">
             <p className="text-sm font-medium mb-1">Plugin settings</p>
             <p className="text-xs text-muted-foreground mb-3">
@@ -726,6 +1004,28 @@ function BulkEditDialog({
               <button ref={submitRef} type="submit" hidden aria-hidden="true" tabIndex={-1} />
             </SchemaForm>
           </div>
+
+          {conflicts.length > 0 && (
+            <div
+              className="rounded-md border border-destructive/40 bg-destructive/5 p-3 space-y-1"
+              data-testid="list-bulk-edit-conflicts"
+            >
+              <div className="flex items-center gap-2 text-destructive font-medium text-sm">
+                <AlertTriangle className="h-4 w-4" />
+                Existing configurations conflict
+              </div>
+              <ul className="text-sm text-muted-foreground list-disc pl-5">
+                {conflicts.map((c, i) => (
+                  <li
+                    key={`${c.benefit}-${c.phase}-${i}`}
+                    data-testid={`bulk-edit-conflict-${c.benefit}-${c.phase}`}
+                  >
+                    {benefitName(c.benefit)} — {phaseLabel(c.phase)}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
 
         <DialogFooter>

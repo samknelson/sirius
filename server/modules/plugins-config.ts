@@ -32,6 +32,10 @@ const bulkSettingsSchema = z.object({
   ids: z.array(z.string().min(1)).min(1),
   data: z.record(z.unknown()).optional().default({}),
   enabled: z.boolean().optional(),
+  // Optional phase override: when present, every selected config's appliesTo
+  // is replaced by this list (subject to conflict validation). Absent =
+  // preserve each config's existing phases (the legacy behavior).
+  phases: z.array(z.enum(ELIGIBILITY_PHASES)).min(1).optional(),
 });
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -433,7 +437,7 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
     try {
       const resolved = await resolve(req, res);
       if (!resolved) return;
-      const { kind, registration } = resolved;
+      const { kind, adapter, registration } = resolved;
       if (kind !== BULK_SUPPORTED_KIND) {
         res.status(400).json({ message: `Bulk operations are not supported for kind '${kind}'` });
         return;
@@ -443,15 +447,16 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
         res.status(400).json({ message: "Invalid bulk request", errors: parsed.error.errors });
         return;
       }
-      const { ids, data, enabled } = parsed.data;
+      const { ids, data, enabled, phases } = parsed.data;
       const uniqueIds = Array.from(new Set(ids));
+      const uniquePhases = phases ? Array.from(new Set(phases)) : null;
 
-      // Either of two independent changes may be requested: a settings payload
-      // and/or an enabled flip. At least one must be present.
+      // Any of three independent changes may be requested: a settings payload,
+      // an enabled flip, and/or a phase override. At least one must be present.
       const changeSettings = Object.keys(data).length > 0;
-      if (!changeSettings && enabled === undefined) {
+      if (!changeSettings && enabled === undefined && !uniquePhases) {
         res.status(400).json({
-          message: "Nothing to apply: provide settings, an enabled change, or both",
+          message: "Nothing to apply: provide settings, an enabled change, phases, or a combination",
         });
         return;
       }
@@ -474,28 +479,92 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
       }
       const pluginId = found[0].config.pluginId;
 
+      // Phase override requested: validate that no target (benefit, phase)
+      // collides — either with an existing config outside the selection, or
+      // with another config inside the selection (two selected rows on the
+      // same benefit would become identical). All-or-nothing: any conflict
+      // rejects the whole request with a structured list (mirrors bulk create).
+      if (uniquePhases) {
+        const selectedIdSet = new Set(uniqueIds);
+        const conflicts: Array<{ benefit: string; phase: string }> = [];
+        const seen = new Set<string>();
+        for (const env of found) {
+          const policy = (env.subsidiary as any)?.policy ?? null;
+          const benefit = (env.subsidiary as any)?.benefit ?? null;
+          for (const phase of uniquePhases) {
+            const intraKey = `${policy}|${benefit}|${phase}`;
+            if (seen.has(intraKey)) {
+              conflicts.push({ benefit: benefit ?? "", phase });
+              continue;
+            }
+            seen.add(intraKey);
+            const matches = await storage.pluginConfigs.search(kind, {
+              policy,
+              pluginId,
+              benefit,
+              appliesTo: phase,
+            } as any);
+            if (matches.some((m) => !selectedIdSet.has(m.config.id))) {
+              conflicts.push({ benefit: benefit ?? "", phase });
+            }
+          }
+        }
+        if (conflicts.length > 0) {
+          res.status(409).json({
+            message:
+              "Some benefit/phase combinations already have a configuration for this plugin",
+            conflicts,
+          });
+          return;
+        }
+      }
+
       // Build a per-config patch. When settings are supplied, merge them with
-      // each config's preserved phase array and validate so we never store
-      // settings the plugin rejects. The enabled flip (when present) is applied
+      // the config's phase array (overridden when phases were requested,
+      // preserved otherwise) and validate so we never store settings the
+      // plugin rejects. The enabled flip (when present) is applied
       // independently, so a pure enable/disable doesn't require re-entering
       // settings.
       const updates = [] as Array<{
         id: string;
         patch: { data?: Record<string, unknown>; enabled?: boolean };
       }>;
+      // When phases change, the denormalized subsidiary `applies_to` column
+      // must stay in sync with `data.appliesTo`. Reuse the adapter's toRows
+      // mapping (single source of that logic) per config.
+      const subsidiaryRows = [] as Array<{ id: string } & Record<string, unknown>>;
       for (const env of found) {
         const patch: { data?: Record<string, unknown>; enabled?: boolean } = {};
-        if (changeSettings) {
-          const existingData = (env.config.data as Record<string, unknown>) ?? {};
-          const mergedData = { ...data, appliesTo: existingData.appliesTo ?? [] };
+        const existingData = (env.config.data as Record<string, unknown>) ?? {};
+        if (changeSettings || uniquePhases) {
+          const settingsSource = changeSettings ? data : existingData;
+          const mergedData = {
+            ...settingsSource,
+            appliesTo: uniquePhases ?? existingData.appliesTo ?? [],
+          };
           if (!(await ensureValidPlugin(registration, pluginId, mergedData, res))) return;
           patch.data = mergedData;
         }
         if (enabled !== undefined) patch.enabled = enabled;
         updates.push({ id: env.config.id, patch });
+        if (uniquePhases) {
+          const hydrated = hydrate(adapter, env) as Record<string, unknown>;
+          const { subsidiary } = adapter.toRows({
+            ...hydrated,
+            data: patch.data ?? existingData,
+            appliesTo: uniquePhases.join(","),
+          } as any);
+          if (subsidiary) subsidiaryRows.push({ id: env.config.id, ...subsidiary });
+        }
       }
-      const updated = await storage.pluginConfigs.bulkUpdate(updates);
-      res.json({ updated: updated.length });
+      const updatedCount = await runInTransaction(async () => {
+        const updated = await storage.pluginConfigs.bulkUpdate(updates);
+        for (const row of subsidiaryRows) {
+          await storage.pluginConfigs.upsertSubsidiary(kind, row);
+        }
+        return updated.length;
+      });
+      res.json({ updated: updatedCount });
     } catch (error) {
       console.error("Failed to bulk-update plugin config settings:", error);
       res.status(500).json({ message: "Failed to bulk-update plugin config settings" });
@@ -564,6 +633,37 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
       base.siriusId = (parsed.data as any).siriusId ?? null;
       if (!(await ensureValidPlugin(registration, parsed.data.pluginId, base.data, res))) return;
       if (await rejectIfDuplicate(kind, adapter, parsed.data, req.params.id, res)) return;
+      // Trust-eligibility: a config's (policy, plugin, benefit, phase) must be
+      // unique. Check each target phase against other configs (token-aware,
+      // catches combined "start,continue" rows) and reject all-or-nothing with
+      // a structured conflict list, mirroring bulk create.
+      if (kind === BULK_SUPPORTED_KIND && subsidiary) {
+        const policy = (subsidiary as any).policy ?? null;
+        const benefit = (subsidiary as any).benefit ?? null;
+        const targetPhases = Array.isArray((base.data as any)?.appliesTo)
+          ? ((base.data as any).appliesTo as string[])
+          : [];
+        const conflicts: Array<{ benefit: string; phase: string }> = [];
+        for (const phase of targetPhases) {
+          const matches = await storage.pluginConfigs.search(kind, {
+            policy,
+            pluginId: parsed.data.pluginId,
+            benefit,
+            appliesTo: phase,
+          } as any);
+          if (matches.some((m) => m.config.id !== req.params.id)) {
+            conflicts.push({ benefit: benefit ?? "", phase });
+          }
+        }
+        if (conflicts.length > 0) {
+          res.status(409).json({
+            message:
+              "Another configuration already covers this benefit/phase combination for this plugin",
+            conflicts,
+          });
+          return;
+        }
+      }
       await runInTransaction(async () => {
         await storage.pluginConfigs.update(req.params.id, base as any);
         if (subsidiary) {
