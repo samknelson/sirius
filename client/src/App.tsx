@@ -240,6 +240,7 @@ const T631FetchPage = lazy(() => import("@/pages/config/edls/t631-fetch"));
 const BaoMemberStatusThresholdsPage = lazy(() => import("@/pages/config/trust/sitespecific/bao/thresholds"));
 const BaoEmployerRatesPage = lazy(() => import("@/pages/config/sitespecific/bao/employer-rates"));
 const BaoRateSourcesPage = lazy(() => import("@/pages/config/sitespecific/bao/rate-sources"));
+const BaoRateSourceRatesPage = lazy(() => import("@/pages/config/sitespecific/bao/rate-source-rates"));
 const WsBundlesPage = lazy(() => import("@/pages/config/ws/bundles"));
 const WsClientsPage = lazy(() => import("@/pages/config/ws/clients"));
 const WsClientSettingsPage = lazy(() => import("@/pages/config/ws/client-settings"));
@@ -2551,6 +2552,16 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <BaoRateSourcesPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/sitespecific/bao/rate-sources/:id/rates">
+        <ProtectedRoute permission="admin" component="sitespecific.bao">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <BaoRateSourceRatesPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>

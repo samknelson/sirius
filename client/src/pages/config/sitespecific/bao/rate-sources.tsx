@@ -36,7 +36,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Loader2, Plus, Pencil, Trash2, Paperclip, Download, Upload } from "lucide-react";
+import { Loader2, Plus, Pencil, Trash2, Paperclip, Download, Upload, DollarSign } from "lucide-react";
+import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type {
@@ -359,6 +360,18 @@ export default function BaoRateSourcesPage() {
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-1 justify-end">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          asChild
+                          title="Manage rates"
+                          aria-label="Manage rates"
+                          data-testid={`button-source-rates-${s.id}`}
+                        >
+                          <Link href={`/config/sitespecific/bao/rate-sources/${s.id}/rates`}>
+                            <DollarSign className="h-4 w-4" />
+                          </Link>
+                        </Button>
                         <Button
                           variant="ghost"
                           size="icon"
