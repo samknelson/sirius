@@ -54,6 +54,7 @@ import {
   AlertTriangle,
   ChevronDown,
   ChevronRight,
+  Merge,
 } from "lucide-react";
 
 const KIND = "trust-eligibility" as const;
@@ -128,6 +129,43 @@ function settingsFingerprint(row: EligibilityConfigRow): string {
     enabled: row.enabled,
     name: row.name ?? null,
   });
+}
+
+/**
+ * Detect phase-split rows that could be combined: configs targeting the
+ * same benefit with identical settings, enabled state, and name, but
+ * disjoint phase lists (e.g. a Start-only row + a Continue-only row).
+ * Returns the number of such mergeable sets. Mirrors the server-side
+ * grouping in the merge-phases endpoint.
+ */
+function countMergeablePairs(rows: EligibilityConfigRow[]): number {
+  const map = new Map<string, EligibilityConfigRow[]>();
+  for (const row of rows) {
+    const { appliesTo: _omit, ...rest } = (row.data ?? {}) as Record<string, unknown>;
+    const key = JSON.stringify({
+      benefit: row.benefit ?? null,
+      data: sortKeysDeep(rest),
+      enabled: row.enabled,
+      name: row.name ?? null,
+    });
+    const list = map.get(key) ?? [];
+    list.push(row);
+    map.set(key, list);
+  }
+  let count = 0;
+  for (const list of map.values()) {
+    if (list.length < 2) continue;
+    const seen = new Set<string>();
+    let overlap = false;
+    for (const row of list) {
+      for (const p of splitPhases(row.appliesTo)) {
+        if (seen.has(p)) overlap = true;
+        seen.add(p);
+      }
+    }
+    if (!overlap && seen.size > 0) count += 1;
+  }
+  return count;
 }
 
 interface SettingsGroup {
@@ -260,6 +298,34 @@ function PolicyEligibilityContent() {
     queryClient.invalidateQueries({
       queryKey: [pluginConfigsUrl(KIND), "policy", policy.id],
     });
+  };
+
+  const [mergingPluginId, setMergingPluginId] = useState<string | null>(null);
+  const mergePhases = async (pluginId: string) => {
+    setMergingPluginId(pluginId);
+    try {
+      const result = (await apiRequest("POST", `${pluginConfigsUrl(KIND)}/merge-phases`, {
+        pluginId,
+        policy: policy.id,
+      })) as { merged: number; removed: number };
+      toast({
+        title: result.merged > 0 ? "Configurations merged" : "Nothing to merge",
+        description:
+          result.merged > 0
+            ? `${result.merged} combined row${result.merged === 1 ? "" : "s"} created (${result.removed} duplicate${result.removed === 1 ? "" : "s"} removed).`
+            : undefined,
+      });
+      refresh();
+    } catch (error) {
+      toast({
+        title: "Error",
+        description:
+          error instanceof Error ? error.message : "Failed to merge configurations.",
+        variant: "destructive",
+      });
+    } finally {
+      setMergingPluginId(null);
+    }
   };
 
   const deleteOne = async () => {
@@ -440,6 +506,12 @@ function PolicyEligibilityContent() {
             const selectedInGroup = rows.filter((r) => selectedIds.has(r.id)).length;
             const allSelected = selectedInGroup === rows.length && rows.length > 0;
             const someSelected = selectedInGroup > 0 && !allSelected;
+            // Merge detection runs on ALL of this plugin's configs for the
+            // policy (not just the filtered view) — the server merges across
+            // everything, so the button should reflect the full picture.
+            const mergeable = countMergeablePairs(
+              configs.filter((c) => c.pluginId === pluginId),
+            );
             return (
               <Card key={pluginId} data-testid={`card-plugin-${pluginId}`}>
                 <CardHeader>
@@ -457,6 +529,23 @@ function PolicyEligibilityContent() {
                     <CardTitle className="text-base" data-testid={`text-plugin-name-${pluginId}`}>
                       {pluginName(pluginId)}
                     </CardTitle>
+                    {mergeable > 0 && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="ml-auto"
+                        disabled={mergingPluginId !== null}
+                        onClick={() => mergePhases(pluginId)}
+                        data-testid={`button-merge-phases-${pluginId}`}
+                      >
+                        {mergingPluginId === pluginId ? (
+                          <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                        ) : (
+                          <Merge className="h-4 w-4 mr-1" />
+                        )}
+                        Merge Start/Continue ({mergeable})
+                      </Button>
+                    )}
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-2">
