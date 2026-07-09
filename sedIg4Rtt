@@ -1,0 +1,57 @@
+modules = ["nodejs-20", "web", "python-3.11", "postgresql-16"]
+[agent]
+expertMode = true
+integrations = ["javascript_object_storage:1.0.0"]
+
+[nix]
+channel = "stable-25_05"
+
+[deployment]
+deploymentTarget = "autoscale"
+run = ["npm", "run", "start"]
+build = ["npm", "run", "build"]
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Start application"
+
+[[workflows.workflow]]
+name = "Start application"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npm run dev"
+waitForPort = 5000
+
+[userenv]
+
+[userenv.development]
+DEFAULT_OBJECT_STORAGE_BUCKET_ID = "replit-objstore-06f57e06-8f57-406f-bbca-26e490f3a499"
+PUBLIC_OBJECT_SEARCH_PATHS = "/replit-objstore-06f57e06-8f57-406f-bbca-26e490f3a499/public"
+PRIVATE_OBJECT_DIR = "/replit-objstore-06f57e06-8f57-406f-bbca-26e490f3a499/.private"
+
+[userenv.shared]
+SAML_ENTRY_POINT = "https://benefits11.okta.com/app/exk20arfmjn9nuFpI1d8/sso/saml"
+SAML_ISSUER = "https://6df5f98a-763b-4214-8d4b-274c33305989-00-3p2k00jwx19el.kirk.replit.dev"
+SAML_CERT = "MIIDpDCCAoygAwIBAgIGAZu81QyfMA0GCSqGSIb3DQEBCwUAMIGSMQswCQYDVQQGEwJVUzETMBEGA1UECAwKQ2FsaWZvcm5pYTEWMBQGA1UEBwwNU2FuIEZyYW5jaXNjbzENMAsGA1UECgwET2t0YTEUMBIGA1UECwwLU1NPUHJvdmlkZXIxEzARBgNVBAMMCmJlbmVmaXRzMTExHDAaBgkqhkiG9w0BCQEWDWluZm9Ab2t0YS5jb20wHhcNMjYwMTE0MTQwNjE3WhcNMzYwMTE0MTQwNzE3WjCBkjELMAkGA1UEBhMCVVMxEzARBgNVBAgMCkNhbGlmb3JuaWExFjAUBgNVBAcMDVNhbiBGcmFuY2lzY28xDTALBgNVBAoMBE9rdGExFDASBgNVBAsMC1NTT1Byb3ZpZGVyMRMwEQYDVQQDDApiZW5lZml0czExMRwwGgYJKoZIhvcNAQkBFg1pbmZvQG9rdGEuY29tMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAlTZT+xKG3F4GLxJnGu6pbVU6MfFXWJOWv+rpyUxVvdv/ZiXtrFPgcu/wzv0mJScJDouUP9Sn9fM0VkJDOgcYk7KIN6cQHEeA9PfZlotPlqOX3Iudf4SSZKAYcfxVHY1ekbB4I0Mtvz0hjPHdZ5F/KvVeeaqrs5EcTRM5XNnudmvaZo4lqpRbYOijEUGycQlNGsll/V6CbHlS5IG20cZs5nc9xcVWGU7lhqWbsbnXj/XlFrJXMnUGieOpLmQQC4KZWu1wzhK44ln9jC9sCNfCtT0NeTjf/9q9oBCI+yT7AZSwAFZpbmnPTsNNlw94NmWKsUn5qC3JvbgMS5KFIXdWMwIDAQABMA0GCSqGSIb3DQEBCwUAA4IBAQCNeTwqwB+o/9LNNWZ/GJ2WWG+k6gzN1o013hdfUv+KdIpHCMZOkNvpHDBkksKrlLrK0JmnHhzWV9XfU8ntkmRmBYjWxyD8KR8e3jVOGtQkxF89wqcM5J3TzXUyfVwH5+udElQ/DGewntclTgWtgZiftW1G0ul+etlQyfUQqNC9v7nOT/rJZZchaH3viT6X4VorcNxOVXE0WWT79PsOv01O2F0TODW5CS5uf7vCmNyyoirZOl5ybw2GksOzcxOU1Ns+rCH7QFDh6b4HkPeQp1qboVK5vq9h4hDn+kuNZ44ImHk+NmWI0KD5QmfOs21Vdu5D1ap8DXJdke1Wbt5kVXS/"
+AUTH_PROVIDER = "okta"
+
+[[ports]]
+localPort = 5000
+externalPort = 80
+
+[objectStorage]
+defaultBucketID = "replit-objstore-06f57e06-8f57-406f-bbca-26e490f3a499"
+
+[postMerge]
+path = "scripts/post-merge.sh"
+timeoutMs = 60000
