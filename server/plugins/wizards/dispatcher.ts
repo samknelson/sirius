@@ -536,7 +536,12 @@ export function registerWizardDispatcherRoutes(
             status: "completed",
             completedAt: new Date().toISOString(),
           };
-          if (data.progress[next.id]?.status !== "completed") {
+          // Don't mark `run` steps as in_progress on navigation: for those
+          // steps the progress status means "the async run is executing",
+          // and pre-setting it makes the client believe a run is already
+          // underway (disabled Run button, frozen 0% bar). Their status is
+          // owned by the run route.
+          if (data.progress[next.id]?.status !== "completed" && !next.run) {
             data.progress[next.id] = {
               ...data.progress[next.id],
               status: "in_progress",
@@ -554,10 +559,15 @@ export function registerWizardDispatcherRoutes(
             return res.status(400).json({ message: "Already on first step" });
           }
           const prev = steps[idx - 1];
-          data.progress[prev.id] = {
-            ...data.progress[prev.id],
-            status: "in_progress",
-          };
+          // Same rule as `next`: never overwrite a run step's status on
+          // navigation (it would clobber completed/failed run outcomes and
+          // fake an executing run).
+          if (!prev.run) {
+            data.progress[prev.id] = {
+              ...data.progress[prev.id],
+              status: "in_progress",
+            };
+          }
           const updated = await storage.wizards.update(wizard.id, {
             currentStep: prev.id,
             data,
