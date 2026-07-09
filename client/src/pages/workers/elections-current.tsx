@@ -23,12 +23,11 @@ function ElectionsCurrentContent() {
 
   const enrollMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/wizards", {
+      return await apiRequest("POST", "/api/wizards", {
         type: "benefit_election_enrollment",
         status: "draft",
         data: { launchArguments: { workerId: worker.id } },
       });
-      return res.json();
     },
     onSuccess: (wizard: { id: string }) => {
       navigate(`/wizards/${wizard.id}`);
