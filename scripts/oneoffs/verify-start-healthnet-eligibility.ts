@@ -6,10 +6,10 @@
  * "start" scan and print the verdict + reason.
  *
  * Two sections:
- *   1. All five workers as-of June 2026 (every criterion path satisfied).
- *   2. As-of bounding checks: the HealthNet ("ever held") and continuous-medical
- *      criteria only count coverage dated on/before the evaluated month, so the
- *      same worker flips eligibility depending on the as-of date.
+ *   1. All four workers as-of June 2026 (every criterion path satisfied).
+ *   2. As-of bounding checks: the continuous-medical criterion only counts
+ *      coverage dated on/before the evaluated month, so the same worker flips
+ *      eligibility depending on the as-of date.
  *
  * Usage: npx tsx scripts/oneoffs/verify-start-healthnet-eligibility.ts
  */
@@ -27,15 +27,17 @@ const HEALTHNET_BENEFIT_ID = "1f4b013d-12bc-4960-9f69-a3d738b6fd91";
 
 const WORKERS: Array<{ label: string; name: string; expect: string }> = [
   { label: "Criterion 1 (geographic)", name: "[HN] Geographic (far from site)", expect: "ELIGIBLE" },
-  { label: "Criterion 2 (ever HealthNet)", name: "[HN] Ever had Health Net", expect: "ELIGIBLE" },
-  { label: "Criterion 3 (continuous medical)", name: "[HN] 24mo continuous medical (MLK)", expect: "ELIGIBLE" },
-  { label: "Criterion 4 (employer window)", name: "[HN] Employer immediate-eligibility", expect: "ELIGIBLE" },
+  { label: "Criterion 2 (continuous medical)", name: "[HN] 24mo continuous medical (MLK)", expect: "ELIGIBLE" },
+  { label: "Criterion 3 (employer window)", name: "[HN] Employer immediate-eligibility", expect: "ELIGIBLE" },
   { label: "Control (none)", name: "[HN] Not eligible (no criterion)", expect: "NOT eligible" },
+  // The old "[HN] Ever had Health Net" seed worker (Health Net history only)
+  // must now be NOT eligible: the "Ever had HealthNet" criterion was removed.
+  { label: "Removed criterion (ever HealthNet)", name: "[HN] Ever had Health Net", expect: "NOT eligible" },
 ];
 
 // As-of bounding cases: the same seeded worker should flip eligibility based on
-// the evaluated month, because criteria 2 (ever HealthNet) and 3 (continuous
-// medical) only count coverage dated on/before the as-of month.
+// the evaluated month, because criterion 2 (continuous medical) only counts
+// coverage dated on/before the as-of month.
 const BOUNDING_CASES: Array<{
   name: string;
   asOfYear: number;
@@ -46,9 +48,6 @@ const BOUNDING_CASES: Array<{
   // Medical run is seeded 2023-01 → 2024-12 (24 consecutive months).
   { name: "[HN] 24mo continuous medical (MLK)", asOfYear: 2023, asOfMonth: 6, expect: "NOT eligible", note: "only 6 of 24 months elapsed by Jun 2023" },
   { name: "[HN] 24mo continuous medical (MLK)", asOfYear: 2024, asOfMonth: 12, expect: "ELIGIBLE", note: "24th consecutive month reached Dec 2024" },
-  // Health Net coverage is seeded 2022-01 → 2022-03.
-  { name: "[HN] Ever had Health Net", asOfYear: 2021, asOfMonth: 12, expect: "NOT eligible", note: "no Health Net coverage on/before Dec 2021" },
-  { name: "[HN] Ever had Health Net", asOfYear: 2022, asOfMonth: 1, expect: "ELIGIBLE", note: "first Health Net month is Jan 2022" },
 ];
 
 type Rules = ReturnType<typeof pluginConfigToEligibilityRule>[];
@@ -81,8 +80,12 @@ async function main(): Promise<void> {
     policy: POLICY_ID,
     benefit: HEALTHNET_BENEFIT_ID,
   });
-  const rules = ruleRows.map((r) => pluginConfigToEligibilityRule(r.config));
-  console.log(`Loaded ${rules.length} rule(s) for EVENT CENTER Plan + Health Net.\n`);
+  // Only the Start Healthnet rule is under test — other rules (e.g. buildup)
+  // may also be attached to this benefit and would skew the verdicts.
+  const rules = ruleRows
+    .map((r) => pluginConfigToEligibilityRule(r.config))
+    .filter((r) => r.pluginKey === "sitespecific-bao-start-healthnet");
+  console.log(`Loaded ${rules.length} Start Healthnet rule(s) for EVENT CENTER Plan + Health Net.\n`);
 
   console.log("=== Section 1: all workers as-of June 2026 ===\n");
   for (const w of WORKERS) {
@@ -98,7 +101,7 @@ async function main(): Promise<void> {
     console.log(`   detail : ${r.reasons}\n`);
   }
 
-  console.log("=== Section 2: as-of bounding (criteria 2 & 3) ===\n");
+  console.log("=== Section 2: as-of bounding (criterion 2) ===\n");
   for (const c of BOUNDING_CASES) {
     const r = await evaluateWorker(c.name, rules, c.asOfYear, c.asOfMonth);
     const asOf = `${c.asOfYear}-${String(c.asOfMonth).padStart(2, "0")}`;

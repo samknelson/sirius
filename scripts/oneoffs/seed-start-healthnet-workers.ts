@@ -7,32 +7,27 @@
  * Plugin recap — a subscriber is eligible if they meet ANY ONE of:
  *   1. Geographic — primary address is MORE than the chosen distance from every
  *      selected site (only checked when a distance + at least one site is set).
- *   2. Ever had HealthNet — the subscriber has at any point held the benefit
- *      designated as HealthNet (only checked when a HealthNet benefit is set).
- *   3. Continuous medical — the subscriber held a benefit of the chosen Medical
+ *   2. Continuous medical — the subscriber held a benefit of the chosen Medical
  *      type for N consecutive months at ANY point in history (only checked when
  *      a medical type + months are set).
- *   4. Employer immediate-eligibility (ALWAYS checked) — the subscriber's
+ *   3. Employer immediate-eligibility (ALWAYS checked) — the subscriber's
  *      employer is inside an immediate-eligibility window covering the as-of date.
  *
  * The saved rule (plugin_configs 7c25e64a, EVENT CENTER Plan + Health Net
- * benefit, appliesTo "start") only had criterion 3 (medical, 24 months) + the
- * always-on criterion 4 active. To make all four testable, this script (all via
+ * benefit, appliesTo "start") only had criterion 2 (medical, 24 months) + the
+ * always-on criterion 3 active. To make all three testable, this script (all via
  * the storage layer, per project rules):
  *   - creates a geocoded "site" facility and turns ON the geographic criterion
  *     (distance 15 mi) in the rule config;
- *   - designates the Health Net benefit as the HealthNet benefit (criterion 2);
  *   - keeps the medical criterion (Medical type, 24 consecutive months);
  *   - creates an employer immediate-eligibility window on "TEST IE EMPLOYER"
- *     covering 2026 so criterion 4 can pass.
+ *     covering 2026 so criterion 3 can pass.
  *
  * Then it seeds one worker per criterion (plus a control that meets none). Each
  * worker is isolated so it passes via exactly ONE criterion:
  *   - geographic worker has a geocoded address far from the site, no benefits;
- *   - HealthNet worker has Health Net history but no qualifying medical run /
+ *   - medical worker has 24 consecutive months of MLK (Medical type), no
  *     address;
- *   - medical worker has 24 consecutive months of MLK (Medical type, NOT the
- *     designated HealthNet benefit), no address;
  *   - employer-window worker belongs to TEST IE EMPLOYER (the one with a
  *     window), everyone else belongs to TEST HOTEL (no window);
  *   - control worker has nothing.
@@ -52,9 +47,9 @@ import { storage } from "../../server/storage/database";
 // ---- Known fixtures in this database -------------------------------------
 const POLICY_ID = "a5b9e6dd-c9ce-47bb-b7cf-7370e160b227"; // EVENT CENTER Plan (carries the rule)
 const RULE_CONFIG_ID = "7c25e64a-a56c-4bbe-94f4-171015c6211c"; // the Start HealthNet plugin_configs row
-const HEALTHNET_BENEFIT_ID = "1f4b013d-12bc-4960-9f69-a3d738b6fd91"; // Health Net (the evaluated benefit + designated HealthNet)
+const HEALTHNET_BENEFIT_ID = "1f4b013d-12bc-4960-9f69-a3d738b6fd91"; // Health Net (the evaluated benefit)
 const MEDICAL_TYPE_ID = "c756263a-aa63-4bab-bbda-7d77b9527a49"; // "Medical" benefit type
-const MLK_BENEFIT_ID = "10e16e6e-1ce8-4068-a55a-6351e72be9f5"; // MLK (Medical type, NOT Health Net) — for medical isolation
+const MLK_BENEFIT_ID = "10e16e6e-1ce8-4068-a55a-6351e72be9f5"; // MLK (Medical type) — for the medical criterion
 
 const EMP_NO_WINDOW = "9a80c1c5-7d46-4124-adc4-4be57375c5ee"; // TEST HOTEL (no immediate-eligibility window)
 const EMP_WITH_WINDOW = "93064023-1f33-4f69-963f-4c16b52db647"; // TEST IE EMPLOYER (gets the window)
@@ -171,23 +166,23 @@ async function ensureImmediateWindow(): Promise<string> {
   return `kept ${existing.startYmd} → ${existing.endYmd}`;
 }
 
-/** Turn on the geographic + HealthNet criteria in the saved rule config. */
+/** Turn on the geographic criterion in the saved rule config. */
 async function enableAllCriteria(siteFacilityId: string): Promise<void> {
   const config = await storage.pluginConfigs.get(RULE_CONFIG_ID);
   if (!config) throw new Error(`HealthNet rule config not found: ${RULE_CONFIG_ID}`);
   const current = (config.data ?? {}) as Record<string, unknown>;
+  delete current.healthnet; // legacy "Ever had HealthNet" criterion — removed from the plugin
   const data = {
     ...current,
     appliesTo: ["start"],
     geographic: { distanceMiles: DISTANCE_MILES, facilityIds: [siteFacilityId] },
-    healthnet: { benefitId: HEALTHNET_BENEFIT_ID },
     medical: { months: MEDICAL_MONTHS, benefitTypeId: MEDICAL_TYPE_ID },
   };
   await storage.pluginConfigs.update(RULE_CONFIG_ID, { data });
 }
 
 async function main(): Promise<void> {
-  // 1. Config + supporting data so all four criteria are live.
+  // 1. Config + supporting data so all three criteria are live.
   const siteFacilityId = await ensureSiteFacility();
   await enableAllCriteria(siteFacilityId);
   const windowMsg = await ensureImmediateWindow();
@@ -197,18 +192,7 @@ async function main(): Promise<void> {
   await ensureElection(geoWorker.id, EMP_NO_WINDOW);
   const geoAddr = await ensureGeocodedAddress(geoWorker.contactId, FAR_WORKER_COORDS, "New York", "NY");
 
-  // 3. Criterion 2 — Ever had HealthNet: 3 months of Health Net history.
-  const hnWorker = await findOrCreateWorker("[HN] Ever had Health Net");
-  await ensureElection(hnWorker.id, EMP_NO_WINDOW);
-  const hnMonths = await ensureBenefitMonths(
-    hnWorker.id,
-    HEALTHNET_BENEFIT_ID,
-    monthRange({ year: 2022, month: 1 }, { year: 2022, month: 3 }),
-    EMP_NO_WINDOW,
-  );
-
-  // 4. Criterion 3 — Continuous medical: 24 consecutive months of MLK (Medical,
-  //    NOT the designated HealthNet benefit).
+  // 3. Criterion 2 — Continuous medical: 24 consecutive months of MLK (Medical type).
   const medWorker = await findOrCreateWorker("[HN] 24mo continuous medical (MLK)");
   await ensureElection(medWorker.id, EMP_NO_WINDOW);
   const medMonths = await ensureBenefitMonths(
@@ -218,18 +202,17 @@ async function main(): Promise<void> {
     EMP_NO_WINDOW,
   );
 
-  // 5. Criterion 4 — Employer immediate-eligibility: belongs to TEST IE EMPLOYER.
+  // 4. Criterion 3 — Employer immediate-eligibility: belongs to TEST IE EMPLOYER.
   const empWorker = await findOrCreateWorker("[HN] Employer immediate-eligibility");
   await ensureElection(empWorker.id, EMP_WITH_WINDOW);
 
-  // 6. Control — meets none.
+  // 5. Control — meets none.
   const noneWorker = await findOrCreateWorker("[HN] Not eligible (no criterion)");
   await ensureElection(noneWorker.id, EMP_NO_WINDOW);
 
-  console.log("Seeded data for the BAO - Start HealthNet plugin (all 4 criteria enabled).\n");
+  console.log("Seeded data for the BAO - Start HealthNet plugin (all 3 criteria enabled).\n");
   console.log("Rule config updated (plugin_configs 7c25e64a):");
   console.log(`  geographic: distance ${DISTANCE_MILES} mi, site = ${SITE_FACILITY_NAME} (${siteFacilityId})`);
-  console.log(`  healthnet : Health Net (${HEALTHNET_BENEFIT_ID})`);
   console.log(`  medical   : Medical type, ${MEDICAL_MONTHS} consecutive months`);
   console.log(`  employer window (TEST IE EMPLOYER): ${windowMsg}\n`);
 
@@ -240,17 +223,12 @@ async function main(): Promise<void> {
   console.log(`  data   : geocoded NY address ~2400 mi from the LA site (${geoAddr ? "added" : "already present"})`);
   console.log("  expect : ELIGIBLE (geographic)\n");
 
-  console.log("Criterion 2 — Ever had HealthNet:");
-  console.log(`  worker : ${hnWorker.id} ([HN] Ever had Health Net)`);
-  console.log(`  data   : Health Net 2022-01 → 2022-03 (+${hnMonths} rows)`);
-  console.log("  expect : ELIGIBLE (HealthNet)\n");
-
-  console.log("Criterion 3 — Continuous medical:");
+  console.log("Criterion 2 — Continuous medical:");
   console.log(`  worker : ${medWorker.id} ([HN] 24mo continuous medical (MLK))`);
-  console.log(`  data   : MLK (Medical, not Health Net) 2023-01 → 2024-12 (+${medMonths} rows)`);
+  console.log(`  data   : MLK (Medical type) 2023-01 → 2024-12 (+${medMonths} rows)`);
   console.log("  expect : ELIGIBLE (continuous medical)\n");
 
-  console.log("Criterion 4 — Employer immediate-eligibility:");
+  console.log("Criterion 3 — Employer immediate-eligibility:");
   console.log(`  worker : ${empWorker.id} ([HN] Employer immediate-eligibility))`);
   console.log("  data   : employer TEST IE EMPLOYER, window covers June 2026");
   console.log("  expect : ELIGIBLE (employer immediate-eligibility)\n");

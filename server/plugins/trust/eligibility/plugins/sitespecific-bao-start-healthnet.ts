@@ -23,9 +23,6 @@ interface BaoStartHealthnetConfig extends BaseEligibilityConfig {
     distanceMiles?: number;
     facilityIds?: string[];
   };
-  healthnet?: {
-    benefitId?: string;
-  };
   medical?: {
     benefitTypeId?: string;
     months?: number;
@@ -39,7 +36,6 @@ interface BaoStartHealthnetConfig extends BaseEligibilityConfig {
 interface NormalizedConfig {
   distanceMiles?: number;
   facilityIds?: string[];
-  healthnetBenefitId?: string;
   medicalBenefitTypeId?: string;
   medicalMonths?: number;
 }
@@ -49,7 +45,6 @@ function normalizeConfig(config: unknown): NormalizedConfig {
   return {
     distanceMiles: c.geographic?.distanceMiles ?? c.distanceMiles,
     facilityIds: c.geographic?.facilityIds ?? c.facilityIds,
-    healthnetBenefitId: c.healthnet?.benefitId,
     medicalBenefitTypeId: c.medical?.benefitTypeId,
     medicalMonths: c.medical?.months,
   };
@@ -62,10 +57,6 @@ function isGeographicConfigured(n: NormalizedConfig): boolean {
     Array.isArray(n.facilityIds) &&
     n.facilityIds.length > 0
   );
-}
-
-function isHealthnetConfigured(n: NormalizedConfig): boolean {
-  return typeof n.healthnetBenefitId === "string" && n.healthnetBenefitId.length > 0;
 }
 
 function isMedicalConfigured(n: NormalizedConfig): boolean {
@@ -113,11 +104,10 @@ async function getPrimaryCoords(contactId: string): Promise<CoordsLookup> {
 
 /**
  * Shape of the subset of `storage.workers.getWorkerBenefits` rows that the
- * HealthNet and continuous-medical criteria depend on. Other columns exist on
- * the row but are not consumed here.
+ * continuous-medical criterion depends on. Other columns exist on the row but
+ * are not consumed here.
  */
 interface BenefitHistoryRow {
-  benefitId: string;
   month: number;
   year: number;
   benefit?: { benefitType?: string | null } | null;
@@ -152,11 +142,10 @@ class BaoStartHealthnetPlugin extends EligibilityPlugin<BaoStartHealthnetConfig>
     id: "sitespecific-bao-start-healthnet",
     name: "BAO - Start Healthnet",
     description:
-      "A subscriber is eligible if they meet ANY ONE of the following criteria (criteria 1–3 are checked only when configured; criterion 4 is always checked):\n" +
+      "A subscriber is eligible if they meet ANY ONE of the following criteria (criteria 1–2 are checked only when configured; criterion 3 is always checked):\n" +
       "1. Geographic — primary address is more than the chosen distance from every selected site.\n" +
-      "2. Ever had HealthNet — the subscriber has, on or before the evaluated date, held the benefit designated as HealthNet.\n" +
-      "3. Continuous medical — the subscriber has held a benefit of the chosen Medical type for the required number of consecutive months at some point on or before the evaluated date.\n" +
-      "4. Employer immediate-eligibility (always checked) — the subscriber's employer is inside an immediate-eligibility window covering the evaluated date.",
+      "2. Continuous medical — the subscriber has held a benefit of the chosen Medical type for the required number of consecutive months at some point on or before the evaluated date.\n" +
+      "3. Employer immediate-eligibility (always checked) — the subscriber's employer is inside an immediate-eligibility window covering the evaluated date.",
     requiredComponent: "sitespecific.bao",
     configSchema: {
       type: "object",
@@ -187,23 +176,9 @@ class BaoStartHealthnetPlugin extends EligibilityPlugin<BaoStartHealthnetConfig>
             },
           },
         },
-        healthnet: {
-          type: "object",
-          title: "Criterion 2 — Ever had HealthNet",
-          description:
-            "Eligible if the worker has held the benefit designated as HealthNet on or before the evaluated date. Leave unset to skip this criterion.",
-          properties: {
-            benefitId: {
-              type: "string",
-              title: "HealthNet benefit",
-              description: "Pick the single benefit that counts as HealthNet.",
-              "x-options-resource": "trust-benefit",
-            },
-          },
-        },
         medical: {
           type: "object",
-          title: "Criterion 3 — Continuous medical coverage",
+          title: "Criterion 2 — Continuous medical coverage",
           description:
             "Eligible if the worker has held any benefit of the chosen Medical type for the required number of consecutive months at some point on or before the evaluated date. Set both fields to enable; leave unset to skip.",
           properties: {
@@ -237,7 +212,7 @@ class BaoStartHealthnetPlugin extends EligibilityPlugin<BaoStartHealthnetConfig>
     // its schema defaults, e.g. distance=10 with no sites, or months=6
     // with no medical type) is treated as "not configured" and skipped —
     // exactly as `evaluate` skips it. This keeps single-criterion setups
-    // (e.g. HealthNet only) valid. Field-level shape (distance > 0,
+    // (e.g. medical only) valid. Field-level shape (distance > 0,
     // months integer >= 1, site entries are strings) is already enforced
     // by AJV in `super.validateConfig`.
 
@@ -248,14 +223,6 @@ class BaoStartHealthnetPlugin extends EligibilityPlugin<BaoStartHealthnetConfig>
         if (!facility) {
           return { valid: false, errors: [`Geographic criterion: unknown site (${id})`] };
         }
-      }
-    }
-
-    // HealthNet: when configured, the chosen benefit must exist.
-    if (isHealthnetConfigured(n)) {
-      const benefit = await storage.trustBenefits.getTrustBenefit(n.healthnetBenefitId!);
-      if (!benefit) {
-        return { valid: false, errors: [`HealthNet criterion: unknown benefit (${n.healthnetBenefitId})`] };
       }
     }
 
@@ -337,17 +304,15 @@ class BaoStartHealthnetPlugin extends EligibilityPlugin<BaoStartHealthnetConfig>
     const n = normalizeConfig(config);
 
     const geographic = isGeographicConfigured(n);
-    const healthnet = isHealthnetConfigured(n);
     const medical = isMedicalConfigured(n);
 
     const failures: string[] = [];
 
-    // Subscriber benefit history is needed by both the HealthNet and
-    // medical criteria; load it at most once. Both criteria are evaluated
-    // "as of" the scan date, so coverage dated AFTER the as-of month is
-    // excluded — a record in the future relative to the evaluated date must
-    // not count toward "ever held" (criterion 2) or a consecutive-month run
-    // (criterion 3).
+    // Subscriber benefit history is needed by the medical criterion; load
+    // it at most once. It is evaluated "as of" the scan date, so coverage
+    // dated AFTER the as-of month is excluded — a record in the future
+    // relative to the evaluated date must not count toward a
+    // consecutive-month run (criterion 2).
     const asOfOrdinal = context.asOfYear * 12 + (context.asOfMonth - 1);
     let history: BenefitHistoryRow[] | undefined;
     const getHistory = async (): Promise<BenefitHistoryRow[]> => {
@@ -375,17 +340,7 @@ class BaoStartHealthnetPlugin extends EligibilityPlugin<BaoStartHealthnetConfig>
       failures.push(`Geographic: ${result.reason}`);
     }
 
-    // Criterion 2 — Ever had HealthNet
-    if (healthnet) {
-      const rows = await getHistory();
-      const hasHealthnet = rows.some((r) => r.benefitId === n.healthnetBenefitId);
-      if (hasHealthnet) {
-        return { eligible: true, reason: "Eligible (HealthNet): worker has previously held the designated HealthNet benefit" };
-      }
-      failures.push("HealthNet: worker has never held the designated HealthNet benefit");
-    }
-
-    // Criterion 3 — Continuous medical coverage
+    // Criterion 2 — Continuous medical coverage
     if (medical) {
       const rows = await getHistory();
       const medicalRows = rows.filter((r) => r.benefit?.benefitType === n.medicalBenefitTypeId);
@@ -401,7 +356,7 @@ class BaoStartHealthnetPlugin extends EligibilityPlugin<BaoStartHealthnetConfig>
       );
     }
 
-    // Criterion 4 — Employer immediate-eligibility window (always checked)
+    // Criterion 3 — Employer immediate-eligibility window (always checked)
     const employer = context.employer;
     if (!employer) {
       failures.push(
