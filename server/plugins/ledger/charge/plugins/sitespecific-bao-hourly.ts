@@ -193,7 +193,39 @@ class BaoHourlyChargePlugin extends ChargePlugin {
 
     const chargePluginKey = `${config.id}:${ea.id}:${hoursContext.hoursId}`;
     const label = `${monthName(hoursContext.year, hoursContext.month)} ${hoursContext.year}`;
-    const description = `BAO Hourly: ${hoursContext.hours} hrs @ $${rate}/hr (${label})`;
+
+    // Worker identification for the memo (display-only; never part of the
+    // idempotency key). Soft-fail: a missing worker/contact never blocks the
+    // charge.
+    let workerName = "";
+    let ssnLast4 = "";
+    try {
+      const worker = await storage.workers.getWorker(hoursContext.workerId);
+      if (worker) {
+        if (worker.ssn && worker.ssn.length >= 4) {
+          ssnLast4 = worker.ssn.slice(-4);
+        }
+        const contact = await storage.contacts.getContact(worker.contactId);
+        if (contact?.displayName) {
+          workerName = contact.displayName;
+        }
+      }
+    } catch (error) {
+      logger.warn("BAO Hourly: failed to resolve worker name for memo", {
+        service: "charge-plugin-bao-hourly",
+        workerId: hoursContext.workerId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    const workerLabel = workerName
+      ? ssnLast4
+        ? `${workerName} (***${ssnLast4})`
+        : workerName
+      : "";
+
+    const description = workerLabel
+      ? `BAO Hourly: ${workerLabel} — ${hoursContext.hours} hrs @ $${rate}/hr (${label})`
+      : `BAO Hourly: ${hoursContext.hours} hrs @ $${rate}/hr (${label})`;
 
     return {
       chargePluginKey,
@@ -220,6 +252,8 @@ class BaoHourlyChargePlugin extends ChargePlugin {
         rate,
         rateId: rateRow.id,
         rateEffectiveYmd: rateRow.effectiveYmd,
+        ...(workerName ? { workerName } : {}),
+        ...(ssnLast4 ? { ssnLast4 } : {}),
       },
     };
   }
@@ -396,7 +430,13 @@ class BaoHourlyChargePlugin extends ChargePlugin {
       const signed = adjustmentAmount.startsWith("-")
         ? adjustmentAmount
         : `+${adjustmentAmount}`;
-      const description = `BAO Hourly Adjustment: $${netTotalStr} → $${expectedEntry!.amount} @ $${(expectedEntry!.metadata as any).rate}/hr (${signed})`;
+      const adjMeta = expectedEntry!.metadata as any;
+      const adjWorkerLabel = adjMeta.workerName
+        ? adjMeta.ssnLast4
+          ? `${adjMeta.workerName} (***${adjMeta.ssnLast4}) — `
+          : `${adjMeta.workerName} — `
+        : "";
+      const description = `BAO Hourly Adjustment: ${adjWorkerLabel}$${netTotalStr} → $${expectedEntry!.amount} @ $${adjMeta.rate}/hr (${signed})`;
 
       const transaction: LedgerTransaction = {
         chargePlugin: this.metadata.id,
