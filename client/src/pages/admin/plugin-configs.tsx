@@ -131,6 +131,11 @@ type SortDirection = "asc" | "desc";
 const SORT_PLUGIN = "plugin";
 const SORT_NAME = "name";
 const SORT_ENABLED = "enabled";
+
+// Name of the synthetic client-side Enabled/Disabled filter. Kept in the same
+// `filters` state as the server-driven filters so Clear behaves uniformly, but
+// never forwarded to the search endpoint.
+const ENABLED_FILTER_NAME = "enabled";
 const SORT_ORDER = "order";
 const SORT_SIRIUS_ID = "siriusId";
 
@@ -197,11 +202,16 @@ export default function GenericPluginConfigsPage() {
   const filterableFields = envelopeFields.filter((f) => f.filterable);
 
   // Drop empty selections so an unset filter contributes no search condition.
+  // The synthetic "enabled" filter is applied client-side (the `enabled`
+  // column is universal to every kind but is not part of any kind's search
+  // schema), so it is excluded from the server search params.
   const searchParams: Record<string, string> = {};
   for (const [name, value] of Object.entries(filters)) {
-    if (value) searchParams[name] = value;
+    if (value && name !== ENABLED_FILTER_NAME) searchParams[name] = value;
   }
   const hasActiveFilters = Object.keys(searchParams).length > 0;
+  const enabledFilter = filters[ENABLED_FILTER_NAME] ?? "";
+  const hasAnyFilter = hasActiveFilters || !!enabledFilter;
 
   const { data: configs = [], isLoading: isLoadingConfigs } = useQuery<PluginConfigRow[]>({
     // With no filters we hit the plain list endpoint so the unfiltered view
@@ -302,6 +312,9 @@ export default function GenericPluginConfigsPage() {
   // missing from the manifest are dropped.
   const rows = configs
     .filter((c) => pluginById.has(c.pluginId))
+    .filter((c) =>
+      enabledFilter === "" ? true : c.enabled === (enabledFilter === "true"),
+    )
     .sort(defaultCompare);
 
   // The comparable value for a config in a given column, using the value the
@@ -425,7 +438,7 @@ export default function GenericPluginConfigsPage() {
       ) : rows.length === 0 ? (
         <Card>
           <CardContent className="pt-6">
-            {hasActiveFilters ? (
+            {hasAnyFilter ? (
               <p className="text-center text-muted-foreground" data-testid="text-empty-filtered">
                 No configurations match the current filters.
               </p>
@@ -597,7 +610,19 @@ function FilterBar({
       choices: plugins.map((p) => ({ value: p.id, label: p.name })),
     },
   };
-  const controls = [pluginField, ...filterableFields];
+  // Synthetic client-side Enabled/Disabled filter — universal to every kind.
+  const enabledField: PluginConfigEnvelopeField = {
+    name: ENABLED_FILTER_NAME,
+    label: "Enabled?",
+    type: "string",
+    options: {
+      choices: [
+        { value: "true", label: "Enabled" },
+        { value: "false", label: "Disabled" },
+      ],
+    },
+  };
+  const controls = [pluginField, enabledField, ...filterableFields];
   const hasActive = Object.values(filters).some((v) => v);
 
   return (

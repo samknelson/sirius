@@ -36,7 +36,17 @@ import {
 } from "@/plugins/_core/manifest";
 import { TrustBenefit } from "@shared/schema";
 import type { JsonSchema } from "@shared/json-schema-form";
-import { Loader2, Plus, Pencil, AlertTriangle } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Loader2, Plus, Pencil, Trash2, AlertTriangle } from "lucide-react";
 
 const KIND = "trust-eligibility" as const;
 
@@ -95,6 +105,10 @@ function PolicyEligibilityContent() {
   const [editOpen, setEditOpen] = useState(false);
   const [singleEditRow, setSingleEditRow] = useState<EligibilityConfigRow | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [enabledFilter, setEnabledFilter] = useState<"all" | "enabled" | "disabled">("all");
+  const [deleteRow, setDeleteRow] = useState<EligibilityConfigRow | null>(null);
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const { data: benefits = [] } = useQuery<TrustBenefit[]>({
     queryKey: ["/api/trust-benefits"],
@@ -126,10 +140,19 @@ function PolicyEligibilityContent() {
     [benefits, policyBenefitIds],
   );
 
-  // Group existing configs by plugin for display.
+  // Rows currently visible under the Enabled/Disabled filter.
+  const visibleConfigs = useMemo(
+    () =>
+      enabledFilter === "all"
+        ? configs
+        : configs.filter((c) => c.enabled === (enabledFilter === "enabled")),
+    [configs, enabledFilter],
+  );
+
+  // Group visible configs by plugin for display.
   const grouped = useMemo(() => {
     const map = new Map<string, EligibilityConfigRow[]>();
-    for (const c of configs) {
+    for (const c of visibleConfigs) {
       const list = map.get(c.pluginId) ?? [];
       list.push(c);
       map.set(c.pluginId, list);
@@ -138,7 +161,7 @@ function PolicyEligibilityContent() {
       pluginName(a[0]).localeCompare(pluginName(b[0])),
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [configs, manifest]);
+  }, [visibleConfigs, manifest]);
 
   const toggleSelected = (id: string, checked: boolean) => {
     setSelectedIds((prev) => {
@@ -160,7 +183,10 @@ function PolicyEligibilityContent() {
     });
   };
 
-  const selectedConfigs = configs.filter((c) => selectedIds.has(c.id));
+  // Selection only counts rows that are currently visible — rows hidden by
+  // the filter are excluded from bulk actions even if their id lingers in
+  // selectedIds from before the filter change.
+  const selectedConfigs = visibleConfigs.filter((c) => selectedIds.has(c.id));
   const selectedPluginIds = new Set(selectedConfigs.map((c) => c.pluginId));
   const canBulkEdit = selectedConfigs.length > 0 && selectedPluginIds.size === 1;
   const editPluginId =
@@ -173,6 +199,65 @@ function PolicyEligibilityContent() {
     queryClient.invalidateQueries({
       queryKey: [pluginConfigsUrl(KIND), "policy", policy.id],
     });
+  };
+
+  const deleteOne = async () => {
+    if (!deleteRow) return;
+    setDeleting(true);
+    try {
+      await apiRequest("DELETE", `${pluginConfigsUrl(KIND)}/${deleteRow.id}`);
+      toast({ title: "Configuration deleted" });
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(deleteRow.id);
+        return next;
+      });
+      setDeleteRow(null);
+      refresh();
+    } catch (error) {
+      toast({
+        title: "Error",
+        description:
+          error instanceof Error ? error.message : "Failed to delete the configuration.",
+        variant: "destructive",
+      });
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const deleteSelected = async () => {
+    const targets = selectedConfigs;
+    if (targets.length === 0) return;
+    setDeleting(true);
+    const failures: string[] = [];
+    let deleted = 0;
+    for (const row of targets) {
+      try {
+        await apiRequest("DELETE", `${pluginConfigsUrl(KIND)}/${row.id}`);
+        deleted += 1;
+      } catch (error) {
+        const label = `${benefitName(row.benefit)}${row.name ? ` (${row.name})` : ""}`;
+        failures.push(
+          `${label}: ${error instanceof Error ? error.message : "delete failed"}`,
+        );
+      }
+    }
+    setDeleting(false);
+    setBulkDeleteOpen(false);
+    setSelectedIds(new Set());
+    refresh();
+    if (failures.length === 0) {
+      toast({
+        title: `Deleted ${deleted} configuration${deleted === 1 ? "" : "s"}`,
+      });
+    } else {
+      toast({
+        title: `Deleted ${deleted} of ${targets.length} configurations`,
+        description: failures.join("; "),
+        variant: "destructive",
+      });
+    }
   };
 
   return (
@@ -188,6 +273,28 @@ function PolicyEligibilityContent() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Select
+            value={enabledFilter}
+            onValueChange={(v) => setEnabledFilter(v as typeof enabledFilter)}
+          >
+            <SelectTrigger className="w-[150px]" data-testid="select-enabled-filter">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All statuses</SelectItem>
+              <SelectItem value="enabled">Enabled only</SelectItem>
+              <SelectItem value="disabled">Disabled only</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button
+            variant="outline"
+            disabled={selectedConfigs.length === 0 || deleting}
+            onClick={() => setBulkDeleteOpen(true)}
+            data-testid="button-bulk-delete"
+          >
+            <Trash2 className="mr-2 h-4 w-4" />
+            Delete Selected ({selectedConfigs.length})
+          </Button>
           <Button
             variant="outline"
             disabled={!canBulkEdit}
@@ -232,6 +339,15 @@ function PolicyEligibilityContent() {
           <CardContent className="py-6">
             <p className="text-sm text-muted-foreground" data-testid="text-no-configs">
               No eligibility configurations for this policy yet.
+            </p>
+          </CardContent>
+        </Card>
+      ) : visibleConfigs.length === 0 ? (
+        <Card>
+          <CardContent className="py-6">
+            <p className="text-sm text-muted-foreground" data-testid="text-no-filtered-configs">
+              No {enabledFilter === "enabled" ? "enabled" : "disabled"} configurations
+              for this policy.
             </p>
           </CardContent>
         </Card>
@@ -331,6 +447,15 @@ function PolicyEligibilityContent() {
                         >
                           <Pencil className="h-4 w-4" />
                         </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 -my-1 text-destructive hover:text-destructive"
+                          onClick={() => setDeleteRow(row)}
+                          data-testid={`button-delete-config-${row.id}`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
                     );
                   })}
@@ -357,7 +482,7 @@ function PolicyEligibilityContent() {
         open={editOpen}
         onOpenChange={setEditOpen}
         plugin={editPlugin}
-        configIds={Array.from(selectedIds)}
+        configIds={selectedConfigs.map((c) => c.id)}
         count={selectedConfigs.length}
         benefits={benefits}
         onSaved={() => {
@@ -383,6 +508,81 @@ function PolicyEligibilityContent() {
           refresh();
         }}
       />
+
+      <AlertDialog
+        open={deleteRow !== null}
+        onOpenChange={(open) => {
+          if (!open && !deleting) setDeleteRow(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle data-testid="dialog-delete-title">
+              Delete this configuration?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteRow
+                ? `${pluginName(deleteRow.pluginId)} — ${benefitName(deleteRow.benefit)}. `
+                : ""}
+              This permanently removes the eligibility rule. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting} data-testid="button-delete-cancel">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deleting}
+              onClick={(e) => {
+                e.preventDefault();
+                deleteOne();
+              }}
+              data-testid="button-delete-confirm"
+            >
+              {deleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={bulkDeleteOpen}
+        onOpenChange={(open) => {
+          if (!deleting) setBulkDeleteOpen(open);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle data-testid="dialog-bulk-delete-title">
+              Delete {selectedConfigs.length} configuration
+              {selectedConfigs.length === 1 ? "" : "s"}?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently removes the selected eligibility rules. This cannot
+              be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting} data-testid="button-bulk-delete-cancel">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deleting}
+              onClick={(e) => {
+                e.preventDefault();
+                deleteSelected();
+              }}
+              data-testid="button-bulk-delete-confirm"
+            >
+              {deleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
