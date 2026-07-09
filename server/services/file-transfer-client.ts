@@ -58,18 +58,78 @@ function logTestOperation(
   });
 }
 
+/**
+ * Validate the configured private key locally (before any network I/O) so a
+ * malformed / unsupported key produces a clear message instead of a generic
+ * connection error. Returns null when the key parses fine.
+ */
+async function validatePrivateKey(conn: SftpConnectionData): Promise<string | null> {
+  if (!conn.privateKey) return null;
+  const { utils } = await import("ssh2");
+  const parsed = utils.parseKey(conn.privateKey, conn.passphrase || undefined);
+  if (parsed instanceof Error) {
+    return `Private key is invalid or unsupported: ${parsed.message}`;
+  }
+  return null;
+}
+
+/**
+ * Turn low-level ssh2 handshake debug lines into a short human-readable
+ * diagnosis of how far the connection got before failing.
+ */
+function diagnoseSshFailure(rawError: string, debugLines: string[]): string {
+  const joined = debugLines.join("\n");
+  const sawRemoteBanner = /remote ident|Remote ident/i.test(joined);
+  const sawKexInit = /KEXINIT/i.test(joined);
+  const sawAuth = /USERAUTH/i.test(joined);
+
+  const hints: string[] = [];
+  if (!sawRemoteBanner) {
+    hints.push(
+      "The server closed the TCP connection before sending its SSH banner. " +
+      "This happens before any key is used, so the key pair is NOT the cause. " +
+      "Likely causes: an IP allowlist / firewall on the server rejecting this app's outbound IP, " +
+      "a rate-limit/fail2ban block, or the wrong port."
+    );
+  } else if (!sawKexInit || !sawAuth) {
+    hints.push(
+      "The server sent its banner but dropped the connection during key exchange (before authentication). " +
+      "Likely causes: no shared key-exchange/cipher algorithms, or a middlebox interfering."
+    );
+  } else {
+    hints.push(
+      "The connection reached the authentication phase, so this is likely a key problem: " +
+      "wrong key pair, public key not installed on the server for this username, or wrong key format."
+    );
+  }
+
+  const tail = debugLines.slice(-12);
+  return `${rawError}\n\nDiagnosis: ${hints.join(" ")}${tail.length ? `\n\nSSH debug trail (last ${tail.length} lines):\n${tail.join("\n")}` : ""}`;
+}
+
 async function withSftpClient<T>(
   conn: SftpConnectionData,
-  fn: (client: import("ssh2-sftp-client")) => Promise<T>
+  fn: (client: import("ssh2-sftp-client")) => Promise<T>,
+  options?: { collectDebug?: boolean }
 ): Promise<T> {
+  const keyError = await validatePrivateKey(conn);
+  if (keyError) throw new Error(keyError);
+
   const SftpClient = (await import("ssh2-sftp-client")).default;
   const client = new SftpClient();
+  const debugLines: string[] = [];
   const connectOpts: Record<string, unknown> = {
     host: conn.host,
     port: conn.port,
     username: conn.username || undefined,
     readyTimeout: 15000,
   };
+  if (options?.collectDebug) {
+    connectOpts.debug = (msg: string) => {
+      debugLines.push(msg);
+      if (debugLines.length > 200) debugLines.shift();
+    };
+  }
   if (conn.privateKey) {
     connectOpts.privateKey = conn.privateKey;
     if (conn.passphrase) connectOpts.passphrase = conn.passphrase;
@@ -79,6 +139,12 @@ async function withSftpClient<T>(
   try {
     await client.connect(connectOpts);
     return await fn(client);
+  } catch (err: unknown) {
+    if (options?.collectDebug) {
+      const raw = err instanceof Error ? err.message : String(err);
+      throw new Error(diagnoseSshFailure(raw, debugLines));
+    }
+    throw err;
   } finally {
     try { await client.end(); } catch {}
   }
@@ -115,7 +181,7 @@ export async function testConnect(conn: ConnectionData, destinationId: string): 
           banner: `SFTP connection successful. Remote working directory: ${cwd}`,
           serverType: "SFTP",
         };
-      });
+      }, { collectDebug: true });
     }
     return withFtpClient(conn, async (client) => {
       const pwd = await client.pwd();
