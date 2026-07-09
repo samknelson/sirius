@@ -149,6 +149,17 @@ function PolicyEligibilityContent() {
     });
   };
 
+  const toggleGroupSelected = (rows: EligibilityConfigRow[], checked: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (const row of rows) {
+        if (checked) next.add(row.id);
+        else next.delete(row.id);
+      }
+      return next;
+    });
+  };
+
   const selectedConfigs = configs.filter((c) => selectedIds.has(c.id));
   const selectedPluginIds = new Set(selectedConfigs.map((c) => c.pluginId));
   const canBulkEdit = selectedConfigs.length > 0 && selectedPluginIds.size === 1;
@@ -229,12 +240,27 @@ function PolicyEligibilityContent() {
           {grouped.map(([pluginId, rows]) => {
             const pluginSchema =
               manifest.find((p) => p.id === pluginId)?.configSchema ?? null;
+            const selectedInGroup = rows.filter((r) => selectedIds.has(r.id)).length;
+            const allSelected = selectedInGroup === rows.length && rows.length > 0;
+            const someSelected = selectedInGroup > 0 && !allSelected;
             return (
               <Card key={pluginId} data-testid={`card-plugin-${pluginId}`}>
                 <CardHeader>
-                  <CardTitle className="text-base" data-testid={`text-plugin-name-${pluginId}`}>
-                    {pluginName(pluginId)}
-                  </CardTitle>
+                  <div className="flex items-center gap-3">
+                    <Checkbox
+                      checked={allSelected ? true : someSelected ? "indeterminate" : false}
+                      onCheckedChange={() => toggleGroupSelected(rows, !allSelected)}
+                      aria-label={
+                        allSelected
+                          ? `Deselect all ${pluginName(pluginId)} configurations`
+                          : `Select all ${pluginName(pluginId)} configurations`
+                      }
+                      data-testid={`checkbox-select-all-${pluginId}`}
+                    />
+                    <CardTitle className="text-base" data-testid={`text-plugin-name-${pluginId}`}>
+                      {pluginName(pluginId)}
+                    </CardTitle>
+                  </div>
                 </CardHeader>
                 <CardContent className="space-y-2">
                   {rows.map((row) => {
