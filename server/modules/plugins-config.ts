@@ -30,6 +30,11 @@ const bulkCreateSchema = z.object({
   // row (a combined "start,continue" row keeps its untargeted phase), and
   // rows left with no phases are deleted before the new configs are created.
   overwrite: z.boolean().optional().default(false),
+  // When true, each benefit gets ONE config covering all requested phases
+  // (combined appliesTo, e.g. "start,continue") instead of one config per
+  // (benefit, phase). Used by "add benefits to an existing group" so the
+  // new rows share the group's exact fingerprint and merge into its row.
+  combinePhases: z.boolean().optional().default(false),
 });
 
 /** Body schema for POST /configs/merge-phases (combine phase-split rows). */
@@ -467,7 +472,7 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
         res.status(400).json({ message: "Invalid bulk request", errors: parsed.error.errors });
         return;
       }
-      const { pluginId, policy, benefits, phases, data, name, enabled, ordering, overwrite } =
+      const { pluginId, policy, benefits, phases, data, name, enabled, ordering, overwrite, combinePhases } =
         parsed.data;
       // De-dupe selections so we don't fan duplicate (benefit, phase) targets.
       const uniqueBenefits = Array.from(new Set(benefits));
@@ -489,10 +494,14 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
       const { base: repBase } = adapter.toRows(repInput);
       if (!(await ensureValidPlugin(registration, pluginId, repBase.data, res))) return;
 
-      // Build one base + subsidiary row per (benefit, phase).
+      // Build the target rows: by default one config per (benefit, phase);
+      // with combinePhases, one config per benefit covering all phases.
+      const phaseSets = combinePhases
+        ? [uniquePhases.join(",")]
+        : uniquePhases;
       const rows = [] as Array<{ base: any; subsidiary: any }>;
       for (const benefit of uniqueBenefits) {
-        for (const phase of uniquePhases) {
+        for (const appliesTo of phaseSets) {
           const { base, subsidiary } = adapter.toRows({
             pluginId,
             name: name ?? null,
@@ -501,7 +510,7 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
             data,
             policy,
             benefit,
-            appliesTo: phase,
+            appliesTo,
           });
           base.siriusId = null;
           rows.push({ base, subsidiary });

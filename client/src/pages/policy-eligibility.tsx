@@ -208,6 +208,9 @@ function PolicyEligibilityContent() {
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [groupEditRows, setGroupEditRows] = useState<EligibilityConfigRow[] | null>(null);
   const [groupDeleteRows, setGroupDeleteRows] = useState<EligibilityConfigRow[] | null>(null);
+  const [addBenefitsRows, setAddBenefitsRows] = useState<EligibilityConfigRow[] | null>(null);
+  const [addBenefitsSelected, setAddBenefitsSelected] = useState<Set<string>>(new Set());
+  const [addingBenefits, setAddingBenefits] = useState(false);
 
   const { data: benefits = [] } = useQuery<TrustBenefit[]>({
     queryKey: ["/api/trust-benefits"],
@@ -325,6 +328,54 @@ function PolicyEligibilityContent() {
       });
     } finally {
       setMergingPluginId(null);
+    }
+  };
+
+  // Clone a group's exact settings/phases/enabled/name onto newly picked
+  // benefits. Uses bulk-create with combinePhases (so a combined
+  // "start,continue" group stays combined and the new rows share its
+  // fingerprint) and overwrite (any existing config on a picked benefit
+  // covering these phases gets replaced).
+  const addBenefits = async () => {
+    if (!addBenefitsRows || addBenefitsRows.length === 0) return;
+    const first = addBenefitsRows[0];
+    const phases = splitPhases(first.appliesTo);
+    const benefitIds = Array.from(addBenefitsSelected);
+    if (benefitIds.length === 0 || phases.length === 0) return;
+    const { appliesTo: _omit, ...settings } = (first.data ?? {}) as Record<string, unknown>;
+    setAddingBenefits(true);
+    try {
+      const result = (await apiRequest("POST", `${pluginConfigsUrl(KIND)}/bulk`, {
+        pluginId: first.pluginId,
+        policy: policy.id,
+        benefits: benefitIds,
+        phases,
+        name: first.name ?? null,
+        enabled: first.enabled,
+        data: settings,
+        overwrite: true,
+        combinePhases: true,
+      })) as { created: number; replaced?: number };
+      toast({
+        title: "Benefits added",
+        description: `${result.created} configuration${result.created === 1 ? "" : "s"} created${
+          result.replaced && result.replaced > 0
+            ? `, ${result.replaced} existing one${result.replaced === 1 ? "" : "s"} replaced`
+            : ""
+        }.`,
+      });
+      setAddBenefitsRows(null);
+      setAddBenefitsSelected(new Set());
+      refresh();
+    } catch (error) {
+      toast({
+        title: "Error",
+        description:
+          error instanceof Error ? error.message : "Failed to add benefits.",
+        variant: "destructive",
+      });
+    } finally {
+      setAddingBenefits(false);
     }
   };
 
@@ -654,6 +705,21 @@ function PolicyEligibilityContent() {
                           >
                             {first.enabled ? "Enabled" : "Disabled"}
                           </Badge>
+                          {phases.length > 0 && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 -my-1"
+                              title="Add benefits with these settings"
+                              onClick={() => {
+                                setAddBenefitsSelected(new Set());
+                                setAddBenefitsRows(group.rows);
+                              }}
+                              data-testid={`button-add-benefits-${first.id}`}
+                            >
+                              <Plus className="h-4 w-4" />
+                            </Button>
+                          )}
                           <Button
                             variant="ghost"
                             size="icon"
@@ -754,6 +820,93 @@ function PolicyEligibilityContent() {
           })}
         </div>
       )}
+
+      <Dialog
+        open={addBenefitsRows !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setAddBenefitsRows(null);
+            setAddBenefitsSelected(new Set());
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle data-testid="dialog-add-benefits-title">Add Benefits</DialogTitle>
+            <DialogDescription>
+              {addBenefitsRows && addBenefitsRows.length > 0 && (
+                <>
+                  New configurations for{" "}
+                  <span className="font-medium text-foreground">
+                    {pluginName(addBenefitsRows[0].pluginId)}
+                  </span>{" "}
+                  with the same settings, phases (
+                  {splitPhases(addBenefitsRows[0].appliesTo)
+                    .map(phaseLabel)
+                    .join(", ") || "none"}
+                  ), and enabled state as this row. Benefits that already have a
+                  configuration for these phases will have it replaced.
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-72 overflow-y-auto space-y-2 py-1">
+            {(() => {
+              const inGroup = new Set(
+                (addBenefitsRows ?? []).map((r) => r.benefit),
+              );
+              const available = policyBenefits.filter((b) => !inGroup.has(b.id));
+              if (available.length === 0) {
+                return (
+                  <p className="text-sm text-muted-foreground" data-testid="text-no-addable-benefits">
+                    Every benefit on this policy is already in this configuration.
+                  </p>
+                );
+              }
+              return available.map((b) => (
+                <label
+                  key={b.id}
+                  className="flex items-center gap-2 text-sm cursor-pointer"
+                >
+                  <Checkbox
+                    checked={addBenefitsSelected.has(b.id)}
+                    onCheckedChange={(checked) =>
+                      setAddBenefitsSelected((prev) => {
+                        const next = new Set(prev);
+                        if (checked === true) next.add(b.id);
+                        else next.delete(b.id);
+                        return next;
+                      })
+                    }
+                    data-testid={`checkbox-add-benefit-${b.id}`}
+                  />
+                  {b.name}
+                </label>
+              ));
+            })()}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setAddBenefitsRows(null);
+                setAddBenefitsSelected(new Set());
+              }}
+              data-testid="button-cancel-add-benefits"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={addBenefits}
+              disabled={addingBenefits || addBenefitsSelected.size === 0}
+              data-testid="button-confirm-add-benefits"
+            >
+              {addingBenefits && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+              Add {addBenefitsSelected.size > 0 ? `(${addBenefitsSelected.size})` : ""}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <BulkCreateDialog
         open={createOpen}
