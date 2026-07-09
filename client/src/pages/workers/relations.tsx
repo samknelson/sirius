@@ -289,14 +289,7 @@ function RelationsContent() {
     );
   }
 
-  function renderTable(rows: WorkerRelationRow[], emptyText: string, testIdPrefix: string) {
-    if (rows.length === 0) {
-      return (
-        <div className="text-center py-6 text-muted-foreground" data-testid={`text-${testIdPrefix}-empty`}>
-          {emptyText}
-        </div>
-      );
-    }
+  function renderTable(rows: WorkerRelationRow[], testIdPrefix: string) {
     return (
       <Table>
         <TableHeader>
@@ -402,43 +395,61 @@ function RelationsContent() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          <section>
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-base font-semibold">From this worker</h3>
-              <Badge variant="outline" data-testid="badge-from-count">
-                {fromMeActive.length} active · {fromMeInactive.length} inactive
-              </Badge>
+          {relations.length === 0 && (
+            <div className="text-center py-6 text-muted-foreground" data-testid="text-relations-empty">
+              This worker has no relations.
             </div>
-            <div className="space-y-3">
-              <div>
-                <h4 className="text-sm font-medium text-muted-foreground mb-2">Active</h4>
-                {renderTable(fromMeActive, "No active relations from this worker.", "from-active")}
-              </div>
-              <div>
-                <h4 className="text-sm font-medium text-muted-foreground mb-2">Inactive</h4>
-                {renderTable(fromMeInactive, "No inactive relations from this worker.", "from-inactive")}
-              </div>
-            </div>
-          </section>
+          )}
 
-          <section>
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-base font-semibold">To this worker</h3>
-              <Badge variant="outline" data-testid="badge-to-count">
-                {toMeActive.length} active · {toMeInactive.length} inactive
-              </Badge>
-            </div>
-            <div className="space-y-3">
-              <div>
-                <h4 className="text-sm font-medium text-muted-foreground mb-2">Active</h4>
-                {renderTable(toMeActive, "No active relations pointing to this worker.", "to-active")}
+          {fromMe.length > 0 && (
+            <section>
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-base font-semibold">From this worker</h3>
+                <Badge variant="outline" data-testid="badge-from-count">
+                  {fromMeActive.length} active · {fromMeInactive.length} inactive
+                </Badge>
               </div>
-              <div>
-                <h4 className="text-sm font-medium text-muted-foreground mb-2">Inactive</h4>
-                {renderTable(toMeInactive, "No inactive relations pointing to this worker.", "to-inactive")}
+              <div className="space-y-3">
+                {fromMeActive.length > 0 && (
+                  <div>
+                    <h4 className="text-sm font-medium text-muted-foreground mb-2">Active</h4>
+                    {renderTable(fromMeActive, "from-active")}
+                  </div>
+                )}
+                {fromMeInactive.length > 0 && (
+                  <div>
+                    <h4 className="text-sm font-medium text-muted-foreground mb-2">Inactive</h4>
+                    {renderTable(fromMeInactive, "from-inactive")}
+                  </div>
+                )}
               </div>
-            </div>
-          </section>
+            </section>
+          )}
+
+          {toMe.length > 0 && (
+            <section>
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-base font-semibold">To this worker</h3>
+                <Badge variant="outline" data-testid="badge-to-count">
+                  {toMeActive.length} active · {toMeInactive.length} inactive
+                </Badge>
+              </div>
+              <div className="space-y-3">
+                {toMeActive.length > 0 && (
+                  <div>
+                    <h4 className="text-sm font-medium text-muted-foreground mb-2">Active</h4>
+                    {renderTable(toMeActive, "to-active")}
+                  </div>
+                )}
+                {toMeInactive.length > 0 && (
+                  <div>
+                    <h4 className="text-sm font-medium text-muted-foreground mb-2">Inactive</h4>
+                    {renderTable(toMeInactive, "to-inactive")}
+                  </div>
+                )}
+              </div>
+            </section>
+          )}
         </CardContent>
       </Card>
 
