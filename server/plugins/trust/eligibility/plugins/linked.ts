@@ -81,12 +81,19 @@ class LinkedPlugin extends EligibilityPlugin<LinkedConfig> {
         continue;
       }
       checkedNames.push(benefit.name);
-      const exists = await storage.trust.wmb.workerBenefitExists(
-        context.dependentWorker.id,
-        benefitId,
-        context.asOfMonth,
-        context.asOfYear,
-      );
+      // During a benefits scan the executor supplies the authoritative
+      // this-month set (including benefits being created/deleted by the
+      // same run) so linked benefits resolve in one scan instead of
+      // needing a second pass a month later. Standalone evaluations
+      // (test page for a single benefit) fall back to the database.
+      const exists = context.presentBenefitIds
+        ? context.presentBenefitIds.has(benefitId)
+        : await storage.trust.wmb.workerBenefitExists(
+            context.dependentWorker.id,
+            benefitId,
+            context.asOfMonth,
+            context.asOfYear,
+          );
       if (exists) {
         return {
           eligible: true,

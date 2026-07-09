@@ -45,5 +45,6 @@
 - [Core migrations vs optional components](core-migrations-optional-components.md) — core migrations must tolerate optional-component tables (enabledByDefault:false) being absent, or the startup runner stops on first failure and the drift gate blocks boot.
 - [Wizard plugin needsReadOnlyDb flag](wizard-plugin-readonly-db-flag.md) — wizard read lives in engine/types/*.ts but the needsReadOnlyDb flag lives on the plugins/*.ts wrapper; engine file must also be added to READONLY_FLAG_EXEMPT_FILES.
 - [tsc not in dev loop](tsc-not-in-dev-loop.md) — dev runs under tsx (no type-check); tsc/`npm run check` is the only gate, and stale errors often hide real runtime bugs (wrong google-maps setOptions keys, wrong DB columns, missing modules).
+- [Benefits scan fixed-point](benefits-scan-fixed-point.md) — membership-checking eligibility rules (Linked benefits) must see same-run creates/deletes via presentBenefitIds, not pre-scan DB state.
 - [Drizzle .notNull() breaks null-autogen inserts](drizzle-notnull-breaks-autogen.md) — .notNull() (no default) makes $inferInsert required; keep zod field nullish + pass a definite string at the .values/.set site.
 - [Advisory-lock check-then-write guard](advisory-lock-check-then-write.md) — token-list uniqueness ("start,continue") can't be a plain unique index; serialize writers with pg_advisory_xact_lock + re-check inside the tx.

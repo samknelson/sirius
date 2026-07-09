@@ -68,6 +68,17 @@ export interface EligibilityContext {
    * eligibility) must tolerate it being undefined rather than crash.
    */
   employer?: Employer;
+  /**
+   * When present, the authoritative set of benefit ids the dependent
+   * worker has (or will have) in the as-of month. Supplied by the
+   * benefits scan so plugins that check "does the worker have benefit X
+   * this month" (e.g. Linked benefits) see the outcome of the SAME scan
+   * run — benefits being created count as present, benefits being
+   * deleted count as absent — instead of the pre-scan database state.
+   * Absent on standalone evaluations (test page), where the database is
+   * the source of truth.
+   */
+  presentBenefitIds?: ReadonlySet<string>;
 }
 
 export interface EligibilityResult {

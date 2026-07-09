@@ -127,59 +127,97 @@ export async function runBenefitsScan(
     currentMonthWmb.map((wmb: any) => [wmb.benefitId, wmb])
   );
 
-  const actions: BenefitScanAction[] = [];
+  // Fixed-point evaluation: rules like "Linked benefits" ask whether the
+  // worker has some OTHER benefit in the as-of month, and that other benefit
+  // may itself be created (or deleted) by THIS scan. A single pass against
+  // the database would miss those same-run outcomes, so we iterate: each
+  // pass evaluates every benefit against the effective this-month set from
+  // the previous pass (existing records minus deletes plus creates), until
+  // the set stops changing. Bounded by benefit count + 1 — each productive
+  // pass changes at least one membership, so a cycle that long has
+  // converged or is oscillating, in which case the last pass stands.
+  let actions: BenefitScanAction[] = [];
+  let presentBenefitIds = new Set<string>(currentMonthBenefitMap.keys());
+  const maxPasses = policyBenefitIds.length + 1;
 
-  for (const benefitId of policyBenefitIds) {
-    const benefit = benefitsMap.get(benefitId);
-    if (!benefit) {
-      logger.warn(`Benefit not found: ${benefitId}`, { service: "benefits-scan" });
-      continue;
+  for (let pass = 0; pass < maxPasses; pass++) {
+    const passActions: BenefitScanAction[] = [];
+
+    for (const benefitId of policyBenefitIds) {
+      const benefit = benefitsMap.get(benefitId);
+      if (!benefit) {
+        if (pass === 0) {
+          logger.warn(`Benefit not found: ${benefitId}`, { service: "benefits-scan" });
+        }
+        continue;
+      }
+
+      const hadPreviousMonth = previousMonthBenefitIds.includes(benefitId);
+      const scanType: ScanType = hadPreviousMonth ? "continue" : "start";
+      const rules = rulesByBenefit.get(benefitId) || [];
+
+      const eligibilityResult = await evaluateBenefitEligibility(benefitId, rules, {
+        scanType,
+        workerId,
+        worker,
+        asOfMonth: month,
+        asOfYear: year,
+        stopAfterIneligible: false,
+        presentBenefitIds,
+      });
+
+      const hasCurrentRecord = currentMonthBenefitMap.has(benefitId);
+      let action: "create" | "delete" | "none";
+      let actionReason: string;
+
+      if (eligibilityResult.eligible) {
+        if (hasCurrentRecord) {
+          action = "none";
+          actionReason = "Already has benefit for this month";
+        } else {
+          action = "create";
+          actionReason = `Passed ${scanType} eligibility scan`;
+        }
+      } else {
+        if (hasCurrentRecord) {
+          action = "delete";
+          actionReason = `Failed ${scanType} eligibility scan - removing existing record`;
+        } else {
+          action = "none";
+          actionReason = `Failed ${scanType} eligibility scan - no record to remove`;
+        }
+      }
+
+      passActions.push({
+        benefitId,
+        benefitName: (benefit as any).name || benefitId,
+        scanType,
+        eligible: eligibilityResult.eligible,
+        action,
+        actionReason,
+        pluginResults: eligibilityResult.results,
+      });
     }
 
-    const hadPreviousMonth = previousMonthBenefitIds.includes(benefitId);
-    const scanType: ScanType = hadPreviousMonth ? "continue" : "start";
-    const rules = rulesByBenefit.get(benefitId) || [];
-
-    const eligibilityResult = await evaluateBenefitEligibility(benefitId, rules, {
-      scanType,
-      workerId,
-      worker,
-      asOfMonth: month,
-      asOfYear: year,
-      stopAfterIneligible: false,
-    });
-
-    const hasCurrentRecord = currentMonthBenefitMap.has(benefitId);
-    let action: "create" | "delete" | "none";
-    let actionReason: string;
-
-    if (eligibilityResult.eligible) {
-      if (hasCurrentRecord) {
-        action = "none";
-        actionReason = "Already has benefit for this month";
-      } else {
-        action = "create";
-        actionReason = `Passed ${scanType} eligibility scan`;
-      }
-    } else {
-      if (hasCurrentRecord) {
-        action = "delete";
-        actionReason = `Failed ${scanType} eligibility scan - removing existing record`;
-      } else {
-        action = "none";
-        actionReason = `Failed ${scanType} eligibility scan - no record to remove`;
-      }
+    // Effective this-month set implied by this pass's outcomes.
+    const nextPresent = new Set<string>(currentMonthBenefitMap.keys());
+    for (const a of passActions) {
+      if (a.action === "create") nextPresent.add(a.benefitId);
+      if (a.action === "delete") nextPresent.delete(a.benefitId);
     }
 
-    actions.push({
-      benefitId,
-      benefitName: (benefit as any).name || benefitId,
-      scanType,
-      eligible: eligibilityResult.eligible,
-      action,
-      actionReason,
-      pluginResults: eligibilityResult.results,
-    });
+    actions = passActions;
+    const converged =
+      nextPresent.size === presentBenefitIds.size &&
+      Array.from(nextPresent).every((id) => presentBenefitIds.has(id));
+    presentBenefitIds = nextPresent;
+    if (converged) break;
+    if (pass === maxPasses - 1) {
+      logger.warn(
+        `Benefits scan did not converge after ${maxPasses} passes; using last pass's results`,
+        { service: "benefits-scan", workerId, month, year },
+      );
+    }
   }
 
   if (mode === "live") {

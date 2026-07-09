@@ -78,6 +78,13 @@ export interface EligibilityEvaluationInput {
    * the context employer is simply absent.
    */
   employerId?: string;
+  /**
+   * Optional authoritative this-month benefit set for the worker; see
+   * `EligibilityContext.presentBenefitIds`. Supplied by the benefits
+   * scan's fixed-point loop so linked-style plugins see same-run
+   * creates/deletes.
+   */
+  presentBenefitIds?: ReadonlySet<string>;
 }
 
 export interface BenefitEligibilityResult {
@@ -371,6 +378,7 @@ export async function evaluateEligibilityRules(
       asOfMonth,
       asOfYear,
       benefitId: input.benefitId,
+      presentBenefitIds: input.presentBenefitIds,
       ...parts,
     };
 
@@ -466,6 +474,7 @@ export async function evaluateBenefitEligibility(
       asOfMonth,
       asOfYear,
       benefitId,
+      presentBenefitIds: input.presentBenefitIds,
       ...parts,
     };
 
