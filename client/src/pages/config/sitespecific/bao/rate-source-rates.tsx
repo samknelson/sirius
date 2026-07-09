@@ -216,6 +216,28 @@ export default function BaoRateSourceRatesPage() {
     },
   });
 
+  const groupedRates = useMemo(() => {
+    const groups = new Map<string, BaoEmployerRateWithSource[]>();
+    for (const r of rates) {
+      const existing = groups.get(r.employerId);
+      if (existing) existing.push(r);
+      else groups.set(r.employerId, [r]);
+    }
+    const result = Array.from(groups.entries()).map(([employerId, entries]) => ({
+      employerId,
+      employerName: employerById.get(employerId) ?? employerId,
+      entries: entries.slice().sort((a, b) => {
+        const fundA = accountById.get(a.accountId) ?? a.accountId;
+        const fundB = accountById.get(b.accountId) ?? b.accountId;
+        const byFund = fundA.localeCompare(fundB);
+        if (byFund !== 0) return byFund;
+        return (b.effectiveYmd ?? "").localeCompare(a.effectiveYmd ?? "");
+      }),
+    }));
+    result.sort((a, b) => a.employerName.localeCompare(b.employerName));
+    return result;
+  }, [rates, employerById, accountById]);
+
   const bulkValid =
     bulkEmployerIds.size > 0 &&
     /^\d{4}-\d{2}-\d{2}$/.test(bulkEffectiveYmd) &&
@@ -363,7 +385,6 @@ export default function BaoRateSourceRatesPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Employer</TableHead>
                   <TableHead>Fund (Account)</TableHead>
                   <TableHead className="text-right">Rate</TableHead>
                   <TableHead>Effective Date</TableHead>
@@ -372,12 +393,24 @@ export default function BaoRateSourceRatesPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {rates.map((r) => (
-                  <TableRow key={r.id} data-testid={`row-rate-${r.id}`}>
-                    <TableCell data-testid={`text-rate-employer-${r.id}`}>
-                      {employerById.get(r.employerId) ?? r.employerId}
+                {groupedRates.map((group) => [
+                  <TableRow
+                    key={`employer-${group.employerId}`}
+                    className="bg-muted/50 hover:bg-muted/50"
+                    data-testid={`row-employer-group-${group.employerId}`}
+                  >
+                    <TableCell colSpan={5} className="font-semibold">
+                      <span data-testid={`text-group-employer-${group.employerId}`}>
+                        {group.employerName}
+                      </span>
+                      <span className="ml-2 text-xs font-normal text-muted-foreground">
+                        {group.entries.length} {group.entries.length === 1 ? "entry" : "entries"}
+                      </span>
                     </TableCell>
-                    <TableCell data-testid={`text-rate-account-${r.id}`}>
+                  </TableRow>,
+                  ...group.entries.map((r) => (
+                  <TableRow key={r.id} data-testid={`row-rate-${r.id}`}>
+                    <TableCell className="pl-8" data-testid={`text-rate-account-${r.id}`}>
                       {accountById.get(r.accountId) ?? r.accountId}
                     </TableCell>
                     <TableCell className="text-right font-mono" data-testid={`text-rate-value-${r.id}`}>
@@ -418,7 +451,8 @@ export default function BaoRateSourceRatesPage() {
                       </div>
                     </TableCell>
                   </TableRow>
-                ))}
+                  )),
+                ])}
               </TableBody>
             </Table>
           )}
