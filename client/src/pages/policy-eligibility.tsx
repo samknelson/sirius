@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -54,7 +54,6 @@ import {
   AlertTriangle,
   ChevronDown,
   ChevronRight,
-  Merge,
 } from "lucide-react";
 
 const KIND = "trust-eligibility" as const;
@@ -303,33 +302,55 @@ function PolicyEligibilityContent() {
     });
   };
 
-  const [mergingPluginId, setMergingPluginId] = useState<string | null>(null);
-  const mergePhases = async (pluginId: string) => {
-    setMergingPluginId(pluginId);
-    try {
-      const result = (await apiRequest("POST", `${pluginConfigsUrl(KIND)}/merge-phases`, {
+  // Automatic phase merge: the server already collapses Start-only /
+  // Continue-only pairs on every write, so mergeable pairs can only appear
+  // here from legacy data. When we spot any, merge them silently in the
+  // background — no user intervention.
+  //
+  // Keys are policy-scoped (`policy.id:pluginId`) so switching policies
+  // without a remount still merges. "Done" is only recorded on SUCCESS; a
+  // failed call clears its in-flight marker so the next configs refetch
+  // retries. The in-flight set prevents duplicate concurrent calls, and the
+  // done set prevents loops once a merge (or a no-op check) has succeeded.
+  const autoMergeDoneRef = useRef<Set<string>>(new Set());
+  const autoMergeInFlightRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (configsLoading) return;
+    const pluginIds = Array.from(new Set(configs.map((c) => c.pluginId)));
+    for (const pluginId of pluginIds) {
+      const key = `${policy.id}:${pluginId}`;
+      if (autoMergeDoneRef.current.has(key)) continue;
+      if (autoMergeInFlightRef.current.has(key)) continue;
+      const mergeable = countMergeablePairs(
+        configs.filter((c) => c.pluginId === pluginId),
+      );
+      if (mergeable === 0) continue;
+      autoMergeInFlightRef.current.add(key);
+      apiRequest("POST", `${pluginConfigsUrl(KIND)}/merge-phases`, {
         pluginId,
         policy: policy.id,
-      })) as { merged: number; removed: number };
-      toast({
-        title: result.merged > 0 ? "Configurations merged" : "Nothing to merge",
-        description:
-          result.merged > 0
-            ? `${result.merged} combined row${result.merged === 1 ? "" : "s"} created (${result.removed} duplicate${result.removed === 1 ? "" : "s"} removed).`
-            : undefined,
-      });
-      refresh();
-    } catch (error) {
-      toast({
-        title: "Error",
-        description:
-          error instanceof Error ? error.message : "Failed to merge configurations.",
-        variant: "destructive",
-      });
-    } finally {
-      setMergingPluginId(null);
+      })
+        .then((result: any) => {
+          autoMergeDoneRef.current.add(key);
+          if (result?.merged > 0) {
+            toast({
+              title: "Configurations merged automatically",
+              description: `Start/Continue rows with the same settings were combined (${result.removed} duplicate${result.removed === 1 ? "" : "s"} removed).`,
+            });
+            refresh();
+          }
+        })
+        .catch(() => {
+          // Opportunistic cleanup — no error toast. Not marking "done" lets
+          // the next configs refetch retry; the next write also merges
+          // server-side regardless.
+        })
+        .finally(() => {
+          autoMergeInFlightRef.current.delete(key);
+        });
     }
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [configs, configsLoading, policy.id]);
 
   // Clone a group's exact settings/phases/enabled/name onto newly picked
   // benefits. Uses bulk-create with combinePhases (so a combined
@@ -557,12 +578,6 @@ function PolicyEligibilityContent() {
             const selectedInGroup = rows.filter((r) => selectedIds.has(r.id)).length;
             const allSelected = selectedInGroup === rows.length && rows.length > 0;
             const someSelected = selectedInGroup > 0 && !allSelected;
-            // Merge detection runs on ALL of this plugin's configs for the
-            // policy (not just the filtered view) — the server merges across
-            // everything, so the button should reflect the full picture.
-            const mergeable = countMergeablePairs(
-              configs.filter((c) => c.pluginId === pluginId),
-            );
             return (
               <Card key={pluginId} data-testid={`card-plugin-${pluginId}`}>
                 <CardHeader>
@@ -580,23 +595,6 @@ function PolicyEligibilityContent() {
                     <CardTitle className="text-base" data-testid={`text-plugin-name-${pluginId}`}>
                       {pluginName(pluginId)}
                     </CardTitle>
-                    {mergeable > 0 && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="ml-auto"
-                        disabled={mergingPluginId !== null}
-                        onClick={() => mergePhases(pluginId)}
-                        data-testid={`button-merge-phases-${pluginId}`}
-                      >
-                        {mergingPluginId === pluginId ? (
-                          <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                        ) : (
-                          <Merge className="h-4 w-4 mr-1" />
-                        )}
-                        Merge Start/Continue ({mergeable})
-                      </Button>
-                    )}
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-2">

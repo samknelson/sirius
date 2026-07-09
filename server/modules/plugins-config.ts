@@ -191,6 +191,115 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
     adapter?.hydrate ? adapter.hydrate(envelope) : defaultHydrate(envelope);
 
   /**
+   * Collapse phase-split trust-eligibility configs into combined rows for a
+   * given plugin + policy. Any set of configs targeting the same benefit with
+   * identical settings, enabled state, and name — but disjoint phase lists
+   * (e.g. a Start-only and a Continue-only row) — is merged into one config
+   * whose appliesTo is the union of the phases. The survivor is the first row
+   * by (ordering, id); the rest are deleted. Purely structural: scan-time
+   * behavior is unchanged.
+   *
+   * MUST be called inside a write transaction. Acquires (re-acquires) the
+   * plugin's advisory lock, which is safe when the caller already holds it.
+   * Called automatically at the end of every eligibility config write so
+   * mergeable pairs never linger; also exposed via POST /configs/merge-phases.
+   */
+  async function mergePhaseSplitConfigs(
+    kind: string,
+    adapter: NonNullable<ReturnType<typeof getPluginConfigAdapter>>,
+    pluginId: string,
+    policy: string,
+  ): Promise<{ mergedGroups: number; removed: number; survivorMap: Record<string, string> }> {
+    await storage.pluginConfigs.acquireWriteLock(eligibilityLockKey(pluginId));
+
+    const envelopes = await storage.pluginConfigs.search(kind, {
+      policy,
+      pluginId,
+    } as any);
+
+    // Group by everything EXCEPT phases: benefit + settings (minus the
+    // appliesTo mirror) + enabled + name. Only groups whose members have
+    // pairwise-disjoint phases are merged; overlapping phases mean true
+    // duplicates, which merge must not silently resolve.
+    const groups = new Map<string, typeof envelopes>();
+    for (const env of envelopes) {
+      const data = (env.config.data as Record<string, unknown>) ?? {};
+      const { appliesTo: _omit, ...rest } = data;
+      const benefit = (env.subsidiary as any)?.benefit ?? null;
+      const key = JSON.stringify({
+        benefit,
+        data: sortKeysDeep(rest),
+        enabled: env.config.enabled,
+        name: env.config.name ?? null,
+      });
+      const list = groups.get(key) ?? [];
+      list.push(env);
+      groups.set(key, list);
+    }
+
+    let mergedGroups = 0;
+    let removed = 0;
+    // Deleted config id → the surviving combined row's id, so callers whose
+    // just-written row got merged away can respond with the live id.
+    const survivorMap: Record<string, string> = {};
+    for (const list of groups.values()) {
+      if (list.length < 2) continue;
+
+      // Collect each member's phases; bail on this group if any phase
+      // appears twice (overlap = genuine duplicates, skip).
+      const seen = new Set<string>();
+      let overlap = false;
+      for (const env of list) {
+        const data = (env.config.data as Record<string, unknown>) ?? {};
+        const raw = (env.subsidiary as any)?.appliesTo ?? data.appliesTo;
+        const phases = (Array.isArray(raw) ? raw.map(String) : String(raw ?? "").split(","))
+          .map((s: string) => s.trim())
+          .filter(Boolean);
+        for (const p of phases) {
+          if (seen.has(p)) overlap = true;
+          seen.add(p);
+        }
+      }
+      if (overlap || seen.size === 0) continue;
+
+      // Survivor: first by (ordering, id) — mirrors the canonical-row
+      // convention used everywhere else in plugin configs.
+      const order = list
+        .map((env, i) => ({ env, i }))
+        .sort(
+          (a, b) =>
+            (a.env.config.ordering ?? 0) - (b.env.config.ordering ?? 0) ||
+            a.env.config.id.localeCompare(b.env.config.id),
+        );
+      const survivor = order[0].env;
+      const union = ELIGIBILITY_PHASES.filter((p) => seen.has(p));
+
+      const existingData = (survivor.config.data as Record<string, unknown>) ?? {};
+      const mergedData = { ...existingData, appliesTo: union };
+      const hydrated = hydrate(adapter, survivor) as Record<string, unknown>;
+      const { subsidiary } = adapter.toRows({
+        ...hydrated,
+        data: mergedData,
+        appliesTo: union.join(","),
+      } as any);
+      await storage.pluginConfigs.update(survivor.config.id, { data: mergedData } as any);
+      if (subsidiary) {
+        await storage.pluginConfigs.upsertSubsidiary(kind, {
+          id: survivor.config.id,
+          ...subsidiary,
+        });
+      }
+      for (const { env } of order.slice(1)) {
+        await storage.pluginConfigs.delete(env.config.id);
+        survivorMap[env.config.id] = survivor.config.id;
+        removed += 1;
+      }
+      mergedGroups += 1;
+    }
+    return { mergedGroups, removed, survivorMap };
+  }
+
+  /**
    * Per-plugin component + access-policy gate. `resolve()` only enforces
    * the kind-level gate, which covers kinds that declare a kind-wide
    * `requiredComponent` (e.g. charge → ledger). It does NOT cover the
@@ -401,7 +510,7 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
       base.siriusId = (parsed.data as any).siriusId ?? null;
       if (!(await ensureValidPlugin(registration, parsed.data.pluginId, base.data, res))) return;
       if (await rejectIfDuplicate(kind, adapter, parsed.data, null, res)) return;
-      const created = await runInTransaction(async () => {
+      const { row: created, survivorMap: createSurvivorMap } = await runInTransaction(async () => {
         // Trust-eligibility: (policy, plugin, benefit, phase) must be unique.
         // Serialize on the plugin's advisory lock and check INSIDE the write
         // transaction so a simultaneous save cannot slip a duplicate past a
@@ -431,10 +540,25 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
         if (subsidiary) {
           await storage.pluginConfigs.upsertSubsidiary(kind, { id: row.id, ...subsidiary });
         }
-        return row;
+        // Auto-merge: if this new row is the phase-complement of an existing
+        // row with identical settings (e.g. Start-only next to Continue-only),
+        // collapse them into one combined row right away.
+        let survivorMap: Record<string, string> = {};
+        if (kind === BULK_SUPPORTED_KIND && subsidiary && (subsidiary as any).policy) {
+          ({ survivorMap } = await mergePhaseSplitConfigs(
+            kind,
+            adapter,
+            parsed.data.pluginId,
+            (subsidiary as any).policy,
+          ));
+        }
+        return { row, survivorMap };
       });
-      const envelope = await storage.pluginConfigs.getWithSubsidiary(created.id);
-      res.status(201).json(envelope ? hydrate(adapter, envelope) : { id: created.id });
+      // If the auto-merge folded the new row into an existing survivor,
+      // respond with the surviving combined row, not the deleted id.
+      const createdId = createSurvivorMap[created.id] ?? created.id;
+      const envelope = await storage.pluginConfigs.getWithSubsidiary(createdId);
+      res.status(201).json(envelope ? hydrate(adapter, envelope) : { id: createdId });
     } catch (error) {
       if (error instanceof SingletonViolationError) {
         res.status(409).json({ message: error.message });
@@ -596,6 +720,10 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
           if (conflicts.length > 0) throw new PhaseConflictError(conflicts);
         }
         const createdRows = await storage.pluginConfigs.bulkCreateWithSubsidiary(kind, rows);
+        // Auto-merge phase-split rows left behind (or just created) so
+        // Start-only/Continue-only pairs with identical settings collapse
+        // into combined rows without user intervention.
+        await mergePhaseSplitConfigs(kind, adapter, pluginId, policy);
         return { created: createdRows, replaced: replacedCount };
       });
       res.status(201).json({ created: created.length, replaced });
@@ -647,93 +775,9 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
         return;
       }
 
-      const result = await runInTransaction(async () => {
-        // Same advisory lock as every other eligibility write, so a merge
-        // can't race a concurrent create/edit for this plugin.
-        await storage.pluginConfigs.acquireWriteLock(eligibilityLockKey(pluginId));
-
-        const envelopes = await storage.pluginConfigs.search(kind, {
-          policy,
-          pluginId,
-        } as any);
-
-        // Group by everything EXCEPT phases: benefit + settings (minus the
-        // appliesTo mirror) + enabled + name. Only groups whose members have
-        // pairwise-disjoint phases are merged; overlapping phases mean true
-        // duplicates, which merge must not silently resolve.
-        const groups = new Map<string, typeof envelopes>();
-        for (const env of envelopes) {
-          const data = (env.config.data as Record<string, unknown>) ?? {};
-          const { appliesTo: _omit, ...rest } = data;
-          const benefit = (env.subsidiary as any)?.benefit ?? null;
-          const key = JSON.stringify({
-            benefit,
-            data: sortKeysDeep(rest),
-            enabled: env.config.enabled,
-            name: env.config.name ?? null,
-          });
-          const list = groups.get(key) ?? [];
-          list.push(env);
-          groups.set(key, list);
-        }
-
-        let mergedGroups = 0;
-        let removed = 0;
-        for (const list of groups.values()) {
-          if (list.length < 2) continue;
-
-          // Collect each member's phases; bail on this group if any phase
-          // appears twice (overlap = genuine duplicates, skip).
-          const seen = new Set<string>();
-          let overlap = false;
-          for (const env of list) {
-            const data = (env.config.data as Record<string, unknown>) ?? {};
-            const raw = (env.subsidiary as any)?.appliesTo ?? data.appliesTo;
-            const phases = (Array.isArray(raw) ? raw.map(String) : String(raw ?? "").split(","))
-              .map((s: string) => s.trim())
-              .filter(Boolean);
-            for (const p of phases) {
-              if (seen.has(p)) overlap = true;
-              seen.add(p);
-            }
-          }
-          if (overlap || seen.size === 0) continue;
-
-          // Survivor: first by (ordering, id) — mirrors the canonical-row
-          // convention used everywhere else in plugin configs.
-          const order = list
-            .map((env, i) => ({ env, i }))
-            .sort(
-              (a, b) =>
-                (a.env.config.ordering ?? 0) - (b.env.config.ordering ?? 0) ||
-                a.env.config.id.localeCompare(b.env.config.id),
-            );
-          const survivor = order[0].env;
-          const union = ELIGIBILITY_PHASES.filter((p) => seen.has(p));
-
-          const existingData = (survivor.config.data as Record<string, unknown>) ?? {};
-          const mergedData = { ...existingData, appliesTo: union };
-          const hydrated = hydrate(adapter, survivor) as Record<string, unknown>;
-          const { subsidiary } = adapter.toRows({
-            ...hydrated,
-            data: mergedData,
-            appliesTo: union.join(","),
-          } as any);
-          await storage.pluginConfigs.update(survivor.config.id, { data: mergedData } as any);
-          if (subsidiary) {
-            await storage.pluginConfigs.upsertSubsidiary(kind, {
-              id: survivor.config.id,
-              ...subsidiary,
-            });
-          }
-          for (const { env } of order.slice(1)) {
-            await storage.pluginConfigs.delete(env.config.id);
-            removed += 1;
-          }
-          mergedGroups += 1;
-        }
-        return { mergedGroups, removed };
-      });
+      const result = await runInTransaction(() =>
+        mergePhaseSplitConfigs(kind, adapter, pluginId, policy),
+      );
 
       res.json({ merged: result.mergedGroups, removed: result.removed });
     } catch (error) {
@@ -886,6 +930,17 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
         for (const row of subsidiaryRows) {
           await storage.pluginConfigs.upsertSubsidiary(kind, row);
         }
+        // Auto-merge every policy touched by this bulk settings change:
+        // aligning settings across a selection is exactly what creates
+        // mergeable Start-only/Continue-only pairs.
+        const touchedPolicies = new Set<string>();
+        for (const env of found) {
+          const p = (env.subsidiary as any)?.policy;
+          if (p) touchedPolicies.add(String(p));
+        }
+        for (const p of touchedPolicies) {
+          await mergePhaseSplitConfigs(kind, adapter, pluginId, p);
+        }
         return updated.length;
       });
       res.json({ updated: updatedCount });
@@ -965,7 +1020,7 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
       base.siriusId = (parsed.data as any).siriusId ?? null;
       if (!(await ensureValidPlugin(registration, parsed.data.pluginId, base.data, res))) return;
       if (await rejectIfDuplicate(kind, adapter, parsed.data, req.params.id, res)) return;
-      await runInTransaction(async () => {
+      const patchSurvivorMap = await runInTransaction(async () => {
         // Trust-eligibility: a config's (policy, plugin, benefit, phase) must
         // be unique. Serialize on the plugin's advisory lock and check each
         // target phase against other configs INSIDE the write transaction
@@ -995,9 +1050,24 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
         if (subsidiary) {
           await storage.pluginConfigs.upsertSubsidiary(kind, { id: req.params.id, ...subsidiary });
         }
+        // Auto-merge: an edit can make this row's settings identical to a
+        // phase-complement sibling — collapse them immediately.
+        if (kind === BULK_SUPPORTED_KIND && subsidiary && (subsidiary as any).policy) {
+          const { survivorMap } = await mergePhaseSplitConfigs(
+            kind,
+            adapter,
+            parsed.data.pluginId,
+            (subsidiary as any).policy,
+          );
+          return survivorMap;
+        }
+        return {} as Record<string, string>;
       });
-      const envelope = await storage.pluginConfigs.getWithSubsidiary(req.params.id);
-      res.json(envelope ? hydrate(adapter, envelope) : { id: req.params.id });
+      // If the auto-merge folded the edited row into a sibling survivor,
+      // respond with the surviving combined row, not the deleted id.
+      const patchedId = patchSurvivorMap[req.params.id] ?? req.params.id;
+      const envelope = await storage.pluginConfigs.getWithSubsidiary(patchedId);
+      res.json(envelope ? hydrate(adapter, envelope) : { id: patchedId });
     } catch (error) {
       if (error instanceof PhaseConflictError) {
         res.status(409).json({
