@@ -196,10 +196,9 @@ async function validateElection(
   if (!policyId) throw new WorkerTrustElectionValidationError('policyId', 'policyId is required');
   if (!startYmd) throw new WorkerTrustElectionValidationError('startYmd', 'startYmd is required');
 
-  const today = toYmd(getTodayDateOnly())!;
-  if (startYmd > today) {
-    throw new WorkerTrustElectionValidationError('startYmd', 'startYmd cannot be in the future');
-  }
+  // Future start dates are allowed: enrollment effective dates are
+  // legitimately "first of next month" when posted after the 15th
+  // (benefit election enrollment wizard rule).
   if (endYmd && endYmd <= startYmd) {
     throw new WorkerTrustElectionValidationError('endYmd', 'endYmd must be strictly after startYmd');
   }

@@ -29,6 +29,7 @@ import "./plugins/hta-union-import";
 import "./plugins/gbhet-legal-workers";
 import "./plugins/bao-monthly-hours";
 import "./plugins/employer-onboarding";
+import "./plugins/benefit-election-enrollment";
 
 let kindRegistered = false;
 

@@ -59,9 +59,9 @@ export const createWorkerTrustElectionRequestSchema = z
     data: z.unknown().optional(),
   })
   .superRefine((val, ctx) => {
-    if (val.startYmd > todayYmdLocal()) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['startYmd'], message: 'startYmd cannot be in the future' });
-    }
+    // Future start dates are allowed: enrollment effective dates are
+    // legitimately "first of next month" when posted after the 15th
+    // (benefit election enrollment wizard rule).
     if (val.endYmd && val.endYmd <= val.startYmd) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['endYmd'], message: 'endYmd must be strictly after startYmd' });
     }
@@ -78,9 +78,7 @@ export const updateWorkerTrustElectionRequestSchema = z
     data: z.unknown().optional(),
   })
   .superRefine((val, ctx) => {
-    if (val.startYmd && val.startYmd > todayYmdLocal()) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['startYmd'], message: 'startYmd cannot be in the future' });
-    }
+    // Future start dates are allowed (see create schema note).
     if (val.endYmd && val.startYmd && val.endYmd <= val.startYmd) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['endYmd'], message: 'endYmd must be strictly after startYmd' });
     }

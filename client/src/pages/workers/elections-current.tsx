@@ -1,13 +1,14 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useState } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { WorkerLayout, useWorkerLayout } from "@/components/layouts/WorkerLayout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/contexts/AuthContext";
-import { queryClient } from "@/lib/queryClient";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import { ElectionFormDialog } from "@/components/trust/ElectionFormDialog";
 import { formatYmd } from "@shared/utils";
 import type { WorkerTrustElectionView } from "@shared/schema";
@@ -17,6 +18,28 @@ function ElectionsCurrentContent() {
   const { hasPermission } = useAuth();
   const canEdit = hasPermission("staff");
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [, navigate] = useLocation();
+  const { toast } = useToast();
+
+  const enrollMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/wizards", {
+        type: "benefit_election_enrollment",
+        data: { launchArguments: { workerId: worker.id } },
+      });
+      return res.json();
+    },
+    onSuccess: (wizard: { id: string }) => {
+      navigate(`/wizards/${wizard.id}`);
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
 
   const { data: current, isLoading } = useQuery<WorkerTrustElectionView | null>({
     queryKey: ["/api/workers", worker.id, "trust-elections", "current"],
@@ -46,9 +69,19 @@ function ElectionsCurrentContent() {
         <div className="flex items-center justify-between gap-4">
           <CardTitle>Current Trust Election</CardTitle>
           {canEdit && (
-            <Button onClick={() => setIsModalOpen(true)} data-testid="button-create-election">
-              New Election
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={() => enrollMutation.mutate()}
+                disabled={enrollMutation.isPending}
+                data-testid="button-enrollment-wizard"
+              >
+                {enrollMutation.isPending ? "Starting…" : "Enrollment Wizard"}
+              </Button>
+              <Button onClick={() => setIsModalOpen(true)} data-testid="button-create-election">
+                New Election
+              </Button>
+            </div>
           )}
         </div>
         <CardDescription>
