@@ -25,6 +25,7 @@ function ElectionsCurrentContent() {
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/wizards", {
         type: "benefit_election_enrollment",
+        status: "draft",
         data: { launchArguments: { workerId: worker.id } },
       });
       return res.json();

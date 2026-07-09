@@ -268,7 +268,12 @@ export function registerWizardRoutes(
 
   app.post("/api/wizards", requireAuth, async (req, res) => {
     try {
-      const validatedData = insertWizardSchema.parse(req.body);
+      // `status` is required by the schema but launch buttons may omit it;
+      // new wizards always start as drafts.
+      const validatedData = insertWizardSchema.parse({
+        status: "draft",
+        ...(req.body ?? {}),
+      });
 
       // Framework (plugin-based) wizard creation path. Gating (component →
       // access policy) is enforced here from the plugin declaration alone.

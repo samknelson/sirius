@@ -65,7 +65,12 @@ function logTestOperation(
  */
 async function validatePrivateKey(conn: SftpConnectionData): Promise<string | null> {
   if (!conn.privateKey) return null;
-  const { utils } = await import("ssh2");
+  const ssh2 = (await import("ssh2")) as unknown as {
+    utils?: { parseKey: (key: string, passphrase?: string) => unknown };
+    default?: { utils: { parseKey: (key: string, passphrase?: string) => unknown } };
+  };
+  const utils = ssh2.utils ?? ssh2.default?.utils;
+  if (!utils) return null; // can't validate locally; let the connection attempt report
   const parsed = utils.parseKey(conn.privateKey, conn.passphrase || undefined);
   if (parsed instanceof Error) {
     return `Private key is invalid or unsupported: ${parsed.message}`;
