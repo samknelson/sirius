@@ -41,6 +41,60 @@ const bulkSettingsSchema = z.object({
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 
 /**
+ * Thrown inside a write transaction when the in-transaction phase-conflict
+ * re-check finds a duplicate benefit × phase target. Rolls the transaction
+ * back; the route translates it into the same structured 409 the
+ * pre-transaction era returned. Carrying the conflict list on the error keeps
+ * the response contract identical.
+ */
+class PhaseConflictError extends Error {
+  constructor(public readonly conflicts: Array<{ benefit: string; phase: string }>) {
+    super("Benefit/phase combination already has a configuration for this plugin");
+    this.name = "PhaseConflictError";
+  }
+}
+
+/**
+ * Advisory-lock key serializing every trust-eligibility config write for one
+ * plugin. Acquired (inside the write transaction) before the conflict
+ * re-check, so two admins saving simultaneously queue behind each other and
+ * the second one's check sees the first one's committed rows — duplicates
+ * become impossible instead of merely unlikely.
+ */
+const eligibilityLockKey = (pluginId: string) => `plugin-config:trust-eligibility:${pluginId}`;
+
+/**
+ * Token-aware duplicate scan for trust-eligibility targets: for each
+ * (policy, benefit, phase) triple, find configs of `pluginId` whose
+ * appliesTo contains that phase (including combined "start,continue" rows),
+ * ignoring ids in `excludeIds` (the rows being updated / the selection).
+ * Call it INSIDE the write transaction, after acquiring the advisory lock,
+ * for a race-free guarantee.
+ */
+async function findPhaseConflicts(
+  kind: string,
+  pluginId: string,
+  targets: Array<{ policy: string | null; benefit: string | null; phases: string[] }>,
+  excludeIds: Set<string>,
+): Promise<Array<{ benefit: string; phase: string }>> {
+  const conflicts: Array<{ benefit: string; phase: string }> = [];
+  for (const target of targets) {
+    for (const phase of target.phases) {
+      const matches = await storage.pluginConfigs.search(kind, {
+        policy: target.policy,
+        pluginId,
+        benefit: target.benefit,
+        appliesTo: phase,
+      } as any);
+      if (matches.some((m) => !excludeIds.has(m.config.id))) {
+        conflicts.push({ benefit: target.benefit ?? "", phase });
+      }
+    }
+  }
+  return conflicts;
+}
+
+/**
  * Kinds that still own dedicated, authoritative config routes + legacy
  * storage tables and have NOT been cut over to the unified plugin_configs
  * tables yet. The generic routes refuse to operate on these so there is
@@ -319,6 +373,29 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
       if (!(await ensureValidPlugin(registration, parsed.data.pluginId, base.data, res))) return;
       if (await rejectIfDuplicate(kind, adapter, parsed.data, null, res)) return;
       const created = await runInTransaction(async () => {
+        // Trust-eligibility: (policy, plugin, benefit, phase) must be unique.
+        // Serialize on the plugin's advisory lock and check INSIDE the write
+        // transaction so a simultaneous save cannot slip a duplicate past a
+        // pre-transaction check.
+        if (kind === BULK_SUPPORTED_KIND && subsidiary) {
+          await storage.pluginConfigs.acquireWriteLock(eligibilityLockKey(parsed.data.pluginId));
+          const targetPhases = Array.isArray((base.data as any)?.appliesTo)
+            ? ((base.data as any).appliesTo as string[])
+            : [];
+          const conflicts = await findPhaseConflicts(
+            kind,
+            parsed.data.pluginId,
+            [
+              {
+                policy: (subsidiary as any).policy ?? null,
+                benefit: (subsidiary as any).benefit ?? null,
+                phases: targetPhases,
+              },
+            ],
+            new Set(),
+          );
+          if (conflicts.length > 0) throw new PhaseConflictError(conflicts);
+        }
         // Singleton enforcement is decided by the storage layer from the plugin
         // type's manifest; the route no longer computes/passes it.
         const row = await storage.pluginConfigs.create(base as any);
@@ -332,6 +409,13 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
     } catch (error) {
       if (error instanceof SingletonViolationError) {
         res.status(409).json({ message: error.message });
+        return;
+      }
+      if (error instanceof PhaseConflictError) {
+        res.status(409).json({
+          message: "Another configuration already covers this benefit/phase combination for this plugin",
+          conflicts: error.conflicts,
+        });
         return;
       }
       console.error("Failed to create plugin config:", error);
@@ -380,29 +464,6 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
       const { base: repBase } = adapter.toRows(repInput);
       if (!(await ensureValidPlugin(registration, pluginId, repBase.data, res))) return;
 
-      // Conflict detection: for each (benefit, phase) target, a token-aware
-      // search catches existing configs whose appliesTo contains that phase
-      // (including combined "start,continue" rows).
-      const conflicts: Array<{ benefit: string; phase: string }> = [];
-      for (const benefit of uniqueBenefits) {
-        for (const phase of uniquePhases) {
-          const matches = await storage.pluginConfigs.search(kind, {
-            policy,
-            pluginId,
-            benefit,
-            appliesTo: phase,
-          });
-          if (matches.length > 0) conflicts.push({ benefit, phase });
-        }
-      }
-      if (conflicts.length > 0) {
-        res.status(409).json({
-          message: "Some selected benefit/phase combinations already have a configuration for this plugin",
-          conflicts,
-        });
-        return;
-      }
-
       // Build one base + subsidiary row per (benefit, phase).
       const rows = [] as Array<{ base: any; subsidiary: any }>;
       for (const benefit of uniqueBenefits) {
@@ -421,9 +482,33 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
           rows.push({ base, subsidiary });
         }
       }
-      const created = await storage.pluginConfigs.bulkCreateWithSubsidiary(kind, rows);
+
+      const created = await runInTransaction(async () => {
+        // Conflict detection INSIDE the write transaction, serialized on the
+        // plugin's advisory lock: for each (benefit, phase) target, a
+        // token-aware search catches existing configs whose appliesTo
+        // contains that phase (including combined "start,continue" rows).
+        // Two simultaneous bulk-creates queue on the lock, so the second one
+        // sees the first one's committed rows and 409s instead of duplicating.
+        await storage.pluginConfigs.acquireWriteLock(eligibilityLockKey(pluginId));
+        const conflicts = await findPhaseConflicts(
+          kind,
+          pluginId,
+          uniqueBenefits.map((benefit) => ({ policy, benefit, phases: uniquePhases })),
+          new Set(),
+        );
+        if (conflicts.length > 0) throw new PhaseConflictError(conflicts);
+        return storage.pluginConfigs.bulkCreateWithSubsidiary(kind, rows);
+      });
       res.status(201).json({ created: created.length });
     } catch (error) {
+      if (error instanceof PhaseConflictError) {
+        res.status(409).json({
+          message: "Some selected benefit/phase combinations already have a configuration for this plugin",
+          conflicts: error.conflicts,
+        });
+        return;
+      }
       console.error("Failed to bulk-create plugin configs:", error);
       res.status(500).json({ message: "Failed to bulk-create plugin configs" });
     }
@@ -479,13 +564,14 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
       }
       const pluginId = found[0].config.pluginId;
 
-      // Phase override requested: validate that no target (benefit, phase)
-      // collides — either with an existing config outside the selection, or
-      // with another config inside the selection (two selected rows on the
-      // same benefit would become identical). All-or-nothing: any conflict
-      // rejects the whole request with a structured list (mirrors bulk create).
+      // Phase override requested: validate that no two configs INSIDE the
+      // selection would become identical (two selected rows on the same
+      // policy + benefit collapsing onto the same phase). This intra-selection
+      // check is pure (no DB read) so it runs up front; the check against
+      // configs OUTSIDE the selection is re-run inside the write transaction
+      // below, under the plugin's advisory lock, so a simultaneous save
+      // cannot race a duplicate past it.
       if (uniquePhases) {
-        const selectedIdSet = new Set(uniqueIds);
         const conflicts: Array<{ benefit: string; phase: string }> = [];
         const seen = new Set<string>();
         for (const env of found) {
@@ -498,15 +584,6 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
               continue;
             }
             seen.add(intraKey);
-            const matches = await storage.pluginConfigs.search(kind, {
-              policy,
-              pluginId,
-              benefit,
-              appliesTo: phase,
-            } as any);
-            if (matches.some((m) => !selectedIdSet.has(m.config.id))) {
-              conflicts.push({ benefit: benefit ?? "", phase });
-            }
           }
         }
         if (conflicts.length > 0) {
@@ -558,6 +635,25 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
         }
       }
       const updatedCount = await runInTransaction(async () => {
+        // Phase override: re-run the against-the-database conflict check
+        // INSIDE the transaction, serialized on the plugin's advisory lock,
+        // so a simultaneous save cannot slip a duplicate (policy, plugin,
+        // benefit, phase) past a pre-transaction check.
+        if (uniquePhases) {
+          await storage.pluginConfigs.acquireWriteLock(eligibilityLockKey(pluginId));
+          const selectedIdSet = new Set(uniqueIds);
+          const conflicts = await findPhaseConflicts(
+            kind,
+            pluginId,
+            found.map((env) => ({
+              policy: (env.subsidiary as any)?.policy ?? null,
+              benefit: (env.subsidiary as any)?.benefit ?? null,
+              phases: uniquePhases,
+            })),
+            selectedIdSet,
+          );
+          if (conflicts.length > 0) throw new PhaseConflictError(conflicts);
+        }
         const updated = await storage.pluginConfigs.bulkUpdate(updates);
         for (const row of subsidiaryRows) {
           await storage.pluginConfigs.upsertSubsidiary(kind, row);
@@ -566,6 +662,14 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
       });
       res.json({ updated: updatedCount });
     } catch (error) {
+      if (error instanceof PhaseConflictError) {
+        res.status(409).json({
+          message:
+            "Some benefit/phase combinations already have a configuration for this plugin",
+          conflicts: error.conflicts,
+        });
+        return;
+      }
       console.error("Failed to bulk-update plugin config settings:", error);
       res.status(500).json({ message: "Failed to bulk-update plugin config settings" });
     }
@@ -633,38 +737,32 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
       base.siriusId = (parsed.data as any).siriusId ?? null;
       if (!(await ensureValidPlugin(registration, parsed.data.pluginId, base.data, res))) return;
       if (await rejectIfDuplicate(kind, adapter, parsed.data, req.params.id, res)) return;
-      // Trust-eligibility: a config's (policy, plugin, benefit, phase) must be
-      // unique. Check each target phase against other configs (token-aware,
-      // catches combined "start,continue" rows) and reject all-or-nothing with
-      // a structured conflict list, mirroring bulk create.
-      if (kind === BULK_SUPPORTED_KIND && subsidiary) {
-        const policy = (subsidiary as any).policy ?? null;
-        const benefit = (subsidiary as any).benefit ?? null;
-        const targetPhases = Array.isArray((base.data as any)?.appliesTo)
-          ? ((base.data as any).appliesTo as string[])
-          : [];
-        const conflicts: Array<{ benefit: string; phase: string }> = [];
-        for (const phase of targetPhases) {
-          const matches = await storage.pluginConfigs.search(kind, {
-            policy,
-            pluginId: parsed.data.pluginId,
-            benefit,
-            appliesTo: phase,
-          } as any);
-          if (matches.some((m) => m.config.id !== req.params.id)) {
-            conflicts.push({ benefit: benefit ?? "", phase });
-          }
-        }
-        if (conflicts.length > 0) {
-          res.status(409).json({
-            message:
-              "Another configuration already covers this benefit/phase combination for this plugin",
-            conflicts,
-          });
-          return;
-        }
-      }
       await runInTransaction(async () => {
+        // Trust-eligibility: a config's (policy, plugin, benefit, phase) must
+        // be unique. Serialize on the plugin's advisory lock and check each
+        // target phase against other configs INSIDE the write transaction
+        // (token-aware, catches combined "start,continue" rows), so two
+        // simultaneous saves cannot both pass the check and both write.
+        // Rejects all-or-nothing with a structured conflict list.
+        if (kind === BULK_SUPPORTED_KIND && subsidiary) {
+          await storage.pluginConfigs.acquireWriteLock(eligibilityLockKey(parsed.data.pluginId));
+          const targetPhases = Array.isArray((base.data as any)?.appliesTo)
+            ? ((base.data as any).appliesTo as string[])
+            : [];
+          const conflicts = await findPhaseConflicts(
+            kind,
+            parsed.data.pluginId,
+            [
+              {
+                policy: (subsidiary as any).policy ?? null,
+                benefit: (subsidiary as any).benefit ?? null,
+                phases: targetPhases,
+              },
+            ],
+            new Set([req.params.id]),
+          );
+          if (conflicts.length > 0) throw new PhaseConflictError(conflicts);
+        }
         await storage.pluginConfigs.update(req.params.id, base as any);
         if (subsidiary) {
           await storage.pluginConfigs.upsertSubsidiary(kind, { id: req.params.id, ...subsidiary });
@@ -673,6 +771,14 @@ export function registerPluginsConfigRoutes(app: Express, requireAuth: AuthMiddl
       const envelope = await storage.pluginConfigs.getWithSubsidiary(req.params.id);
       res.json(envelope ? hydrate(adapter, envelope) : { id: req.params.id });
     } catch (error) {
+      if (error instanceof PhaseConflictError) {
+        res.status(409).json({
+          message:
+            "Another configuration already covers this benefit/phase combination for this plugin",
+          conflicts: error.conflicts,
+        });
+        return;
+      }
       console.error("Failed to update plugin config:", error);
       res.status(500).json({ message: "Failed to update plugin config" });
     }

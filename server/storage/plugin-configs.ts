@@ -1,5 +1,5 @@
 import { createNoopValidator } from './utils/validation';
-import { getClient, onAfterCommit, runInTransaction } from './transaction-context';
+import { getClient, isInTransaction, onAfterCommit, runInTransaction } from './transaction-context';
 import {
   pluginConfigs,
   type PluginConfig,
@@ -12,7 +12,7 @@ import {
   type PluginConfigEventNotifier,
   type PluginConfigCron,
 } from "@shared/schema";
-import { eq, and, type SQL } from "drizzle-orm";
+import { eq, and, sql, type SQL } from "drizzle-orm";
 // Import the cycle-safe `_core` submodule directly (NOT the `_core/index.ts`
 // barrel, which re-exports the singleton seeder that imports storage).
 import { isSingletonPluginType } from "../plugins/_core/kinds";
@@ -198,6 +198,17 @@ export interface PluginConfigStorage {
   // --- Composed read + generic search ------------------------------------
   getWithSubsidiary(id: string): Promise<PluginConfigWithSubsidiary | undefined>;
   search(type: string, params?: PluginConfigSearchParams): Promise<PluginConfigWithSubsidiary[]>;
+
+  // --- Concurrency guard ---------------------------------------------------
+  /**
+   * Serialize concurrent config writers on a logical key via a Postgres
+   * transaction-scoped advisory lock (`pg_advisory_xact_lock`). Must be
+   * called inside `runInTransaction`; the lock is released automatically at
+   * commit/rollback. Used by the trust-eligibility phase-conflict guard so a
+   * "search then write" check re-run inside the transaction cannot race a
+   * simultaneous writer into creating duplicate benefit × phase configs.
+   */
+  acquireWriteLock(key: string): Promise<void>;
 }
 
 export function createPluginConfigStorage(): PluginConfigStorage {
@@ -480,6 +491,22 @@ export function createPluginConfigStorage(): PluginConfigStorage {
         config: r.config,
         subsidiary: (r.subsidiary as PluginConfigSubsidiary) ?? null,
       }));
+    },
+
+    // --- Concurrency guard -----------------------------------------------
+    async acquireWriteLock(key: string): Promise<void> {
+      if (!isInTransaction()) {
+        throw new Error(
+          "acquireWriteLock must be called inside runInTransaction — a transaction-scoped advisory lock is meaningless outside one",
+        );
+      }
+      const client = getClient();
+      // hashtext() maps the logical key to the advisory-lock keyspace; the
+      // lock is released automatically when the transaction commits or rolls
+      // back. Concurrent writers on the same key queue here, so the caller's
+      // in-transaction conflict re-check always sees the previous writer's
+      // committed rows.
+      await client.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${key}))`);
     },
   };
 }
