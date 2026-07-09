@@ -777,6 +777,7 @@ export abstract class FeedWizard extends BaseWizard {
 
             let workerId: string;
             let isNewWorker = false;
+            let creationWarning: string | null = null;
             
             // Check if worker with this SSN already exists
             const existingWorker = await storage.workers.getWorkerBySSN(ssn);
@@ -785,9 +786,14 @@ export abstract class FeedWizard extends BaseWizard {
               workerId = existingWorker.id;
             } else {
               // Give the wizard type a chance to veto creation (e.g. BAO's
-              // verify-new-workers step). Throwing here fails the row.
+              // verify-new-workers step). Throwing here fails the row; a
+              // returned string is attached to the row as a warning while
+              // creation still proceeds.
               if (typeof (this as any).canCreateWorker === 'function') {
-                await (this as any).canCreateWorker(ssn, row, wizard);
+                const warning = await (this as any).canCreateWorker(ssn, row, wizard);
+                if (typeof warning === 'string' && warning) {
+                  creationWarning = warning;
+                }
               }
               // Worker doesn't exist, create new one
               const fullName = [firstName, lastName].filter(Boolean).join(' ');
@@ -874,6 +880,7 @@ export abstract class FeedWizard extends BaseWizard {
 
             const workerAction = isNewWorker ? 'created' : 'updated';
             const processingIssues: string[] = [];
+            if (creationWarning) processingIssues.push(creationWarning);
             if (!hoursProcessed) processingIssues.push(`hours: ${hoursError}`);
             if (!contactInfoProcessed) processingIssues.push(`contact info: ${contactInfoError}`);
             if (benefitsErrors.length > 0) processingIssues.push(`benefits: ${benefitsErrors.join(', ')}`);

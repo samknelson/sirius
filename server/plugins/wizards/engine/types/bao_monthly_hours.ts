@@ -29,9 +29,10 @@ function pad2(n: number): string {
  *   the BAO fund account (from the enabled `bao-hourly` charge plugin
  *   config), with `statementYmd` anchored to the work month. Idempotent on
  *   re-upload via a `baoWithholding` marker in the payment's details.
- * - New-worker creation is gated by the Verify step: `canCreateWorker` only
- *   allows creation of an unknown-SSN worker when the row was explicitly
- *   confirmed in `wizard.data.newWorkerDecisions`.
+ * - New-worker creation is reviewed (optionally) in the Verify step:
+ *   `canCreateWorker` blocks creation only for rows explicitly rejected in
+ *   `wizard.data.newWorkerDecisions`; unreviewed rows are created with a
+ *   warning attached to the row result.
  */
 export class BaoMonthlyHoursWizard extends GbhetLegalWorkersWizard {
   name = 'bao_monthly_hours';
@@ -111,21 +112,38 @@ export class BaoMonthlyHoursWizard extends GbhetLegalWorkersWizard {
   }
 
   /**
-   * Feed-processing hook (duck-typed from `processFeedData`): veto creation
-   * of a worker whose SSN is unknown unless the Verify step explicitly
-   * confirmed it. Decisions are keyed by the SSN's digits.
+   * Feed-processing hook (duck-typed from `processFeedData`): gate creation
+   * of a worker whose SSN is unknown. Decisions are keyed by the SSN's
+   * digits. An explicit "reject" in the Verify step still blocks creation
+   * (throw = row fails); an unreviewed row is created anyway but carries a
+   * warning (returned string) so the operator can see it in the results —
+   * especially when Verify surfaced possible existing-worker matches.
    */
-  protected async canCreateWorker(ssn: string, _row: Record<string, any>, wizard: any): Promise<void> {
+  protected async canCreateWorker(ssn: string, _row: Record<string, any>, wizard: any): Promise<string | void> {
     const digits = String(ssn || '').replace(/\D/g, '');
-    const decisions = ((wizard.data as any)?.newWorkerDecisions || {}) as Record<string, string>;
+    const data = (wizard.data as any) || {};
+    const decisions = (data.newWorkerDecisions || {}) as Record<string, string>;
     const decision = decisions[digits];
     if (decision === 'confirm') return;
     if (decision === 'reject') {
       throw new Error('Worker creation was rejected in the Verify New Workers step');
     }
-    throw new Error(
-      'Worker with this SSN was not confirmed in the Verify New Workers step; re-run Verify and confirm or reject the row',
-    );
+    // Not reviewed: create anyway, but warn — and call out near-match
+    // candidates from the Verify scan when we have them.
+    const verifyRows = (data.verifyNewWorkers?.rows || []) as Array<{
+      ssnDigits?: string;
+      candidates?: Array<{ displayName?: string | null; siriusId?: number | null }>;
+    }>;
+    const verifyRow = verifyRows.find((r) => r.ssnDigits === digits);
+    const candidates = verifyRow?.candidates || [];
+    if (candidates.length > 0) {
+      const names = candidates
+        .slice(0, 3)
+        .map((c) => c.displayName || (c.siriusId != null ? `#${c.siriusId}` : 'unknown'))
+        .join(', ');
+      return `warning: new worker created without review — possible existing match(es): ${names}`;
+    }
+    return 'warning: new worker created without review in the Verify New Workers step';
   }
 
   /**

@@ -388,8 +388,9 @@ export function VerifyNewWorkers({ wizardId, step }: WizardStepComponentProps) {
                 )}
                 {!allDecided && (
                   <span className="text-sm text-muted-foreground">
-                    Decide every row to continue. Rejected rows will fail
-                    during processing instead of creating a worker.
+                    Reviewing each row is optional. Unreviewed rows will
+                    still be created during processing (with a warning);
+                    rejected rows will be skipped.
                   </span>
                 )}
               </div>

@@ -28,10 +28,10 @@ import {
  * Modeled on the GBHET legal-workers monthly wizard MINUS the benefits step,
  * PLUS a `verify` step: before processing, every row whose SSN matches no
  * existing worker is listed together with near-match candidates (same
- * name/DOB, different SSN) and must be explicitly confirmed or rejected.
- * Confirmed rows create a new worker during processing; rejected (or
- * undecided) rows fail with a clear per-row error instead of silently
- * creating a possible duplicate.
+ * name/DOB, different SSN) for optional review. Confirmed and unreviewed
+ * rows create a new worker during processing (unreviewed rows carry a
+ * warning in the results); explicitly rejected rows fail with a clear
+ * per-row error instead of creating a possible duplicate.
  */
 
 interface VerifyRow {
@@ -82,18 +82,11 @@ function buildVerifyStep(): WizardStepHandler {
       if (!verify) {
         return wizard.currentStep === "verify" ? "in_progress" : "pending";
       }
-      if (verify.rows.length === 0) return "completed";
-      const decisions = (data.newWorkerDecisions || {}) as Record<
-        string,
-        string
-      >;
-      const allDecided = verify.rows.every(
-        (r) =>
-          decisions[r.ssnDigits] === "confirm" ||
-          decisions[r.ssnDigits] === "reject",
-      );
-      if (allDecided) return "completed";
-      return wizard.currentStep === "verify" ? "in_progress" : "pending";
+      // Once the scan has run, the step is complete: reviewing each row is
+      // recommended but not required. Unreviewed rows are still created
+      // during processing, with a warning attached; rejected rows are
+      // skipped.
+      return "completed";
     },
     run: async (ctx: WizardStepContext) => {
       const { mappedRows, wizard } = await baoMonthlyHours.loadMappedRows(
