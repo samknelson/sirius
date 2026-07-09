@@ -46,7 +46,15 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Loader2, Plus, Pencil, Trash2, AlertTriangle } from "lucide-react";
+import {
+  Loader2,
+  Plus,
+  Pencil,
+  Trash2,
+  AlertTriangle,
+  ChevronDown,
+  ChevronRight,
+} from "lucide-react";
 
 const KIND = "trust-eligibility" as const;
 
@@ -91,6 +99,56 @@ function splitPhases(appliesTo: string | null): string[] {
     .filter(Boolean);
 }
 
+/** Deep sort object keys so JSON.stringify yields a canonical string. */
+function sortKeysDeep(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(sortKeysDeep);
+  if (v && typeof v === "object") {
+    const o = v as Record<string, unknown>;
+    return Object.keys(o)
+      .sort()
+      .reduce((acc, k) => {
+        acc[k] = sortKeysDeep(o[k]);
+        return acc;
+      }, {} as Record<string, unknown>);
+  }
+  return v;
+}
+
+/**
+ * Canonical fingerprint of everything about a config EXCEPT which benefit
+ * it targets: plugin settings (minus the appliesTo envelope mirror),
+ * phases, enabled state, and label. Configs sharing a fingerprint are
+ * presented as one grouped row.
+ */
+function settingsFingerprint(row: EligibilityConfigRow): string {
+  const { appliesTo: _omit, ...rest } = (row.data ?? {}) as Record<string, unknown>;
+  return JSON.stringify({
+    data: sortKeysDeep(rest),
+    phases: splitPhases(row.appliesTo).sort(),
+    enabled: row.enabled,
+    name: row.name ?? null,
+  });
+}
+
+interface SettingsGroup {
+  key: string;
+  rows: EligibilityConfigRow[];
+}
+
+/** Group a plugin's configs by settings fingerprint, biggest groups first. */
+function groupBySettings(rows: EligibilityConfigRow[]): SettingsGroup[] {
+  const map = new Map<string, EligibilityConfigRow[]>();
+  for (const row of rows) {
+    const key = settingsFingerprint(row);
+    const list = map.get(key) ?? [];
+    list.push(row);
+    map.set(key, list);
+  }
+  return Array.from(map.entries())
+    .map(([key, list]) => ({ key, rows: list }))
+    .sort((a, b) => b.rows.length - a.rows.length);
+}
+
 function PolicyEligibilityContent() {
   const { policy } = usePolicyLayout();
   const { toast } = useToast();
@@ -109,6 +167,9 @@ function PolicyEligibilityContent() {
   const [deleteRow, setDeleteRow] = useState<EligibilityConfigRow | null>(null);
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const [groupEditRows, setGroupEditRows] = useState<EligibilityConfigRow[] | null>(null);
+  const [groupDeleteRows, setGroupDeleteRows] = useState<EligibilityConfigRow[] | null>(null);
 
   const { data: benefits = [] } = useQuery<TrustBenefit[]>({
     queryKey: ["/api/trust-benefits"],
@@ -226,16 +287,15 @@ function PolicyEligibilityContent() {
     }
   };
 
-  const deleteSelected = async () => {
-    const targets = selectedConfigs;
+  const deleteMany = async (targets: EligibilityConfigRow[]) => {
     if (targets.length === 0) return;
     setDeleting(true);
     const failures: string[] = [];
-    let deleted = 0;
+    const deletedIds = new Set<string>();
     for (const row of targets) {
       try {
         await apiRequest("DELETE", `${pluginConfigsUrl(KIND)}/${row.id}`);
-        deleted += 1;
+        deletedIds.add(row.id);
       } catch (error) {
         const label = `${benefitName(row.benefit)}${row.name ? ` (${row.name})` : ""}`;
         failures.push(
@@ -245,20 +305,41 @@ function PolicyEligibilityContent() {
     }
     setDeleting(false);
     setBulkDeleteOpen(false);
-    setSelectedIds(new Set());
+    setGroupDeleteRows(null);
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (const id of Array.from(deletedIds)) next.delete(id);
+      return next;
+    });
     refresh();
     if (failures.length === 0) {
       toast({
-        title: `Deleted ${deleted} configuration${deleted === 1 ? "" : "s"}`,
+        title: `Deleted ${deletedIds.size} configuration${deletedIds.size === 1 ? "" : "s"}`,
       });
     } else {
       toast({
-        title: `Deleted ${deleted} of ${targets.length} configurations`,
+        title: `Deleted ${deletedIds.size} of ${targets.length} configurations`,
         description: failures.join("; "),
         variant: "destructive",
       });
     }
   };
+
+  const deleteSelected = () => deleteMany(selectedConfigs);
+
+  const toggleExpanded = (key: string) => {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const groupEditPlugin =
+    groupEditRows && groupEditRows.length > 0
+      ? manifest.find((p) => p.id === groupEditRows[0].pluginId) ?? null
+      : null;
 
   return (
     <div className="space-y-6" data-testid="page-policy-eligibility">
@@ -379,83 +460,202 @@ function PolicyEligibilityContent() {
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-2">
-                  {rows.map((row) => {
-                    const phases = splitPhases(row.appliesTo);
+                  {groupBySettings(rows).map((group) => {
+                    const first = group.rows[0];
+                    const phases = splitPhases(first.appliesTo);
+                    const isGroup = group.rows.length > 1;
+                    const groupKey = `${pluginId}:${group.key}`;
+                    const expanded = expandedGroups.has(groupKey);
+                    const selectedInThisGroup = group.rows.filter((r) =>
+                      selectedIds.has(r.id),
+                    ).length;
+                    const groupAllSelected =
+                      selectedInThisGroup === group.rows.length;
+                    const groupSomeSelected =
+                      selectedInThisGroup > 0 && !groupAllSelected;
+                    const sortedMembers = [...group.rows].sort((a, b) =>
+                      benefitName(a.benefit).localeCompare(benefitName(b.benefit)),
+                    );
                     return (
                       <div
-                        key={row.id}
-                        className="flex items-start gap-3 rounded-md border p-3"
-                        data-testid={`row-config-${row.id}`}
+                        key={groupKey}
+                        className="rounded-md border"
+                        data-testid={`row-group-${first.id}`}
                       >
-                        <Checkbox
-                          className="mt-0.5"
-                          checked={selectedIds.has(row.id)}
-                          onCheckedChange={(checked) =>
-                            toggleSelected(row.id, checked === true)
-                          }
-                          data-testid={`checkbox-config-${row.id}`}
-                        />
-                        <div className="flex-1 min-w-0">
-                          <div className="font-medium" data-testid={`text-config-benefit-${row.id}`}>
-                            {benefitName(row.benefit)}
-                          </div>
-                          {row.name && (
-                            <div className="text-xs text-muted-foreground">{row.name}</div>
-                          )}
-                          {pluginSchema && (
-                            <div
-                              className="mt-1.5 [&_dl]:text-xs [&_dl]:gap-y-0.5"
-                              data-testid={`summary-config-${row.id}`}
-                            >
-                              <SchemaView
-                                schema={pluginSchema}
-                                value={row.data ?? {}}
-                                omitKeys={["appliesTo"]}
-                                hideEmpty
-                                testIdPrefix={`summary-config-${row.id}`}
-                              />
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-1">
-                          {phases.length === 0 ? (
-                            <Badge variant="outline">No phase</Badge>
-                          ) : (
-                            phases.map((p) => (
-                              <Badge
-                                key={p}
-                                variant="secondary"
-                                data-testid={`badge-phase-${row.id}-${p}`}
+                        <div className="flex items-start gap-3 p-3">
+                          <Checkbox
+                            className="mt-0.5"
+                            checked={
+                              groupAllSelected
+                                ? true
+                                : groupSomeSelected
+                                  ? "indeterminate"
+                                  : false
+                            }
+                            onCheckedChange={(checked) =>
+                              isGroup
+                                ? toggleGroupSelected(group.rows, checked === true)
+                                : toggleSelected(first.id, checked === true)
+                            }
+                            data-testid={`checkbox-config-${first.id}`}
+                          />
+                          <div className="flex-1 min-w-0">
+                            {isGroup ? (
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                {sortedMembers.map((r) => (
+                                  <Badge
+                                    key={r.id}
+                                    variant="outline"
+                                    className="font-normal"
+                                    data-testid={`chip-benefit-${r.id}`}
+                                  >
+                                    {benefitName(r.benefit)}
+                                  </Badge>
+                                ))}
+                                <span className="text-xs text-muted-foreground">
+                                  {group.rows.length} benefits, same settings
+                                </span>
+                              </div>
+                            ) : (
+                              <div
+                                className="font-medium"
+                                data-testid={`text-config-benefit-${first.id}`}
                               >
-                                {phaseLabel(p)}
-                              </Badge>
-                            ))
+                                {benefitName(first.benefit)}
+                              </div>
+                            )}
+                            {first.name && (
+                              <div className="text-xs text-muted-foreground">
+                                {first.name}
+                              </div>
+                            )}
+                            {pluginSchema && (
+                              <div
+                                className="mt-1.5 [&_dl]:text-xs [&_dl]:gap-y-0.5"
+                                data-testid={`summary-config-${first.id}`}
+                              >
+                                <SchemaView
+                                  schema={pluginSchema}
+                                  value={first.data ?? {}}
+                                  omitKeys={["appliesTo"]}
+                                  hideEmpty
+                                  testIdPrefix={`summary-config-${first.id}`}
+                                />
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1">
+                            {phases.length === 0 ? (
+                              <Badge variant="outline">No phase</Badge>
+                            ) : (
+                              phases.map((p) => (
+                                <Badge
+                                  key={p}
+                                  variant="secondary"
+                                  data-testid={`badge-phase-${first.id}-${p}`}
+                                >
+                                  {phaseLabel(p)}
+                                </Badge>
+                              ))
+                            )}
+                          </div>
+                          <Badge
+                            variant={first.enabled ? "default" : "outline"}
+                            data-testid={`badge-enabled-${first.id}`}
+                          >
+                            {first.enabled ? "Enabled" : "Disabled"}
+                          </Badge>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 -my-1"
+                            onClick={() =>
+                              isGroup
+                                ? setGroupEditRows(group.rows)
+                                : setSingleEditRow(first)
+                            }
+                            data-testid={`button-edit-config-${first.id}`}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 -my-1 text-destructive hover:text-destructive"
+                            onClick={() =>
+                              isGroup
+                                ? setGroupDeleteRows(group.rows)
+                                : setDeleteRow(first)
+                            }
+                            data-testid={`button-delete-config-${first.id}`}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                          {isGroup && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 -my-1"
+                              onClick={() => toggleExpanded(groupKey)}
+                              aria-label={
+                                expanded
+                                  ? "Collapse benefit list"
+                                  : "Expand to edit individual benefits"
+                              }
+                              data-testid={`button-expand-group-${first.id}`}
+                            >
+                              {expanded ? (
+                                <ChevronDown className="h-4 w-4" />
+                              ) : (
+                                <ChevronRight className="h-4 w-4" />
+                              )}
+                            </Button>
                           )}
                         </div>
-                        <Badge
-                          variant={row.enabled ? "default" : "outline"}
-                          data-testid={`badge-enabled-${row.id}`}
-                        >
-                          {row.enabled ? "Enabled" : "Disabled"}
-                        </Badge>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 -my-1"
-                          onClick={() => setSingleEditRow(row)}
-                          data-testid={`button-edit-config-${row.id}`}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 -my-1 text-destructive hover:text-destructive"
-                          onClick={() => setDeleteRow(row)}
-                          data-testid={`button-delete-config-${row.id}`}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        {isGroup && expanded && (
+                          <div className="border-t divide-y bg-muted/30">
+                            {sortedMembers.map((row) => (
+                              <div
+                                key={row.id}
+                                className="flex items-center gap-3 px-3 py-2 pl-10"
+                                data-testid={`row-config-${row.id}`}
+                              >
+                                <Checkbox
+                                  checked={selectedIds.has(row.id)}
+                                  onCheckedChange={(checked) =>
+                                    toggleSelected(row.id, checked === true)
+                                  }
+                                  data-testid={`checkbox-config-${row.id}`}
+                                />
+                                <span
+                                  className="flex-1 text-sm"
+                                  data-testid={`text-config-benefit-${row.id}`}
+                                >
+                                  {benefitName(row.benefit)}
+                                </span>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7"
+                                  title="Edit only this benefit (creates an override)"
+                                  onClick={() => setSingleEditRow(row)}
+                                  data-testid={`button-edit-config-${row.id}`}
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7 text-destructive hover:text-destructive"
+                                  onClick={() => setDeleteRow(row)}
+                                  data-testid={`button-delete-config-${row.id}`}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -488,6 +688,21 @@ function PolicyEligibilityContent() {
         onSaved={() => {
           setEditOpen(false);
           setSelectedIds(new Set());
+          refresh();
+        }}
+      />
+
+      <BulkEditDialog
+        open={groupEditRows !== null}
+        onOpenChange={(open) => {
+          if (!open) setGroupEditRows(null);
+        }}
+        plugin={groupEditPlugin}
+        configIds={(groupEditRows ?? []).map((c) => c.id)}
+        count={groupEditRows?.length ?? 0}
+        benefits={benefits}
+        onSaved={() => {
+          setGroupEditRows(null);
           refresh();
         }}
       />
@@ -576,6 +791,48 @@ function PolicyEligibilityContent() {
                 deleteSelected();
               }}
               data-testid="button-bulk-delete-confirm"
+            >
+              {deleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={groupDeleteRows !== null}
+        onOpenChange={(open) => {
+          if (!open && !deleting) setGroupDeleteRows(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle data-testid="dialog-group-delete-title">
+              Delete {groupDeleteRows?.length ?? 0} configuration
+              {(groupDeleteRows?.length ?? 0) === 1 ? "" : "s"}?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {groupDeleteRows && groupDeleteRows.length > 0
+                ? `${pluginName(groupDeleteRows[0].pluginId)} — ${groupDeleteRows
+                    .map((r) => benefitName(r.benefit))
+                    .join(", ")}. `
+                : ""}
+              This permanently removes every eligibility rule in this group. This
+              cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting} data-testid="button-group-delete-cancel">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deleting}
+              onClick={(e) => {
+                e.preventDefault();
+                if (groupDeleteRows) deleteMany(groupDeleteRows);
+              }}
+              data-testid="button-group-delete-confirm"
             >
               {deleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Delete
