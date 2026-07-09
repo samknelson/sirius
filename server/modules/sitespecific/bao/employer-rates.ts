@@ -40,6 +40,7 @@ export function registerBaoEmployerRatesRoutes(
         const query = listBaoEmployerRatesQuerySchema.parse({
           employerId: req.query.employerId || undefined,
           accountId: req.query.accountId || undefined,
+          sourceId: req.query.sourceId || undefined,
           fromYmd: req.query.fromYmd || undefined,
           toYmd: req.query.toYmd || undefined,
           mode: req.query.mode || undefined,
@@ -67,12 +68,26 @@ export function registerBaoEmployerRatesRoutes(
           return res.status(503).json({ message: TABLE_MISSING_MESSAGE });
         }
         const parsed = bulkUpsertBaoEmployerRatesRequestSchema.parse(req.body);
+        if (parsed.sourceId) {
+          const missing = await storage.baoRateSources.missingEmployerAssociations(
+            parsed.sourceId,
+            parsed.employerIds,
+          );
+          if (missing.length > 0) {
+            return res.status(400).json({
+              message:
+                "The selected source is not associated with all selected employers. Add the employer(s) to the source first.",
+              employerIds: missing,
+            });
+          }
+        }
         const entries: InsertBaoEmployerRate[] = parsed.employerIds.flatMap((employerId) =>
           parsed.rates.map((r) => ({
             employerId,
             accountId: r.accountId,
             rate: String(r.rate),
             effectiveYmd: parsed.effectiveYmd,
+            sourceId: parsed.sourceId ?? null,
           })),
         );
         const results = await ratesStorage.bulkUpsert(entries);
@@ -101,9 +116,26 @@ export function registerBaoEmployerRatesRoutes(
           return res.status(503).json({ message: TABLE_MISSING_MESSAGE });
         }
         const parsed = updateBaoEmployerRateRequestSchema.parse(req.body);
+        if (parsed.sourceId) {
+          const existing = await ratesStorage.get(req.params.id);
+          if (!existing) {
+            return res.status(404).json({ message: "Rate entry not found" });
+          }
+          const missing = await storage.baoRateSources.missingEmployerAssociations(
+            parsed.sourceId,
+            [existing.employerId],
+          );
+          if (missing.length > 0) {
+            return res.status(400).json({
+              message:
+                "The selected source is not associated with this rate's employer. Add the employer to the source first.",
+            });
+          }
+        }
         const record = await ratesStorage.update(req.params.id, {
           ...(parsed.rate !== undefined ? { rate: String(parsed.rate) } : {}),
           ...(parsed.effectiveYmd !== undefined ? { effectiveYmd: parsed.effectiveYmd } : {}),
+          ...(parsed.sourceId !== undefined ? { sourceId: parsed.sourceId } : {}),
         });
         if (!record) {
           return res.status(404).json({ message: "Rate entry not found" });

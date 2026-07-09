@@ -124,6 +124,7 @@ import { type BtuRegionsStorage, createBtuRegionsStorage } from "./sitespecific/
 import { type BtuSchoolAttributesStorage, createBtuSchoolAttributesStorage } from "./sitespecific/btu/school-attributes";
 import { type BaoImmediateEligibilityStorage, createBaoImmediateEligibilityStorage, baoImmediateEligibilityLoggingConfig } from "./sitespecific/bao/immediate-eligibility";
 import { type BaoEmployerRatesStorage, createBaoEmployerRatesStorage, baoEmployerRatesLoggingConfig } from "./sitespecific/bao/employer-rates";
+import { type BaoRateSourcesStorage, createBaoRateSourcesStorage, baoRateSourcesLoggingConfig } from "./sitespecific/bao/rate-sources";
 import { type BaoBeneficiariesStorage, createBaoBeneficiariesStorage, baoBeneficiariesLoggingConfig } from "./sitespecific/bao/beneficiaries";
 import { type WorkerBanStorage, createWorkerBanStorage, workerBanLoggingConfig } from "./worker-bans";
 import { type WorkerDispatchDncStorage, createWorkerDispatchDncStorage, workerDispatchDncLoggingConfig } from "./dispatch/worker-dnc";
@@ -218,6 +219,7 @@ export interface IStorage {
   btuSchoolAttributes: BtuSchoolAttributesStorage;
   baoImmediateEligibility: BaoImmediateEligibilityStorage;
   baoEmployerRates: BaoEmployerRatesStorage;
+  baoRateSources: BaoRateSourcesStorage;
   baoBeneficiaries: BaoBeneficiariesStorage;
   freemanCrewleads: FreemanCrewleadsStorage;
   workerBans: WorkerBanStorage;
@@ -317,6 +319,7 @@ export class DatabaseStorage implements IStorage {
   btuSchoolAttributes: BtuSchoolAttributesStorage;
   baoImmediateEligibility: BaoImmediateEligibilityStorage;
   baoEmployerRates: BaoEmployerRatesStorage;
+  baoRateSources: BaoRateSourcesStorage;
   baoBeneficiaries: BaoBeneficiariesStorage;
   freemanCrewleads: FreemanCrewleadsStorage;
   workerBans: WorkerBanStorage;
@@ -523,6 +526,10 @@ export class DatabaseStorage implements IStorage {
     this.baoEmployerRates = withStorageLogging(
       createBaoEmployerRatesStorage(),
       baoEmployerRatesLoggingConfig,
+    );
+    this.baoRateSources = withStorageLogging(
+      createBaoRateSourcesStorage(),
+      baoRateSourcesLoggingConfig,
     );
     this.baoBeneficiaries = withStorageLogging(
       createBaoBeneficiariesStorage(this.workers),

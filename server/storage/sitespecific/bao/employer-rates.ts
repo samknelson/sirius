@@ -3,16 +3,19 @@ import { and, eq, gte, lte, desc, asc, sql, getTableName } from "drizzle-orm";
 import { tableExists as tableExistsUtil } from "../../utils";
 import {
   sitespecificBaoEmployerRates,
+  sitespecificBaoRateSources,
   type BaoEmployerRate,
+  type BaoEmployerRateWithSource,
   type InsertBaoEmployerRate,
 } from "../../../../shared/schema/sitespecific/bao/schema";
 import type { StorageLoggingConfig } from "../../middleware/logging";
 
-export type { BaoEmployerRate, InsertBaoEmployerRate };
+export type { BaoEmployerRate, BaoEmployerRateWithSource, InsertBaoEmployerRate };
 
 export interface BaoEmployerRateFilters {
   employerId?: string;
   accountId?: string;
+  sourceId?: string;
   fromYmd?: string;
   toYmd?: string;
   /** "active" returns only the currently-effective rate per (employer, account). */
@@ -20,11 +23,14 @@ export interface BaoEmployerRateFilters {
 }
 
 export interface BaoEmployerRatesStorage {
-  list(filters: BaoEmployerRateFilters): Promise<BaoEmployerRate[]>;
+  list(filters: BaoEmployerRateFilters): Promise<BaoEmployerRateWithSource[]>;
   get(id: string): Promise<BaoEmployerRate | undefined>;
   /**
-   * The effective rate for an employer + account as of a date: the row with
-   * the greatest effective_ymd <= asOfYmd, or undefined when none exists.
+   * The effective rate for an employer + account as of a date: the ACTIVE row
+   * with the greatest effective_ymd <= asOfYmd, or undefined when none exists.
+   * A row is inactive when a newer source associated with the same employer
+   * (start date strictly after the row's source's start) has a start date
+   * on/before the row's effective date. Sourceless rows are always active.
    */
   getEffectiveRate(
     employerId: string,
@@ -34,7 +40,7 @@ export interface BaoEmployerRatesStorage {
   bulkUpsert(entries: InsertBaoEmployerRate[]): Promise<BaoEmployerRate[]>;
   update(
     id: string,
-    record: Partial<Pick<InsertBaoEmployerRate, "rate" | "effectiveYmd">>,
+    record: Partial<Pick<InsertBaoEmployerRate, "rate" | "effectiveYmd" | "sourceId">>,
   ): Promise<BaoEmployerRate | undefined>;
   delete(id: string): Promise<boolean>;
   tableExists(): Promise<boolean>;
@@ -42,64 +48,102 @@ export interface BaoEmployerRatesStorage {
 
 const tableName = getTableName(sitespecificBaoEmployerRates);
 
+const rates = sitespecificBaoEmployerRates;
+const sources = sitespecificBaoRateSources;
+
+/**
+ * SQL predicate: the rate row is active. A row with no source is always
+ * active. A sourced row is inactive iff some OTHER source associated with the
+ * same employer starts strictly after this row's source AND on/before the
+ * row's effective date (that newer source governs the period).
+ */
+const isActiveExpr = sql<boolean>`(
+  ${rates.sourceId} IS NULL OR NOT EXISTS (
+    SELECT 1
+    FROM sitespecific_bao_rate_source_employers assoc
+    JOIN sitespecific_bao_rate_sources newer ON newer.id = assoc.source_id
+    WHERE assoc.employer_id = ${rates.employerId}
+      AND newer.id <> ${rates.sourceId}
+      AND newer.start_ymd > (
+        SELECT own.start_ymd FROM sitespecific_bao_rate_sources own
+        WHERE own.id = ${rates.sourceId}
+      )
+      AND newer.start_ymd <= ${rates.effectiveYmd}
+  )
+)`;
+
+const enrichedSelection = {
+  id: rates.id,
+  employerId: rates.employerId,
+  accountId: rates.accountId,
+  rate: rates.rate,
+  effectiveYmd: rates.effectiveYmd,
+  sourceId: rates.sourceId,
+  data: rates.data,
+  sourceName: sources.name,
+  sourceType: sources.type,
+  sourceStartYmd: sources.startYmd,
+  isActive: isActiveExpr,
+};
+
 export function createBaoEmployerRatesStorage(): BaoEmployerRatesStorage {
   return {
     async tableExists(): Promise<boolean> {
       return tableExistsUtil(tableName);
     },
 
-    async list(filters: BaoEmployerRateFilters): Promise<BaoEmployerRate[]> {
+    async list(filters: BaoEmployerRateFilters): Promise<BaoEmployerRateWithSource[]> {
       if (!(await this.tableExists())) {
         throw new Error("COMPONENT_TABLE_NOT_FOUND");
       }
       const client = getClient();
       const conditions = [];
       if (filters.employerId) {
-        conditions.push(eq(sitespecificBaoEmployerRates.employerId, filters.employerId));
+        conditions.push(eq(rates.employerId, filters.employerId));
       }
       if (filters.accountId) {
-        conditions.push(eq(sitespecificBaoEmployerRates.accountId, filters.accountId));
+        conditions.push(eq(rates.accountId, filters.accountId));
+      }
+      if (filters.sourceId) {
+        conditions.push(eq(rates.sourceId, filters.sourceId));
       }
 
       if (filters.mode === "active") {
         // The currently-effective rate per (employer, account): the row with
-        // the greatest effective_ymd that is <= today. Date-range filters do
-        // not apply in active mode; the "active" concept is anchored to today.
-        conditions.push(
-          lte(sitespecificBaoEmployerRates.effectiveYmd, sql`CURRENT_DATE`),
-        );
+        // the greatest effective_ymd that is <= today among ACTIVE rows.
+        // Date-range filters do not apply in active mode.
+        conditions.push(lte(rates.effectiveYmd, sql`CURRENT_DATE`));
+        conditions.push(sql`${isActiveExpr} = true`);
         const rows = await client
-          .selectDistinctOn(
-            [
-              sitespecificBaoEmployerRates.employerId,
-              sitespecificBaoEmployerRates.accountId,
-            ],
-          )
-          .from(sitespecificBaoEmployerRates)
+          .selectDistinctOn([rates.employerId, rates.accountId], enrichedSelection)
+          .from(rates)
+          .leftJoin(sources, eq(sources.id, rates.sourceId))
           .where(conditions.length > 0 ? and(...conditions) : undefined)
           .orderBy(
-            asc(sitespecificBaoEmployerRates.employerId),
-            asc(sitespecificBaoEmployerRates.accountId),
-            desc(sitespecificBaoEmployerRates.effectiveYmd),
+            asc(rates.employerId),
+            asc(rates.accountId),
+            desc(rates.effectiveYmd),
           );
-        return rows;
+        return rows as BaoEmployerRateWithSource[];
       }
 
       if (filters.fromYmd) {
-        conditions.push(gte(sitespecificBaoEmployerRates.effectiveYmd, filters.fromYmd));
+        conditions.push(gte(rates.effectiveYmd, filters.fromYmd));
       }
       if (filters.toYmd) {
-        conditions.push(lte(sitespecificBaoEmployerRates.effectiveYmd, filters.toYmd));
+        conditions.push(lte(rates.effectiveYmd, filters.toYmd));
       }
-      return client
-        .select()
-        .from(sitespecificBaoEmployerRates)
+      const rows = await client
+        .select(enrichedSelection)
+        .from(rates)
+        .leftJoin(sources, eq(sources.id, rates.sourceId))
         .where(conditions.length > 0 ? and(...conditions) : undefined)
         .orderBy(
-          asc(sitespecificBaoEmployerRates.employerId),
-          asc(sitespecificBaoEmployerRates.accountId),
-          desc(sitespecificBaoEmployerRates.effectiveYmd),
+          asc(rates.employerId),
+          asc(rates.accountId),
+          desc(rates.effectiveYmd),
         );
+      return rows as BaoEmployerRateWithSource[];
     },
 
     async get(id: string): Promise<BaoEmployerRate | undefined> {
@@ -109,8 +153,8 @@ export function createBaoEmployerRatesStorage(): BaoEmployerRatesStorage {
       const client = getClient();
       const results = await client
         .select()
-        .from(sitespecificBaoEmployerRates)
-        .where(eq(sitespecificBaoEmployerRates.id, id));
+        .from(rates)
+        .where(eq(rates.id, id));
       return results[0];
     },
 
@@ -125,15 +169,16 @@ export function createBaoEmployerRatesStorage(): BaoEmployerRatesStorage {
       const client = getClient();
       const results = await client
         .select()
-        .from(sitespecificBaoEmployerRates)
+        .from(rates)
         .where(
           and(
-            eq(sitespecificBaoEmployerRates.employerId, employerId),
-            eq(sitespecificBaoEmployerRates.accountId, accountId),
-            lte(sitespecificBaoEmployerRates.effectiveYmd, asOfYmd),
+            eq(rates.employerId, employerId),
+            eq(rates.accountId, accountId),
+            lte(rates.effectiveYmd, asOfYmd),
+            sql`${isActiveExpr} = true`,
           ),
         )
-        .orderBy(desc(sitespecificBaoEmployerRates.effectiveYmd))
+        .orderBy(desc(rates.effectiveYmd))
         .limit(1);
       return results[0];
     },
@@ -145,16 +190,13 @@ export function createBaoEmployerRatesStorage(): BaoEmployerRatesStorage {
       if (entries.length === 0) return [];
       const client = getClient();
       const results = await client
-        .insert(sitespecificBaoEmployerRates)
+        .insert(rates)
         .values(entries)
         .onConflictDoUpdate({
-          target: [
-            sitespecificBaoEmployerRates.employerId,
-            sitespecificBaoEmployerRates.accountId,
-            sitespecificBaoEmployerRates.effectiveYmd,
-          ],
+          target: [rates.employerId, rates.accountId, rates.effectiveYmd],
           set: {
             rate: sql`excluded.rate`,
+            sourceId: sql`excluded.source_id`,
           },
         })
         .returning();
@@ -163,16 +205,16 @@ export function createBaoEmployerRatesStorage(): BaoEmployerRatesStorage {
 
     async update(
       id: string,
-      record: Partial<Pick<InsertBaoEmployerRate, "rate" | "effectiveYmd">>,
+      record: Partial<Pick<InsertBaoEmployerRate, "rate" | "effectiveYmd" | "sourceId">>,
     ): Promise<BaoEmployerRate | undefined> {
       if (!(await this.tableExists())) {
         throw new Error("COMPONENT_TABLE_NOT_FOUND");
       }
       const client = getClient();
       const results = await client
-        .update(sitespecificBaoEmployerRates)
+        .update(rates)
         .set(record)
-        .where(eq(sitespecificBaoEmployerRates.id, id))
+        .where(eq(rates.id, id))
         .returning();
       return results[0];
     },
@@ -183,9 +225,9 @@ export function createBaoEmployerRatesStorage(): BaoEmployerRatesStorage {
       }
       const client = getClient();
       const results = await client
-        .delete(sitespecificBaoEmployerRates)
-        .where(eq(sitespecificBaoEmployerRates.id, id))
-        .returning({ id: sitespecificBaoEmployerRates.id });
+        .delete(rates)
+        .where(eq(rates.id, id))
+        .returning({ id: rates.id });
       return results.length > 0;
     },
   };

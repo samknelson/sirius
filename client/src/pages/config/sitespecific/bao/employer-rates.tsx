@@ -35,10 +35,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
 import { Loader2, Plus, Pencil, Trash2, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import type { BaoEmployerRate } from "@shared/schema/sitespecific/bao/schema";
+import type {
+  BaoEmployerRateWithSource,
+  BaoRateSourceWithDetails,
+} from "@shared/schema/sitespecific/bao/schema";
 
 interface Employer {
   id: string;
@@ -52,6 +56,7 @@ interface LedgerAccount {
 }
 
 const ALL = "__all__";
+const NO_SOURCE = "__none__";
 
 function formatYmd(value: string | null | undefined): string {
   if (!value) return "—";
@@ -78,6 +83,7 @@ export default function BaoEmployerRatesPage() {
   const [mode, setMode] = useState<"active" | "history">("active");
   const [filterEmployerId, setFilterEmployerId] = useState<string>(ALL);
   const [filterAccountId, setFilterAccountId] = useState<string>(ALL);
+  const [filterSourceId, setFilterSourceId] = useState<string>(ALL);
   const [fromYmd, setFromYmd] = useState("");
   const [toYmd, setToYmd] = useState("");
 
@@ -86,21 +92,26 @@ export default function BaoEmployerRatesPage() {
   const [bulkEmployerIds, setBulkEmployerIds] = useState<Set<string>>(new Set());
   const [bulkEmployerSearch, setBulkEmployerSearch] = useState("");
   const [bulkEffectiveYmd, setBulkEffectiveYmd] = useState("");
+  const [bulkSourceId, setBulkSourceId] = useState<string>(NO_SOURCE);
   const [bulkRates, setBulkRates] = useState<{ accountId: string; rate: string }[]>([
     { accountId: "", rate: "" },
   ]);
 
   // Single-entry edit / delete
-  const [editing, setEditing] = useState<BaoEmployerRate | null>(null);
+  const [editing, setEditing] = useState<BaoEmployerRateWithSource | null>(null);
   const [editRate, setEditRate] = useState("");
   const [editYmd, setEditYmd] = useState("");
-  const [deleting, setDeleting] = useState<BaoEmployerRate | null>(null);
+  const [editSourceId, setEditSourceId] = useState<string>(NO_SOURCE);
+  const [deleting, setDeleting] = useState<BaoEmployerRateWithSource | null>(null);
 
   const { data: employers = [] } = useQuery<Employer[]>({
     queryKey: ["/api/employers"],
   });
   const { data: accounts = [] } = useQuery<LedgerAccount[]>({
     queryKey: ["/api/ledger/accounts"],
+  });
+  const { data: sources = [] } = useQuery<BaoRateSourceWithDetails[]>({
+    queryKey: ["/api/sitespecific/bao/rate-sources"],
   });
 
   const employerById = useMemo(
@@ -116,6 +127,7 @@ export default function BaoEmployerRatesPage() {
   listParams.set("mode", mode);
   if (filterEmployerId !== ALL) listParams.set("employerId", filterEmployerId);
   if (filterAccountId !== ALL) listParams.set("accountId", filterAccountId);
+  if (filterSourceId !== ALL) listParams.set("sourceId", filterSourceId);
   if (mode === "history" && fromYmd) listParams.set("fromYmd", fromYmd);
   if (mode === "history" && toYmd) listParams.set("toYmd", toYmd);
 
@@ -125,7 +137,7 @@ export default function BaoEmployerRatesPage() {
     data: rates = [],
     isLoading,
     error,
-  } = useQuery<BaoEmployerRate[]>({
+  } = useQuery<BaoEmployerRateWithSource[]>({
     queryKey: ratesKey,
     queryFn: async () => {
       const res = await fetch(`/api/sitespecific/bao/employer-rates?${listParams.toString()}`);
@@ -145,6 +157,7 @@ export default function BaoEmployerRatesPage() {
       return apiRequest("POST", "/api/sitespecific/bao/employer-rates/bulk", {
         employerIds: Array.from(bulkEmployerIds),
         effectiveYmd: bulkEffectiveYmd,
+        sourceId: bulkSourceId === NO_SOURCE ? null : bulkSourceId,
         rates: bulkRates
           .filter((r) => r.accountId)
           .map((r) => ({ accountId: r.accountId, rate: Number(r.rate) })),
@@ -156,6 +169,7 @@ export default function BaoEmployerRatesPage() {
       setBulkOpen(false);
       setBulkEmployerIds(new Set());
       setBulkEffectiveYmd("");
+      setBulkSourceId(NO_SOURCE);
       setBulkRates([{ accountId: "", rate: "" }]);
     },
     onError: (err: Error) => {
@@ -169,6 +183,7 @@ export default function BaoEmployerRatesPage() {
       return apiRequest("PATCH", `/api/sitespecific/bao/employer-rates/${editing.id}`, {
         rate: Number(editRate),
         effectiveYmd: editYmd,
+        sourceId: editSourceId === NO_SOURCE ? null : editSourceId,
       });
     },
     onSuccess: async () => {
@@ -242,7 +257,7 @@ export default function BaoEmployerRatesPage() {
           <CardTitle>Filters</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
             <div>
               <Label className="text-sm">View</Label>
               <Select value={mode} onValueChange={(v) => setMode(v as "active" | "history")}>
@@ -282,6 +297,22 @@ export default function BaoEmployerRatesPage() {
                   {accounts.map((a) => (
                     <SelectItem key={a.id} value={a.id}>
                       {a.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-sm">Source</Label>
+              <Select value={filterSourceId} onValueChange={setFilterSourceId}>
+                <SelectTrigger data-testid="select-filter-source">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL}>All sources</SelectItem>
+                  {sources.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -345,6 +376,8 @@ export default function BaoEmployerRatesPage() {
                   <TableHead>Fund (Account)</TableHead>
                   <TableHead className="text-right">Rate</TableHead>
                   <TableHead>Effective Date</TableHead>
+                  <TableHead>Source</TableHead>
+                  <TableHead>Status</TableHead>
                   <TableHead className="w-24"></TableHead>
                 </TableRow>
               </TableHeader>
@@ -363,6 +396,16 @@ export default function BaoEmployerRatesPage() {
                     <TableCell data-testid={`text-rate-effective-${r.id}`}>
                       {formatYmd(r.effectiveYmd)}
                     </TableCell>
+                    <TableCell data-testid={`text-rate-source-${r.id}`}>
+                      {r.sourceName ?? <span className="text-muted-foreground">—</span>}
+                    </TableCell>
+                    <TableCell data-testid={`status-rate-${r.id}`}>
+                      {r.isActive ? (
+                        <Badge>Active</Badge>
+                      ) : (
+                        <Badge variant="secondary">Inactive</Badge>
+                      )}
+                    </TableCell>
                     <TableCell>
                       <div className="flex gap-1 justify-end">
                         <Button
@@ -372,6 +415,7 @@ export default function BaoEmployerRatesPage() {
                             setEditing(r);
                             setEditRate(r.rate);
                             setEditYmd(r.effectiveYmd?.slice(0, 10) ?? "");
+                            setEditSourceId(r.sourceId ?? NO_SOURCE);
                           }}
                           data-testid={`button-edit-rate-${r.id}`}
                         >
@@ -446,6 +490,23 @@ export default function BaoEmployerRatesPage() {
                 className="mt-1 max-w-xs"
                 data-testid="input-bulk-effective"
               />
+            </div>
+
+            <div>
+              <Label className="text-sm font-medium">Source (optional)</Label>
+              <Select value={bulkSourceId} onValueChange={setBulkSourceId}>
+                <SelectTrigger className="mt-1 max-w-xs" data-testid="select-bulk-source">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_SOURCE}>No source</SelectItem>
+                  {sources.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <div>
@@ -560,6 +621,22 @@ export default function BaoEmployerRatesPage() {
                 onChange={(e) => setEditYmd(e.target.value)}
                 data-testid="input-edit-effective"
               />
+            </div>
+            <div>
+              <Label>Source</Label>
+              <Select value={editSourceId} onValueChange={setEditSourceId}>
+                <SelectTrigger data-testid="select-edit-source">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_SOURCE}>No source</SelectItem>
+                  {sources.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <DialogFooter>

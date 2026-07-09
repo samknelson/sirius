@@ -1,4 +1,4 @@
-import { pgTable, varchar, jsonb, date, numeric, unique } from "drizzle-orm/pg-core";
+import { pgTable, varchar, jsonb, date, numeric, text, unique } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -33,6 +33,53 @@ export type InsertBaoEmployerImmediateEligibility = z.infer<
 >;
 
 // ---------------------------------------------------------------------------
+// Benefit rate sources (contracts / rate letters) and their employer
+// associations. A source documents where an employer's rates come from; the
+// per-employer rate rows below reference their source. Active/inactive status
+// for sources and rate entries is CALCULATED from source precedence per
+// employer — it is never stored or manually toggled, so full history is
+// preserved for recalculation.
+// ---------------------------------------------------------------------------
+
+export const BAO_RATE_SOURCE_TYPES = ["contract", "rate_letter"] as const;
+export type BaoRateSourceType = (typeof BAO_RATE_SOURCE_TYPES)[number];
+
+export const sitespecificBaoRateSources = pgTable(
+  "sitespecific_bao_rate_sources",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    name: text("name").notNull(),
+    type: varchar("type").notNull().$type<BaoRateSourceType>(),
+    startYmd: date("start_ymd").notNull(),
+    data: jsonb("data"),
+  },
+);
+
+export const sitespecificBaoRateSourceEmployers = pgTable(
+  "sitespecific_bao_rate_source_employers",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    sourceId: varchar("source_id")
+      .notNull()
+      .references(() => sitespecificBaoRateSources.id, { onDelete: "cascade" }),
+    employerId: varchar("employer_id")
+      .notNull()
+      .references(() => employers.id, { onDelete: "cascade" }),
+  },
+  (table) => [
+    unique("sitespecific_bao_rate_source_employers_source_employer_uq").on(
+      table.sourceId,
+      table.employerId,
+    ),
+  ],
+);
+
+export type BaoRateSource = typeof sitespecificBaoRateSources.$inferSelect;
+export type InsertBaoRateSource = typeof sitespecificBaoRateSources.$inferInsert;
+export type BaoRateSourceEmployer =
+  typeof sitespecificBaoRateSourceEmployers.$inferSelect;
+
+// ---------------------------------------------------------------------------
 // Employer hourly rates (per employer, per fund account, effective-dated).
 // This is the rate source the BAO Hourly charge plugin bills from.
 // ---------------------------------------------------------------------------
@@ -49,6 +96,10 @@ export const sitespecificBaoEmployerRates = pgTable(
       .references(() => ledgerAccounts.id, { onDelete: "cascade" }),
     rate: numeric("rate", { precision: 10, scale: 4 }).notNull(),
     effectiveYmd: date("effective_ymd").notNull(),
+    sourceId: varchar("source_id").references(
+      () => sitespecificBaoRateSources.id,
+      { onDelete: "set null" },
+    ),
     data: jsonb("data"),
   },
   (table) => [
@@ -99,6 +150,7 @@ export const bulkUpsertBaoEmployerRatesRequestSchema = z
   .object({
     employerIds: z.array(z.string().min(1)).min(1, "Select at least one employer"),
     effectiveYmd: ymdString,
+    sourceId: z.string().min(1).nullable().optional(),
     rates: z
       .array(
         z.object({
@@ -127,11 +179,18 @@ export const updateBaoEmployerRateRequestSchema = z
   .object({
     rate: rateNumber.optional(),
     effectiveYmd: ymdString.optional(),
+    sourceId: z.string().min(1).nullable().optional(),
   })
   .strict()
-  .refine((val) => val.rate !== undefined || val.effectiveYmd !== undefined, {
-    message: "Provide at least one of rate or effectiveYmd",
-  });
+  .refine(
+    (val) =>
+      val.rate !== undefined ||
+      val.effectiveYmd !== undefined ||
+      val.sourceId !== undefined,
+    {
+      message: "Provide at least one of rate, effectiveYmd, or sourceId",
+    },
+  );
 
 export type BulkUpsertBaoEmployerRatesRequest = z.infer<
   typeof bulkUpsertBaoEmployerRatesRequestSchema
@@ -144,6 +203,7 @@ export type UpdateBaoEmployerRateRequest = z.infer<
 export const listBaoEmployerRatesQuerySchema = z.object({
   employerId: z.string().min(1).optional(),
   accountId: z.string().min(1).optional(),
+  sourceId: z.string().min(1).optional(),
   fromYmd: ymdString.optional(),
   toYmd: ymdString.optional(),
   /** "active" returns only the currently-effective rate per (employer, account). */
@@ -153,6 +213,67 @@ export const listBaoEmployerRatesQuerySchema = z.object({
 export type ListBaoEmployerRatesQuery = z.infer<
   typeof listBaoEmployerRatesQuerySchema
 >;
+
+/**
+ * A rate row enriched with its source and calculated status. A rate entry is
+ * inactive iff some OTHER source associated with the same employer has a
+ * later start date than the entry's own source AND that newer source's start
+ * date is on/before the entry's effective date (the newer source governs that
+ * period). Sourceless (legacy) rows are always active.
+ */
+export type BaoEmployerRateWithSource = BaoEmployerRate & {
+  sourceName: string | null;
+  sourceType: BaoRateSourceType | null;
+  sourceStartYmd: string | null;
+  isActive: boolean;
+};
+
+// ---------------------------------------------------------------------------
+// Benefit rate source request schemas
+// ---------------------------------------------------------------------------
+
+export const createBaoRateSourceRequestSchema = z
+  .object({
+    name: z.string().trim().min(1, "Name is required"),
+    type: z.enum(BAO_RATE_SOURCE_TYPES),
+    startYmd: ymdString,
+    employerIds: z
+      .array(z.string().min(1))
+      .min(1, "Associate at least one employer"),
+  })
+  .strict();
+
+export const updateBaoRateSourceRequestSchema = z
+  .object({
+    name: z.string().trim().min(1, "Name is required").optional(),
+    type: z.enum(BAO_RATE_SOURCE_TYPES).optional(),
+    startYmd: ymdString.optional(),
+    employerIds: z.array(z.string().min(1)).min(1).optional(),
+  })
+  .strict()
+  .refine((val) => Object.keys(val).length > 0, {
+    message: "Provide at least one field to update",
+  });
+
+export type CreateBaoRateSourceRequest = z.infer<
+  typeof createBaoRateSourceRequestSchema
+>;
+export type UpdateBaoRateSourceRequest = z.infer<
+  typeof updateBaoRateSourceRequestSchema
+>;
+
+/**
+ * A source enriched with its employer associations and calculated status.
+ * A source is "active" when, for at least one of its employers, no other
+ * associated source has a later start date that is on/before today.
+ * `activeForEmployerIds` lists the employers it is currently active for.
+ */
+export type BaoRateSourceWithDetails = BaoRateSource & {
+  employers: { id: string; name: string }[];
+  activeForEmployerIds: string[];
+  isActive: boolean;
+  attachmentCount: number;
+};
 
 function toYmdString(value: string | Date): string {
   if (value instanceof Date) {
