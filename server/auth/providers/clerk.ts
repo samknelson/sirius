@@ -181,6 +181,21 @@ export function createProvider(config: ClerkProviderConfig): AuthProvider {
       );
 
       app.use(async (req, _res, next) => {
+        // Only resolve/mutate the session for API requests. This middleware
+        // calls req.login()/req.logout(), which issue an async Set-Cookie via
+        // express-session. On document/static responses (the SPA shell served
+        // by res.sendFile) that Set-Cookie races send()'s async fs.stat and
+        // throws ERR_HTTP_HEADERS_SENT from inside send's own stream, which
+        // Express surfaces to the user as a white "Internal Server Error" page
+        // on the login screen. The HTML shell needs no server-side session:
+        // Clerk's browser SDK handles auth and every protected read flows
+        // through /api/*, where the session is resolved on JSON responses that
+        // don't race sendFile. Skipping non-/api requests removes the race at
+        // its source rather than merely containing it downstream.
+        if (!req.path.startsWith("/api")) {
+          return next();
+        }
+
         if (req.isAuthenticated?.() && req.user) {
           const existingUser = req.user as AuthenticatedUser;
           if (!existingUser.expires_at || Math.floor(Date.now() / 1000) <= existingUser.expires_at) {

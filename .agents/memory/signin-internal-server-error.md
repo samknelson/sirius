@@ -25,12 +25,31 @@ expiration" + "Add error handling ... database connection drops"):
 - `server/storage/db.ts`: `pool.on("error", ...)` so a terminated idle Neon
   connection doesn't crash the process.
 
+**Root-cause fix (the real one):** the custom Clerk auth-resolution middleware
+(the `app.use` right after `clerkMiddleware` in `server/auth/providers/clerk.ts`)
+was mounted globally and called `req.login()`/`req.logout()` — express-session
+`Set-Cookie` — on *every* request, including document navigations (`GET /login`)
+and the SPA shell. That async `Set-Cookie` is what races `res.sendFile`. Fix: at
+the top of that middleware, `if (!req.path.startsWith("/api")) return next();`.
+The HTML shell needs no server-side session (Clerk's browser SDK handles auth and
+every protected read goes through `/api/*`, which reply with `res.json()` — no
+`sendFile`, no race). This removes the racing cookie at its source instead of only
+containing the throw in `serveStatic`. Keep the `serveStatic` guard/callback too
+as defense-in-depth (it still cleanly handles benign `ECONNABORTED` client aborts).
+
 **Resolution:**
 1. *Immediate, user-side:* have the affected user clear cookies/site data for the
    app domain (or use incognito / full sign-out) to drop the stale Clerk cookie.
 2. *Durable, deploy-side:* these are code fixes — production only gets them after a
    **re-Publish**. If prod still shows the error, prod is likely running code from
    before these commits.
+
+**Log signatures to tell the two states apart:** the *unfixed* race is
+`Error: Can't set headers after they are sent` with a stack purely in
+`node_modules/send/index.js` (no app frames). The *contained-but-not-eliminated*
+state logs `[static] index.html send failed: ... headersSent=... code=...` from
+the serveStatic callback; `code=ECONNABORTED headersSent=false` there is a benign
+client abort, not the header race.
 
 **Why this matters:** like DB constraint changes, server-side fixes do nothing for
 production until re-published; "I applied the patch" usually means committed-but-not-deployed.
