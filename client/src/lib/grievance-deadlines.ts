@@ -48,6 +48,15 @@ export function daysUntilYmd(ymd: string): number {
   return Math.round((due.getTime() - today.getTime()) / 86_400_000);
 }
 
+/** Whole calendar days from `fromYmd` to `toYmd`; positive when `toYmd` is later. */
+export function daysBetweenYmd(fromYmd: string, toYmd: string): number {
+  const from = ymdToDateForPicker(fromYmd);
+  const to = ymdToDateForPicker(toYmd);
+  from.setHours(0, 0, 0, 0);
+  to.setHours(0, 0, 0, 0);
+  return Math.round((to.getTime() - from.getTime()) / 86_400_000);
+}
+
 /** Tailwind text-color classes for a deadline based on how close it is. */
 export function deadlineColorClass(ymd: string, thresholds: DeadlineThresholds): string {
   const days = daysUntilYmd(ymd);

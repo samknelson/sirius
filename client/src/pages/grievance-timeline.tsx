@@ -29,6 +29,8 @@ import {
   type DeadlineThresholds,
   useDeadlineThresholds,
   deadlineColorClass,
+  daysUntilYmd,
+  daysBetweenYmd,
   formatYmd,
 } from "@/lib/grievance-deadlines";
 
@@ -168,12 +170,39 @@ function buildRows(
   return rows;
 }
 
-function rowStatus(row: TimelineRow): { label: string; variant: "default" | "secondary" | "outline" } {
-  if (row.pending) return { label: "Not yet started", variant: "outline" };
-  if (row.completedYmd) return { label: "Completed", variant: "secondary" };
-  if (row.isCurrent) return { label: "Current", variant: "default" };
-  if (row.startedYmd) return { label: "In progress", variant: "secondary" };
-  return { label: "Not yet started", variant: "outline" };
+const RESULT_BADGE_CLASS = {
+  ok: "border-transparent bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300",
+  red: "border-transparent bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300",
+  pending:
+    "border-transparent bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300",
+} as const;
+
+function daysLabel(days: number): string {
+  return `${days} ${days === 1 ? "day" : "days"}`;
+}
+
+/**
+ * The step's outcome for the "Result" column:
+ *  - Ok      (green)  — completed on or before its deadline.
+ *  - Late    (red)    — completed after its deadline; how many calendar days late.
+ *  - Overdue (red)    — not completed and today is past its deadline; how many days over.
+ *  - Pending (yellow) — not completed and not past its deadline (incl. not-yet-started).
+ */
+function rowResult(row: TimelineRow): { label: string; className: string } {
+  if (row.completedYmd) {
+    const late = row.dueYmd ? daysBetweenYmd(row.dueYmd, row.completedYmd) : 0;
+    if (late > 0) {
+      return { label: `Late (${daysLabel(late)})`, className: RESULT_BADGE_CLASS.red };
+    }
+    return { label: "Ok", className: RESULT_BADGE_CLASS.ok };
+  }
+  if (row.dueYmd) {
+    const untilDue = daysUntilYmd(row.dueYmd);
+    if (untilDue < 0) {
+      return { label: `Overdue (${daysLabel(-untilDue)})`, className: RESULT_BADGE_CLASS.red };
+    }
+  }
+  return { label: "Pending", className: RESULT_BADGE_CLASS.pending };
 }
 
 function DeadlineCell({ row, thresholds }: { row: TimelineRow; thresholds: DeadlineThresholds }) {
@@ -251,27 +280,27 @@ function TimelineTable({
     <Table data-testid="table-timeline-steps">
       <TableHeader>
         <TableRow>
-          <TableHead>Step</TableHead>
           <TableHead>Actor</TableHead>
+          <TableHead>Step</TableHead>
           <TableHead>Started</TableHead>
           <TableHead>Deadline</TableHead>
           <TableHead>Completed</TableHead>
-          <TableHead>Status</TableHead>
+          <TableHead>Result</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {rows.map((row) => {
-          const status = rowStatus(row);
+          const result = rowResult(row);
           return (
             <TableRow
               key={row.key}
               className={row.pending ? "text-muted-foreground" : undefined}
               data-testid={`row-timeline-step-${row.key}`}
             >
+              <TableCell>{row.stepActor ?? "—"}</TableCell>
               <TableCell className="font-medium" data-testid={`text-step-name-${row.key}`}>
                 {row.stepName ?? "Unknown step"}
               </TableCell>
-              <TableCell>{row.stepActor ?? "—"}</TableCell>
               <TableCell>
                 <div>{formatYmd(row.startedYmd)}</div>
                 {row.startStatusId && (
@@ -298,8 +327,8 @@ function TimelineTable({
                 )}
               </TableCell>
               <TableCell>
-                <Badge variant={status.variant} data-testid={`badge-step-status-${row.key}`}>
-                  {status.label}
+                <Badge className={result.className} data-testid={`badge-step-result-${row.key}`}>
+                  {result.label}
                 </Badge>
               </TableCell>
             </TableRow>
