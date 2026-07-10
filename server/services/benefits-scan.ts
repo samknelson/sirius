@@ -479,7 +479,36 @@ async function resolveWorkerPolicy(
   year: number
 ): Promise<{ policy: Policy | null; policySource: string; employer: any | null }> {
   let employer = null;
-  
+
+  // 1) The worker's own benefit election is the most specific, authoritative
+  // source of their policy for the scan month. An election records the exact
+  // policy (and employer) the worker enrolled under, so it wins over the
+  // employer's policy history / current policy / the system default.
+  // Use the last day of the scan month as the "as of" date (matching the
+  // dependent-coverage resolution in this file) so an election that becomes
+  // active at any point during the scan month is picked up.
+  const monthEnd = new Date(year, month, 0);
+  const electionAsOfYmd = `${monthEnd.getFullYear()}-${String(monthEnd.getMonth() + 1).padStart(2, "0")}-${String(monthEnd.getDate()).padStart(2, "0")}`;
+  const election = await storage.workerTrustElections.getActiveByWorkerAsOf(
+    worker.id,
+    electionAsOfYmd,
+  );
+  if (election?.policyId) {
+    const policy = await storage.policies.getPolicyById(election.policyId);
+    if (policy) {
+      const electionEmployer = election.employerId
+        ? await storage.employers.getEmployer(election.employerId)
+        : null;
+      return {
+        policy,
+        policySource: electionEmployer
+          ? `Worker election (${electionEmployer.name || electionEmployer.siriusId})`
+          : "Worker election",
+        employer: electionEmployer,
+      };
+    }
+  }
+
   if (worker.denormHomeEmployerId) {
     employer = await storage.employers.getEmployer(worker.denormHomeEmployerId);
     
