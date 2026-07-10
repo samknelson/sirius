@@ -1,4 +1,4 @@
-import { pgTable, varchar, jsonb, date, numeric, text, unique } from "drizzle-orm/pg-core";
+import { pgTable, varchar, jsonb, date, numeric, text, timestamp, unique } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -31,6 +31,61 @@ export type BaoEmployerImmediateEligibility =
 export type InsertBaoEmployerImmediateEligibility = z.infer<
   typeof insertBaoEmployerImmediateEligibilitySchema
 >;
+
+// ---------------------------------------------------------------------------
+// Distance cache — a persistent cache of measured worker↔site geographic
+// distances so repeated Google Routes API lookups are served from the DB.
+// It caches the MEASUREMENT (a distance in miles + how it was derived), not
+// any eligibility verdict, keyed on the rounded origin/destination coords.
+//
+// Rows measured by real driving distance are durable cache hits. Rows that
+// fell back to the straight-line (haversine) approximation are considered
+// NON-AUTHORITATIVE: they are re-attempted on normal eligibility scans and
+// via the admin "Rescan straight-line rows" action, in the hope that a later
+// Google Routes lookup succeeds and upgrades the row to a driving distance.
+//
+// Shared by every BAO plugin that needs worker↔site distances (BAO Start
+// Healthnet today, BAO Start Delta in the future).
+// ---------------------------------------------------------------------------
+
+export const BAO_DISTANCE_METHODS = ["driving", "straight-line"] as const;
+export type BaoDistanceMethod = (typeof BAO_DISTANCE_METHODS)[number];
+
+/**
+ * Coordinates are rounded to this many decimal places before they are used to
+ * key a cache row. ~5 decimals is roughly 1.1 m of precision — far finer than
+ * driving distance cares about — and rounding avoids float jitter producing
+ * near-duplicate rows for effectively the same pair.
+ */
+export const BAO_DISTANCE_CACHE_COORD_PRECISION = 5;
+
+export const sitespecificBaoDistanceCache = pgTable(
+  "sitespecific_bao_distance_cache",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    originLat: numeric("origin_lat", { precision: 9, scale: 5 }).notNull(),
+    originLng: numeric("origin_lng", { precision: 9, scale: 5 }).notNull(),
+    destLat: numeric("dest_lat", { precision: 9, scale: 5 }).notNull(),
+    destLng: numeric("dest_lng", { precision: 9, scale: 5 }).notNull(),
+    distanceMiles: numeric("distance_miles", { precision: 10, scale: 4 }).notNull(),
+    method: varchar("method").notNull().$type<BaoDistanceMethod>(),
+    computedAt: timestamp("computed_at", { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => [
+    unique("sitespecific_bao_distance_cache_coords_uq").on(
+      table.originLat,
+      table.originLng,
+      table.destLat,
+      table.destLng,
+    ),
+  ],
+);
+
+export type BaoDistanceCacheRow = typeof sitespecificBaoDistanceCache.$inferSelect;
+export type InsertBaoDistanceCacheRow =
+  typeof sitespecificBaoDistanceCache.$inferInsert;
 
 // ---------------------------------------------------------------------------
 // Benefit rate sources (contracts / rate letters) and their employer

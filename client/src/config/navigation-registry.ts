@@ -92,6 +92,7 @@ export const configSections: NavSection[] = [
       { path: "/config/employers/user-settings", label: "Employer User Settings", icon: Settings, testId: "nav-config-users-employer-settings", permission: "admin" },
       { path: "/config/sitespecific/bao/employer-rates", label: "BAO Employer Rates", icon: List, testId: "nav-config-bao-employer-rates", permission: "admin", requiresComponent: "sitespecific.bao" },
       { path: "/config/sitespecific/bao/rate-sources", label: "BAO Rate Sources", icon: List, testId: "nav-config-bao-rate-sources", permission: "admin", requiresComponent: "sitespecific.bao" },
+      { path: "/config/sitespecific/bao/distance-cache", label: "BAO Distance Cache", icon: List, testId: "nav-config-bao-distance-cache", permission: "admin", requiresComponent: "sitespecific.bao" },
     ],
   },
   {

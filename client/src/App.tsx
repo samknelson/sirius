@@ -242,6 +242,7 @@ const BaoMemberStatusThresholdsPage = lazy(() => import("@/pages/config/trust/si
 const BaoEmployerRatesPage = lazy(() => import("@/pages/config/sitespecific/bao/employer-rates"));
 const BaoRateSourcesPage = lazy(() => import("@/pages/config/sitespecific/bao/rate-sources"));
 const BaoRateSourceRatesPage = lazy(() => import("@/pages/config/sitespecific/bao/rate-source-rates"));
+const BaoDistanceCachePage = lazy(() => import("@/pages/config/sitespecific/bao/distance-cache"));
 const WsBundlesPage = lazy(() => import("@/pages/config/ws/bundles"));
 const WsClientsPage = lazy(() => import("@/pages/config/ws/clients"));
 const WsClientSettingsPage = lazy(() => import("@/pages/config/ws/client-settings"));
@@ -2571,6 +2572,16 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <BaoRateSourceRatesPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/sitespecific/bao/distance-cache">
+        <ProtectedRoute permission="admin" component="sitespecific.bao">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <BaoDistanceCachePage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>

@@ -44,6 +44,7 @@ import "./core/1037_create_denorm";
 import "./core/1038_worker_msh_denorm";
 import "./core/1039_worker_wsh_denorm";
 import "./core/1040_worker_employment_denorm";
+import "./core/1041_add_trust_benefit_color";
 
 // Per-component migrations — each registered via
 // `registerComponentMigration(componentId, migration)`. Tracked by the
@@ -56,6 +57,7 @@ import "./components/trust.benefits.eligibility.exemptions/002_require_benefit_a
 import "./components/sitespecific.bao/001_create_immediate_eligibility";
 import "./components/sitespecific.bao/002_create_employer_rates";
 import "./components/sitespecific.bao/003_create_rate_sources";
+import "./components/sitespecific.bao/004_create_distance_cache";
 import "./components/sitespecific.freeman/001_create_crewleads";
 import "./components/grievance/001_create_options_grievance_status";
 import "./components/grievance/002_create_options_grievance_category";

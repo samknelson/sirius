@@ -125,6 +125,7 @@ import { type BtuSchoolAttributesStorage, createBtuSchoolAttributesStorage } fro
 import { type BaoImmediateEligibilityStorage, createBaoImmediateEligibilityStorage, baoImmediateEligibilityLoggingConfig } from "./sitespecific/bao/immediate-eligibility";
 import { type BaoEmployerRatesStorage, createBaoEmployerRatesStorage, baoEmployerRatesLoggingConfig } from "./sitespecific/bao/employer-rates";
 import { type BaoRateSourcesStorage, createBaoRateSourcesStorage, baoRateSourcesLoggingConfig } from "./sitespecific/bao/rate-sources";
+import { type BaoDistanceCacheStorage, createBaoDistanceCacheStorage, baoDistanceCacheLoggingConfig } from "./sitespecific/bao/distance-cache";
 import { type BaoBeneficiariesStorage, createBaoBeneficiariesStorage, baoBeneficiariesLoggingConfig } from "./sitespecific/bao/beneficiaries";
 import { type WorkerBanStorage, createWorkerBanStorage, workerBanLoggingConfig } from "./worker-bans";
 import { type WorkerDispatchDncStorage, createWorkerDispatchDncStorage, workerDispatchDncLoggingConfig } from "./dispatch/worker-dnc";
@@ -220,6 +221,7 @@ export interface IStorage {
   baoImmediateEligibility: BaoImmediateEligibilityStorage;
   baoEmployerRates: BaoEmployerRatesStorage;
   baoRateSources: BaoRateSourcesStorage;
+  baoDistanceCache: BaoDistanceCacheStorage;
   baoBeneficiaries: BaoBeneficiariesStorage;
   freemanCrewleads: FreemanCrewleadsStorage;
   workerBans: WorkerBanStorage;
@@ -320,6 +322,7 @@ export class DatabaseStorage implements IStorage {
   baoImmediateEligibility: BaoImmediateEligibilityStorage;
   baoEmployerRates: BaoEmployerRatesStorage;
   baoRateSources: BaoRateSourcesStorage;
+  baoDistanceCache: BaoDistanceCacheStorage;
   baoBeneficiaries: BaoBeneficiariesStorage;
   freemanCrewleads: FreemanCrewleadsStorage;
   workerBans: WorkerBanStorage;
@@ -530,6 +533,10 @@ export class DatabaseStorage implements IStorage {
     this.baoRateSources = withStorageLogging(
       createBaoRateSourcesStorage(),
       baoRateSourcesLoggingConfig,
+    );
+    this.baoDistanceCache = withStorageLogging(
+      createBaoDistanceCacheStorage(),
+      baoDistanceCacheLoggingConfig,
     );
     this.baoBeneficiaries = withStorageLogging(
       createBaoBeneficiariesStorage(this.workers),
