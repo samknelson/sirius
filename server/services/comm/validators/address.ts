@@ -891,6 +891,18 @@ class AddressValidationService {
       };
     }
   }
+
+  /**
+   * Resolve the configured Google Maps API key using the same
+   * config-driven variable name that address validation/geocoding uses,
+   * so callers that need Google Maps services (e.g. the Routes API for
+   * driving distance) do not introduce a separate secret. Returns null
+   * when no key is configured.
+   */
+  async getGoogleMapsApiKey(): Promise<string | null> {
+    const config = await this.getConfig();
+    return process.env[config.google.apiKeyName] ?? null;
+  }
 }
 
 export const addressValidationService = new AddressValidationService();

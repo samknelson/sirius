@@ -9,6 +9,38 @@ import { registerEligibilityPlugin } from "../registry";
 import { storage } from "../../../../storage/database";
 import { createUnifiedOptionsStorage } from "../../../../storage/unified-options";
 import { distanceInMiles, type Coordinates } from "@shared/utils/geocode";
+import { getDrivingDistanceMiles } from "../../../../services/driving-distance";
+
+const DRIVING_METHOD = "driving distance";
+const STRAIGHT_LINE_METHOD = "straight-line distance";
+
+/**
+ * Distance between two coordinates, preferring real driving distance via
+ * the Google Routes API and falling back to the straight-line haversine
+ * calculation when routing is unavailable (API error, quota, timeout, or
+ * no route). The returned `method` names how the distance was derived so
+ * callers can surface it in eligibility reason text. Results are memoized
+ * on `cache` (keyed by the coordinate pair) so the same worker↔site pair
+ * is never looked up twice within one evaluation run.
+ */
+async function measureDistance(
+  origin: Coordinates,
+  destination: Coordinates,
+  cache: Map<string, { distance: number; method: string }>,
+): Promise<{ distance: number; method: string }> {
+  const key = `${origin.latitude},${origin.longitude}->${destination.latitude},${destination.longitude}`;
+  const cached = cache.get(key);
+  if (cached) return cached;
+
+  const driving = await getDrivingDistanceMiles(origin, destination);
+  const result =
+    driving.status === "ok"
+      ? { distance: driving.miles, method: DRIVING_METHOD }
+      : { distance: distanceInMiles(origin, destination), method: STRAIGHT_LINE_METHOD };
+
+  cache.set(key, result);
+  return result;
+}
 
 const unifiedOptionsStorage = createUnifiedOptionsStorage();
 
@@ -264,8 +296,12 @@ class BaoStartHealthnetPlugin extends EligibilityPlugin<BaoStartHealthnetConfig>
 
     // Validate and measure EVERY chosen site before deciding, so a missing
     // address/geocode on any site is surfaced and the reason can name the
-    // closest site deterministically.
-    const measured: { name: string; distance: number }[] = [];
+    // closest site deterministically. Distances prefer real driving
+    // distance (Google Routes API) and fall back to straight-line
+    // haversine; the method used is tracked per site and surfaced in the
+    // reason. Lookups are memoized across sites within this single run.
+    const distanceCache = new Map<string, { distance: number; method: string }>();
+    const measured: { name: string; distance: number; method: string }[] = [];
     for (const facilityId of facilityIds) {
       const facility = await storage.facilities.get(facilityId);
       if (!facility) {
@@ -278,22 +314,24 @@ class BaoStartHealthnetPlugin extends EligibilityPlugin<BaoStartHealthnetConfig>
       if (facilityCoords.status === "not-geocoded") {
         return { met: false, reason: `site "${facility.name}" has not been geocoded, so distance to it cannot be confirmed` };
       }
-      measured.push({
-        name: facility.name,
-        distance: distanceInMiles(workerCoords.coords, facilityCoords.coords),
-      });
+      const { distance, method } = await measureDistance(
+        workerCoords.coords,
+        facilityCoords.coords,
+        distanceCache,
+      );
+      measured.push({ name: facility.name, distance, method });
     }
 
     const nearest = measured.reduce((a, b) => (b.distance < a.distance ? b : a));
     if (nearest.distance <= distanceMiles) {
       return {
         met: false,
-        reason: `worker is ${nearest.distance.toFixed(1)} miles from ${nearest.name}, which is within the ${distanceMiles} mile limit`,
+        reason: `worker is ${nearest.distance.toFixed(1)} miles from ${nearest.name} by ${nearest.method}, which is within the ${distanceMiles} mile limit`,
       };
     }
     return {
       met: true,
-      reason: `worker is more than ${distanceMiles} miles from all ${measured.length} chosen ${measured.length === 1 ? "site" : "sites"} (nearest: ${nearest.name} at ${nearest.distance.toFixed(1)} miles)`,
+      reason: `worker is more than ${distanceMiles} miles from all ${measured.length} chosen ${measured.length === 1 ? "site" : "sites"} (nearest: ${nearest.name} at ${nearest.distance.toFixed(1)} miles by ${nearest.method})`,
     };
   }
 
