@@ -317,6 +317,7 @@ export const trustBenefits = pgTable("trust_benefits", {
   siriusId: varchar("sirius_id").unique(),
   name: text("name").notNull(),
   benefitType: varchar("benefit_type").references(() => optionsTrustBenefitType.id, { onDelete: 'set null' }),
+  color: varchar("color"),
   isActive: boolean("is_active").default(true).notNull(),
   description: text("description"),
 });

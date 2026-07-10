@@ -101,6 +101,10 @@ import "./baseline/sirius-dev-20260618b";
 import "./baseline/sirius-dev-20260704";
 import "./baseline/sirius-dev-20260706";
 
+// Core migration numbered above the baseline-advanced counter (1101) so it
+// actually runs. See scripts/migrate/core/1102_add_trust_benefit_color.ts.
+import "./core/1102_add_trust_benefit_color";
+
 export {
   runMigrations,
   getMigrationStatus,

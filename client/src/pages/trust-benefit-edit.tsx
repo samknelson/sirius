@@ -22,6 +22,7 @@ function TrustBenefitEditContent() {
   const [editName, setEditName] = useState(benefit.name);
   const [editSiriusId, setEditSiriusId] = useState(benefit.siriusId || "");
   const [editBenefitType, setEditBenefitType] = useState(benefit.benefitType || undefined);
+  const [editColor, setEditColor] = useState(benefit.color || "");
   const [editIsActive, setEditIsActive] = useState(benefit.isActive);
   const [editDescription, setEditDescription] = useState(benefit.description || "");
 
@@ -30,7 +31,7 @@ function TrustBenefitEditContent() {
   });
 
   const updateBenefitMutation = useMutation({
-    mutationFn: async (data: { name: string; siriusId?: string | null; benefitType?: string; isActive: boolean; description?: string }) => {
+    mutationFn: async (data: { name: string; siriusId?: string | null; benefitType?: string; color?: string | null; isActive: boolean; description?: string }) => {
       return await apiRequest("PUT", `/api/trust-benefits/${benefit.id}`, data);
     },
     onSuccess: () => {
@@ -57,6 +58,7 @@ function TrustBenefitEditContent() {
         name: editName.trim(), 
         siriusId: editSiriusId.trim() || null,
         benefitType: editBenefitType || undefined,
+        color: editColor || null,
         isActive: editIsActive,
         description: editDescription.trim() || undefined
       });
@@ -115,6 +117,41 @@ function TrustBenefitEditContent() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit-benefit-color" className="text-sm font-medium text-foreground">
+                Color
+              </Label>
+              <div className="flex items-center gap-3">
+                <input
+                  id="edit-benefit-color"
+                  type="color"
+                  value={editColor || "#000000"}
+                  onChange={(e) => setEditColor(e.target.value)}
+                  className="h-9 w-14 cursor-pointer rounded-md border border-input bg-background p-1"
+                  data-testid="input-edit-benefit-color"
+                />
+                {editColor ? (
+                  <>
+                    <span className="text-sm text-muted-foreground font-mono">{editColor}</span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setEditColor("")}
+                      data-testid="button-clear-benefit-color"
+                    >
+                      Clear
+                    </Button>
+                  </>
+                ) : (
+                  <span className="text-sm text-muted-foreground">No color set</span>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Tints this benefit's icon so you can tell it apart from other benefits of the same type.
+              </p>
             </div>
 
             <div className="space-y-2">

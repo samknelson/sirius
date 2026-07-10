@@ -192,7 +192,7 @@ export function TrustBenefitsTable({ benefits, isLoading, includeInactive, onTog
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center space-x-3">
                       {(() => {
-                        const color = (benefit as any).benefitTypeColor as string | undefined;
+                        const color = (benefit as any).color as string | undefined;
                         const iconEl = renderIcon((benefit as any).benefitTypeIcon, "h-3 w-3");
                         return (
                           <div

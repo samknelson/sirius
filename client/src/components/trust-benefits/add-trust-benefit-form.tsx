@@ -17,6 +17,7 @@ export function AddTrustBenefitForm() {
   const [name, setName] = useState("");
   const [siriusId, setSiriusId] = useState("");
   const [benefitType, setBenefitType] = useState<string | undefined>(undefined);
+  const [color, setColor] = useState("");
   const [isActive, setIsActive] = useState(true);
   const [description, setDescription] = useState("");
   const { toast } = useToast();
@@ -28,7 +29,7 @@ export function AddTrustBenefitForm() {
   });
 
   const addBenefitMutation = useMutation({
-    mutationFn: async (benefitData: { name: string; siriusId?: string; benefitType?: string; isActive: boolean; description?: string }) => {
+    mutationFn: async (benefitData: { name: string; siriusId?: string; benefitType?: string; color?: string | null; isActive: boolean; description?: string }) => {
       return await apiRequest("POST", "/api/trust-benefits", benefitData);
     },
     onSuccess: () => {
@@ -36,6 +37,7 @@ export function AddTrustBenefitForm() {
       setName("");
       setSiriusId("");
       setBenefitType(undefined);
+      setColor("");
       setIsActive(true);
       setDescription("");
       toast({
@@ -61,6 +63,7 @@ export function AddTrustBenefitForm() {
         name: name.trim(), 
         siriusId: siriusId.trim() || undefined,
         benefitType: benefitType || undefined,
+        color: color || null,
         isActive,
         description: description.trim() || undefined
       });
@@ -122,6 +125,41 @@ export function AddTrustBenefitForm() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+
+            <div>
+              <Label htmlFor="benefit-color" className="text-sm font-medium text-foreground mb-2 block">
+                Color
+              </Label>
+              <div className="flex items-center gap-3">
+                <input
+                  id="benefit-color"
+                  type="color"
+                  value={color || "#000000"}
+                  onChange={(e) => setColor(e.target.value)}
+                  className="h-9 w-14 cursor-pointer rounded-md border border-input bg-background p-1"
+                  data-testid="input-benefit-color"
+                />
+                {color ? (
+                  <>
+                    <span className="text-sm text-muted-foreground font-mono">{color}</span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setColor("")}
+                      data-testid="button-clear-benefit-color"
+                    >
+                      Clear
+                    </Button>
+                  </>
+                ) : (
+                  <span className="text-sm text-muted-foreground">No color set</span>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                Tints this benefit's icon so you can tell it apart from other benefits of the same type.
+              </p>
             </div>
 
             <div>

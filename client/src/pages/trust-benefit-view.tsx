@@ -37,7 +37,7 @@ function TrustBenefitDetailsContent() {
               <label className="text-sm font-medium text-muted-foreground">Benefit Type</label>
               <p className="text-foreground flex items-center gap-2" data-testid="text-benefit-type-field">
                 {(() => {
-                  const color = (benefit as any).benefitTypeColor as string | undefined;
+                  const color = (benefit as any).color as string | undefined;
                   const iconEl = renderIcon((benefit as any).benefitTypeIcon, color ? "h-4 w-4" : "h-4 w-4 text-muted-foreground");
                   return iconEl ? (
                     <span className="inline-flex" style={color ? { color } : undefined}>{iconEl}</span>

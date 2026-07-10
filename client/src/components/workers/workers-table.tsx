@@ -75,7 +75,7 @@ interface WorkerBenefit {
   name: string;
   typeName: string;
   typeIcon?: string;
-  typeColor?: string;
+  color?: string;
 }
 
 interface CardcheckStatusSummary {
@@ -814,7 +814,7 @@ export function WorkersTable({
                       .filter(benefit => benefit.isActive)
                       .sort((a, b) => a.name.localeCompare(b.name))
                       .map((benefit) => {
-                        const color = benefit.benefitTypeColor;
+                        const color = benefit.color;
                         const iconEl = renderIcon(benefit.benefitTypeIcon, color ? "h-3.5 w-3.5" : "h-3.5 w-3.5 text-muted-foreground");
                         return (
                           <SelectItem 
@@ -1321,7 +1321,7 @@ export function WorkersTable({
                         <div className="flex items-center gap-2" data-testid={`benefits-icons-${worker.id}`}>
                           {worker.benefits && worker.benefits.length > 0 ? (
                             worker.benefits.map((benefit, index) => {
-                              const color = benefit.typeColor;
+                              const color = benefit.color;
                               const iconEl = renderIcon(benefit.typeIcon, color ? "h-4 w-4" : "h-4 w-4 text-muted-foreground");
                               return (
                                 <Tooltip key={index}>
