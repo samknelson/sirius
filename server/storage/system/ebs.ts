@@ -114,6 +114,18 @@ export interface EbsStorage {
    */
   markStatus(uniqueId: string, status: EbsDeliveryStatus, purgeAfter: Date): Promise<void>;
   /**
+   * Force the `ebs_status` row for `uniqueId` to `sent`, OVERWRITING any existing
+   * terminal record: `ON CONFLICT (unique_id) DO UPDATE` sets `status = 'sent'`,
+   * refreshes `created_at` to now, and resets `purge_after`. This is the manual
+   * "Send now" / "Resend" path — unlike {@link claimForDelivery} and
+   * {@link markStatus} (both `DO NOTHING`), a resend must be able to flip a
+   * previously `expired` (or already `sent`) row back to `sent`. `purgeAfter`
+   * should be computed off *now* (not the event's old `dont_send_after`, which
+   * for an old event is already past and would make the row immediately
+   * purgeable).
+   */
+  forceSetSent(uniqueId: string, purgeAfter: Date): Promise<void>;
+  /**
    * Delete `ebs_status` rows whose `purge_after` cutoff has passed (`< now`),
    * returning the number removed. Because `purge_after` is derived from each
    * event's `dont_send_after`, a status row is only removed once its scheduling
@@ -220,6 +232,17 @@ export function createEbsStorage(): EbsStorage {
         .insert(ebsStatus)
         .values({ uniqueId, status, purgeAfter })
         .onConflictDoNothing({ target: ebsStatus.uniqueId });
+    },
+
+    async forceSetSent(uniqueId: string, purgeAfter: Date): Promise<void> {
+      const client = getClient();
+      await client
+        .insert(ebsStatus)
+        .values({ uniqueId, status: "sent", purgeAfter })
+        .onConflictDoUpdate({
+          target: ebsStatus.uniqueId,
+          set: { status: "sent", createdAt: new Date(), purgeAfter },
+        });
     },
 
     async purgeExpired(now: Date): Promise<number> {

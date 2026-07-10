@@ -3,27 +3,15 @@ import { isPluginComponentEnabledSync } from "../../../_core";
 import { denormPluginRegistry } from "../../denorm";
 import { storage } from "../../../../storage";
 import {
-  eventBus,
-  EventType,
-  type EventPayloadMap,
-} from "../../../../services/event-bus";
+  RETENTION_DAYS,
+  purgeAfterFor,
+  emitDenormEvent,
+} from "../../../../services/ebs-emit";
 import { registerCronPlugin } from "../registry";
 import type { CronJobContext, CronJobResult } from "../types";
 
 /** Max scheduled events drained per run (each half). */
 const BATCH_LIMIT = 1000;
-/** Days past an event's window close that its `ebs_status` row is retained. */
-const RETENTION_DAYS = 90;
-
-/**
- * Row-safe purge cutoff for a scheduled event's status row: {@link RETENTION_DAYS}
- * after its window closes (`dont_send_after`). The purge only removes rows whose
- * cutoff is in the past, so a status can never be dropped while its event could
- * still fire (`getDue` requires `dont_send_after >= now`).
- */
-function purgeAfterFor(dontSendAfter: Date): Date {
-  return new Date(dontSendAfter.getTime() + RETENTION_DAYS * 24 * 60 * 60 * 1000);
-}
 
 /**
  * `ebs_pump` cron — the generic firing engine of the deferred event bus (EBS).
@@ -141,10 +129,7 @@ registerCronPlugin({
         continue;
       }
       try {
-        const failures = await eventBus.emitWithFailures(
-          row.eventType as EventType,
-          row.payload as EventPayloadMap[EventType],
-        );
+        const failures = await emitDenormEvent(row);
         sent++;
         if (failures.length > 0) {
           // The claim is already terminal, so we do NOT retry (retrying would

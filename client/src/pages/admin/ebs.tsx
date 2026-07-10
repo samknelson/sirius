@@ -1,6 +1,8 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { usePageTitle } from "@/contexts/PageTitleContext";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,9 +32,16 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Loader2,
@@ -40,6 +49,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Search,
+  Send,
 } from "lucide-react";
 
 interface EbsDenormRecord {
@@ -303,6 +313,45 @@ function PayloadBlock({ payload }: { payload: unknown }) {
   );
 }
 
+interface FireResult {
+  failureCount: number;
+}
+
+/**
+ * Mutation that manually fires (sends / resends) a scheduled event by its
+ * `ebs_denorm` id. On success it toasts the outcome and invalidates every EBS
+ * query (both list views and the open detail) so the flipped-to-`sent` status
+ * shows immediately. Invalidating the base key (`/api/admin/ebs/scheduled` and
+ * `/api/admin/ebs/sent`) covers both the paginated lists and the per-id detail.
+ */
+function useFireEvent() {
+  const { toast } = useToast();
+  return useMutation<FireResult, Error, string>({
+    mutationFn: (denormId: string) =>
+      apiRequest("POST", `/api/admin/ebs/fire/${denormId}`) as Promise<FireResult>,
+    onSuccess: (result) => {
+      if (result.failureCount > 0) {
+        toast({
+          title: "Event fired with handler failures",
+          description: `Fired, but ${result.failureCount} handler failure(s) occurred — check the logs.`,
+          variant: "destructive",
+        });
+      } else {
+        toast({ title: "Event fired", description: "The event was sent successfully." });
+      }
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/ebs/scheduled"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/ebs/sent"] });
+    },
+    onError: (error) => {
+      toast({
+        title: "Failed to fire event",
+        description: error.message || "Unknown error",
+        variant: "destructive",
+      });
+    },
+  });
+}
+
 function ScheduledDetailDialog({
   id,
   onClose,
@@ -314,6 +363,7 @@ function ScheduledDetailDialog({
     queryKey: ["/api/admin/ebs/scheduled", id],
     enabled: id !== null,
   });
+  const fire = useFireEvent();
 
   return (
     <Dialog open={id !== null} onOpenChange={(open) => !open && onClose()}>
@@ -351,6 +401,22 @@ function ScheduledDetailDialog({
             </div>
           </ScrollArea>
         )}
+        {!isLoading && !isError && data && (
+          <DialogFooter>
+            <Button
+              onClick={() => fire.mutate(data.denorm.id)}
+              disabled={fire.isPending}
+              data-testid="button-send-now"
+            >
+              {fire.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4" />
+              )}
+              Send now
+            </Button>
+          </DialogFooter>
+        )}
       </DialogContent>
     </Dialog>
   );
@@ -367,6 +433,7 @@ function SentDetailDialog({
     queryKey: ["/api/admin/ebs/sent", id],
     enabled: id !== null,
   });
+  const fire = useFireEvent();
 
   return (
     <Dialog open={id !== null} onOpenChange={(open) => !open && onClose()}>
@@ -407,6 +474,40 @@ function SentDetailDialog({
               </div>
             </div>
           </ScrollArea>
+        )}
+        {!isLoading && !isError && data && (
+          <DialogFooter>
+            {data.denorm ? (
+              <Button
+                onClick={() => fire.mutate(data.denorm!.id)}
+                disabled={fire.isPending}
+                data-testid="button-resend"
+              >
+                {fire.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="h-4 w-4" />
+                )}
+                Resend
+              </Button>
+            ) : (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span tabIndex={0}>
+                      <Button disabled data-testid="button-resend">
+                        <Send className="h-4 w-4" />
+                        Resend
+                      </Button>
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    The scheduled event has been cleaned up — there is no payload left to resend.
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+          </DialogFooter>
         )}
       </DialogContent>
     </Dialog>

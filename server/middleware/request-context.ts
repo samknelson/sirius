@@ -53,6 +53,27 @@ export function withNotificationsSuppressed<T>(fn: () => Promise<T>): Promise<T>
 }
 
 /**
+ * Run `fn` in a nested request context with the acting user cleared, so events
+ * fired inside `fn` are attributed to no one — a *system* action rather than the
+ * authenticated request's user. This mirrors how a cron-driven emit has no
+ * acting user: notifier listeners then neither self-suppress the operator's own
+ * recipient nor leak their identity, regardless of any notifier's `notifySelf`
+ * setting. Use it to force-fire a deferred event from inside an admin's HTTP
+ * request (e.g. manually firing an EBS event). Other context fields (ipAddress,
+ * suppressNotifications) are preserved; the surrounding context is restored on
+ * return.
+ */
+export function withSystemActor<T>(fn: () => Promise<T>): Promise<T> {
+  const current = requestContext.getStore();
+  const next: RequestContext = {
+    ...(current ?? {}),
+    userId: undefined,
+    userEmail: undefined,
+  };
+  return requestContext.run(next, fn);
+}
+
+/**
  * Middleware to capture and store request context (user and IP)
  * Should be registered early in the middleware chain, after authentication
  */

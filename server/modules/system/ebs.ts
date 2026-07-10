@@ -3,6 +3,8 @@ import { z } from "zod";
 import { storage } from "../../storage";
 import { requireAccess } from "../../services/access-policy-evaluator";
 import type { EbsListFilters } from "../../storage/system/ebs";
+import { withSystemActor } from "../../middleware/request-context";
+import { emitDenormEvent, purgeAfterFromNow } from "../../services/ebs-emit";
 
 /**
  * Read-only admin visibility into the deferred event bus (EBS). Two views:
@@ -14,9 +16,12 @@ import type { EbsListFilters } from "../../storage/system/ebs";
  *   with the originating `ebs_denorm` row when it still exists (`ebs_status` is
  *   decoupled and can outlive its scheduled event, so this is best-effort).
  *
- * Everything is strictly read-only: no create / edit / delete, no manual firing
- * or purging. Routes stay thin; all filtering and paging lives in the storage
- * layer per the storage-encapsulation rule.
+ * These views are read-only EXCEPT for one write endpoint: an admin-only manual
+ * fire (`POST /api/admin/ebs/fire/:id`) that force-re-emits a scheduled event
+ * for testing (see its handler for the force-fire semantics). Everything else is
+ * strictly read-only: no create / edit / delete, no purging. Routes stay thin;
+ * all filtering and paging lives in the storage layer per the
+ * storage-encapsulation rule.
  */
 const listQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -117,6 +122,33 @@ export function registerEbsInspectionRoutes(app: Express) {
     } catch (error) {
       console.error("Failed to fetch sent EBS event:", error);
       res.status(500).json({ message: "Failed to fetch sent event" });
+    }
+  });
+
+  // Manually fire (send / resend) a scheduled event by its `ebs_denorm` id.
+  // This is a testing tool: it FORCE-fires, deliberately skipping every safety
+  // check the pump applies — no `isScheduledEventLive` revalidation and no
+  // at-most-once claim — so an already-sent or expired event can be re-fired.
+  // Duplicate side effects from non-idempotent listeners are an accepted risk.
+  // The emit runs as a SYSTEM actor (acting user cleared) so notifier listeners
+  // match the cron's semantics instead of treating the clicking admin as the
+  // actor. After emit we force the delivery status to `sent` (overwriting any
+  // prior terminal row). 404 when the denorm record is gone (its payload was
+  // purged — nothing left to re-fire).
+  app.post("/api/admin/ebs/fire/:id", requireAccess("admin"), async (req, res) => {
+    try {
+      const row = await storage.ebs.getScheduledById(req.params.id);
+      if (!row) {
+        res.status(404).json({ message: "Scheduled event not found — nothing to fire" });
+        return;
+      }
+      const { denorm } = row;
+      const failures = await withSystemActor(() => emitDenormEvent(denorm));
+      await storage.ebs.forceSetSent(denorm.uniqueId, purgeAfterFromNow());
+      res.json({ failureCount: failures.length });
+    } catch (error) {
+      console.error("Failed to fire EBS event:", error);
+      res.status(500).json({ message: "Failed to fire event" });
     }
   });
 }
