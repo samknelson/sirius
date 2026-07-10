@@ -309,6 +309,7 @@ const GenericPluginConfigsPage = lazy(() => import("@/pages/admin/plugin-configs
 const PluginConfigsIndexPage = lazy(() => import("@/pages/admin/plugin-configs-index"));
 const DenormConfigsPage = lazy(() => import("@/pages/admin/denorm"));
 const DenormConfigDetailPage = lazy(() => import("@/pages/admin/denorm-detail"));
+const EbsInspectionPage = lazy(() => import("@/pages/admin/ebs"));
 const ConfigurationLandingPage = lazy(() => import("@/pages/config/index"));
 const LedgerAccountsPage = lazy(() => import("@/pages/config/ledger/accounts"));
 const LedgerAccountView = lazy(() => import("@/pages/config/ledger/account-view"));
@@ -3232,6 +3233,17 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <DenormConfigDetailPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      {/* Read-only EBS (deferred event bus) inspection. */}
+      <Route path="/admin/ebs">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <EbsInspectionPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>

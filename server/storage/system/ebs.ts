@@ -3,9 +3,10 @@ import {
   ebsDenorm,
   ebsStatus,
   type EbsDenorm,
+  type EbsStatus,
   type EbsDeliveryStatus,
 } from "@shared/schema";
-import { eq, and, lte, gte, lt, isNull } from "drizzle-orm";
+import { eq, and, lte, gte, lt, isNull, ilike, desc, sql } from "drizzle-orm";
 
 /**
  * The event to schedule for a single denorm entity. `denormId` ties the row to
@@ -22,6 +23,43 @@ export interface EbsScheduledEventInput {
   payload: unknown;
   sendOn: Date;
   dontSendAfter: Date;
+}
+
+/** Common inspection filters for the read-only EBS admin views. */
+export interface EbsListFilters {
+  /** Exact `event_type` match (from `ebs_denorm`). */
+  eventType?: string;
+  /** Case-insensitive substring match on `subject_id` (the "Owner ID"). */
+  subjectId?: string;
+  /** Inclusive lower bound on the view's date column. */
+  from?: Date;
+  /** Inclusive upper bound on the view's date column. */
+  to?: Date;
+}
+
+export interface EbsListParams extends EbsListFilters {
+  page: number;
+  pageSize: number;
+}
+
+/**
+ * A scheduled event (`ebs_denorm`) decorated with its terminal delivery record
+ * (`ebs_status`) when one exists. `status` is null while the event is still
+ * pending.
+ */
+export interface EbsScheduledRow {
+  denorm: EbsDenorm;
+  status: EbsStatus | null;
+}
+
+/**
+ * A terminal delivery record (`ebs_status`) decorated with its originating
+ * scheduled event (`ebs_denorm`) when it still exists. `denorm` is null when the
+ * status has outlived its scheduled event (they are intentionally decoupled).
+ */
+export interface EbsSentRow {
+  status: EbsStatus;
+  denorm: EbsDenorm | null;
 }
 
 /**
@@ -83,6 +121,36 @@ export interface EbsStorage {
    * event (which would let `getDue` re-fire it).
    */
   purgeExpired(now: Date): Promise<number>;
+
+  // ── Read-only inspection (admin EBS pages) ──────────────────────────────────
+
+  /**
+   * Paginated scheduled events (`ebs_denorm`) LEFT JOINed to their terminal
+   * status (`ebs_status`) on `unique_id`, newest `send_on` first. Filters by
+   * `event_type`, `subject_id` substring, and a `send_on` date range.
+   */
+  listScheduled(params: EbsListParams): Promise<EbsScheduledRow[]>;
+  /** Count of scheduled events matching the same filters as {@link listScheduled}. */
+  countScheduled(filters: EbsListFilters): Promise<number>;
+
+  /**
+   * Paginated terminal delivery records (`ebs_status`) LEFT JOINed to their
+   * originating scheduled event (`ebs_denorm`) on `unique_id`, newest
+   * `created_at` first. Filters by `event_type` and `subject_id` (both from the
+   * joined `ebs_denorm`, so they only match rows whose scheduled event still
+   * exists) and by a `created_at` date range.
+   */
+  listSent(params: EbsListParams): Promise<EbsSentRow[]>;
+  /** Count of delivery records matching the same filters as {@link listSent}. */
+  countSent(filters: EbsListFilters): Promise<number>;
+
+  /** Distinct `event_type` values across `ebs_denorm`, sorted, for the filter dropdown. */
+  distinctEventTypes(): Promise<string[]>;
+
+  /** A single scheduled event by id, decorated with its status (if terminal yet). */
+  getScheduledById(id: string): Promise<EbsScheduledRow | null>;
+  /** A single delivery record by id, decorated with its scheduled event (if still present). */
+  getSentById(id: string): Promise<EbsSentRow | null>;
 }
 
 export function createEbsStorage(): EbsStorage {
@@ -162,5 +230,125 @@ export function createEbsStorage(): EbsStorage {
         .returning({ id: ebsStatus.id });
       return deleted.length;
     },
+
+    async listScheduled(params: EbsListParams): Promise<EbsScheduledRow[]> {
+      const client = getClient();
+      const rows = await client
+        .select({ denorm: ebsDenorm, status: ebsStatus })
+        .from(ebsDenorm)
+        .leftJoin(ebsStatus, eq(ebsStatus.uniqueId, ebsDenorm.uniqueId))
+        .where(scheduledFilterCondition(params))
+        .orderBy(desc(ebsDenorm.sendOn), desc(ebsDenorm.id))
+        .limit(params.pageSize)
+        .offset((params.page - 1) * params.pageSize);
+      return rows.map((r) => ({ denorm: r.denorm, status: r.status }));
+    },
+
+    async countScheduled(filters: EbsListFilters): Promise<number> {
+      const client = getClient();
+      const [row] = await client
+        .select({ count: sql<number>`count(*)::int` })
+        .from(ebsDenorm)
+        .where(scheduledFilterCondition(filters));
+      return row?.count ?? 0;
+    },
+
+    async listSent(params: EbsListParams): Promise<EbsSentRow[]> {
+      const client = getClient();
+      const rows = await client
+        .select({ status: ebsStatus, denorm: ebsDenorm })
+        .from(ebsStatus)
+        .leftJoin(ebsDenorm, eq(ebsDenorm.uniqueId, ebsStatus.uniqueId))
+        .where(sentFilterCondition(params))
+        .orderBy(desc(ebsStatus.createdAt), desc(ebsStatus.id))
+        .limit(params.pageSize)
+        .offset((params.page - 1) * params.pageSize);
+      return rows.map((r) => ({ status: r.status, denorm: r.denorm }));
+    },
+
+    async countSent(filters: EbsListFilters): Promise<number> {
+      const client = getClient();
+      const [row] = await client
+        .select({ count: sql<number>`count(*)::int` })
+        .from(ebsStatus)
+        .leftJoin(ebsDenorm, eq(ebsDenorm.uniqueId, ebsStatus.uniqueId))
+        .where(sentFilterCondition(filters));
+      return row?.count ?? 0;
+    },
+
+    async distinctEventTypes(): Promise<string[]> {
+      const client = getClient();
+      const rows = await client
+        .selectDistinct({ eventType: ebsDenorm.eventType })
+        .from(ebsDenorm)
+        .orderBy(ebsDenorm.eventType);
+      return rows.map((r) => r.eventType);
+    },
+
+    async getScheduledById(id: string): Promise<EbsScheduledRow | null> {
+      const client = getClient();
+      const [row] = await client
+        .select({ denorm: ebsDenorm, status: ebsStatus })
+        .from(ebsDenorm)
+        .leftJoin(ebsStatus, eq(ebsStatus.uniqueId, ebsDenorm.uniqueId))
+        .where(eq(ebsDenorm.id, id))
+        .limit(1);
+      if (!row) return null;
+      return { denorm: row.denorm, status: row.status };
+    },
+
+    async getSentById(id: string): Promise<EbsSentRow | null> {
+      const client = getClient();
+      const [row] = await client
+        .select({ status: ebsStatus, denorm: ebsDenorm })
+        .from(ebsStatus)
+        .leftJoin(ebsDenorm, eq(ebsDenorm.uniqueId, ebsStatus.uniqueId))
+        .where(eq(ebsStatus.id, id))
+        .limit(1);
+      if (!row) return null;
+      return { status: row.status, denorm: row.denorm };
+    },
   };
+}
+
+/**
+ * WHERE clause shared by {@link EbsStorage.listScheduled} and its count, applied
+ * to the `ebs_denorm` side. Returns `undefined` when no filter is active so the
+ * query selects everything.
+ */
+function scheduledFilterCondition(filters: EbsListFilters) {
+  const conditions = [];
+  if (filters.eventType) conditions.push(eq(ebsDenorm.eventType, filters.eventType));
+  if (filters.subjectId) conditions.push(ilike(ebsDenorm.subjectId, `%${filters.subjectId}%`));
+  if (filters.from) conditions.push(gte(ebsDenorm.sendOn, filters.from));
+  // `to` is inclusive of the whole selected day: the UI sends a date at
+  // midnight, so use a half-open upper bound (`< to + 1 day`) rather than
+  // `<= to`, which would drop every row later than midnight on that date.
+  if (filters.to) conditions.push(lt(ebsDenorm.sendOn, endExclusive(filters.to)));
+  return conditions.length ? and(...conditions) : undefined;
+}
+
+/**
+ * WHERE clause shared by {@link EbsStorage.listSent} and its count. The
+ * event-type and subject filters live on the joined `ebs_denorm`, so they only
+ * match delivery records whose scheduled event still exists; the date range is
+ * on the `ebs_status.created_at` column that always exists.
+ */
+function sentFilterCondition(filters: EbsListFilters) {
+  const conditions = [];
+  if (filters.eventType) conditions.push(eq(ebsDenorm.eventType, filters.eventType));
+  if (filters.subjectId) conditions.push(ilike(ebsDenorm.subjectId, `%${filters.subjectId}%`));
+  if (filters.from) conditions.push(gte(ebsStatus.createdAt, filters.from));
+  // Inclusive of the whole selected day — see `scheduledFilterCondition`.
+  if (filters.to) conditions.push(lt(ebsStatus.createdAt, endExclusive(filters.to)));
+  return conditions.length ? and(...conditions) : undefined;
+}
+
+/**
+ * Half-open upper bound for an inclusive-of-the-whole-day `to` date filter:
+ * returns the instant 24h after `to`, so a `< endExclusive(to)` comparison
+ * matches every row on the selected end date (the UI sends `to` at midnight).
+ */
+function endExclusive(to: Date): Date {
+  return new Date(to.getTime() + 24 * 60 * 60 * 1000);
 }
