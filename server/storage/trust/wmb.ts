@@ -1,5 +1,5 @@
 import { getClient } from '../transaction-context';
-import { trustWmb, trustBenefits, employers, type TrustWmb } from "@shared/schema";
+import { trustWmb, trustBenefits, employers, optionsTrustBenefitType, type TrustWmb } from "@shared/schema";
 import { sql, eq, and, desc } from "drizzle-orm";
 import { type StorageLoggingConfig } from "../middleware/logging";
 import { logger } from "../../logger";
@@ -11,10 +11,29 @@ export interface ActiveBenefitWorkerCount {
   workerCount: number;
 }
 
+/**
+ * One distinct (benefit, year, month) presence row for a worker, joined with
+ * the benefit's name and its benefit-type metadata (color/icon/sequence). Used
+ * to compute the "Current benefits" summary (most-recent-month set, active-since
+ * streaks, ordering) in the service layer.
+ */
+export interface WorkerBenefitPresenceRow {
+  benefitId: string;
+  year: number;
+  month: number;
+  benefitName: string | null;
+  benefitTypeId: string | null;
+  benefitTypeName: string | null;
+  benefitTypeSequence: number | null;
+  benefitTypeColor: string | null;
+  benefitTypeIcon: string | null;
+}
+
 export interface TrustWmbStorage {
   getActiveBenefitWorkerCountsByEmployerLatestPeriod(): Promise<ActiveBenefitWorkerCount[]>;
   getById(id: string): Promise<TrustWmb | undefined>;
   getWorkerBenefits(workerId: string): Promise<any[]>;
+  getWorkerBenefitPresence(workerId: string): Promise<WorkerBenefitPresenceRow[]>;
   createWorkerBenefit(data: { workerId: string; month: number; year: number; employerId: string; benefitId: string }): Promise<TrustWmb>;
   deleteWorkerBenefit(id: string): Promise<boolean>;
   workerBenefitExists(workerId: string, benefitId: string, month: number, year: number): Promise<boolean>;
@@ -84,6 +103,37 @@ export function createTrustWmbStorage(): TrustWmbStorage {
         .orderBy(desc(trustWmb.year), desc(trustWmb.month));
 
       return results;
+    },
+
+    async getWorkerBenefitPresence(workerId: string): Promise<WorkerBenefitPresenceRow[]> {
+      const client = getClient();
+      const results = await client
+        .selectDistinct({
+          benefitId: trustWmb.benefitId,
+          year: trustWmb.year,
+          month: trustWmb.month,
+          benefitName: trustBenefits.name,
+          benefitTypeId: optionsTrustBenefitType.id,
+          benefitTypeName: optionsTrustBenefitType.name,
+          benefitTypeSequence: optionsTrustBenefitType.sequence,
+          benefitTypeData: optionsTrustBenefitType.data,
+        })
+        .from(trustWmb)
+        .leftJoin(trustBenefits, eq(trustWmb.benefitId, trustBenefits.id))
+        .leftJoin(optionsTrustBenefitType, eq(trustBenefits.benefitType, optionsTrustBenefitType.id))
+        .where(eq(trustWmb.workerId, workerId));
+
+      return results.map((r) => ({
+        benefitId: r.benefitId,
+        year: r.year,
+        month: r.month,
+        benefitName: r.benefitName ?? null,
+        benefitTypeId: r.benefitTypeId ?? null,
+        benefitTypeName: r.benefitTypeName ?? null,
+        benefitTypeSequence: r.benefitTypeSequence ?? null,
+        benefitTypeColor: (r.benefitTypeData as any)?.color ?? null,
+        benefitTypeIcon: (r.benefitTypeData as any)?.icon ?? null,
+      }));
     },
 
     async createWorkerBenefit(data: { workerId: string; month: number; year: number; employerId: string; benefitId: string }): Promise<TrustWmb> {

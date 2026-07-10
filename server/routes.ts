@@ -92,6 +92,7 @@ import { registerWorkerBansRoutes } from "./modules/worker-bans";
 import { registerWorkerSkillsRoutes } from "./modules/workers/skills";
 import { registerWorkerRelationsRoutes } from "./modules/workers/relations";
 import { registerWorkerTrustElectionsRoutes } from "./modules/trust/elections";
+import { getWorkerCurrentBenefits } from "./modules/trust/current-benefits";
 import { registerTrustBenefitEligibilityExemptionsRoutes } from "./modules/trust/eligibility-exemptions";
 import { registerWorkerTosRoutes } from "./modules/workers/tos";
 import { registerWorkerCertificationsRoutes } from "./modules/workers/certifications";
@@ -1626,6 +1627,18 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     } catch (error) {
       console.error("Failed to fetch worker benefits:", error);
       res.status(500).json({ message: "Failed to fetch worker benefits" });
+    }
+  });
+
+  // GET /api/workers/:workerId/benefits/current - Summarize the benefits a worker currently holds (requires worker.view policy)
+  app.get("/api/workers/:workerId/benefits/current", requireAccess('worker.view', req => req.params.workerId), async (req, res) => {
+    try {
+      const { workerId } = req.params;
+      const rows = await getWorkerCurrentBenefits(workerId);
+      res.json(rows);
+    } catch (error) {
+      console.error("Failed to fetch current worker benefits:", error);
+      res.status(500).json({ message: "Failed to fetch current worker benefits" });
     }
   });
 

@@ -66,6 +66,7 @@ const WorkerRatings = lazy(() => import("@/pages/worker-ratings"));
 const WorkerLedgerAccounts = lazy(() => import("@/pages/worker-ledger-accounts"));
 const WorkerSitespecificBaoEchp = lazy(() => import("@/pages/worker-sitespecific-bao-echp"));
 const Stewards = lazy(() => import("@/pages/stewards"));
+const WorkerBenefitsCurrent = lazy(() => import("@/pages/worker-benefits-current"));
 const WorkerBenefitsHistory = lazy(() => import("@/pages/worker-benefits-history"));
 const WorkerBenefitsEligibility = lazy(() => import("@/pages/worker-benefits-eligibility"));
 const WorkerBenefitsExemptions = lazy(() => import("@/pages/worker-benefits-exemptions"));
@@ -823,6 +824,14 @@ function Router() {
         <ProtectedRoute tabId="bargaining-unit" entityType="worker">
           <AuthenticatedLayout>
             <WorkerBargainingUnit />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/workers/:id/benefits/current">
+        <ProtectedRoute tabId="benefits-current" entityType="worker">
+          <AuthenticatedLayout>
+            <WorkerBenefitsCurrent />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
