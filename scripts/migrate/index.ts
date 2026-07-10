@@ -89,6 +89,7 @@ import "./components/dispatch/001_backfill_dispatch_eligibility_configs";
 import "./components/dispatch/002_worker_dispatch_elig_denorm_denorm_id";
 import "./components/trust.benefits/001_backfill_trust_eligibility_configs";
 import "./components/trust.providers.edi/001_add_sftp_client_fk";
+import "./components/trust.elections/001_add_enrollment_type";
 
 // Baseline scripts — one-off, per-deployment scripts that bring a database
 // into sync with the schema BEFORE the drift gate runs. Baseline scripts

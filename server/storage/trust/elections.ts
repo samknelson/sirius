@@ -6,6 +6,7 @@ import {
   employers,
   contacts,
   trustBenefits,
+  optionsTrustBenefitType,
   workerRelations,
   optionsWorkerRelationType,
   createWorkerTrustElectionRequestSchema,
@@ -33,6 +34,13 @@ export interface WorkerTrustElectionsStorage {
   listByWorker(workerId: string): Promise<WorkerTrustElection[]>;
   getActiveByWorker(workerId: string): Promise<WorkerTrustElection | undefined>;
   getActiveByWorkerAsOf(workerId: string, asOfYmd: string): Promise<WorkerTrustElection | undefined>;
+  /**
+   * True when the worker has any currently-active election (end date not
+   * set) that covers a Medical or Dental benefit. First-time enrollment is
+   * only offered to workers for whom this is false — baseline AD&D/Life-only
+   * workers still qualify because those benefit types are not Medical/Dental.
+   */
+  hasActiveMedicalOrDentalElection(workerId: string): Promise<boolean>;
   searchViews(params: WorkerTrustElectionSearchParams): Promise<WorkerTrustElectionView[]>;
   getViewById(id: string): Promise<WorkerTrustElectionView | undefined>;
   getActiveViewByWorker(workerId: string): Promise<WorkerTrustElectionView | undefined>;
@@ -316,6 +324,28 @@ export function createWorkerTrustElectionsStorage(): WorkerTrustElectionsStorage
       return rows[0];
     },
 
+    async hasActiveMedicalOrDentalElection(workerId) {
+      const active = await storage.search({ workerId, activeOnly: true });
+      const benefitIds = new Set<string>();
+      for (const e of active) {
+        for (const id of e.benefitIds ?? []) benefitIds.add(id);
+      }
+      if (benefitIds.size === 0) return false;
+      const client = getClient();
+      const rows = await client
+        .select({ typeName: optionsTrustBenefitType.name })
+        .from(trustBenefits)
+        .leftJoin(
+          optionsTrustBenefitType,
+          eq(trustBenefits.benefitType, optionsTrustBenefitType.id),
+        )
+        .where(inArray(trustBenefits.id, Array.from(benefitIds)));
+      return rows.some((r) => {
+        const name = (r.typeName ?? '').trim().toLowerCase();
+        return name === 'medical' || name === 'dental';
+      });
+    },
+
     async searchViews(params) {
       const rows = await storage.search(params);
       return await hydrateElections(rows);
@@ -353,6 +383,7 @@ export function createWorkerTrustElectionsStorage(): WorkerTrustElectionsStorage
             endYmd: validated.endYmd,
             benefitIds: parsed.benefitIds ?? null,
             relationshipIds: parsed.relationshipIds ?? null,
+            enrollmentType: parsed.enrollmentType ?? null,
             data: (parsed.data ?? null) as WorkerTrustElection['data'],
           })
           .returning();
@@ -383,6 +414,7 @@ export function createWorkerTrustElectionsStorage(): WorkerTrustElectionsStorage
         };
         if (parsed.benefitIds !== undefined) updateValues.benefitIds = parsed.benefitIds;
         if (parsed.relationshipIds !== undefined) updateValues.relationshipIds = parsed.relationshipIds;
+        if (parsed.enrollmentType !== undefined) updateValues.enrollmentType = parsed.enrollmentType;
         if (parsed.data !== undefined) updateValues.data = parsed.data;
 
         const [updated] = await client

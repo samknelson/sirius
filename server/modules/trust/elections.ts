@@ -72,6 +72,34 @@ export function registerWorkerTrustElectionsRoutes(
     },
   );
 
+  // First-time enrollment eligibility for a worker (staff-only).
+  // First-time enrollment is only offered when the worker has NO active
+  // election covering a Medical or Dental benefit. Baseline AD&D/Life-only
+  // workers still qualify. The wizard's create hook enforces the same gate
+  // server-side; this endpoint drives the launch button's enabled state.
+  app.get(
+    "/api/workers/:id/trust-elections/first-time-eligibility",
+    requireAuth,
+    electionsComponent,
+    requireAccess('staff'),
+    async (req: Request, res: Response) => {
+      try {
+        const hasMedicalOrDental =
+          await storage.workerTrustElections.hasActiveMedicalOrDentalElection(
+            req.params.id,
+          );
+        res.json({
+          eligible: !hasMedicalOrDental,
+          reason: hasMedicalOrDental
+            ? "This worker already has an active medical or dental election, so first-time enrollment is not available."
+            : undefined,
+        });
+      } catch (error) {
+        handleError(res, error, "Failed to check first-time enrollment eligibility");
+      }
+    },
+  );
+
   // Get one election (staff-only)
   app.get(
     "/api/trust-elections/:id",

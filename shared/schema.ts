@@ -1133,6 +1133,8 @@ export {
   insertWorkerTrustElectionSchema,
   createWorkerTrustElectionRequestSchema,
   updateWorkerTrustElectionRequestSchema,
+  ENROLLMENT_TYPES,
+  type EnrollmentType,
   type WorkerTrustElection,
   type WorkerTrustElectionView,
   type InsertWorkerTrustElection,

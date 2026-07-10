@@ -4,6 +4,20 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { workers, policies, employers } from "../../schema";
 
+/**
+ * The three ways a worker's benefit election can be submitted. Every
+ * posted enrollment records which one it is so downstream queues and
+ * per-type notifications can filter on it.
+ *
+ * - `first_time`      → the worker's initial enrollment (the reframed
+ *                       benefit-election wizard).
+ * - `life_event`      → a qualifying-life-event change (future wizard).
+ * - `open_enrollment` → a change made during an open-enrollment window
+ *                       (future wizard + admin window).
+ */
+export const ENROLLMENT_TYPES = ["first_time", "life_event", "open_enrollment"] as const;
+export type EnrollmentType = (typeof ENROLLMENT_TYPES)[number];
+
 export const workerTrustElections = pgTable("worker_trust_elections", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   workerId: varchar("worker_id").notNull().references(() => workers.id, { onDelete: 'cascade' }),
@@ -13,6 +27,7 @@ export const workerTrustElections = pgTable("worker_trust_elections", {
   startYmd: date("start_ymd").notNull(),
   endYmd: date("end_ymd"),
   relationshipIds: varchar("relationship_ids").array(),
+  enrollmentType: varchar("enrollment_type"),
   data: jsonb("data"),
 });
 
@@ -56,6 +71,7 @@ export const createWorkerTrustElectionRequestSchema = z
     endYmd: ymdOrDate.nullable().optional(),
     benefitIds: z.array(z.string()).nullable().optional(),
     relationshipIds: z.array(z.string()).nullable().optional(),
+    enrollmentType: z.enum(ENROLLMENT_TYPES).nullable().optional(),
     data: z.unknown().optional(),
   })
   .superRefine((val, ctx) => {
@@ -75,6 +91,7 @@ export const updateWorkerTrustElectionRequestSchema = z
     endYmd: ymdOrDate.nullable().optional(),
     benefitIds: z.array(z.string()).nullable().optional(),
     relationshipIds: z.array(z.string()).nullable().optional(),
+    enrollmentType: z.enum(ENROLLMENT_TYPES).nullable().optional(),
     data: z.unknown().optional(),
   })
   .superRefine((val, ctx) => {

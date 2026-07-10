@@ -50,6 +50,20 @@ function ElectionsListContent() {
     },
   });
 
+  // First-time enrollment is only offered when the worker has no active
+  // medical or dental election. The wizard's create hook enforces the same
+  // gate server-side; this just reflects it in the button's enabled state.
+  const { data: firstTimeEligibility } = useQuery<{ eligible: boolean; reason?: string }>({
+    queryKey: ["/api/workers", worker.id, "trust-elections", "first-time-eligibility"],
+    queryFn: async () => {
+      const res = await fetch(`/api/workers/${worker.id}/trust-elections/first-time-eligibility`);
+      if (!res.ok) throw new Error("Failed to load");
+      return res.json();
+    },
+    enabled: canEdit,
+  });
+  const firstTimeBlocked = firstTimeEligibility ? !firstTimeEligibility.eligible : false;
+
   return (
     <Card>
       <CardHeader>
@@ -57,14 +71,19 @@ function ElectionsListContent() {
           <CardTitle>All Trust Elections</CardTitle>
           {canEdit && (
             <div className="flex gap-2">
-              <Button
-                variant="outline"
-                onClick={() => enrollMutation.mutate()}
-                disabled={enrollMutation.isPending}
-                data-testid="button-enrollment-wizard"
+              <span
+                className="inline-flex"
+                title={firstTimeBlocked ? firstTimeEligibility?.reason : undefined}
               >
-                {enrollMutation.isPending ? "Starting…" : "Enrollment Wizard"}
-              </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => enrollMutation.mutate()}
+                  disabled={enrollMutation.isPending || firstTimeBlocked}
+                  data-testid="button-enrollment-wizard"
+                >
+                  {enrollMutation.isPending ? "Starting…" : "First-time Enrollment"}
+                </Button>
+              </span>
               <Button onClick={() => setIsModalOpen(true)} data-testid="button-create-election">
                 New Election
               </Button>
