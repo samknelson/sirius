@@ -353,6 +353,7 @@ const optionsMetadata: Record<OptionsTypeName, OptionsTableMetadata<any>> = {
     optionalFields: ["siriusId", "description", "sequence", "data"],
     supportsSequencing: true,
     fields: [
+      { name: "icon", label: "Icon", inputType: "icon", required: false, placeholder: "Select an icon", showInTable: true, columnHeader: "Icon", columnWidth: "80px", dataField: true },
       { name: "name", label: "Name", inputType: "text", required: true, placeholder: "Benefit type name", showInTable: true, columnHeader: "Name" },
       { name: "siriusId", label: "Sirius ID", inputType: "text", required: false, placeholder: "Optional Sirius ID", showInTable: true, columnHeader: "Sirius ID" },
       { name: "description", label: "Description", inputType: "textarea", required: false, placeholder: "Optional description", showInTable: true, columnHeader: "Description" },
