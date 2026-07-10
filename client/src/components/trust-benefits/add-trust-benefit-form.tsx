@@ -18,6 +18,7 @@ export function AddTrustBenefitForm() {
   const [siriusId, setSiriusId] = useState("");
   const [benefitType, setBenefitType] = useState<string | undefined>(undefined);
   const [color, setColor] = useState("");
+  const [showOnWorkerList, setShowOnWorkerList] = useState(true);
   const [isActive, setIsActive] = useState(true);
   const [description, setDescription] = useState("");
   const { toast } = useToast();
@@ -29,7 +30,7 @@ export function AddTrustBenefitForm() {
   });
 
   const addBenefitMutation = useMutation({
-    mutationFn: async (benefitData: { name: string; siriusId?: string; benefitType?: string; color?: string | null; isActive: boolean; description?: string }) => {
+    mutationFn: async (benefitData: { name: string; siriusId?: string; benefitType?: string; color?: string | null; showOnWorkerList?: boolean; isActive: boolean; description?: string }) => {
       return await apiRequest("POST", "/api/trust-benefits", benefitData);
     },
     onSuccess: () => {
@@ -38,6 +39,7 @@ export function AddTrustBenefitForm() {
       setSiriusId("");
       setBenefitType(undefined);
       setColor("");
+      setShowOnWorkerList(true);
       setIsActive(true);
       setDescription("");
       toast({
@@ -64,6 +66,7 @@ export function AddTrustBenefitForm() {
         siriusId: siriusId.trim() || undefined,
         benefitType: benefitType || undefined,
         color: color || null,
+        showOnWorkerList,
         isActive,
         description: description.trim() || undefined
       });
@@ -174,6 +177,26 @@ export function AddTrustBenefitForm() {
               />
               <p className="text-xs text-muted-foreground mt-1">
                 Supports basic formatting: bold, italic, lists
+              </p>
+            </div>
+
+            <div className="space-y-1">
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="benefit-show-on-worker-list"
+                  checked={showOnWorkerList}
+                  onCheckedChange={(checked) => setShowOnWorkerList(checked === true)}
+                  data-testid="checkbox-benefit-show-on-worker-list"
+                />
+                <Label
+                  htmlFor="benefit-show-on-worker-list"
+                  className="text-sm font-medium text-foreground cursor-pointer"
+                >
+                  Show in worker list
+                </Label>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                When off, this benefit's icon is hidden from the benefit column of the worker list (useful for supplemental benefits). It still appears everywhere else.
               </p>
             </div>
 

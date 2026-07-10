@@ -31,6 +31,7 @@ export function createTrustBenefitStorage(): TrustBenefitStorage {
           benefitTypeName: optionsTrustBenefitType.name,
           benefitTypeData: optionsTrustBenefitType.data,
           color: trustBenefits.color,
+          showOnWorkerList: trustBenefits.showOnWorkerList,
           isActive: trustBenefits.isActive,
           description: trustBenefits.description,
         })
@@ -65,6 +66,7 @@ export function createTrustBenefitStorage(): TrustBenefitStorage {
           benefitTypeName: optionsTrustBenefitType.name,
           benefitTypeData: optionsTrustBenefitType.data,
           color: trustBenefits.color,
+          showOnWorkerList: trustBenefits.showOnWorkerList,
           isActive: trustBenefits.isActive,
           description: trustBenefits.description,
         })

@@ -526,6 +526,7 @@ async function _searchWorkers(params: InternalSearchParams): Promise<InternalSea
               INNER JOIN options_trust_benefit_type bt ON tb.benefit_type = bt.id
               WHERE wmb.worker_id = w.id
                 AND tb.is_active = true
+                AND tb.show_on_worker_list = true
                 AND wmb.month = ${currentMonth}
                 AND wmb.year = ${currentYear}
             ) sub

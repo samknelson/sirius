@@ -70,7 +70,7 @@ export function registerTrustBenefitsRoutes(
   app.put("/api/trust-benefits/:id", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
       const { id } = req.params;
-      const { name, benefitType, color, isActive, description, siriusId } = req.body;
+      const { name, benefitType, color, showOnWorkerList, isActive, description, siriusId } = req.body;
       
       const updates: Partial<InsertTrustBenefit> = {};
       
@@ -97,6 +97,13 @@ export function registerTrustBenefitsRoutes(
           return res.status(400).json({ message: "Color must be a string" });
         }
         updates.color = typeof color === "string" && color.trim() ? color.trim() : null;
+      }
+      
+      if (showOnWorkerList !== undefined) {
+        if (typeof showOnWorkerList !== 'boolean') {
+          return res.status(400).json({ message: "showOnWorkerList must be a boolean" });
+        }
+        updates.showOnWorkerList = showOnWorkerList;
       }
       
       if (isActive !== undefined) {

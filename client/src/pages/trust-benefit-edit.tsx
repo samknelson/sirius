@@ -23,6 +23,7 @@ function TrustBenefitEditContent() {
   const [editSiriusId, setEditSiriusId] = useState(benefit.siriusId || "");
   const [editBenefitType, setEditBenefitType] = useState(benefit.benefitType || undefined);
   const [editColor, setEditColor] = useState(benefit.color || "");
+  const [editShowOnWorkerList, setEditShowOnWorkerList] = useState(benefit.showOnWorkerList ?? true);
   const [editIsActive, setEditIsActive] = useState(benefit.isActive);
   const [editDescription, setEditDescription] = useState(benefit.description || "");
 
@@ -31,7 +32,7 @@ function TrustBenefitEditContent() {
   });
 
   const updateBenefitMutation = useMutation({
-    mutationFn: async (data: { name: string; siriusId?: string | null; benefitType?: string; color?: string | null; isActive: boolean; description?: string }) => {
+    mutationFn: async (data: { name: string; siriusId?: string | null; benefitType?: string; color?: string | null; showOnWorkerList?: boolean; isActive: boolean; description?: string }) => {
       return await apiRequest("PUT", `/api/trust-benefits/${benefit.id}`, data);
     },
     onSuccess: () => {
@@ -59,6 +60,7 @@ function TrustBenefitEditContent() {
         siriusId: editSiriusId.trim() || null,
         benefitType: editBenefitType || undefined,
         color: editColor || null,
+        showOnWorkerList: editShowOnWorkerList,
         isActive: editIsActive,
         description: editDescription.trim() || undefined
       });
@@ -166,6 +168,26 @@ function TrustBenefitEditContent() {
               />
               <p className="text-xs text-muted-foreground">
                 Supports basic formatting: bold, italic, lists
+              </p>
+            </div>
+
+            <div className="space-y-1">
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="edit-benefit-show-on-worker-list"
+                  checked={editShowOnWorkerList}
+                  onCheckedChange={(checked) => setEditShowOnWorkerList(checked === true)}
+                  data-testid="checkbox-edit-benefit-show-on-worker-list"
+                />
+                <Label
+                  htmlFor="edit-benefit-show-on-worker-list"
+                  className="text-sm font-medium text-foreground cursor-pointer"
+                >
+                  Show in worker list
+                </Label>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                When off, this benefit's icon is hidden from the benefit column of the worker list (useful for supplemental benefits). It still appears everywhere else.
               </p>
             </div>
 
