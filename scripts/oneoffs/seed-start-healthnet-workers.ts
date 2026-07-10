@@ -54,6 +54,8 @@ const MLK_BENEFIT_ID = "10e16e6e-1ce8-4068-a55a-6351e72be9f5"; // MLK (Medical t
 const EMP_NO_WINDOW = "9a80c1c5-7d46-4124-adc4-4be57375c5ee"; // TEST HOTEL (no immediate-eligibility window)
 const EMP_WITH_WINDOW = "93064023-1f33-4f69-963f-4c16b52db647"; // TEST IE EMPLOYER (gets the window)
 
+const EMPLOYMENT_STATUS_ID = "46487fff-698d-4031-b9da-1846a09ef986"; // "Active"
+
 const MEDICAL_MONTHS = 24;
 const DISTANCE_MILES = 15;
 const AS_OF = { year: 2026, month: 6 };
@@ -81,7 +83,12 @@ function monthRange(start: YearMonth, end: YearMonth): YearMonth[] {
 async function findOrCreateWorker(name: string) {
   const found = await storage.workers.searchWorkers(name, 10);
   const exact = found.workers.find((w) => w.displayName === name);
-  if (exact) return exact;
+  if (exact) {
+    // searchWorkers returns a trimmed row without contactId; fetch the full
+    // worker so downstream address helpers have contactId on re-runs.
+    const full = await storage.workers.getWorker(exact.id);
+    if (full) return full;
+  }
   return storage.workers.createWorker(name);
 }
 
@@ -110,6 +117,68 @@ async function ensureBenefitMonths(
     created++;
   }
   return created;
+}
+
+/**
+ * Idempotently upsert a run of monthly hours for a worker against an employer.
+ * Uses upsertWorkerHours (ON CONFLICT on worker/employer/year/month/day=1), so
+ * re-running overwrites the same rows instead of creating duplicates. Hours are
+ * seeded for realism/browsability only — the Start HealthNet plugin never reads
+ * them. Returns the number of months written.
+ */
+async function ensureMonthlyHours(
+  workerId: string,
+  employerId: string,
+  months: YearMonth[],
+  hoursPerMonth: number,
+): Promise<number> {
+  for (const { year, month } of months) {
+    await storage.workerHours.upsertWorkerHours({
+      workerId,
+      employerId,
+      employmentStatusId: EMPLOYMENT_STATUS_ID,
+      year,
+      month,
+      hours: hoursPerMonth,
+      home: true,
+    });
+  }
+  return months.length;
+}
+
+/**
+ * Idempotently ensure a contact has a plain (non-geocoded) postal address.
+ * Guarded by an exact street/city/state/zip match so re-runs don't duplicate.
+ * These are added purely for realism/browsability; leaving them un-geocoded
+ * keeps them from accidentally satisfying the geographic criterion. Returns
+ * true if a new row was created.
+ */
+async function ensurePlainAddress(
+  contactId: string,
+  addr: { street: string; city: string; state: string; postalCode: string },
+  isPrimary: boolean,
+): Promise<boolean> {
+  const existing = await storage.contacts.addresses.getContactPostalByContact(contactId);
+  const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ").replace(/[.,#]/g, "");
+  const already = existing.some(
+    (a) =>
+      norm(a.street) === norm(addr.street) &&
+      norm(a.city) === norm(addr.city) &&
+      norm(a.state) === norm(addr.state) &&
+      a.postalCode.replace(/\D/g, "").substring(0, 5) === addr.postalCode.replace(/\D/g, "").substring(0, 5),
+  );
+  if (already) return false;
+  await storage.contacts.addresses.createContactPostal({
+    contactId,
+    street: addr.street,
+    city: addr.city,
+    state: addr.state,
+    postalCode: addr.postalCode,
+    country: "USA",
+    isPrimary,
+    isActive: true,
+  });
+  return true;
 }
 
 /** Idempotently ensure a contact has a geocoded primary+active postal address. */
@@ -187,10 +256,23 @@ async function main(): Promise<void> {
   await enableAllCriteria(siteFacilityId);
   const windowMsg = await ensureImmediateWindow();
 
-  // 2. Criterion 1 — Geographic: far-away geocoded address, nothing else.
+  // Every seeded worker gets a run of monthly hours (Jan → Jun 2026) against
+  // their election employer so they look realistic and fully browsable in the
+  // app. The plugin never reads hours; this is for realism only.
+  const HOURS_RANGE = monthRange({ year: 2026, month: 1 }, AS_OF);
+
+  // 2. Criterion 1 — Geographic: far-away geocoded PRIMARY address. A secondary
+  //    (non-primary) mailing address is added for variety without disturbing
+  //    the geocoded primary the geographic criterion depends on.
   const geoWorker = await findOrCreateWorker("[HN] Geographic (far from site)");
   await ensureElection(geoWorker.id, EMP_NO_WINDOW);
   const geoAddr = await ensureGeocodedAddress(geoWorker.contactId, FAR_WORKER_COORDS, "New York", "NY");
+  await ensurePlainAddress(
+    geoWorker.contactId,
+    { street: "PO Box 4567", city: "Brooklyn", state: "NY", postalCode: "11201" },
+    false,
+  );
+  const geoHours = await ensureMonthlyHours(geoWorker.id, EMP_NO_WINDOW, HOURS_RANGE, 150);
 
   // 3. Criterion 2 — Continuous medical: 24 consecutive months of MLK (Medical type).
   const medWorker = await findOrCreateWorker("[HN] 24mo continuous medical (MLK)");
@@ -201,14 +283,46 @@ async function main(): Promise<void> {
     monthRange({ year: 2023, month: 1 }, { year: 2024, month: 12 }),
     EMP_NO_WINDOW,
   );
+  // A plain (non-geocoded) primary physical address + a mailing address. Left
+  // un-geocoded on purpose so this worker still passes only via the medical
+  // criterion, not geographic.
+  await ensurePlainAddress(
+    medWorker.contactId,
+    { street: "1200 Auburn Ave NE", city: "Atlanta", state: "GA", postalCode: "30312" },
+    true,
+  );
+  await ensurePlainAddress(
+    medWorker.contactId,
+    { street: "PO Box 891", city: "Atlanta", state: "GA", postalCode: "30301" },
+    false,
+  );
+  const medHours = await ensureMonthlyHours(medWorker.id, EMP_NO_WINDOW, HOURS_RANGE, 160);
 
   // 4. Criterion 3 — Employer immediate-eligibility: belongs to TEST IE EMPLOYER.
   const empWorker = await findOrCreateWorker("[HN] Employer immediate-eligibility");
   await ensureElection(empWorker.id, EMP_WITH_WINDOW);
+  await ensurePlainAddress(
+    empWorker.contactId,
+    { street: "233 S Wacker Dr", city: "Chicago", state: "IL", postalCode: "60606" },
+    true,
+  );
+  await ensurePlainAddress(
+    empWorker.contactId,
+    { street: "PO Box 2200", city: "Chicago", state: "IL", postalCode: "60607" },
+    false,
+  );
+  const empHours = await ensureMonthlyHours(empWorker.id, EMP_WITH_WINDOW, HOURS_RANGE, 155);
 
-  // 5. Control — meets none.
+  // 5. Control — meets none. Its address is deliberately un-geocoded so the
+  //    geographic criterion cannot confirm and the worker stays NOT eligible.
   const noneWorker = await findOrCreateWorker("[HN] Not eligible (no criterion)");
   await ensureElection(noneWorker.id, EMP_NO_WINDOW);
+  await ensurePlainAddress(
+    noneWorker.contactId,
+    { street: "1000 Louisiana St", city: "Houston", state: "TX", postalCode: "77002" },
+    true,
+  );
+  const noneHours = await ensureMonthlyHours(noneWorker.id, EMP_NO_WINDOW, HOURS_RANGE, 140);
 
   console.log("Seeded data for the BAO - Start HealthNet plugin (all 3 criteria enabled).\n");
   console.log("Rule config updated (plugin_configs 7c25e64a):");
@@ -218,23 +332,30 @@ async function main(): Promise<void> {
 
   console.log("Page selection to test: EVENT CENTER Plan policy + Health Net benefit, scan type \"start\", as-of June 2026.\n");
 
+  const hoursSpan = `${HOURS_RANGE.length} months (2026-01 → 2026-06)`;
+
   console.log("Criterion 1 — Geographic:");
   console.log(`  worker : ${geoWorker.id} ([HN] Geographic (far from site))`);
-  console.log(`  data   : geocoded NY address ~2400 mi from the LA site (${geoAddr ? "added" : "already present"})`);
+  console.log(`  data   : geocoded NY address ~2400 mi from the LA site (${geoAddr ? "added" : "already present"}) + Brooklyn mailing address`);
+  console.log(`  hours  : ${geoHours} months @ TEST HOTEL (${hoursSpan})`);
   console.log("  expect : ELIGIBLE (geographic)\n");
 
   console.log("Criterion 2 — Continuous medical:");
   console.log(`  worker : ${medWorker.id} ([HN] 24mo continuous medical (MLK))`);
-  console.log(`  data   : MLK (Medical type) 2023-01 → 2024-12 (+${medMonths} rows)`);
+  console.log(`  data   : MLK (Medical type) 2023-01 → 2024-12 (+${medMonths} rows) + Atlanta physical & mailing addresses`);
+  console.log(`  hours  : ${medHours} months @ TEST HOTEL (${hoursSpan})`);
   console.log("  expect : ELIGIBLE (continuous medical)\n");
 
   console.log("Criterion 3 — Employer immediate-eligibility:");
   console.log(`  worker : ${empWorker.id} ([HN] Employer immediate-eligibility))`);
-  console.log("  data   : employer TEST IE EMPLOYER, window covers June 2026");
+  console.log("  data   : employer TEST IE EMPLOYER, window covers June 2026 + Chicago physical & mailing addresses");
+  console.log(`  hours  : ${empHours} months @ TEST IE EMPLOYER (${hoursSpan})`);
   console.log("  expect : ELIGIBLE (employer immediate-eligibility)\n");
 
   console.log("Control — meets none:");
   console.log(`  worker : ${noneWorker.id} ([HN] Not eligible (no criterion))`);
+  console.log("  data   : un-geocoded Houston address (geographic cannot confirm)");
+  console.log(`  hours  : ${noneHours} months @ TEST HOTEL (${hoursSpan})`);
   console.log("  expect : NOT eligible\n");
 }
 
