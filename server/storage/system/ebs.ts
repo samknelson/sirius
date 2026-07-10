@@ -16,6 +16,8 @@ export interface EbsScheduledEventInput {
   denormId: string;
   uniqueId: string;
   pluginId: string;
+  /** Owning subject the event is about (e.g. the worker id). Indexed. */
+  subjectId: string;
   eventType: string;
   payload: unknown;
   sendOn: Date;
@@ -61,21 +63,26 @@ export interface EbsStorage {
    * process dies mid-emit than to deliver the same reminder twice. Retrying a
    * partial failure is deliberately NOT supported, because re-emitting the
    * whole event would re-run the handlers that already succeeded.
+   *
+   * `purgeAfter` is stored on the claimed row so the retention purge is
+   * row-safe (see {@link purgeExpired}).
    */
-  claimForDelivery(uniqueId: string): Promise<boolean>;
+  claimForDelivery(uniqueId: string, purgeAfter: Date): Promise<boolean>;
   /**
    * Record the terminal delivery outcome for a `uniqueId`. Idempotent: a second
    * call for the same `uniqueId` is a no-op (`ON CONFLICT DO NOTHING` on the
-   * unique `unique_id`), so the first recorded outcome wins.
+   * unique `unique_id`), so the first recorded outcome wins. `purgeAfter` drives
+   * the row-safe retention purge (see {@link purgeExpired}).
    */
-  markStatus(uniqueId: string, status: EbsDeliveryStatus): Promise<void>;
+  markStatus(uniqueId: string, status: EbsDeliveryStatus, purgeAfter: Date): Promise<void>;
   /**
-   * Delete `ebs_status` rows created before `cutoff`, returning the number
-   * removed. Retention purge: once an event's window is long past its
-   * `ebs_denorm`/`denorm` rows have been widow-cleaned, so the orphaned status
-   * record is safe to drop.
+   * Delete `ebs_status` rows whose `purge_after` cutoff has passed (`< now`),
+   * returning the number removed. Because `purge_after` is derived from each
+   * event's `dont_send_after`, a status row is only removed once its scheduling
+   * window is long past — so the purge can never re-open a still-in-window
+   * event (which would let `getDue` re-fire it).
    */
-  purgeStatusBefore(cutoff: Date): Promise<number>;
+  purgeExpired(now: Date): Promise<number>;
 }
 
 export function createEbsStorage(): EbsStorage {
@@ -87,6 +94,7 @@ export function createEbsStorage(): EbsStorage {
         denormId: input.denormId,
         uniqueId: input.uniqueId,
         pluginId: input.pluginId,
+        subjectId: input.subjectId,
         eventType: input.eventType,
         payload: input.payload,
         sendOn: input.sendOn,
@@ -124,29 +132,33 @@ export function createEbsStorage(): EbsStorage {
       return rows.map((r) => r.ebs);
     },
 
-    async claimForDelivery(uniqueId: string): Promise<boolean> {
+    async claimForDelivery(uniqueId: string, purgeAfter: Date): Promise<boolean> {
       const client = getClient();
       const inserted = await client
         .insert(ebsStatus)
-        .values({ uniqueId, status: "sent" })
+        .values({ uniqueId, status: "sent", purgeAfter })
         .onConflictDoNothing({ target: ebsStatus.uniqueId })
         .returning({ id: ebsStatus.id });
       return inserted.length > 0;
     },
 
-    async markStatus(uniqueId: string, status: EbsDeliveryStatus): Promise<void> {
+    async markStatus(
+      uniqueId: string,
+      status: EbsDeliveryStatus,
+      purgeAfter: Date,
+    ): Promise<void> {
       const client = getClient();
       await client
         .insert(ebsStatus)
-        .values({ uniqueId, status })
+        .values({ uniqueId, status, purgeAfter })
         .onConflictDoNothing({ target: ebsStatus.uniqueId });
     },
 
-    async purgeStatusBefore(cutoff: Date): Promise<number> {
+    async purgeExpired(now: Date): Promise<number> {
       const client = getClient();
       const deleted = await client
         .delete(ebsStatus)
-        .where(lt(ebsStatus.createdAt, cutoff))
+        .where(lt(ebsStatus.purgeAfter, now))
         .returning({ id: ebsStatus.id });
       return deleted.length;
     },

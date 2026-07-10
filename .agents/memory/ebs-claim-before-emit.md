@@ -28,3 +28,22 @@ only the caller that gets a returned row may emit. Losers skip.
 project claim convention (`FOR UPDATE SKIP LOCKED` / `ON CONFLICT DO NOTHING
 RETURNING`, see `storage/wmb-scan-queue.ts` `claimNextJob`). Do not add a
 retry-on-partial-failure path unless emits are made per-handler idempotent.
+
+## Retention purge of a decoupled terminal-status table must be row-safe
+
+The decoupled status table (`ebs_status`, no FK to `ebs_denorm`) must NOT be
+purged by a fixed age off `created_at`. The scheduling row (`ebs_denorm`) can
+outlive the status row, so dropping a `sent`/`expired` status while its event is
+still in-window (`dont_send_after >= now`) lets `getDue` re-fire it — a re-send.
+
+**Rule:** store a per-row purge cutoff on the status row derived from the event's
+`dont_send_after` (here `purge_after = dont_send_after + retention`), and purge
+only `WHERE purge_after < now`. Guarantees a status is dropped only once its
+event is long out of the firing window.
+
+**Also:** with a decoupled status + a re-enumerating denorm backfill, purging a
+terminal status for a still-referenced `ebs_denorm` row causes `getExpiredUnfired`
+to re-mark it every run (insert/delete churn). Fix in the denorm plugin, not the
+pump: `backfill` must skip entities whose window is fully past (rolling horizon)
+and `findWidows` must retire past-window rows even for still-open subjects, so the
+`ebs_denorm` row is gone before its status is purged.

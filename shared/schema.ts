@@ -2250,12 +2250,17 @@ export const ebsDenorm = pgTable("ebs_denorm", {
   pluginId: varchar("plugin_id").notNull(),
   eventType: varchar("event_type").notNull(),
   payload: jsonb("payload").notNull(),
+  // The owning subject the scheduled event is *about* (e.g. the worker), so the
+  // bus can be operated at subject granularity (find/purge every scheduled event
+  // for a subject) without decoding each `unique_id`. Indexed; opaque to the pump.
+  subjectId: varchar("subject_id").notNull(),
   sendOn: timestamp("send_on").notNull(),
   dontSendAfter: timestamp("dont_send_after").notNull(),
 }, (table) => [
   uniqueIndex("ebs_denorm_denorm_uniq").on(table.denormId),
   uniqueIndex("ebs_denorm_unique_id_uniq").on(table.uniqueId),
   index("ebs_denorm_send_on_idx").on(table.sendOn),
+  index("ebs_denorm_subject_idx").on(table.subjectId),
 ]);
 
 export const insertEbsDenormSchema = createInsertSchema(ebsDenorm).omit({
@@ -2270,7 +2275,9 @@ export type EbsDenorm = typeof ebsDenorm.$inferSelect;
 // re-create and re-fire an event that has already been delivered (or expired).
 // The presence of ANY row for a `unique_id` means "terminal — do not process";
 // `status` distinguishes a successful send from a window that lapsed unfired.
-// `created_at` drives the retention purge.
+// `purge_after` (derived from the source event's `dont_send_after`) drives a
+// row-safe retention purge: a status row is only dropped once its scheduling
+// window is long past, so the purge can never re-open a still-in-window event.
 export const ebsDeliveryStatusEnum = pgEnum("ebs_delivery_status", ["sent", "expired"]);
 
 export const ebsStatus = pgTable("ebs_status", {
@@ -2278,9 +2285,10 @@ export const ebsStatus = pgTable("ebs_status", {
   uniqueId: varchar("unique_id").notNull(),
   status: ebsDeliveryStatusEnum("status").notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+  purgeAfter: timestamp("purge_after").notNull(),
 }, (table) => [
   unique("ebs_status_unique_id_uniq").on(table.uniqueId),
-  index("ebs_status_created_idx").on(table.createdAt),
+  index("ebs_status_purge_idx").on(table.purgeAfter),
 ]);
 
 export const insertEbsStatusSchema = createInsertSchema(ebsStatus).omit({

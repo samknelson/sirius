@@ -12,8 +12,18 @@ import type { CronJobContext, CronJobResult } from "../types";
 
 /** Max scheduled events drained per run (each half). */
 const BATCH_LIMIT = 1000;
-/** Days an `ebs_status` record is retained before the purge sweeps it. */
+/** Days past an event's window close that its `ebs_status` row is retained. */
 const RETENTION_DAYS = 90;
+
+/**
+ * Row-safe purge cutoff for a scheduled event's status row: {@link RETENTION_DAYS}
+ * after its window closes (`dont_send_after`). The purge only removes rows whose
+ * cutoff is in the past, so a status can never be dropped while its event could
+ * still fire (`getDue` requires `dont_send_after >= now`).
+ */
+function purgeAfterFor(dontSendAfter: Date): Date {
+  return new Date(dontSendAfter.getTime() + RETENTION_DAYS * 24 * 60 * 60 * 1000);
+}
 
 /**
  * Resolve whether the component that owns a scheduled event's source denorm
@@ -32,15 +42,20 @@ function sourceComponentEnabled(pluginId: string): boolean {
  *
  * Every run it drains three queues off `storage.ebs`:
  *   1. Due events (`send_on <= now <= dont_send_after`, no terminal status):
- *      re-emitted on the real event bus via `emitWithFailures`. A scheduled
- *      event is marked `sent` ONLY when every handler ran cleanly; any handler
- *      failure leaves it unmarked so it retries next run (still inside its
- *      window). Events whose source component has been disabled are skipped.
+ *      each is claimed atomically BEFORE emit (`claimForDelivery`) so it fires
+ *      at-most-once even under overlapping runs / multiple instances, then
+ *      re-emitted on the real event bus via `emitWithFailures`. A handler
+ *      failure after the claim is logged, NOT retried — re-emitting the whole
+ *      event would re-run the handlers that already succeeded. Events whose
+ *      source component has been disabled are left unclaimed so they resume if
+ *      it is re-enabled inside the window.
  *   2. Expired events (`dont_send_after < now`, no terminal status): recorded
  *      `expired` (logged once) rather than delivered, so a long-down window or a
  *      retroactively-scheduled past reminder never blasts a stale notice.
- *   3. Retention purge: `ebs_status` rows older than {@link RETENTION_DAYS} are
- *      deleted (their `ebs_denorm`/`denorm` rows are long gone by then).
+ *   3. Retention purge: `ebs_status` rows whose `purge_after` cutoff has passed
+ *      are deleted. `purge_after` is derived from each event's `dont_send_after`
+ *      ({@link RETENTION_DAYS} past window close), so the purge is row-safe — it
+ *      can never drop a status while its event is still in the firing window.
  *
  * Core singleton, enabled by default. In `test` mode it only counts what it
  * would do and writes nothing.
@@ -63,7 +78,7 @@ registerCronPlugin({
       const due = await storage.ebs.getDue(BATCH_LIMIT, now);
       const expired = await storage.ebs.getExpiredUnfired(BATCH_LIMIT, now);
       return {
-        message: `Would fire ${due.length} due event(s), expire ${expired.length}, and purge status records older than ${RETENTION_DAYS} days`,
+        message: `Would fire ${due.length} due event(s), expire ${expired.length}, and purge status records past their retention cutoff (${RETENTION_DAYS}d after window close)`,
         metadata: { due: due.length, expired: expired.length },
       };
     }
@@ -82,7 +97,10 @@ registerCronPlugin({
       // another instance) can win the claim, so the event fires at most once
       // even if two runs overlap. A lost claim means someone else already
       // delivered it — skip silently.
-      const claimed = await storage.ebs.claimForDelivery(row.uniqueId);
+      const claimed = await storage.ebs.claimForDelivery(
+        row.uniqueId,
+        purgeAfterFor(row.dontSendAfter),
+      );
       if (!claimed) {
         skipped++;
         continue;
@@ -126,7 +144,11 @@ registerCronPlugin({
         dontSendAfter: row.dontSendAfter,
       });
       try {
-        await storage.ebs.markStatus(row.uniqueId, "expired");
+        await storage.ebs.markStatus(
+          row.uniqueId,
+          "expired",
+          purgeAfterFor(row.dontSendAfter),
+        );
         expired++;
       } catch (error) {
         logger.error(`Failed to mark EBS event ${row.uniqueId} expired`, {
@@ -137,11 +159,10 @@ registerCronPlugin({
       }
     }
 
-    const cutoff = new Date(now.getTime() - RETENTION_DAYS * 24 * 60 * 60 * 1000);
-    const purged = await storage.ebs.purgeStatusBefore(cutoff);
+    const purged = await storage.ebs.purgeExpired(now);
 
     return {
-      message: `Fired ${sent} event(s) (${failed} failed/retrying, ${skipped} skipped), expired ${expired}, purged ${purged} old status record(s)`,
+      message: `Fired ${sent} event(s) (${failed} with handler failure(s), ${skipped} skipped/already-claimed), expired ${expired}, purged ${purged} old status record(s)`,
       metadata: { sent, failed, skipped, expired, purged },
     };
   },
