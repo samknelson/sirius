@@ -270,3 +270,4 @@ import "./plugins/steward-assignment-notifier";
 import "./plugins/trust-wmb-scan";
 import "./plugins/grievance-assignment-notifier";
 import "./plugins/grievance-settlement-notifier";
+import "./plugins/grievance-status-notifier";

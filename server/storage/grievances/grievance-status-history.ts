@@ -17,9 +17,60 @@ import { eventBus, EventType } from "../../services/event-bus";
  * grievance's timeline steps from committed data. Best-effort: a failed emit
  * never fails the write.
  */
-function emitStatusHistorySaved(grievanceId: string): void {
+/**
+ * The grievance's derived current status at a point in time: id + resolved
+ * name, both null when the grievance has no history (or the status option is
+ * missing). Captured before and after a mutation so the emitted event can
+ * describe a genuine status transition.
+ */
+interface CurrentStatusRef {
+  statusId: string | null;
+  statusName: string | null;
+}
+
+/**
+ * Read the grievance's current status (the `is_current` entry) with its
+ * resolved name. Call inside the mutation transaction: before `recomputeIsCurrent`
+ * to capture the previous status, and after it to capture the new one.
+ */
+async function getCurrentStatus(grievanceId: string): Promise<CurrentStatusRef> {
+  const client = getClient();
+  const [row] = await client
+    .select({
+      statusId: grievanceStatusHistory.statusId,
+      statusName: optionsGrievanceStatus.name,
+    })
+    .from(grievanceStatusHistory)
+    .leftJoin(
+      optionsGrievanceStatus,
+      eq(grievanceStatusHistory.statusId, optionsGrievanceStatus.id),
+    )
+    .where(
+      and(
+        eq(grievanceStatusHistory.grievanceId, grievanceId),
+        eq(grievanceStatusHistory.isCurrent, true),
+      ),
+    )
+    .limit(1);
+  return {
+    statusId: row?.statusId ?? null,
+    statusName: row?.statusName ?? null,
+  };
+}
+
+function emitStatusHistorySaved(
+  grievanceId: string,
+  previous: CurrentStatusRef,
+  next: CurrentStatusRef,
+): void {
   onAfterCommit(() => {
-    void eventBus.emit(EventType.GRIEVANCE_STATUS_HISTORY_SAVED, { grievanceId });
+    void eventBus.emit(EventType.GRIEVANCE_STATUS_HISTORY_SAVED, {
+      grievanceId,
+      previousStatusId: previous.statusId,
+      previousStatusName: previous.statusName,
+      newStatusId: next.statusId,
+      newStatusName: next.statusName,
+    });
   });
 }
 
@@ -171,6 +222,9 @@ export function createGrievanceStatusHistoryStorage(): GrievanceStatusHistorySto
       return runInTransaction(async () => {
         const client = getClient();
         await lockGrievance(grievanceId);
+        // Capture the current status BEFORE the mutation so an edit to the
+        // currently-current entry doesn't make `previous` read back the new value.
+        const previous = await getCurrentStatus(grievanceId);
         const [row] = await client
           .insert(grievanceStatusHistory)
           .values({
@@ -182,11 +236,12 @@ export function createGrievanceStatusHistoryStorage(): GrievanceStatusHistorySto
           })
           .returning();
         await recomputeIsCurrent(grievanceId);
+        const next = await getCurrentStatus(grievanceId);
         const [fresh] = await client
           .select()
           .from(grievanceStatusHistory)
           .where(eq(grievanceStatusHistory.id, row.id));
-        emitStatusHistorySaved(grievanceId);
+        emitStatusHistorySaved(grievanceId, previous, next);
         return fresh;
       });
     },
@@ -199,6 +254,7 @@ export function createGrievanceStatusHistoryStorage(): GrievanceStatusHistorySto
       return runInTransaction(async () => {
         const client = getClient();
         await lockGrievance(grievanceId);
+        const previous = await getCurrentStatus(grievanceId);
         const set: Partial<typeof grievanceStatusHistory.$inferInsert> = {};
         if (data.statusId !== undefined) set.statusId = data.statusId;
         if (data.date !== undefined) set.date = data.date;
@@ -214,11 +270,12 @@ export function createGrievanceStatusHistoryStorage(): GrievanceStatusHistorySto
           .returning();
         if (!row) return undefined;
         await recomputeIsCurrent(grievanceId);
+        const next = await getCurrentStatus(grievanceId);
         const [fresh] = await client
           .select()
           .from(grievanceStatusHistory)
           .where(eq(grievanceStatusHistory.id, row.id));
-        emitStatusHistorySaved(grievanceId);
+        emitStatusHistorySaved(grievanceId, previous, next);
         return fresh || undefined;
       });
     },
@@ -227,6 +284,7 @@ export function createGrievanceStatusHistoryStorage(): GrievanceStatusHistorySto
       return runInTransaction(async () => {
         const client = getClient();
         await lockGrievance(grievanceId);
+        const previous = await getCurrentStatus(grievanceId);
         const result = await client
           .delete(grievanceStatusHistory)
           .where(
@@ -238,7 +296,8 @@ export function createGrievanceStatusHistoryStorage(): GrievanceStatusHistorySto
           .returning();
         if (result.length === 0) return false;
         await recomputeIsCurrent(grievanceId);
-        emitStatusHistorySaved(grievanceId);
+        const next = await getCurrentStatus(grievanceId);
+        emitStatusHistorySaved(grievanceId, previous, next);
         return true;
       });
     },
@@ -278,7 +337,11 @@ export function createGrievanceStatusHistoryStorage(): GrievanceStatusHistorySto
           .set({ data: newData })
           .where(eq(grievanceStatusHistory.id, existing.id))
           .returning();
-        emitStatusHistorySaved(grievanceId);
+        // A timeline-adjustment edit never changes the derived current status,
+        // so report no transition (previous === current) — the timeline denorm
+        // still recomputes off `grievanceId`, but a status notifier won't fire.
+        const current = await getCurrentStatus(grievanceId);
+        emitStatusHistorySaved(grievanceId, current, current);
         return row || undefined;
       });
     },

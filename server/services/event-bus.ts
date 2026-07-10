@@ -173,10 +173,22 @@ export interface GrievanceSavedPayload {
 /**
  * Emitted after any grievance status-history mutation (create/update/delete)
  * commits. Consumed by the `grievance_timeline` denorm plugin to recompute the
- * grievance's timeline steps.
+ * grievance's timeline steps (which only needs `grievanceId`).
+ *
+ * Also carries the grievance's derived *current* status before and after the
+ * mutation, so a notifier can detect a genuine transition ("grievance attained
+ * status X") without re-querying: the current status is the latest-dated
+ * status-history entry. Both ids are null when the grievance has no history at
+ * that point in time (e.g. `previous*` on the very first entry, `new*` after
+ * the last entry is deleted). Status names are resolved for rendering and may be
+ * null if the referenced status option is missing.
  */
 export interface GrievanceStatusHistorySavedPayload {
   grievanceId: string;
+  previousStatusId: string | null;
+  previousStatusName: string | null;
+  newStatusId: string | null;
+  newStatusName: string | null;
 }
 
 /**
