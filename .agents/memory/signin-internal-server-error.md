@@ -44,11 +44,22 @@ synchronously in one tick — no async fs window for the cookie to race into.
 is the login document/shell, but if asset-URL races appear, exempt static paths
 from the auth/session middleware.
 
+**THE decisive trap — `express.static` default index:** `serveStatic` mounts
+`express.static(distPath)` BEFORE the buffer catch-all, and serve-static defaults
+to `index: ['index.html']`. So `GET /` (the login screen) is served by
+`express.static` THROUGH `send`'s racy async fs path — the catch-all never runs
+for `/`. This is why the crash persisted even after the catch-all stopped using
+`send`. **Required:** `express.static(distPath, { index: false })` so every
+HTML-shell request (incl. `/` and SPA deep links) falls through to the synchronous
+buffer handler; express.static then only serves real named asset files. When
+diagnosing a `send/index.js` throw, remember express.static uses `send` too — it
+is not enough to fix only your own `res.sendFile`/catch-all.
+
 **Failed attempts (don't repeat):** (1) scoping the custom Clerk resolution
-middleware to `/api` only — kept as a harmless optimization but did NOT fix it,
-because `getSession()`/`passport.session()` still run globally and are the racing
-writer. (2) Guard + error callback around `res.sendFile` in `serveStatic` — cannot
-catch a synchronous throw inside a native fs callback.
+middleware to `/api` only — harmless but not the fix (the racy writer is the
+global clerk/session layer). (2) Guard + error callback around `res.sendFile` —
+cannot catch a synchronous throw inside a native fs callback. (3) Buffer-serving
+the catch-all alone — bypassed for `/` by express.static's default index.
 
 **Resolution:**
 1. *Immediate, user-side:* have the affected user clear cookies/site data for the

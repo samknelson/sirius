@@ -80,19 +80,28 @@ export function serveStatic(app: Express) {
     );
   }
 
-  app.use(express.static(distPath));
+  // `index: false` is critical. By default express.static serves index.html
+  // for `GET /` (and any directory) through the `send` library — the exact racy
+  // async-fs path described below. The login screen IS `/`, so with the default
+  // index option the shell is served by express.static and NEVER reaches the
+  // synchronous buffer handler further down, which is why the white "Internal
+  // Server Error" persisted even after the catch-all stopped using sendFile.
+  // Turning off the automatic index makes every HTML-shell request fall through
+  // to the safe synchronous handler below; express.static now only serves real,
+  // named asset files (JS/CSS/images).
+  app.use(express.static(distPath, { index: false }));
 
   // Preload the SPA shell ONCE at boot so the catch-all can serve it with a
   // synchronous res.send(buffer) instead of res.sendFile.
   //
   // Why this matters (the white "Internal Server Error" on the login screen):
-  // res.sendFile() streams the file via the `send` library, which sets the
-  // response headers (Content-Type, ETag, ...) from INSIDE an async fs.stat
-  // callback. On an authenticated request the session/auth layer flushes an
-  // async Set-Cookie; if those headers land first, send's later setHeader call
-  // throws ERR_HTTP_HEADERS_SENT *synchronously inside the native fs callback*.
-  // That throw cannot be caught by the Express error handler or by sendFile's
-  // own error callback, so Express renders it as a plain white
+  // res.sendFile() / express.static stream the file via the `send` library,
+  // which sets the response headers (Content-Type, ETag, ...) from INSIDE an
+  // async fs.stat callback. On an authenticated request the session/auth layer
+  // flushes an async Set-Cookie; if those headers land first, send's later
+  // setHeader call throws ERR_HTTP_HEADERS_SENT *synchronously inside the native
+  // fs callback*. That throw cannot be caught by the Express error handler or by
+  // sendFile's own error callback, so Express renders it as a plain white
   // "Internal Server Error" page. Serving a preloaded buffer sets all headers
   // synchronously in one tick (guarded by headersSent), leaving no async fs
   // window for the Set-Cookie to race into — it removes the crash at its source.
