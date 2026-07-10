@@ -25,6 +25,12 @@ function emitStatusHistorySaved(grievanceId: string): void {
 
 export interface GrievanceStatusHistoryItem extends GrievanceStatusHistory {
   statusName: string | null;
+  /**
+   * The `open` flag of the referenced grievance status (null if the status
+   * row is missing). A closed status (`false`) terminates the current
+   * timeline step in the `grievance_timeline` denorm.
+   */
+  statusOpen: boolean | null;
 }
 
 /**
@@ -129,6 +135,7 @@ export function createGrievanceStatusHistoryStorage(): GrievanceStatusHistorySto
           isCurrent: grievanceStatusHistory.isCurrent,
           data: grievanceStatusHistory.data,
           statusName: optionsGrievanceStatus.name,
+          statusOpen: optionsGrievanceStatus.open,
         })
         .from(grievanceStatusHistory)
         .leftJoin(

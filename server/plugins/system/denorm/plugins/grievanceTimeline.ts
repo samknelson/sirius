@@ -28,7 +28,8 @@ export interface GrievanceTimelinePayload {
  *  - A template step STARTS at the first history entry whose status is in the
  *    step's `fromStatuses`.
  *  - It COMPLETES at the first history entry at/after its start whose status
- *    is in the step's `toStatuses`.
+ *    is in the step's `toStatuses` OR is a closed (resolved) status. A closed
+ *    status always ends the current step, even when not listed in `toStatuses`.
  *  - Steps that never started produce NO row.
  *  - `due` = start + `days`, calendar or business per the step's `dayType`
  *    (business days skip weekends; holidays are a future extension).
@@ -80,8 +81,14 @@ const grievanceTimelinePlugin: DenormPlugin<GrievanceTimelinePayload> = {
 
       const startedYmd = dateToYmd(new Date(startEntry.date));
       const startTime = new Date(startEntry.date).getTime();
+      // A step completes at the first entry at/after its start whose status is
+      // an explicit `toStatus` OR is a closed (resolved) status. Closed
+      // statuses always end the current step, even when not listed in
+      // `toStatuses`.
       const completeEntry = history.find(
-        (h) => new Date(h.date).getTime() >= startTime && toSet.has(h.statusId),
+        (h) =>
+          new Date(h.date).getTime() >= startTime &&
+          (toSet.has(h.statusId) || h.statusOpen === false),
       );
 
       const computedDueYmd =
