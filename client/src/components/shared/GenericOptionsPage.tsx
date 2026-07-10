@@ -446,6 +446,9 @@ export function GenericOptionsPage({ optionsType }: GenericOptionsPageProps) {
             <Table>
               <TableHeader>
                 <TableRow>
+                  {definition.supportsSequencing && (
+                    <TableHead className="w-[80px]">Order</TableHead>
+                  )}
                   {tableFields.map((f) => (
                     <TableHead key={f.name} style={f.columnWidth ? { width: f.columnWidth } : undefined}>
                       {f.columnHeader || f.label}
@@ -457,6 +460,14 @@ export function GenericOptionsPage({ optionsType }: GenericOptionsPageProps) {
               <TableBody>
                 {displayItems.map((item, index) => (
                   <TableRow key={item.id} data-testid={`row-item-${item.id}`}>
+                    {definition.supportsSequencing && (
+                      <TableCell
+                        className="font-mono text-muted-foreground tabular-nums"
+                        data-testid={`cell-sequence-${item.id}`}
+                      >
+                        {item.sequence ?? 0}
+                      </TableCell>
+                    )}
                     {tableFields.map((f) => (
                       <TableCell key={f.name} data-testid={`cell-${f.name}-${item.id}`}>
                         {renderCell(item, f)}
