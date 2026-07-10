@@ -174,8 +174,16 @@ async function evaluateEligibleBenefits(
   for (const row of ruleRows) {
     const benefitId = (row.subsidiary as any)?.benefit;
     if (!benefitId) continue;
+    const rule = pluginConfigToEligibilityRule(row.config);
+    // Skip the "election" rule inside this wizard: it requires an ACTIVE
+    // election covering the benefit, which is circular here — the wizard's
+    // purpose is to create that election. Every other rule still applies.
+    // The rule is dropped entirely so it never appears in the per-benefit
+    // reason list; all other consumers (benefits scan, test page) are
+    // unaffected.
+    if (rule.pluginKey === "election") continue;
     const list = rulesByBenefit.get(benefitId) ?? [];
-    list.push(pluginConfigToEligibilityRule(row.config));
+    list.push(rule);
     rulesByBenefit.set(benefitId, list);
   }
 
