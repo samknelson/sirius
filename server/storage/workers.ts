@@ -509,19 +509,25 @@ async function _searchWorkers(params: InternalSearchParams): Promise<InternalSea
         ) as benefit_ids,
         COALESCE(
           (
-            SELECT json_agg(DISTINCT jsonb_build_object(
-              'id', tb.id,
-              'name', tb.name,
-              'typeName', bt.name,
-              'typeIcon', bt.data->>'icon'
-            ))
-            FROM trust_wmb wmb
-            INNER JOIN trust_benefits tb ON wmb.benefit_id = tb.id
-            INNER JOIN options_trust_benefit_type bt ON tb.benefit_type = bt.id
-            WHERE wmb.worker_id = w.id
-              AND tb.is_active = true
-              AND wmb.month = ${currentMonth}
-              AND wmb.year = ${currentYear}
+            SELECT json_agg(obj ORDER BY seq NULLS LAST, nm)
+            FROM (
+              SELECT DISTINCT
+                jsonb_build_object(
+                  'id', tb.id,
+                  'name', tb.name,
+                  'typeName', bt.name,
+                  'typeIcon', bt.data->>'icon'
+                ) AS obj,
+                bt.sequence AS seq,
+                tb.name AS nm
+              FROM trust_wmb wmb
+              INNER JOIN trust_benefits tb ON wmb.benefit_id = tb.id
+              INNER JOIN options_trust_benefit_type bt ON tb.benefit_type = bt.id
+              WHERE wmb.worker_id = w.id
+                AND tb.is_active = true
+                AND wmb.month = ${currentMonth}
+                AND wmb.year = ${currentYear}
+            ) sub
           ),
           '[]'::json
         ) as benefits`
@@ -860,7 +866,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
           w.id as worker_id,
           COALESCE(
             (
-              SELECT json_agg(benefit_data)
+              SELECT json_agg(benefit_data ORDER BY type_seq NULLS LAST, benefit_name)
               FROM (
                 SELECT DISTINCT ON (tb.id, e.id)
                   jsonb_build_object(
@@ -869,7 +875,9 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
                     'typeName', tbt.name,
                     'typeIcon', tbt.data->>'icon',
                     'employerName', e.name
-                  ) as benefit_data
+                  ) as benefit_data,
+                  tbt.sequence as type_seq,
+                  tb.name as benefit_name
                 FROM trust_wmb wmb
                 INNER JOIN trust_benefits tb ON wmb.benefit_id = tb.id
                 LEFT JOIN options_trust_benefit_type tbt ON tb.benefit_type = tbt.id
