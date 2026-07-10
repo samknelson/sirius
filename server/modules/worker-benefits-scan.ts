@@ -36,7 +36,9 @@ export function registerWorkerBenefitsScanRoutes(
 
         const { month, year, mode } = validationResult.data;
 
-        const result = await runBenefitsScan(storage, workerId, month, year, mode);
+        const result = await runBenefitsScan(storage, workerId, month, year, mode, {
+          includeDependents: true,
+        });
         
         res.json(result);
       } catch (error: any) {

@@ -19,7 +19,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import { Scan, Loader2, Calendar, CheckCircle, XCircle, AlertCircle, ArrowRight, Play, FlaskConical } from "lucide-react";
+import { Scan, Loader2, Calendar, CheckCircle, XCircle, AlertCircle, ArrowRight, Play, FlaskConical, Users } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -41,6 +41,15 @@ interface BenefitScanAction {
   executionError?: string;
 }
 
+interface BenefitScanPerson {
+  workerId: string;
+  name: string;
+  role: "subscriber" | "dependent";
+  relationType: string | null;
+  previousMonthBenefitIds: string[];
+  actions: BenefitScanAction[];
+}
+
 interface ScanResult {
   workerId: string;
   month: number;
@@ -53,6 +62,7 @@ interface ScanResult {
   employerName: string | null;
   previousMonthBenefitIds: string[];
   actions: BenefitScanAction[];
+  people?: BenefitScanPerson[];
   summary: {
     totalEvaluated: number;
     eligible: number;
@@ -133,6 +143,92 @@ function WorkerBenefitsScanContent() {
     }
     return <Badge variant="outline">Continue</Badge>;
   };
+
+  const renderActionAccordion = (actions: BenefitScanAction[], personKey: string) => (
+    <Accordion type="multiple" className="w-full">
+      {actions.map((action, index) => (
+        <AccordionItem key={`${personKey}-${action.benefitId}`} value={`${personKey}-item-${index}`}>
+          <AccordionTrigger className="hover:no-underline">
+            <div className="flex items-center gap-3 flex-wrap">
+              {action.eligible ? (
+                <CheckCircle className="h-4 w-4 text-green-600" />
+              ) : (
+                <XCircle className="h-4 w-4 text-red-600" />
+              )}
+              <span className="font-medium">{action.benefitName}</span>
+              {getScanTypeBadge(action.scanType)}
+              <ArrowRight className="h-4 w-4 text-muted-foreground" />
+              {getActionBadge(action)}
+              {action.executed === false && action.executionError && (
+                <Badge variant="destructive">Error</Badge>
+              )}
+            </div>
+          </AccordionTrigger>
+          <AccordionContent>
+            <div className="space-y-3 pl-7">
+              <p className="text-sm text-muted-foreground">{action.actionReason}</p>
+
+              {action.executionError && (
+                <div className="p-2 bg-red-50 dark:bg-red-950/30 rounded-md">
+                  <p className="text-sm text-red-600">Error: {action.executionError}</p>
+                </div>
+              )}
+
+              {action.pluginResults.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Plugin Results:</p>
+                  {action.pluginResults.map((result, i) => (
+                    <div
+                      key={i}
+                      className={`p-2 rounded-md text-sm ${
+                        result.eligible
+                          ? "bg-green-50 dark:bg-green-950/30"
+                          : "bg-red-50 dark:bg-red-950/30"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        {result.eligible ? (
+                          <CheckCircle className="h-3 w-3 text-green-600" />
+                        ) : (
+                          <XCircle className="h-3 w-3 text-red-600" />
+                        )}
+                        <span className="font-mono text-xs">{result.pluginKey}</span>
+                      </div>
+                      {result.reason && (
+                        <p className="text-muted-foreground mt-1 pl-5">{result.reason}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {action.pluginResults.length === 0 && (
+                <p className="text-sm text-muted-foreground italic">
+                  No eligibility rules configured for this benefit with scan type "{action.scanType}"
+                </p>
+              )}
+            </div>
+          </AccordionContent>
+        </AccordionItem>
+      ))}
+    </Accordion>
+  );
+
+  const people: BenefitScanPerson[] =
+    scanResult?.people && scanResult.people.length > 0
+      ? scanResult.people
+      : scanResult
+        ? [
+            {
+              workerId: scanResult.workerId,
+              name: contact?.displayName || "Subscriber",
+              role: "subscriber",
+              relationType: null,
+              previousMonthBenefitIds: scanResult.previousMonthBenefitIds,
+              actions: scanResult.actions,
+            },
+          ]
+        : [];
 
   return (
     <div className="space-y-6 p-6">
@@ -294,80 +390,34 @@ function WorkerBenefitsScanContent() {
               </div>
             </div>
 
-            {scanResult.actions.length > 0 && (
-              <div className="space-y-2">
-                <h3 className="font-medium">Benefit Details</h3>
-                <Accordion type="multiple" className="w-full">
-                  {scanResult.actions.map((action, index) => (
-                    <AccordionItem key={action.benefitId} value={`item-${index}`}>
-                      <AccordionTrigger className="hover:no-underline">
-                        <div className="flex items-center gap-3 flex-wrap">
-                          {action.eligible ? (
-                            <CheckCircle className="h-4 w-4 text-green-600" />
-                          ) : (
-                            <XCircle className="h-4 w-4 text-red-600" />
-                          )}
-                          <span className="font-medium">{action.benefitName}</span>
-                          {getScanTypeBadge(action.scanType)}
-                          <ArrowRight className="h-4 w-4 text-muted-foreground" />
-                          {getActionBadge(action)}
-                          {action.executed === false && action.executionError && (
-                            <Badge variant="destructive">Error</Badge>
-                          )}
-                        </div>
-                      </AccordionTrigger>
-                      <AccordionContent>
-                        <div className="space-y-3 pl-7">
-                          <p className="text-sm text-muted-foreground">{action.actionReason}</p>
-                          
-                          {action.executionError && (
-                            <div className="p-2 bg-red-50 dark:bg-red-950/30 rounded-md">
-                              <p className="text-sm text-red-600">Error: {action.executionError}</p>
-                            </div>
-                          )}
-
-                          {action.pluginResults.length > 0 && (
-                            <div className="space-y-2">
-                              <p className="text-sm font-medium">Plugin Results:</p>
-                              {action.pluginResults.map((result, i) => (
-                                <div
-                                  key={i}
-                                  className={`p-2 rounded-md text-sm ${
-                                    result.eligible
-                                      ? "bg-green-50 dark:bg-green-950/30"
-                                      : "bg-red-50 dark:bg-red-950/30"
-                                  }`}
-                                >
-                                  <div className="flex items-center gap-2">
-                                    {result.eligible ? (
-                                      <CheckCircle className="h-3 w-3 text-green-600" />
-                                    ) : (
-                                      <XCircle className="h-3 w-3 text-red-600" />
-                                    )}
-                                    <span className="font-mono text-xs">{result.pluginKey}</span>
-                                  </div>
-                                  {result.reason && (
-                                    <p className="text-muted-foreground mt-1 pl-5">{result.reason}</p>
-                                  )}
-                                </div>
-                              ))}
-                            </div>
-                          )}
-
-                          {action.pluginResults.length === 0 && (
-                            <p className="text-sm text-muted-foreground italic">
-                              No eligibility rules configured for this benefit with scan type "{action.scanType}"
-                            </p>
-                          )}
-                        </div>
-                      </AccordionContent>
-                    </AccordionItem>
-                  ))}
-                </Accordion>
+            {people.some((p) => p.actions.length > 0) ? (
+              <div className="space-y-6">
+                {people.map((person) => (
+                  <div key={person.workerId} className="space-y-2" data-testid={`section-person-${person.workerId}`}>
+                    <div className="flex items-center gap-2 flex-wrap border-b border-border pb-2">
+                      <Users className="h-4 w-4 text-muted-foreground" />
+                      <h3 className="font-medium" data-testid={`text-person-name-${person.workerId}`}>
+                        {person.name}
+                      </h3>
+                      {person.role === "subscriber" ? (
+                        <Badge variant="secondary">Subscriber</Badge>
+                      ) : (
+                        <Badge variant="outline">
+                          Dependent{person.relationType ? ` · ${person.relationType}` : ""}
+                        </Badge>
+                      )}
+                    </div>
+                    {person.actions.length > 0 ? (
+                      renderActionAccordion(person.actions, person.workerId)
+                    ) : (
+                      <p className="text-sm text-muted-foreground italic pt-1">
+                        No benefits evaluated for this person
+                      </p>
+                    )}
+                  </div>
+                ))}
               </div>
-            )}
-
-            {scanResult.actions.length === 0 && (
+            ) : (
               <div className="p-4 bg-muted/50 rounded-md text-center">
                 <p className="text-muted-foreground">No benefits configured for this policy</p>
               </div>
