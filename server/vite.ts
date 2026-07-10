@@ -82,35 +82,32 @@ export function serveStatic(app: Express) {
 
   app.use(express.static(distPath));
 
-  // fall through to index.html if the file doesn't exist
+  // Preload the SPA shell ONCE at boot so the catch-all can serve it with a
+  // synchronous res.send(buffer) instead of res.sendFile.
+  //
+  // Why this matters (the white "Internal Server Error" on the login screen):
+  // res.sendFile() streams the file via the `send` library, which sets the
+  // response headers (Content-Type, ETag, ...) from INSIDE an async fs.stat
+  // callback. On an authenticated request the session/auth layer flushes an
+  // async Set-Cookie; if those headers land first, send's later setHeader call
+  // throws ERR_HTTP_HEADERS_SENT *synchronously inside the native fs callback*.
+  // That throw cannot be caught by the Express error handler or by sendFile's
+  // own error callback, so Express renders it as a plain white
+  // "Internal Server Error" page. Serving a preloaded buffer sets all headers
+  // synchronously in one tick (guarded by headersSent), leaving no async fs
+  // window for the Set-Cookie to race into — it removes the crash at its source.
   const indexHtml = path.resolve(distPath, "index.html");
-  app.use("*", (req, res) => {
-    // An async Set-Cookie (session persistence on an authenticated request)
-    // can flush the response headers while res.sendFile() is still doing its
-    // async fs.stat. When send() then goes to write headers it throws
-    // ERR_HTTP_HEADERS_SENT from inside its own stream — bypassing the Express
-    // error handler and surfacing to the user as a white "Internal Server
-    // Error" page. Guard before sending, and pass a callback so any streaming
-    // error is handled cleanly instead of crashing the response.
+  if (!fs.existsSync(indexHtml)) {
+    throw new Error(
+      `Could not find ${indexHtml}, make sure to build the client first`,
+    );
+  }
+  const indexHtmlBuffer = fs.readFileSync(indexHtml);
+
+  app.use("*", (_req, res) => {
     if (res.headersSent) {
       return;
     }
-    res.sendFile(indexHtml, (err) => {
-      if (!err) return;
-      const code = (err as NodeJS.ErrnoException & { status?: number }).code;
-      log(
-        `index.html send failed: ${req.method} ${req.originalUrl} headersSent=${res.headersSent} code=${code ?? "unknown"}`,
-        "static",
-      );
-      if (res.headersSent) {
-        try {
-          res.end();
-        } catch {
-          // socket already torn down — nothing more to do
-        }
-      } else {
-        res.status((err as NodeJS.ErrnoException & { status?: number }).status ?? 500).end();
-      }
-    });
+    res.type("html").send(indexHtmlBuffer);
   });
 }

@@ -25,17 +25,30 @@ expiration" + "Add error handling ... database connection drops"):
 - `server/storage/db.ts`: `pool.on("error", ...)` so a terminated idle Neon
   connection doesn't crash the process.
 
-**Root-cause fix (the real one):** the custom Clerk auth-resolution middleware
-(the `app.use` right after `clerkMiddleware` in `server/auth/providers/clerk.ts`)
-was mounted globally and called `req.login()`/`req.logout()` — express-session
-`Set-Cookie` — on *every* request, including document navigations (`GET /login`)
-and the SPA shell. That async `Set-Cookie` is what races `res.sendFile`. Fix: at
-the top of that middleware, `if (!req.path.startsWith("/api")) return next();`.
-The HTML shell needs no server-side session (Clerk's browser SDK handles auth and
-every protected read goes through `/api/*`, which reply with `res.json()` — no
-`sendFile`, no race). This removes the racing cookie at its source instead of only
-containing the throw in `serveStatic`. Keep the `serveStatic` guard/callback too
-as defense-in-depth (it still cleanly handles benign `ECONNABORTED` client aborts).
+**Root-cause fix (the REAL one — the earlier attempts did not work):** the crash
+is uncatchable by design, so you must remove the async fs window, not contain the
+throw. `res.sendFile(index.html)` streams via the `send` library, which sets the
+response headers (Content-Type/ETag/...) from INSIDE its async `fs.stat`
+completion callback. On an authenticated document request the session/auth layer
+(`getSession()` + `passport.session()` run globally, even on `GET /login`) flushes
+an async `Set-Cookie`; if that lands first, `send`'s later `res.setHeader` throws
+`ERR_HTTP_HEADERS_SENT` *synchronously inside a native fs callback*
+(`FSReqCallback.oncomplete`). That throw bypasses BOTH the Express error handler
+AND `res.sendFile`'s own error callback — so guarding/containing it in
+`serveStatic` cannot help, and Express renders a plain white "Internal Server
+Error". **Fix:** preload `index.html` into a Buffer ONCE at boot and serve the SPA
+catch-all with a synchronous `res.type("html").send(buffer)` (guarded by
+`if (res.headersSent) return`). `res.send(buffer)` stages all headers
+synchronously in one tick — no async fs window for the cookie to race into.
+`express.static` (real assets) still uses `send`; left unchanged since the symptom
+is the login document/shell, but if asset-URL races appear, exempt static paths
+from the auth/session middleware.
+
+**Failed attempts (don't repeat):** (1) scoping the custom Clerk resolution
+middleware to `/api` only — kept as a harmless optimization but did NOT fix it,
+because `getSession()`/`passport.session()` still run globally and are the racing
+writer. (2) Guard + error callback around `res.sendFile` in `serveStatic` — cannot
+catch a synchronous throw inside a native fs callback.
 
 **Resolution:**
 1. *Immediate, user-side:* have the affected user clear cookies/site data for the
