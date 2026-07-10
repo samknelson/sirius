@@ -25,6 +25,15 @@ export interface GrievanceTimelineStepRow {
    */
   adjustment?: GrievanceTimelineAdjustment | null;
   originalDueYmd?: string | null;
+  /**
+   * The grievance status that STARTED this step (the status of the start
+   * entry) and, when the step has completed, the status that COMPLETED it
+   * (the status of the completing entry). Recorded in the row's `data` json
+   * so the timeline tab can show which specific status began and ended each
+   * step. `completeStatusId` is null while the step is still open.
+   */
+  startStatusId?: string | null;
+  completeStatusId?: string | null;
 }
 
 export interface GrievanceTimelineStepItem extends GrievanceStepsDenorm {
@@ -125,6 +134,8 @@ export function createGrievanceStepsDenormStorage(): GrievanceStepsDenormStorage
             ...(row.adjustment
               ? { adjustment: row.adjustment, originalDueYmd: row.originalDueYmd ?? null }
               : {}),
+            ...(row.startStatusId ? { startStatusId: row.startStatusId } : {}),
+            ...(row.completeStatusId ? { completeStatusId: row.completeStatusId } : {}),
           },
         })),
       );

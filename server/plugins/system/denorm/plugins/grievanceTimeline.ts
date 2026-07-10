@@ -118,6 +118,8 @@ const grievanceTimelinePlugin: DenormPlugin<GrievanceTimelinePayload> = {
         completedYmd: completeEntry ? dateToYmd(new Date(completeEntry.date)) : null,
         isCurrent: false,
         sequence: step.sequence,
+        startStatusId: startEntry.statusId,
+        completeStatusId: completeEntry ? completeEntry.statusId : null,
         ...(adjustment ? { adjustment, originalDueYmd: computedDueYmd } : {}),
       });
     }

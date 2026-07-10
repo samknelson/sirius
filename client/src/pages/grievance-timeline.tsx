@@ -21,6 +21,7 @@ import type {
   GrievanceTimelineAdjustment,
   GrievanceTimelineTemplateStep,
   OptionsGrievanceStep,
+  OptionsGrievanceStatus,
 } from "@shared/schema";
 import { grievanceTimelineAdjustmentSchema } from "@shared/schema";
 import {
@@ -43,6 +44,8 @@ interface TimelineRow {
   pending: boolean;
   adjustment: GrievanceTimelineAdjustment | null;
   originalDueYmd: string | null;
+  startStatusId: string | null;
+  completeStatusId: string | null;
 }
 
 /** Read the adjustment info the denorm plugin recorded in the row's `data` json. */
@@ -57,6 +60,21 @@ function readRowAdjustment(data: unknown): {
   return {
     adjustment: parsed.data,
     originalDueYmd: typeof d.originalDueYmd === "string" ? d.originalDueYmd : null,
+  };
+}
+
+/** Read the start/complete status ids the denorm plugin recorded in `data`. */
+function readRowStatusIds(data: unknown): {
+  startStatusId: string | null;
+  completeStatusId: string | null;
+} {
+  if (!data || typeof data !== "object") {
+    return { startStatusId: null, completeStatusId: null };
+  }
+  const d = data as Record<string, unknown>;
+  return {
+    startStatusId: typeof d.startStatusId === "string" ? d.startStatusId : null,
+    completeStatusId: typeof d.completeStatusId === "string" ? d.completeStatusId : null,
   };
 }
 
@@ -92,6 +110,7 @@ function buildRows(
     const match = takeComputed(ts.stepId);
     if (match) {
       const adj = readRowAdjustment(match.data);
+      const statusIds = readRowStatusIds(match.data);
       rows.push({
         key: match.id,
         stepName: match.stepName,
@@ -103,6 +122,8 @@ function buildRows(
         pending: false,
         adjustment: adj.adjustment,
         originalDueYmd: adj.originalDueYmd,
+        startStatusId: statusIds.startStatusId,
+        completeStatusId: statusIds.completeStatusId,
       });
     } else {
       const option = optionById.get(ts.stepId);
@@ -117,6 +138,8 @@ function buildRows(
         pending: true,
         adjustment: null,
         originalDueYmd: null,
+        startStatusId: null,
+        completeStatusId: null,
       });
     }
   }
@@ -125,6 +148,7 @@ function buildRows(
   // edited after the steps were computed) still get shown, at the end.
   for (const c of remaining) {
     const adj = readRowAdjustment(c.data);
+    const statusIds = readRowStatusIds(c.data);
     rows.push({
       key: c.id,
       stepName: c.stepName,
@@ -136,6 +160,8 @@ function buildRows(
       pending: false,
       adjustment: adj.adjustment,
       originalDueYmd: adj.originalDueYmd,
+      startStatusId: statusIds.startStatusId,
+      completeStatusId: statusIds.completeStatusId,
     });
   }
 
@@ -197,12 +223,18 @@ function TimelineTable({
     queryKey: ["/api/options/grievance-step"],
     enabled: !!timelineTemplateId,
   });
+  const { data: statusOptions } = useQuery<OptionsGrievanceStatus[]>({
+    queryKey: ["/api/options/grievance-status"],
+  });
   const thresholds = useDeadlineThresholds();
 
   if (stepsLoading || (!!timelineTemplateId && templateLoading)) {
     return <Skeleton className="h-24 w-full" data-testid="skeleton-timeline-steps" />;
   }
 
+  const statusNameById = new Map(
+    (statusOptions ?? []).map((s) => [s.id, s.name]),
+  );
   const rows = buildRows(steps ?? [], templateSteps ?? [], stepOptions ?? []);
 
   if (rows.length === 0) {
@@ -240,11 +272,31 @@ function TimelineTable({
                 {row.stepName ?? "Unknown step"}
               </TableCell>
               <TableCell>{row.stepActor ?? "—"}</TableCell>
-              <TableCell>{formatYmd(row.startedYmd)}</TableCell>
+              <TableCell>
+                <div>{formatYmd(row.startedYmd)}</div>
+                {row.startStatusId && (
+                  <div
+                    className="text-xs text-muted-foreground"
+                    data-testid={`text-start-status-${row.key}`}
+                  >
+                    {statusNameById.get(row.startStatusId) ?? "Unknown status"}
+                  </div>
+                )}
+              </TableCell>
               <TableCell data-testid={`text-step-deadline-${row.key}`}>
                 <DeadlineCell row={row} thresholds={thresholds} />
               </TableCell>
-              <TableCell>{formatYmd(row.completedYmd)}</TableCell>
+              <TableCell>
+                <div>{formatYmd(row.completedYmd)}</div>
+                {row.completeStatusId && (
+                  <div
+                    className="text-xs text-muted-foreground"
+                    data-testid={`text-complete-status-${row.key}`}
+                  >
+                    {statusNameById.get(row.completeStatusId) ?? "Unknown status"}
+                  </div>
+                )}
+              </TableCell>
               <TableCell>
                 <Badge variant={status.variant} data-testid={`badge-step-status-${row.key}`}>
                   {status.label}
