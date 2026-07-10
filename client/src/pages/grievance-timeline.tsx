@@ -95,38 +95,53 @@ function buildRows(
   stepOptions: OptionsGrievanceStep[],
 ): TimelineRow[] {
   const optionById = new Map(stepOptions.map((o) => [o.id, o]));
-  const remaining = [...computed];
 
-  const takeComputed = (stepId: string): GrievanceTimelineStepItem | undefined => {
-    const idx = remaining.findIndex((c) => c.stepId === stepId);
-    if (idx === -1) return undefined;
-    return remaining.splice(idx, 1)[0];
+  const toRow = (c: GrievanceTimelineStepItem): TimelineRow => {
+    const adj = readRowAdjustment(c.data);
+    const statusIds = readRowStatusIds(c.data);
+    return {
+      key: c.id,
+      stepName: c.stepName,
+      stepActor: c.stepActor,
+      startedYmd: c.startedYmd,
+      dueYmd: c.dueYmd,
+      completedYmd: c.completedYmd,
+      isCurrent: c.isCurrent,
+      pending: false,
+      adjustment: adj.adjustment,
+      originalDueYmd: adj.originalDueYmd,
+      startStatusId: statusIds.startStatusId,
+      completeStatusId: statusIds.completeStatusId,
+    };
+  };
+
+  // A step can occur more than once (started, completed, started again), so
+  // group every computed row by its step and render each occurrence.
+  const byStep = new Map<string, GrievanceTimelineStepItem[]>();
+  for (const c of computed) {
+    const list = byStep.get(c.stepId);
+    if (list) list.push(c);
+    else byStep.set(c.stepId, [c]);
+  }
+
+  // Occurrences of the same step are shown in chronological (start-date) order.
+  const byStart = (a: GrievanceTimelineStepItem, b: GrievanceTimelineStepItem) => {
+    const sa = a.startedYmd ?? "";
+    const sb = b.startedYmd ?? "";
+    return sa < sb ? -1 : sa > sb ? 1 : a.id.localeCompare(b.id);
   };
 
   const rows: TimelineRow[] = [];
+  const usedStepIds = new Set<string>();
   const ordered = [...templateSteps].sort(
     (a, b) => a.sequence - b.sequence || a.id.localeCompare(b.id),
   );
 
   for (const ts of ordered) {
-    const match = takeComputed(ts.stepId);
-    if (match) {
-      const adj = readRowAdjustment(match.data);
-      const statusIds = readRowStatusIds(match.data);
-      rows.push({
-        key: match.id,
-        stepName: match.stepName,
-        stepActor: match.stepActor,
-        startedYmd: match.startedYmd,
-        dueYmd: match.dueYmd,
-        completedYmd: match.completedYmd,
-        isCurrent: match.isCurrent,
-        pending: false,
-        adjustment: adj.adjustment,
-        originalDueYmd: adj.originalDueYmd,
-        startStatusId: statusIds.startStatusId,
-        completeStatusId: statusIds.completeStatusId,
-      });
+    const matches = byStep.get(ts.stepId);
+    if (matches && matches.length > 0) {
+      usedStepIds.add(ts.stepId);
+      for (const m of [...matches].sort(byStart)) rows.push(toRow(m));
     } else {
       const option = optionById.get(ts.stepId);
       rows.push({
@@ -146,25 +161,11 @@ function buildRows(
     }
   }
 
-  // Any computed rows not matched to a template step (e.g. the template was
+  // Any computed rows whose step is not in the template (e.g. the template was
   // edited after the steps were computed) still get shown, at the end.
-  for (const c of remaining) {
-    const adj = readRowAdjustment(c.data);
-    const statusIds = readRowStatusIds(c.data);
-    rows.push({
-      key: c.id,
-      stepName: c.stepName,
-      stepActor: c.stepActor,
-      startedYmd: c.startedYmd,
-      dueYmd: c.dueYmd,
-      completedYmd: c.completedYmd,
-      isCurrent: c.isCurrent,
-      pending: false,
-      adjustment: adj.adjustment,
-      originalDueYmd: adj.originalDueYmd,
-      startStatusId: statusIds.startStatusId,
-      completeStatusId: statusIds.completeStatusId,
-    });
+  for (const c of computed) {
+    if (usedStepIds.has(c.stepId)) continue;
+    rows.push(toRow(c));
   }
 
   return rows;

@@ -25,16 +25,20 @@ export interface GrievanceTimelinePayload {
  *
  * Derivation (from the grievance's timeline template + status history,
  * history sorted ascending by date):
- *  - A template step STARTS at the first history entry whose status is in the
- *    step's `fromStatuses`.
+ *  - A template step OCCURRENCE STARTS at the next history entry whose status
+ *    is in the step's `fromStatuses`.
  *  - It COMPLETES at the first history entry at/after its start whose status
  *    is in the step's `toStatuses` OR is a closed (resolved) status. A closed
- *    status always ends the current step, even when not listed in `toStatuses`.
+ *    status always ends the occurrence, even when not listed in `toStatuses`.
+ *  - After an occurrence completes, scanning resumes AFTER the completing
+ *    entry, so a step that is entered, completed, and entered again produces
+ *    one row PER occurrence (in chronological order). A start with no later
+ *    completion is the final, open occurrence for that step.
  *  - Steps that never started produce NO row.
  *  - `due` = start + `days`, calendar or business per the step's `dayType`
  *    (business days skip weekends; holidays are a future extension).
- *  - `is_current` = the earliest-started step that has not completed (ties
- *    broken arbitrarily); enforced at most one by a partial unique index.
+ *  - `is_current` = the earliest-started occurrence that has not completed
+ *    (ties broken arbitrarily); enforced at most one by a partial unique index.
  */
 const grievanceTimelinePlugin: DenormPlugin<GrievanceTimelinePayload> = {
   metadata: {
@@ -76,55 +80,77 @@ const grievanceTimelinePlugin: DenormPlugin<GrievanceTimelinePayload> = {
       const fromSet = new Set(step.fromStatuses);
       const toSet = new Set(step.toStatuses);
 
-      const startEntry = history.find((h) => fromSet.has(h.statusId));
-      if (!startEntry) continue; // never started → no row
+      // A step may be entered, completed, and entered again. Walk the history
+      // repeatedly, emitting one row per occurrence: find the next start, its
+      // completion, then resume scanning AFTER that completion for the next
+      // start. A start with no later completion is the final open occurrence.
+      let cursor = 0;
+      while (cursor < history.length) {
+        const startIdx = history.findIndex(
+          (h, i) => i >= cursor && fromSet.has(h.statusId),
+        );
+        if (startIdx === -1) break; // no more starts → done with this step
 
-      const startedYmd = dateToYmd(new Date(startEntry.date));
-      const startTime = new Date(startEntry.date).getTime();
-      // A step completes at the first entry at/after its start whose status is
-      // an explicit `toStatus` OR is a closed (resolved) status. Closed
-      // statuses always end the current step, even when not listed in
-      // `toStatuses`.
-      const completeEntry = history.find(
-        (h) =>
-          new Date(h.date).getTime() >= startTime &&
-          (toSet.has(h.statusId) || h.statusOpen === false),
-      );
+        const startEntry = history[startIdx];
+        const startedYmd = dateToYmd(new Date(startEntry.date));
+        const startTime = new Date(startEntry.date).getTime();
+        // This occurrence completes at the first entry at/after its start whose
+        // status is an explicit `toStatus` OR is a closed (resolved) status.
+        // Closed statuses always end the current step, even when not listed in
+        // `toStatuses`.
+        const completeIdx = history.findIndex(
+          (h, i) =>
+            i >= startIdx &&
+            new Date(h.date).getTime() >= startTime &&
+            (toSet.has(h.statusId) || h.statusOpen === false),
+        );
+        const completeEntry = completeIdx === -1 ? undefined : history[completeIdx];
 
-      const computedDueYmd =
-        step.dayType === "business"
-          ? addBusinessDaysYmd(startedYmd, step.days)
-          : addDaysYmd(startedYmd, step.days);
+        const computedDueYmd =
+          step.dayType === "business"
+            ? addBusinessDaysYmd(startedYmd, step.days)
+            : addDaysYmd(startedYmd, step.days);
 
-      // A timeline adjustment on the START entry shifts (or replaces) this
-      // step's due date. Relative days follow the step's dayType; an explicit
-      // date overrides the computed due date outright. Prior steps this entry
-      // COMPLETES are unaffected.
-      const adjustment = readTimelineAdjustment(startEntry.data);
-      let dueYmd = computedDueYmd;
-      if (adjustment) {
-        dueYmd =
-          adjustment.kind === "explicit"
-            ? adjustment.date
-            : step.dayType === "business"
-              ? addBusinessDaysYmd(computedDueYmd, adjustment.days)
-              : addDaysYmd(computedDueYmd, adjustment.days);
+        // A timeline adjustment on this occurrence's START entry shifts (or
+        // replaces) its due date. Relative days follow the step's dayType; an
+        // explicit date overrides the computed due date outright. Prior steps
+        // this entry COMPLETES are unaffected.
+        const adjustment = readTimelineAdjustment(startEntry.data);
+        let dueYmd = computedDueYmd;
+        if (adjustment) {
+          dueYmd =
+            adjustment.kind === "explicit"
+              ? adjustment.date
+              : step.dayType === "business"
+                ? addBusinessDaysYmd(computedDueYmd, adjustment.days)
+                : addDaysYmd(computedDueYmd, adjustment.days);
+        }
+
+        rows.push({
+          stepId: step.stepId,
+          startedYmd,
+          dueYmd,
+          completedYmd: completeEntry ? dateToYmd(new Date(completeEntry.date)) : null,
+          isCurrent: false,
+          sequence: step.sequence,
+          startStatusId: startEntry.statusId,
+          completeStatusId: completeEntry ? completeEntry.statusId : null,
+          ...(adjustment ? { adjustment, originalDueYmd: computedDueYmd } : {}),
+        });
+
+        // No completion → this open occurrence is the last one for this step.
+        if (completeIdx === -1) break;
+        // Resume after the completion so a re-entry starts a fresh occurrence.
+        // (When the start entry also closes the step, completeIdx === startIdx;
+        // advancing to completeIdx + 1 still makes forward progress.)
+        cursor = completeIdx + 1;
       }
-
-      rows.push({
-        stepId: step.stepId,
-        startedYmd,
-        dueYmd,
-        completedYmd: completeEntry ? dateToYmd(new Date(completeEntry.date)) : null,
-        isCurrent: false,
-        sequence: step.sequence,
-        startStatusId: startEntry.statusId,
-        completeStatusId: completeEntry ? completeEntry.statusId : null,
-        ...(adjustment ? { adjustment, originalDueYmd: computedDueYmd } : {}),
-      });
     }
 
-    // Current step = earliest-started incomplete step (ties arbitrary).
+    // Current step = earliest-started incomplete occurrence (ties arbitrary).
+    // By construction a step has at most one open occurrence (a new occurrence
+    // only starts after the previous one completed), so this is also the step's
+    // last, still-open occurrence.
     const incomplete = rows
       .filter((r) => r.completedYmd === null && r.startedYmd !== null)
       .sort((a, b) => (a.startedYmd! < b.startedYmd! ? -1 : a.startedYmd! > b.startedYmd! ? 1 : 0));

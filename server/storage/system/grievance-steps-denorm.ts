@@ -102,11 +102,16 @@ export function createGrievanceStepsDenormStorage(): GrievanceStepsDenormStorage
         )
         .where(eq(grievanceStepsDenorm.grievanceId, grievanceId));
       // Template-step order is carried in `data.sequence` (jsonb); sort here
-      // so callers always see steps in timeline order.
+      // so callers always see steps in timeline order. A step can have more
+      // than one occurrence (started, completed, started again), so within the
+      // same sequence order chronologically by start date.
       return rows.sort((a, b) => {
         const sa = (a.data as { sequence?: number } | null)?.sequence ?? 0;
         const sb = (b.data as { sequence?: number } | null)?.sequence ?? 0;
-        return sa - sb;
+        if (sa !== sb) return sa - sb;
+        const da = a.startedYmd ?? "";
+        const db = b.startedYmd ?? "";
+        return da < db ? -1 : da > db ? 1 : 0;
       });
     },
 
