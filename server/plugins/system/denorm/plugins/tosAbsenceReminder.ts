@@ -87,16 +87,23 @@ function reminderWindow(startDate: Date, offset: number): { sendOn: Date; dontSe
  * that the generic EBS pump later fires. Gated by the `worker.tos` component.
  *
  * Unlike the event-driven denorm plugins, this one has NO `eventHandlers`: there
- * is no "TOS saved" bus event, so it relies entirely on the hourly denorm
- * backfill + recompute cycle. `backfill` enumerates one synthetic denorm entity
- * per (open absence × configured offset) inside a rolling horizon (offsets whose
- * window has fully lapsed are not scheduled); `compute` prices each one into a
- * concrete `ebs_denorm` row (send date = absence start midnight + offset days);
+ * is no "TOS saved" bus event, so it relies on the hourly denorm backfill +
+ * recompute cycle for scheduling. `backfill` enumerates one synthetic denorm
+ * entity per (open absence × configured offset) inside a rolling horizon (offsets
+ * whose window has fully lapsed are not scheduled); `compute` prices each one into
+ * a concrete `ebs_denorm` row (send date = absence start midnight + offset days);
  * `findWidows` removes entities whose absence has ended or been deleted AND those
  * whose window has fully passed even while the absence is still open (the FK
  * cascade drops the `ebs_denorm` row too). The decoupled `ebs_status` record a
  * fired reminder leaves behind survives that widow deletion, so an ended-then-
  * reopened absence never re-fires an already-sent reminder.
+ *
+ * Correctness of "ending/deleting an absence stops its not-yet-sent reminders"
+ * does NOT depend on that hourly cleanup winning a race against the (also hourly)
+ * EBS pump: `isScheduledEventLive` is the pump's pre-fire re-check against live
+ * TOS/worker state, so a due reminder for an absence that has since ended (or a
+ * deleted worker) is marked `expired` instead of delivered even if its
+ * `ebs_denorm` row has not been swept yet.
  */
 const tosAbsenceReminderPlugin: DenormPlugin<TosAbsenceReminderDenormPayload> = {
   metadata: {
@@ -211,6 +218,21 @@ const tosAbsenceReminderPlugin: DenormPlugin<TosAbsenceReminderDenormPayload> = 
       }
     }
     return widows;
+  },
+
+  async isScheduledEventLive(uniqueId: string): Promise<boolean> {
+    const parsed = parseUniqueId(uniqueId);
+    if (!parsed) return false;
+    const tos = await storage.workerTos.get(parsed.tosId);
+    // No absence, or it has been ended → the reminder must not fire. This is
+    // the live-state re-check the EBS pump runs immediately before delivery, so
+    // ending/deleting an absence stops its not-yet-sent reminders regardless of
+    // whether the hourly widow sweep has removed the `ebs_denorm` row yet.
+    if (!tos || tos.endDate) return false;
+    // Worker deleted → nothing to remind about.
+    const worker = await storage.workers.getWorker(tos.workerId);
+    if (!worker) return false;
+    return true;
   },
 
   async write(

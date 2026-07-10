@@ -26,23 +26,17 @@ function purgeAfterFor(dontSendAfter: Date): Date {
 }
 
 /**
- * Resolve whether the component that owns a scheduled event's source denorm
- * plugin is currently enabled. A due event whose source component has since been
- * disabled is left untouched (neither fired nor marked terminal) so it resumes
- * cleanly if the component is re-enabled while still inside its window.
- */
-function sourceComponentEnabled(pluginId: string): boolean {
-  const plugin = denormPluginRegistry.get(pluginId);
-  if (!plugin) return false;
-  return isPluginComponentEnabledSync(plugin.metadata);
-}
-
-/**
  * `ebs_pump` cron — the generic firing engine of the deferred event bus (EBS).
  *
  * Every run it drains three queues off `storage.ebs`:
  *   1. Due events (`send_on <= now <= dont_send_after`, no terminal status):
- *      each is claimed atomically BEFORE emit (`claimForDelivery`) so it fires
+ *      each is first REVALIDATED against live domain state via the source denorm
+ *      plugin's optional `isScheduledEventLive(uniqueId)` — if the subject is no
+ *      longer a valid reason to fire (e.g. the absence ended / the worker was
+ *      deleted) the event is marked terminal `expired` and NOT delivered. This
+ *      is what guarantees a due reminder never fires after its subject changed,
+ *      independent of when the hourly widow cleanup runs. A still-valid event is
+ *      then claimed atomically BEFORE emit (`claimForDelivery`) so it fires
  *      at-most-once even under overlapping runs / multiple instances, then
  *      re-emitted on the real event bus via `emitWithFailures`. A handler
  *      failure after the claim is logged, NOT retried — re-emitting the whole
@@ -86,12 +80,53 @@ registerCronPlugin({
     let sent = 0;
     let failed = 0;
     let skipped = 0;
+    let invalidated = 0;
 
     const due = await storage.ebs.getDue(BATCH_LIMIT, now);
     for (const row of due) {
-      if (!sourceComponentEnabled(row.pluginId)) {
+      const plugin = denormPluginRegistry.get(row.pluginId);
+      if (!plugin || !isPluginComponentEnabledSync(plugin.metadata)) {
         skipped++;
         continue;
+      }
+      // Revalidate against LIVE domain state before firing. This is the
+      // correctness guarantee that a due reminder never fires after its subject
+      // changed (absence ended / worker deleted), regardless of whether the
+      // hourly widow cleanup has run yet. Mark such events terminal (`expired`)
+      // so they are not re-evaluated on the next run.
+      if (plugin.isScheduledEventLive) {
+        let live: boolean;
+        try {
+          live = await plugin.isScheduledEventLive(row.uniqueId);
+        } catch (error) {
+          // A validator failure must NOT deliver a possibly-stale reminder;
+          // skip this run and re-evaluate next time.
+          skipped++;
+          logger.error(`EBS event ${row.uniqueId} validity check failed`, {
+            service: "ebs-pump",
+            uniqueId: row.uniqueId,
+            eventType: row.eventType,
+            error: error instanceof Error ? error.message : String(error),
+          });
+          continue;
+        }
+        if (!live) {
+          try {
+            await storage.ebs.markStatus(
+              row.uniqueId,
+              "expired",
+              purgeAfterFor(row.dontSendAfter),
+            );
+            invalidated++;
+          } catch (error) {
+            logger.error(`Failed to mark EBS event ${row.uniqueId} expired (stale subject)`, {
+              service: "ebs-pump",
+              uniqueId: row.uniqueId,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+          continue;
+        }
       }
       // Claim atomically BEFORE emitting: only one pump run (this process or
       // another instance) can win the claim, so the event fires at most once
@@ -162,8 +197,8 @@ registerCronPlugin({
     const purged = await storage.ebs.purgeExpired(now);
 
     return {
-      message: `Fired ${sent} event(s) (${failed} with handler failure(s), ${skipped} skipped/already-claimed), expired ${expired}, purged ${purged} old status record(s)`,
-      metadata: { sent, failed, skipped, expired, purged },
+      message: `Fired ${sent} event(s) (${failed} with handler failure(s), ${skipped} skipped/already-claimed, ${invalidated} invalidated as stale), expired ${expired}, purged ${purged} old status record(s)`,
+      metadata: { sent, failed, skipped, invalidated, expired, purged },
     };
   },
 });

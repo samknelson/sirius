@@ -84,6 +84,23 @@ export interface DenormPlugin<TPayload = unknown> {
    * Plugins that omit this method do not participate in widow cleanup.
    */
   findWidows?(configId: string, limit: number): Promise<string[]>;
+  /**
+   * Optional pre-fire validity check for denorm plugins that schedule EBS
+   * (deferred event-bus) events. The generic EBS pump calls this for each due
+   * scheduled event IMMEDIATELY before delivering it, passing the event's
+   * `uniqueId`. Return `false` when the underlying subject is no longer a valid
+   * reason to fire (e.g. the absence was ended/deleted, or the worker was
+   * removed): the pump then marks the event terminal (`expired`) without
+   * delivering it.
+   *
+   * This is the correctness guarantee that a due reminder does NOT fire after
+   * its subject changed, independent of when the hourly `findWidows` cleanup
+   * happens to run — it queries LIVE domain state, not the (possibly not-yet
+   * cleaned) `ebs_denorm` row. It must be read-only. Plugins that do not
+   * schedule EBS events omit this method (the pump then delivers unconditionally
+   * once due, as before).
+   */
+  isScheduledEventLive?(uniqueId: string): Promise<boolean>;
 }
 
 /**

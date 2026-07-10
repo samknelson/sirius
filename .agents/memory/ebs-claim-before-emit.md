@@ -47,3 +47,20 @@ to re-mark it every run (insert/delete churn). Fix in the denorm plugin, not the
 pump: `backfill` must skip entities whose window is fully past (rolling horizon)
 and `findWidows` must retire past-window rows even for still-open subjects, so the
 `ebs_denorm` row is gone before its status is purged.
+
+## "Stop firing when the subject changed" cannot rely on cleanup racing the pump
+
+Both the widow/cleanup sweep and the EBS pump run hourly and can overlap, so
+relying on cleanup deleting the scheduling row before the pump reads it is a race
+— the pump can claim+emit a due row a stale subject still has.
+
+**Rule:** the pump must REVALIDATE against LIVE domain state immediately before
+delivery, not trust the presence of the scheduling row. Implemented as an
+optional `isScheduledEventLive(uniqueId)` on the source denorm plugin (mirrors
+`compute`'s validity checks: subject exists + not ended/deleted); the generic
+pump calls it per due event and marks stale ones terminal `expired` without
+delivering. A validator throw skips (does not deliver) and re-evaluates next run.
+
+**Why:** requirement "ending/deleting the subject stops not-yet-sent reminders"
+must hold regardless of cron timing. Keep the pump generic — the domain check
+lives on the plugin, keyed only by `uniqueId`.
