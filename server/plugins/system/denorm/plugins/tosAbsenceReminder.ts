@@ -1,3 +1,4 @@
+import type { JsonSchema } from "@shared/json-schema-form";
 import { registerDenormPlugin } from "../registry";
 import type { DenormPlugin } from "../types";
 import {
@@ -12,6 +13,31 @@ const PLUGIN_ID = "tos_absence_reminder";
 
 /** Default reminder offsets (days after absence start) when unconfigured. */
 const DEFAULT_OFFSETS = [1, 3, 11];
+
+/**
+ * Editable settings schema surfaced to the generic plugin-config admin UI so an
+ * admin can change the reminder lead-times without editing raw config `data`.
+ * The saved array lands in `data.offsets`, exactly what {@link resolveOffsets}
+ * already reads, so edits take effect on the next backfill / enqueue with no
+ * code change. An empty list falls back to {@link DEFAULT_OFFSETS}.
+ */
+const configSchema: JsonSchema = {
+  type: "object",
+  properties: {
+    offsets: {
+      type: "array",
+      title: "Reminder lead-times (days after absence start)",
+      description:
+        "Send a reminder this many days after a worker's absence start date. Add one entry per reminder. Whole days only. Leave empty to use the defaults (1, 3, 11).",
+      default: DEFAULT_OFFSETS,
+      items: {
+        type: "integer",
+        title: "Days after absence start",
+        minimum: 0,
+      },
+    },
+  },
+};
 
 /**
  * How long after `sendOn` a reminder stays deliverable. If the EBS pump has not
@@ -58,7 +84,9 @@ async function resolveOffsets(): Promise<number[]> {
   if (!Array.isArray(raw)) return DEFAULT_OFFSETS;
   const offsets = raw
     .map((v) => Number(v))
-    .filter((n) => Number.isFinite(n) && n >= 0);
+    // Whole days only — a fractional offset would be silently truncated by the
+    // day-based date arithmetic, so reject it rather than surprise the admin.
+    .filter((n) => Number.isInteger(n) && n >= 0);
   return offsets.length > 0 ? offsets : DEFAULT_OFFSETS;
 }
 
@@ -115,6 +143,7 @@ const tosAbsenceReminderPlugin: DenormPlugin<TosAbsenceReminderDenormPayload> = 
     singleton: true,
   },
   entityType: ENTITY_TYPE,
+  configSchema,
 
   async compute(entityId: string): Promise<TosAbsenceReminderDenormPayload> {
     const parsed = parseUniqueId(entityId);

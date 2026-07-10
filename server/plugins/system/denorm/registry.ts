@@ -26,7 +26,12 @@ class DenormPluginRegistry extends PluginRegistry<DenormPlugin, DenormManifestEn
     super({
       kind: "denorm",
       getMetadata: (p) => p.metadata,
-      toManifestEntry: (p) => ({ ...p.metadata, entityType: p.entityType }),
+      toManifestEntry: (p) => ({
+        ...p.metadata,
+        entityType: p.entityType,
+        configSchema: p.configSchema,
+        uiSchema: p.uiSchema,
+      }),
       allowOverwrite: true,
     });
   }

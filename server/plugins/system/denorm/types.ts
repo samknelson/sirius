@@ -1,3 +1,4 @@
+import type { JsonSchema, UiSchema } from "@shared/json-schema-form";
 import type { BasePluginMetadata } from "../../_core";
 import type { EventType } from "../../../services/event-bus";
 
@@ -101,6 +102,16 @@ export interface DenormPlugin<TPayload = unknown> {
    * once due, as before).
    */
   isScheduledEventLive?(uniqueId: string): Promise<boolean>;
+  /**
+   * JSON Schema describing the editable `data` fields the generic plugin admin
+   * UI renders for this plugin's config row. Omit for plugins with no editable
+   * settings (their Edit modal shows only name / enabled). Surfaced through the
+   * denorm manifest entry so the shared RJSF form (mirroring cron) can render
+   * them.
+   */
+  configSchema?: JsonSchema;
+  /** Optional RJSF UI hints paired with {@link configSchema}. */
+  uiSchema?: UiSchema;
 }
 
 /**
@@ -110,4 +121,8 @@ export interface DenormPlugin<TPayload = unknown> {
  */
 export interface DenormManifestEntry extends BasePluginMetadata {
   entityType: string;
+  /** Per-plugin settings form schema (mirrors cron / event-notifier). */
+  configSchema?: JsonSchema;
+  /** Optional RJSF UI hints paired with {@link configSchema}. */
+  uiSchema?: UiSchema;
 }

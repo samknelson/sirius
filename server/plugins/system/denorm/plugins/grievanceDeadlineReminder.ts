@@ -1,3 +1,4 @@
+import type { JsonSchema } from "@shared/json-schema-form";
 import { registerDenormPlugin } from "../registry";
 import type { DenormPlugin } from "../types";
 import {
@@ -16,6 +17,31 @@ const PLUGIN_ID = "grievance_deadline_reminder";
 
 /** Default reminder offsets (days BEFORE the step due date) when unconfigured. */
 const DEFAULT_OFFSETS = [2, 11, 14];
+
+/**
+ * Editable settings schema surfaced to the generic plugin-config admin UI so an
+ * admin can change the reminder lead-times without editing raw config `data`.
+ * The saved array lands in `data.offsets`, exactly what {@link resolveOffsets}
+ * already reads, so edits take effect on the next backfill / enqueue with no
+ * code change. An empty list falls back to {@link DEFAULT_OFFSETS}.
+ */
+const configSchema: JsonSchema = {
+  type: "object",
+  properties: {
+    offsets: {
+      type: "array",
+      title: "Reminder lead-times (days before due date)",
+      description:
+        "Send a reminder this many days before a grievance step's due date. Add one entry per reminder. Whole days only. Leave empty to use the defaults (2, 11, 14).",
+      default: DEFAULT_OFFSETS,
+      items: {
+        type: "integer",
+        title: "Days before due date",
+        minimum: 0,
+      },
+    },
+  },
+};
 
 /**
  * How long after `sendOn` a reminder stays deliverable. If the EBS pump has not
@@ -173,6 +199,7 @@ const grievanceDeadlineReminderPlugin: DenormPlugin<GrievanceDeadlineReminderDen
     singleton: true,
   },
   entityType: ENTITY_TYPE,
+  configSchema,
 
   async compute(entityId: string): Promise<GrievanceDeadlineReminderDenormPayload> {
     const parsed = parseUniqueId(entityId);

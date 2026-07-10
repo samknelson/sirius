@@ -37,6 +37,21 @@ function registerDenormKind(): void {
     // Managing denorm plugins is admin-only infrastructure, mirroring cron.
     requiredPolicy: "admin",
     sortEntries: (a, b) => a.id.localeCompare(b.id),
+    // Validate a config's editable `data` payload against the plugin's own JSON
+    // schema (when it declares one) when the generic admin Edit modal saves.
+    // Denorm has no subsidiary envelope, so `config` here is exactly the
+    // per-plugin settings object stored in `data`.
+    validateConfig: async (plugin, config) => {
+      if (!plugin.configSchema) return { valid: true };
+      const { validateAgainstSchema } = await import(
+        "../../../lib/json-schema-validator"
+      );
+      const result = validateAgainstSchema(
+        plugin.configSchema,
+        (config ?? {}) as Record<string, unknown>,
+      );
+      return { valid: result.valid, errors: result.errors };
+    },
   });
   // Denorm configs carry no relational dimension, so the base envelope is the
   // whole config — no subsidiary table.
