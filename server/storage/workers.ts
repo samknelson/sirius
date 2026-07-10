@@ -105,7 +105,7 @@ export interface WorkerContactExportRow {
 
 export interface WorkerCurrentBenefits {
   workerId: string;
-  benefits: Array<{ id: string; name: string; typeName: string | null; typeIcon: string | null; employerName: string | null }>;
+  benefits: Array<{ id: string; name: string; typeName: string | null; typeIcon: string | null; typeColor: string | null; employerName: string | null }>;
 }
 
 export interface WorkerWithDetails {
@@ -135,7 +135,7 @@ export interface WorkerWithDetails {
   address_is_primary: boolean | null;
   benefit_types: string[] | null;
   benefit_ids: string[] | null;
-  benefits: Array<{ id: string; name: string; typeName: string; typeIcon: string | null }> | null;
+  benefits: Array<{ id: string; name: string; typeName: string; typeIcon: string | null; typeColor: string | null }> | null;
 }
 
 export interface PaginatedWorkersResult {
@@ -516,7 +516,8 @@ async function _searchWorkers(params: InternalSearchParams): Promise<InternalSea
                   'id', tb.id,
                   'name', tb.name,
                   'typeName', bt.name,
-                  'typeIcon', bt.data->>'icon'
+                  'typeIcon', bt.data->>'icon',
+                  'typeColor', bt.data->>'color'
                 ) AS obj,
                 bt.sequence AS seq,
                 tb.name AS nm
@@ -874,6 +875,7 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
                     'name', tb.name,
                     'typeName', tbt.name,
                     'typeIcon', tbt.data->>'icon',
+                    'typeColor', tbt.data->>'color',
                     'employerName', e.name
                   ) as benefit_data,
                   tbt.sequence as type_seq,

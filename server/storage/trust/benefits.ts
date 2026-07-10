@@ -39,6 +39,7 @@ export function createTrustBenefitStorage(): TrustBenefitStorage {
       return results.map(r => ({
         ...r,
         benefitTypeIcon: (r.benefitTypeData as any)?.icon || null,
+        benefitTypeColor: (r.benefitTypeData as any)?.color || null,
         benefitTypeData: undefined,
       }));
     },
@@ -75,6 +76,7 @@ export function createTrustBenefitStorage(): TrustBenefitStorage {
       return {
         ...result,
         benefitTypeIcon: (result.benefitTypeData as any)?.icon || null,
+        benefitTypeColor: (result.benefitTypeData as any)?.color || null,
         benefitTypeData: undefined,
       };
     },

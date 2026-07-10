@@ -2,6 +2,7 @@ import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { renderIcon } from "@/components/ui/icon-picker";
 import { TrustBenefitLayout, useTrustBenefitLayout } from "@/components/layouts/TrustBenefitLayout";
 
 function TrustBenefitDetailsContent() {
@@ -34,8 +35,15 @@ function TrustBenefitDetailsContent() {
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium text-muted-foreground">Benefit Type</label>
-              <p className="text-foreground" data-testid="text-benefit-type-field">
-                {(benefit as any).benefitTypeName || 'N/A'}
+              <p className="text-foreground flex items-center gap-2" data-testid="text-benefit-type-field">
+                {(() => {
+                  const color = (benefit as any).benefitTypeColor as string | undefined;
+                  const iconEl = renderIcon((benefit as any).benefitTypeIcon, color ? "h-4 w-4" : "h-4 w-4 text-muted-foreground");
+                  return iconEl ? (
+                    <span className="inline-flex" style={color ? { color } : undefined}>{iconEl}</span>
+                  ) : null;
+                })()}
+                <span>{(benefit as any).benefitTypeName || 'N/A'}</span>
               </p>
             </div>
             <div className="space-y-2">

@@ -75,6 +75,7 @@ interface WorkerBenefit {
   name: string;
   typeName: string;
   typeIcon?: string;
+  typeColor?: string;
 }
 
 interface CardcheckStatusSummary {
@@ -813,7 +814,8 @@ export function WorkersTable({
                       .filter(benefit => benefit.isActive)
                       .sort((a, b) => a.name.localeCompare(b.name))
                       .map((benefit) => {
-                        const iconEl = renderIcon(benefit.benefitTypeIcon, "h-3.5 w-3.5 text-muted-foreground");
+                        const color = benefit.benefitTypeColor;
+                        const iconEl = renderIcon(benefit.benefitTypeIcon, color ? "h-3.5 w-3.5" : "h-3.5 w-3.5 text-muted-foreground");
                         return (
                           <SelectItem 
                             key={benefit.id} 
@@ -821,7 +823,11 @@ export function WorkersTable({
                             data-testid={`select-benefit-${benefit.id}`}
                           >
                             <div className="flex items-center gap-2">
-                              {iconEl ?? <Star className="h-3.5 w-3.5 text-muted-foreground" />}
+                              {iconEl ? (
+                                <span style={color ? { color } : undefined} className="inline-flex">{iconEl}</span>
+                              ) : (
+                                <Star className="h-3.5 w-3.5 text-muted-foreground" />
+                              )}
                               <span>{benefit.name}</span>
                             </div>
                           </SelectItem>
@@ -1315,11 +1321,12 @@ export function WorkersTable({
                         <div className="flex items-center gap-2" data-testid={`benefits-icons-${worker.id}`}>
                           {worker.benefits && worker.benefits.length > 0 ? (
                             worker.benefits.map((benefit, index) => {
-                              const iconEl = renderIcon(benefit.typeIcon, "h-4 w-4 text-muted-foreground");
+                              const color = benefit.typeColor;
+                              const iconEl = renderIcon(benefit.typeIcon, color ? "h-4 w-4" : "h-4 w-4 text-muted-foreground");
                               return (
                                 <Tooltip key={index}>
                                   <TooltipTrigger asChild>
-                                    <div className="cursor-help">
+                                    <div className="cursor-help" style={color ? { color } : undefined}>
                                       {iconEl ?? <Star className="h-4 w-4 text-muted-foreground" />}
                                     </div>
                                   </TooltipTrigger>

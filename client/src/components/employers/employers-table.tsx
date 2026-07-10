@@ -16,7 +16,7 @@ import { useQuery } from "@tanstack/react-query";
 import { renderIcon } from "@/components/ui/icon-picker";
 
 type EmployerWithCompany = Employer & { companyId?: string | null; companyName?: string | null };
-type BenefitWithIcon = TrustBenefit & { benefitTypeIcon?: string | null };
+type BenefitWithIcon = TrustBenefit & { benefitTypeIcon?: string | null; benefitTypeColor?: string | null };
 
 interface ContactIndicator {
   contactId: string;
@@ -313,7 +313,17 @@ export function EmployersTable({ employers, isLoading, includeInactive, onToggle
                     title={b.name}
                     data-testid={`th-benefit-${b.id}`}
                   >
-                    <span>{b.name}</span>
+                    <div className="flex items-center justify-end gap-1">
+                      {b.benefitTypeIcon && (
+                        <span
+                          className="inline-flex"
+                          style={b.benefitTypeColor ? { color: b.benefitTypeColor } : undefined}
+                        >
+                          {renderIcon(b.benefitTypeIcon, b.benefitTypeColor ? "w-3.5 h-3.5" : "w-3.5 h-3.5 text-muted-foreground")}
+                        </span>
+                      )}
+                      <span>{b.name}</span>
+                    </div>
                   </th>
                 ))}
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">

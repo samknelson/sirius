@@ -8,6 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { TrustBenefit, TrustBenefitType } from "@shared/schema";
+import { renderIcon } from "@/components/ui/icon-picker";
 import { Link } from "wouter";
 
 interface TrustBenefitsTableProps {
@@ -190,9 +191,18 @@ export function TrustBenefitsTable({ benefits, isLoading, includeInactive, onTog
                 <tr key={benefit.id} className="hover:bg-muted/30 transition-colors" data-testid={`row-benefit-${benefit.id}`}>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center space-x-3">
-                      <div className={`w-8 h-8 ${avatarColors[index % avatarColors.length]} rounded-full flex items-center justify-center`}>
-                        <Heart size={12} />
-                      </div>
+                      {(() => {
+                        const color = (benefit as any).benefitTypeColor as string | undefined;
+                        const iconEl = renderIcon((benefit as any).benefitTypeIcon, "h-3 w-3");
+                        return (
+                          <div
+                            className={`w-8 h-8 ${avatarColors[index % avatarColors.length]} rounded-full flex items-center justify-center`}
+                            style={color ? { color } : undefined}
+                          >
+                            {iconEl ?? <Heart size={12} />}
+                          </div>
+                        );
+                      })()}
                       <span 
                         className="text-sm font-medium text-foreground"
                         data-testid={`text-benefit-name-${benefit.id}`}
