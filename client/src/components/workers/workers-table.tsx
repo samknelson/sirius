@@ -139,41 +139,6 @@ const avatarColors = [
   "bg-red-100 text-red-600",
 ];
 
-// Map icon names from database to Lucide React components
-const iconMap: Record<string, LucideIcon> = {
-  'Scale': Scale,
-  'Stethoscope': Stethoscope,
-  'Smile': Smile,
-  'Eye': EyeIcon,
-  'Star': Star,
-  'Home': Home,
-  'GraduationCap': GraduationCap,
-  'Heart': Heart,
-  'Laptop': Laptop,
-  'ShoppingBag': ShoppingBag,
-};
-
-// Map icon names to colors
-const iconColorMap: Record<string, string> = {
-  'Scale': 'text-blue-600',
-  'Stethoscope': 'text-red-600',
-  'Smile': 'text-green-600',
-  'Eye': 'text-purple-600',
-  'Star': 'text-yellow-600',
-  'Home': 'text-orange-600',
-  'GraduationCap': 'text-indigo-600',
-  'Heart': 'text-pink-600',
-  'Laptop': 'text-cyan-600',
-  'ShoppingBag': 'text-teal-600',
-};
-
-// Get icon component and color from icon name
-const getIconByName = (iconName?: string) => {
-  const Icon = iconName && iconMap[iconName] ? iconMap[iconName] : Star;
-  const color = iconName && iconColorMap[iconName] ? iconColorMap[iconName] : 'text-gray-600';
-  return { Icon, color };
-};
-
 export function WorkersTable({ 
   workers, 
   isLoading,
@@ -848,7 +813,7 @@ export function WorkersTable({
                       .filter(benefit => benefit.isActive)
                       .sort((a, b) => a.name.localeCompare(b.name))
                       .map((benefit) => {
-                        const { Icon, color } = getIconByName(benefit.benefitTypeIcon);
+                        const iconEl = renderIcon(benefit.benefitTypeIcon, "h-3.5 w-3.5 text-muted-foreground");
                         return (
                           <SelectItem 
                             key={benefit.id} 
@@ -856,7 +821,7 @@ export function WorkersTable({
                             data-testid={`select-benefit-${benefit.id}`}
                           >
                             <div className="flex items-center gap-2">
-                              <Icon size={14} className={color} />
+                              {iconEl ?? <Star className="h-3.5 w-3.5 text-muted-foreground" />}
                               <span>{benefit.name}</span>
                             </div>
                           </SelectItem>
@@ -1350,12 +1315,12 @@ export function WorkersTable({
                         <div className="flex items-center gap-2" data-testid={`benefits-icons-${worker.id}`}>
                           {worker.benefits && worker.benefits.length > 0 ? (
                             worker.benefits.map((benefit, index) => {
-                              const { Icon, color } = getIconByName(benefit.typeIcon);
+                              const iconEl = renderIcon(benefit.typeIcon, "h-4 w-4 text-muted-foreground");
                               return (
                                 <Tooltip key={index}>
                                   <TooltipTrigger asChild>
                                     <div className="cursor-help">
-                                      <Icon size={16} className={color} />
+                                      {iconEl ?? <Star className="h-4 w-4 text-muted-foreground" />}
                                     </div>
                                   </TooltipTrigger>
                                   <TooltipContent>
