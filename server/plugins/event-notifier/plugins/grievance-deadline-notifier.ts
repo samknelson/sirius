@@ -65,8 +65,10 @@ function absoluteGrievanceUrl(grievanceId: string): string {
  * is owned by the `grievance_deadline_reminder` denorm plugin's offsets; this
  * notifier resolves WHO is notified from the grievance's associated users
  * filtered by the required `roleIds` config, and shapes the per-medium message.
- * The user who triggered the underlying change is dropped by the dispatcher's
- * self-notification suppression (recipients carry their `userId`).
+ * Unlike the real-time grievance notifiers, this one opts in to `notifySelf`:
+ * a scheduled deadline reminder is delivered even to the user who created or
+ * last touched the grievance (and a manual pump run does not suppress the
+ * operator), so the dispatcher's self-notification suppression is skipped here.
  */
 export const grievanceDeadlineNotifier: EventNotifierPlugin = {
   id: "grievance-deadline-notifier",
@@ -75,6 +77,10 @@ export const grievanceDeadlineNotifier: EventNotifierPlugin = {
     "Notifies grievance-associated users (by selected role) a configurable number of days before a grievance step's due date.",
   order: 100,
   requiredComponent: "grievance",
+  // Scheduled deadline reminder: notify the associated user even if they are
+  // the one who created / last touched the grievance (and don't suppress the
+  // operator on a manual pump run).
+  notifySelf: true,
   subscribedEvents: [EventType.GRIEVANCE_DEADLINE_REMINDER],
   supportedMedia: ["inapp", "email", "sms"],
   configSchema: {

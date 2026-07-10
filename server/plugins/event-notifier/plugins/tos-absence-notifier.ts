@@ -45,6 +45,9 @@ export const tosAbsenceNotifier: EventNotifierPlugin = {
     "Notifies the worker's contact when a scheduled absence reminder falls due (a configurable number of days after the absence start).",
   order: 100,
   requiredComponent: "worker.tos",
+  // Scheduled absence reminder: deliver even if the acting/operator user is the
+  // resolved recipient (and don't suppress the operator on a manual pump run).
+  notifySelf: true,
   subscribedEvents: [EventType.TOS_ABSENCE_REMINDER],
   supportedMedia: ["inapp", "email", "sms"],
 
