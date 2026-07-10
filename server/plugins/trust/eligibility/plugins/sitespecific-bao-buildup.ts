@@ -13,6 +13,7 @@ import {
   toOrdinal,
   fromOrdinal,
   resolveBaoThreshold,
+  resolveLowestActiveEmployerThreshold,
 } from "./bao-shared";
 
 /**
@@ -365,30 +366,59 @@ class BaoBuildupPlugin extends EligibilityPlugin<BaoBuildupConfig> {
     context: EligibilityContext,
     config: BaoBuildupConfig,
   ): Promise<EligibilityResult> {
+    const lagMonths = config.lagMonths ?? DEFAULT_LAG_MONTHS;
+    const defaultThreshold = config.defaultThreshold ?? DEFAULT_THRESHOLD;
+
+    // Normally the threshold comes from the resolved employer's industry. When
+    // no employer could be resolved (no active election / explicit employer),
+    // fall back to the worker's own hours: pick the lowest threshold across the
+    // employers they still actively work for that have hours in the buildup
+    // window. Only when even that yields nothing do we keep the old failure.
+    let fallbackThreshold: number | undefined;
+    let fallbackDerived = false;
     if (!context.employer) {
-      return {
-        eligible: false,
-        reason:
-          "No employer could be resolved for the subscriber on the evaluated date, so the hours threshold cannot be determined.",
-      };
+      const benefitOrdinal =
+        toOrdinal(context.asOfYear, context.asOfMonth) - lagMonths;
+      const benefit = fromOrdinal(benefitOrdinal);
+      const asOfYmd = lastDayOfMonthYmd(context.asOfYear, context.asOfMonth);
+      const derived = await resolveLowestActiveEmployerThreshold(
+        context.subscriberWorker.id,
+        asOfYmd,
+        benefit,
+        defaultThreshold,
+      );
+      if (!derived) {
+        return {
+          eligible: false,
+          reason:
+            "No employer could be resolved for the subscriber on the evaluated date, so the hours threshold cannot be determined.",
+        };
+      }
+      fallbackThreshold = derived.threshold;
+      fallbackDerived = true;
     }
 
     const status = await fetchBuildupStatus(
       context.subscriberWorker.id,
       { year: context.asOfYear, month: context.asOfMonth },
       {
-        lagMonths: config.lagMonths ?? DEFAULT_LAG_MONTHS,
-        employerId: context.employer.id,
-        defaultThreshold: config.defaultThreshold ?? DEFAULT_THRESHOLD,
+        lagMonths,
+        threshold: fallbackThreshold,
+        employerId: context.employer?.id,
+        defaultThreshold,
         buildupMonths: config.buildupMonths ?? DEFAULT_BUILDUP_MONTHS,
         breakMonths: config.breakMonths ?? DEFAULT_BREAK_MONTHS,
         warningBreakCount: config.warningBreakCount ?? DEFAULT_WARNING_BREAK_COUNT,
       },
     );
 
+    const reason = fallbackDerived
+      ? `${status.reason} (No trust election employer was found, so this threshold was derived from the worker's active hours.)`
+      : status.reason;
+
     const result: EligibilityResult = {
       eligible: status.success,
-      reason: status.reason,
+      reason,
     };
 
     if (status.warning) {

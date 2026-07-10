@@ -75,3 +75,71 @@ export async function resolveBaoThreshold(
 
   return { threshold, resolved: true };
 }
+
+/**
+ * Fallback threshold resolution used when no employer could be resolved from
+ * the worker's trust election (or an explicit employer). Rather than failing
+ * outright, derive candidate employers from the worker's own hours:
+ *
+ *  - keep every employer whose *most recent* hours record carries an
+ *    employment status flagged `employed` (the general "actively employed"
+ *    flag — the worker still looks like they work there), and
+ *  - that has at least one hours record dated at or before the benefit (last
+ *    qualifying) month, and
+ *  - resolve each such employer's threshold via `resolveBaoThreshold` and
+ *    return the LOWEST one (the most generous requirement for the worker).
+ *
+ * Returns `undefined` when the worker has no qualifying employer, so callers
+ * can preserve the original "no employer could be resolved" failure.
+ */
+export async function resolveLowestActiveEmployerThreshold(
+  workerId: string,
+  asOfYmd: string,
+  benefit: { year: number; month: number },
+  defaultThreshold: number,
+): Promise<
+  { threshold: number; resolved: boolean; employerId: string } | undefined
+> {
+  const benefitOrdinal = toOrdinal(benefit.year, benefit.month);
+
+  // Latest hours row per employer, carrying the joined employment status.
+  const current = await storage.workerHours.getWorkerHoursCurrent(workerId);
+  const activeEmployerIds = new Set<string>();
+  for (const row of current) {
+    if (row.employerId && row.employmentStatus?.employed === true) {
+      activeEmployerIds.add(row.employerId);
+    }
+  }
+  if (activeEmployerIds.size === 0) return undefined;
+
+  // Of those, keep only employers with hours at or before the benefit month.
+  const monthlyRows = await storage.workerHours.getWorkerHoursMonthly(workerId);
+  const employersWithHoursInWindow = new Set<string>();
+  for (const row of monthlyRows) {
+    if (!row.employerId || !activeEmployerIds.has(row.employerId)) continue;
+    const year = Number(row.year);
+    const month = Number(row.month);
+    if (!Number.isFinite(year) || !Number.isFinite(month)) continue;
+    if (toOrdinal(year, month) <= benefitOrdinal) {
+      employersWithHoursInWindow.add(row.employerId);
+    }
+  }
+  if (employersWithHoursInWindow.size === 0) return undefined;
+
+  // Resolve each candidate's threshold and keep the lowest.
+  let best:
+    | { threshold: number; resolved: boolean; employerId: string }
+    | undefined;
+  for (const employerId of employersWithHoursInWindow) {
+    const { threshold, resolved } = await resolveBaoThreshold(
+      workerId,
+      employerId,
+      asOfYmd,
+      defaultThreshold,
+    );
+    if (best === undefined || threshold < best.threshold) {
+      best = { threshold, resolved, employerId };
+    }
+  }
+  return best;
+}
