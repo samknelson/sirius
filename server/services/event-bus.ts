@@ -41,6 +41,7 @@ export enum EventType {
   GRIEVANCE_ASSIGNMENT_SAVED = "grievance.assignment.saved",
   GRIEVANCE_SETTLEMENT_SAVED = "grievance.settlement.saved",
   TRUST_WMB_SCAN_COMPLETED = "trust.wmb.scan.completed",
+  TOS_ABSENCE_REMINDER = "tos.absence.reminder",
   PLUGIN_CONFIG_SAVED = "plugin.config.saved",
   CRON = "cron",
   LOG = "log",
@@ -232,6 +233,20 @@ export interface TrustWmbScanCompletedPayload {
   benefitsTerminated: number;
 }
 
+/**
+ * A single TOS/absence reminder that fell due. Emitted by the generic EBS pump
+ * cron from an `ebs_denorm` row scheduled by the `tos_absence_reminder` denorm
+ * plugin; delivered by the `tos-absence-notifier` event-notifier plugin.
+ * `offset` is the number of days after `absenceStartDate` this reminder fires.
+ */
+export interface TosAbsenceReminderPayload {
+  tosId: string;
+  workerId: string;
+  contactId: string | null;
+  offset: number;
+  absenceStartDate: string;
+}
+
 export interface CronPayload {
   jobId: string;
   mode: "live" | "test";
@@ -282,6 +297,7 @@ export interface EventPayloadMap {
   [EventType.GRIEVANCE_ASSIGNMENT_SAVED]: GrievanceAssignmentSavedPayload;
   [EventType.GRIEVANCE_SETTLEMENT_SAVED]: GrievanceSettlementSavedPayload;
   [EventType.TRUST_WMB_SCAN_COMPLETED]: TrustWmbScanCompletedPayload;
+  [EventType.TOS_ABSENCE_REMINDER]: TosAbsenceReminderPayload;
   [EventType.PLUGIN_CONFIG_SAVED]: PluginConfigSavedPayload;
   [EventType.CRON]: CronPayload;
   [EventType.LOG]: LogPayload;
@@ -405,7 +421,35 @@ class EventBus {
     return false;
   }
 
+  /**
+   * Emit an event to every subscribed handler. Failures are swallowed (logged +
+   * recorded in the ring buffer) so a bad handler can never break the emitter.
+   * Callers that need to KNOW whether delivery succeeded (e.g. the EBS pump,
+   * which must only mark a scheduled event `sent` when every handler ran
+   * cleanly) should use {@link emitWithFailures} instead.
+   */
   async emit<T extends EventType>(eventType: T, payload: EventPayloadMap[T]): Promise<void> {
+    await this.dispatch(eventType, payload);
+  }
+
+  /**
+   * Like {@link emit}, but returns the per-handler failures instead of
+   * swallowing them. An empty array means every handler ran cleanly. The depth
+   * guard still applies and throws {@link EventBusEmitDepthExceededError} on an
+   * emit storm — a thrown depth error is NOT a handler failure and is surfaced
+   * to the caller directly.
+   */
+  async emitWithFailures<T extends EventType>(
+    eventType: T,
+    payload: EventPayloadMap[T],
+  ): Promise<EmitFailure[]> {
+    return this.dispatch(eventType, payload);
+  }
+
+  private async dispatch<T extends EventType>(
+    eventType: T,
+    payload: EventPayloadMap[T],
+  ): Promise<EmitFailure[]> {
     // Storm protection: per-async-chain emit depth tracking.
     const parent = this.emitDepthAls.getStore();
     const nextDepth = parent ? parent.depth + 1 : 1;
@@ -437,7 +481,7 @@ class EventBus {
           service: "event-bus",
         });
         this.recordEmit(eventType, payload, [], 0);
-        return;
+        return [];
       }
 
       logger.debug(`Emitting event: ${eventType} to ${handlers.length} handler(s)`, {
@@ -461,7 +505,17 @@ class EventBus {
       );
       const durationMs = Date.now() - startedAt;
 
-      const failures = results.filter(r => r.status === "rejected");
+      const failures: EmitFailure[] = [];
+      results.forEach((r, idx) => {
+        if (r.status === "rejected") {
+          const h = handlers[idx];
+          failures.push({
+            handlerId: h?.id ?? "unknown",
+            handlerName: h?.name ?? "unknown",
+            message: r.reason instanceof Error ? r.reason.message : String(r.reason),
+          });
+        }
+      });
       if (failures.length > 0) {
         logger.warn(`${failures.length}/${handlers.length} handlers failed for event: ${eventType}`, {
           service: "event-bus",
@@ -469,6 +523,7 @@ class EventBus {
       }
 
       this.recordEmit(eventType, payload, handlers, durationMs, results);
+      return failures;
     });
   }
 

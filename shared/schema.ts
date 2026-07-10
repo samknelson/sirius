@@ -2224,6 +2224,73 @@ export const insertWorkerEmploymentDenormSchema = createInsertSchema(workerEmplo
 export type InsertWorkerEmploymentDenorm = z.infer<typeof insertWorkerEmploymentDenormSchema>;
 export type WorkerEmploymentDenorm = typeof workerEmploymentDenorm.$inferSelect;
 
+// ===========================================================================
+// Deferred Event Bus (EBS)
+// ===========================================================================
+// The EBS lets a denorm plugin schedule a future real event-bus event. Each
+// denorm entity owned by an EBS-scheduling plugin corresponds to exactly ONE
+// scheduled event, keyed by the denorm `entity_id` (a plugin-defined
+// `unique_id`). `ebs_denorm` is that plugin's payload table (one row per
+// scheduled event): which `event_type` to emit, its `payload`, and the
+// [`send_on`, `dont_send_after`] delivery window. A generic core cron
+// (`ebs_pump`) drains due rows, emits them via the event bus, and records the
+// outcome in `ebs_status`; delivery itself is handled by ordinary
+// event-notifier plugins subscribed to the emitted event.
+//
+// `denorm_id` FKs `denorm(id)` ON DELETE CASCADE, so a scheduled event dies
+// with its denorm status row (e.g. when the widow sweep removes a denorm row
+// whose underlying entity is gone). `unique_id` mirrors the denorm entity_id
+// and is what joins to the decoupled `ebs_status` table.
+export const ebsDenorm = pgTable("ebs_denorm", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  denormId: varchar("denorm_id")
+    .notNull()
+    .references(() => denorm.id, { onDelete: 'cascade' }),
+  uniqueId: varchar("unique_id").notNull(),
+  pluginId: varchar("plugin_id").notNull(),
+  eventType: varchar("event_type").notNull(),
+  payload: jsonb("payload").notNull(),
+  sendOn: timestamp("send_on").notNull(),
+  dontSendAfter: timestamp("dont_send_after").notNull(),
+}, (table) => [
+  uniqueIndex("ebs_denorm_denorm_uniq").on(table.denormId),
+  uniqueIndex("ebs_denorm_unique_id_uniq").on(table.uniqueId),
+  index("ebs_denorm_send_on_idx").on(table.sendOn),
+]);
+
+export const insertEbsDenormSchema = createInsertSchema(ebsDenorm).omit({
+  id: true,
+});
+export type InsertEbsDenorm = z.infer<typeof insertEbsDenormSchema>;
+export type EbsDenorm = typeof ebsDenorm.$inferSelect;
+
+// Terminal delivery record for a scheduled event, keyed by `unique_id`.
+// DECOUPLED from `ebs_denorm` (no FK) on purpose: it must survive the widow
+// deletion of its `ebs_denorm`/`denorm` rows so a later recompute cannot
+// re-create and re-fire an event that has already been delivered (or expired).
+// The presence of ANY row for a `unique_id` means "terminal — do not process";
+// `status` distinguishes a successful send from a window that lapsed unfired.
+// `created_at` drives the retention purge.
+export const ebsDeliveryStatusEnum = pgEnum("ebs_delivery_status", ["sent", "expired"]);
+
+export const ebsStatus = pgTable("ebs_status", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  uniqueId: varchar("unique_id").notNull(),
+  status: ebsDeliveryStatusEnum("status").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  unique("ebs_status_unique_id_uniq").on(table.uniqueId),
+  index("ebs_status_created_idx").on(table.createdAt),
+]);
+
+export const insertEbsStatusSchema = createInsertSchema(ebsStatus).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertEbsStatus = z.infer<typeof insertEbsStatusSchema>;
+export type EbsStatus = typeof ebsStatus.$inferSelect;
+export type EbsDeliveryStatus = (typeof ebsDeliveryStatusEnum.enumValues)[number];
+
 // Base Rate History Schema - for use in charge plugins
 export const baseRateHistoryEntrySchema = z.object({
   effectiveDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be in YYYY-MM-DD format"),

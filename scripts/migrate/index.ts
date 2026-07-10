@@ -45,6 +45,7 @@ import "./core/1038_worker_msh_denorm";
 import "./core/1039_worker_wsh_denorm";
 import "./core/1040_worker_employment_denorm";
 import "./core/1043_ledger_payments_date_received_nullable";
+import "./core/1044_create_ebs";
 
 // Per-component migrations — each registered via
 // `registerComponentMigration(componentId, migration)`. Tracked by the

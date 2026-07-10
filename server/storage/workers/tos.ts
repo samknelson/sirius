@@ -6,7 +6,7 @@ import {
   type WorkerTos,
   type InsertWorkerTos,
 } from "@shared/schema";
-import { eq, and, desc, isNull, ne } from "drizzle-orm";
+import { eq, and, desc, isNull, ne, inArray } from "drizzle-orm";
 import { defineLoggingConfig, type StorageLoggingConfig } from "../middleware/logging";
 
 export class WorkerTosValidationError extends Error {
@@ -50,6 +50,13 @@ export interface WorkerTosStorage {
   getActiveForWorker(workerId: string): Promise<WorkerTos | undefined>;
   listActive(): Promise<WorkerTos[]>;
   listActiveWithWorker(): Promise<ActiveWorkerTosWithWorker[]>;
+  /**
+   * Given a set of TOS ids, return the subset that still exist AND are still
+   * open (no `end_date`). Used by the TOS absence-reminder denorm plugin's
+   * widow scan: any scheduled-reminder whose TOS id is NOT in the returned set
+   * (deleted or ended) is a widow whose denorm row should be removed.
+   */
+  getOpenIdsIn(ids: string[]): Promise<string[]>;
   create(input: InsertWorkerTos): Promise<WorkerTos>;
   update(id: string, patch: WorkerTosUpdate): Promise<WorkerTos | undefined>;
   delete(id: string, message?: string): Promise<boolean>;
@@ -203,6 +210,16 @@ export function createWorkerTosStorage(): WorkerTosStorage {
         .where(isNull(workerTos.endDate))
         .orderBy(contacts.family, contacts.given);
       return rows.map((row) => ({ ...row.tos, worker: row.worker }));
+    },
+
+    async getOpenIdsIn(ids: string[]): Promise<string[]> {
+      if (ids.length === 0) return [];
+      const client = getClient();
+      const rows = await client
+        .select({ id: workerTos.id })
+        .from(workerTos)
+        .where(and(inArray(workerTos.id, ids), isNull(workerTos.endDate)));
+      return rows.map((r) => r.id);
     },
 
     async getActiveForWorker(workerId: string): Promise<WorkerTos | undefined> {

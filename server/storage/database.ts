@@ -90,6 +90,10 @@ import {
   type WorkerWshDenormStorage,
   createWorkerWshDenormStorage,
 } from "./system/worker-wsh-denorm";
+import {
+  type EbsStorage,
+  createEbsStorage,
+} from "./system/ebs";
 import { type LogsStorage, createLogsStorage } from "./system/logs";
 import { type WorkerWshStorage, createWorkerWshStorage, workerWshLoggingConfig } from "./worker-wsh";
 import { type WorkerMshStorage, createWorkerMshStorage, workerMshLoggingConfig } from "./worker-msh";
@@ -203,6 +207,7 @@ export interface IStorage {
   workerMshDenorm: WorkerMshDenormStorage;
   workerWshDenorm: WorkerWshDenormStorage;
   workerEmploymentDenorm: WorkerEmploymentDenormStorage;
+  ebs: EbsStorage;
   grievanceNameDenorm: GrievanceNameDenormStorage;
   grievanceStepsDenorm: GrievanceStepsDenormStorage;
   logs: LogsStorage;
@@ -305,6 +310,7 @@ export class DatabaseStorage implements IStorage {
   workerMshDenorm: WorkerMshDenormStorage;
   workerWshDenorm: WorkerWshDenormStorage;
   workerEmploymentDenorm: WorkerEmploymentDenormStorage;
+  ebs: EbsStorage;
   grievanceNameDenorm: GrievanceNameDenormStorage;
   grievanceStepsDenorm: GrievanceStepsDenormStorage;
   logs: LogsStorage;
@@ -455,6 +461,8 @@ export class DatabaseStorage implements IStorage {
     this.workerMshDenorm = createWorkerMshDenormStorage();
     this.workerWshDenorm = createWorkerWshDenormStorage();
     this.workerEmploymentDenorm = createWorkerEmploymentDenormStorage();
+    // No logging for ebs - internal scheduled-event churn maintained by plugins.
+    this.ebs = createEbsStorage();
     this.grievanceNameDenorm = createGrievanceNameDenormStorage();
     this.grievanceStepsDenorm = createGrievanceStepsDenormStorage();
     this.logs = createLogsStorage();
