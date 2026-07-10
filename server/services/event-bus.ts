@@ -43,6 +43,7 @@ export enum EventType {
   TRUST_WMB_SCAN_COMPLETED = "trust.wmb.scan.completed",
   TOS_ABSENCE_REMINDER = "tos.absence.reminder",
   GRIEVANCE_DEADLINE_REMINDER = "grievance.deadline.reminder",
+  EMPLOYER_MONTHLY = "employer.monthly",
   PLUGIN_CONFIG_SAVED = "plugin.config.saved",
   CRON = "cron",
   LOG = "log",
@@ -265,6 +266,19 @@ export interface GrievanceDeadlineReminderPayload {
   offset: number;
 }
 
+/**
+ * A single employer-monthly event that fell due. Emitted by the generic EBS
+ * pump cron from an `ebs_denorm` row scheduled by the `employer_monthly` denorm
+ * plugin. `month` is the calendar month this event is for, in `YYYY-MM` form.
+ * This is currently a producer-only event: no consumer is registered yet
+ * (downstream ledger interest/penalty work will subscribe later), so the pump
+ * logging "No handlers" for it is expected.
+ */
+export interface EmployerMonthlyPayload {
+  employerId: string;
+  month: string;
+}
+
 export interface CronPayload {
   jobId: string;
   mode: "live" | "test";
@@ -317,6 +331,7 @@ export interface EventPayloadMap {
   [EventType.TRUST_WMB_SCAN_COMPLETED]: TrustWmbScanCompletedPayload;
   [EventType.TOS_ABSENCE_REMINDER]: TosAbsenceReminderPayload;
   [EventType.GRIEVANCE_DEADLINE_REMINDER]: GrievanceDeadlineReminderPayload;
+  [EventType.EMPLOYER_MONTHLY]: EmployerMonthlyPayload;
   [EventType.PLUGIN_CONFIG_SAVED]: PluginConfigSavedPayload;
   [EventType.CRON]: CronPayload;
   [EventType.LOG]: LogPayload;
