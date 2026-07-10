@@ -42,6 +42,7 @@ export enum EventType {
   GRIEVANCE_SETTLEMENT_SAVED = "grievance.settlement.saved",
   TRUST_WMB_SCAN_COMPLETED = "trust.wmb.scan.completed",
   TOS_ABSENCE_REMINDER = "tos.absence.reminder",
+  GRIEVANCE_DEADLINE_REMINDER = "grievance.deadline.reminder",
   PLUGIN_CONFIG_SAVED = "plugin.config.saved",
   CRON = "cron",
   LOG = "log",
@@ -247,6 +248,23 @@ export interface TosAbsenceReminderPayload {
   absenceStartDate: string;
 }
 
+/**
+ * A single grievance deadline reminder that fell due. Emitted by the generic
+ * EBS pump cron from an `ebs_denorm` row scheduled by the
+ * `grievance_deadline_reminder` denorm plugin; delivered by the
+ * `grievance-deadline-notifier` event-notifier plugin. `offset` is the number
+ * of days BEFORE `dueDate` this reminder fires; `dueDate` is the step's due
+ * date (YYYY-MM-DD). `stepName` is the timeline step's display name (null if it
+ * can no longer be resolved).
+ */
+export interface GrievanceDeadlineReminderPayload {
+  grievanceId: string;
+  stepId: string;
+  stepName: string | null;
+  dueDate: string;
+  offset: number;
+}
+
 export interface CronPayload {
   jobId: string;
   mode: "live" | "test";
@@ -298,6 +316,7 @@ export interface EventPayloadMap {
   [EventType.GRIEVANCE_SETTLEMENT_SAVED]: GrievanceSettlementSavedPayload;
   [EventType.TRUST_WMB_SCAN_COMPLETED]: TrustWmbScanCompletedPayload;
   [EventType.TOS_ABSENCE_REMINDER]: TosAbsenceReminderPayload;
+  [EventType.GRIEVANCE_DEADLINE_REMINDER]: GrievanceDeadlineReminderPayload;
   [EventType.PLUGIN_CONFIG_SAVED]: PluginConfigSavedPayload;
   [EventType.CRON]: CronPayload;
   [EventType.LOG]: LogPayload;

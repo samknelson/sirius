@@ -43,4 +43,5 @@
 - [tsc not in dev loop](tsc-not-in-dev-loop.md) — dev runs under tsx (no type-check); tsc now runs automatically as the `typecheck` validation; treat red tsc as a possible real runtime bug.
 - [Drizzle .notNull() breaks null-autogen inserts](drizzle-notnull-breaks-autogen.md) — .notNull() (no default) makes $inferInsert required; keep zod field nullish + pass a definite string at the .values/.set site.
 - [EBS pump at-most-once delivery](ebs-claim-before-emit.md) — deferred event-bus pump must claim the terminal status row (unique ON CONFLICT RETURNING) BEFORE emit; overlapping crons else double-fire, and partial-failure retry re-runs succeeded handlers.
+- [EBS scheduled-reminder pattern](ebs-scheduled-reminder-pattern.md) — "N days before/after a moving date" = denorm scheduler + notifier; encode the anchor in the entity id; isScheduledEventLive (not the widow sweep) is the pre-fire guarantee.
 - [drizzle-kit push hazards](drizzle-kit-push-hazards.md) — >63-char auto FK/unique names churn forever (pin explicit DB-matching names); non-interactive push destroys constraints on failed runs; jsonb default needs sql literal.
