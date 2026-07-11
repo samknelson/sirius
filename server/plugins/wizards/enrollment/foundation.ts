@@ -160,6 +160,10 @@ async function getEmploymentOptions(
 interface EligibleBenefitRow {
   benefitId: string;
   benefitName: string;
+  benefitTypeId: string | null;
+  benefitTypeName: string | null;
+  benefitTypeSequence: number | null;
+  benefitTypeOnlyOne: boolean;
   eligible: boolean;
   reasons: Array<{ pluginName: string; eligible: boolean; reason?: string }>;
 }
@@ -206,6 +210,28 @@ async function evaluateEligibleBenefits(
   const nameById = new Map<string, string>(
     allBenefits.map((b: any) => [b.id, b.name || b.id]),
   );
+  // Benefit-type info drives grouping (client) and single-select enforcement
+  // (submit). An absent "only one of this type" flag is treated as off, so
+  // existing types keep allowing multiple selections.
+  const typeInfoById = new Map<
+    string,
+    {
+      benefitTypeId: string | null;
+      benefitTypeName: string | null;
+      benefitTypeSequence: number | null;
+      benefitTypeOnlyOne: boolean;
+    }
+  >(
+    allBenefits.map((b: any) => [
+      b.id,
+      {
+        benefitTypeId: b.benefitType ?? null,
+        benefitTypeName: b.benefitTypeName ?? null,
+        benefitTypeSequence: b.benefitTypeSequence ?? null,
+        benefitTypeOnlyOne: b.benefitTypeOnlyOne === true,
+      },
+    ]),
+  );
 
   // A benefit type can be hidden from the enrollment wizards via its
   // "Show on enrollment wizards" toggle. Only a value of explicit `false`
@@ -237,9 +263,14 @@ async function evaluateEligibleBenefits(
         stopAfterIneligible: false,
       },
     );
+    const typeInfo = typeInfoById.get(benefitId);
     results.push({
       benefitId,
       benefitName: nameById.get(benefitId) ?? benefitId,
+      benefitTypeId: typeInfo?.benefitTypeId ?? null,
+      benefitTypeName: typeInfo?.benefitTypeName ?? null,
+      benefitTypeSequence: typeInfo?.benefitTypeSequence ?? null,
+      benefitTypeOnlyOne: typeInfo?.benefitTypeOnlyOne ?? false,
       eligible: evalResult.eligible,
       reasons: (evalResult.results || []).map((r: any) => ({
         pluginName: r.pluginKey ?? "rule",
@@ -849,7 +880,9 @@ export function createEnrollmentFoundation(
         policySource: chosen.policySource,
         // Changing the employer/policy invalidates any benefit selection
         // made against the previous policy.
-        ...(changed ? { benefitIds: [], benefitNames: [] } : {}),
+        ...(changed
+          ? { benefitIds: [], benefitNames: [], benefitSelections: [] }
+          : {}),
       },
     };
   }
@@ -882,11 +915,50 @@ export function createEnrollmentFoundation(
         );
       }
     }
-    const nameById = new Map(rows.map((r) => [r.benefitId, r.benefitName]));
+    const rowById = new Map(rows.map((r) => [r.benefitId, r]));
+
+    // Enforce the per-type "only one of this type" rule server-side. A type
+    // without the flag allows as many benefits as today. This mirrors the
+    // client single-select UI but is the real gate, since the client can be
+    // bypassed. Life Event never runs this path, so existing carried-forward
+    // elections that predate a newly-set rule are untouched.
+    const countByOnlyOneType = new Map<string, { name: string; count: number }>();
+    for (const id of benefitIds) {
+      const row = rowById.get(id);
+      if (!row?.benefitTypeOnlyOne || !row.benefitTypeId) continue;
+      const entry = countByOnlyOneType.get(row.benefitTypeId) ?? {
+        name: row.benefitTypeName ?? "this type",
+        count: 0,
+      };
+      entry.count += 1;
+      countByOnlyOneType.set(row.benefitTypeId, entry);
+    }
+    for (const { name, count } of countByOnlyOneType.values()) {
+      if (count > 1) {
+        throw new Error(
+          `Only one ${name} benefit can be selected. Please choose a single ${name} benefit.`,
+        );
+      }
+    }
+
+    // Persist a typed view of the selection so the review screen can group by
+    // benefit type without another lookup. benefitNames is kept for backward
+    // compatibility with existing consumers.
+    const benefitSelections = benefitIds.map((id) => {
+      const row = rowById.get(id);
+      return {
+        benefitId: id,
+        benefitName: row?.benefitName ?? id,
+        benefitTypeId: row?.benefitTypeId ?? null,
+        benefitTypeName: row?.benefitTypeName ?? null,
+        benefitTypeSequence: row?.benefitTypeSequence ?? null,
+      };
+    });
     return {
       data: {
         benefitIds,
-        benefitNames: benefitIds.map((id) => nameById.get(id) ?? id),
+        benefitNames: benefitSelections.map((b) => b.benefitName),
+        benefitSelections,
       },
     };
   }

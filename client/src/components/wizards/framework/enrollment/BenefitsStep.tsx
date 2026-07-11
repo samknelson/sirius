@@ -20,8 +20,60 @@ import type { WizardStepComponentProps } from "@/components/wizards/framework/ty
 interface EligibleBenefitRow {
   benefitId: string;
   benefitName: string;
+  benefitTypeId: string | null;
+  benefitTypeName: string | null;
+  benefitTypeSequence: number | null;
+  benefitTypeOnlyOne: boolean;
   eligible: boolean;
   reasons: Array<{ pluginName: string; eligible: boolean; reason?: string }>;
+}
+
+interface BenefitTypeGroup {
+  typeId: string;
+  typeName: string;
+  onlyOne: boolean;
+  sequence: number | null;
+  rows: EligibleBenefitRow[];
+}
+
+const UNGROUPED_ID = "__ungrouped__";
+
+/**
+ * Group the eligible benefits under their benefit type. Groups are ordered by
+ * the type's configured sequence (then name); benefits with no type fall into
+ * a trailing "Other" group. This is display-only — the server re-validates the
+ * selection on submit.
+ */
+function groupByType(rows: EligibleBenefitRow[]): BenefitTypeGroup[] {
+  const groups = new Map<string, BenefitTypeGroup>();
+  for (const row of rows) {
+    const typeId = row.benefitTypeId ?? UNGROUPED_ID;
+    let group = groups.get(typeId);
+    if (!group) {
+      group = {
+        typeId,
+        typeName: row.benefitTypeName ?? "Other",
+        onlyOne: typeId === UNGROUPED_ID ? false : row.benefitTypeOnlyOne,
+        sequence: typeId === UNGROUPED_ID ? null : row.benefitTypeSequence,
+        rows: [],
+      };
+      groups.set(typeId, group);
+    }
+    group.rows.push(row);
+  }
+  const list = Array.from(groups.values());
+  list.sort((a, b) => {
+    if (a.typeId === UNGROUPED_ID) return 1;
+    if (b.typeId === UNGROUPED_ID) return -1;
+    const sa = a.sequence ?? Number.MAX_SAFE_INTEGER;
+    const sb = b.sequence ?? Number.MAX_SAFE_INTEGER;
+    if (sa !== sb) return sa - sb;
+    return a.typeName.localeCompare(b.typeName);
+  });
+  for (const group of list) {
+    group.rows.sort((a, b) => a.benefitName.localeCompare(b.benefitName));
+  }
+  return list;
 }
 
 /**
@@ -51,6 +103,7 @@ export function BenefitsStep({ wizardId, step, data }: WizardStepComponentProps)
 
   // The server only offers eligible benefits; ineligible ones are never shown.
   const rows = stepData?.records ?? [];
+  const groups = groupByType(rows);
   const ineligibleCount = stepData?.ineligibleCount ?? 0;
 
   const saveMutation = useMutation({
@@ -112,38 +165,71 @@ export function BenefitsStep({ wizardId, step, data }: WizardStepComponentProps)
               : "The selected policy has no benefits configured."}
           </p>
         ) : (
-          <div className="space-y-2">
-            {rows.map((row) => (
+          <div className="space-y-6">
+            {groups.map((group) => (
               <div
-                key={row.benefitId}
-                className="flex items-start gap-3 rounded-lg border p-4"
-                data-testid={`row-benefit-${row.benefitId}`}
+                key={group.typeId}
+                className="space-y-2"
+                data-testid={`group-benefit-type-${group.typeId}`}
               >
-                <Checkbox
-                  id={`benefit-${row.benefitId}`}
-                  checked={selected.includes(row.benefitId)}
-                  disabled={saveMutation.isPending}
-                  onCheckedChange={(checked) => {
-                    setSelected((prev) =>
-                      checked
-                        ? [...prev, row.benefitId]
-                        : prev.filter((id) => id !== row.benefitId),
-                    );
-                  }}
-                  className="mt-0.5"
-                  data-testid={`checkbox-benefit-${row.benefitId}`}
-                />
-                <Label
-                  htmlFor={`benefit-${row.benefitId}`}
-                  className="flex-1 space-y-1 cursor-pointer"
-                >
-                  <span className="flex items-center gap-2 font-medium">
-                    {row.benefitName}
-                    <Badge variant="secondary" className="gap-1">
-                      <CheckCircle2 size={12} /> Eligible
+                <div className="flex items-center gap-2">
+                  <h3
+                    className="text-sm font-semibold text-foreground"
+                    data-testid={`heading-benefit-type-${group.typeId}`}
+                  >
+                    {group.typeName}
+                  </h3>
+                  {group.onlyOne && (
+                    <Badge variant="outline" data-testid={`badge-choose-one-${group.typeId}`}>
+                      Choose one
                     </Badge>
-                  </span>
-                </Label>
+                  )}
+                </div>
+                {group.rows.map((row) => (
+                  <div
+                    key={row.benefitId}
+                    className="flex items-start gap-3 rounded-lg border p-4"
+                    data-testid={`row-benefit-${row.benefitId}`}
+                  >
+                    <Checkbox
+                      id={`benefit-${row.benefitId}`}
+                      checked={selected.includes(row.benefitId)}
+                      disabled={saveMutation.isPending}
+                      onCheckedChange={(checked) => {
+                        setSelected((prev) => {
+                          if (!checked) {
+                            return prev.filter((id) => id !== row.benefitId);
+                          }
+                          if (group.onlyOne) {
+                            // Single-select type: picking one benefit replaces
+                            // any other already-picked benefit of the same type.
+                            const sameTypeIds = new Set(
+                              group.rows.map((r) => r.benefitId),
+                            );
+                            return [
+                              ...prev.filter((id) => !sameTypeIds.has(id)),
+                              row.benefitId,
+                            ];
+                          }
+                          return [...prev, row.benefitId];
+                        });
+                      }}
+                      className="mt-0.5"
+                      data-testid={`checkbox-benefit-${row.benefitId}`}
+                    />
+                    <Label
+                      htmlFor={`benefit-${row.benefitId}`}
+                      className="flex-1 space-y-1 cursor-pointer"
+                    >
+                      <span className="flex items-center gap-2 font-medium">
+                        {row.benefitName}
+                        <Badge variant="secondary" className="gap-1">
+                          <CheckCircle2 size={12} /> Eligible
+                        </Badge>
+                      </span>
+                    </Label>
+                  </div>
+                ))}
               </div>
             ))}
           </div>

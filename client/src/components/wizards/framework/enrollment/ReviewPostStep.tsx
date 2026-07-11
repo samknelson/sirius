@@ -32,6 +32,59 @@ interface DependentEntry {
   birthDate: string;
 }
 
+interface BenefitSelection {
+  benefitId: string;
+  benefitName: string;
+  benefitTypeId: string | null;
+  benefitTypeName: string | null;
+  benefitTypeSequence: number | null;
+}
+
+interface ReviewBenefitGroup {
+  typeId: string;
+  typeName: string;
+  sequence: number | null;
+  names: string[];
+}
+
+const UNGROUPED_ID = "__ungrouped__";
+
+/**
+ * Group the chosen benefits under their benefit type for the review screen,
+ * ordered by the type's configured sequence (then name); benefits with no type
+ * fall into a trailing "Other" group.
+ */
+function groupSelections(selections: BenefitSelection[]): ReviewBenefitGroup[] {
+  const groups = new Map<string, ReviewBenefitGroup>();
+  for (const sel of selections) {
+    const typeId = sel.benefitTypeId ?? UNGROUPED_ID;
+    let group = groups.get(typeId);
+    if (!group) {
+      group = {
+        typeId,
+        typeName: sel.benefitTypeName ?? "Other",
+        sequence: typeId === UNGROUPED_ID ? null : sel.benefitTypeSequence,
+        names: [],
+      };
+      groups.set(typeId, group);
+    }
+    group.names.push(sel.benefitName);
+  }
+  const list = Array.from(groups.values());
+  list.sort((a, b) => {
+    if (a.typeId === UNGROUPED_ID) return 1;
+    if (b.typeId === UNGROUPED_ID) return -1;
+    const sa = a.sequence ?? Number.MAX_SAFE_INTEGER;
+    const sb = b.sequence ?? Number.MAX_SAFE_INTEGER;
+    if (sa !== sb) return sa - sb;
+    return a.typeName.localeCompare(b.typeName);
+  });
+  for (const group of list) {
+    group.names.sort((a, b) => a.localeCompare(b));
+  }
+  return list;
+}
+
 /**
  * Final step: review everything and Post (creates the one
  * worker_trust_elections record) or Cancel the enrollment.
@@ -51,9 +104,27 @@ export function ReviewPostStep({
   const dependents: DependentEntry[] = Array.isArray(data?.dependents)
     ? (data.dependents as DependentEntry[])
     : [];
+  const benefitIds: string[] = Array.isArray(data?.benefitIds)
+    ? (data.benefitIds as string[])
+    : [];
   const benefitNames: string[] = Array.isArray(data?.benefitNames)
     ? (data.benefitNames as string[])
     : [];
+  const benefitSelections: BenefitSelection[] = Array.isArray(
+    data?.benefitSelections,
+  )
+    ? (data.benefitSelections as BenefitSelection[])
+    : [];
+  // Only trust the typed selections for grouping when they exactly match the
+  // current benefitIds. This guards against stale selections left over from a
+  // prior employer/policy and against legacy drafts saved before this field
+  // existed — in both cases we fall back to the flat name list.
+  const idSet = new Set(benefitIds);
+  const validSelections = benefitSelections.filter((s) => idSet.has(s.benefitId));
+  const benefitGroups =
+    benefitIds.length > 0 && validSelections.length === benefitIds.length
+      ? groupSelections(validSelections)
+      : [];
   const signature = data?.signature as { type: string; signedAt: string } | undefined;
 
   const missing: string[] = [];
@@ -173,10 +244,28 @@ export function ReviewPostStep({
               {(data?.startYmd as string) || "—"}
             </dd>
           </div>
-          <div>
+          <div className="col-span-2">
             <dt className="text-muted-foreground">Benefits</dt>
             <dd data-testid="text-review-benefits">
-              {benefitNames.length > 0 ? benefitNames.join(", ") : "—"}
+              {benefitGroups.length > 0 ? (
+                <div className="space-y-2 mt-1">
+                  {benefitGroups.map((group) => (
+                    <div
+                      key={group.typeId}
+                      data-testid={`review-benefit-group-${group.typeId}`}
+                    >
+                      <div className="text-xs font-semibold text-foreground">
+                        {group.typeName}
+                      </div>
+                      <div>{group.names.join(", ")}</div>
+                    </div>
+                  ))}
+                </div>
+              ) : benefitNames.length > 0 ? (
+                benefitNames.join(", ")
+              ) : (
+                "—"
+              )}
             </dd>
           </div>
           <div>

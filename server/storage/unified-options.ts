@@ -358,6 +358,7 @@ const optionsMetadata: Record<OptionsTypeName, OptionsTableMetadata<any>> = {
       { name: "siriusId", label: "Sirius ID", inputType: "text", required: false, placeholder: "Optional Sirius ID", showInTable: true, columnHeader: "Sirius ID" },
       { name: "description", label: "Description", inputType: "textarea", required: false, placeholder: "Optional description", showInTable: true, columnHeader: "Description" },
       { name: "showOnEnrollmentWizards", label: "Show on enrollment wizards", inputType: "checkbox", required: false, default: true, helperText: "When off, benefits of this type are not offered for selection in the enrollment wizards", showInTable: true, columnHeader: "On wizards", dataField: true },
+      { name: "onlyOne", label: "Only one of this type", inputType: "checkbox", required: false, default: false, helperText: "When on, a worker can select at most one benefit of this type in the enrollment wizards", showInTable: true, columnHeader: "One only", dataField: true },
     ],
   },
   "trust-provider-type": {

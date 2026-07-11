@@ -29,6 +29,7 @@ export function createTrustBenefitStorage(): TrustBenefitStorage {
           name: trustBenefits.name,
           benefitType: trustBenefits.benefitType,
           benefitTypeName: optionsTrustBenefitType.name,
+          benefitTypeSequence: optionsTrustBenefitType.sequence,
           benefitTypeData: optionsTrustBenefitType.data,
           color: trustBenefits.color,
           showOnWorkerList: trustBenefits.showOnWorkerList,
@@ -42,6 +43,7 @@ export function createTrustBenefitStorage(): TrustBenefitStorage {
         ...r,
         benefitTypeIcon: (r.benefitTypeData as any)?.icon || null,
         benefitTypeShowOnEnrollmentWizards: (r.benefitTypeData as any)?.showOnEnrollmentWizards,
+        benefitTypeOnlyOne: (r.benefitTypeData as any)?.onlyOne === true,
         benefitTypeData: undefined,
       }));
     },
