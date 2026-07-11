@@ -567,7 +567,7 @@ export default function Header() {
                   </>
                 )}
 
-                {((hasComponent("trust.providers") && hasPermission("staff")) || (hasPermission("admin") && hasComponent("trust.benefits.scan"))) && (
+                {((hasComponent("trust.providers") && hasPermission("staff")) || (hasPermission("admin") && hasComponent("trust.benefits.scan")) || (hasComponent("trust.elections") && hasPermission("staff"))) && (
                   <>
                     <div className="border-t border-gray-100 dark:border-gray-800 my-2" />
                     <button
@@ -592,6 +592,18 @@ export default function Header() {
                             >
                               <Shield className="h-4 w-4 mr-2" />
                               Providers
+                            </Button>
+                          </Link>
+                        )}
+                        {hasComponent("trust.elections") && hasPermission("staff") && (
+                          <Link href="/trust/enrollment-queue" onClick={() => setMobileMenuOpen(false)}>
+                            <Button
+                              variant={location.startsWith("/trust/enrollment-queue") ? "default" : "ghost"}
+                              className="w-full justify-start pl-10 text-sm"
+                              data-testid="mobile-nav-enrollment-queue"
+                            >
+                              <ClipboardCheck className="h-4 w-4 mr-2" />
+                              Enrollment Queue
                             </Button>
                           </Link>
                         )}
@@ -1365,7 +1377,7 @@ export default function Header() {
               </DropdownMenu>
             )}
 
-            {((hasComponent("trust.providers") && hasPermission("staff")) || (hasPermission("admin") && hasComponent("trust.benefits.scan"))) && (
+            {((hasComponent("trust.providers") && hasPermission("staff")) || (hasPermission("admin") && hasComponent("trust.benefits.scan")) || (hasComponent("trust.elections") && hasPermission("staff"))) && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
@@ -1385,6 +1397,16 @@ export default function Header() {
                         <div className="flex items-center cursor-pointer" data-testid="menu-trust-providers">
                           <Shield className="h-4 w-4 mr-2" />
                           Providers
+                        </div>
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
+                  {hasComponent("trust.elections") && hasPermission("staff") && (
+                    <DropdownMenuItem asChild>
+                      <Link href="/trust/enrollment-queue" className="w-full">
+                        <div className="flex items-center cursor-pointer" data-testid="menu-enrollment-queue">
+                          <ClipboardCheck className="h-4 w-4 mr-2" />
+                          Enrollment Queue
                         </div>
                       </Link>
                     </DropdownMenuItem>

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { storage } from "../../storage";
 import { requireComponent } from "../components";
 import { WorkerTrustElectionValidationError } from "../../storage/trust/elections";
+import { ENROLLMENT_TYPES, type EnrollmentType } from "@shared/schema";
 
 type RequireAccess = (
   policy: string,
@@ -96,6 +97,36 @@ export function registerWorkerTrustElectionsRoutes(
         });
       } catch (error) {
         handleError(res, error, "Failed to check first-time enrollment eligibility");
+      }
+    },
+  );
+
+  // Staff enrollment review queue: elections across all workers, optionally
+  // filtered to one enrollment type (first_time / life_event / open_enrollment).
+  // Registered BEFORE "/api/trust-elections/:id" so the literal path is not
+  // captured as an :id param.
+  app.get(
+    "/api/trust-elections",
+    requireAuth,
+    electionsComponent,
+    requireAccess('staff'),
+    async (req: Request, res: Response) => {
+      try {
+        const enrollmentTypeRaw = (req.query.enrollmentType as string | undefined) || undefined;
+        const enrollmentType = ENROLLMENT_TYPES.includes(enrollmentTypeRaw as EnrollmentType)
+          ? (enrollmentTypeRaw as EnrollmentType)
+          : undefined;
+        const activeOnly = req.query.activeOnly === 'true' || req.query.activeOnly === '1';
+        const sortRaw = (req.query.sort as string | undefined) || 'startDesc';
+        const sort = sortRaw === 'startAsc' ? 'startAsc' : 'startDesc';
+        const rows = await storage.workerTrustElections.searchViews({
+          enrollmentType,
+          activeOnly,
+          sort,
+        });
+        res.json(rows);
+      } catch (error) {
+        handleError(res, error, "Failed to fetch enrollment queue");
       }
     },
   );

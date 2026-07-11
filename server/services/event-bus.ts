@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { logger } from "../logger";
+import type { EnrollmentType } from "@shared/schema";
 
 export const EVENT_BUS_MAX_EMIT_DEPTH = 100;
 
@@ -38,6 +39,7 @@ export enum EventType {
   GRIEVANCE_SAVED = "grievance.saved",
   GRIEVANCE_ASSIGNMENT_SAVED = "grievance.assignment.saved",
   GRIEVANCE_SETTLEMENT_SAVED = "grievance.settlement.saved",
+  TRUST_ELECTION_SAVED = "trust.election.saved",
   TRUST_WMB_SCAN_COMPLETED = "trust.wmb.scan.completed",
   PLUGIN_CONFIG_SAVED = "plugin.config.saved",
   CRON = "cron",
@@ -187,6 +189,18 @@ export interface GrievanceSettlementSavedPayload {
   amount: string | null;
 }
 
+export interface TrustElectionSavedPayload {
+  electionId: string;
+  workerId: string;
+  /**
+   * Which enrollment stream this election belongs to. May be null for legacy
+   * or manually-created elections that carry no type; per-type notifiers skip
+   * those via `shouldDispatch`.
+   */
+  enrollmentType: EnrollmentType | null;
+  operation: "created" | "updated" | "deleted";
+}
+
 export interface TrustWmbScanCompletedPayload {
   statusId: string;
   month: number;
@@ -246,6 +260,7 @@ export interface EventPayloadMap {
   [EventType.GRIEVANCE_SAVED]: GrievanceSavedPayload;
   [EventType.GRIEVANCE_ASSIGNMENT_SAVED]: GrievanceAssignmentSavedPayload;
   [EventType.GRIEVANCE_SETTLEMENT_SAVED]: GrievanceSettlementSavedPayload;
+  [EventType.TRUST_ELECTION_SAVED]: TrustElectionSavedPayload;
   [EventType.TRUST_WMB_SCAN_COMPLETED]: TrustWmbScanCompletedPayload;
   [EventType.PLUGIN_CONFIG_SAVED]: PluginConfigSavedPayload;
   [EventType.CRON]: CronPayload;

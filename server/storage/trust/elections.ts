@@ -1,4 +1,4 @@
-import { getClient, runInTransaction } from '../transaction-context';
+import { getClient, runInTransaction, onAfterCommit } from '../transaction-context';
 import {
   workerTrustElections,
   workers,
@@ -13,19 +13,44 @@ import {
   updateWorkerTrustElectionRequestSchema,
   type WorkerTrustElection,
   type WorkerTrustElectionView,
+  type EnrollmentType,
 } from '@shared/schema';
 import { eq, and, asc, desc, isNull, lt, lte, gte, or, ne, inArray, type SQL } from 'drizzle-orm';
 import { defineLoggingConfig, type StorageLoggingConfig } from '../middleware/logging';
 import { normalizeToDateOnly, getTodayDateOnly } from '@shared/utils';
+import { eventBus, EventType } from '../../services/event-bus';
 
 export interface WorkerTrustElectionSearchParams {
   id?: string;
   workerId?: string;
   policyId?: string;
+  enrollmentType?: EnrollmentType;
   activeOnly?: boolean;
   sort?: 'startAsc' | 'startDesc';
   limit?: number;
   offset?: number;
+}
+
+/**
+ * Emit `TRUST_ELECTION_SAVED` after the current transaction commits so a
+ * concurrent read never observes the change before it is durable. The
+ * enrollment type is carried on the payload so per-type notifiers can route
+ * without re-reading the row (which is already gone for deletes).
+ */
+function emitTrustElectionSaved(
+  electionId: string,
+  workerId: string,
+  enrollmentType: EnrollmentType | null,
+  operation: 'created' | 'updated' | 'deleted',
+): void {
+  onAfterCommit(() => {
+    void eventBus.emit(EventType.TRUST_ELECTION_SAVED, {
+      electionId,
+      workerId,
+      enrollmentType,
+      operation,
+    });
+  });
 }
 
 export interface WorkerTrustElectionsStorage {
@@ -102,13 +127,18 @@ async function hydrateElections(rows: WorkerTrustElection[]): Promise<WorkerTrus
         ),
   ]);
 
-  const otherWorkerIds = new Set<string>();
+  const lookupWorkerIds = new Set<string>();
   for (const r of relRows) {
-    otherWorkerIds.add(r.worker1);
-    otherWorkerIds.add(r.worker2);
+    lookupWorkerIds.add(r.worker1);
+    lookupWorkerIds.add(r.worker2);
+  }
+  // Also fetch each election's own worker so views can show whose enrollment
+  // this is (the staff enrollment queue lists rows across all workers).
+  for (const row of rows) {
+    if (row.workerId) lookupWorkerIds.add(row.workerId);
   }
 
-  const workerNameRows = otherWorkerIds.size
+  const workerNameRows = lookupWorkerIds.size
     ? await client
         .select({
           id: workers.id,
@@ -118,7 +148,7 @@ async function hydrateElections(rows: WorkerTrustElection[]): Promise<WorkerTrus
         })
         .from(workers)
         .leftJoin(contacts, eq(workers.contactId, contacts.id))
-        .where(inArray(workers.id, Array.from(otherWorkerIds)))
+        .where(inArray(workers.id, Array.from(lookupWorkerIds)))
     : [];
 
   const policyMap = new Map(policyRows.map((p) => [p.id, p.name ?? null]));
@@ -143,8 +173,15 @@ async function hydrateElections(rows: WorkerTrustElection[]): Promise<WorkerTrus
       const type = rel.relationTypeName || 'relation';
       return { id, label: `${name} (${type})` };
     });
+    const ownWorker = workerNameMap.get(election.workerId);
+    const workerName = ownWorker
+      ? [ownWorker.given, ownWorker.family].filter(Boolean).join(' ').trim() ||
+        ownWorker.displayName ||
+        null
+      : null;
     return {
       ...election,
+      workerName,
       policyName: policyMap.get(election.policyId) ?? null,
       employerName: employerMap.get(election.employerId) ?? null,
       benefits,
@@ -275,6 +312,7 @@ export function createWorkerTrustElectionsStorage(): WorkerTrustElectionsStorage
       if (params.id) conds.push(eq(workerTrustElections.id, params.id));
       if (params.workerId) conds.push(eq(workerTrustElections.workerId, params.workerId));
       if (params.policyId) conds.push(eq(workerTrustElections.policyId, params.policyId));
+      if (params.enrollmentType) conds.push(eq(workerTrustElections.enrollmentType, params.enrollmentType));
       if (params.activeOnly) {
         conds.push(isNull(workerTrustElections.endYmd));
       }
@@ -387,6 +425,12 @@ export function createWorkerTrustElectionsStorage(): WorkerTrustElectionsStorage
             data: (parsed.data ?? null) as WorkerTrustElection['data'],
           })
           .returning();
+        emitTrustElectionSaved(
+          created.id,
+          created.workerId,
+          (created.enrollmentType ?? null) as EnrollmentType | null,
+          'created',
+        );
         return created;
       });
     },
@@ -422,6 +466,12 @@ export function createWorkerTrustElectionsStorage(): WorkerTrustElectionsStorage
           .set(updateValues)
           .where(eq(workerTrustElections.id, id))
           .returning();
+        emitTrustElectionSaved(
+          updated.id,
+          updated.workerId,
+          (updated.enrollmentType ?? null) as EnrollmentType | null,
+          'updated',
+        );
         return updated;
       });
     },
@@ -432,6 +482,14 @@ export function createWorkerTrustElectionsStorage(): WorkerTrustElectionsStorage
         .delete(workerTrustElections)
         .where(eq(workerTrustElections.id, id))
         .returning();
+      if (deleted) {
+        emitTrustElectionSaved(
+          deleted.id,
+          deleted.workerId,
+          (deleted.enrollmentType ?? null) as EnrollmentType | null,
+          'deleted',
+        );
+      }
       return !!deleted;
     },
   };

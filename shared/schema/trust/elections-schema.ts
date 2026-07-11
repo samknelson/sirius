@@ -39,6 +39,7 @@ export type WorkerTrustElection = typeof workerTrustElections.$inferSelect;
 export type InsertWorkerTrustElection = z.infer<typeof insertWorkerTrustElectionSchema>;
 
 export interface WorkerTrustElectionView extends WorkerTrustElection {
+  workerName: string | null;
   policyName: string | null;
   employerName: string | null;
   benefits: { id: string; name: string }[];
