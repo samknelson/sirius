@@ -199,6 +199,8 @@ const grievanceDeadlineReminderPlugin: DenormPlugin<GrievanceDeadlineReminderDen
     singleton: true,
   },
   entityType: ENTITY_TYPE,
+  reads: ["grievanceStepsDenorm"],
+  writes: [{ storage: "ebs", soleWriter: false }],
   configSchema,
 
   async compute(entityId: string): Promise<GrievanceDeadlineReminderDenormPayload> {

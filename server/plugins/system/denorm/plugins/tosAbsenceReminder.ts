@@ -143,6 +143,8 @@ const tosAbsenceReminderPlugin: DenormPlugin<TosAbsenceReminderDenormPayload> = 
     singleton: true,
   },
   entityType: ENTITY_TYPE,
+  reads: ["workerTos", "workers"],
+  writes: [{ storage: "ebs", soleWriter: false }],
   configSchema,
 
   async compute(entityId: string): Promise<TosAbsenceReminderDenormPayload> {

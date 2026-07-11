@@ -40,6 +40,8 @@ const grievanceNameDenormPlugin: DenormPlugin<GrievanceNameDenormPayload> = {
     singleton: true,
   },
   entityType: "grievance",
+  reads: ["grievances"],
+  writes: [{ storage: "grievanceNameDenorm", soleWriter: true }],
   eventHandlers: [
     {
       event: EventType.GRIEVANCE_SAVED,

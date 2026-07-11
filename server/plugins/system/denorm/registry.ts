@@ -29,6 +29,8 @@ class DenormPluginRegistry extends PluginRegistry<DenormPlugin, DenormManifestEn
       toManifestEntry: (p) => ({
         ...p.metadata,
         entityType: p.entityType,
+        reads: p.reads,
+        writes: p.writes,
         configSchema: p.configSchema,
         uiSchema: p.uiSchema,
       }),

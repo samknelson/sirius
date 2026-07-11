@@ -50,6 +50,8 @@ const grievanceTimelinePlugin: DenormPlugin<GrievanceTimelinePayload> = {
     singleton: true,
   },
   entityType: "grievance",
+  reads: ["grievances", "grievanceTimelineTemplates", "grievanceStatusHistory"],
+  writes: [{ storage: "grievanceStepsDenorm", soleWriter: true }],
   eventHandlers: [
     {
       event: EventType.GRIEVANCE_STATUS_HISTORY_SAVED,

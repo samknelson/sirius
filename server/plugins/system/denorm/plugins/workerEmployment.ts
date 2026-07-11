@@ -33,6 +33,8 @@ const workerEmploymentDenormPlugin: DenormPlugin<WorkerEmploymentDenormPayload> 
     singleton: true,
   },
   entityType: "worker",
+  reads: ["workers", "workerHours"],
+  writes: [{ storage: "workerEmploymentDenorm", soleWriter: true }],
   eventHandlers: [
     {
       event: EventType.HOURS_SAVED,

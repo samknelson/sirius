@@ -124,6 +124,8 @@ const employerMonthlyPlugin: DenormPlugin<EmployerMonthlyDenormPayload> = {
     singleton: true,
   },
   entityType: ENTITY_TYPE,
+  reads: ["employers"],
+  writes: [{ storage: "ebs", soleWriter: false }],
 
   async compute(entityId: string): Promise<EmployerMonthlyDenormPayload> {
     const parsed = parseUniqueId(entityId);
