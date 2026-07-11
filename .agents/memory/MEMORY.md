@@ -51,3 +51,4 @@
 - [Advisory-lock check-then-write guard](advisory-lock-check-then-write.md) — token-list uniqueness ("start,continue") can't be a plain unique index; serialize writers with pg_advisory_xact_lock + re-check inside the tx.
 - [Google Routes API for driving distance](google-routes-driving-distance.md) — reuse the address-validation Google Maps key (getGoogleMapsApiKey), never a new secret; Routes lookups must fail-soft to haversine and label the method in reason text.
 - [Wizard form-step enum schema](wizard-form-step-enum-schema.md) — form-step JsonSchema pickers use enum+enumNames, NOT oneOf/const (const is not on the JsonSchema type; tsc rejects it).
+- [Wizard benefit filtering choke point](wizard-benefit-filter-chokepoint.md) — evaluateEligibleBenefits is the ONE place that both offers and re-validates benefit selection (first-time + open enrollment); life-event carries benefits forward and never calls it.

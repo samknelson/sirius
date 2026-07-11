@@ -41,6 +41,7 @@ export function createTrustBenefitStorage(): TrustBenefitStorage {
       return results.map(r => ({
         ...r,
         benefitTypeIcon: (r.benefitTypeData as any)?.icon || null,
+        benefitTypeShowOnEnrollmentWizards: (r.benefitTypeData as any)?.showOnEnrollmentWizards,
         benefitTypeData: undefined,
       }));
     },

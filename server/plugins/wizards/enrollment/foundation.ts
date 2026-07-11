@@ -207,9 +207,24 @@ async function evaluateEligibleBenefits(
     allBenefits.map((b: any) => [b.id, b.name || b.id]),
   );
 
+  // A benefit type can be hidden from the enrollment wizards via its
+  // "Show on enrollment wizards" toggle. Only a value of explicit `false`
+  // hides it — an absent/unset flag (existing types) or a benefit with no
+  // type stays shown, so nothing disappears until an admin turns it off.
+  // This is the single place the offered list is built AND the submitted
+  // selection is re-validated, so hidden-type benefits are neither offered
+  // nor accepted. The Life Event wizard carries benefits forward without
+  // calling this, so a hidden type never strips an existing election.
+  const hiddenByType = new Set<string>(
+    allBenefits
+      .filter((b: any) => b.benefitTypeShowOnEnrollmentWizards === false)
+      .map((b: any) => b.id),
+  );
+
   const now = new Date();
   const results: EligibleBenefitRow[] = [];
   for (const benefitId of policyBenefitIds) {
+    if (hiddenByType.has(benefitId)) continue;
     const evalResult = await evaluateBenefitEligibility(
       benefitId,
       rulesByBenefit.get(benefitId) || [],
