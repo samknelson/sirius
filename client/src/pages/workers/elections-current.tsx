@@ -61,6 +61,26 @@ function ElectionsCurrentContent() {
     },
   });
 
+  const lifeEventMutation = useMutation({
+    mutationFn: async () => {
+      return await apiRequest("POST", "/api/wizards", {
+        type: "life_event_enrollment",
+        status: "draft",
+        data: { launchArguments: { workerId: worker.id } },
+      });
+    },
+    onSuccess: (wizard: { id: string }) => {
+      navigate(`/wizards/${wizard.id}`);
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   // Open Enrollment is only offered while an admin-configured window is open.
   // The wizard's create hook enforces the same gate server-side; this just
   // controls whether the launch button is shown at all.
@@ -95,6 +115,20 @@ function ElectionsCurrentContent() {
     enabled: canEdit,
   });
   const firstTimeBlocked = firstTimeEligibility ? !firstTimeEligibility.eligible : false;
+
+  // Life-event changes are only offered when the worker HAS an active
+  // election. The wizard's create hook enforces the same gate server-side;
+  // this just reflects it in the button's enabled state.
+  const { data: lifeEventEligibility } = useQuery<{ eligible: boolean; reason?: string }>({
+    queryKey: ["/api/workers", worker.id, "trust-elections", "life-event-eligibility"],
+    queryFn: async () => {
+      const res = await fetch(`/api/workers/${worker.id}/trust-elections/life-event-eligibility`);
+      if (!res.ok) throw new Error("Failed to load");
+      return res.json();
+    },
+    enabled: canEdit,
+  });
+  const lifeEventBlocked = lifeEventEligibility ? !lifeEventEligibility.eligible : false;
 
   if (isLoading) {
     return (
@@ -141,6 +175,19 @@ function ElectionsCurrentContent() {
                     : `Open Enrollment ${activeWindow.planYear}`}
                 </Button>
               )}
+              <span
+                className="inline-flex"
+                title={lifeEventBlocked ? lifeEventEligibility?.reason : undefined}
+              >
+                <Button
+                  variant="outline"
+                  onClick={() => lifeEventMutation.mutate()}
+                  disabled={lifeEventMutation.isPending || lifeEventBlocked}
+                  data-testid="button-life-event-wizard"
+                >
+                  {lifeEventMutation.isPending ? "Starting…" : "Life Event"}
+                </Button>
+              </span>
               <Button onClick={() => setIsModalOpen(true)} data-testid="button-create-election">
                 New Election
               </Button>

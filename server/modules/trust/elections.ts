@@ -101,6 +101,32 @@ export function registerWorkerTrustElectionsRoutes(
     },
   );
 
+  // Life-event eligibility for a worker (staff-only). A life event change is
+  // only offered when the worker HAS an active election (the inverse of
+  // first-time enrollment). The wizard's create hook enforces the same gate
+  // server-side; this endpoint drives the launch button's enabled state.
+  app.get(
+    "/api/workers/:id/trust-elections/life-event-eligibility",
+    requireAuth,
+    electionsComponent,
+    requireAccess('staff'),
+    async (req: Request, res: Response) => {
+      try {
+        const active = await storage.workerTrustElections.getActiveByWorker(
+          req.params.id,
+        );
+        res.json({
+          eligible: !!active,
+          reason: active
+            ? undefined
+            : "This worker has no active election, so a life event change is not available.",
+        });
+      } catch (error) {
+        handleError(res, error, "Failed to check life event eligibility");
+      }
+    },
+  );
+
   // Staff enrollment review queue: elections across all workers, optionally
   // filtered to one enrollment type (first_time / life_event / open_enrollment).
   // Registered BEFORE "/api/trust-elections/:id" so the literal path is not

@@ -27,11 +27,11 @@ type IStorage = typeof StorageType;
 
 /**
  * Shared building blocks for enrollment-style wizards. First-time
- * enrollment is the first consumer; future Life Event and Open Enrollment
- * wizards compose the same steps, helpers, and election-creation logic via
- * {@link createEnrollmentFoundation}, differing only in their gate
- * (`guardWorker`), their `enrollmentType` stamp, and their display
- * metadata.
+ * enrollment is the first consumer; the Life Event wizard composes the
+ * same helpers, step-builders, and dependent/signature/effective-date
+ * logic exported here, differing only in its gate, its `enrollmentType`
+ * stamp, its step set (event-type first, no benefit selection), and how
+ * it builds the final election (carry the current benefits forward).
  *
  * The client renders the same escape-hatch components for every enrollment
  * wizard: each wizard's client folder re-exports the shared components in
@@ -42,7 +42,7 @@ type IStorage = typeof StorageType;
 /* Config-independent helpers                                          */
 /* ------------------------------------------------------------------ */
 
-function todayYmd(): string {
+export function todayYmd(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
@@ -68,7 +68,7 @@ export function computeDefaultEffectiveDate(now: Date = new Date()): string {
  * Every mutating handler funnels through this: the Draft/Posted/Canceled
  * lifecycle is enforced server-side, not just hidden in the UI.
  */
-function assertDraft(wizard: Wizard): void {
+export function assertDraft(wizard: Wizard): void {
   if (wizard.status !== "draft") {
     throw new Error(
       `This enrollment is ${wizard.status} and can no longer be modified`,
@@ -76,7 +76,7 @@ function assertDraft(wizard: Wizard): void {
   }
 }
 
-function wizardData(wizard: Wizard): Record<string, any> {
+export function wizardData(wizard: Wizard): Record<string, any> {
   return (wizard.data as Record<string, any>) || {};
 }
 
@@ -236,7 +236,7 @@ async function evaluateEligibleBenefits(
   return results;
 }
 
-const ALLOWED_UPLOAD_MIMETYPES = new Set([
+export const ALLOWED_UPLOAD_MIMETYPES = new Set([
   "application/pdf",
   "image/png",
   "image/jpeg",
@@ -247,7 +247,7 @@ const ALLOWED_UPLOAD_MIMETYPES = new Set([
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 ]);
 
-interface DependentEntry {
+export interface DependentEntry {
   relationId: string;
   workerId: string;
   name: string;
@@ -259,7 +259,7 @@ interface DependentEntry {
   documentFileName: string | null;
 }
 
-async function lookupDependent(
+export async function lookupDependent(
   storage: IStorage,
   ssn: string,
   birthDate: string,
@@ -298,6 +298,374 @@ async function lookupDependent(
     status: "dob_mismatch",
     message:
       "This SSN matches an existing worker but the date of birth does not. Resolve the discrepancy before adding this dependent — it will not be added automatically.",
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* Shared step handlers (composed by both wizards)                     */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Store an uploaded wizard file in private object storage and register
+ * it in the files table. Used by both the dependent supporting-document
+ * upload and the uploaded-signature path.
+ */
+export async function storeWizardFile(
+  ctx: WizardStepContext,
+  folder: string,
+  wizardType: string,
+): Promise<{ fileId: string; fileName: string }> {
+  const file = ctx.file;
+  if (!file) throw new Error("No file uploaded");
+  if (!ALLOWED_UPLOAD_MIMETYPES.has(file.mimetype)) {
+    throw new Error(
+      "Unsupported file type. Upload a PDF, image, or Word document.",
+    );
+  }
+  const userId = (ctx.req.user as any)?.dbUser?.id;
+  if (!userId) throw new Error("Not authenticated");
+
+  const fileUuid = crypto.randomUUID();
+  const extension = file.originalname.split(".").pop() || "";
+  const storageName = extension ? `${fileUuid}.${extension}` : fileUuid;
+  const uploadResult = await objectStorageService.uploadFile({
+    fileName: storageName,
+    fileContent: file.buffer,
+    mimeType: file.mimetype,
+    accessLevel: "private",
+    customPath: `private/${folder}/${storageName}`,
+  });
+
+  const validated = insertFileSchema.parse({
+    fileName: file.originalname,
+    storagePath: uploadResult.storagePath,
+    mimeType: file.mimetype,
+    size: uploadResult.size,
+    uploadedBy: userId,
+    entityType: "wizard",
+    entityId: ctx.wizardId,
+    accessLevel: "private",
+    metadata: { wizardType, purpose: folder },
+  });
+  const created = await ctx.storage.files.create(validated);
+  return { fileId: created.id, fileName: created.fileName };
+}
+
+/**
+ * The shared add-a-dependent flow (lookup → upload → add → remove-added).
+ * First-time enrollment uses this directly; the Life Event wizard reuses
+ * it for its birth/marriage (add) branch. Dependent worker records and
+ * `worker_relations` rows are created immediately (real records), so the
+ * `add`/`remove` here operate on relationships this wizard itself created.
+ */
+export async function handleDependentsSubmit(
+  ctx: WizardStepContext,
+  wizardType: string,
+): Promise<WizardStepResult> {
+  assertDraft(ctx.wizard);
+  const data = wizardData(ctx.wizard);
+  const subscriberId = data.workerId as string;
+  const dependents: DependentEntry[] = Array.isArray(data.dependents)
+    ? [...data.dependents]
+    : [];
+
+  // Upload path: the dispatcher's upload route also calls `submit`, with
+  // the file on ctx.file. Store the supporting document and stage it for
+  // the next "add" action.
+  if (ctx.file) {
+    const stored = await storeWizardFile(
+      ctx,
+      "wizard-elections/documents",
+      wizardType,
+    );
+    return {
+      data: {
+        pendingDocument: { fileId: stored.fileId, fileName: stored.fileName },
+      },
+    };
+  }
+
+  const input = ctx.input as {
+    action?: string;
+    ssn?: string;
+    birthDate?: string;
+    given?: string;
+    family?: string;
+    relationTypeId?: string;
+    documentFileId?: string;
+    relationId?: string;
+  };
+
+  if (input.action === "lookup") {
+    if (!input.ssn || !input.birthDate) {
+      throw new Error("SSN and date of birth are required");
+    }
+    const result = await lookupDependent(ctx.storage, input.ssn, input.birthDate);
+    return { data: { dependentLookup: result } };
+  }
+
+  if (input.action === "add") {
+    if (!input.ssn || !input.birthDate) {
+      throw new Error("SSN and date of birth are required");
+    }
+    if (!input.relationTypeId) {
+      throw new Error("Relationship type is required");
+    }
+    if (!input.documentFileId) {
+      throw new Error(
+        "A supporting document (marriage certificate, birth certificate, etc.) is required for every dependent",
+      );
+    }
+
+    const lookup = await lookupDependent(ctx.storage, input.ssn, input.birthDate);
+    if (lookup.status === "dob_mismatch") {
+      throw new Error(lookup.message);
+    }
+
+    const cleaned = parseSSN(input.ssn);
+    let dependentWorkerId: string;
+    let dependentName: string;
+    if (lookup.status === "matched") {
+      dependentWorkerId = lookup.workerId!;
+      dependentName = lookup.name!;
+    } else {
+      const given = (input.given ?? "").trim();
+      const family = (input.family ?? "").trim();
+      if (!given || !family) {
+        throw new Error(
+          "First and last name are required to create a new dependent worker",
+        );
+      }
+      dependentName = `${given} ${family}`;
+      const created = await ctx.storage.workers.createWorker(dependentName);
+      dependentWorkerId = created.id;
+      await ctx.storage.workers.updateWorkerSSN(dependentWorkerId, cleaned, {
+        allowSsaRuleInvalid: true,
+      });
+      await ctx.storage.workers.updateWorkerContactBirthDate(
+        dependentWorkerId,
+        input.birthDate,
+      );
+    }
+
+    if (dependentWorkerId === subscriberId) {
+      throw new Error("A worker cannot be their own dependent");
+    }
+    if (dependents.some((d) => d.workerId === dependentWorkerId)) {
+      throw new Error("This dependent has already been added");
+    }
+
+    // Real records on purpose: dependent workers and relationships
+    // persist regardless of whether the wizard is later posted.
+    const relation = await ctx.storage.workerRelations.create({
+      worker1: subscriberId,
+      worker2: dependentWorkerId,
+      relationType: input.relationTypeId,
+      startYmd: todayYmd(),
+      endYmd: null,
+      data: {
+        documentFileId: input.documentFileId,
+        wizardId: ctx.wizardId,
+        source: wizardType,
+      },
+    });
+
+    dependents.push({
+      relationId: relation.id,
+      workerId: dependentWorkerId,
+      name: dependentName,
+      ssnLast4: cleaned.slice(-4),
+      birthDate: input.birthDate,
+      relationTypeId: input.relationTypeId,
+      matchedExisting: lookup.status === "matched",
+      documentFileId: input.documentFileId,
+      documentFileName:
+        (data.pendingDocument as any)?.fileId === input.documentFileId
+          ? ((data.pendingDocument as any)?.fileName ?? null)
+          : null,
+    });
+    return {
+      data: { dependents, pendingDocument: null, dependentLookup: null },
+    };
+  }
+
+  if (input.action === "remove") {
+    const entry = dependents.find((d) => d.relationId === input.relationId);
+    if (!entry) throw new Error("Dependent not found on this enrollment");
+    // Remove only the relationship created by this wizard; the dependent's
+    // worker record persists (it is a real record once created).
+    await ctx.storage.workerRelations.delete(entry.relationId);
+    return {
+      data: {
+        dependents: dependents.filter((d) => d.relationId !== input.relationId),
+      },
+    };
+  }
+
+  if (input.action === "done") {
+    // Explicit no-op submit so the operator can confirm the (possibly
+    // empty) dependent list and move on.
+    return { data: {} };
+  }
+
+  throw new Error("Unknown dependents action");
+}
+
+export async function handleEffectiveDateSubmit(
+  ctx: WizardStepContext,
+): Promise<WizardStepResult> {
+  assertDraft(ctx.wizard);
+  // Forced effective date (Open Enrollment): the date is fixed to Jan 1 of
+  // the configured plan year and cannot be changed by anyone.
+  const forcedStartYmd = wizardData(ctx.wizard).forcedStartYmd as
+    | string
+    | undefined;
+  if (forcedStartYmd) {
+    return {
+      data: { startYmd: forcedStartYmd, effectiveDateOverridden: false },
+    };
+  }
+  const input = ctx.input as { startYmd?: string };
+  const startYmd = (input.startYmd ?? "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(startYmd)) {
+    throw new Error("Effective date must be a valid date (YYYY-MM-DD)");
+  }
+  const computed = computeDefaultEffectiveDate();
+  if (startYmd !== computed) {
+    // Only administrators may override the computed effective date.
+    const access = await checkAccessInline(ctx.req, "admin");
+    if (!access.granted) {
+      throw new Error(
+        `Only administrators can override the computed effective date (${computed})`,
+      );
+    }
+  }
+  return {
+    data: { startYmd, effectiveDateOverridden: startYmd !== computed },
+  };
+}
+
+export async function handleSignatureSubmit(
+  ctx: WizardStepContext,
+  wizardType: string,
+): Promise<WizardStepResult> {
+  assertDraft(ctx.wizard);
+
+  // Uploaded signature image comes through the dispatcher upload route.
+  if (ctx.file) {
+    const stored = await storeWizardFile(
+      ctx,
+      "wizard-elections/signatures",
+      wizardType,
+    );
+    return {
+      data: {
+        signature: {
+          type: "upload",
+          fileId: stored.fileId,
+          fileName: stored.fileName,
+          signedAt: new Date().toISOString(),
+        },
+      },
+    };
+  }
+
+  const input = ctx.input as {
+    signature?: { type?: string; value?: string };
+  };
+  const sig = input.signature;
+  if (!sig || (sig.type !== "typed" && sig.type !== "drawn")) {
+    throw new Error("Signature type must be typed, drawn, or an uploaded file");
+  }
+  if (!sig.value || !sig.value.trim()) {
+    throw new Error("Signature is required");
+  }
+  return {
+    data: {
+      signature: {
+        type: sig.type,
+        value: sig.value,
+        signedAt: new Date().toISOString(),
+      },
+    },
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* Shared step-builder factories                                       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The effective-date form step, identical for every enrollment wizard:
+ * defaults to the 15th-of-month rule and only admins may override it.
+ */
+export function buildEffectiveDateStep(): WizardStepHandler {
+  return {
+    id: "effective_date",
+    name: "Effective Date",
+    description: "Confirm when the election takes effect",
+    kind: "form",
+    getState: (wizard) => {
+      const data = wizardData(wizard);
+      if (data.startYmd) return "completed";
+      return wizard.currentStep === "effective_date"
+        ? "in_progress"
+        : "pending";
+    },
+    getSchema: (wizard) => {
+      const data = wizardData(wizard);
+      const forcedStartYmd = data.forcedStartYmd as string | undefined;
+      if (forcedStartYmd) {
+        return {
+          type: "object",
+          title: "Effective Date",
+          description: `Open Enrollment elections always take effect on ${forcedStartYmd} (January 1 of the plan year). This date is fixed and cannot be changed.`,
+          properties: {
+            startYmd: {
+              type: "string",
+              format: "date",
+              title: "Effective date",
+              default: forcedStartYmd,
+              readOnly: true,
+            },
+          },
+          required: ["startYmd"],
+        };
+      }
+      const computed = computeDefaultEffectiveDate();
+      return {
+        type: "object",
+        title: "Effective Date",
+        description: `Elections posted on or before the 15th take effect the first of the current month; after the 15th they take effect the first of the following month. Based on today's date, the computed effective date is ${computed}. Only administrators can override it.`,
+        properties: {
+          startYmd: {
+            type: "string",
+            format: "date",
+            title: "Effective date",
+            default: (data.startYmd as string) || computed,
+          },
+        },
+        required: ["startYmd"],
+      };
+    },
+    submit: handleEffectiveDateSubmit,
+  };
+}
+
+/** The signature capture step, identical for every enrollment wizard. */
+export function buildSignatureStep(wizardType: string): WizardStepHandler {
+  return {
+    id: "signature",
+    name: "Signature",
+    description: "Capture the worker's signature",
+    kind: "custom",
+    component: "SignatureStep",
+    getState: (wizard) => {
+      const data = wizardData(wizard);
+      if (data.signature) return "completed";
+      return wizard.currentStep === "signature" ? "in_progress" : "pending";
+    },
+    submit: (ctx) => handleSignatureSubmit(ctx, wizardType),
   };
 }
 
@@ -341,59 +709,96 @@ export interface EnrollmentFoundation {
   prepareUpdate: (ctx: WizardUpdateContext) => WizardUpdateResult;
 }
 
+/**
+ * Shared create hook: resolve the worker, run the optional gate, and
+ * prefill the wizard's data with the worker identity + optional seed. The
+ * `seed` callback lets a wizard stage its own carry-forward data (e.g. the
+ * Life Event wizard seeds the current election's employer/policy/benefits
+ * and current relationships).
+ */
+export async function runEnrollmentCreate(
+  ctx: WizardCreateContext,
+  opts: {
+    guardWorker?: EnrollmentFoundationConfig["guardWorker"];
+    prepareCreateData?: EnrollmentFoundationConfig["prepareCreateData"];
+    seed?: (
+      storage: IStorage,
+      workerId: string,
+    ) => Promise<Record<string, unknown>>;
+  },
+): Promise<WizardCreateResult> {
+  const launchArgs =
+    ((ctx.input.data as any)?.launchArguments as Record<string, unknown>) ?? {};
+  const workerId = (launchArgs.workerId ?? ctx.input.entityId) as
+    | string
+    | undefined;
+  if (!workerId) {
+    return { error: "workerId is required", status: 400 };
+  }
+  const worker = await ctx.storage.workers.getWorker(workerId);
+  if (!worker) {
+    return { error: "Worker not found", status: 404 };
+  }
+  // Per-wizard gate (e.g. first-time enrollment refuses workers who
+  // already have an active medical/dental election; Life Event requires an
+  // active election). Enforced here on the server, not just hidden behind a
+  // disabled launch button.
+  if (opts.guardWorker) {
+    const reason = await opts.guardWorker(ctx.storage, workerId);
+    if (reason) {
+      return { error: reason, status: 400 };
+    }
+  }
+  const seedData = opts.seed ? await opts.seed(ctx.storage, workerId) : {};
+  // Per-wizard prepare hook (e.g. Open Enrollment resolves the active admin
+  // window and forces the Jan-1 effective date via `forcedStartYmd`). It can
+  // reject creation and its data wins over the generic seed defaults.
+  let preparedData: Record<string, unknown> = {};
+  if (opts.prepareCreateData) {
+    const prep = await opts.prepareCreateData(ctx.storage, workerId);
+    if (prep.error) {
+      return { error: prep.error, status: prep.status ?? 400 };
+    }
+    preparedData = prep.data ?? {};
+  }
+  const wizard = await ctx.storage.wizards.create({
+    ...(ctx.input as any),
+    entityId: null,
+    data: {
+      ...((ctx.input.data as Record<string, unknown>) ?? {}),
+      workerId,
+      workerName: await ctx.storage.workers.getWorkerDisplayName(workerId),
+      ...seedData,
+      ...preparedData,
+    },
+  } as any);
+  return { wizard };
+}
+
+/**
+ * Shared prepareUpdate: posted and canceled enrollments are immutable
+ * through the generic PATCH route as well — not just hidden in the UI.
+ */
+export function enrollmentPrepareUpdate(
+  ctx: WizardUpdateContext,
+): WizardUpdateResult {
+  if (ctx.existing.status !== "draft") {
+    return {
+      error: `This enrollment is ${ctx.existing.status} and can no longer be modified`,
+      status: 400,
+    };
+  }
+  return { data: ctx.merged };
+}
+
 /* ------------------------------------------------------------------ */
-/* Factory                                                             */
+/* Factory (first-time enrollment)                                     */
 /* ------------------------------------------------------------------ */
 
 export function createEnrollmentFoundation(
   config: EnrollmentFoundationConfig,
 ): EnrollmentFoundation {
   const { wizardType, enrollmentType, guardWorker, prepareCreateData } = config;
-
-  /**
-   * Store an uploaded wizard file in private object storage and register
-   * it in the files table. Used by both the dependent supporting-document
-   * upload and the uploaded-signature path.
-   */
-  async function storeWizardFile(
-    ctx: WizardStepContext,
-    folder: string,
-  ): Promise<{ fileId: string; fileName: string }> {
-    const file = ctx.file;
-    if (!file) throw new Error("No file uploaded");
-    if (!ALLOWED_UPLOAD_MIMETYPES.has(file.mimetype)) {
-      throw new Error(
-        "Unsupported file type. Upload a PDF, image, or Word document.",
-      );
-    }
-    const userId = (ctx.req.user as any)?.dbUser?.id;
-    if (!userId) throw new Error("Not authenticated");
-
-    const fileUuid = crypto.randomUUID();
-    const extension = file.originalname.split(".").pop() || "";
-    const storageName = extension ? `${fileUuid}.${extension}` : fileUuid;
-    const uploadResult = await objectStorageService.uploadFile({
-      fileName: storageName,
-      fileContent: file.buffer,
-      mimeType: file.mimetype,
-      accessLevel: "private",
-      customPath: `private/${folder}/${storageName}`,
-    });
-
-    const validated = insertFileSchema.parse({
-      fileName: file.originalname,
-      storagePath: uploadResult.storagePath,
-      mimeType: file.mimetype,
-      size: uploadResult.size,
-      uploadedBy: userId,
-      entityType: "wizard",
-      entityId: ctx.wizardId,
-      accessLevel: "private",
-      metadata: { wizardType, purpose: folder },
-    });
-    const created = await ctx.storage.files.create(validated);
-    return { fileId: created.id, fileName: created.fileName };
-  }
 
   /* ---------------------------------------------------------------- */
   /* Step handlers                                                     */
@@ -467,241 +872,6 @@ export function createEnrollmentFoundation(
       data: {
         benefitIds,
         benefitNames: benefitIds.map((id) => nameById.get(id) ?? id),
-      },
-    };
-  }
-
-  async function submitDependents(
-    ctx: WizardStepContext,
-  ): Promise<WizardStepResult> {
-    assertDraft(ctx.wizard);
-    const data = wizardData(ctx.wizard);
-    const subscriberId = data.workerId as string;
-    const dependents: DependentEntry[] = Array.isArray(data.dependents)
-      ? [...data.dependents]
-      : [];
-
-    // Upload path: the dispatcher's upload route also calls `submit`, with
-    // the file on ctx.file. Store the supporting document and stage it for
-    // the next "add" action.
-    if (ctx.file) {
-      const stored = await storeWizardFile(ctx, "wizard-elections/documents");
-      return {
-        data: {
-          pendingDocument: { fileId: stored.fileId, fileName: stored.fileName },
-        },
-      };
-    }
-
-    const input = ctx.input as {
-      action?: string;
-      ssn?: string;
-      birthDate?: string;
-      given?: string;
-      family?: string;
-      relationTypeId?: string;
-      documentFileId?: string;
-      relationId?: string;
-    };
-
-    if (input.action === "lookup") {
-      if (!input.ssn || !input.birthDate) {
-        throw new Error("SSN and date of birth are required");
-      }
-      const result = await lookupDependent(
-        ctx.storage,
-        input.ssn,
-        input.birthDate,
-      );
-      return { data: { dependentLookup: result } };
-    }
-
-    if (input.action === "add") {
-      if (!input.ssn || !input.birthDate) {
-        throw new Error("SSN and date of birth are required");
-      }
-      if (!input.relationTypeId) {
-        throw new Error("Relationship type is required");
-      }
-      if (!input.documentFileId) {
-        throw new Error(
-          "A supporting document (marriage certificate, birth certificate, etc.) is required for every dependent",
-        );
-      }
-
-      const lookup = await lookupDependent(
-        ctx.storage,
-        input.ssn,
-        input.birthDate,
-      );
-      if (lookup.status === "dob_mismatch") {
-        throw new Error(lookup.message);
-      }
-
-      const cleaned = parseSSN(input.ssn);
-      let dependentWorkerId: string;
-      let dependentName: string;
-      if (lookup.status === "matched") {
-        dependentWorkerId = lookup.workerId!;
-        dependentName = lookup.name!;
-      } else {
-        const given = (input.given ?? "").trim();
-        const family = (input.family ?? "").trim();
-        if (!given || !family) {
-          throw new Error(
-            "First and last name are required to create a new dependent worker",
-          );
-        }
-        dependentName = `${given} ${family}`;
-        const created = await ctx.storage.workers.createWorker(dependentName);
-        dependentWorkerId = created.id;
-        await ctx.storage.workers.updateWorkerSSN(dependentWorkerId, cleaned, {
-          allowSsaRuleInvalid: true,
-        });
-        await ctx.storage.workers.updateWorkerContactBirthDate(
-          dependentWorkerId,
-          input.birthDate,
-        );
-      }
-
-      if (dependentWorkerId === subscriberId) {
-        throw new Error("A worker cannot be their own dependent");
-      }
-      if (dependents.some((d) => d.workerId === dependentWorkerId)) {
-        throw new Error("This dependent has already been added");
-      }
-
-      // Real records on purpose: dependent workers and relationships
-      // persist regardless of whether the wizard is later posted.
-      const relation = await ctx.storage.workerRelations.create({
-        worker1: subscriberId,
-        worker2: dependentWorkerId,
-        relationType: input.relationTypeId,
-        startYmd: todayYmd(),
-        endYmd: null,
-        data: {
-          documentFileId: input.documentFileId,
-          wizardId: ctx.wizardId,
-          source: wizardType,
-        },
-      });
-
-      dependents.push({
-        relationId: relation.id,
-        workerId: dependentWorkerId,
-        name: dependentName,
-        ssnLast4: cleaned.slice(-4),
-        birthDate: input.birthDate,
-        relationTypeId: input.relationTypeId,
-        matchedExisting: lookup.status === "matched",
-        documentFileId: input.documentFileId,
-        documentFileName:
-          (data.pendingDocument as any)?.fileId === input.documentFileId
-            ? ((data.pendingDocument as any)?.fileName ?? null)
-            : null,
-      });
-      return {
-        data: { dependents, pendingDocument: null, dependentLookup: null },
-      };
-    }
-
-    if (input.action === "remove") {
-      const entry = dependents.find((d) => d.relationId === input.relationId);
-      if (!entry) throw new Error("Dependent not found on this enrollment");
-      // Remove only the relationship created by this wizard; the dependent's
-      // worker record persists (it is a real record once created).
-      await ctx.storage.workerRelations.delete(entry.relationId);
-      return {
-        data: {
-          dependents: dependents.filter(
-            (d) => d.relationId !== input.relationId,
-          ),
-        },
-      };
-    }
-
-    if (input.action === "done") {
-      // Explicit no-op submit so the operator can confirm the (possibly
-      // empty) dependent list and move on.
-      return { data: {} };
-    }
-
-    throw new Error("Unknown dependents action");
-  }
-
-  async function submitEffectiveDate(
-    ctx: WizardStepContext,
-  ): Promise<WizardStepResult> {
-    assertDraft(ctx.wizard);
-    // Forced effective date (Open Enrollment): the date is fixed to Jan 1 of
-    // the configured plan year and cannot be changed by anyone.
-    const forcedStartYmd = wizardData(ctx.wizard).forcedStartYmd as
-      | string
-      | undefined;
-    if (forcedStartYmd) {
-      return {
-        data: { startYmd: forcedStartYmd, effectiveDateOverridden: false },
-      };
-    }
-    const input = ctx.input as { startYmd?: string };
-    const startYmd = (input.startYmd ?? "").slice(0, 10);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(startYmd)) {
-      throw new Error("Effective date must be a valid date (YYYY-MM-DD)");
-    }
-    const computed = computeDefaultEffectiveDate();
-    if (startYmd !== computed) {
-      // Only administrators may override the computed effective date.
-      const access = await checkAccessInline(ctx.req, "admin");
-      if (!access.granted) {
-        throw new Error(
-          `Only administrators can override the computed effective date (${computed})`,
-        );
-      }
-    }
-    return {
-      data: { startYmd, effectiveDateOverridden: startYmd !== computed },
-    };
-  }
-
-  async function submitSignature(
-    ctx: WizardStepContext,
-  ): Promise<WizardStepResult> {
-    assertDraft(ctx.wizard);
-
-    // Uploaded signature image comes through the dispatcher upload route.
-    if (ctx.file) {
-      const stored = await storeWizardFile(ctx, "wizard-elections/signatures");
-      return {
-        data: {
-          signature: {
-            type: "upload",
-            fileId: stored.fileId,
-            fileName: stored.fileName,
-            signedAt: new Date().toISOString(),
-          },
-        },
-      };
-    }
-
-    const input = ctx.input as {
-      signature?: { type?: string; value?: string };
-    };
-    const sig = input.signature;
-    if (!sig || (sig.type !== "typed" && sig.type !== "drawn")) {
-      throw new Error(
-        "Signature type must be typed, drawn, or an uploaded file",
-      );
-    }
-    if (!sig.value || !sig.value.trim()) {
-      throw new Error("Signature is required");
-    }
-    return {
-      data: {
-        signature: {
-          type: sig.type,
-          value: sig.value,
-          signedAt: new Date().toISOString(),
-        },
       },
     };
   }
@@ -787,79 +957,31 @@ export function createEnrollmentFoundation(
 
   const create = async (
     ctx: WizardCreateContext,
-  ): Promise<WizardCreateResult> => {
-    const launchArgs =
-      ((ctx.input.data as any)?.launchArguments as Record<string, unknown>) ??
-      {};
-    const workerId = (launchArgs.workerId ?? ctx.input.entityId) as
-      | string
-      | undefined;
-    if (!workerId) {
-      return { error: "workerId is required", status: 400 };
-    }
-    const worker = await ctx.storage.workers.getWorker(workerId);
-    if (!worker) {
-      return { error: "Worker not found", status: 404 };
-    }
-    // Per-wizard gate (e.g. first-time enrollment refuses workers who
-    // already have an active medical/dental election). Enforced here on the
-    // server, not just hidden behind a disabled launch button.
-    if (guardWorker) {
-      const reason = await guardWorker(ctx.storage, workerId);
-      if (reason) {
-        return { error: reason, status: 400 };
-      }
-    }
-    // Per-wizard seed hook (e.g. Open Enrollment resolves the active admin
-    // window and forces the Jan-1 effective date). Enforced here on the
-    // server, not just hidden behind a disabled launch button.
-    let seededData: Record<string, unknown> = {};
-    if (prepareCreateData) {
-      const prep = await prepareCreateData(ctx.storage, workerId);
-      if (prep.error) {
-        return { error: prep.error, status: prep.status ?? 400 };
-      }
-      seededData = prep.data ?? {};
-    }
-    // Default the employer/policy to the worker's home employer (when it
-    // has a resolvable policy) so the first step starts prefilled.
-    let homeDefaults: Record<string, unknown> = {};
-    const options = await getEmploymentOptions(ctx.storage, workerId);
-    const home = options.find((o) => o.home && o.policyId);
-    if (home) {
-      homeDefaults = {
-        employerId: home.employerId,
-        employerName: home.employerName,
-        policyId: home.policyId,
-        policyName: home.policyName,
-        policySource: home.policySource,
-      };
-    }
-    const wizard = await ctx.storage.wizards.create({
-      ...(ctx.input as any),
-      entityId: null,
-      data: {
-        ...((ctx.input.data as Record<string, unknown>) ?? {}),
-        workerId,
-        workerName: await ctx.storage.workers.getWorkerDisplayName(workerId),
-        ...homeDefaults,
-        ...seededData,
+  ): Promise<WizardCreateResult> =>
+    runEnrollmentCreate(ctx, {
+      guardWorker,
+      // Per-wizard prepare hook (e.g. Open Enrollment resolves the active
+      // admin window and forces the Jan-1 effective date via
+      // `forcedStartYmd`). It can reject creation and its data wins over the
+      // home-employer seed defaults.
+      prepareCreateData,
+      // Default the employer/policy to the worker's home employer (when it
+      // has a resolvable policy) so the first step starts prefilled.
+      seed: async (storage, workerId) => {
+        const options = await getEmploymentOptions(storage, workerId);
+        const home = options.find((o) => o.home && o.policyId);
+        if (!home) return {};
+        return {
+          employerId: home.employerId,
+          employerName: home.employerName,
+          policyId: home.policyId,
+          policyName: home.policyName,
+          policySource: home.policySource,
+        };
       },
-    } as any);
-    return { wizard };
-  };
+    });
 
-  const prepareUpdate = (ctx: WizardUpdateContext): WizardUpdateResult => {
-    // Posted and canceled enrollments are immutable through the generic
-    // PATCH route as well — not just hidden in the UI.
-    if (ctx.existing.status !== "draft") {
-      return {
-        error: `This enrollment is ${ctx.existing.status} and can no longer be modified`,
-        status: 400,
-      };
-    }
-    return { data: ctx.merged };
-  };
+  const prepareUpdate = enrollmentPrepareUpdate;
 
   /* ---------------------------------------------------------------- */
   /* Steps                                                            */
@@ -931,71 +1053,10 @@ export function createEnrollmentFoundation(
       requiredComponent: "worker.relations",
       // Dependents are optional: the step is always navigable past.
       getState: () => "completed",
-      submit: submitDependents,
+      submit: (ctx) => handleDependentsSubmit(ctx, wizardType),
     },
-    {
-      id: "effective_date",
-      name: "Effective Date",
-      description: "Confirm when the election takes effect",
-      kind: "form",
-      getState: (wizard) => {
-        const data = wizardData(wizard);
-        if (data.startYmd) return "completed";
-        return wizard.currentStep === "effective_date"
-          ? "in_progress"
-          : "pending";
-      },
-      getSchema: (wizard) => {
-        const data = wizardData(wizard);
-        const forcedStartYmd = data.forcedStartYmd as string | undefined;
-        if (forcedStartYmd) {
-          return {
-            type: "object",
-            title: "Effective Date",
-            description: `Open Enrollment elections always take effect on ${forcedStartYmd} (January 1 of the plan year). This date is fixed and cannot be changed.`,
-            properties: {
-              startYmd: {
-                type: "string",
-                format: "date",
-                title: "Effective date",
-                default: forcedStartYmd,
-                readOnly: true,
-              },
-            },
-            required: ["startYmd"],
-          };
-        }
-        const computed = computeDefaultEffectiveDate();
-        return {
-          type: "object",
-          title: "Effective Date",
-          description: `Elections posted on or before the 15th take effect the first of the current month; after the 15th they take effect the first of the following month. Based on today's date, the computed effective date is ${computed}. Only administrators can override it.`,
-          properties: {
-            startYmd: {
-              type: "string",
-              format: "date",
-              title: "Effective date",
-              default: (data.startYmd as string) || computed,
-            },
-          },
-          required: ["startYmd"],
-        };
-      },
-      submit: submitEffectiveDate,
-    },
-    {
-      id: "signature",
-      name: "Signature",
-      description: "Capture the worker's signature",
-      kind: "custom",
-      component: "SignatureStep",
-      getState: (wizard) => {
-        const data = wizardData(wizard);
-        if (data.signature) return "completed";
-        return wizard.currentStep === "signature" ? "in_progress" : "pending";
-      },
-      submit: submitSignature,
-    },
+    buildEffectiveDateStep(),
+    buildSignatureStep(wizardType),
     {
       id: "review",
       name: "Review & Post",
