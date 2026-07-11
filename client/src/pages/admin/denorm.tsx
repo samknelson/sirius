@@ -40,6 +40,7 @@ interface DenormRelationship {
   pluginId: string;
   pluginName: string;
   entityType: string;
+  events: string[];
   reads: string[];
   writes: DenormWriteDeclaration[];
 }
@@ -272,6 +273,7 @@ function RelationshipsView() {
               <TableRow>
                 <TableHead>Plugin</TableHead>
                 <TableHead>Entity</TableHead>
+                <TableHead>Trigger events</TableHead>
                 <TableHead>Reads</TableHead>
                 <TableHead>Writes</TableHead>
               </TableRow>
@@ -290,6 +292,25 @@ function RelationshipsView() {
                   </TableCell>
                   <TableCell data-testid={`text-rel-entity-${rel.pluginId}`}>
                     <Badge variant="outline">{rel.entityType}</Badge>
+                  </TableCell>
+                  <TableCell data-testid={`text-rel-events-${rel.pluginId}`}>
+                    {rel.events.length > 0 ? (
+                      <div className="flex flex-wrap gap-1">
+                        {rel.events.map((e) => (
+                          <Badge
+                            key={e}
+                            variant="outline"
+                            className="font-mono text-xs"
+                          >
+                            {e}
+                          </Badge>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">
+                        none (cron sweeps only)
+                      </span>
+                    )}
                   </TableCell>
                   <TableCell data-testid={`text-rel-reads-${rel.pluginId}`}>
                     <div className="flex flex-wrap gap-1">

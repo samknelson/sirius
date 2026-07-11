@@ -48,6 +48,7 @@ export function registerDenormRoutes(
       pluginId: plugin.metadata.id,
       pluginName: plugin.metadata.name,
       entityType: plugin.entityType,
+      events: (plugin.eventHandlers ?? []).map((h) => h.event),
       reads: plugin.reads,
       writes: plugin.writes,
     }));
