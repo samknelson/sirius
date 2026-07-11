@@ -527,9 +527,9 @@ export const componentRegistry: ComponentDefinition[] = [
     category: "core",
     managesSchema: true,
     schemaManifest: {
-      version: 1,
+      version: 2,
       schemaPath: "./shared/schema/trust/elections-schema.ts",
-      tables: ["worker_trust_elections"]
+      tables: ["worker_trust_elections", "open_enrollment_windows"]
     }
   },
   {

@@ -1,4 +1,4 @@
-import { pgTable, varchar, jsonb, date } from "drizzle-orm/pg-core";
+import { pgTable, varchar, jsonb, date, integer } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -104,3 +104,71 @@ export const updateWorkerTrustElectionRequestSchema = z
 
 export type CreateWorkerTrustElectionRequest = z.infer<typeof createWorkerTrustElectionRequestSchema>;
 export type UpdateWorkerTrustElectionRequest = z.infer<typeof updateWorkerTrustElectionRequestSchema>;
+
+/* ------------------------------------------------------------------ */
+/* Open Enrollment windows                                            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Admin-configured Open Enrollment windows. The Open Enrollment wizard is
+ * only offered while today falls within one of these windows, and the
+ * election it posts is forced to take effect on January 1 of the window's
+ * plan year.
+ *
+ * Owned by the `trust.elections` component (see the component's
+ * schemaManifest). One window per plan year (`plan_year` is unique).
+ */
+export const openEnrollmentWindows = pgTable("open_enrollment_windows", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  planYear: integer("plan_year").notNull().unique(),
+  startYmd: date("start_ymd").notNull(),
+  endYmd: date("end_ymd").notNull(),
+  notes: varchar("notes"),
+  data: jsonb("data"),
+});
+
+export const insertOpenEnrollmentWindowSchema = createInsertSchema(openEnrollmentWindows).omit({
+  id: true,
+});
+
+export type OpenEnrollmentWindow = typeof openEnrollmentWindows.$inferSelect;
+export type InsertOpenEnrollmentWindow = z.infer<typeof insertOpenEnrollmentWindowSchema>;
+
+export const createOpenEnrollmentWindowRequestSchema = z
+  .object({
+    planYear: z.coerce.number().int().min(1990).max(2100),
+    startYmd: ymdOrDate,
+    endYmd: ymdOrDate,
+    notes: z.string().trim().max(2000).nullable().optional(),
+    data: z.unknown().optional(),
+  })
+  .superRefine((val, ctx) => {
+    if (val.endYmd < val.startYmd) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["endYmd"],
+        message: "End date must be on or after the start date",
+      });
+    }
+  });
+
+export const updateOpenEnrollmentWindowRequestSchema = z
+  .object({
+    planYear: z.coerce.number().int().min(1990).max(2100).optional(),
+    startYmd: ymdOrDate.optional(),
+    endYmd: ymdOrDate.optional(),
+    notes: z.string().trim().max(2000).nullable().optional(),
+    data: z.unknown().optional(),
+  })
+  .superRefine((val, ctx) => {
+    if (val.startYmd && val.endYmd && val.endYmd < val.startYmd) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["endYmd"],
+        message: "End date must be on or after the start date",
+      });
+    }
+  });
+
+export type CreateOpenEnrollmentWindowRequest = z.infer<typeof createOpenEnrollmentWindowRequestSchema>;
+export type UpdateOpenEnrollmentWindowRequest = z.infer<typeof updateOpenEnrollmentWindowRequestSchema>;

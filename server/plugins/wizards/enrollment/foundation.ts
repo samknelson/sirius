@@ -320,6 +320,18 @@ export interface EnrollmentFoundationConfig {
     storage: IStorage,
     workerId: string,
   ) => Promise<string | null> | string | null;
+  /**
+   * Optional per-wizard hook run in the create hook after the worker is
+   * resolved (and after `guardWorker`). Return `{ error }` to reject
+   * creation (mapped to HTTP `status` or 400), or `{ data }` to seed extra
+   * fields onto the new wizard's data. Open Enrollment uses this to resolve
+   * the active admin window and force the Jan-1 effective date via
+   * `forcedStartYmd`.
+   */
+  prepareCreateData?: (
+    storage: IStorage,
+    workerId: string,
+  ) => Promise<{ error?: string; status?: number; data?: Record<string, unknown> }>;
 }
 
 /** The reusable plugin fragment an enrollment wizard composes. */
@@ -336,7 +348,7 @@ export interface EnrollmentFoundation {
 export function createEnrollmentFoundation(
   config: EnrollmentFoundationConfig,
 ): EnrollmentFoundation {
-  const { wizardType, enrollmentType, guardWorker } = config;
+  const { wizardType, enrollmentType, guardWorker, prepareCreateData } = config;
 
   /**
    * Store an uploaded wizard file in private object storage and register
@@ -621,6 +633,16 @@ export function createEnrollmentFoundation(
     ctx: WizardStepContext,
   ): Promise<WizardStepResult> {
     assertDraft(ctx.wizard);
+    // Forced effective date (Open Enrollment): the date is fixed to Jan 1 of
+    // the configured plan year and cannot be changed by anyone.
+    const forcedStartYmd = wizardData(ctx.wizard).forcedStartYmd as
+      | string
+      | undefined;
+    if (forcedStartYmd) {
+      return {
+        data: { startYmd: forcedStartYmd, effectiveDateOverridden: false },
+      };
+    }
     const input = ctx.input as { startYmd?: string };
     const startYmd = (input.startYmd ?? "").slice(0, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(startYmd)) {
@@ -788,6 +810,17 @@ export function createEnrollmentFoundation(
         return { error: reason, status: 400 };
       }
     }
+    // Per-wizard seed hook (e.g. Open Enrollment resolves the active admin
+    // window and forces the Jan-1 effective date). Enforced here on the
+    // server, not just hidden behind a disabled launch button.
+    let seededData: Record<string, unknown> = {};
+    if (prepareCreateData) {
+      const prep = await prepareCreateData(ctx.storage, workerId);
+      if (prep.error) {
+        return { error: prep.error, status: prep.status ?? 400 };
+      }
+      seededData = prep.data ?? {};
+    }
     // Default the employer/policy to the worker's home employer (when it
     // has a resolvable policy) so the first step starts prefilled.
     let homeDefaults: Record<string, unknown> = {};
@@ -810,6 +843,7 @@ export function createEnrollmentFoundation(
         workerId,
         workerName: await ctx.storage.workers.getWorkerDisplayName(workerId),
         ...homeDefaults,
+        ...seededData,
       },
     } as any);
     return { wizard };
@@ -912,8 +946,26 @@ export function createEnrollmentFoundation(
           : "pending";
       },
       getSchema: (wizard) => {
-        const computed = computeDefaultEffectiveDate();
         const data = wizardData(wizard);
+        const forcedStartYmd = data.forcedStartYmd as string | undefined;
+        if (forcedStartYmd) {
+          return {
+            type: "object",
+            title: "Effective Date",
+            description: `Open Enrollment elections always take effect on ${forcedStartYmd} (January 1 of the plan year). This date is fixed and cannot be changed.`,
+            properties: {
+              startYmd: {
+                type: "string",
+                format: "date",
+                title: "Effective date",
+                default: forcedStartYmd,
+                readOnly: true,
+              },
+            },
+            required: ["startYmd"],
+          };
+        }
+        const computed = computeDefaultEffectiveDate();
         return {
           type: "object",
           title: "Effective Date",

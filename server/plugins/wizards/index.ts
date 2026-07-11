@@ -30,6 +30,7 @@ import "./plugins/gbhet-legal-workers";
 import "./plugins/bao-monthly-hours";
 import "./plugins/employer-onboarding";
 import "./plugins/benefit-election-enrollment";
+import "./plugins/open-enrollment-enrollment";
 
 let kindRegistered = false;
 

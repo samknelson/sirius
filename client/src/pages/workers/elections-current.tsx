@@ -41,6 +41,38 @@ function ElectionsCurrentContent() {
     },
   });
 
+  const openEnrollmentMutation = useMutation({
+    mutationFn: async () => {
+      return await apiRequest("POST", "/api/wizards", {
+        type: "open_enrollment_enrollment",
+        status: "draft",
+        data: { launchArguments: { workerId: worker.id } },
+      });
+    },
+    onSuccess: (wizard: { id: string }) => {
+      navigate(`/wizards/${wizard.id}`);
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Open Enrollment is only offered while an admin-configured window is open.
+  // The wizard's create hook enforces the same gate server-side; this just
+  // controls whether the launch button is shown at all.
+  const { data: openWindow } = useQuery<{
+    active: { id: string; planYear: number } | null;
+    today: string;
+  }>({
+    queryKey: ["/api/trust/open-enrollment-windows/active"],
+    enabled: canEdit,
+  });
+  const activeWindow = openWindow?.active ?? null;
+
   const { data: current, isLoading } = useQuery<WorkerTrustElectionView | null>({
     queryKey: ["/api/workers", worker.id, "trust-elections", "current"],
     queryFn: async () => {
@@ -97,6 +129,18 @@ function ElectionsCurrentContent() {
                   {enrollMutation.isPending ? "Starting…" : "First-time Enrollment"}
                 </Button>
               </span>
+              {activeWindow && (
+                <Button
+                  variant="outline"
+                  onClick={() => openEnrollmentMutation.mutate()}
+                  disabled={openEnrollmentMutation.isPending}
+                  data-testid="button-open-enrollment-wizard"
+                >
+                  {openEnrollmentMutation.isPending
+                    ? "Starting…"
+                    : `Open Enrollment ${activeWindow.planYear}`}
+                </Button>
+              )}
               <Button onClick={() => setIsModalOpen(true)} data-testid="button-create-election">
                 New Election
               </Button>

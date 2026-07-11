@@ -92,6 +92,7 @@ import { registerWorkerBansRoutes } from "./modules/worker-bans";
 import { registerWorkerSkillsRoutes } from "./modules/workers/skills";
 import { registerWorkerRelationsRoutes } from "./modules/workers/relations";
 import { registerWorkerTrustElectionsRoutes } from "./modules/trust/elections";
+import { registerOpenEnrollmentWindowsRoutes } from "./modules/trust/open-enrollment-windows";
 import { getWorkerCurrentBenefits } from "./modules/trust/current-benefits";
 import { registerTrustBenefitEligibilityExemptionsRoutes } from "./modules/trust/eligibility-exemptions";
 import { registerWorkerTosRoutes } from "./modules/workers/tos";
@@ -1732,6 +1733,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register worker trust elections routes (handles all access control internally)
   registerWorkerTrustElectionsRoutes(app, requireAuth, requireAccess);
+
+  // Register Open Enrollment windows admin routes (trust.elections component)
+  registerOpenEnrollmentWindowsRoutes(app, requireAuth, requirePermission);
 
   // Register trust benefit eligibility exemptions routes (handles all access control internally)
   registerTrustBenefitEligibilityExemptionsRoutes(app, requireAuth, requireAccess);

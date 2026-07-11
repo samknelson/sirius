@@ -135,6 +135,7 @@ import { type WorkerCertificationStorage, createWorkerCertificationStorage, work
 import { type WorkerRatingStorage, createWorkerRatingStorage, workerRatingLoggingConfig } from "./workers/ratings";
 import { type WorkerRelationsStorage, createWorkerRelationsStorage, workerRelationsLoggingConfig } from "./workers/relations";
 import { type WorkerTrustElectionsStorage, createWorkerTrustElectionsStorage, workerTrustElectionsLoggingConfig } from "./trust/elections";
+import { type OpenEnrollmentWindowsStorage, createOpenEnrollmentWindowsStorage } from "./trust/open-enrollment-windows";
 import { type TrustBenefitEligibilityExemptionsStorage, createTrustBenefitEligibilityExemptionsStorage, trustBenefitEligibilityExemptionsLoggingConfig } from "./trust/eligibility-exemptions";
 import { type EdlsSheetsStorage, createEdlsSheetsStorage, edlsSheetsLoggingConfig } from "./edls/sheets";
 import { type EdlsCrewsStorage, createEdlsCrewsStorage, edlsCrewsLoggingConfig } from "./edls/crews";
@@ -232,6 +233,7 @@ export interface IStorage {
   workerRatings: WorkerRatingStorage;
   workerRelations: WorkerRelationsStorage;
   workerTrustElections: WorkerTrustElectionsStorage;
+  openEnrollmentWindows: OpenEnrollmentWindowsStorage;
   trustBenefitEligibilityExemptions: TrustBenefitEligibilityExemptionsStorage;
   edlsSheets: EdlsSheetsStorage;
   edlsCrews: EdlsCrewsStorage;
@@ -333,6 +335,7 @@ export class DatabaseStorage implements IStorage {
   workerRatings: WorkerRatingStorage;
   workerRelations: WorkerRelationsStorage;
   workerTrustElections: WorkerTrustElectionsStorage;
+  openEnrollmentWindows: OpenEnrollmentWindowsStorage;
   trustBenefitEligibilityExemptions: TrustBenefitEligibilityExemptionsStorage;
   edlsSheets: EdlsSheetsStorage;
   edlsCrews: EdlsCrewsStorage;
@@ -557,6 +560,7 @@ export class DatabaseStorage implements IStorage {
     this.workerRatings = withStorageLogging(createWorkerRatingStorage(), workerRatingLoggingConfig);
     this.workerRelations = withStorageLogging(createWorkerRelationsStorage(), workerRelationsLoggingConfig);
     this.workerTrustElections = withStorageLogging(createWorkerTrustElectionsStorage(), workerTrustElectionsLoggingConfig);
+    this.openEnrollmentWindows = createOpenEnrollmentWindowsStorage();
     this.trustBenefitEligibilityExemptions = withStorageLogging(createTrustBenefitEligibilityExemptionsStorage(), trustBenefitEligibilityExemptionsLoggingConfig);
     this.edlsSheets = withStorageLogging(createEdlsSheetsStorage(), edlsSheetsLoggingConfig);
     this.edlsCrews = withStorageLogging(createEdlsCrewsStorage(), edlsCrewsLoggingConfig);

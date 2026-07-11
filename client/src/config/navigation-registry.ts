@@ -1,7 +1,7 @@
 import { 
   Users, MapPin, Phone, Globe, List, UserCog, Puzzle, Package, Heart, 
   CreditCard, Activity, Wallet, Settings, Shield, Key, FileText, 
-  Building2, Database, Clock, Zap, Server, MessageSquare, Calendar, GraduationCap, Truck, Network, School, Tag, RefreshCw, Radio, type LucideIcon
+  Building2, Database, Clock, Zap, Server, MessageSquare, Calendar, CalendarClock, GraduationCap, Truck, Network, School, Tag, RefreshCw, Radio, type LucideIcon
 } from "lucide-react";
 
 export interface NavItem {
@@ -78,6 +78,7 @@ export const configSections: NavSection[] = [
       { path: "/config/options/trust-provider-type", label: "Provider Contact Types", icon: List, testId: "nav-config-provider-contact-types", permission: "admin" },
       { path: "/config/trust/providers/user-settings", label: "Provider User Settings", icon: Settings, testId: "nav-config-users-trust-provider-settings", permission: "admin" },
       { path: "/config/trust/sitespecific/bao/thresholds", label: "Member Status Thresholds", icon: Clock, testId: "nav-config-bao-thresholds", permission: "admin", requiresComponent: "sitespecific.bao" },
+      { path: "/config/trust/open-enrollment-windows", label: "Open Enrollment Windows", icon: CalendarClock, testId: "nav-config-open-enrollment-windows", permission: "admin", requiresComponent: "trust.elections" },
     ],
   },
   {
