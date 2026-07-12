@@ -65,7 +65,7 @@ import {
 import {
   type PluginConfigStorage,
   createPluginConfigStorage,
-} from "./plugin-configs";
+} from "./system/plugin-configs";
 import {
   type DenormStorage,
   createDenormStorage,

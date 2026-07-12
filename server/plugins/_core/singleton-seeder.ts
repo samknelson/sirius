@@ -1,6 +1,6 @@
 import { storage } from "../../storage";
 import { runInTransaction } from "../../storage/transaction-context";
-import { SingletonViolationError } from "../../storage/plugin-configs";
+import { SingletonViolationError } from "../../storage/system/plugin-configs";
 import { logger } from "../../logger";
 import { listPluginKinds, getPluginKind } from "./kinds";
 import { getPluginConfigAdapter } from "./config-adapter";

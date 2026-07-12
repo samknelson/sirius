@@ -333,13 +333,13 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Unified plugin manifest endpoint (Task #208) — replaces the four
   // legacy per-kind manifest URLs.
-  const { registerPluginsManifestRoutes } = await import("./modules/plugins-manifest");
+  const { registerPluginsManifestRoutes } = await import("./modules/system/plugins-manifest");
   registerPluginsManifestRoutes(app, requireAuth);
 
   // Generic plugin admin endpoints (Task #209) — replaces the per-kind
   // enable / settings / validate-config endpoints across dashboard,
   // charge, trust-eligibility, and dispatch-eligibility.
-  const { registerPluginsAdminRoutes } = await import("./modules/plugins-admin");
+  const { registerPluginsAdminRoutes } = await import("./modules/system/plugins-admin");
   registerPluginsAdminRoutes(app, requireAuth);
 
   // Register bookmark routes
@@ -404,7 +404,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // precedence. These generic routes operate solely on the unified
   // plugin_configs tables and remain dormant for any kind that still owns
   // specific routes.
-  const { registerPluginsConfigRoutes } = await import("./modules/plugins-config");
+  const { registerPluginsConfigRoutes } = await import("./modules/system/plugins-config");
   registerPluginsConfigRoutes(app, requireAuth);
 
   // Register Twilio configuration routes

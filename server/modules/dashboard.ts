@@ -18,7 +18,7 @@ export function registerDashboardRoutes(
   // settings endpoints were unified in Task #209 and now live at:
   //   GET  /api/plugins/dashboard/:id/settings
   //   PUT  /api/plugins/dashboard/:id/settings
-  // See `server/modules/plugins-admin.ts`. Per-config enable/disable
+  // See `server/modules/system/plugins-admin.ts`. Per-config enable/disable
   // state now lives on each `plugin_configs` row and is managed through
   // the unified `/api/plugins/dashboard/configs` endpoints; the
   // dashboard manifest's `decorateEntries` reads `enabled` from there.

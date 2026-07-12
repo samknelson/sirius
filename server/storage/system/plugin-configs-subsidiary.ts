@@ -1,4 +1,4 @@
-import { getClient } from './transaction-context';
+import { getClient } from '../transaction-context';
 import {
   pluginConfigsCharge,
   pluginConfigsBenefitEligibility,

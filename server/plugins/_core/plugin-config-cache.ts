@@ -1,6 +1,6 @@
 import { eventBus, EventType, type PluginConfigSavedPayload } from "../../services/event-bus";
 import { logger } from "../../logger";
-import type { PluginConfigWithSubsidiary } from "../../storage/plugin-configs";
+import type { PluginConfigWithSubsidiary } from "../../storage/system/plugin-configs";
 
 const SERVICE = "plugin-config-cache";
 

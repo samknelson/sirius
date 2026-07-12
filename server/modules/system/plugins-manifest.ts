@@ -1,5 +1,5 @@
 import type { Express, Request, Response, NextFunction } from "express";
-import { getPluginKind, enforceKindGating, listPluginConfigAdapters } from "../plugins/_core";
+import { getPluginKind, enforceKindGating, listPluginConfigAdapters } from "../../plugins/_core";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 

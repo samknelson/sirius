@@ -1,5 +1,5 @@
-import { createNoopValidator } from './utils/validation';
-import { getClient, onAfterCommit } from './transaction-context';
+import { createNoopValidator } from '../utils/validation';
+import { getClient, onAfterCommit } from '../transaction-context';
 import {
   pluginConfigs,
   type PluginConfig,
@@ -15,9 +15,9 @@ import {
 import { eq, and, type SQL } from "drizzle-orm";
 // Import the cycle-safe `_core` submodule directly (NOT the `_core/index.ts`
 // barrel, which re-exports the singleton seeder that imports storage).
-import { isSingletonPluginType } from "../plugins/_core/kinds";
-import { eventBus, EventType } from "../services/event-bus";
-import { logger } from "../logger";
+import { isSingletonPluginType } from "../../plugins/_core/kinds";
+import { eventBus, EventType } from "../../services/event-bus";
+import { logger } from "../../logger";
 import {
   createChargeSubsidiaryStorage,
   createBenefitEligibilitySubsidiaryStorage,
