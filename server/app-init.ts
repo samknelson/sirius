@@ -353,6 +353,14 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
   await bootstrapSingletonPluginConfigs();
   logger.info("Singleton plugin configs bootstrapped", { source: "startup" });
 
+  // Seed the local-auth credential from LOCAL_AUTH_EMAIL /
+  // LOCAL_AUTH_PASSWORD_HASH (no-op when unset). Must run after migrations
+  // and before auth setup so the credential is usable on first login.
+  {
+    const { seedLocalCredential } = await import("./auth/local-seed");
+    await seedLocalCredential();
+  }
+
   // Setup multi-provider auth
   await setupAuth(app);
   logger.info("Authentication system initialized", { source: "startup" });

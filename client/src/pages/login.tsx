@@ -1,12 +1,143 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useLocation } from 'wouter';
+import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import { Loader2, LogIn, LogOut, UserPlus } from 'lucide-react';
 import { SignIn, SignedIn, SignedOut, useClerk } from '@clerk/clerk-react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
+import { queryClient } from '@/lib/queryClient';
 
 const CLERK_ENABLED = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+
+interface ProvidersResponse {
+  providers: { type: string; isDefault: boolean }[];
+  defaultProvider?: string;
+}
+
+const localLoginSchema = z.object({
+  email: z.string().email('Please enter a valid email address'),
+  password: z.string().min(1, 'Password is required'),
+});
+
+type LocalLoginFormData = z.infer<typeof localLoginSchema>;
+
+function LocalLoginForm() {
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const form = useForm<LocalLoginFormData>({
+    resolver: zodResolver(localLoginSchema),
+    defaultValues: { email: '', password: '' },
+  });
+
+  const onSubmit = async (data: LocalLoginFormData) => {
+    setIsSubmitting(true);
+    setErrorMessage(null);
+    try {
+      const response = await fetch('/api/auth/local/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(data),
+      });
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        setErrorMessage(body?.message || 'Invalid email or password');
+        setIsSubmitting(false);
+        return;
+      }
+
+      await queryClient.invalidateQueries({ queryKey: ['/api/auth/user'] });
+      // AuthContext picks up the new session and the page redirects.
+    } catch {
+      setErrorMessage('Login failed. Please try again.');
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <Form {...form}>
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+        <FormField
+          control={form.control}
+          name="email"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Email</FormLabel>
+              <FormControl>
+                <Input
+                  type="email"
+                  autoComplete="email"
+                  placeholder="you@example.com"
+                  data-testid="input-local-email"
+                  {...field}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="password"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Password</FormLabel>
+              <FormControl>
+                <Input
+                  type="password"
+                  autoComplete="current-password"
+                  data-testid="input-local-password"
+                  {...field}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        {errorMessage && (
+          <p
+            className="text-sm text-destructive"
+            data-testid="text-local-login-error"
+          >
+            {errorMessage}
+          </p>
+        )}
+
+        <Button
+          type="submit"
+          className="w-full"
+          size="lg"
+          disabled={isSubmitting}
+          data-testid="button-local-login"
+        >
+          {isSubmitting ? (
+            <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+          ) : (
+            <LogIn className="mr-2 h-5 w-5" />
+          )}
+          {isSubmitting ? 'Signing in...' : 'Sign In'}
+        </Button>
+      </form>
+    </Form>
+  );
+}
 
 function ClerkNotProvisionedMessage() {
   const [, setLocation] = useLocation();
@@ -47,6 +178,13 @@ export default function LoginPage() {
   const [, setLocation] = useLocation();
   const { login, isAuthenticated, isLoading } = useAuth();
 
+  const { data: providersData } = useQuery<ProvidersResponse>({
+    queryKey: ['/api/auth/providers'],
+    staleTime: 1000 * 60 * 5,
+  });
+
+  const localEnabled = !!providersData?.providers?.some((p) => p.type === 'local');
+
   useEffect(() => {
     if (isAuthenticated && !isLoading) {
       const redirectTo = sessionStorage.getItem('redirectAfterLogin');
@@ -85,6 +223,19 @@ export default function LoginPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {localEnabled && <LocalLoginForm />}
+
+          {localEnabled && CLERK_ENABLED && (
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <span className="w-full border-t" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-card px-2 text-muted-foreground">or</span>
+              </div>
+            </div>
+          )}
+
           {CLERK_ENABLED ? (
             <>
               <SignedOut>
@@ -123,21 +274,23 @@ export default function LoginPage() {
               </SignedIn>
             </>
           ) : (
-            <Button
-              onClick={login}
-              className="w-full"
-              size="lg"
-              data-testid="button-login"
-            >
-              <LogIn className="mr-2 h-5 w-5" />
-              Sign in with Replit
-            </Button>
+            !localEnabled && (
+              <Button
+                onClick={login}
+                className="w-full"
+                size="lg"
+                data-testid="button-login"
+              >
+                <LogIn className="mr-2 h-5 w-5" />
+                Sign in with Replit
+              </Button>
+            )
           )}
 
           <div className="mt-4 p-4 bg-muted rounded-lg">
             <p className="text-sm text-muted-foreground text-center">
               Staff and employer accounts must be pre-authorized by an administrator.
-              Workers can register using the link above.
+              {CLERK_ENABLED && ' Workers can register using the link above.'}
             </p>
           </div>
         </CardContent>

@@ -110,8 +110,36 @@ export const notificationFloodEvents: FloodEventDefinition[] = Object.values(
   NOTIFICATION_FLOOD_EVENTS,
 ).map(makeNotificationFloodEvent);
 
+/**
+ * Local email+password login throttle. Bucketed by email|ip so an attacker
+ * hammering one account from one address is cut off without locking out the
+ * real user coming from a different address. Only FAILED attempts are
+ * recorded (recordFloodEvent is called on failure paths in the local auth
+ * provider), so normal successful logins never consume budget.
+ * Defaults: 10 failed attempts per email+IP per 15 minutes; admins can tune
+ * via the flood-config UI (`flood_local-login` variable).
+ */
+export const LOCAL_LOGIN_FLOOD_EVENT = "local-login";
+
+export const localLoginFloodEvent: FloodEventDefinition = {
+  name: LOCAL_LOGIN_FLOOD_EVENT,
+  threshold: 10,
+  windowSeconds: 900,
+  getIdentifier: (context: FloodContext): string => {
+    if (!context.email || !context.ip) {
+      throw new Error("email and ip are required for local-login flood event");
+    }
+    return `${context.email}|${context.ip}`;
+  },
+  resolveIdentifierName: async (identifier: string): Promise<string | null> => {
+    const [email] = identifier.split("|");
+    return email || null;
+  },
+};
+
 export function registerFloodEvents(): void {
   registerFloodEvent(bookmarkFloodEvent);
+  registerFloodEvent(localLoginFloodEvent);
   for (const event of notificationFloodEvents) {
     registerFloodEvent(event);
   }

@@ -148,9 +148,12 @@ function parseProviderFromEnv(type: AuthProviderType): ProviderConfig | null {
     }
 
     case "local": {
+      // Being listed in AUTH_PROVIDER is explicit intent, so the provider is
+      // enabled by default. AUTH_LOCAL_ENABLED=false remains as an override
+      // to switch it off without editing AUTH_PROVIDER.
       const config: LocalProviderConfig = {
         type: "local",
-        enabled: process.env.AUTH_LOCAL_ENABLED === "true",
+        enabled: process.env.AUTH_LOCAL_ENABLED !== "false",
         pepper: process.env.AUTH_LOCAL_PEPPER,
       };
       return config.enabled ? config : null;
