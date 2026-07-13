@@ -47,3 +47,4 @@
 - [Event-notifier self-notification opt-out](event-notifier-notify-self.md) — EBS-pump reminders must set notifySelf:true (manual pump run leaks operator identity → self-suppresses to nobody); keep suppression-actor decoupled from flash-summary-actor.
 - [Denorm verify script circular import](denorm-verify-script-circular-import.md) — a standalone tsx script importing the denorm barrel crashes (PluginRegistry init); import the plugin file + backfill/recompute modules directly.
 - [drizzle-kit push hazards](drizzle-kit-push-hazards.md) — >63-char auto FK/unique names churn forever (pin explicit DB-matching names); non-interactive push destroys constraints on failed runs; jsonb default needs sql literal.
+- [Replit lockfile firewall URLs break external CI](replit-lockfile-firewall-urls.md) — npm installs here write package-firewall.replit.local resolved URLs; rewrite to registry.npmjs.org before external CI uses the lockfile.
