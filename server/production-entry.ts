@@ -113,6 +113,41 @@ app.use('/', (req, res, next) => {
   
   if (req.path === '/') {
     const acceptHeader = req.headers.accept || '';
+    // TEMPORARY DIAGNOSTIC (remove after debugging the freeman-dev boot
+    // failure): if boot threw, render the captured error + stack on the
+    // placeholder page so it is visible in the browser (the ALB shadows
+    // /health with its own fixed response, so the JSON there is unreachable).
+    if (initError) {
+      if (acceptHeader.includes('text/html')) {
+        const escapeHtml = (s: string) =>
+          s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        res.status(200).set({ 'Content-Type': 'text/html' }).send(`
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <title>Init failed</title>
+              <style>
+                body { font-family: system-ui, sans-serif; margin: 2rem; background: #fff; color: #111; }
+                h1 { color: #b00020; }
+                pre { background: #f5f5f5; padding: 1rem; border-radius: 6px; overflow: auto; white-space: pre-wrap; word-break: break-word; }
+              </style>
+            </head>
+            <body>
+              <h1>Application initialization failed</h1>
+              <p><strong>${escapeHtml(initError.message)}</strong></p>
+              <pre>${escapeHtml(initError.stack || '(no stack)')}</pre>
+            </body>
+          </html>
+        `);
+        return;
+      }
+      res.status(200).json({
+        status: 'init-failed',
+        error: initError.message,
+        stack: initError.stack,
+      });
+      return;
+    }
     if (acceptHeader.includes('text/html')) {
       res.status(200).set({ 'Content-Type': 'text/html' }).send(`
         <!DOCTYPE html>
