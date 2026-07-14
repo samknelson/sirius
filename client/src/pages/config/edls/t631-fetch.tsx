@@ -55,6 +55,7 @@ interface WorkerEinSyncResult {
   unchanged: number;
   skipped: number;
   errors: number;
+  workersCreated: number;
   details: Array<{ workerId?: string; remoteWorkerId: string; action: string; error?: string }>;
 }
 
@@ -83,7 +84,7 @@ export default function T631FetchPage() {
       setSyncResult(data);
       toast({
         title: data.dryRun ? "Dry run complete" : "Sync complete",
-        description: `${data.created} created, ${data.updated} updated, ${data.unchanged} unchanged, ${data.skipped} skipped, ${data.errors} errors`,
+        description: `${data.workersCreated} workers created, ${data.created} created, ${data.updated} updated, ${data.unchanged} unchanged, ${data.skipped} skipped, ${data.errors} errors`,
         variant: data.errors > 0 ? "destructive" : "default",
       });
     },
@@ -186,7 +187,8 @@ export default function T631FetchPage() {
             </CardTitle>
             <CardDescription>
               Match remote workers by their Teamsters 631 worker ID and store each worker's EIN
-              under the "freeman_ein" worker ID type. Dry run previews changes without writing.
+              under the "freeman_ein" worker ID type. Workers not found locally are created from
+              the remote name. Dry run previews changes without writing.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -224,6 +226,7 @@ export default function T631FetchPage() {
                   <Badge variant={syncResult.dryRun ? "outline" : "default"} data-testid="badge-sync-mode">
                     {syncResult.dryRun ? "Dry Run" : "Live Sync"}
                   </Badge>
+                  <Badge variant="secondary" data-testid="badge-sync-workers-created">{syncResult.workersCreated} workers created</Badge>
                   <Badge variant="secondary" data-testid="badge-sync-created">{syncResult.created} created</Badge>
                   <Badge variant="secondary" data-testid="badge-sync-updated">{syncResult.updated} updated</Badge>
                   <Badge variant="secondary" data-testid="badge-sync-unchanged">{syncResult.unchanged} unchanged</Badge>

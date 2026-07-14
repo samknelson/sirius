@@ -219,6 +219,7 @@ export interface WorkerStorage {
     family: string | null;
   }>>;
   createWorker(name: string): Promise<Worker>;
+  createWorkerWithNameParts(parts: { given: string | null; family: string | null; displayName: string }): Promise<Worker>;
   // Update methods that delegate to contact storage (contact storage already has logging)
   updateWorkerContactName(workerId: string, name: string): Promise<Worker | undefined>;
   updateWorkerContactNameComponents(workerId: string, components: {
@@ -1061,6 +1062,22 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       return stripWorkerData(worker);
     },
 
+    async createWorkerWithNameParts(parts: { given: string | null; family: string | null; displayName: string }): Promise<Worker> {
+      const client = getClient();
+      const contact = await contactsStorage.createContact({
+        given: parts.given || null,
+        family: parts.family || null,
+        displayName: parts.displayName,
+      });
+
+      const [worker] = await client
+        .insert(workers)
+        .values({ contactId: contact.id })
+        .returning();
+
+      return stripWorkerData(worker);
+    },
+
     async updateWorkerContactName(workerId: string, name: string): Promise<Worker | undefined> {
       const client = getClient();
       // Get the current worker to find its contact
@@ -1244,6 +1261,27 @@ export const workerLoggingConfig: StorageLoggingConfig<WorkerStorage> = {
           }
         };
       }
+    },
+    createWorkerWithNameParts: {
+      enabled: true,
+      getEntityId: (args, result) => result?.id || 'new worker',
+      getHostEntityId: (args, result) => result?.id,
+      after: async (args, result, storage) => {
+        const client = getClient();
+        const [contact] = await client.select().from(contacts).where(eq(contacts.id, result.contactId));
+        return {
+          worker: result,
+          contact: contact,
+          metadata: {
+            inputParts: args[0],
+            workerId: result.id,
+            contactId: result.contactId,
+            siriusId: result.siriusId,
+            note: 'Worker creation also created an associated contact record (logged separately in contacts module)'
+          }
+        };
+      },
+      getDescription: async (args) => `Created worker "${args[0]?.displayName ?? ''}"`
     },
     deleteWorker: {
       enabled: true,

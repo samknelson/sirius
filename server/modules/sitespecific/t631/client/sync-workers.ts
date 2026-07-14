@@ -4,7 +4,26 @@ import { logger } from "../../../../logger";
 interface T631WorkerRow {
   worker_id?: unknown;
   worker_ein?: unknown;
+  worker_name?: unknown;
   [key: string]: unknown;
+}
+
+/**
+ * Parse a remote "Family, Given" name (e.g. "Aery, Lina") into name parts.
+ * Falls back to treating the whole string as the family name when no comma
+ * is present. Returns null for blank input.
+ */
+export function parseRemoteWorkerName(raw: string): { given: string | null; family: string | null; displayName: string } | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const commaIdx = trimmed.indexOf(",");
+  if (commaIdx === -1) {
+    return { given: null, family: trimmed, displayName: trimmed };
+  }
+  const family = trimmed.slice(0, commaIdx).trim();
+  const given = trimmed.slice(commaIdx + 1).trim();
+  const displayName = [given, family].filter(Boolean).join(" ") || trimmed;
+  return { given: given || null, family: family || null, displayName };
 }
 
 interface T631WorkerListResponse {
@@ -19,6 +38,7 @@ export interface WorkerEinSyncResult {
   unchanged: number;
   skipped: number;
   errors: number;
+  workersCreated: number;
   details: Array<{ workerId?: string; remoteWorkerId: string; action: string; error?: string }>;
 }
 
@@ -27,7 +47,7 @@ export async function syncWorkerEins(
   dryRun: boolean,
 ): Promise<WorkerEinSyncResult> {
   const result: WorkerEinSyncResult = {
-    created: 0, updated: 0, unchanged: 0, skipped: 0, errors: 0, details: [],
+    created: 0, updated: 0, unchanged: 0, skipped: 0, errors: 0, workersCreated: 0, details: [],
   };
 
   if (!responseData.success || !responseData.data) {
@@ -102,8 +122,38 @@ export async function syncWorkerEins(
 
       const t631Row = await storage.workerIds.getWorkerIdByTypeAndValue(t631TypeId, remoteWorkerId);
       if (!t631Row) {
-        result.skipped++;
-        result.details.push({ remoteWorkerId, action: "skipped", error: `worker_not_found (t631=${remoteWorkerId})` });
+        // No local worker with this t631 ID — create one from the remote name.
+        const rawName = row.worker_name !== undefined && row.worker_name !== null ? String(row.worker_name) : "";
+        const nameParts = parseRemoteWorkerName(rawName);
+        if (!nameParts) {
+          result.skipped++;
+          result.details.push({ remoteWorkerId, action: "skipped", error: `worker_not_found_no_name: no local worker (t631=${remoteWorkerId}) and worker_name is blank; cannot create` });
+          continue;
+        }
+
+        // Don't create a worker if the EIN is already held by an existing worker.
+        const conflictHolder = await storage.workerIds.getWorkerIdByTypeAndValue(einTypeId, ein);
+        if (conflictHolder) {
+          result.skipped++;
+          result.details.push({ remoteWorkerId, action: "skipped", error: `ein_conflict: EIN ${ein} already held by another worker (workerId=${conflictHolder.workerId}); worker not created` });
+          continue;
+        }
+
+        seenEins.set(ein, remoteWorkerId);
+
+        if (dryRun) {
+          result.workersCreated++;
+          result.created++;
+          result.details.push({ remoteWorkerId, action: "would_create_worker" });
+          continue;
+        }
+
+        const newWorker = await storage.workers.createWorkerWithNameParts(nameParts);
+        await storage.workerIds.createWorkerId({ workerId: newWorker.id, typeId: t631TypeId, value: remoteWorkerId });
+        await storage.workerIds.createWorkerId({ workerId: newWorker.id, typeId: einTypeId, value: ein });
+        result.workersCreated++;
+        result.created++;
+        result.details.push({ workerId: newWorker.id, remoteWorkerId, action: "created_worker" });
         continue;
       }
       const localWorkerId = t631Row.workerId;

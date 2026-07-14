@@ -5,7 +5,7 @@ async function main() {
   const fetchResult = await t631Fetch("sirius_edls_server_worker_list");
   if (!fetchResult.success) throw new Error(`fetch failed: ${fetchResult.error}`);
   const res = await syncWorkerEins(fetchResult.data as any, true);
-  console.log(JSON.stringify({ created: res.created, updated: res.updated, unchanged: res.unchanged, skipped: res.skipped, errors: res.errors }, null, 2));
+  console.log(JSON.stringify({ workersCreated: res.workersCreated, created: res.created, updated: res.updated, unchanged: res.unchanged, skipped: res.skipped, errors: res.errors }, null, 2));
   const byError: Record<string, number> = {};
   for (const d of res.details) {
     const key = d.action + (d.error ? `:${d.error.split(" ")[0].split("(")[0]}` : "");
