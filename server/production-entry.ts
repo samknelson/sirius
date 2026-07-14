@@ -86,8 +86,23 @@ const app = express();
 const server = createServer(app);
 
 let appReady = false;
+// TEMPORARY DIAGNOSTIC (remove after debugging the freeman-dev boot failure):
+// If bootstrapApp throws during init we normally process.exit(1), which
+// crash-loops the container and the only record is the container log — which
+// is unreachable without AWS access. Instead we capture the error here and
+// surface it through /health so it can be read over HTTP. The process stays
+// alive (health returns 200) so the ECS deploy stabilizes.
+let initError: Error | null = null;
 
 app.get('/health', (_req, res) => {
+  if (initError) {
+    res.status(200).json({
+      status: 'init-failed',
+      error: initError.message,
+      stack: initError.stack,
+    });
+    return;
+  }
   res.status(200).json({ status: appReady ? 'ready' : 'starting' });
 });
 
@@ -145,6 +160,9 @@ server.listen({
     });
   } catch (error) {
     console.error('Failed to initialize application:', error);
-    process.exit(1);
+    // TEMPORARY DIAGNOSTIC (remove after debugging the freeman-dev boot
+    // failure): capture the error and keep serving /health instead of
+    // exiting, so the real error is retrievable over HTTP.
+    initError = error instanceof Error ? error : new Error(String(error));
   }
 });
