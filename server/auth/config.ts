@@ -220,10 +220,25 @@ export function loadAuthConfig(): AuthConfig {
 
   let sessionSecret = process.env.SESSION_SECRET;
   if (!sessionSecret) {
-    if (process.env.NODE_ENV === "production") {
+    // A real SESSION_SECRET always wins. When it is absent, allow a stable
+    // fallback only if explicitly opted in via ALLOW_INSECURE_SESSION_SECRET.
+    // This exists for non-production deploy environments (e.g. the dev ECS
+    // service) whose Terraform-owned task definition does not yet wire a
+    // SESSION_SECRET and cannot be changed from this repo. The fallback is a
+    // fixed constant so it is shared across the separate ui/api containers —
+    // a random per-process value would invalidate sessions across services.
+    const allowInsecure = process.env.ALLOW_INSECURE_SESSION_SECRET === "1";
+    if (process.env.NODE_ENV === "production" && !allowInsecure) {
       throw new Error("SESSION_SECRET environment variable is required in production");
     }
-    console.warn("WARNING: Using fallback SESSION_SECRET for development.");
+    if (allowInsecure) {
+      console.warn(
+        "WARNING: SESSION_SECRET is not set; using insecure fallback because " +
+          "ALLOW_INSECURE_SESSION_SECRET=1. Do NOT use this in production.",
+      );
+    } else {
+      console.warn("WARNING: Using fallback SESSION_SECRET for development.");
+    }
     sessionSecret = "dev-secret-change-in-production-minimum-32-chars";
   }
 

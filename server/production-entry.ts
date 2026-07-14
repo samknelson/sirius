@@ -188,6 +188,12 @@ server.listen({
   console.log(`Server listening on port ${port}, loading application...`);
   
   try {
+    // Assemble DATABASE_URL from component env vars (DB_HOST/DB_PORT/DB_NAME/
+    // DB_SECRET) before app-init loads server/storage/db.ts, which requires it
+    // at module load. No-op when DATABASE_URL is already set. See
+    // server/config/assemble-database-url.ts.
+    const { assembleDatabaseUrl } = await import('./config/assemble-database-url');
+    assembleDatabaseUrl();
     const { startApp } = await import('./app-init');
     await startApp(app, server, () => {
       appReady = true;
