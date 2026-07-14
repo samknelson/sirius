@@ -1,4 +1,9 @@
-import { registerPluginKind } from "../_core";
+// Import `registerPluginKind` from the defining submodule, NOT the `../_core`
+// barrel: the barrel re-exports the singleton seeder (which imports storage),
+// and this module sits inside the storage boot chain via
+// `server/storage/wizards.ts`. Going through the barrel would re-form the
+// storage↔_core init cycle that crashes the production bundle.
+import { registerPluginKind } from "../_core/kinds";
 import { wizardPluginRegistry } from "./registry";
 
 export {

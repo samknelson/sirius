@@ -1,6 +1,12 @@
-import { storage } from "../../storage";
-import { runInTransaction } from "../../storage/transaction-context";
-import { SingletonViolationError } from "../../storage/system/plugin-configs";
+// NOTE: storage (and its transaction-context / plugin-configs helpers) are
+// imported lazily inside `bootstrapSingletonPluginConfigs` rather than at module
+// top level. This module is re-exported by the `_core` barrel, and some
+// consumers of that barrel (e.g. the wizard registry, reached via
+// `server/storage/wizards.ts`) sit inside the storage boot chain. A top-level
+// `import ... from "../../storage"` here therefore closes a
+// storage→_core→storage cycle that leaves classes undefined at init time in the
+// esbuild production bundle. These symbols are only used at seed time (inside
+// the async function), so the lazy import is behavior-neutral.
 import { logger } from "../../logger";
 import { listPluginKinds, getPluginKind } from "./kinds";
 import { getPluginConfigAdapter } from "./config-adapter";
@@ -24,6 +30,14 @@ export async function bootstrapSingletonPluginConfigs(): Promise<void> {
   logger.info("Bootstrapping singleton plugin configs", {
     service: "singleton-seeder",
   });
+
+  // Lazy imports (see the module-level note): pulling storage in here rather
+  // than at module top level breaks the storage↔_core init cycle.
+  const { storage } = await import("../../storage");
+  const { runInTransaction } = await import("../../storage/transaction-context");
+  const { SingletonViolationError } = await import(
+    "../../storage/system/plugin-configs"
+  );
 
   let created = 0;
   let skipped = 0;

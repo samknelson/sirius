@@ -49,4 +49,5 @@
 - [drizzle-kit push hazards](drizzle-kit-push-hazards.md) — >63-char auto FK/unique names churn forever (pin explicit DB-matching names); non-interactive push destroys constraints on failed runs; jsonb default needs sql literal.
 - [Vite devDep in prod bundle](vite-devdep-in-prod-bundle.md) — a top-level `import "vite"` on the boot path crashes the lean ECS image at module load; lazy-import dev-only deps inside the dev-only fn.
 - [ECS DATABASE_URL/SESSION_SECRET gap](ecs-database-url-secrets-gap.md) — Terraform task def gives DB parts not DATABASE_URL/SESSION_SECRET; assemble URL in code pre-app-init, gate a stable session fallback behind ALLOW_INSECURE_SESSION_SECRET.
+- [esbuild barrel init cycle](esbuild-barrel-init-cycle.md) — prod-only "Class extends value undefined" = barrel re-export cycle; storage/boot-chain code must import _core submodules directly, not the ../_core barrel; smoke-test the bundle.
 - [Replit lockfile firewall URLs break external CI](replit-lockfile-firewall-urls.md) — npm installs here write package-firewall.replit.local resolved URLs; rewrite to registry.npmjs.org before external CI uses the lockfile.
