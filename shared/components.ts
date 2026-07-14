@@ -746,7 +746,7 @@ export const componentRegistry: ComponentDefinition[] = [
     schemaManifest: {
       version: 1,
       schemaPath: "./shared/schema/edls/schema.ts",
-      tables: ["edls_sheets", "edls_crews", "edls_assignments", "options_edls_tasks", "worker_edls"],
+      tables: ["options_edls_tasks", "edls_sheets", "edls_crews", "edls_assignments", "worker_edls"],
       dependsOnComponents: ["dispatch.job_group", "facility"]
     },
     permissions: [
