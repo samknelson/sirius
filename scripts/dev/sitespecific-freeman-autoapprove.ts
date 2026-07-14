@@ -7,6 +7,11 @@
  * "Development" GitHub Environment. Runs targeting any other environment
  * (QA, Production, ...) are always skipped and left for manual approval.
  *
+ * Also tracks queued / in-progress workflow runs and prints which job and
+ * step each run is currently on (similar to `gh run watch`), logging a
+ * final conclusion line (success/failure/cancelled) when a run completes.
+ * Progress lines are only printed when a run's status/step changes.
+ *
  * Usage:
  *   npx tsx scripts/dev/sitespecific-freeman-autoapprove.ts
  *
@@ -55,6 +60,17 @@ let stopping = false;
 // approvable later (e.g. reviewer added), so only silence repeats briefly.
 const approvedRuns = new Set<number>();
 const loggedSkips = new Set<string>();
+
+interface WorkflowJob {
+  name: string;
+  status: string; // queued | in_progress | completed
+  conclusion: string | null;
+  steps?: Array<{ name: string; status: string; conclusion: string | null; number: number }>;
+}
+
+// runId -> last printed progress line, so we only log on change, and can
+// announce completion when a tracked run disappears from the active list.
+const trackedRuns = new Map<number, { lastLine: string; desc: string }>();
 
 function ts(): string {
   return new Date().toISOString();
@@ -112,14 +128,100 @@ async function checkAuth(): Promise<void> {
   }
 }
 
+/**
+ * Describe where a run currently is: its in-progress job and step, e.g.
+ * "job 'deploy' › step 3/7: Upload artifact". Falls back gracefully.
+ */
+async function describeRunProgress(runId: number): Promise<string> {
+  let jobs: WorkflowJob[];
+  try {
+    ({ jobs } = await ghJson<{ jobs: WorkflowJob[] }>([
+      "api",
+      `repos/${REPO}/actions/runs/${runId}/jobs?per_page=50`,
+    ]));
+  } catch {
+    return "(job details unavailable)";
+  }
+  if (!jobs || jobs.length === 0) return "(no jobs yet)";
+
+  const done = jobs.filter((j) => j.status === "completed").length;
+  const activeJob = jobs.find((j) => j.status === "in_progress");
+  if (!activeJob) {
+    const queued = jobs.find((j) => j.status === "queued" || j.status === "waiting");
+    if (queued) return `job '${queued.name}' ${queued.status} (${done}/${jobs.length} jobs done)`;
+    return `${done}/${jobs.length} jobs done`;
+  }
+
+  const steps = activeJob.steps || [];
+  const activeStep = steps.find((s) => s.status === "in_progress");
+  if (activeStep) {
+    return `job '${activeJob.name}' › step ${activeStep.number}/${steps.length}: ${activeStep.name}`;
+  }
+  const stepsDone = steps.filter((s) => s.status === "completed").length;
+  return `job '${activeJob.name}' running (${stepsDone}/${steps.length} steps done)`;
+}
+
+/** Log progress of queued/in-progress runs (change-only) and completions. */
+async function pollProgress(): Promise<void> {
+  const active: WorkflowRun[] = [];
+  for (const status of ["queued", "in_progress"]) {
+    try {
+      const { workflow_runs } = await ghJson<{ workflow_runs: WorkflowRun[] }>([
+        "api",
+        `repos/${REPO}/actions/runs?status=${status}&per_page=50`,
+      ]);
+      active.push(...workflow_runs);
+    } catch (err: any) {
+      log(`WARN: could not list ${status} runs: ${(err?.stderr || err?.message || "").trim()}`);
+    }
+  }
+
+  const activeIds = new Set(active.map((r) => r.id));
+
+  // Completion: previously-tracked runs no longer queued/in-progress.
+  for (const [runId, info] of trackedRuns) {
+    if (activeIds.has(runId)) continue;
+    trackedRuns.delete(runId);
+    try {
+      const run = await ghJson<WorkflowRun & { conclusion: string | null }>([
+        "api",
+        `repos/${REPO}/actions/runs/${runId}`,
+      ]);
+      if (run.status === "completed") {
+        const c = (run.conclusion || "unknown").toUpperCase();
+        log(`DONE [${c}]: ${info.desc}`);
+      } else {
+        // e.g. moved back to 'waiting' on another approval gate
+        log(`RUN now '${run.status}': ${info.desc}`);
+      }
+    } catch {
+      log(`DONE (conclusion unavailable): ${info.desc}`);
+    }
+  }
+
+  for (const run of active) {
+    if (stopping) return;
+    const desc = `"${run.display_title}" (${run.name}, branch ${run.head_branch}) ${run.html_url}`;
+    const progress = run.status === "queued" ? "queued" : await describeRunProgress(run.id);
+    const line = `${run.status}: ${progress}`;
+    const prev = trackedRuns.get(run.id);
+    if (!prev || prev.lastLine !== line) {
+      trackedRuns.set(run.id, { lastLine: line, desc });
+      log(`RUN ${line} — ${desc}`);
+    }
+  }
+}
+
 async function pollOnce(): Promise<void> {
   const { workflow_runs: runs } = await ghJson<{ workflow_runs: WorkflowRun[] }>([
     "api",
     `repos/${REPO}/actions/runs?status=waiting&per_page=50`,
   ]);
 
+  await pollProgress();
+
   if (runs.length === 0) {
-    log("No workflow runs waiting on approval.");
+    if (trackedRuns.size === 0) log("No workflow runs waiting on approval or in progress.");
     return;
   }
 
