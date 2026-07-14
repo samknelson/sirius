@@ -85,6 +85,44 @@ function sslConfigFromUrl(url: string): false | { rejectUnauthorized: boolean } 
   }
 }
 
+/**
+ * Strip TLS-related query parameters from the connection string.
+ *
+ * node-postgres merges a pool config with the parsed connection string via
+ * `Object.assign({}, config, parse(connectionString))` — so anything the
+ * connection string parses to WINS over the explicit config we pass. Crucially
+ * `pg-connection-string` maps `sslmode=require` to `ssl = {}` (rejectUnauthorized
+ * defaults to true → full CA verification), which silently overrides our
+ * explicit `ssl: { rejectUnauthorized: false }`. Against Aurora/RDS — whose cert
+ * is signed by the AWS RDS CA that Node does not trust by default — that surfaces
+ * as "unable to get local issuer certificate" at boot.
+ *
+ * We derive the SSL config ourselves from `sslmode` (see `sslConfigFromUrl`) and
+ * pass it explicitly, so we remove the ssl* params from the string handed to the
+ * pool. With no ssl* params present, `parse()` produces no `ssl` key and our
+ * explicit config is the one that takes effect.
+ */
+function stripSslParams(url: string): string {
+  try {
+    const parsed = new URL(url);
+    for (const key of [
+      "sslmode",
+      "ssl",
+      "sslcert",
+      "sslkey",
+      "sslrootcert",
+      "sslnegotiation",
+    ]) {
+      parsed.searchParams.delete(key);
+    }
+    return parsed.toString();
+  } catch {
+    // Unparseable URL: hand it through untouched and let the driver surface
+    // whatever error it would have.
+    return url;
+  }
+}
+
 export const driverKind: DriverKind = detectDriver(databaseUrl);
 
 // Both drivers expose the node-postgres Pool API surface; the Neon Pool is
@@ -104,7 +142,7 @@ if (driverKind === "neon") {
 } else {
   const ssl = sslConfigFromUrl(databaseUrl);
   poolInstance = new pg.Pool({
-    connectionString: databaseUrl,
+    connectionString: stripSslParams(databaseUrl),
     ssl,
   });
   dbInstance = drizzlePg({
