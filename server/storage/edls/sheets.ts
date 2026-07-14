@@ -255,7 +255,9 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
         department: row.department?.id ? row.department : undefined,
         supervisorUser: row.supervisorUser?.id ? row.supervisorUser : undefined,
         assigneeUser: row.assigneeUser?.id ? row.assigneeUser : undefined,
-        jobGroup: row.jobGroup?.id ? row.jobGroup : undefined,
+        jobGroup: row.jobGroup?.id && row.jobGroup.name != null
+          ? { id: row.jobGroup.id, name: row.jobGroup.name }
+          : undefined,
         facility: row.facility?.id ? row.facility : undefined,
         assignedCount: row.assignedCount ?? 0,
       }));
@@ -334,7 +336,9 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
         department: row.department || undefined,
         supervisorUser: row.supervisorUser?.id ? row.supervisorUser : undefined,
         assigneeUser: row.assigneeUser?.id ? row.assigneeUser : undefined,
-        jobGroup: row.jobGroup?.id ? row.jobGroup : undefined,
+        jobGroup: row.jobGroup?.id && row.jobGroup.name != null
+          ? { id: row.jobGroup.id, name: row.jobGroup.name }
+          : undefined,
         facility: row.facility?.id ? row.facility : undefined,
       };
     },

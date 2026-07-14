@@ -1,11 +1,27 @@
-import { storage } from "../../../../storage";
-import { logger } from "../../../../logger";
+import { storage, createCommSmsOptinStorage } from "../../../../storage";
+import { logger, storageLogger } from "../../../../logger";
 
 interface T631WorkerRow {
   worker_id?: unknown;
   worker_ein?: unknown;
   worker_name?: unknown;
+  worker_phone?: unknown;
   [key: string]: unknown;
+}
+
+const smsOptinStorage = createCommSmsOptinStorage();
+
+/**
+ * Reduce a loosely formatted phone number ("(702) 555-1234", "+17025551234",
+ * "702.555.1234") to its comparable digits: strip non-digits and drop a
+ * leading US country code "1" when 11 digits. Returns null when the result
+ * is not a plausible 10-digit US number.
+ */
+export function normalizePhoneDigits(raw: string): string | null {
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length === 10) return digits;
+  if (digits.length === 11 && digits.startsWith("1")) return digits.slice(1);
+  return null;
 }
 
 /**
@@ -39,7 +55,139 @@ export interface WorkerEinSyncResult {
   skipped: number;
   errors: number;
   workersCreated: number;
+  phonesCreated: number;
+  phonesDeleted: number;
+  phonesUnchanged: number;
+  optins: number;
   details: Array<{ workerId?: string; remoteWorkerId: string; action: string; error?: string }>;
+}
+
+const OPTIN_SYNC_NOTE = "opted in via sync from Teamsters 631";
+
+/**
+ * Mirror the single remote worker_phone onto the worker's contact:
+ * - blank remote phone → delete every local phone number;
+ * - present remote phone → keep an active local number whose digits match,
+ *   delete every other number, create the number (as +1E164, primary) when
+ *   no match exists;
+ * - ensure the synced number's SMS opt-in record is opted in (general optin
+ *   only — allowlist untouched), overriding a prior opt-out, with the
+ *   audit-trail note recorded via the storage logger.
+ * All mutations go through the logged storage methods.
+ */
+async function mirrorWorkerPhone(opts: {
+  contactId: string;
+  remotePhoneRaw: string;
+  workerId: string;
+  remoteWorkerId: string;
+  dryRun: boolean;
+  result: WorkerEinSyncResult;
+}): Promise<void> {
+  const { contactId, remotePhoneRaw, workerId, remoteWorkerId, dryRun, result } = opts;
+  const detail = (action: string, error?: string) => {
+    result.details.push({ workerId, remoteWorkerId, action, ...(error ? { error } : {}) });
+  };
+
+  const localNumbers = await storage.contacts.phoneNumbers.getPhoneNumbersByContact(contactId);
+  const remoteTrimmed = remotePhoneRaw.trim();
+
+  // Blank remote phone → mirror by deleting everything local.
+  if (!remoteTrimmed) {
+    for (const local of localNumbers) {
+      if (dryRun) {
+        result.phonesDeleted++;
+        detail("would_delete_phone", `remote phone blank; would delete ${local.phoneNumber}`);
+      } else {
+        await storage.contacts.phoneNumbers.deletePhoneNumber(local.id);
+        result.phonesDeleted++;
+        detail("deleted_phone", `remote phone blank; deleted ${local.phoneNumber}`);
+      }
+    }
+    return;
+  }
+
+  const remoteDigits = normalizePhoneDigits(remoteTrimmed);
+  if (!remoteDigits) {
+    detail("phone_invalid", `remote phone "${remoteTrimmed}" is not a valid 10-digit US number; phone left untouched`);
+    return;
+  }
+  const e164 = `+1${remoteDigits}`;
+
+  // Keep the first ACTIVE local number whose digits match; purge all others.
+  const match = localNumbers.find(
+    (p) => p.isActive && normalizePhoneDigits(p.phoneNumber) === remoteDigits,
+  );
+
+  for (const local of localNumbers) {
+    if (match && local.id === match.id) continue;
+    if (dryRun) {
+      result.phonesDeleted++;
+      detail("would_delete_phone", `would delete ${local.phoneNumber} (does not match remote ${e164})`);
+    } else {
+      await storage.contacts.phoneNumbers.deletePhoneNumber(local.id);
+      result.phonesDeleted++;
+      detail("deleted_phone", `deleted ${local.phoneNumber} (does not match remote ${e164})`);
+    }
+  }
+
+  if (match) {
+    result.phonesUnchanged++;
+    detail(dryRun ? "would_keep_phone" : "kept_phone", `matches remote ${e164}`);
+  } else if (dryRun) {
+    result.phonesCreated++;
+    detail("would_create_phone", `would create ${e164}`);
+  } else {
+    await storage.contacts.phoneNumbers.createPhoneNumber({
+      contactId,
+      phoneNumber: e164,
+      isPrimary: true,
+      isActive: true,
+    });
+    result.phonesCreated++;
+    detail("created_phone", `created ${e164}`);
+  }
+
+  // Force SMS opt-in (general optin only, never allowlist), overriding a
+  // prior explicit opt-out. The audit note lives in the log trail only.
+  const existingOptin = await smsOptinStorage.getSmsOptinByPhoneNumber(e164);
+  if (existingOptin?.optin) {
+    return; // already opted in — nothing to do, no note
+  }
+  if (dryRun) {
+    result.optins++;
+    detail("would_optin", `${e164} would be marked SMS opted-in`);
+    return;
+  }
+  let optinId: string;
+  if (existingOptin) {
+    const updated = await smsOptinStorage.updateSmsOptin(existingOptin.id, {
+      optin: true,
+      optinDate: new Date(),
+      optinUser: null,
+      optinIp: null,
+    });
+    optinId = updated?.id ?? existingOptin.id;
+  } else {
+    const created = await smsOptinStorage.createSmsOptin({
+      phoneNumber: e164,
+      optin: true,
+      optinDate: new Date(),
+      allowlist: false,
+    });
+    optinId = created.id;
+  }
+  result.optins++;
+  detail("opted_in", `${e164} marked SMS opted-in`);
+  setImmediate(() => {
+    storageLogger.info(`Storage operation: comm.smsOptin.syncOptin`, {
+      module: "comm.smsOptin",
+      operation: "syncOptin",
+      entity_id: optinId,
+      host_entity_id: contactId,
+      description: `${e164}: ${OPTIN_SYNC_NOTE}`,
+      meta: { phoneNumber: e164, remoteWorkerId, workerId, previousOptin: existingOptin?.optin ?? null },
+    });
+  });
 }
 
 export async function syncWorkerEins(
@@ -47,7 +195,8 @@ export async function syncWorkerEins(
   dryRun: boolean,
 ): Promise<WorkerEinSyncResult> {
   const result: WorkerEinSyncResult = {
-    created: 0, updated: 0, unchanged: 0, skipped: 0, errors: 0, workersCreated: 0, details: [],
+    created: 0, updated: 0, unchanged: 0, skipped: 0, errors: 0, workersCreated: 0,
+    phonesCreated: 0, phonesDeleted: 0, phonesUnchanged: 0, optins: 0, details: [],
   };
 
   if (!responseData.success || !responseData.data) {
@@ -96,6 +245,7 @@ export async function syncWorkerEins(
   for (const row of rows) {
     const remoteWorkerId = row.worker_id !== undefined && row.worker_id !== null ? String(row.worker_id).trim() : "";
     const rawEin = row.worker_ein !== undefined && row.worker_ein !== null ? String(row.worker_ein).trim() : "";
+    const remotePhoneRaw = row.worker_phone !== undefined && row.worker_phone !== null ? String(row.worker_phone) : "";
 
     if (!remoteWorkerId) {
       result.skipped++;
@@ -143,6 +293,19 @@ export async function syncWorkerEins(
           result.workersCreated++;
           result.created++;
           result.details.push({ remoteWorkerId, action: "would_create_worker" });
+          // No local contact exists yet — report the phone actions a live run would take.
+          const remoteTrimmed = remotePhoneRaw.trim();
+          if (remoteTrimmed) {
+            const digits = normalizePhoneDigits(remoteTrimmed);
+            if (digits) {
+              result.phonesCreated++;
+              result.optins++;
+              result.details.push({ remoteWorkerId, action: "would_create_phone", error: `would create +1${digits}` });
+              result.details.push({ remoteWorkerId, action: "would_optin", error: `+1${digits} would be marked SMS opted-in` });
+            } else {
+              result.details.push({ remoteWorkerId, action: "phone_invalid", error: `remote phone "${remoteTrimmed}" is not a valid 10-digit US number` });
+            }
+          }
           continue;
         }
 
@@ -152,6 +315,14 @@ export async function syncWorkerEins(
         result.workersCreated++;
         result.created++;
         result.details.push({ workerId: newWorker.id, remoteWorkerId, action: "created_worker" });
+        await mirrorWorkerPhone({
+          contactId: newWorker.contactId,
+          remotePhoneRaw,
+          workerId: newWorker.id,
+          remoteWorkerId,
+          dryRun,
+          result,
+        });
         continue;
       }
       const localWorkerId = t631Row.workerId;
@@ -206,6 +377,21 @@ export async function syncWorkerEins(
         });
         result.created++;
         result.details.push(wd("created"));
+      }
+
+      // Mirror the remote phone onto the (existing) worker's contact.
+      const localWorker = await storage.workers.getWorker(localWorkerId);
+      if (localWorker) {
+        await mirrorWorkerPhone({
+          contactId: localWorker.contactId,
+          remotePhoneRaw,
+          workerId: localWorkerId,
+          remoteWorkerId,
+          dryRun,
+          result,
+        });
+      } else {
+        result.details.push(wd("phone_skipped", "local worker row not found for phone mirroring"));
       }
     } catch (error) {
       result.errors++;

@@ -56,6 +56,10 @@ interface WorkerEinSyncResult {
   skipped: number;
   errors: number;
   workersCreated: number;
+  phonesCreated: number;
+  phonesDeleted: number;
+  phonesUnchanged: number;
+  optins: number;
   details: Array<{ workerId?: string; remoteWorkerId: string; action: string; error?: string }>;
 }
 
@@ -84,7 +88,7 @@ export default function T631FetchPage() {
       setSyncResult(data);
       toast({
         title: data.dryRun ? "Dry run complete" : "Fetch Workers complete",
-        description: `${data.workersCreated} workers created, ${data.created} created, ${data.updated} updated, ${data.unchanged} unchanged, ${data.skipped} skipped, ${data.errors} errors`,
+        description: `${data.workersCreated} workers created, ${data.created} created, ${data.updated} updated, ${data.unchanged} unchanged, ${data.skipped} skipped, ${data.errors} errors; phones: ${data.phonesCreated} created, ${data.phonesDeleted} deleted, ${data.phonesUnchanged} kept, ${data.optins} opt-ins`,
         variant: data.errors > 0 ? "destructive" : "default",
       });
     },
@@ -235,6 +239,10 @@ export default function T631FetchPage() {
                   <Badge variant={syncResult.errors > 0 ? "destructive" : "secondary"} data-testid="badge-sync-errors">
                     {syncResult.errors} errors
                   </Badge>
+                  <Badge variant="secondary" data-testid="badge-sync-phones-created">{syncResult.phonesCreated} phones created</Badge>
+                  <Badge variant="secondary" data-testid="badge-sync-phones-deleted">{syncResult.phonesDeleted} phones deleted</Badge>
+                  <Badge variant="secondary" data-testid="badge-sync-phones-kept">{syncResult.phonesUnchanged} phones kept</Badge>
+                  <Badge variant="secondary" data-testid="badge-sync-optins">{syncResult.optins} SMS opt-ins</Badge>
                 </div>
                 {syncResult.details.length > 0 && (
                   <div>
