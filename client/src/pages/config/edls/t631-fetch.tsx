@@ -60,6 +60,9 @@ interface WorkerEinSyncResult {
   phonesDeleted: number;
   phonesUnchanged: number;
   optins: number;
+  statusesSet: number;
+  edlsActivated: number;
+  edlsDeactivated: number;
   details: Array<{ workerId?: string; remoteWorkerId: string; action: string; error?: string }>;
 }
 
@@ -88,7 +91,7 @@ export default function T631FetchPage() {
       setSyncResult(data);
       toast({
         title: data.dryRun ? "Dry run complete" : "Fetch Workers complete",
-        description: `${data.workersCreated} workers created, ${data.created} created, ${data.updated} updated, ${data.unchanged} unchanged, ${data.skipped} skipped, ${data.errors} errors; phones: ${data.phonesCreated} created, ${data.phonesDeleted} deleted, ${data.phonesUnchanged} kept, ${data.optins} opt-ins`,
+        description: `${data.workersCreated} workers created, ${data.created} created, ${data.updated} updated, ${data.unchanged} unchanged, ${data.skipped} skipped, ${data.errors} errors; phones: ${data.phonesCreated} created, ${data.phonesDeleted} deleted, ${data.phonesUnchanged} kept, ${data.optins} opt-ins; statuses: ${data.statusesSet} set, EDLS: ${data.edlsActivated} activated, ${data.edlsDeactivated} deactivated`,
         variant: data.errors > 0 ? "destructive" : "default",
       });
     },
@@ -243,6 +246,9 @@ export default function T631FetchPage() {
                   <Badge variant="secondary" data-testid="badge-sync-phones-deleted">{syncResult.phonesDeleted} phones deleted</Badge>
                   <Badge variant="secondary" data-testid="badge-sync-phones-kept">{syncResult.phonesUnchanged} phones kept</Badge>
                   <Badge variant="secondary" data-testid="badge-sync-optins">{syncResult.optins} SMS opt-ins</Badge>
+                  <Badge variant="secondary" data-testid="badge-sync-statuses-set">{syncResult.statusesSet} statuses set</Badge>
+                  <Badge variant="secondary" data-testid="badge-sync-edls-activated">{syncResult.edlsActivated} EDLS activated</Badge>
+                  <Badge variant="secondary" data-testid="badge-sync-edls-deactivated">{syncResult.edlsDeactivated} EDLS deactivated</Badge>
                 </div>
                 {syncResult.details.length > 0 && (
                   <div>

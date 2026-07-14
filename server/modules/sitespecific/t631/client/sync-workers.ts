@@ -1,13 +1,17 @@
 import { storage, createCommSmsOptinStorage } from "../../../../storage";
 import { logger, storageLogger } from "../../../../logger";
+import { getOptionsType } from "../../../options-registry";
 
 interface T631WorkerRow {
   worker_id?: unknown;
   worker_ein?: unknown;
   worker_name?: unknown;
   worker_phone?: unknown;
+  worker_ms?: unknown;
   [key: string]: unknown;
 }
+
+const MS_TO_SYNC_VARIABLE = "sitespecific.t631.ms_to_sync";
 
 const smsOptinStorage = createCommSmsOptinStorage();
 
@@ -59,7 +63,180 @@ export interface WorkerEinSyncResult {
   phonesDeleted: number;
   phonesUnchanged: number;
   optins: number;
+  statusesSet: number;
+  edlsActivated: number;
+  edlsDeactivated: number;
   details: Array<{ workerId?: string; remoteWorkerId: string; action: string; error?: string }>;
+}
+
+interface SyncedMsOption {
+  id: string;
+  industryId: string;
+  name: string;
+}
+
+interface MemberStatusSyncContext {
+  /** remote worker_ms code (sirius_id, trimmed) → local option selected for sync */
+  syncedBySirius: Map<string, SyncedMsOption>;
+  /** every distinct sirius_id present locally (synced or not), for unmatched detection */
+  knownSiriusIds: Set<string>;
+  /** option IDs selected for sync (resolved against existing options) */
+  syncedMsIds: string[];
+  /** local workers matched to any row in the incoming list (excluded from EDLS deactivation) */
+  seenWorkerIds: Set<string>;
+}
+
+/**
+ * Load the `sitespecific.t631.ms_to_sync` selection and resolve it against
+ * the local member-status options (matched to remote codes via sirius_id).
+ */
+async function buildMemberStatusSyncContext(): Promise<MemberStatusSyncContext> {
+  const ctx: MemberStatusSyncContext = {
+    syncedBySirius: new Map(),
+    knownSiriusIds: new Set(),
+    syncedMsIds: [],
+    seenWorkerIds: new Set(),
+  };
+
+  const variable = await storage.variables.getByName(MS_TO_SYNC_VARIABLE);
+  const raw = variable?.value;
+  const selectedIds = new Set(
+    Array.isArray(raw) ? raw.filter((v): v is string => typeof v === "string") : [],
+  );
+
+  const allMs = (await getOptionsType("worker-ms")!.getAll()) as Array<{
+    id: string;
+    name: string;
+    siriusId: string | null;
+    industryId: string;
+  }>;
+
+  for (const ms of allMs) {
+    const sirius = (ms.siriusId ?? "").trim();
+    if (!sirius) continue;
+    ctx.knownSiriusIds.add(sirius);
+    if (selectedIds.has(ms.id)) {
+      ctx.syncedBySirius.set(sirius, { id: ms.id, industryId: ms.industryId, name: ms.name });
+      ctx.syncedMsIds.push(ms.id);
+    }
+  }
+
+  return ctx;
+}
+
+/**
+ * Apply the remote worker_ms code to a local worker: when the code maps to a
+ * status selected for sync, record the status via the normal history
+ * methodology (new worker_msh entry dated today; same-day same-industry entry
+ * is updated instead, honoring the (date, worker, industry) uniqueness) and
+ * ensure the worker is EDLS-active. Unmatched codes are reported; codes that
+ * map to a non-synced status leave status and EDLS untouched.
+ */
+async function syncMemberStatus(opts: {
+  ctx: MemberStatusSyncContext;
+  workerId: string;
+  remoteWorkerId: string;
+  remoteMsRaw: string;
+  dryRun: boolean;
+  result: WorkerEinSyncResult;
+}): Promise<void> {
+  const { ctx, workerId, remoteWorkerId, remoteMsRaw, dryRun, result } = opts;
+  const detail = (action: string, error?: string) => {
+    result.details.push({ workerId, remoteWorkerId, action, ...(error ? { error } : {}) });
+  };
+
+  const code = remoteMsRaw.trim();
+  if (!code) return;
+
+  const synced = ctx.syncedBySirius.get(code);
+  if (!synced) {
+    if (!ctx.knownSiriusIds.has(code)) {
+      detail("ms_unmatched", `remote worker_ms "${code}" does not match any local member status sirius_id; status and EDLS untouched`);
+    }
+    return; // known but not selected for sync → leave status and EDLS alone
+  }
+
+  ctx.seenWorkerIds.add(workerId);
+
+  // Status: skip when the worker already currently holds it.
+  const currentIds = await storage.workerMsh.getCurrentMemberStatusIds(workerId);
+  if (currentIds.includes(synced.id)) {
+    detail(dryRun ? "would_keep_status" : "kept_status", `already current: ${synced.name}`);
+  } else {
+    const today = new Date().toISOString().slice(0, 10);
+    if (dryRun) {
+      result.statusesSet++;
+      detail("would_set_status", `${synced.name} (${code}) dated ${today}`);
+    } else {
+      // Same-day entry for this industry? Update it instead of violating the
+      // (date, worker, industry) uniqueness.
+      const history = await storage.workerMsh.getWorkerMsh(workerId);
+      const sameDay = history.find(
+        (h: { date: string; industryId: string }) => h.date === today && h.industryId === synced.industryId,
+      );
+      if (sameDay) {
+        await storage.workerMsh.updateWorkerMsh(sameDay.id, { msId: synced.id });
+      } else {
+        await storage.workerMsh.createWorkerMsh({
+          workerId,
+          date: today,
+          msId: synced.id,
+          industryId: synced.industryId,
+          data: { source: "t631-sync" },
+        });
+      }
+      result.statusesSet++;
+      detail("set_status", `${synced.name} (${code}) dated ${today}`);
+    }
+  }
+
+  // EDLS: ensure active.
+  const edls = await storage.workerEdls.getByWorker(workerId);
+  if (!edls?.active) {
+    if (dryRun) {
+      result.edlsActivated++;
+      detail("would_edls_activate");
+    } else {
+      await storage.workerEdls.setActive(workerId, true);
+      result.edlsActivated++;
+      detail("edls_activated");
+    }
+  }
+}
+
+/**
+ * Deactivation pass: for each status selected for sync, any local worker
+ * currently holding that status who was NOT in the incoming remote list is
+ * marked not active in EDLS (workers already inactive are left alone).
+ */
+async function deactivateMissingWorkers(
+  ctx: MemberStatusSyncContext,
+  dryRun: boolean,
+  result: WorkerEinSyncResult,
+): Promise<void> {
+  if (ctx.syncedMsIds.length === 0) return;
+  const holders = await storage.workerMsh.getWorkerIdsWithCurrentMs(ctx.syncedMsIds);
+  const candidateIds = new Set(
+    holders.map((h) => h.workerId).filter((id) => !ctx.seenWorkerIds.has(id)),
+  );
+  for (const workerId of candidateIds) {
+    try {
+      const edls = await storage.workerEdls.getByWorker(workerId);
+      if (!edls?.active) continue; // already inactive
+      if (dryRun) {
+        result.edlsDeactivated++;
+        result.details.push({ workerId, remoteWorkerId: "(absent)", action: "would_edls_deactivate", error: "holds a synced status but is not in the incoming remote list" });
+      } else {
+        await storage.workerEdls.setActive(workerId, false);
+        result.edlsDeactivated++;
+        result.details.push({ workerId, remoteWorkerId: "(absent)", action: "edls_deactivated", error: "holds a synced status but is not in the incoming remote list" });
+      }
+    } catch (error) {
+      result.errors++;
+      const errMsg = error instanceof Error ? error.message : String(error);
+      result.details.push({ workerId, remoteWorkerId: "(absent)", action: "error", error: errMsg });
+    }
+  }
 }
 
 const OPTIN_SYNC_NOTE = "opted in via sync from Teamsters 631";
@@ -196,7 +373,8 @@ export async function syncWorkerEins(
 ): Promise<WorkerEinSyncResult> {
   const result: WorkerEinSyncResult = {
     created: 0, updated: 0, unchanged: 0, skipped: 0, errors: 0, workersCreated: 0,
-    phonesCreated: 0, phonesDeleted: 0, phonesUnchanged: 0, optins: 0, details: [],
+    phonesCreated: 0, phonesDeleted: 0, phonesUnchanged: 0, optins: 0,
+    statusesSet: 0, edlsActivated: 0, edlsDeactivated: 0, details: [],
   };
 
   if (!responseData.success || !responseData.data) {
@@ -242,10 +420,13 @@ export async function syncWorkerEins(
   // Track EINs seen this run so a duplicate remote EIN is reported, not double-written.
   const seenEins = new Map<string, string>(); // ein -> remoteWorkerId that claimed it
 
+  const msCtx = await buildMemberStatusSyncContext();
+
   for (const row of rows) {
     const remoteWorkerId = row.worker_id !== undefined && row.worker_id !== null ? String(row.worker_id).trim() : "";
     const rawEin = row.worker_ein !== undefined && row.worker_ein !== null ? String(row.worker_ein).trim() : "";
     const remotePhoneRaw = row.worker_phone !== undefined && row.worker_phone !== null ? String(row.worker_phone) : "";
+    const remoteMsRaw = row.worker_ms !== undefined && row.worker_ms !== null ? String(row.worker_ms) : "";
 
     if (!remoteWorkerId) {
       result.skipped++;
@@ -306,6 +487,16 @@ export async function syncWorkerEins(
               result.details.push({ remoteWorkerId, action: "phone_invalid", error: `remote phone "${remoteTrimmed}" is not a valid 10-digit US number` });
             }
           }
+          // No local worker yet — report the status/EDLS actions a live run would take.
+          const wouldSync = msCtx.syncedBySirius.get(remoteMsRaw.trim());
+          if (wouldSync) {
+            result.statusesSet++;
+            result.edlsActivated++;
+            result.details.push({ remoteWorkerId, action: "would_set_status", error: `${wouldSync.name} (${remoteMsRaw.trim()})` });
+            result.details.push({ remoteWorkerId, action: "would_edls_activate" });
+          } else if (remoteMsRaw.trim() && !msCtx.knownSiriusIds.has(remoteMsRaw.trim())) {
+            result.details.push({ remoteWorkerId, action: "ms_unmatched", error: `remote worker_ms "${remoteMsRaw.trim()}" does not match any local member status sirius_id; status and EDLS untouched` });
+          }
           continue;
         }
 
@@ -323,9 +514,15 @@ export async function syncWorkerEins(
           dryRun,
           result,
         });
+        await syncMemberStatus({ ctx: msCtx, workerId: newWorker.id, remoteWorkerId, remoteMsRaw, dryRun, result });
         continue;
       }
       const localWorkerId = t631Row.workerId;
+      // Present in the incoming list → never a deactivation candidate,
+      // regardless of whether the remote code maps to a synced status
+      // (non-synced/unmatched codes must leave EDLS untouched) and even
+      // when the EIN portion is skipped below.
+      msCtx.seenWorkerIds.add(localWorkerId);
       const wd = (action: string, error?: string) => ({
         workerId: localWorkerId,
         remoteWorkerId,
@@ -393,6 +590,9 @@ export async function syncWorkerEins(
       } else {
         result.details.push(wd("phone_skipped", "local worker row not found for phone mirroring"));
       }
+
+      // Member status + EDLS-active from the remote worker_ms code.
+      await syncMemberStatus({ ctx: msCtx, workerId: localWorkerId, remoteWorkerId, remoteMsRaw, dryRun, result });
     } catch (error) {
       result.errors++;
       const errMsg = error instanceof Error ? error.message : String(error);
@@ -403,6 +603,9 @@ export async function syncWorkerEins(
       });
     }
   }
+
+  // Deactivation pass: synced-status holders absent from the incoming list.
+  await deactivateMissingWorkers(msCtx, dryRun, result);
 
   return result;
 }
