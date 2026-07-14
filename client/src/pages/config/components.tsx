@@ -53,6 +53,8 @@ export default function ComponentsConfigPage() {
     message: string;
     missingDependencies: Array<{ componentId: string; componentName: string; reason: string; missingTables: string[] }>;
     failedOperations: Array<{ tableName: string; operation: string; error?: string }>;
+    repairable: boolean;
+    driftTables: Array<{ tableName: string; hasRows: boolean; detail: string }>;
   } | null>(null);
 
   const updateComponentMutation = useMutation({
@@ -82,6 +84,8 @@ export default function ComponentsConfigPage() {
         message: data?.message || error?.message || "Failed to update component.",
         missingDependencies: isDependencyError ? data.missingDependencies : [],
         failedOperations: failedOps,
+        repairable: data?.repairable === true,
+        driftTables: Array.isArray(data?.driftTables) ? data.driftTables : [],
       });
       toast({
         title: isDependencyError ? "Missing Prerequisites" : "Update Failed",
@@ -95,6 +99,40 @@ export default function ComponentsConfigPage() {
       setPendingAction(null);
       setConfirmText("");
       setDataAction("retain");
+    },
+  });
+
+  const repairComponentMutation = useMutation({
+    mutationFn: async ({ componentId }: { componentId: string }) => {
+      return apiRequest("POST", `/api/components/config/${componentId}/repair`, {});
+    },
+    onSuccess: (data: any, variables) => {
+      setLastError(null);
+      queryClient.invalidateQueries({ queryKey: ["/api/components/config"] });
+      toast({
+        title: "Component Repaired",
+        description: data?.message || `Component ${variables.componentId} was repaired and enabled.`,
+      });
+    },
+    onError: (error: any, variables) => {
+      const data = error?.data;
+      const failedOps = Array.isArray(data?.schemaOperations)
+        ? data.schemaOperations.filter((op: any) => !op.success)
+        : [];
+      setLastError({
+        componentId: variables.componentId,
+        title: "Repair Failed",
+        message: data?.message || error?.message || "Failed to repair component.",
+        missingDependencies: Array.isArray(data?.missingDependencies) ? data.missingDependencies : [],
+        failedOperations: failedOps,
+        repairable: false,
+        driftTables: [],
+      });
+      toast({
+        title: "Repair Failed",
+        description: data?.message || error?.message || "Failed to repair component.",
+        variant: "destructive",
+      });
     },
   });
 
@@ -257,6 +295,35 @@ export default function ComponentsConfigPage() {
                     </li>
                   ))}
                 </ul>
+              )}
+              {lastError.driftTables.some((t) => t.hasRows) && (
+                <p className="text-sm" data-testid="text-repair-blocked">
+                  Some mismatched tables contain data ({lastError.driftTables.filter((t) => t.hasRows).map((t) => t.tableName).join(", ")}).
+                  They cannot be repaired automatically and need an authored migration.
+                </p>
+              )}
+              {lastError.repairable && (
+                <div className="space-y-1">
+                  <p className="text-sm">
+                    All mismatched tables are empty, so they can be safely dropped and recreated.
+                  </p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={repairComponentMutation.isPending}
+                    onClick={() => repairComponentMutation.mutate({ componentId: lastError.componentId })}
+                    data-testid="button-repair-component"
+                  >
+                    {repairComponentMutation.isPending ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Repairing…
+                      </>
+                    ) : (
+                      "Repair and retry"
+                    )}
+                  </Button>
+                </div>
               )}
             </div>
           </AlertDescription>

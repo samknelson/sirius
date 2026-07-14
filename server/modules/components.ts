@@ -4,6 +4,7 @@ import { getAllComponents, getComponentById, ComponentConfig, ComponentDefinitio
 import {
   enableComponentSchema,
   disableComponentSchema,
+  repairComponentSchema,
   reconcileComponentPluginConfigs,
   checkComponentSchemaDrift,
   getComponentSchemaInfo,
@@ -157,12 +158,16 @@ export function registerComponentRoutes(
                 schemaOperations: lifecycleResult.schemaOperations,
               });
             }
+            const driftTables = lifecycleResult.driftTables ?? [];
             return res.status(500).json({
               message: lifecycleResult.error
                 ? `Failed to create component tables: ${lifecycleResult.error}`
                 : "Failed to create component tables",
               schemaOperations: lifecycleResult.schemaOperations,
-              error: lifecycleResult.error
+              error: lifecycleResult.error,
+              driftTables,
+              // Repair is offered only when every drifted table is empty.
+              repairable: driftTables.length > 0 && driftTables.every((t) => !t.hasRows),
             });
           }
         } else {
@@ -201,6 +206,59 @@ export function registerComponentRoutes(
     } catch (error) {
       console.error("Failed to update component configuration:", error);
       res.status(500).json({ message: "Failed to update component configuration" });
+    }
+  });
+
+  // POST /api/components/config/:componentId/repair - Repair-and-retry a failed
+  // component enable (Task #727). Drops ONLY empty drifted tables, then re-runs
+  // the normal enable flow. Tables containing data are never touched.
+  app.post("/api/components/config/:componentId/repair", requireAccess('admin'), async (req, res) => {
+    try {
+      const { componentId } = req.params;
+      const component = getComponentById(componentId);
+      if (!component) {
+        return res.status(404).json({ message: "Component not found" });
+      }
+
+      const lifecycleResult = await repairComponentSchema(componentId);
+      if (!lifecycleResult.success) {
+        if (lifecycleResult.missingDependencies?.length) {
+          return res.status(409).json({
+            message: lifecycleResult.error,
+            error: lifecycleResult.error,
+            missingDependencies: lifecycleResult.missingDependencies,
+            schemaOperations: lifecycleResult.schemaOperations,
+          });
+        }
+        return res.status(500).json({
+          message: lifecycleResult.error
+            ? `Repair failed: ${lifecycleResult.error}`
+            : "Repair failed",
+          error: lifecycleResult.error,
+          schemaOperations: lifecycleResult.schemaOperations,
+          repairedTables: lifecycleResult.repairedTables,
+        });
+      }
+
+      // Complete the enable exactly like the PUT route does.
+      await reconcileComponentPluginConfigs(componentId, true);
+      await updateComponentCache(componentId, true);
+      syncComponentPermissions();
+      clearAccessCache();
+
+      const effectiveEnabled = await isComponentEnabled(componentId);
+      res.json({
+        componentId,
+        enabled: effectiveEnabled,
+        managesSchema: true,
+        repairedTables: lifecycleResult.repairedTables ?? [],
+        message: lifecycleResult.repairedTables?.length
+          ? `Repaired ${lifecycleResult.repairedTables.length} table(s) and enabled the component`
+          : "Component enabled successfully (no repair was needed)",
+      });
+    } catch (error) {
+      console.error("Failed to repair component schema:", error);
+      res.status(500).json({ message: "Failed to repair component schema" });
     }
   });
 

@@ -1,5 +1,7 @@
 import { storage } from "../storage";
-import { tableExists } from "../storage/utils";
+import { tableExists, tableHasRows } from "../storage/utils";
+import { storageLogger } from "../logger";
+import type { SchemaDriftReport } from "./component-schema-push";
 import {
   getComponentById,
   getComponentSchemaStateVariableName,
@@ -26,6 +28,14 @@ export interface MissingDependency {
   missingTables: string[];
 }
 
+export interface DriftedTableInfo {
+  tableName: string;
+  /** True when the drifted table contains rows — repair (drop/recreate) is NOT safe. */
+  hasRows: boolean;
+  /** Human-readable description of the drift on this table. */
+  detail: string;
+}
+
 export interface ComponentLifecycleResult {
   success: boolean;
   componentId: string;
@@ -35,6 +45,63 @@ export interface ComponentLifecycleResult {
   message?: string;
   /** Set when enable was refused because prerequisite components are not ready. */
   missingDependencies?: MissingDependency[];
+  /** Set when enable failed because existing tables drifted from the expected schema. */
+  driftTables?: DriftedTableInfo[];
+  /** Set by repairComponentSchema: tables that were dropped and recreated. */
+  repairedTables?: string[];
+}
+
+function formatDriftReport(r: SchemaDriftReport): string {
+  const parts: string[] = [];
+  if (r.missingColumns.length) parts.push(`missing columns: ${r.missingColumns.join(", ")}`);
+  if (r.extraColumns.length) parts.push(`extra columns: ${r.extraColumns.join(", ")}`);
+  if (r.typeMismatches.length) parts.push(`type mismatches: ${r.typeMismatches.join("; ")}`);
+  if (r.missingConstraints.length) parts.push(`missing constraints: ${r.missingConstraints.join("; ")}`);
+  if (r.missingIndexes.length) parts.push(`missing indexes: ${r.missingIndexes.join("; ")}`);
+  return parts.length ? parts.join("; ") : "unspecified drift";
+}
+
+interface DriftErrorLike extends Error {
+  reports: SchemaDriftReport[];
+}
+
+/**
+ * Structural check instead of `instanceof` because ComponentSchemaDriftError
+ * is loaded via dynamic import (to avoid a static import cycle) and dual
+ * module instances would defeat an instanceof test.
+ */
+function isDriftError(error: unknown): error is DriftErrorLike {
+  return (
+    error instanceof Error &&
+    error.name === "ComponentSchemaDriftError" &&
+    Array.isArray((error as DriftErrorLike).reports)
+  );
+}
+
+function summarizeFailedOperations(operations: SchemaOperationResult[]): string {
+  const failed = operations.filter((op) => !op.success);
+  if (failed.length === 0) return "Schema push failed";
+  return failed
+    .map((op) => `${op.tableName}: ${op.error ?? "unknown error"}`)
+    .join(" | ");
+}
+
+function logLifecycleFailure(
+  operation: string,
+  componentId: string,
+  error: string | undefined,
+  operations: SchemaOperationResult[],
+  extra?: Record<string, unknown>,
+): void {
+  storageLogger.error(`Component ${operation} failed for ${componentId}: ${error ?? "unknown error"}`, {
+    source: "components",
+    module: "components",
+    operation,
+    entity_id: componentId,
+    description: error ?? null,
+    schema_operations: operations,
+    ...extra,
+  });
 }
 
 /**
@@ -165,6 +232,7 @@ export async function enableComponentSchema(componentId: string): Promise<Compon
 
   const operations: SchemaOperationResult[] = [];
   const tableStates: ComponentTableState[] = [];
+  const driftTables: DriftedTableInfo[] = [];
   const now = new Date().toISOString();
   let hasError = false;
 
@@ -203,12 +271,33 @@ export async function enableComponentSchema(componentId: string): Promise<Compon
     hasError = true;
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.error(`Component schema push failed for ${componentId}:`, errorMessage, error instanceof Error ? error.stack : '');
-    operations.push({
-      success: false,
-      tableName: component.schemaManifest.schemaPath,
-      operation: "push",
-      error: errorMessage,
-    });
+    if (isDriftError(error)) {
+      for (const report of error.reports) {
+        const detail = formatDriftReport(report);
+        let hasRows = false;
+        try {
+          hasRows = await tableHasRows(report.tableName);
+        } catch {
+          // If we cannot determine emptiness, treat the table as holding data
+          // so no unsafe repair is offered.
+          hasRows = true;
+        }
+        driftTables.push({ tableName: report.tableName, hasRows, detail });
+        operations.push({
+          success: false,
+          tableName: report.tableName,
+          operation: "push",
+          error: `Table exists but does not match the expected schema — ${detail}${hasRows ? " (table contains data; requires a migration)" : " (table is empty; safe to repair)"}`,
+        });
+      }
+    } else {
+      operations.push({
+        success: false,
+        tableName: component.schemaManifest.schemaPath,
+        operation: "push",
+        error: errorMessage,
+      });
+    }
   }
 
   const allSuccessful = !hasError;
@@ -236,12 +325,14 @@ export async function enableComponentSchema(componentId: string): Promise<Compon
     if (getComponentMigrations(componentId).length > 0) {
       const result = await runComponentMigrations(componentId);
       if (result.errors.length > 0) {
+        const error = `Component schema created, but migrations failed: ${result.errors.join("; ")}`;
+        logLifecycleFailure("schema_enable", componentId, error, operations);
         return {
           success: false,
           componentId,
           schemaOperations: operations,
           schemaState: null,
-          error: `Component schema created, but migrations failed: ${result.errors.join("; ")}`,
+          error,
         };
       }
     }
@@ -255,12 +346,145 @@ export async function enableComponentSchema(componentId: string): Promise<Compon
     };
   }
 
+  const error = `Schema push failed: ${summarizeFailedOperations(operations)}`;
+  logLifecycleFailure("schema_enable", componentId, error, operations, {
+    drift_tables: driftTables.length ? driftTables : undefined,
+  });
   return {
     success: false,
     componentId,
     schemaOperations: operations,
     schemaState: null,
-    error: "Schema push failed - state not saved",
+    error,
+    driftTables: driftTables.length ? driftTables : undefined,
+  };
+}
+
+/**
+ * Repair-and-retry for a failed component enable (Task #727).
+ *
+ * A table left behind in a mismatched shape by a previously failed enable has
+ * never been used and holds no data, so dropping and recreating it is safe.
+ * This function:
+ *   1. Re-runs the schema push to collect the current drift reports.
+ *   2. Refuses to touch any drifted table that contains rows (those require an
+ *      authored migration).
+ *   3. Atomically drops each EMPTY drifted table (the emptiness check and the
+ *      DROP happen in a single server-side statement, so a concurrent insert
+ *      cannot slip between them).
+ *   4. Re-runs the normal enable flow to recreate the tables and save state.
+ *
+ * Every repair action is written to the DB-backed log.
+ */
+export async function repairComponentSchema(componentId: string): Promise<ComponentLifecycleResult> {
+  const component = getComponentById(componentId);
+
+  if (!component || !component.managesSchema || !component.schemaManifest) {
+    return {
+      success: false,
+      componentId,
+      schemaOperations: [],
+      schemaState: null,
+      error: component
+        ? `Component ${componentId} does not manage a schema`
+        : `Component not found: ${componentId}`,
+    };
+  }
+
+  const missingDependencies = await checkSchemaDependencies(component);
+  if (missingDependencies.length > 0) {
+    return {
+      success: false,
+      componentId,
+      schemaOperations: [],
+      schemaState: null,
+      missingDependencies,
+      error: formatMissingDependencies(component.name, missingDependencies),
+    };
+  }
+
+  // Collect current drift reports by attempting the push.
+  let reports: SchemaDriftReport[] = [];
+  try {
+    const { pushComponentSchema } = await import("./component-schema-push");
+    await pushComponentSchema(componentId);
+    // No drift — nothing to repair; fall through to the normal enable to
+    // record state (and run migrations).
+  } catch (error) {
+    if (isDriftError(error)) {
+      reports = error.reports;
+    } else {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logLifecycleFailure("schema_repair", componentId, errorMessage, []);
+      return {
+        success: false,
+        componentId,
+        schemaOperations: [],
+        schemaState: null,
+        error: `Repair failed before any changes were made: ${errorMessage}`,
+      };
+    }
+  }
+
+  const blocked: string[] = [];
+  for (const report of reports) {
+    const hasRows = await tableHasRows(report.tableName).catch(() => true);
+    if (hasRows) blocked.push(report.tableName);
+  }
+  if (blocked.length > 0) {
+    const error =
+      `Cannot repair: table(s) ${blocked.join(", ")} contain data. ` +
+      `Repair only drops empty tables; tables with data require an authored migration.`;
+    logLifecycleFailure("schema_repair", componentId, error, []);
+    return {
+      success: false,
+      componentId,
+      schemaOperations: [],
+      schemaState: null,
+      error,
+    };
+  }
+
+  const repairedTables: string[] = [];
+  const operations: SchemaOperationResult[] = [];
+  for (const report of reports) {
+    try {
+      await storage.rawSql.dropTableIfEmpty(report.tableName);
+      repairedTables.push(report.tableName);
+      operations.push({ success: true, tableName: report.tableName, operation: "drop", message: "Dropped empty drifted table for repair" });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      operations.push({ success: false, tableName: report.tableName, operation: "drop", error: errorMessage });
+      const summary = `Repair aborted while dropping ${report.tableName}: ${errorMessage}`;
+      logLifecycleFailure("schema_repair", componentId, summary, operations, { repaired_tables: repairedTables });
+      return {
+        success: false,
+        componentId,
+        schemaOperations: operations,
+        schemaState: null,
+        error: summary,
+        repairedTables,
+      };
+    }
+  }
+
+  storageLogger.info(
+    `Component schema repair for ${componentId}: dropped ${repairedTables.length ? repairedTables.join(", ") : "no tables"}; retrying enable`,
+    {
+      source: "components",
+      module: "components",
+      operation: "schema_repair",
+      entity_id: componentId,
+      repaired_tables: repairedTables,
+      drift_reports: reports.map((r) => ({ tableName: r.tableName, detail: formatDriftReport(r) })),
+    },
+  );
+
+  const enableResult = await enableComponentSchema(componentId);
+  return {
+    ...enableResult,
+    schemaOperations: [...operations, ...enableResult.schemaOperations],
+    repairedTables,
   };
 }
 
@@ -352,12 +576,14 @@ export async function disableComponentSchema(
     };
   }
 
+  const disableError = `Some schema operations failed - state not deleted: ${summarizeFailedOperations(operations)}`;
+  logLifecycleFailure("schema_disable", componentId, disableError, operations);
   return {
     success: false,
     componentId,
     schemaOperations: operations,
     schemaState: null,
-    error: "Some schema operations failed - state not deleted",
+    error: disableError,
   };
 }
 
