@@ -74,6 +74,14 @@ const VARIABLE_REGISTRY: Record<string, VariableRegistryEntry> = {
     schema: dispatchDncNotificationConfigSchema,
   },
 
+  // Teamsters 631: member-status option IDs to sync (admin read/write,
+  // gated by the sitespecific.t631.client component). Stored by option ID
+  // so renaming a status does not lose the selection.
+  "sitespecific.t631.ms_to_sync": {
+    component: "sitespecific.t631.client",
+    schema: z.array(z.string()).transform((ids) => Array.from(new Set(ids))),
+  },
+
   // Worker ban notification settings (admin read/write)
   worker_ban_notifications: { schema: workerBanNotificationConfigSchema },
 

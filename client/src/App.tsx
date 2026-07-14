@@ -248,6 +248,7 @@ const HtaHomeEmploymentStatusesPage = lazy(() => import("@/pages/config/hta-home
 const EdlsSettingsPage = lazy(() => import("@/pages/config/edls/settings"));
 const EdlsTasksPage = lazy(() => import("@/pages/config/edls/tasks"));
 const T631FetchPage = lazy(() => import("@/pages/config/edls/t631-fetch"));
+const T631MemberStatusSyncPage = lazy(() => import("@/pages/config/edls/t631-ms"));
 const BaoMemberStatusThresholdsPage = lazy(() => import("@/pages/config/trust/sitespecific/bao/thresholds"));
 const WsBundlesPage = lazy(() => import("@/pages/config/ws/bundles"));
 const WsClientsPage = lazy(() => import("@/pages/config/ws/clients"));
@@ -2613,6 +2614,16 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <T631FetchPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/edls/t631-ms">
+        <ProtectedRoute permission="admin" componentAll={["edls", "sitespecific.t631.client"]}>
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <T631MemberStatusSyncPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
