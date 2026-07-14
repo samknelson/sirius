@@ -19,6 +19,16 @@ import { defineLoggingConfig } from "../middleware/logging";
 import { getClient, runInTransaction } from "../transaction-context";
 import { createUnifiedOptionsStorage } from "../unified-options";
 import { createEdlsCrewsStorage } from "./crews";
+import { isComponentEnabledSync } from "../../services/component-cache";
+
+/**
+ * The dispatch_job_group table is owned by the `dispatch.job_group`
+ * component; it may not exist in the database when that component is
+ * disabled. All reads must gate their join on this check.
+ */
+function jobGroupsEnabled(): boolean {
+  return isComponentEnabledSync("dispatch.job_group");
+}
 
 export const validate = createAsyncStorageValidator<InsertEdlsAssignment, EdlsAssignment, {}>(
   async (data, existing) => {
@@ -455,7 +465,8 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
       if (filters?.facilityId) conditions.push(eq(edlsSheets.facilityId, filters.facilityId));
       if (filters?.jobGroupId) conditions.push(eq(edlsSheets.jobGroupId, filters.jobGroupId));
 
-      const rows = await client
+      const withJobGroups = jobGroupsEnabled();
+      const baseQuery = client
         .select({
           assignmentId: edlsAssignments.id,
           assignmentData: edlsAssignments.data,
@@ -473,15 +484,19 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
           supervisorEmail: users.email,
           facilityId: facilities.id,
           facilityName: facilities.name,
-          jobGroupId: dispatchJobGroups.id,
-          jobGroupName: dispatchJobGroups.name,
+          jobGroupId: withJobGroups ? dispatchJobGroups.id : sql<string | null>`NULL::varchar`,
+          jobGroupName: withJobGroups ? dispatchJobGroups.name : sql<string | null>`NULL::text`,
         })
         .from(edlsAssignments)
         .innerJoin(edlsCrews, eq(edlsAssignments.crewId, edlsCrews.id))
         .innerJoin(edlsSheets, eq(edlsCrews.sheetId, edlsSheets.id))
         .leftJoin(users, eq(edlsSheets.supervisor, users.id))
         .leftJoin(facilities, eq(edlsSheets.facilityId, facilities.id))
-        .leftJoin(dispatchJobGroups, eq(edlsSheets.jobGroupId, dispatchJobGroups.id))
+        .$dynamic();
+
+      const rows = await (withJobGroups
+        ? baseQuery.leftJoin(dispatchJobGroups, eq(edlsSheets.jobGroupId, dispatchJobGroups.id))
+        : baseQuery)
         .where(and(...conditions))
         .orderBy(asc(edlsSheets.ymd), asc(edlsCrews.startTime));
 
@@ -528,7 +543,8 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
       if (filters?.facilityId) conditions.push(eq(edlsSheets.facilityId, filters.facilityId));
       if (filters?.jobGroupId) conditions.push(eq(edlsSheets.jobGroupId, filters.jobGroupId));
 
-      const rows = await client
+      const withJobGroups = jobGroupsEnabled();
+      const baseQuery = client
         .select({
           workerId: edlsAssignments.workerId,
           assignmentId: edlsAssignments.id,
@@ -547,15 +563,19 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
           supervisorEmail: users.email,
           facilityId: facilities.id,
           facilityName: facilities.name,
-          jobGroupId: dispatchJobGroups.id,
-          jobGroupName: dispatchJobGroups.name,
+          jobGroupId: withJobGroups ? dispatchJobGroups.id : sql<string | null>`NULL::varchar`,
+          jobGroupName: withJobGroups ? dispatchJobGroups.name : sql<string | null>`NULL::text`,
         })
         .from(edlsAssignments)
         .innerJoin(edlsCrews, eq(edlsAssignments.crewId, edlsCrews.id))
         .innerJoin(edlsSheets, eq(edlsCrews.sheetId, edlsSheets.id))
         .leftJoin(users, eq(edlsSheets.supervisor, users.id))
         .leftJoin(facilities, eq(edlsSheets.facilityId, facilities.id))
-        .leftJoin(dispatchJobGroups, eq(edlsSheets.jobGroupId, dispatchJobGroups.id))
+        .$dynamic();
+
+      const rows = await (withJobGroups
+        ? baseQuery.leftJoin(dispatchJobGroups, eq(edlsSheets.jobGroupId, dispatchJobGroups.id))
+        : baseQuery)
         .where(and(...conditions))
         .orderBy(asc(edlsSheets.ymd), asc(edlsCrews.startTime));
 

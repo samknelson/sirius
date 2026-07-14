@@ -22,6 +22,16 @@ import { alias } from "drizzle-orm/pg-core";
 import { defineLoggingConfig } from "../middleware/logging";
 import { getClient, runInTransaction } from "../transaction-context";
 import { storage } from "../index";
+import { isComponentEnabledSync } from "../../services/component-cache";
+
+/**
+ * The dispatch_job_group table is owned by the `dispatch.job_group`
+ * component; it may not exist in the database when that component is
+ * disabled. All reads must gate their join on this check.
+ */
+function jobGroupsEnabled(): boolean {
+  return isComponentEnabledSync("dispatch.job_group");
+}
 
 export interface EdlsSheetWithCrews extends EdlsSheet {
   crews: EdlsCrew[];
@@ -140,6 +150,7 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
 
     async getPaginated(page: number, limit: number, filters?: EdlsSheetsFilterOptions): Promise<PaginatedEdlsSheets> {
       const client = getClient();
+      const withJobGroups = jobGroupsEnabled();
       const supervisorUsers = alias(users, 'supervisor_user');
       const assigneeUsers = alias(users, 'assignee_user');
       
@@ -208,10 +219,15 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
             email: assigneeUsers.email,
           },
           assignedCount: assignedCountSubquery,
-          jobGroup: {
-            id: dispatchJobGroups.id,
-            name: dispatchJobGroups.name,
-          },
+          jobGroup: withJobGroups
+            ? {
+                id: dispatchJobGroups.id,
+                name: dispatchJobGroups.name,
+              }
+            : {
+                id: sql<string | null>`NULL::varchar`,
+                name: sql<string | null>`NULL::text`,
+              },
           facility: {
             id: facilities.id,
             name: facilities.name,
@@ -222,12 +238,16 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
         .leftJoin(optionsDepartment, eq(edlsSheets.departmentId, optionsDepartment.id))
         .leftJoin(supervisorUsers, eq(edlsSheets.supervisor, supervisorUsers.id))
         .leftJoin(assigneeUsers, eq(edlsSheets.assignee, assigneeUsers.id))
-        .leftJoin(dispatchJobGroups, eq(edlsSheets.jobGroupId, dispatchJobGroups.id))
-        .leftJoin(facilities, eq(edlsSheets.facilityId, facilities.id));
+        .leftJoin(facilities, eq(edlsSheets.facilityId, facilities.id))
+        .$dynamic();
+      
+      const joinedQuery = withJobGroups
+        ? baseQuery.leftJoin(dispatchJobGroups, eq(edlsSheets.jobGroupId, dispatchJobGroups.id))
+        : baseQuery;
       
       const rows = whereCondition
-        ? await baseQuery.where(whereCondition).orderBy(desc(edlsSheets.ymd)).limit(limit).offset(page * limit)
-        : await baseQuery.orderBy(desc(edlsSheets.ymd)).limit(limit).offset(page * limit);
+        ? await joinedQuery.where(whereCondition).orderBy(desc(edlsSheets.ymd)).limit(limit).offset(page * limit)
+        : await joinedQuery.orderBy(desc(edlsSheets.ymd)).limit(limit).offset(page * limit);
       
       const data: EdlsSheetWithRelations[] = rows.map(row => ({
         ...row.sheet,
@@ -251,10 +271,11 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
 
     async getWithRelations(id: string): Promise<EdlsSheetWithRelations | undefined> {
       const client = getClient();
+      const withJobGroups = jobGroupsEnabled();
       const supervisorUsers = alias(users, 'supervisor_user');
       const assigneeUsers = alias(users, 'assignee_user');
       
-      const [row] = await client
+      const relationsQuery = client
         .select({
           sheet: edlsSheets,
           employer: {
@@ -277,10 +298,15 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
             lastName: assigneeUsers.lastName,
             email: assigneeUsers.email,
           },
-          jobGroup: {
-            id: dispatchJobGroups.id,
-            name: dispatchJobGroups.name,
-          },
+          jobGroup: withJobGroups
+            ? {
+                id: dispatchJobGroups.id,
+                name: dispatchJobGroups.name,
+              }
+            : {
+                id: sql<string | null>`NULL::varchar`,
+                name: sql<string | null>`NULL::text`,
+              },
           facility: {
             id: facilities.id,
             name: facilities.name,
@@ -291,9 +317,14 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
         .leftJoin(optionsDepartment, eq(edlsSheets.departmentId, optionsDepartment.id))
         .leftJoin(supervisorUsers, eq(edlsSheets.supervisor, supervisorUsers.id))
         .leftJoin(assigneeUsers, eq(edlsSheets.assignee, assigneeUsers.id))
-        .leftJoin(dispatchJobGroups, eq(edlsSheets.jobGroupId, dispatchJobGroups.id))
         .leftJoin(facilities, eq(edlsSheets.facilityId, facilities.id))
-        .where(eq(edlsSheets.id, id));
+        .$dynamic();
+      
+      const [row] = withJobGroups
+        ? await relationsQuery
+            .leftJoin(dispatchJobGroups, eq(edlsSheets.jobGroupId, dispatchJobGroups.id))
+            .where(eq(edlsSheets.id, id))
+        : await relationsQuery.where(eq(edlsSheets.id, id));
       
       if (!row) return undefined;
       

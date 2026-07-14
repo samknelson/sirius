@@ -47,6 +47,7 @@ import "./core/1040_worker_employment_denorm";
 import "./core/1043_ledger_payments_date_received_nullable";
 import "./core/1044_create_ebs";
 import "./core/1045_ebs_subject_and_purge";
+import "./core/1046_add_edls_sheet_job_group_fk";
 
 // Per-component migrations — each registered via
 // `registerComponentMigration(componentId, migration)`. Tracked by the
