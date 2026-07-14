@@ -438,6 +438,15 @@ export async function syncWorkerEins(
     const ein = rawEin || remoteWorkerId;
 
     try {
+      const t631Row = await storage.workerIds.getWorkerIdByTypeAndValue(t631TypeId, remoteWorkerId);
+      // Present in the incoming list → never a deactivation candidate,
+      // regardless of whether the remote code maps to a synced status
+      // (non-synced/unmatched codes must leave EDLS untouched) and even
+      // when the row is skipped below (duplicate EIN, conflicts, etc.).
+      if (t631Row) {
+        msCtx.seenWorkerIds.add(t631Row.workerId);
+      }
+
       const firstClaimant = seenEins.get(ein);
       if (firstClaimant !== undefined) {
         result.skipped++;
@@ -449,7 +458,6 @@ export async function syncWorkerEins(
         continue;
       }
 
-      const t631Row = await storage.workerIds.getWorkerIdByTypeAndValue(t631TypeId, remoteWorkerId);
       if (!t631Row) {
         // No local worker with this t631 ID — create one from the remote name.
         const rawName = row.worker_name !== undefined && row.worker_name !== null ? String(row.worker_name) : "";
@@ -518,11 +526,6 @@ export async function syncWorkerEins(
         continue;
       }
       const localWorkerId = t631Row.workerId;
-      // Present in the incoming list → never a deactivation candidate,
-      // regardless of whether the remote code maps to a synced status
-      // (non-synced/unmatched codes must leave EDLS untouched) and even
-      // when the EIN portion is skipped below.
-      msCtx.seenWorkerIds.add(localWorkerId);
       const wd = (action: string, error?: string) => ({
         workerId: localWorkerId,
         remoteWorkerId,
