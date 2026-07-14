@@ -9,6 +9,7 @@ import {
   ComponentDefinition,
 } from "../../shared/components";
 import { runComponentMigrations, getComponentMigrations } from "./migration-runner";
+import { isComponentEnabledSync, isCacheInitialized, loadComponentCache } from "./component-cache";
 
 export interface SchemaOperationResult {
   success: boolean;
@@ -18,6 +19,13 @@ export interface SchemaOperationResult {
   message?: string;
 }
 
+export interface MissingDependency {
+  componentId: string;
+  componentName: string;
+  reason: "disabled" | "tables-missing";
+  missingTables: string[];
+}
+
 export interface ComponentLifecycleResult {
   success: boolean;
   componentId: string;
@@ -25,6 +33,59 @@ export interface ComponentLifecycleResult {
   schemaState: ComponentSchemaState | null;
   error?: string;
   message?: string;
+  /** Set when enable was refused because prerequisite components are not ready. */
+  missingDependencies?: MissingDependency[];
+}
+
+/**
+ * Check that every component listed in `dependsOnComponents` is enabled and
+ * has its tables present, so a schema push doesn't die on a raw FK error.
+ */
+export async function checkSchemaDependencies(
+  component: ComponentDefinition,
+): Promise<MissingDependency[]> {
+  const deps = component.schemaManifest?.dependsOnComponents ?? [];
+  if (deps.length === 0) return [];
+
+  if (!isCacheInitialized()) {
+    await loadComponentCache();
+  }
+
+  const missing: MissingDependency[] = [];
+  for (const depId of deps) {
+    const dep = getComponentById(depId);
+    const depName = dep?.name ?? depId;
+
+    if (!isComponentEnabledSync(depId)) {
+      missing.push({ componentId: depId, componentName: depName, reason: "disabled", missingTables: [] });
+      continue;
+    }
+
+    const depTables = dep?.schemaManifest?.tables ?? [];
+    const missingTables: string[] = [];
+    for (const tableName of depTables) {
+      if (!(await tableExists(tableName))) {
+        missingTables.push(tableName);
+      }
+    }
+    if (missingTables.length > 0) {
+      missing.push({ componentId: depId, componentName: depName, reason: "tables-missing", missingTables });
+    }
+  }
+  return missing;
+}
+
+function formatMissingDependencies(componentName: string, missing: MissingDependency[]): string {
+  const parts = missing.map((m) =>
+    m.reason === "disabled"
+      ? `"${m.componentName}" (${m.componentId}) is not enabled`
+      : `"${m.componentName}" (${m.componentId}) is enabled but its tables are missing: ${m.missingTables.join(", ")}`,
+  );
+  return (
+    `Cannot enable "${componentName}" because it depends on other components that are not ready: ` +
+    parts.join("; ") +
+    ". Enable the prerequisite components first, then try again."
+  );
 }
 
 export interface DriftCheckResult {
@@ -87,6 +148,18 @@ export async function enableComponentSchema(componentId: string): Promise<Compon
       componentId,
       schemaOperations: [],
       schemaState: null,
+    };
+  }
+
+  const missingDependencies = await checkSchemaDependencies(component);
+  if (missingDependencies.length > 0) {
+    return {
+      success: false,
+      componentId,
+      schemaOperations: [],
+      schemaState: null,
+      missingDependencies,
+      error: formatMissingDependencies(component.name, missingDependencies),
     };
   }
 

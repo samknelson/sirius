@@ -149,8 +149,18 @@ export function registerComponentRoutes(
         if (enabled) {
           const lifecycleResult = await enableComponentSchema(componentId);
           if (!lifecycleResult.success) {
+            if (lifecycleResult.missingDependencies?.length) {
+              return res.status(409).json({
+                message: lifecycleResult.error,
+                error: lifecycleResult.error,
+                missingDependencies: lifecycleResult.missingDependencies,
+                schemaOperations: lifecycleResult.schemaOperations,
+              });
+            }
             return res.status(500).json({
-              message: "Failed to create component tables",
+              message: lifecycleResult.error
+                ? `Failed to create component tables: ${lifecycleResult.error}`
+                : "Failed to create component tables",
               schemaOperations: lifecycleResult.schemaOperations,
               error: lifecycleResult.error
             });

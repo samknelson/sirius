@@ -77,6 +77,14 @@ export interface ComponentSchemaManifest {
   version?: number;
   schemaPath: string;
   tables: string[];
+  /**
+   * Component IDs whose schema this component's tables reference via
+   * foreign keys. Enabling this component requires every listed component
+   * to be enabled with its tables present; the enable flow fails fast with
+   * a clear message naming the missing prerequisites instead of surfacing
+   * a raw SQL foreign-key error.
+   */
+  dependsOnComponents?: string[];
 }
 
 export type ComponentTableStatus = "active" | "dropped" | "pending" | "error";
@@ -231,7 +239,8 @@ export const componentRegistry: ComponentDefinition[] = [
     schemaManifest: {
       version: 1,
       schemaPath: "./shared/schema/grievance/settlement-schema.ts",
-      tables: ["options_grievance_settlement_type", "grievance_settlements"]
+      tables: ["options_grievance_settlement_type", "grievance_settlements"],
+      dependsOnComponents: ["grievance"]
     }
   },
   {
@@ -244,7 +253,8 @@ export const componentRegistry: ComponentDefinition[] = [
     schemaManifest: {
       version: 2,
       schemaPath: "./shared/schema/grievance/contract-schema.ts",
-      tables: ["grievance_contract_sections", "grievance_contracts"]
+      tables: ["grievance_contract_sections", "grievance_contracts"],
+      dependsOnComponents: ["grievance", "contract"]
     }
   },
   {
@@ -509,7 +519,8 @@ export const componentRegistry: ComponentDefinition[] = [
     schemaManifest: {
       version: 1,
       schemaPath: "./shared/schema/trust/provider-edi-schema.ts",
-      tables: ["trust_provider_edi"]
+      tables: ["trust_provider_edi"],
+      dependsOnComponents: ["system.sftp.client"]
     }
   },
   {
@@ -735,7 +746,8 @@ export const componentRegistry: ComponentDefinition[] = [
     schemaManifest: {
       version: 1,
       schemaPath: "./shared/schema/edls/schema.ts",
-      tables: ["edls_sheets", "edls_crews", "edls_assignments", "options_edls_tasks", "worker_edls"]
+      tables: ["edls_sheets", "edls_crews", "edls_assignments", "options_edls_tasks", "worker_edls"],
+      dependsOnComponents: ["dispatch.job_group", "facility"]
     },
     permissions: [
       { key: "edls.manager", description: "Full EDLS management access" },
