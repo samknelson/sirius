@@ -59,6 +59,7 @@ export default function EdlsTasksPage() {
   const [formName, setFormName] = useState("");
   const [formSiriusId, setFormSiriusId] = useState("");
   const [formDepartmentId, setFormDepartmentId] = useState("");
+  const [filterDepartmentId, setFilterDepartmentId] = useState("all");
 
   const { data: rawTasks = [], isLoading: tasksLoading } = useQuery<EdlsTask[]>({
     queryKey: ["/api/edls/tasks"],
@@ -71,10 +72,13 @@ export default function EdlsTasksPage() {
   const isLoading = tasksLoading || departmentsLoading;
 
   const departmentMap = new Map(departments.map(d => [d.id, d.name]));
-  const tasks: EnrichedEdlsTask[] = rawTasks.map(task => ({
+  const allTasks: EnrichedEdlsTask[] = rawTasks.map(task => ({
     ...task,
     departmentName: departmentMap.get(task.departmentId) || "Unknown",
   }));
+  const tasks = filterDepartmentId === "all"
+    ? allTasks
+    : allTasks.filter(task => task.departmentId === filterDepartmentId);
 
   const createMutation = useMutation({
     mutationFn: async (data: { name: string; siriusId: string | null; departmentId: string }) => {
@@ -250,9 +254,29 @@ export default function EdlsTasksPage() {
           </Button>
         </CardHeader>
         <CardContent>
+          <div className="mb-4 max-w-xs space-y-2">
+            <Label htmlFor="filter-department">Filter by department</Label>
+            <Select value={filterDepartmentId} onValueChange={setFilterDepartmentId}>
+              <SelectTrigger id="filter-department" data-testid="select-filter-department">
+                <SelectValue placeholder="All departments" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all" data-testid="select-filter-department-all">
+                  All departments
+                </SelectItem>
+                {departments.map((dept) => (
+                  <SelectItem key={dept.id} value={dept.id} data-testid={`select-filter-department-${dept.id}`}>
+                    {dept.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           {tasks.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground" data-testid="text-no-tasks">
-              No tasks configured yet. Add your first task to get started.
+              {allTasks.length === 0
+                ? "No tasks configured yet. Add your first task to get started."
+                : "No tasks in this department. Choose another department or \"All departments\"."}
             </div>
           ) : (
             <Table>
