@@ -95,18 +95,16 @@ export async function syncWorkerEins(
 
   for (const row of rows) {
     const remoteWorkerId = row.worker_id !== undefined && row.worker_id !== null ? String(row.worker_id).trim() : "";
-    const ein = row.worker_ein !== undefined && row.worker_ein !== null ? String(row.worker_ein).trim() : "";
+    const rawEin = row.worker_ein !== undefined && row.worker_ein !== null ? String(row.worker_ein).trim() : "";
 
     if (!remoteWorkerId) {
       result.skipped++;
       result.details.push({ remoteWorkerId: "(empty)", action: "skipped", error: "Missing worker_id" });
       continue;
     }
-    if (!ein) {
-      result.skipped++;
-      result.details.push({ remoteWorkerId, action: "skipped", error: "Missing worker_ein" });
-      continue;
-    }
+    // When the remote row has no EIN, fall back to using the remote worker ID
+    // as the EIN value rather than skipping the row.
+    const ein = rawEin || remoteWorkerId;
 
     try {
       const firstClaimant = seenEins.get(ein);

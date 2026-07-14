@@ -83,13 +83,13 @@ export default function T631FetchPage() {
     onSuccess: (data) => {
       setSyncResult(data);
       toast({
-        title: data.dryRun ? "Dry run complete" : "Sync complete",
+        title: data.dryRun ? "Dry run complete" : "Fetch Workers complete",
         description: `${data.workersCreated} workers created, ${data.created} created, ${data.updated} updated, ${data.unchanged} unchanged, ${data.skipped} skipped, ${data.errors} errors`,
         variant: data.errors > 0 ? "destructive" : "default",
       });
     },
     onError: (error: Error) => {
-      toast({ title: "Sync failed", description: error.message, variant: "destructive" });
+      toast({ title: "Fetch Workers failed", description: error.message, variant: "destructive" });
     },
   });
 
@@ -183,12 +183,13 @@ export default function T631FetchPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <RefreshCw className="h-4 w-4" />
-              Sync Worker EINs
+              Fetch Workers
             </CardTitle>
             <CardDescription>
               Match remote workers by their Teamsters 631 worker ID and store each worker's EIN
               under the "freeman_ein" worker ID type. Workers not found locally are created from
-              the remote name. Dry run previews changes without writing.
+              the remote name; rows without an EIN use the remote worker ID as the EIN.
+              Dry run previews changes without writing.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -216,7 +217,7 @@ export default function T631FetchPage() {
                 ) : (
                   <RefreshCw className="mr-2 h-4 w-4" />
                 )}
-                Sync Now
+                Fetch Workers
               </Button>
             </div>
 
@@ -224,7 +225,7 @@ export default function T631FetchPage() {
               <div className="space-y-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge variant={syncResult.dryRun ? "outline" : "default"} data-testid="badge-sync-mode">
-                    {syncResult.dryRun ? "Dry Run" : "Live Sync"}
+                    {syncResult.dryRun ? "Dry Run" : "Live Run"}
                   </Badge>
                   <Badge variant="secondary" data-testid="badge-sync-workers-created">{syncResult.workersCreated} workers created</Badge>
                   <Badge variant="secondary" data-testid="badge-sync-created">{syncResult.created} created</Badge>
