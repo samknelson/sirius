@@ -124,6 +124,7 @@ import "./plugins/bulkDeliver";
 import "./plugins/t631DispatchJobGroupFetch";
 import "./plugins/t631FacilityFetch";
 import "./plugins/t631TosFetch";
+import "./plugins/t631WorkerFetch";
 import "./plugins/gbhetPensionSlaReconcile";
 import "./plugins/gbhetPensionSharesReconcile";
 import "./plugins/denormBackfill";

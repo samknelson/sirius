@@ -168,6 +168,10 @@ const fetchRequestSchema = z.object({
   action: z.enum(VALID_ACTIONS),
 });
 
+const syncWorkersRequestSchema = z.object({
+  dryRun: z.boolean().default(true),
+});
+
 export function registerT631ClientFetchRoutes(
   app: Express,
   requireAuth: AuthMiddleware,
@@ -198,6 +202,54 @@ export function registerT631ClientFetchRoutes(
         res.json(result);
       } catch (error) {
         const message = error instanceof Error ? error.message : "Failed to execute T631 fetch";
+        res.status(500).json({ message });
+      }
+    }
+  );
+
+  app.post(
+    "/api/sitespecific/t631/client/sync-workers",
+    requireAuth,
+    requirePermission("admin"),
+    edlsComponent,
+    t631Component,
+    async (req: Request, res: Response) => {
+      try {
+        const parsed = syncWorkersRequestSchema.safeParse(req.body ?? {});
+        if (!parsed.success) {
+          return res.status(400).json({
+            message: `Invalid request: ${parsed.error.errors.map(e => e.message).join(", ")}`,
+          });
+        }
+        const { dryRun } = parsed.data;
+
+        const fetchResult = await t631Fetch("sirius_edls_server_worker_list");
+        if (!fetchResult.success) {
+          return res.status(502).json({
+            message: `T631 fetch failed: ${fetchResult.error || "Unknown error"}`,
+          });
+        }
+        const responseBody = fetchResult.data;
+        if (!responseBody || typeof responseBody !== "object") {
+          return res.status(502).json({ message: "T631 fetch returned empty or non-object response body" });
+        }
+        const typed = responseBody as { success?: boolean; data?: unknown };
+        if (typed.success !== true) {
+          return res.status(502).json({ message: "T631 response indicates failure (success !== true)" });
+        }
+        if (!typed.data || typeof typed.data !== "object") {
+          return res.status(502).json({ message: "T631 response missing 'data' field or data is not an object" });
+        }
+
+        const { syncWorkerEins } = await import("./sync-workers");
+        const syncResult = await syncWorkerEins(
+          responseBody as Parameters<typeof syncWorkerEins>[0],
+          dryRun,
+        );
+
+        res.json({ dryRun, ...syncResult });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Failed to sync T631 worker EINs";
         res.status(500).json({ message });
       }
     }
