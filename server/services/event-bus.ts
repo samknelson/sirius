@@ -40,6 +40,7 @@ export enum EventType {
   GRIEVANCE_TIMELINE_CHANGED = "grievance.timeline.changed",
   GRIEVANCE_ASSIGNMENT_SAVED = "grievance.assignment.saved",
   GRIEVANCE_SETTLEMENT_SAVED = "grievance.settlement.saved",
+  EDLS_SHEET_SAVED = "edls.sheet.saved",
   TRUST_WMB_SCAN_COMPLETED = "trust.wmb.scan.completed",
   TOS_ABSENCE_REMINDER = "tos.absence.reminder",
   GRIEVANCE_DEADLINE_REMINDER = "grievance.deadline.reminder",
@@ -223,6 +224,22 @@ export interface GrievanceSettlementSavedPayload {
   amount: string | null;
 }
 
+/**
+ * Emitted after an EDLS sheet create or update commits. Carries the sheet's
+ * status before and after the write so a notifier can detect a genuine
+ * arrival at a status: `previousStatus` is null on create (the sheet "arrives"
+ * at its initial status), and equals the pre-update status on update. The
+ * title and ymd ride on the payload so consumers can render a message without
+ * re-querying a row that may have changed since.
+ */
+export interface EdlsSheetSavedPayload {
+  sheetId: string;
+  previousStatus: string | null;
+  newStatus: string;
+  title: string;
+  ymd: string;
+}
+
 export interface TrustWmbScanCompletedPayload {
   statusId: string;
   month: number;
@@ -328,6 +345,7 @@ export interface EventPayloadMap {
   [EventType.GRIEVANCE_TIMELINE_CHANGED]: GrievanceTimelineChangedPayload;
   [EventType.GRIEVANCE_ASSIGNMENT_SAVED]: GrievanceAssignmentSavedPayload;
   [EventType.GRIEVANCE_SETTLEMENT_SAVED]: GrievanceSettlementSavedPayload;
+  [EventType.EDLS_SHEET_SAVED]: EdlsSheetSavedPayload;
   [EventType.TRUST_WMB_SCAN_COMPLETED]: TrustWmbScanCompletedPayload;
   [EventType.TOS_ABSENCE_REMINDER]: TosAbsenceReminderPayload;
   [EventType.GRIEVANCE_DEADLINE_REMINDER]: GrievanceDeadlineReminderPayload;

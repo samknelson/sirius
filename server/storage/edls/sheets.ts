@@ -20,7 +20,9 @@ import {
 import { eq, ne, desc, sql, and, gte, lte, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { defineLoggingConfig } from "../middleware/logging";
-import { getClient, runInTransaction } from "../transaction-context";
+import { getClient, runInTransaction, onAfterCommit } from "../transaction-context";
+import { eventBus, EventType } from "../../services/event-bus";
+import { logger } from "../../logger";
 import { storage } from "../index";
 import { isComponentEnabledSync } from "../../services/component-cache";
 
@@ -139,6 +141,32 @@ export interface EdlsSheetsStorage {
    */
   update(id: string, sheet: Partial<InsertEdlsSheet>, crews?: CrewInput[]): Promise<EdlsSheetWithCrews | undefined>;
   delete(id: string): Promise<boolean>;
+}
+
+/**
+ * Emit `EDLS_SHEET_SAVED` after the surrounding transaction commits.
+ * `previousStatus` is null on create (the sheet "arrives" at its initial
+ * status) and the pre-update status on update; consumers gate on the
+ * transition themselves. Emitted after commit so a listener can never
+ * observe (or notify about) a write that later rolled back.
+ */
+function emitSheetSaved(sheet: EdlsSheet, previousStatus: string | null): void {
+  onAfterCommit(() => {
+    eventBus
+      .emit(EventType.EDLS_SHEET_SAVED, {
+        sheetId: sheet.id,
+        previousStatus,
+        newStatus: sheet.status,
+        title: sheet.title,
+        ymd: sheet.ymd,
+      })
+      .catch((err) => {
+        logger.error(
+          `Failed to emit EDLS_SHEET_SAVED for sheet ${sheet.id}: ${err instanceof Error ? err.message : String(err)}`,
+          { service: "edls-sheets-storage" },
+        );
+      });
+  });
 }
 
 export function createEdlsSheetsStorage(): EdlsSheetsStorage {
@@ -363,6 +391,8 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
         });
         const createdCrews = await storage.edlsCrews.createMany(crewsWithSheetId);
         
+        emitSheetSaved(sheet, null);
+        
         return { ...sheet, crews: createdCrews };
       });
     },
@@ -438,6 +468,8 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
         
         // Load final crews state
         const allCrews = await storage.edlsCrews.getBySheetId(id);
+        
+        emitSheetSaved(updatedSheet, existingSheet.status);
         
         return { ...updatedSheet, crews: allCrews };
       });
