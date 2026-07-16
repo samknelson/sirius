@@ -42,12 +42,16 @@ function emitTrustElectionSaved(
   workerId: string,
   enrollmentType: EnrollmentType | null,
   operation: 'created' | 'updated' | 'deleted',
+  startYmd: string,
+  endYmd: string | null,
 ): void {
   onAfterCommit(() => {
     void eventBus.emit(EventType.TRUST_ELECTION_SAVED, {
       electionId,
       workerId,
       enrollmentType,
+      startYmd,
+      endYmd,
       operation,
     });
   });
@@ -657,6 +661,8 @@ export function createWorkerTrustElectionsStorage(): WorkerTrustElectionsStorage
           created.workerId,
           (created.enrollmentType ?? null) as EnrollmentType | null,
           'created',
+          created.startYmd,
+          created.endYmd ?? null,
         );
         return created;
       });
@@ -726,7 +732,21 @@ export function createWorkerTrustElectionsStorage(): WorkerTrustElectionsStorage
           updated.workerId,
           (updated.enrollmentType ?? null) as EnrollmentType | null,
           'updated',
+          updated.startYmd,
+          updated.endYmd ?? null,
         );
+        // Also emit the pre-update range: narrowing or moving the election
+        // affects months that only the OLD range covered.
+        if (existing.startYmd !== updated.startYmd || existing.endYmd !== updated.endYmd) {
+          emitTrustElectionSaved(
+            existing.id,
+            existing.workerId,
+            (existing.enrollmentType ?? null) as EnrollmentType | null,
+            'updated',
+            existing.startYmd,
+            existing.endYmd ?? null,
+          );
+        }
         return updated;
       });
     },
@@ -743,6 +763,8 @@ export function createWorkerTrustElectionsStorage(): WorkerTrustElectionsStorage
           deleted.workerId,
           (deleted.enrollmentType ?? null) as EnrollmentType | null,
           'deleted',
+          deleted.startYmd,
+          deleted.endYmd ?? null,
         );
       }
       return !!deleted;

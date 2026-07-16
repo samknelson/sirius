@@ -35,7 +35,7 @@ export function createWorkerMshStorage(
   // the `worker_ms` plugin, which subscribes to WORKER_MSH_SAVED. The event is
   // emitted only AFTER the surrounding transaction commits so the plugin reads
   // committed history rows (eventually consistent by design).
-  async function onMemberStatusHistoryChanged(workerId: string): Promise<void> {
+  async function onMemberStatusHistoryChanged(workerId: string, effectiveYmd?: string | null): Promise<void> {
     if (onWorkerDataChanged) {
       await onWorkerDataChanged(workerId).catch(err => {
         console.error("Failed to trigger scan invalidation for worker", workerId, err);
@@ -43,7 +43,7 @@ export function createWorkerMshStorage(
     }
 
     onAfterCommit(() => {
-      void eventBus.emit(EventType.WORKER_MSH_SAVED, { workerId }).catch((err) => {
+      void eventBus.emit(EventType.WORKER_MSH_SAVED, { workerId, effectiveYmd: effectiveYmd ?? null }).catch((err) => {
         logger.error("Failed to emit WORKER_MSH_SAVED", {
           service: "worker-msh",
           workerId,
@@ -108,7 +108,7 @@ export function createWorkerMshStorage(
         .values(data)
         .returning();
       
-      await onMemberStatusHistoryChanged(data.workerId);
+      await onMemberStatusHistoryChanged(data.workerId, data.date);
       
       return msh;
     },
@@ -116,6 +116,12 @@ export function createWorkerMshStorage(
     async updateWorkerMsh(id: string, data: { date?: string; msId?: string; industryId?: string; data?: any }): Promise<WorkerMsh | undefined> {
       validate.validateOrThrow(data);
       const client = getClient();
+      // Capture the pre-update date: moving an entry earlier or later affects
+      // everything from the EARLIER of the two dates onward.
+      const [before] = await client
+        .select({ date: workerMsh.date })
+        .from(workerMsh)
+        .where(eq(workerMsh.id, id));
       const [updated] = await client
         .update(workerMsh)
         .set(data)
@@ -123,7 +129,9 @@ export function createWorkerMshStorage(
         .returning();
       
       if (updated) {
-        await onMemberStatusHistoryChanged(updated.workerId);
+        const dates = [updated.date, before?.date].filter((d): d is string => !!d);
+        const earliest = dates.length > 0 ? dates.sort()[0] : null;
+        await onMemberStatusHistoryChanged(updated.workerId, earliest);
       }
       
       return updated || undefined;
@@ -137,7 +145,7 @@ export function createWorkerMshStorage(
         .returning();
       
       if (result.length > 0 && result[0].workerId) {
-        await onMemberStatusHistoryChanged(result[0].workerId);
+        await onMemberStatusHistoryChanged(result[0].workerId, result[0].date);
       }
       
       return result.length > 0;

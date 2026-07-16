@@ -87,6 +87,40 @@ function monthFromYmd(ymd: string): MonthRef | null {
   return { year: Number(m[1]), month: Number(m[2]) };
 }
 
+/** Cap on how many months a single event may enqueue for one worker. */
+const MAX_SPAN_MONTHS = 12;
+
+/**
+ * All months from `startYmd` through `endYmd` (or the current month when the
+ * range is open-ended or ends in the future). If the span exceeds the cap,
+ * the MOST RECENT months are kept, since recent periods matter most.
+ */
+function monthsInRange(startYmd: string, endYmd: string | null): MonthRef[] {
+  const start = monthFromYmd(startYmd);
+  if (!start) return [currentMonth()];
+  const now = currentMonth();
+  let end = endYmd ? monthFromYmd(endYmd) ?? now : now;
+  // Clamp end to the current month; future periods have no data to scan yet.
+  if (end.year > now.year || (end.year === now.year && end.month > now.month)) {
+    end = now;
+  }
+  // Guard against inverted ranges.
+  if (start.year > end.year || (start.year === end.year && start.month > end.month)) {
+    return [end];
+  }
+  const out: MonthRef[] = [];
+  let { month, year } = start;
+  while (year < end.year || (year === end.year && month <= end.month)) {
+    out.push({ month, year });
+    month += 1;
+    if (month > 12) {
+      month = 1;
+      year += 1;
+    }
+  }
+  return out.length > MAX_SPAN_MONTHS ? out.slice(out.length - MAX_SPAN_MONTHS) : out;
+}
+
 function dedupeMonths(months: (MonthRef | null)[]): MonthRef[] {
   const seen = new Set<string>();
   const out: MonthRef[] = [];
@@ -239,22 +273,37 @@ async function handlePaymentSaved(payload: PaymentSavedPayload): Promise<void> {
 
 async function handleElectionSaved(payload: TrustElectionSavedPayload): Promise<void> {
   if (!componentActive()) return;
+  // Storage emits both the new and (when dates changed) old ranges, so
+  // covering this payload's span covers every affected period.
+  const months = dedupeMonths([
+    ...monthsInRange(payload.startYmd, payload.endYmd),
+    currentMonth(),
+  ]);
   afterCommit(() => {
-    void enqueueWorkerMonths(payload.workerId, [currentMonth()], "election_saved");
+    void enqueueWorkerMonths(payload.workerId, months, "election_saved");
   });
 }
 
 async function handleMshSaved(payload: WorkerMshSavedPayload): Promise<void> {
   if (!componentActive()) return;
+  // A member-status change is effective from its date onward; the payload's
+  // effectiveYmd is the earliest date touched (old + new for date moves).
+  const months = payload.effectiveYmd
+    ? dedupeMonths([...monthsInRange(payload.effectiveYmd, null), currentMonth()])
+    : [currentMonth()];
   afterCommit(() => {
-    void enqueueWorkerMonths(payload.workerId, [currentMonth()], "msh_saved");
+    void enqueueWorkerMonths(payload.workerId, months, "msh_saved");
   });
 }
 
 async function handleExemptionSaved(payload: TrustExemptionSavedPayload): Promise<void> {
   if (!componentActive()) return;
-  // Exemption storage already defers the emit to after commit.
-  const months = dedupeMonths([monthFromYmd(payload.startYmd), currentMonth()]);
+  // Exemption storage already defers the emit to after commit. Storage emits
+  // both old and new ranges when dates change, so span this payload's range.
+  const months = dedupeMonths([
+    ...monthsInRange(payload.startYmd, payload.endYmd),
+    currentMonth(),
+  ]);
   void enqueueWorkerMonths(payload.workerId, months, "exemption_saved");
 }
 

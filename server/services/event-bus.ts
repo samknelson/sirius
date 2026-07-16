@@ -157,6 +157,12 @@ export interface WorkerWshSavedPayload {
 
 export interface WorkerMshSavedPayload {
   workerId: string;
+  /**
+   * Earliest effective date (YYYY-MM-DD) touched by the change. For updates
+   * that move the date, this is the earlier of the old and new dates so
+   * listeners can rescan every affected period. Null when unknown.
+   */
+  effectiveYmd?: string | null;
 }
 
 export interface StewardAssignmentSavedPayload {
@@ -199,6 +205,9 @@ export interface TrustElectionSavedPayload {
    * those via `shouldDispatch`.
    */
   enrollmentType: EnrollmentType | null;
+  /** Effective period of the election (YYYY-MM-DD); endYmd null = open-ended. */
+  startYmd: string;
+  endYmd: string | null;
   operation: "created" | "updated" | "deleted";
 }
 
