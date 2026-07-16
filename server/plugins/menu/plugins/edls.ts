@@ -10,9 +10,10 @@ import {
 /**
  * The `edls` menu plugin: an EDLS-focused navigation for deployments where
  * daily labor sheets are the primary activity. It promotes the EDLS links
- * (Sheets, Absences, Crew Leads) to top level and keeps the Workers, Users,
- * and Configuration entries from the default menu. Item gates are identical
- * to the default plugin, so nobody sees a link they couldn't see before.
+ * (Sheets, Absences, Crew Leads) to top level and keeps the Users and
+ * Configuration entries from the default menu. Workers is a direct link to
+ * the workers list (no dropdown). Item gates are identical to the default
+ * plugin, so nobody sees a link they couldn't see before.
  */
 function buildEdlsMenuTree(): MenuItemDef[] {
   const defaults = buildDefaultMenuTree();
@@ -42,8 +43,17 @@ function buildEdlsMenuTree(): MenuItemDef[] {
     });
   }
 
+  // Workers is a direct link to the list (no dropdown) in this layout;
+  // gate is inherited from the default item so access can't drift.
   const workers = pick("workers");
-  if (workers) items.push(workers);
+  if (workers) {
+    items.push({
+      ...workers,
+      href: "/workers",
+      active: { type: "prefix", value: "/workers" },
+      children: undefined,
+    });
+  }
 
   items.push(buildUsersMenuItem());
   items.push(buildConfigMenuItem());
