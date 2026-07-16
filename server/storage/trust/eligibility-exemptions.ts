@@ -1,4 +1,5 @@
-import { getClient, runInTransaction } from '../transaction-context';
+import { getClient, runInTransaction, onAfterCommit } from '../transaction-context';
+import { eventBus, EventType } from '../../services/event-bus';
 import {
   trustBenefitEligibilityExemptions,
   workers,
@@ -33,6 +34,28 @@ export class TrustBenefitEligibilityExemptionValidationError extends Error {
     super(message);
     this.name = 'TrustBenefitEligibilityExemptionValidationError';
   }
+}
+
+/**
+ * Emit `TRUST_EXEMPTION_SAVED` after the current transaction commits so
+ * listeners (e.g. the auto-rescan service) never observe an uncommitted
+ * change. The affected worker/benefit and date range are carried on the
+ * payload because the row is already gone for deletes.
+ */
+function emitExemptionSaved(
+  row: TrustBenefitEligibilityExemption,
+  operation: 'created' | 'updated' | 'deleted',
+): void {
+  onAfterCommit(() => {
+    void eventBus.emit(EventType.TRUST_EXEMPTION_SAVED, {
+      exemptionId: row.id,
+      workerId: row.subscriberWorkerId,
+      benefitId: row.benefitId,
+      startYmd: row.startYmd,
+      endYmd: row.endYmd ?? null,
+      operation,
+    });
+  });
 }
 
 interface ExemptionBeforeState {
@@ -158,6 +181,7 @@ export function createTrustBenefitEligibilityExemptionsStorage(): TrustBenefitEl
             description: parsed.description ?? null,
           })
           .returning();
+        emitExemptionSaved(created, 'created');
         return stripData(created);
       });
     },
@@ -199,6 +223,12 @@ export function createTrustBenefitEligibilityExemptionsStorage(): TrustBenefitEl
           .set(updateValues)
           .where(eq(trustBenefitEligibilityExemptions.id, id))
           .returning();
+        emitExemptionSaved(updated, 'updated');
+        // Include the pre-update range too: narrowing an exemption changes
+        // eligibility for months that only the OLD range covered.
+        if (existing.startYmd !== updated.startYmd || existing.endYmd !== updated.endYmd) {
+          emitExemptionSaved(existing, 'updated');
+        }
         return stripData(updated);
       });
     },
@@ -209,6 +239,7 @@ export function createTrustBenefitEligibilityExemptionsStorage(): TrustBenefitEl
         .delete(trustBenefitEligibilityExemptions)
         .where(eq(trustBenefitEligibilityExemptions.id, id))
         .returning();
+      if (deleted) emitExemptionSaved(deleted, 'deleted');
       return !!deleted;
     },
   };

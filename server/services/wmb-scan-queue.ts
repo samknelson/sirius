@@ -18,9 +18,10 @@ export interface ProcessingResult {
 }
 
 export async function processNextQueueJob(
-  storage: IStorage
+  storage: IStorage,
+  triggerSources?: string[]
 ): Promise<{ processed: boolean; workerId?: string; success?: boolean }> {
-  const job = await storage.wmbScanQueue.claimNextJob();
+  const job = await storage.wmbScanQueue.claimNextJob(triggerSources);
   if (!job) {
     return { processed: false };
   }
@@ -124,7 +125,8 @@ export async function enqueueMonthScan(
   storage: IStorage,
   month: number,
   year: number,
-  scope: ScanScope = { type: "all" }
+  scope: ScanScope = { type: "all" },
+  triggerSource: string = "monthly_batch"
 ): Promise<{ statusId: string; queuedCount: number }> {
   logger.info(`Enqueuing WMB scan for month ${month}/${year}`, {
     service: "wmb-scan-queue",
@@ -132,9 +134,10 @@ export async function enqueueMonthScan(
     year,
     scopeType: scope.type,
     scopeEmployerId: scope.type === "employer" ? scope.employerId : null,
+    triggerSource,
   });
 
-  const result = await storage.wmbScanQueue.enqueueMonth(month, year, scope);
+  const result = await storage.wmbScanQueue.enqueueMonth(month, year, scope, triggerSource);
 
   logger.info(`Enqueued ${result.queuedCount} workers for WMB scan`, {
     service: "wmb-scan-queue",

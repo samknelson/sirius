@@ -37,6 +37,7 @@ import { initializeEventNotifierPluginSystem } from "./plugins/event-notifier";
 import { initializeWizardPluginSystem } from "./plugins/wizards";
 import { initWorkerBanNotifications } from "./services/worker-ban-notifications";
 import { initDispatchNotifications } from "./services/dispatch/notifications";
+import { initWmbAutoRescan } from "./services/wmb-auto-rescan";
 import "@shared/access-policies/loader";
 import { registerEntityAccessModule } from "./modules/entity-access";
 import { isComponentEnabled } from "./modules/components";
@@ -313,6 +314,10 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
   // Initialize dispatch notifications
   initDispatchNotifications();
   logger.info("Dispatch notifications initialized", { source: "startup" });
+
+  // Initialize automatic WMB rescans on worker data changes
+  initWmbAutoRescan();
+  logger.info("WMB auto-rescan initialized", { source: "startup" });
 
   // Register charge plugin event listeners.
   // WMB charges are fully event-driven: trust.wmb storage emits WMB_SAVED and

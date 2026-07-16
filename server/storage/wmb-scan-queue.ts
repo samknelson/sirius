@@ -75,11 +75,16 @@ export interface WmbScanQueueStorage {
   getWorkerQueueEntry(workerId: string, month: number, year: number): Promise<TrustWmbScanQueue | undefined>;
   
   // Bulk operations
-  enqueueMonth(month: number, year: number, scope?: ScanScope): Promise<{ statusId: string; queuedCount: number }>;
+  enqueueMonth(month: number, year: number, scope?: ScanScope, triggerSource?: string): Promise<{ statusId: string; queuedCount: number }>;
   enqueueWorker(workerId: string, month: number, year: number, triggerSource: string): Promise<TrustWmbScanQueue>;
   
   // Job processing
-  claimNextJob(): Promise<TrustWmbScanQueue | undefined>;
+  /**
+   * Claim the next pending job. When `triggerSources` is given, only jobs
+   * whose trigger_source is in the list are claimed (used by the auto-rescan
+   * drainer so it never steals jobs from a manually queued run).
+   */
+  claimNextJob(triggerSources?: string[]): Promise<TrustWmbScanQueue | undefined>;
   recordJobResult(queueId: string, success: boolean, resultSummary: any, error?: string): Promise<JobResultInfo>;
   
   // Invalidation
@@ -335,7 +340,7 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
       return row?.entry || undefined;
     },
 
-    async enqueueMonth(month: number, year: number, scope: ScanScope = { type: "all" }): Promise<{ statusId: string; queuedCount: number }> {
+    async enqueueMonth(month: number, year: number, scope: ScanScope = { type: "all" }, triggerSource: string = "monthly_batch"): Promise<{ statusId: string; queuedCount: number }> {
       const client = getClient();
       const scopeEmployerId = scope.type === "employer" ? scope.employerId : null;
 
@@ -393,7 +398,7 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
           .update(trustWmbScanQueue)
           .set({
             status: "pending",
-            triggerSource: "monthly_batch",
+            triggerSource,
             attempts: 0,
             lastError: null,
             pickedAt: null,
@@ -431,7 +436,7 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
                 month,
                 year,
                 status: "pending",
-                triggerSource: "monthly_batch",
+                triggerSource,
               });
             newCount++;
           }
@@ -523,8 +528,12 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
       });
     },
 
-    async claimNextJob(): Promise<TrustWmbScanQueue | undefined> {
+    async claimNextJob(triggerSources?: string[]): Promise<TrustWmbScanQueue | undefined> {
       const client = getClient();
+      const sourceFilter =
+        triggerSources && triggerSources.length > 0
+          ? sql` AND trigger_source IN (${sql.join(triggerSources.map(s => sql`${s}`), sql`, `)})`
+          : sql``;
       return client.transaction(async (tx) => {
         // Find and claim a pending job atomically with FOR UPDATE SKIP LOCKED
         const [job] = await tx
@@ -540,7 +549,7 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
               sql`${trustWmbScanQueue.id} = (
                 SELECT id
                 FROM trust_wmb_scan_queue
-                WHERE status = 'pending'
+                WHERE status = 'pending'${sourceFilter}
                 ORDER BY scheduled_for ASC NULLS LAST, id ASC
                 LIMIT 1
                 FOR UPDATE SKIP LOCKED
