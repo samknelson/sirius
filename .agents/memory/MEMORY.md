@@ -15,6 +15,7 @@
 - [Charge plugin adjustment math (net-total reconcile)](charge-plugin-net-total-reconcile.md) — edit-driven charge deltas must reconcile against sum(base+adjustments), not the immutable base entry, or repeated edits overcharge.
 - [ECHP quote/billing parity](echp-quote-billing-parity.md) — ECHP eligibility quote and charge reconciliation must price from the same aggregated rule source or worker is quoted one price, billed another.
 - [Plugin config route dormancy](plugin-config-route-dormancy.md) — a generic config router isn't dormant for a legacy kind if method names differ (legacy PUT vs generic PATCH); gate with an explicit deny set until cutover.
+- [RJSF v6 widget formContext](rjsf-v6-widget-formcontext.md) — v6 widgets get registry, not a formContext prop; read registry.formContext or the widget silently renders empty.
 - [RJSF custom field onChange](rjsf-custom-field-onchange.md) — field onChange needs `(value, [])` (2nd arg required FieldPathList); widget onChange differs; field id is on `fieldPathId.$id`.
 - [Vite JSX generic transform](vite-jsx-generic-transform.md) — inline `<Component<Type>>` JSX crash-loops the dev server; standalone esbuild passes but Vite rejects it; type the callback prop instead.
 - [Drizzle raw-sql ANY(array) fails in migrations](drizzle-raw-sql-any-array.md) — `= ANY(${jsArray})` in db.execute throws "requires array on right side"; use `IN (${sql.join(...)})`.

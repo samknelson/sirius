@@ -8,6 +8,7 @@ export const optionsWorkerRatings = pgTable("options_worker_ratings", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: varchar("name", { length: 255 }).notNull(),
   parent: varchar("parent").references((): AnyPgColumn => optionsWorkerRatings.id, { onDelete: 'set null' }),
+  siriusId: varchar("sirius_id").unique(),
   data: jsonb("data"),
 });
 

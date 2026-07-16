@@ -678,13 +678,14 @@ const optionsMetadata: Record<OptionsTypeName, OptionsTableMetadata<any>> = {
     orderByColumn: "name" as const,
     loggingModule: "options.workerRatings",
     requiredFields: ["name"],
-    optionalFields: ["parent", "data"],
+    optionalFields: ["parent", "siriusId", "data"],
     supportsParent: true,
     requiredComponent: "worker.ratings",
     supportsSequencing: false,
     fields: [
       { name: "name", label: "Name", inputType: "text", required: true, placeholder: "e.g., Quality, Attendance, Teamwork", showInTable: true, columnHeader: "Name" },
       { name: "parent", label: "Parent Rating", inputType: "select-self", required: false, helperText: "Select a parent to create a hierarchy", showInTable: true, columnHeader: "Parent" },
+      { name: "siriusId", label: "Sirius ID", inputType: "text", required: false, placeholder: "External ID", showInTable: true, columnHeader: "Sirius ID" },
     ],
   },
   "classification": {
