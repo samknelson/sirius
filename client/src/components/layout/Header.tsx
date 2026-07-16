@@ -130,6 +130,14 @@ export default function Header() {
   });
   const menuItems = menu?.items ?? [];
 
+  // Local email+password login enabled? Gates the "Change Password" menu item.
+  const { data: providersData } = useQuery<{ providers: { type: string }[] }>({
+    queryKey: ["/api/auth/providers"],
+    enabled: !!user,
+    staleTime: 5 * 60 * 1000,
+  });
+  const localAuthEnabled = !!providersData?.providers?.some((p) => p.type === "local");
+
   const itemLabel = (item: ResolvedMenuItem): string => {
     if (item.labelTerm) {
       return term(item.labelTerm.key, { plural: item.labelTerm.plural });
@@ -379,6 +387,19 @@ export default function Header() {
                         <div className="flex items-center cursor-pointer" data-testid="menu-bookmarks">
                           <Bookmark className="h-4 w-4 mr-2" />
                           Bookmarks
+                        </div>
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                  </>
+                )}
+                {localAuthEnabled && (
+                  <>
+                    <DropdownMenuItem asChild>
+                      <Link href="/account/password" className="w-full">
+                        <div className="flex items-center cursor-pointer" data-testid="menu-change-password">
+                          <Key className="h-4 w-4 mr-2" />
+                          Change Password
                         </div>
                       </Link>
                     </DropdownMenuItem>

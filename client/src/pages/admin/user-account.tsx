@@ -7,9 +7,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, UserCheck, UserX, Shield } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Loader2, UserCheck, UserX, Shield, KeyRound } from 'lucide-react';
 import { UserLayout, useUserLayout } from '@/components/layouts/UserLayout';
 import { Role } from '@/lib/entity-types';
+
+interface ProvidersResponse {
+  providers: { type: string; isDefault: boolean }[];
+}
 
 function UserAccountContent() {
   const { user } = useUserLayout();
@@ -18,6 +23,52 @@ function UserAccountContent() {
   const { data: allRoles = [], isLoading: rolesLoading } = useQuery<Role[]>({
     queryKey: ['/api/admin/roles'],
   });
+
+  const { data: providersData } = useQuery<ProvidersResponse>({
+    queryKey: ['/api/auth/providers'],
+  });
+  const localEnabled = !!providersData?.providers?.some((p) => p.type === 'local');
+
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+
+  const setPasswordMutation = useMutation({
+    mutationFn: async (password: string) => {
+      return await apiRequest('POST', `/api/admin/users/${user.id}/local-password`, { password });
+    },
+    onSuccess: () => {
+      setNewPassword('');
+      setConfirmPassword('');
+      toast({ title: 'Password set', description: 'The local login password was updated.' });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Failed to set password',
+        description: error.message,
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const handleSetPassword = () => {
+    if (newPassword.length < 8) {
+      toast({
+        title: 'Password too short',
+        description: 'Password must be at least 8 characters.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      toast({
+        title: 'Passwords do not match',
+        description: 'Please re-enter the password.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    setPasswordMutation.mutate(newPassword);
+  };
 
   const { data: userRoles = [], isLoading: userRolesLoading } = useQuery<Role[]>({
     queryKey: ['/api/admin/users', user.id, 'roles'],
@@ -265,6 +316,68 @@ function UserAccountContent() {
           )}
         </CardContent>
       </Card>
+
+      {/* Local Password Card — only when local login is enabled */}
+      {localEnabled && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <KeyRound className="h-5 w-5" />
+              Local Login Password
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {user.email ? (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  Set or reset this user's email + password login. The user will sign in with{' '}
+                  <span className="font-medium">{user.email}</span> and the password you set here.
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-xl">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="new-local-password">New password</Label>
+                    <Input
+                      id="new-local-password"
+                      type="password"
+                      autoComplete="new-password"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      data-testid="input-new-local-password"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="confirm-local-password">Confirm password</Label>
+                    <Input
+                      id="confirm-local-password"
+                      type="password"
+                      autoComplete="new-password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      data-testid="input-confirm-local-password"
+                    />
+                  </div>
+                </div>
+                <Button
+                  onClick={handleSetPassword}
+                  disabled={setPasswordMutation.isPending || !newPassword || !confirmPassword}
+                  data-testid="button-set-local-password"
+                >
+                  {setPasswordMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <KeyRound className="h-4 w-4 mr-2" />
+                  )}
+                  Set Password
+                </Button>
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground" data-testid="text-no-email-password">
+                This user has no email address, so a local login cannot be created.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

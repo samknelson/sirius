@@ -41,6 +41,18 @@ export interface AuthIdentitiesStorage {
     userId: string,
     providerType: AuthProviderType
   ): Promise<boolean>;
+
+  /**
+   * Set (or create) the local-auth credential for a user. Creates the
+   * providerType "local" identity if it doesn't exist yet (externalId =
+   * lowercased email), otherwise just replaces its password hash.
+   * Never logs or returns the hash to callers beyond the row itself.
+   */
+  upsertLocalPasswordHash(
+    userId: string,
+    email: string,
+    passwordHash: string
+  ): Promise<AuthIdentity>;
 }
 
 export function createAuthIdentitiesStorage(): AuthIdentitiesStorage {
@@ -140,6 +152,50 @@ export function createAuthIdentitiesStorage(): AuthIdentitiesStorage {
         )
         .returning({ id: authIdentities.id });
       return result.length > 0;
+    },
+
+    async upsertLocalPasswordHash(
+      userId: string,
+      email: string,
+      passwordHash: string
+    ): Promise<AuthIdentity> {
+      const client = getClient();
+      const externalId = email.trim().toLowerCase();
+      const existing = await client.query.authIdentities.findFirst({
+        where: and(
+          eq(authIdentities.userId, userId),
+          eq(authIdentities.providerType, "local")
+        ),
+      });
+
+      if (existing) {
+        // Also realign externalId/email so the login ID always matches the
+        // user's current (lowercased) email even if it changed since the
+        // identity was first created.
+        const [updated] = await client
+          .update(authIdentities)
+          .set({
+            passwordHash,
+            externalId,
+            email: externalId,
+            updatedAt: new Date(),
+          })
+          .where(eq(authIdentities.id, existing.id))
+          .returning();
+        return updated;
+      }
+
+      const [created] = await client
+        .insert(authIdentities)
+        .values({
+          userId,
+          providerType: "local",
+          externalId,
+          email: externalId,
+          passwordHash,
+        })
+        .returning();
+      return created;
     },
   };
 }

@@ -137,9 +137,35 @@ export const localLoginFloodEvent: FloodEventDefinition = {
   },
 };
 
+/**
+ * Self-service local password change throttle. Bucketed by userId|ip. Only
+ * FAILED current-password verifications are recorded, so legitimate changes
+ * never consume budget. Defaults: 10 failed attempts per user+IP per 15
+ * minutes; tunable via the flood-config UI (`flood_local-password-change`
+ * variable).
+ */
+export const LOCAL_PASSWORD_CHANGE_FLOOD_EVENT = "local-password-change";
+
+export const localPasswordChangeFloodEvent: FloodEventDefinition = {
+  name: LOCAL_PASSWORD_CHANGE_FLOOD_EVENT,
+  threshold: 10,
+  windowSeconds: 900,
+  getIdentifier: (context: FloodContext): string => {
+    if (!context.userId || !context.ip) {
+      throw new Error("userId and ip are required for local-password-change flood event");
+    }
+    return `${context.userId}|${context.ip}`;
+  },
+  resolveIdentifierName: async (identifier: string): Promise<string | null> => {
+    const [userId] = identifier.split("|");
+    return userId || null;
+  },
+};
+
 export function registerFloodEvents(): void {
   registerFloodEvent(bookmarkFloodEvent);
   registerFloodEvent(localLoginFloodEvent);
+  registerFloodEvent(localPasswordChangeFloodEvent);
   for (const event of notificationFloodEvents) {
     registerFloodEvent(event);
   }
