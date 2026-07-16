@@ -5,8 +5,21 @@ import { logger } from '../logger';
 import { SUPPRESS_NOTIFICATIONS_HEADER } from '../../shared/notification-headers';
 
 export interface RequestContext {
+  /**
+   * The *effective* acting user for this request. When the session is
+   * masquerading, this is the masqueraded user — the identity every other
+   * layer (access policies, UI) already treats as the actor — so consumers
+   * like the event-notifier's self-suppression key off the same identity.
+   */
   userId?: string;
   userEmail?: string;
+  /**
+   * The real authenticated user behind an active masquerade. Only set while
+   * masquerading; undefined otherwise. Consumers that need the true session
+   * identity (rather than the effective actor) should read these.
+   */
+  originalUserId?: string;
+  originalUserEmail?: string;
   ipAddress?: string;
   /**
    * When true, the event-notifier dispatcher skips sending notifications for
@@ -69,6 +82,8 @@ export function withSystemActor<T>(fn: () => Promise<T>): Promise<T> {
     ...(current ?? {}),
     userId: undefined,
     userEmail: undefined,
+    originalUserId: undefined,
+    originalUserEmail: undefined,
   };
   return requestContext.run(next, fn);
 }
@@ -107,6 +122,26 @@ export async function captureRequestContext(req: Request, res: Response, next: N
     // Fallback for edge case where dbUser exists but claims don't
     context.userId = user.dbUser.id;
     context.userEmail = user.dbUser.email;
+  }
+
+  // Masquerade: the effective actor for this request is the masqueraded user,
+  // matching what access policies and the UI already show. Keep the real
+  // session user available as originalUserId/originalUserEmail. On a lookup
+  // failure (stale masqueradeUserId), fall back to the real user — the
+  // masquerade route handlers own clearing broken sessions.
+  const masqueradeUserId = (req as any).session?.masqueradeUserId;
+  if (masqueradeUserId && context.userId && masqueradeUserId !== context.userId) {
+    try {
+      const masqueradedUser = await storage.users.getUser(masqueradeUserId);
+      if (masqueradedUser) {
+        context.originalUserId = context.userId;
+        context.originalUserEmail = context.userEmail;
+        context.userId = masqueradedUser.id;
+        context.userEmail = masqueradedUser.email ?? undefined;
+      }
+    } catch (error) {
+      logger.error('Failed to resolve masqueraded user for request context', { error });
+    }
   }
 
   // Run the rest of the request in this async context

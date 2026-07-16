@@ -570,8 +570,10 @@ export function withStorageLogging<T extends Record<string, any>>(
               entity_id: entityId,
               host_entity_id: hostEntityId,
               description,
-              user_id: context?.userId,
-              user_email: context?.userEmail,
+              // Audit attribution stays on the real authenticated user: while
+              // masquerading, originalUserId carries the true session identity.
+              user_id: context?.originalUserId ?? context?.userId,
+              user_email: context?.originalUserEmail ?? context?.userEmail,
               ip_address: context?.ipAddress,
               meta: details, // Nest details under 'meta' to match JSONB column
             });
@@ -621,8 +623,10 @@ export function withStorageLogging<T extends Record<string, any>>(
               entity_id: entityId,
               host_entity_id: hostEntityId,
               description,
-              user_id: context?.userId,
-              user_email: context?.userEmail,
+              // Audit attribution stays on the real authenticated user: while
+              // masquerading, originalUserId carries the true session identity.
+              user_id: context?.originalUserId ?? context?.userId,
+              user_email: context?.originalUserEmail ?? context?.userEmail,
               ip_address: context?.ipAddress,
               meta: details, // Nest details under 'meta' to match JSONB column
             });
