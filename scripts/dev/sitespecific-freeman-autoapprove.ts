@@ -7,6 +7,11 @@
  * "Development" GitHub Environment. Runs targeting any other environment
  * (QA, Production, ...) are always skipped and left for manual approval.
  *
+ * Multi-gate pipelines are supported: if the same workflow run comes back
+ * to 'waiting' on a later approval gate, that gate is approved too.
+ * Deduplication is per gate (run id + environment ids + wait timer), not
+ * per run, so the script never needs to be restarted between gates.
+ *
  * Also tracks queued / in-progress workflow runs and prints which job and
  * step each run is currently on (similar to `gh run watch`), logging a
  * final conclusion line (success/failure/cancelled) when a run completes.
@@ -55,10 +60,27 @@ interface PendingDeployment {
 }
 
 let stopping = false;
-// Runs we already approved (or definitively skipped) this session, so we
-// don't spam logs / re-attempt every poll. Skipped runs may become
-// approvable later (e.g. reviewer added), so only silence repeats briefly.
-const approvedRuns = new Set<number>();
+// Gates we recently approved, keyed per pending-deployment gate
+// (run id + environment ids + wait timer), NOT per run — a pipeline can put
+// the same run through several approval gates, and each new gate must be
+// approved. Entries expire after a short TTL: they only exist to avoid
+// duplicate approve/log attempts in the brief window before GitHub reflects
+// an approval we just posted. The TTL also covers the pathological case
+// where two sequential gates on the same run produce an identical key
+// (same environment, null wait_timer_started_at) — after the TTL the gate
+// is simply re-approved, which is harmless and safe (Development-only rule
+// still applies).
+const APPROVED_GATE_TTL_MS = 5 * 60 * 1000;
+const approvedGates = new Map<string, number>(); // gateKey -> approvedAt (ms)
+
+function wasRecentlyApproved(gateKey: string): boolean {
+  const now = Date.now();
+  for (const [key, at] of approvedGates) {
+    if (now - at > APPROVED_GATE_TTL_MS) approvedGates.delete(key);
+  }
+  const at = approvedGates.get(gateKey);
+  return at !== undefined && now - at <= APPROVED_GATE_TTL_MS;
+}
 const loggedSkips = new Set<string>();
 
 interface WorkflowJob {
@@ -229,7 +251,6 @@ async function pollOnce(): Promise<void> {
 
   for (const run of runs) {
     if (stopping) return;
-    if (approvedRuns.has(run.id)) continue;
 
     let pending: PendingDeployment[];
     try {
@@ -243,6 +264,19 @@ async function pollOnce(): Promise<void> {
     }
 
     if (pending.length === 0) continue;
+
+    // Identify THIS gate (a run can hit several approval gates in sequence).
+    // The pending_deployments API only returns gates still awaiting approval,
+    // so this key exists purely to avoid duplicate approve attempts / log
+    // spam while GitHub catches up with an approval we just posted.
+    const gateKey = [
+      run.id,
+      pending
+        .map((p) => `${p.environment.id}@${p.wait_timer_started_at ?? ""}`)
+        .sort()
+        .join(","),
+    ].join(":");
+    if (wasRecentlyApproved(gateKey)) continue;
 
     const envNames = pending.map((p) => p.environment.name);
     const runDesc = `"${run.display_title}" (${run.name}, branch ${run.head_branch}) ${run.html_url}`;
@@ -286,7 +320,7 @@ async function pollOnce(): Promise<void> {
         args.push("-F", `environment_ids[]=${id}`);
       }
       await gh(args);
-      approvedRuns.add(run.id);
+      approvedGates.set(gateKey, Date.now());
       log(`APPROVED [${ALLOWED_ENVIRONMENT}]: ${runDesc}`);
     } catch (err: any) {
       const stderr = (err?.stderr || err?.message || "").trim();
