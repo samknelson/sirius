@@ -48,6 +48,19 @@ interface CancellationTarget {
   month: number;
 }
 
+const COMPLETED_STATUSES = new Set(["complete", "completed"]);
+
+export function isRunCancellable(wizard: { status: string; data: unknown }): boolean {
+  if (COMPLETED_STATUSES.has(wizard.status)) return true;
+  const data = (wizard.data || {}) as Record<string, any>;
+  // Processing finished (possibly with row failures) — results were saved.
+  if (data.processResults) return true;
+  // Processing was started (process step reached) but never finished —
+  // a mid-way failure may have already written hours/WMB/charges.
+  if (data.progress?.process) return true;
+  return false;
+}
+
 async function resolveTarget(
   wizardId: string,
 ): Promise<{ target?: CancellationTarget; error?: { status: number; message: string } }> {
@@ -61,8 +74,21 @@ async function resolveTarget(
   if (wizard.status === "cancelled") {
     return { error: { status: 400, message: "This wizard run has already been cancelled" } };
   }
-  // Completed runs AND runs that failed mid-way are cancellable: a failed
-  // run may already have written hours/WMB/charges that need reversing.
+  // Only completed runs OR runs that failed mid-way through processing are
+  // cancellable. A failed run stays in "draft" status, so we detect it via
+  // the run's own data: either processing results were saved, or the
+  // process step was reached (its progress entry exists). A pending run
+  // that never started processing must NOT be cancellable — cancellation
+  // wipes the employer/period globally and would destroy legitimate data
+  // the run did not produce.
+  if (!isRunCancellable(wizard)) {
+    return {
+      error: {
+        status: 400,
+        message: "Only completed runs, or runs that failed during processing, can be cancelled",
+      },
+    };
+  }
   const monthly = await storage.wizardEmployerMonthly.getByWizardId(wizardId);
   if (!monthly) {
     return { error: { status: 400, message: "This wizard run has no employer/period record to cancel against" } };

@@ -94,10 +94,13 @@ export default function WizardView() {
   const CANCELLABLE_TYPES = ["gbhet_legal_workers_monthly", "gbhet_legal_workers_corrections"];
   const isCancellableType = !!wizard && CANCELLABLE_TYPES.includes(wizard.type);
   const isCancelled = wizard?.status === "cancelled";
-  // Completed AND failed/mid-way runs are cancellable (a failed run may have
-  // already written data that needs reversing), so show the tab for any
-  // non-cancelled run of a cancellable type.
-  const showCancelTab = isCancellableType;
+  const isCompleted = wizard?.status === "complete" || wizard?.status === "completed";
+  // Completed runs and runs that failed mid-way through processing are
+  // cancellable; a pending run that never started processing is not
+  // (mirrors the server-side gate in wizard-cancellation.ts).
+  const wdAny = wizardData as any;
+  const processingStarted = !!(wdAny?.processResults || wdAny?.progress?.process);
+  const showCancelTab = isCancellableType && (isCompleted || isCancelled || processingStarted);
 
   const { data: cancelPreview, error: cancelPreviewError } = useQuery<{
     canCancel: boolean;
@@ -110,7 +113,7 @@ export default function WizardView() {
     chargeTotal: string;
   }>({
     queryKey: [`/api/wizards/${id}/cancellation-preview`],
-    enabled: !!id && isCancellableType && !isCancelled,
+    enabled: !!id && isCancellableType && !isCancelled && (isCompleted || processingStarted),
   });
 
   const cancelRunMutation = useMutation({
