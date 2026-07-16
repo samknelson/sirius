@@ -158,24 +158,31 @@ async function resolveItems(
  * Reads the `site_menu_plugin` variable (falling back to `default` when
  * unset or naming an unknown plugin) and evaluates every gate.
  */
-export async function resolveMenuForRequest(req: Request): Promise<ResolvedMenu> {
+export async function resolveMenuForRequest(
+  req: Request,
+  overridePluginId?: string,
+): Promise<ResolvedMenu> {
   const context = await buildContext(req);
   if (!context.user) {
     return { plugin: DEFAULT_MENU_PLUGIN_ID, items: [] };
   }
 
   let pluginId = DEFAULT_MENU_PLUGIN_ID;
-  try {
-    const variable = await storage.variables.getByName(SITE_MENU_PLUGIN_VARIABLE);
-    if (variable?.value) {
-      const raw = typeof variable.value === "string" ? variable.value : String(variable.value);
-      const candidate = raw.replace(/^"|"$/g, "");
-      if (menuPluginRegistry.has(candidate)) {
-        pluginId = candidate;
+  if (overridePluginId && menuPluginRegistry.has(overridePluginId)) {
+    pluginId = overridePluginId;
+  } else {
+    try {
+      const variable = await storage.variables.getByName(SITE_MENU_PLUGIN_VARIABLE);
+      if (variable?.value) {
+        const raw = typeof variable.value === "string" ? variable.value : String(variable.value);
+        const candidate = raw.replace(/^"|"$/g, "");
+        if (menuPluginRegistry.has(candidate)) {
+          pluginId = candidate;
+        }
       }
+    } catch {
+      // Fall back to the default menu on any variable-read hiccup.
     }
-  } catch {
-    // Fall back to the default menu on any variable-read hiccup.
   }
 
   const plugin = menuPluginRegistry.get(pluginId) ?? menuPluginRegistry.get(DEFAULT_MENU_PLUGIN_ID);

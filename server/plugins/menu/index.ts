@@ -42,11 +42,27 @@ export function initializeMenuPluginSystem(): void {
 /**
  * GET /api/menu — resolve the selected menu plugin's tree for the current
  * user. Any authenticated user may call it; gating happens per item.
+ *
+ * Admins may pass `?plugin=<id>` to preview a different menu layout
+ * (resolved for themselves) without changing the site-wide selection.
  */
 export function registerMenuRoutes(app: Express, requireAuth: AuthMiddleware): void {
   app.get("/api/menu", requireAuth, async (req, res) => {
     try {
-      const menu = await resolveMenuForRequest(req);
+      let overridePluginId: string | undefined;
+      const requested = req.query.plugin;
+      if (typeof requested === "string" && requested.length > 0) {
+        const { checkAccessInline } = await import("../../services/access-policy-evaluator");
+        const access = await checkAccessInline(req, "admin");
+        if (!access.granted) {
+          return res.status(403).json({ message: "Admin access required to preview a menu layout" });
+        }
+        if (!menuPluginRegistry.has(requested)) {
+          return res.status(404).json({ message: `Unknown menu plugin: ${requested}` });
+        }
+        overridePluginId = requested;
+      }
+      const menu = await resolveMenuForRequest(req, overridePluginId);
       res.json(menu);
     } catch (error) {
       console.error("Failed to resolve menu:", error);

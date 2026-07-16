@@ -10,7 +10,8 @@ import { SimpleHtmlEditor } from "@/components/ui/simple-html-editor";
 import { useSiteSettings, useSetVariable, useVariableValue } from "@/lib/use-variable";
 import { useQuery } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
-import { DEFAULT_MENU_PLUGIN_ID, SITE_MENU_PLUGIN_VARIABLE } from "@shared/menu-types";
+import { DEFAULT_MENU_PLUGIN_ID, SITE_MENU_PLUGIN_VARIABLE, type ResolvedMenu, type ResolvedMenuItem } from "@shared/menu-types";
+import { useTerm } from "@/contexts/TerminologyContext";
 
 interface MenuManifestEntry {
   id: string;
@@ -67,6 +68,7 @@ export default function SiteInformation() {
       : DEFAULT_MENU_PLUGIN_ID;
   const saveMenuPluginMutation = useSetVariable(SITE_MENU_PLUGIN_VARIABLE, {
     onSuccess: () => {
+      setPendingMenuPlugin(null);
       queryClient.invalidateQueries({ queryKey: ["/api/menu"] });
       toast({
         title: "Main menu updated",
@@ -75,6 +77,22 @@ export default function SiteInformation() {
     },
     onError: onSaveError,
   });
+
+  // Preview a different layout (for the current admin) before applying it
+  const [pendingMenuPlugin, setPendingMenuPlugin] = useState<string | null>(null);
+  const selectedMenuPlugin = pendingMenuPlugin ?? savedMenuPlugin;
+  const isPreviewingMenu = pendingMenuPlugin !== null && pendingMenuPlugin !== savedMenuPlugin;
+  const menuPreview = useQuery<ResolvedMenu>({
+    queryKey: ["/api/menu", { plugin: selectedMenuPlugin }],
+    enabled: isPreviewingMenu,
+  });
+  const term = useTerm();
+  const menuItemLabel = (item: ResolvedMenuItem): string => {
+    if (item.labelTerm) {
+      return term(item.labelTerm.key, { plural: item.labelTerm.plural });
+    }
+    return item.label || item.id;
+  };
 
   const saveNameMutation = useSetVariable("site_name", { onSuccess: onSaved, onError: onSaveError });
   const saveTitleMutation = useSetVariable("site_title", { onSuccess: onSaved, onError: onSaveError });
@@ -279,8 +297,10 @@ export default function SiteInformation() {
         <CardContent className="space-y-2">
           <Label htmlFor="menu-plugin">Menu Layout</Label>
           <Select
-            value={savedMenuPlugin}
-            onValueChange={(value) => saveMenuPluginMutation.mutate(value)}
+            value={selectedMenuPlugin}
+            onValueChange={(value) =>
+              setPendingMenuPlugin(value === savedMenuPlugin ? null : value)
+            }
             disabled={saveMenuPluginMutation.isPending || menuPluginValue.isLoading}
           >
             <SelectTrigger id="menu-plugin" className="max-w-sm" data-testid="select-menu-plugin">
@@ -294,10 +314,73 @@ export default function SiteInformation() {
               ))}
             </SelectContent>
           </Select>
-          {menuManifest?.find((e) => e.id === savedMenuPlugin)?.description && (
+          {menuManifest?.find((e) => e.id === selectedMenuPlugin)?.description && (
             <p className="text-sm text-muted-foreground" data-testid="text-menu-plugin-description">
-              {menuManifest.find((e) => e.id === savedMenuPlugin)!.description}
+              {menuManifest.find((e) => e.id === selectedMenuPlugin)!.description}
             </p>
+          )}
+          {isPreviewingMenu && (
+            <div className="mt-4 space-y-3">
+              <div className="rounded-md border p-4" data-testid="panel-menu-preview">
+                <p className="text-sm font-medium mb-2">
+                  Preview — how this layout looks for you
+                </p>
+                {menuPreview.isLoading ? (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground" data-testid="loading-menu-preview">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Loading preview…
+                  </div>
+                ) : menuPreview.isError ? (
+                  <p className="text-sm text-destructive" data-testid="error-menu-preview">
+                    Could not load the preview for this layout.
+                  </p>
+                ) : (menuPreview.data?.items?.length ?? 0) === 0 ? (
+                  <p className="text-sm text-muted-foreground" data-testid="empty-menu-preview">
+                    This layout has no visible items for your account.
+                  </p>
+                ) : (
+                  <ul className="space-y-1" data-testid="list-menu-preview">
+                    {menuPreview.data!.items.map((item) => (
+                      <li key={item.id} data-testid={`preview-menu-item-${item.id}`}>
+                        <span className="text-sm">{menuItemLabel(item)}</span>
+                        {item.children && item.children.length > 0 && (
+                          <ul className="ml-4 mt-1 space-y-0.5 border-l pl-3">
+                            {item.children.map((child) => (
+                              <li key={child.id} className="text-sm text-muted-foreground" data-testid={`preview-menu-item-${item.id}-${child.id}`}>
+                                {menuItemLabel(child)}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <p className="text-xs text-muted-foreground mt-3">
+                  Other users may see different items depending on their permissions.
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  onClick={() => saveMenuPluginMutation.mutate(pendingMenuPlugin!)}
+                  disabled={saveMenuPluginMutation.isPending || menuPreview.isLoading}
+                  data-testid="button-apply-menu-plugin"
+                >
+                  {saveMenuPluginMutation.isPending && (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  )}
+                  Apply for everyone
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setPendingMenuPlugin(null)}
+                  disabled={saveMenuPluginMutation.isPending}
+                  data-testid="button-cancel-menu-plugin"
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
           )}
         </CardContent>
       </Card>
