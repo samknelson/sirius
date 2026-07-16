@@ -15,7 +15,7 @@ import {
   type WorkerTrustElectionView,
   type EnrollmentType,
 } from '@shared/schema';
-import { eq, and, asc, desc, isNull, lt, lte, gte, or, ne, inArray, type SQL } from 'drizzle-orm';
+import { eq, and, asc, desc, isNull, lt, lte, gte, or, ne, inArray, arrayOverlaps, type SQL } from 'drizzle-orm';
 import { defineLoggingConfig, type StorageLoggingConfig } from '../middleware/logging';
 import { normalizeToDateOnly, getTodayDateOnly } from '@shared/utils';
 import { eventBus, EventType } from '../../services/event-bus';
