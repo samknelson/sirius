@@ -93,9 +93,11 @@ export default function WizardView() {
   // run can be reversed (hours + benefits + charges for the employer/period).
   const CANCELLABLE_TYPES = ["gbhet_legal_workers_monthly", "gbhet_legal_workers_corrections"];
   const isCancellableType = !!wizard && CANCELLABLE_TYPES.includes(wizard.type);
-  const isCompleted = wizard?.status === "complete" || wizard?.status === "completed";
   const isCancelled = wizard?.status === "cancelled";
-  const showCancelTab = isCancellableType && (isCompleted || isCancelled);
+  // Completed AND failed/mid-way runs are cancellable (a failed run may have
+  // already written data that needs reversing), so show the tab for any
+  // non-cancelled run of a cancellable type.
+  const showCancelTab = isCancellableType;
 
   const { data: cancelPreview, error: cancelPreviewError } = useQuery<{
     canCancel: boolean;
@@ -108,7 +110,7 @@ export default function WizardView() {
     chargeTotal: string;
   }>({
     queryKey: [`/api/wizards/${id}/cancellation-preview`],
-    enabled: !!id && isCancellableType && isCompleted,
+    enabled: !!id && isCancellableType && !isCancelled,
   });
 
   const cancelRunMutation = useMutation({
@@ -121,9 +123,7 @@ export default function WizardView() {
       queryClient.invalidateQueries({ queryKey: ['/api/wizards'] });
       toast({
         title: "Wizard Run Cancelled",
-        description: `Removed ${result.hoursDeleted} hours record${result.hoursDeleted !== 1 ? 's' : ''}, ${result.wmbDeleted} benefit record${result.wmbDeleted !== 1 ? 's' : ''}, and reversed ${result.ledgerEntriesReversed} charge${result.ledgerEntriesReversed !== 1 ? 's' : ''}.` +
-          (result.leftoverLedgerEntries > 0 ? ` Warning: ${result.leftoverLedgerEntries} charge entr${result.leftoverLedgerEntries !== 1 ? 'ies' : 'y'} could not be reversed automatically.` : ''),
-        variant: result.leftoverLedgerEntries > 0 ? "destructive" : undefined,
+        description: `Removed ${result.hoursDeleted} hours record${result.hoursDeleted !== 1 ? 's' : ''}, ${result.wmbDeleted} benefit record${result.wmbDeleted !== 1 ? 's' : ''}, and reversed ${result.ledgerEntriesReversed} charge${result.ledgerEntriesReversed !== 1 ? 's' : ''}.`,
       });
     },
     onError: (error: Error) => {

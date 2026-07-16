@@ -11,18 +11,22 @@ import type { Wizard } from "@shared/schema";
  * back to "no hours / no benefit" (the entries are removed). Worker records
  * themselves are kept.
  *
- * NOTE: deletion is intentionally NOT wrapped in one giant transaction.
- * Each row delete (and its charge-plugin reconciliation) is self-consistent,
- * and a failure partway through leaves the system in a valid state — the
- * admin simply retries the cancellation and the remaining rows are removed.
+ * All-or-nothing strategy: deletion is intentionally NOT wrapped in one
+ * giant transaction (charge-plugin executions and cache-invalidating events
+ * fire inside the delete paths, and those must not run against a transaction
+ * that later rolls back). Instead, each row delete (and its charge-plugin
+ * reconciliation) is individually self-consistent, and the wizard is only
+ * marked cancelled once EVERYTHING is verified gone — all hours rows, all
+ * WMB rows, and zero remaining ledger entries referencing them. Any partial
+ * failure returns an error and leaves the wizard un-cancelled so the admin
+ * simply retries; retrying removes whatever remains (deletes are idempotent
+ * on already-removed rows).
  */
 
 const CANCELLABLE_WIZARD_TYPES = new Set([
   "gbhet_legal_workers_monthly",
   "gbhet_legal_workers_corrections",
 ]);
-
-const COMPLETED_STATUSES = new Set(["complete", "completed"]);
 
 export interface CancellationPreview {
   canCancel: boolean;
@@ -57,9 +61,8 @@ async function resolveTarget(
   if (wizard.status === "cancelled") {
     return { error: { status: 400, message: "This wizard run has already been cancelled" } };
   }
-  if (!COMPLETED_STATUSES.has(wizard.status)) {
-    return { error: { status: 400, message: "Only completed wizard runs can be cancelled" } };
-  }
+  // Completed runs AND runs that failed mid-way are cancellable: a failed
+  // run may already have written hours/WMB/charges that need reversing.
   const monthly = await storage.wizardEmployerMonthly.getByWizardId(wizardId);
   if (!monthly) {
     return { error: { status: 400, message: "This wizard run has no employer/period record to cancel against" } };
@@ -149,7 +152,8 @@ export async function executeCancellation(
 
   // Delete WMB rows first (their ledger reversal is awaited in-line), then
   // hours rows (each delete runs the hourly charge plugins, which reconcile
-  // the corresponding ledger entries away).
+  // the corresponding ledger entries away). A `false`/unsuccessful result
+  // means the row was already gone, which is fine for our purposes.
   let wmbDeleted = 0;
   for (const row of wmbRows) {
     if (await storage.trust.wmb.deleteWorkerBenefit(row.id)) wmbDeleted++;
@@ -161,9 +165,28 @@ export async function executeCancellation(
     if (res.success) hoursDeleted++;
   }
 
-  // Verify the charge reversal actually landed: any ledger entry still
-  // referencing a deleted row is surfaced so the admin can follow up.
-  const leftover = await storage.ledger.entries.getByReferenceIds(referenceIds);
+  // Verify everything is actually gone before finalizing. If any rows or
+  // ledger entries remain (e.g. a charge plugin failed to reconcile), do
+  // NOT mark the wizard cancelled — report the failure so the admin can
+  // retry; the retry only has to remove what remains.
+  const [remainingHours, remainingWmb, leftover] = await Promise.all([
+    storage.workerHours.listByEmployerPeriod(target.employerId, target.year, target.month),
+    storage.trust.wmb.listByEmployerPeriod(target.employerId, target.year, target.month),
+    storage.ledger.entries.getByReferenceIds(referenceIds),
+  ]);
+
+  if (remainingHours.length > 0 || remainingWmb.length > 0 || leftover.length > 0) {
+    return {
+      error: {
+        status: 409,
+        message:
+          `Cancellation did not complete: ${remainingHours.length} hours record(s), ` +
+          `${remainingWmb.length} benefit record(s), and ${leftover.length} ledger charge(s) ` +
+          `could not be removed. The wizard was NOT marked cancelled — please retry; ` +
+          `already-removed data will not be affected again.`,
+      },
+    };
+  }
 
   const existingData = (target.wizard.data || {}) as Record<string, unknown>;
   await storage.wizards.update(wizardId, {
