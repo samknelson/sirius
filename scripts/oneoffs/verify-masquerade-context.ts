@@ -38,7 +38,7 @@ async function main() {
     headers: {},
     socket: { remoteAddress: "127.0.0.1" },
     user: { dbUser: realUser },
-    session: { masqueradeUserId: masqUser.id },
+    session: { masqueradeUserId: masqUser.id, originalUserId: realUser.id },
   });
   check("masquerade: userId is masqueraded user", ctx1.userId === masqUser.id, ctx1.userId);
   check("masquerade: userEmail is masqueraded email", ctx1.userEmail === masqUser.email);
@@ -60,7 +60,10 @@ async function main() {
     headers: {},
     socket: { remoteAddress: "127.0.0.1" },
     user: { dbUser: realUser },
-    session: { masqueradeUserId: "00000000-0000-0000-0000-000000000000" },
+    session: {
+      masqueradeUserId: "00000000-0000-0000-0000-000000000000",
+      save: (cb: (err?: any) => void) => cb(),
+    },
   });
   check("stale masquerade: falls back to real user", ctx3.userId === realUser.id && ctx3.originalUserId === undefined);
 

@@ -261,6 +261,26 @@ interface ResolvedHooks {
   getDescription?: MethodLoggingConfig<any>['getDescription'];
 }
 
+/**
+ * Attach masquerade provenance to an audit-log meta payload. While the acting
+ * request is masquerading, the log's user_id/user_email are the effective
+ * (masqueraded) actor; the real session user is recorded here under
+ * `masqueradedBy` so the audit trail keeps full provenance.
+ */
+function withMasqueradeMeta(
+  details: Record<string, any>,
+  context: ReturnType<typeof getRequestContext>,
+): Record<string, any> {
+  if (!context?.originalUserId) return details;
+  return {
+    ...details,
+    masqueradedBy: {
+      userId: context.originalUserId,
+      userEmail: context.originalUserEmail,
+    },
+  };
+}
+
 function resolveHooks<T extends Record<string, any>>(
   key: string,
   methodConfig: MethodLoggingConfig<T>,
@@ -570,12 +590,13 @@ export function withStorageLogging<T extends Record<string, any>>(
               entity_id: entityId,
               host_entity_id: hostEntityId,
               description,
-              // Audit attribution stays on the real authenticated user: while
-              // masquerading, originalUserId carries the true session identity.
-              user_id: context?.originalUserId ?? context?.userId,
-              user_email: context?.originalUserEmail ?? context?.userEmail,
+              // Audit attribution uses the effective actor (the masqueraded
+              // user while masquerading). The real session user, if
+              // different, is recorded in meta.masqueradedBy below.
+              user_id: context?.userId,
+              user_email: context?.userEmail,
               ip_address: context?.ipAddress,
-              meta: details, // Nest details under 'meta' to match JSONB column
+              meta: withMasqueradeMeta(details, context), // Nest details under 'meta' to match JSONB column
             });
           } catch (loggingError) {
             // Don't let logging errors affect the main operation - just log the error
@@ -623,12 +644,13 @@ export function withStorageLogging<T extends Record<string, any>>(
               entity_id: entityId,
               host_entity_id: hostEntityId,
               description,
-              // Audit attribution stays on the real authenticated user: while
-              // masquerading, originalUserId carries the true session identity.
-              user_id: context?.originalUserId ?? context?.userId,
-              user_email: context?.originalUserEmail ?? context?.userEmail,
+              // Audit attribution uses the effective actor (the masqueraded
+              // user while masquerading). The real session user, if
+              // different, is recorded in meta.masqueradedBy below.
+              user_id: context?.userId,
+              user_email: context?.userEmail,
               ip_address: context?.ipAddress,
-              meta: details, // Nest details under 'meta' to match JSONB column
+              meta: withMasqueradeMeta(details, context), // Nest details under 'meta' to match JSONB column
             });
           } catch (loggingError) {
             // Don't let logging errors affect error handling - just log it

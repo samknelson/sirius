@@ -1,6 +1,5 @@
 import { AsyncLocalStorage } from 'async_hooks';
 import type { Request, Response, NextFunction } from 'express';
-import { storage } from '../storage';
 import { logger } from '../logger';
 import { SUPPRESS_NOTIFICATIONS_HEADER } from '../../shared/notification-headers';
 
@@ -104,43 +103,29 @@ export async function captureRequestContext(req: Request, res: Response, next: N
     context.suppressNotifications = true;
   }
 
-  // If user is authenticated, add user information via resolveDbUser helper
+  // If user is authenticated, resolve the *effective* user via the canonical
+  // getEffectiveUser helper (dynamic import — masquerade.ts imports this
+  // module, so a static import would be circular). While masquerading, the
+  // effective actor is the masqueraded user — matching what access policies
+  // and the UI already show — and the real session user is preserved in
+  // originalUserId/originalUserEmail. getEffectiveUser also self-heals stale
+  // masquerade sessions by falling back to the real user.
   const user = req.user as any;
-  if (user?.claims?.sub) {
+  if (user?.claims?.sub || user?.dbUser) {
     try {
-      const { resolveDbUser } = await import("../auth/helpers");
-      const dbUser = await resolveDbUser(user, user.claims.sub);
+      const { getEffectiveUser } = await import("../modules/masquerade");
+      const { dbUser, originalUser } = await getEffectiveUser((req as any).session ?? {}, user);
       if (dbUser) {
         context.userId = dbUser.id;
-        context.userEmail = dbUser.email;
+        context.userEmail = dbUser.email ?? undefined;
+        if (originalUser && originalUser.id !== dbUser.id) {
+          context.originalUserId = originalUser.id;
+          context.originalUserEmail = originalUser.email ?? undefined;
+        }
       }
     } catch (error) {
       // Log but don't block request if user lookup fails
       logger.error('Failed to fetch user context', { error });
-    }
-  } else if (user?.dbUser) {
-    // Fallback for edge case where dbUser exists but claims don't
-    context.userId = user.dbUser.id;
-    context.userEmail = user.dbUser.email;
-  }
-
-  // Masquerade: the effective actor for this request is the masqueraded user,
-  // matching what access policies and the UI already show. Keep the real
-  // session user available as originalUserId/originalUserEmail. On a lookup
-  // failure (stale masqueradeUserId), fall back to the real user — the
-  // masquerade route handlers own clearing broken sessions.
-  const masqueradeUserId = (req as any).session?.masqueradeUserId;
-  if (masqueradeUserId && context.userId && masqueradeUserId !== context.userId) {
-    try {
-      const masqueradedUser = await storage.users.getUser(masqueradeUserId);
-      if (masqueradedUser) {
-        context.originalUserId = context.userId;
-        context.originalUserEmail = context.userEmail;
-        context.userId = masqueradedUser.id;
-        context.userEmail = masqueradedUser.email ?? undefined;
-      }
-    } catch (error) {
-      logger.error('Failed to resolve masqueraded user for request context', { error });
     }
   }
 
