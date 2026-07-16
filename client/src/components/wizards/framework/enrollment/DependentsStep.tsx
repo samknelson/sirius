@@ -55,6 +55,13 @@ interface RelationTypeOption {
   name: string;
 }
 
+interface DualCoverageConflict {
+  field: string;
+  workerId: string;
+  relationshipId: string | null;
+  message: string;
+}
+
 /**
  * Step 3 (optional, repeatable): add dependents. Flow per dependent:
  * SSN + DoB lookup → (if new) name entry → relationship type →
@@ -86,9 +93,24 @@ export function DependentsStep({
     queryKey: ["/api/options/worker-relation-type"],
   });
 
+  // Live dual-coverage preview: the server re-runs the same check the final
+  // post enforces, so a conflicting dependent is flagged here — before the
+  // user fills in the rest of the wizard.
+  const stepDataKey = `/api/wizards/${wizardId}/dispatch/${step.id}/data`;
+  const { data: stepData } = useQuery<{
+    dualCoverageConflicts?: DualCoverageConflict[];
+  }>({
+    queryKey: [stepDataKey],
+  });
+  const conflicts: DualCoverageConflict[] =
+    stepData?.dualCoverageConflicts ??
+    ((data?.dualCoverageConflicts as DualCoverageConflict[] | undefined) ?? []);
+
   const submitUrl = `/api/wizards/${wizardId}/dispatch/${step.id}/submit`;
-  const invalidate = () =>
+  const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: [`/api/wizards/${wizardId}`] });
+    queryClient.invalidateQueries({ queryKey: [stepDataKey] });
+  };
   const onError = (error: Error) =>
     toast({ title: "Error", description: error.message, variant: "destructive" });
 
@@ -180,6 +202,28 @@ export function DependentsStep({
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
+        {conflicts.length > 0 && (
+          <Alert variant="destructive" data-testid="alert-dual-coverage">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>
+              <p className="font-medium">
+                Coverage conflict — this enrollment cannot be posted until it
+                is resolved:
+              </p>
+              <ul className="mt-1 list-disc pl-4 space-y-1">
+                {conflicts.map((c, i) => (
+                  <li key={i} data-testid={`text-dual-coverage-conflict-${i}`}>
+                    {c.message}
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-1">
+                Remove the affected dependent to continue, or resolve the
+                other election first.
+              </p>
+            </AlertDescription>
+          </Alert>
+        )}
         {dependents.length > 0 && (
           <div className="space-y-2">
             {dependents.map((dep) => (

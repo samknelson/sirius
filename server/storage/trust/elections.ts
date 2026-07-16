@@ -66,6 +66,14 @@ export interface WorkerTrustElectionsStorage {
    * workers still qualify because those benefit types are not Medical/Dental.
    */
   hasActiveMedicalOrDentalElection(workerId: string): Promise<boolean>;
+  /**
+   * Non-throwing preview of `assertNoDualCoverage`: returns the list of
+   * dual-coverage conflicts the given election shape would hit, using the
+   * same logic as the write-time check but without advisory locks. Used by
+   * the enrollment wizards to warn about conflicts at dependent selection
+   * time; the write-time assert stays the enforcement backstop.
+   */
+  checkDualCoverage(input: DualCoverageInput): Promise<DualCoverageConflict[]>;
   searchViews(params: WorkerTrustElectionSearchParams): Promise<WorkerTrustElectionView[]>;
   getViewById(id: string): Promise<WorkerTrustElectionView | undefined>;
   getActiveViewByWorker(workerId: string): Promise<WorkerTrustElectionView | undefined>;
@@ -286,12 +294,21 @@ function describeConflictWindow(e: WorkerTrustElection): string {
     : `election starting ${e.startYmd}`;
 }
 
-interface DualCoverageInput {
+export interface DualCoverageInput {
   subscriberId: string;
   relationshipIds: string[] | null | undefined;
   startYmd: string;
   endYmd: string | null;
   excludeElectionId?: string;
+}
+
+export interface DualCoverageConflict {
+  field: 'workerId' | 'relationshipIds';
+  /** The person who would be double-covered. */
+  workerId: string;
+  /** The relationship (on the election being checked) that carries the conflicted person, when applicable. */
+  relationshipId: string | null;
+  message: string;
 }
 
 /**
@@ -308,16 +325,20 @@ interface DualCoverageInput {
  * could go stale between simultaneous submissions and coverage is a
  * date-range property, not a boolean.
  */
-async function assertNoDualCoverage(
+async function collectDualCoverageConflicts(
   client: ReturnType<typeof getClient>,
   input: DualCoverageInput,
-): Promise<void> {
+  opts: { lock: boolean },
+): Promise<DualCoverageConflict[]> {
   const { subscriberId, startYmd, endYmd, excludeElectionId } = input;
   const relationshipIds = (input.relationshipIds ?? []).filter(Boolean);
 
   // People covered by the election being saved: the subscriber plus the
-  // non-subscriber side of each dependent relationship.
+  // non-subscriber side of each dependent relationship. Track which of the
+  // election's OWN relationships carries each person so a conflict can be
+  // reported against the exact dependent row the caller selected.
   const coveredIds = new Set<string>([subscriberId]);
+  const ownRelIdByWorker = new Map<string, string>();
   if (relationshipIds.length > 0) {
     const ownRels = await client
       .select({
@@ -328,7 +349,9 @@ async function assertNoDualCoverage(
       .from(workerRelations)
       .where(inArray(workerRelations.id, relationshipIds));
     for (const r of ownRels) {
-      coveredIds.add(r.worker1 === subscriberId ? r.worker2 : r.worker1);
+      const other = r.worker1 === subscriberId ? r.worker2 : r.worker1;
+      coveredIds.add(other);
+      if (!ownRelIdByWorker.has(other)) ownRelIdByWorker.set(other, r.id);
     }
   }
   const coveredList = Array.from(coveredIds);
@@ -339,10 +362,14 @@ async function assertNoDualCoverage(
   // transaction-scoped advisory lock per covered worker (sorted to avoid
   // deadlocks) makes the second writer wait and then see the first's
   // committed row. Locks release automatically at commit/rollback.
-  for (const workerId of [...coveredList].sort()) {
-    await client.execute(
-      sql`SELECT pg_advisory_xact_lock(hashtextextended(${'trust-election-coverage:' + workerId}, 0))`,
-    );
+  // Read-only "check" callers skip locking — they are advisory previews and
+  // the write-time assert remains the real enforcement point.
+  if (opts.lock) {
+    for (const workerId of [...coveredList].sort()) {
+      await client.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtextextended(${'trust-election-coverage:' + workerId}, 0))`,
+      );
+    }
   }
 
   // Any other subscriber's election covering one of our people as a
@@ -388,16 +415,27 @@ async function assertNoDualCoverage(
     .select()
     .from(workerTrustElections)
     .where(and(...conds));
-  if (overlapping.length === 0) return;
+  if (overlapping.length === 0) return [];
+
+  const conflicts: DualCoverageConflict[] = [];
+  const seen = new Set<string>();
+  const push = (c: DualCoverageConflict) => {
+    const key = `${c.workerId}:${c.message}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    conflicts.push(c);
+  };
 
   for (const e of overlapping) {
     // One of our covered people is the subscriber of the other election.
     if (coveredIds.has(e.workerId)) {
       const personName = await getWorkerFullName(client, e.workerId);
-      throw new WorkerTrustElectionValidationError(
-        'relationshipIds',
-        `${personName} already has their own ${describeConflictWindow(e)} and cannot also be covered here for an overlapping period. A person cannot be covered by two elections at the same time.`,
-      );
+      push({
+        field: 'relationshipIds',
+        workerId: e.workerId,
+        relationshipId: ownRelIdByWorker.get(e.workerId) ?? null,
+        message: `${personName} already has their own ${describeConflictWindow(e)} and cannot also be covered here for an overlapping period. A person cannot be covered by two elections at the same time.`,
+      });
     }
     // One of our covered people is a dependent on the other election.
     for (const relId of e.relationshipIds ?? []) {
@@ -409,12 +447,31 @@ async function assertNoDualCoverage(
           getWorkerFullName(client, side),
           getWorkerFullName(client, e.workerId),
         ]);
-        throw new WorkerTrustElectionValidationError(
-          side === subscriberId ? 'workerId' : 'relationshipIds',
-          `${personName} is already covered under ${otherSubscriberName}'s ${describeConflictWindow(e)}. A person cannot be covered by two elections at the same time.`,
-        );
+        push({
+          field: side === subscriberId ? 'workerId' : 'relationshipIds',
+          workerId: side,
+          relationshipId:
+            side === subscriberId ? null : (ownRelIdByWorker.get(side) ?? null),
+          message: `${personName} is already covered under ${otherSubscriberName}'s ${describeConflictWindow(e)}. A person cannot be covered by two elections at the same time.`,
+        });
       }
     }
+  }
+  return conflicts;
+}
+
+async function assertNoDualCoverage(
+  client: ReturnType<typeof getClient>,
+  input: DualCoverageInput,
+): Promise<void> {
+  const conflicts = await collectDualCoverageConflicts(client, input, {
+    lock: true,
+  });
+  if (conflicts.length > 0) {
+    throw new WorkerTrustElectionValidationError(
+      conflicts[0].field,
+      conflicts[0].message,
+    );
   }
 }
 
@@ -541,6 +598,11 @@ export function createWorkerTrustElectionsStorage(): WorkerTrustElectionsStorage
         const name = (r.typeName ?? '').trim().toLowerCase();
         return name === 'medical' || name === 'dental';
       });
+    },
+
+    async checkDualCoverage(input) {
+      const client = getClient();
+      return await collectDualCoverageConflicts(client, input, { lock: false });
     },
 
     async searchViews(params) {

@@ -404,6 +404,61 @@ export async function storeWizardFile(
  * `worker_relations` rows are created immediately (real records), so the
  * `add`/`remove` here operate on relationships this wizard itself created.
  */
+export interface DualCoverageConflictEntry {
+  field: string;
+  workerId: string;
+  relationshipId: string | null;
+  message: string;
+}
+
+/**
+ * Preview the dual-coverage rule for the wizard's CURRENT dependent
+ * selection so conflicts surface on the dependents step instead of only at
+ * final post. Uses the same storage logic as the write-time check
+ * (`assertNoDualCoverage`); that check remains the enforcement backstop.
+ *
+ * The effective date may not be chosen yet when dependents are added, so
+ * the check runs against the best-known start date: the chosen `startYmd`,
+ * the forced Open Enrollment date, or the computed default. End date is
+ * open (null), matching what the post step creates.
+ */
+export async function computeDualCoverageConflicts(
+  storage: IStorage,
+  data: Record<string, any>,
+  dependents: DependentEntry[],
+): Promise<DualCoverageConflictEntry[]> {
+  const subscriberId = data.workerId as string | undefined;
+  if (!subscriberId) return [];
+
+  const relationshipIds = new Set<string>(dependents.map((d) => d.relationId));
+  // Life Event: carried-forward current relationships (minus the ones
+  // marked for removal) are also covered on the new election.
+  if (Array.isArray(data.currentRelationships)) {
+    const removed = new Set<string>(
+      Array.isArray(data.removedRelationshipIds)
+        ? data.removedRelationshipIds
+        : [],
+    );
+    for (const rel of data.currentRelationships as Array<{ relationId: string }>) {
+      if (rel?.relationId && !removed.has(rel.relationId)) {
+        relationshipIds.add(rel.relationId);
+      }
+    }
+  }
+
+  const startYmd =
+    (data.startYmd as string | undefined) ||
+    (data.forcedStartYmd as string | undefined) ||
+    computeDefaultEffectiveDate();
+
+  return await storage.workerTrustElections.checkDualCoverage({
+    subscriberId,
+    relationshipIds: Array.from(relationshipIds),
+    startYmd,
+    endYmd: null,
+  });
+}
+
 export async function handleDependentsSubmit(
   ctx: WizardStepContext,
   wizardType: string,
@@ -531,7 +586,16 @@ export async function handleDependentsSubmit(
           : null,
     });
     return {
-      data: { dependents, pendingDocument: null, dependentLookup: null },
+      data: {
+        dependents,
+        pendingDocument: null,
+        dependentLookup: null,
+        dualCoverageConflicts: await computeDualCoverageConflicts(
+          ctx.storage,
+          data,
+          dependents,
+        ),
+      },
     };
   }
 
@@ -541,17 +605,34 @@ export async function handleDependentsSubmit(
     // Remove only the relationship created by this wizard; the dependent's
     // worker record persists (it is a real record once created).
     await ctx.storage.workerRelations.delete(entry.relationId);
+    const remaining = dependents.filter(
+      (d) => d.relationId !== input.relationId,
+    );
     return {
       data: {
-        dependents: dependents.filter((d) => d.relationId !== input.relationId),
+        dependents: remaining,
+        dualCoverageConflicts: await computeDualCoverageConflicts(
+          ctx.storage,
+          data,
+          remaining,
+        ),
       },
     };
   }
 
   if (input.action === "done") {
     // Explicit no-op submit so the operator can confirm the (possibly
-    // empty) dependent list and move on.
-    return { data: {} };
+    // empty) dependent list and move on. Refresh the conflict preview so a
+    // conflict resolved elsewhere (or newly introduced) is reflected.
+    return {
+      data: {
+        dualCoverageConflicts: await computeDualCoverageConflicts(
+          ctx.storage,
+          data,
+          dependents,
+        ),
+      },
+    };
   }
 
   throw new Error("Unknown dependents action");
@@ -1140,6 +1221,22 @@ export function createEnrollmentFoundation(
       requiredComponent: "worker.relations",
       // Dependents are optional: the step is always navigable past.
       getState: () => "completed",
+      // Fresh dual-coverage preview each time the step renders, so a
+      // conflict (including one on the subscriber themselves) is visible
+      // before the user proceeds — not just at final post.
+      getData: async (ctx) => {
+        const data = wizardData(ctx.wizard);
+        const deps: DependentEntry[] = Array.isArray(data.dependents)
+          ? data.dependents
+          : [];
+        return {
+          dualCoverageConflicts: await computeDualCoverageConflicts(
+            ctx.storage,
+            data,
+            deps,
+          ),
+        };
+      },
       submit: (ctx) => handleDependentsSubmit(ctx, wizardType),
     },
     buildEffectiveDateStep(),

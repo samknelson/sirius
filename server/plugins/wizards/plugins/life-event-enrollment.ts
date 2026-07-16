@@ -9,6 +9,7 @@ import {
   assertDraft,
   wizardData,
   handleDependentsSubmit,
+  computeDualCoverageConflicts,
   buildEffectiveDateStep,
   buildSignatureStep,
   runEnrollmentCreate,
@@ -163,18 +164,37 @@ async function submitDependents(
     ? [...data.removedRelationshipIds]
     : [];
 
+  const dependents: DependentEntry[] = Array.isArray(data.dependents)
+    ? data.dependents
+    : [];
+
   if (input.action === "removeCurrent") {
     if (!input.relationId || !currentIds.has(input.relationId)) {
       throw new Error("That relationship is not on the current election");
     }
     if (!removed.includes(input.relationId)) removed.push(input.relationId);
-    return { data: { removedRelationshipIds: removed } };
+    return {
+      data: {
+        removedRelationshipIds: removed,
+        dualCoverageConflicts: await computeDualCoverageConflicts(
+          ctx.storage,
+          { ...data, removedRelationshipIds: removed },
+          dependents,
+        ),
+      },
+    };
   }
 
   if (input.action === "restoreCurrent") {
+    const nextRemoved = removed.filter((id) => id !== input.relationId);
     return {
       data: {
-        removedRelationshipIds: removed.filter((id) => id !== input.relationId),
+        removedRelationshipIds: nextRemoved,
+        dualCoverageConflicts: await computeDualCoverageConflicts(
+          ctx.storage,
+          { ...data, removedRelationshipIds: nextRemoved },
+          dependents,
+        ),
       },
     };
   }
@@ -201,6 +221,21 @@ const dependentsStep: WizardStepHandler = {
           : false;
     if (done) return "completed";
     return wizard.currentStep === "dependents" ? "in_progress" : "pending";
+  },
+  // Fresh dual-coverage preview each time the step renders, mirroring the
+  // first-time enrollment dependents step.
+  getData: async (ctx) => {
+    const data = wizardData(ctx.wizard);
+    const deps: DependentEntry[] = Array.isArray(data.dependents)
+      ? data.dependents
+      : [];
+    return {
+      dualCoverageConflicts: await computeDualCoverageConflicts(
+        ctx.storage,
+        data,
+        deps,
+      ),
+    };
   },
   submit: submitDependents,
 };
