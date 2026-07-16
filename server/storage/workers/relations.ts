@@ -16,6 +16,7 @@ import {
   gte,
   isNull,
   inArray,
+  ne,
   type SQL,
 } from 'drizzle-orm';
 import { defineLoggingConfig, type StorageLoggingConfig } from '../middleware/logging';
@@ -142,6 +143,48 @@ async function validateRelation(
   }
 
   return { worker1, worker2, relationType, startYmd, endYmd };
+}
+
+/**
+ * Duplicate guard: the same directed pair (worker_1 → worker_2) must not have
+ * two relations of the same type with overlapping date windows. Direction
+ * matters on purpose — asymmetric types (e.g. parent/child) mean different
+ * things each way. Non-overlapping windows (e.g. a past marriage that ended
+ * and a new one) remain allowed.
+ */
+async function assertNoDuplicateRelation(
+  validated: { worker1: string; worker2: string; relationType: string; startYmd: string; endYmd: string | null },
+  excludeId?: string,
+): Promise<void> {
+  const client = getClient();
+  const conds: SQL[] = [
+    eq(workerRelations.worker1, validated.worker1),
+    eq(workerRelations.worker2, validated.worker2),
+    eq(workerRelations.relationType, validated.relationType),
+    // Overlap: the other relation has not ended before ours starts, and
+    // (when ours has an end) it starts no later than our end.
+    or(
+      isNull(workerRelations.endYmd),
+      gte(workerRelations.endYmd, validated.startYmd),
+    )!,
+  ];
+  if (validated.endYmd) {
+    conds.push(lte(workerRelations.startYmd, validated.endYmd));
+  }
+  if (excludeId) {
+    conds.push(ne(workerRelations.id, excludeId));
+  }
+  const [dup] = await client
+    .select({ id: workerRelations.id })
+    .from(workerRelations)
+    .where(and(...conds))
+    .limit(1);
+  if (dup) {
+    throw new WorkerRelationValidationError(
+      'startYmd',
+      'These two workers already have this relationship for an overlapping period',
+    );
+  }
 }
 
 interface WorkerRelationsBeforeState {
@@ -309,6 +352,7 @@ export function createWorkerRelationsStorage(): WorkerRelationsStorage {
 
     async create(data: InsertWorkerRelation): Promise<WorkerRelation> {
       const validated = await validateRelation(data);
+      await assertNoDuplicateRelation(validated);
       const client = getClient();
       const [created] = await client
         .insert(workerRelations)
@@ -338,6 +382,7 @@ export function createWorkerRelationsStorage(): WorkerRelationsStorage {
       }
 
       const validated = await validateRelation(data, existing);
+      await assertNoDuplicateRelation(validated, id);
       const updateValues: Partial<InsertWorkerRelation> = {
         relationType: validated.relationType,
         startYmd: validated.startYmd,

@@ -303,6 +303,12 @@ export interface DependentEntry {
   matchedExisting: boolean;
   documentFileId: string;
   documentFileName: string | null;
+  /**
+   * False when the wizard reused a pre-existing relationship row instead of
+   * creating one; removal must not delete a relation the wizard doesn't own.
+   * Absent (older drafts) means created by the wizard.
+   */
+  createdByWizard?: boolean;
 }
 
 export async function lookupDependent(
@@ -556,22 +562,37 @@ export async function handleDependentsSubmit(
       throw new Error("This dependent has already been added");
     }
 
+    // Reuse an existing active relationship of the same type between the
+    // subscriber and this dependent, if there is one — repeated enrollment
+    // attempts must not pile up duplicate relationship rows (storage also
+    // rejects overlapping duplicates outright).
+    const existingRels = await ctx.storage.workerRelations.searchWorkerRelations({
+      workerId: subscriberId,
+      role: "worker_1",
+      relationTypeId: input.relationTypeId,
+      activeAt: new Date(),
+    });
+    const reused = existingRels.find((r) => r.worker2 === dependentWorkerId);
+
     // Real records on purpose: dependent workers and relationships
     // persist regardless of whether the wizard is later posted.
-    const relation = await ctx.storage.workerRelations.create({
-      worker1: subscriberId,
-      worker2: dependentWorkerId,
-      relationType: input.relationTypeId,
-      startYmd: todayYmd(),
-      endYmd: null,
-      data: {
-        documentFileId: input.documentFileId,
-        wizardId: ctx.wizardId,
-        source: wizardType,
-      },
-    });
+    const relation =
+      reused ??
+      (await ctx.storage.workerRelations.create({
+        worker1: subscriberId,
+        worker2: dependentWorkerId,
+        relationType: input.relationTypeId,
+        startYmd: todayYmd(),
+        endYmd: null,
+        data: {
+          documentFileId: input.documentFileId,
+          wizardId: ctx.wizardId,
+          source: wizardType,
+        },
+      }));
 
     dependents.push({
+      createdByWizard: !reused,
       relationId: relation.id,
       workerId: dependentWorkerId,
       name: dependentName,
@@ -602,9 +623,12 @@ export async function handleDependentsSubmit(
   if (input.action === "remove") {
     const entry = dependents.find((d) => d.relationId === input.relationId);
     if (!entry) throw new Error("Dependent not found on this enrollment");
-    // Remove only the relationship created by this wizard; the dependent's
-    // worker record persists (it is a real record once created).
-    await ctx.storage.workerRelations.delete(entry.relationId);
+    // Remove only a relationship created by this wizard; a reused
+    // pre-existing relationship stays (the wizard doesn't own it), and the
+    // dependent's worker record persists (it is a real record once created).
+    if (entry.createdByWizard !== false) {
+      await ctx.storage.workerRelations.delete(entry.relationId);
+    }
     const remaining = dependents.filter(
       (d) => d.relationId !== input.relationId,
     );
