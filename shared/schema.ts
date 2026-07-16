@@ -2041,6 +2041,10 @@ export {
   insertPluginConfigBenefitEligibilitySchema,
   type InsertPluginConfigBenefitEligibility,
   type PluginConfigBenefitEligibility,
+  trustWmbEvents,
+  insertTrustWmbEventSchema,
+  type InsertTrustWmbEvent,
+  type TrustWmbEvent,
 } from "./schema/trust/benefit-eligibility-schema";
 
 // Dashboard subsidiary — role-based visibility hoisted out of the opaque

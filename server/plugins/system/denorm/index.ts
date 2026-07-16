@@ -106,6 +106,11 @@ import "./plugins/grievanceTimeline";
 import "./plugins/tosAbsenceReminder";
 import "./plugins/grievanceDeadlineReminder";
 import "./plugins/employerMonthly";
+// Trust WMB lifecycle-event denorm plugins (shared trust_wmb_events table,
+// one event_type slice each).
+import "./plugins/trustWmbStart";
+import "./plugins/trustWmbRestart";
+import "./plugins/trustWmbTerminate";
 // Dispatch-eligibility denorm plugins (write side of dispatch eligibility).
 import "./plugins/dispatch/accepted";
 import "./plugins/dispatch/ban";

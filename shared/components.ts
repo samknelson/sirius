@@ -533,7 +533,7 @@ export const componentRegistry: ComponentDefinition[] = [
     schemaManifest: {
       version: 1,
       schemaPath: "./shared/schema/trust/benefit-eligibility-schema.ts",
-      tables: ["plugin_configs_benefit_eligibility"]
+      tables: ["plugin_configs_benefit_eligibility", "trust_wmb_events"]
     }
   },
   {

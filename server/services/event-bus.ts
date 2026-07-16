@@ -42,6 +42,7 @@ export enum EventType {
   GRIEVANCE_SETTLEMENT_SAVED = "grievance.settlement.saved",
   EDLS_SHEET_SAVED = "edls.sheet.saved",
   TRUST_WMB_SCAN_COMPLETED = "trust.wmb.scan.completed",
+  TRUST_WMB_SCAN_WORKER_COMPLETED = "trust.wmb.scan.worker.completed",
   TOS_ABSENCE_REMINDER = "tos.absence.reminder",
   GRIEVANCE_DEADLINE_REMINDER = "grievance.deadline.reminder",
   EMPLOYER_MONTHLY = "employer.monthly",
@@ -240,6 +241,33 @@ export interface EdlsSheetSavedPayload {
   ymd: string;
 }
 
+/**
+ * Per-worker scan-result event, emitted after one worker's WMB scan queue job
+ * result is recorded (successfully). Carries the per-benefit actions
+ * (including per-plugin eligibility results) so listeners — e.g. the
+ * trust-wmb-terminate denorm plugin — can react without re-reading the queue.
+ */
+export interface TrustWmbScanWorkerCompletedPayload {
+  queueId: string;
+  workerId: string;
+  month: number;
+  year: number;
+  actions: Array<{
+    benefitId: string;
+    benefitName: string;
+    scanType: string;
+    eligible: boolean;
+    action: string;
+    executed?: boolean;
+    pluginResults: Array<{
+      pluginKey: string;
+      eligible: boolean;
+      reason?: string;
+      warning?: string;
+    }>;
+  }>;
+}
+
 export interface TrustWmbScanCompletedPayload {
   statusId: string;
   month: number;
@@ -347,6 +375,7 @@ export interface EventPayloadMap {
   [EventType.GRIEVANCE_SETTLEMENT_SAVED]: GrievanceSettlementSavedPayload;
   [EventType.EDLS_SHEET_SAVED]: EdlsSheetSavedPayload;
   [EventType.TRUST_WMB_SCAN_COMPLETED]: TrustWmbScanCompletedPayload;
+  [EventType.TRUST_WMB_SCAN_WORKER_COMPLETED]: TrustWmbScanWorkerCompletedPayload;
   [EventType.TOS_ABSENCE_REMINDER]: TosAbsenceReminderPayload;
   [EventType.GRIEVANCE_DEADLINE_REMINDER]: GrievanceDeadlineReminderPayload;
   [EventType.EMPLOYER_MONTHLY]: EmployerMonthlyPayload;
