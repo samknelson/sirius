@@ -1,0 +1,42 @@
+== Step 3: verify ==
+No .github/ or deploy/ paths in rewritten history. Good.
+Content diff vs backup (should ONLY list .github/ and deploy/ files):
+ .github/CODEOWNERS                          |   3 -
+ .github/pull_request_template.md            |   0
+ .github/workflows/build-and-test.yml        | 210 -----------------------
+ .github/workflows/deploy-dev-test.yml       |  67 --------
+ .github/workflows/deploy-to-environment.yml | 253 ----------------------------
+ .github/workflows/pr-build-check.yml        |  65 -------
+ deploy/env.development.json                 |  31 ----
+ 7 files changed, 629 deletions(-)
+== Step 4: push main to origin ==
+Enumerating objects: 539, done.
+Counting objects: 100% (539/539), done.
+Delta compression using up to 2 threads
+Compressing objects: 100% (438/438), done.
+Writing objects: 100% (446/446), 166.81 KiB | 5.21 MiB/s, done.
+Total 446 (delta 321), reused 0 (delta 0), pack-reused 0 (from 0)
+remote: Resolving deltas: 100% (321/321), completed with 76 local objects.
+To https://github.com/samknelson/sirius
+   29d486b4..f7d08910  main -> main
+== Step 5: freeman-dev branch (merge main, push to freeman only) ==
+branch 'freeman-dev' set up to track 'freeman/freeman-dev'.
+Preparing worktree (checking out 'freeman-dev')
+Updating files: 100% (1689/1689), done.
+HEAD is now at 5d66287c Task #768: Fix menu preview (restart) + flatten Workers in EDLS menu
+Merge made by the 'ort' strategy.
+ .gitignore |  3 +++
+ replit.md  | 15 +++++++++++++++
+ 2 files changed, 18 insertions(+)
+Enumerating objects: 433, done.
+Counting objects: 100% (431/431), done.
+Delta compression using up to 2 threads
+Compressing objects: 100% (309/309), done.
+Writing objects: 100% (315/315), 50.16 KiB | 2.51 MiB/s, done.
+Total 315 (delta 248), reused 0 (delta 0), pack-reused 0 (from 0)
+remote: Resolving deltas: 100% (248/248), completed with 61 local objects.
+To https://github.com/Freeman-DevOps-Organization/fm-application-fls.git
+   5d66287c..5b348fac  freeman-dev -> freeman-dev
+== Done ==
+main -> origin only.  freeman-dev -> freeman only.
+Cleanup after you're satisfied: git branch -D backup-main-20260716
