@@ -26,7 +26,7 @@ function buildEdlsMenuTree(): MenuItemDef[] {
   if (home) items.push(home);
 
   // Personal items stay so worker/employer-portal users keep their links.
-  for (const id of ["my-worker", "my-qr-code", "my-employers", "employer-dispatch", "my-dispatches"]) {
+  for (const id of ["my-worker", "my-employers", "employer-dispatch", "my-dispatches"]) {
     const item = pick(id);
     if (item) items.push(item);
   }
