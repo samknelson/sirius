@@ -22,12 +22,16 @@ const policy = definePolicy({
     }
     
     const status = (sheet as any).status;
-    if (status === 'lock' || status === 'trash') {
+    
+    if (status === 'lock') {
+      // Mirror edls.sheet.set_status: only admins, managers, and coordinators
+      // can move a sheet out of Scheduled, so only they can manage it.
+      if (await ctx.hasAnyPermission(['admin', 'edls.manager', 'edls.coordinator'])) {
+        return { granted: true, reason: 'Admin/manager/coordinator can manage Scheduled sheets' };
+      }
       return { 
         granted: false, 
-        reason: status === 'lock' 
-          ? 'Locked sheets cannot be managed' 
-          : 'Trashed sheets cannot be managed' 
+        reason: 'Only managers and coordinators can manage Scheduled sheets' 
       };
     }
     
