@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Wand2, ArrowLeft, Trash2, AlertTriangle, Clock } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Wand2, ArrowLeft, Trash2, AlertTriangle, Clock, Undo2 } from "lucide-react";
 import { format } from "date-fns";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -88,6 +89,52 @@ export default function WizardView() {
 
   const wizardData = wizard?.data as WizardData | undefined;
 
+  // Cancel Run: only offered for monthly-upload wizard types whose completed
+  // run can be reversed (hours + benefits + charges for the employer/period).
+  const CANCELLABLE_TYPES = ["gbhet_legal_workers_monthly", "gbhet_legal_workers_corrections"];
+  const isCancellableType = !!wizard && CANCELLABLE_TYPES.includes(wizard.type);
+  const isCompleted = wizard?.status === "complete" || wizard?.status === "completed";
+  const isCancelled = wizard?.status === "cancelled";
+  const showCancelTab = isCancellableType && (isCompleted || isCancelled);
+
+  const { data: cancelPreview, error: cancelPreviewError } = useQuery<{
+    canCancel: boolean;
+    employerName?: string;
+    year?: number;
+    month?: number;
+    hoursRowCount: number;
+    wmbRowCount: number;
+    ledgerEntryCount: number;
+    chargeTotal: string;
+  }>({
+    queryKey: [`/api/wizards/${id}/cancellation-preview`],
+    enabled: !!id && isCancellableType && isCompleted,
+  });
+
+  const cancelRunMutation = useMutation({
+    mutationFn: async () => {
+      return await apiRequest("POST", `/api/wizards/${id}/cancel`, {});
+    },
+    onSuccess: (result: { hoursDeleted: number; wmbDeleted: number; ledgerEntriesReversed: number; leftoverLedgerEntries: number }) => {
+      queryClient.invalidateQueries({ queryKey: [`/api/wizards/${id}`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/wizards/${id}/cancellation-preview`] });
+      queryClient.invalidateQueries({ queryKey: ['/api/wizards'] });
+      toast({
+        title: "Wizard Run Cancelled",
+        description: `Removed ${result.hoursDeleted} hours record${result.hoursDeleted !== 1 ? 's' : ''}, ${result.wmbDeleted} benefit record${result.wmbDeleted !== 1 ? 's' : ''}, and reversed ${result.ledgerEntriesReversed} charge${result.ledgerEntriesReversed !== 1 ? 's' : ''}.` +
+          (result.leftoverLedgerEntries > 0 ? ` Warning: ${result.leftoverLedgerEntries} charge entr${result.leftoverLedgerEntries !== 1 ? 'ies' : 'y'} could not be reversed automatically.` : ''),
+        variant: result.leftoverLedgerEntries > 0 ? "destructive" : undefined,
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to cancel wizard run",
+        variant: "destructive",
+      });
+    },
+  });
+
   if (wizardError) {
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -140,6 +187,9 @@ export default function WizardView() {
               </h1>
               <p className="text-sm text-muted-foreground">
                 Created {format(new Date(wizard.date), 'PPP')}
+                {isCancelled && (
+                  <Badge variant="destructive" className="ml-2" data-testid="badge-cancelled">Cancelled</Badge>
+                )}
               </p>
             </div>
           </div>
@@ -166,6 +216,12 @@ export default function WizardView() {
             <TabsTrigger value="retention" data-testid="tab-retention">
               <Clock className="h-4 w-4 mr-2" />
               Retention
+            </TabsTrigger>
+          )}
+          {showCancelTab && (
+            <TabsTrigger value="cancel" data-testid="tab-cancel">
+              <Undo2 className="h-4 w-4 mr-2" />
+              Cancel Run
             </TabsTrigger>
           )}
           <TabsTrigger value="delete" data-testid="tab-delete">
@@ -199,6 +255,101 @@ export default function WizardView() {
               currentRetention={(wizardData as ReportData)?.retention}
               wizardData={(wizardData as ReportData) ?? {}}
             />
+          </TabsContent>
+        )}
+
+        {showCancelTab && (
+          <TabsContent value="cancel">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-destructive">
+                  <Undo2 className="h-5 w-5" />
+                  Cancel Wizard Run
+                </CardTitle>
+                <CardDescription>
+                  Undo everything this completed run wrote — hours, benefits, and charges — while keeping the worker records.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {isCancelled ? (
+                  <div className="p-4 border rounded-lg bg-muted/50" data-testid="text-already-cancelled">
+                    <p className="text-sm text-muted-foreground">
+                      This wizard run has already been cancelled. Its hours, benefits, and charges were removed.
+                    </p>
+                  </div>
+                ) : cancelPreviewError ? (
+                  <div className="p-4 border border-destructive/20 bg-destructive/5 rounded-lg">
+                    <p className="text-sm text-muted-foreground" data-testid="text-cancel-unavailable">
+                      {(cancelPreviewError as Error).message || "Cancellation is not available for this wizard run."}
+                    </p>
+                  </div>
+                ) : !cancelPreview ? (
+                  <Skeleton className="h-24 w-full" />
+                ) : (
+                  <>
+                    <div className="p-4 border border-destructive/20 bg-destructive/5 rounded-lg">
+                      <h3 className="font-medium mb-2 flex items-center gap-2">
+                        <AlertTriangle className="h-4 w-4 text-destructive" />
+                        This affects everything for this employer and month
+                      </h3>
+                      <p className="text-sm text-muted-foreground mb-4">
+                        Cancelling removes ALL data for{" "}
+                        <strong>{cancelPreview.employerName || "this employer"}</strong> in{" "}
+                        <strong>
+                          {cancelPreview.year && cancelPreview.month
+                            ? format(new Date(cancelPreview.year, cancelPreview.month - 1, 1), "MMMM yyyy")
+                            : "this period"}
+                        </strong>{" "}
+                        — including any manual edits made after the upload:
+                      </p>
+                      <ul className="text-sm text-muted-foreground space-y-1 ml-4 list-disc" data-testid="list-cancel-impact">
+                        <li>{cancelPreview.hoursRowCount} worker hours record{cancelPreview.hoursRowCount !== 1 ? 's' : ''} will be deleted</li>
+                        <li>{cancelPreview.wmbRowCount} worker benefit record{cancelPreview.wmbRowCount !== 1 ? 's' : ''} will be deleted</li>
+                        <li>{cancelPreview.ledgerEntryCount} charge{cancelPreview.ledgerEntryCount !== 1 ? 's' : ''} totaling ${cancelPreview.chargeTotal} will be reversed on the employer's ledger</li>
+                        <li>Worker records themselves are kept</li>
+                        <li>This cannot be undone — the file would need to be re-uploaded against the correct employer</li>
+                      </ul>
+                    </div>
+
+                    <div className="flex justify-end">
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button
+                            variant="destructive"
+                            disabled={cancelRunMutation.isPending}
+                            data-testid="button-cancel-run"
+                          >
+                            <Undo2 className="h-4 w-4 mr-2" />
+                            {cancelRunMutation.isPending ? "Cancelling..." : "Cancel This Run"}
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Cancel this wizard run?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              This will delete {cancelPreview.hoursRowCount} hours record{cancelPreview.hoursRowCount !== 1 ? 's' : ''} and{" "}
+                              {cancelPreview.wmbRowCount} benefit record{cancelPreview.wmbRowCount !== 1 ? 's' : ''} for{" "}
+                              {cancelPreview.employerName || "this employer"}, and reverse ${cancelPreview.chargeTotal} in charges.
+                              This action cannot be undone.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel data-testid="button-cancel-cancel-run">Keep Run</AlertDialogCancel>
+                            <AlertDialogAction
+                              onClick={() => cancelRunMutation.mutate()}
+                              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                              data-testid="button-confirm-cancel-run"
+                            >
+                              Cancel Run
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
         )}
 

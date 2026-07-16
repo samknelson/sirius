@@ -94,6 +94,8 @@ export interface LedgerEntryStorage {
   getBalancesByEntityAndAccount(entityType: string, entityIds: string[], accountIds: string[]): Promise<Array<{ entityId: string; accountId: string; total: string }>>;
   getMonthlyDeltasByEntityAndAccount(entityType: string, entityIds: string[], accountIds: string[], monthKeys: string[]): Promise<Array<{ entityId: string; ym: string; total: string }>>;
   getByReference(referenceType: string, referenceId: string): Promise<Ledger[]>;
+  /** All ledger entries whose referenceId is in the given set. Used by the wizard-cancellation preview. */
+  getByReferenceIds(referenceIds: string[]): Promise<Ledger[]>;
   getByChargePluginKey(chargePlugin: string, chargePluginKey: string): Promise<Ledger | undefined>;
   getByReferenceAndConfig(referenceId: string, chargePluginConfigId: string): Promise<Ledger[]>;
   getByFilter(filter: LedgerEntryFilter): Promise<Ledger[]>;
@@ -864,6 +866,13 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
           eq(ledger.referenceType, referenceType),
           eq(ledger.referenceId, referenceId)
         ));
+    },
+
+    async getByReferenceIds(referenceIds: string[]): Promise<Ledger[]> {
+      if (referenceIds.length === 0) return [];
+      const client = getClient();
+      return await client.select().from(ledger)
+        .where(inArray(ledger.referenceId, referenceIds));
     },
 
     async getTransactions(filter: TransactionFilter): Promise<LedgerEntryWithDetails[]> {

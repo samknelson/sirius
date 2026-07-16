@@ -54,6 +54,11 @@ export interface WorkerHoursStorage {
   updateWorkerHours(id: string, data: { year?: number; month?: number; day?: number; employerId?: string; employmentStatusId?: string; hours?: number | null; home?: boolean; jobTitle?: string | null }): Promise<WorkerHoursResult | undefined>;
   deleteWorkerHours(id: string): Promise<WorkerHoursDeleteResult>;
   upsertWorkerHours(data: { workerId: string; month: number; year: number; employerId: string; employmentStatusId: string; hours: number | null; home?: boolean; jobTitle?: string | null }): Promise<WorkerHoursResult>;
+  /**
+   * All hours rows for one employer + reporting period (year/month). Used by
+   * the wizard-cancellation flow to enumerate what a monthly upload wrote.
+   */
+  listByEmployerPeriod(employerId: string, year: number, month: number): Promise<Array<{ id: string; workerId: string; hours: string | null }>>;
   getDistinctWorkerIdsByStatusAndMonths(
     statusIds: string[],
     months: Array<{ year: number; month: number }>,
@@ -601,6 +606,25 @@ export function createWorkerHoursStorage(
 
       await notifyWorkerDataChanged(savedHours.workerId);
       return { data: savedHours, notifications };
+    },
+
+    async listByEmployerPeriod(employerId: string, year: number, month: number): Promise<Array<{ id: string; workerId: string; hours: string | null }>> {
+      const client = getClient();
+      const rows = await client
+        .select({
+          id: workerHours.id,
+          workerId: workerHours.workerId,
+          hours: workerHours.hours,
+        })
+        .from(workerHours)
+        .where(
+          and(
+            eq(workerHours.employerId, employerId),
+            eq(workerHours.year, year),
+            eq(workerHours.month, month),
+          ),
+        );
+      return rows as Array<{ id: string; workerId: string; hours: string | null }>;
     },
 
     async getDistinctWorkerIdsByStatusAndMonths(

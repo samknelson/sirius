@@ -17,6 +17,11 @@ export interface TrustWmbStorage {
   getWorkerBenefits(workerId: string): Promise<any[]>;
   createWorkerBenefit(data: { workerId: string; month: number; year: number; employerId: string; benefitId: string }): Promise<TrustWmb>;
   deleteWorkerBenefit(id: string): Promise<boolean>;
+  /**
+   * All WMB rows for one employer + reporting period (year/month). Used by
+   * the wizard-cancellation flow to enumerate what a monthly upload wrote.
+   */
+  listByEmployerPeriod(employerId: string, year: number, month: number): Promise<Array<{ id: string; workerId: string; benefitId: string }>>;
   workerBenefitExists(workerId: string, benefitId: string, month: number, year: number): Promise<boolean>;
 }
 
@@ -154,6 +159,25 @@ export function createTrustWmbStorage(): TrustWmbStorage {
       }
 
       return result.length > 0;
+    },
+
+    async listByEmployerPeriod(employerId: string, year: number, month: number): Promise<Array<{ id: string; workerId: string; benefitId: string }>> {
+      const client = getClient();
+      const rows = await client
+        .select({
+          id: trustWmb.id,
+          workerId: trustWmb.workerId,
+          benefitId: trustWmb.benefitId,
+        })
+        .from(trustWmb)
+        .where(
+          and(
+            eq(trustWmb.employerId, employerId),
+            eq(trustWmb.year, year),
+            eq(trustWmb.month, month),
+          ),
+        );
+      return rows;
     },
 
     async workerBenefitExists(workerId: string, benefitId: string, month: number, year: number): Promise<boolean> {

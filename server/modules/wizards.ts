@@ -9,6 +9,7 @@ import { enforcePluginGating } from "../plugins/_core";
 import { createUnifiedOptionsStorage } from "../storage/unified-options.js";
 import { objectStorageService } from "../services/objectStorage.js";
 import { validateAgainstSchema } from "../lib/json-schema-validator";
+import { previewCancellation, executeCancellation } from "./wizard-cancellation";
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -497,6 +498,38 @@ export function registerWizardRoutes(
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ message: "Failed to delete wizard" });
+    }
+  });
+
+  // Admin-only: preview what cancelling a completed monthly wizard run would
+  // remove (hours rows, benefit rows, and the ledger charges tied to them).
+  app.get("/api/wizards/:id/cancellation-preview", requireAccess('admin'), async (req, res) => {
+    try {
+      const { preview, error } = await previewCancellation(req.params.id);
+      if (error) {
+        return res.status(error.status).json({ message: error.message });
+      }
+      res.json(preview);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to preview cancellation" });
+    }
+  });
+
+  // Admin-only: cancel a completed monthly wizard run. Deletes the hours and
+  // benefit rows the run wrote for its employer + period; the existing delete
+  // paths re-run the charge plugins, which reverse the ledger charges. Worker
+  // records are kept. The wizard is marked status=cancelled and cannot be
+  // cancelled twice.
+  app.post("/api/wizards/:id/cancel", requireAccess('admin'), async (req, res) => {
+    try {
+      const ctx = await buildContext(req as any);
+      const { result, error } = await executeCancellation(req.params.id, ctx.user?.id);
+      if (error) {
+        return res.status(error.status).json({ message: error.message });
+      }
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to cancel wizard run" });
     }
   });
 
