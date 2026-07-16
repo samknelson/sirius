@@ -6,6 +6,7 @@ import { validateAgainstSchema } from "../../lib/json-schema-validator";
 import { enforcePluginGating } from "../_core";
 import { wizardPluginRegistry } from "./registry";
 import { enforceWizardEntityAccess } from "./entity-access";
+import { WorkerTrustElectionValidationError } from "../../storage/trust/elections";
 import type {
   WizardPlugin,
   WizardStepHandler,
@@ -242,6 +243,12 @@ export function registerWizardDispatcherRoutes(
         const updated = await persistStepResult(loaded.wizard.id, step.id, out);
         res.json(updated);
       } catch (error) {
+        // Storage-level election validation failures (e.g. the cross-
+        // subscriber dual-coverage rule) are user-correctable input
+        // problems, not dispatch failures — surface them as 400s.
+        if (error instanceof WorkerTrustElectionValidationError) {
+          return res.status(400).json({ message: error.message });
+        }
         logger.error("Wizard dispatch submit failed", {
           service: SERVICE,
           error: error instanceof Error ? error.message : String(error),

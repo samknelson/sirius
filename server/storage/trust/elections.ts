@@ -15,7 +15,7 @@ import {
   type WorkerTrustElectionView,
   type EnrollmentType,
 } from '@shared/schema';
-import { eq, and, asc, desc, isNull, lt, lte, gte, or, ne, inArray, arrayOverlaps, type SQL } from 'drizzle-orm';
+import { eq, and, asc, desc, isNull, lt, lte, gte, or, ne, inArray, arrayOverlaps, sql, type SQL } from 'drizzle-orm';
 import { defineLoggingConfig, type StorageLoggingConfig } from '../middleware/logging';
 import { normalizeToDateOnly, getTodayDateOnly } from '@shared/utils';
 import { eventBus, EventType } from '../../services/event-bus';
@@ -259,6 +259,165 @@ async function validateElection(
   return { workerId, employerId, policyId, startYmd, endYmd };
 }
 
+async function getWorkerFullName(
+  client: ReturnType<typeof getClient>,
+  workerId: string,
+): Promise<string> {
+  const [w] = await client
+    .select({
+      displayName: contacts.displayName,
+      given: contacts.given,
+      family: contacts.family,
+    })
+    .from(workers)
+    .leftJoin(contacts, eq(workers.contactId, contacts.id))
+    .where(eq(workers.id, workerId));
+  if (!w) return 'Unknown worker';
+  return (
+    [w.given, w.family].filter(Boolean).join(' ').trim() ||
+    w.displayName ||
+    'Unknown worker'
+  );
+}
+
+function describeConflictWindow(e: WorkerTrustElection): string {
+  return e.endYmd
+    ? `election from ${e.startYmd} to ${e.endYmd}`
+    : `election starting ${e.startYmd}`;
+}
+
+interface DualCoverageInput {
+  subscriberId: string;
+  relationshipIds: string[] | null | undefined;
+  startYmd: string;
+  endYmd: string | null;
+  excludeElectionId?: string;
+}
+
+/**
+ * Cross-subscriber "no dual coverage" rule: no person — the subscriber or any
+ * dependent — may be covered by two date-overlapping elections belonging to
+ * DIFFERENT subscribers. Same-subscriber overlap is handled separately by
+ * endDatePreviousActive (a new active election auto-ends the prior one), so
+ * this check deliberately ignores the subscriber's own other elections; that
+ * also keeps open-enrollment renewals and life-event carry-forward working.
+ *
+ * The lookup is targeted: it is keyed to just the handful of people on the
+ * election being saved (subscriber + dependents), never a scan of all
+ * elections. It must query live data at write time — a cached "covered" flag
+ * could go stale between simultaneous submissions and coverage is a
+ * date-range property, not a boolean.
+ */
+async function assertNoDualCoverage(
+  client: ReturnType<typeof getClient>,
+  input: DualCoverageInput,
+): Promise<void> {
+  const { subscriberId, startYmd, endYmd, excludeElectionId } = input;
+  const relationshipIds = (input.relationshipIds ?? []).filter(Boolean);
+
+  // People covered by the election being saved: the subscriber plus the
+  // non-subscriber side of each dependent relationship.
+  const coveredIds = new Set<string>([subscriberId]);
+  if (relationshipIds.length > 0) {
+    const ownRels = await client
+      .select({
+        id: workerRelations.id,
+        worker1: workerRelations.worker1,
+        worker2: workerRelations.worker2,
+      })
+      .from(workerRelations)
+      .where(inArray(workerRelations.id, relationshipIds));
+    for (const r of ownRels) {
+      coveredIds.add(r.worker1 === subscriberId ? r.worker2 : r.worker1);
+    }
+  }
+  const coveredList = Array.from(coveredIds);
+
+  // Serialize concurrent writes that touch the same people. Under READ
+  // COMMITTED, two simultaneous submissions covering the same person could
+  // each pass the check before the other commits (write skew). Taking a
+  // transaction-scoped advisory lock per covered worker (sorted to avoid
+  // deadlocks) makes the second writer wait and then see the first's
+  // committed row. Locks release automatically at commit/rollback.
+  for (const workerId of [...coveredList].sort()) {
+    await client.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtextextended(${'trust-election-coverage:' + workerId}, 0))`,
+    );
+  }
+
+  // Any other subscriber's election covering one of our people as a
+  // dependent must reference a relationship row that touches that person.
+  const candidateRels = await client
+    .select({
+      id: workerRelations.id,
+      worker1: workerRelations.worker1,
+      worker2: workerRelations.worker2,
+    })
+    .from(workerRelations)
+    .where(
+      or(
+        inArray(workerRelations.worker1, coveredList),
+        inArray(workerRelations.worker2, coveredList),
+      ),
+    );
+  const candidateRelMap = new Map(candidateRels.map((r) => [r.id, r]));
+
+  const conds: SQL[] = [
+    ne(workerTrustElections.workerId, subscriberId),
+    // Date-range overlap: the other election has not ended before ours
+    // starts, and (when ours has an end) it starts no later than our end.
+    or(
+      isNull(workerTrustElections.endYmd),
+      gte(workerTrustElections.endYmd, startYmd),
+    )!,
+  ];
+  if (endYmd) conds.push(lte(workerTrustElections.startYmd, endYmd));
+  if (excludeElectionId) conds.push(ne(workerTrustElections.id, excludeElectionId));
+  const coverageConds: SQL[] = [inArray(workerTrustElections.workerId, coveredList)];
+  if (candidateRelMap.size > 0) {
+    coverageConds.push(
+      arrayOverlaps(
+        workerTrustElections.relationshipIds,
+        Array.from(candidateRelMap.keys()),
+      ),
+    );
+  }
+  conds.push(or(...coverageConds)!);
+
+  const overlapping = await client
+    .select()
+    .from(workerTrustElections)
+    .where(and(...conds));
+  if (overlapping.length === 0) return;
+
+  for (const e of overlapping) {
+    // One of our covered people is the subscriber of the other election.
+    if (coveredIds.has(e.workerId)) {
+      const personName = await getWorkerFullName(client, e.workerId);
+      throw new WorkerTrustElectionValidationError(
+        'relationshipIds',
+        `${personName} already has their own ${describeConflictWindow(e)} and cannot also be covered here for an overlapping period. A person cannot be covered by two elections at the same time.`,
+      );
+    }
+    // One of our covered people is a dependent on the other election.
+    for (const relId of e.relationshipIds ?? []) {
+      const rel = candidateRelMap.get(relId);
+      if (!rel) continue;
+      for (const side of [rel.worker1, rel.worker2]) {
+        if (side === e.workerId || !coveredIds.has(side)) continue;
+        const [personName, otherSubscriberName] = await Promise.all([
+          getWorkerFullName(client, side),
+          getWorkerFullName(client, e.workerId),
+        ]);
+        throw new WorkerTrustElectionValidationError(
+          side === subscriberId ? 'workerId' : 'relationshipIds',
+          `${personName} is already covered under ${otherSubscriberName}'s ${describeConflictWindow(e)}. A person cannot be covered by two elections at the same time.`,
+        );
+      }
+    }
+  }
+}
+
 interface ElectionBeforeState {
   election: WorkerTrustElection | undefined;
 }
@@ -408,6 +567,12 @@ export function createWorkerTrustElectionsStorage(): WorkerTrustElectionsStorage
       const validated = await validateElection({ workerId, ...parsed });
       return await runInTransaction(async () => {
         const client = getClient();
+        await assertNoDualCoverage(client, {
+          subscriberId: validated.workerId,
+          relationshipIds: parsed.relationshipIds,
+          startYmd: validated.startYmd,
+          endYmd: validated.endYmd,
+        });
         if (!validated.endYmd) {
           await endDatePreviousActive(client, validated.workerId, validated.startYmd, undefined);
         }
@@ -446,6 +611,34 @@ export function createWorkerTrustElectionsStorage(): WorkerTrustElectionsStorage
         if (!existing) return undefined;
 
         const validated = await validateElection(parsed, existing);
+
+        // Re-check dual coverage only when the update could EXPAND coverage
+        // (dependents changed, start date changed, or end date removed /
+        // pushed later). Pure shrinks — ending or shortening an election —
+        // must always succeed so staff can clean up pre-existing conflicts.
+        const nextRels =
+          parsed.relationshipIds !== undefined
+            ? parsed.relationshipIds ?? []
+            : existing.relationshipIds ?? [];
+        const prevRels = existing.relationshipIds ?? [];
+        const relsChanged =
+          parsed.relationshipIds !== undefined &&
+          (nextRels.length !== prevRels.length ||
+            nextRels.some((r) => !prevRels.includes(r)));
+        const startChanged = validated.startYmd !== existing.startYmd;
+        const endExtended =
+          existing.endYmd !== null &&
+          (validated.endYmd === null || validated.endYmd > existing.endYmd);
+        if (relsChanged || startChanged || endExtended) {
+          await assertNoDualCoverage(client, {
+            subscriberId: existing.workerId,
+            relationshipIds: nextRels,
+            startYmd: validated.startYmd,
+            endYmd: validated.endYmd,
+            excludeElectionId: id,
+          });
+        }
+
         if (!validated.endYmd) {
           await endDatePreviousActive(client, existing.workerId, validated.startYmd, id);
         }
