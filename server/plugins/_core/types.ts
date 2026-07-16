@@ -50,4 +50,5 @@ export type PluginKind =
   | "payment-gateway"
   | "event-notifier"
   | "cron"
-  | "denorm";
+  | "denorm"
+  | "menu";

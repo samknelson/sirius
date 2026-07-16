@@ -351,6 +351,11 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Adding a wizard plugin adds ZERO routes.
   registerWizardDispatcherRoutes(app, requireAuth);
 
+  // Pluggable main navigation: GET /api/menu resolves the selected menu
+  // plugin's tree per user (permission / policy / component gates).
+  const { registerMenuRoutes } = await import("./plugins/menu");
+  registerMenuRoutes(app, requireAuth);
+
   // Register file management routes
   registerFileRoutes(app, requireAuth, requirePermission);
 

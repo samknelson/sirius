@@ -36,6 +36,7 @@ import { initializeDashboardPluginSystem } from "./plugins/dashboard";
 import { initializeClientInjectionPluginSystem } from "./plugins/client-injection";
 import { initializeEventNotifierPluginSystem } from "./plugins/event-notifier";
 import { initializeWizardPluginSystem } from "./plugins/wizards";
+import { initializeMenuPluginSystem } from "./plugins/menu";
 import { initWorkerBanNotifications } from "./services/worker-ban-notifications";
 import { initDispatchNotifications } from "./services/dispatch/notifications";
 import "@shared/access-policies/loader";
@@ -340,6 +341,10 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
   // Register wizards as the sixth plugin kind (self-registering plugin imports)
   initializeWizardPluginSystem();
   logger.info("Wizard plugins registered", { source: "startup" });
+
+  // Register menu plugins (pluggable main navigation)
+  initializeMenuPluginSystem();
+  logger.info("Menu plugins registered", { source: "startup" });
 
   // Register flood events
   registerFloodEvents();

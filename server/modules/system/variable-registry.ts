@@ -107,6 +107,11 @@ const VARIABLE_REGISTRY: Record<string, VariableRegistryEntry> = {
       await loadTerminology();
     },
   },
+
+  // Selected main-menu plugin id (Site Configuration → Main menu).
+  // Any authenticated user may read it; admins write it. The /api/menu
+  // resolver falls back to "default" for unset/unknown values.
+  site_menu_plugin: { readTier: "authenticated", schema: z.string() },
 };
 
 export function getVariableRegistryEntry(name: string): VariableRegistryEntry | undefined {

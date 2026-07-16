@@ -3,10 +3,20 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Save } from "lucide-react";
 import { SimpleHtmlEditor } from "@/components/ui/simple-html-editor";
-import { useSiteSettings, useSetVariable } from "@/lib/use-variable";
+import { useSiteSettings, useSetVariable, useVariableValue } from "@/lib/use-variable";
+import { useQuery } from "@tanstack/react-query";
+import { queryClient } from "@/lib/queryClient";
+import { DEFAULT_MENU_PLUGIN_ID, SITE_MENU_PLUGIN_VARIABLE } from "@shared/menu-types";
+
+interface MenuManifestEntry {
+  id: string;
+  name: string;
+  description: string;
+}
 
 export default function SiteInformation() {
   const { toast } = useToast();
@@ -45,6 +55,26 @@ export default function SiteInformation() {
       variant: "destructive",
     });
   };
+
+  // Main menu plugin selection
+  const { data: menuManifest } = useQuery<MenuManifestEntry[]>({
+    queryKey: ["/api/plugins/menu/manifest"],
+  });
+  const menuPluginValue = useVariableValue(SITE_MENU_PLUGIN_VARIABLE);
+  const savedMenuPlugin =
+    typeof menuPluginValue.data === "string" && menuPluginValue.data
+      ? menuPluginValue.data
+      : DEFAULT_MENU_PLUGIN_ID;
+  const saveMenuPluginMutation = useSetVariable(SITE_MENU_PLUGIN_VARIABLE, {
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/menu"] });
+      toast({
+        title: "Main menu updated",
+        description: "The site navigation menu has been changed.",
+      });
+    },
+    onError: onSaveError,
+  });
 
   const saveNameMutation = useSetVariable("site_name", { onSuccess: onSaved, onError: onSaveError });
   const saveTitleMutation = useSetVariable("site_title", { onSuccess: onSaved, onError: onSaveError });
@@ -236,6 +266,39 @@ export default function SiteInformation() {
               </div>
             )}
           </div>
+        </CardContent>
+      </Card>
+
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle>Main Menu</CardTitle>
+          <CardDescription>
+            Choose the navigation menu layout shown in the site header
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <Label htmlFor="menu-plugin">Menu Layout</Label>
+          <Select
+            value={savedMenuPlugin}
+            onValueChange={(value) => saveMenuPluginMutation.mutate(value)}
+            disabled={saveMenuPluginMutation.isPending || menuPluginValue.isLoading}
+          >
+            <SelectTrigger id="menu-plugin" className="max-w-sm" data-testid="select-menu-plugin">
+              <SelectValue placeholder="Select a menu layout" />
+            </SelectTrigger>
+            <SelectContent>
+              {(menuManifest ?? []).map((entry) => (
+                <SelectItem key={entry.id} value={entry.id} data-testid={`option-menu-plugin-${entry.id}`}>
+                  {entry.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {menuManifest?.find((e) => e.id === savedMenuPlugin)?.description && (
+            <p className="text-sm text-muted-foreground" data-testid="text-menu-plugin-description">
+              {menuManifest.find((e) => e.id === savedMenuPlugin)!.description}
+            </p>
+          )}
         </CardContent>
       </Card>
 
