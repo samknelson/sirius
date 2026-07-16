@@ -107,6 +107,8 @@ export default function WizardView() {
     employerName?: string;
     year?: number;
     month?: number;
+    benefitYear?: number;
+    benefitMonth?: number;
     hoursRowCount: number;
     wmbRowCount: number;
     ledgerEntryCount: number;
@@ -297,17 +299,27 @@ export default function WizardView() {
                       </h3>
                       <p className="text-sm text-muted-foreground mb-4">
                         Cancelling removes ALL data for{" "}
-                        <strong>{cancelPreview.employerName || "this employer"}</strong> in{" "}
+                        <strong>{cancelPreview.employerName || "this employer"}</strong> for the{" "}
                         <strong>
                           {cancelPreview.year && cancelPreview.month
                             ? format(new Date(cancelPreview.year, cancelPreview.month - 1, 1), "MMMM yyyy")
                             : "this period"}
                         </strong>{" "}
-                        — including any manual edits made after the upload:
+                        work month — including any manual edits made after the upload:
                       </p>
                       <ul className="text-sm text-muted-foreground space-y-1 ml-4 list-disc" data-testid="list-cancel-impact">
-                        <li>{cancelPreview.hoursRowCount} worker hours record{cancelPreview.hoursRowCount !== 1 ? 's' : ''} will be deleted</li>
-                        <li>{cancelPreview.wmbRowCount} worker benefit record{cancelPreview.wmbRowCount !== 1 ? 's' : ''} will be deleted</li>
+                        <li>
+                          {cancelPreview.hoursRowCount} worker hours record{cancelPreview.hoursRowCount !== 1 ? 's' : ''} will be deleted
+                          {cancelPreview.year && cancelPreview.month
+                            ? ` (${format(new Date(cancelPreview.year, cancelPreview.month - 1, 1), "MMMM yyyy")})`
+                            : ""}
+                        </li>
+                        <li>
+                          {cancelPreview.wmbRowCount} worker benefit record{cancelPreview.wmbRowCount !== 1 ? 's' : ''} will be deleted
+                          {cancelPreview.benefitYear && cancelPreview.benefitMonth
+                            ? ` (${format(new Date(cancelPreview.benefitYear, cancelPreview.benefitMonth - 1, 1), "MMMM yyyy")} — benefits are granted 3 months after the work month)`
+                            : ""}
+                        </li>
                         <li>{cancelPreview.ledgerEntryCount} charge{cancelPreview.ledgerEntryCount !== 1 ? 's' : ''} totaling ${cancelPreview.chargeTotal} will be reversed on the employer's ledger</li>
                         <li>Worker records themselves are kept</li>
                         <li>This cannot be undone — the file would need to be re-uploaded against the correct employer</li>

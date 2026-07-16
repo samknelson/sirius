@@ -35,6 +35,8 @@ export interface CancellationPreview {
   employerName?: string;
   year?: number;
   month?: number;
+  benefitYear?: number;
+  benefitMonth?: number;
   hoursRowCount: number;
   wmbRowCount: number;
   ledgerEntryCount: number;
@@ -46,6 +48,22 @@ interface CancellationTarget {
   employerId: string;
   year: number;
   month: number;
+  /** WMB rows are created 3 months AFTER the work month (see
+   * calculateBenefitMonth in the GBHET Legal engine); their charges are
+   * posted back in the work month. Cancellation must look for the WMB rows
+   * in this benefit month, not the work month. */
+  benefitYear: number;
+  benefitMonth: number;
+}
+
+function calculateBenefitMonth(year: number, month: number): { year: number; month: number } {
+  let m = month + 3;
+  let y = year;
+  if (m > 12) {
+    m -= 12;
+    y += 1;
+  }
+  return { year: y, month: m };
 }
 
 const COMPLETED_STATUSES = new Set(["complete", "completed"]);
@@ -93,12 +111,15 @@ async function resolveTarget(
   if (!monthly) {
     return { error: { status: 400, message: "This wizard run has no employer/period record to cancel against" } };
   }
+  const benefit = calculateBenefitMonth(monthly.year, monthly.month);
   return {
     target: {
       wizard,
       employerId: monthly.employerId,
       year: monthly.year,
       month: monthly.month,
+      benefitYear: benefit.year,
+      benefitMonth: benefit.month,
     },
   };
 }
@@ -119,10 +140,11 @@ function sumAmounts(amounts: Array<string | null>): string {
 }
 
 async function collectImpact(target: CancellationTarget) {
-  const { employerId, year, month } = target;
+  const { employerId, year, month, benefitYear, benefitMonth } = target;
   const [hoursRows, wmbRows] = await Promise.all([
+    // Hours live in the work month; WMB rows live 3 months later.
     storage.workerHours.listByEmployerPeriod(employerId, year, month),
-    storage.trust.wmb.listByEmployerPeriod(employerId, year, month),
+    storage.trust.wmb.listByEmployerPeriod(employerId, benefitYear, benefitMonth),
   ]);
   const referenceIds = [
     ...hoursRows.map((r) => r.id),
@@ -148,6 +170,8 @@ export async function previewCancellation(
       employerName: employer?.name,
       year: target.year,
       month: target.month,
+      benefitYear: target.benefitYear,
+      benefitMonth: target.benefitMonth,
       hoursRowCount: hoursRows.length,
       wmbRowCount: wmbRows.length,
       ledgerEntryCount: ledgerEntries.length,
@@ -197,7 +221,7 @@ export async function executeCancellation(
   // retry; the retry only has to remove what remains.
   const [remainingHours, remainingWmb, leftover] = await Promise.all([
     storage.workerHours.listByEmployerPeriod(target.employerId, target.year, target.month),
-    storage.trust.wmb.listByEmployerPeriod(target.employerId, target.year, target.month),
+    storage.trust.wmb.listByEmployerPeriod(target.employerId, target.benefitYear, target.benefitMonth),
     storage.ledger.entries.getByReferenceIds(referenceIds),
   ]);
 
