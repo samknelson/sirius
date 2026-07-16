@@ -1,0 +1,31 @@
+Ok, we're changing the subject a bit.
+
+We need to track some data related to worker-month-benefit (wmb) records. All of this functionality is within the trust.benefit component.
+
+First, we need a new table: "trust_wmb_events". It has fields
+
+- id
+- worker_id (reference to workers table, on delete cascade, required)
+- year (required)
+- month (required)
+- benefit_id (required, reference to benefits table, on delete cascade)
+- event_type (varchar)
+- data (json)
+
+The combination [worker_id, year, month, benefit_id, event_type] is unique.
+
+(Your going to suggest that event_type be an enum. That's good architecture, but we're likely to end up with sitespecific event types, and I'm reluctant to build a whole wmb event type registry. So let's just stick with varchar, unless you feel strongly that we should do something different.)
+
+Next, we're going to want three new "denorm" plugins.
+
+Plugin #1: trust-wmb-start. This reacts when a wmb record is saved. It creates an entry (in our new table) for the *first* wmb record that the worker has for that benefit. There can only ever be one entry of this type for a given [worker,benefit]; this is enforced in code, so the denorm plugin should react when the wmb record is saved and update or replace any existing records.
+
+Plugin #2: trust-wmb-restart. This reacts when a wmb record is saved. It creates an entry for restart, i.e. if there was a gap in coverage. There might be multiple restart events -- if you have coverage in January-february, april-may, and october-december, you have "restart" events in January, April, and October. So although this plugin reacts to a single wmb event, it might have to update multiple records in the table.
+
+Plugin #3: trust-wmb-terminate. This reacts when a wmb-scan entry for a worker is saved, AND when a wmb record is saved.
+- If a WMB record is saved, it cannot terminate in the same month. So if we have a "terminate" event for October, and the worker has the benefit in October, then the "terminate" event should be cleared.
+- If the scan event says that a wmb record should be terminated, then put in a wmb event indicating that it is terminating (and include data in the JSON indicating which plugins failed.) 
+
+It checks which benefits should be terminated, and puts in "terminate" events. There can be multiple terminate events for a given [worker, benefit]. 
+
+Let me know what questions you have!
