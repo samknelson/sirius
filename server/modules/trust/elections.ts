@@ -25,6 +25,40 @@ function handleError(res: Response, error: unknown, fallback: string) {
   return res.status(500).json({ error: fallback });
 }
 
+/**
+ * Enforce the per-benefit-type "Only one of this type" rule for manually
+ * created/edited elections, mirroring the enrollment wizards' submit check.
+ * A type without the flag allows multiple benefits as before. The Life Event
+ * wizard's carry-forward calls storage directly and is intentionally NOT
+ * gated here, so elections that predate a newly-set rule still carry forward.
+ */
+async function assertSingleSelectBenefitTypes(
+  benefitIds: unknown,
+): Promise<void> {
+  if (!Array.isArray(benefitIds) || benefitIds.length < 2) return;
+  const allBenefits = await storage.trustBenefits.getAllTrustBenefits();
+  const byId = new Map(allBenefits.map((b: any) => [b.id, b]));
+  const countByType = new Map<string, { name: string; count: number }>();
+  for (const id of benefitIds) {
+    const benefit = byId.get(id as string);
+    if (!benefit?.benefitTypeOnlyOne || !benefit.benefitType) continue;
+    const entry = countByType.get(benefit.benefitType) ?? {
+      name: benefit.benefitTypeName ?? "this type",
+      count: 0,
+    };
+    entry.count += 1;
+    countByType.set(benefit.benefitType, entry);
+  }
+  for (const { name, count } of countByType.values()) {
+    if (count > 1) {
+      throw new WorkerTrustElectionValidationError(
+        "benefitIds",
+        `Only one ${name} benefit can be selected. Please choose a single ${name} benefit.`,
+      );
+    }
+  }
+}
+
 export function registerWorkerTrustElectionsRoutes(
   app: Express,
   requireAuth: RequireAuth,
@@ -182,6 +216,7 @@ export function registerWorkerTrustElectionsRoutes(
     requireAccess('staff'),
     async (req: Request, res: Response) => {
       try {
+        await assertSingleSelectBenefitTypes(req.body?.benefitIds);
         const created = await storage.workerTrustElections.create(req.params.id, req.body);
         res.status(201).json(created);
       } catch (error) {
@@ -198,6 +233,10 @@ export function registerWorkerTrustElectionsRoutes(
     requireAccess('staff'),
     async (req: Request, res: Response) => {
       try {
+        // Only validate when the request actually changes the benefit set.
+        if (req.body?.benefitIds !== undefined) {
+          await assertSingleSelectBenefitTypes(req.body.benefitIds);
+        }
         const updated = await storage.workerTrustElections.update(req.params.id, req.body);
         if (!updated) return res.status(404).json({ error: "Trust election not found" });
         res.json(updated);
