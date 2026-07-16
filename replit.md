@@ -48,6 +48,21 @@ Sirius is a full-stack web application designed for comprehensive worker managem
 
 Preferred communication style: Simple, everyday language.
 
+## Git remotes & branch policy
+
+-   **`main` → `origin` (github.com/samknelson/sirius) only.** `main` must
+    never contain `.github/` or `deploy/` — both are gitignored on main and
+    were stripped from its history (the Replit Git token lacks the
+    `workflow` scope, and the deploy env files must not reach origin).
+-   **`freeman-dev` → `freeman` remote only, never origin.** This branch
+    carries `.github/` (CI workflows) and `deploy/` on top of main. To
+    update freeman: merge `main` into `freeman-dev`, push `freeman-dev` to
+    the `freeman` remote.
+-   Edits to `.github/` or `deploy/` are committed on `freeman-dev` only,
+    using `git add -f` (the paths are gitignored). The on-disk copies in the
+    main working tree are untracked-and-ignored — do not `git add` them.
+-   Helper script for the one-time history split: `.local/split-branches.sh`.
+
 ## Gotchas
 
 -   **Facility Contact Sync**: Renaming a facility must go through `storage.facilities.updateContactName` to keep the facility and its associated contact in sync.
