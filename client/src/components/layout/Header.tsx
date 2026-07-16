@@ -101,6 +101,11 @@ export default function Header() {
     staleTime: 30000,
   });
 
+  const { data: edlsReaderPolicy } = useQuery<PolicyAccessResponse>({
+    queryKey: ["/api/access/policies/edls.reader"],
+    staleTime: 30000,
+  });
+
   // Get employers associated with the current user's contact
   const { employers: myEmployers, hasSingleEmployer, hasMultipleEmployers } = useMyEmployers();
 
@@ -450,7 +455,7 @@ export default function Header() {
                 {hasComponent("edls") && (staffPolicy?.access?.granted || edlsAnyPolicy?.access?.granted) && (
                   <>
                     <div className="text-sm font-medium text-muted-foreground px-4 py-2">EDLS</div>
-                    {staffPolicy?.access?.granted && (
+                    {(staffPolicy?.access?.granted || edlsReaderPolicy?.access?.granted) && (
                       <Link href="/edls/sheets" onClick={() => setMobileMenuOpen(false)}>
                         <Button
                           variant={location === "/edls/sheets" ? "default" : "ghost"}
@@ -1327,7 +1332,7 @@ export default function Header() {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start">
-                  {staffPolicy?.access?.granted && (
+                  {(staffPolicy?.access?.granted || edlsReaderPolicy?.access?.granted) && (
                     <DropdownMenuItem asChild>
                       <Link href="/edls/sheets" className="w-full">
                         <div className="flex items-center cursor-pointer" data-testid="menu-edls-sheets">
