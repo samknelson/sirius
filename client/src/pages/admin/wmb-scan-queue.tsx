@@ -22,6 +22,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
 import { Label } from "@/components/ui/label";
 import { 
   Clock, 
@@ -35,16 +44,29 @@ import {
   Eye,
   XCircle,
   RotateCcw,
+  Check,
+  ChevronsUpDown,
+  Building2,
+  Users,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+
+interface EmployerOption {
+  id: string;
+  name: string;
+}
 
 interface MonthStatus {
   id: string;
   month: number;
   year: number;
   status: string;
+  scopeType: string;
+  scopeEmployerId: string | null;
+  scopeEmployerName: string | null;
   totalQueued: number;
   processedSuccess: number;
   processedFailed: number;
@@ -92,6 +114,9 @@ export default function WmbScanQueue() {
   const [selectedMonth, setSelectedMonth] = useState(String(currentDate.getMonth() + 1));
   const [selectedYear, setSelectedYear] = useState(String(currentDate.getFullYear()));
   const [batchSize, setBatchSize] = useState("10");
+  const [scopeType, setScopeType] = useState<"all" | "employer">("all");
+  const [scopeEmployerId, setScopeEmployerId] = useState<string | null>(null);
+  const [employerPickerOpen, setEmployerPickerOpen] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
   const isRunningRef = useRef(false);
   const processingRef = useRef(false);
@@ -104,9 +129,16 @@ export default function WmbScanQueue() {
     queryKey: ["/api/wmb-scan/summary"],
   });
 
+  const { data: employerOptions = [] } = useQuery<EmployerOption[]>({
+    queryKey: ["/api/employers"],
+    enabled: scopeType === "employer",
+  });
+
+  const selectedEmployer = employerOptions.find(e => e.id === scopeEmployerId);
+
   const enqueueMonthMutation = useMutation({
-    mutationFn: async ({ month, year }: { month: number; year: number }) => {
-      return apiRequest("POST", "/api/wmb-scan/enqueue-month", { month, year });
+    mutationFn: async ({ month, year, scopeType, scopeEmployerId }: { month: number; year: number; scopeType: "all" | "employer"; scopeEmployerId?: string }) => {
+      return apiRequest("POST", "/api/wmb-scan/enqueue-month", { month, year, scopeType, scopeEmployerId });
     },
     onSuccess: (result: any) => {
       toast({
@@ -192,9 +224,19 @@ export default function WmbScanQueue() {
   const months = Array.from({ length: 12 }, (_, i) => i + 1);
 
   const handleEnqueueMonth = () => {
+    if (scopeType === "employer" && !scopeEmployerId) {
+      toast({
+        title: "Pick an employer",
+        description: "Choose which employer's workers to scan, or switch back to all workers.",
+        variant: "destructive",
+      });
+      return;
+    }
     enqueueMonthMutation.mutate({
       month: parseInt(selectedMonth),
       year: parseInt(selectedYear),
+      scopeType,
+      scopeEmployerId: scopeType === "employer" ? scopeEmployerId! : undefined,
     });
   };
 
@@ -306,6 +348,74 @@ export default function WmbScanQueue() {
           </CardHeader>
           <CardContent>
             <div className="flex flex-wrap items-end gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="scope-select">Scope</Label>
+                <Select
+                  value={scopeType}
+                  onValueChange={(v) => {
+                    setScopeType(v as "all" | "employer");
+                    if (v === "all") setScopeEmployerId(null);
+                  }}
+                >
+                  <SelectTrigger id="scope-select" className="w-40" data-testid="select-scope">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All workers</SelectItem>
+                    <SelectItem value="employer">Single employer</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {scopeType === "employer" && (
+                <div className="space-y-2">
+                  <Label>Employer</Label>
+                  <Popover open={employerPickerOpen} onOpenChange={setEmployerPickerOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        role="combobox"
+                        aria-expanded={employerPickerOpen}
+                        className="w-56 justify-between font-normal"
+                        data-testid="button-pick-employer"
+                      >
+                        <span className="truncate">
+                          {selectedEmployer ? selectedEmployer.name : "Select employer..."}
+                        </span>
+                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-72 p-0">
+                      <Command>
+                        <CommandInput placeholder="Search employers..." data-testid="input-employer-search" />
+                        <CommandList>
+                          <CommandEmpty>No employers found.</CommandEmpty>
+                          <CommandGroup>
+                            {employerOptions.map((employer) => (
+                              <CommandItem
+                                key={employer.id}
+                                value={employer.name}
+                                onSelect={() => {
+                                  setScopeEmployerId(employer.id);
+                                  setEmployerPickerOpen(false);
+                                }}
+                                data-testid={`option-employer-${employer.id}`}
+                              >
+                                <Check
+                                  className={cn(
+                                    "mr-2 h-4 w-4",
+                                    scopeEmployerId === employer.id ? "opacity-100" : "opacity-0"
+                                  )}
+                                />
+                                <span className="truncate">{employer.name}</span>
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+                </div>
+              )}
               <div className="space-y-2">
                 <Label htmlFor="month-select">Month</Label>
                 <Select value={selectedMonth} onValueChange={setSelectedMonth}>
@@ -450,6 +560,7 @@ export default function WmbScanQueue() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Month</TableHead>
+                  <TableHead>Scope</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Progress</TableHead>
                   <TableHead className="text-right text-green-600 dark:text-green-400">Started</TableHead>
@@ -476,6 +587,19 @@ export default function WmbScanQueue() {
                     <TableRow key={status.id}>
                       <TableCell className="font-medium" data-testid={`text-status-month-${status.id}`}>
                         {MonthName(status.month)} {status.year}
+                      </TableCell>
+                      <TableCell data-testid={`text-scope-${status.id}`}>
+                        {status.scopeType === "employer" ? (
+                          <span className="flex items-center gap-1.5 text-sm">
+                            <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
+                            <span className="truncate max-w-40">{status.scopeEmployerName || "Employer"}</span>
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                            <Users className="h-3.5 w-3.5" />
+                            All workers
+                          </span>
+                        )}
                       </TableCell>
                       <TableCell>
                         <StatusBadge status={status.status} />

@@ -53,6 +53,9 @@ interface MonthStatus {
   month: number;
   year: number;
   status: string;
+  scopeType: string;
+  scopeEmployerId: string | null;
+  scopeEmployerName: string | null;
   totalQueued: number;
   processedSuccess: number;
   processedFailed: number;
@@ -378,10 +381,18 @@ export default function WmbScanDetail() {
           <div>
             <h1 className="text-xl md:text-2xl font-semibold" data-testid="text-scan-title">
               Benefits Scan: {MonthName(status.month)} {status.year}
+              {status.scopeType === "employer" && status.scopeEmployerName && (
+                <span className="text-muted-foreground font-normal"> — {status.scopeEmployerName}</span>
+              )}
             </h1>
             <p className="text-muted-foreground flex items-center gap-2">
               <Calendar className="h-4 w-4" />
               Queued {format(new Date(status.queuedAt), "MMM d, yyyy 'at' h:mm a")}
+              <span data-testid="text-scan-scope">
+                · {status.scopeType === "employer"
+                  ? `Employer scope: ${status.scopeEmployerName || "unknown employer"}`
+                  : "All workers"}
+              </span>
             </p>
           </div>
         </div>

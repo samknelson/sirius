@@ -5,6 +5,7 @@ import {
   trustWmbScanQueue,
   workers,
   contacts,
+  employers,
   type TrustWmbScanStatus,
   type TrustWmbScanQueue,
 } from "@shared/schema";
@@ -18,6 +19,19 @@ export const validate = createNoopValidator();
 export interface QueueEntryWithWorker extends TrustWmbScanQueue {
   workerSiriusId: number | null;
   workerDisplayName: string | null;
+}
+
+/**
+ * The population a scan run covers: every worker ("all", the historical
+ * behavior) or only the workers assigned to one employer for the scanned
+ * month ("employer").
+ */
+export type ScanScope =
+  | { type: "all" }
+  | { type: "employer"; employerId: string };
+
+export interface TrustWmbScanStatusWithScope extends TrustWmbScanStatus {
+  scopeEmployerName: string | null;
 }
 
 export interface JobResultInfo {
@@ -41,10 +55,18 @@ export interface PagedQueueEntriesResult {
 export interface WmbScanQueueStorage {
   // Status methods
   getMonthStatus(month: number, year: number): Promise<TrustWmbScanStatus | undefined>;
-  getStatusById(id: string): Promise<TrustWmbScanStatus | undefined>;
-  getAllMonthStatuses(): Promise<TrustWmbScanStatus[]>;
+  getStatusById(id: string): Promise<TrustWmbScanStatusWithScope | undefined>;
+  getAllMonthStatuses(): Promise<TrustWmbScanStatusWithScope[]>;
   createMonthStatus(month: number, year: number): Promise<TrustWmbScanStatus>;
   updateMonthStatus(id: string, data: Partial<TrustWmbScanStatus>): Promise<TrustWmbScanStatus | undefined>;
+
+  /**
+   * Worker ids assigned to the employer for the scanned month, consistent
+   * with how the scan resolves a worker's policy: the worker's active trust
+   * election as of the last day of the month wins; otherwise the worker's
+   * home employer (worker_employment_denorm.home) is used.
+   */
+  getEmployerWorkerIdsForMonth(employerId: string, month: number, year: number): Promise<string[]>;
   
   // Queue methods
   getQueuedWorkers(statusId: string): Promise<TrustWmbScanQueue[]>;
@@ -53,7 +75,7 @@ export interface WmbScanQueueStorage {
   getWorkerQueueEntry(workerId: string, month: number, year: number): Promise<TrustWmbScanQueue | undefined>;
   
   // Bulk operations
-  enqueueMonth(month: number, year: number): Promise<{ statusId: string; queuedCount: number }>;
+  enqueueMonth(month: number, year: number, scope?: ScanScope): Promise<{ statusId: string; queuedCount: number }>;
   enqueueWorker(workerId: string, month: number, year: number, triggerSource: string): Promise<TrustWmbScanQueue>;
   
   // Job processing
@@ -75,28 +97,72 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
   const storage: WmbScanQueueStorage = {
     async getMonthStatus(month: number, year: number): Promise<TrustWmbScanStatus | undefined> {
       const client = getClient();
+      // Multiple runs may exist per month/year; return the most recent one.
       const [status] = await client
         .select()
         .from(trustWmbScanStatus)
-        .where(and(eq(trustWmbScanStatus.month, month), eq(trustWmbScanStatus.year, year)));
+        .where(and(eq(trustWmbScanStatus.month, month), eq(trustWmbScanStatus.year, year)))
+        .orderBy(desc(trustWmbScanStatus.queuedAt))
+        .limit(1);
       return status || undefined;
     },
 
-    async getStatusById(id: string): Promise<TrustWmbScanStatus | undefined> {
+    async getStatusById(id: string): Promise<TrustWmbScanStatusWithScope | undefined> {
       const client = getClient();
-      const [status] = await client
-        .select()
+      const [row] = await client
+        .select({
+          status: trustWmbScanStatus,
+          scopeEmployerName: employers.name,
+        })
         .from(trustWmbScanStatus)
+        .leftJoin(employers, eq(trustWmbScanStatus.scopeEmployerId, employers.id))
         .where(eq(trustWmbScanStatus.id, id));
-      return status || undefined;
+      if (!row) return undefined;
+      return { ...row.status, scopeEmployerName: row.scopeEmployerName ?? null };
     },
 
-    async getAllMonthStatuses(): Promise<TrustWmbScanStatus[]> {
+    async getAllMonthStatuses(): Promise<TrustWmbScanStatusWithScope[]> {
       const client = getClient();
-      return client
-        .select()
+      const rows = await client
+        .select({
+          status: trustWmbScanStatus,
+          scopeEmployerName: employers.name,
+        })
         .from(trustWmbScanStatus)
-        .orderBy(desc(trustWmbScanStatus.year), desc(trustWmbScanStatus.month));
+        .leftJoin(employers, eq(trustWmbScanStatus.scopeEmployerId, employers.id))
+        .orderBy(
+          desc(trustWmbScanStatus.year),
+          desc(trustWmbScanStatus.month),
+          desc(trustWmbScanStatus.queuedAt),
+        );
+      return rows.map(r => ({ ...r.status, scopeEmployerName: r.scopeEmployerName ?? null }));
+    },
+
+    async getEmployerWorkerIdsForMonth(employerId: string, month: number, year: number): Promise<string[]> {
+      const client = getClient();
+      // "Assigned to the employer for the month" mirrors the scan's policy
+      // resolution order: an active trust election as of the last day of the
+      // scanned month wins (elections always carry an employer); workers
+      // without an active election fall back to their home employer.
+      const monthEnd = new Date(year, month, 0);
+      const asOfYmd = `${monthEnd.getFullYear()}-${String(monthEnd.getMonth() + 1).padStart(2, "0")}-${String(monthEnd.getDate()).padStart(2, "0")}`;
+      const result = await client.execute(sql`
+        SELECT w.id AS id
+        FROM workers w
+        LEFT JOIN LATERAL (
+          SELECT e.employer_id
+          FROM worker_trust_elections e
+          WHERE e.worker_id = w.id
+            AND e.start_ymd <= ${asOfYmd}
+            AND (e.end_ymd IS NULL OR e.end_ymd >= ${asOfYmd})
+          ORDER BY e.start_ymd DESC
+          LIMIT 1
+        ) el ON true
+        LEFT JOIN worker_employment_denorm hed
+          ON hed.worker_id = w.id AND hed.home = true
+        WHERE COALESCE(el.employer_id, hed.employer_id) = ${employerId}
+      `);
+      return (result.rows as Array<{ id: string }>).map(r => r.id);
     },
 
     async createMonthStatus(month: number, year: number): Promise<TrustWmbScanStatus> {
@@ -251,32 +317,57 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
 
     async getWorkerQueueEntry(workerId: string, month: number, year: number): Promise<TrustWmbScanQueue | undefined> {
       const client = getClient();
-      const [entry] = await client
-        .select()
+      // A worker may appear in multiple runs for the same month; return the
+      // entry from the most recently queued run.
+      const [row] = await client
+        .select({ entry: trustWmbScanQueue })
         .from(trustWmbScanQueue)
+        .innerJoin(trustWmbScanStatus, eq(trustWmbScanQueue.statusId, trustWmbScanStatus.id))
         .where(
           and(
             eq(trustWmbScanQueue.workerId, workerId),
             eq(trustWmbScanQueue.month, month),
             eq(trustWmbScanQueue.year, year)
           )
-        );
-      return entry || undefined;
+        )
+        .orderBy(desc(trustWmbScanStatus.queuedAt))
+        .limit(1);
+      return row?.entry || undefined;
     },
 
-    async enqueueMonth(month: number, year: number): Promise<{ statusId: string; queuedCount: number }> {
+    async enqueueMonth(month: number, year: number, scope: ScanScope = { type: "all" }): Promise<{ statusId: string; queuedCount: number }> {
       const client = getClient();
+      const scopeEmployerId = scope.type === "employer" ? scope.employerId : null;
+
+      // Resolve the population outside the transaction (read-only).
+      const populationIds =
+        scope.type === "employer"
+          ? await storage.getEmployerWorkerIdsForMonth(scope.employerId, month, year)
+          : (await client.select({ id: workers.id }).from(workers)).map(w => w.id);
+
       return client.transaction(async (tx) => {
-        // Get or create status record
+        // Reuse the run with the SAME scope for this month, if any; runs with
+        // a different scope are left untouched so they can coexist.
         let [status] = await tx
           .select()
           .from(trustWmbScanStatus)
-          .where(and(eq(trustWmbScanStatus.month, month), eq(trustWmbScanStatus.year, year)));
+          .where(
+            and(
+              eq(trustWmbScanStatus.month, month),
+              eq(trustWmbScanStatus.year, year),
+              eq(trustWmbScanStatus.scopeType, scope.type),
+              scopeEmployerId
+                ? eq(trustWmbScanStatus.scopeEmployerId, scopeEmployerId)
+                : sql`${trustWmbScanStatus.scopeEmployerId} IS NULL`
+            )
+          )
+          .orderBy(desc(trustWmbScanStatus.queuedAt))
+          .limit(1);
         
         if (!status) {
           [status] = await tx
             .insert(trustWmbScanStatus)
-            .values({ month, year, status: "queued" })
+            .values({ month, year, status: "queued", scopeType: scope.type, scopeEmployerId })
             .returning();
         } else {
           // Reset status counters for re-queue
@@ -297,7 +388,7 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
             .returning();
         }
 
-        // Reset all existing queue entries for this month to pending
+        // Reset all existing queue entries for this run to pending
         await tx
           .update(trustWmbScanQueue)
           .set({
@@ -311,28 +402,32 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
           })
           .where(eq(trustWmbScanQueue.statusId, status.id));
 
-        // Get all active workers
-        const activeWorkers = await tx
-          .select({ id: workers.id })
-          .from(workers);
-
-        // Get existing queue entries for this month
-        const existingEntries = await tx
-          .select({ workerId: trustWmbScanQueue.workerId })
+        // Get existing queue entries for this run
+        const allExisting = await tx
+          .select({ id: trustWmbScanQueue.id, workerId: trustWmbScanQueue.workerId })
           .from(trustWmbScanQueue)
           .where(eq(trustWmbScanQueue.statusId, status.id));
-        
+
+        // Drop entries for workers no longer in the run's population (e.g. a
+        // worker who left the employer since the previous run of this scope).
+        const populationSet = new Set(populationIds);
+        const removeIds = allExisting.filter(e => !populationSet.has(e.workerId)).map(e => e.id);
+        if (removeIds.length > 0) {
+          await tx.delete(trustWmbScanQueue).where(inArray(trustWmbScanQueue.id, removeIds));
+        }
+
+        const existingEntries = allExisting.filter(e => populationSet.has(e.workerId));
         const existingWorkerIds = new Set(existingEntries.map(e => e.workerId));
 
-        // Insert queue entries only for workers not already in queue
+        // Insert queue entries only for workers not already in the run
         let newCount = 0;
-        for (const worker of activeWorkers) {
-          if (!existingWorkerIds.has(worker.id)) {
+        for (const workerId of populationIds) {
+          if (!existingWorkerIds.has(workerId)) {
             await tx
               .insert(trustWmbScanQueue)
               .values({
                 statusId: status.id,
-                workerId: worker.id,
+                workerId,
                 month,
                 year,
                 status: "pending",
@@ -356,11 +451,21 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
     async enqueueWorker(workerId: string, month: number, year: number, triggerSource: string): Promise<TrustWmbScanQueue> {
       const client = getClient();
       return client.transaction(async (tx) => {
-        // Get or create status record
+        // Single-worker enqueues attach to the month's "all workers" run
+        // (creating it if needed) — employer-scoped runs keep their exact
+        // population.
         let [status] = await tx
           .select()
           .from(trustWmbScanStatus)
-          .where(and(eq(trustWmbScanStatus.month, month), eq(trustWmbScanStatus.year, year)));
+          .where(
+            and(
+              eq(trustWmbScanStatus.month, month),
+              eq(trustWmbScanStatus.year, year),
+              eq(trustWmbScanStatus.scopeType, "all")
+            )
+          )
+          .orderBy(desc(trustWmbScanStatus.queuedAt))
+          .limit(1);
         
         if (!status) {
           [status] = await tx
@@ -369,15 +474,14 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
             .returning();
         }
 
-        // Upsert queue entry
+        // Upsert queue entry within that run
         const [existing] = await tx
           .select()
           .from(trustWmbScanQueue)
           .where(
             and(
-              eq(trustWmbScanQueue.workerId, workerId),
-              eq(trustWmbScanQueue.month, month),
-              eq(trustWmbScanQueue.year, year)
+              eq(trustWmbScanQueue.statusId, status.id),
+              eq(trustWmbScanQueue.workerId, workerId)
             )
           );
 

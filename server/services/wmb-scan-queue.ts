@@ -1,4 +1,5 @@
 import type { IStorage } from "../storage";
+import type { ScanScope } from "../storage/wmb-scan-queue";
 import { runBenefitsScan, type BenefitsScanResult } from "./benefits-scan";
 import { logger } from "../logger";
 import { eventBus, EventType } from "./event-bus";
@@ -122,15 +123,18 @@ export async function processBatchQueueJobs(
 export async function enqueueMonthScan(
   storage: IStorage,
   month: number,
-  year: number
+  year: number,
+  scope: ScanScope = { type: "all" }
 ): Promise<{ statusId: string; queuedCount: number }> {
   logger.info(`Enqueuing WMB scan for month ${month}/${year}`, {
     service: "wmb-scan-queue",
     month,
     year,
+    scopeType: scope.type,
+    scopeEmployerId: scope.type === "employer" ? scope.employerId : null,
   });
 
-  const result = await storage.wmbScanQueue.enqueueMonth(month, year);
+  const result = await storage.wmbScanQueue.enqueueMonth(month, year, scope);
 
   logger.info(`Enqueued ${result.queuedCount} workers for WMB scan`, {
     service: "wmb-scan-queue",

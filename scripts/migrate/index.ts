@@ -109,6 +109,7 @@ import "./baseline/sirius-dev-20260706";
 // actually runs. See scripts/migrate/core/1102_add_trust_benefit_color.ts.
 import "./core/1102_add_trust_benefit_color";
 import "./core/1103_add_trust_benefit_show_on_worker_list";
+import "./core/1104_wmb_scan_scope";
 
 export {
   runMigrations,

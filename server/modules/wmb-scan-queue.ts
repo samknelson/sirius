@@ -9,7 +9,12 @@ type RequireAuth = (req: Request, res: Response, next: () => void) => void;
 const enqueueMonthSchema = z.object({
   month: z.number().min(1).max(12),
   year: z.number().min(2000).max(2100),
-});
+  scopeType: z.enum(["all", "employer"]).optional().default("all"),
+  scopeEmployerId: z.string().optional(),
+}).refine(
+  (data) => data.scopeType !== "employer" || !!data.scopeEmployerId,
+  { message: "scopeEmployerId is required when scopeType is 'employer'", path: ["scopeEmployerId"] }
+);
 
 const enqueueWorkerSchema = z.object({
   month: z.number().min(1).max(12),
@@ -252,11 +257,25 @@ export function registerWmbScanQueueRoutes(
           });
         }
 
-        const { month, year } = validationResult.data;
-        const result = await enqueueMonthScan(storage, month, year);
+        const { month, year, scopeType, scopeEmployerId } = validationResult.data;
+
+        let scopeLabel = "";
+        if (scopeType === "employer") {
+          const employer = await storage.employers.getEmployer(scopeEmployerId!);
+          if (!employer) {
+            return res.status(400).json({ message: "Employer not found" });
+          }
+          scopeLabel = ` (employer: ${employer.name})`;
+        }
+
+        const scope =
+          scopeType === "employer"
+            ? { type: "employer" as const, employerId: scopeEmployerId! }
+            : { type: "all" as const };
+        const result = await enqueueMonthScan(storage, month, year, scope);
         
         res.json({
-          message: `Queued ${result.queuedCount} workers for ${month}/${year}`,
+          message: `Queued ${result.queuedCount} workers for ${month}/${year}${scopeLabel}`,
           ...result,
         });
       } catch (error: any) {

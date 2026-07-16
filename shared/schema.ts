@@ -334,11 +334,15 @@ export const trustWmb = pgTable("trust_wmb", {
   uniqueWorkerEmployerBenefitMonthYear: unique().on(table.workerId, table.employerId, table.benefitId, table.month, table.year),
 }));
 
-// WMB Scan Status - tracks scan status per month/year
+// WMB Scan Status - tracks scan runs. Multiple runs may coexist for the same
+// month/year (e.g. a full run plus a later employer-scoped run); each run
+// carries a scope (all workers, or one employer).
 export const trustWmbScanStatus = pgTable("trust_wmb_scan_status", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   month: integer("month").notNull(),
   year: integer("year").notNull(),
+  scopeType: varchar("scope_type").notNull().default("all"), // all, employer
+  scopeEmployerId: varchar("scope_employer_id").references(() => employers.id, { onDelete: 'cascade' }),
   status: varchar("status").notNull().default("queued"), // queued, running, completed, failed, stale
   totalQueued: integer("total_queued").notNull().default(0),
   processedSuccess: integer("processed_success").notNull().default(0),
@@ -350,9 +354,7 @@ export const trustWmbScanStatus = pgTable("trust_wmb_scan_status", {
   startedAt: timestamp("started_at"),
   completedAt: timestamp("completed_at"),
   lastError: text("last_error"),
-}, (table) => ({
-  uniqueMonthYear: unique().on(table.month, table.year),
-}));
+});
 
 // WMB Scan Queue - tracks individual worker scan jobs
 export const trustWmbScanQueue = pgTable("trust_wmb_scan_queue", {
@@ -370,7 +372,9 @@ export const trustWmbScanQueue = pgTable("trust_wmb_scan_queue", {
   attempts: integer("attempts").notNull().default(0),
   lastError: text("last_error"),
 }, (table) => ({
-  uniqueWorkerYearMonth: unique().on(table.workerId, table.year, table.month),
+  // A worker appears at most once per scan run; the same worker/month can
+  // exist across multiple runs (full run + employer-scoped run).
+  uniqueStatusWorker: unique().on(table.statusId, table.workerId),
 }));
 
 export const variables = pgTable("variables", {
