@@ -18,12 +18,14 @@ interface ChangelogEntry {
 // the TOP of this array.
 const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    date: "7/17/2026",
+    version: "1.0.0-a2",
+    changes: ["Fixed display bug in rating labels on modal popup"],
+  },
+  {
     date: "7/16/2026",
-    version: "1.0.0.A",
-    changes: [
-      "Initial docker bundle and deployment",
-      "Built changelog page",
-    ],
+    version: "1.0.0-a1",
+    changes: ["Initial docker bundle and deployment", "Built changelog page"],
   },
 ];
 
@@ -41,8 +43,8 @@ export default function FreemanChangelogPage() {
             Freeman Deployment Changelog
           </CardTitle>
           <CardDescription>
-            A record of what changed in each Freeman deployment release,
-            newest first.
+            A record of what changed in each Freeman deployment release, newest
+            first.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -68,10 +70,7 @@ export default function FreemanChangelogPage() {
               </div>
               <ul className="list-disc list-inside space-y-1 text-sm">
                 {entry.changes.map((change, i) => (
-                  <li
-                    key={i}
-                    data-testid={`text-change-${entry.version}-${i}`}
-                  >
+                  <li key={i} data-testid={`text-change-${entry.version}-${i}`}>
                     {change}
                   </li>
                 ))}
