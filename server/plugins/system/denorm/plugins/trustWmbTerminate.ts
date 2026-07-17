@@ -6,11 +6,12 @@ import type { TrustWmbEventInput } from "../../../../storage/trust/wmb-events";
 
 /**
  * Denorm payload: the worker's "terminate" events — one per
- * [benefit, year, month] where a WMB scan decided the benefit should stop
- * (a `continue` scan with a `delete` action), EXCLUDING months where the
- * worker currently has coverage for that benefit (a benefit cannot terminate
- * in a month it is covered). The event's `data` carries the eligibility
- * plugins that failed in that scan.
+ * [benefit, year, month] where a WMB scan decided the benefit should not
+ * continue (a `continue` scan that came back ineligible, whether or not a
+ * coverage row existed to delete), EXCLUDING months where the worker
+ * currently has coverage for that benefit (a benefit cannot terminate in a
+ * month it is covered). The event's `data` carries the eligibility plugins
+ * that failed in that scan.
  */
 export interface TrustWmbTerminateDenorm {
   events: TrustWmbEventInput[];
@@ -22,6 +23,7 @@ interface ScanSummaryAction {
   benefitId?: string;
   scanType?: string;
   action?: string;
+  eligible?: boolean;
   pluginResults?: Array<{
     pluginKey?: string;
     eligible?: boolean;
@@ -87,7 +89,15 @@ const trustWmbTerminateDenormPlugin: DenormPlugin<TrustWmbTerminateDenorm> = {
         : [];
       for (const action of actions) {
         if (!action.benefitId) continue;
-        if (action.scanType !== "continue" || action.action !== "delete") continue;
+        // A terminate event is ANY failed continue scan — the benefit was
+        // covered the previous month and the worker did not qualify to keep
+        // it. This covers both `action: "delete"` (an existing coverage row
+        // was removed) and `action: "none"` where the failure left nothing to
+        // remove because the month had not been computed yet.
+        // (`action === "delete"` is kept as a fallback for any legacy
+        // summary rows that predate the `eligible` field.)
+        if (action.scanType !== "continue") continue;
+        if (action.eligible !== false && action.action !== "delete") continue;
 
         const key = `${action.benefitId}:${row.year}:${row.month}`;
         // A month with current coverage for the benefit cannot terminate.
