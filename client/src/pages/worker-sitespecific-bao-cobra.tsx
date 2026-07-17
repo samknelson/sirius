@@ -1,6 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
-import { ShieldCheck, CalendarClock } from "lucide-react";
+import { ShieldCheck, CalendarClock, FileSignature } from "lucide-react";
 import { WorkerLayout, useWorkerLayout } from "@/components/layouts/WorkerLayout";
+import { WizardLauncher } from "@/components/wizards/WizardLauncher";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -68,8 +70,16 @@ function DetailRow({ label, value, testId }: { label: string; value: string; tes
   );
 }
 
-function CobraCaseCard({ view }: { view: CobraCaseView }) {
+function isElectable(view: CobraCaseView): boolean {
   const c = view.case;
+  if (c.electionMadeYmd) return false;
+  if (c.lastDayToElectYmd && view.asOfYmd > c.lastDayToElectYmd) return false;
+  return true;
+}
+
+function CobraCaseCard({ view, workerId }: { view: CobraCaseView; workerId: string }) {
+  const c = view.case;
+  const electable = isElectable(view);
   return (
     <div className="space-y-6" data-testid={`card-cobra-case-${c.id}`}>
       <Card>
@@ -95,6 +105,26 @@ function CobraCaseCard({ view }: { view: CobraCaseView }) {
           <CardDescription>
             Continuation coverage details for this COBRA case.
           </CardDescription>
+          {electable && (
+            <div className="pt-2">
+              <WizardLauncher
+                type="bao_cobra_enrollment"
+                entityId={workerId}
+                successTitle="COBRA election started"
+                successDescription="Continue through the steps to elect coverage."
+                renderTrigger={({ onClick, disabled }) => (
+                  <Button
+                    onClick={onClick}
+                    disabled={disabled}
+                    data-testid={`button-elect-cobra-${c.id}`}
+                  >
+                    <FileSignature className="h-4 w-4 mr-2" />
+                    Elect COBRA Coverage
+                  </Button>
+                )}
+              />
+            </div>
+          )}
         </CardHeader>
         <CardContent className="grid gap-x-8 gap-y-1 sm:grid-cols-2">
           <div>
@@ -250,7 +280,7 @@ function WorkerCobraContent() {
   return (
     <div className="space-y-8">
       {cases.map((view) => (
-        <CobraCaseCard key={view.case.id} view={view} />
+        <CobraCaseCard key={view.case.id} view={view} workerId={worker.id} />
       ))}
     </div>
   );

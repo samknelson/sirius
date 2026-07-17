@@ -191,6 +191,14 @@ export interface WizardUpdateResult {
 export interface WizardPlugin extends BasePluginMetadata {
   /** Matches wizard.entityType semantics (e.g. "employer"). */
   entityType?: string;
+  /**
+   * Overrides the default "*.mine" entity-scoping policy for this wizard's
+   * `entityType` (see `ENTITY_MINE_POLICY` in `entity-access.ts`). The
+   * policy is checked with the wizard's entityId; admins always pass. Use
+   * this for self-service wizards whose access rule is richer than a plain
+   * "mine" check (e.g. COBRA's "staff OR own record, open case required").
+   */
+  entityAccessPolicy?: string;
   category?: string;
   /** Report-style wizard: gets a default retention + a Retention tab. */
   isReport?: boolean;

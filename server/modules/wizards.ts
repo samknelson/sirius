@@ -175,10 +175,27 @@ export function registerWizardRoutes(
           res.status(403).json({ message: "Access denied" });
           return;
         }
-        const employerAccess = await checkAccess('employer.mine', context.user, entityId as string);
-        if (!employerAccess.granted) {
-          res.status(403).json({ message: "Access denied" });
-          return;
+        // When filtering by an entity-typed framework wizard type, scope by
+        // that plugin's declared entity policy (e.g. worker.cobra); other
+        // listings keep the legacy employer.mine check.
+        const listPlugin =
+          typeof type === "string" ? wizardPluginRegistry.get(type) : undefined;
+        if (listPlugin?.entityType) {
+          const scoped = await enforceWizardEntityAccess(
+            listPlugin,
+            entityId as string,
+            req as any,
+          );
+          if (!scoped.ok) {
+            res.status(scoped.status).json({ message: scoped.message });
+            return;
+          }
+        } else {
+          const employerAccess = await checkAccess('employer.mine', context.user, entityId as string);
+          if (!employerAccess.granted) {
+            res.status(403).json({ message: "Access denied" });
+            return;
+          }
         }
       }
 
@@ -245,9 +262,24 @@ export function registerWizardRoutes(
         if (!wizard.entityId) {
           return res.status(403).json({ message: "Access denied" });
         }
-        const employerAccess = await checkAccess('employer.mine', context.user, wizard.entityId);
-        if (!employerAccess.granted) {
-          return res.status(403).json({ message: "Access denied" });
+        // Entity-typed framework wizards scope by their declared entity
+        // policy (e.g. worker.cobra for COBRA self-service); legacy and
+        // employer wizards keep the employer.mine check.
+        const viewPlugin = wizardPluginRegistry.get(wizard.type);
+        if (viewPlugin?.entityType) {
+          const scoped = await enforceWizardEntityAccess(
+            viewPlugin,
+            wizard.entityId,
+            req as any,
+          );
+          if (!scoped.ok) {
+            return res.status(scoped.status).json({ message: scoped.message });
+          }
+        } else {
+          const employerAccess = await checkAccess('employer.mine', context.user, wizard.entityId);
+          if (!employerAccess.granted) {
+            return res.status(403).json({ message: "Access denied" });
+          }
         }
       }
 
@@ -379,9 +411,21 @@ export function registerWizardRoutes(
         if (!existing.entityId) {
           return res.status(403).json({ message: "Access denied" });
         }
-        const empAccess = await checkAccess('employer.mine', patchCtx.user, existing.entityId);
-        if (!empAccess.granted) {
-          return res.status(403).json({ message: "Access denied" });
+        const patchPlugin = wizardPluginRegistry.get(existing.type);
+        if (patchPlugin?.entityType) {
+          const scoped = await enforceWizardEntityAccess(
+            patchPlugin,
+            existing.entityId,
+            req as any,
+          );
+          if (!scoped.ok) {
+            return res.status(scoped.status).json({ message: scoped.message });
+          }
+        } else {
+          const empAccess = await checkAccess('employer.mine', patchCtx.user, existing.entityId);
+          if (!empAccess.granted) {
+            return res.status(403).json({ message: "Access denied" });
+          }
         }
       }
 
@@ -472,9 +516,21 @@ export function registerWizardRoutes(
         if (!existing.entityId) {
           return res.status(403).json({ message: "Access denied" });
         }
-        const empAccess = await checkAccess('employer.mine', delCtx.user, existing.entityId);
-        if (!empAccess.granted) {
-          return res.status(403).json({ message: "Access denied" });
+        const delPlugin = wizardPluginRegistry.get(existing.type);
+        if (delPlugin?.entityType) {
+          const scoped = await enforceWizardEntityAccess(
+            delPlugin,
+            existing.entityId,
+            req as any,
+          );
+          if (!scoped.ok) {
+            return res.status(scoped.status).json({ message: scoped.message });
+          }
+        } else {
+          const empAccess = await checkAccess('employer.mine', delCtx.user, existing.entityId);
+          if (!empAccess.granted) {
+            return res.status(403).json({ message: "Access denied" });
+          }
         }
       }
 

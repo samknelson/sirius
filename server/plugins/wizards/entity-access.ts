@@ -31,9 +31,9 @@ export async function enforceWizardEntityAccess(
   const admin = await checkAccessInline(req, "admin");
   if (admin.granted) return { ok: true };
 
-  const policy = plugin.entityType
-    ? ENTITY_MINE_POLICY[plugin.entityType]
-    : undefined;
+  const policy =
+    plugin.entityAccessPolicy ??
+    (plugin.entityType ? ENTITY_MINE_POLICY[plugin.entityType] : undefined);
   if (!policy) {
     return { ok: false, status: 403, message: "Access denied" };
   }

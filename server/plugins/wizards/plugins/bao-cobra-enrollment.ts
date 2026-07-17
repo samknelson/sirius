@@ -483,20 +483,18 @@ export const baoCobraEnrollmentPlugin: WizardPlugin = {
   description:
     "Elect COBRA continuation coverage on an open COBRA case: choose which lost coverage to continue (medical, dental, or both), who is covered, see the live monthly premium from the rate table, and sign. Posting records the election on the case (status moves to Pending First Payment) and creates the matching trust election.",
   requiredComponent: "sitespecific.bao",
-  requiredPolicy: "staff",
+  // No plugin-level policy: access is entity-scoped instead. The
+  // `worker.cobra` policy grants staff OR the worker's own record, and only
+  // while an open COBRA case exists — which is exactly the self-service
+  // surface this wizard needs. `guardWorker` still enforces the electable
+  // case server-side on create.
+  entityType: "worker",
+  entityAccessPolicy: "worker.cobra",
   category: "enrollment",
-  launchSchema: {
-    type: "object",
-    properties: {
-      workerId: {
-        type: "string",
-        title: "Worker",
-        description:
-          "The covered person (worker or dependent) whose COBRA case is being elected",
-      },
-    },
-    required: ["workerId"],
-  },
+  // No launch inputs: the wizard is launched from the worker's COBRA
+  // screen with the covered person as the wizard entity (`entityId`), which
+  // `runEnrollmentCreate` falls back to when no workerId launch argument is
+  // provided.
   create: (ctx) =>
     runEnrollmentCreate(ctx, {
       // Only offered when this person has an open, un-elected COBRA case
