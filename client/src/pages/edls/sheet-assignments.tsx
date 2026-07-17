@@ -755,16 +755,16 @@ function AssignmentDetailCard({ label, detail }: { label: string; detail: Worker
   );
 }
 
-interface WorkerRatingWithName {
+interface WorkerRatingWithType {
   id: string;
   workerId: string;
   ratingId: string;
   value: number;
-  ratingName: string;
+  ratingType: { id: string; name: string } | null;
 }
 
 function WorkerRatingsSection({ workerId, ratingsEnabled }: { workerId: string; ratingsEnabled: boolean }) {
-  const { data: ratings = [], isLoading } = useQuery<WorkerRatingWithName[]>({
+  const { data: ratings = [], isLoading } = useQuery<WorkerRatingWithType[]>({
     queryKey: ["/api/worker-ratings/worker", workerId],
     queryFn: async () => {
       const response = await fetch(`/api/worker-ratings/worker/${workerId}`);
@@ -800,7 +800,7 @@ function WorkerRatingsSection({ workerId, ratingsEnabled }: { workerId: string; 
       <div className="grid grid-cols-2 gap-2">
         {ratings.map((rating) => (
           <div key={rating.id} className="flex items-center justify-between bg-muted/50 rounded-md px-2 py-1.5">
-            <span className="text-sm truncate mr-2">{rating.ratingName}</span>
+            <span className="text-sm truncate mr-2" data-testid={`text-rating-name-${rating.id}`}>{rating.ratingType?.name ?? "Unknown rating"}</span>
             <div className="flex items-center gap-0.5 flex-shrink-0">
               {[0, 1, 2, 3].map((i) => (
                 <Star
