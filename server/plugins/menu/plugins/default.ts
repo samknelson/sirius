@@ -371,6 +371,15 @@ export function buildDefaultMenuTree(): MenuItemDef[] {
       testId: "nav-grievances-top",
       gate: { allOf: [{ component: "grievance" }, { policy: "staff" }] },
     },
+    {
+      id: "bao-cobra-cases",
+      label: "COBRA",
+      icon: "Shield",
+      href: "/cobra/cases",
+      active: { type: "prefix", value: "/cobra" },
+      testId: "nav-bao-cobra-top",
+      gate: { allOf: [{ component: "sitespecific.bao" }, { policy: "staff" }] },
+    },
     buildUsersMenuItem(),
     {
       id: "reports",

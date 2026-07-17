@@ -83,7 +83,8 @@ export type TabEntityType =
   | 'comm'
   | 'grievance'
   | 'grievanceTimelineTemplate'
-  | 'contract';
+  | 'contract'
+  | 'bao_cobra_case';
 
 /**
  * Tab check request for batch access evaluation
@@ -468,6 +469,14 @@ export const grievanceTimelineTemplateTabTree: HierarchicalTab[] = [
 ];
 
 /**
+ * BAO COBRA case entity tab tree
+ */
+export const baoCobraCaseTabTree: HierarchicalTab[] = [
+  { id: 'details', label: 'Details', hrefTemplate: '/cobra/cases/{id}', permission: 'staff', component: 'sitespecific.bao' },
+  { id: 'edit', label: 'Edit', hrefTemplate: '/cobra/cases/{id}/edit', permission: 'staff', component: 'sitespecific.bao' },
+];
+
+/**
  * Contract entity tab tree
  */
 export const contractTabTree: HierarchicalTab[] = [
@@ -676,6 +685,7 @@ export const tabTreeRegistry: Record<TabEntityType, HierarchicalTab[]> = {
   grievance: grievanceTabTree,
   grievanceTimelineTemplate: grievanceTimelineTemplateTabTree,
   contract: contractTabTree,
+  bao_cobra_case: baoCobraCaseTabTree,
 };
 
 /**

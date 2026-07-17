@@ -31,6 +31,8 @@ import {
   optionsGrievanceRemedies,
   optionsGrievanceRoles,
   optionsGrievanceSettlementType,
+  optionsBaoCobraStatus,
+  optionsBaoCobraQualifyingEvent,
   bulkMediumEnum,
 } from "@shared/schema";
 import { defineLoggingConfig } from "./middleware/logging";
@@ -69,7 +71,9 @@ export type OptionsTypeName =
   | "grievance-complaint"
   | "grievance-remedy"
   | "grievance-role"
-  | "grievance-settlement-type";
+  | "grievance-settlement-type"
+  | "bao-cobra-status"
+  | "bao-cobra-qualifying-event";
 
 /**
  * Field definition for dynamic form and table rendering
@@ -615,6 +619,41 @@ const optionsMetadata: Record<OptionsTypeName, OptionsTableMetadata<any>> = {
       { name: "name", label: "Name", inputType: "text", required: true, placeholder: "e.g., Monetary, Reinstatement, Backpay", showInTable: true, columnHeader: "Name" },
       { name: "description", label: "Description", inputType: "textarea", required: false, placeholder: "Optional description of this settlement type", showInTable: true, columnHeader: "Description" },
       { name: "siriusId", label: "Sirius ID", inputType: "text", required: false, placeholder: "External ID", showInTable: true, columnHeader: "Sirius ID" },
+    ],
+  },
+  "bao-cobra-status": {
+    table: optionsBaoCobraStatus,
+    displayName: "COBRA Status Options",
+    description: "Manage status options for COBRA cases",
+    singularName: "Status Option",
+    pluralName: "Status Options",
+    orderByColumn: "sequence" as const,
+    loggingModule: "options.baoCobraStatus",
+    requiredFields: ["name"],
+    optionalFields: ["description", "closed", "sequence", "data"],
+    supportsSequencing: true,
+    requiredComponent: "sitespecific.bao",
+    fields: [
+      { name: "name", label: "Name", inputType: "text", required: true, placeholder: "e.g., New, Enrolled, Closed", showInTable: true, columnHeader: "Name" },
+      { name: "description", label: "Description", inputType: "textarea", required: false, placeholder: "Optional description of this status", showInTable: true, columnHeader: "Description" },
+      { name: "closed", label: "Closed", inputType: "checkbox", required: false, helperText: "Marks whether a case in this status is closed (no longer active)", showInTable: true, columnHeader: "Closed" },
+    ],
+  },
+  "bao-cobra-qualifying-event": {
+    table: optionsBaoCobraQualifyingEvent,
+    displayName: "COBRA Qualifying Event Options",
+    description: "Manage qualifying event options for COBRA cases",
+    singularName: "Qualifying Event",
+    pluralName: "Qualifying Events",
+    orderByColumn: "sequence" as const,
+    loggingModule: "options.baoCobraQualifyingEvent",
+    requiredFields: ["name"],
+    optionalFields: ["description", "sequence", "data"],
+    supportsSequencing: true,
+    requiredComponent: "sitespecific.bao",
+    fields: [
+      { name: "name", label: "Name", inputType: "text", required: true, placeholder: "e.g., Low Hours, Age Out, Death, Divorce", showInTable: true, columnHeader: "Name" },
+      { name: "description", label: "Description", inputType: "textarea", required: false, placeholder: "Optional description of this qualifying event", showInTable: true, columnHeader: "Description" },
     ],
   },
   "skill": {

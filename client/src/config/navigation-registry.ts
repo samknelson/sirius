@@ -96,6 +96,9 @@ export const configSections: NavSection[] = [
       { path: "/config/sitespecific/bao/employer-rates", label: "BAO Employer Rates", icon: List, testId: "nav-config-bao-employer-rates", permission: "admin", requiresComponent: "sitespecific.bao" },
       { path: "/config/sitespecific/bao/rate-sources", label: "BAO Rate Sources", icon: List, testId: "nav-config-bao-rate-sources", permission: "admin", requiresComponent: "sitespecific.bao" },
       { path: "/config/sitespecific/bao/distance-cache", label: "BAO Distance Cache", icon: List, testId: "nav-config-bao-distance-cache", permission: "admin", requiresComponent: "sitespecific.bao" },
+      { path: "/config/sitespecific/bao/cobra-rates", label: "BAO COBRA Rates", icon: List, testId: "nav-config-bao-cobra-rates", permission: "admin", requiresComponent: "sitespecific.bao" },
+      { path: "/config/options/bao-cobra-status", label: "BAO COBRA Statuses", icon: List, testId: "nav-config-bao-cobra-statuses", permission: "admin", requiresComponent: "sitespecific.bao" },
+      { path: "/config/options/bao-cobra-qualifying-event", label: "BAO COBRA Qualifying Events", icon: List, testId: "nav-config-bao-cobra-qualifying-events", permission: "admin", requiresComponent: "sitespecific.bao" },
     ],
   },
   {

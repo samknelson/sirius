@@ -1,9 +1,9 @@
-import { pgTable, varchar, jsonb, date, numeric, text, timestamp, unique, foreignKey } from "drizzle-orm/pg-core";
+import { pgTable, varchar, jsonb, date, numeric, text, timestamp, unique, foreignKey, boolean, integer } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { parsePhoneNumber } from "libphonenumber-js";
-import { employers, ledgerAccounts } from "../../../schema";
+import { employers, ledgerAccounts, workers, trustBenefits } from "../../../schema";
 import { validateSSN } from "../../../utils/ssn";
 
 export const sitespecificBaoEmployerImmediateEligibility = pgTable(
@@ -554,3 +554,278 @@ export const DEFAULT_BAO_ECHP_BREAKPOINTS: BaoEchpBreakpoint[] = [
   { maxHoursWorked: 94, price: 290 },
   { maxHoursWorked: 100, price: 265 },
 ];
+
+// ---------------------------------------------------------------------------
+// COBRA — continuation coverage for people who lose medical/dental benefits.
+//
+// Rates: an effective-dated rate table per (benefit, covered-lives tier).
+// Lookup picks the row with the latest effective date on or before the
+// requested date.
+//
+// Cases: one case per covered person, tracking the qualifying event, the
+// election/payment deadlines (auto-calculated, never manually overridden),
+// and the medical/dental benefits lost. Status and qualifying-event values
+// are options lists (options_bao_cobra_status / options_bao_cobra_qualifying_event)
+// managed through the unified options system.
+// ---------------------------------------------------------------------------
+
+export const optionsBaoCobraStatus = pgTable("options_bao_cobra_status", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name", { length: 255 }).notNull().unique(),
+  description: text("description"),
+  /** Machine-readable flag: a case in a closed status is no longer active. */
+  closed: boolean("closed").default(false).notNull(),
+  sequence: integer("sequence").notNull().default(0),
+  data: jsonb("data"),
+});
+
+export type OptionsBaoCobraStatus = typeof optionsBaoCobraStatus.$inferSelect;
+export type InsertOptionsBaoCobraStatus = typeof optionsBaoCobraStatus.$inferInsert;
+
+export const optionsBaoCobraQualifyingEvent = pgTable(
+  "options_bao_cobra_qualifying_event",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    name: varchar("name", { length: 255 }).notNull().unique(),
+    description: text("description"),
+    sequence: integer("sequence").notNull().default(0),
+    data: jsonb("data"),
+  },
+);
+
+export type OptionsBaoCobraQualifyingEvent =
+  typeof optionsBaoCobraQualifyingEvent.$inferSelect;
+export type InsertOptionsBaoCobraQualifyingEvent =
+  typeof optionsBaoCobraQualifyingEvent.$inferInsert;
+
+/** Covered-lives tiers used to price COBRA coverage. */
+export const BAO_COBRA_COVERED_LIVES_TIERS = ["1", "2", "3+"] as const;
+export type BaoCobraCoveredLivesTier =
+  (typeof BAO_COBRA_COVERED_LIVES_TIERS)[number];
+
+export const sitespecificBaoCobraRates = pgTable(
+  "sitespecific_bao_cobra_rates",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    benefitId: varchar("benefit_id").notNull(),
+    coveredLivesTier: varchar("covered_lives_tier")
+      .notNull()
+      .$type<BaoCobraCoveredLivesTier>(),
+    /** Monthly rate in dollars. */
+    rate: numeric("rate", { precision: 10, scale: 2 }).notNull(),
+    effectiveYmd: date("effective_ymd").notNull(),
+    data: jsonb("data"),
+  },
+  (table) => [
+    unique("sitespecific_bao_cobra_rates_benefit_tier_effective_uq").on(
+      table.benefitId,
+      table.coveredLivesTier,
+      table.effectiveYmd,
+    ),
+    foreignKey({
+      name: "sitespecific_bao_cobra_rates_benefit_id_fkey",
+      columns: [table.benefitId],
+      foreignColumns: [trustBenefits.id],
+    }).onDelete("cascade"),
+  ],
+);
+
+export const insertBaoCobraRateSchema = createInsertSchema(
+  sitespecificBaoCobraRates,
+)
+  .omit({ id: true })
+  .extend({
+    coveredLivesTier: z.enum(BAO_COBRA_COVERED_LIVES_TIERS),
+  });
+
+export type BaoCobraRate = typeof sitespecificBaoCobraRates.$inferSelect;
+export type InsertBaoCobraRate = z.infer<typeof insertBaoCobraRateSchema>;
+
+/** A rate row enriched with its benefit name for display. */
+export type BaoCobraRateWithBenefit = BaoCobraRate & {
+  benefitName: string | null;
+};
+
+/** Where a COBRA case came from. */
+export const BAO_COBRA_CASE_SOURCES = ["wmb_event", "life_event", "manual"] as const;
+export type BaoCobraCaseSource = (typeof BAO_COBRA_CASE_SOURCES)[number];
+
+export const sitespecificBaoCobraCases = pgTable(
+  "sitespecific_bao_cobra_cases",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    /** Where the case came from: wmb_event | life_event | manual. */
+    source: varchar("source").notNull().$type<BaoCobraCaseSource>(),
+    statusId: varchar("status_id").notNull(),
+    qualifyingEventId: varchar("qualifying_event_id"),
+    /** The person whose coverage the case continues. */
+    coveredPersonWorkerId: varchar("covered_person_worker_id").notNull(),
+    /** The subscriber whose plan the covered person lost coverage under. */
+    subscriberWorkerId: varchar("subscriber_worker_id").notNull(),
+    /** Relationship of the covered person to the subscriber (self, spouse, child, ...). */
+    relationship: varchar("relationship"),
+    /** Benefit end date = the date COBRA coverage takes effect. */
+    cobraEffectiveYmd: date("cobra_effective_ymd").notNull(),
+    // Deadline dates below are ALWAYS derived by computeCobraDeadlines —
+    // they are stored for querying/reporting but never manually overridden.
+    offerYmd: date("offer_ymd"),
+    lastDayToElectYmd: date("last_day_to_elect_ymd"),
+    electionMadeYmd: date("election_made_ymd"),
+    initialPaymentDeadlineYmd: date("initial_payment_deadline_ymd"),
+    paymentStatus: varchar("payment_status"),
+    medicalBenefitLostId: varchar("medical_benefit_lost_id"),
+    dentalBenefitLostId: varchar("dental_benefit_lost_id"),
+    maxPeriodYmd: date("max_period_ymd"),
+    data: jsonb("data"),
+  },
+  (table) => [
+    foreignKey({
+      name: "sitespecific_bao_cobra_cases_status_id_fkey",
+      columns: [table.statusId],
+      foreignColumns: [optionsBaoCobraStatus.id],
+    }),
+    foreignKey({
+      name: "sitespecific_bao_cobra_cases_qualifying_event_id_fkey",
+      columns: [table.qualifyingEventId],
+      foreignColumns: [optionsBaoCobraQualifyingEvent.id],
+    }).onDelete("set null"),
+    foreignKey({
+      name: "sitespecific_bao_cobra_cases_covered_person_worker_id_fkey",
+      columns: [table.coveredPersonWorkerId],
+      foreignColumns: [workers.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "sitespecific_bao_cobra_cases_subscriber_worker_id_fkey",
+      columns: [table.subscriberWorkerId],
+      foreignColumns: [workers.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "sitespecific_bao_cobra_cases_medical_benefit_lost_id_fkey",
+      columns: [table.medicalBenefitLostId],
+      foreignColumns: [trustBenefits.id],
+    }).onDelete("set null"),
+    foreignKey({
+      name: "sitespecific_bao_cobra_cases_dental_benefit_lost_id_fkey",
+      columns: [table.dentalBenefitLostId],
+      foreignColumns: [trustBenefits.id],
+    }).onDelete("set null"),
+  ],
+);
+
+export const insertBaoCobraCaseSchema = createInsertSchema(
+  sitespecificBaoCobraCases,
+)
+  .omit({ id: true })
+  .extend({
+    source: z.enum(BAO_COBRA_CASE_SOURCES),
+  });
+
+export type BaoCobraCase = typeof sitespecificBaoCobraCases.$inferSelect;
+export type InsertBaoCobraCase = z.infer<typeof insertBaoCobraCaseSchema>;
+
+/** A case enriched with display names for the list/detail screens. */
+export type BaoCobraCaseWithDetails = BaoCobraCase & {
+  statusName: string | null;
+  statusClosed: boolean | null;
+  qualifyingEventName: string | null;
+  coveredPersonName: string | null;
+  subscriberName: string | null;
+  medicalBenefitLostName: string | null;
+  dentalBenefitLostName: string | null;
+};
+
+const cobraYmd = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be in YYYY-MM-DD format");
+
+export const createBaoCobraRateRequestSchema = z
+  .object({
+    benefitId: z.string().min(1, "A benefit is required"),
+    coveredLivesTier: z.enum(BAO_COBRA_COVERED_LIVES_TIERS),
+    rate: z.coerce
+      .number({ invalid_type_error: "Rate must be a number" })
+      .nonnegative("Rate must be at least 0"),
+    effectiveYmd: cobraYmd,
+  })
+  .strict();
+
+export const updateBaoCobraRateRequestSchema = z
+  .object({
+    benefitId: z.string().min(1).optional(),
+    coveredLivesTier: z.enum(BAO_COBRA_COVERED_LIVES_TIERS).optional(),
+    rate: z.coerce.number().nonnegative().optional(),
+    effectiveYmd: cobraYmd.optional(),
+  })
+  .strict()
+  .refine((val) => Object.keys(val).length > 0, {
+    message: "Provide at least one field to update",
+  });
+
+export type CreateBaoCobraRateRequest = z.infer<
+  typeof createBaoCobraRateRequestSchema
+>;
+export type UpdateBaoCobraRateRequest = z.infer<
+  typeof updateBaoCobraRateRequestSchema
+>;
+
+export const listBaoCobraRatesQuerySchema = z.object({
+  benefitId: z.string().min(1).optional(),
+  coveredLivesTier: z.enum(BAO_COBRA_COVERED_LIVES_TIERS).optional(),
+  asOfYmd: cobraYmd.optional(),
+});
+
+export type ListBaoCobraRatesQuery = z.infer<typeof listBaoCobraRatesQuerySchema>;
+
+export const createBaoCobraCaseRequestSchema = z
+  .object({
+    source: z.enum(BAO_COBRA_CASE_SOURCES),
+    statusId: z.string().min(1, "A status is required"),
+    qualifyingEventId: z.string().min(1).nullable().optional(),
+    coveredPersonWorkerId: z.string().min(1, "A covered person is required"),
+    subscriberWorkerId: z.string().min(1, "A subscriber is required"),
+    relationship: z.string().trim().min(1).nullable().optional(),
+    cobraEffectiveYmd: cobraYmd,
+    electionMadeYmd: cobraYmd.nullable().optional(),
+    paymentStatus: z.string().trim().min(1).nullable().optional(),
+    medicalBenefitLostId: z.string().min(1).nullable().optional(),
+    dentalBenefitLostId: z.string().min(1).nullable().optional(),
+    data: z.unknown().nullable().optional(),
+  })
+  .strict();
+
+export const updateBaoCobraCaseRequestSchema = z
+  .object({
+    source: z.enum(BAO_COBRA_CASE_SOURCES).optional(),
+    statusId: z.string().min(1).optional(),
+    qualifyingEventId: z.string().min(1).nullable().optional(),
+    relationship: z.string().trim().min(1).nullable().optional(),
+    cobraEffectiveYmd: cobraYmd.optional(),
+    electionMadeYmd: cobraYmd.nullable().optional(),
+    paymentStatus: z.string().trim().min(1).nullable().optional(),
+    medicalBenefitLostId: z.string().min(1).nullable().optional(),
+    dentalBenefitLostId: z.string().min(1).nullable().optional(),
+    data: z.unknown().nullable().optional(),
+  })
+  .strict()
+  .refine((val) => Object.keys(val).length > 0, {
+    message: "Provide at least one field to update",
+  });
+
+export type CreateBaoCobraCaseRequest = z.infer<
+  typeof createBaoCobraCaseRequestSchema
+>;
+export type UpdateBaoCobraCaseRequest = z.infer<
+  typeof updateBaoCobraCaseRequestSchema
+>;
+
+export const searchBaoCobraCasesQuerySchema = z.object({
+  statusId: z.string().min(1).optional(),
+  qualifyingEventId: z.string().min(1).optional(),
+  workerId: z.string().min(1).optional(),
+  fromYmd: cobraYmd.optional(),
+  toYmd: cobraYmd.optional(),
+});
+
+export type SearchBaoCobraCasesQuery = z.infer<
+  typeof searchBaoCobraCasesQuerySchema
+>;

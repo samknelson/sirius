@@ -504,6 +504,14 @@ export function useGrievanceTimelineTemplateTabAccess(
   });
 }
 
+export function useBaoCobraCaseTabAccess(caseId: string | undefined, enabled = true) {
+  return useTabAccess({
+    entityType: 'bao_cobra_case',
+    entityId: caseId,
+    enabled,
+  });
+}
+
 export function useContractTabAccess(contractId: string | undefined, enabled = true) {
   return useTabAccess({
     entityType: 'contract',

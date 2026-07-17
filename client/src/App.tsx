@@ -258,6 +258,11 @@ const BaoEmployerRatesPage = lazy(() => import("@/pages/config/sitespecific/bao/
 const BaoRateSourcesPage = lazy(() => import("@/pages/config/sitespecific/bao/rate-sources"));
 const BaoRateSourceRatesPage = lazy(() => import("@/pages/config/sitespecific/bao/rate-source-rates"));
 const BaoDistanceCachePage = lazy(() => import("@/pages/config/sitespecific/bao/distance-cache"));
+const BaoCobraRatesPage = lazy(() => import("@/pages/config/sitespecific/bao/cobra-rates"));
+const BaoCobraCases = lazy(() => import("@/pages/sitespecific/bao/cobra-cases"));
+const BaoCobraCaseAdd = lazy(() => import("@/pages/sitespecific/bao/cobra-case-add"));
+const BaoCobraCaseView = lazy(() => import("@/pages/sitespecific/bao/cobra-case-view"));
+const BaoCobraCaseEdit = lazy(() => import("@/pages/sitespecific/bao/cobra-case-edit"));
 const WsBundlesPage = lazy(() => import("@/pages/config/ws/bundles"));
 const WsClientsPage = lazy(() => import("@/pages/config/ws/clients"));
 const WsClientSettingsPage = lazy(() => import("@/pages/config/ws/client-settings"));
@@ -2727,6 +2732,48 @@ function Router() {
             <ConfigurationLayout>
               <BaoDistanceCachePage />
             </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/sitespecific/bao/cobra-rates">
+        <ProtectedRoute permission="admin" component="sitespecific.bao">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <BaoCobraRatesPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/cobra/cases/add">
+        <ProtectedRoute permission="staff" component="sitespecific.bao">
+          <AuthenticatedLayout>
+            <BaoCobraCaseAdd />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/cobra/cases/:id/edit">
+        <ProtectedRoute tabId="edit" entityType="bao_cobra_case">
+          <AuthenticatedLayout>
+            <BaoCobraCaseEdit />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/cobra/cases/:id">
+        <ProtectedRoute tabId="details" entityType="bao_cobra_case">
+          <AuthenticatedLayout>
+            <BaoCobraCaseView />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/cobra/cases">
+        <ProtectedRoute permission="staff" component="sitespecific.bao">
+          <AuthenticatedLayout>
+            <BaoCobraCases />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
