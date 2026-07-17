@@ -876,6 +876,14 @@ export async function runEnrollmentCreate(
       storage: IStorage,
       workerId: string,
     ) => Promise<Record<string, unknown>>;
+    /**
+     * Entity-scoped wizards (plugins declaring `entityType: "worker"`, e.g.
+     * COBRA enrollment) persist the covered worker as `entityId` so the
+     * entity-access checks on the wizard routes (list/get/patch/delete and
+     * step dispatch) can scope the instance to that worker's users.
+     * Staff-only enrollment wizards leave this off and keep `entityId: null`.
+     */
+    entityScoped?: boolean;
   },
 ): Promise<WizardCreateResult> {
   const launchArgs =
@@ -914,7 +922,7 @@ export async function runEnrollmentCreate(
   }
   const wizard = await ctx.storage.wizards.create({
     ...(ctx.input as any),
-    entityId: null,
+    entityId: opts.entityScoped ? workerId : null,
     data: {
       ...((ctx.input.data as Record<string, unknown>) ?? {}),
       workerId,

@@ -497,6 +497,9 @@ export const baoCobraEnrollmentPlugin: WizardPlugin = {
   // provided.
   create: (ctx) =>
     runEnrollmentCreate(ctx, {
+      // Persist the covered worker as the wizard's entityId so the
+      // worker.cobra entity-access checks apply to the saved instance.
+      entityScoped: true,
       // Only offered when this person has an open, un-elected COBRA case
       // still inside its election window. Enforced server-side.
       guardWorker: async (storage, workerId) => {
