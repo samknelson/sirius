@@ -333,11 +333,16 @@ async function dispatchForConfig(
   // the notification would be pure noise. Matched by application user id off the
   // request context. Fail-safe: with no acting user (e.g. cron-fired events) or
   // a recipient with no resolved userId, nothing is dropped and we notify as
-  // normal.
+  // normal. Notifiers that opt in with `notifySelf` (scheduled EBS reminders)
+  // keep the acting user as a recipient — they want the reminder regardless of
+  // who triggered the fire, and a manual pump run must not suppress the
+  // operator. `actingUserId` still drives the flash summary below either way;
+  // only `suppressionUserId` (nulled for opted-in plugins) drops self-recipients.
   const actingUserId = getRequestContext()?.userId;
-  const recipients = actingUserId
+  const suppressionUserId = plugin.notifySelf ? undefined : actingUserId;
+  const recipients = suppressionUserId
     ? resolved.filter((r) => {
-        const isSelf = r.userId === actingUserId;
+        const isSelf = r.userId === suppressionUserId;
         if (isSelf) {
           logger.debug("Skipping self-notification for acting user", {
             service: SERVICE,

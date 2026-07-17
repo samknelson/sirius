@@ -66,6 +66,8 @@ const dispatchHtaHomeEmployerDenormPlugin: DenormPlugin<DispatchEligDenormPayloa
     singleton: true,
   },
   entityType: "worker",
+  reads: ["workers", "variables", "workerHours", "employerCompanies"],
+  writes: [{ storage: "workerDispatchEligDenorm", soleWriter: false }],
   eventHandlers: [
     {
       event: EventType.HOURS_SAVED,

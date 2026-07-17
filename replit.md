@@ -4,7 +4,18 @@ Sirius is a full-stack web application designed for comprehensive worker managem
 
 ## Run & Operate
 
-_Populate as you build_
+-   **Automated validations** (registered, run on every task completion —
+    no manual invocation needed): `constraint-names`
+    (`scripts/dev/check-constraint-names.ts`), `migrations`
+    (`scripts/check-migrations.ts --base=origin/main`),
+    `storage-encapsulation` (`scripts/dev/check-storage-encapsulation.ts`),
+    and `typecheck` (`NODE_OPTIONS=--max-old-space-size=8192 npm run check`
+    — tsc with the memory headroom it needs; incremental, so re-runs are
+    fast).
+    A violation blocks completion with the script's actionable error.
+    `check-migrations` now also sees untracked files (`git ls-files
+    --others`), so a freshly written migration counts before it is
+    committed.
 
 ## Stack
 
@@ -36,6 +47,21 @@ _Populate as you build_
 ## User preferences
 
 Preferred communication style: Simple, everyday language.
+
+## Git remotes & branch policy
+
+-   **`main` → `origin` (github.com/samknelson/sirius) only.** `main` must
+    never contain `.github/` or `deploy/` — both are gitignored on main and
+    were stripped from its history (the Replit Git token lacks the
+    `workflow` scope, and the deploy env files must not reach origin).
+-   **`freeman-dev` → `freeman` remote only, never origin.** This branch
+    carries `.github/` (CI workflows) and `deploy/` on top of main. To
+    update freeman: merge `main` into `freeman-dev`, push `freeman-dev` to
+    the `freeman` remote.
+-   Edits to `.github/` or `deploy/` are committed on `freeman-dev` only,
+    using `git add -f` (the paths are gitignored). The on-disk copies in the
+    main working tree are untracked-and-ignored — do not `git add` them.
+-   Helper script for the one-time history split: `.local/split-branches.sh`.
 
 ## Gotchas
 
@@ -133,6 +159,17 @@ missing, extra, or mistyped.
     The escape hatch for pure type/comment refactors is the
     `[skip-migration-check]` marker in the commit message or the
     `--skip` flag — use it sparingly and explain why in the PR.
+
+    Whenever a `shared/schema*` file is touched, `check-migrations.ts`
+    also runs `scripts/dev/check-constraint-names.ts`, which fails if
+    any FK / unique / index / primary-key name drizzle would generate
+    exceeds Postgres's 63-char identifier limit (over-length names
+    churn forever under db-push). The fix is to pin an explicit name:
+    convert inline `.references()` to an extraConfig
+    `foreignKey({ name, columns, foreignColumns })` builder, or use
+    `unique("name").on(...)`. The name-length check is NOT skipped by
+    `[skip-migration-check]`, and can be run standalone via
+    `npx tsx scripts/dev/check-constraint-names.ts`.
 
 **Dev-only escape hatch for the startup gate:** setting
 `SKIP_SCHEMA_DRIFT_CHECK=1` skips the check at boot. This exists so a
@@ -304,6 +341,9 @@ width.
     `docs/architecture.md`
 -   **Baselining a deployment** (procedure for a new Repl whose DB
     predates the per-component migration framework) — `docs/baselining.md`
+-   **Aurora / plain-Postgres support** (automatic Neon-vs-pg driver
+    selection, `DATABASE_DRIVER` override, `sslmode` handling, and the
+    `ALLOW_EMPTY_DB_BOOTSTRAP=1` empty-database bootstrap) — `docs/aurora.md`
 -   **Plugin Framework contract** — `server/plugins/_core/README.md`
 
 ## External docs

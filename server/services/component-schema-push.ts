@@ -94,9 +94,13 @@ export async function pushComponentSchema(componentId: string): Promise<void> {
   const emittedEnumTypes = new Set<string>();
   const driftReports: SchemaDriftReport[] = [];
 
+  // Resolve every table's Drizzle definition first, then order creation by
+  // intra-component FK dependencies (a table is created after any table it
+  // references within this component). Manifest order is only a tiebreak, so
+  // a manifest listing tables in the "wrong" order can no longer break a
+  // fresh enable (e.g. edls_crews → options_edls_tasks).
+  const resolvedTables: { tableName: string; tableSchema: any }[] = [];
   for (const tableName of component.schemaManifest.tables) {
-    const exists = await tableExists(tableName);
-
     let tableSchema = findTableInModule(schemaModule, tableName);
     if (!tableSchema) {
       tableSchema = findTableInModule(mainSchema as unknown as Record<string, unknown>, tableName);
@@ -104,6 +108,13 @@ export async function pushComponentSchema(componentId: string): Promise<void> {
     if (!tableSchema) {
       throw new Error(`Table ${tableName} not found in schema module`);
     }
+    resolvedTables.push({ tableName, tableSchema });
+  }
+
+  const orderedTables = sortTablesByDependencies(resolvedTables, componentId);
+
+  for (const { tableName, tableSchema } of orderedTables) {
+    const exists = await tableExists(tableName);
 
     if (!exists) {
       // First-time table creation from the Drizzle definition. This is the
@@ -176,6 +187,88 @@ function getTableColumns(tableSchema: any): Record<string, any> {
 function getInlineForeignKeys(tableSchema: any): any[] {
   const sym = getSym(tableSchema, INLINE_FKS_SYM);
   return sym ? (tableSchema[sym] as any[]) ?? [] : [];
+}
+
+/**
+ * Extract the names of every table this table's foreign keys reference,
+ * covering both inline `.references()` FKs and extraConfig
+ * `foreignKey({...})` builders.
+ */
+function getForeignKeyTargetTables(tableSchema: any, tableName: string): Set<string> {
+  const targets = new Set<string>();
+
+  const addTarget = (fk: any) => {
+    const ref = fk.reference();
+    const foreignTableName = getTableName(ref.foreignTable);
+    if (foreignTableName && foreignTableName !== tableName) {
+      targets.add(foreignTableName);
+    }
+  };
+
+  for (const fk of getInlineForeignKeys(tableSchema)) {
+    addTarget(fk);
+  }
+
+  const ebSym = getSym(tableSchema, EXTRA_CONFIG_BUILDER_SYM);
+  const ecSym = getSym(tableSchema, EXTRA_CONFIG_COLS_SYM);
+  if (ebSym && typeof tableSchema[ebSym] === "function") {
+    const ecCols = ecSym ? tableSchema[ecSym] : getTableColumns(tableSchema);
+    const cfg = tableSchema[ebSym](ecCols);
+    const items: any[] = Array.isArray(cfg) ? cfg : Object.values(cfg ?? {});
+    for (const item of items) {
+      if (item && item.constructor?.name === "ForeignKeyBuilder") {
+        addTarget(item.build(tableSchema));
+      }
+    }
+  }
+
+  return targets;
+}
+
+/**
+ * Order tables so that every table is created after any table it references
+ * via a foreign key WITHIN this component's manifest. FKs to tables outside
+ * the manifest (core tables or dependency components) are ignored — those
+ * must already exist. Manifest order is preserved as a stable tiebreak.
+ * Throws on a circular intra-component FK dependency, which cannot be
+ * satisfied by ordering and needs explicit handling (e.g. an ALTER-added FK).
+ */
+export function sortTablesByDependencies<T extends { tableName: string; tableSchema: any }>(
+  tables: T[],
+  componentId: string,
+): T[] {
+  const inManifest = new Map(tables.map((t) => [t.tableName, t]));
+  const deps = new Map<string, Set<string>>();
+  for (const t of tables) {
+    const targets = getForeignKeyTargetTables(t.tableSchema, t.tableName);
+    const intra = new Set<string>();
+    for (const target of targets) {
+      if (inManifest.has(target)) intra.add(target);
+    }
+    deps.set(t.tableName, intra);
+  }
+
+  const ordered: T[] = [];
+  const placed = new Set<string>();
+  const remaining = [...tables];
+  while (remaining.length > 0) {
+    const readyIndex = remaining.findIndex((t) =>
+      [...deps.get(t.tableName)!].every((d) => placed.has(d)),
+    );
+    if (readyIndex === -1) {
+      const cycle = remaining
+        .map((t) => `${t.tableName} -> [${[...deps.get(t.tableName)!].filter((d) => !placed.has(d)).join(", ")}]`)
+        .join("; ");
+      throw new Error(
+        `[component-schema-push] Circular foreign-key dependency among tables of component "${componentId}": ${cycle}. ` +
+        `Table creation order cannot satisfy these FKs; restructure the schema or add the FK via a component migration.`,
+      );
+    }
+    const [next] = remaining.splice(readyIndex, 1);
+    placed.add(next.tableName);
+    ordered.push(next);
+  }
+  return ordered;
 }
 
 function collectPgEnums(module: Record<string, unknown>): Map<string, string[]> {

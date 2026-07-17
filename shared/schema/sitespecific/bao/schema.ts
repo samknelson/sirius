@@ -1,4 +1,4 @@
-import { pgTable, varchar, jsonb, date, numeric, text, timestamp, unique } from "drizzle-orm/pg-core";
+import { pgTable, varchar, jsonb, date, numeric, text, timestamp, unique, foreignKey } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -12,12 +12,27 @@ export const sitespecificBaoEmployerImmediateEligibility = pgTable(
     id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
     employerId: varchar("employer_id")
       .notNull()
-      .unique()
-      .references(() => employers.id, { onDelete: "cascade" }),
+      // Explicit name, on purpose: the auto-generated name
+      // "sitespecific_bao_employer_immediate_eligibility_employer_id_unique"
+      // exceeds Postgres's 63-char identifier limit, so the live DB stores it
+      // truncated. drizzle-kit push compares by full (untruncated) name and
+      // false-positives an "add constraint" on every db-push preview run
+      // unless the declared name matches what Postgres actually kept.
+      .unique("sitespecific_bao_employer_immediate_eligibility_employer_id_uni"),
     startYmd: date("start_ymd").notNull(),
     endYmd: date("end_ymd").notNull(),
     data: jsonb("data"),
   },
+  (table) => [
+    // Explicit name for the same 63-char truncation reason as the unique
+    // constraint above: the auto-generated FK name exceeds the limit, so
+    // drizzle-kit push would drop/re-add it on every run.
+    foreignKey({
+      name: "sitespecific_bao_employer_immediate_eligibility_employer_id_emp",
+      columns: [table.employerId],
+      foreignColumns: [employers.id],
+    }).onDelete("cascade"),
+  ],
 );
 
 export const insertBaoEmployerImmediateEligibilitySchema = createInsertSchema(
@@ -114,18 +129,24 @@ export const sitespecificBaoRateSourceEmployers = pgTable(
   "sitespecific_bao_rate_source_employers",
   {
     id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-    sourceId: varchar("source_id")
-      .notNull()
-      .references(() => sitespecificBaoRateSources.id, { onDelete: "cascade" }),
-    employerId: varchar("employer_id")
-      .notNull()
-      .references(() => employers.id, { onDelete: "cascade" }),
+    sourceId: varchar("source_id").notNull(),
+    employerId: varchar("employer_id").notNull(),
   },
   (table) => [
     unique("sitespecific_bao_rate_source_employers_source_employer_uq").on(
       table.sourceId,
       table.employerId,
     ),
+    foreignKey({
+      name: "sitespecific_bao_rate_source_employers_source_id_fkey",
+      columns: [table.sourceId],
+      foreignColumns: [sitespecificBaoRateSources.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "sitespecific_bao_rate_source_employers_employer_id_fkey",
+      columns: [table.employerId],
+      foreignColumns: [employers.id],
+    }).onDelete("cascade"),
   ],
 );
 
@@ -143,18 +164,11 @@ export const sitespecificBaoEmployerRates = pgTable(
   "sitespecific_bao_employer_rates",
   {
     id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-    employerId: varchar("employer_id")
-      .notNull()
-      .references(() => employers.id, { onDelete: "cascade" }),
-    accountId: varchar("account_id")
-      .notNull()
-      .references(() => ledgerAccounts.id, { onDelete: "cascade" }),
+    employerId: varchar("employer_id").notNull(),
+    accountId: varchar("account_id").notNull(),
     rate: numeric("rate", { precision: 10, scale: 4 }).notNull(),
     effectiveYmd: date("effective_ymd").notNull(),
-    sourceId: varchar("source_id").references(
-      () => sitespecificBaoRateSources.id,
-      { onDelete: "set null" },
-    ),
+    sourceId: varchar("source_id"),
     data: jsonb("data"),
   },
   (table) => [
@@ -163,6 +177,21 @@ export const sitespecificBaoEmployerRates = pgTable(
       table.accountId,
       table.effectiveYmd,
     ),
+    foreignKey({
+      name: "sitespecific_bao_employer_rates_employer_id_fkey",
+      columns: [table.employerId],
+      foreignColumns: [employers.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "sitespecific_bao_employer_rates_account_id_fkey",
+      columns: [table.accountId],
+      foreignColumns: [ledgerAccounts.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "sitespecific_bao_employer_rates_source_id_fkey",
+      columns: [table.sourceId],
+      foreignColumns: [sitespecificBaoRateSources.id],
+    }).onDelete("set null"),
   ],
 );
 

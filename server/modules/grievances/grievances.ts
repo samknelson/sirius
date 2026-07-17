@@ -3,7 +3,7 @@ import { z } from "zod";
 import { storage } from "../../storage";
 import { requireComponent } from "../components";
 import { buildContext, getAccessStorage } from "../../services/access-policy-evaluator";
-import { GRIEVANCE_CARDINALITIES } from "@shared/schema";
+import { GRIEVANCE_CARDINALITIES, grievanceTimelineAdjustmentSchema } from "@shared/schema";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PolicyMiddleware = (
@@ -15,7 +15,6 @@ const createGrievanceSchema = z
   .object({
     siriusId: z.string().trim().min(1).nullish(),
     classDescription: z.string().trim().min(1).nullish(),
-    statusId: z.string().uuid("A valid status is required"),
     categoryId: z.string().uuid("A valid category is required"),
     cardinality: z.enum(GRIEVANCE_CARDINALITIES).default("individual"),
     bargainingUnitId: z.string().uuid().nullish(),
@@ -37,11 +36,11 @@ const updateGrievanceSchema = z
   .object({
     siriusId: z.string().trim().min(1).nullish(),
     classDescription: z.string().trim().min(1).nullish(),
-    statusId: z.string().uuid().optional(),
     categoryId: z.string().uuid().optional(),
     cardinality: z.enum(GRIEVANCE_CARDINALITIES).optional(),
     timelineTemplateId: z.string().uuid().nullable().optional(),
     bargainingUnitId: z.string().uuid().nullable().optional(),
+    employerContactId: z.string().uuid().nullable().optional(),
   })
   .refine((v) => Object.keys(v).length > 0, {
     message: "At least one field must be provided",
@@ -131,6 +130,41 @@ const updateSettlementSchema = z
     },
   );
 
+// Status history. `date` is an ISO timestamp; it may be omitted on create
+// (the server stamps "now") but is required to be in the past when given.
+const addStatusHistorySchema = z.object({
+  statusId: z.string().uuid("A valid status is required"),
+  date: z.coerce.date().optional(),
+});
+
+const updateStatusHistorySchema = z
+  .object({
+    statusId: z.string().uuid("A valid status is required").optional(),
+    date: z.coerce.date().optional(),
+  })
+  .refine((v) => v.statusId !== undefined || v.date !== undefined, {
+    message: "At least one field must be provided",
+  });
+
+// Timeline adjustment on a status history entry: null clears it.
+const setTimelineAdjustmentSchema = z.object({
+  adjustment: grievanceTimelineAdjustmentSchema.nullable(),
+});
+
+const setContractSchema = z.object({
+  contractId: z.string().uuid("A valid contract is required"),
+});
+
+const addSectionsSchema = z.object({
+  sectionIds: z
+    .array(z.string().uuid("A valid section is required"))
+    .min(1, "Select at least one section"),
+});
+
+const moveSectionSchema = z.object({
+  direction: z.enum(["up", "down"]),
+});
+
 export function registerGrievanceRoutes(
   app: Express,
   requireAuth: AuthMiddleware,
@@ -162,7 +196,6 @@ export function registerGrievanceRoutes(
       const {
         siriusId,
         classDescription,
-        statusId,
         categoryId,
         cardinality,
         bargainingUnitId,
@@ -180,7 +213,6 @@ export function registerGrievanceRoutes(
       const created = await storage.grievances.create({
         siriusId: isAdmin ? (siriusId ?? null) : null,
         classDescription: cardinality === "class" ? (classDescription ?? null) : null,
-        statusId,
         categoryId,
         cardinality,
         bargainingUnitId: bargainingUnitId ?? null,
@@ -281,13 +313,14 @@ export function registerGrievanceRoutes(
         data.siriusId = parsed.data.siriusId ?? null;
       if (parsed.data.classDescription !== undefined)
         data.classDescription = parsed.data.classDescription ?? null;
-      if (parsed.data.statusId !== undefined) data.statusId = parsed.data.statusId;
       if (parsed.data.categoryId !== undefined) data.categoryId = parsed.data.categoryId;
       if (parsed.data.cardinality !== undefined) data.cardinality = parsed.data.cardinality;
       if (parsed.data.timelineTemplateId !== undefined)
         data.timelineTemplateId = parsed.data.timelineTemplateId;
       if (parsed.data.bargainingUnitId !== undefined)
         data.bargainingUnitId = parsed.data.bargainingUnitId;
+      if (parsed.data.employerContactId !== undefined)
+        data.employerContactId = parsed.data.employerContactId;
 
       await storage.grievances.update(req.params.id, data);
       const fresh = await storage.grievances.getWithDetails(req.params.id);
@@ -315,6 +348,174 @@ export function registerGrievanceRoutes(
     } catch (error) {
       console.error("Failed to delete grievance:", error);
       res.status(500).json({ message: "Failed to delete grievance" });
+    }
+  });
+
+  // ----- Deadline threshold config -----
+  // The variable itself is edited through the admin variables UI.
+  // Deadline thresholds are read via GET /api/variables/by-name/
+  // grievance.deadline_thresholds (staff + grievance component in the
+  // variable read-access registry); the client validates and defaults.
+
+  // ----- Timeline steps (read-only) -----
+  // Computed rows from grievance_steps_denorm — written ONLY by the
+  // grievance_timeline denorm plugin (recomputes on status-history saves and
+  // timeline-template changes). There are deliberately NO mutation routes.
+
+  app.get("/api/grievances/:id/timeline-steps", ...gate, async (req, res) => {
+    try {
+      const grievance = await storage.grievances.get(req.params.id);
+      if (!grievance) {
+        return res.status(404).json({ message: "Grievance not found" });
+      }
+      const steps = await storage.grievanceStepsDenorm.listForGrievance(req.params.id);
+      res.json(steps);
+    } catch (error) {
+      console.error("Failed to fetch grievance timeline steps:", error);
+      res.status(500).json({ message: "Failed to fetch timeline steps" });
+    }
+  });
+
+  // ----- Status history -----
+  // The grievance's current status is derived from these entries (latest date
+  // wins); mutations recompute `is_current` transactionally in storage.
+
+  app.get("/api/grievances/:id/status-history", ...gate, async (req, res) => {
+    try {
+      const grievance = await storage.grievances.get(req.params.id);
+      if (!grievance) {
+        return res.status(404).json({ message: "Grievance not found" });
+      }
+      const entries = await storage.grievanceStatusHistory.list(req.params.id);
+      res.json(entries);
+    } catch (error) {
+      console.error("Failed to fetch grievance status history:", error);
+      res.status(500).json({ message: "Failed to fetch status history" });
+    }
+  });
+
+  app.post("/api/grievances/:id/status-history", ...gate, async (req, res) => {
+    try {
+      const parsed = addStatusHistorySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid request body", errors: parsed.error.flatten() });
+      }
+      const grievance = await storage.grievances.get(req.params.id);
+      if (!grievance) {
+        return res.status(404).json({ message: "Grievance not found" });
+      }
+      // When no date is supplied (the edit page's "set status now" card), the
+      // server stamps the time — this avoids a client clock ahead of the DB
+      // tripping the not-in-the-future CHECK constraint.
+      const date = parsed.data.date ?? new Date();
+      if (date.getTime() > Date.now()) {
+        return res.status(400).json({ message: "The date cannot be in the future" });
+      }
+      const created = await storage.grievanceStatusHistory.create(req.params.id, {
+        statusId: parsed.data.statusId,
+        date,
+      });
+      res.status(201).json(created);
+    } catch (error: any) {
+      if (error?.code === "23503") {
+        return res.status(400).json({ message: "Unknown status" });
+      }
+      if (
+        error?.code === "23505" &&
+        error?.constraint === "grievance_status_history_grievance_date_unique"
+      ) {
+        return res.status(409).json({ message: "An entry with that date already exists for this grievance" });
+      }
+      if (error?.code === "23505") {
+        return res.status(409).json({ message: "The status history changed concurrently. Please try again." });
+      }
+      if (error?.code === "23514") {
+        return res.status(400).json({ message: "The date cannot be in the future" });
+      }
+      console.error("Failed to add grievance status history entry:", error);
+      res.status(500).json({ message: "Failed to add status history entry" });
+    }
+  });
+
+  app.patch("/api/grievances/:id/status-history/:entryId", ...gate, async (req, res) => {
+    try {
+      const parsed = updateStatusHistorySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid request body", errors: parsed.error.flatten() });
+      }
+      if (parsed.data.date !== undefined && parsed.data.date.getTime() > Date.now()) {
+        return res.status(400).json({ message: "The date cannot be in the future" });
+      }
+      const updated = await storage.grievanceStatusHistory.update(
+        req.params.id,
+        req.params.entryId,
+        parsed.data,
+      );
+      if (!updated) {
+        return res.status(404).json({ message: "Status history entry not found" });
+      }
+      res.json(updated);
+    } catch (error: any) {
+      if (error?.code === "23503") {
+        return res.status(400).json({ message: "Unknown status" });
+      }
+      if (
+        error?.code === "23505" &&
+        error?.constraint === "grievance_status_history_grievance_date_unique"
+      ) {
+        return res.status(409).json({ message: "An entry with that date already exists for this grievance" });
+      }
+      if (error?.code === "23505") {
+        return res.status(409).json({ message: "The status history changed concurrently. Please try again." });
+      }
+      if (error?.code === "23514") {
+        return res.status(400).json({ message: "The date cannot be in the future" });
+      }
+      console.error("Failed to update grievance status history entry:", error);
+      res.status(500).json({ message: "Failed to update status history entry" });
+    }
+  });
+
+  app.put(
+    "/api/grievances/:id/status-history/:entryId/timeline-adjustment",
+    ...gate,
+    async (req, res) => {
+      try {
+        const parsed = setTimelineAdjustmentSchema.safeParse(req.body);
+        if (!parsed.success) {
+          return res
+            .status(400)
+            .json({ message: "Invalid request body", errors: parsed.error.flatten() });
+        }
+        const updated = await storage.grievanceStatusHistory.setTimelineAdjustment(
+          req.params.id,
+          req.params.entryId,
+          parsed.data.adjustment,
+        );
+        if (!updated) {
+          return res.status(404).json({ message: "Status history entry not found" });
+        }
+        res.json(updated);
+      } catch (error) {
+        console.error("Failed to set grievance timeline adjustment:", error);
+        res.status(500).json({ message: "Failed to set timeline adjustment" });
+      }
+    },
+  );
+
+  app.delete("/api/grievances/:id/status-history/:entryId", ...gate, async (req, res) => {
+    try {
+      const deleted = await storage.grievanceStatusHistory.delete(
+        req.params.id,
+        req.params.entryId,
+      );
+      if (!deleted) {
+        return res.status(404).json({ message: "Status history entry not found" });
+      }
+      res.status(204).end();
+    } catch (error) {
+      console.error("Failed to delete grievance status history entry:", error);
+      res.status(500).json({ message: "Failed to delete status history entry" });
     }
   });
 
@@ -814,4 +1015,198 @@ export function registerGrievanceRoutes(
       res.status(500).json({ message: "Failed to remove settlement" });
     }
   });
+
+  // ---- Contract link -------------------------------------------------------
+  // Gated by the `grievance.contract` component (which itself requires the
+  // `grievance` and `contract` components to be enabled).
+
+  const contractGate = [
+    requireAuth,
+    requireComponent("grievance.contract"),
+    requireAccess("staff"),
+  ] as const;
+
+  // The linked contract (or null) plus the ordered linked sections.
+  app.get("/api/grievances/:id/contract", ...contractGate, async (req, res) => {
+    try {
+      const grievance = await storage.grievances.get(req.params.id);
+      if (!grievance) {
+        return res.status(404).json({ message: "Grievance not found" });
+      }
+      const [contract, sections] = await Promise.all([
+        storage.grievanceContracts.getLink(req.params.id),
+        storage.grievanceContracts.getSections(req.params.id),
+      ]);
+      res.json({ contract: contract ?? null, sections });
+    } catch (error) {
+      console.error("Failed to fetch grievance contract:", error);
+      res.status(500).json({ message: "Failed to fetch contract" });
+    }
+  });
+
+  // The linked contract's full article/section outline for the section picker.
+  app.get(
+    "/api/grievances/:id/contract/catalog",
+    ...contractGate,
+    async (req, res) => {
+      try {
+        const grievance = await storage.grievances.get(req.params.id);
+        if (!grievance) {
+          return res.status(404).json({ message: "Grievance not found" });
+        }
+        const catalog = await storage.grievanceContracts.getCatalog(req.params.id);
+        if (catalog === undefined) {
+          return res
+            .status(404)
+            .json({ message: "No contract is linked to this grievance" });
+        }
+        res.json({ articles: catalog });
+      } catch (error) {
+        console.error("Failed to fetch grievance contract catalog:", error);
+        res.status(500).json({ message: "Failed to fetch contract catalog" });
+      }
+    },
+  );
+
+  // Set (or change) the linked contract. Changing it is blocked while sections
+  // are still linked — the storage layer enforces this hard block.
+  app.put("/api/grievances/:id/contract", ...contractGate, async (req, res) => {
+    try {
+      const parsed = setContractSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res
+          .status(400)
+          .json({ message: "Invalid request body", errors: parsed.error.flatten() });
+      }
+      const grievance = await storage.grievances.get(req.params.id);
+      if (!grievance) {
+        return res.status(404).json({ message: "Grievance not found" });
+      }
+      const result = await storage.grievanceContracts.setContract(
+        req.params.id,
+        parsed.data.contractId,
+      );
+      if ("error" in result) {
+        if (result.error === "contract-not-found") {
+          return res.status(400).json({ message: "Selected contract does not exist" });
+        }
+        return res.status(409).json({
+          message: "Remove the linked sections before changing the contract",
+        });
+      }
+      const [contract, sections] = await Promise.all([
+        storage.grievanceContracts.getLink(req.params.id),
+        storage.grievanceContracts.getSections(req.params.id),
+      ]);
+      res.json({ contract: contract ?? null, sections });
+    } catch (error) {
+      console.error("Failed to set grievance contract:", error);
+      res.status(500).json({ message: "Failed to set contract" });
+    }
+  });
+
+  // Clear the linked contract. Blocked while sections are still linked.
+  app.delete("/api/grievances/:id/contract", ...contractGate, async (req, res) => {
+    try {
+      const grievance = await storage.grievances.get(req.params.id);
+      if (!grievance) {
+        return res.status(404).json({ message: "Grievance not found" });
+      }
+      const result = await storage.grievanceContracts.clearContract(req.params.id);
+      if ("error" in result) {
+        return res.status(409).json({
+          message: "Remove the linked sections before clearing the contract",
+        });
+      }
+      res.json({ contract: null, sections: [] });
+    } catch (error) {
+      console.error("Failed to clear grievance contract:", error);
+      res.status(500).json({ message: "Failed to clear contract" });
+    }
+  });
+
+  // Link one or more of the contract's sections to the grievance.
+  app.post(
+    "/api/grievances/:id/contract/sections",
+    ...contractGate,
+    async (req, res) => {
+      try {
+        const parsed = addSectionsSchema.safeParse(req.body);
+        if (!parsed.success) {
+          return res
+            .status(400)
+            .json({ message: "Invalid request body", errors: parsed.error.flatten() });
+        }
+        const grievance = await storage.grievances.get(req.params.id);
+        if (!grievance) {
+          return res.status(404).json({ message: "Grievance not found" });
+        }
+        const result = await storage.grievanceContracts.addSections(
+          req.params.id,
+          parsed.data.sectionIds,
+        );
+        if ("error" in result) {
+          if (result.error === "no-contract") {
+            return res
+              .status(400)
+              .json({ message: "Link a contract before adding sections" });
+          }
+          return res.status(400).json({
+            message: "One or more sections do not belong to the linked contract",
+          });
+        }
+        res.status(201).json(result.sections);
+      } catch (error) {
+        console.error("Failed to link contract sections to grievance:", error);
+        res.status(500).json({ message: "Failed to link sections" });
+      }
+    },
+  );
+
+  // Unlink a section from the grievance.
+  app.delete(
+    "/api/grievances/:id/contract/sections/:linkId",
+    ...contractGate,
+    async (req, res) => {
+      try {
+        const removed = await storage.grievanceContracts.removeSection(
+          req.params.id,
+          req.params.linkId,
+        );
+        if (!removed) {
+          return res.status(404).json({ message: "Section link not found" });
+        }
+        const sections = await storage.grievanceContracts.getSections(req.params.id);
+        res.json(sections);
+      } catch (error) {
+        console.error("Failed to unlink contract section from grievance:", error);
+        res.status(500).json({ message: "Failed to unlink section" });
+      }
+    },
+  );
+
+  // Reorder a linked section up or down.
+  app.patch(
+    "/api/grievances/:id/contract/sections/:linkId/move",
+    ...contractGate,
+    async (req, res) => {
+      try {
+        const parsed = moveSectionSchema.safeParse(req.body);
+        if (!parsed.success) {
+          return res
+            .status(400)
+            .json({ message: "Invalid request body", errors: parsed.error.flatten() });
+        }
+        const sections = await storage.grievanceContracts.moveSection(
+          req.params.id,
+          req.params.linkId,
+          parsed.data.direction,
+        );
+        res.json(sections);
+      } catch (error) {
+        console.error("Failed to reorder grievance contract section:", error);
+        res.status(500).json({ message: "Failed to reorder section" });
+      }
+    },
+  );
 }

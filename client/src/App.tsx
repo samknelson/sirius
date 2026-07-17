@@ -27,6 +27,7 @@ const Bootstrap = lazy(() => import("@/pages/bootstrap"));
 const SmsOptinPage = lazy(() => import("@/pages/sms-optin"));
 const Dashboard = lazy(() => import("@/pages/dashboard"));
 const Bookmarks = lazy(() => import("@/pages/bookmarks"));
+const AccountPassword = lazy(() => import("@/pages/account-password"));
 const AlertsPage = lazy(() => import("@/pages/alerts").then(m => ({ default: m.default })));
 const AlertsRedirect = lazy(() => import("@/pages/alerts").then(m => ({ default: m.AlertsRedirect })));
 const Reports = lazy(() => import("@/pages/reports"));
@@ -96,6 +97,7 @@ const EmployerGrievances = lazy(() => import("@/pages/employer-grievances"));
 const GrievancesAdd = lazy(() => import("@/pages/grievances-add"));
 const GrievanceView = lazy(() => import("@/pages/grievance-view"));
 const GrievanceEdit = lazy(() => import("@/pages/grievance-edit"));
+const GrievanceStatusHistory = lazy(() => import("@/pages/grievance-status-history"));
 const GrievanceLogs = lazy(() => import("@/pages/grievance-logs"));
 const GrievanceTimeline = lazy(() => import("@/pages/grievance-timeline"));
 const GrievanceSettlements = lazy(() => import("@/pages/grievance-settlements"));
@@ -161,6 +163,16 @@ const TrustBenefits = lazy(() => import("@/pages/trust-benefits"));
 const TrustBenefitsAdd = lazy(() => import("@/pages/trust-benefits-add"));
 const TrustBenefitView = lazy(() => import("@/pages/trust-benefit-view"));
 const TrustBenefitEdit = lazy(() => import("@/pages/trust-benefit-edit"));
+const ContractsListPage = lazy(() => import("@/pages/contracts/list"));
+const ContractViewPage = lazy(() => import("@/pages/contracts/view"));
+const ContractEditPage = lazy(() => import("@/pages/contracts/edit"));
+const ContractArticlesOverviewPage = lazy(() => import("@/pages/contracts/articles-overview"));
+const ContractArticlesOutlinePage = lazy(() => import("@/pages/contracts/articles-outline"));
+const ContractArticlesEditPage = lazy(() => import("@/pages/contracts/articles-edit"));
+const ContractOutlinePage = lazy(() => import("@/pages/contracts/outline"));
+const ContractFullTextPage = lazy(() => import("@/pages/contracts/full-text"));
+const ContractSectionManagePage = lazy(() => import("@/pages/contracts/section-manage"));
+const ContractLogsPage = lazy(() => import("@/pages/contracts/logs"));
 const TrustProvidersPage = lazy(() => import("@/pages/trust-providers"));
 const TrustProviderViewPage = lazy(() => import("@/pages/trust-provider-view"));
 const TrustProviderEditPage = lazy(() => import("@/pages/trust-provider-edit"));
@@ -240,6 +252,7 @@ const HtaHomeEmploymentStatusesPage = lazy(() => import("@/pages/config/hta-home
 const EdlsSettingsPage = lazy(() => import("@/pages/config/edls/settings"));
 const EdlsTasksPage = lazy(() => import("@/pages/config/edls/tasks"));
 const T631FetchPage = lazy(() => import("@/pages/config/edls/t631-fetch"));
+const T631MemberStatusSyncPage = lazy(() => import("@/pages/config/edls/t631-ms"));
 const BaoMemberStatusThresholdsPage = lazy(() => import("@/pages/config/trust/sitespecific/bao/thresholds"));
 const BaoEmployerRatesPage = lazy(() => import("@/pages/config/sitespecific/bao/employer-rates"));
 const BaoRateSourcesPage = lazy(() => import("@/pages/config/sitespecific/bao/rate-sources"));
@@ -259,6 +272,7 @@ const SftpClientTestPage = lazy(() => import("@/pages/config/sftp/client-test"))
 const SftpClientLogsPage = lazy(() => import("@/pages/config/sftp/client-logs"));
 const SftpClientEditPage = lazy(() => import("@/pages/config/sftp/client-edit"));
 const WorkerBanConfigPage = lazy(() => import("@/pages/config/workers-ban"));
+const WorkersTosConfigPage = lazy(() => import("@/pages/config/config-workers-tos"));
 const DispatchJobsPage = lazy(() => import("@/pages/dispatch/jobs"));
 const DispatchJobDetailsPage = lazy(() => import("@/pages/dispatch/job-details"));
 const DispatchJobEditPage = lazy(() => import("@/pages/dispatch/job-edit"));
@@ -304,6 +318,7 @@ const GenericPluginConfigsPage = lazy(() => import("@/pages/admin/plugin-configs
 const PluginConfigsIndexPage = lazy(() => import("@/pages/admin/plugin-configs-index"));
 const DenormConfigsPage = lazy(() => import("@/pages/admin/denorm"));
 const DenormConfigDetailPage = lazy(() => import("@/pages/admin/denorm-detail"));
+const EbsInspectionPage = lazy(() => import("@/pages/admin/ebs"));
 const ConfigurationLandingPage = lazy(() => import("@/pages/config/index"));
 const LedgerAccountsPage = lazy(() => import("@/pages/config/ledger/accounts"));
 const LedgerAccountView = lazy(() => import("@/pages/config/ledger/account-view"));
@@ -365,6 +380,7 @@ const EdlsSheetManagePage = lazy(() => import("@/pages/edls/sheet-manage"));
 const EdlsSheetEditPage = lazy(() => import("@/pages/edls/sheet-edit"));
 const EdlsSheetLogsPage = lazy(() => import("@/pages/edls/sheet-logs"));
 const FreemanCrewleadsPage = lazy(() => import("@/pages/sitespecific/freeman/crewleads-list"));
+const FreemanChangelogPage = lazy(() => import("@/pages/sitespecific/freeman/changelog"));
 const BulkMessagesPage = lazy(() => import("@/pages/bulk-messages"));
 const BulkMessageDetailsPage = lazy(() => import("@/pages/bulk-message-details"));
 const BulkMessageEditPage = lazy(() => import("@/pages/bulk-message-edit"));
@@ -557,6 +573,14 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/grievance/:id/status-history">
+        <ProtectedRoute tabId="status-history" entityType="grievance">
+          <AuthenticatedLayout>
+            <GrievanceStatusHistory />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/grievance/:id/logs">
         <ProtectedRoute tabId="logs" entityType="grievance">
           <AuthenticatedLayout>
@@ -627,6 +651,88 @@ function Router() {
         <ProtectedRoute tabId="details" entityType="grievanceTimelineTemplate">
           <AuthenticatedLayout>
             <GrievanceTimelineTemplateView />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/contracts">
+        <ProtectedRoute permission="staff" component="contract">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <ContractsListPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/contract/:id/article/:articleId/edit">
+        <ProtectedRoute tabId="articles" entityType="contract">
+          <AuthenticatedLayout>
+            <ContractSectionManagePage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/contract/:id/articles/outline">
+        <ProtectedRoute tabId="articles-outline" entityType="contract">
+          <AuthenticatedLayout>
+            <ContractArticlesOutlinePage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/contract/:id/articles/edit">
+        <ProtectedRoute tabId="articles-edit" entityType="contract">
+          <AuthenticatedLayout>
+            <ContractArticlesEditPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/contract/:id/articles">
+        <ProtectedRoute tabId="articles-overview" entityType="contract">
+          <AuthenticatedLayout>
+            <ContractArticlesOverviewPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/contract/:id/outline">
+        <ProtectedRoute tabId="outline" entityType="contract">
+          <AuthenticatedLayout>
+            <ContractOutlinePage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/contract/:id/full-text">
+        <ProtectedRoute tabId="fulltext" entityType="contract">
+          <AuthenticatedLayout>
+            <ContractFullTextPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/contract/:id/logs">
+        <ProtectedRoute tabId="logs" entityType="contract">
+          <AuthenticatedLayout>
+            <ContractLogsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/contract/:id/edit">
+        <ProtectedRoute tabId="edit" entityType="contract">
+          <AuthenticatedLayout>
+            <ContractEditPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/contract/:id">
+        <ProtectedRoute tabId="details" entityType="contract">
+          <AuthenticatedLayout>
+            <ContractViewPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -1133,6 +1239,14 @@ function Router() {
         <ProtectedRoute policy="staff">
           <AuthenticatedLayout>
             <Bookmarks />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/account/password">
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <AccountPassword />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -2557,6 +2671,16 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/config/edls/t631-ms">
+        <ProtectedRoute permission="admin" componentAll={["edls", "sitespecific.t631.client"]}>
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <T631MemberStatusSyncPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/config/trust/sitespecific/bao/thresholds">
         <ProtectedRoute permission="admin" component="sitespecific.bao">
           <AuthenticatedLayout>
@@ -2722,6 +2846,16 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <WorkerBanConfigPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/workers/tos">
+        <ProtectedRoute permission="admin" component="worker.tos">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <WorkersTosConfigPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
@@ -3000,6 +3134,14 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/static/sitespecific/freeman/changelog">
+        <ProtectedRoute>
+          <AuthenticatedLayout>
+            <FreemanChangelogPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/config/site">
         <ProtectedRoute permission="admin">
           <AuthenticatedLayout>
@@ -3202,6 +3344,17 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <DenormConfigDetailPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      {/* Read-only EBS (deferred event bus) inspection. */}
+      <Route path="/admin/ebs">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <EbsInspectionPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>

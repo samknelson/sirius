@@ -57,6 +57,19 @@ export interface DenormStorage {
   /** All denorm rows in a given status (e.g. `stale` for a recompute sweep). */
   listByStatus(status: DenormStatus): Promise<Denorm[]>;
   /**
+   * Of the given `entityIds`, return the subset that already have a denorm row
+   * for `configId`. This is the anti-join a plugin's `backfill` uses to avoid
+   * re-enqueuing entities it already tracks — the plugin builds its full
+   * candidate id set (e.g. open TOS × configured offsets) and subtracts these.
+   */
+  existingEntityIdsForConfig(configId: string, entityIds: string[]): Promise<string[]>;
+  /**
+   * Return up to `limit` `entity_id`s that have a denorm row for `configId`.
+   * This is the source set for a plugin's `findWidows` scan: the plugin maps
+   * these back to their underlying entity and returns the dead ones.
+   */
+  listEntityIdsForConfig(configId: string, limit: number): Promise<string[]>;
+  /**
    * Fetch up to `limit` `stale` denorm rows for a single config, oldest stale
    * first. This is the batch the recompute sweep (`recomputeStaleDenorm`) drains
    * each run; capping per run lets a large backlog drain over successive runs.
@@ -122,6 +135,26 @@ export function createDenormStorage(): DenormStorage {
     async listByStatus(status: DenormStatus): Promise<Denorm[]> {
       const client = getClient();
       return client.select().from(denorm).where(eq(denorm.status, status));
+    },
+
+    async existingEntityIdsForConfig(configId: string, entityIds: string[]): Promise<string[]> {
+      if (entityIds.length === 0) return [];
+      const client = getClient();
+      const rows = await client
+        .select({ entityId: denorm.entityId })
+        .from(denorm)
+        .where(and(eq(denorm.configId, configId), inArray(denorm.entityId, entityIds)));
+      return rows.map((r) => r.entityId);
+    },
+
+    async listEntityIdsForConfig(configId: string, limit: number): Promise<string[]> {
+      const client = getClient();
+      const rows = await client
+        .select({ entityId: denorm.entityId })
+        .from(denorm)
+        .where(eq(denorm.configId, configId))
+        .limit(limit);
+      return rows.map((r) => r.entityId);
     },
 
     async getStaleBatchForConfig(configId: string, limit: number): Promise<Denorm[]> {

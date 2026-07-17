@@ -1,8 +1,8 @@
-import { pgTable, varchar, text, jsonb, boolean, integer, date, uniqueIndex } from "drizzle-orm/pg-core";
+import { foreignKey, pgTable, varchar, text, jsonb, boolean, integer, date, timestamp, uniqueIndex, check } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
-import { workers, employers, users, denorm, bargainingUnits } from "../../schema";
+import { workers, employers, users, denorm, bargainingUnits, contacts } from "../../schema";
 
 export const optionsGrievanceStatus = pgTable("options_grievance_status", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -45,9 +45,15 @@ export type InsertOptionsGrievanceCategory = z.infer<
 
 export const optionsGrievanceSteps = pgTable("options_grievance_steps", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  name: varchar("name", { length: 255 }).notNull().unique(),
+  // Explicit "_key" constraint names on this table (and complaints/remedies/
+  // roles below), on purpose: these tables were originally created via raw
+  // SQL, so the live DB carries Postgres-default "<table>_<col>_key" names
+  // instead of drizzle's "<table>_<col>_unique". drizzle-kit push compares by
+  // name and false-positives an "add constraint" on every db-push preview run
+  // unless the declared names match the DB.
+  name: varchar("name", { length: 255 }).notNull().unique("options_grievance_steps_name_key"),
   description: text("description"),
-  siriusId: varchar("sirius_id").unique(),
+  siriusId: varchar("sirius_id").unique("options_grievance_steps_sirius_id_key"),
   sequence: integer("sequence").notNull().default(0),
   actor: varchar("actor").notNull(),
   data: jsonb("data"),
@@ -66,9 +72,10 @@ export type InsertOptionsGrievanceStep = z.infer<
 
 export const optionsGrievanceComplaints = pgTable("options_grievance_complaints", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  name: varchar("name", { length: 255 }).notNull().unique(),
+  // Explicit "_key" names — see optionsGrievanceSteps comment above.
+  name: varchar("name", { length: 255 }).notNull().unique("options_grievance_complaints_name_key"),
   description: text("description"),
-  siriusId: varchar("sirius_id").unique(),
+  siriusId: varchar("sirius_id").unique("options_grievance_complaints_sirius_id_key"),
   sequence: integer("sequence").notNull().default(0),
   data: jsonb("data"),
 });
@@ -86,9 +93,10 @@ export type InsertOptionsGrievanceComplaint = z.infer<
 
 export const optionsGrievanceRemedies = pgTable("options_grievance_remedies", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  name: varchar("name", { length: 255 }).notNull().unique(),
+  // Explicit "_key" names — see optionsGrievanceSteps comment above.
+  name: varchar("name", { length: 255 }).notNull().unique("options_grievance_remedies_name_key"),
   description: text("description"),
-  siriusId: varchar("sirius_id").unique(),
+  siriusId: varchar("sirius_id").unique("options_grievance_remedies_sirius_id_key"),
   sequence: integer("sequence").notNull().default(0),
   data: jsonb("data"),
 });
@@ -106,9 +114,10 @@ export type InsertOptionsGrievanceRemedy = z.infer<
 
 export const optionsGrievanceRoles = pgTable("options_grievance_roles", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  name: varchar("name", { length: 255 }).notNull().unique(),
+  // Explicit "_key" names — see optionsGrievanceSteps comment above.
+  name: varchar("name", { length: 255 }).notNull().unique("options_grievance_roles_name_key"),
   description: text("description"),
-  siriusId: varchar("sirius_id").unique(),
+  siriusId: varchar("sirius_id").unique("options_grievance_roles_sirius_id_key"),
   sequence: integer("sequence").notNull().default(0),
   data: jsonb("data"),
 });
@@ -138,22 +147,26 @@ export const grievances = pgTable("grievances", {
   siriusId: varchar("sirius_id").notNull().unique(),
   classDescription: text("class_description"),
   cardinality: varchar("cardinality").notNull().default("individual"),
-  statusId: varchar("status_id")
-    .notNull()
-    .references(() => optionsGrievanceStatus.id, { onDelete: "restrict" }),
   categoryId: varchar("category_id")
     .notNull()
     .references(() => optionsGrievanceCategory.id, { onDelete: "restrict" }),
   data: jsonb("data"),
-  timelineTemplateId: varchar("timeline_template_id").references(
-    () => grievanceTimelineTemplates.id,
-    { onDelete: "set null" },
-  ),
+  timelineTemplateId: varchar("timeline_template_id"),
   bargainingUnitId: varchar("bargaining_unit_id").references(
     () => bargainingUnits.id,
     { onDelete: "set null" },
   ),
-});
+  employerContactId: varchar("employer_contact_id").references(
+    () => contacts.id,
+    { onDelete: "set null" },
+  ),
+}, (table) => [
+  foreignKey({
+    name: "grievances_timeline_template_id_grievance_timeline_templates_id",
+    columns: [table.timelineTemplateId],
+    foreignColumns: [grievanceTimelineTemplates.id],
+  }).onDelete("set null"),
+]);
 
 export const insertGrievanceSchema = createInsertSchema(grievances)
   .omit({
@@ -168,6 +181,105 @@ export const insertGrievanceSchema = createInsertSchema(grievances)
 
 export type Grievance = typeof grievances.$inferSelect;
 export type InsertGrievance = z.infer<typeof insertGrievanceSchema>;
+
+/**
+ * Per-grievance status history. The grievance's "current" status is derived:
+ * the entry with the latest `date` is current. `is_current` is recomputed
+ * transactionally by the storage layer on every add/edit/delete; the partial
+ * unique index guarantees at most one current row per grievance, and the
+ * unique (grievance_id, date) pair forbids two entries at the same instant.
+ * A grievance may have zero history entries (status shows blank).
+ */
+export const grievanceStatusHistory = pgTable(
+  "grievance_status_history",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    grievanceId: varchar("grievance_id")
+      .notNull()
+      .references(() => grievances.id, { onDelete: "cascade" }),
+    statusId: varchar("status_id")
+      .notNull(),
+    date: timestamp("date").notNull(),
+    isCurrent: boolean("is_current").notNull().default(false),
+    data: jsonb("data"),
+  },
+  (table) => ({
+    oneCurrentPerGrievance: uniqueIndex(
+      "grievance_status_history_one_current_per_grievance",
+    )
+      .on(table.grievanceId)
+      .where(sql`${table.isCurrent} = true`),
+    grievanceDateUnique: uniqueIndex(
+      "grievance_status_history_grievance_date_unique",
+    ).on(table.grievanceId, table.date),
+    dateNotInFuture: check(
+      "grievance_status_history_date_not_future",
+      sql`${table.date} <= now()`,
+    ),
+    fkStatusId: foreignKey({
+    name: "grievance_status_history_status_id_options_grievance_status_id_",
+    columns: [table.statusId],
+    foreignColumns: [optionsGrievanceStatus.id],
+  }).onDelete("restrict"),
+}),
+);
+
+export const insertGrievanceStatusHistorySchema = createInsertSchema(
+  grievanceStatusHistory,
+).omit({
+  id: true,
+  isCurrent: true,
+});
+
+export type GrievanceStatusHistory = typeof grievanceStatusHistory.$inferSelect;
+export type InsertGrievanceStatusHistory = z.infer<
+  typeof insertGrievanceStatusHistorySchema
+>;
+
+/**
+ * Timeline adjustment attached to a status history entry, stored under the
+ * `timelineAdjustment` key of the entry's `data` jsonb. Applied by the
+ * `grievance_timeline` denorm plugin to the due date of the step this entry
+ * STARTS:
+ *  - `relative` shifts the computed due date by +/- days, following the
+ *    step's dayType (business steps add/subtract business days);
+ *  - `explicit` replaces the computed due date outright with a Ymd date.
+ */
+export const grievanceTimelineAdjustmentSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("relative"),
+    days: z
+      .number()
+      .int("Days must be a whole number")
+      .refine((d) => d !== 0, "Days cannot be zero"),
+    note: z.string().max(500).optional(),
+  }),
+  z.object({
+    kind: z.literal("explicit"),
+    date: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be in YYYY-MM-DD format"),
+    note: z.string().max(500).optional(),
+  }),
+]);
+
+export type GrievanceTimelineAdjustment = z.infer<
+  typeof grievanceTimelineAdjustmentSchema
+>;
+
+/** The `data` jsonb key the adjustment lives under on a status history entry. */
+export const TIMELINE_ADJUSTMENT_DATA_KEY = "timelineAdjustment";
+
+/** Read (and validate) an entry's timeline adjustment from its `data` jsonb. */
+export function readTimelineAdjustment(
+  data: unknown,
+): GrievanceTimelineAdjustment | null {
+  if (!data || typeof data !== "object") return null;
+  const raw = (data as Record<string, unknown>)[TIMELINE_ADJUSTMENT_DATA_KEY];
+  if (raw === undefined || raw === null) return null;
+  const parsed = grievanceTimelineAdjustmentSchema.safeParse(raw);
+  return parsed.success ? parsed.data : null;
+}
 
 export const grievanceWorkers = pgTable(
   "grievance_workers",
@@ -268,13 +380,16 @@ export const grievanceComplaints = pgTable("grievance_complaints", {
   grievanceId: varchar("grievance_id")
     .notNull()
     .references(() => grievances.id, { onDelete: "cascade" }),
-  complaintId: varchar("complaint_id").references(
-    () => optionsGrievanceComplaints.id,
-    { onDelete: "set null" },
-  ),
+  complaintId: varchar("complaint_id"),
   description: text("description").notNull(),
   sequence: integer("sequence").notNull().default(0),
-});
+}, (table) => [
+  foreignKey({
+    name: "grievance_complaints_complaint_id_options_grievance_complaints_",
+    columns: [table.complaintId],
+    foreignColumns: [optionsGrievanceComplaints.id],
+  }).onDelete("set null"),
+]);
 
 export const insertGrievanceComplaintSchema = createInsertSchema(
   grievanceComplaints,
@@ -311,10 +426,18 @@ export type InsertGrievanceRemedy = z.infer<
   typeof insertGrievanceRemedySchema
 >;
 
-export const grievanceSteps = pgTable(
-  "grievance_steps",
+// Per-grievance computed timeline steps (payload table for the
+// `grievance_timeline` denorm plugin). Rows are derived from the grievance's
+// timeline template + status history; NO route may write this table — the
+// plugin is its sole maintainer. `denorm_id` ties rows back to the grievance's
+// workflow status row in the core `denorm` table.
+export const grievanceStepsDenorm = pgTable(
+  "grievance_steps_denorm",
   {
     id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    denormId: varchar("denorm_id")
+      .notNull()
+      .references(() => denorm.id, { onDelete: "cascade" }),
     grievanceId: varchar("grievance_id")
       .notNull()
       .references(() => grievances.id, { onDelete: "cascade" }),
@@ -324,26 +447,26 @@ export const grievanceSteps = pgTable(
     startedYmd: date("started_ymd"),
     dueYmd: date("due_ymd"),
     completedYmd: date("completed_ymd"),
-    active: boolean("active").notNull().default(false),
+    isCurrent: boolean("is_current").notNull().default(false),
     data: jsonb("data"),
   },
   (table) => ({
-    // At most one active step per grievance. `active` is not a reserved
+    // At most one current step per grievance. `is_current` is not a reserved
     // word, so Postgres reflects the partial-index predicate unquoted; the
     // drift gate compares predicate strings literally, so the declared
-    // predicate must read `active = true` to match what is reflected.
-    oneActivePerGrievance: uniqueIndex("grievance_steps_one_active_per_grievance")
+    // predicate must read `is_current = true` to match what is reflected.
+    oneCurrentPerGrievance: uniqueIndex("grievance_steps_denorm_one_current_per_grievance")
       .on(table.grievanceId)
-      .where(sql`active = true`),
+      .where(sql`is_current = true`),
   }),
 );
 
-export const insertGrievanceStepSchema = createInsertSchema(grievanceSteps).omit({
+export const insertGrievanceStepsDenormSchema = createInsertSchema(grievanceStepsDenorm).omit({
   id: true,
 });
 
-export type GrievanceStep = typeof grievanceSteps.$inferSelect;
-export type InsertGrievanceStep = z.infer<typeof insertGrievanceStepSchema>;
+export type GrievanceStepsDenorm = typeof grievanceStepsDenorm.$inferSelect;
+export type InsertGrievanceStepsDenorm = z.infer<typeof insertGrievanceStepsDenormSchema>;
 
 export const GRIEVANCE_TIMELINE_DAY_TYPES = ["calendar", "business"] as const;
 
@@ -374,17 +497,26 @@ export const grievanceTimelineTemplateSteps = pgTable(
   {
     id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
     templateId: varchar("template_id")
-      .notNull()
-      .references(() => grievanceTimelineTemplates.id, { onDelete: "cascade" }),
+      .notNull(),
     fromStatuses: varchar("from_statuses").array().notNull(),
     toStatuses: varchar("to_statuses").array().notNull(),
     stepId: varchar("step_id")
-      .notNull()
-      .references(() => optionsGrievanceSteps.id, { onDelete: "restrict" }),
+      .notNull(),
     days: integer("days").notNull(),
     dayType: varchar("day_type").notNull(),
     sequence: integer("sequence").notNull().default(0),
-  },
+  }, (table) => [
+  foreignKey({
+    name: "grievance_timeline_template_steps_template_id_grievance_timelin",
+    columns: [table.templateId],
+    foreignColumns: [grievanceTimelineTemplates.id],
+  }).onDelete("cascade"),
+  foreignKey({
+    name: "grievance_timeline_template_steps_step_id_options_grievance_ste",
+    columns: [table.stepId],
+    foreignColumns: [optionsGrievanceSteps.id],
+  }).onDelete("restrict"),
+],
 );
 
 export const insertGrievanceTimelineTemplateStepSchema = createInsertSchema(

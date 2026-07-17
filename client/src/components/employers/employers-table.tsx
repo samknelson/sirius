@@ -26,6 +26,14 @@ interface ContactIndicator {
   hasActiveUser: boolean;
 }
 
+interface ContactIndicator {
+  contactId: string;
+  contactName: string | null;
+  contactTypeName: string | null;
+  icon: string | null;
+  hasActiveUser: boolean;
+}
+
 interface EmployersTableProps {
   employers: EmployerWithCompany[];
   isLoading: boolean;

@@ -45,6 +45,10 @@ import "./core/1038_worker_msh_denorm";
 import "./core/1039_worker_wsh_denorm";
 import "./core/1040_worker_employment_denorm";
 import "./core/1041_add_trust_benefit_color";
+import "./core/1043_ledger_payments_date_received_nullable";
+import "./core/1044_create_ebs";
+import "./core/1045_ebs_subject_and_purge";
+import "./core/1046_add_edls_sheet_job_group_fk";
 
 // Per-component migrations — each registered via
 // `registerComponentMigration(componentId, migration)`. Tracked by the
@@ -84,10 +88,18 @@ import "./components/grievance/022_create_grievance_name_denorm";
 import "./components/grievance/023_grievance_sirius_id_unique_constraint";
 import "./components/grievance/024_add_bargaining_unit_id_to_grievances";
 import "./components/grievance/025_make_grievance_sirius_id_not_null";
+import "./components/grievance/026_add_employer_contact_id_to_grievances";
+import "./components/grievance/027_create_grievance_status_history_drop_status_id";
+import "./components/grievance/028_replace_grievance_steps_with_denorm";
 import "./components/grievance.settlement/001_create_grievance_settlement";
+import "./components/grievance.contract/001_create_grievance_contract_sections";
+import "./components/grievance.contract/002_create_grievance_contracts";
 import "./components/dispatch/001_backfill_dispatch_eligibility_configs";
 import "./components/dispatch/002_worker_dispatch_elig_denorm_denorm_id";
 import "./components/trust.benefits/001_backfill_trust_eligibility_configs";
+import "./components/trust.benefits/002_create_trust_wmb_events";
+import "./components/contract/001_create_contract_tables";
+import "./components/worker.ratings/001_add_sirius_id_to_options_worker_ratings";
 import "./components/trust.providers.edi/001_add_sftp_client_fk";
 import "./components/trust.elections/001_add_enrollment_type";
 import "./components/trust.elections/002_create_open_enrollment_windows";
@@ -110,6 +122,7 @@ import "./baseline/sirius-dev-20260706";
 import "./core/1102_add_trust_benefit_color";
 import "./core/1103_add_trust_benefit_show_on_worker_list";
 import "./core/1104_wmb_scan_scope";
+import "./core/1105_reapply_ebs";
 
 export {
   runMigrations,

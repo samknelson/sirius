@@ -1,0 +1,25 @@
+Let's talk about the "event notifier" plugins.
+
+They're working great. But I want to think about how to use them to handle notifications that need to happen on a schedule.
+
+Here's an example use case; there will be quite a few like this. Consider the "worker tos" functionality -- a worker sets an active "absence". 
+
+I'd like to send them a series of reminders that they're still on an absence, so that they remember to mark themselves "present". The reminders might go out, say, after 1, 2, 3, 5, and 12 days. 
+
+I'm trying to figure out the best way to architect this. Here's one option:
+
+1. We create a new cron job that does nothing but emit "poll" events. 
+
+2. We build a new "event notifier" that consumes poll events. The event notifier would then be responsible for figuring out which TOS records were due for a notification, based on the configuration.
+
+I don't love that architecture, though. It's sort of blurring the distinction between "event notifier" and "cron" plugins. So here's an alternative:
+
+1. We create a new cron job, that is responsible for emitting the appropriate events. For example, it could be responsible for emitting events like "worker_tos_active_days" with a payload like [tos_id, # of days_active]. The cron job would emit these events once per day per tos, and would guarantee not to resend an event.
+
+2. Then, the "event notifier" could just respond to those events.
+
+I think that's a better architecture. But it does mean that any "event notifier" of this type would have to have two plugins: one to poll, and one to send the notifications.
+
+I'm also a little fuzzy on the best way to handle the cron job. It needs to track state. And there are going to be a proliferation of very similar jobs: "remind me if I haven't done an upload in X days", "remind me if a grievance deadline is Y days away", "remind me if my ledger account is overdue for X days", and so forth. Some of these will generate a lot of events, so they'll probably need to be batched and only run a smaller number of records each time. 
+
+Trying to figure out the best way to structure this. What do you think?

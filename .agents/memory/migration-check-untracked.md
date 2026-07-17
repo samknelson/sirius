@@ -1,27 +1,24 @@
 ---
 name: Author-time migration check vs untracked files
-description: Why scripts/check-migrations.ts can false-fail in the main agent, and what the real enforcement is
+description: check-migrations now sees untracked files; the startup drift gate remains the runtime enforcement
 ---
 
-# Author-time migration check and untracked migration files
+# Author-time migration check and untracked files
 
-`scripts/check-migrations.ts` detects added migration files via
-`git diff --name-only HEAD` (and the base range). That only sees
-**tracked** changes. A newly written migration file is untracked
-(`git status` shows `??`) until it is committed, so the check reports
-"schema change without migration" even though the file exists and is
-correctly registered in `scripts/migrate/index.ts`.
+`scripts/check-migrations.ts` historically detected changes only via
+`git diff` (tracked changes), so a newly written, still-untracked
+migration file caused a false "schema change without migration"
+failure — and an untracked new schema file was invisible entirely.
 
-**Why:** the main agent is blocked from running `git add` / `git commit`
-(destructive git ops are disallowed). The automatic end-of-task commit
-is what finally tracks the new migration, after which the check passes.
+**Fixed (July 2026):** `changedFiles()` now also includes
+`git ls-files --others --exclude-standard`, so untracked migration
+files count as accompanying migrations and untracked `shared/schema*`
+files trigger the check.
 
-**How to apply:** when editing `shared/schema*` and adding a matching
-migration under `scripts/migrate/...`, do not treat a check-migrations
-failure that says "no new file added" as a real problem if you *did*
-add and register the migration. The authoritative verification is the
-startup **schema drift gate** (`server/services/schema-drift-check.ts`):
-restart the `Start application` workflow and confirm
-"Schema drift check passed" in the logs (it reflects the live DB and
-runs pending component migrations for enabled components first). Also
-confirm the live column shape directly via SQL when in doubt.
+**How to apply:** a check-migrations failure is now a real signal even
+mid-task before any commit. The check (plus `check-constraint-names`
+and `check-storage-encapsulation`) is registered as an automated
+validation that runs on task completion — see replit.md Run & Operate.
+The authoritative runtime verification remains the startup schema
+drift gate (`server/services/schema-drift-check.ts`): restart the
+`Start application` workflow and confirm "Schema drift check passed".

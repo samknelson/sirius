@@ -20,8 +20,15 @@ noise:
   that don't exist on the storage object (correct: `unifiedOptionsStorage.get("event-type", …)`,
   `storage.users.getRole`).
 
-**How to apply:** after any non-trivial `server/**` or `shared/**` change, run
-`npm run check` before considering the work done. Treat a red tsc as "possible
-real bug," not just "type annotation nitpick." Also note `admin.tsx` imported a
+**Now automated:** `typecheck` is a registered validation
+(`NODE_OPTIONS=--max-old-space-size=8192 npm run check`) that runs on every
+task completion, alongside constraint-names / migrations /
+storage-encapsulation. Caveat: it relies on tsc's incremental cache
+(`tsBuildInfoFile` under `node_modules/typescript/tsbuildinfo`) for fast
+re-runs (~10-20s); a cold run after a dependency reinstall is much slower
+and memory-hungry — the heap headroom in the command is required.
+
+**How to apply:** treat a red tsc as "possible real bug," not just "type
+annotation nitpick." Fix errors rather than suppressing them. Also note `admin.tsx` imported a
 component file (`RoleAssignments`) that does not exist — a missing-module tsc
 error meant that page was broken at runtime too.

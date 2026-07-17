@@ -11,7 +11,7 @@ import {
 } from "../../plugins/dispatch/eligibility/registry";
 import { createDispatchJobStorage } from "./jobs";
 import { createUnifiedOptionsStorage, type OptionsTypeName } from "../unified-options";
-import { createPluginConfigStorage } from "../plugin-configs";
+import { createPluginConfigStorage } from "../system/plugin-configs";
 
 /**
  * Stub validator - add validation logic here when needed

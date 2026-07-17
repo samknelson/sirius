@@ -17,6 +17,7 @@ import { initDispatchSeniorityReset } from "./services/dispatch/seniority-reset"
 import { loadComponentCache } from "./services/component-cache";
 import { syncComponentPermissions } from "./services/component-permissions";
 import { runMigrations } from "../scripts/migrate";
+import { ensureEmptyDatabaseBootstrap } from "./services/empty-db-bootstrap";
 import { enforceStartupSchemaDrift } from "./services/schema-drift-check";
 import { runPendingComponentMigrationsAtStartup } from "./services/migration-runner";
 import { initializeWebSocket } from "./services/websocket";
@@ -35,6 +36,7 @@ import { initializeDashboardPluginSystem } from "./plugins/dashboard";
 import { initializeClientInjectionPluginSystem } from "./plugins/client-injection";
 import { initializeEventNotifierPluginSystem } from "./plugins/event-notifier";
 import { initializeWizardPluginSystem } from "./plugins/wizards";
+import { initializeMenuPluginSystem } from "./plugins/menu";
 import { initWorkerBanNotifications } from "./services/worker-ban-notifications";
 import { initDispatchNotifications } from "./services/dispatch/notifications";
 import { initWmbAutoRescan } from "./services/wmb-auto-rescan";
@@ -182,6 +184,12 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
   // Initialize dispatch seniority reset
   initDispatchSeniorityReset();
   logger.info("Dispatch seniority reset initialized", { source: "startup" });
+
+  // Detect a completely empty database BEFORE anything touches it. With
+  // ALLOW_EMPTY_DB_BOOTSTRAP=1 this creates the full schema from the Drizzle
+  // definitions and stamps migration bookkeeping; without it, an empty DB
+  // fails with a clear operator error. Non-empty databases: strict no-op.
+  await ensureEmptyDatabaseBootstrap();
 
   // Initialize address validation service (loads or creates config)
   await addressValidationService.getConfig();
@@ -339,6 +347,10 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
   initializeWizardPluginSystem();
   logger.info("Wizard plugins registered", { source: "startup" });
 
+  // Register menu plugins (pluggable main navigation)
+  initializeMenuPluginSystem();
+  logger.info("Menu plugins registered", { source: "startup" });
+
   // Register flood events
   registerFloodEvents();
   logger.info("Flood events registered", { source: "startup" });
@@ -350,6 +362,14 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
   // Seed singleton plugin configs (e.g. cron jobs) that have no config row yet
   await bootstrapSingletonPluginConfigs();
   logger.info("Singleton plugin configs bootstrapped", { source: "startup" });
+
+  // Seed the local-auth credential from LOCAL_AUTH_EMAIL /
+  // LOCAL_AUTH_PASSWORD_HASH (no-op when unset). Must run after migrations
+  // and before auth setup so the credential is usable on first login.
+  {
+    const { seedLocalCredential } = await import("./auth/local-seed");
+    await seedLocalCredential();
+  }
 
   // Setup multi-provider auth
   await setupAuth(app);

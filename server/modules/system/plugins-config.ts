@@ -1,9 +1,9 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { z } from "zod";
-import { getPluginKind, enforceKindGating, enforcePluginGating, getPluginConfigAdapter, defaultHydrate, type PluginConfigEnvelopeField } from "../plugins/_core";
-import { storage } from "../storage";
-import { SingletonViolationError } from "../storage/plugin-configs";
-import { runInTransaction } from "../storage/transaction-context";
+import { getPluginKind, enforceKindGating, enforcePluginGating, getPluginConfigAdapter, defaultHydrate, type PluginConfigEnvelopeField } from "../../plugins/_core";
+import { storage } from "../../storage";
+import { SingletonViolationError } from "../../storage/system/plugin-configs";
+import { runInTransaction } from "../../storage/transaction-context";
 
 /**
  * Bulk operations are only meaningful for the trust-eligibility kind, whose

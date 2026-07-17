@@ -37,11 +37,18 @@ export enum EventType {
   WORKER_MSH_SAVED = "worker.msh.saved",
   STEWARD_ASSIGNMENT_SAVED = "steward.assignment.saved",
   GRIEVANCE_SAVED = "grievance.saved",
-  GRIEVANCE_ASSIGNMENT_SAVED = "grievance.assignment.saved",
-  GRIEVANCE_SETTLEMENT_SAVED = "grievance.settlement.saved",
   TRUST_ELECTION_SAVED = "trust.election.saved",
   TRUST_EXEMPTION_SAVED = "trust.exemption.saved",
+  GRIEVANCE_STATUS_HISTORY_SAVED = "grievance.status-history.saved",
+  GRIEVANCE_TIMELINE_CHANGED = "grievance.timeline.changed",
+  GRIEVANCE_ASSIGNMENT_SAVED = "grievance.assignment.saved",
+  GRIEVANCE_SETTLEMENT_SAVED = "grievance.settlement.saved",
+  EDLS_SHEET_SAVED = "edls.sheet.saved",
   TRUST_WMB_SCAN_COMPLETED = "trust.wmb.scan.completed",
+  TRUST_WMB_SCAN_WORKER_COMPLETED = "trust.wmb.scan.worker.completed",
+  TOS_ABSENCE_REMINDER = "tos.absence.reminder",
+  GRIEVANCE_DEADLINE_REMINDER = "grievance.deadline.reminder",
+  EMPLOYER_MONTHLY = "employer.monthly",
   PLUGIN_CONFIG_SAVED = "plugin.config.saved",
   CRON = "cron",
   LOG = "log",
@@ -177,6 +184,37 @@ export interface GrievanceSavedPayload {
   grievanceId: string;
 }
 
+/**
+ * Emitted after any grievance status-history mutation (create/update/delete)
+ * commits. Consumed by the `grievance_timeline` denorm plugin to recompute the
+ * grievance's timeline steps (which only needs `grievanceId`).
+ *
+ * Also carries the grievance's derived *current* status before and after the
+ * mutation, so a notifier can detect a genuine transition ("grievance attained
+ * status X") without re-querying: the current status is the latest-dated
+ * status-history entry. Both ids are null when the grievance has no history at
+ * that point in time (e.g. `previous*` on the very first entry, `new*` after
+ * the last entry is deleted). Status names are resolved for rendering and may be
+ * null if the referenced status option is missing.
+ */
+export interface GrievanceStatusHistorySavedPayload {
+  grievanceId: string;
+  previousStatusId: string | null;
+  previousStatusName: string | null;
+  newStatusId: string | null;
+  newStatusName: string | null;
+}
+
+/**
+ * Emitted after a grievance save commits ONLY when the grievance's
+ * `timeline_template_id` actually changed (set, swapped, or cleared) — so the
+ * `grievance_timeline` denorm plugin does not recompute on every unrelated
+ * grievance edit.
+ */
+export interface GrievanceTimelineChangedPayload {
+  grievanceId: string;
+}
+
 export interface GrievanceAssignmentSavedPayload {
   grievanceId: string;
   userId: string;
@@ -220,6 +258,49 @@ export interface TrustExemptionSavedPayload {
   operation: "created" | "updated" | "deleted";
 }
 
+/**
+ * Emitted after an EDLS sheet create or update commits. Carries the sheet's
+ * status before and after the write so a notifier can detect a genuine
+ * arrival at a status: `previousStatus` is null on create (the sheet "arrives"
+ * at its initial status), and equals the pre-update status on update. The
+ * title and ymd ride on the payload so consumers can render a message without
+ * re-querying a row that may have changed since.
+ */
+export interface EdlsSheetSavedPayload {
+  sheetId: string;
+  previousStatus: string | null;
+  newStatus: string;
+  title: string;
+  ymd: string;
+}
+
+/**
+ * Per-worker scan-result event, emitted after one worker's WMB scan queue job
+ * result is recorded (successfully). Carries the per-benefit actions
+ * (including per-plugin eligibility results) so listeners — e.g. the
+ * trust-wmb-terminate denorm plugin — can react without re-reading the queue.
+ */
+export interface TrustWmbScanWorkerCompletedPayload {
+  queueId: string;
+  workerId: string;
+  month: number;
+  year: number;
+  actions: Array<{
+    benefitId: string;
+    benefitName: string;
+    scanType: string;
+    eligible: boolean;
+    action: string;
+    executed?: boolean;
+    pluginResults: Array<{
+      pluginKey: string;
+      eligible: boolean;
+      reason?: string;
+      warning?: string;
+    }>;
+  }>;
+}
+
 export interface TrustWmbScanCompletedPayload {
   statusId: string;
   month: number;
@@ -230,6 +311,50 @@ export interface TrustWmbScanCompletedPayload {
   benefitsStarted: number;
   benefitsContinued: number;
   benefitsTerminated: number;
+}
+
+/**
+ * A single TOS/absence reminder that fell due. Emitted by the generic EBS pump
+ * cron from an `ebs_denorm` row scheduled by the `tos_absence_reminder` denorm
+ * plugin; delivered by the `tos-absence-notifier` event-notifier plugin.
+ * `offset` is the number of days after `absenceStartDate` this reminder fires.
+ */
+export interface TosAbsenceReminderPayload {
+  tosId: string;
+  workerId: string;
+  contactId: string | null;
+  offset: number;
+  absenceStartDate: string;
+}
+
+/**
+ * A single grievance deadline reminder that fell due. Emitted by the generic
+ * EBS pump cron from an `ebs_denorm` row scheduled by the
+ * `grievance_deadline_reminder` denorm plugin; delivered by the
+ * `grievance-deadline-notifier` event-notifier plugin. `offset` is the number
+ * of days BEFORE `dueDate` this reminder fires; `dueDate` is the step's due
+ * date (YYYY-MM-DD). `stepName` is the timeline step's display name (null if it
+ * can no longer be resolved).
+ */
+export interface GrievanceDeadlineReminderPayload {
+  grievanceId: string;
+  stepId: string;
+  stepName: string | null;
+  dueDate: string;
+  offset: number;
+}
+
+/**
+ * A single employer-monthly event that fell due. Emitted by the generic EBS
+ * pump cron from an `ebs_denorm` row scheduled by the `employer_monthly` denorm
+ * plugin. `month` is the calendar month this event is for, in `YYYY-MM` form.
+ * This is currently a producer-only event: no consumer is registered yet
+ * (downstream ledger interest/penalty work will subscribe later), so the pump
+ * logging "No handlers" for it is expected.
+ */
+export interface EmployerMonthlyPayload {
+  employerId: string;
+  month: string;
 }
 
 export interface CronPayload {
@@ -277,11 +402,18 @@ export interface EventPayloadMap {
   [EventType.WORKER_MSH_SAVED]: WorkerMshSavedPayload;
   [EventType.STEWARD_ASSIGNMENT_SAVED]: StewardAssignmentSavedPayload;
   [EventType.GRIEVANCE_SAVED]: GrievanceSavedPayload;
-  [EventType.GRIEVANCE_ASSIGNMENT_SAVED]: GrievanceAssignmentSavedPayload;
-  [EventType.GRIEVANCE_SETTLEMENT_SAVED]: GrievanceSettlementSavedPayload;
   [EventType.TRUST_ELECTION_SAVED]: TrustElectionSavedPayload;
   [EventType.TRUST_EXEMPTION_SAVED]: TrustExemptionSavedPayload;
+  [EventType.GRIEVANCE_STATUS_HISTORY_SAVED]: GrievanceStatusHistorySavedPayload;
+  [EventType.GRIEVANCE_TIMELINE_CHANGED]: GrievanceTimelineChangedPayload;
+  [EventType.GRIEVANCE_ASSIGNMENT_SAVED]: GrievanceAssignmentSavedPayload;
+  [EventType.GRIEVANCE_SETTLEMENT_SAVED]: GrievanceSettlementSavedPayload;
+  [EventType.EDLS_SHEET_SAVED]: EdlsSheetSavedPayload;
   [EventType.TRUST_WMB_SCAN_COMPLETED]: TrustWmbScanCompletedPayload;
+  [EventType.TRUST_WMB_SCAN_WORKER_COMPLETED]: TrustWmbScanWorkerCompletedPayload;
+  [EventType.TOS_ABSENCE_REMINDER]: TosAbsenceReminderPayload;
+  [EventType.GRIEVANCE_DEADLINE_REMINDER]: GrievanceDeadlineReminderPayload;
+  [EventType.EMPLOYER_MONTHLY]: EmployerMonthlyPayload;
   [EventType.PLUGIN_CONFIG_SAVED]: PluginConfigSavedPayload;
   [EventType.CRON]: CronPayload;
   [EventType.LOG]: LogPayload;
@@ -405,7 +537,35 @@ class EventBus {
     return false;
   }
 
+  /**
+   * Emit an event to every subscribed handler. Failures are swallowed (logged +
+   * recorded in the ring buffer) so a bad handler can never break the emitter.
+   * Callers that need to KNOW whether delivery succeeded (e.g. the EBS pump,
+   * which must only mark a scheduled event `sent` when every handler ran
+   * cleanly) should use {@link emitWithFailures} instead.
+   */
   async emit<T extends EventType>(eventType: T, payload: EventPayloadMap[T]): Promise<void> {
+    await this.dispatch(eventType, payload);
+  }
+
+  /**
+   * Like {@link emit}, but returns the per-handler failures instead of
+   * swallowing them. An empty array means every handler ran cleanly. The depth
+   * guard still applies and throws {@link EventBusEmitDepthExceededError} on an
+   * emit storm — a thrown depth error is NOT a handler failure and is surfaced
+   * to the caller directly.
+   */
+  async emitWithFailures<T extends EventType>(
+    eventType: T,
+    payload: EventPayloadMap[T],
+  ): Promise<EmitFailure[]> {
+    return this.dispatch(eventType, payload);
+  }
+
+  private async dispatch<T extends EventType>(
+    eventType: T,
+    payload: EventPayloadMap[T],
+  ): Promise<EmitFailure[]> {
     // Storm protection: per-async-chain emit depth tracking.
     const parent = this.emitDepthAls.getStore();
     const nextDepth = parent ? parent.depth + 1 : 1;
@@ -437,7 +597,7 @@ class EventBus {
           service: "event-bus",
         });
         this.recordEmit(eventType, payload, [], 0);
-        return;
+        return [];
       }
 
       logger.debug(`Emitting event: ${eventType} to ${handlers.length} handler(s)`, {
@@ -461,7 +621,17 @@ class EventBus {
       );
       const durationMs = Date.now() - startedAt;
 
-      const failures = results.filter(r => r.status === "rejected");
+      const failures: EmitFailure[] = [];
+      results.forEach((r, idx) => {
+        if (r.status === "rejected") {
+          const h = handlers[idx];
+          failures.push({
+            handlerId: h?.id ?? "unknown",
+            handlerName: h?.name ?? "unknown",
+            message: r.reason instanceof Error ? r.reason.message : String(r.reason),
+          });
+        }
+      });
       if (failures.length > 0) {
         logger.warn(`${failures.length}/${handlers.length} handlers failed for event: ${eventType}`, {
           service: "event-bus",
@@ -469,6 +639,7 @@ class EventBus {
       }
 
       this.recordEmit(eventType, payload, handlers, durationMs, results);
+      return failures;
     });
   }
 

@@ -6,7 +6,7 @@ import {
   optionsIndustry,
   type WorkerMsh,
 } from "@shared/schema";
-import { eq, desc, sql } from "drizzle-orm";
+import { eq, desc, sql, inArray } from "drizzle-orm";
 import type { StorageLoggingConfig } from "./middleware/logging";
 import { eventBus, EventType } from "../services/event-bus";
 import { logger } from "../logger";
@@ -21,6 +21,13 @@ export interface WorkerMshStorage {
    * `worker_ms` denorm plugin reads when recomputing `worker_msh_denorm`.
    */
   getCurrentMemberStatusIds(workerId: string): Promise<string[]>;
+  /**
+   * All workers whose CURRENT member status (latest history entry per
+   * industry, same tie-breaking as getCurrentMemberStatusIds) is one of the
+   * given status option IDs. Authoritative (reads worker_msh directly, not
+   * the denorm table). Returns one row per (worker, matching status).
+   */
+  getWorkerIdsWithCurrentMs(msIds: string[]): Promise<Array<{ workerId: string; msId: string }>>;
   createWorkerMsh(data: { workerId: string; date: string; msId: string; industryId: string; data?: any }): Promise<WorkerMsh>;
   updateWorkerMsh(id: string, data: { date?: string; msId?: string; industryId?: string; data?: any }): Promise<WorkerMsh | undefined>;
   deleteWorkerMsh(id: string): Promise<boolean>;
@@ -76,6 +83,29 @@ export function createWorkerMshStorage(
       }
 
       return Array.from(latestByIndustry.values());
+    },
+
+    async getWorkerIdsWithCurrentMs(msIds: string[]): Promise<Array<{ workerId: string; msId: string }>> {
+      if (msIds.length === 0) return [];
+      const client = getClient();
+      const latest = client
+        .selectDistinctOn([workerMsh.workerId, workerMsh.industryId], {
+          workerId: workerMsh.workerId,
+          msId: workerMsh.msId,
+        })
+        .from(workerMsh)
+        .orderBy(
+          workerMsh.workerId,
+          workerMsh.industryId,
+          desc(workerMsh.date),
+          sql`${workerMsh.createdAt} DESC NULLS LAST`,
+          desc(workerMsh.id),
+        )
+        .as("latest");
+      return client
+        .select({ workerId: latest.workerId, msId: latest.msId })
+        .from(latest)
+        .where(inArray(latest.msId, msIds));
     },
 
     async getWorkerMsh(workerId: string): Promise<any[]> {

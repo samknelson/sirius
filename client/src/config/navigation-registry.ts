@@ -33,6 +33,7 @@ export const configSections: NavSection[] = [
     items: [
       { path: "/config/policies", label: "Policies", icon: FileText, testId: "nav-config-policies", permission: "admin" },
       { path: "/config/default-policy", label: "Default Policy", icon: Settings, testId: "nav-config-default-policy", permission: "admin" },
+      { path: "/contracts", label: "Contracts", icon: FileText, testId: "nav-config-contracts", permission: "staff", requiresComponent: "contract" },
     ],
   },
   {
@@ -53,6 +54,7 @@ export const configSections: NavSection[] = [
       { path: "/admin/cron-jobs", label: "Cron Jobs", icon: Clock, testId: "nav-config-cron-jobs", permission: "admin" },
       { path: "/config/sftp/clients", label: "SFTP Clients", icon: Server, testId: "nav-config-sftp-clients", permission: "admin", requiresComponent: "system.sftp.client" },
       { path: "/admin/debug/event-bus", label: "Event Bus", icon: Radio, testId: "nav-admin-debug-event-bus", permission: "admin", requiresComponent: "debug" },
+      { path: "/admin/ebs", label: "Event Scheduler", icon: Calendar, testId: "nav-config-ebs", permission: "admin" },
     ],
   },
   {
@@ -125,6 +127,7 @@ export const configSections: NavSection[] = [
       { path: "/config/options/comm-tag", label: "Comm Tags", icon: Tag, testId: "nav-config-comm-tags", permission: "admin" },
       { path: "/config/steward-settings", label: "Steward", icon: Users, testId: "nav-config-steward-settings", permission: "admin", requiresComponent: "worker.steward" },
       { path: "/config/workers/ban", label: "Ban Notifications", icon: Shield, testId: "nav-config-workers-ban", permission: "admin", requiresComponent: "worker.ban" },
+      { path: "/config/workers/tos", label: "Time Off Sick", icon: Calendar, testId: "nav-config-workers-tos", permission: "admin", requiresComponent: "worker.tos" },
       { path: "/config/workers/user-settings", label: "Worker User Settings", icon: Settings, testId: "nav-config-users-worker-settings", permission: "admin" },
     ],
   },
@@ -203,6 +206,7 @@ export const configSections: NavSection[] = [
       { path: "/config/edls/settings", label: "Settings", icon: Settings, testId: "nav-config-edls-settings", permission: "admin", requiresComponent: "edls" },
       { path: "/config/edls/tasks", label: "Tasks", icon: List, testId: "nav-config-edls-tasks", permission: "admin", requiresComponent: "edls" },
       { path: "/config/edls/t631-fetch", label: "Teamsters 631 Fetch", icon: Zap, testId: "nav-config-edls-t631-fetch", permission: "admin", requiresComponents: ["edls", "sitespecific.t631.client"] },
+      { path: "/config/edls/t631-ms", label: "Teamsters 631 MS", icon: List, testId: "nav-config-edls-t631-ms", permission: "admin", requiresComponents: ["edls", "sitespecific.t631.client"] },
     ],
   },
   {

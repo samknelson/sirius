@@ -23,6 +23,8 @@ export interface EmployerWorker {
 
 export interface EmployerStorage {
   getAllEmployers(): Promise<Employer[]>;
+  /** Every employer whose `is_active` flag is true. */
+  listActive(): Promise<Employer[]>;
   getEmployer(id: string): Promise<Employer | undefined>;
   getBySiriusId(siriusId: string): Promise<Employer | undefined>;
   getByIds(ids: string[]): Promise<Employer[]>;
@@ -38,6 +40,11 @@ export function createEmployerStorage(): EmployerStorage {
     async getAllEmployers(): Promise<Employer[]> {
       const client = getClient();
       return await client.select().from(employers);
+    },
+
+    async listActive(): Promise<Employer[]> {
+      const client = getClient();
+      return await client.select().from(employers).where(eq(employers.isActive, true));
     },
 
     async getEmployer(id: string): Promise<Employer | undefined> {

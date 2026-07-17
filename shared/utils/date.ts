@@ -90,6 +90,45 @@ export function ymdToDateForPicker(ymd: Ymd): Date {
   return new Date(year, month - 1, day);
 }
 
+/**
+ * Add `days` calendar days to a Ymd, returning a Ymd. Uses local-time Date
+ * arithmetic on already-split components (never `new Date(ymd)`), so there is
+ * no UTC drift. Negative `days` subtracts.
+ */
+export function addDaysYmd(ymd: Ymd, days: number): Ymd {
+  const [year, month, day] = ymd.split('-').map(Number);
+  const d = new Date(year, month - 1, day + days);
+  return dateToYmd(d);
+}
+
+/**
+ * Add `days` business days (Mon–Fri) to a Ymd, returning a Ymd. Weekends are
+ * skipped; the count starts from the day AFTER `ymd` (adding 1 business day
+ * to a Friday yields the following Monday). Negative `days` counts backwards.
+ *
+ * Extension point: pass `holidays` (a set of Ymd strings) to also skip
+ * holidays. Defaults to none — a future holiday-calendar tool can supply the
+ * set without changing callers or this function's contract.
+ */
+export function addBusinessDaysYmd(
+  ymd: Ymd,
+  days: number,
+  holidays: ReadonlySet<Ymd> = new Set(),
+): Ymd {
+  const [year, month, day] = ymd.split('-').map(Number);
+  const d = new Date(year, month - 1, day);
+  const step = days < 0 ? -1 : 1;
+  let remaining = Math.abs(days);
+  while (remaining > 0) {
+    d.setDate(d.getDate() + step);
+    const dow = d.getDay();
+    if (dow === 0 || dow === 6) continue;
+    if (holidays.has(dateToYmd(d))) continue;
+    remaining -= 1;
+  }
+  return dateToYmd(d);
+}
+
 export function dateToYmd(date: Date): Ymd {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }

@@ -3,7 +3,7 @@ import {
   getPluginKind,
   enforceKindGating,
   enforcePluginGating,
-} from "../plugins/_core";
+} from "../../plugins/_core";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 

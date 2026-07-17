@@ -80,11 +80,7 @@ export function getSession(): RequestHandler {
   // sanctioned use of the db pool outside the storage layer because the session
   // store is owned by connect-pg-simple.
   const sessionStore = new pgStore({
-    // The shared pool is a @neondatabase/serverless Pool, while connect-pg-simple
-    // is typed against a node-postgres (pg) Pool. Behavior is compatible (see the
-    // comment above about intentionally sharing the one hardened pool); this cast
-    // only reconciles the neon-vs-pg Pool type mismatch.
-    pool: pool as unknown as NonNullable<ConstructorParameters<typeof pgStore>[0]>["pool"],
+    pool,
     createTableIfMissing: false,
     ttl: sessionTtl,
     tableName: "sessions",

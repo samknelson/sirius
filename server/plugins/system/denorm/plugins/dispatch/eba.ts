@@ -24,6 +24,8 @@ const dispatchEbaDenormPlugin: DenormPlugin<DispatchEligDenormPayload> = {
     singleton: true,
   },
   entityType: "worker",
+  reads: ["workers", "workerDispatchEba"],
+  writes: [{ storage: "workerDispatchEligDenorm", soleWriter: false }],
   eventHandlers: [
     {
       event: EventType.DISPATCH_EBA_SAVED,

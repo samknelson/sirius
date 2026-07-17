@@ -1,14 +1,23 @@
 import { useState, useEffect } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Loader2, Save } from "lucide-react";
 import { SimpleHtmlEditor } from "@/components/ui/simple-html-editor";
-import { SiteSettings } from "@/lib/system-types";
+import { useSiteSettings, useSetVariable, useVariableValue } from "@/lib/use-variable";
+import { useQuery } from "@tanstack/react-query";
+import { queryClient } from "@/lib/queryClient";
+import { DEFAULT_MENU_PLUGIN_ID, SITE_MENU_PLUGIN_VARIABLE, type ResolvedMenu, type ResolvedMenuItem } from "@shared/menu-types";
+import { useTerm } from "@/contexts/TerminologyContext";
+
+interface MenuManifestEntry {
+  id: string;
+  name: string;
+  description: string;
+}
 
 export default function SiteInformation() {
   const { toast } = useToast();
@@ -19,41 +28,79 @@ export default function SiteInformation() {
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [isEditingFooter, setIsEditingFooter] = useState(false);
 
-  const { data: settings, isLoading } = useQuery<SiteSettings>({
-    queryKey: ["/api/site-settings"],
-  });
+  const settings = useSiteSettings();
+  const isLoading = settings.isLoading;
 
   // Update local state when settings are loaded
   useEffect(() => {
-    if (settings && !isEditingName && !isEditingTitle && !isEditingFooter) {
+    if (!isLoading && !isEditingName && !isEditingTitle && !isEditingFooter) {
       setSiteName(settings.siteName);
       setSiteTitle(settings.siteTitle || "");
       setFooter(settings.footer || "");
     }
-  }, [settings, isEditingName, isEditingTitle, isEditingFooter]);
+  }, [isLoading, settings.siteName, settings.siteTitle, settings.footer, isEditingName, isEditingTitle, isEditingFooter]);
 
-  const updateMutation = useMutation({
-    mutationFn: async (updates: { siteName?: string; siteTitle?: string; footer?: string }) => {
-      return await apiRequest("PUT", "/api/site-settings", updates);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/site-settings"] });
-      setIsEditingName(false);
-      setIsEditingTitle(false);
-      setIsEditingFooter(false);
-      toast({
-        title: "Settings saved",
-        description: "Site settings have been updated successfully.",
-      });
-    },
-    onError: () => {
-      toast({
-        title: "Error",
-        description: "Failed to update site settings.",
-        variant: "destructive",
-      });
-    },
+  const onSaved = () => {
+    setIsEditingName(false);
+    setIsEditingTitle(false);
+    setIsEditingFooter(false);
+    toast({
+      title: "Settings saved",
+      description: "Site settings have been updated successfully.",
+    });
+  };
+  const onSaveError = () => {
+    toast({
+      title: "Error",
+      description: "Failed to update site settings.",
+      variant: "destructive",
+    });
+  };
+
+  // Main menu plugin selection
+  const { data: menuManifest } = useQuery<MenuManifestEntry[]>({
+    queryKey: ["/api/plugins/menu/manifest"],
   });
+  const menuPluginValue = useVariableValue(SITE_MENU_PLUGIN_VARIABLE);
+  const savedMenuPlugin =
+    typeof menuPluginValue.data === "string" && menuPluginValue.data
+      ? menuPluginValue.data
+      : DEFAULT_MENU_PLUGIN_ID;
+  const saveMenuPluginMutation = useSetVariable(SITE_MENU_PLUGIN_VARIABLE, {
+    onSuccess: () => {
+      setPendingMenuPlugin(null);
+      queryClient.invalidateQueries({ queryKey: ["/api/menu"] });
+      toast({
+        title: "Main menu updated",
+        description: "The site navigation menu has been changed.",
+      });
+    },
+    onError: onSaveError,
+  });
+
+  // Preview a different layout (for the current admin) before applying it
+  const [pendingMenuPlugin, setPendingMenuPlugin] = useState<string | null>(null);
+  const selectedMenuPlugin = pendingMenuPlugin ?? savedMenuPlugin;
+  const isPreviewingMenu = pendingMenuPlugin !== null && pendingMenuPlugin !== savedMenuPlugin;
+  const menuPreview = useQuery<ResolvedMenu>({
+    queryKey: ["/api/menu", { plugin: selectedMenuPlugin }],
+    enabled: isPreviewingMenu,
+  });
+  const term = useTerm();
+  const menuItemLabel = (item: ResolvedMenuItem): string => {
+    if (item.labelTerm) {
+      return term(item.labelTerm.key, { plural: item.labelTerm.plural });
+    }
+    return item.label || item.id;
+  };
+
+  const saveNameMutation = useSetVariable("site_name", { onSuccess: onSaved, onError: onSaveError });
+  const saveTitleMutation = useSetVariable("site_title", { onSuccess: onSaved, onError: onSaveError });
+  const saveFooterMutation = useSetVariable("site_footer", { onSuccess: onSaved, onError: onSaveError });
+
+  const updateMutation = {
+    isPending: saveNameMutation.isPending || saveTitleMutation.isPending || saveFooterMutation.isPending,
+  };
 
   const handleSaveName = () => {
     if (!siteName.trim()) {
@@ -64,7 +111,7 @@ export default function SiteInformation() {
       });
       return;
     }
-    updateMutation.mutate({ siteName });
+    saveNameMutation.mutate(siteName);
   };
 
   const handleSaveTitle = () => {
@@ -76,11 +123,11 @@ export default function SiteInformation() {
       });
       return;
     }
-    updateMutation.mutate({ siteTitle });
+    saveTitleMutation.mutate(siteTitle);
   };
 
   const handleSaveFooter = () => {
-    updateMutation.mutate({ footer });
+    saveFooterMutation.mutate(footer);
   };
 
   const handleCancelName = () => {
@@ -237,6 +284,104 @@ export default function SiteInformation() {
               </div>
             )}
           </div>
+        </CardContent>
+      </Card>
+
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle>Main Menu</CardTitle>
+          <CardDescription>
+            Choose the navigation menu layout shown in the site header
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <Label htmlFor="menu-plugin">Menu Layout</Label>
+          <Select
+            value={selectedMenuPlugin}
+            onValueChange={(value) =>
+              setPendingMenuPlugin(value === savedMenuPlugin ? null : value)
+            }
+            disabled={saveMenuPluginMutation.isPending || menuPluginValue.isLoading}
+          >
+            <SelectTrigger id="menu-plugin" className="max-w-sm" data-testid="select-menu-plugin">
+              <SelectValue placeholder="Select a menu layout" />
+            </SelectTrigger>
+            <SelectContent>
+              {(menuManifest ?? []).map((entry) => (
+                <SelectItem key={entry.id} value={entry.id} data-testid={`option-menu-plugin-${entry.id}`}>
+                  {entry.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {menuManifest?.find((e) => e.id === selectedMenuPlugin)?.description && (
+            <p className="text-sm text-muted-foreground" data-testid="text-menu-plugin-description">
+              {menuManifest.find((e) => e.id === selectedMenuPlugin)!.description}
+            </p>
+          )}
+          {isPreviewingMenu && (
+            <div className="mt-4 space-y-3">
+              <div className="rounded-md border p-4" data-testid="panel-menu-preview">
+                <p className="text-sm font-medium mb-2">
+                  Preview — how this layout looks for you
+                </p>
+                {menuPreview.isLoading ? (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground" data-testid="loading-menu-preview">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Loading preview…
+                  </div>
+                ) : menuPreview.isError ? (
+                  <p className="text-sm text-destructive" data-testid="error-menu-preview">
+                    Could not load the preview for this layout.
+                  </p>
+                ) : (menuPreview.data?.items?.length ?? 0) === 0 ? (
+                  <p className="text-sm text-muted-foreground" data-testid="empty-menu-preview">
+                    This layout has no visible items for your account.
+                  </p>
+                ) : (
+                  <ul className="space-y-1" data-testid="list-menu-preview">
+                    {menuPreview.data!.items.map((item) => (
+                      <li key={item.id} data-testid={`preview-menu-item-${item.id}`}>
+                        <span className="text-sm">{menuItemLabel(item)}</span>
+                        {item.children && item.children.length > 0 && (
+                          <ul className="ml-4 mt-1 space-y-0.5 border-l pl-3">
+                            {item.children.map((child) => (
+                              <li key={child.id} className="text-sm text-muted-foreground" data-testid={`preview-menu-item-${item.id}-${child.id}`}>
+                                {menuItemLabel(child)}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <p className="text-xs text-muted-foreground mt-3">
+                  Other users may see different items depending on their permissions.
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  onClick={() => saveMenuPluginMutation.mutate(pendingMenuPlugin!)}
+                  disabled={saveMenuPluginMutation.isPending || menuPreview.isLoading}
+                  data-testid="button-apply-menu-plugin"
+                >
+                  {saveMenuPluginMutation.isPending && (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  )}
+                  Apply for everyone
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setPendingMenuPlugin(null)}
+                  disabled={saveMenuPluginMutation.isPending}
+                  data-testid="button-cancel-menu-plugin"
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 

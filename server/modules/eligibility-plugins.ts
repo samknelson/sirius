@@ -40,7 +40,7 @@ export function registerEligibilityPluginRoutes(
   //
   // POST /api/eligibility/validate-config was removed in Task #209 and
   // replaced by the generic POST /api/plugins/trust-eligibility/:id/validate-config
-  // (see `server/modules/plugins-admin.ts`).
+  // (see `server/modules/system/plugins-admin.ts`).
 
   app.post("/api/eligibility/evaluate", requireAuth, requireComponent("trust.benefits"), requireAccess('admin'), async (req, res) => {
     try {

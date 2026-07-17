@@ -77,6 +77,14 @@ export interface ComponentSchemaManifest {
   version?: number;
   schemaPath: string;
   tables: string[];
+  /**
+   * Component IDs whose schema this component's tables reference via
+   * foreign keys. Enabling this component requires every listed component
+   * to be enabled with its tables present; the enable flow fails fast with
+   * a clear message naming the missing prerequisites instead of surfacing
+   * a raw SQL foreign-key error.
+   */
+  dependsOnComponents?: string[];
 }
 
 export type ComponentTableStatus = "active" | "dropped" | "pending" | "error";
@@ -216,9 +224,9 @@ export const componentRegistry: ComponentDefinition[] = [
     category: "core",
     managesSchema: true,
     schemaManifest: {
-      version: 13,
+      version: 15,
       schemaPath: "./shared/schema/grievance/schema.ts",
-      tables: ["options_grievance_status", "options_grievance_category", "options_grievance_steps", "options_grievance_complaints", "options_grievance_remedies", "options_grievance_roles", "grievances", "grievance_workers", "grievance_employers", "grievance_users", "grievance_complaints", "grievance_remedies", "grievance_steps", "grievance_timeline_templates", "grievance_timeline_template_steps", "grievance_name_denorm"]
+      tables: ["options_grievance_status", "options_grievance_category", "options_grievance_steps", "options_grievance_complaints", "options_grievance_remedies", "options_grievance_roles", "grievances", "grievance_workers", "grievance_employers", "grievance_users", "grievance_complaints", "grievance_remedies", "grievance_steps_denorm", "grievance_timeline_templates", "grievance_timeline_template_steps", "grievance_name_denorm", "grievance_status_history"]
     }
   },
   {
@@ -231,7 +239,35 @@ export const componentRegistry: ComponentDefinition[] = [
     schemaManifest: {
       version: 1,
       schemaPath: "./shared/schema/grievance/settlement-schema.ts",
-      tables: ["options_grievance_settlement_type", "grievance_settlements"]
+      tables: ["options_grievance_settlement_type", "grievance_settlements"],
+      dependsOnComponents: ["grievance"]
+    }
+  },
+  {
+    id: "grievance.contract",
+    name: "Grievance Contract",
+    description: "Linking grievances to contract sections. Requires the Grievance and Contract components to be enabled — its foreign keys reference the grievances and contract_sections tables.",
+    enabledByDefault: false,
+    category: "grievance",
+    managesSchema: true,
+    schemaManifest: {
+      version: 2,
+      schemaPath: "./shared/schema/grievance/contract-schema.ts",
+      tables: ["grievance_contract_sections", "grievance_contracts"],
+      dependsOnComponents: ["grievance", "contract"]
+    }
+  },
+  {
+    id: "contract",
+    name: "Contract",
+    description: "Management of contract text (contracts, their articles, and the sections within each article)",
+    enabledByDefault: false,
+    category: "core",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/contract/schema.ts",
+      tables: ["contracts", "contract_articles", "contract_sections"]
     }
   },
   {
@@ -483,7 +519,8 @@ export const componentRegistry: ComponentDefinition[] = [
     schemaManifest: {
       version: 1,
       schemaPath: "./shared/schema/trust/provider-edi-schema.ts",
-      tables: ["trust_provider_edi"]
+      tables: ["trust_provider_edi"],
+      dependsOnComponents: ["system.sftp.client"]
     }
   },
   {
@@ -496,7 +533,7 @@ export const componentRegistry: ComponentDefinition[] = [
     schemaManifest: {
       version: 1,
       schemaPath: "./shared/schema/trust/benefit-eligibility-schema.ts",
-      tables: ["plugin_configs_benefit_eligibility"]
+      tables: ["plugin_configs_benefit_eligibility", "trust_wmb_events"]
     }
   },
   {
@@ -709,7 +746,8 @@ export const componentRegistry: ComponentDefinition[] = [
     schemaManifest: {
       version: 1,
       schemaPath: "./shared/schema/edls/schema.ts",
-      tables: ["edls_sheets", "edls_crews", "edls_assignments", "options_edls_tasks", "worker_edls"]
+      tables: ["options_edls_tasks", "edls_sheets", "edls_crews", "edls_assignments", "worker_edls"],
+      dependsOnComponents: ["dispatch.job_group", "facility"]
     },
     permissions: [
       { key: "edls.manager", description: "Full EDLS management access" },

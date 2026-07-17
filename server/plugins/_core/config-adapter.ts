@@ -1,12 +1,12 @@
 import { z } from "zod";
-import type { PluginConfigWithSubsidiary } from "../../storage/plugin-configs";
+import type { PluginConfigWithSubsidiary } from "../../storage/system/plugin-configs";
 
 /**
  * Per-kind plugin-config adapter (Task #353 — additive foundation).
  *
  * The unified plugin config storage (`storage.pluginConfigs`) is generic: a
  * base `plugin_configs` row plus an optional per-kind subsidiary row. The
- * generic CRUD + search routes in `server/modules/plugins-config.ts` know
+ * generic CRUD + search routes in `server/modules/system/plugins-config.ts` know
  * nothing kind-specific — they delegate every kind-specific concern to the
  * adapter registered for that kind:
  *

@@ -67,7 +67,7 @@ export interface PluginKindRegistration<TPlugin = unknown, TEntry = unknown> {
   /**
    * Optional admin capabilities. Each is wired up by the generic
    * `/api/plugins/:kind/...` admin endpoints in
-   * `server/modules/plugins-admin.ts`. The endpoint 404s when the
+   * `server/modules/system/plugins-admin.ts`. The endpoint 404s when the
    * corresponding callback is not provided. All callbacks run AFTER
    * the same kind-level component + access-policy gating as the
    * manifest endpoint, and (where a single plugin is targeted) AFTER
@@ -117,7 +117,7 @@ export function listPluginKinds(): string[] {
  * This is the single source of truth the storage layer reads to decide
  * singleton enforcement — callers no longer pass an `enforceSingleton` flag.
  * It lives here (a cycle-safe `_core` submodule that does NOT import storage)
- * so `server/storage/plugin-configs.ts` can import it directly without an
+ * so `server/storage/system/plugin-configs.ts` can import it directly without an
  * import cycle. Import this submodule, NOT the `_core/index.ts` barrel, from
  * storage: the barrel re-exports the singleton seeder, which imports storage.
  */

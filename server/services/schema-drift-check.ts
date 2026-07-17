@@ -25,6 +25,7 @@ import { detectSchemaDrift, type SchemaDriftReport } from "./component-schema-pu
 import * as mainSchema from "../../shared/schema";
 import { tableExists, listAllPublicTables } from "../storage/utils";
 import { logger } from "../logger";
+import { bootStatus } from "./boot-status";
 
 const NAME_SYM_DESC = "drizzle:Name";
 
@@ -248,6 +249,7 @@ function formatAggregate(r: AggregateDriftReport): string {
  */
 export async function enforceStartupSchemaDrift(): Promise<void> {
   if (process.env.SKIP_SCHEMA_DRIFT_CHECK === "1") {
+    bootStatus.driftCheck = "skipped";
     logger.warn("Schema drift check SKIPPED via SKIP_SCHEMA_DRIFT_CHECK=1", {
       source: "startup",
       service: "schema-drift-check",
@@ -257,6 +259,7 @@ export async function enforceStartupSchemaDrift(): Promise<void> {
 
   const report = await checkAggregateSchemaDrift();
   if (!report.hasDrift) {
+    bootStatus.driftCheck = "passed";
     logger.info("Schema drift check passed", {
       source: "startup",
       service: "schema-drift-check",
@@ -266,6 +269,7 @@ export async function enforceStartupSchemaDrift(): Promise<void> {
     return;
   }
 
+  bootStatus.driftCheck = "failed";
   logger.error("Schema drift detected at startup", {
     source: "startup",
     service: "schema-drift-check",

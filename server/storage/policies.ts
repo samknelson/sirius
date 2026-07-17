@@ -8,7 +8,7 @@ import {
 } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { defineLoggingConfig } from "./middleware/logging";
-import type { PluginConfigStorage } from "./plugin-configs";
+import type { PluginConfigStorage } from "./system/plugin-configs";
 
 /** Plugin kind that owns the per-policy trust-eligibility configurations. */
 const TRUST_ELIGIBILITY_KIND = "trust-eligibility" as const;

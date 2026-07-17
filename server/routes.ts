@@ -53,12 +53,11 @@ import { registerWorkerHoursRoutes } from "./modules/worker-hours";
 import { registerQuickstartRoutes } from "./modules/quickstart";
 import { registerCronJobRoutes } from "./modules/system/cron";
 import { registerEventBusIntrospectRoutes } from "./modules/dev/event-bus-introspect";
+import { registerEbsInspectionRoutes } from "./modules/system/ebs";
 import { registerEligibilityPluginRoutes } from "./modules/eligibility-plugins";
 import { registerTwilioRoutes } from "./modules/twilio";
 import { registerEmailConfigRoutes } from "./modules/email-config";
 import { registerPostalConfigRoutes } from "./modules/postal-config";
-import { registerSiteSettingsRoutes } from "./modules/site-settings";
-import { registerSystemModeRoutes } from "./modules/system/system-mode";
 import { registerBootstrapRoutes } from "./modules/system/bootstrap";
 import { registerBargainingUnitsRoutes } from "./modules/bargaining-units";
 import { registerSftpClientDestinationRoutes } from "./modules/sftp-client-destinations";
@@ -70,10 +69,6 @@ import { registerEmployerPolicyHistoryRoutes } from "./modules/employers/policy-
 import { registerWorkerBenefitsScanRoutes } from "./modules/worker-benefits-scan";
 import { registerWmbScanQueueRoutes } from "./modules/wmb-scan-queue";
 import { registerEventNotifierMetaRoutes } from "./modules/event-notifier-meta";
-import { registerDispatchDncConfigRoutes } from "./modules/dispatch/dnc-config";
-import { registerDispatchEbaConfigRoutes } from "./modules/dispatch/eba-config";
-import { registerDispatchSeniorityResetConfigRoutes } from "./modules/dispatch/seniority-reset-config";
-import { registerWorkerBanConfigRoutes } from "./modules/worker-ban-config";
 import { registerCardcheckDefinitionsRoutes } from "./modules/cardcheck-definitions";
 import { registerCardchecksRoutes } from "./modules/cardchecks";
 import { registerEsigsRoutes } from "./modules/esigs";
@@ -83,6 +78,7 @@ import { registerEventsRoutes } from "./modules/events";
 import { registerDispatchJobsRoutes } from "./modules/dispatch/jobs";
 import { registerDispatchJobGroupsRoutes } from "./modules/dispatch/job-groups";
 import { registerFacilityRoutes } from "./modules/facility/facilities";
+import { registerContractRoutes } from "./modules/contract/contract";
 import { registerDispatchesRoutes } from "./modules/dispatch/dispatches";
 import { registerWorkerDispatchStatusRoutes } from "./modules/dispatch/worker-status";
 import { registerWorkerDispatchDncRoutes } from "./modules/dispatch/worker-dnc";
@@ -114,6 +110,7 @@ import { registerBaoEchpRoutes } from "./modules/sitespecific/bao/echp";
 import { registerBtuPoliticalRoutes } from "./modules/sitespecific/btu/political";
 import { registerT631ClientFetchRoutes } from "./modules/sitespecific/t631/client/fetch";
 import { registerFreemanSecondShiftRoutes } from "./modules/sitespecific/freeman/second-shift";
+import { registerFreemanCrewleadsRoutes } from "./modules/sitespecific/freeman/crewleads";
 import { registerEdlsSheetsRoutes } from "./modules/edls/sheets";
 import { registerEdlsTosRoutes } from "./modules/edls/tos";
 import { registerEdlsTasksRoutes } from "./modules/edls/tasks";
@@ -346,13 +343,13 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Unified plugin manifest endpoint (Task #208) — replaces the four
   // legacy per-kind manifest URLs.
-  const { registerPluginsManifestRoutes } = await import("./modules/plugins-manifest");
+  const { registerPluginsManifestRoutes } = await import("./modules/system/plugins-manifest");
   registerPluginsManifestRoutes(app, requireAuth);
 
   // Generic plugin admin endpoints (Task #209) — replaces the per-kind
   // enable / settings / validate-config endpoints across dashboard,
   // charge, trust-eligibility, and dispatch-eligibility.
-  const { registerPluginsAdminRoutes } = await import("./modules/plugins-admin");
+  const { registerPluginsAdminRoutes } = await import("./modules/system/plugins-admin");
   registerPluginsAdminRoutes(app, requireAuth);
 
   // Register bookmark routes
@@ -363,6 +360,11 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Fixed dispatcher route set for framework (plugin-based) wizards.
   // Adding a wizard plugin adds ZERO routes.
   registerWizardDispatcherRoutes(app, requireAuth);
+
+  // Pluggable main navigation: GET /api/menu resolves the selected menu
+  // plugin's tree per user (permission / policy / component gates).
+  const { registerMenuRoutes } = await import("./plugins/menu");
+  registerMenuRoutes(app, requireAuth);
 
   // Register file management routes
   registerFileRoutes(app, requireAuth, requirePermission);
@@ -402,6 +404,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Register event bus introspection routes (debug component)
   registerEventBusIntrospectRoutes(app);
 
+  // Register read-only EBS (deferred event bus) inspection routes (admin)
+  registerEbsInspectionRoutes(app);
+
   // Charge plugin configs are served by the unified generic config routes
   // (registerPluginsConfigRoutes); the bespoke charge route was removed in
   // Task #355.
@@ -414,7 +419,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // precedence. These generic routes operate solely on the unified
   // plugin_configs tables and remain dormant for any kind that still owns
   // specific routes.
-  const { registerPluginsConfigRoutes } = await import("./modules/plugins-config");
+  const { registerPluginsConfigRoutes } = await import("./modules/system/plugins-config");
   registerPluginsConfigRoutes(app, requireAuth);
 
   // Register Twilio configuration routes
@@ -426,14 +431,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Register Postal configuration routes
   registerPostalConfigRoutes(app);
 
-  // Register site settings routes
-  registerSiteSettingsRoutes(app, requireAuth, requirePermission, requireAccess);
-
   // Register terminology routes
   registerTerminologyRoutes(app, requireAuth, requirePermission, requireAccess);
-
-  // Register system mode routes
-  registerSystemModeRoutes(app, requireAuth, requirePermission, requireAccess);
 
   // Register bootstrap routes (no auth required - intentionally public for initial setup)
   registerBootstrapRoutes(app);
@@ -470,16 +469,6 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   
   // Register event-notifier admin metadata routes (staff user picker source)
   registerEventNotifierMetaRoutes(app, requireAuth, requireAccess, storage);
-  
-  // Register dispatch DNC configuration routes
-  registerDispatchDncConfigRoutes(app, requireAuth, requireAccess, storage);
-  
-  // Register dispatch EBA configuration routes
-  registerDispatchEbaConfigRoutes(app, requireAuth, requireAccess, storage);
-  registerDispatchSeniorityResetConfigRoutes(app, requireAuth, requireAccess, storage);
-  
-  // Register worker ban configuration routes
-  registerWorkerBanConfigRoutes(app, requireAuth, requireAccess, storage);
   
   // Register cardcheck definitions routes
   registerCardcheckDefinitionsRoutes(
@@ -1706,6 +1695,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Register dispatch job groups routes
   registerDispatchJobGroupsRoutes(app, requireAuth, requirePermission);
   registerFacilityRoutes(app, requireAuth, requirePermission);
+  registerContractRoutes(app, requireAuth, requirePermission);
 
   // Register dispatches routes
   registerDispatchesRoutes(app, requireAuth, requirePermission);
@@ -1768,6 +1758,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register Freeman Second Shift routes
   registerFreemanSecondShiftRoutes(app, requireAuth, requireAccess);
+
+  // Register Freeman Crew Leads routes
+  registerFreemanCrewleadsRoutes(app, requireAuth, requirePermission, requireAccess);
 
   // Register HTA routes
   registerHtaRoutes(app, requireAuth, requirePermission);

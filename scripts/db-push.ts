@@ -25,16 +25,25 @@
  *
  * Do NOT use this script to apply schema changes to production. There is
  * no production code path that calls it.
+ *
+ * SAFETY NET — dropped-constraint detection:
+ * `drizzle-kit push` applies its statements non-interactively, and a run
+ * that fails partway through leaves whatever DROPs it already executed in
+ * place. One earlier failed run silently dropped ~160 foreign keys plus a
+ * primary key before dying on an unrelated error. To make that failure mode
+ * loud instead of silent, this wrapper snapshots `pg_constraint` before
+ * invoking drizzle-kit and diffs it afterwards, printing every constraint
+ * that disappeared. If any went missing (especially after a failed run),
+ * recover with the repair helper:
+ *
+ *     npx tsx scripts/oneoffs/repair-dropped-fks.ts          # dry-run
+ *     npx tsx scripts/oneoffs/repair-dropped-fks.ts --apply  # re-add FKs
  */
 import { spawn } from "node:child_process";
 import { writeFileSync, unlinkSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { Pool, neonConfig } from "@neondatabase/serverless";
-import ws from "ws";
 import * as fullSchema from "../shared/schema";
 import { getSchemaManagingComponents } from "../shared/components";
-
-neonConfig.webSocketConstructor = ws;
 
 const RUNTIME_SCHEMA_FILE = resolve(process.cwd(), ".drizzle-runtime-schema.ts");
 const RUNTIME_CONFIG_FILE = resolve(process.cwd(), ".drizzle-runtime.json");
@@ -44,7 +53,16 @@ interface PgError extends Error {
   code?: string;
 }
 
-async function getDisabledComponentTables(pool: Pool): Promise<string[]> {
+/**
+ * Minimal query surface shared by the Neon serverless Pool and pg.Pool —
+ * whichever one `server/storage/db.ts` picked for this DATABASE_URL.
+ */
+interface QueryablePool {
+  query<R>(text: string, values?: unknown[]): Promise<{ rows: R[] }>;
+  end(): Promise<void>;
+}
+
+async function getDisabledComponentTables(pool: QueryablePool): Promise<string[]> {
   let componentMap: Record<string, boolean> = {};
   try {
     const result = await pool.query<{ value: unknown }>(
@@ -85,6 +103,103 @@ async function getDisabledComponentTables(pool: Pool): Promise<string[]> {
   return disabled;
 }
 
+interface ConstraintRow {
+  table_name: string;
+  conname: string;
+  contype: string;
+}
+
+const CONSTRAINT_TYPE_LABELS: Record<string, string> = {
+  f: "FOREIGN KEY",
+  p: "PRIMARY KEY",
+  u: "UNIQUE",
+  c: "CHECK",
+  x: "EXCLUDE",
+  t: "TRIGGER",
+};
+
+/**
+ * Snapshot every constraint (name + table + type) in the public schema.
+ * Used to diff pg_constraint before/after the drizzle-kit run so that any
+ * DROP CONSTRAINT executed by a (possibly failed) push run is reported
+ * loudly instead of vanishing silently.
+ */
+async function snapshotConstraints(
+  pool: QueryablePool,
+): Promise<Map<string, ConstraintRow>> {
+  const result = await pool.query<ConstraintRow>(
+    `SELECT rel.relname AS table_name, c.conname, c.contype
+       FROM pg_constraint c
+       JOIN pg_class rel ON rel.oid = c.conrelid
+      WHERE c.connamespace = 'public'::regnamespace`,
+  );
+  const map = new Map<string, ConstraintRow>();
+  for (const row of result.rows) {
+    map.set(`${row.table_name}|${row.conname}`, row);
+  }
+  return map;
+}
+
+function reportDroppedConstraints(
+  before: Map<string, ConstraintRow>,
+  after: Map<string, ConstraintRow>,
+  pushFailed: boolean,
+): number {
+  const dropped: ConstraintRow[] = [];
+  for (const [key, row] of before) {
+    if (!after.has(key)) dropped.push(row);
+  }
+  if (dropped.length === 0) return 0;
+
+  dropped.sort((a, b) =>
+    a.table_name === b.table_name
+      ? a.conname.localeCompare(b.conname)
+      : a.table_name.localeCompare(b.table_name),
+  );
+
+  console.error("");
+  console.error(
+    `[db:push] *** WARNING: ${dropped.length} database constraint(s) DISAPPEARED during this push run ***`,
+  );
+  for (const row of dropped) {
+    const type = CONSTRAINT_TYPE_LABELS[row.contype] ?? row.contype;
+    console.error(`  - ${row.table_name}.${row.conname} (${type})`);
+  }
+  console.error("");
+  if (pushFailed) {
+    console.error(
+      "[db:push] The push run FAILED after these constraints were already dropped.",
+    );
+    console.error(
+      "[db:push] Your database is in a half-applied state — the DROPs above were",
+    );
+    console.error(
+      "[db:push] executed but the rest of the diff was not.",
+    );
+  } else {
+    console.error(
+      "[db:push] If these drops were not intentional (e.g. drizzle-kit rebuilding",
+    );
+    console.error(
+      "[db:push] or renaming constraints), verify each one before moving on.",
+    );
+  }
+  console.error(
+    "[db:push] To restore missing foreign keys, run the recovery helper:",
+  );
+  console.error(
+    "[db:push]     npx tsx scripts/oneoffs/repair-dropped-fks.ts          # dry-run",
+  );
+  console.error(
+    "[db:push]     npx tsx scripts/oneoffs/repair-dropped-fks.ts --apply  # re-add FKs",
+  );
+  console.error(
+    "[db:push] Primary keys / unique / check constraints must be re-added by hand.",
+  );
+  console.error("");
+  return dropped.length;
+}
+
 const DRIZZLE_NAME_SYMBOL_DESC = "drizzle:Name";
 
 function getDrizzleTableName(value: unknown): string | null {
@@ -114,9 +229,43 @@ function buildEnabledExportList(disabledTables: Set<string>): {
   return { enabledNames, excludedExportNames };
 }
 
-function writeRuntimeSchema(enabledNames: string[]): void {
+function writeRuntimeSchema(enabledNames: string[], omittedTables: string[]): void {
   const body =
     "// AUTO-GENERATED by scripts/db-push.ts. Do not edit or commit.\n" +
+    'import * as __fullSchema from "./shared/schema";\n' +
+    "\n" +
+    "// Strip inline foreign keys that point at tables omitted from this\n" +
+    "// runtime schema (disabled-component tables that do not exist in the\n" +
+    "// DB). The startup drift gate skips such FKs the same way; without\n" +
+    "// this, drizzle-kit tries to CREATE the FK and fails with 42P01\n" +
+    "// because the referenced table is absent.\n" +
+    `const __omitted = new Set(${JSON.stringify(omittedTables)});\n` +
+    "{\n" +
+    "  const getSym = (o: object, d: string) =>\n" +
+    "    Object.getOwnPropertySymbols(o).find((s) => s.description === d);\n" +
+    "  const tableName = (t: unknown): string | undefined => {\n" +
+    "    if (!t || typeof t !== \"object\") return undefined;\n" +
+    "    const s = getSym(t, \"drizzle:Name\");\n" +
+    "    return s ? (t as any)[s] : undefined;\n" +
+    "  };\n" +
+    "  for (const v of Object.values(__fullSchema)) {\n" +
+    "    if (!v || typeof v !== \"object\") continue;\n" +
+    "    const sym = getSym(v, \"drizzle:PgInlineForeignKeys\");\n" +
+    "    if (!sym) continue;\n" +
+    "    const fks = (v as any)[sym];\n" +
+    "    if (!Array.isArray(fks) || fks.length === 0) continue;\n" +
+    "    const kept = fks.filter((fk: any) => {\n" +
+    "      try {\n" +
+    "        const ft = tableName(fk.reference().foreignTable);\n" +
+    "        return !ft || !__omitted.has(ft);\n" +
+    "      } catch {\n" +
+    "        return true;\n" +
+    "      }\n" +
+    "    });\n" +
+    "    if (kept.length !== fks.length) (v as any)[sym] = kept;\n" +
+    "  }\n" +
+    "}\n" +
+    "\n" +
     "export {\n" +
     enabledNames.map((n) => `  ${n},`).join("\n") +
     "\n} from \"./shared/schema\";\n";
@@ -184,37 +333,71 @@ async function main() {
   cleanupRuntimeFiles();
 
   const extraArgs = process.argv.slice(2);
-  const pool = new Pool({ connectionString: databaseUrl });
+  // Reuse the shared pool from server/storage/db.ts so driver selection
+  // (Neon serverless vs node-postgres, DATABASE_DRIVER override, sslmode
+  // handling) stays in one place. Imported lazily so the ALLOW_DB_PUSH
+  // refusal above still prints even without a DATABASE_URL.
+  const { pool } = await import("../server/storage/db");
 
-  let disabledTables: string[] = [];
-  try {
-    disabledTables = await getDisabledComponentTables(pool);
-  } finally {
-    await pool.end();
-  }
-
+  // The pool stays open across the drizzle-kit run so we can re-snapshot
+  // pg_constraint afterwards (drizzle-kit runs in a child process with its
+  // own connection, so holding ours open is harmless).
   let exitCode = 0;
   try {
-    if (disabledTables.length > 0) {
-      const disabledSet = new Set(disabledTables);
-      const { enabledNames, excludedExportNames } =
-        buildEnabledExportList(disabledSet);
-      writeRuntimeSchema(enabledNames);
+    const disabledTables = await getDisabledComponentTables(
+      pool as QueryablePool,
+    );
+    const constraintsBefore = await snapshotConstraints(pool as QueryablePool);
 
-      console.log(
-        `[db:push] Skipping ${disabledTables.length} table(s) owned by disabled components:`,
-      );
-      console.log(`  ${disabledTables.join(", ")}`);
-      if (excludedExportNames.length > 0) {
+    let pushFailed = false;
+    try {
+      if (disabledTables.length > 0) {
+        const disabledSet = new Set(disabledTables);
+        const { enabledNames, excludedExportNames } =
+          buildEnabledExportList(disabledSet);
+        writeRuntimeSchema(enabledNames, disabledTables);
+
         console.log(
-          `[db:push] Omitting ${excludedExportNames.length} schema export(s).`,
+          `[db:push] Skipping ${disabledTables.length} table(s) owned by disabled components:`,
         );
+        console.log(`  ${disabledTables.join(", ")}`);
+        if (excludedExportNames.length > 0) {
+          console.log(
+            `[db:push] Omitting ${excludedExportNames.length} schema export(s).`,
+          );
+        }
       }
+
+      try {
+        exitCode = await runDrizzleKit(extraArgs);
+      } catch (err) {
+        // Spawn failure (e.g. drizzle-kit binary missing). Still diff the
+        // constraints below before rethrowing.
+        pushFailed = true;
+        exitCode = 1;
+        console.error("[db:push] drizzle-kit failed to run:", err);
+      }
+      if (exitCode !== 0) pushFailed = true;
+    } finally {
+      cleanupRuntimeFiles();
     }
 
-    exitCode = await runDrizzleKit(extraArgs);
+    // Diff pg_constraint regardless of whether the push succeeded — a run
+    // that dies partway through leaves its already-executed DROPs behind.
+    const constraintsAfter = await snapshotConstraints(pool as QueryablePool);
+    const droppedCount = reportDroppedConstraints(
+      constraintsBefore,
+      constraintsAfter,
+      pushFailed,
+    );
+    // A "successful" push that silently dropped constraints is still worth a
+    // non-zero exit so nothing downstream mistakes it for a clean run.
+    if (droppedCount > 0 && exitCode === 0) exitCode = 1;
   } finally {
     cleanupRuntimeFiles();
+    await pool.end().catch(() => {
+      // best-effort shutdown
+    });
   }
   process.exit(exitCode);
 }

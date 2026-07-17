@@ -12,3 +12,6 @@ replit.nix
 __replit_disk_meta.json
 .drizzle-runtime.json
 .drizzle-runtime-schema.ts
+# freeman-only directories: tracked on the freeman-dev branch, never on main
+.github/
+deploy/

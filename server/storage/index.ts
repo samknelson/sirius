@@ -7,7 +7,10 @@ export { type CommStorage, type CommSmsStorage, type CommSmsOptinStorage, type C
 export { type CommTagsStorage, createCommTagsStorage, commTagsLoggingConfig } from "./comm-tags";
 export { type GrievanceStorage, type GrievanceListItem, type GrievanceWithDetails, type GrievanceLinkedWorker, type GrievanceLinkedEmployer, type GrievanceLinkedUser, createGrievanceStorage, grievanceLoggingConfig } from "./grievances/grievances";
 export { type GrievanceSettlementStorage, createGrievanceSettlementStorage, grievanceSettlementLoggingConfig } from "./grievances/grievance-settlements";
+export { type GrievanceStatusHistoryStorage, type GrievanceStatusHistoryItem, createGrievanceStatusHistoryStorage, grievanceStatusHistoryLoggingConfig } from "./grievances/grievance-status-history";
+export { type GrievanceContractStorage, type GrievanceContractLink, type GrievanceLinkedSection, type CatalogArticle, type CatalogSection, createGrievanceContractStorage, grievanceContractLoggingConfig } from "./grievances/grievance-contract-links";
 export { type LogsStorage, type LogsQueryParams, type LogsResult, type LogFilters, type HostEntityLogsParams, createLogsStorage } from "./system/logs";
 export { type WorkerBanStorage, createWorkerBanStorage } from "./worker-bans";
 export { type WsBundleStorage, type WsClientStorage, type WsClientWithBundle, type WsClientCredentialStorage, type CredentialCreateResult, type WsClientIpRuleStorage, createWsBundleStorage, createWsClientStorage, createWsClientCredentialStorage, createWsClientIpRuleStorage } from "./webservices";
 export { type CompanyStorage, createCompanyStorage, companyLoggingConfig, type EmployerCompanyStorage, createEmployerCompanyStorage, employerCompanyLoggingConfig } from "./employers/companies";
+export { type ContractStorage, createContractStorage } from "./contract";

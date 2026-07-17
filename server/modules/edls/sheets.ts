@@ -5,6 +5,7 @@ import { requireAccess } from "../../services/access-policy-evaluator";
 import { requireComponent } from "../components";
 import { z } from "zod";
 import { getSupervisorContext, validateSupervisorForSave, getEdlsSettings } from "./supervisor-context";
+import { isComponentEnabledSync } from "../../services/component-cache";
 import { getEffectiveUser } from "../masquerade";
 
 const crewInputSchema = insertEdlsCrewsSchema.omit({ sheetId: true });
@@ -132,6 +133,10 @@ export function registerEdlsSheetsRoutes(
       const { date } = req.query;
       if (!date || typeof date !== 'string') {
         res.status(400).json({ message: "date query parameter is required (YYYY-MM-DD)" });
+        return;
+      }
+      if (!isComponentEnabledSync("dispatch.job_group")) {
+        res.json([]);
         return;
       }
       const results = await storage.dispatchJobGroups.getActiveOnDate(date);

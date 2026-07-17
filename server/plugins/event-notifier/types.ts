@@ -86,6 +86,16 @@ export interface EventNotifierPlugin extends BasePluginMetadata {
    */
   staffNotification?: boolean;
   /**
+   * When true, the dispatcher does NOT drop the acting user from the recipient
+   * list (its "self-notification suppression"). Suppression exists so a user
+   * who just performed an action isn't notified about their own real-time
+   * change; but for scheduled EBS-pump reminders (e.g. "2 days until this
+   * grievance's deadline") the recipient legitimately wants the reminder even
+   * if they created or last touched the entity — and manually running the pump
+   * would otherwise suppress the operator. Defaults to false (suppress).
+   */
+  notifySelf?: boolean;
+  /**
    * JSON Schema describing the editable `data` fields the generic admin UI
    * renders for a config row of this notifier. Omit for notifiers with no
    * editable settings.

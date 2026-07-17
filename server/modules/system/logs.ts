@@ -98,6 +98,13 @@ export function registerLogRoutes(
       return requireAccess('staff')(req, res, next);
     }
 
+    const contract = await safeGet(() => storage.contracts.getById(hostEntityId));
+    if (contract) {
+      // Roll up contract + article + section activity under the one contract.
+      (req as any).logHostIds = await storage.contracts.listLogHostIds(contract.id);
+      return requireAccess('staff')(req, res, next);
+    }
+
     // Unknown entity type - fall back to staff and use the id as-is.
     (req as any).logHostIds = [hostEntityId];
     return requireAccess('staff')(req, res, next);

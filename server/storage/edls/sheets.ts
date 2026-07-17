@@ -20,8 +20,20 @@ import {
 import { eq, ne, desc, sql, and, gte, lte, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { defineLoggingConfig } from "../middleware/logging";
-import { getClient, runInTransaction } from "../transaction-context";
+import { getClient, runInTransaction, onAfterCommit } from "../transaction-context";
+import { eventBus, EventType } from "../../services/event-bus";
+import { logger } from "../../logger";
 import { storage } from "../index";
+import { isComponentEnabledSync } from "../../services/component-cache";
+
+/**
+ * The dispatch_job_group table is owned by the `dispatch.job_group`
+ * component; it may not exist in the database when that component is
+ * disabled. All reads must gate their join on this check.
+ */
+function jobGroupsEnabled(): boolean {
+  return isComponentEnabledSync("dispatch.job_group");
+}
 
 export interface EdlsSheetWithCrews extends EdlsSheet {
   crews: EdlsCrew[];
@@ -131,6 +143,32 @@ export interface EdlsSheetsStorage {
   delete(id: string): Promise<boolean>;
 }
 
+/**
+ * Emit `EDLS_SHEET_SAVED` after the surrounding transaction commits.
+ * `previousStatus` is null on create (the sheet "arrives" at its initial
+ * status) and the pre-update status on update; consumers gate on the
+ * transition themselves. Emitted after commit so a listener can never
+ * observe (or notify about) a write that later rolled back.
+ */
+function emitSheetSaved(sheet: EdlsSheet, previousStatus: string | null): void {
+  onAfterCommit(() => {
+    eventBus
+      .emit(EventType.EDLS_SHEET_SAVED, {
+        sheetId: sheet.id,
+        previousStatus,
+        newStatus: sheet.status,
+        title: sheet.title,
+        ymd: sheet.ymd,
+      })
+      .catch((err) => {
+        logger.error(
+          `Failed to emit EDLS_SHEET_SAVED for sheet ${sheet.id}: ${err instanceof Error ? err.message : String(err)}`,
+          { service: "edls-sheets-storage" },
+        );
+      });
+  });
+}
+
 export function createEdlsSheetsStorage(): EdlsSheetsStorage {
   return {
     async getAll(): Promise<EdlsSheet[]> {
@@ -140,6 +178,7 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
 
     async getPaginated(page: number, limit: number, filters?: EdlsSheetsFilterOptions): Promise<PaginatedEdlsSheets> {
       const client = getClient();
+      const withJobGroups = jobGroupsEnabled();
       const supervisorUsers = alias(users, 'supervisor_user');
       const assigneeUsers = alias(users, 'assignee_user');
       
@@ -208,10 +247,15 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
             email: assigneeUsers.email,
           },
           assignedCount: assignedCountSubquery,
-          jobGroup: {
-            id: dispatchJobGroups.id,
-            name: dispatchJobGroups.name,
-          },
+          jobGroup: withJobGroups
+            ? {
+                id: dispatchJobGroups.id,
+                name: dispatchJobGroups.name,
+              }
+            : {
+                id: sql<string | null>`NULL::varchar`,
+                name: sql<string | null>`NULL::text`,
+              },
           facility: {
             id: facilities.id,
             name: facilities.name,
@@ -222,12 +266,16 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
         .leftJoin(optionsDepartment, eq(edlsSheets.departmentId, optionsDepartment.id))
         .leftJoin(supervisorUsers, eq(edlsSheets.supervisor, supervisorUsers.id))
         .leftJoin(assigneeUsers, eq(edlsSheets.assignee, assigneeUsers.id))
-        .leftJoin(dispatchJobGroups, eq(edlsSheets.jobGroupId, dispatchJobGroups.id))
-        .leftJoin(facilities, eq(edlsSheets.facilityId, facilities.id));
+        .leftJoin(facilities, eq(edlsSheets.facilityId, facilities.id))
+        .$dynamic();
+      
+      const joinedQuery = withJobGroups
+        ? baseQuery.leftJoin(dispatchJobGroups, eq(edlsSheets.jobGroupId, dispatchJobGroups.id))
+        : baseQuery;
       
       const rows = whereCondition
-        ? await baseQuery.where(whereCondition).orderBy(desc(edlsSheets.ymd)).limit(limit).offset(page * limit)
-        : await baseQuery.orderBy(desc(edlsSheets.ymd)).limit(limit).offset(page * limit);
+        ? await joinedQuery.where(whereCondition).orderBy(desc(edlsSheets.ymd)).limit(limit).offset(page * limit)
+        : await joinedQuery.orderBy(desc(edlsSheets.ymd)).limit(limit).offset(page * limit);
       
       const data: EdlsSheetWithRelations[] = rows.map(row => ({
         ...row.sheet,
@@ -235,7 +283,9 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
         department: row.department?.id ? row.department : undefined,
         supervisorUser: row.supervisorUser?.id ? row.supervisorUser : undefined,
         assigneeUser: row.assigneeUser?.id ? row.assigneeUser : undefined,
-        jobGroup: row.jobGroup?.id ? row.jobGroup : undefined,
+        jobGroup: row.jobGroup?.id && row.jobGroup.name != null
+          ? { id: row.jobGroup.id, name: row.jobGroup.name }
+          : undefined,
         facility: row.facility?.id ? row.facility : undefined,
         assignedCount: row.assignedCount ?? 0,
       }));
@@ -251,10 +301,11 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
 
     async getWithRelations(id: string): Promise<EdlsSheetWithRelations | undefined> {
       const client = getClient();
+      const withJobGroups = jobGroupsEnabled();
       const supervisorUsers = alias(users, 'supervisor_user');
       const assigneeUsers = alias(users, 'assignee_user');
       
-      const [row] = await client
+      const relationsQuery = client
         .select({
           sheet: edlsSheets,
           employer: {
@@ -277,10 +328,15 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
             lastName: assigneeUsers.lastName,
             email: assigneeUsers.email,
           },
-          jobGroup: {
-            id: dispatchJobGroups.id,
-            name: dispatchJobGroups.name,
-          },
+          jobGroup: withJobGroups
+            ? {
+                id: dispatchJobGroups.id,
+                name: dispatchJobGroups.name,
+              }
+            : {
+                id: sql<string | null>`NULL::varchar`,
+                name: sql<string | null>`NULL::text`,
+              },
           facility: {
             id: facilities.id,
             name: facilities.name,
@@ -291,9 +347,14 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
         .leftJoin(optionsDepartment, eq(edlsSheets.departmentId, optionsDepartment.id))
         .leftJoin(supervisorUsers, eq(edlsSheets.supervisor, supervisorUsers.id))
         .leftJoin(assigneeUsers, eq(edlsSheets.assignee, assigneeUsers.id))
-        .leftJoin(dispatchJobGroups, eq(edlsSheets.jobGroupId, dispatchJobGroups.id))
         .leftJoin(facilities, eq(edlsSheets.facilityId, facilities.id))
-        .where(eq(edlsSheets.id, id));
+        .$dynamic();
+      
+      const [row] = withJobGroups
+        ? await relationsQuery
+            .leftJoin(dispatchJobGroups, eq(edlsSheets.jobGroupId, dispatchJobGroups.id))
+            .where(eq(edlsSheets.id, id))
+        : await relationsQuery.where(eq(edlsSheets.id, id));
       
       if (!row) return undefined;
       
@@ -303,7 +364,9 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
         department: row.department || undefined,
         supervisorUser: row.supervisorUser?.id ? row.supervisorUser : undefined,
         assigneeUser: row.assigneeUser?.id ? row.assigneeUser : undefined,
-        jobGroup: row.jobGroup?.id ? row.jobGroup : undefined,
+        jobGroup: row.jobGroup?.id && row.jobGroup.name != null
+          ? { id: row.jobGroup.id, name: row.jobGroup.name }
+          : undefined,
         facility: row.facility?.id ? row.facility : undefined,
       };
     },
@@ -327,6 +390,8 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
           return { ...crewData, sheetId: sheet.id, sequence: index };
         });
         const createdCrews = await storage.edlsCrews.createMany(crewsWithSheetId);
+        
+        emitSheetSaved(sheet, null);
         
         return { ...sheet, crews: createdCrews };
       });
@@ -403,6 +468,8 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
         
         // Load final crews state
         const allCrews = await storage.edlsCrews.getBySheetId(id);
+        
+        emitSheetSaved(updatedSheet, existingSheet.status);
         
         return { ...updatedSheet, crews: allCrews };
       });

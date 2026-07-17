@@ -1,4 +1,4 @@
-import { pgTable, varchar, boolean, jsonb } from "drizzle-orm/pg-core";
+import { foreignKey, pgTable, varchar, boolean, jsonb } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -10,10 +10,16 @@ export const trustProviderEdi = pgTable("trust_provider_edi", {
   name: varchar("name").notNull(),
   siriusId: varchar("sirius_id").unique(),
   providerId: varchar("provider_id").notNull().references(() => trustProviders.id, { onDelete: "cascade" }),
-  sftpClientId: varchar("sftp_client_id").references(() => sftpClientDestinations.id, { onDelete: "restrict" }),
+  sftpClientId: varchar("sftp_client_id"),
   active: boolean("active").notNull().default(true),
   data: jsonb("data"),
-});
+}, (table) => [
+  foreignKey({
+    name: "trust_provider_edi_sftp_client_id_sftp_client_destinations_id_f",
+    columns: [table.sftpClientId],
+    foreignColumns: [sftpClientDestinations.id],
+  }).onDelete("restrict"),
+]);
 
 export const insertTrustProviderEdiSchema = createInsertSchema(trustProviderEdi).omit({
   id: true,

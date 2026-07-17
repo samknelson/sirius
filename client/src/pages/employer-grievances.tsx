@@ -16,7 +16,7 @@ import {
 
 interface GrievanceListItem {
   id: string;
-  statusId: string;
+  statusId: string | null;
   categoryId: string;
   statusName: string | null;
   categoryName: string | null;

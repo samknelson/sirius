@@ -7,6 +7,7 @@ import { type ContactsStorage, createContactsStorage, type AddressStorage, type 
 import { type TrustBenefitStorage, createTrustBenefitStorage, trustBenefitLoggingConfig } from "./trust/benefits";
 import { type TrustProviderStorage, createTrustProviderStorage } from "./trust/providers";
 import { type TrustWmbStorage, createTrustWmbStorage, trustWmbLoggingConfig } from "./trust/wmb";
+import { type TrustWmbEventsStorage, createTrustWmbEventsStorage } from "./trust/wmb-events";
 import { type TrustProviderContactStorage, createTrustProviderContactStorage, trustProviderContactLoggingConfig } from "./trust/provider/contacts";
 import { type WorkerIdStorage, createWorkerIdStorage, workerIdLoggingConfig } from "./workers/ids";
 import { type BookmarkStorage, createBookmarkStorage } from "./bookmarks";
@@ -65,7 +66,7 @@ import {
 import {
   type PluginConfigStorage,
   createPluginConfigStorage,
-} from "./plugin-configs";
+} from "./system/plugin-configs";
 import {
   type DenormStorage,
   createDenormStorage,
@@ -83,9 +84,17 @@ import {
   createGrievanceNameDenormStorage,
 } from "./system/grievance-name-denorm";
 import {
+  type GrievanceStepsDenormStorage,
+  createGrievanceStepsDenormStorage,
+} from "./system/grievance-steps-denorm";
+import {
   type WorkerWshDenormStorage,
   createWorkerWshDenormStorage,
 } from "./system/worker-wsh-denorm";
+import {
+  type EbsStorage,
+  createEbsStorage,
+} from "./system/ebs";
 import { type LogsStorage, createLogsStorage } from "./system/logs";
 import { type WorkerWshStorage, createWorkerWshStorage, workerWshLoggingConfig } from "./worker-wsh";
 import { type WorkerMshStorage, createWorkerMshStorage, workerMshLoggingConfig } from "./worker-msh";
@@ -148,6 +157,7 @@ import { type ReadOnlyStorage, createReadOnlyStorage } from "./read-only";
 import { type BtuPoliticalStorage, createBtuPoliticalStorage, btuPoliticalLoggingConfig } from "./sitespecific/btu/political";
 import { type WsBundleStorage, type WsClientStorage, type WsClientCredentialStorage, type WsClientIpRuleStorage, createWsBundleStorage, createWsClientStorage, createWsClientCredentialStorage, createWsClientIpRuleStorage } from "./webservices";
 import { type CompanyStorage, createCompanyStorage, companyLoggingConfig, type EmployerCompanyStorage, createEmployerCompanyStorage, employerCompanyLoggingConfig } from "./employers/companies";
+import { type ContractStorage, createContractStorage, contractLoggingConfig } from "./contract";
 import { type ContactLinkStorage, createContactLinkStorage } from "./contact-links";
 import { type CommTagsStorage, createCommTagsStorage, commTagsLoggingConfig } from "./comm-tags";
 import { type CommStorage, createCommStorage, commLoggingConfig } from "./comm";
@@ -157,6 +167,16 @@ import {
   createGrievanceSettlementStorage,
   grievanceSettlementLoggingConfig,
 } from "./grievances/grievance-settlements";
+import {
+  type GrievanceStatusHistoryStorage,
+  createGrievanceStatusHistoryStorage,
+  grievanceStatusHistoryLoggingConfig,
+} from "./grievances/grievance-status-history";
+import {
+  type GrievanceContractStorage,
+  createGrievanceContractStorage,
+  grievanceContractLoggingConfig,
+} from "./grievances/grievance-contract-links";
 import {
   type GrievanceTimelineTemplateStorage,
   createGrievanceTimelineTemplateStorage,
@@ -177,6 +197,7 @@ export interface IStorage {
   trustProviders: TrustProviderStorage;
   trustProviderContacts: TrustProviderContactStorage;
   trust: { wmb: TrustWmbStorage };
+  trustWmbEvents: TrustWmbEventsStorage;
   workerIds: WorkerIdStorage;
   bookmarks: BookmarkStorage;
   ledger: LedgerStorageWithPaymentMethods;
@@ -192,7 +213,9 @@ export interface IStorage {
   workerMshDenorm: WorkerMshDenormStorage;
   workerWshDenorm: WorkerWshDenormStorage;
   workerEmploymentDenorm: WorkerEmploymentDenormStorage;
+  ebs: EbsStorage;
   grievanceNameDenorm: GrievanceNameDenormStorage;
+  grievanceStepsDenorm: GrievanceStepsDenormStorage;
   logs: LogsStorage;
   workerWsh: WorkerWshStorage;
   workerMsh: WorkerMshStorage;
@@ -250,6 +273,7 @@ export interface IStorage {
   btuPolitical: BtuPoliticalStorage;
   companies: CompanyStorage;
   employerCompanies: EmployerCompanyStorage;
+  contracts: ContractStorage;
   sftpClientDestinations: SftpClientDestinationStorage;
   trustProviderEdi: TrustProviderEdiStorage;
   bulkMessages: BulkMessageStorage;
@@ -265,8 +289,10 @@ export interface IStorage {
   commTags: CommTagsStorage;
   comm: CommStorage;
   grievances: GrievanceStorage;
+  grievanceStatusHistory: GrievanceStatusHistoryStorage;
   grievanceTimelineTemplates: GrievanceTimelineTemplateStorage;
   grievanceSettlements: GrievanceSettlementStorage;
+  grievanceContracts: GrievanceContractStorage;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -279,6 +305,7 @@ export class DatabaseStorage implements IStorage {
   trustProviders: TrustProviderStorage;
   trustProviderContacts: TrustProviderContactStorage;
   trust: { wmb: TrustWmbStorage };
+  trustWmbEvents: TrustWmbEventsStorage;
   workerIds: WorkerIdStorage;
   bookmarks: BookmarkStorage;
   ledger: LedgerStorageWithPaymentMethods;
@@ -294,7 +321,9 @@ export class DatabaseStorage implements IStorage {
   workerMshDenorm: WorkerMshDenormStorage;
   workerWshDenorm: WorkerWshDenormStorage;
   workerEmploymentDenorm: WorkerEmploymentDenormStorage;
+  ebs: EbsStorage;
   grievanceNameDenorm: GrievanceNameDenormStorage;
+  grievanceStepsDenorm: GrievanceStepsDenormStorage;
   logs: LogsStorage;
   workerWsh: WorkerWshStorage;
   workerMsh: WorkerMshStorage;
@@ -352,6 +381,7 @@ export class DatabaseStorage implements IStorage {
   btuPolitical: BtuPoliticalStorage;
   companies: CompanyStorage;
   employerCompanies: EmployerCompanyStorage;
+  contracts: ContractStorage;
   sftpClientDestinations: SftpClientDestinationStorage;
   trustProviderEdi: TrustProviderEdiStorage;
   bulkMessages: BulkMessageStorage;
@@ -367,8 +397,10 @@ export class DatabaseStorage implements IStorage {
   commTags: CommTagsStorage;
   comm: CommStorage;
   grievances: GrievanceStorage;
+  grievanceStatusHistory: GrievanceStatusHistoryStorage;
   grievanceTimelineTemplates: GrievanceTimelineTemplateStorage;
   grievanceSettlements: GrievanceSettlementStorage;
+  grievanceContracts: GrievanceContractStorage;
 
   constructor() {
     this.variables = withStorageLogging(
@@ -399,6 +431,7 @@ export class DatabaseStorage implements IStorage {
     this.trust = {
       wmb: withStorageLogging(createTrustWmbStorage(), trustWmbLoggingConfig),
     };
+    this.trustWmbEvents = createTrustWmbEventsStorage();
     this.trustProviderContacts = withStorageLogging(
       createTrustProviderContactStorage(this.contacts),
       trustProviderContactLoggingConfig,
@@ -444,7 +477,10 @@ export class DatabaseStorage implements IStorage {
     this.workerMshDenorm = createWorkerMshDenormStorage();
     this.workerWshDenorm = createWorkerWshDenormStorage();
     this.workerEmploymentDenorm = createWorkerEmploymentDenormStorage();
+    // No logging for ebs - internal scheduled-event churn maintained by plugins.
+    this.ebs = createEbsStorage();
     this.grievanceNameDenorm = createGrievanceNameDenormStorage();
+    this.grievanceStepsDenorm = createGrievanceStepsDenormStorage();
     this.logs = createLogsStorage();
 
     // No logging for wmb scan queue - high-volume internal state changes
@@ -577,6 +613,7 @@ export class DatabaseStorage implements IStorage {
     this.btuPolitical = withStorageLogging(createBtuPoliticalStorage(), btuPoliticalLoggingConfig);
     this.companies = withStorageLogging(createCompanyStorage(), companyLoggingConfig);
     this.employerCompanies = withStorageLogging(createEmployerCompanyStorage(), employerCompanyLoggingConfig);
+    this.contracts = withStorageLogging(createContractStorage(), contractLoggingConfig);
     this.sftpClientDestinations = withStorageLogging(
       createSftpClientDestinationStorage(),
       sftpClientDestinationLoggingConfig
@@ -698,6 +735,10 @@ export class DatabaseStorage implements IStorage {
       createGrievanceStorage(),
       grievanceLoggingConfig,
     );
+    this.grievanceStatusHistory = withStorageLogging(
+      createGrievanceStatusHistoryStorage(),
+      grievanceStatusHistoryLoggingConfig,
+    );
     this.grievanceTimelineTemplates = withStorageLogging(
       createGrievanceTimelineTemplateStorage(),
       grievanceTimelineTemplateLoggingConfig,
@@ -705,6 +746,10 @@ export class DatabaseStorage implements IStorage {
     this.grievanceSettlements = withStorageLogging(
       createGrievanceSettlementStorage(),
       grievanceSettlementLoggingConfig,
+    );
+    this.grievanceContracts = withStorageLogging(
+      createGrievanceContractStorage(),
+      grievanceContractLoggingConfig,
     );
   }
 }

@@ -315,7 +315,61 @@ export async function runPendingComponentMigrationsAtStartup(): Promise<void> {
     const { state } = await readComponentSchemaState(component.id);
     if (!state) {
       const { enableComponentSchema } = await import("./component-lifecycle");
-      const enable = await enableComponentSchema(component.id);
+      let enable = await enableComponentSchema(component.id);
+      if (
+        !enable.success &&
+        (enable.driftTables?.length ?? 0) > 0 &&
+        (componentMigrations.get(component.id) ?? []).length > 0
+      ) {
+        // Chicken-and-egg: the component has no schema-state variable AND its
+        // existing table drifts from the expected schema in exactly the way a
+        // pending registered migration would fix. enableComponentSchema pushes
+        // the schema BEFORE running migrations, so it fails on that drift.
+        // Seed a minimal state at migrationVersion 0 (migrations are required
+        // to be idempotent), run the pending migrations to bring the table up
+        // to date, then retry the enable flow to reflect the now-conforming
+        // table into the state variable.
+        await writeComponentSchemaState(
+          component.id,
+          {
+            manifestVersion: 0,
+            lastSyncedAt: new Date().toISOString(),
+            tables: [],
+            drift: null,
+            migrationVersion: 0,
+          },
+          null,
+        );
+        logger.info("Seeded minimal schema state to run pending migrations before enable retry", {
+          service: "migration-runner",
+          componentId: component.id,
+        });
+        const mig = await runComponentMigrations(component.id);
+        totalRan += mig.ran;
+        if (mig.errors.length === 0) {
+          enable = await enableComponentSchema(component.id);
+        } else {
+          errors.push(...mig.errors);
+        }
+        if (mig.errors.length > 0 || !enable.success) {
+          // Recovery failed — remove the seeded synthetic state so the next
+          // boot re-enters this same recovery path instead of finding a
+          // half-initialized state variable (manifestVersion 0, no tables)
+          // and silently changing behavior. If migrations partially applied,
+          // they are idempotent by contract and will be replayed safely.
+          const { variableId: seededId } = await readComponentSchemaState(component.id);
+          if (seededId) {
+            await storage.variables.delete(seededId);
+            logger.warn("Removed seeded schema state after failed startup recovery", {
+              service: "migration-runner",
+              componentId: component.id,
+            });
+          }
+          if (mig.errors.length > 0) {
+            continue;
+          }
+        }
+      }
       if (enable.success) {
         logger.info("Initialized schema state for newly schema-managing enabled component at startup", {
           service: "migration-runner",

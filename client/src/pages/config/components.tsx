@@ -47,12 +47,22 @@ export default function ComponentsConfigPage() {
   const [confirmText, setConfirmText] = useState("");
   const [isCheckingSchema, setIsCheckingSchema] = useState(false);
   const [dataAction, setDataAction] = useState<"retain" | "delete">("retain");
+  const [lastError, setLastError] = useState<{
+    componentId: string;
+    title: string;
+    message: string;
+    missingDependencies: Array<{ componentId: string; componentName: string; reason: string; missingTables: string[] }>;
+    failedOperations: Array<{ tableName: string; operation: string; error?: string }>;
+    repairable: boolean;
+    driftTables: Array<{ tableName: string; hasRows: boolean; detail: string }>;
+  } | null>(null);
 
   const updateComponentMutation = useMutation({
     mutationFn: async ({ componentId, enabled, confirmDestructive, retainData }: { componentId: string; enabled: boolean; confirmDestructive?: string; retainData?: boolean }) => {
       return apiRequest("PUT", `/api/components/config/${componentId}`, { enabled, confirmDestructive, retainData });
     },
     onSuccess: (_, variables) => {
+      setLastError(null);
       queryClient.invalidateQueries({ queryKey: ["/api/components/config"] });
       toast({
         title: "Component Updated",
@@ -63,9 +73,23 @@ export default function ComponentsConfigPage() {
       setDataAction("retain");
     },
     onError: (error: any, variables) => {
+      const data = error?.data;
+      const isDependencyError = Array.isArray(data?.missingDependencies) && data.missingDependencies.length > 0;
+      const failedOps = Array.isArray(data?.schemaOperations)
+        ? data.schemaOperations.filter((op: any) => !op.success)
+        : [];
+      setLastError({
+        componentId: variables.componentId,
+        title: isDependencyError ? "Missing prerequisite components" : "Update Failed",
+        message: data?.message || error?.message || "Failed to update component.",
+        missingDependencies: isDependencyError ? data.missingDependencies : [],
+        failedOperations: failedOps,
+        repairable: data?.repairable === true,
+        driftTables: Array.isArray(data?.driftTables) ? data.driftTables : [],
+      });
       toast({
-        title: "Update Failed",
-        description: error?.message || "Failed to update component.",
+        title: isDependencyError ? "Missing Prerequisites" : "Update Failed",
+        description: data?.message || error?.message || "Failed to update component.",
         variant: "destructive",
       });
       setLocalStates(prev => ({
@@ -75,6 +99,40 @@ export default function ComponentsConfigPage() {
       setPendingAction(null);
       setConfirmText("");
       setDataAction("retain");
+    },
+  });
+
+  const repairComponentMutation = useMutation({
+    mutationFn: async ({ componentId }: { componentId: string }) => {
+      return apiRequest("POST", `/api/components/config/${componentId}/repair`, {});
+    },
+    onSuccess: (data: any, variables) => {
+      setLastError(null);
+      queryClient.invalidateQueries({ queryKey: ["/api/components/config"] });
+      toast({
+        title: "Component Repaired",
+        description: data?.message || `Component ${variables.componentId} was repaired and enabled.`,
+      });
+    },
+    onError: (error: any, variables) => {
+      const data = error?.data;
+      const failedOps = Array.isArray(data?.schemaOperations)
+        ? data.schemaOperations.filter((op: any) => !op.success)
+        : [];
+      setLastError({
+        componentId: variables.componentId,
+        title: "Repair Failed",
+        message: data?.message || error?.message || "Failed to repair component.",
+        missingDependencies: Array.isArray(data?.missingDependencies) ? data.missingDependencies : [],
+        failedOperations: failedOps,
+        repairable: false,
+        driftTables: [],
+      });
+      toast({
+        title: "Repair Failed",
+        description: data?.message || error?.message || "Failed to repair component.",
+        variant: "destructive",
+      });
     },
   });
 
@@ -196,6 +254,81 @@ export default function ComponentsConfigPage() {
           Disabling a component will hide its functionality from all users.
         </AlertDescription>
       </Alert>
+
+      {lastError && (
+        <Alert variant="destructive" data-testid="alert-component-error">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription>
+            <div className="space-y-2">
+              <div className="flex items-start justify-between gap-4">
+                <p className="font-medium" data-testid="text-component-error-title">
+                  {lastError.title} — <span className="font-mono">{lastError.componentId}</span>
+                </p>
+                <button
+                  type="button"
+                  className="text-sm underline shrink-0"
+                  onClick={() => setLastError(null)}
+                  data-testid="button-dismiss-component-error"
+                >
+                  Dismiss
+                </button>
+              </div>
+              <p data-testid="text-component-error-message">{lastError.message}</p>
+              {lastError.missingDependencies.length > 0 && (
+                <ul className="list-disc list-inside space-y-1">
+                  {lastError.missingDependencies.map((dep) => (
+                    <li key={dep.componentId} data-testid={`text-missing-dependency-${dep.componentId}`}>
+                      <span className="font-medium">{dep.componentName}</span>{" "}
+                      <span className="font-mono text-xs">({dep.componentId})</span>{" "}
+                      {dep.reason === "disabled"
+                        ? "— not enabled. Enable it first."
+                        : `— enabled but missing tables: ${dep.missingTables.join(", ")}`}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {lastError.failedOperations.length > 0 && (
+                <ul className="list-disc list-inside space-y-1">
+                  {lastError.failedOperations.map((op, idx) => (
+                    <li key={`${op.tableName}-${idx}`} className="font-mono text-xs" data-testid={`text-failed-operation-${idx}`}>
+                      {op.operation} {op.tableName}{op.error ? `: ${op.error}` : ""}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {lastError.driftTables.some((t) => t.hasRows) && (
+                <p className="text-sm" data-testid="text-repair-blocked">
+                  Some mismatched tables contain data ({lastError.driftTables.filter((t) => t.hasRows).map((t) => t.tableName).join(", ")}).
+                  They cannot be repaired automatically and need an authored migration.
+                </p>
+              )}
+              {lastError.repairable && (
+                <div className="space-y-1">
+                  <p className="text-sm">
+                    All mismatched tables are empty, so they can be safely dropped and recreated.
+                  </p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={repairComponentMutation.isPending}
+                    onClick={() => repairComponentMutation.mutate({ componentId: lastError.componentId })}
+                    data-testid="button-repair-component"
+                  >
+                    {repairComponentMutation.isPending ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Repairing…
+                      </>
+                    ) : (
+                      "Repair and retry"
+                    )}
+                  </Button>
+                </div>
+              )}
+            </div>
+          </AlertDescription>
+        </Alert>
+      )}
 
       {sortedComponents.length === 0 ? (
         <Alert>
@@ -410,6 +543,14 @@ export default function ComponentsConfigPage() {
                       <li key={table} className="font-mono text-sm">{table}</li>
                     ))}
                   </ul>
+                  {(pendingAction?.component.schemaManifest?.dependsOnComponents?.length ?? 0) > 0 && (
+                    <p className="text-sm" data-testid="text-enable-dependencies">
+                      Requires these components to be enabled first:{" "}
+                      {pendingAction?.component.schemaManifest?.dependsOnComponents
+                        ?.map((depId) => allComponents.find((c) => c.id === depId)?.name ?? depId)
+                        .join(", ")}
+                    </p>
+                  )}
                 </div>
               ) : (
                 <div className="space-y-4">

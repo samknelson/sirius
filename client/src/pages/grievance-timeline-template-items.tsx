@@ -42,6 +42,7 @@ import {
 interface OptionItem {
   id: string;
   name: string;
+  open?: boolean;
 }
 interface StepOptionItem {
   id: string;
@@ -396,7 +397,13 @@ function ItemsContent() {
             <div className="space-y-2">
               <Label>From Status</Label>
               <div className="space-y-2 rounded-md border p-3">
-                {statuses.map((status) => (
+                {statuses
+                  .filter(
+                    (status) =>
+                      status.open !== false ||
+                      form.fromStatuses.includes(status.id),
+                  )
+                  .map((status) => (
                   <label
                     key={status.id}
                     className="flex items-center gap-2 text-sm"
@@ -415,7 +422,13 @@ function ItemsContent() {
             <div className="space-y-2">
               <Label>To Status</Label>
               <div className="space-y-2 rounded-md border p-3">
-                {statuses.map((status) => (
+                {statuses
+                  .filter(
+                    (status) =>
+                      status.open !== false ||
+                      form.toStatuses.includes(status.id),
+                  )
+                  .map((status) => (
                   <label
                     key={status.id}
                     className="flex items-center gap-2 text-sm"

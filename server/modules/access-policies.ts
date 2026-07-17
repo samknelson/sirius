@@ -268,6 +268,7 @@ export function registerAccessPolicyRoutes(app: Express) {
         comm: 'staff',
         grievance: 'staff',
         grievanceTimelineTemplate: 'admin',
+        contract: 'staff',
       };
       const basePolicy = entityPolicyMap[entityType] || 'authenticated';
       const baseAccessResult = await checkAccess(basePolicy, context.user, resolvedEntityId);

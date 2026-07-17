@@ -1,4 +1,4 @@
-import { pgTable, varchar, text, jsonb, date } from "drizzle-orm/pg-core";
+import { foreignKey, pgTable, varchar, text, jsonb, date } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -6,14 +6,25 @@ import { workers, trustBenefits } from "../../schema";
 
 export const trustBenefitEligibilityExemptions = pgTable("trust_benefit_eligibility_exemptions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  subscriberWorkerId: varchar("subscriber_worker_id").notNull().references(() => workers.id, { onDelete: 'cascade' }),
-  benefitId: varchar("benefit_id").notNull().references(() => trustBenefits.id, { onDelete: 'cascade' }),
+  subscriberWorkerId: varchar("subscriber_worker_id").notNull(),
+  benefitId: varchar("benefit_id").notNull(),
   eligibilityPlugins: varchar("eligibility_plugins").array().notNull(),
   startYmd: date("start_ymd").notNull(),
   endYmd: date("end_ymd"),
   description: text("description"),
   data: jsonb("data"),
-});
+}, (table) => [
+  foreignKey({
+    name: "trust_benefit_eligibility_exemptions_subscriber_worker_id_worke",
+    columns: [table.subscriberWorkerId],
+    foreignColumns: [workers.id],
+  }).onDelete("cascade"),
+  foreignKey({
+    name: "trust_benefit_eligibility_exemptions_benefit_id_trust_benefits_",
+    columns: [table.benefitId],
+    foreignColumns: [trustBenefits.id],
+  }).onDelete("cascade"),
+]);
 
 export const insertTrustBenefitEligibilityExemptionSchema = createInsertSchema(trustBenefitEligibilityExemptions).omit({
   id: true,

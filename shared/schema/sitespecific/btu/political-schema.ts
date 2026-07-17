@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, varchar, jsonb, unique } from "drizzle-orm/pg-core";
+import { foreignKey, pgTable, text, timestamp, varchar, jsonb, unique } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -36,12 +36,17 @@ export type InsertBtuPoliticalOfficial = z.infer<typeof insertBtuPoliticalOffici
 export const sitespecificBtuPoliticalWorkerReps = pgTable("sitespecific_btu_political_worker_reps", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   workerId: varchar("worker_id").notNull().references(() => workers.id, { onDelete: 'cascade' }),
-  officialId: varchar("official_id").notNull().references(() => sitespecificBtuPoliticalOfficials.id, { onDelete: 'cascade' }),
+  officialId: varchar("official_id").notNull(),
   address: text("address"),
   lastLookedUpAt: timestamp("last_looked_up_at").defaultNow().notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => [
   unique("btu_political_worker_reps_worker_official_unique").on(table.workerId, table.officialId),
+  foreignKey({
+    name: "sitespecific_btu_political_worker_reps_official_id_sitespecific",
+    columns: [table.officialId],
+    foreignColumns: [sitespecificBtuPoliticalOfficials.id],
+  }).onDelete("cascade"),
 ]);
 
 export const insertBtuPoliticalWorkerRepSchema = createInsertSchema(sitespecificBtuPoliticalWorkerReps).omit({

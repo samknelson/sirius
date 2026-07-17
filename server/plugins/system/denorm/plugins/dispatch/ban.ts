@@ -41,6 +41,8 @@ const dispatchBanDenormPlugin: DenormPlugin<DispatchEligDenormPayload> = {
     singleton: true,
   },
   entityType: "worker",
+  reads: ["workers", "workerBans"],
+  writes: [{ storage: "workerDispatchEligDenorm", soleWriter: false }],
   eventHandlers: [
     {
       event: EventType.WORKER_BAN_SAVED,

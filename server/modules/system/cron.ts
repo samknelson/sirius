@@ -1,6 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../../storage";
-import type { PluginConfigWithSubsidiary } from "../../storage/plugin-configs";
+import type { PluginConfigWithSubsidiary } from "../../storage/system/plugin-configs";
 import { requireAccess } from "../../services/access-policy-evaluator";
 import { cronScheduler } from "../../cron";
 import { cronPluginRegistry } from "../../plugins/system/cron";

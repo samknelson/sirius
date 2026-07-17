@@ -271,3 +271,7 @@ import "./plugins/trust-wmb-scan";
 import "./plugins/grievance-assignment-notifier";
 import "./plugins/grievance-settlement-notifier";
 import "./plugins/trust-election-enrollment-notifier";
+import "./plugins/grievance-status-notifier";
+import "./plugins/grievance-deadline-notifier";
+import "./plugins/tos-absence-notifier";
+import "./plugins/edls-sheet-status-notifier";

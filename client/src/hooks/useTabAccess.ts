@@ -503,3 +503,11 @@ export function useGrievanceTimelineTemplateTabAccess(
     enabled,
   });
 }
+
+export function useContractTabAccess(contractId: string | undefined, enabled = true) {
+  return useTabAccess({
+    entityType: 'contract',
+    entityId: contractId,
+    enabled,
+  });
+}
