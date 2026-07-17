@@ -259,6 +259,7 @@ const BaoRateSourcesPage = lazy(() => import("@/pages/config/sitespecific/bao/ra
 const BaoRateSourceRatesPage = lazy(() => import("@/pages/config/sitespecific/bao/rate-source-rates"));
 const BaoDistanceCachePage = lazy(() => import("@/pages/config/sitespecific/bao/distance-cache"));
 const BaoCobraRatesPage = lazy(() => import("@/pages/config/sitespecific/bao/cobra-rates"));
+const BaoCobraTriggersPage = lazy(() => import("@/pages/config/sitespecific/bao/cobra-triggers"));
 const BaoCobraCases = lazy(() => import("@/pages/sitespecific/bao/cobra-cases"));
 const BaoCobraCaseAdd = lazy(() => import("@/pages/sitespecific/bao/cobra-case-add"));
 const BaoCobraCaseView = lazy(() => import("@/pages/sitespecific/bao/cobra-case-view"));
@@ -2741,6 +2742,16 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <BaoCobraRatesPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/sitespecific/bao/cobra-triggers">
+        <ProtectedRoute permission="admin" component="sitespecific.bao">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <BaoCobraTriggersPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>

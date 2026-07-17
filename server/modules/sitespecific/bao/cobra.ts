@@ -11,6 +11,13 @@ import {
   type InsertBaoCobraCase,
 } from "../../../../shared/schema/sitespecific/bao/schema";
 import { computeCobraDeadlines } from "../../../../shared/schema/sitespecific/bao/cobra";
+import {
+  BAO_COBRA_TRIGGER_CONFIG_VARIABLE,
+  baoCobraTriggerConfigSchema,
+  resolveTriggerForPlugin,
+  type BaoCobraTriggerConfigRow,
+} from "../../../../shared/schema/sitespecific/bao/cobra-triggers";
+import { eligibilityPluginRegistry } from "../../../plugins/trust/eligibility/registry";
 import { createUnifiedOptionsStorage } from "../../../storage/unified-options";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -202,6 +209,77 @@ export function registerBaoCobraRoutes(
       } catch (error) {
         console.error("Failed to delete COBRA rate:", error);
         res.status(500).json({ message: "Failed to delete COBRA rate" });
+      }
+    },
+  );
+
+  // -------------------------------------------------------------------------
+  // Trigger configuration (variable-backed; no dedicated table)
+  // -------------------------------------------------------------------------
+
+  app.get(
+    "/api/sitespecific/bao/cobra/trigger-config",
+    requireAuth,
+    componentMiddleware,
+    requireAccess("staff"),
+    async (_req, res) => {
+      try {
+        const variable = await storage.variables.getByName(
+          BAO_COBRA_TRIGGER_CONFIG_VARIABLE,
+        );
+        const parsed = variable
+          ? baoCobraTriggerConfigSchema.safeParse(variable.value)
+          : null;
+        const config = parsed?.success ? parsed.data : null;
+
+        const rows: BaoCobraTriggerConfigRow[] = eligibilityPluginRegistry
+          .getAll()
+          .map(({ id, metadata }) => {
+            const resolved = resolveTriggerForPlugin(config, id, metadata.name);
+            return {
+              pluginId: id,
+              pluginName: metadata.name,
+              pluginDescription: metadata.description,
+              trigger: resolved.trigger,
+              qualifyingEventId: resolved.qualifyingEventId ?? null,
+              isDefault: !config?.plugins?.[id],
+            };
+          })
+          .sort((a, b) => a.pluginName.localeCompare(b.pluginName));
+        res.json({ rows });
+      } catch (error) {
+        console.error("Failed to load COBRA trigger config:", error);
+        res.status(500).json({ message: "Failed to load COBRA trigger config" });
+      }
+    },
+  );
+
+  app.put(
+    "/api/sitespecific/bao/cobra/trigger-config",
+    requireAuth,
+    componentMiddleware,
+    requireAccess("admin"),
+    async (req, res) => {
+      try {
+        const parsed = baoCobraTriggerConfigSchema.parse(req.body);
+        const existing = await storage.variables.getByName(
+          BAO_COBRA_TRIGGER_CONFIG_VARIABLE,
+        );
+        if (existing) {
+          await storage.variables.update(existing.id, { value: parsed });
+        } else {
+          await storage.variables.create({
+            name: BAO_COBRA_TRIGGER_CONFIG_VARIABLE,
+            value: parsed,
+          });
+        }
+        res.json(parsed);
+      } catch (error: any) {
+        if (error.name === "ZodError") {
+          return res.status(400).json({ message: "Invalid data", errors: error.errors });
+        }
+        console.error("Failed to save COBRA trigger config:", error);
+        res.status(500).json({ message: "Failed to save COBRA trigger config" });
       }
     },
   );

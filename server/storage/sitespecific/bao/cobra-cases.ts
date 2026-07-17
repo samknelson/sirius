@@ -71,6 +71,20 @@ export interface BaoCobraCasesStorage {
    * medical/dental benefits and should not have an active COBRA case.
    */
   hasActiveMedicalOrDentalBenefits(workerId: string): Promise<boolean>;
+  /**
+   * Classify a benefit as medical or dental using the same name/type
+   * heuristic as hasActiveMedicalOrDentalBenefits. Returns null when the
+   * benefit is neither (or does not exist).
+   */
+  classifyMedicalDentalBenefit(benefitId: string): Promise<"medical" | "dental" | null>;
+  /**
+   * Active (non-closed-status) cases with no election made yet where the
+   * worker is the covered person — candidates for auto-close when the
+   * person regains active medical/dental benefits.
+   */
+  listActiveUnelectedCasesForCoveredPerson(
+    coveredPersonWorkerId: string,
+  ): Promise<BaoCobraCase[]>;
   tableExists(): Promise<boolean>;
 }
 
@@ -329,6 +343,51 @@ export function createBaoCobraCasesStorage(): BaoCobraCasesStorage {
         )
         .limit(1);
       return rows.length > 0;
+    },
+
+    async classifyMedicalDentalBenefit(
+      benefitId: string,
+    ): Promise<"medical" | "dental" | null> {
+      const client = getClient();
+      const rows = await client
+        .select({
+          benefitName: trustBenefits.name,
+          typeName: optionsTrustBenefitType.name,
+        })
+        .from(trustBenefits)
+        .leftJoin(
+          optionsTrustBenefitType,
+          eq(optionsTrustBenefitType.id, trustBenefits.benefitType),
+        )
+        .where(eq(trustBenefits.id, benefitId))
+        .limit(1);
+      const row = rows[0];
+      if (!row) return null;
+      const haystack = `${row.typeName ?? ""} ${row.benefitName ?? ""}`.toLowerCase();
+      if (haystack.includes("medical")) return "medical";
+      if (haystack.includes("dental")) return "dental";
+      return null;
+    },
+
+    async listActiveUnelectedCasesForCoveredPerson(
+      coveredPersonWorkerId: string,
+    ): Promise<BaoCobraCase[]> {
+      if (!(await this.tableExists())) {
+        throw new Error("COMPONENT_TABLE_NOT_FOUND");
+      }
+      const client = getClient();
+      const rows = await client
+        .select({ theCase: cases })
+        .from(cases)
+        .innerJoin(optionsBaoCobraStatus, eq(optionsBaoCobraStatus.id, cases.statusId))
+        .where(
+          and(
+            eq(cases.coveredPersonWorkerId, coveredPersonWorkerId),
+            eq(optionsBaoCobraStatus.closed, false),
+            sql`${cases.electionMadeYmd} IS NULL`,
+          ),
+        );
+      return rows.map((r) => r.theCase);
     },
   };
 }
