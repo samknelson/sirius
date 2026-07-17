@@ -107,3 +107,36 @@ export function computeCobraDeadlines(
     ),
   };
 }
+
+export const COBRA_GRACE_PERIOD_DAYS = 30;
+
+export const COBRA_PAYMENT_STATUSES = ["paid", "grace", "delinquent"] as const;
+export type CobraPaymentState = (typeof COBRA_PAYMENT_STATUSES)[number];
+
+/**
+ * Derive the payment state of a COBRA case from its COBRA ledger account
+ * balance (positive = amount owed):
+ *
+ * - Balance <= 0 → "paid".
+ * - Balance > 0 but still inside the payment window → "grace". The window is
+ *   the LATER of the initial-payment deadline (election date + 45 days, for
+ *   the first payment) and the standard 30-day grace period measured from the
+ *   first of the current month (for periodic payments).
+ * - Balance > 0 past the window → "delinquent".
+ */
+export function computeCobraPaymentState(
+  balance: string | number,
+  todayYmd: string,
+  initialPaymentDeadlineYmd: string | null | undefined,
+): CobraPaymentState {
+  const owed = typeof balance === "number" ? balance : Number(balance);
+  if (!(owed > 0)) {
+    return "paid";
+  }
+  const firstOfMonthYmd = `${todayYmd.slice(0, 7)}-01`;
+  let graceEndYmd = addDaysYmd(firstOfMonthYmd, COBRA_GRACE_PERIOD_DAYS);
+  if (initialPaymentDeadlineYmd && initialPaymentDeadlineYmd > graceEndYmd) {
+    graceEndYmd = initialPaymentDeadlineYmd;
+  }
+  return todayYmd <= graceEndYmd ? "grace" : "delinquent";
+}

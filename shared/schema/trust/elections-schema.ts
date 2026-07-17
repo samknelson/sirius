@@ -14,8 +14,10 @@ import { workers, policies, employers } from "../../schema";
  * - `life_event`      → a qualifying-life-event change (future wizard).
  * - `open_enrollment` → a change made during an open-enrollment window
  *                       (future wizard + admin window).
+ * - `cobra`           → a COBRA continuation-coverage election made from
+ *                       an open COBRA case (BAO component).
  */
-export const ENROLLMENT_TYPES = ["first_time", "life_event", "open_enrollment"] as const;
+export const ENROLLMENT_TYPES = ["first_time", "life_event", "open_enrollment", "cobra"] as const;
 export type EnrollmentType = (typeof ENROLLMENT_TYPES)[number];
 
 export const workerTrustElections = pgTable("worker_trust_elections", {

@@ -1,6 +1,9 @@
 import { registerWizardPlugin } from "../registry";
 import type { WizardPlugin } from "../types";
-import { createEnrollmentFoundation } from "../enrollment/foundation";
+import {
+  createEnrollmentFoundation,
+  guardNoActiveCobraCase,
+} from "../enrollment/foundation";
 import { isComponentEnabledSync } from "../../../services/component-cache";
 
 const WIZARD_TYPE = "open_enrollment_enrollment";
@@ -30,6 +33,9 @@ function todayYmd(): string {
 const foundation = createEnrollmentFoundation({
   wizardType: WIZARD_TYPE,
   enrollmentType: "open_enrollment",
+  // COBRA exclusivity: a worker on COBRA continuation coverage cannot use
+  // the regular open-enrollment path while their COBRA case is active.
+  guardWorker: guardNoActiveCobraCase,
   prepareCreateData: async (storage) => {
     if (!isComponentEnabledSync("trust.elections")) {
       return {

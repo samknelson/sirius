@@ -3,6 +3,7 @@ import type { WizardPlugin } from "../types";
 import {
   createEnrollmentFoundation,
   computeDefaultEffectiveDate,
+  guardNoActiveCobraCase,
 } from "../enrollment/foundation";
 
 const WIZARD_TYPE = "benefit_election_enrollment";
@@ -30,6 +31,8 @@ const foundation = createEnrollmentFoundation({
   wizardType: WIZARD_TYPE,
   enrollmentType: "first_time",
   guardWorker: async (storage, workerId) => {
+    const cobraBlock = await guardNoActiveCobraCase(storage, workerId);
+    if (cobraBlock) return cobraBlock;
     const hasMedicalOrDental =
       await storage.workerTrustElections.hasActiveMedicalOrDentalElection(
         workerId,

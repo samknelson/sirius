@@ -1282,3 +1282,31 @@ export function createEnrollmentFoundation(
 
 // Re-exported so the existing WizardPlugin shape is easy to compose.
 export type { WizardPlugin };
+
+/**
+ * COBRA / regular-enrollment mutual exclusivity guard. Returns a rejection
+ * message when the worker has an active (non-closed) COBRA case — regular
+ * medical/dental enrollment paths must not run alongside COBRA continuation
+ * coverage. Returns null when the BAO component is off or its COBRA tables
+ * are not provisioned (nothing to be exclusive against).
+ */
+export async function guardNoActiveCobraCase(
+  storage: IStorage,
+  workerId: string,
+): Promise<string | null> {
+  try {
+    const hasActiveCase =
+      await storage.baoCobraCases.hasActiveCaseForCoveredPerson(workerId);
+    return hasActiveCase
+      ? "This worker has an active COBRA case, so regular enrollment is not available. Close the COBRA case first."
+      : null;
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message === "COMPONENT_TABLE_NOT_FOUND"
+    ) {
+      return null;
+    }
+    throw error;
+  }
+}

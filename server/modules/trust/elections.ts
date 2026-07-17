@@ -4,6 +4,7 @@ import { storage } from "../../storage";
 import { requireComponent } from "../components";
 import { WorkerTrustElectionValidationError } from "../../storage/trust/elections";
 import { ENROLLMENT_TYPES, type EnrollmentType } from "@shared/schema";
+import { guardNoActiveCobraCase } from "../../plugins/wizards/enrollment/foundation";
 
 type RequireAccess = (
   policy: string,
@@ -119,6 +120,14 @@ export function registerWorkerTrustElectionsRoutes(
     requireAccess('staff'),
     async (req: Request, res: Response) => {
       try {
+        const cobraBlock = await guardNoActiveCobraCase(
+          storage,
+          req.params.id,
+        );
+        if (cobraBlock) {
+          res.json({ eligible: false, reason: cobraBlock });
+          return;
+        }
         const hasMedicalOrDental =
           await storage.workerTrustElections.hasActiveMedicalOrDentalElection(
             req.params.id,

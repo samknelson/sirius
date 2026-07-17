@@ -85,6 +85,25 @@ export interface BaoCobraCasesStorage {
   listActiveUnelectedCasesForCoveredPerson(
     coveredPersonWorkerId: string,
   ): Promise<BaoCobraCase[]>;
+  /**
+   * Active (non-closed-status) cases where the worker is the covered person,
+   * enriched with display names — powers the worker-facing COBRA screen.
+   */
+  listActiveCasesForCoveredPersonWithDetails(
+    coveredPersonWorkerId: string,
+  ): Promise<BaoCobraCaseWithDetails[]>;
+  /**
+   * All cases with an election made whose status is not closed — the set
+   * the COBRA billing cron charges monthly premiums for.
+   */
+  listElectedActiveCases(): Promise<BaoCobraCase[]>;
+  /**
+   * All cases for a covered person where the election has been made and the
+   * status is not closed.
+   */
+  listElectedActiveCasesForCoveredPerson(
+    coveredPersonWorkerId: string,
+  ): Promise<BaoCobraCase[]>;
   tableExists(): Promise<boolean>;
 }
 
@@ -387,6 +406,65 @@ export function createBaoCobraCasesStorage(): BaoCobraCasesStorage {
             sql`${cases.electionMadeYmd} IS NULL`,
           ),
         );
+      return rows.map((r) => r.theCase);
+    },
+
+    async listActiveCasesForCoveredPersonWithDetails(
+      coveredPersonWorkerId: string,
+    ): Promise<BaoCobraCaseWithDetails[]> {
+      if (!(await this.tableExists())) {
+        throw new Error("COMPONENT_TABLE_NOT_FOUND");
+      }
+      const client = getClient();
+      const rows = await enrichedQuery(client)
+        .where(
+          and(
+            eq(cases.coveredPersonWorkerId, coveredPersonWorkerId),
+            eq(optionsBaoCobraStatus.closed, false),
+          ),
+        )
+        .orderBy(desc(cases.cobraEffectiveYmd), desc(cases.id));
+      return rows as BaoCobraCaseWithDetails[];
+    },
+
+    async listElectedActiveCases(): Promise<BaoCobraCase[]> {
+      if (!(await this.tableExists())) {
+        throw new Error("COMPONENT_TABLE_NOT_FOUND");
+      }
+      const client = getClient();
+      const rows = await client
+        .select({ theCase: cases })
+        .from(cases)
+        .innerJoin(optionsBaoCobraStatus, eq(optionsBaoCobraStatus.id, cases.statusId))
+        .where(
+          and(
+            eq(optionsBaoCobraStatus.closed, false),
+            sql`${cases.electionMadeYmd} IS NOT NULL`,
+          ),
+        )
+        .orderBy(desc(cases.cobraEffectiveYmd), desc(cases.id));
+      return rows.map((r) => r.theCase);
+    },
+
+    async listElectedActiveCasesForCoveredPerson(
+      coveredPersonWorkerId: string,
+    ): Promise<BaoCobraCase[]> {
+      if (!(await this.tableExists())) {
+        throw new Error("COMPONENT_TABLE_NOT_FOUND");
+      }
+      const client = getClient();
+      const rows = await client
+        .select({ theCase: cases })
+        .from(cases)
+        .innerJoin(optionsBaoCobraStatus, eq(optionsBaoCobraStatus.id, cases.statusId))
+        .where(
+          and(
+            eq(cases.coveredPersonWorkerId, coveredPersonWorkerId),
+            eq(optionsBaoCobraStatus.closed, false),
+            sql`${cases.electionMadeYmd} IS NOT NULL`,
+          ),
+        )
+        .orderBy(desc(cases.cobraEffectiveYmd), desc(cases.id));
       return rows.map((r) => r.theCase);
     },
   };

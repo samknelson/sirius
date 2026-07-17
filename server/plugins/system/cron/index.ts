@@ -118,6 +118,8 @@ import "./plugins/workerBanActiveScan";
 import "./plugins/workerCertificationActiveScan";
 import "./plugins/logCleanup";
 import "./plugins/memberStatusScan";
+import "./plugins/ledgerChargeCron";
+import "./plugins/baoCobraStatusScan";
 import "./plugins/dispatchEbaCleanup";
 import "./plugins/dispatchJobPoll";
 import "./plugins/bulkDeliver";

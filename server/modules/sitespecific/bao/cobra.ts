@@ -2,6 +2,8 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { requireComponent } from "../../components";
 import { storage } from "../../../storage";
 import {
+  BAO_COBRA_COVERED_LIVES_TIERS,
+  type BaoCobraCoveredLivesTier,
   createBaoCobraRateRequestSchema,
   updateBaoCobraRateRequestSchema,
   listBaoCobraRatesQuerySchema,
@@ -280,6 +282,73 @@ export function registerBaoCobraRoutes(
         }
         console.error("Failed to save COBRA trigger config:", error);
         res.status(500).json({ message: "Failed to save COBRA trigger config" });
+      }
+    },
+  );
+
+  // -------------------------------------------------------------------------
+  // Worker-facing COBRA screen
+  // -------------------------------------------------------------------------
+
+  app.get(
+    "/api/workers/:workerId/sitespecific/bao/cobra",
+    requireAuth,
+    componentMiddleware,
+    requireAccess("worker.cobra", (req) => req.params.workerId),
+    async (req, res) => {
+      try {
+        if (!(await casesStorage.tableExists())) {
+          return res.status(503).json({ message: CASES_TABLE_MISSING_MESSAGE });
+        }
+        const activeCases = await casesStorage.listActiveCasesForCoveredPersonWithDetails(
+          req.params.workerId,
+        );
+        const todayYmd = new Date().toISOString().slice(0, 10);
+        const ratesTableExists = await ratesStorage.tableExists();
+
+        const results = [];
+        for (const theCase of activeCases) {
+          // Rates are looked up as of the COBRA effective date if it is in the
+          // future, otherwise as of today (latest rate effective <= as-of).
+          const asOfYmd =
+            theCase.cobraEffectiveYmd > todayYmd ? theCase.cobraEffectiveYmd : todayYmd;
+
+          const coverageBenefits = [
+            theCase.medicalBenefitLostId
+              ? {
+                  kind: "medical" as const,
+                  benefitId: theCase.medicalBenefitLostId,
+                  benefitName: theCase.medicalBenefitLostName,
+                }
+              : null,
+            theCase.dentalBenefitLostId
+              ? {
+                  kind: "dental" as const,
+                  benefitId: theCase.dentalBenefitLostId,
+                  benefitName: theCase.dentalBenefitLostName,
+                }
+              : null,
+          ].filter((b): b is NonNullable<typeof b> => b !== null);
+
+          const coverage = [];
+          for (const benefit of coverageBenefits) {
+            const ratesByTier: Partial<Record<BaoCobraCoveredLivesTier, string | null>> = {};
+            for (const tier of BAO_COBRA_COVERED_LIVES_TIERS) {
+              const rate = ratesTableExists
+                ? await ratesStorage.getEffectiveRate(benefit.benefitId, tier, asOfYmd)
+                : undefined;
+              ratesByTier[tier] = rate ? rate.rate : null;
+            }
+            coverage.push({ ...benefit, ratesByTier });
+          }
+
+          results.push({ case: theCase, asOfYmd, coverage });
+        }
+
+        res.json({ cases: results });
+      } catch (error) {
+        console.error("Failed to load worker COBRA screen:", error);
+        res.status(500).json({ message: "Failed to load COBRA information" });
       }
     },
   );

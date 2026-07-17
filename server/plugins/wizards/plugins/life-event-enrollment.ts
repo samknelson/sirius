@@ -14,6 +14,7 @@ import {
   buildSignatureStep,
   runEnrollmentCreate,
   enrollmentPrepareUpdate,
+  guardNoActiveCobraCase,
   type DependentEntry,
 } from "../enrollment/foundation";
 import { logger } from "../../../logger";
@@ -382,6 +383,8 @@ export const lifeEventEnrollmentPlugin: WizardPlugin = {
       // election — the inverse of first-time enrollment. Enforced here,
       // server-side, not just behind a disabled launch button.
       guardWorker: async (storage, workerId) => {
+        const cobraBlock = await guardNoActiveCobraCase(storage, workerId);
+        if (cobraBlock) return cobraBlock;
         const active = await storage.workerTrustElections.getActiveByWorker(
           workerId,
         );

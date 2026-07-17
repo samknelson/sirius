@@ -138,4 +138,5 @@ import "./plugins/relationshipType";
 import "./plugins/sitespecific-bao-start-healthnet";
 import "./plugins/sitespecific-bao-start-kaiser";
 import "./plugins/sitespecific-bao-buildup";
+import "./plugins/sitespecific-bao-cobra";
 import "./plugins/sitespecific-bao-threshold";

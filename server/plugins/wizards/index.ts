@@ -37,6 +37,7 @@ import "./plugins/employer-onboarding";
 import "./plugins/benefit-election-enrollment";
 import "./plugins/open-enrollment-enrollment";
 import "./plugins/life-event-enrollment";
+import "./plugins/bao-cobra-enrollment";
 
 let kindRegistered = false;
 
