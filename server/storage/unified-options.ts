@@ -17,6 +17,7 @@ import {
   optionsDispatchJobType,
   optionsSkills,
   optionsEdlsTasks,
+  optionsEdlsShowStatus,
   optionsCertifications,
   optionsWorkerRatings,
   optionsClassifications,
@@ -56,6 +57,7 @@ export type OptionsTypeName =
   | "ledger-payment-type"
   | "skill"
   | "edls-task"
+  | "edls-show-status"
   | "certification"
   | "worker-rating"
   | "classification"
@@ -646,6 +648,23 @@ const optionsMetadata: Record<OptionsTypeName, OptionsTableMetadata<any>> = {
     fields: [
       { name: "name", label: "Name", inputType: "text", required: true, placeholder: "Task name", showInTable: true, columnHeader: "Name" },
       { name: "departmentId", label: "Department", inputType: "select-options", required: true, showInTable: true, columnHeader: "Department", selectOptionsType: "department" },
+      { name: "siriusId", label: "Sirius ID", inputType: "text", required: false, placeholder: "External ID", showInTable: true, columnHeader: "Sirius ID" },
+    ],
+  },
+  "edls-show-status": {
+    table: optionsEdlsShowStatus,
+    displayName: "EDLS Show Statuses",
+    description: "Manage show statuses for EDLS sheets",
+    singularName: "EDLS Show Status",
+    pluralName: "EDLS Show Statuses",
+    orderByColumn: "sequence" as const,
+    loggingModule: "options.edlsShowStatuses",
+    requiredComponent: "edls",
+    requiredFields: ["name"],
+    optionalFields: ["siriusId", "sequence", "data"],
+    supportsSequencing: true,
+    fields: [
+      { name: "name", label: "Name", inputType: "text", required: true, placeholder: "Show status name", showInTable: true, columnHeader: "Name" },
       { name: "siriusId", label: "Sirius ID", inputType: "text", required: false, placeholder: "External ID", showInTable: true, columnHeader: "Sirius ID" },
     ],
   },

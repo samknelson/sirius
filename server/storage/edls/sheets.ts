@@ -10,6 +10,7 @@ import {
   employers,
   users,
   optionsDepartment,
+  optionsEdlsShowStatus,
   dispatchJobGroups,
   facilities,
   type EdlsSheet, 
@@ -46,6 +47,7 @@ export interface EdlsSheetWithRelations extends EdlsSheet {
   assigneeUser?: { id: string; firstName: string | null; lastName: string | null; email: string };
   jobGroup?: { id: string; name: string };
   facility?: { id: string; name: string };
+  showStatus?: { id: string; name: string };
   assignedCount?: number;
 }
 
@@ -121,6 +123,7 @@ export interface EdlsSheetsFilterOptions {
   status?: string;
   jobGroupId?: string;
   facilityId?: string;
+  showStatusId?: string;
 }
 
 export interface EdlsSheetsStorage {
@@ -203,6 +206,9 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
       if (filters?.facilityId) {
         conditions.push(eq(edlsSheets.facilityId, filters.facilityId));
       }
+      if (filters?.showStatusId) {
+        conditions.push(eq(edlsSheets.showStatusId, filters.showStatusId));
+      }
       
       const whereCondition = conditions.length > 0 ? and(...conditions) : undefined;
       
@@ -260,6 +266,10 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
             id: facilities.id,
             name: facilities.name,
           },
+          showStatus: {
+            id: optionsEdlsShowStatus.id,
+            name: optionsEdlsShowStatus.name,
+          },
         })
         .from(edlsSheets)
         .leftJoin(employers, eq(edlsSheets.employerId, employers.id))
@@ -267,6 +277,7 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
         .leftJoin(supervisorUsers, eq(edlsSheets.supervisor, supervisorUsers.id))
         .leftJoin(assigneeUsers, eq(edlsSheets.assignee, assigneeUsers.id))
         .leftJoin(facilities, eq(edlsSheets.facilityId, facilities.id))
+        .leftJoin(optionsEdlsShowStatus, eq(edlsSheets.showStatusId, optionsEdlsShowStatus.id))
         .$dynamic();
       
       const joinedQuery = withJobGroups
@@ -287,6 +298,7 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
           ? { id: row.jobGroup.id, name: row.jobGroup.name }
           : undefined,
         facility: row.facility?.id ? row.facility : undefined,
+        showStatus: row.showStatus?.id ? row.showStatus : undefined,
         assignedCount: row.assignedCount ?? 0,
       }));
       
@@ -341,6 +353,10 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
             id: facilities.id,
             name: facilities.name,
           },
+          showStatus: {
+            id: optionsEdlsShowStatus.id,
+            name: optionsEdlsShowStatus.name,
+          },
         })
         .from(edlsSheets)
         .leftJoin(employers, eq(edlsSheets.employerId, employers.id))
@@ -348,6 +364,7 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
         .leftJoin(supervisorUsers, eq(edlsSheets.supervisor, supervisorUsers.id))
         .leftJoin(assigneeUsers, eq(edlsSheets.assignee, assigneeUsers.id))
         .leftJoin(facilities, eq(edlsSheets.facilityId, facilities.id))
+        .leftJoin(optionsEdlsShowStatus, eq(edlsSheets.showStatusId, optionsEdlsShowStatus.id))
         .$dynamic();
       
       const [row] = withJobGroups
@@ -368,6 +385,7 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
           ? { id: row.jobGroup.id, name: row.jobGroup.name }
           : undefined,
         facility: row.facility?.id ? row.facility : undefined,
+        showStatus: row.showStatus?.id ? row.showStatus : undefined,
       };
     },
 

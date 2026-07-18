@@ -53,6 +53,11 @@ interface JobGroupOption {
   name: string;
 }
 
+interface ShowStatusOption {
+  id: string;
+  name: string;
+}
+
 interface FacilityOption {
   id: string;
   name: string;
@@ -74,6 +79,7 @@ export interface SheetFormData {
   assignee: string;
   jobGroupId: string;
   facilityId: string;
+  showStatusId: string;
   crews: CrewInput[];
 }
 
@@ -124,6 +130,10 @@ export function EdlsSheetForm({
     queryKey: ["/api/edls/tasks/options"],
   });
 
+  const { data: showStatusOptions = [], isLoading: showStatusesLoading } = useQuery<ShowStatusOption[]>({
+    queryKey: ["/api/options/edls-show-status"],
+  });
+
   const [facilitySearch, setFacilitySearch] = useState("");
   const { data: facilitiesData, isLoading: facilitiesLoading } = useQuery<PaginatedFacilities>({
     queryKey: ["/api/facilities", { search: facilitySearch, picker: true }],
@@ -148,6 +158,7 @@ export function EdlsSheetForm({
         assignee: initialData.sheet.assignee || "",
         jobGroupId: initialData.sheet.jobGroupId || "",
         facilityId: initialData.sheet.facilityId || "",
+        showStatusId: initialData.sheet.showStatusId || "",
         crews: initialData.crews.map((c) => ({
           id: c.id,
           title: c.title,
@@ -170,6 +181,7 @@ export function EdlsSheetForm({
       assignee: "",
       jobGroupId: "",
       facilityId: "",
+      showStatusId: "",
       crews: [],
     };
   });
@@ -275,6 +287,7 @@ export function EdlsSheetForm({
       supervisor: effectiveSupervisor,
       jobGroupId: formData.jobGroupId || "",
       facilityId: formData.facilityId || "",
+      showStatusId: formData.showStatusId || "",
     });
   };
 
@@ -461,6 +474,32 @@ export function EdlsSheetForm({
                 {jobGroupOptions.map((group) => (
                   <SelectItem key={group.id} value={group.id}>
                     {group.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="showStatus">Show Status</Label>
+          {showStatusesLoading ? (
+            <Skeleton className="h-10 w-full" />
+          ) : (
+            <Select
+              value={formData.showStatusId || "__none__"}
+              onValueChange={(value) =>
+                setFormData({ ...formData, showStatusId: value === "__none__" ? "" : value })
+              }
+            >
+              <SelectTrigger data-testid="select-show-status">
+                <SelectValue placeholder="None" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">None</SelectItem>
+                {showStatusOptions.map((option) => (
+                  <SelectItem key={option.id} value={option.id}>
+                    {option.name}
                   </SelectItem>
                 ))}
               </SelectContent>

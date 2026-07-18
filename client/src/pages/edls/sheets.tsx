@@ -46,6 +46,7 @@ interface EdlsSheetWithRelations extends EdlsSheet {
   assigneeUser?: { id: string; firstName: string | null; lastName: string | null; email: string };
   jobGroup?: { id: string; name: string };
   facility?: { id: string; name: string };
+  showStatus?: { id: string; name: string };
   assignedCount?: number;
 }
 
@@ -62,6 +63,11 @@ interface PaginatedFacilities {
 }
 
 interface JobGroupOption {
+  id: string;
+  name: string;
+}
+
+interface ShowStatusOption {
   id: string;
   name: string;
 }
@@ -133,6 +139,7 @@ export default function EdlsSheetsPage() {
   const [rangeToDate, setRangeToDate] = useState<Date | undefined>(undefined);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [eventFilter, setEventFilter] = useState<string>("all");
+  const [showStatusFilter, setShowStatusFilter] = useState<string>("all");
   const search = useSearch();
   const [, setLocation] = useLocation();
   const initialFacilityFromUrl = useMemo(() => {
@@ -237,16 +244,21 @@ export default function EdlsSheetsPage() {
 
   const activeEventFilter = eventFilter !== "all" && eventOptions.some(o => o.id === eventFilter) ? eventFilter : "all";
 
+  const { data: showStatusOptions = [] } = useQuery<ShowStatusOption[]>({
+    queryKey: ["/api/options/edls-show-status"],
+  });
+
   const queryParams = new URLSearchParams();
   if (dateFrom) queryParams.set("dateFrom", dateFrom);
   if (dateTo) queryParams.set("dateTo", dateTo);
   if (statusFilter && statusFilter !== "all") queryParams.set("status", statusFilter);
   if (activeEventFilter && activeEventFilter !== "all") queryParams.set("jobGroupId", activeEventFilter);
+  if (showStatusFilter && showStatusFilter !== "all") queryParams.set("showStatusId", showStatusFilter);
   if (facilityFilter) queryParams.set("facilityId", facilityFilter);
   const queryString = queryParams.toString();
   
   const { data: sheetsData, isLoading } = useQuery<PaginatedEdlsSheets>({
-    queryKey: ["/api/edls/sheets", { dateFrom, dateTo, status: statusFilter, jobGroupId: activeEventFilter, facilityId: facilityFilter }],
+    queryKey: ["/api/edls/sheets", { dateFrom, dateTo, status: statusFilter, jobGroupId: activeEventFilter, showStatusId: showStatusFilter, facilityId: facilityFilter }],
     queryFn: async () => {
       const url = queryString ? `/api/edls/sheets?${queryString}` : "/api/edls/sheets";
       const res = await fetch(url, { credentials: "include" });
@@ -398,6 +410,29 @@ export default function EdlsSheetsPage() {
                   <SelectItem value="all" data-testid="option-event-all">All Events</SelectItem>
                   {eventOptions.map((option) => (
                     <SelectItem key={option.id} value={option.id} data-testid={`option-event-${option.id}`}>
+                      {option.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
+                <Layers className="h-4 w-4" />
+                Show Status
+              </label>
+              <Select
+                value={showStatusFilter}
+                onValueChange={setShowStatusFilter}
+              >
+                <SelectTrigger className="w-[220px]" data-testid="select-show-status-filter">
+                  <SelectValue placeholder="All Show Statuses" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all" data-testid="option-show-status-all">All Show Statuses</SelectItem>
+                  {showStatusOptions.map((option) => (
+                    <SelectItem key={option.id} value={option.id} data-testid={`option-show-status-${option.id}`}>
                       {option.name}
                     </SelectItem>
                   ))}
@@ -619,7 +654,12 @@ export default function EdlsSheetsPage() {
                       {sheet.department?.name || "—"}
                     </TableCell>
                     <TableCell data-testid={`text-event-${sheet.id}`}>
-                      {sheet.jobGroup?.name || "—"}
+                      <div>{sheet.jobGroup?.name || "—"}</div>
+                      {sheet.showStatus && (
+                        <div className="text-xs text-muted-foreground" data-testid={`text-show-status-${sheet.id}`}>
+                          {sheet.showStatus.name}
+                        </div>
+                      )}
                     </TableCell>
                     <TableCell data-testid={`text-facility-${sheet.id}`}>
                       {sheet.facility?.name || "—"}

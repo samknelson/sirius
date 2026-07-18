@@ -221,6 +221,13 @@ function EdlsSheetDetailsContent() {
               </p>
             </div>
             <div className="print:flex print:items-baseline print:gap-2">
+              <h3 className="text-sm font-medium text-muted-foreground mb-1 print:mb-0 print:after:content-[':']">Show Status</h3>
+              <p className="text-foreground flex items-center gap-2" data-testid="text-show-status">
+                <Layers className="h-4 w-4 text-muted-foreground print:hidden" />
+                {(sheet as any).showStatus?.name || "None"}
+              </p>
+            </div>
+            <div className="print:flex print:items-baseline print:gap-2">
               <h3 className="text-sm font-medium text-muted-foreground mb-1 print:mb-0 print:after:content-[':']">Facility</h3>
               <p className="text-foreground flex items-center gap-2" data-testid="text-facility">
                 <Factory className="h-4 w-4 text-muted-foreground print:hidden" />

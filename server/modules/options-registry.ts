@@ -75,6 +75,7 @@ export const optionsTypeRegistry: Record<string, OptionsTypeConfig> = {
   "ledger-payment-type": createTypeConfig("ledger-payment-type"),
   "skill": createTypeConfig("skill"),
   "edls-task": createTypeConfig("edls-task"),
+  "edls-show-status": createTypeConfig("edls-show-status"),
   "certification": createTypeConfig("certification"),
   "worker-rating": createTypeConfig("worker-rating"),
   "classification": createTypeConfig("classification"),

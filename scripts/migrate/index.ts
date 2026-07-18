@@ -95,6 +95,7 @@ import "./components/dispatch/002_worker_dispatch_elig_denorm_denorm_id";
 import "./components/trust.benefits/001_backfill_trust_eligibility_configs";
 import "./components/trust.benefits/002_create_trust_wmb_events";
 import "./components/contract/001_create_contract_tables";
+import "./components/edls/001_add_show_status";
 import "./components/worker.ratings/001_add_sirius_id_to_options_worker_ratings";
 
 // Baseline scripts — one-off, per-deployment scripts that bring a database
