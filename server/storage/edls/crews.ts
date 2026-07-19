@@ -14,6 +14,8 @@ import { eq, sql, asc } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { defineLoggingConfig } from "../middleware/logging";
 import { getClient, runInTransaction } from "../transaction-context";
+import { storage } from "../index";
+import type { SnapshotNode } from "@shared/snapshots";
 
 export const validate = createAsyncStorageValidator<InsertEdlsCrew, EdlsCrew, {}>(
   async (data, existing) => {
@@ -79,6 +81,12 @@ export interface EdlsCrewsStorage {
   delete(id: string): Promise<boolean>;
   deleteBySheetId(sheetId: string): Promise<number>;
   getCrewsTotalWorkerCount(sheetId: string): Promise<number>;
+  /**
+   * Snapshot export: one versioned bundle per crew (with relations rendered
+   * as ref stubs) each containing its own assignment bundles. See
+   * `shared/snapshots.ts` for the bundle contract.
+   */
+  exportBySheetId(sheetId: string, industryId?: string | null): Promise<SnapshotNode[]>;
 }
 
 export function createEdlsCrewsStorage(): EdlsCrewsStorage {
@@ -168,6 +176,18 @@ export function createEdlsCrewsStorage(): EdlsCrewsStorage {
       const client = getClient();
       const result = await client.delete(edlsCrews).where(eq(edlsCrews.sheetId, sheetId)).returning();
       return result.length;
+    },
+
+    async exportBySheetId(sheetId: string, industryId?: string | null): Promise<SnapshotNode[]> {
+      const crews = await this.getBySheetIdWithRelations(sheetId);
+      const assignmentNodesByCrewId = await storage.edlsAssignments.exportBySheetId(sheetId, industryId ?? null);
+      return crews.map((crew) => ({
+        version: 1,
+        data: {
+          ...crew,
+          assignments: assignmentNodesByCrewId.get(crew.id) ?? [],
+        },
+      }));
     },
 
     async getCrewsTotalWorkerCount(sheetId: string): Promise<number> {

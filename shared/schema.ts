@@ -2595,3 +2595,26 @@ export const insertFloodSchema = createInsertSchema(flood).omit({
 
 export type InsertFlood = z.infer<typeof insertFloodSchema>;
 export type Flood = typeof flood.$inferSelect;
+
+// Snapshots — generic point-in-time entity copies (self-contained JSON
+// export bundles). Core table: entity types from any domain may participate.
+export const snapshots = pgTable("snapshots", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  entityType: varchar("entity_type", { length: 100 }).notNull(),
+  entityId: varchar("entity_id").notNull(),
+  createdAt: timestamp("created_at").default(sql`now()`).notNull(),
+  authorId: varchar("author_id").references(() => users.id, { onDelete: 'set null' }),
+  authorName: text("author_name"),
+  label: text("label"),
+  data: jsonb("data").notNull(),
+}, (table) => ({
+  entityIdx: index("snapshots_entity_type_entity_id_created_at_idx").on(table.entityType, table.entityId, table.createdAt),
+}));
+
+export const insertSnapshotSchema = createInsertSchema(snapshots).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertSnapshot = z.infer<typeof insertSnapshotSchema>;
+export type Snapshot = typeof snapshots.$inferSelect;

@@ -371,6 +371,7 @@ const EdlsSheetAssignmentsPage = lazy(() => import("@/pages/edls/sheet-assignmen
 const EdlsSheetManagePage = lazy(() => import("@/pages/edls/sheet-manage"));
 const EdlsSheetEditPage = lazy(() => import("@/pages/edls/sheet-edit"));
 const EdlsSheetLogsPage = lazy(() => import("@/pages/edls/sheet-logs"));
+const EdlsSheetSnapshotsPage = lazy(() => import("@/pages/edls/sheet-snapshots"));
 const FreemanCrewleadsPage = lazy(() => import("@/pages/sitespecific/freeman/crewleads-list"));
 const FreemanChangelogPage = lazy(() => import("@/pages/sitespecific/freeman/changelog"));
 const BulkMessagesPage = lazy(() => import("@/pages/bulk-messages"));
@@ -3040,6 +3041,14 @@ function Router() {
         <ProtectedRoute tabId="logs" entityType="edls_sheet">
           <AuthenticatedLayout>
             <EdlsSheetLogsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/edls/sheet/:id/logs/snapshots">
+        <ProtectedRoute tabId="snapshots" entityType="edls_sheet">
+          <AuthenticatedLayout>
+            <EdlsSheetSnapshotsPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

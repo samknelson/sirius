@@ -9,7 +9,7 @@ function EdlsSheetLogsContent() {
 
 export default function EdlsSheetLogsPage() {
   return (
-    <EdlsSheetLayout activeTab="logs">
+    <EdlsSheetLayout activeTab="activity">
       <EdlsSheetLogsContent />
     </EdlsSheetLayout>
   );

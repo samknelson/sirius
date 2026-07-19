@@ -1,5 +1,6 @@
 import { runInTransaction } from "./transaction-context";
 import { type VariableStorage, createVariableStorage, variableLoggingConfig } from "./system/variables";
+import { type SnapshotsStorage, createSnapshotsStorage, snapshotsLoggingConfig } from "./system/snapshots";
 import { type UserStorage, createUserStorage, userLoggingConfig } from "./users";
 import { type WorkerStorage, createWorkerStorage, workerLoggingConfig } from "./workers";
 import { type EmployerStorage, createEmployerStorage, employerLoggingConfig } from "./employers/employers";
@@ -254,6 +255,7 @@ export interface IStorage {
   edlsCrews: EdlsCrewsStorage;
   edlsAssignments: EdlsAssignmentsStorage;
   workerEdls: WorkerEdlsStorage;
+  snapshots: SnapshotsStorage;
   authIdentities: AuthIdentitiesStorage;
   workerDispatchEligDenorm: WorkerDispatchEligDenormStorage;
   rawSql: RawSqlStorage;
@@ -358,6 +360,7 @@ export class DatabaseStorage implements IStorage {
   edlsCrews: EdlsCrewsStorage;
   edlsAssignments: EdlsAssignmentsStorage;
   workerEdls: WorkerEdlsStorage;
+  snapshots: SnapshotsStorage;
   authIdentities: AuthIdentitiesStorage;
   workerDispatchEligDenorm: WorkerDispatchEligDenormStorage;
   rawSql: RawSqlStorage;
@@ -577,6 +580,7 @@ export class DatabaseStorage implements IStorage {
     this.edlsCrews = withStorageLogging(createEdlsCrewsStorage(), edlsCrewsLoggingConfig);
     this.edlsAssignments = withStorageLogging(createEdlsAssignmentsStorage(), edlsAssignmentsLoggingConfig);
     this.workerEdls = withStorageLogging(createWorkerEdlsStorage(), workerEdlsLoggingConfig);
+    this.snapshots = withStorageLogging(createSnapshotsStorage(), snapshotsLoggingConfig);
     this.authIdentities = createAuthIdentitiesStorage();
     this.workerDispatchEligDenorm = createWorkerDispatchEligDenormStorage();
     this.rawSql = createRawSqlStorage();

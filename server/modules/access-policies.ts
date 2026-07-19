@@ -269,6 +269,7 @@ export function registerAccessPolicyRoutes(app: Express) {
         grievance: 'staff',
         grievanceTimelineTemplate: 'admin',
         contract: 'staff',
+        edls_sheet: 'edls.sheet.view',
       };
       const basePolicy = entityPolicyMap[entityType] || 'authenticated';
       const baseAccessResult = await checkAccess(basePolicy, context.user, resolvedEntityId);

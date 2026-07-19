@@ -107,6 +107,7 @@ import { registerT631ClientFetchRoutes } from "./modules/sitespecific/t631/clien
 import { registerFreemanSecondShiftRoutes } from "./modules/sitespecific/freeman/second-shift";
 import { registerFreemanCrewleadsRoutes } from "./modules/sitespecific/freeman/crewleads";
 import { registerEdlsSheetsRoutes } from "./modules/edls/sheets";
+import { registerSnapshotsRoutes } from "./modules/snapshots";
 import { registerEdlsTosRoutes } from "./modules/edls/tos";
 import { registerEdlsTasksRoutes } from "./modules/edls/tasks";
 import { registerWorkerEdlsRoutes } from "./modules/edls/workers";
@@ -1738,6 +1739,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Register HTA routes
   registerHtaRoutes(app, requireAuth, requirePermission);
   registerGbhetPensionRoutes(app, requireAuth, requirePermission);
+
+  // Register generic snapshots routes
+  registerSnapshotsRoutes(app, requireAuth);
 
   // Register EDLS routes
   registerEdlsSheetsRoutes(app, requireAuth, requirePermission);

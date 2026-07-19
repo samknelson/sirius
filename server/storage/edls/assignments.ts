@@ -20,6 +20,7 @@ import { getClient, runInTransaction } from "../transaction-context";
 import { createUnifiedOptionsStorage } from "../unified-options";
 import { createEdlsCrewsStorage } from "./crews";
 import { isComponentEnabledSync } from "../../services/component-cache";
+import type { SnapshotNode } from "@shared/snapshots";
 
 /**
  * The dispatch_job_group table is owned by the `dispatch.job_group`
@@ -173,6 +174,12 @@ export interface EdlsAssignmentsStorage {
   getMemberStatusSummaryByYmd(ymd: string): Promise<MemberStatusSummaryRow[]>;
   getAssignmentsForWorker(workerId: string, filters?: AssignmentForWorkerFilters): Promise<AssignmentForWorker[]>;
   getAssignmentsForWorkerIds(workerIds: string[], filters?: AssignmentForWorkerFilters): Promise<Map<string, AssignmentForWorker[]>>;
+  /**
+   * Snapshot export: versioned assignment bundles (worker captured as a
+   * rendered stub, including member status for the given industry), grouped
+   * by crew id. See `shared/snapshots.ts` for the bundle contract.
+   */
+  exportBySheetId(sheetId: string, industryId?: string | null): Promise<Map<string, SnapshotNode[]>>;
 }
 
 async function sortAssignmentsByClassification(
@@ -246,6 +253,17 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
       }));
 
       return sortAssignmentsByClassification(unsortedAssignments);
+    },
+
+    async exportBySheetId(sheetId: string, industryId?: string | null): Promise<Map<string, SnapshotNode[]>> {
+      const assignments = await this.getBySheetId(sheetId, industryId ?? null);
+      const byCrewId = new Map<string, SnapshotNode[]>();
+      for (const assignment of assignments) {
+        const nodes = byCrewId.get(assignment.crewId) ?? [];
+        nodes.push({ version: 1, data: assignment });
+        byCrewId.set(assignment.crewId, nodes);
+      }
+      return byCrewId;
     },
 
     async getBySheetId(sheetId: string, industryId?: string | null): Promise<EdlsAssignmentWithWorker[]> {

@@ -399,7 +399,10 @@ export const edlsSheetTabTree: HierarchicalTab[] = [
   { id: 'edit', label: 'Edit', hrefTemplate: '/edls/sheet/{id}/edit', policyId: 'edls.sheet.edit', component: 'edls' },
   { id: 'manage', label: 'Manage', hrefTemplate: '/edls/sheet/{id}/manage', policyId: 'edls.sheet.manage', component: 'edls' },
   { id: 'assignments', label: 'Assignments', hrefTemplate: '/edls/sheet/{id}/assignments', policyId: 'edls.sheet.edit', component: 'edls' },
-  { id: 'logs', label: 'Logs', hrefTemplate: '/edls/sheet/{id}/logs', policyId: 'edls.coordinator', component: 'edls' },
+  { id: 'logs', label: 'Logs', hrefTemplate: '/edls/sheet/{id}/logs', policyId: 'edls.coordinator', component: 'edls', children: [
+    { id: 'activity', label: 'Activity', hrefTemplate: '/edls/sheet/{id}/logs', policyId: 'edls.coordinator', component: 'edls' },
+    { id: 'snapshots', label: 'Snapshots', hrefTemplate: '/edls/sheet/{id}/logs/snapshots', policyId: 'edls.sheet.view', component: 'edls' },
+  ] },
 ];
 
 /**

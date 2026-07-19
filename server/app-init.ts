@@ -38,6 +38,7 @@ import { initializeEventNotifierPluginSystem } from "./plugins/event-notifier";
 import { initializeWizardPluginSystem } from "./plugins/wizards";
 import { initializeMenuPluginSystem } from "./plugins/menu";
 import { initWorkerBanNotifications } from "./services/worker-ban-notifications";
+import { initSnapshotCapture } from "./services/snapshots/capture";
 import { initDispatchNotifications } from "./services/dispatch/notifications";
 import "@shared/access-policies/loader";
 import { registerEntityAccessModule } from "./modules/entity-access";
@@ -316,6 +317,7 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
 
   // Initialize worker ban notifications
   initWorkerBanNotifications();
+  initSnapshotCapture();
   logger.info("Worker ban notifications initialized", { source: "startup" });
 
   // Initialize dispatch notifications

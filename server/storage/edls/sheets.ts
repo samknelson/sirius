@@ -26,6 +26,7 @@ import { eventBus, EventType } from "../../services/event-bus";
 import { logger } from "../../logger";
 import { storage } from "../index";
 import { isComponentEnabledSync } from "../../services/component-cache";
+import type { SnapshotNode } from "@shared/snapshots";
 
 /**
  * The dispatch_job_group table is owned by the `dispatch.job_group`
@@ -144,6 +145,13 @@ export interface EdlsSheetsStorage {
    */
   update(id: string, sheet: Partial<InsertEdlsSheet>, crews?: CrewInput[]): Promise<EdlsSheetWithCrews | undefined>;
   delete(id: string): Promise<boolean>;
+  /**
+   * Snapshot export: a self-contained, versioned bundle of the sheet with
+   * its relations rendered as ref stubs and its crews (each with their
+   * assignments) nested as child bundles. Returns undefined if the sheet
+   * does not exist. See `shared/snapshots.ts` for the bundle contract.
+   */
+  export(id: string): Promise<SnapshotNode | undefined>;
 }
 
 /**
@@ -309,6 +317,28 @@ export function createEdlsSheetsStorage(): EdlsSheetsStorage {
       const client = getClient();
       const [sheet] = await client.select().from(edlsSheets).where(eq(edlsSheets.id, id));
       return sheet || undefined;
+    },
+
+    async export(id: string): Promise<SnapshotNode | undefined> {
+      const sheet = await this.getWithRelations(id);
+      if (!sheet) return undefined;
+
+      // Member status is industry-scoped; resolve the sheet employer's
+      // industry the same way the live assignments endpoint does.
+      let industryId: string | null = null;
+      if (sheet.employerId) {
+        const employer = await storage.employers.getEmployer(sheet.employerId);
+        industryId = employer?.industryId ?? null;
+      }
+
+      const crews = await storage.edlsCrews.exportBySheetId(id, industryId);
+      return {
+        version: 1,
+        data: {
+          ...sheet,
+          crews,
+        },
+      };
     },
 
     async getWithRelations(id: string): Promise<EdlsSheetWithRelations | undefined> {
