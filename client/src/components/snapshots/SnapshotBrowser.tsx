@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, Camera, User } from "lucide-react";
+import { ChevronLeft, ChevronRight, Camera, User, List } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -29,9 +29,11 @@ function formatTimestamp(iso: string): string {
 }
 
 /**
- * Generic, type-blind snapshot browser: lists an entity's snapshots
- * (newest first) with next/previous navigation and renders the selected
- * snapshot through the client renderer registry for its entity type.
+ * Generic, type-blind snapshot browser. Lands on a clickable list of the
+ * entity's snapshots (newest first, showing timestamp / author / label);
+ * selecting one opens the detail view with older/newer navigation and a
+ * back-to-list link. The selected snapshot renders through the client
+ * renderer registry for its entity type.
  */
 export function SnapshotBrowser({ entityType, entityId }: SnapshotBrowserProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -40,17 +42,16 @@ export function SnapshotBrowser({ entityType, entityId }: SnapshotBrowserProps) 
     queryKey: ["/api/snapshots", entityType, entityId],
   });
 
-  // Reset selection when the target entity changes.
+  // Reset to the list view when the target entity changes.
   useEffect(() => {
     setSelectedId(null);
   }, [entityType, entityId]);
 
-  // Default to the newest snapshot once the list arrives; also recover if
-  // the selected snapshot is no longer present in the loaded list.
+  // If the selected snapshot disappears from the list (e.g. retention
+  // cleanup), fall back to the list view rather than a blank detail.
   useEffect(() => {
-    if (!snapshots || snapshots.length === 0) return;
-    if (!selectedId || !snapshots.some((s) => s.id === selectedId)) {
-      setSelectedId(snapshots[0].id);
+    if (selectedId && snapshots && !snapshots.some((s) => s.id === selectedId)) {
+      setSelectedId(null);
     }
   }, [snapshots, selectedId]);
 
@@ -92,27 +93,83 @@ export function SnapshotBrowser({ entityType, entityId }: SnapshotBrowserProps) 
     );
   }
 
-  // Snapshots are newest-first: "previous" moves to an older snapshot.
-  const hasOlder = selectedIndex >= 0 && selectedIndex < snapshots.length - 1;
+  // List view (landing): clickable rows, newest first.
+  if (!selected) {
+    return (
+      <Card>
+        <CardContent className="p-0">
+          <ul className="divide-y divide-border" data-testid="list-snapshots">
+            {snapshots.map((snapshot) => (
+              <li key={snapshot.id}>
+                <button
+                  type="button"
+                  onClick={() => setSelectedId(snapshot.id)}
+                  className="w-full flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-left hover:bg-muted/50 active:bg-muted transition-colors"
+                  data-testid={`row-snapshot-${snapshot.id}`}
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <Camera className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-medium" data-testid={`text-snapshot-timestamp-${snapshot.id}`}>
+                          {formatTimestamp(snapshot.createdAt)}
+                        </span>
+                        {snapshot.label && (
+                          <Badge variant="secondary" data-testid={`badge-snapshot-label-${snapshot.id}`}>
+                            {snapshot.label}
+                          </Badge>
+                        )}
+                      </div>
+                      {snapshot.authorName && (
+                        <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                          <User className="h-3 w-3" />
+                          <span data-testid={`text-snapshot-author-${snapshot.id}`}>
+                            {snapshot.authorName}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // Detail view. Snapshots are newest-first: "older" moves down the list.
+  const hasOlder = selectedIndex < snapshots.length - 1;
   const hasNewer = selectedIndex > 0;
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setSelectedId(null)}
+            data-testid="button-snapshot-back-to-list"
+          >
+            <List className="h-4 w-4 mr-1" />
+            List
+          </Button>
           <Camera className="h-5 w-5 text-muted-foreground shrink-0" />
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="font-medium" data-testid="text-snapshot-timestamp">
-                {selected ? formatTimestamp(selected.createdAt) : ""}
+                {formatTimestamp(selected.createdAt)}
               </span>
-              {selected?.label && (
+              {selected.label && (
                 <Badge variant="secondary" data-testid="badge-snapshot-label">
                   {selected.label}
                 </Badge>
               )}
             </div>
-            {selected?.authorName && (
+            {selected.authorName && (
               <div className="flex items-center gap-1 text-sm text-muted-foreground">
                 <User className="h-3 w-3" />
                 <span data-testid="text-snapshot-author">{selected.authorName}</span>
