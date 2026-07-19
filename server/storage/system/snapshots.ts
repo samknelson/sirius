@@ -9,6 +9,7 @@ export interface SnapshotsStorage {
   /** Metadata only (no data payload), newest first. */
   listByEntity(entityType: string, entityId: string): Promise<SnapshotMeta[]>;
   get(id: string): Promise<Snapshot | undefined>;
+  delete(id: string): Promise<boolean>;
 }
 
 export function createSnapshotsStorage(): SnapshotsStorage {
@@ -44,6 +45,12 @@ export function createSnapshotsStorage(): SnapshotsStorage {
       const client = getClient();
       const [row] = await client.select().from(snapshots).where(eq(snapshots.id, id));
       return row || undefined;
+    },
+
+    async delete(id: string): Promise<boolean> {
+      const client = getClient();
+      const result = await client.delete(snapshots).where(eq(snapshots.id, id)).returning();
+      return result.length > 0;
     },
   };
 }

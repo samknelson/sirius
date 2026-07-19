@@ -5,7 +5,7 @@ import {
   type WorkerDispatchEba, 
   type InsertWorkerDispatchEba
 } from "@shared/schema";
-import { eq, and, inArray, lt } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { type StorageLoggingConfig } from "../middleware/logging";
 import { eventBus, EventType } from "../../services/event-bus";
 
@@ -16,7 +16,6 @@ export interface WorkerDispatchEbaStorage {
   get(id: string): Promise<WorkerDispatchEba | undefined>;
   getByWorker(workerId: string): Promise<WorkerDispatchEba[]>;
   syncDatesForWorker(workerId: string, dates: string[]): Promise<WorkerDispatchEba[]>;
-  findExpired(daysAgo: number): Promise<WorkerDispatchEba[]>;
   delete(id: string): Promise<boolean>;
 }
 
@@ -122,16 +121,6 @@ export function createWorkerDispatchEbaStorage(): WorkerDispatchEbaStorage {
       return result;
     },
 
-    async findExpired(daysAgo: number) {
-      const client = getClient();
-      const cutoffDate = new Date();
-      cutoffDate.setDate(cutoffDate.getDate() - daysAgo);
-      const cutoffYmd = `${cutoffDate.getFullYear()}-${String(cutoffDate.getMonth() + 1).padStart(2, '0')}-${String(cutoffDate.getDate()).padStart(2, '0')}`;
-      return await client
-        .select()
-        .from(workerDispatchEba)
-        .where(lt(workerDispatchEba.ymd, cutoffYmd));
-    },
 
     async delete(id: string) {
       const client = getClient();

@@ -11,7 +11,6 @@ export const validate = createNoopValidator();
 export interface FloodStorage {
   recordFloodEvent(event: string, identifier: string, expiresAt: Date): Promise<void>;
   countEventsInWindow(event: string, identifier: string, windowStart: Date): Promise<number>;
-  cleanupExpired(): Promise<number>;
   listFloodEvents(eventType?: string): Promise<Flood[]>;
   getDistinctEventTypes(): Promise<string[]>;
   deleteFloodEvent(id: string): Promise<void>;
@@ -44,17 +43,6 @@ export function createFloodStorage(): FloodStorage {
         );
       
       return result[0]?.count ?? 0;
-    },
-
-    async cleanupExpired(): Promise<number> {
-      const client = getClient();
-      const now = new Date();
-      const result = await client
-        .delete(flood)
-        .where(sql`${flood.expiresAt} < ${now}`)
-        .returning();
-      
-      return result.length;
     },
 
     async listFloodEvents(eventType?: string): Promise<Flood[]> {

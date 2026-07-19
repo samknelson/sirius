@@ -6,7 +6,7 @@ import {
   type WorkerDispatchHfe, 
   type InsertWorkerDispatchHfe
 } from "@shared/schema";
-import { eq, lt } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { type StorageLoggingConfig } from "../middleware/logging";
 import { eventBus, EventType } from "../../services/event-bus";
 
@@ -40,7 +40,6 @@ export interface WorkerDispatchHfeStorage {
   create(hfe: InsertWorkerDispatchHfe): Promise<WorkerDispatchHfe>;
   update(id: string, hfe: Partial<InsertWorkerDispatchHfe>): Promise<WorkerDispatchHfe | undefined>;
   delete(id: string): Promise<boolean>;
-  findExpired(): Promise<WorkerDispatchHfe[]>;
 }
 
 async function getEmployerName(employerId: string): Promise<string> {
@@ -206,15 +205,6 @@ export function createWorkerDispatchHfeStorage(): WorkerDispatchHfeStorage {
       }
       
       return !!deleted;
-    },
-
-    async findExpired() {
-      const client = getClient();
-      const today = new Date().toISOString().split('T')[0];
-      return await client
-        .select()
-        .from(workerDispatchHfe)
-        .where(lt(workerDispatchHfe.holdUntil, today));
     }
   };
 }

@@ -12,6 +12,7 @@ import { captureRequestContext } from "./middleware/request-context";
 import { cronScheduler } from "./cron";
 import { initializeCronPluginSystem } from "./plugins/system/cron";
 import { initializeDenormPluginSystem } from "./plugins/system/denorm";
+import { initializeDataRetentionPluginSystem } from "./plugins/system/data-retention";
 import { bootstrapSingletonPluginConfigs } from "./plugins/_core";
 import { initDispatchSeniorityReset } from "./services/dispatch/seniority-reset";
 import { loadComponentCache } from "./services/component-cache";
@@ -339,6 +340,10 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
   // Register denorm plugins (kind + adapter + self-registering plugin imports)
   initializeDenormPluginSystem();
   logger.info("Denorm plugins registered", { source: "startup" });
+
+  // Register data-retention plugins (kind + adapter + self-registering plugin imports)
+  initializeDataRetentionPluginSystem();
+  logger.info("Data-retention plugins registered", { source: "startup" });
 
   // Register wizards as the sixth plugin kind (self-registering plugin imports)
   initializeWizardPluginSystem();
