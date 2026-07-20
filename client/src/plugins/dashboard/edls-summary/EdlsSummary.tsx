@@ -10,6 +10,8 @@ interface EdlsSummaryData {
   memberStatuses: string[];
   grid: Record<string, Record<string, number>>;
   demand: Record<string, number>;
+  unassigned: Record<string, number>;
+  unassignedTotal: number;
 }
 
 // Non-reserved statuses render before the Total column; Reserved is
@@ -59,7 +61,8 @@ export function EdlsSummary(_props: DashboardPluginProps) {
   );
 
   const hasDemand = !!data && Object.keys(data.demand ?? {}).length > 0;
-  const hasData = (data && data.memberStatuses.length > 0) || hasDemand;
+  const hasUnassigned = !!data && Object.keys(data.unassigned ?? {}).length > 0;
+  const hasData = (data && data.memberStatuses.length > 0) || hasDemand || hasUnassigned;
 
   const columnTotals: Record<string, number> = {};
   if (hasData) {
@@ -178,6 +181,9 @@ export function EdlsSummary(_props: DashboardPluginProps) {
                   >
                     {reservedColumn.label}
                   </th>
+                  <th className="text-center px-4 py-2 font-medium text-sm border-b bg-muted/50">
+                    Unassigned
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -211,6 +217,16 @@ export function EdlsSummary(_props: DashboardPluginProps) {
                       <td className="text-center px-4 py-2 text-sm tabular-nums border-b">
                         {reservedVal > 0 ? reservedVal : <span className="text-muted-foreground">—</span>}
                       </td>
+                      <td
+                        className="text-center px-4 py-2 text-sm tabular-nums border-b"
+                        data-testid={`cell-edls-unassigned-${ms.toLowerCase().replace(/\s+/g, "-")}`}
+                      >
+                        {(data.unassigned?.[ms] || 0) > 0 ? (
+                          data.unassigned[ms]
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </td>
                     </tr>
                   );
                 })}
@@ -231,6 +247,12 @@ export function EdlsSummary(_props: DashboardPluginProps) {
                     data-testid="cell-edls-total-reserved"
                   >
                     {columnTotals[reservedColumn.key] || 0}
+                  </td>
+                  <td
+                    className="text-center px-4 py-2 text-sm tabular-nums border-t"
+                    data-testid="cell-edls-unassigned-total"
+                  >
+                    {data?.unassignedTotal ?? 0}
                   </td>
                 </tr>
                 <tr className="bg-muted/40 font-medium" data-testid="row-edls-total-demand">
@@ -256,6 +278,12 @@ export function EdlsSummary(_props: DashboardPluginProps) {
                   >
                     <span className="text-muted-foreground">N/A</span>
                   </td>
+                  <td
+                    className="text-center px-4 py-2 text-sm border-t"
+                    data-testid="cell-edls-demand-unassigned"
+                  >
+                    <span className="text-muted-foreground">N/A</span>
+                  </td>
                 </tr>
                 <tr className="bg-muted/40 font-medium" data-testid="row-edls-variance">
                   <td className="px-4 py-2 text-sm border-t">Variance</td>
@@ -268,6 +296,7 @@ export function EdlsSummary(_props: DashboardPluginProps) {
                   >
                     {variance}
                   </td>
+                  <td className="px-4 py-2 border-t" />
                   <td className="px-4 py-2 border-t" />
                 </tr>
               </tfoot>
