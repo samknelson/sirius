@@ -9,6 +9,7 @@ import { useDashboardContent } from "../useDashboardContent";
 interface EdlsSummaryData {
   memberStatuses: string[];
   grid: Record<string, Record<string, number>>;
+  demand: Record<string, number>;
 }
 
 const sheetStatusColumns = [
@@ -55,7 +56,8 @@ export function EdlsSummary(_props: DashboardPluginProps) {
     { params: { ymd: selectedDate } },
   );
 
-  const hasData = data && data.memberStatuses.length > 0;
+  const hasDemand = !!data && Object.keys(data.demand ?? {}).length > 0;
+  const hasData = (data && data.memberStatuses.length > 0) || hasDemand;
 
   const columnTotals: Record<string, number> = {};
   if (hasData) {
@@ -67,6 +69,13 @@ export function EdlsSummary(_props: DashboardPluginProps) {
     }
   }
   const grandTotal = Object.values(columnTotals).reduce((s, v) => s + v, 0);
+
+  // Total Demand: slot counts per sheet status; reserved is always N/A and
+  // excluded from the demand grand total.
+  const demandTotal = sheetStatusColumns.reduce(
+    (sum, col) => (col.key === "reserved" ? sum : sum + (data?.demand?.[col.key] || 0)),
+    0,
+  );
 
   return (
     <Card data-testid="card-edls-summary">
@@ -198,6 +207,28 @@ export function EdlsSummary(_props: DashboardPluginProps) {
                   ))}
                   <td className="text-center px-4 py-2 text-sm tabular-nums border-t font-bold">
                     {grandTotal}
+                  </td>
+                </tr>
+                <tr className="bg-muted/40 font-medium" data-testid="row-edls-total-demand">
+                  <td className="px-4 py-2 text-sm border-t">Total Demand</td>
+                  {sheetStatusColumns.map((col) => (
+                    <td
+                      key={col.key}
+                      className="text-center px-4 py-2 text-sm tabular-nums border-t"
+                      data-testid={`cell-edls-demand-${col.key}`}
+                    >
+                      {col.key === "reserved" ? (
+                        <span className="text-muted-foreground">N/A</span>
+                      ) : (
+                        data?.demand?.[col.key] || 0
+                      )}
+                    </td>
+                  ))}
+                  <td
+                    className="text-center px-4 py-2 text-sm tabular-nums border-t font-semibold"
+                    data-testid="cell-edls-demand-total"
+                  >
+                    {demandTotal}
                   </td>
                 </tr>
               </tfoot>

@@ -19,7 +19,7 @@ export const edlsSummaryPlugin: DashboardPlugin = {
       });
     }
 
-    const result = await ctx.storage.readOnly.query(async (client) => {
+    const { assignmentRows, demandRows } = await ctx.storage.readOnly.query(async (client) => {
       const rows = await client.execute(sql`
         SELECT
           COALESCE(oms.name, 'Unassigned') AS member_status,
@@ -44,19 +44,35 @@ export const edlsSummaryPlugin: DashboardPlugin = {
         GROUP BY oms.name, oms.sequence, s.status
         ORDER BY oms.sequence NULLS LAST, oms.name
       `);
-      return (rows.rows as Array<Record<string, unknown>>).map((row) => ({
-        memberStatus: row.member_status as string,
-        msSequence: row.ms_sequence === null ? null : Number(row.ms_sequence),
-        sheetStatus: row.sheet_status as string,
-        workerCount: Number(row.worker_count ?? 0),
-      }));
+      const demand = await client.execute(sql`
+        SELECT
+          s.status AS sheet_status,
+          SUM(c.worker_count)::int AS slot_count
+        FROM edls_crews c
+        JOIN edls_sheets s ON s.id = c.sheet_id
+        WHERE s.ymd = ${ymd}
+          AND s.status != 'trash'
+        GROUP BY s.status
+      `);
+      return {
+        assignmentRows: (rows.rows as Array<Record<string, unknown>>).map((row) => ({
+          memberStatus: row.member_status as string,
+          msSequence: row.ms_sequence === null ? null : Number(row.ms_sequence),
+          sheetStatus: row.sheet_status as string,
+          workerCount: Number(row.worker_count ?? 0),
+        })),
+        demandRows: (demand.rows as Array<Record<string, unknown>>).map((row) => ({
+          sheetStatus: row.sheet_status as string,
+          slotCount: Number(row.slot_count ?? 0),
+        })),
+      };
     });
 
     const memberStatuses: string[] = [];
     const seenStatuses = new Set<string>();
     const grid: Record<string, Record<string, number>> = {};
 
-    for (const row of result) {
+    for (const row of assignmentRows) {
       const ms = row.memberStatus;
       const sheetStatus = row.sheetStatus;
       const count = row.workerCount;
@@ -68,7 +84,12 @@ export const edlsSummaryPlugin: DashboardPlugin = {
       grid[ms][sheetStatus] = count;
     }
 
-    return { memberStatuses, grid };
+    const demand: Record<string, number> = {};
+    for (const row of demandRows) {
+      demand[row.sheetStatus] = row.slotCount;
+    }
+
+    return { memberStatuses, grid, demand };
   },
 
   client: {
