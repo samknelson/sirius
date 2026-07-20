@@ -25,7 +25,7 @@ registerCronPlugin({
     singleton: true,
   },
   defaultSchedule: "45 4 * * *", // Daily at 4:45 AM, after the WMB/denorm crons
-  defaultEnabled: false,
+  defaultEnabled: true,
 
   async execute(context: CronJobContext): Promise<CronJobResult> {
     if (!(await storage.baoCobraCases.tableExists())) {
