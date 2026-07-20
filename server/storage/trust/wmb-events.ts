@@ -48,6 +48,8 @@ export interface WorkerScanResultRow {
  */
 export interface TrustWmbEventsStorage {
   listByWorkerAndType(workerId: string, eventType: string): Promise<TrustWmbEvent[]>;
+  /** All rows of an event type across all workers (reconciliation reads). */
+  listAllByType(eventType: string): Promise<TrustWmbEvent[]>;
   /**
    * Converge the worker's rows of `eventType` to exactly `events`: delete
    * rows not in the desired set, upsert the rest (data refreshed on
@@ -71,6 +73,14 @@ export function createTrustWmbEventsStorage(): TrustWmbEventsStorage {
         .select()
         .from(trustWmbEvents)
         .where(and(eq(trustWmbEvents.workerId, workerId), eq(trustWmbEvents.eventType, eventType)));
+    },
+
+    async listAllByType(eventType: string): Promise<TrustWmbEvent[]> {
+      const client = getClient();
+      return client
+        .select()
+        .from(trustWmbEvents)
+        .where(eq(trustWmbEvents.eventType, eventType));
     },
 
     async replaceForWorkerAndType(workerId: string, eventType: string, events: TrustWmbEventInput[]): Promise<void> {

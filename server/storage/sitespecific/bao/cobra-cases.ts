@@ -86,6 +86,15 @@ export interface BaoCobraCasesStorage {
     coveredPersonWorkerId: string,
   ): Promise<BaoCobraCase[]>;
   /**
+   * ALL cases (open or closed) for a covered person with the given
+   * cobra_effective_ymd, each with its status's closed flag — reconciliation
+   * uses this to decide create vs merge vs skip for a termination month.
+   */
+  listForCoveredPersonEffective(
+    coveredPersonWorkerId: string,
+    effectiveYmd: string,
+  ): Promise<Array<{ theCase: BaoCobraCase; statusClosed: boolean }>>;
+  /**
    * Active (non-closed-status) cases where the worker is the covered person,
    * enriched with display names — powers the worker-facing COBRA screen.
    */
@@ -407,6 +416,27 @@ export function createBaoCobraCasesStorage(): BaoCobraCasesStorage {
           ),
         );
       return rows.map((r) => r.theCase);
+    },
+
+    async listForCoveredPersonEffective(
+      coveredPersonWorkerId: string,
+      effectiveYmd: string,
+    ): Promise<Array<{ theCase: BaoCobraCase; statusClosed: boolean }>> {
+      if (!(await this.tableExists())) {
+        throw new Error("COMPONENT_TABLE_NOT_FOUND");
+      }
+      const client = getClient();
+      const rows = await client
+        .select({ theCase: cases, statusClosed: optionsBaoCobraStatus.closed })
+        .from(cases)
+        .leftJoin(optionsBaoCobraStatus, eq(optionsBaoCobraStatus.id, cases.statusId))
+        .where(
+          and(
+            eq(cases.coveredPersonWorkerId, coveredPersonWorkerId),
+            eq(cases.cobraEffectiveYmd, effectiveYmd),
+          ),
+        );
+      return rows.map((r) => ({ theCase: r.theCase, statusClosed: Boolean(r.statusClosed) }));
     },
 
     async listActiveCasesForCoveredPersonWithDetails(

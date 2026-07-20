@@ -22,6 +22,7 @@ const ENROLLMENT_TYPE_LABELS: Record<EnrollmentType, string> = {
   first_time: "First-Time",
   life_event: "Life Event",
   open_enrollment: "Open Enrollment",
+  cobra: "COBRA",
 };
 
 function isEnrollmentType(value: string | null): value is EnrollmentType {

@@ -383,6 +383,28 @@ export function registerBaoCobraRoutes(
     return null;
   }
 
+  app.post(
+    "/api/sitespecific/bao/cobra/cases/reconcile",
+    requireAuth,
+    componentMiddleware,
+    requireAccess("staff"),
+    async (_req, res) => {
+      try {
+        if (!(await casesStorage.tableExists())) {
+          return res.status(503).json({ message: CASES_TABLE_MISSING_MESSAGE });
+        }
+        const { reconcileCobraCases } = await import(
+          "../../../services/bao-cobra-case-reconcile"
+        );
+        const summary = await reconcileCobraCases();
+        res.json(summary);
+      } catch (error) {
+        console.error("Failed to reconcile COBRA cases:", error);
+        res.status(500).json({ message: "Failed to reconcile COBRA cases" });
+      }
+    },
+  );
+
   app.get(
     "/api/sitespecific/bao/cobra/cases",
     requireAuth,

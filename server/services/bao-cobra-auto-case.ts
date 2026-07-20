@@ -112,8 +112,13 @@ interface AutoCaseInput {
   provenance: Record<string, unknown>;
 }
 
-/** Create a case, treating invariant violations as idempotent skips. */
-async function createCaseIdempotent(input: AutoCaseInput): Promise<void> {
+/**
+ * Create a case, treating invariant violations as idempotent skips.
+ * Returns what happened so callers (reconciliation) can report counts.
+ */
+async function createCaseIdempotent(
+  input: AutoCaseInput,
+): Promise<"created" | "skipped_invariant"> {
   const deadlines = computeCobraDeadlines(input.source, input.cobraEffectiveYmd, null);
   const entry: InsertBaoCobraCase = {
     source: input.source,
@@ -143,6 +148,7 @@ async function createCaseIdempotent(input: AutoCaseInput): Promise<void> {
       subscriberWorkerId: input.subscriberWorkerId,
       cobraEffectiveYmd: input.cobraEffectiveYmd,
     });
+    return "created";
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     if (msg === "ACTIVE_CASE_EXISTS" || msg === "ACTIVE_BENEFITS_EXIST") {
@@ -152,7 +158,7 @@ async function createCaseIdempotent(input: AutoCaseInput): Promise<void> {
         source: input.source,
         coveredPersonWorkerId: input.coveredPersonWorkerId,
       });
-      return;
+      return "skipped_invariant";
     }
     throw err;
   }
@@ -182,7 +188,203 @@ async function mapRelationsToDependents(
 }
 
 // ---------------------------------------------------------------------------
-// 1. WMB terminate listener
+// 1. WMB termination core (shared by the live listener and reconciliation)
+// ---------------------------------------------------------------------------
+
+/** One (worker, month) termination group: the med/dental benefits lost. */
+export interface WmbTerminationGroup {
+  subscriberWorkerId: string;
+  year: number;
+  month: number;
+  benefits: Array<{
+    benefitId: string;
+    benefitName?: string | null;
+    kind: "medical" | "dental";
+  }>;
+  /** Union of failed eligibility plugins across the group's scans. */
+  failedPlugins: Array<{ pluginKey: string; reason: string | null }>;
+  /** Provenance label: "wmb_scan" (live) or "reconcile". */
+  trigger: string;
+}
+
+export interface TerminationCaseOutcome {
+  /** False when no failed plugin is configured to trigger COBRA. */
+  qualified: boolean;
+  created: number;
+  merged: number;
+  skippedExisting: number;
+  skippedInvariant: number;
+}
+
+/**
+ * Open (or merge into) COBRA cases for one (worker, month) termination
+ * group: ONE case per covered person per month carrying both the medical
+ * and dental benefit lost. Covered persons are the subscriber plus every
+ * dependent on the election active at the end of the previous month.
+ *
+ * Per covered person:
+ * - an existing case for that person + effective month is reused: if it is
+ *   open, un-elected, and missing one of the group's benefits, the missing
+ *   benefit is back-filled (merged); otherwise it is left alone (skipped).
+ * - otherwise a new case is created (invariant violations = idempotent skip).
+ *
+ * `dryRun` reports what would happen without writing.
+ */
+export async function openCobraCasesForTermination(
+  group: WmbTerminationGroup,
+  opts: { dryRun?: boolean } = {},
+): Promise<TerminationCaseOutcome> {
+  const outcome: TerminationCaseOutcome = {
+    qualified: true,
+    created: 0,
+    merged: 0,
+    skippedExisting: 0,
+    skippedInvariant: 0,
+  };
+  if (group.benefits.length === 0) return outcome;
+
+  const config = await loadTriggerConfig();
+
+  // Qualification: at least one failed plugin is configured (or defaults)
+  // to trigger COBRA.
+  const triggering = group.failedPlugins.filter((r) => {
+    const name = eligibilityPluginRegistry.get(r.pluginKey)?.metadata.name;
+    return resolveTriggerForPlugin(config, r.pluginKey, name).trigger;
+  });
+  if (triggering.length === 0) {
+    outcome.qualified = false;
+    logger.info("WMB termination did not qualify for COBRA", {
+      service: SERVICE_NAME,
+      workerId: group.subscriberWorkerId,
+      year: group.year,
+      month: group.month,
+      failedPlugins: group.failedPlugins.map((r) => r.pluginKey),
+    });
+    return outcome;
+  }
+
+  const { openStatusId } = await resolveStatuses();
+  if (!openStatusId) {
+    logger.warn("No open COBRA status configured; cannot auto-create case", {
+      service: SERVICE_NAME,
+    });
+    return outcome;
+  }
+
+  // Qualifying event: the first triggering plugin with a mapped event.
+  let qualifyingEventId: string | null = null;
+  for (const r of triggering) {
+    const name = eligibilityPluginRegistry.get(r.pluginKey)?.metadata.name;
+    const resolved = resolveTriggerForPlugin(config, r.pluginKey, name);
+    if (resolved.qualifyingEventId) {
+      qualifyingEventId = resolved.qualifyingEventId;
+      break;
+    }
+  }
+
+  const medicalBenefitLostId =
+    group.benefits.find((b) => b.kind === "medical")?.benefitId ?? null;
+  const dentalBenefitLostId =
+    group.benefits.find((b) => b.kind === "dental")?.benefitId ?? null;
+  const cobraEffectiveYmd = `${group.year}-${String(group.month).padStart(2, "0")}-01`;
+  const provenance = {
+    trigger: group.trigger,
+    benefits: group.benefits.map((b) => ({
+      benefitId: b.benefitId,
+      benefitName: b.benefitName ?? null,
+      kind: b.kind,
+    })),
+    month: group.month,
+    year: group.year,
+    failedPlugins: group.failedPlugins,
+  };
+
+  /** Reuse/merge an existing case for the person+month, or create one. */
+  const upsertForPerson = async (
+    coveredPersonWorkerId: string,
+    relationship: string | null,
+    extraProvenance: Record<string, unknown> = {},
+  ): Promise<void> => {
+    const existing = await storage.baoCobraCases.listForCoveredPersonEffective(
+      coveredPersonWorkerId,
+      cobraEffectiveYmd,
+    );
+    if (existing.length > 0) {
+      // Merge: back-fill a missing benefit onto an open, un-elected case.
+      const mergeable = existing.find(
+        (c) => !c.statusClosed && !c.theCase.electionMadeYmd,
+      );
+      const patch: Partial<InsertBaoCobraCase> = {};
+      if (mergeable) {
+        if (medicalBenefitLostId && !mergeable.theCase.medicalBenefitLostId) {
+          patch.medicalBenefitLostId = medicalBenefitLostId;
+        }
+        if (dentalBenefitLostId && !mergeable.theCase.dentalBenefitLostId) {
+          patch.dentalBenefitLostId = dentalBenefitLostId;
+        }
+      }
+      if (mergeable && Object.keys(patch).length > 0) {
+        if (!opts.dryRun) {
+          await storage.baoCobraCases.update(mergeable.theCase.id, patch);
+          logger.info("Merged benefit onto existing COBRA case", {
+            service: SERVICE_NAME,
+            caseId: mergeable.theCase.id,
+            coveredPersonWorkerId,
+            cobraEffectiveYmd,
+            patch,
+          });
+        }
+        outcome.merged++;
+      } else {
+        outcome.skippedExisting++;
+      }
+      return;
+    }
+
+    if (opts.dryRun) {
+      outcome.created++;
+      return;
+    }
+    const result = await createCaseIdempotent({
+      source: "wmb_event",
+      coveredPersonWorkerId,
+      subscriberWorkerId: group.subscriberWorkerId,
+      relationship,
+      cobraEffectiveYmd,
+      qualifyingEventId,
+      medicalBenefitLostId,
+      dentalBenefitLostId,
+      statusId: openStatusId,
+      provenance: { ...provenance, ...extraProvenance },
+    });
+    if (result === "created") outcome.created++;
+    else outcome.skippedInvariant++;
+  };
+
+  // Subscriber's own case.
+  await upsertForPerson(group.subscriberWorkerId, "self");
+
+  // One case per covered dependent on the election that was active when
+  // coverage ended — as of the last day before the termination month, so
+  // replays/backfills target the dependents actually covered at the time.
+  const effectiveDate = new Date(Date.UTC(group.year, group.month - 1, 1));
+  effectiveDate.setUTCDate(0); // last day of the previous month
+  const asOfYmd = effectiveDate.toISOString().slice(0, 10);
+  const election = await storage.workerTrustElections.getActiveByWorkerAsOf(
+    group.subscriberWorkerId,
+    asOfYmd,
+  );
+  const relationIds = election?.relationshipIds ?? [];
+  const dependents = await mapRelationsToDependents(group.subscriberWorkerId, relationIds);
+  for (const dep of dependents) {
+    await upsertForPerson(dep.workerId, dep.relationship, { relationId: dep.relationId });
+  }
+
+  return outcome;
+}
+
+// ---------------------------------------------------------------------------
+// 1b. WMB terminate listener
 // ---------------------------------------------------------------------------
 
 async function handleWmbScanWorkerCompleted(
@@ -190,113 +392,49 @@ async function handleWmbScanWorkerCompleted(
 ): Promise<void> {
   if (!componentActive()) return;
 
-  // Terminations executed by the "continue" scan (benefit rows deleted).
+  // A termination is ANY failed "continue" scan — the benefit was covered
+  // the previous month and the worker did not qualify to keep it, whether
+  // or not a coverage row existed to delete (aligned with the
+  // trust-wmb-terminate denorm plugin; `action === "delete"` is kept as a
+  // legacy fallback for payloads that predate the `eligible` field).
   const terminations = payload.actions.filter(
-    (a) => a.scanType === "continue" && a.action === "delete" && a.executed !== false,
+    (a) =>
+      a.scanType === "continue" &&
+      (a.eligible === false || (a.action === "delete" && a.executed !== false)),
   );
   if (terminations.length === 0) return;
 
-  const config = await loadTriggerConfig();
-
-  for (const action of terminations) {
-    try {
+  try {
+    // Group the month's terminated med/dental benefits into ONE case per
+    // covered person (medical + dental combined).
+    const benefits: WmbTerminationGroup["benefits"] = [];
+    const failedByKey = new Map<string, { pluginKey: string; reason: string | null }>();
+    for (const action of terminations) {
       const kind = await storage.baoCobraCases.classifyMedicalDentalBenefit(action.benefitId);
       if (!kind) continue; // COBRA only applies to medical/dental coverage.
-
-      // Failed plugins are the termination reasons. Qualification: at least
-      // one failed plugin is configured (or defaults) to trigger COBRA.
-      const failed = action.pluginResults.filter((r) => !r.eligible);
-      const triggering = failed.filter((r) => {
-        const name = eligibilityPluginRegistry.get(r.pluginKey)?.metadata.name;
-        return resolveTriggerForPlugin(config, r.pluginKey, name).trigger;
-      });
-      if (triggering.length === 0) {
-        logger.info("WMB termination did not qualify for COBRA", {
-          service: SERVICE_NAME,
-          workerId: payload.workerId,
-          benefitId: action.benefitId,
-          failedPlugins: failed.map((r) => r.pluginKey),
-        });
-        continue;
-      }
-
-      const { openStatusId } = await resolveStatuses();
-      if (!openStatusId) {
-        logger.warn("No open COBRA status configured; cannot auto-create case", {
-          service: SERVICE_NAME,
-        });
-        return;
-      }
-
-      // Qualifying event: the first triggering plugin with a mapped event.
-      let qualifyingEventId: string | null = null;
-      for (const r of triggering) {
-        const name = eligibilityPluginRegistry.get(r.pluginKey)?.metadata.name;
-        const resolved = resolveTriggerForPlugin(config, r.pluginKey, name);
-        if (resolved.qualifyingEventId) {
-          qualifyingEventId = resolved.qualifyingEventId;
-          break;
+      benefits.push({ benefitId: action.benefitId, benefitName: action.benefitName, kind });
+      for (const r of action.pluginResults.filter((p) => !p.eligible)) {
+        if (!failedByKey.has(r.pluginKey)) {
+          failedByKey.set(r.pluginKey, { pluginKey: r.pluginKey, reason: r.reason ?? null });
         }
       }
-
-      const cobraEffectiveYmd = `${payload.year}-${String(payload.month).padStart(2, "0")}-01`;
-      const provenance = {
-        trigger: "wmb_scan",
-        benefitId: action.benefitId,
-        benefitName: action.benefitName,
-        month: payload.month,
-        year: payload.year,
-        failedPlugins: failed.map((r) => ({ pluginKey: r.pluginKey, reason: r.reason ?? null })),
-      };
-
-      // Subscriber's own case.
-      await createCaseIdempotent({
-        source: "wmb_event",
-        coveredPersonWorkerId: payload.workerId,
-        subscriberWorkerId: payload.workerId,
-        relationship: "self",
-        cobraEffectiveYmd,
-        qualifyingEventId,
-        medicalBenefitLostId: kind === "medical" ? action.benefitId : null,
-        dentalBenefitLostId: kind === "dental" ? action.benefitId : null,
-        statusId: openStatusId,
-        provenance,
-      });
-
-      // One case per covered dependent on the election that was active when
-      // coverage ended — as of the last day before the termination month, so
-      // replays/backfills target the dependents actually covered at the time.
-      const effectiveDate = new Date(Date.UTC(payload.year, payload.month - 1, 1));
-      effectiveDate.setUTCDate(0); // last day of the previous month
-      const asOfYmd = effectiveDate.toISOString().slice(0, 10);
-      const election = await storage.workerTrustElections.getActiveByWorkerAsOf(
-        payload.workerId,
-        asOfYmd,
-      );
-      const relationIds = election?.relationshipIds ?? [];
-      const dependents = await mapRelationsToDependents(payload.workerId, relationIds);
-      for (const dep of dependents) {
-        await createCaseIdempotent({
-          source: "wmb_event",
-          coveredPersonWorkerId: dep.workerId,
-          subscriberWorkerId: payload.workerId,
-          relationship: dep.relationship,
-          cobraEffectiveYmd,
-          qualifyingEventId,
-          medicalBenefitLostId: kind === "medical" ? action.benefitId : null,
-          dentalBenefitLostId: kind === "dental" ? action.benefitId : null,
-          statusId: openStatusId,
-          provenance: { ...provenance, relationId: dep.relationId },
-        });
-      }
-    } catch (err) {
-      logger.error("COBRA auto-case from WMB termination failed", {
-        service: SERVICE_NAME,
-        workerId: payload.workerId,
-        benefitId: action.benefitId,
-        error: err instanceof Error ? err.message : String(err),
-      });
     }
+    if (benefits.length === 0) return;
+
+    await openCobraCasesForTermination({
+      subscriberWorkerId: payload.workerId,
+      year: payload.year,
+      month: payload.month,
+      benefits,
+      failedPlugins: Array.from(failedByKey.values()),
+      trigger: "wmb_scan",
+    });
+  } catch (err) {
+    logger.error("COBRA auto-case from WMB termination failed", {
+      service: SERVICE_NAME,
+      workerId: payload.workerId,
+      error: err instanceof Error ? err.message : String(err),
+    });
   }
 }
 

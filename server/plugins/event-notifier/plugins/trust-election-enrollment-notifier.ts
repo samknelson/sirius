@@ -21,6 +21,7 @@ const ENROLLMENT_TYPE_LABELS: Record<EnrollmentType, string> = {
   first_time: "First-Time Enrollment",
   life_event: "Life Event Change",
   open_enrollment: "Open Enrollment Change",
+  cobra: "COBRA Enrollment",
 };
 
 /**

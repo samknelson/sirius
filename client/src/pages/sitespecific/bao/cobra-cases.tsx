@@ -1,7 +1,9 @@
 import { useState } from "react";
-import { ShieldPlus, Plus } from "lucide-react";
+import { ShieldPlus, Plus, RefreshCw } from "lucide-react";
 import { Link } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -41,7 +43,19 @@ function formatYmd(value: string | null | undefined): string {
   return `${parseInt(m[2])}/${parseInt(m[3])}/${m[1]}`;
 }
 
+interface CobraReconcileSummary {
+  events: number;
+  groups: number;
+  notQualifying: number;
+  created: number;
+  merged: number;
+  skippedExisting: number;
+  skippedInvariant: number;
+  errors: number;
+}
+
 export default function BaoCobraCases() {
+  const { toast } = useToast();
   const [statusId, setStatusId] = useState<string>(ALL);
   const [qualifyingEventId, setQualifyingEventId] = useState<string>(ALL);
   const [fromYmd, setFromYmd] = useState("");
@@ -74,6 +88,30 @@ export default function BaoCobraCases() {
     },
   });
 
+  const reconcileMutation = useMutation({
+    mutationFn: async (): Promise<CobraReconcileSummary> => {
+      const response = await apiRequest(
+        "POST",
+        "/api/sitespecific/bao/cobra/cases/reconcile",
+      );
+      return response.json();
+    },
+    onSuccess: (summary) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sitespecific/bao/cobra/cases"] });
+      toast({
+        title: "Reconciliation complete",
+        description: `${summary.created} case(s) created, ${summary.merged} merged, ${summary.skippedExisting} already handled (${summary.groups} termination month(s) from ${summary.events} event(s))${summary.errors ? `, ${summary.errors} error(s)` : ""}`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Reconciliation failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   return (
     <div className="bg-background text-foreground min-h-screen">
       <PageHeader
@@ -82,7 +120,19 @@ export default function BaoCobraCases() {
       />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-        <div className="flex justify-end">
+        <div className="flex justify-end gap-2">
+          <Button
+            variant="outline"
+            onClick={() => reconcileMutation.mutate()}
+            disabled={reconcileMutation.isPending}
+            data-testid="button-reconcile-cobra-cases"
+          >
+            <RefreshCw
+              size={16}
+              className={`mr-2 ${reconcileMutation.isPending ? "animate-spin" : ""}`}
+            />
+            {reconcileMutation.isPending ? "Reconciling…" : "Reconcile from WMB Events"}
+          </Button>
           <Link href="/cobra/cases/add">
             <Button data-testid="button-add-cobra-case">
               <Plus size={16} className="mr-2" />
