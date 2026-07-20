@@ -77,6 +77,13 @@ export function EdlsSummary(_props: DashboardPluginProps) {
     0,
   );
 
+  // Variance: non-reserved assigned total minus non-reserved demand total.
+  const assignedNonReserved = sheetStatusColumns.reduce(
+    (sum, col) => (col.key === "reserved" ? sum : sum + (columnTotals[col.key] || 0)),
+    0,
+  );
+  const variance = assignedNonReserved - demandTotal;
+
   return (
     <Card data-testid="card-edls-summary">
       <CardHeader className="pb-3">
@@ -229,6 +236,18 @@ export function EdlsSummary(_props: DashboardPluginProps) {
                     data-testid="cell-edls-demand-total"
                   >
                     {demandTotal}
+                  </td>
+                </tr>
+                <tr className="bg-muted/40 font-medium" data-testid="row-edls-variance">
+                  <td className="px-4 py-2 text-sm border-t">Variance</td>
+                  {sheetStatusColumns.map((col) => (
+                    <td key={col.key} className="px-4 py-2 border-t" />
+                  ))}
+                  <td
+                    className="text-center px-4 py-2 text-sm tabular-nums border-t font-semibold"
+                    data-testid="cell-edls-variance-total"
+                  >
+                    {variance}
                   </td>
                 </tr>
               </tfoot>
