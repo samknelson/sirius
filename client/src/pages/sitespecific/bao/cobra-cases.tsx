@@ -90,11 +90,7 @@ export default function BaoCobraCases() {
 
   const reconcileMutation = useMutation({
     mutationFn: async (): Promise<CobraReconcileSummary> => {
-      const response = await apiRequest(
-        "POST",
-        "/api/sitespecific/bao/cobra/cases/reconcile",
-      );
-      return response.json();
+      return apiRequest("POST", "/api/sitespecific/bao/cobra/cases/reconcile");
     },
     onSuccess: (summary) => {
       queryClient.invalidateQueries({ queryKey: ["/api/sitespecific/bao/cobra/cases"] });
