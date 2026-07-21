@@ -603,6 +603,38 @@ export const BAO_COBRA_COVERED_LIVES_TIERS = ["1", "2", "3+"] as const;
 export type BaoCobraCoveredLivesTier =
   (typeof BAO_COBRA_COVERED_LIVES_TIERS)[number];
 
+/**
+ * COBRA administration fee, as a fraction of the pre-fee package total
+ * (2%). The fee is computed ONCE on the summed pre-fee total of all
+ * continued benefits — not per benefit line — and rounded to cents, to
+ * match the rate sheet's package-total rounding.
+ */
+export const BAO_COBRA_ADMIN_FEE_RATE = 0.02;
+
+/** Round a dollar amount to cents, avoiding float drift. */
+function roundCents(amount: number): number {
+  return Math.round((amount + Number.EPSILON) * 100) / 100;
+}
+
+export interface BaoCobraFeeBreakdown {
+  /** Sum of the benefit rates before the admin fee, rounded to cents. */
+  preFeeTotal: number;
+  /** The 2% admin fee on the pre-fee total, rounded to cents. */
+  adminFee: number;
+  /** preFeeTotal + adminFee. */
+  total: number;
+}
+
+/**
+ * Apply the COBRA administration fee to a pre-fee package total.
+ * The fee is computed once on the summed total and rounded to cents.
+ */
+export function applyBaoCobraAdminFee(preFeeTotal: number): BaoCobraFeeBreakdown {
+  const base = roundCents(preFeeTotal);
+  const adminFee = roundCents(base * BAO_COBRA_ADMIN_FEE_RATE);
+  return { preFeeTotal: base, adminFee, total: roundCents(base + adminFee) };
+}
+
 export const sitespecificBaoCobraRates = pgTable(
   "sitespecific_bao_cobra_rates",
   {

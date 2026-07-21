@@ -29,10 +29,17 @@ type CobraCoverage = {
   ratesByTier: Record<string, string | null>;
 };
 
+type CobraTierTotals = {
+  preFeeTotal: string;
+  adminFee: string;
+  total: string;
+};
+
 type CobraCaseView = {
   case: BaoCobraCaseWithDetails;
   asOfYmd: string;
   coverage: CobraCoverage[];
+  totalsByTier?: Record<string, CobraTierTotals | null>;
 };
 
 type WorkerCobraResponse = {
@@ -226,6 +233,36 @@ function CobraCaseCard({ view, workerId }: { view: CobraCaseView; workerId: stri
                     ))}
                   </TableRow>
                 ))}
+                {view.totalsByTier && (
+                  <>
+                    <TableRow data-testid={`row-cobra-subtotal-${c.id}`}>
+                      <TableCell className="text-muted-foreground">Subtotal</TableCell>
+                      {["1", "2", "3+"].map((tier) => (
+                        <TableCell key={tier} data-testid={`text-cobra-subtotal-${c.id}-${tier}`}>
+                          {formatRate(view.totalsByTier?.[tier]?.preFeeTotal ?? null)}
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                    <TableRow data-testid={`row-cobra-admin-fee-${c.id}`}>
+                      <TableCell className="text-muted-foreground">
+                        COBRA administration fee (2%)
+                      </TableCell>
+                      {["1", "2", "3+"].map((tier) => (
+                        <TableCell key={tier} data-testid={`text-cobra-admin-fee-${c.id}-${tier}`}>
+                          {formatRate(view.totalsByTier?.[tier]?.adminFee ?? null)}
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                    <TableRow className="font-medium" data-testid={`row-cobra-total-${c.id}`}>
+                      <TableCell>Total monthly cost</TableCell>
+                      {["1", "2", "3+"].map((tier) => (
+                        <TableCell key={tier} data-testid={`text-cobra-total-${c.id}-${tier}`}>
+                          {formatRate(view.totalsByTier?.[tier]?.total ?? null)}
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  </>
+                )}
               </TableBody>
             </Table>
           )}

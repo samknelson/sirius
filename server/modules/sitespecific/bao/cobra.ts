@@ -3,6 +3,7 @@ import { requireComponent } from "../../components";
 import { storage } from "../../../storage";
 import {
   BAO_COBRA_COVERED_LIVES_TIERS,
+  applyBaoCobraAdminFee,
   type BaoCobraCoveredLivesTier,
   createBaoCobraRateRequestSchema,
   updateBaoCobraRateRequestSchema,
@@ -342,7 +343,32 @@ export function registerBaoCobraRoutes(
             coverage.push({ ...benefit, ratesByTier });
           }
 
-          results.push({ case: theCase, asOfYmd, coverage });
+          // Per-tier package totals with the 2% COBRA administration fee,
+          // computed once on the summed pre-fee total (null when any
+          // benefit in the package is missing a rate for that tier).
+          const totalsByTier: Partial<
+            Record<
+              BaoCobraCoveredLivesTier,
+              { preFeeTotal: string; adminFee: string; total: string } | null
+            >
+          > = {};
+          for (const tier of BAO_COBRA_COVERED_LIVES_TIERS) {
+            const tierRates = coverage.map((cov) => cov.ratesByTier[tier]);
+            if (coverage.length === 0 || tierRates.some((r) => r == null)) {
+              totalsByTier[tier] = null;
+              continue;
+            }
+            const fee = applyBaoCobraAdminFee(
+              tierRates.reduce((sum, r) => sum + Number(r), 0),
+            );
+            totalsByTier[tier] = {
+              preFeeTotal: fee.preFeeTotal.toFixed(2),
+              adminFee: fee.adminFee.toFixed(2),
+              total: fee.total.toFixed(2),
+            };
+          }
+
+          results.push({ case: theCase, asOfYmd, coverage, totalsByTier });
         }
 
         res.json({ cases: results });

@@ -42,6 +42,9 @@ interface Pricing {
   coveredLives: number;
   tier: string;
   lines: PricingLine[];
+  preFeeTotal: string | null;
+  adminFee: string | null;
+  adminFeeRate: number;
   monthlyTotal: string | null;
 }
 
@@ -228,6 +231,22 @@ export function CobraReviewPostStep({
                   </span>
                 </div>
               ))}
+              <div className="flex justify-between border-t pt-1">
+                <span>Subtotal</span>
+                <span data-testid="text-price-subtotal">
+                  {pricing.preFeeTotal !== null
+                    ? `$${Number(pricing.preFeeTotal).toFixed(2)}`
+                    : "—"}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span>COBRA administration fee (2%)</span>
+                <span data-testid="text-price-admin-fee">
+                  {pricing.adminFee !== null
+                    ? `$${Number(pricing.adminFee).toFixed(2)}`
+                    : "—"}
+                </span>
+              </div>
               <div className="flex justify-between font-medium border-t pt-1">
                 <span>
                   Total ({pricing.coveredLives} covered, tier {pricing.tier})

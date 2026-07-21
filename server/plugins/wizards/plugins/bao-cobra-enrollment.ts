@@ -15,6 +15,8 @@ import {
 } from "../enrollment/foundation";
 import {
   BAO_COBRA_COVERED_LIVES_TIERS,
+  BAO_COBRA_ADMIN_FEE_RATE,
+  applyBaoCobraAdminFee,
   type BaoCobraCoveredLivesTier,
 } from "../../../../shared/schema/sitespecific/bao/schema";
 import { computeCobraDeadlines } from "../../../../shared/schema/sitespecific/bao/cobra";
@@ -105,7 +107,13 @@ interface Pricing {
   coveredLives: number;
   tier: BaoCobraCoveredLivesTier;
   lines: PricingLine[];
-  /** Sum of the line rates; null when any selected line has no rate. */
+  /** Sum of the line rates before the admin fee; null when any selected line has no rate. */
+  preFeeTotal: string | null;
+  /** The 2% COBRA administration fee on the pre-fee total; null when preFeeTotal is null. */
+  adminFee: string | null;
+  /** The admin fee rate (e.g. 0.02). */
+  adminFeeRate: number;
+  /** Final monthly premium: preFeeTotal + adminFee; null when any selected line has no rate. */
   monthlyTotal: string | null;
 }
 
@@ -131,11 +139,20 @@ async function computePricing(
       : undefined;
     lines.push({ ...option, rate: rate ? rate.rate : null });
   }
-  const monthlyTotal =
-    lines.length > 0 && lines.every((l) => l.rate !== null)
-      ? lines.reduce((sum, l) => sum + Number(l.rate), 0).toFixed(2)
-      : null;
-  return { asOfYmd, coveredLives, tier, lines, monthlyTotal };
+  const priced = lines.length > 0 && lines.every((l) => l.rate !== null);
+  const fee = priced
+    ? applyBaoCobraAdminFee(lines.reduce((sum, l) => sum + Number(l.rate), 0))
+    : null;
+  return {
+    asOfYmd,
+    coveredLives,
+    tier,
+    lines,
+    preFeeTotal: fee ? fee.preFeeTotal.toFixed(2) : null,
+    adminFee: fee ? fee.adminFee.toFixed(2) : null,
+    adminFeeRate: BAO_COBRA_ADMIN_FEE_RATE,
+    monthlyTotal: fee ? fee.total.toFixed(2) : null,
+  };
 }
 
 /* ------------------------------------------------------------------ */
@@ -433,6 +450,9 @@ async function submitReview(
           cobraCaseId: theCase.id,
           coveredLivesTier: pricing.tier,
           monthlyPremium: pricing.monthlyTotal,
+          preFeeTotal: pricing.preFeeTotal,
+          adminFee: pricing.adminFee,
+          adminFeeRate: pricing.adminFeeRate,
         },
       },
     );

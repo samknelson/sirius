@@ -33,6 +33,9 @@ interface Pricing {
   coveredLives: number;
   tier: string;
   lines: PricingLine[];
+  preFeeTotal: string | null;
+  adminFee: string | null;
+  adminFeeRate: number;
   monthlyTotal: string | null;
 }
 
@@ -170,7 +173,7 @@ export function CobraCoveredPeopleStep({
                   <span className="block mt-1">
                     Current saved selection prices at{" "}
                     {pricing.monthlyTotal !== null
-                      ? `$${Number(pricing.monthlyTotal).toFixed(2)}/mo`
+                      ? `$${Number(pricing.monthlyTotal).toFixed(2)}/mo (includes $${Number(pricing.adminFee ?? 0).toFixed(2)} COBRA administration fee, 2%)`
                       : "— (missing rate)"}{" "}
                     ({pricing.lines.map((l) => `${l.benefitName}: ${money(l.rate)}`).join(", ")})
                   </span>

@@ -13,6 +13,8 @@ import { logger } from "../../../../logger";
 import { storage } from "../../../../storage/database";
 import {
   BAO_COBRA_COVERED_LIVES_TIERS,
+  BAO_COBRA_ADMIN_FEE_RATE,
+  applyBaoCobraAdminFee,
   type BaoCobraCoveredLivesTier,
 } from "@shared/schema/sitespecific/bao/schema";
 import type { Ledger, ChargePluginConfig } from "@shared/schema";
@@ -45,7 +47,7 @@ class BaoCobraChargePlugin extends ChargePlugin {
     id: "sitespecific-bao-cobra",
     name: "BAO - COBRA Monthly Premium",
     description:
-      "Bills the monthly COBRA premium for every elected, open COBRA case to the covered person's COBRA ledger account. The premium is the sum of the rate-table rates for the continued benefits at the case's covered-lives tier, as of the first day of each billed month. One entry per coverage month, from the COBRA effective month through the current month, capped at the case's maximum coverage period.",
+      "Bills the monthly COBRA premium for every elected, open COBRA case to the covered person's COBRA ledger account. The premium is the sum of the rate-table rates for the continued benefits at the case's covered-lives tier, as of the first day of each billed month, plus the 2% COBRA administration fee computed once on the summed package total. One entry per coverage month, from the COBRA effective month through the current month, capped at the case's maximum coverage period.",
     triggers: [TriggerType.CRON],
     defaultScope: "global" as const,
     configSchema: {
@@ -210,7 +212,10 @@ class BaoCobraChargePlugin extends ChargePlugin {
           }
           if (total <= 0) continue;
 
-          const amount = total.toFixed(2);
+          // 2% COBRA administration fee, computed once on the summed
+          // pre-fee package total and rounded to cents.
+          const fee = applyBaoCobraAdminFee(total);
+          const amount = fee.total.toFixed(2);
           const [y, m] = ym.split("-").map(Number);
           transactions.push({
             chargePlugin: this.metadata.id,
@@ -233,6 +238,9 @@ class BaoCobraChargePlugin extends ChargePlugin {
               billingMonth: ym,
               coveredLivesTier: tier,
               benefitRates: lineRates,
+              preFeeTotal: fee.preFeeTotal.toFixed(2),
+              adminFee: fee.adminFee.toFixed(2),
+              adminFeeRate: BAO_COBRA_ADMIN_FEE_RATE,
             },
           });
         }
@@ -353,7 +361,7 @@ class BaoCobraChargePlugin extends ChargePlugin {
         }
         expected += Number(rate.rate);
       }
-      const expectedAmount = expected.toFixed(2);
+      const expectedAmount = applyBaoCobraAdminFee(expected).total.toFixed(2);
       if (discrepancies.length === 0 && entry.amount !== expectedAmount) {
         discrepancies.push(
           `Amount mismatch: expected ${expectedAmount}, found ${entry.amount}`,
