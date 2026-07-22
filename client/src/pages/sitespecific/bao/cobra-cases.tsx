@@ -231,7 +231,17 @@ export default function BaoCobraCases() {
                         className="font-medium"
                         data-testid={`text-case-covered-${c.id}`}
                       >
-                        {c.coveredPersonName ?? "—"}
+                        {c.coveredPersonName ? (
+                          <Link
+                            href={`/workers/${c.coveredPersonWorkerId}/sitespecific/bao/cobra`}
+                            className="text-primary hover:underline"
+                            data-testid={`link-case-covered-cobra-${c.id}`}
+                          >
+                            {c.coveredPersonName}
+                          </Link>
+                        ) : (
+                          "—"
+                        )}
                       </TableCell>
                       <TableCell data-testid={`text-case-subscriber-${c.id}`}>
                         {c.subscriberName ?? "—"}
