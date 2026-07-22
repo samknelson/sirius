@@ -469,6 +469,14 @@ export function useLedgerPaymentBatchTabAccess(batchId: string | undefined, enab
   });
 }
 
+export function useBusinessCalendarTabAccess(calendarId: string | undefined, enabled = true) {
+  return useTabAccess({
+    entityType: 'business_calendar',
+    entityId: calendarId,
+    enabled,
+  });
+}
+
 export function useFacilityTabAccess(facilityId: string | undefined, enabled = true) {
   return useTabAccess({
     entityType: 'facility',

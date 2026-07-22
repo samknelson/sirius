@@ -83,7 +83,8 @@ export type TabEntityType =
   | 'comm'
   | 'grievance'
   | 'grievanceTimelineTemplate'
-  | 'contract';
+  | 'contract'
+  | 'business_calendar';
 
 /**
  * Tab check request for batch access evaluation
@@ -642,6 +643,20 @@ export const bulkMessageTabTree: HierarchicalTab[] = [
 ];
 
 /**
+ * Business calendar entity tab tree
+ *
+ * Note: the three manual-source tabs (closed-days / vacations / open-days)
+ * are additionally filtered client-side by the calendar's enabled sources
+ * in BusinessCalendarLayout — the registry only handles access gating.
+ */
+export const businessCalendarTabTree: HierarchicalTab[] = [
+  { id: 'settings', label: 'Settings', hrefTemplate: '/config/business-calendars/{id}', permission: 'admin' },
+  { id: 'closed-days', label: 'Closed Days', hrefTemplate: '/config/business-calendars/{id}/closed-days', permission: 'admin' },
+  { id: 'vacations', label: 'Vacations', hrefTemplate: '/config/business-calendars/{id}/vacations', permission: 'admin' },
+  { id: 'open-days', label: 'Forced-Open Days', hrefTemplate: '/config/business-calendars/{id}/open-days', permission: 'admin' },
+];
+
+/**
  * Entity tab trees by type
  */
 export const tabTreeRegistry: Record<TabEntityType, HierarchicalTab[]> = {
@@ -677,6 +692,7 @@ export const tabTreeRegistry: Record<TabEntityType, HierarchicalTab[]> = {
   grievance: grievanceTabTree,
   grievanceTimelineTemplate: grievanceTimelineTemplateTabTree,
   contract: contractTabTree,
+  business_calendar: businessCalendarTabTree,
 };
 
 /**

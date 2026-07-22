@@ -261,6 +261,9 @@ const WsClientLogsPage = lazy(() => import("@/pages/config/ws/client-logs"));
 const SftpClientsPage = lazy(() => import("@/pages/config/sftp/clients"));
 const BusinessCalendarsPage = lazy(() => import("@/pages/config/business-calendars/index"));
 const BusinessCalendarDetailPage = lazy(() => import("@/pages/config/business-calendars/detail"));
+const BusinessCalendarClosedDaysPage = lazy(() => import("@/pages/config/business-calendars/closed-days"));
+const BusinessCalendarVacationsPage = lazy(() => import("@/pages/config/business-calendars/vacations"));
+const BusinessCalendarOpenDaysPage = lazy(() => import("@/pages/config/business-calendars/open-days"));
 const SftpClientDetailsPage = lazy(() => import("@/pages/config/sftp/client-details"));
 const SftpClientConnectionPage = lazy(() => import("@/pages/config/sftp/client-connection"));
 const SftpClientTestPage = lazy(() => import("@/pages/config/sftp/client-test"));
@@ -2777,6 +2780,36 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <BusinessCalendarDetailPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/business-calendars/:id/closed-days">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <BusinessCalendarClosedDaysPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/business-calendars/:id/vacations">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <BusinessCalendarVacationsPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/business-calendars/:id/open-days">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <BusinessCalendarOpenDaysPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
