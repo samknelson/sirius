@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import { Link } from "wouter";
-import { CalendarDays, Plus, Loader2, Trash2, Pencil } from "lucide-react";
+import { CalendarDays, Plus, Loader2, Trash2, Pencil, Star } from "lucide-react";
 import type { BusinessCalendar, BusinessCalendarData } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -41,6 +41,30 @@ export default function BusinessCalendarsConfigPage() {
     queryKey: ["/api/business-calendars"],
   });
 
+  const { data: defaultData } = useQuery<{ calendarId: string | null }>({
+    queryKey: ["/api/business-calendars/default"],
+  });
+  const defaultCalendarId = defaultData?.calendarId ?? null;
+
+  const setDefaultMutation = useMutation({
+    mutationFn: async (calendarId: string | null) =>
+      apiRequest("PUT", "/api/business-calendars/default", { calendarId }),
+    onSuccess: (_data, calendarId) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/business-calendars/default"] });
+      toast({
+        title: "Success",
+        description: calendarId ? "Default calendar updated." : "Default calendar cleared.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update default calendar.",
+        variant: "destructive",
+      });
+    },
+  });
+
   const createMutation = useMutation({
     mutationFn: async (data: { name: string; description?: string }) =>
       apiRequest("POST", "/api/business-calendars", {
@@ -68,6 +92,7 @@ export default function BusinessCalendarsConfigPage() {
     mutationFn: async (id: string) => apiRequest("DELETE", `/api/business-calendars/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/business-calendars"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/business-calendars/default"] });
       setDeleteId(null);
       toast({ title: "Success", description: "Business calendar deleted." });
     },
@@ -162,9 +187,16 @@ export default function BusinessCalendarsConfigPage() {
                     return (
                       <TableRow key={cal.id} data-testid={`row-business-calendar-${cal.id}`}>
                         <TableCell data-testid={`text-business-calendar-name-${cal.id}`}>
-                          <Link href={`/config/business-calendars/${cal.id}`} className="font-medium text-primary hover:underline">
-                            {cal.name}
-                          </Link>
+                          <div className="flex items-center gap-2">
+                            <Link href={`/config/business-calendars/${cal.id}`} className="font-medium text-primary hover:underline">
+                              {cal.name}
+                            </Link>
+                            {defaultCalendarId === cal.id && (
+                              <Badge variant="default" className="text-xs" data-testid={`badge-default-${cal.id}`}>
+                                Default
+                              </Badge>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell className="max-w-[240px] truncate text-muted-foreground">
                           {cal.description || "—"}
@@ -185,6 +217,28 @@ export default function BusinessCalendarsConfigPage() {
                         <TableCell className="font-mono text-sm">{cal.siriusId || "—"}</TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-2">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              title={
+                                defaultCalendarId === cal.id
+                                  ? "Clear default calendar"
+                                  : "Set as default calendar"
+                              }
+                              disabled={setDefaultMutation.isPending}
+                              onClick={() =>
+                                setDefaultMutation.mutate(defaultCalendarId === cal.id ? null : cal.id)
+                              }
+                              data-testid={`button-set-default-${cal.id}`}
+                            >
+                              <Star
+                                className={
+                                  defaultCalendarId === cal.id
+                                    ? "h-4 w-4 fill-yellow-400 text-yellow-500"
+                                    : "h-4 w-4 text-muted-foreground"
+                                }
+                              />
+                            </Button>
                             <Link href={`/config/business-calendars/${cal.id}`}>
                               <Button variant="ghost" size="icon" data-testid={`button-edit-business-calendar-${cal.id}`}>
                                 <Pencil className="h-4 w-4" />

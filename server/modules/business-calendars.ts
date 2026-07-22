@@ -37,6 +37,48 @@ export function registerBusinessCalendarRoutes(
     }
   });
 
+  // ── Default calendar (must be registered before /:id) ─────────────
+
+  const DEFAULT_CALENDAR_VARIABLE = "business-calendar.default";
+
+  app.get("/api/business-calendars/default", requireAuth, async (_req, res) => {
+    try {
+      const variable = await storage.variables.getByName(DEFAULT_CALENDAR_VARIABLE);
+      const calendarId = typeof variable?.value === "string" ? variable.value : null;
+      res.json({ calendarId });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to fetch default business calendar" });
+    }
+  });
+
+  app.put("/api/business-calendars/default", requireAuth, adminOnly, async (req, res) => {
+    try {
+      const validated = z.object({ calendarId: z.string().nullable() }).parse(req.body);
+      if (validated.calendarId !== null) {
+        const calendar = await storage.businessCalendars.get(validated.calendarId);
+        if (!calendar) return res.status(404).json({ message: "Business calendar not found" });
+      }
+      const existing = await storage.variables.getByName(DEFAULT_CALENDAR_VARIABLE);
+      if (existing) {
+        await storage.variables.update(existing.id, { value: validated.calendarId });
+      } else {
+        try {
+          await storage.variables.create({ name: DEFAULT_CALENDAR_VARIABLE, value: validated.calendarId });
+        } catch (createError: any) {
+          if (createError?.code !== "23505") throw createError;
+          const raced = await storage.variables.getByName(DEFAULT_CALENDAR_VARIABLE);
+          if (raced) await storage.variables.update(raced.id, { value: validated.calendarId });
+        }
+      }
+      res.json({ calendarId: validated.calendarId });
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
+      res.status(500).json({ message: error.message || "Failed to set default business calendar" });
+    }
+  });
+
   app.get("/api/business-calendars/:id", requireAuth, async (req, res) => {
     try {
       const full = await storage.businessCalendars.getCalendarWithRules(req.params.id);
@@ -95,6 +137,10 @@ export function registerBusinessCalendarRoutes(
     try {
       const deleted = await storage.businessCalendars.delete(req.params.id);
       if (!deleted) return res.status(404).json({ message: "Business calendar not found" });
+      const defaultVar = await storage.variables.getByName(DEFAULT_CALENDAR_VARIABLE);
+      if (defaultVar && defaultVar.value === req.params.id) {
+        await storage.variables.update(defaultVar.id, { value: null });
+      }
       res.status(204).end();
     } catch (error: any) {
       res.status(500).json({ message: error.message || "Failed to delete business calendar" });
