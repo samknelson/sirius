@@ -261,6 +261,27 @@ function SettingsTabContent() {
             <Label htmlFor="cal-description">Description</Label>
             <Textarea id="cal-description" value={description} onChange={(e) => setDescription(e.target.value)} rows={2} data-testid="input-calendar-description" />
           </div>
+          <div className="space-y-2">
+            <Label>Active sources</Label>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {businessCalendarSources.map((s) => (
+                <label key={s} className="flex items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={sourceOn(s)}
+                    onCheckedChange={(c) => toggleSource(s, c === true)}
+                    data-testid={`checkbox-source-${s}`}
+                  />
+                  {SOURCE_LABELS[s]}
+                </label>
+              ))}
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Turning a manual source off keeps its saved days — they simply stop applying until the
+              source is re-enabled. The Closed Days, Vacations, and Forced-Open Days tabs only appear
+              while their source is enabled.
+            </p>
+          </div>
+
           {anyHolidaySourceOn && (
           <div className="space-y-2">
             <Label>Holiday region</Label>
@@ -311,8 +332,8 @@ function SettingsTabContent() {
             </div>
             <p className="text-sm text-muted-foreground">
               {region
-                ? `Saved as "${region}". Used by the holiday sources below.`
-                : "Pick a country (and optionally a state and region) to enable the holiday sources below."}
+                ? `Saved as "${region}". Used by the holiday sources above.`
+                : "Pick a country (and optionally a state and region) for the holiday sources above."}
             </p>
           </div>
           )}
@@ -337,27 +358,6 @@ function SettingsTabContent() {
             </p>
           </div>
           )}
-
-          <div className="space-y-2">
-            <Label>Active sources</Label>
-            <div className="grid gap-2 sm:grid-cols-2">
-              {businessCalendarSources.map((s) => (
-                <label key={s} className="flex items-center gap-2 text-sm">
-                  <Checkbox
-                    checked={sourceOn(s)}
-                    onCheckedChange={(c) => toggleSource(s, c === true)}
-                    data-testid={`checkbox-source-${s}`}
-                  />
-                  {SOURCE_LABELS[s]}
-                </label>
-              ))}
-            </div>
-            <p className="text-sm text-muted-foreground">
-              Turning a manual source off keeps its saved days — they simply stop applying until the
-              source is re-enabled. The Closed Days, Vacations, and Forced-Open Days tabs only appear
-              while their source is enabled.
-            </p>
-          </div>
 
           <Button
             onClick={() => saveMutation.mutate()}
