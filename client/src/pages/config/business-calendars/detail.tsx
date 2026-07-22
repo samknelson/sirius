@@ -234,6 +234,7 @@ function SettingsTabContent() {
     );
   };
   const sourceOn = (s: BusinessCalendarSource) => sources.includes(s);
+  const anyHolidaySourceOn = sources.some((s) => s.startsWith("date-holiday-"));
 
   return (
     <div className="space-y-6">
@@ -260,6 +261,7 @@ function SettingsTabContent() {
             <Label htmlFor="cal-description">Description</Label>
             <Textarea id="cal-description" value={description} onChange={(e) => setDescription(e.target.value)} rows={2} data-testid="input-calendar-description" />
           </div>
+          {anyHolidaySourceOn && (
           <div className="space-y-2">
             <Label>Holiday region</Label>
             <div className="grid gap-3 sm:grid-cols-3">
@@ -313,7 +315,9 @@ function SettingsTabContent() {
                 : "Pick a country (and optionally a state and region) to enable the holiday sources below."}
             </p>
           </div>
+          )}
 
+          {sourceOn("weekends") && (
           <div className="space-y-2">
             <Label>Weekend days</Label>
             <div className="flex flex-wrap gap-4">
@@ -332,6 +336,7 @@ function SettingsTabContent() {
               These days are closed when the "Weekends" source is enabled.
             </p>
           </div>
+          )}
 
           <div className="space-y-2">
             <Label>Active sources</Label>
