@@ -2618,3 +2618,110 @@ export const insertSnapshotSchema = createInsertSchema(snapshots).omit({
 
 export type InsertSnapshot = z.infer<typeof insertSnapshotSchema>;
 export type Snapshot = typeof snapshots.$inferSelect;
+
+// Business Calendars — core tool for business-day computations (e.g. "11
+// business days after start"). A calendar composes closure/open "sources":
+// weekends, manual closed days, vacations, forced-open days, and holiday
+// types from the date-holidays library (region lives in data.region).
+export const businessCalendarSources = [
+  "weekends",
+  "manual-byday",
+  "manual-vacation",
+  "manual-open",
+  "date-holiday-public",
+  "date-holiday-bank",
+  "date-holiday-observance",
+  "date-holiday-school",
+  "date-holiday-optional",
+] as const;
+export type BusinessCalendarSource = (typeof businessCalendarSources)[number];
+
+export const businessCalendarDataSchema = z.object({
+  region: z.string().optional(),
+  weekends: z.array(z.number().int().min(1).max(7)).optional(),
+}).passthrough();
+export type BusinessCalendarData = z.infer<typeof businessCalendarDataSchema>;
+
+export const businessCalendars = pgTable("business_calendars", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  siriusId: varchar("sirius_id").unique(),
+  name: text("name").notNull(),
+  description: text("description"),
+  sources: text("sources").array().notNull().default(sql`'{}'::text[]`),
+  data: jsonb("data").notNull().default(sql`'{}'::jsonb`),
+});
+
+export const businessCalendarManualByday = pgTable("business_calendar_manual_byday", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  calendarId: varchar("calendar_id").notNull(),
+  ymd: varchar("ymd").notNull(),
+}, (table) => ({
+  fkCalendar: foreignKey({
+    name: "bcal_manual_byday_calendar_id_fkey",
+    columns: [table.calendarId],
+    foreignColumns: [businessCalendars.id],
+  }).onDelete("cascade"),
+  uniqueCalendarYmd: unique("bcal_manual_byday_calendar_id_ymd_unique").on(table.calendarId, table.ymd),
+}));
+
+export const businessCalendarManualVacation = pgTable("business_calendar_manual_vacation", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  calendarId: varchar("calendar_id").notNull(),
+  startYmd: varchar("start_ymd").notNull(),
+  endYmd: varchar("end_ymd").notNull(),
+}, (table) => ({
+  fkCalendar: foreignKey({
+    name: "bcal_manual_vacation_calendar_id_fkey",
+    columns: [table.calendarId],
+    foreignColumns: [businessCalendars.id],
+  }).onDelete("cascade"),
+  startBeforeEnd: check("bcal_manual_vacation_range_check", sql`start_ymd <= end_ymd`),
+}));
+
+export const businessCalendarManualOpen = pgTable("business_calendar_manual_open", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  calendarId: varchar("calendar_id").notNull(),
+  ymd: varchar("ymd").notNull(),
+}, (table) => ({
+  fkCalendar: foreignKey({
+    name: "bcal_manual_open_calendar_id_fkey",
+    columns: [table.calendarId],
+    foreignColumns: [businessCalendars.id],
+  }).onDelete("cascade"),
+  uniqueCalendarYmd: unique("bcal_manual_open_calendar_id_ymd_unique").on(table.calendarId, table.ymd),
+}));
+
+const ymdString = z.string().refine(isValidYmd, "must be YYYY-MM-DD");
+
+export const insertBusinessCalendarSchema = createInsertSchema(businessCalendars).omit({
+  id: true,
+}).extend({
+  siriusId: z.string().nullish(),
+  description: z.string().nullish(),
+  sources: z.array(z.enum(businessCalendarSources)).default([]),
+  data: businessCalendarDataSchema.default({}),
+});
+
+export const insertBusinessCalendarManualBydaySchema = createInsertSchema(businessCalendarManualByday).omit({
+  id: true,
+}).extend({ ymd: ymdString });
+
+export const insertBusinessCalendarManualVacationSchema = createInsertSchema(businessCalendarManualVacation).omit({
+  id: true,
+}).extend({ startYmd: ymdString, endYmd: ymdString }).refine(
+  (v) => v.startYmd <= v.endYmd,
+  { message: "startYmd must be <= endYmd", path: ["endYmd"] },
+);
+
+export const insertBusinessCalendarManualOpenSchema = createInsertSchema(businessCalendarManualOpen).omit({
+  id: true,
+}).extend({ ymd: ymdString });
+
+export type InsertBusinessCalendar = z.infer<typeof insertBusinessCalendarSchema>;
+export type BusinessCalendar = typeof businessCalendars.$inferSelect;
+export type InsertBusinessCalendarManualByday = z.infer<typeof insertBusinessCalendarManualBydaySchema>;
+export type BusinessCalendarManualByday = typeof businessCalendarManualByday.$inferSelect;
+export type InsertBusinessCalendarManualVacation = z.infer<typeof insertBusinessCalendarManualVacationSchema>;
+export type BusinessCalendarManualVacation = typeof businessCalendarManualVacation.$inferSelect;
+export type InsertBusinessCalendarManualOpen = z.infer<typeof insertBusinessCalendarManualOpenSchema>;
+export type BusinessCalendarManualOpen = typeof businessCalendarManualOpen.$inferSelect;

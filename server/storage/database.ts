@@ -103,6 +103,7 @@ import { type WorkerHoursStorage, createWorkerHoursStorage, workerHoursLoggingCo
 import { type PolicyStorage, createPolicyStorage, policyLoggingConfig } from "./policies";
 import { type BargainingUnitStorage, createBargainingUnitStorage, bargainingUnitLoggingConfig } from "./bargaining-units";
 import { type SftpClientDestinationStorage, createSftpClientDestinationStorage, sftpClientDestinationLoggingConfig } from "./sftp-client-destinations";
+import { type BusinessCalendarStorage, createBusinessCalendarStorage } from "./business-calendars";
 import { type TrustProviderEdiStorage, createTrustProviderEdiStorage, trustProviderEdiLoggingConfig } from "./trust/provider/edi";
 import { type BulkMessageStorage, createBulkMessageStorage, bulkMessageLoggingConfig } from "./bulk/messages";
 import { type BulkMessagesEmailStorage, createBulkMessagesEmailStorage, bulkMessagesEmailLoggingConfig } from "./bulk/messages/email";
@@ -269,6 +270,7 @@ export interface IStorage {
   employerCompanies: EmployerCompanyStorage;
   contracts: ContractStorage;
   sftpClientDestinations: SftpClientDestinationStorage;
+  businessCalendars: BusinessCalendarStorage;
   trustProviderEdi: TrustProviderEdiStorage;
   bulkMessages: BulkMessageStorage;
   bulkMessagesEmail: BulkMessagesEmailStorage;
@@ -374,6 +376,7 @@ export class DatabaseStorage implements IStorage {
   employerCompanies: EmployerCompanyStorage;
   contracts: ContractStorage;
   sftpClientDestinations: SftpClientDestinationStorage;
+  businessCalendars: BusinessCalendarStorage;
   trustProviderEdi: TrustProviderEdiStorage;
   bulkMessages: BulkMessageStorage;
   bulkMessagesEmail: BulkMessagesEmailStorage;
@@ -597,6 +600,7 @@ export class DatabaseStorage implements IStorage {
       createSftpClientDestinationStorage(),
       sftpClientDestinationLoggingConfig
     );
+    this.businessCalendars = createBusinessCalendarStorage();
     this.trustProviderEdi = withStorageLogging(
       createTrustProviderEdiStorage(),
       trustProviderEdiLoggingConfig

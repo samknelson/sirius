@@ -50,6 +50,7 @@ import "./core/1045_ebs_subject_and_purge";
 import "./core/1046_add_edls_sheet_job_group_fk";
 import "./core/1047_create_snapshots";
 import "./core/1048_delete_legacy_cleanup_cron_configs";
+import "./core/1049_create_business_calendars";
 
 // Per-component migrations — each registered via
 // `registerComponentMigration(componentId, migration)`. Tracked by the
