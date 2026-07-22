@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Loader2 } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Check, ChevronsUpDown, Loader2 } from "lucide-react";
 import {
   businessCalendarSources,
   type BusinessCalendarData,
@@ -12,6 +12,16 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import {
@@ -41,6 +51,103 @@ const WEEKDAYS: Array<{ iso: number; label: string }> = [
   { iso: 7, label: "Sun" },
 ];
 
+interface HolidayRegionOption {
+  code: string;
+  name: string;
+}
+
+interface RegionOptionsResponse {
+  options: HolidayRegionOption[];
+}
+
+function RegionCombobox({
+  label,
+  value,
+  options,
+  isLoading,
+  placeholder,
+  allowNone,
+  onSelect,
+  testId,
+}: {
+  label: string;
+  value: string;
+  options: HolidayRegionOption[];
+  isLoading: boolean;
+  placeholder: string;
+  allowNone: boolean;
+  onSelect: (code: string) => void;
+  testId: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const selected = options.find((o) => o.code.toLowerCase() === value.toLowerCase());
+  const display = selected ? selected.name : value ? `${value} (unrecognized)` : placeholder;
+  return (
+    <div className="space-y-1">
+      <Label className="text-xs text-muted-foreground">{label}</Label>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            variant="outline"
+            role="combobox"
+            aria-expanded={open}
+            className="w-full justify-between font-normal"
+            disabled={isLoading}
+            data-testid={testId}
+          >
+            <span className={cn("truncate", !selected && !value && "text-muted-foreground")}>
+              {isLoading ? "Loading…" : display}
+            </span>
+            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-[280px] p-0" align="start">
+          <Command>
+            <CommandInput placeholder={`Search ${label.toLowerCase()}…`} />
+            <CommandList>
+              <CommandEmpty>No match found.</CommandEmpty>
+              <CommandGroup>
+                {allowNone && (
+                  <CommandItem
+                    value="__none__"
+                    onSelect={() => {
+                      onSelect("");
+                      setOpen(false);
+                    }}
+                    data-testid={`${testId}-option-none`}
+                  >
+                    <Check className={cn("mr-2 h-4 w-4", value === "" ? "opacity-100" : "opacity-0")} />
+                    None
+                  </CommandItem>
+                )}
+                {options.map((o) => (
+                  <CommandItem
+                    key={o.code}
+                    value={`${o.name} ${o.code}`}
+                    onSelect={() => {
+                      onSelect(o.code);
+                      setOpen(false);
+                    }}
+                    data-testid={`${testId}-option-${o.code}`}
+                  >
+                    <Check
+                      className={cn(
+                        "mr-2 h-4 w-4",
+                        o.code.toLowerCase() === value.toLowerCase() ? "opacity-100" : "opacity-0",
+                      )}
+                    />
+                    {o.name} <span className="ml-1 text-muted-foreground">({o.code})</span>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            </CommandList>
+          </Command>
+        </PopoverContent>
+      </Popover>
+    </div>
+  );
+}
+
 function SettingsTabContent() {
   const { full, calendarId: id } = useBusinessCalendarLayout();
   const calendar = full.calendar;
@@ -50,7 +157,9 @@ function SettingsTabContent() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [siriusId, setSiriusId] = useState("");
-  const [region, setRegion] = useState("");
+  const [regionCountry, setRegionCountry] = useState("");
+  const [regionState, setRegionState] = useState("");
+  const [regionSub, setRegionSub] = useState("");
   const [weekends, setWeekends] = useState<number[]>([6, 7]);
   const [sources, setSources] = useState<BusinessCalendarSource[]>([]);
 
@@ -59,10 +168,36 @@ function SettingsTabContent() {
     setName(calendar.name);
     setDescription(calendar.description || "");
     setSiriusId(calendar.siriusId || "");
-    setRegion(data.region || "");
+    const [country = "", state = "", sub = ""] = (data.region || "").split("-");
+    setRegionCountry(country);
+    setRegionState(state);
+    setRegionSub(sub);
     setWeekends(data.weekends?.length ? data.weekends : [6, 7]);
     setSources((calendar.sources || []) as BusinessCalendarSource[]);
   }, [calendar]);
+
+  const countriesQuery = useQuery<RegionOptionsResponse>({
+    queryKey: ["/api/business-calendars", "holiday-regions"],
+  });
+  const statesQuery = useQuery<RegionOptionsResponse>({
+    queryKey: [
+      "/api/business-calendars",
+      `holiday-regions?country=${encodeURIComponent(regionCountry)}`,
+    ],
+    enabled: !!regionCountry,
+  });
+  const subsQuery = useQuery<RegionOptionsResponse>({
+    queryKey: [
+      "/api/business-calendars",
+      `holiday-regions?country=${encodeURIComponent(regionCountry)}&state=${encodeURIComponent(regionState)}`,
+    ],
+    enabled: !!regionCountry && !!regionState,
+  });
+
+  const countryOptions = countriesQuery.data?.options ?? [];
+  const stateOptions = statesQuery.data?.options ?? [];
+  const subOptions = subsQuery.data?.options ?? [];
+  const region = [regionCountry, regionState, regionSub].filter(Boolean).join("-");
 
   const onMutationError = (fallback: string) => (error: any) =>
     toast({ title: "Error", description: error.message || fallback, variant: "destructive" });
@@ -77,7 +212,7 @@ function SettingsTabContent() {
         sources,
         data: {
           ...existingData,
-          region: region.trim() || undefined,
+          region: region || undefined,
           weekends,
         },
       });
@@ -126,17 +261,56 @@ function SettingsTabContent() {
             <Textarea id="cal-description" value={description} onChange={(e) => setDescription(e.target.value)} rows={2} data-testid="input-calendar-description" />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="cal-region">Holiday region</Label>
-            <Input
-              id="cal-region"
-              value={region}
-              onChange={(e) => setRegion(e.target.value)}
-              placeholder='e.g. "US", "US-la", or "US-la-no"'
-              data-testid="input-calendar-region"
-            />
+            <Label>Holiday region</Label>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <RegionCombobox
+                label="Country"
+                value={regionCountry}
+                options={countryOptions}
+                isLoading={countriesQuery.isLoading}
+                placeholder="Select a country…"
+                allowNone
+                onSelect={(code) => {
+                  setRegionCountry(code);
+                  setRegionState("");
+                  setRegionSub("");
+                }}
+                testId="combobox-region-country"
+              />
+              {regionCountry && (statesQuery.isLoading || stateOptions.length > 0 || !!regionState) && (
+                <RegionCombobox
+                  label="State / territory"
+                  value={regionState}
+                  options={stateOptions}
+                  isLoading={statesQuery.isLoading}
+                  placeholder="Whole country"
+                  allowNone
+                  onSelect={(code) => {
+                    setRegionState(code);
+                    setRegionSub("");
+                  }}
+                  testId="combobox-region-state"
+                />
+              )}
+              {regionCountry &&
+                regionState &&
+                (subsQuery.isLoading || subOptions.length > 0 || !!regionSub) && (
+                  <RegionCombobox
+                    label="Region"
+                    value={regionSub}
+                    options={subOptions}
+                    isLoading={subsQuery.isLoading}
+                    placeholder="Whole state"
+                    allowNone
+                    onSelect={(code) => setRegionSub(code)}
+                    testId="combobox-region-sub"
+                  />
+                )}
+            </div>
             <p className="text-sm text-muted-foreground">
-              Country, optionally followed by state and region, separated by dashes. Used by the
-              holiday sources below.
+              {region
+                ? `Saved as "${region}". Used by the holiday sources below.`
+                : "Pick a country (and optionally a state and region) to enable the holiday sources below."}
             </p>
           </div>
 

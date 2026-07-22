@@ -13,6 +13,7 @@ import {
   addBusinessDays,
   explainRange,
   validateRegion,
+  getHolidayRegionOptions,
   MAX_EXPLAIN_DAYS,
 } from "../services/business-calendar";
 
@@ -82,6 +83,25 @@ export function registerBusinessCalendarRoutes(
         return res.status(400).json({ message: "Validation error", errors: error.errors });
       }
       res.status(500).json({ message: error.message || "Failed to set default business calendar" });
+    }
+  });
+
+  // ── Holiday region options (must be registered before /:id) ───────
+
+  app.get("/api/business-calendars/holiday-regions", requireAuth, async (req, res) => {
+    try {
+      const country = req.query.country ? String(req.query.country) : undefined;
+      const state = req.query.state ? String(req.query.state) : undefined;
+      if (state && !country) {
+        return res.status(400).json({ message: "state requires country" });
+      }
+      const options = getHolidayRegionOptions(country, state);
+      if (!options) {
+        return res.status(404).json({ message: "Unknown country or state" });
+      }
+      res.json({ options });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to fetch holiday regions" });
     }
   });
 

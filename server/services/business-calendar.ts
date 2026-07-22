@@ -60,6 +60,56 @@ function buildHolidaysInstance(region: string | undefined): Holidays | undefined
   return hd;
 }
 
+export interface HolidayRegionOption {
+  code: string;
+  name: string;
+}
+
+const regionOptionsCache = new Map<string, HolidayRegionOption[]>();
+
+function toSortedOptions(record: Record<string, string> | undefined | null): HolidayRegionOption[] {
+  return Object.entries(record || {})
+    .map(([code, name]) => ({ code, name }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
+ * Option lists for the cascading region selector, backed by date-holidays.
+ * - no args: all countries
+ * - country: states/territories of that country (empty when none)
+ * - country + state: sub-state regions (empty when none)
+ * Country/state codes are matched case-insensitively. Returns undefined when
+ * the given country or state is unknown.
+ */
+export function getHolidayRegionOptions(
+  country?: string,
+  state?: string,
+): HolidayRegionOption[] | undefined {
+  const cacheKey = `${country?.toLowerCase() ?? ""}|${state?.toLowerCase() ?? ""}`;
+  if (regionOptionsCache.has(cacheKey)) return regionOptionsCache.get(cacheKey);
+  const hd = new Holidays();
+  let result: HolidayRegionOption[] | undefined;
+  if (!country) {
+    result = toSortedOptions(hd.getCountries());
+  } else {
+    const countries = hd.getCountries() || {};
+    const countryKey = Object.keys(countries).find(
+      (k) => k.toLowerCase() === country.toLowerCase(),
+    );
+    if (!countryKey) return undefined;
+    if (!state) {
+      result = toSortedOptions(hd.getStates(countryKey));
+    } else {
+      const states = hd.getStates(countryKey) || {};
+      const stateKey = Object.keys(states).find((k) => k.toLowerCase() === state.toLowerCase());
+      if (!stateKey) return undefined;
+      result = toSortedOptions(hd.getRegions(countryKey, stateKey));
+    }
+  }
+  regionOptionsCache.set(cacheKey, result);
+  return result;
+}
+
 /**
  * Validate a date-holidays region string ("US", "US-la", "US-la-no").
  * Returns an error message, or undefined when valid (or absent).
