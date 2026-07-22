@@ -96,6 +96,8 @@ export interface LedgerEntryStorage {
   getByReference(referenceType: string, referenceId: string): Promise<Ledger[]>;
   getByChargePluginKey(chargePlugin: string, chargePluginKey: string): Promise<Ledger | undefined>;
   getByReferenceAndConfig(referenceId: string, chargePluginConfigId: string): Promise<Ledger[]>;
+  /** Distinct referenceIds that have entries for a config + reference type. */
+  listReferenceIdsByConfigAndType(chargePluginConfigId: string, referenceType: string): Promise<string[]>;
   getByFilter(filter: LedgerEntryFilter): Promise<Ledger[]>;
   getTransactions(filter: TransactionFilter): Promise<LedgerEntryWithDetails[]>;
   getTransactionsPaginated(filter: TransactionFilter, limit: number, offset: number): Promise<{ data: LedgerEntryWithDetails[]; total: number }>;
@@ -1405,6 +1407,20 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
           eq(ledger.referenceId, referenceId),
           eq(ledger.chargePluginConfigId, chargePluginConfigId)
         ));
+    },
+
+    async listReferenceIdsByConfigAndType(chargePluginConfigId: string, referenceType: string): Promise<string[]> {
+      const client = getClient();
+      const rows = await client
+        .selectDistinct({ referenceId: ledger.referenceId })
+        .from(ledger)
+        .where(and(
+          eq(ledger.chargePluginConfigId, chargePluginConfigId),
+          eq(ledger.referenceType, referenceType)
+        ));
+      return rows
+        .map((r) => r.referenceId)
+        .filter((id): id is string => !!id);
     },
 
     async getByFilter(filter: LedgerEntryFilter): Promise<Ledger[]> {

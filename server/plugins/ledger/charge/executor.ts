@@ -30,17 +30,25 @@ export interface ChargePluginExecutionResult {
  * Execute all enabled charge plugins for a given trigger and context
  */
 export async function executeChargePlugins(
-  context: PluginContext
+  context: PluginContext,
+  options?: { onlyPluginIds?: string[] }
 ): Promise<ChargePluginExecutionResult> {
   const trigger = context.trigger;
   
   logger.info("Executing charge plugins", {
     service: "charge-plugin-executor",
     trigger,
+    onlyPluginIds: options?.onlyPluginIds,
   });
 
   // Get all enabled plugins that handle this trigger (filters by component status)
-  const applicablePlugins = await getEnabledChargePluginsByTrigger(trigger);
+  let applicablePlugins = await getEnabledChargePluginsByTrigger(trigger);
+  if (options?.onlyPluginIds?.length) {
+    const allowed = new Set(options.onlyPluginIds);
+    applicablePlugins = applicablePlugins.filter((p) =>
+      allowed.has(p.metadata.id)
+    );
+  }
   
   if (applicablePlugins.length === 0) {
     logger.debug("No plugins registered for trigger", {
