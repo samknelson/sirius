@@ -3,8 +3,24 @@ import type { DenormPlugin } from "../types";
 import { EventType } from "../../../../services/event-bus";
 import { storage } from "../../../../storage";
 import type { GrievanceTimelineStepRow } from "../../../../storage/system/grievance-steps-denorm";
-import { dateToYmd, addDaysYmd, addBusinessDaysYmd } from "@shared/utils/date";
+import { dateToYmd, addDaysYmd } from "@shared/utils/date";
 import { readTimelineAdjustment } from "@shared/schema";
+import { addBusinessDays } from "../../../../services/business-calendar";
+import type { BusinessCalendarWithRules } from "../../../../storage/business-calendars";
+
+/** Variable naming the system default business calendar (see business-calendars module). */
+const DEFAULT_CALENDAR_VARIABLE = "business-calendar.default";
+
+/**
+ * Resolve the default business calendar (with its manual rules) if one is
+ * configured and still exists. Returns undefined otherwise.
+ */
+async function getDefaultCalendar(): Promise<BusinessCalendarWithRules | undefined> {
+  const variable = await storage.variables.getByName(DEFAULT_CALENDAR_VARIABLE);
+  const calendarId = typeof variable?.value === "string" && variable.value ? variable.value : undefined;
+  if (!calendarId) return undefined;
+  return storage.businessCalendars.getCalendarWithRules(calendarId);
+}
 
 /**
  * Denorm payload for a grievance's computed timeline steps: zero or more rows
@@ -35,8 +51,11 @@ export interface GrievanceTimelinePayload {
  *    one row PER occurrence (in chronological order). A start with no later
  *    completion is the final, open occurrence for that step.
  *  - Steps that never started produce NO row.
- *  - `due` = start + `days`, calendar or business per the step's `dayType`
- *    (business days skip weekends; holidays are a future extension).
+ *  - `due` = start + `days`, calendar or business per the step's `dayType`.
+ *    Business days are computed against the system default business calendar
+ *    (weekends, holidays, manual closures, vacations, forced-open days).
+ *    When no default calendar is configured, business days degrade to plain
+ *    calendar days. Per-employer calendars are a future extension.
  *  - `is_current` = the earliest-started occurrence that has not completed
  *    (ties broken arbitrarily); enforced at most one by a partial unique index.
  */
@@ -50,7 +69,13 @@ const grievanceTimelinePlugin: DenormPlugin<GrievanceTimelinePayload> = {
     singleton: true,
   },
   entityType: "grievance",
-  reads: ["grievances", "grievanceTimelineTemplates", "grievanceStatusHistory"],
+  reads: [
+    "grievances",
+    "grievanceTimelineTemplates",
+    "grievanceStatusHistory",
+    "variables",
+    "businessCalendars",
+  ],
   writes: [{ storage: "grievanceStepsDenorm", soleWriter: true }],
   eventHandlers: [
     {
@@ -76,6 +101,12 @@ const grievanceTimelinePlugin: DenormPlugin<GrievanceTimelinePayload> = {
     const history = [...(await storage.grievanceStatusHistory.list(grievanceId))].sort(
       (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
     );
+
+    // Business-day math uses the system default calendar when one is set;
+    // otherwise business days degrade to plain calendar days.
+    const defaultCalendar = await getDefaultCalendar();
+    const addBusiness = (ymd: string, days: number): string =>
+      defaultCalendar ? addBusinessDays(defaultCalendar, ymd, days) : addDaysYmd(ymd, days);
 
     const rows: GrievanceTimelineStepRow[] = [];
     for (const step of steps) {
@@ -110,7 +141,7 @@ const grievanceTimelinePlugin: DenormPlugin<GrievanceTimelinePayload> = {
 
         const computedDueYmd =
           step.dayType === "business"
-            ? addBusinessDaysYmd(startedYmd, step.days)
+            ? addBusiness(startedYmd, step.days)
             : addDaysYmd(startedYmd, step.days);
 
         // A timeline adjustment on this occurrence's START entry shifts (or
@@ -124,7 +155,7 @@ const grievanceTimelinePlugin: DenormPlugin<GrievanceTimelinePayload> = {
             adjustment.kind === "explicit"
               ? adjustment.date
               : step.dayType === "business"
-                ? addBusinessDaysYmd(computedDueYmd, adjustment.days)
+                ? addBusiness(computedDueYmd, adjustment.days)
                 : addDaysYmd(computedDueYmd, adjustment.days);
         }
 

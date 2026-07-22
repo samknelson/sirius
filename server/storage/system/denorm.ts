@@ -119,6 +119,14 @@ export interface DenormStorage {
    * foreign key. A config with no rows is a harmless no-op that returns 0.
    */
   clearForConfig(configId: string): Promise<number>;
+  /**
+   * Mark every existing denorm row for a config as `stale` (staleAt = now),
+   * returning the number of rows updated. Unlike `clearForConfig` this keeps
+   * the current payload rows in place while the recompute job refreshes them —
+   * the operator tool for "the derivation rule changed, recompute everything
+   * without a window of missing data".
+   */
+  markAllStaleForConfig(configId: string): Promise<number>;
 }
 
 export function createDenormStorage(): DenormStorage {
@@ -260,6 +268,16 @@ export function createDenormStorage(): DenormStorage {
         .where(and(eq(denorm.configId, configId), inArray(denorm.entityId, entityIds)))
         .returning({ id: denorm.id });
       return deleted.length;
+    },
+
+    async markAllStaleForConfig(configId: string): Promise<number> {
+      const client = getClient();
+      const updated = await client
+        .update(denorm)
+        .set({ status: "stale", staleAt: new Date() })
+        .where(eq(denorm.configId, configId))
+        .returning({ id: denorm.id });
+      return updated.length;
     },
 
     async clearForConfig(configId: string): Promise<number> {
