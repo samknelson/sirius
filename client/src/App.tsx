@@ -259,6 +259,8 @@ const WsClientIpRulesPage = lazy(() => import("@/pages/config/ws/client-ip-rules
 const WsClientTestPage = lazy(() => import("@/pages/config/ws/client-test"));
 const WsClientLogsPage = lazy(() => import("@/pages/config/ws/client-logs"));
 const SftpClientsPage = lazy(() => import("@/pages/config/sftp/clients"));
+const BusinessCalendarsPage = lazy(() => import("@/pages/config/business-calendars/index"));
+const BusinessCalendarDetailPage = lazy(() => import("@/pages/config/business-calendars/detail"));
 const SftpClientDetailsPage = lazy(() => import("@/pages/config/sftp/client-details"));
 const SftpClientConnectionPage = lazy(() => import("@/pages/config/sftp/client-connection"));
 const SftpClientTestPage = lazy(() => import("@/pages/config/sftp/client-test"));
@@ -2755,6 +2757,26 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <SftpClientsPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/business-calendars">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <BusinessCalendarsPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/business-calendars/:id">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <BusinessCalendarDetailPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
