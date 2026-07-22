@@ -57,6 +57,55 @@ const WIZARD_TYPE = "bao_cobra_enrollment";
 
 const PENDING_FIRST_PAYMENT_STATUS = "Pending First Payment";
 
+/**
+ * COBRA elections are deliberately NOT attributed to the worker's real
+ * employer — the employment relationship ended (that's what triggered
+ * COBRA). Instead every COBRA election is attached to a dedicated
+ * "COBRA" employer and "COBRA" policy, get-or-created here by sirius ID.
+ * (worker_trust_elections.employer_id / policy_id are NOT NULL, so a
+ * placeholder employer is required rather than "no employer".)
+ */
+const COBRA_SIRIUS_ID = "COBRA";
+const COBRA_NAME = "COBRA";
+
+async function resolveCobraEmployerPolicy(
+  storage: IStorage,
+): Promise<{ employerId: string; policyId: string }> {
+  let policy = await storage.policies.getPolicyBySiriusId(COBRA_SIRIUS_ID);
+  if (!policy) {
+    try {
+      policy = await storage.policies.createPolicy({
+        siriusId: COBRA_SIRIUS_ID,
+        name: COBRA_NAME,
+      });
+    } catch {
+      // Lost a create race — the unique siriusId row now exists.
+      policy = await storage.policies.getPolicyBySiriusId(COBRA_SIRIUS_ID);
+    }
+  }
+  if (!policy) {
+    throw new Error("The COBRA policy could not be resolved or created");
+  }
+
+  let employer = await storage.employers.getBySiriusId(COBRA_SIRIUS_ID);
+  if (!employer) {
+    try {
+      employer = await storage.employers.createEmployer({
+        siriusId: COBRA_SIRIUS_ID,
+        name: COBRA_NAME,
+        denormPolicyId: policy.id,
+      });
+    } catch {
+      employer = await storage.employers.getBySiriusId(COBRA_SIRIUS_ID);
+    }
+  }
+  if (!employer) {
+    throw new Error("The COBRA employer could not be resolved or created");
+  }
+
+  return { employerId: employer.id, policyId: policy.id };
+}
+
 type CoverageChoice = "medical" | "dental" | "both";
 
 interface CoverageOption {
@@ -357,12 +406,6 @@ async function submitReview(
   if (!data.signature) {
     throw new Error("The signature is required before posting");
   }
-  if (!data.employerId || !data.policyId) {
-    throw new Error(
-      "No employer/policy could be resolved for this worker's COBRA election",
-    );
-  }
-
   const benefits = selectedBenefits(data);
   if (benefits.length === 0) {
     throw new Error("The selected coverage is not available on this case");
@@ -409,6 +452,13 @@ async function submitReview(
     );
   }
 
+  // Resolve the dedicated COBRA employer/policy at post time (never the
+  // worker's real employer) — drafts created before this rule may carry a
+  // stale real-employer pair, so the stored draft values are ignored.
+  const { employerId, policyId } = await resolveCobraEmployerPolicy(
+    ctx.storage,
+  );
+
   // 1) Record the election on the case (deadlines recomputed centrally).
   const deadlines = computeCobraDeadlines(
     theCase.source,
@@ -437,8 +487,8 @@ async function submitReview(
     return ctx.storage.workerTrustElections.create(
       theCase.coveredPersonWorkerId,
       {
-        employerId: data.employerId,
-        policyId: data.policyId,
+        employerId,
+        policyId,
         startYmd: theCase.cobraEffectiveYmd,
         benefitIds: benefits.map((b) => b.benefitId),
         relationshipIds: selectedRelationIds(data),
@@ -572,25 +622,11 @@ export const baoCobraEnrollmentPlugin: WizardPlugin = {
           });
         }
 
-        // The employer/policy for the resulting trust election: the covered
-        // person's most recent election, falling back to the subscriber's.
-        // (COBRA continues coverage that previously existed, so in practice
-        // one of these exists; posting re-checks and fails cleanly if not.)
-        let employerId: string | null = null;
-        let policyId: string | null = null;
-        for (const candidate of [
-          theCase.coveredPersonWorkerId,
-          theCase.subscriberWorkerId,
-        ]) {
-          const elections =
-            await storage.workerTrustElections.listByWorker(candidate);
-          const latest = elections[0];
-          if (latest?.employerId && latest?.policyId) {
-            employerId = latest.employerId;
-            policyId = latest.policyId;
-            break;
-          }
-        }
+        // Every COBRA election is attached to the dedicated "COBRA"
+        // employer + policy (never the worker's real employer — that
+        // relationship ended). Get-or-created idempotently.
+        const { employerId, policyId } =
+          await resolveCobraEmployerPolicy(storage);
 
         const isSubscriberCase =
           theCase.coveredPersonWorkerId === theCase.subscriberWorkerId;
