@@ -1,13 +1,12 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Calculator, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import {
   businessCalendarSources,
   type BusinessCalendarData,
   type BusinessCalendarSource,
 } from "@shared/schema";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -89,36 +88,6 @@ function SettingsTabContent() {
       toast({ title: "Saved", description: "Calendar settings updated." });
     },
     onError: onMutationError("Failed to save calendar."),
-  });
-
-  // ── Test calculator ─────────────────────────────────────────────
-  const [calcStart, setCalcStart] = useState("");
-  const [calcN, setCalcN] = useState("1");
-  const [calcResult, setCalcResult] = useState<string | null>(null);
-  const [checkDate, setCheckDate] = useState("");
-  const [checkResult, setCheckResult] = useState<boolean | null>(null);
-
-  const computeMutation = useMutation({
-    mutationFn: async () =>
-      apiRequest(
-        "GET",
-        `/api/business-calendars/${id}/compute?op=addBusinessDays&start=${calcStart}&n=${encodeURIComponent(calcN)}`,
-      ),
-    onSuccess: (res: { result: string }) => setCalcResult(res.result),
-    onError: (error: any) => {
-      setCalcResult(null);
-      onMutationError("Computation failed.")(error);
-    },
-  });
-
-  const checkMutation = useMutation({
-    mutationFn: async () =>
-      apiRequest("GET", `/api/business-calendars/${id}/compute?op=isBusinessDay&date=${checkDate}`),
-    onSuccess: (res: { isBusinessDay: boolean }) => setCheckResult(res.isBusinessDay),
-    onError: (error: any) => {
-      setCheckResult(null);
-      onMutationError("Check failed.")(error);
-    },
   });
 
   const toggleSource = (source: BusinessCalendarSource, checked: boolean) => {
@@ -219,70 +188,6 @@ function SettingsTabContent() {
             {saveMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Save Settings
           </Button>
-        </CardContent>
-      </Card>
-
-      {/* Test calculator */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Calculator className="h-5 w-5" />
-            Test Calculator
-          </CardTitle>
-          <CardDescription>
-            Sanity-check this calendar against the server's business-day computation. Uses the
-            saved settings — save first if you changed anything above.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="flex flex-wrap items-end gap-3">
-            <div className="space-y-2">
-              <Label htmlFor="calc-start">Start date</Label>
-              <Input id="calc-start" type="date" value={calcStart} onChange={(e) => setCalcStart(e.target.value)} data-testid="input-calc-start" />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="calc-n">Business days (N)</Label>
-              <Input id="calc-n" type="number" className="w-32" value={calcN} onChange={(e) => setCalcN(e.target.value)} data-testid="input-calc-n" />
-            </div>
-            <Button
-              onClick={() => computeMutation.mutate()}
-              disabled={computeMutation.isPending || !calcStart || calcN === ""}
-              data-testid="button-compute"
-            >
-              {computeMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Compute
-            </Button>
-            {calcResult && (
-              <Badge variant="secondary" className="text-sm h-9 px-3" data-testid="text-calc-result">
-                Result: {calcResult}
-              </Badge>
-            )}
-          </div>
-
-          <div className="flex flex-wrap items-end gap-3">
-            <div className="space-y-2">
-              <Label htmlFor="check-date">Is this a business day?</Label>
-              <Input id="check-date" type="date" value={checkDate} onChange={(e) => setCheckDate(e.target.value)} data-testid="input-check-date" />
-            </div>
-            <Button
-              variant="outline"
-              onClick={() => checkMutation.mutate()}
-              disabled={checkMutation.isPending || !checkDate}
-              data-testid="button-check-day"
-            >
-              {checkMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Check
-            </Button>
-            {checkResult !== null && (
-              <Badge
-                variant={checkResult ? "secondary" : "destructive"}
-                className="text-sm h-9 px-3"
-                data-testid="text-check-result"
-              >
-                {checkResult ? "Business day (open)" : "Not a business day (closed)"}
-              </Badge>
-            )}
-          </div>
         </CardContent>
       </Card>
     </div>

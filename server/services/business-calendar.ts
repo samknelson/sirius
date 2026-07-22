@@ -95,7 +95,22 @@ export function validateRegion(region: string | undefined | null): string | unde
 interface HolidayEntry {
   ymd: string;
   type: string;
+  name?: string;
 }
+
+export type DayRule = "manual-open" | "weekend" | "manual-byday" | "vacation" | "holiday";
+
+export interface DayExplanation {
+  ymd: string;
+  isBusinessDay: boolean;
+  /** First matching rule per precedence: manual-open > weekend > manual-byday > vacation > holiday. */
+  rule?: DayRule;
+  holidayName?: string;
+  vacationStart?: string;
+  vacationEnd?: string;
+}
+
+export const MAX_EXPLAIN_DAYS = 366;
 
 class CalendarComputer {
   private readonly sources: Set<string>;
@@ -135,6 +150,7 @@ class CalendarComputer {
     const entries: HolidayEntry[] = raw.map((h) => ({
       ymd: String(h.date).slice(0, 10),
       type: h.type,
+      name: typeof h.name === "string" ? h.name : undefined,
     }));
     this.holidayCache.set(year, entries);
     return entries;
@@ -157,6 +173,52 @@ class CalendarComputer {
       if (holidays.some((h) => h.ymd === ymd && this.holidayTypes.has(h.type))) return false;
     }
     return true;
+  }
+
+  explainDay(ymd: string): DayExplanation {
+    if (this.sources.has("manual-open") && this.manualOpen.has(ymd)) {
+      return { ymd, isBusinessDay: true, rule: "manual-open" };
+    }
+    if (this.sources.has("weekends") && this.weekends.has(isoWeekday(ymd))) {
+      return { ymd, isBusinessDay: false, rule: "weekend" };
+    }
+    if (this.sources.has("manual-byday") && this.manualClosed.has(ymd)) {
+      return { ymd, isBusinessDay: false, rule: "manual-byday" };
+    }
+    if (this.sources.has("manual-vacation")) {
+      const vac = this.vacations.find((v) => v.start <= ymd && ymd <= v.end);
+      if (vac) {
+        return {
+          ymd,
+          isBusinessDay: false,
+          rule: "vacation",
+          vacationStart: vac.start,
+          vacationEnd: vac.end,
+        };
+      }
+    }
+    if (this.holidayTypes.size > 0) {
+      const { year } = parseYmd(ymd);
+      const holidays = this.getHolidays(year);
+      const hit = holidays.find((h) => h.ymd === ymd && this.holidayTypes.has(h.type));
+      if (hit) {
+        return { ymd, isBusinessDay: false, rule: "holiday", holidayName: hit.name };
+      }
+    }
+    return { ymd, isBusinessDay: true };
+  }
+
+  explainRange(startYmd: string, endYmd: string): DayExplanation[] {
+    const result: DayExplanation[] = [];
+    let current = startYmd;
+    while (current <= endYmd) {
+      result.push(this.explainDay(current));
+      if (result.length > MAX_EXPLAIN_DAYS) {
+        throw new Error(`explainRange: range exceeds ${MAX_EXPLAIN_DAYS} days`);
+      }
+      current = addDays(current, 1);
+    }
+    return result;
   }
 
   addBusinessDays(startYmd: string, n: number): string {
@@ -185,4 +247,12 @@ export function isBusinessDay(cal: BusinessCalendarWithRules, ymd: string): bool
 
 export function addBusinessDays(cal: BusinessCalendarWithRules, startYmd: string, n: number): string {
   return new CalendarComputer(cal).addBusinessDays(startYmd, n);
+}
+
+export function explainRange(
+  cal: BusinessCalendarWithRules,
+  startYmd: string,
+  endYmd: string,
+): DayExplanation[] {
+  return new CalendarComputer(cal).explainRange(startYmd, endYmd);
 }

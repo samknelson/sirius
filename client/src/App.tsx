@@ -264,6 +264,7 @@ const BusinessCalendarDetailPage = lazy(() => import("@/pages/config/business-ca
 const BusinessCalendarClosedDaysPage = lazy(() => import("@/pages/config/business-calendars/closed-days"));
 const BusinessCalendarVacationsPage = lazy(() => import("@/pages/config/business-calendars/vacations"));
 const BusinessCalendarOpenDaysPage = lazy(() => import("@/pages/config/business-calendars/open-days"));
+const BusinessCalendarTestPage = lazy(() => import("@/pages/config/business-calendars/test"));
 const SftpClientDetailsPage = lazy(() => import("@/pages/config/sftp/client-details"));
 const SftpClientConnectionPage = lazy(() => import("@/pages/config/sftp/client-connection"));
 const SftpClientTestPage = lazy(() => import("@/pages/config/sftp/client-test"));
@@ -2810,6 +2811,16 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <BusinessCalendarOpenDaysPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/business-calendars/:id/test">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <BusinessCalendarTestPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>

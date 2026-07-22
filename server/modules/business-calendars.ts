@@ -8,7 +8,13 @@ import {
 } from "@shared/schema";
 import { isValidYmd } from "@shared/utils/date";
 import { z } from "zod";
-import { isBusinessDay, addBusinessDays, validateRegion } from "../services/business-calendar";
+import {
+  isBusinessDay,
+  addBusinessDays,
+  explainRange,
+  validateRegion,
+  MAX_EXPLAIN_DAYS,
+} from "../services/business-calendar";
 
 type RequireAccess = (policy: any) => (req: Request, res: Response, next: () => void) => void;
 type RequireAuth = (req: Request, res: Response, next: () => void) => void;
@@ -167,7 +173,24 @@ export function registerBusinessCalendarRoutes(
         if (!Number.isInteger(n)) return res.status(400).json({ message: "n must be an integer" });
         return res.json({ op, start, n, result: addBusinessDays(full, start, n) });
       }
-      return res.status(400).json({ message: "op must be isBusinessDay or addBusinessDays" });
+      if (op === "explainRange") {
+        const start = String(req.query.start || "");
+        const end = String(req.query.end || "");
+        if (!isValidYmd(start) || !isValidYmd(end)) {
+          return res.status(400).json({ message: "start and end must be YYYY-MM-DD" });
+        }
+        if (end < start) {
+          return res.status(400).json({ message: "end must not be before start" });
+        }
+        const msPerDay = 24 * 60 * 60 * 1000;
+        const spanDays =
+          Math.round((Date.parse(`${end}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / msPerDay) + 1;
+        if (spanDays > MAX_EXPLAIN_DAYS) {
+          return res.status(400).json({ message: `Range must be at most ${MAX_EXPLAIN_DAYS} days` });
+        }
+        return res.json({ op, start, end, days: explainRange(full, start, end) });
+      }
+      return res.status(400).json({ message: "op must be isBusinessDay, addBusinessDays, or explainRange" });
     } catch (error: any) {
       res.status(500).json({ message: error.message || "Failed to compute" });
     }

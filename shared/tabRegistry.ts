@@ -654,6 +654,7 @@ export const businessCalendarTabTree: HierarchicalTab[] = [
   { id: 'closed-days', label: 'Closed Days', hrefTemplate: '/config/business-calendars/{id}/closed-days', permission: 'admin' },
   { id: 'vacations', label: 'Vacations', hrefTemplate: '/config/business-calendars/{id}/vacations', permission: 'admin' },
   { id: 'open-days', label: 'Forced-Open Days', hrefTemplate: '/config/business-calendars/{id}/open-days', permission: 'admin' },
+  { id: 'test', label: 'Test', hrefTemplate: '/config/business-calendars/{id}/test', permission: 'admin' },
 ];
 
 /**
