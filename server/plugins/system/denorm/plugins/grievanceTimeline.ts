@@ -23,6 +23,32 @@ async function getDefaultCalendar(): Promise<BusinessCalendarWithRules | undefin
 }
 
 /**
+ * Resolve the business calendar to use for a grievance's business-day math.
+ *
+ * Rule: look at the grievance's associated employers (grievance_employers,
+ * usually exactly one). If every associated employer that has a calendar
+ * points to the SAME calendar, use it. Otherwise (no employers, no calendar
+ * set, calendar deleted, or multiple employers with DIFFERING calendars),
+ * fall back to the system default calendar.
+ */
+async function getCalendarForGrievance(
+  grievanceId: string,
+): Promise<BusinessCalendarWithRules | undefined> {
+  const linkedEmployers = await storage.grievances.listEmployers(grievanceId);
+  const calendarIds = new Set<string>();
+  for (const link of linkedEmployers) {
+    const employer = await storage.employers.getEmployer(link.employerId);
+    if (employer?.businessCalendarId) calendarIds.add(employer.businessCalendarId);
+  }
+  if (calendarIds.size === 1) {
+    const calendarId = calendarIds.values().next().value as string;
+    const calendar = await storage.businessCalendars.getCalendarWithRules(calendarId);
+    if (calendar) return calendar;
+  }
+  return getDefaultCalendar();
+}
+
+/**
  * Denorm payload for a grievance's computed timeline steps: zero or more rows
  * for the `grievance_steps_denorm` table.
  */
@@ -52,10 +78,12 @@ export interface GrievanceTimelinePayload {
  *    completion is the final, open occurrence for that step.
  *  - Steps that never started produce NO row.
  *  - `due` = start + `days`, calendar or business per the step's `dayType`.
- *    Business days are computed against the system default business calendar
- *    (weekends, holidays, manual closures, vacations, forced-open days).
- *    When no default calendar is configured, business days degrade to plain
- *    calendar days. Per-employer calendars are a future extension.
+ *    Business days are computed against the business calendar of the
+ *    grievance's associated employer when it has one (all associated
+ *    employers must agree on the calendar); otherwise against the system
+ *    default business calendar (weekends, holidays, manual closures,
+ *    vacations, forced-open days). When neither is configured, business
+ *    days degrade to plain calendar days.
  *  - `is_current` = the earliest-started occurrence that has not completed
  *    (ties broken arbitrarily); enforced at most one by a partial unique index.
  */
@@ -73,6 +101,7 @@ const grievanceTimelinePlugin: DenormPlugin<GrievanceTimelinePayload> = {
     "grievances",
     "grievanceTimelineTemplates",
     "grievanceStatusHistory",
+    "employers",
     "variables",
     "businessCalendars",
   ],
@@ -102,11 +131,12 @@ const grievanceTimelinePlugin: DenormPlugin<GrievanceTimelinePayload> = {
       (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
     );
 
-    // Business-day math uses the system default calendar when one is set;
-    // otherwise business days degrade to plain calendar days.
-    const defaultCalendar = await getDefaultCalendar();
+    // Business-day math uses the grievance's employer calendar when set,
+    // falling back to the system default calendar; when neither exists,
+    // business days degrade to plain calendar days.
+    const calendar = await getCalendarForGrievance(grievanceId);
     const addBusiness = (ymd: string, days: number): string =>
-      defaultCalendar ? addBusinessDays(defaultCalendar, ymd, days) : addDaysYmd(ymd, days);
+      calendar ? addBusinessDays(calendar, ymd, days) : addDaysYmd(ymd, days);
 
     const rows: GrievanceTimelineStepRow[] = [];
     for (const step of steps) {
