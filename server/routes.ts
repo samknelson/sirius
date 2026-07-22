@@ -105,6 +105,7 @@ import { registerBaoImmediateEligibilityRoutes } from "./modules/sitespecific/ba
 import { registerBaoEmployerRatesRoutes } from "./modules/sitespecific/bao/employer-rates";
 import { registerBaoRateSourcesRoutes } from "./modules/sitespecific/bao/rate-sources";
 import { registerBaoCobraRoutes } from "./modules/sitespecific/bao/cobra";
+import { registerBaoDpRatesRoutes } from "./modules/sitespecific/bao/dp-rates";
 import { registerBaoDistanceCacheRoutes } from "./modules/sitespecific/bao/distance-cache";
 import { registerBaoBeneficiariesRoutes } from "./modules/sitespecific/bao/beneficiaries";
 import { registerBaoEchpRoutes } from "./modules/sitespecific/bao/echp";
@@ -1748,6 +1749,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   registerBaoEmployerRatesRoutes(app, requireAuth, requirePermission, requireAccess);
   registerBaoRateSourcesRoutes(app, requireAuth, requirePermission, requireAccess);
   registerBaoCobraRoutes(app, requireAuth, requirePermission, requireAccess);
+  registerBaoDpRatesRoutes(app, requireAuth, requirePermission, requireAccess);
   registerBaoDistanceCacheRoutes(app, requireAuth, requirePermission, requireAccess);
   registerBaoBeneficiariesRoutes(app, requireAuth, requirePermission, requireAccess);
   registerBaoEchpRoutes(app, requireAuth, requirePermission, requireAccess);

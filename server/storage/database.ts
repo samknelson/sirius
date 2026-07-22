@@ -138,6 +138,7 @@ import { type BaoDistanceCacheStorage, createBaoDistanceCacheStorage, baoDistanc
 import { type BaoBeneficiariesStorage, createBaoBeneficiariesStorage, baoBeneficiariesLoggingConfig } from "./sitespecific/bao/beneficiaries";
 import { type BaoCobraRatesStorage, createBaoCobraRatesStorage, baoCobraRatesLoggingConfig } from "./sitespecific/bao/cobra-rates";
 import { type BaoCobraCasesStorage, createBaoCobraCasesStorage, baoCobraCasesLoggingConfig } from "./sitespecific/bao/cobra-cases";
+import { type BaoDpRatesStorage, createBaoDpRatesStorage, baoDpRatesLoggingConfig } from "./sitespecific/bao/dp-rates";
 import { type WorkerBanStorage, createWorkerBanStorage, workerBanLoggingConfig } from "./worker-bans";
 import { type WorkerDispatchDncStorage, createWorkerDispatchDncStorage, workerDispatchDncLoggingConfig } from "./dispatch/worker-dnc";
 import { type WorkerSkillStorage, createWorkerSkillStorage, workerSkillLoggingConfig } from "./workers/skills";
@@ -251,6 +252,7 @@ export interface IStorage {
   baoBeneficiaries: BaoBeneficiariesStorage;
   baoCobraRates: BaoCobraRatesStorage;
   baoCobraCases: BaoCobraCasesStorage;
+  baoDpRates: BaoDpRatesStorage;
   freemanCrewleads: FreemanCrewleadsStorage;
   workerBans: WorkerBanStorage;
   workerDispatchDnc: WorkerDispatchDncStorage;
@@ -361,6 +363,7 @@ export class DatabaseStorage implements IStorage {
   baoBeneficiaries: BaoBeneficiariesStorage;
   baoCobraRates: BaoCobraRatesStorage;
   baoCobraCases: BaoCobraCasesStorage;
+  baoDpRates: BaoDpRatesStorage;
   freemanCrewleads: FreemanCrewleadsStorage;
   workerBans: WorkerBanStorage;
   workerDispatchDnc: WorkerDispatchDncStorage;
@@ -594,6 +597,10 @@ export class DatabaseStorage implements IStorage {
     this.baoCobraCases = withStorageLogging(
       createBaoCobraCasesStorage(),
       baoCobraCasesLoggingConfig,
+    );
+    this.baoDpRates = withStorageLogging(
+      createBaoDpRatesStorage(),
+      baoDpRatesLoggingConfig,
     );
     this.freemanCrewleads = withStorageLogging(
       createFreemanCrewleadsStorage(),

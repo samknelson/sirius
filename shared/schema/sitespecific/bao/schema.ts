@@ -850,6 +850,116 @@ export type UpdateBaoCobraCaseRequest = z.infer<
   typeof updateBaoCobraCaseRequestSchema
 >;
 
+// ---------------------------------------------------------------------------
+// Domestic Partner (DP) rates — an effective-dated rate table per
+// (benefit, coverage-tier transition). Lookup picks the row with the latest
+// effective date on or before the requested date (same convention as the
+// COBRA rates above — no explicit end dates, no fallback when nothing
+// applies).
+//
+// The `family → family with DP` transition has no confirmed business rule
+// yet: its rows are stored as configurable PLACEHOLDERS flagged provisional,
+// surfaced as such in the UI, and never inferred from the other rates.
+// ---------------------------------------------------------------------------
+
+export const BAO_DP_TIER_TRANSITIONS = [
+  "single_to_2party",
+  "2party_to_family",
+  "single_to_family",
+  "family_to_family_dp",
+] as const;
+export type BaoDpTierTransition = (typeof BAO_DP_TIER_TRANSITIONS)[number];
+
+export const BAO_DP_TIER_TRANSITION_LABELS: Record<BaoDpTierTransition, string> = {
+  single_to_2party: "Single → 2-Party",
+  "2party_to_family": "2-Party → Family",
+  single_to_family: "Single → Family",
+  family_to_family_dp: "Family → Family with DP",
+};
+
+export const sitespecificBaoDpRates = pgTable(
+  "sitespecific_bao_dp_rates",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    benefitId: varchar("benefit_id").notNull(),
+    tierTransition: varchar("tier_transition")
+      .notNull()
+      .$type<BaoDpTierTransition>(),
+    /** Monthly rate in dollars. */
+    rate: numeric("rate", { precision: 10, scale: 2 }).notNull(),
+    effectiveYmd: date("effective_ymd").notNull(),
+    /**
+     * Provisional/placeholder flag. Provisional rows (all
+     * family_to_family_dp rows today) are configurable placeholders —
+     * never presented as confirmed values.
+     */
+    provisional: boolean("provisional").notNull().default(false),
+    data: jsonb("data"),
+  },
+  (table) => [
+    unique("sitespecific_bao_dp_rates_benefit_transition_effective_uq").on(
+      table.benefitId,
+      table.tierTransition,
+      table.effectiveYmd,
+    ),
+    foreignKey({
+      name: "sitespecific_bao_dp_rates_benefit_id_fkey",
+      columns: [table.benefitId],
+      foreignColumns: [trustBenefits.id],
+    }).onDelete("cascade"),
+  ],
+);
+
+export const insertBaoDpRateSchema = createInsertSchema(sitespecificBaoDpRates)
+  .omit({ id: true })
+  .extend({
+    tierTransition: z.enum(BAO_DP_TIER_TRANSITIONS),
+  });
+
+export type BaoDpRate = typeof sitespecificBaoDpRates.$inferSelect;
+export type InsertBaoDpRate = z.infer<typeof insertBaoDpRateSchema>;
+
+/** A rate row enriched with its benefit name for display. */
+export type BaoDpRateWithBenefit = BaoDpRate & {
+  benefitName: string | null;
+};
+
+export const createBaoDpRateRequestSchema = z
+  .object({
+    benefitId: z.string().min(1, "A benefit is required"),
+    tierTransition: z.enum(BAO_DP_TIER_TRANSITIONS),
+    rate: z.coerce
+      .number({ invalid_type_error: "Rate must be a number" })
+      .nonnegative("Rate must be at least 0"),
+    effectiveYmd: cobraYmd,
+    provisional: z.boolean().optional(),
+  })
+  .strict();
+
+export const updateBaoDpRateRequestSchema = z
+  .object({
+    benefitId: z.string().min(1).optional(),
+    tierTransition: z.enum(BAO_DP_TIER_TRANSITIONS).optional(),
+    rate: z.coerce.number().nonnegative().optional(),
+    effectiveYmd: cobraYmd.optional(),
+    provisional: z.boolean().optional(),
+  })
+  .strict()
+  .refine((val) => Object.keys(val).length > 0, {
+    message: "Provide at least one field to update",
+  });
+
+export type CreateBaoDpRateRequest = z.infer<typeof createBaoDpRateRequestSchema>;
+export type UpdateBaoDpRateRequest = z.infer<typeof updateBaoDpRateRequestSchema>;
+
+export const listBaoDpRatesQuerySchema = z.object({
+  benefitId: z.string().min(1).optional(),
+  tierTransition: z.enum(BAO_DP_TIER_TRANSITIONS).optional(),
+  asOfYmd: cobraYmd.optional(),
+});
+
+export type ListBaoDpRatesQuery = z.infer<typeof listBaoDpRatesQuerySchema>;
+
 export const searchBaoCobraCasesQuerySchema = z.object({
   statusId: z.string().min(1).optional(),
   qualifyingEventId: z.string().min(1).optional(),
