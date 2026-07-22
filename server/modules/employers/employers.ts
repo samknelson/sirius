@@ -207,7 +207,7 @@ export function registerEmployerRoutes(
   app.put("/api/employers/:id", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
       const { id } = req.params;
-      const { name, isActive, typeId, industryId, companyId, siriusId } = req.body;
+      const { name, isActive, typeId, industryId, companyId, siriusId, businessCalendarId } = req.body;
       
       const updates: Partial<InsertEmployer> = {};
       
@@ -240,6 +240,21 @@ export function registerEmployerRoutes(
       
       if (industryId !== undefined) {
         updates.industryId = industryId === null || industryId === "" ? null : industryId;
+      }
+
+      if (businessCalendarId !== undefined) {
+        if (businessCalendarId === null || businessCalendarId === "") {
+          updates.businessCalendarId = null;
+        } else {
+          if (typeof businessCalendarId !== 'string') {
+            return res.status(400).json({ message: "businessCalendarId must be a string or null" });
+          }
+          const calendar = await storage.businessCalendars.get(businessCalendarId);
+          if (!calendar) {
+            return res.status(400).json({ message: "Business calendar not found" });
+          }
+          updates.businessCalendarId = businessCalendarId;
+        }
       }
       
       if (Object.keys(updates).length === 0 && companyId === undefined && siriusId === undefined) {

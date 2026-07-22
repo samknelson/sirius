@@ -252,7 +252,14 @@ export const employers = pgTable("employers", {
   typeId: varchar("type_id").references(() => optionsEmployerType.id, { onDelete: 'set null' }),
   industryId: varchar("industry_id").references(() => optionsIndustry.id, { onDelete: 'set null' }),
   denormPolicyId: varchar("denorm_policy_id").references(() => policies.id, { onDelete: 'set null' }),
-});
+  businessCalendarId: varchar("business_calendar_id"),
+}, (table) => [
+  foreignKey({
+    name: "employers_business_calendar_id_fkey",
+    columns: [table.businessCalendarId],
+    foreignColumns: [businessCalendars.id],
+  }).onDelete("set null"),
+]);
 
 export const policies = pgTable("policies", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

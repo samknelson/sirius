@@ -36,6 +36,11 @@ interface Company {
   name: string;
 }
 
+interface BusinessCalendarOption {
+  id: string;
+  name: string;
+}
+
 interface EmployerCompanyInfo {
   companyId: string | null;
   companyName: string | null;
@@ -56,6 +61,7 @@ function EmployerEditContent() {
   const [editIndustryId, setEditIndustryId] = useState<string | null>(employer.industryId || null);
   const [editCompanyId, setEditCompanyId] = useState<string | null>(null);
   const [companyInitialized, setCompanyInitialized] = useState(false);
+  const [editBusinessCalendarId, setEditBusinessCalendarId] = useState<string | null>(employer.businessCalendarId || null);
 
   const { data: employerTypes = [] } = useQuery<EmployerType[]>({
     queryKey: ["/api/options/employer-type"],
@@ -68,6 +74,10 @@ function EmployerEditContent() {
   const { data: companiesList = [] } = useQuery<Company[]>({
     queryKey: ["/api/companies"],
     enabled: showCompany,
+  });
+
+  const { data: businessCalendars = [] } = useQuery<BusinessCalendarOption[]>({
+    queryKey: ["/api/business-calendars"],
   });
 
   const { data: employerCompanyData } = useQuery<EmployerCompanyInfo>({
@@ -84,7 +94,7 @@ function EmployerEditContent() {
 
 
   const updateEmployerMutation = useMutation({
-    mutationFn: async (data: { name: string; isActive: boolean; typeId: string | null; industryId: string | null; siriusId: string | null; companyId?: string | null }) => {
+    mutationFn: async (data: { name: string; isActive: boolean; typeId: string | null; industryId: string | null; siriusId: string | null; businessCalendarId: string | null; companyId?: string | null }) => {
       return await apiRequest("PUT", `/api/employers/${employer.id}`, data);
     },
     onSuccess: () => {
@@ -108,12 +118,13 @@ function EmployerEditContent() {
 
   const handleSaveEdit = () => {
     if (editName.trim()) {
-      const payload: { name: string; isActive: boolean; typeId: string | null; industryId: string | null; siriusId: string | null; companyId?: string | null } = {
+      const payload: { name: string; isActive: boolean; typeId: string | null; industryId: string | null; siriusId: string | null; businessCalendarId: string | null; companyId?: string | null } = {
         name: editName.trim(),
         isActive: editIsActive,
         typeId: editTypeId,
         industryId: editIndustryId,
         siriusId: editSiriusId.trim() === "" ? null : editSiriusId.trim(),
+        businessCalendarId: editBusinessCalendarId,
       };
       if (showCompany) {
         payload.companyId = editCompanyId;
@@ -204,6 +215,29 @@ function EmployerEditContent() {
                   {industries.map((industry) => (
                     <SelectItem key={industry.id} value={industry.id} data-testid={`select-item-edit-industry-${industry.id}`}>
                       {industry.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-employer-business-calendar" className="text-sm font-medium text-foreground">
+                Business Calendar
+              </Label>
+              <Select
+                value={editBusinessCalendarId || "__none__"}
+                onValueChange={(value) => setEditBusinessCalendarId(value === "__none__" ? null : value)}
+              >
+                <SelectTrigger className="w-full" data-testid="select-edit-employer-business-calendar">
+                  <SelectValue placeholder="Select business calendar (optional)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__" data-testid="select-item-edit-business-calendar-none">
+                    <span className="text-muted-foreground">None (use default)</span>
+                  </SelectItem>
+                  {businessCalendars.map((calendar) => (
+                    <SelectItem key={calendar.id} value={calendar.id} data-testid={`select-item-edit-business-calendar-${calendar.id}`}>
+                      {calendar.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
