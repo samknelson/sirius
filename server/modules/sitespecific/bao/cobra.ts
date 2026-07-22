@@ -15,6 +15,11 @@ import {
 } from "../../../../shared/schema/sitespecific/bao/schema";
 import { computeCobraDeadlines } from "../../../../shared/schema/sitespecific/bao/cobra";
 import {
+  computeCobraCasePaymentState,
+  resolveCobraAccountId,
+  todayYmdLocal,
+} from "./cobra-payment-state";
+import {
   BAO_COBRA_TRIGGER_CONFIG_VARIABLE,
   baoCobraTriggerConfigSchema,
   resolveTriggerForPlugin,
@@ -306,6 +311,9 @@ export function registerBaoCobraRoutes(
         );
         const todayYmd = new Date().toISOString().slice(0, 10);
         const ratesTableExists = await ratesStorage.tableExists();
+        const hasElectedCase = activeCases.some((c) => c.electionMadeYmd);
+        const cobraAccountId = hasElectedCase ? await resolveCobraAccountId() : null;
+        const paymentTodayYmd = todayYmdLocal();
 
         const results = [];
         for (const theCase of activeCases) {
@@ -368,7 +376,21 @@ export function registerBaoCobraRoutes(
             };
           }
 
-          results.push({ case: theCase, asOfYmd, coverage, totalsByTier });
+          // Payment state + outstanding balance only apply once coverage has
+          // been elected (billing starts at election).
+          let payment = null;
+          if (theCase.electionMadeYmd && cobraAccountId) {
+            const computed = await computeCobraCasePaymentState(
+              theCase,
+              paymentTodayYmd,
+              cobraAccountId,
+            );
+            if (computed) {
+              payment = { state: computed.state, balance: computed.balance };
+            }
+          }
+
+          results.push({ case: theCase, asOfYmd, coverage, totalsByTier, payment });
         }
 
         res.json({ cases: results });

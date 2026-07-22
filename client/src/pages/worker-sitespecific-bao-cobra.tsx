@@ -35,12 +35,38 @@ type CobraTierTotals = {
   total: string;
 };
 
+type CobraPayment = {
+  state: "paid" | "grace" | "delinquent";
+  balance: string;
+};
+
 type CobraCaseView = {
   case: BaoCobraCaseWithDetails;
   asOfYmd: string;
   coverage: CobraCoverage[];
   totalsByTier?: Record<string, CobraTierTotals | null>;
+  payment: CobraPayment | null;
 };
+
+const PAYMENT_STATE_LABELS: Record<CobraPayment["state"], string> = {
+  paid: "Paid",
+  grace: "In grace period",
+  delinquent: "Delinquent",
+};
+
+const PAYMENT_STATE_CLASSES: Record<CobraPayment["state"], string> = {
+  paid: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 border-transparent",
+  grace:
+    "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 border-transparent",
+  delinquent: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200 border-transparent",
+};
+
+function formatBalance(balance: string): string {
+  const num = Number(balance);
+  if (!Number.isFinite(num)) return balance;
+  if (num <= 0) return "No amount owed";
+  return `${num.toLocaleString("en-US", { style: "currency", currency: "USD" })} owed`;
+}
 
 type WorkerCobraResponse = {
   cases: CobraCaseView[];
@@ -102,10 +128,20 @@ function CobraCaseCard({ view, workerId }: { view: CobraCaseView; workerId: stri
                   {c.statusName}
                 </Badge>
               )}
-              {c.paymentStatus && (
-                <Badge variant="outline" data-testid={`status-cobra-payment-${c.id}`}>
-                  {c.paymentStatus}
+              {view.payment ? (
+                <Badge
+                  variant="outline"
+                  className={PAYMENT_STATE_CLASSES[view.payment.state]}
+                  data-testid={`status-cobra-payment-${c.id}`}
+                >
+                  {PAYMENT_STATE_LABELS[view.payment.state]}
                 </Badge>
+              ) : (
+                c.paymentStatus && (
+                  <Badge variant="outline" data-testid={`status-cobra-payment-${c.id}`}>
+                    {c.paymentStatus}
+                  </Badge>
+                )
               )}
             </div>
           </div>
@@ -182,6 +218,13 @@ function CobraCaseCard({ view, workerId }: { view: CobraCaseView; workerId: stri
               value={formatYmd(c.maxPeriodYmd)}
               testId={`text-cobra-max-period-${c.id}`}
             />
+            {view.payment && (
+              <DetailRow
+                label="Outstanding balance"
+                value={formatBalance(view.payment.balance)}
+                testId={`text-cobra-balance-${c.id}`}
+              />
+            )}
           </div>
         </CardContent>
       </Card>
