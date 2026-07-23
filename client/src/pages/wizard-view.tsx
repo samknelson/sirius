@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Wand2, ArrowLeft, Trash2, AlertTriangle, Clock } from "lucide-react";
+import { Wand2, ArrowLeft, Trash2, AlertTriangle, Clock, FileText } from "lucide-react";
 import { format } from "date-fns";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -144,6 +144,14 @@ export default function WizardView() {
             </div>
           </div>
           <div className="flex items-center gap-3">
+            {wizardType?.isReport && (
+              <Link href={`/reports/${wizard.type}`}>
+                <Button variant="outline" size="sm" data-testid="button-view-report-type">
+                  <FileText size={16} className="mr-2" />
+                  View all runs
+                </Button>
+              </Link>
+            )}
             {employer && (
               <Link href={`/employers/${employer.id}/wizards`}>
                 <Button variant="outline" size="sm" data-testid="button-back-to-employer">
