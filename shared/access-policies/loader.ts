@@ -28,6 +28,7 @@ import './worker/mine';
 import './worker/ledger';
 import './worker/comm';
 import './worker/cobra';
+import './worker/dp';
 
 import './trust/provider/ledger';
 import './trust/provider/mine';

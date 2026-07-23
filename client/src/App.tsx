@@ -55,6 +55,7 @@ const WorkerEdls = lazy(() => import("@/pages/worker-edls"));
 const WorkerSecondShift = lazy(() => import("@/pages/worker-sitespecific-freeman-2shift"));
 const WorkerBaoBeneficiaries = lazy(() => import("@/pages/worker-sitespecific-bao-beneficiaries"));
 const WorkerBaoCobra = lazy(() => import("@/pages/worker-sitespecific-bao-cobra"));
+const WorkerBaoDp = lazy(() => import("@/pages/worker-sitespecific-bao-dp"));
 const WorkerSkills = lazy(() => import("@/pages/worker-skills"));
 const WorkerRelations = lazy(() => import("@/pages/workers/relations"));
 const WorkerElectionsCurrent = lazy(() => import("@/pages/workers/elections-current"));
@@ -853,6 +854,14 @@ function Router() {
         <ProtectedRoute tabId="sitespecific-bao-cobra" entityType="worker">
           <AuthenticatedLayout>
             <WorkerBaoCobra />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/workers/:id/sitespecific/bao/dp">
+        <ProtectedRoute tabId="sitespecific-bao-dp" entityType="worker">
+          <AuthenticatedLayout>
+            <WorkerBaoDp />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

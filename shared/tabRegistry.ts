@@ -197,6 +197,7 @@ export const workerTabTree: HierarchicalTab[] = [
   { id: 'sitespecific-freeman-2shift', label: 'Second Shift', hrefTemplate: '/workers/{id}/sitespecific-freeman-2shift', policyId: 'edls.any', component: 'sitespecific.freeman' },
   { id: 'sitespecific-bao-beneficiaries', label: 'Beneficiaries', hrefTemplate: '/workers/{id}/sitespecific/bao/beneficiaries', policyId: 'worker.view', component: 'sitespecific.bao' },
   { id: 'sitespecific-bao-cobra', label: 'COBRA', hrefTemplate: '/workers/{id}/sitespecific/bao/cobra', policyId: 'worker.cobra', component: 'sitespecific.bao' },
+  { id: 'sitespecific-bao-dp', label: 'Domestic Partner', hrefTemplate: '/workers/{id}/sitespecific/bao/dp', policyId: 'worker.dp', component: 'sitespecific.bao' },
   {
     id: 'accounting', label: 'Accounting', hrefTemplate: '/workers/{id}/ledger/accounts', policyId: 'worker.mine', component: 'ledger|sitespecific.bao', navigateToFirstAccessibleChild: true,
     children: [
