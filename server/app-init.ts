@@ -41,6 +41,7 @@ import { initWorkerBanNotifications } from "./services/worker-ban-notifications"
 import { initDispatchNotifications } from "./services/dispatch/notifications";
 import { initWmbAutoRescan } from "./services/wmb-auto-rescan";
 import { initBaoCobraAutoCase } from "./services/bao-cobra-auto-case";
+import { initBaoDpAutoRescan } from "./services/bao-dp-auto-rescan";
 import "@shared/access-policies/loader";
 import { registerEntityAccessModule } from "./modules/entity-access";
 import { isComponentEnabled } from "./modules/components";
@@ -331,6 +332,10 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
   // Initialize automatic COBRA case creation/closing (BAO component)
   initBaoCobraAutoCase();
   logger.info("BAO COBRA auto-case initialized", { source: "startup" });
+
+  // Initialize DP one-month-ahead rescans on DP payments / election changes
+  initBaoDpAutoRescan();
+  logger.info("BAO DP auto-rescan initialized", { source: "startup" });
 
   // Register charge plugin event listeners.
   // WMB charges are fully event-driven: trust.wmb storage emits WMB_SAVED and

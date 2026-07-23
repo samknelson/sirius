@@ -36,12 +36,19 @@ export async function processNextQueueJob(
   });
 
   try {
+    // Event-driven single-worker jobs also re-evaluate the worker's covered
+    // dependents (e.g. a DP payment must re-gate the DP dependent's benefit,
+    // which is keyed to the dependent's own worker id). Batch runs
+    // (monthly_batch / auto_hours_bulk) keep dependents off because they
+    // already enqueue each worker in the population as its own job.
+    const includeDependents = job.triggerSource === "worker_update";
     const result = await runBenefitsScan(
       storage,
       job.workerId,
       job.month,
       job.year,
-      "live"
+      "live",
+      { includeDependents }
     );
 
     const jobResultInfo = await storage.wmbScanQueue.recordJobResult(

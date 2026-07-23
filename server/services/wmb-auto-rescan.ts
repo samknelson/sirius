@@ -134,7 +134,7 @@ function dedupeMonths(months: (MonthRef | null)[]): MonthRef[] {
   return out;
 }
 
-async function enqueueWorkerMonths(
+export async function enqueueWorkerMonths(
   workerId: string,
   months: MonthRef[],
   reason: string,
