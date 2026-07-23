@@ -1,9 +1,11 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { FileText, Calendar, Hash, ExternalLink } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { FileText, Calendar, Hash, ExternalLink, Plus } from "lucide-react";
 import { DashboardPluginProps } from "../registry";
 import { useDashboardContent } from "../useDashboardContent";
 import { Link } from "wouter";
-import { format } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
+import { WizardLauncher } from "@/components/wizards/WizardLauncher";
 
 interface ReportSummary {
   type: string;
@@ -46,7 +48,8 @@ export function Reports(_props: DashboardPluginProps) {
                     <div className="flex items-center gap-2 text-muted-foreground">
                       <Calendar className="h-4 w-4" />
                       <span data-testid={`report-date-${report.type}`}>
-                        Last run: {format(generatedAt, "MMM d, yyyy h:mm a")}
+                        Last run: {format(generatedAt, "MMM d, yyyy h:mm a")} (
+                        {formatDistanceToNow(generatedAt, { addSuffix: true })})
                       </span>
                     </div>
                   )}
@@ -62,6 +65,26 @@ export function Reports(_props: DashboardPluginProps) {
                   </div>
                 </div>
               </Link>
+              <div className="mt-3">
+                <WizardLauncher
+                  type={report.type}
+                  successTitle="Report Created"
+                  successDescription="The report wizard has been created successfully."
+                  dialogTitle={`New ${report.displayName}`}
+                  renderTrigger={({ onClick, disabled, isPending }) => (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={onClick}
+                      disabled={disabled}
+                      data-testid={`button-launch-report-${report.type}`}
+                    >
+                      <Plus className="h-4 w-4 mr-1" />
+                      {isPending ? "Creating..." : "New Report"}
+                    </Button>
+                  )}
+                />
+              </div>
             </CardContent>
           </Card>
         );
