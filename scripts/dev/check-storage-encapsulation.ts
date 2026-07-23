@@ -76,6 +76,7 @@ const READONLY_FLAG_EXEMPT_FILES = [
   'server/plugins/wizards/engine/types/report_gbhet_legal_compliance.ts',
   'server/plugins/wizards/engine/types/report_employer_users.ts',
   'server/plugins/wizards/engine/types/report_btu_workers_invalid_cardcheck.ts',
+  'server/plugins/wizards/engine/types/report_edls_scheduled_too_soon.ts',
   'server/plugins/wizards/engine/types/btu_dues_allocation.ts',
   'server/plugins/wizards/engine/types/btu_cardcheck_import.ts',
 ];
