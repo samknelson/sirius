@@ -8,76 +8,7 @@ import {
 import { registerEligibilityPlugin } from "../registry";
 import { storage } from "../../../../storage/database";
 import { createUnifiedOptionsStorage } from "../../../../storage/unified-options";
-import { distanceInMiles, type Coordinates } from "@shared/utils/geocode";
-import { getDrivingDistanceMiles } from "../../../../services/driving-distance";
-import type { BaoDistanceMethod } from "@shared/schema/sitespecific/bao/schema";
-
-const DRIVING_METHOD = "driving distance";
-const STRAIGHT_LINE_METHOD = "straight-line distance";
-
-/** Human-readable label for a persisted cache method. */
-function methodLabel(method: BaoDistanceMethod): string {
-  return method === "driving" ? DRIVING_METHOD : STRAIGHT_LINE_METHOD;
-}
-
-/**
- * Distance between two coordinates, preferring real driving distance via
- * the Google Routes API and falling back to the straight-line haversine
- * calculation when routing is unavailable (API error, quota, timeout, or
- * no route). The returned `method` names how the distance was derived so
- * callers can surface it in eligibility reason text.
- *
- * Two layers of caching sit in front of the Google Routes lookup:
- *  - L1: the in-memory `cache` map, so the same worker↔site pair is never
- *    looked up twice within one evaluation run.
- *  - L2: the persistent `storage.baoDistanceCache` table, shared across runs
- *    and across BAO plugins. A cached DRIVING row is authoritative and
- *    returned directly. A cached STRAIGHT-LINE row is non-authoritative: we
- *    re-attempt a real driving lookup and, if it now succeeds, upgrade the
- *    stored row. On a miss (or an unsuccessful re-attempt) we persist the
- *    freshly measured value so future runs are served from the DB.
- */
-async function measureDistance(
-  origin: Coordinates,
-  destination: Coordinates,
-  cache: Map<string, { distance: number; method: string }>,
-): Promise<{ distance: number; method: string }> {
-  const key = `${origin.latitude},${origin.longitude}->${destination.latitude},${destination.longitude}`;
-  const cached = cache.get(key);
-  if (cached) return cached;
-
-  const coords = {
-    originLat: origin.latitude,
-    originLng: origin.longitude,
-    destLat: destination.latitude,
-    destLng: destination.longitude,
-  };
-
-  // L2 — persistent cache. A driving row is a durable hit; a straight-line
-  // row is re-attempted below in the hope of upgrading it to driving.
-  const persisted = await storage.baoDistanceCache.getByCoords(coords);
-  if (persisted && persisted.method === "driving") {
-    const hit = { distance: Number(persisted.distanceMiles), method: DRIVING_METHOD };
-    cache.set(key, hit);
-    return hit;
-  }
-
-  const driving = await getDrivingDistanceMiles(origin, destination);
-  const measured =
-    driving.status === "ok"
-      ? { distance: driving.miles, method: "driving" as BaoDistanceMethod }
-      : { distance: distanceInMiles(origin, destination), method: "straight-line" as BaoDistanceMethod };
-
-  await storage.baoDistanceCache.upsert({
-    ...coords,
-    distanceMiles: measured.distance,
-    method: measured.method,
-  });
-
-  const result = { distance: measured.distance, method: methodLabel(measured.method) };
-  cache.set(key, result);
-  return result;
-}
+import { measureDistance, getPrimaryCoords } from "./bao-shared";
 
 const unifiedOptionsStorage = createUnifiedOptionsStorage();
 
@@ -145,30 +76,6 @@ function ymdFromYearMonth(asOfYear: number, asOfMonth: number): string {
   const mo = String(d.getMonth() + 1).padStart(2, "0");
   const dy = String(d.getDate()).padStart(2, "0");
   return `${yr}-${mo}-${dy}`;
-}
-
-type CoordsLookup =
-  | { status: "ok"; coords: Coordinates }
-  | { status: "no-address" }
-  | { status: "not-geocoded" };
-
-/**
- * Resolve a contact's primary, active address coordinates. Returns a
- * discriminated result so callers can produce explanatory failure
- * messages rather than throwing when an address is missing or has not
- * been geocoded.
- */
-async function getPrimaryCoords(contactId: string): Promise<CoordsLookup> {
-  const addresses = await storage.contacts.addresses.getContactPostalByContact(contactId);
-  const primary = addresses.find((a) => a.isPrimary && a.isActive);
-  if (!primary) return { status: "no-address" };
-  if (primary.latitude == null || primary.longitude == null) {
-    return { status: "not-geocoded" };
-  }
-  return {
-    status: "ok",
-    coords: { latitude: primary.latitude, longitude: primary.longitude },
-  };
 }
 
 /**
