@@ -44,7 +44,10 @@ export const reportEdlsScheduledTooSoonPlugin: WizardPlugin = {
       name: "Settings",
       description: "Configure the minimum gap and date range",
       kind: "form",
-      // Rendered by the shared SchemaForm — no bespoke client component.
+      // Bespoke client form (registry key "InputsForm"): same as the
+      // generic SchemaFormStep but re-defaults endDate to startDate + 10
+      // days whenever the start date changes.
+      component: "InputsForm",
       schema: {
         type: "object",
         properties: {
@@ -57,21 +60,19 @@ export const reportEdlsScheduledTooSoonPlugin: WizardPlugin = {
           },
           startDate: {
             type: "string",
+            format: "date",
             title: "Start date",
             description:
-              "Earliest shift date to include, formatted YYYY-MM-DD. Leave blank for today.",
+              "Earliest shift date to include. Leave blank for today.",
           },
           endDate: {
             type: "string",
+            format: "date",
             title: "End date",
             description:
-              "Latest shift date to include, formatted YYYY-MM-DD. Leave blank for 10 days after the start date.",
+              "Latest shift date to include. Leave blank for 10 days after the start date.",
           },
         },
-      },
-      uiSchema: {
-        startDate: { "ui:placeholder": "YYYY-MM-DD" },
-        endDate: { "ui:placeholder": "YYYY-MM-DD" },
       },
       // All fields have server-side defaults, so this step is always satisfiable.
       getState: () => "completed",
