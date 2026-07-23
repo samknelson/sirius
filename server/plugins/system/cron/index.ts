@@ -120,6 +120,7 @@ import "./plugins/logCleanup";
 import "./plugins/memberStatusScan";
 import "./plugins/ledgerChargeCron";
 import "./plugins/baoCobraBilling";
+import "./plugins/baoDpBilling";
 import "./plugins/baoCobraStatusScan";
 import "./plugins/baoCobraCaseReconcile";
 import "./plugins/dispatchEbaCleanup";

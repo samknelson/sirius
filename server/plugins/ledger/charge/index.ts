@@ -143,5 +143,6 @@ import "./plugins/paymentSimpleAllocation";
 import "./plugins/btuStewardAttendance";
 import "./plugins/btuDuesAllocation";
 import "./plugins/sitespecific-bao-cobra";
+import "./plugins/sitespecific-bao-dp";
 import "./plugins/sitespecific-bao-echp";
 import "./plugins/sitespecific-bao-hourly";

@@ -17,6 +17,7 @@ import {
   isNull,
   inArray,
   ne,
+  ilike,
   type SQL,
 } from 'drizzle-orm';
 import { defineLoggingConfig, type StorageLoggingConfig } from '../middleware/logging';
@@ -42,8 +43,19 @@ export interface SearchWorkerRelationsParams {
   role?: 'worker_1' | 'worker_2' | 'either';
   activeAt?: Date | null;
   relationTypeId?: string;
+  /**
+   * Case-insensitive ILIKE pattern matched against the relation TYPE NAME
+   * (e.g. '%domestic partner%'). Used by consumers that identify relations
+   * semantically (like DP billing) rather than by a hardcoded type id.
+   */
+  relationTypeNameILike?: string;
   limit?: number;
   offset?: number;
+}
+
+/** A relation row enriched with its relation-type name. */
+export interface WorkerRelationWithTypeName extends WorkerRelation {
+  relationTypeName: string | null;
 }
 
 export interface WorkerRelationsStorage {
@@ -60,6 +72,11 @@ export interface WorkerRelationsStorage {
     asOfDate: Date,
   ): Promise<WorkerRelation | null>;
   get(id: string): Promise<WorkerRelation | undefined>;
+  /**
+   * Fetch relation rows (with their relation-type names) for a set of ids.
+   * Missing ids are silently absent from the result.
+   */
+  listByIdsWithType(ids: string[]): Promise<WorkerRelationWithTypeName[]>;
   create(data: InsertWorkerRelation): Promise<WorkerRelation>;
   update(id: string, data: Partial<InsertWorkerRelation>): Promise<WorkerRelation | undefined>;
   delete(id: string): Promise<boolean>;
@@ -243,6 +260,9 @@ export function createWorkerRelationsStorage(): WorkerRelationsStorage {
       if (params.relationTypeId) {
         conds.push(eq(workerRelations.relationType, params.relationTypeId));
       }
+      if (params.relationTypeNameILike) {
+        conds.push(ilike(optionsWorkerRelationType.name, params.relationTypeNameILike));
+      }
       if (params.activeAt !== undefined && params.activeAt !== null) {
         const ymd = toYmd(params.activeAt)!;
         // Active = start_ymd is set AND start_ymd <= ymd AND (end_ymd IS NULL OR end_ymd >= ymd)
@@ -348,6 +368,27 @@ export function createWorkerRelationsStorage(): WorkerRelationsStorage {
       const client = getClient();
       const [row] = await client.select().from(workerRelations).where(eq(workerRelations.id, id));
       return row;
+    },
+
+    async listByIdsWithType(ids: string[]): Promise<WorkerRelationWithTypeName[]> {
+      const unique = Array.from(new Set(ids)).filter(Boolean);
+      if (unique.length === 0) return [];
+      const client = getClient();
+      const rows = await client
+        .select({
+          relation: workerRelations,
+          relationTypeName: optionsWorkerRelationType.name,
+        })
+        .from(workerRelations)
+        .leftJoin(
+          optionsWorkerRelationType,
+          eq(workerRelations.relationType, optionsWorkerRelationType.id),
+        )
+        .where(inArray(workerRelations.id, unique));
+      return rows.map((r) => ({
+        ...r.relation,
+        relationTypeName: r.relationTypeName ?? null,
+      }));
     },
 
     async create(data: InsertWorkerRelation): Promise<WorkerRelation> {
