@@ -161,6 +161,20 @@ export interface DailySummaryByMemberStatusRow {
 
 export type MemberStatusSummaryRow = DailySummaryByMemberStatusRow;
 
+export interface OutOfPopulationAssignmentRow {
+  assignmentId: string;
+  sheetId: string;
+  sheetTitle: string;
+  sheetYmd: string;
+  workerId: string;
+  siriusId: number | null;
+  displayName: string | null;
+  startTime: string | null;
+  taskName: string | null;
+  departmentName: string | null;
+  supervisorName: string | null;
+}
+
 export interface EdlsAssignmentsStorage {
   getByCrewId(crewId: string): Promise<EdlsAssignmentWithWorker[]>;
   getBySheetId(sheetId: string, industryId?: string | null): Promise<EdlsAssignmentWithWorker[]>;
@@ -170,6 +184,13 @@ export interface EdlsAssignmentsStorage {
   deleteByCrewId(crewId: string): Promise<number>;
   updateData(id: string, data: Record<string, unknown>): Promise<EdlsAssignment | undefined>;
   getAvailableWorkersForSheet(sheetYmd: string, industryId: string | null, ratingId?: string): Promise<AvailableWorkerForSheet[]>;
+  /**
+   * Report query: every assignment on a future (ymd >= fromYmd), non-trash
+   * sheet whose worker is NOT in the EDLS scheduling population (no
+   * `worker_edls` row with `active = true` — the same population rule as
+   * `getAvailableWorkersForSheet`).
+   */
+  getFutureOutOfPopulationAssignments(fromYmd: string): Promise<OutOfPopulationAssignmentRow[]>;
   getWorkerAssignmentDetails(workerId: string, sheetYmd: string): Promise<WorkerAssignmentDetails | null>;
   getMemberStatusSummaryByYmd(ymd: string): Promise<MemberStatusSummaryRow[]>;
   getAssignmentsForWorker(workerId: string, filters?: AssignmentForWorkerFilters): Promise<AssignmentForWorker[]>;
@@ -466,6 +487,44 @@ export function createEdlsAssignmentsStorage(): EdlsAssignmentsStorage {
         ${orderBy}
       `);
       return result.rows as unknown as AvailableWorkerForSheet[];
+    },
+
+    async getFutureOutOfPopulationAssignments(fromYmd: string): Promise<OutOfPopulationAssignmentRow[]> {
+      const client = getClient();
+      const result = await client.execute(sql`
+        SELECT
+          ea.id as "assignmentId",
+          es.id as "sheetId",
+          es.title as "sheetTitle",
+          es.ymd as "sheetYmd",
+          w.id as "workerId",
+          w.sirius_id as "siriusId",
+          c.display_name as "displayName",
+          COALESCE(NULLIF(ea.data->>'startTime', ''), ec.start_time::text) as "startTime",
+          t.name as "taskName",
+          d.name as "departmentName",
+          COALESCE(
+            NULLIF(TRIM(CONCAT(su.first_name, ' ', su.last_name)), ''),
+            su.email,
+            NULLIF(TRIM(CONCAT(cu.first_name, ' ', cu.last_name)), ''),
+            cu.email
+          ) as "supervisorName"
+        FROM edls_assignments ea
+        INNER JOIN edls_crews ec ON ea.crew_id = ec.id
+        INNER JOIN edls_sheets es ON ec.sheet_id = es.id
+        INNER JOIN workers w ON ea.worker_id = w.id
+        INNER JOIN contacts c ON w.contact_id = c.id
+        LEFT JOIN worker_edls we ON we.worker_id = w.id
+        LEFT JOIN options_edls_tasks t ON ec.task_id = t.id
+        LEFT JOIN options_department d ON es.department_id = d.id
+        LEFT JOIN users su ON es.supervisor = su.id
+        LEFT JOIN users cu ON ec.supervisor = cu.id
+        WHERE es.ymd >= ${fromYmd}
+          AND es.status != 'trash'
+          AND (we.id IS NULL OR we.active = false)
+        ORDER BY es.ymd ASC, es.title ASC, c.family ASC, c.given ASC
+      `);
+      return result.rows as unknown as OutOfPopulationAssignmentRow[];
     },
 
     async getAssignmentsForWorker(
