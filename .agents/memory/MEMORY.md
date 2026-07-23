@@ -68,4 +68,5 @@
 - [Wizard benefit filtering choke point](wizard-benefit-filter-chokepoint.md) — evaluateEligibleBenefits is the ONE place that both offers and re-validates benefit selection (first-time + open enrollment); life-event carries benefits forward and never calls it.
 - [Event replay as-of resolution](event-replay-asof-resolution.md) — listeners fanning out per covered person must resolve people as-of the event date (getActiveByWorkerAsOf), not current active state.
 - [Cron charge reversal sweep scope](cron-charge-reversal-sweep.md) — scheduled billing reversals must sweep previously-billed reference ids, not just the active entity list; reconcile each month's NET total.
+- [Payments need allocation config](payments-need-allocation-config.md) — cleared payments don't touch balances unless a payment-simple-allocation charge config exists for the account; replay via triggerPaymentChargePlugins.
 - [Wizard side-effect rows need reuse + ownership flag](wizard-side-effect-rows-ownership.md) — wizard-created persistent rows duplicate across drafts unless add reuses existing + tracks createdByWizard, and storage enforces the uniqueness invariant.

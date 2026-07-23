@@ -112,6 +112,36 @@ async function main() {
   });
   console.log(`Charge config points at Health Fund - DP account (${DP_ACCOUNT_ID})`);
 
+  // ---- 4a. Payment allocation config so payments post credit entries ----
+  const payCfgs = await storage.pluginConfigs.getByKindAndPlugin(
+    "charge",
+    "payment-simple-allocation",
+  );
+  let payCfg = payCfgs.find((c: any) => c.account === DP_ACCOUNT_ID) ?? payCfgs[0];
+  if (payCfg) {
+    console.log(`Payment allocation config exists (${payCfg.id}), enabled=${payCfg.enabled}`);
+    if (!payCfg.enabled) {
+      payCfg = (await storage.pluginConfigs.update(payCfg.id, { enabled: true }))!;
+      console.log("Enabled the existing payment allocation config");
+    }
+  } else {
+    payCfg = await storage.pluginConfigs.create({
+      pluginKind: "charge",
+      pluginId: "payment-simple-allocation",
+      name: "BAO - DP Payment Allocation",
+      enabled: true,
+      data: {},
+    });
+    console.log(`Created payment allocation config ${payCfg.id}`);
+  }
+  await storage.pluginConfigs.upsertSubsidiary("charge", {
+    id: payCfg.id,
+    scope: "global",
+    employerId: null,
+    account: DP_ACCOUNT_ID,
+  });
+  console.log(`Payment allocation config points at Health Fund - DP account (${DP_ACCOUNT_ID})`);
+
   // ---- 4b. Enabled trust-eligibility rule: DP payment gate on the MLK benefit ----
   const benefits = await storage.trustBenefits.getAllTrustBenefits();
   const mlk = benefits.find((b: any) => (b.name ?? "").toLowerCase().includes("mlk"));

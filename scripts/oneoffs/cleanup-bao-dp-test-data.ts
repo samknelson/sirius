@@ -50,6 +50,19 @@ async function main() {
   }
   if (cfgs.length === 0) console.log("No DP charge config (already clean)");
 
+  // ---- 3a. Delete the DP payment allocation config (only ones on the DP account) ----
+  const payCfgs = await storage.pluginConfigs.getByKindAndPlugin(
+    "charge",
+    "payment-simple-allocation",
+  );
+  const dpPayCfgs = payCfgs.filter((c: any) => c.account === DP_ACCOUNT_ID);
+  for (const cfg of dpPayCfgs) {
+    await storage.pluginConfigs.delete(cfg.id);
+    console.log(`Deleted payment allocation config ${cfg.id} ("${cfg.name}")`);
+  }
+  if (dpPayCfgs.length === 0)
+    console.log("No DP payment allocation config (already clean)");
+
   // ---- 3b. Delete the DP eligibility rule config ----
   const eligCfgs = await storage.pluginConfigs.getByKindAndPlugin(
     "trust-eligibility",
