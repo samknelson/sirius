@@ -37,13 +37,9 @@ export function Reports(_props: DashboardPluginProps) {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {report.wizardId ? (
-                <Link
-                  href={`/wizards/${report.wizardId}`}
-                  data-testid={`report-link-${report.type}`}
-                  className="group block"
-                >
-                  <div className="space-y-2 text-sm">
+              <div className="space-y-2 text-sm">
+                {report.wizardId ? (
+                  <>
                     {generatedAt && (
                       <div className="flex items-center gap-2 text-muted-foreground">
                         <Calendar className="h-4 w-4" />
@@ -60,21 +56,25 @@ export function Reports(_props: DashboardPluginProps) {
                         {report.recordCount === 1 ? "record" : "records"}
                       </span>
                     </div>
-                    <div className="flex items-center gap-2 text-sm font-medium text-primary group-hover:underline">
-                      View Report
-                      <ExternalLink className="h-4 w-4" />
-                    </div>
-                  </div>
-                </Link>
-              ) : (
-                <div className="space-y-2 text-sm">
+                  </>
+                ) : (
                   <div className="flex items-center gap-2 text-muted-foreground">
                     <Calendar className="h-4 w-4" />
                     <span data-testid={`report-date-${report.type}`}>Never run</span>
                   </div>
-                </div>
-              )}
-              <div className="mt-3">
+                )}
+              </div>
+              <div className="mt-3 flex items-center gap-6">
+                {report.wizardId && (
+                  <Link
+                    href={`/wizards/${report.wizardId}`}
+                    data-testid={`report-link-${report.type}`}
+                    className="flex items-center gap-2 text-sm font-medium text-primary hover:underline"
+                  >
+                    View Report
+                    <ExternalLink className="h-4 w-4" />
+                  </Link>
+                )}
                 <WizardLauncher
                   type={report.type}
                   successTitle="Report Created"
