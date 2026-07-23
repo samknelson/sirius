@@ -112,7 +112,45 @@ async function main() {
   });
   console.log(`Charge config points at Health Fund - DP account (${DP_ACCOUNT_ID})`);
 
-  // ---- 5. Run DP billing live ----
+  // ---- 4b. Enabled trust-eligibility rule: DP payment gate on the MLK benefit ----
+  const benefits = await storage.trustBenefits.getAllTrustBenefits();
+  const mlk = benefits.find((b: any) => (b.name ?? "").toLowerCase().includes("mlk"));
+  if (!mlk) throw new Error("MLK benefit not found");
+  const eligCfgs = await storage.pluginConfigs.getByKindAndPlugin(
+    "trust-eligibility",
+    DP_PLUGIN_ID,
+  );
+  let eligCfg = eligCfgs[0];
+  if (eligCfg) {
+    console.log(`Eligibility rule exists (${eligCfg.id}), enabled=${eligCfg.enabled}`);
+    if (!eligCfg.enabled) {
+      eligCfg = (await storage.pluginConfigs.update(eligCfg.id, { enabled: true }))!;
+      console.log("Enabled the existing eligibility rule");
+    }
+  } else {
+    eligCfg = await storage.pluginConfigs.create({
+      pluginKind: "trust-eligibility",
+      pluginId: DP_PLUGIN_ID,
+      name: "BAO - Domestic Partner Payment (MLK)",
+      enabled: true,
+      data: { appliesTo: ["start", "continue"] },
+    });
+    console.log(`Created eligibility rule ${eligCfg.id}`);
+  }
+  await storage.pluginConfigs.upsertSubsidiary("trust-eligibility", {
+    id: eligCfg.id,
+    policy: null,
+    benefit: mlk.id,
+    appliesTo: "start,continue",
+  });
+  console.log(`Eligibility rule gates benefit "${mlk.name}" (${mlk.id}) on DP payment`);
+
+  // ---- 5. Run DP billing live (skipped with --skip-billing) ----
+  if (process.argv.includes("--skip-billing")) {
+    console.log("Skipping billing run (--skip-billing). Trigger the 'BAO - Domestic Partner Monthly Billing' cron job manually to post charges.");
+    console.log("Done.");
+    return;
+  }
   const result = await executeChargePlugins(
     { trigger: TriggerType.CRON, jobId: "seed-bao-dp-test-data", mode: "live" },
     { onlyPluginIds: [DP_PLUGIN_ID] },

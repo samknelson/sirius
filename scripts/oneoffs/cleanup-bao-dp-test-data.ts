@@ -50,6 +50,17 @@ async function main() {
   }
   if (cfgs.length === 0) console.log("No DP charge config (already clean)");
 
+  // ---- 3b. Delete the DP eligibility rule config ----
+  const eligCfgs = await storage.pluginConfigs.getByKindAndPlugin(
+    "trust-eligibility",
+    DP_PLUGIN_ID,
+  );
+  for (const cfg of eligCfgs) {
+    await storage.pluginConfigs.delete(cfg.id);
+    console.log(`Deleted eligibility rule config ${cfg.id} ("${cfg.name}")`);
+  }
+  if (eligCfgs.length === 0) console.log("No DP eligibility rule config (already clean)");
+
   // ---- 4. Remove DP relations from the election ----
   const election = await storage.workerTrustElections.getById(ELECTION_ID);
   if (!election) throw new Error(`Election ${ELECTION_ID} not found`);
