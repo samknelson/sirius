@@ -19,8 +19,14 @@ const policy = definePolicy({
       return { granted: false, reason: 'File not found' };
     }
     
+    // uploadedBy is set to the uploading user's id at upload time, but some
+    // historical records used contact ids — accept either.
+    const uploadedBy = (file as any).uploadedBy;
+    if (uploadedBy && uploadedBy === ctx.user.id) {
+      return { granted: true, reason: 'File uploader' };
+    }
     const userContact = await ctx.getUserContact();
-    if (userContact && (file as any).uploadedBy === userContact.id) {
+    if (userContact && uploadedBy === userContact.id) {
       return { granted: true, reason: 'File uploader' };
     }
     

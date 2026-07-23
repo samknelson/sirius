@@ -102,13 +102,13 @@ export function createPolicyContext(options: PolicyContextOptions): PolicyContex
       }
       
       const fallbackLoaderMap: Record<string, (id: string) => Promise<any>> = {
-        'worker': async (id) => storage.workers?.getWorkerById?.(id),
-        'employer': async (id) => storage.employers?.getEmployerById?.(id),
-        'contact': async (id) => storage.contacts?.getContactById?.(id),
-        'file': async (id) => storage.files?.getFileById?.(id),
+        'worker': async (id) => storage.workers?.getWorker?.(id),
+        'employer': async (id) => storage.employers?.getEmployer?.(id),
+        'contact': async (id) => storage.contacts?.getContact?.(id),
+        'file': async (id) => storage.files?.getById?.(id),
         'cardcheck': async (id) => storage.cardchecks?.getCardcheckById?.(id),
         'esig': async (id) => storage.esigs?.getEsigById?.(id),
-        'worker.dispatch.dnc': async (id) => storage.workerDispatchDnc?.getById?.(id),
+        'worker.dispatch.dnc': async (id) => storage.workerDispatchDnc?.get?.(id),
         'edls_sheet': async (id) => storage.edlsSheets?.get?.(id),
       };
       
