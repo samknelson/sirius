@@ -159,6 +159,7 @@ function BenefitDetailsModal({
 }) {
   if (!entry) return null;
 
+  const isFailed = entry.status === "failed";
   const actions = (entry.resultSummary?.actions || []) as BenefitAction[];
   const started = actions.filter(a => a.scanType === "start" && a.eligible);
   const continued = actions.filter(a => a.scanType === "continue" && a.eligible && a.action !== "delete");
@@ -178,6 +179,26 @@ function BenefitDetailsModal({
         </DialogHeader>
 
         <div className="space-y-6">
+          {isFailed && (
+            <div>
+              <h4 className="font-medium flex items-center gap-2 mb-2 text-destructive">
+                <AlertCircle className="h-4 w-4" />
+                Scan Failed
+              </h4>
+              <div className="p-3 bg-red-50 dark:bg-red-950/20 rounded-md border border-red-200 dark:border-red-900">
+                {entry.lastError ? (
+                  <pre className="text-sm whitespace-pre-wrap break-words font-sans" data-testid="text-entry-error">
+                    {entry.lastError}
+                  </pre>
+                ) : (
+                  <p className="text-sm text-muted-foreground" data-testid="text-entry-error-empty">
+                    No error details were recorded.
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
           {started.length > 0 && (
             <div>
               <h4 className="font-medium flex items-center gap-2 mb-2 text-green-600 dark:text-green-400">
@@ -271,7 +292,7 @@ function BenefitDetailsModal({
             </div>
           )}
 
-          {started.length === 0 && continued.length === 0 && terminated.length === 0 && (
+          {!isFailed && started.length === 0 && continued.length === 0 && terminated.length === 0 && (
             <div className="text-center text-muted-foreground py-4">
               No benefit changes recorded for this worker
             </div>
@@ -645,12 +666,12 @@ export default function WmbScanDetail() {
                                 <ExternalLink className="h-4 w-4" />
                               </Button>
                             </Link>
-                            {entry.status === "success" && entry.resultSummary?.actions && (
+                            {((entry.status === "success" && entry.resultSummary?.actions) || entry.status === "failed") && (
                               <Button 
                                 variant="ghost" 
                                 size="icon"
                                 onClick={() => setSelectedEntry(entry)}
-                                title="View benefit details"
+                                title={entry.status === "failed" ? "View failure details" : "View benefit details"}
                                 data-testid={`button-view-details-${entry.id}`}
                               >
                                 <Eye className="h-4 w-4" />
