@@ -316,7 +316,14 @@ export function registerWizardRoutes(
         }
         const wdata: any = (validatedData.data as any) || {};
         wdata.progress = wdata.progress || {};
-        if (validatedData.currentStep) {
+        // Mark the starting step active — but never for `run` steps: the
+        // dispatcher owns run progress, and presetting "in_progress" here
+        // would make a freshly created wizard look like it's already
+        // running (spinner + disabled Run button) before any run started.
+        const startingStep = frameworkPlugin.steps.find(
+          (s) => s.id === validatedData.currentStep,
+        );
+        if (validatedData.currentStep && startingStep?.kind !== "run") {
           wdata.progress[validatedData.currentStep] = {
             ...wdata.progress[validatedData.currentStep],
             status: "in_progress",
