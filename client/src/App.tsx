@@ -1306,6 +1306,14 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      <Route path="/reports/edls">
+        <ProtectedRoute permission="admin" component="edls">
+          <AuthenticatedLayout>
+            <Reports activeCategory="EDLS" />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
       <Route path="/reports/cardchecks">
         <ProtectedRoute permission="staff" component="cardcheck">
           <AuthenticatedLayout>
