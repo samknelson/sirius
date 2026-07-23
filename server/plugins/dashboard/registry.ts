@@ -234,15 +234,16 @@ class DashboardPluginRegistry extends PluginRegistry<DashboardPlugin, DashboardM
   }
 
   /**
-   * Idempotently ensure every dashboard config has a role subsidiary row.
-   * Runs at boot AFTER the legacy/welcome backfills and the default seed, so
-   * any config created by those steps also gets a role. The render and search
-   * paths inner-join the subsidiary, so a config without one would silently
-   * vanish — this guarantees the invariant holds.
+   * Idempotently ensure every dashboard config has a roles subsidiary row
+   * with a NON-EMPTY roles array. Runs at boot AFTER the legacy/welcome
+   * backfills and the default seed, so any config created by those steps also
+   * gets roles. The render and search paths inner-join the subsidiary, so a
+   * config without one would silently vanish — this guarantees the invariant
+   * holds.
    *
-   * Role selection per config without an existing row:
-   *   - welcome-messages configs adopt their legacy `data.roles[0]` (when it
-   *     names a still-valid role), then have `roles` stripped from `data`.
+   * Roles selection per config without an existing row:
+   *   - welcome-messages configs adopt ALL still-valid roles from their
+   *     legacy `data.roles` list, then have `roles` stripped from `data`.
    *   - everything else defaults to the first role in the roles table.
    *
    * Configs that already have a subsidiary row are left untouched, so
@@ -262,24 +263,24 @@ class DashboardPluginRegistry extends PluginRegistry<DashboardPlugin, DashboardM
     for (const cfg of configs) {
       try {
         const envelope = await storage.pluginConfigs.getWithSubsidiary(cfg.id);
-        if (!envelope || envelope.subsidiary) continue; // already has a role
+        if (!envelope || envelope.subsidiary) continue; // already has roles
 
-        let roleId = firstRoleId;
+        let roleIds: string[] = [firstRoleId];
         let stripRoles = false;
         if (cfg.pluginId === "welcome-messages") {
           const data = (cfg.data ?? {}) as Record<string, unknown>;
           if ("roles" in data) stripRoles = true;
           const list = Array.isArray(data.roles) ? data.roles : [];
-          const candidate = list.find(
+          const candidates = list.filter(
             (r): r is string => typeof r === "string" && validRoleIds.has(r),
           );
-          if (candidate) roleId = candidate;
+          if (candidates.length > 0) roleIds = candidates;
         }
 
         await runInTransaction(async () => {
           await storage.pluginConfigs.upsertSubsidiary("dashboard", {
             id: cfg.id,
-            role: roleId,
+            roles: roleIds,
           });
           if (stripRoles) {
             const data = { ...((cfg.data ?? {}) as Record<string, unknown>) };
@@ -459,11 +460,14 @@ class DashboardPluginRegistry extends PluginRegistry<DashboardPlugin, DashboardM
     }
 
     // Authoritative role enforcement: a widget is visible only to viewers who
-    // hold its config's role. A missing role or a role the viewer doesn't hold
-    // means the content is hidden.
+    // hold ANY of its config's roles. Missing roles or no overlap with the
+    // viewer's roles means the content is hidden.
     const userRoleIds = new Set(userRoles.map((r) => r.id));
-    const role = (envelope.subsidiary as { role?: string } | null)?.role;
-    if (!role || !userRoleIds.has(role)) {
+    const configRoles = (envelope.subsidiary as { roles?: string[] } | null)?.roles;
+    if (
+      !Array.isArray(configRoles) ||
+      !configRoles.some((r) => userRoleIds.has(r))
+    ) {
       res.status(403).json({ message: "Not authorized to view this dashboard widget" });
       return;
     }

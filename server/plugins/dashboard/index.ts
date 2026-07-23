@@ -65,22 +65,30 @@ function registerDashboardKind(): void {
       return dashboardPluginRegistry.validateSettings(plugin, config);
     },
   });
-  // Every dashboard config targets exactly one role (its sole relational
-  // dimension). The role lives in the `plugin_configs_dashboard` subsidiary and
-  // is surfaced as a required, filterable envelope field — a viewer sees a
-  // widget only when they hold its role. There is no "show everyone": an
-  // unmatched role means the widget is hidden.
+  // Every dashboard config targets one or more roles (its sole relational
+  // dimension). The roles array lives in the `plugin_configs_dashboard`
+  // subsidiary and is surfaced as a required, filterable multi-select envelope
+  // field — a viewer sees a widget when they hold ANY of its roles. There is
+  // no "show everyone": no role match means the widget is hidden, and an
+  // empty roles array is rejected on save.
   registerPluginConfigAdapter({
     pluginKind: "dashboard",
     configSchema: z.object({
       ...baseConfigSchemaShape,
-      role: z.string().min(1),
+      roles: z.array(z.string().min(1)).min(1),
     }),
     searchParamsSchema: z.object({
       ...baseSearchSchemaShape,
+      // Admin filter: configs whose roles array contains this role. The
+      // envelope field is named `roles`, so the generic filter bar sends
+      // `roles=<roleId>`; map it onto the storage `role` contains-filter.
+      roles: z.string().optional(),
       role: z.string().optional(),
       roleIn: z.array(z.string()).optional(),
-    }),
+    }).transform(({ roles, ...rest }) => ({
+      ...rest,
+      ...(roles !== undefined ? { role: roles } : {}),
+    })),
     toRows: (input) => ({
       base: {
         pluginKind: "dashboard",
@@ -91,17 +99,18 @@ function registerDashboardKind(): void {
         data: input.data,
       },
       subsidiary: {
-        role: input.role,
+        roles: input.roles,
       },
     }),
     envelopeFields: [
       {
-        name: "role",
-        label: "Visible to role",
+        name: "roles",
+        label: "Visible to roles",
         type: "string",
         required: true,
         filterable: true,
-        // `role` stores a role id; render as a dropdown populated from the
+        multiple: true,
+        // `roles` stores role ids; render as a multi-select populated from the
         // roles lookup so the column and filter show readable role names.
         options: {
           endpoint: "/api/admin/roles",
@@ -141,10 +150,11 @@ export async function initializeDashboardPluginSystem(): Promise<void> {
   // Ensure every renderable plugin has at least one config row so the
   // per-config dashboard render path never drops a previously-shown widget.
   await dashboardPluginRegistry.seedDefaultConfigs();
-  // Every dashboard config MUST have a role subsidiary row (the render/search
+  // Every dashboard config MUST have a roles subsidiary row (the render/search
   // path inner-joins it). Run this LAST so newly-seeded and newly-migrated
-  // configs all get a role: welcome configs adopt their legacy data.roles[0];
-  // everything else defaults to the first role in the roles table. Idempotent.
+  // configs all get roles: welcome configs adopt ALL still-valid legacy
+  // data.roles; everything else defaults to the first role in the roles
+  // table. Idempotent.
   await dashboardPluginRegistry.backfillRoleSubsidiaries();
   // Normalize legacy per-role reports settings into the flat `{ reports }`
   // shape. Runs AFTER the role backfill so every row has its envelope role

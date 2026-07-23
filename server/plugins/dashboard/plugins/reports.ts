@@ -114,14 +114,21 @@ export async function migrateReportsSettings(): Promise<void> {
       if (legacyKeys.length === 0) continue;
 
       const withSub = await storage.pluginConfigs.getWithSubsidiary(row.id);
-      const sub = (withSub?.subsidiary ?? null) as { role?: string | null } | null;
-      const roleId = sub?.role ?? null;
+      const sub = (withSub?.subsidiary ?? null) as { roles?: string[] | null } | null;
+      // Merge the legacy lists of every role the config targets, so a
+      // multi-role config keeps every report any of its roles could show.
+      const configRoles = Array.isArray(sub?.roles) ? sub!.roles! : [];
+      const matchedKeys = configRoles.filter((r) => Array.isArray(data[r]));
 
       let reports: string[];
-      if (roleId && Array.isArray(data[roleId])) {
-        reports = (data[roleId] as unknown[]).filter(
-          (v): v is string => typeof v === "string",
-        );
+      if (matchedKeys.length > 0) {
+        const merged = new Set<string>();
+        for (const key of matchedKeys) {
+          for (const v of data[key] as unknown[]) {
+            if (typeof v === "string") merged.add(v);
+          }
+        }
+        reports = Array.from(merged);
       } else {
         const union = new Set<string>();
         for (const key of legacyKeys) {

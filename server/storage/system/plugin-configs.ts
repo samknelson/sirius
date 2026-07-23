@@ -135,8 +135,9 @@ export interface PluginConfigSearchParams {
   appliesTo?: string | null;
   // Dispatch subsidiary
   jobType?: string | null;
-  // Dashboard subsidiary: admin single-role filter (`role`) + render-side
-  // viewer role-set filter (`roleIn`).
+  // Dashboard subsidiary: admin single-role filter (`role` — configs whose
+  // roles array CONTAINS the role) + render-side viewer role-set filter
+  // (`roleIn` — configs whose roles array OVERLAPS the viewer's roles).
   role?: string | null;
   roleIn?: string[];
   // Event-notifier subsidiary: single active medium token.

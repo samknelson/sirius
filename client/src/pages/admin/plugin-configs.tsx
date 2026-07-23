@@ -11,6 +11,7 @@ import {
   pluginSearch,
   type ArrayManifestPluginKind,
   type PluginConfigEnvelopeField,
+  type PluginConfigEnvelopeFieldChoice,
   type PluginKindSummary,
 } from "@/plugins/_core";
 import { Card, CardContent } from "@/components/ui/card";
@@ -697,10 +698,15 @@ function useEnvelopeLabelMaps(envelopeFields: PluginConfigEnvelopeField[]) {
       );
       byField.set(field.name, {
         label: field.label,
-        resolve: (value) => {
-          const key = String(value);
-          return map.get(key) || key;
-        },
+        // Handle both single values and multi-value fields (arrays stringify
+        // to a comma-joined list, e.g. the dashboard roles array).
+        resolve: (value) =>
+          String(value)
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean)
+            .map((v) => map.get(v) || v)
+            .join(", "),
       });
     }
   }
@@ -910,7 +916,14 @@ function GenericConfigDialog({
       const envelopeBody: Record<string, unknown> = {};
       for (const f of envelopeFields) {
         const raw = envelope[f.name] ?? "";
-        if (raw === "") {
+        if (f.multiple && f.options?.endpoint) {
+          // Endpoint-backed multi-selects (e.g. dashboard "Visible to roles")
+          // persist as real arrays; the comma-joined string is UI state only.
+          envelopeBody[f.name] = raw
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean);
+        } else if (raw === "") {
           envelopeBody[f.name] = null;
         } else if (f.type === "number") {
           envelopeBody[f.name] = Number(raw);
@@ -1022,7 +1035,7 @@ function GenericConfigDialog({
                       {field.label}
                       {field.required && <span className="text-destructive"> *</span>}
                     </Label>
-                    {field.multiple && field.options?.choices ? (
+                    {field.multiple && field.options ? (
                       <EnvelopeCheckboxField
                         field={field}
                         value={envelope[field.name] ?? ""}
@@ -1182,10 +1195,13 @@ function EnvelopeSelectField({
 }
 
 /**
- * Renders a fixed-choice envelope field as a checkbox group allowing multiple
- * selections. The value is stored as a comma-joined string of selected choice
- * values (e.g. "start,continue") so it round-trips through the flat envelope
- * state and the adapter's `string` payload field unchanged.
+ * Renders a multi-select envelope field as a checkbox group. Choices come
+ * either from the field's fixed `options.choices` list or from its remote
+ * `options.endpoint` (fetched once, mapped via valueKey/labelKey — e.g. the
+ * dashboard "Visible to roles" field backed by the roles endpoint). The value
+ * is stored as a comma-joined string of selected values (e.g.
+ * "start,continue") so it round-trips through the flat envelope state; the
+ * save path splits multi fields back into arrays for array-typed payloads.
  */
 function EnvelopeCheckboxField({
   field,
@@ -1196,7 +1212,21 @@ function EnvelopeCheckboxField({
   value: string;
   onChange: (value: string) => void;
 }) {
-  const choices = field.options!.choices ?? [];
+  const options = field.options!;
+  const isStatic = Array.isArray(options.choices);
+  const { data = [], isLoading } = useQuery<Record<string, unknown>[]>({
+    queryKey: [options.endpoint ?? `__static__${field.name}`],
+    enabled: !isStatic && !!options.endpoint,
+  });
+  const choices: PluginConfigEnvelopeFieldChoice[] = isStatic
+    ? options.choices!
+    : data.map((item) => {
+        const itemValue = String(item[options.valueKey!] ?? "");
+        return {
+          value: itemValue,
+          label: String(item[options.labelKey!] ?? itemValue),
+        };
+      });
   const selected = new Set(
     value
       .split(",")
@@ -1222,6 +1252,9 @@ function EnvelopeCheckboxField({
 
   return (
     <div className="space-y-2 pt-1" data-testid={`checkbox-group-envelope-${field.name}`}>
+      {!isStatic && isLoading && (
+        <p className="text-sm text-muted-foreground">Loading…</p>
+      )}
       {choices.map((choice) => (
         <div key={choice.value} className="flex items-center gap-2">
           <Checkbox

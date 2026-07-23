@@ -22,7 +22,7 @@ import {
   type PluginConfigCron,
   type InsertPluginConfigCron,
 } from "@shared/schema";
-import { eq, isNull, inArray, sql, type SQL } from "drizzle-orm";
+import { eq, isNull, arrayContains, arrayOverlaps, sql, type SQL } from "drizzle-orm";
 import type { AnyPgTable, PgColumn } from "drizzle-orm/pg-core";
 
 /**
@@ -60,8 +60,9 @@ export interface SubsidiarySearchParams {
   benefit?: string | null;
   appliesTo?: string | null;
   jobType?: string | null;
-  // Dashboard: the admin "this exact role" filter (`role`) and the render-side
-  // "role is one of the viewer's roles" filter (`roleIn`).
+  // Dashboard: the admin "contains this role" filter (`role`) and the
+  // render-side "config's roles intersect the viewer's roles" filter
+  // (`roleIn`). The subsidiary stores a varchar[] of role ids.
   role?: string | null;
   roleIn?: string[];
   // Event-notifier: a single active medium (token-matched against the
@@ -225,24 +226,26 @@ export function createDashboardSubsidiaryStorage(): SubsidiaryStorage<
         .values(row)
         .onConflictDoUpdate({
           target: pluginConfigsDashboard.id,
-          set: { role: row.role },
+          set: { roles: row.roles },
         })
         .returning();
       return result;
     },
     buildConditions(params) {
       const out: SQL[] = [];
-      // Admin "this exact role" filter. `role` is NOT NULL, so a null filter is
-      // never meaningful — treat only a defined, non-null value as a filter.
+      // Admin "contains this role" filter. `roles` is NOT NULL, so a null
+      // filter is never meaningful — treat only a defined, non-null value as a
+      // filter. Array-contains: the config's roles array includes the role.
       if (params.role !== undefined && params.role !== null) {
-        out.push(eq(pluginConfigsDashboard.role, params.role));
+        out.push(arrayContains(pluginConfigsDashboard.roles, [params.role]));
       }
-      // Render-side "role is one of the viewer's roles". An empty set matches no
-      // rows (a user with no roles sees no role-gated widgets).
+      // Render-side "config's roles intersect the viewer's roles" (array
+      // overlap). An empty set matches no rows (a user with no roles sees no
+      // role-gated widgets).
       if (params.roleIn !== undefined) {
         out.push(
           params.roleIn.length > 0
-            ? inArray(pluginConfigsDashboard.role, params.roleIn)
+            ? arrayOverlaps(pluginConfigsDashboard.roles, params.roleIn)
             : sql`false`,
         );
       }

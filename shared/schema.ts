@@ -2059,14 +2059,15 @@ export {
 } from "./schema/trust/benefit-eligibility-schema";
 
 // Dashboard subsidiary — role-based visibility hoisted out of the opaque
-// settings blob. Each dashboard config targets exactly one role; a viewer
-// sees the widget only when they hold that role. The role FK is RESTRICT so a
-// role still referenced by a dashboard config cannot be deleted out from under
-// it (which would otherwise leave the config with no subsidiary row and make it
-// vanish from the inner-joined search/render path).
+// settings blob. Each dashboard config targets one or MORE roles (a varchar
+// array); a viewer sees the widget when they hold ANY of the config's roles.
+// An array column cannot carry an FK, so the RESTRICT protection that used to
+// live on the old single `role` FK is enforced in the storage layer instead:
+// `storage.users.deleteRole` refuses to delete a role that any dashboard
+// config's roles array still references.
 export const pluginConfigsDashboard = pgTable("plugin_configs_dashboard", {
   id: varchar("id").primaryKey().references(() => pluginConfigs.id, { onDelete: 'cascade' }),
-  role: varchar("role").notNull().references(() => roles.id, { onDelete: 'restrict' }),
+  roles: varchar("roles").array().notNull(),
 });
 
 export const insertPluginConfigDashboardSchema = createInsertSchema(pluginConfigsDashboard);
