@@ -6,4 +6,6 @@ The framework wizard create route preseeds `data.progress[currentStep].status = 
 
 **Why:** run-step progress is owned exclusively by the run dispatcher (`/dispatch/:stepId/run` sets in_progress/completed/failed). "in_progress" in the progress map means *work executing*, not *step active*; step-activeness is already derivable from `wizard.currentStep` in `stepState()`.
 
+The navigate endpoint had the same bug: "previous" (and "next") stamped `in_progress` onto the target step, clobbering a run step's `completed` — stuck spinner, disabled Run, blocked Next. Both branches now skip run-kind steps and "previous" preserves completed/failed statuses.
+
 **How to apply:** when adding wizard plugins with a run step first (no launch form), rely on the create route's kind check that skips the preset for `kind === "run"`. If a wizard instance is ever stuck "running" with no run dispatched, its `data.progress.<step>` was set outside the dispatcher.

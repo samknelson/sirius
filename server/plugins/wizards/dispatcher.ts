@@ -536,7 +536,14 @@ export function registerWizardDispatcherRoutes(
             status: "completed",
             completedAt: new Date().toISOString(),
           };
-          if (data.progress[next.id]?.status !== "completed") {
+          // Never stamp "in_progress" onto a `run` step: the run dispatcher
+          // owns run progress, and "in_progress" there means "a run is
+          // executing" (spinner + disabled Run button), not "step is
+          // active". Position is already tracked by `currentStep`.
+          if (
+            next.kind !== "run" &&
+            data.progress[next.id]?.status !== "completed"
+          ) {
             data.progress[next.id] = {
               ...data.progress[next.id],
               status: "in_progress",
@@ -554,10 +561,21 @@ export function registerWizardDispatcherRoutes(
             return res.status(400).json({ message: "Already on first step" });
           }
           const prev = steps[idx - 1];
-          data.progress[prev.id] = {
-            ...data.progress[prev.id],
-            status: "in_progress",
-          };
+          // Preserve completed/failed progress when navigating back, and
+          // never force "in_progress" onto a `run` step (that status means
+          // "a run is executing" and would show a stuck spinner while
+          // blocking Next). `currentStep` alone tracks position.
+          const prevStatus = data.progress[prev.id]?.status;
+          if (
+            prev.kind !== "run" &&
+            prevStatus !== "completed" &&
+            prevStatus !== "failed"
+          ) {
+            data.progress[prev.id] = {
+              ...data.progress[prev.id],
+              status: "in_progress",
+            };
+          }
           const updated = await storage.wizards.update(wizard.id, {
             currentStep: prev.id,
             data,
