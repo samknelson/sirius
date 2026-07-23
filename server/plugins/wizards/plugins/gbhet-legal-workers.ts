@@ -208,6 +208,45 @@ function parseYearMonth(
   return { year, month };
 }
 
+/**
+ * Seed a new run's feed setup from the employer's most recent prior GBHET
+ * legal run (either type). Column mapping / header flag / mode / benefit
+ * config are stored per wizard, so without this every new upload started
+ * from a blank mapping. Explicitly provided values on the new wizard win;
+ * employment-status mappings already persist per employer and need no copy.
+ */
+async function inheritFeedSetup(
+  ctx: WizardCreateContext,
+  entityId: string,
+): Promise<void> {
+  const data: Record<string, any> = ((ctx.input.data as any) ||= {});
+  if (data.columnMapping && Object.keys(data.columnMapping).length > 0) return;
+
+  const prior = await ctx.storage.wizards.list({ entityId });
+  const source = prior.find((w) => {
+    if (
+      w.type !== "gbhet_legal_workers_monthly" &&
+      w.type !== "gbhet_legal_workers_corrections"
+    )
+      return false;
+    const d = (w.data as any) || {};
+    return d.columnMapping && Object.keys(d.columnMapping).length > 0;
+  });
+  if (!source) return;
+
+  const d = (source.data as any) || {};
+  data.columnMapping = d.columnMapping;
+  if (data.hasHeaders === undefined && d.hasHeaders !== undefined) {
+    data.hasHeaders = d.hasHeaders;
+  }
+  if (data.mode === undefined && d.mode !== undefined) {
+    data.mode = d.mode;
+  }
+  if (data.benefitConfig === undefined && Array.isArray(d.benefitConfig)) {
+    data.benefitConfig = d.benefitConfig;
+  }
+}
+
 async function createMonthly(
   ctx: WizardCreateContext,
 ): Promise<WizardCreateResult> {
@@ -232,6 +271,7 @@ async function createMonthly(
       status: 400,
     };
   }
+  await inheritFeedSetup(ctx, entityId);
   const wizard = await ctx.storage.wizards.createMonthlyWizard({
     wizard: ctx.input as any,
     employerId: entityId,
@@ -266,6 +306,7 @@ async function createCorrections(
       status: 400,
     };
   }
+  await inheritFeedSetup(ctx, entityId);
   const wizard = await ctx.storage.wizards.createMonthlyWizard({
     wizard: ctx.input as any,
     employerId: entityId,
