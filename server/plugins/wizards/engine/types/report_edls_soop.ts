@@ -20,6 +20,26 @@ export class ReportEdlsSoop extends WizardReport {
     return 'assignmentId';
   }
 
+  /**
+   * Columns computed at run time: the static columns plus one column per
+   * worker-ID type flagged "show on lists" (same set the workers list
+   * shows), inserted where the old Sirius ID column used to be (before
+   * the Worker column), in the types' configured sequence order.
+   */
+  async getRuntimeColumns(): Promise<ReportColumn[]> {
+    const base = this.getColumns();
+    const idTypes = await storage.workerIds.getShowOnListsIdTypes();
+    const idColumns: ReportColumn[] = idTypes.map((t) => ({
+      id: `workerIdType_${t.id}`,
+      header: t.name,
+      type: 'string',
+      width: 120
+    }));
+    const workerIdx = base.findIndex((c) => c.id === 'workerLink');
+    const insertAt = workerIdx === -1 ? base.length : workerIdx;
+    return [...base.slice(0, insertAt), ...idColumns, ...base.slice(insertAt)];
+  }
+
   getColumns(): ReportColumn[] {
     return [
       {
@@ -33,12 +53,6 @@ export class ReportEdlsSoop extends WizardReport {
         header: 'Sheet Date',
         type: 'date',
         width: 120
-      },
-      {
-        id: 'siriusId',
-        header: 'Sirius ID',
-        type: 'number',
-        width: 100
       },
       {
         id: 'workerLink',
@@ -80,6 +94,24 @@ export class ReportEdlsSoop extends WizardReport {
   ): Promise<ReportRecord[]> {
     const rows = await storage.edlsAssignments.getFutureOutOfPopulationAssignments(getTodayYmd());
 
+    // Batch-fetch the show-on-lists worker ID values for all involved
+    // workers and key them by workerId -> column id. A worker with
+    // multiple values of the same type gets them joined with ", ".
+    const uniqueWorkerIds = Array.from(new Set(rows.map((r) => r.workerId)));
+    const idValues = await storage.workerIds.getWorkerIdsForListByWorkerIds(uniqueWorkerIds);
+    const idValueMap = new Map<string, Record<string, string>>();
+    // Sort so multiple values of the same type join in a stable order.
+    idValues.sort((a, b) => a.value.localeCompare(b.value));
+    for (const item of idValues) {
+      const colId = `workerIdType_${item.typeId}`;
+      let perWorker = idValueMap.get(item.workerId);
+      if (!perWorker) {
+        perWorker = {};
+        idValueMap.set(item.workerId, perWorker);
+      }
+      perWorker[colId] = perWorker[colId] ? `${perWorker[colId]}, ${item.value}` : item.value;
+    }
+
     const records: ReportRecord[] = rows.map((row) => ({
       assignmentId: row.assignmentId,
       sheetId: row.sheetId,
@@ -89,7 +121,7 @@ export class ReportEdlsSoop extends WizardReport {
       },
       sheetYmd: row.sheetYmd,
       workerId: row.workerId,
-      siriusId: row.siriusId,
+      ...(idValueMap.get(row.workerId) ?? {}),
       workerLink: {
         url: `/workers/${row.workerId}`,
         label: row.displayName || 'View Worker'

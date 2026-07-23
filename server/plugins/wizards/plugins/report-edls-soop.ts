@@ -37,7 +37,7 @@ export const reportEdlsSoopPlugin: WizardPlugin = {
         return "pending";
       },
       run: async (ctx: WizardStepContext) => {
-        const columns = report.getColumns();
+        const columns = await report.getRuntimeColumns();
         const pkField = report.getPrimaryKeyField();
 
         const records = await report.fetchRecords({}, 100, (p) => {
