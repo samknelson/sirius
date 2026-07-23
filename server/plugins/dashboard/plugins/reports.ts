@@ -1,5 +1,4 @@
 import { registerDashboardPlugin } from "../registry";
-import { storage } from "../../../storage";
 import { wizardPluginRegistry } from "../../wizards";
 import type { JsonSchema } from "@shared/json-schema-form";
 import type { DashboardPlugin } from "../types";
@@ -25,39 +24,130 @@ function listReportTypes(): ReportTypeInfo[] {
 }
 
 async function buildSchema(): Promise<JsonSchema> {
-  const roles = await storage.users.getAllRoles();
   const reportTypes = listReportTypes();
   const enumValues = reportTypes.map((t) => t.name);
   const enumNames = reportTypes.map((t) => t.displayName);
-  const properties: Record<string, JsonSchema> = {};
-  for (const role of roles) {
-    properties[role.id] = {
-      type: "array",
-      title: role.name,
-      description: role.description || undefined,
-      uniqueItems: true,
-      items: {
-        type: "string",
-        enum: enumValues,
-        enumNames,
-      } as JsonSchema,
-    };
-  }
   return {
     type: "object",
     title: "Dashboard Reports",
-    description: "Configure which reports appear on the dashboard for each role.",
-    properties,
+    description:
+      "Choose which reports appear on this card. Who sees the card is controlled by the configuration's role.",
+    properties: {
+      reports: {
+        type: "array",
+        title: "Reports",
+        uniqueItems: true,
+        items: {
+          type: "string",
+          enum: enumValues,
+          enumNames,
+        } as JsonSchema,
+      },
+    },
   };
 }
 
 async function buildUiSchema() {
-  const roles = await storage.users.getAllRoles();
-  const ui: Record<string, any> = {};
-  for (const role of roles) {
-    ui[role.id] = { "ui:widget": "checkboxes" };
+  return {
+    reports: { "ui:widget": "checkboxes" },
+  };
+}
+
+/**
+ * Resolve the selected report type names from settings.
+ *
+ * New shape: `{ reports: string[] }`. Legacy shape (pre-envelope-role
+ * cleanup): `{ [roleId]: string[] }` — for those, union the lists for the
+ * roles the viewer holds (the old behavior). Read-time compat only; rows
+ * normalize to the new shape on next save.
+ */
+function resolveSelectedReports(
+  settings: unknown,
+  userRoles: Array<{ id: string }>,
+): Set<string> {
+  const selected = new Set<string>();
+  if (!settings || typeof settings !== "object") return selected;
+  const config = settings as Record<string, unknown>;
+  if (Array.isArray(config.reports)) {
+    for (const name of config.reports) {
+      if (typeof name === "string") selected.add(name);
+    }
+    return selected;
   }
-  return ui;
+  for (const role of userRoles) {
+    const names = config[role.id];
+    if (!Array.isArray(names)) continue;
+    for (const name of names) {
+      if (typeof name === "string") selected.add(name);
+    }
+  }
+  return selected;
+}
+
+/**
+ * One-time boot normalization: rewrite legacy per-role settings
+ * (`{ [roleId]: string[] }`) into the flat `{ reports: string[] }` shape.
+ *
+ * Without this, opening a legacy row in the settings form shows an empty
+ * checkbox list (the form only knows `reports`), and an innocent re-save
+ * would wipe the selections. The row's envelope role (the dashboard
+ * subsidiary) decides which legacy list carries over — that is the only
+ * list the widget could effectively show post-envelope. If the role has no
+ * legacy entry, fall back to the union of all lists so nothing silently
+ * disappears. Idempotent: already-normalized rows are skipped.
+ */
+export async function migrateReportsSettings(): Promise<void> {
+  const { storage } = await import("../../../storage");
+  const { logger } = await import("../../../logger");
+  try {
+    const rows = await storage.pluginConfigs.getByKindAndPlugin(
+      "dashboard",
+      "reports",
+    );
+    let migrated = 0;
+    for (const row of rows) {
+      const data = (row.data ?? {}) as Record<string, unknown>;
+      if (Array.isArray(data.reports)) continue;
+      const legacyKeys = Object.keys(data).filter((k) =>
+        Array.isArray(data[k]),
+      );
+      if (legacyKeys.length === 0) continue;
+
+      const withSub = await storage.pluginConfigs.getWithSubsidiary(row.id);
+      const sub = (withSub?.subsidiary ?? null) as { role?: string | null } | null;
+      const roleId = sub?.role ?? null;
+
+      let reports: string[];
+      if (roleId && Array.isArray(data[roleId])) {
+        reports = (data[roleId] as unknown[]).filter(
+          (v): v is string => typeof v === "string",
+        );
+      } else {
+        const union = new Set<string>();
+        for (const key of legacyKeys) {
+          for (const v of data[key] as unknown[]) {
+            if (typeof v === "string") union.add(v);
+          }
+        }
+        reports = Array.from(union);
+      }
+
+      await storage.pluginConfigs.update(row.id, { data: { reports } });
+      migrated++;
+    }
+    if (migrated > 0) {
+      logger.info(
+        `Normalized ${migrated} reports widget config(s) to flat settings shape`,
+        { service: "dashboard-plugins" },
+      );
+    }
+  } catch (error) {
+    const { logger } = await import("../../../logger");
+    logger.error("Failed to normalize reports widget settings", {
+      service: "dashboard-plugins",
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 }
 
 export const reportsPlugin: DashboardPlugin = {
@@ -70,12 +160,7 @@ export const reportsPlugin: DashboardPlugin = {
   requiredPolicy: "admin",
 
   async content(ctx) {
-    const config = (ctx.settings ?? {}) as Record<string, string[]>;
-
-    const userReportTypeNames = new Set<string>();
-    for (const role of ctx.userRoles) {
-      for (const name of config[role.id] ?? []) userReportTypeNames.add(name);
-    }
+    const userReportTypeNames = resolveSelectedReports(ctx.settings, ctx.userRoles);
     if (userReportTypeNames.size === 0) return { reports: [] };
 
     const allReportTypes = new Map(
@@ -100,16 +185,25 @@ export const reportsPlugin: DashboardPlugin = {
     const reports: Array<{
       type: string;
       displayName: string;
-      wizardId: string;
+      wizardId: string | null;
       generatedAt: string | null;
-      recordCount: number;
+      recordCount: number | null;
     }> = [];
 
     for (const typeName of Array.from(userReportTypeNames)) {
       const reportType = allReportTypes.get(typeName);
       if (!reportType) continue;
       const wizards = await ctx.storage.wizards.list({ type: typeName });
-      if (wizards.length === 0) continue;
+      if (wizards.length === 0) {
+        reports.push({
+          type: typeName,
+          displayName: reportType.displayName || typeName,
+          wizardId: null,
+          generatedAt: null,
+          recordCount: null,
+        });
+        continue;
+      }
       const sorted = [...wizards].sort((a, b) => {
         const aDate = readReportMeta(a.data)?.generatedAt ?? "";
         const bDate = readReportMeta(b.data)?.generatedAt ?? "";

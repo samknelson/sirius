@@ -8,6 +8,7 @@ import {
 } from "../_core";
 import { dashboardPluginRegistry } from "./registry";
 import { migrateWelcomeMessages } from "./plugins/welcome-messages";
+import { migrateReportsSettings } from "./plugins/reports";
 
 export { dashboardPluginRegistry, registerDashboardPlugin } from "./registry";
 export type * from "./types";
@@ -145,6 +146,10 @@ export async function initializeDashboardPluginSystem(): Promise<void> {
   // configs all get a role: welcome configs adopt their legacy data.roles[0];
   // everything else defaults to the first role in the roles table. Idempotent.
   await dashboardPluginRegistry.backfillRoleSubsidiaries();
+  // Normalize legacy per-role reports settings into the flat `{ reports }`
+  // shape. Runs AFTER the role backfill so every row has its envelope role
+  // available to pick the right legacy list.
+  await migrateReportsSettings();
 }
 
 // Plugin registrations (side-effect imports — each file self-registers).
