@@ -1,4 +1,4 @@
-import { foreignKey, pgTable, text, timestamp, varchar, jsonb, index, integer, boolean, date, numeric, time } from "drizzle-orm/pg-core";
+import { foreignKey, pgTable, text, timestamp, varchar, jsonb, index, uniqueIndex, integer, boolean, date, numeric, time } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -83,16 +83,28 @@ export const dispatches = pgTable("dispatches", {
   jobId: varchar("job_id").notNull().references(() => dispatchJobs.id, { onDelete: 'cascade' }),
   workerId: varchar("worker_id").notNull().references(() => workers.id, { onDelete: 'cascade' }),
   status: varchar("status").notNull().default("pending"),
+  isPrimary: boolean("is_primary").notNull().default(false),
   data: jsonb("data"),
   startDate: timestamp("start_date"),
   endDate: timestamp("end_date"),
   commIds: varchar("comm_ids").array(),
   createdAt: timestamp("created_at").default(sql`now()`).notNull(),
-});
+}, (table) => ({
+  // Hard constraint: a worker can have at most ONE accepted primary dispatch.
+  // The status comparison must be declared with explicit ::text casts so the
+  // startup drift gate's predicate comparison matches what Postgres reflects
+  // for a varchar column (it does not strip casts).
+  onePrimaryAcceptedPerWorker: uniqueIndex("dispatches_one_primary_accepted_per_worker")
+    .on(table.workerId)
+    .where(sql`((${table.status})::text = 'accepted'::text) AND (${table.isPrimary} = true)`),
+}));
 
 export const insertDispatchSchema = createInsertSchema(dispatches).omit({
   id: true,
   createdAt: true,
+  // isPrimary is intentionally not settable through the normal insert/update
+  // API paths for now — it is read-only in the UX.
+  isPrimary: true,
 }).extend({
   startDate: z.coerce.date().optional().nullable(),
   endDate: z.coerce.date().optional().nullable(),

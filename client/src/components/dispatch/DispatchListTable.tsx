@@ -196,6 +196,7 @@ export function DispatchListTable({
           {showWorker && <TableHead>Worker</TableHead>}
           {showJob && <TableHead>Job</TableHead>}
           <TableHead>Status</TableHead>
+          <TableHead>Primary</TableHead>
           <TableHead>Notifications</TableHead>
           <TableHead>Start Date</TableHead>
           <TableHead>End Date</TableHead>
@@ -250,6 +251,15 @@ export function DispatchListTable({
               <Badge className={statusColors[dispatch.status] || statusColors.pending} data-testid={`badge-status-${dispatch.id}`}>
                 {formatStatus(dispatch.status)}
               </Badge>
+            </TableCell>
+            <TableCell data-testid={`cell-primary-${dispatch.id}`}>
+              {dispatch.isPrimary ? (
+                <Badge variant="outline" className="border-primary text-primary" data-testid={`badge-primary-${dispatch.id}`}>
+                  Primary
+                </Badge>
+              ) : (
+                <span className="text-muted-foreground text-sm">-</span>
+              )}
             </TableCell>
             <TableCell data-testid={`cell-notifications-${dispatch.id}`}>
               <NotificationCell comms={dispatch.comms} />

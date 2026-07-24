@@ -21,6 +21,34 @@ import { defineLoggingConfig } from "../middleware/logging";
  */
 export const validate = createNoopValidator<InsertDispatch, Dispatch>();
 
+/**
+ * Name of the partial unique index enforcing "at most one accepted primary
+ * dispatch per worker" (see shared/schema/dispatch/schema.ts and core
+ * migration 1052).
+ */
+const ONE_PRIMARY_ACCEPTED_INDEX = "dispatches_one_primary_accepted_per_worker";
+
+export const PRIMARY_DISPATCH_CONFLICT_MESSAGE =
+  "This worker already has an accepted primary dispatch. A worker can only have one accepted primary dispatch at a time.";
+
+/** Error thrown when a change would create a second accepted primary dispatch for a worker. */
+export class PrimaryDispatchConflictError extends Error {
+  constructor() {
+    super(PRIMARY_DISPATCH_CONFLICT_MESSAGE);
+    this.name = "PrimaryDispatchConflictError";
+  }
+}
+
+function isPrimaryDispatchUniqueViolation(err: unknown): boolean {
+  const e = err as { code?: string; constraint?: string; message?: string } | null;
+  if (!e) return false;
+  return (
+    e.code === "23505" &&
+    (e.constraint === ONE_PRIMARY_ACCEPTED_INDEX ||
+      (typeof e.message === "string" && e.message.includes(ONE_PRIMARY_ACCEPTED_INDEX)))
+  );
+}
+
 export interface CommSummary {
   id: string;
   medium: string;
@@ -352,7 +380,15 @@ export function createDispatchStorage(): DispatchStorage {
     async create(insertDispatch: InsertDispatch): Promise<Dispatch> {
       validate.validateOrThrow(insertDispatch);
       const client = getClient();
-      const [dispatch] = await client.insert(dispatches).values(insertDispatch).returning();
+      let dispatch: Dispatch;
+      try {
+        [dispatch] = await client.insert(dispatches).values(insertDispatch).returning();
+      } catch (err) {
+        if (isPrimaryDispatchUniqueViolation(err)) {
+          throw new PrimaryDispatchConflictError();
+        }
+        throw err;
+      }
 
       eventBus.emit(EventType.DISPATCH_SAVED, {
         dispatchId: dispatch.id,
@@ -370,12 +406,19 @@ export function createDispatchStorage(): DispatchStorage {
     async update(id: string, dispatchUpdate: Partial<InsertDispatch>): Promise<Dispatch | undefined> {
       validate.validateOrThrow(dispatchUpdate);
       const client = getClient();
-      const [dispatch] = await client
-        .update(dispatches)
-        .set(dispatchUpdate)
-        .where(eq(dispatches.id, id))
-        .returning();
-      return dispatch || undefined;
+      try {
+        const [dispatch] = await client
+          .update(dispatches)
+          .set(dispatchUpdate)
+          .where(eq(dispatches.id, id))
+          .returning();
+        return dispatch || undefined;
+      } catch (err) {
+        if (isPrimaryDispatchUniqueViolation(err)) {
+          throw new PrimaryDispatchConflictError();
+        }
+        throw err;
+      }
     },
 
     async delete(id: string): Promise<boolean> {
@@ -480,11 +523,19 @@ export function createDispatchStorage(): DispatchStorage {
 
       const previousStatus = currentDispatch.status;
 
-      const [updatedDispatch] = await client
-        .update(dispatches)
-        .set({ status: newStatus })
-        .where(eq(dispatches.id, dispatchId))
-        .returning();
+      let updatedDispatch: Dispatch | undefined;
+      try {
+        [updatedDispatch] = await client
+          .update(dispatches)
+          .set({ status: newStatus })
+          .where(eq(dispatches.id, dispatchId))
+          .returning();
+      } catch (err) {
+        if (isPrimaryDispatchUniqueViolation(err)) {
+          return { success: false, error: PRIMARY_DISPATCH_CONFLICT_MESSAGE };
+        }
+        throw err;
+      }
 
       if (!updatedDispatch) {
         return { success: false, error: "Failed to update dispatch status" };
