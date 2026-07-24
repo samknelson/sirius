@@ -281,6 +281,13 @@ async function buildEligibleWorkersQuery(jobId: string, filters?: EligibleWorker
       }
 
       case "not_exists_unless_exists": {
+        if (!condition.unlessCategory || !condition.unlessValue) {
+          throw new Error(
+            `Misconfigured not_exists_unless_exists eligibility condition for category "${condition.category}": ` +
+            `unlessCategory and unlessValue are required (got unlessCategory=${JSON.stringify(condition.unlessCategory)}, unlessValue=${JSON.stringify(condition.unlessValue)}). ` +
+            `The plugin defining this condition must set both.`
+          );
+        }
         const blockingSubquery = client
           .select({ one: sql`1` })
           .from(workerDispatchEligDenorm)
@@ -294,8 +301,8 @@ async function buildEligibleWorkersQuery(jobId: string, filters?: EligibleWorker
           .from(workerDispatchEligDenorm)
           .where(and(
             eq(workerDispatchEligDenorm.workerId, workers.id),
-            eq(workerDispatchEligDenorm.category, condition.unlessCategory!),
-            eq(workerDispatchEligDenorm.value, condition.unlessValue!)
+            eq(workerDispatchEligDenorm.category, condition.unlessCategory),
+            eq(workerDispatchEligDenorm.value, condition.unlessValue)
           ));
         return [or(
           notExists(blockingSubquery),
@@ -456,6 +463,13 @@ async function checkConditionForWorker(
     }
 
     case "not_exists_unless_exists": {
+      if (!condition.unlessCategory || !condition.unlessValue) {
+        throw new Error(
+          `Misconfigured not_exists_unless_exists eligibility condition for category "${condition.category}": ` +
+          `unlessCategory and unlessValue are required (got unlessCategory=${JSON.stringify(condition.unlessCategory)}, unlessValue=${JSON.stringify(condition.unlessValue)}). ` +
+          `The plugin defining this condition must set both.`
+        );
+      }
       const hasBlocking = entryValues.includes(condition.value);
       if (!hasBlocking) {
         return { passed: true, explanation: `No blocking ${condition.category} entry found` };
@@ -465,8 +479,8 @@ async function checkConditionForWorker(
         .from(workerDispatchEligDenorm)
         .where(and(
           eq(workerDispatchEligDenorm.workerId, workerId),
-          eq(workerDispatchEligDenorm.category, condition.unlessCategory!),
-          eq(workerDispatchEligDenorm.value, condition.unlessValue!)
+          eq(workerDispatchEligDenorm.category, condition.unlessCategory),
+          eq(workerDispatchEligDenorm.value, condition.unlessValue)
         ));
       if (unlessEntries.length > 0) {
         return { passed: true, explanation: `Has blocking ${condition.category} entry but exempted by ${condition.unlessCategory} override` };
