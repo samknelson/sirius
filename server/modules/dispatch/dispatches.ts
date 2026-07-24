@@ -1,6 +1,6 @@
 import type { Express } from "express";
 import { storage } from "../../storage";
-import { PrimaryDispatchConflictError } from "../../storage/dispatch/dispatches";
+import { PrimaryDispatchConflictError, PRIMARY_DISPATCH_CONFLICT_MESSAGE } from "../../storage/dispatch/dispatches";
 import { insertDispatchSchema, dispatchStatusEnum } from "@shared/schema";
 import { requireAccess, buildContext, getAccessStorage } from "../../services/access-policy-evaluator";
 import { requireComponent } from "../components";
@@ -221,7 +221,8 @@ export function registerDispatchesRoutes(
       const result = await storage.dispatches.setStatus(id, status);
       
       if (!result.success) {
-        res.status(400).json({ message: result.error });
+        const isPrimaryConflict = result.error === PRIMARY_DISPATCH_CONFLICT_MESSAGE;
+        res.status(isPrimaryConflict ? 409 : 400).json({ message: result.error });
         return;
       }
 
