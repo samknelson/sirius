@@ -113,6 +113,9 @@ import "./plugins/trustWmbRestart";
 import "./plugins/trustWmbTerminate";
 // Dispatch-eligibility denorm plugins (write side of dispatch eligibility).
 import "./plugins/dispatch/accepted";
+// Auto Sign-In: sets workers back to Available when their accepted primary
+// dispatch ends (gated by the dispatch.asi component).
+import "./plugins/dispatch/asi-sign-in";
 import "./plugins/dispatch/ban";
 import "./plugins/dispatch/dnc";
 import "./plugins/dispatch/eba";

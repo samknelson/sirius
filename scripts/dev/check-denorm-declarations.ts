@@ -61,6 +61,7 @@ const FACTORY_NAMESPACES: Record<string, string> = {
   createWorkerSkillStorage: "workerSkills",
   createDispatchStorage: "dispatches",
   createDispatchJobStorage: "dispatchJobs",
+  createWorkerDispatchAsiStorage: "workerDispatchAsi",
   createWorkerDispatchDncStorage: "workerDispatchDnc",
   createWorkerDispatchEbaStorage: "workerDispatchEba",
   createWorkerDispatchHfeStorage: "workerDispatchHfe",
