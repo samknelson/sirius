@@ -37,6 +37,8 @@ interface HelpFormState {
 
 const emptyForm: HelpFormState = { paths: [""], summary: "", details: "" };
 
+type HelpWithSource = Help & { source?: "system" | "config" };
+
 export default function HelpsConfigPage() {
   usePageTitle("Help Text");
   const { toast } = useToast();
@@ -46,7 +48,7 @@ export default function HelpsConfigPage() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [form, setForm] = useState<HelpFormState>(emptyForm);
 
-  const { data: helpEntries = [], isLoading } = useQuery<Help[]>({
+  const { data: helpEntries = [], isLoading } = useQuery<HelpWithSource[]>({
     queryKey: ["/api/helps"],
   });
 
@@ -181,7 +183,14 @@ export default function HelpsConfigPage() {
                 {helpEntries.map((help) => (
                   <TableRow key={help.id} data-testid={`row-help-${help.id}`}>
                     <TableCell className="max-w-md" data-testid={`text-help-summary-${help.id}`}>
-                      {help.summary}
+                      <div className="flex items-center gap-2">
+                        <span>{help.summary}</span>
+                        {help.source === "system" && (
+                          <Badge variant="outline" data-testid={`badge-help-system-${help.id}`}>
+                            System
+                          </Badge>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell>
                       <div className="flex flex-wrap gap-1">
@@ -200,24 +209,30 @@ export default function HelpsConfigPage() {
                       )}
                     </TableCell>
                     <TableCell className="text-right">
-                      <div className="flex justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => openEdit(help)}
-                          data-testid={`button-edit-help-${help.id}`}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => setDeleteId(help.id)}
-                          data-testid={`button-delete-help-${help.id}`}
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </div>
+                      {help.source === "system" ? (
+                        <span className="text-muted-foreground text-xs" data-testid={`text-help-builtin-${help.id}`}>
+                          Built-in
+                        </span>
+                      ) : (
+                        <div className="flex justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => openEdit(help)}
+                            data-testid={`button-edit-help-${help.id}`}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setDeleteId(help.id)}
+                            data-testid={`button-delete-help-${help.id}`}
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </div>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}
