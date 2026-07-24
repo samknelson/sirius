@@ -1,7 +1,11 @@
 import { storage } from "../../../../storage/database";
+import { createUnifiedOptionsStorage } from "../../../../storage/unified-options";
 import { distanceInMiles, type Coordinates } from "@shared/utils/geocode";
 import { getDrivingDistanceMiles } from "../../../../services/driving-distance";
 import type { BaoDistanceMethod } from "@shared/schema/sitespecific/bao/schema";
+import type { JsonSchema } from "@shared/json-schema-form";
+
+const unifiedOptionsStorage = createUnifiedOptionsStorage();
 
 /**
  * Shared helpers for the site-specific BAO eligibility plugins
@@ -239,5 +243,159 @@ export async function getPrimaryCoords(contactId: string): Promise<CoordsLookup>
   return {
     status: "ok",
     coords: { latitude: primary.latitude, longitude: primary.longitude },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Shared continuous-coverage criterion (Start Healthnet / Start Delta /
+// Start Kaiser)
+// ---------------------------------------------------------------------------
+
+/**
+ * The continuous-coverage criterion is configured, evaluated, and rendered
+ * identically across all three BAO "Start" election plugins: the worker is
+ * eligible when they have held ANY benefit of the chosen benefit type for
+ * the required number of consecutive months at some point on or before the
+ * evaluated date. Everything about the criterion lives here so the three
+ * plugins cannot drift.
+ */
+export interface ContinuousCoverageCriterion {
+  benefitTypeId?: string;
+  months?: number;
+}
+
+/**
+ * JSON-schema fragment for the criterion. `criterionNumber` slots it into
+ * each plugin's numbered criterion list; `defaultMonths` keeps each
+ * plugin's historical default (Healthnet 6, Delta/Kaiser 24).
+ */
+export function continuousCoverageSchema(
+  criterionNumber: number,
+  defaultMonths: number,
+): JsonSchema {
+  return {
+    type: "object",
+    title: `Criterion ${criterionNumber} — Continuous coverage`,
+    description:
+      "Eligible if the worker has held any benefit of the chosen type for the required number of consecutive months at some point on or before the evaluated date. Set both fields to enable; leave unset to skip.",
+    properties: {
+      benefitTypeId: {
+        type: "string",
+        title: "Benefit type",
+        description: "Pick the benefit type that counts toward continuous coverage.",
+        "x-options-resource": "trust-benefit-type",
+      },
+      months: {
+        type: "integer",
+        title: "Required consecutive months",
+        description: "How many unbroken months of coverage are required.",
+        minimum: 1,
+        default: defaultMonths,
+      },
+    },
+  } as JsonSchema;
+}
+
+/** The criterion is enforced only when BOTH fields are set and sane. */
+export function isContinuousCoverageConfigured(
+  c: ContinuousCoverageCriterion | undefined,
+): c is { benefitTypeId: string; months: number } {
+  return (
+    typeof c?.benefitTypeId === "string" &&
+    c.benefitTypeId.length > 0 &&
+    typeof c.months === "number" &&
+    Number.isInteger(c.months) &&
+    c.months >= 1
+  );
+}
+
+/**
+ * Validate the chosen benefit type exists. Returns an error string, or
+ * undefined when valid.
+ */
+export async function validateContinuousCoverage(
+  c: { benefitTypeId: string; months: number },
+): Promise<string | undefined> {
+  const benefitType = await unifiedOptionsStorage.get("trust-benefit-type", c.benefitTypeId);
+  if (!benefitType) {
+    return `Continuous coverage criterion: unknown benefit type (${c.benefitTypeId})`;
+  }
+  return undefined;
+}
+
+/**
+ * Longest run of consecutive calendar months across the given rows.
+ * Each (year, month) is mapped to an ordinal, de-duplicated, sorted, and
+ * scanned for the longest streak. Returns 0 when there are no rows.
+ */
+export function longestConsecutiveMonths(
+  rows: Array<{ month: number; year: number }>,
+): number {
+  const ordinals = Array.from(new Set(rows.map((r) => toOrdinal(r.year, r.month)))).sort(
+    (a, b) => a - b,
+  );
+  if (ordinals.length === 0) return 0;
+  let longest = 1;
+  let run = 1;
+  for (let i = 1; i < ordinals.length; i++) {
+    if (ordinals[i] === ordinals[i - 1] + 1) {
+      run += 1;
+      if (run > longest) longest = run;
+    } else {
+      run = 1;
+    }
+  }
+  return longest;
+}
+
+/**
+ * Shape of the subset of `storage.trust.wmb.getWorkerBenefits` rows the
+ * criterion depends on. Other columns exist on the row but are not consumed.
+ */
+interface ContinuousCoverageHistoryRow {
+  month: number;
+  year: number;
+  benefit?: { benefitType?: string | null } | null;
+}
+
+/**
+ * Evaluate the criterion: met when the worker has held any benefit whose
+ * type is in `benefitTypeIds` for at least `months` consecutive months at
+ * some point on or before the evaluated (as-of) month. Coverage dated
+ * after the as-of month never counts. `benefitTypeIds` is a set to support
+ * the Delta plugin's legacy benefit-list configs, which may map to more
+ * than one type; new configs always pass exactly one.
+ */
+export async function evaluateContinuousCoverage(options: {
+  workerId: string;
+  benefitTypeIds: string[];
+  months: number;
+  asOfYear: number;
+  asOfMonth: number;
+}): Promise<{ met: boolean; reason: string }> {
+  const { workerId, benefitTypeIds, months, asOfYear, asOfMonth } = options;
+  const asOfOrdinal = toOrdinal(asOfYear, asOfMonth);
+  const typeSet = new Set(benefitTypeIds);
+
+  const rows = (await storage.trust.wmb.getWorkerBenefits(
+    workerId,
+  )) as ContinuousCoverageHistoryRow[];
+  const matching = rows.filter(
+    (r) =>
+      typeof r.benefit?.benefitType === "string" &&
+      typeSet.has(r.benefit.benefitType) &&
+      toOrdinal(r.year, r.month) <= asOfOrdinal,
+  );
+
+  const longestRun = longestConsecutiveMonths(matching);
+  if (longestRun >= months) {
+    return {
+      met: true,
+      reason: `worker held a benefit of the chosen type for ${longestRun} consecutive months on or before the evaluated date (needs ${months})`,
+    };
+  }
+  return {
+    met: false,
+    reason: `longest unbroken coverage of the chosen type is ${longestRun} ${longestRun === 1 ? "month" : "months"}, but ${months} consecutive months are required`,
   };
 }

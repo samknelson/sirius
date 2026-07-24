@@ -7,9 +7,17 @@ import {
 } from "../types";
 import { registerEligibilityPlugin } from "../registry";
 import { storage } from "../../../../storage/database";
-import { toOrdinal, measureDistance, getPrimaryCoords } from "./bao-shared";
+import {
+  toOrdinal,
+  measureDistance,
+  getPrimaryCoords,
+  continuousCoverageSchema,
+  isContinuousCoverageConfigured,
+  validateContinuousCoverage,
+  evaluateContinuousCoverage,
+} from "./bao-shared";
 
-const DEFAULT_ALTERNATE_MONTHS = 24;
+const DEFAULT_CONTINUOUS_MONTHS = 24;
 
 /**
  * Raw config as persisted on the rule. Both criteria are OR'd; each is
@@ -19,6 +27,12 @@ interface BaoStartDeltaConfig extends BaseEligibilityConfig {
   priorBenefits?: {
     benefitIds?: string[];
   };
+  continuousCoverage?: {
+    benefitTypeId?: string;
+    months?: number;
+  };
+  // Legacy shape (pre benefit-type): specific benefits whose types are
+  // resolved at evaluate/validate time. Read for backward compat only.
   continuousBenefits?: {
     benefitIds?: string[];
     months?: number;
@@ -32,7 +46,8 @@ interface BaoStartDeltaConfig extends BaseEligibilityConfig {
 /** Flattened, shape-agnostic view of the config used by validate/evaluate. */
 interface NormalizedConfig {
   priorBenefitIds?: string[];
-  continuousBenefitIds?: string[];
+  continuousBenefitTypeId?: string;
+  legacyContinuousBenefitIds?: string[];
   continuousMonths?: number;
   distanceMiles?: number;
   facilityIds?: string[];
@@ -42,25 +57,40 @@ function normalizeConfig(config: unknown): NormalizedConfig {
   const c = (config ?? {}) as BaoStartDeltaConfig;
   return {
     priorBenefitIds: c.priorBenefits?.benefitIds,
-    continuousBenefitIds: c.continuousBenefits?.benefitIds,
-    continuousMonths: c.continuousBenefits?.months,
+    continuousBenefitTypeId: c.continuousCoverage?.benefitTypeId,
+    legacyContinuousBenefitIds: c.continuousBenefits?.benefitIds,
+    continuousMonths: c.continuousCoverage?.months ?? c.continuousBenefits?.months,
     distanceMiles: c.geographic?.distanceMiles,
     facilityIds: c.geographic?.facilityIds,
   };
 }
 
-function isPriorConfigured(n: NormalizedConfig): boolean {
-  return Array.isArray(n.priorBenefitIds) && n.priorBenefitIds.length > 0;
-}
-
-function isContinuousConfigured(n: NormalizedConfig): boolean {
+function isLegacyContinuousConfigured(n: NormalizedConfig): boolean {
   return (
-    Array.isArray(n.continuousBenefitIds) &&
-    n.continuousBenefitIds.length > 0 &&
+    !n.continuousBenefitTypeId &&
+    Array.isArray(n.legacyContinuousBenefitIds) &&
+    n.legacyContinuousBenefitIds.length > 0 &&
     typeof n.continuousMonths === "number" &&
     Number.isInteger(n.continuousMonths) &&
     n.continuousMonths >= 1
   );
+}
+
+/**
+ * Resolve the benefit types of a legacy config's benefit list. Unknown
+ * benefits and benefits without a type are skipped.
+ */
+async function resolveLegacyBenefitTypes(benefitIds: string[]): Promise<string[]> {
+  const typeIds = new Set<string>();
+  for (const id of benefitIds) {
+    const benefit = await storage.trustBenefits.getTrustBenefit(id);
+    if (benefit?.benefitType) typeIds.add(benefit.benefitType);
+  }
+  return Array.from(typeIds);
+}
+
+function isPriorConfigured(n: NormalizedConfig): boolean {
+  return Array.isArray(n.priorBenefitIds) && n.priorBenefitIds.length > 0;
 }
 
 function isGeographicConfigured(n: NormalizedConfig): boolean {
@@ -96,7 +126,7 @@ class BaoStartDeltaPlugin extends EligibilityPlugin<BaoStartDeltaConfig> {
     description:
       "Trustee-approved Delta Dental election rule. A subscriber is eligible if they meet ANY ONE of the following criteria (each is checked only when configured):\n" +
       "1. Prior coverage — the subscriber held ANY of the selected benefits in at least ONE month before the evaluated date (even a single month qualifies, at this and all subsequent open enrollments).\n" +
-      "2. Continuous coverage — the subscriber held ANY of the selected benefits in EVERY one of the preceding months (default 24) immediately before the evaluated date.\n" +
+      "2. Continuous coverage — the subscriber has held any benefit of the chosen type for the required number of consecutive months (default 24) at some point on or before the evaluated date.\n" +
       "3. Outside the dental service area — the subscriber's primary address is MORE than the chosen distance from EVERY selected site (same geographic test as the Healthnet rule; driving distance preferred, straight-line fallback).\n" +
       "New enrollees inside the service area with no qualifying history are not eligible for Delta; they choose among the alternate dental plans instead.",
     requiredComponent: "sitespecific.bao",
@@ -121,32 +151,7 @@ class BaoStartDeltaPlugin extends EligibilityPlugin<BaoStartDeltaConfig> {
             },
           },
         },
-        continuousBenefits: {
-          type: "object",
-          title: "Criterion 2 — Continuous preceding coverage of this benefit",
-          description:
-            "Eligible if the worker held ANY of the selected benefits in EVERY one of the preceding months (counting back from the evaluated date). Set both fields to enable; leave empty to skip.",
-          properties: {
-            benefitIds: {
-              type: "array",
-              title: "Benefits",
-              description:
-                "Pick the benefit(s) that count (e.g. the alternate dental benefits — Liberty, UHDC). Coverage under any of them counts toward the consecutive-month requirement.",
-              items: {
-                type: "string",
-              },
-              "x-options-resource": "trust-benefit",
-            },
-            months: {
-              type: "integer",
-              title: "Required preceding months",
-              description:
-                "How many consecutive months immediately before the evaluated date must each have coverage under one of the selected benefits.",
-              minimum: 1,
-              default: DEFAULT_ALTERNATE_MONTHS,
-            },
-          },
-        },
+        continuousCoverage: continuousCoverageSchema(2, DEFAULT_CONTINUOUS_MONTHS),
         geographic: {
           type: "object",
           title: "Criterion 3 — Outside the dental service area",
@@ -196,17 +201,11 @@ class BaoStartDeltaPlugin extends EligibilityPlugin<BaoStartDeltaConfig> {
       }
     }
 
-    // Continuous coverage: when configured, every chosen benefit must exist.
-    if (isContinuousConfigured(n)) {
-      for (const id of n.continuousBenefitIds!) {
-        const benefit = await storage.trustBenefits.getTrustBenefit(id);
-        if (!benefit) {
-          return {
-            valid: false,
-            errors: [`Continuous coverage criterion: unknown benefit (${id})`],
-          };
-        }
-      }
+    // Continuous coverage: when configured, the chosen benefit type must exist.
+    const cc = { benefitTypeId: n.continuousBenefitTypeId, months: n.continuousMonths };
+    if (isContinuousCoverageConfigured(cc)) {
+      const error = await validateContinuousCoverage(cc);
+      if (error) return { valid: false, errors: [error] };
     }
 
     // Geographic: when configured, every chosen site must exist.
@@ -289,7 +288,9 @@ class BaoStartDeltaPlugin extends EligibilityPlugin<BaoStartDeltaConfig> {
     const n = normalizeConfig(config);
 
     const prior = isPriorConfigured(n);
-    const continuous = isContinuousConfigured(n);
+    const cc = { benefitTypeId: n.continuousBenefitTypeId, months: n.continuousMonths };
+    const legacyContinuous = isLegacyContinuousConfigured(n);
+    const continuous = isContinuousCoverageConfigured(cc) || legacyContinuous;
     const geographic = isGeographicConfigured(n);
 
     if (!prior && !continuous && !geographic) {
@@ -302,9 +303,6 @@ class BaoStartDeltaPlugin extends EligibilityPlugin<BaoStartDeltaConfig> {
 
     const failures: string[] = [];
 
-    // Benefit history is needed by both criteria; load it once. All
-    // comparisons use the month BEFORE the as-of month as the upper bound
-    // (the as-of month itself is excluded, matching the Kaiser window).
     const rows = (await storage.trust.wmb.getWorkerBenefits(
       context.subscriberWorker.id,
     )) as BenefitHistoryRow[];
@@ -331,37 +329,30 @@ class BaoStartDeltaPlugin extends EligibilityPlugin<BaoStartDeltaConfig> {
       );
     }
 
-    // Criterion 2 — Continuous coverage across the preceding window.
+    // Criterion 2 — Continuous coverage (shared BAO criterion). Legacy
+    // configs listed specific benefits; their types are resolved so old
+    // rules keep working until re-saved with a benefit type.
     if (continuous) {
-      const continuousSet = new Set(n.continuousBenefitIds!);
-      const coveredOrdinals = new Set(
-        rows
-          .filter((r) => typeof r.benefitId === "string" && continuousSet.has(r.benefitId))
-          .map((r) => toOrdinal(r.year, r.month)),
-      );
-
-      // Window: the N consecutive months immediately preceding the as-of
-      // month (the as-of month itself is excluded).
-      const windowStart = asOfOrdinal - n.continuousMonths!; // inclusive
-      const windowEnd = asOfOrdinal - 1; // inclusive
-
-      const missing: number[] = [];
-      for (let ord = windowStart; ord <= windowEnd; ord++) {
-        if (!coveredOrdinals.has(ord)) missing.push(ord);
+      const benefitTypeIds = isContinuousCoverageConfigured(cc)
+        ? [cc.benefitTypeId]
+        : await resolveLegacyBenefitTypes(n.legacyContinuousBenefitIds!);
+      if (benefitTypeIds.length === 0) {
+        failures.push(
+          "Continuous coverage: none of the legacy configured benefits has a benefit type — re-save the rule with a benefit type",
+        );
+      } else {
+        const result = await evaluateContinuousCoverage({
+          workerId: context.subscriberWorker.id,
+          benefitTypeIds,
+          months: n.continuousMonths!,
+          asOfYear: context.asOfYear,
+          asOfMonth: context.asOfMonth,
+        });
+        if (result.met) {
+          return { eligible: true, reason: `Eligible (continuous coverage): ${result.reason}` };
+        }
+        failures.push(`Continuous coverage: ${result.reason}`);
       }
-
-      if (missing.length === 0) {
-        return {
-          eligible: true,
-          reason: `Eligible (continuous coverage): worker held one of the selected benefits in every one of the ${n.continuousMonths} months preceding ${monthLabel(asOfOrdinal)} (${monthLabel(windowStart)} → ${monthLabel(windowEnd)})`,
-        };
-      }
-
-      const preview = missing.slice(0, 6).map(monthLabel).join(", ");
-      const suffix = missing.length > 6 ? `, … (+${missing.length - 6} more)` : "";
-      failures.push(
-        `Continuous coverage: ${missing.length} of the ${n.continuousMonths} preceding months had none of the selected benefits (missing: ${preview}${suffix})`,
-      );
     }
 
     // Criterion 3 — Outside the dental service area: more than the

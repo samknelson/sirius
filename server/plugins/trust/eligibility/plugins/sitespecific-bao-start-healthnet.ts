@@ -7,10 +7,14 @@ import {
 } from "../types";
 import { registerEligibilityPlugin } from "../registry";
 import { storage } from "../../../../storage/database";
-import { createUnifiedOptionsStorage } from "../../../../storage/unified-options";
-import { measureDistance, getPrimaryCoords } from "./bao-shared";
-
-const unifiedOptionsStorage = createUnifiedOptionsStorage();
+import {
+  measureDistance,
+  getPrimaryCoords,
+  continuousCoverageSchema,
+  isContinuousCoverageConfigured,
+  validateContinuousCoverage,
+  evaluateContinuousCoverage,
+} from "./bao-shared";
 
 /**
  * Raw config as persisted on the rule. New configs use the nested
@@ -59,16 +63,6 @@ function isGeographicConfigured(n: NormalizedConfig): boolean {
   );
 }
 
-function isMedicalConfigured(n: NormalizedConfig): boolean {
-  return (
-    typeof n.medicalBenefitTypeId === "string" &&
-    n.medicalBenefitTypeId.length > 0 &&
-    typeof n.medicalMonths === "number" &&
-    Number.isInteger(n.medicalMonths) &&
-    n.medicalMonths >= 1
-  );
-}
-
 function ymdFromYearMonth(asOfYear: number, asOfMonth: number): string {
   // Last day of the asOf month — matches the executor's as-of convention.
   const d = new Date(asOfYear, asOfMonth, 0);
@@ -78,41 +72,6 @@ function ymdFromYearMonth(asOfYear: number, asOfMonth: number): string {
   return `${yr}-${mo}-${dy}`;
 }
 
-/**
- * Shape of the subset of `storage.workers.getWorkerBenefits` rows that the
- * continuous-medical criterion depends on. Other columns exist on the row but
- * are not consumed here.
- */
-interface BenefitHistoryRow {
-  month: number;
-  year: number;
-  benefit?: { benefitType?: string | null } | null;
-}
-
-/**
- * Longest run of consecutive calendar months across the given rows.
- * Each (year, month) is mapped to an ordinal (year * 12 + month - 1),
- * de-duplicated, sorted, and scanned for the longest streak of
- * consecutive ordinals. Returns 0 when there are no rows.
- */
-function longestConsecutiveMonths(rows: Array<{ month: number; year: number }>): number {
-  const ordinals = Array.from(
-    new Set(rows.map((r) => r.year * 12 + (r.month - 1))),
-  ).sort((a, b) => a - b);
-  if (ordinals.length === 0) return 0;
-  let longest = 1;
-  let run = 1;
-  for (let i = 1; i < ordinals.length; i++) {
-    if (ordinals[i] === ordinals[i - 1] + 1) {
-      run += 1;
-      if (run > longest) longest = run;
-    } else {
-      run = 1;
-    }
-  }
-  return longest;
-}
-
 class BaoStartHealthnetPlugin extends EligibilityPlugin<BaoStartHealthnetConfig> {
   readonly metadata: EligibilityPluginMetadata = {
     id: "sitespecific-bao-start-healthnet",
@@ -120,7 +79,7 @@ class BaoStartHealthnetPlugin extends EligibilityPlugin<BaoStartHealthnetConfig>
     description:
       "A subscriber is eligible if they meet ANY ONE of the following criteria (criteria 1–2 are checked only when configured; criterion 3 is always checked):\n" +
       "1. Geographic — primary address is more than the chosen distance from every selected site.\n" +
-      "2. Continuous medical — the subscriber has held a benefit of the chosen Medical type for the required number of consecutive months at some point on or before the evaluated date.\n" +
+      "2. Continuous coverage — the subscriber has held any benefit of the chosen type for the required number of consecutive months at some point on or before the evaluated date.\n" +
       "3. Employer immediate-eligibility (always checked) — the subscriber's employer is inside an immediate-eligibility window covering the evaluated date.",
     requiredComponent: "sitespecific.bao",
     configSchema: {
@@ -152,27 +111,7 @@ class BaoStartHealthnetPlugin extends EligibilityPlugin<BaoStartHealthnetConfig>
             },
           },
         },
-        medical: {
-          type: "object",
-          title: "Criterion 2 — Continuous medical coverage",
-          description:
-            "Eligible if the worker has held any benefit of the chosen Medical type for the required number of consecutive months at some point on or before the evaluated date. Set both fields to enable; leave unset to skip.",
-          properties: {
-            benefitTypeId: {
-              type: "string",
-              title: "Medical benefit type",
-              description: "Pick the benefit type that counts as Medical.",
-              "x-options-resource": "trust-benefit-type",
-            },
-            months: {
-              type: "integer",
-              title: "Required consecutive months",
-              description: "How many unbroken months of medical coverage are required.",
-              minimum: 1,
-              default: 6,
-            },
-          },
-        },
+        medical: continuousCoverageSchema(2, 6),
       },
     },
   };
@@ -202,18 +141,11 @@ class BaoStartHealthnetPlugin extends EligibilityPlugin<BaoStartHealthnetConfig>
       }
     }
 
-    // Medical: when configured, the chosen benefit type must exist.
-    if (isMedicalConfigured(n)) {
-      const benefitType = await unifiedOptionsStorage.get(
-        "trust-benefit-type",
-        n.medicalBenefitTypeId!,
-      );
-      if (!benefitType) {
-        return {
-          valid: false,
-          errors: [`Medical criterion: unknown benefit type (${n.medicalBenefitTypeId})`],
-        };
-      }
+    // Continuous coverage: when configured, the chosen benefit type must exist.
+    const cc = { benefitTypeId: n.medicalBenefitTypeId, months: n.medicalMonths };
+    if (isContinuousCoverageConfigured(cc)) {
+      const error = await validateContinuousCoverage(cc);
+      if (error) return { valid: false, errors: [error] };
     }
 
     return { valid: true };
@@ -286,28 +218,10 @@ class BaoStartHealthnetPlugin extends EligibilityPlugin<BaoStartHealthnetConfig>
     const n = normalizeConfig(config);
 
     const geographic = isGeographicConfigured(n);
-    const medical = isMedicalConfigured(n);
+    const cc = { benefitTypeId: n.medicalBenefitTypeId, months: n.medicalMonths };
+    const continuous = isContinuousCoverageConfigured(cc);
 
     const failures: string[] = [];
-
-    // Subscriber benefit history is needed by the medical criterion; load
-    // it at most once. It is evaluated "as of" the scan date, so coverage
-    // dated AFTER the as-of month is excluded — a record in the future
-    // relative to the evaluated date must not count toward a
-    // consecutive-month run (criterion 2).
-    const asOfOrdinal = context.asOfYear * 12 + (context.asOfMonth - 1);
-    let history: BenefitHistoryRow[] | undefined;
-    const getHistory = async (): Promise<BenefitHistoryRow[]> => {
-      if (history === undefined) {
-        const allRows = (await storage.trust.wmb.getWorkerBenefits(
-          context.subscriberWorker.id,
-        )) as BenefitHistoryRow[];
-        history = allRows.filter(
-          (r) => r.year * 12 + (r.month - 1) <= asOfOrdinal,
-        );
-      }
-      return history;
-    };
 
     // Criterion 1 — Geographic
     if (geographic) {
@@ -322,20 +236,19 @@ class BaoStartHealthnetPlugin extends EligibilityPlugin<BaoStartHealthnetConfig>
       failures.push(`Geographic: ${result.reason}`);
     }
 
-    // Criterion 2 — Continuous medical coverage
-    if (medical) {
-      const rows = await getHistory();
-      const medicalRows = rows.filter((r) => r.benefit?.benefitType === n.medicalBenefitTypeId);
-      const longestRun = longestConsecutiveMonths(medicalRows);
-      if (longestRun >= n.medicalMonths!) {
-        return {
-          eligible: true,
-          reason: `Eligible (continuous medical): worker held the chosen medical benefit type for ${longestRun} consecutive months (needs ${n.medicalMonths})`,
-        };
+    // Criterion 2 — Continuous coverage (shared BAO criterion)
+    if (continuous) {
+      const result = await evaluateContinuousCoverage({
+        workerId: context.subscriberWorker.id,
+        benefitTypeIds: [cc.benefitTypeId],
+        months: cc.months,
+        asOfYear: context.asOfYear,
+        asOfMonth: context.asOfMonth,
+      });
+      if (result.met) {
+        return { eligible: true, reason: `Eligible (continuous coverage): ${result.reason}` };
       }
-      failures.push(
-        `Continuous medical: longest unbroken medical coverage is ${longestRun} ${longestRun === 1 ? "month" : "months"}, but ${n.medicalMonths} consecutive months are required`,
-      );
+      failures.push(`Continuous coverage: ${result.reason}`);
     }
 
     // Criterion 3 — Employer immediate-eligibility window (always checked)
