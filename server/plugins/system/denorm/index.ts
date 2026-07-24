@@ -118,6 +118,7 @@ import "./plugins/dispatch/dnc";
 import "./plugins/dispatch/eba";
 import "./plugins/dispatch/hfe";
 import "./plugins/dispatch/hta-home-employer";
+import "./plugins/dispatch/primary-unavailable";
 import "./plugins/dispatch/singleshift";
 import "./plugins/dispatch/skill";
 import "./plugins/dispatch/status";

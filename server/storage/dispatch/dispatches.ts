@@ -15,7 +15,8 @@ import {
   type JobTypePrimarySetting,
   type Comm
 } from "@shared/schema";
-import { eq, desc, and, inArray, ne, arrayContains } from "drizzle-orm";
+import { denorm } from "@shared/schema";
+import { eq, desc, and, inArray, ne, arrayContains, isNull } from "drizzle-orm";
 import { eventBus, EventType } from "../../services/event-bus";
 import { defineLoggingConfig } from "../middleware/logging";
 
@@ -103,6 +104,14 @@ export interface DispatchStorage {
   setStatus(dispatchId: string, newStatus: DispatchStatus): Promise<{ success: boolean; dispatch?: Dispatch; error?: string }>;
   findByCommId(commId: string): Promise<Dispatch | undefined>;
   expireRemainingIfJobFull(jobId: string): Promise<void>;
+  /** Whether the worker currently has an accepted primary dispatch. Read-only. */
+  hasAcceptedPrimary(workerId: string): Promise<boolean>;
+  /**
+   * Backfill anti-join for the `dispatch_primary_unavailable` denorm plugin:
+   * distinct worker ids that have an accepted+primary dispatch but no `denorm`
+   * row for the given config, capped at `limit`. Read-only.
+   */
+  findWorkerIdsWithAcceptedPrimaryMissingDenorm(configId: string, limit: number): Promise<string[]>;
 }
 
 async function getJobTitle(jobId: string): Promise<string> {
@@ -656,6 +665,28 @@ export function createDispatchStorage(): DispatchStorage {
       }
 
       return { success: true, dispatch: updatedDispatch };
+    },
+
+    async hasAcceptedPrimary(workerId: string): Promise<boolean> {
+      return workerHasAcceptedPrimary(workerId);
+    },
+
+    async findWorkerIdsWithAcceptedPrimaryMissingDenorm(configId: string, limit: number): Promise<string[]> {
+      const client = getClient();
+      const rows = await client
+        .selectDistinct({ workerId: dispatches.workerId })
+        .from(dispatches)
+        .leftJoin(
+          denorm,
+          and(eq(denorm.entityId, dispatches.workerId), eq(denorm.configId, configId)),
+        )
+        .where(and(
+          eq(dispatches.status, "accepted"),
+          eq(dispatches.isPrimary, true),
+          isNull(denorm.id),
+        ))
+        .limit(limit);
+      return rows.map((r) => r.workerId);
     },
 
     async expireRemainingIfJobFull(jobId: string): Promise<void> {
