@@ -197,7 +197,7 @@ export default function GenericPluginConfigsPage() {
     queryKey: pluginConfigsMetaQueryKey(kind),
     enabled: isValidKind,
   });
-  const envelopeFields = meta?.envelopeFields ?? [];
+  const envelopeFields = meta?.envelopeFields ?? NO_PLUGIN_FIELDS;
   const pluginFieldsByPlugin = meta?.pluginFields ?? {};
   const filterableFields = envelopeFields.filter((f) => f.filterable);
 
@@ -849,14 +849,49 @@ function GenericConfigDialog({
   const settingsSchema = plugin.configSchema ?? { type: "object", properties: {} };
   const settingsUiSchema = plugin.uiSchema;
 
-  const [name, setName] = useState("");
-  const [enabled, setEnabled] = useState(false);
-  const [ordering, setOrdering] = useState(0);
-  const [siriusId, setSiriusId] = useState("");
-  const [settings, setSettings] = useState<Record<string, unknown>>({});
-  const [envelope, setEnvelope] = useState<Record<string, string>>({});
+  // Seed all state SYNCHRONOUSLY from the config on first mount (lazy
+  // initializers). Seeding only in the effect below is not enough: on the
+  // very first open after a page load the dialog mounts with empty settings,
+  // the RJSF form instance mounts with that empty formData, and RJSF v6
+  // fires a mount-time onChange when merging schema defaults changes the
+  // form data. That onChange lands AFTER the seeding effect and clobbers
+  // the saved data back to defaults-only — "settings appear cleared on the
+  // first edit after a refresh". With lazy seeding, the first form instance
+  // already carries the saved data, so its mount-time onChange is harmless.
+  const [name, setName] = useState(() => config?.name ?? "");
+  const [enabled, setEnabled] = useState(() => config?.enabled ?? false);
+  const [ordering, setOrdering] = useState(() => config?.ordering ?? 0);
+  const [siriusId, setSiriusId] = useState(() =>
+    config?.siriusId === null || config?.siriusId === undefined
+      ? ""
+      : String(config.siriusId),
+  );
+  const [settings, setSettings] = useState<Record<string, unknown>>(() =>
+    config
+      ? sortArrayTableSettings(
+          settingsSchema,
+          (config.data as Record<string, unknown>) ?? {},
+        )
+      : {},
+  );
+  const [envelope, setEnvelope] = useState<Record<string, string>>(() =>
+    Object.fromEntries(
+      envelopeFields.map((f) => {
+        const v = config?.[f.name];
+        return [f.name, v === null || v === undefined ? "" : String(v)];
+      }),
+    ),
+  );
   // Per-plugin field values, seeded from / persisted into the config's `data`.
-  const [pluginData, setPluginData] = useState<Record<string, string>>({});
+  const [pluginData, setPluginData] = useState<Record<string, string>>(() => {
+    const data = (config?.data as Record<string, unknown>) ?? {};
+    return Object.fromEntries(
+      pluginFields.map((f) => {
+        const v = data[f.name];
+        return [f.name, v === null || v === undefined ? "" : String(v)];
+      }),
+    );
+  });
   // Bumped after (re)seeding `settings` so the RJSF form remounts and
   // initializes from the seeded values. RJSF v6 does not reliably re-sync
   // custom `ui:field` components when the `formData` prop changes after
@@ -905,7 +940,7 @@ function GenericConfigDialog({
     }
     setFormSeedKey((k) => k + 1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, config, plugin.id, pluginFields]);
+  }, [open, config, plugin.id, pluginFields, envelopeFields]);
 
   const handleSubmit = (validSettings: Record<string, unknown>) => {
     // Block save if any required envelope field is empty (client-side mirror of
