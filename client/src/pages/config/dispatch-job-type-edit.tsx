@@ -27,7 +27,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { insertDispatchJobTypeSchema, type InsertDispatchJobType, type JobTypeData } from "@shared/schema";
+import { insertDispatchJobTypeSchema, type InsertDispatchJobType, type JobTypeData, type JobTypePrimarySetting } from "@shared/schema";
+
+const primaryOptions: { value: JobTypePrimarySetting; label: string }[] = [
+  { value: "primary", label: "Always primary" },
+  { value: "both", label: "Primary if possible, otherwise secondary" },
+  { value: "secondary", label: "Always secondary" },
+];
 
 const availableIcons: { name: string; Icon: LucideIcon }[] = [
   { name: 'Briefcase', Icon: Briefcase },
@@ -51,6 +57,7 @@ function DispatchJobTypeEditContent() {
   const [formIcon, setFormIcon] = useState<string>(jobTypeData?.icon || "Briefcase");
   const [minWorkers, setMinWorkers] = useState<string>(jobTypeData?.minWorkers?.toString() || "");
   const [maxWorkers, setMaxWorkers] = useState<string>(jobTypeData?.maxWorkers?.toString() || "");
+  const [primarySetting, setPrimarySetting] = useState<JobTypePrimarySetting>(jobTypeData?.primary || "secondary");
 
   const form = useForm<InsertDispatchJobType>({
     resolver: zodResolver(insertDispatchJobTypeSchema),
@@ -68,6 +75,7 @@ function DispatchJobTypeEditContent() {
     setFormIcon(jobTypeData?.icon || "Briefcase");
     setMinWorkers(jobTypeData?.minWorkers?.toString() || "");
     setMaxWorkers(jobTypeData?.maxWorkers?.toString() || "");
+    setPrimarySetting(jobTypeData?.primary || "secondary");
   }, [jobType, jobTypeData, form]);
 
   const updateMutation = useMutation({
@@ -77,6 +85,7 @@ function DispatchJobTypeEditContent() {
         icon: formIcon,
         minWorkers: minWorkers ? parseInt(minWorkers, 10) : undefined,
         maxWorkers: maxWorkers ? parseInt(maxWorkers, 10) : undefined,
+        primary: primarySetting,
       };
       return apiRequest("PUT", `/api/options/dispatch-job-type/${jobType.id}`, {
         ...data,
@@ -151,6 +160,25 @@ function DispatchJobTypeEditContent() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+
+            <div className="space-y-2">
+              <FormLabel>Primary?</FormLabel>
+              <Select value={primarySetting} onValueChange={(v) => setPrimarySetting(v as JobTypePrimarySetting)}>
+                <SelectTrigger data-testid="select-primary">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {primaryOptions.map(({ value, label }) => (
+                    <SelectItem key={value} value={value} data-testid={`option-primary-${value}`}>
+                      {label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-sm text-muted-foreground">
+                Controls whether dispatches for this job type are marked as the worker's primary dispatch.
+              </p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

@@ -25,8 +25,18 @@ export interface EligibilityPluginMetadata {
 
 export type NotificationMedia = 'email' | 'sms' | 'in-app';
 
+/**
+ * Controls how dispatches for a job type get their is_primary flag.
+ * - "primary": dispatches are always primary
+ * - "both": primary if the worker has no accepted primary dispatch, otherwise secondary
+ * - "secondary": dispatches are always secondary (default when absent)
+ */
+export const jobTypePrimarySettingEnum = ["primary", "both", "secondary"] as const;
+export type JobTypePrimarySetting = typeof jobTypePrimarySettingEnum[number];
+
 export interface JobTypeData {
   icon?: string;
+  primary?: JobTypePrimarySetting;
   eligibility?: EligibilityPluginConfig[];
   minWorkers?: number;
   maxWorkers?: number;

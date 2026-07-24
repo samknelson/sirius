@@ -81,6 +81,8 @@ export {
   type JobTypeEligibility,
   type EligibilityPluginMetadata,
   type JobTypeData,
+  jobTypePrimarySettingEnum,
+  type JobTypePrimarySetting,
   type DispatchJobData,
   type NotificationMedia,
   type PollPhaseStatus,

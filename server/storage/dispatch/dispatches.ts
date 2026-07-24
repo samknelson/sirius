@@ -3,6 +3,7 @@ import { getClient } from '../transaction-context';
 import { 
   dispatches, 
   dispatchJobs,
+  optionsDispatchJobType,
   workers,
   contacts,
   comm,
@@ -10,6 +11,8 @@ import {
   type Dispatch, 
   type InsertDispatch,
   type DispatchStatus,
+  type JobTypeData,
+  type JobTypePrimarySetting,
   type Comm
 } from "@shared/schema";
 import { eq, desc, and, inArray, ne, arrayContains } from "drizzle-orm";
@@ -118,6 +121,40 @@ async function getJobEmployerId(jobId: string): Promise<string | undefined> {
     .from(dispatchJobs)
     .where(eq(dispatchJobs.id, jobId));
   return job?.employerId;
+}
+
+/**
+ * Resolve the "Primary?" setting for a job's job type. Defaults to
+ * "secondary" when the job has no job type or the setting is absent.
+ */
+async function getJobPrimarySetting(jobId: string): Promise<JobTypePrimarySetting> {
+  const client = getClient();
+  const [row] = await client
+    .select({ data: optionsDispatchJobType.data })
+    .from(dispatchJobs)
+    .leftJoin(optionsDispatchJobType, eq(dispatchJobs.jobTypeId, optionsDispatchJobType.id))
+    .where(eq(dispatchJobs.id, jobId));
+  const setting = (row?.data as JobTypeData | null)?.primary;
+  return setting === "primary" || setting === "both" ? setting : "secondary";
+}
+
+/** Whether the worker already has an accepted primary dispatch (optionally excluding one dispatch). */
+async function workerHasAcceptedPrimary(workerId: string, excludeDispatchId?: string): Promise<boolean> {
+  const client = getClient();
+  const conditions = [
+    eq(dispatches.workerId, workerId),
+    eq(dispatches.status, "accepted"),
+    eq(dispatches.isPrimary, true),
+  ];
+  if (excludeDispatchId) {
+    conditions.push(ne(dispatches.id, excludeDispatchId));
+  }
+  const [existing] = await client
+    .select({ id: dispatches.id })
+    .from(dispatches)
+    .where(and(...conditions))
+    .limit(1);
+  return !!existing;
 }
 
 interface SearchDispatchesCriteria {
@@ -380,11 +417,37 @@ export function createDispatchStorage(): DispatchStorage {
     async create(insertDispatch: InsertDispatch): Promise<Dispatch> {
       validate.validateOrThrow(insertDispatch);
       const client = getClient();
+
+      // is_primary is server-derived from the job type's "Primary?" setting.
+      // Any caller-supplied value is ignored (the insert schema omits it too).
+      const primarySetting = await getJobPrimarySetting(insertDispatch.jobId);
+      let isPrimary = false;
+      if (primarySetting === "primary") {
+        isPrimary = true;
+      } else if (primarySetting === "both") {
+        isPrimary = !(await workerHasAcceptedPrimary(insertDispatch.workerId));
+      }
+
       let dispatch: Dispatch;
       try {
-        [dispatch] = await client.insert(dispatches).values(insertDispatch).returning();
+        [dispatch] = await client.insert(dispatches).values({ ...insertDispatch, isPrimary }).returning();
       } catch (err) {
         if (isPrimaryDispatchUniqueViolation(err)) {
+          if (primarySetting === "both") {
+            // Race-safe fallback: someone else grabbed the primary slot
+            // between our pre-check and the insert. Retry as secondary.
+            [dispatch] = await client.insert(dispatches).values({ ...insertDispatch, isPrimary: false }).returning();
+            eventBus.emit(EventType.DISPATCH_SAVED, {
+              dispatchId: dispatch.id,
+              workerId: dispatch.workerId,
+              jobId: dispatch.jobId,
+              status: dispatch.status,
+              previousStatus: undefined,
+            }).catch(emitErr => {
+              console.error("Failed to emit DISPATCH_SAVED event from create:", emitErr);
+            });
+            return dispatch;
+          }
           throw new PrimaryDispatchConflictError();
         }
         throw err;
@@ -523,18 +586,53 @@ export function createDispatchStorage(): DispatchStorage {
 
       const previousStatus = currentDispatch.status;
 
+      // On acceptance, re-derive is_primary from the job type's "Primary?"
+      // setting: "primary" → true (conflict surfaces as a clear error),
+      // "secondary" → false, "both" → primary only if no other accepted
+      // primary dispatch exists for the worker (race-safe fallback below).
+      const updateSet: { status: DispatchStatus; isPrimary?: boolean } = { status: newStatus };
+      let primarySetting: JobTypePrimarySetting | undefined;
+      if (newStatus === "accepted") {
+        primarySetting = await getJobPrimarySetting(currentDispatch.jobId);
+        if (primarySetting === "primary") {
+          updateSet.isPrimary = true;
+        } else if (primarySetting === "secondary") {
+          updateSet.isPrimary = false;
+        } else {
+          updateSet.isPrimary = !(await workerHasAcceptedPrimary(currentDispatch.workerId, dispatchId));
+        }
+      }
+
       let updatedDispatch: Dispatch | undefined;
       try {
         [updatedDispatch] = await client
           .update(dispatches)
-          .set({ status: newStatus })
+          .set(updateSet)
           .where(eq(dispatches.id, dispatchId))
           .returning();
       } catch (err) {
         if (isPrimaryDispatchUniqueViolation(err)) {
-          return { success: false, error: PRIMARY_DISPATCH_CONFLICT_MESSAGE };
+          if (newStatus === "accepted" && primarySetting === "both") {
+            // Race-safe fallback: another dispatch became the accepted
+            // primary between our pre-check and the update. Accept as secondary.
+            try {
+              [updatedDispatch] = await client
+                .update(dispatches)
+                .set({ status: newStatus, isPrimary: false })
+                .where(eq(dispatches.id, dispatchId))
+                .returning();
+            } catch (retryErr) {
+              if (isPrimaryDispatchUniqueViolation(retryErr)) {
+                return { success: false, error: PRIMARY_DISPATCH_CONFLICT_MESSAGE };
+              }
+              throw retryErr;
+            }
+          } else {
+            return { success: false, error: PRIMARY_DISPATCH_CONFLICT_MESSAGE };
+          }
+        } else {
+          throw err;
         }
-        throw err;
       }
 
       if (!updatedDispatch) {
