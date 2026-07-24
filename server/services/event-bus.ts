@@ -43,6 +43,7 @@ export enum EventType {
   CONTACT_ELIGIBILITY_SAVED = "contact.eligibility.saved",
   CARDCHECK_SAVED = "cardcheck.saved",
   BAO_COBRA_CASE_SAVED = "bao.cobra.case.saved",
+  LEDGER_ENTRY_SAVED = "ledger.entry.saved",
   GRIEVANCE_STATUS_HISTORY_SAVED = "grievance.status-history.saved",
   GRIEVANCE_TIMELINE_CHANGED = "grievance.timeline.changed",
   GRIEVANCE_ASSIGNMENT_SAVED = "grievance.assignment.saved",
@@ -331,6 +332,27 @@ export interface BaoCobraCaseSavedPayload {
 }
 
 /**
+ * Emitted after a ledger entry (charge, adjustment, or payment-allocation
+ * row) create, update, or delete commits on a WORKER-owned ledger account.
+ * Storage is the single emission point, so every code path that mutates
+ * ledger entries — routes, charge plugins, payment deletes, batch flows —
+ * is covered. When an update moves the statement month, storage emits BOTH
+ * the old and the new month (two events). Non-worker accounts (employer,
+ * trust provider) never emit: they don't affect worker eligibility rescans.
+ * `statementYmd` is the entry's statement date (the accrual month), null
+ * only for legacy rows without one.
+ */
+export interface LedgerEntrySavedPayload {
+  entryId: string;
+  eaId: string;
+  accountId: string;
+  entityType: string;
+  entityId: string;
+  statementYmd: string | null;
+  operation: "created" | "updated" | "deleted";
+}
+
+/**
  * Emitted after an EDLS sheet create or update commits. Carries the sheet's
  * status before and after the write so a notifier can detect a genuine
  * arrival at a status: `previousStatus` is null on create (the sheet "arrives"
@@ -480,6 +502,7 @@ export interface EventPayloadMap {
   [EventType.CONTACT_ELIGIBILITY_SAVED]: ContactEligibilitySavedPayload;
   [EventType.CARDCHECK_SAVED]: CardcheckSavedPayload;
   [EventType.BAO_COBRA_CASE_SAVED]: BaoCobraCaseSavedPayload;
+  [EventType.LEDGER_ENTRY_SAVED]: LedgerEntrySavedPayload;
   [EventType.GRIEVANCE_STATUS_HISTORY_SAVED]: GrievanceStatusHistorySavedPayload;
   [EventType.GRIEVANCE_TIMELINE_CHANGED]: GrievanceTimelineChangedPayload;
   [EventType.GRIEVANCE_ASSIGNMENT_SAVED]: GrievanceAssignmentSavedPayload;

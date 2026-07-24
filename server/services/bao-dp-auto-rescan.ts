@@ -3,8 +3,10 @@ import {
   EventType,
   type PaymentSavedPayload,
   type TrustElectionSavedPayload,
+  type LedgerEntrySavedPayload,
 } from "./event-bus";
 import { onAfterCommit } from "../storage/transaction-context";
+import { isWmbScanWrite } from "../middleware/request-context";
 import { storage } from "../storage";
 import { logger } from "../logger";
 import { isComponentEnabledSync, isCacheInitialized } from "./component-cache";
@@ -73,6 +75,36 @@ async function handlePaymentSaved(payload: PaymentSavedPayload): Promise<void> {
   });
 }
 
+async function handleLedgerEntrySaved(
+  payload: LedgerEntrySavedPayload,
+): Promise<void> {
+  if (!componentsActive()) return;
+  if (payload.entityType !== "worker") return;
+  // Loop guard: charge plugins can write ledger entries while reacting to
+  // WMB rows the benefits scan itself wrote; reacting to those would feed
+  // the queue from its own output (mirrors wmb-auto-rescan's ledger handler).
+  if (isWmbScanWrite()) return;
+  const workerId = payload.entityId;
+  // Ledger storage already defers this emit to after commit. A charge or
+  // adjustment change on the DP account changes the paid state DP premiums
+  // bill one coverage month in advance for, so enqueue NEXT month too
+  // (mirrors handlePaymentSaved).
+  void (async () => {
+    try {
+      const dpAccountId = await resolveDpAccountId();
+      if (!dpAccountId || payload.accountId !== dpAccountId) return;
+      await enqueueWorkerMonths(workerId, [nextMonth()], "dp_ledger_entry_saved");
+    } catch (err) {
+      logger.error("Failed to enqueue DP next-month rescan after ledger entry change", {
+        service: SERVICE_NAME,
+        workerId,
+        entryId: payload.entryId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  })();
+}
+
 async function handleElectionSaved(
   payload: TrustElectionSavedPayload,
 ): Promise<void> {
@@ -118,6 +150,12 @@ export function initBaoDpAutoRescan(): void {
       description: `Re-scans next month's benefits when a payment lands on the subscriber's DP ledger account (the ${DP_CHARGE_PLUGIN_ID} charge account), since DP premiums bill one coverage month in advance.`,
       event: EventType.PAYMENT_SAVED,
       handler: handlePaymentSaved,
+    }),
+    eventBus.on({
+      name: "bao-dp-auto-rescan-ledger-entry",
+      description: "Re-scans next month's benefits when a ledger charge/adjustment on the subscriber's DP ledger account changes, since DP premiums bill one coverage month in advance.",
+      event: EventType.LEDGER_ENTRY_SAVED,
+      handler: handleLedgerEntrySaved,
     }),
     eventBus.on({
       name: "bao-dp-auto-rescan-election",

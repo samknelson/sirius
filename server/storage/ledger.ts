@@ -1,5 +1,6 @@
 import { createNoopValidator } from './utils/validation';
-import { getClient } from './transaction-context';
+import { getClient, onAfterCommit } from './transaction-context';
+import { eventBus, EventType } from "../services/event-bus";
 import { logger } from "../logger";
 import { ledgerAccounts, ledgerEa, ledgerPayments, ledger, employers, workers, contacts, trustProviders, optionsLedgerPaymentType } from "@shared/schema";
 import { ledgerPaymentBatches, ledgerPaymentBatchAssignments } from "@shared/schema/ledger/payment-batch/schema";
@@ -726,12 +727,17 @@ export function createLedgerPaymentStorage(): LedgerPaymentStorage {
 
     async delete(id: string): Promise<boolean> {
       const client = getClient();
-      const entriesResult = await client.delete(ledger)
+      const deletedEntries = await client.delete(ledger)
         .where(and(
           eq(ledger.referenceType, "payment"),
           eq(ledger.referenceId, id)
-        ));
-      const deletedEntriesCount = entriesResult.rowCount || 0;
+        ))
+        .returning({ id: ledger.id, eaId: ledger.eaId, statementYmd: ledger.statementYmd });
+      // Deleting a payment removes its applied/allocation ledger entries;
+      // emitting those deletes re-queues the affected worker months the same
+      // way a payment save does (paid state is computed from ledger entries).
+      await emitLedgerEntryEvents(deletedEntries, "deleted");
+      const deletedEntriesCount = deletedEntries.length;
       if (deletedEntriesCount > 0) {
         logger.info("Deleted ledger entries when deleting payment", {
           service: "ledger-payments",
@@ -744,6 +750,74 @@ export function createLedgerPaymentStorage(): LedgerPaymentStorage {
       return result.rowCount ? result.rowCount > 0 : false;
     }
   };
+}
+
+/**
+ * Emit LEDGER_ENTRY_SAVED (after commit) for each mutated ledger entry whose
+ * EA belongs to a WORKER. This is the single emission point for ledger-entry
+ * mutations, so every code path — routes, charge plugins, payment deletes,
+ * batch flows — is covered. Non-worker EAs (employer, trust provider) are
+ * filtered out here: they don't drive worker eligibility rescans. The EA
+ * lookup runs inside the current transaction; the emit is deferred to after
+ * commit so listeners never enqueue scans for writes that roll back.
+ * Failures are logged and swallowed — an emit problem must never fail the
+ * write itself.
+ */
+async function emitLedgerEntryEvents(
+  rows: Array<{ id: string; eaId: string; statementYmd: string | null }>,
+  operation: "created" | "updated" | "deleted",
+): Promise<void> {
+  if (rows.length === 0) return;
+  try {
+    const client = getClient();
+    const eaIds = Array.from(new Set(rows.map(r => r.eaId)));
+    const eaRows = await client
+      .select({
+        id: ledgerEa.id,
+        accountId: ledgerEa.accountId,
+        entityType: ledgerEa.entityType,
+        entityId: ledgerEa.entityId,
+      })
+      .from(ledgerEa)
+      .where(inArray(ledgerEa.id, eaIds));
+    const eaMap = new Map(eaRows.map(ea => [ea.id, ea]));
+
+    // One emit per distinct (eaId, statement month, operation) — a bulk
+    // delete of many entries in the same month collapses to one event.
+    const seen = new Set<string>();
+    for (const row of rows) {
+      const ea = eaMap.get(row.eaId);
+      if (!ea || ea.entityType !== "worker") continue;
+      const monthKey = row.statementYmd ? row.statementYmd.slice(0, 7) : "";
+      const dedupeKey = `${row.eaId}|${monthKey}|${operation}`;
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+      const payload = {
+        entryId: row.id,
+        eaId: row.eaId,
+        accountId: ea.accountId,
+        entityType: ea.entityType,
+        entityId: ea.entityId,
+        statementYmd: row.statementYmd,
+        operation,
+      };
+      onAfterCommit(() => {
+        void eventBus.emit(EventType.LEDGER_ENTRY_SAVED, payload).catch(err => {
+          logger.error("Failed to emit LEDGER_ENTRY_SAVED event", {
+            service: "ledger-storage",
+            entryId: row.id,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
+      });
+    }
+  } catch (err) {
+    logger.error("Failed to prepare LEDGER_ENTRY_SAVED events", {
+      service: "ledger-storage",
+      operation,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
 }
 
 export function createLedgerEntryStorage(): LedgerEntryStorage {
@@ -1339,6 +1413,10 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
           service: "ledger-storage",
           entryId: entry.id,
         });
+        await emitLedgerEntryEvents(
+          [{ id: entry.id, eaId: entry.eaId, statementYmd: entry.statementYmd }],
+          "created",
+        );
         return entry;
       } catch (error) {
         logger.error("Failed to insert ledger entry", {
@@ -1363,28 +1441,49 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
             : new Date(date);
       }
       const client = getClient();
+      // Read the pre-update row so a statement-month move emits BOTH the old
+      // and the new month (listeners rescan every affected period).
+      const [before] = await client.select({
+        id: ledger.id,
+        eaId: ledger.eaId,
+        statementYmd: ledger.statementYmd,
+      }).from(ledger).where(eq(ledger.id, id));
       const [entry] = await client.update(ledger)
         .set(safeUpdate)
         .where(eq(ledger.id, id))
         .returning();
+      if (entry) {
+        const rows = [{ id: entry.id, eaId: entry.eaId, statementYmd: entry.statementYmd }];
+        if (
+          before &&
+          (before.eaId !== entry.eaId || before.statementYmd !== entry.statementYmd)
+        ) {
+          rows.push(before);
+        }
+        await emitLedgerEntryEvents(rows, "updated");
+      }
       return entry || undefined;
     },
 
     async delete(id: string): Promise<boolean> {
       const client = getClient();
-      const result = await client.delete(ledger)
-        .where(eq(ledger.id, id));
-      return result.rowCount ? result.rowCount > 0 : false;
+      const deleted = await client.delete(ledger)
+        .where(eq(ledger.id, id))
+        .returning({ id: ledger.id, eaId: ledger.eaId, statementYmd: ledger.statementYmd });
+      await emitLedgerEntryEvents(deleted, "deleted");
+      return deleted.length > 0;
     },
 
     async deleteByReference(referenceType: string, referenceId: string): Promise<number> {
       const client = getClient();
-      const result = await client.delete(ledger)
+      const deleted = await client.delete(ledger)
         .where(and(
           eq(ledger.referenceType, referenceType),
           eq(ledger.referenceId, referenceId)
-        ));
-      return result.rowCount || 0;
+        ))
+        .returning({ id: ledger.id, eaId: ledger.eaId, statementYmd: ledger.statementYmd });
+      await emitLedgerEntryEvents(deleted, "deleted");
+      return deleted.length;
     },
 
     async getByChargePluginKey(chargePlugin: string, chargePluginKey: string): Promise<Ledger | undefined> {
@@ -1450,12 +1549,14 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
 
     async deleteByChargePluginKey(chargePlugin: string, chargePluginKey: string): Promise<boolean> {
       const client = getClient();
-      const result = await client.delete(ledger)
+      const deleted = await client.delete(ledger)
         .where(and(
           eq(ledger.chargePlugin, chargePlugin),
           eq(ledger.chargePluginKey, chargePluginKey)
-        ));
-      return result.rowCount ? result.rowCount > 0 : false;
+        ))
+        .returning({ id: ledger.id, eaId: ledger.eaId, statementYmd: ledger.statementYmd });
+      await emitLedgerEntryEvents(deleted, "deleted");
+      return deleted.length > 0;
     },
 
     async deleteOrphansByChargePluginAndKnownKeys(
@@ -1478,8 +1579,10 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
       if (knownKeys.size > 0) {
         conditions.push(notInArray(ledger.chargePluginKey, Array.from(knownKeys)));
       }
-      const result = await client.delete(ledger).where(and(...conditions));
-      return result.rowCount || 0;
+      const deleted = await client.delete(ledger).where(and(...conditions))
+        .returning({ id: ledger.id, eaId: ledger.eaId, statementYmd: ledger.statementYmd });
+      await emitLedgerEntryEvents(deleted, "deleted");
+      return deleted.length;
     },
 
     async findByAccountEntityDatePlugin(accountId: string, entityId: string, date: Date, chargePluginId: string, chargePluginConfigId?: string, amount?: string): Promise<Ledger | undefined> {

@@ -12,6 +12,7 @@ import {
   type ContactEligibilitySavedPayload,
   type CardcheckSavedPayload,
   type BaoCobraCaseSavedPayload,
+  type LedgerEntrySavedPayload,
 } from "./event-bus";
 import { onAfterCommit } from "../storage/transaction-context";
 import { isWmbScanWrite } from "../middleware/request-context";
@@ -488,6 +489,25 @@ async function handleCardcheckSaved(payload: CardcheckSavedPayload): Promise<voi
   void enqueueWorkerMonths(payload.workerId, months, "cardcheck_saved", "cardcheck_saved");
 }
 
+async function handleLedgerEntrySaved(payload: LedgerEntrySavedPayload): Promise<void> {
+  if (!componentActive()) return;
+  // Storage only emits for worker-owned EAs, but keep the guard local too.
+  if (payload.entityType !== "worker") return;
+  // Loop guard: charge plugins can write ledger entries while reacting to
+  // WMB rows the benefits scan itself wrote; reacting to those would feed
+  // the queue from its own output (mirrors handleWmbSaved).
+  if (isWmbScanWrite()) return;
+  // Ledger storage defers the emit to after commit. The entry's statement
+  // month is the accrual month the charge/adjustment applies to; the DP and
+  // COBRA payment-gating rules read paid/delinquent state from ledger
+  // entries, so rescan that month plus the current month.
+  const months = dedupeMonths([
+    ...(payload.statementYmd ? [monthFromYmd(payload.statementYmd)] : []),
+    currentMonth(),
+  ]);
+  void enqueueWorkerMonths(payload.entityId, months, "ledger_entry_saved", "ledger_entry_saved");
+}
+
 async function handleCobraCaseSaved(payload: BaoCobraCaseSavedPayload): Promise<void> {
   if (!componentActive()) return;
   // COBRA case storage defers the emit to after commit and, when an update
@@ -563,6 +583,12 @@ export function initWmbAutoRescan(): void {
       description: "Re-scans a worker's benefits when a payment on their ledger account is saved.",
       event: EventType.PAYMENT_SAVED,
       handler: handlePaymentSaved,
+    }),
+    eventBus.on({
+      name: "wmb-auto-rescan-ledger-entry",
+      description: "Re-scans a worker's benefits when a ledger charge/adjustment entry on their account is created, updated, or deleted — the entry's statement month plus the current month.",
+      event: EventType.LEDGER_ENTRY_SAVED,
+      handler: handleLedgerEntrySaved,
     }),
     eventBus.on({
       name: "wmb-auto-rescan-election",
