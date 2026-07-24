@@ -479,11 +479,23 @@ export function createDispatchStorage(): DispatchStorage {
       validate.validateOrThrow(dispatchUpdate);
       const client = getClient();
       try {
+        const [existing] = await client.select().from(dispatches).where(eq(dispatches.id, id));
         const [dispatch] = await client
           .update(dispatches)
           .set(dispatchUpdate)
           .where(eq(dispatches.id, id))
           .returning();
+        if (dispatch) {
+          eventBus.emit(EventType.DISPATCH_SAVED, {
+            dispatchId: dispatch.id,
+            workerId: dispatch.workerId,
+            jobId: dispatch.jobId,
+            status: dispatch.status,
+            previousStatus: existing?.status,
+          }).catch(err => {
+            console.error("Failed to emit DISPATCH_SAVED event from update:", err);
+          });
+        }
         return dispatch || undefined;
       } catch (err) {
         if (isPrimaryDispatchUniqueViolation(err)) {
