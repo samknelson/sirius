@@ -1,0 +1,43 @@
+Based on the S2 design discussions, here are all the trigger events identified for rescanning benefits:
+
+## Trigger Events for Benefit Rescan
+
+### From the July 16 S2 design session (most detailed source):
+
+**Scan criteria — who gets scanned (non-election-based triggers):**
+- Anyone with an **active election**
+- Anyone with a **benefit in the preceding month**
+- Anyone with **hours impacting the calculated month**
+
+**Data-change triggers (preferred architecture):**
+- Preferred approach: trigger-based rescanning (any data change rescans affected records)
+- Review queue for any trigger that removes an active benefit; auto-proceed for additions
+- Elections end via a job that fires on permanent break in hours
+
+### From the July 22 S2 session — future coverage triggers:
+- Any trigger (new election, payment received) puts worker back in scan queue for the relevant month
+- Specifically called out: **new election** and **payment received**
+
+### From the WMB Event design (July 17):
+- Scan starts/stops are logged as events; if a **benefit is subsequently granted for that month**, the system auto-deletes the corresponding termination event — implying benefit grants also feed back into the rescan/event logic
+- COBRA queue can reference WMB termination events to check for a corresponding COBRA case — termination events act as a downstream trigger for COBRA processing
+
+### From earlier bug/enhancement discussion (Nov 21, needs to be added to S2):
+- When source employer or subscriber changes, new benefit record must start — applies to **COBRA transitions** and **dependent-to-self coverage changes**. This was flagged as a current system gap, not yet confirmed as built into the S2 trigger list.
+
+### Automation target (not yet a live trigger):
+- COBRA-to-employer transition triggers automatically when hours eligibility is restored — this is listed as an automation goal (fixing the "Jose Garnica gap"), not confirmed as implemented.
+
+---
+
+**Summary list as currently discussed:**
+1. Active election exists
+2. Benefit existed in preceding month
+3. Hours change impacting the calculated month
+4. New election submitted
+5. Payment received
+6. Permanent break in hours (ends elections)
+7. Benefit source/subscriber/employer change (COBRA↔employer, dependent→self) — flagged as needed but not confirmed built
+8. Hours eligibility restored → COBRA-to-employer transition (automation target, not yet live)
+
+**Coverage note:** This is drawn from 3 meetings read in detail — the July 16 and July 22 John/Mitch S2 Co-Work sessions (primary source for the trigger list) and the July 17 WMB Event design session, plus one older (Nov 21, 2025 — >2 weeks old, likely superseded by S2 design) meeting flagging the source-change gap. The "Open Item" in the July 16 notes states the elections architecture and full trigger list were **still TBD** at that point — this may have evolved in subsequent untracked conversations. Want me to check if there's a more recent session that finalized this list?
