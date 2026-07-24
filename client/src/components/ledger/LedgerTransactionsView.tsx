@@ -28,6 +28,7 @@ interface LedgerEntryWithDetails {
   id: string;
   amount: string;
   date: string;
+  statementYmd: string | null;
   memo: string | null;
   eaId: string;
   referenceType: string | null;
@@ -44,7 +45,7 @@ interface LedgerEntryWithDetails {
   data?: LedgerEntryData | null;
 }
 
-type SortField = "amount" | "date" | "entityName" | "memo";
+type SortField = "amount" | "date" | "statementYmd" | "entityName" | "memo";
 type SortDirection = "asc" | "desc";
 
 interface PaginatedResponse {
@@ -156,7 +157,7 @@ export function LedgerTransactionsView({
   }, [totalPages]);
 
   // Calculate total columns for colSpan
-  const totalColumns = 6 + // Base columns: Date, Amount, Memo, Reference Type, Reference, Links
+  const totalColumns = 7 + // Base columns: Date, Statement, Amount, Memo, Reference Type, Reference, Links
     (showEntityType ? 1 : 0) +
     (showEntityName ? 1 : 0) +
     (showEaAccount ? 1 : 0);
@@ -224,6 +225,9 @@ export function LedgerTransactionsView({
       } else if (sortField === "date") {
         aValue = a.date ? new Date(a.date).getTime() : null;
         bValue = b.date ? new Date(b.date).getTime() : null;
+      } else if (sortField === "statementYmd") {
+        aValue = a.statementYmd || "";
+        bValue = b.statementYmd || "";
       } else {
         return 0;
       }
@@ -342,6 +346,7 @@ export function LedgerTransactionsView({
 
       const csvData = dataToExport.map(transaction => ({
         Date: transaction.date ? new Date(transaction.date).toLocaleDateString() : "",
+        Statement: transaction.statementYmd ? transaction.statementYmd.slice(0, 7) : "",
         Amount: parseFloat(transaction.amount).toFixed(2),
         "Entity Type": transaction.entityType,
         "Entity Name": transaction.entityName || "",
@@ -356,6 +361,7 @@ export function LedgerTransactionsView({
         header: true,
         columns: [
           "Date",
+          "Statement",
           "Amount",
           "Entity Type",
           "Entity Name",
@@ -586,6 +592,17 @@ export function LedgerTransactionsView({
                   <Button
                     variant="ghost"
                     size="sm"
+                    onClick={() => handleSort("statementYmd")}
+                    data-testid="button-sort-statement"
+                  >
+                    Statement
+                    <ArrowUpDown size={16} className="ml-2" />
+                  </Button>
+                </TableHead>
+                <TableHead>
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     onClick={() => handleSort("amount")}
                     data-testid="button-sort-amount"
                   >
@@ -642,6 +659,9 @@ export function LedgerTransactionsView({
                   <TableRow key={transaction.id} data-testid={`row-transaction-${transaction.id}`}>
                     <TableCell data-testid={`cell-date-${transaction.id}`}>
                       {transaction.date ? new Date(transaction.date).toLocaleDateString() : ""}
+                    </TableCell>
+                    <TableCell data-testid={`cell-statement-${transaction.id}`}>
+                      {transaction.statementYmd ? transaction.statementYmd.slice(0, 7) : "—"}
                     </TableCell>
                     <TableCell 
                       className={parseFloat(transaction.amount) < 0 ? "text-red-600 dark:text-red-400" : ""}
@@ -811,6 +831,13 @@ export function LedgerTransactionsView({
                     {selectedTransaction.date 
                       ? new Date(selectedTransaction.date).toLocaleDateString() 
                       : "—"}
+                  </p>
+                </div>
+                
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">Statement Month</label>
+                  <p className="mt-1" data-testid="modal-transaction-statement">
+                    {selectedTransaction.statementYmd ? selectedTransaction.statementYmd.slice(0, 7) : "—"}
                   </p>
                 </div>
                 
