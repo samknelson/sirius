@@ -1,4 +1,5 @@
-import { getClient } from '../transaction-context';
+import { getClient, onAfterCommit } from '../transaction-context';
+import { eventBus, EventType } from '../../services/event-bus';
 import {
   workerRelations,
   optionsWorkerRelationType,
@@ -208,6 +209,29 @@ interface WorkerRelationsBeforeState {
   relation: WorkerRelation | undefined;
 }
 
+/**
+ * Emit `WORKER_RELATION_SAVED` after the current transaction commits so a
+ * concurrent read never observes the change before it is durable. On
+ * updates that move the date range, the caller emits both the old and the
+ * new range (mirroring the trust-election pattern) so listeners can rescan
+ * every affected period.
+ */
+function emitWorkerRelationSaved(
+  relation: Pick<WorkerRelation, 'id' | 'worker1' | 'worker2' | 'startYmd' | 'endYmd'>,
+  operation: 'created' | 'updated' | 'deleted',
+): void {
+  onAfterCommit(() => {
+    void eventBus.emit(EventType.WORKER_RELATION_SAVED, {
+      relationId: relation.id,
+      subscriberWorkerId: relation.worker1,
+      dependentWorkerId: relation.worker2,
+      startYmd: relation.startYmd,
+      endYmd: relation.endYmd,
+      operation,
+    });
+  });
+}
+
 export const workerRelationsLoggingConfig = defineLoggingConfig<WorkerRelationsStorage>({
   module: 'worker-relations',
   state: { key: 'relation' },
@@ -406,6 +430,7 @@ export function createWorkerRelationsStorage(): WorkerRelationsStorage {
           data: data.data ?? null,
         })
         .returning();
+      emitWorkerRelationSaved(created, 'created');
       return created;
     },
 
@@ -436,12 +461,21 @@ export function createWorkerRelationsStorage(): WorkerRelationsStorage {
         .set(updateValues)
         .where(eq(workerRelations.id, id))
         .returning();
+      if (updated) {
+        // When the date range moved, also emit the OLD range so listeners
+        // can rescan months the relation used to cover but no longer does.
+        const rangeChanged =
+          existing.startYmd !== updated.startYmd || existing.endYmd !== updated.endYmd;
+        if (rangeChanged) emitWorkerRelationSaved(existing, 'updated');
+        emitWorkerRelationSaved(updated, 'updated');
+      }
       return updated;
     },
 
     async delete(id: string): Promise<boolean> {
       const client = getClient();
       const [deleted] = await client.delete(workerRelations).where(eq(workerRelations.id, id)).returning();
+      if (deleted) emitWorkerRelationSaved(deleted, 'deleted');
       return !!deleted;
     },
   };

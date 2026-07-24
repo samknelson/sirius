@@ -8,6 +8,8 @@ import {
   type WorkerMshSavedPayload,
   type WorkerWshSavedPayload,
   type WmbSavedPayload,
+  type WorkerRelationSavedPayload,
+  type ContactEligibilitySavedPayload,
 } from "./event-bus";
 import { onAfterCommit } from "../storage/transaction-context";
 import { isWmbScanWrite } from "../middleware/request-context";
@@ -448,6 +450,60 @@ async function handleExemptionSaved(payload: TrustExemptionSavedPayload): Promis
   void enqueueWorkerMonths(payload.workerId, months, "exemption_saved");
 }
 
+async function handleRelationSaved(payload: WorkerRelationSavedPayload): Promise<void> {
+  if (!componentActive()) return;
+  // Relations storage defers the emit to after commit and, when an update
+  // moves the date range, emits both the old and new ranges. The subscriber
+  // (worker_1) is enqueued; its scan re-evaluates dependent coverage
+  // (Relationship Type, Ageout's relationship filter, election dependent
+  // coverage, BAO Domestic Partner). Legacy rows without a start date fall
+  // back to just the current month.
+  const months = dedupeMonths([
+    ...(payload.startYmd ? monthsInRange(payload.startYmd, payload.endYmd) : []),
+    currentMonth(),
+  ]);
+  void enqueueWorkerMonths(payload.subscriberWorkerId, months, "relation_saved");
+}
+
+async function handleContactEligibilitySaved(payload: ContactEligibilitySavedPayload): Promise<void> {
+  if (!componentActive()) return;
+  // Contact storage defers the emit to after commit and only fires for
+  // birth-date and primary-address changes (never name/phone/email edits),
+  // so the committed state is safe to read here.
+  try {
+    const worker = await storage.workers.getWorkerByContactId(payload.contactId);
+    if (!worker) return;
+    const months = [currentMonth()];
+    await enqueueWorkerMonths(
+      worker.id,
+      months,
+      payload.field === "birthDate" ? "birthdate_saved" : "address_saved",
+    );
+    if (payload.field === "birthDate") {
+      // A dependent's birth date also affects each subscriber's dependent
+      // coverage (Ageout evaluates dependents during the subscriber's
+      // scan), so enqueue the currently-active subscribers too.
+      const relations = await storage.workerRelations.searchWorkerRelations({
+        workerId: worker.id,
+        role: "worker_2",
+        activeAt: new Date(),
+      });
+      const subscriberIds = new Set(relations.map((r) => r.worker1));
+      subscriberIds.delete(worker.id);
+      for (const subscriberId of subscriberIds) {
+        await enqueueWorkerMonths(subscriberId, months, "dependent_birthdate_saved");
+      }
+    }
+  } catch (err) {
+    logger.error("Failed to enqueue WMB rescan for contact eligibility change", {
+      service: SERVICE_NAME,
+      contactId: payload.contactId,
+      field: payload.field,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Init / shutdown
 // ---------------------------------------------------------------------------
@@ -500,6 +556,18 @@ export function initWmbAutoRescan(): void {
       description: "Re-scans the edited month through the current month when a benefit row is manually added or deleted; rows written by the benefits scan itself are ignored (loop guard).",
       event: EventType.WMB_SAVED,
       handler: handleWmbSaved,
+    }),
+    eventBus.on({
+      name: "wmb-auto-rescan-relation",
+      description: "Re-scans the subscriber's benefits when a worker relationship is created, updated, or ended (relationship date range plus the current month).",
+      event: EventType.WORKER_RELATION_SAVED,
+      handler: handleRelationSaved,
+    }),
+    eventBus.on({
+      name: "wmb-auto-rescan-contact",
+      description: "Re-scans the associated worker (and, for birth-date changes, active subscribers) for the current month when a contact's birth date or primary postal address changes.",
+      event: EventType.CONTACT_ELIGIBILITY_SAVED,
+      handler: handleContactEligibilitySaved,
     }),
   );
 

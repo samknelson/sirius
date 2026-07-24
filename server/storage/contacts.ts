@@ -1,4 +1,5 @@
-import { getClient } from './transaction-context';
+import { getClient, onAfterCommit } from './transaction-context';
+import { eventBus, EventType } from '../services/event-bus';
 import { contacts, contactPostal, phoneNumbers, optionsGender, trustProviderContacts, employerContacts, type Contact, type InsertContact, type ContactPostal, type InsertContactPostal, type PhoneNumber, type InsertPhoneNumber } from "@shared/schema";
 import { eq, and, desc, sql, or, ilike, inArray, isNull } from "drizzle-orm";
 import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
@@ -153,6 +154,19 @@ export type DeliverabilityStatus = "unknown" | "verified" | "undeliverable" | "v
 
 const TERMINAL_DELIVERABILITY_STATUSES: DeliverabilityStatus[] = ["undeliverable", "vacant", "returned_mail"];
 
+/**
+ * Emit `CONTACT_ELIGIBILITY_SAVED` after the current transaction commits.
+ * Fired ONLY for contact edits that can affect trust eligibility: birth-date
+ * changes (read by Ageout) and changes to the contact's primary postal
+ * address situation, including geocode completion (read by the geographic
+ * BAO Start rules). Name / phone / email edits must NOT call this.
+ */
+function emitContactEligibilitySaved(contactId: string, field: 'birthDate' | 'address'): void {
+  onAfterCommit(() => {
+    void eventBus.emit(EventType.CONTACT_ELIGIBILITY_SAVED, { contactId, field });
+  });
+}
+
 // Address Storage Interface
 export interface AddressStorage {
   getAllContactPostal(): Promise<ContactPostal[]>;
@@ -279,6 +293,11 @@ export function createAddressStorage(): AddressStorage {
         .insert(contactPostal)
         .values(data)
         .returning();
+      // A new primary address changes the contact's primary-address
+      // situation (and demoted any previous primary above).
+      if (address?.isPrimary) {
+        emitContactEligibilitySaved(address.contactId, 'address');
+      }
       return address;
     },
 
@@ -322,6 +341,24 @@ export function createAddressStorage(): AddressStorage {
         .where(eq(contactPostal.id, id))
         .returning();
 
+      // Eligibility-relevant only when the contact's PRIMARY address
+      // situation changed: this row became/stopped being primary, or a
+      // primary row's coordinates (geocode completion) or active flag
+      // changed. Ordinary edits to non-primary rows do not emit.
+      if (address) {
+        const primaryChanged = currentAddress.isPrimary !== address.isPrimary;
+        const coordsChanged =
+          currentAddress.latitude !== address.latitude ||
+          currentAddress.longitude !== address.longitude;
+        const activeChanged = currentAddress.isActive !== address.isActive;
+        if (
+          primaryChanged ||
+          ((currentAddress.isPrimary || address.isPrimary) && (coordsChanged || activeChanged))
+        ) {
+          emitContactEligibilitySaved(address.contactId, 'address');
+        }
+      }
+
       return address || undefined;
     },
 
@@ -349,6 +386,9 @@ export function createAddressStorage(): AddressStorage {
         if (best) {
           await client.update(contactPostal).set({ isPrimary: true, updatedAt: new Date() }).where(eq(contactPostal.id, best.id));
         }
+        // The primary address was deactivated (and possibly replaced by a
+        // promoted successor) — the contact's primary situation changed.
+        emitContactEligibilitySaved(currentAddress.contactId, 'address');
       }
 
       return true;
@@ -384,6 +424,10 @@ export function createAddressStorage(): AddressStorage {
         .set({ isPrimary: true, updatedAt: new Date() })
         .where(and(eq(contactPostal.id, addressId), eq(contactPostal.contactId, contactId)))
         .returning();
+
+      if (address && !targetAddress.isPrimary) {
+        emitContactEligibilitySaved(contactId, 'address');
+      }
 
       return address || undefined;
     },
@@ -453,6 +497,17 @@ export function createAddressStorage(): AddressStorage {
           .set(matchUpdates)
           .where(eq(contactPostal.id, existing.id))
           .returning();
+        // Emit when the match was promoted to primary, or when coordinates
+        // were backfilled onto a row that is (or just became) primary —
+        // this is the "geocoding completed" path for re-saved addresses.
+        const coordsBackfilled =
+          matchUpdates.latitude !== undefined || matchUpdates.longitude !== undefined;
+        if (
+          matchUpdates.isPrimary === true ||
+          ((existing.isPrimary || updated?.isPrimary) && coordsBackfilled)
+        ) {
+          emitContactEligibilitySaved(contactId, 'address');
+        }
         return { address: updated, isNew: false };
       }
 
@@ -554,6 +609,9 @@ export function createAddressStorage(): AddressStorage {
             .set({ isPrimary: true, updatedAt: new Date() })
             .where(eq(contactPostal.id, nextBest.id));
         }
+        // The primary address was demoted (and possibly replaced) — the
+        // contact's primary-address situation changed.
+        emitContactEligibilitySaved(currentAddress.contactId, 'address');
       }
 
       return updated || undefined;
@@ -928,13 +986,23 @@ export function createContactStorage(): ContactStorage {
     async updateBirthDate(contactId: string, birthDate: string | null): Promise<Contact | undefined> {
       const client = getClient();
       const validated = birthDateValidate.validateOrThrow({ birthDate });
-      
+
+      const [existing] = await client
+        .select({ birthDate: contacts.birthDate })
+        .from(contacts)
+        .where(eq(contacts.id, contactId));
+
       const [contact] = await client
         .update(contacts)
         .set({ birthDate: validated.birthDate })
         .where(eq(contacts.id, contactId))
         .returning();
-      
+
+      // Only a genuine birth-date change is eligibility-relevant (Ageout).
+      if (contact && (existing?.birthDate ?? null) !== (contact.birthDate ?? null)) {
+        emitContactEligibilitySaved(contactId, 'birthDate');
+      }
+
       return contact || undefined;
     },
 

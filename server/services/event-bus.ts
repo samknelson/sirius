@@ -39,6 +39,8 @@ export enum EventType {
   GRIEVANCE_SAVED = "grievance.saved",
   TRUST_ELECTION_SAVED = "trust.election.saved",
   TRUST_EXEMPTION_SAVED = "trust.exemption.saved",
+  WORKER_RELATION_SAVED = "worker.relation.saved",
+  CONTACT_ELIGIBILITY_SAVED = "contact.eligibility.saved",
   GRIEVANCE_STATUS_HISTORY_SAVED = "grievance.status-history.saved",
   GRIEVANCE_TIMELINE_CHANGED = "grievance.timeline.changed",
   GRIEVANCE_ASSIGNMENT_SAVED = "grievance.assignment.saved",
@@ -265,6 +267,37 @@ export interface TrustExemptionSavedPayload {
 }
 
 /**
+ * Emitted after a worker relationship (subscriber → dependent) create,
+ * update, or delete commits. When an update moves the date range, storage
+ * emits BOTH the old and the new range (two events) so listeners can cover
+ * every affected period — mirroring the trust-election pattern. `startYmd`
+ * may be null on legacy rows that predate date tracking.
+ */
+export interface WorkerRelationSavedPayload {
+  relationId: string;
+  /** worker_1 — the subscriber whose dependent coverage is affected. */
+  subscriberWorkerId: string;
+  /** worker_2 — the dependent side of the relation. */
+  dependentWorkerId: string;
+  startYmd: string | null;
+  endYmd: string | null;
+  operation: "created" | "updated" | "deleted";
+}
+
+/**
+ * Emitted after a contact edit that can affect trust eligibility commits:
+ * a birth-date change (read by the Ageout rule) or a change to the
+ * contact's PRIMARY postal address situation — a primary added, replaced,
+ * deactivated, or its coordinates arriving via geocoding (read by the
+ * geographic BAO Start rules). Non-eligibility contact edits (name, phone,
+ * email) intentionally do NOT emit this event.
+ */
+export interface ContactEligibilitySavedPayload {
+  contactId: string;
+  field: "birthDate" | "address";
+}
+
+/**
  * Emitted after an EDLS sheet create or update commits. Carries the sheet's
  * status before and after the write so a notifier can detect a genuine
  * arrival at a status: `previousStatus` is null on create (the sheet "arrives"
@@ -410,6 +443,8 @@ export interface EventPayloadMap {
   [EventType.GRIEVANCE_SAVED]: GrievanceSavedPayload;
   [EventType.TRUST_ELECTION_SAVED]: TrustElectionSavedPayload;
   [EventType.TRUST_EXEMPTION_SAVED]: TrustExemptionSavedPayload;
+  [EventType.WORKER_RELATION_SAVED]: WorkerRelationSavedPayload;
+  [EventType.CONTACT_ELIGIBILITY_SAVED]: ContactEligibilitySavedPayload;
   [EventType.GRIEVANCE_STATUS_HISTORY_SAVED]: GrievanceStatusHistorySavedPayload;
   [EventType.GRIEVANCE_TIMELINE_CHANGED]: GrievanceTimelineChangedPayload;
   [EventType.GRIEVANCE_ASSIGNMENT_SAVED]: GrievanceAssignmentSavedPayload;
