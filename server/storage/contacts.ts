@@ -1,6 +1,6 @@
 import { getClient } from './transaction-context';
 import { contacts, contactPostal, phoneNumbers, optionsGender, trustProviderContacts, employerContacts, type Contact, type InsertContact, type ContactPostal, type InsertContactPostal, type PhoneNumber, type InsertPhoneNumber } from "@shared/schema";
-import { eq, and, desc, sql, or, ilike, inArray } from "drizzle-orm";
+import { eq, and, desc, sql, or, ilike, inArray, isNull } from "drizzle-orm";
 import { withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
 import { 
   type ValidationError,
@@ -169,6 +169,7 @@ export interface AddressStorage {
     source: AddressSource,
     metadata?: { friendlyName?: string; latitude?: number; longitude?: number; accuracy?: string },
   ): Promise<{ address: ContactPostal; isNew: boolean }>;
+  listActiveMissingCoordinates(): Promise<ContactPostal[]>;
   markUndeliverable(addressId: string): Promise<ContactPostal | undefined>;
   updateDeliverabilityStatus(addressId: string, status: DeliverabilityStatus, lastVerifiedAt?: Date): Promise<ContactPostal | undefined>;
 }
@@ -498,6 +499,17 @@ export function createAddressStorage(): AddressStorage {
       });
 
       return { address, isNew: true };
+    },
+
+    async listActiveMissingCoordinates(): Promise<ContactPostal[]> {
+      const client = getClient();
+      return await client
+        .select()
+        .from(contactPostal)
+        .where(and(
+          eq(contactPostal.isActive, true),
+          or(isNull(contactPostal.latitude), isNull(contactPostal.longitude)),
+        ));
     },
 
     async markUndeliverable(addressId: string): Promise<ContactPostal | undefined> {
