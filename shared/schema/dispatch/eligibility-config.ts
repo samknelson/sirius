@@ -61,6 +61,14 @@ export interface PollResult {
   exitedAtPhase?: string;
 }
 
+/**
+ * Typed shape of the `dispatch_jobs.data` jsonb blob.
+ * - `requiredSkills`: option ids from `options_skill` (worker.skills component).
+ * - `allowEbaWorkers`: per-job override for the EBA eligibility plugin. Absent
+ *   or `true` = allow EBA workers (current behavior); `false` = require
+ *   dispatch status Available only. Only meaningful when the `dispatch.eba`
+ *   component is enabled and the job type's primary setting is "both".
+ */
 export interface DispatchJobData {
   offerRatio?: number;
   offerTimeout?: number;

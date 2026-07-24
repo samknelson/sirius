@@ -54,6 +54,13 @@ export {
 } from "./schema/dispatch/hfe-schema";
 
 export {
+  workerDispatchAsi,
+  insertWorkerDispatchAsiSchema,
+  type InsertWorkerDispatchAsi,
+  type WorkerDispatchAsi,
+} from "./schema/dispatch/asi-schema";
+
+export {
   workerDispatchEba,
   insertWorkerDispatchEbaSchema,
   type InsertWorkerDispatchEba,
