@@ -364,6 +364,9 @@ export const dispatchJobTypeTabTree: HierarchicalTab[] = [
   { id: 'view', label: 'View', hrefTemplate: '/config/dispatch-job-type/{id}', permission: 'staff', component: 'dispatch' },
   { id: 'edit', label: 'Edit', hrefTemplate: '/config/dispatch-job-type/{id}/edit', permission: 'staff', component: 'dispatch' },
   { id: 'notifications', label: 'Notifications', hrefTemplate: '/config/dispatch-job-type/{id}/notifications', permission: 'staff', component: 'dispatch' },
+  // Admin-gated (not staff) because the embedded generic plugin-configs page
+  // hits the dispatch-eligibility config APIs, which require the admin policy.
+  { id: 'eligibility-plugins', label: 'Eligibility Plugins', hrefTemplate: '/config/dispatch-job-type/{id}/eligibility-plugins', permission: 'admin', component: 'dispatch' },
   { id: 'run-settings', label: 'Run Settings', hrefTemplate: '/config/dispatch-job-type/{id}/run-settings', permission: 'staff', component: 'dispatch' },
   { id: 'delete', label: 'Delete', hrefTemplate: '/config/dispatch-job-type/{id}/delete', permission: 'staff', component: 'dispatch' },
 ];
