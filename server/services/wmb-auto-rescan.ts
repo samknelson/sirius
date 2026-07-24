@@ -222,7 +222,12 @@ function afterCommit(fn: () => void): void {
 const HORIZON_CACHE_MS = 60_000;
 let horizonCache: { value: number; at: number } | null = null;
 
-async function resolveHoursImpactHorizon(): Promise<number> {
+/** Test hook: clear the cached horizon so the next call re-resolves. */
+export function resetHoursHorizonCache(): void {
+  horizonCache = null;
+}
+
+export async function resolveHoursImpactHorizon(): Promise<number> {
   const nowMs = Date.now();
   if (horizonCache && nowMs - horizonCache.at < HORIZON_CACHE_MS) {
     return horizonCache.value;
@@ -262,7 +267,7 @@ async function resolveHoursImpactHorizon(): Promise<number> {
  * keeping the most recent. A future hours month keeps the pre-existing
  * behavior of scanning just that month.
  */
-async function affectedMonthsForHours(hoursMonth: MonthRef): Promise<MonthRef[]> {
+export async function affectedMonthsForHours(hoursMonth: MonthRef): Promise<MonthRef[]> {
   if (isFutureMonth(hoursMonth, currentMonth())) {
     return [hoursMonth];
   }
