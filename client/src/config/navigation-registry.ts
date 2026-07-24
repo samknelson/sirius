@@ -98,6 +98,8 @@ export const configSections: NavSection[] = [
       { path: "/config/sitespecific/bao/distance-cache", label: "BAO Distance Cache", icon: List, testId: "nav-config-bao-distance-cache", permission: "admin", requiresComponent: "sitespecific.bao" },
       { path: "/config/sitespecific/bao/cobra-rates", label: "BAO COBRA Rates", icon: List, testId: "nav-config-bao-cobra-rates", permission: "admin", requiresComponent: "sitespecific.bao" },
       { path: "/config/sitespecific/bao/dp-rates", label: "BAO DP Rates", icon: List, testId: "nav-config-bao-dp-rates", permission: "admin", requiresComponent: "sitespecific.bao" },
+      { path: "/config/sitespecific/bao/premium-rates", label: "BAO Premium Rates", icon: List, testId: "nav-config-bao-premium-rates", permission: "admin", requiresComponent: "sitespecific.bao" },
+      { path: "/config/sitespecific/bao/premium-files", label: "BAO Premium Files", icon: List, testId: "nav-config-bao-premium-files", permission: "staff", requiresComponent: "sitespecific.bao" },
       { path: "/config/sitespecific/bao/cobra-triggers", label: "BAO COBRA Triggers", icon: List, testId: "nav-config-bao-cobra-triggers", permission: "admin", requiresComponent: "sitespecific.bao" },
       { path: "/config/options/bao-cobra-status", label: "BAO COBRA Statuses", icon: List, testId: "nav-config-bao-cobra-statuses", permission: "admin", requiresComponent: "sitespecific.bao" },
       { path: "/config/options/bao-cobra-qualifying-event", label: "BAO COBRA Qualifying Events", icon: List, testId: "nav-config-bao-cobra-qualifying-events", permission: "admin", requiresComponent: "sitespecific.bao" },

@@ -139,6 +139,8 @@ import { type BaoBeneficiariesStorage, createBaoBeneficiariesStorage, baoBenefic
 import { type BaoCobraRatesStorage, createBaoCobraRatesStorage, baoCobraRatesLoggingConfig } from "./sitespecific/bao/cobra-rates";
 import { type BaoCobraCasesStorage, createBaoCobraCasesStorage, baoCobraCasesLoggingConfig } from "./sitespecific/bao/cobra-cases";
 import { type BaoDpRatesStorage, createBaoDpRatesStorage, baoDpRatesLoggingConfig } from "./sitespecific/bao/dp-rates";
+import { type BaoPremiumRatesStorage, createBaoPremiumRatesStorage, baoPremiumRatesLoggingConfig } from "./sitespecific/bao/premium-rates";
+import { type BaoPremiumFilesStorage, createBaoPremiumFilesStorage, baoPremiumFilesLoggingConfig } from "./sitespecific/bao/premium-files";
 import { type WorkerBanStorage, createWorkerBanStorage, workerBanLoggingConfig } from "./worker-bans";
 import { type WorkerDispatchDncStorage, createWorkerDispatchDncStorage, workerDispatchDncLoggingConfig } from "./dispatch/worker-dnc";
 import { type WorkerSkillStorage, createWorkerSkillStorage, workerSkillLoggingConfig } from "./workers/skills";
@@ -253,6 +255,8 @@ export interface IStorage {
   baoCobraRates: BaoCobraRatesStorage;
   baoCobraCases: BaoCobraCasesStorage;
   baoDpRates: BaoDpRatesStorage;
+  baoPremiumRates: BaoPremiumRatesStorage;
+  baoPremiumFiles: BaoPremiumFilesStorage;
   freemanCrewleads: FreemanCrewleadsStorage;
   workerBans: WorkerBanStorage;
   workerDispatchDnc: WorkerDispatchDncStorage;
@@ -364,6 +368,8 @@ export class DatabaseStorage implements IStorage {
   baoCobraRates: BaoCobraRatesStorage;
   baoCobraCases: BaoCobraCasesStorage;
   baoDpRates: BaoDpRatesStorage;
+  baoPremiumRates: BaoPremiumRatesStorage;
+  baoPremiumFiles: BaoPremiumFilesStorage;
   freemanCrewleads: FreemanCrewleadsStorage;
   workerBans: WorkerBanStorage;
   workerDispatchDnc: WorkerDispatchDncStorage;
@@ -601,6 +607,14 @@ export class DatabaseStorage implements IStorage {
     this.baoDpRates = withStorageLogging(
       createBaoDpRatesStorage(),
       baoDpRatesLoggingConfig,
+    );
+    this.baoPremiumRates = withStorageLogging(
+      createBaoPremiumRatesStorage(),
+      baoPremiumRatesLoggingConfig,
+    );
+    this.baoPremiumFiles = withStorageLogging(
+      createBaoPremiumFilesStorage(),
+      baoPremiumFilesLoggingConfig,
     );
     this.freemanCrewleads = withStorageLogging(
       createFreemanCrewleadsStorage(),

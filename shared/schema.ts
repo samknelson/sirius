@@ -341,6 +341,12 @@ export const trustBenefits = pgTable("trust_benefits", {
   showOnWorkerList: boolean("show_on_worker_list").default(true).notNull(),
   isActive: boolean("is_active").default(true).notNull(),
   description: text("description"),
+  /**
+   * Optional link to the trust provider that underwrites this benefit.
+   * Used by provider premium accounting (e.g. the BAO premium charge
+   * plugin) to know which provider account to post premiums to.
+   */
+  providerId: varchar("provider_id").references(() => trustProviders.id, { onDelete: 'set null' }),
 });
 
 export const trustWmb = pgTable("trust_wmb", {

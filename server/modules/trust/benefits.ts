@@ -70,7 +70,7 @@ export function registerTrustBenefitsRoutes(
   app.put("/api/trust-benefits/:id", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
       const { id } = req.params;
-      const { name, benefitType, color, showOnWorkerList, isActive, description, siriusId } = req.body;
+      const { name, benefitType, color, showOnWorkerList, isActive, description, siriusId, providerId } = req.body;
       
       const updates: Partial<InsertTrustBenefit> = {};
       
@@ -115,6 +115,13 @@ export function registerTrustBenefitsRoutes(
       
       if (description !== undefined) {
         updates.description = description;
+      }
+      
+      if (providerId !== undefined) {
+        if (providerId !== null && typeof providerId !== "string") {
+          return res.status(400).json({ message: "providerId must be a string or null" });
+        }
+        updates.providerId = typeof providerId === "string" && providerId.trim() ? providerId : null;
       }
       
       if (Object.keys(updates).length === 0) {

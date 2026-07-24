@@ -3,7 +3,7 @@ import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { parsePhoneNumber } from "libphonenumber-js";
-import { employers, ledgerAccounts, workers, trustBenefits } from "../../../schema";
+import { employers, ledgerAccounts, ledgerEa, workers, trustBenefits, trustProviders } from "../../../schema";
 import { validateSSN } from "../../../utils/ssn";
 
 export const sitespecificBaoEmployerImmediateEligibility = pgTable(
@@ -970,4 +970,176 @@ export const searchBaoCobraCasesQuerySchema = z.object({
 
 export type SearchBaoCobraCasesQuery = z.infer<
   typeof searchBaoCobraCasesQuerySchema
+>;
+
+// ---------------------------------------------------------------------------
+// Provider premium accounting — an effective-dated monthly premium rate table
+// per (benefit, coverage tier), plus premium files that snapshot unpaid
+// statement months on a provider's ledger account and record the offsetting
+// payment entries. Lookup picks the row with the latest effective date on or
+// before the requested date (same convention as the COBRA/DP rates above —
+// no explicit end dates, no fallback when nothing applies).
+// ---------------------------------------------------------------------------
+
+export const BAO_PREMIUM_COVERAGE_TIERS = ["1", "2", "3+"] as const;
+export type BaoPremiumCoverageTier = (typeof BAO_PREMIUM_COVERAGE_TIERS)[number];
+
+export const BAO_PREMIUM_COVERAGE_TIER_LABELS: Record<BaoPremiumCoverageTier, string> = {
+  "1": "1 covered person",
+  "2": "2 covered people",
+  "3+": "3+ covered people",
+};
+
+export const sitespecificBaoPremiumRates = pgTable(
+  "sitespecific_bao_premium_rates",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    benefitId: varchar("benefit_id").notNull(),
+    coverageTier: varchar("coverage_tier")
+      .notNull()
+      .$type<BaoPremiumCoverageTier>(),
+    /** Monthly premium in dollars. */
+    rate: numeric("rate", { precision: 10, scale: 2 }).notNull(),
+    effectiveYmd: date("effective_ymd").notNull(),
+    data: jsonb("data"),
+  },
+  (table) => [
+    unique("sitespecific_bao_premium_rates_benefit_tier_effective_uq").on(
+      table.benefitId,
+      table.coverageTier,
+      table.effectiveYmd,
+    ),
+    foreignKey({
+      name: "sitespecific_bao_premium_rates_benefit_id_fkey",
+      columns: [table.benefitId],
+      foreignColumns: [trustBenefits.id],
+    }).onDelete("cascade"),
+  ],
+);
+
+export const insertBaoPremiumRateSchema = createInsertSchema(sitespecificBaoPremiumRates)
+  .omit({ id: true })
+  .extend({
+    coverageTier: z.enum(BAO_PREMIUM_COVERAGE_TIERS),
+  });
+
+export type BaoPremiumRate = typeof sitespecificBaoPremiumRates.$inferSelect;
+export type InsertBaoPremiumRate = z.infer<typeof insertBaoPremiumRateSchema>;
+
+/** A premium rate row enriched with its benefit name for display. */
+export type BaoPremiumRateWithBenefit = BaoPremiumRate & {
+  benefitName: string | null;
+};
+
+export const createBaoPremiumRateRequestSchema = z
+  .object({
+    benefitId: z.string().min(1, "A benefit is required"),
+    coverageTier: z.enum(BAO_PREMIUM_COVERAGE_TIERS),
+    rate: z.coerce
+      .number({ invalid_type_error: "Rate must be a number" })
+      .nonnegative("Rate must be at least 0"),
+    effectiveYmd: cobraYmd,
+  })
+  .strict();
+
+export const updateBaoPremiumRateRequestSchema = z
+  .object({
+    benefitId: z.string().min(1).optional(),
+    coverageTier: z.enum(BAO_PREMIUM_COVERAGE_TIERS).optional(),
+    rate: z.coerce.number().nonnegative().optional(),
+    effectiveYmd: cobraYmd.optional(),
+  })
+  .strict()
+  .refine((val) => Object.keys(val).length > 0, {
+    message: "Provide at least one field to update",
+  });
+
+export type CreateBaoPremiumRateRequest = z.infer<typeof createBaoPremiumRateRequestSchema>;
+export type UpdateBaoPremiumRateRequest = z.infer<typeof updateBaoPremiumRateRequestSchema>;
+
+export const listBaoPremiumRatesQuerySchema = z.object({
+  benefitId: z.string().min(1).optional(),
+  coverageTier: z.enum(BAO_PREMIUM_COVERAGE_TIERS).optional(),
+  asOfYmd: cobraYmd.optional(),
+});
+
+export type ListBaoPremiumRatesQuery = z.infer<typeof listBaoPremiumRatesQuerySchema>;
+
+// --- Premium files ---------------------------------------------------------
+
+export const sitespecificBaoPremiumFiles = pgTable(
+  "sitespecific_bao_premium_files",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    providerId: varchar("provider_id").notNull(),
+    accountId: varchar("account_id").notNull(),
+    eaId: varchar("ea_id").notNull(),
+    generatedAt: timestamp("generated_at").notNull().default(sql`now()`),
+    totalAmount: numeric("total_amount", { precision: 12, scale: 2 }).notNull(),
+    rowCount: integer("row_count").notNull(),
+    data: jsonb("data"),
+  },
+  (table) => [
+    foreignKey({
+      name: "sitespecific_bao_premium_files_provider_id_fkey",
+      columns: [table.providerId],
+      foreignColumns: [trustProviders.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "sitespecific_bao_premium_files_account_id_fkey",
+      columns: [table.accountId],
+      foreignColumns: [ledgerAccounts.id],
+    }),
+    foreignKey({
+      name: "sitespecific_bao_premium_files_ea_id_fkey",
+      columns: [table.eaId],
+      foreignColumns: [ledgerEa.id],
+    }).onDelete("cascade"),
+  ],
+);
+
+export const sitespecificBaoPremiumFileRows = pgTable(
+  "sitespecific_bao_premium_file_rows",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    fileId: varchar("file_id").notNull(),
+    workerId: varchar("worker_id"),
+    benefitId: varchar("benefit_id"),
+    statementYmd: date("statement_ymd").notNull(),
+    amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
+    data: jsonb("data"),
+  },
+  (table) => [
+    foreignKey({
+      name: "sitespecific_bao_premium_file_rows_file_id_fkey",
+      columns: [table.fileId],
+      foreignColumns: [sitespecificBaoPremiumFiles.id],
+    }).onDelete("cascade"),
+  ],
+);
+
+export type BaoPremiumFile = typeof sitespecificBaoPremiumFiles.$inferSelect;
+export type BaoPremiumFileRow = typeof sitespecificBaoPremiumFileRows.$inferSelect;
+
+/** A premium file enriched with its provider/account names for display. */
+export type BaoPremiumFileWithNames = BaoPremiumFile & {
+  providerName: string | null;
+  accountName: string | null;
+};
+
+/** A premium file row enriched with worker/benefit names for display/CSV. */
+export type BaoPremiumFileRowWithNames = BaoPremiumFileRow & {
+  workerName: string | null;
+  benefitName: string | null;
+};
+
+export const generateBaoPremiumFileRequestSchema = z
+  .object({
+    providerId: z.string().min(1, "A provider is required"),
+    accountId: z.string().min(1, "An account is required"),
+  })
+  .strict();
+
+export type GenerateBaoPremiumFileRequest = z.infer<
+  typeof generateBaoPremiumFileRequestSchema
 >;

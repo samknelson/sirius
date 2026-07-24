@@ -262,6 +262,8 @@ const BaoRateSourceRatesPage = lazy(() => import("@/pages/config/sitespecific/ba
 const BaoDistanceCachePage = lazy(() => import("@/pages/config/sitespecific/bao/distance-cache"));
 const BaoCobraRatesPage = lazy(() => import("@/pages/config/sitespecific/bao/cobra-rates"));
 const BaoDpRatesPage = lazy(() => import("@/pages/config/sitespecific/bao/dp-rates"));
+const BaoPremiumRatesPage = lazy(() => import("@/pages/config/sitespecific/bao/premium-rates"));
+const BaoPremiumFilesPage = lazy(() => import("@/pages/config/sitespecific/bao/premium-files"));
 const BaoCobraTriggersPage = lazy(() => import("@/pages/config/sitespecific/bao/cobra-triggers"));
 const BaoCobraCases = lazy(() => import("@/pages/sitespecific/bao/cobra-cases"));
 const BaoCobraCaseAdd = lazy(() => import("@/pages/sitespecific/bao/cobra-case-add"));
@@ -2771,6 +2773,26 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <BaoDpRatesPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/sitespecific/bao/premium-rates">
+        <ProtectedRoute permission="admin" component="sitespecific.bao">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <BaoPremiumRatesPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/sitespecific/bao/premium-files">
+        <ProtectedRoute permission="staff" component="sitespecific.bao">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <BaoPremiumFilesPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>

@@ -110,6 +110,8 @@ import { registerBaoDistanceCacheRoutes } from "./modules/sitespecific/bao/dista
 import { registerBaoBeneficiariesRoutes } from "./modules/sitespecific/bao/beneficiaries";
 import { registerBaoEchpRoutes } from "./modules/sitespecific/bao/echp";
 import { registerBaoDpRoutes } from "./modules/sitespecific/bao/dp";
+import { registerBaoPremiumRatesRoutes } from "./modules/sitespecific/bao/premium-rates";
+import { registerBaoPremiumFilesRoutes } from "./modules/sitespecific/bao/premium-files";
 import { registerBtuPoliticalRoutes } from "./modules/sitespecific/btu/political";
 import { registerT631ClientFetchRoutes } from "./modules/sitespecific/t631/client/fetch";
 import { registerFreemanSecondShiftRoutes } from "./modules/sitespecific/freeman/second-shift";
@@ -1755,6 +1757,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   registerBaoBeneficiariesRoutes(app, requireAuth, requirePermission, requireAccess);
   registerBaoEchpRoutes(app, requireAuth, requirePermission, requireAccess);
   registerBaoDpRoutes(app, requireAuth, requirePermission, requireAccess);
+  registerBaoPremiumRatesRoutes(app, requireAuth, requirePermission, requireAccess);
+  registerBaoPremiumFilesRoutes(app, requireAuth, requirePermission, requireAccess);
 
   // Register BTU Political Profile routes
   registerBtuPoliticalRoutes(app, requireAuth, requirePermission);

@@ -64,6 +64,7 @@ import "./components/sitespecific.bao/003_create_rate_sources";
 import "./components/sitespecific.bao/004_create_distance_cache";
 import "./components/sitespecific.bao/005_create_cobra";
 import "./components/sitespecific.bao/006_create_dp_rates";
+import "./components/sitespecific.bao/007_create_premium_tables";
 import "./components/sitespecific.freeman/001_create_crewleads";
 import "./components/grievance/001_create_options_grievance_status";
 import "./components/grievance/002_create_options_grievance_category";
@@ -125,6 +126,7 @@ import "./core/1102_add_trust_benefit_color";
 import "./core/1103_add_trust_benefit_show_on_worker_list";
 import "./core/1104_wmb_scan_scope";
 import "./core/1105_reapply_ebs";
+import "./core/1106_add_trust_benefit_provider";
 
 export {
   runMigrations,

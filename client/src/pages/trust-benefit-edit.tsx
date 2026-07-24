@@ -26,13 +26,20 @@ function TrustBenefitEditContent() {
   const [editShowOnWorkerList, setEditShowOnWorkerList] = useState(benefit.showOnWorkerList ?? true);
   const [editIsActive, setEditIsActive] = useState(benefit.isActive);
   const [editDescription, setEditDescription] = useState(benefit.description || "");
+  const [editProviderId, setEditProviderId] = useState<string>(
+    (benefit as any).providerId || "__none__",
+  );
 
   const { data: benefitTypes = [] } = useQuery<TrustBenefitType[]>({
     queryKey: ["/api/options/trust-benefit-type"],
   });
 
+  const { data: providers = [] } = useQuery<{ id: string; name: string }[]>({
+    queryKey: ["/api/trust-providers"],
+  });
+
   const updateBenefitMutation = useMutation({
-    mutationFn: async (data: { name: string; siriusId?: string | null; benefitType?: string; color?: string | null; showOnWorkerList?: boolean; isActive: boolean; description?: string }) => {
+    mutationFn: async (data: { name: string; siriusId?: string | null; benefitType?: string; color?: string | null; showOnWorkerList?: boolean; isActive: boolean; description?: string; providerId?: string | null }) => {
       return await apiRequest("PUT", `/api/trust-benefits/${benefit.id}`, data);
     },
     onSuccess: () => {
@@ -62,7 +69,8 @@ function TrustBenefitEditContent() {
         color: editColor || null,
         showOnWorkerList: editShowOnWorkerList,
         isActive: editIsActive,
-        description: editDescription.trim() || undefined
+        description: editDescription.trim() || undefined,
+        providerId: editProviderId === "__none__" ? null : editProviderId
       });
     }
   };
@@ -119,6 +127,30 @@ function TrustBenefitEditContent() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit-benefit-provider" className="text-sm font-medium text-foreground">
+                Provider
+              </Label>
+              <Select value={editProviderId} onValueChange={setEditProviderId}>
+                <SelectTrigger data-testid="select-edit-benefit-provider">
+                  <SelectValue placeholder="Select a provider..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__" data-testid="option-edit-benefit-provider-none">
+                    No provider
+                  </SelectItem>
+                  {providers.map((provider) => (
+                    <SelectItem key={provider.id} value={provider.id} data-testid={`option-edit-benefit-provider-${provider.id}`}>
+                      {provider.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                The trust provider that underwrites this benefit. Used for provider premium accounting.
+              </p>
             </div>
 
             <div className="space-y-2">

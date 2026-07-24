@@ -35,6 +35,7 @@ export function createTrustBenefitStorage(): TrustBenefitStorage {
           showOnWorkerList: trustBenefits.showOnWorkerList,
           isActive: trustBenefits.isActive,
           description: trustBenefits.description,
+          providerId: trustBenefits.providerId,
         })
         .from(trustBenefits)
         .leftJoin(optionsTrustBenefitType, eq(trustBenefits.benefitType, optionsTrustBenefitType.id));
@@ -72,6 +73,7 @@ export function createTrustBenefitStorage(): TrustBenefitStorage {
           showOnWorkerList: trustBenefits.showOnWorkerList,
           isActive: trustBenefits.isActive,
           description: trustBenefits.description,
+          providerId: trustBenefits.providerId,
         })
         .from(trustBenefits)
         .leftJoin(optionsTrustBenefitType, eq(trustBenefits.benefitType, optionsTrustBenefitType.id))
