@@ -317,10 +317,14 @@ function DispatchDetailsContent() {
               <Badge className={statusColors[dispatch.status] || statusColors.pending} data-testid="badge-dispatch-status">
                 {formatStatus(dispatch.status)}
               </Badge>
-              {dispatch.isPrimary && (
+              {dispatch.isPrimary ? (
                 <Badge variant="outline" className="border-primary text-primary" data-testid="badge-dispatch-primary">
                   Primary
                 </Badge>
+              ) : (
+                <span className="text-xs text-muted-foreground" data-testid="text-dispatch-secondary">
+                  Secondary
+                </span>
               )}
             </div>
           </CardContent>

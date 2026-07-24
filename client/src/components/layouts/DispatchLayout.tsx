@@ -125,6 +125,15 @@ export function DispatchLayout({ activeTab, children }: DispatchLayoutProps) {
                 <Badge className={statusColors[dispatch.status] || statusColors.pending} data-testid="badge-status">
                   {formatStatus(dispatch.status)}
                 </Badge>
+                {dispatch.isPrimary ? (
+                  <Badge variant="outline" className="border-primary text-primary" data-testid="badge-header-primary">
+                    Primary
+                  </Badge>
+                ) : (
+                  <span className="text-xs text-muted-foreground" data-testid="text-header-secondary">
+                    Secondary
+                  </span>
+                )}
               </div>
               <p className="text-muted-foreground mt-1" data-testid="text-job-title">
                 {dispatch.job?.title || 'Unknown Job'}
