@@ -2734,6 +2734,31 @@ export const insertBusinessCalendarManualOpenSchema = createInsertSchema(busines
   id: true,
 }).extend({ ymd: ymdString });
 
+// ── Help entries ────────────────────────────────────────────────────
+// Site-wide configurable help text. Each entry lists one or more URL
+// path patterns (SQL LIKE-style, `%` wildcards, e.g.
+// `/config/dispatch-job-type/%/eligibility-plugins`). Pages fetch the
+// entries matching their current path and render the summary inline,
+// with `details` (limited HTML) behind a "more" affordance.
+export const helps = pgTable("help", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  paths: text("paths").array().notNull().default(sql`'{}'::text[]`),
+  summary: text("summary").notNull(),
+  details: text("details"),
+  data: jsonb("data"),
+});
+
+export const insertHelpSchema = createInsertSchema(helps).omit({
+  id: true,
+}).extend({
+  paths: z.array(z.string().trim().min(1, "path pattern cannot be empty")).min(1, "at least one path pattern is required"),
+  summary: z.string().trim().min(1, "summary is required"),
+  details: z.string().nullish(),
+});
+
+export type InsertHelp = z.infer<typeof insertHelpSchema>;
+export type Help = typeof helps.$inferSelect;
+
 export type InsertBusinessCalendar = z.infer<typeof insertBusinessCalendarSchema>;
 export type BusinessCalendar = typeof businessCalendars.$inferSelect;
 export type InsertBusinessCalendarManualByday = z.infer<typeof insertBusinessCalendarManualBydaySchema>;

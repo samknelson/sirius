@@ -9,6 +9,7 @@ import { PageTitleProvider } from "@/contexts/PageTitleContext";
 import { WebSocketProvider } from "@/contexts/WebSocketContext";
 import ProtectedRoute from "@/components/auth/ProtectedRoute";
 import Header from "@/components/layout/Header";
+import { HelpDisplay } from "@/components/HelpDisplay";
 import Footer from "@/components/layout/Footer";
 import { useEffect, lazy, Suspense } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -261,6 +262,7 @@ const WsClientIpRulesPage = lazy(() => import("@/pages/config/ws/client-ip-rules
 const WsClientTestPage = lazy(() => import("@/pages/config/ws/client-test"));
 const WsClientLogsPage = lazy(() => import("@/pages/config/ws/client-logs"));
 const SftpClientsPage = lazy(() => import("@/pages/config/sftp/clients"));
+const HelpsConfigPage = lazy(() => import("@/pages/config/helps"));
 const BusinessCalendarsPage = lazy(() => import("@/pages/config/business-calendars/index"));
 const BusinessCalendarDetailPage = lazy(() => import("@/pages/config/business-calendars/detail"));
 const BusinessCalendarClosedDaysPage = lazy(() => import("@/pages/config/business-calendars/closed-days"));
@@ -419,6 +421,7 @@ function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col">
       <Header />
+      <HelpDisplay />
       <main className="flex-1">{children}</main>
       <Footer />
     </div>
@@ -2787,6 +2790,16 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <SftpClientsPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/helps">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <HelpsConfigPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>

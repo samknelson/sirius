@@ -1,7 +1,7 @@
 import { 
   Users, MapPin, Phone, Globe, List, UserCog, Puzzle, Package, Heart, 
   CreditCard, Activity, Wallet, Settings, Shield, Key, FileText, 
-  Building2, Database, Clock, Zap, Server, MessageSquare, Calendar, GraduationCap, Truck, Network, School, Tag, RefreshCw, Radio, type LucideIcon
+  Building2, Database, Clock, Zap, Server, MessageSquare, Calendar, GraduationCap, Truck, Network, School, Tag, RefreshCw, Radio, HelpCircle, type LucideIcon
 } from "lucide-react";
 
 export interface NavItem {
@@ -54,6 +54,7 @@ export const configSections: NavSection[] = [
       { path: "/admin/cron-jobs", label: "Cron Jobs", icon: Clock, testId: "nav-config-cron-jobs", permission: "admin" },
       { path: "/config/sftp/clients", label: "SFTP Clients", icon: Server, testId: "nav-config-sftp-clients", permission: "admin", requiresComponent: "system.sftp.client" },
       { path: "/config/business-calendars", label: "Business Calendars", icon: Calendar, testId: "nav-config-business-calendars", permission: "admin" },
+      { path: "/config/helps", label: "Help Text", icon: HelpCircle, testId: "nav-config-helps", permission: "admin" },
       { path: "/admin/debug/event-bus", label: "Event Bus", icon: Radio, testId: "nav-admin-debug-event-bus", permission: "admin", requiresComponent: "debug" },
       { path: "/admin/ebs", label: "Event Scheduler", icon: Calendar, testId: "nav-config-ebs", permission: "admin" },
     ],

@@ -54,6 +54,7 @@ import "./core/1049_create_business_calendars";
 import "./core/1050_add_employer_business_calendar";
 import "./core/1051_dashboard_roles_array";
 import "./core/1052_add_dispatch_is_primary";
+import "./core/1053_create_help";
 
 // Per-component migrations — each registered via
 // `registerComponentMigration(componentId, migration)`. Tracked by the

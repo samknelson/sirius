@@ -104,6 +104,7 @@ import { type PolicyStorage, createPolicyStorage, policyLoggingConfig } from "./
 import { type BargainingUnitStorage, createBargainingUnitStorage, bargainingUnitLoggingConfig } from "./bargaining-units";
 import { type SftpClientDestinationStorage, createSftpClientDestinationStorage, sftpClientDestinationLoggingConfig } from "./sftp-client-destinations";
 import { type BusinessCalendarStorage, createBusinessCalendarStorage } from "./business-calendars";
+import { type HelpStorage, createHelpStorage } from "./helps";
 import { type TrustProviderEdiStorage, createTrustProviderEdiStorage, trustProviderEdiLoggingConfig } from "./trust/provider/edi";
 import { type BulkMessageStorage, createBulkMessageStorage, bulkMessageLoggingConfig } from "./bulk/messages";
 import { type BulkMessagesEmailStorage, createBulkMessagesEmailStorage, bulkMessagesEmailLoggingConfig } from "./bulk/messages/email";
@@ -271,6 +272,7 @@ export interface IStorage {
   contracts: ContractStorage;
   sftpClientDestinations: SftpClientDestinationStorage;
   businessCalendars: BusinessCalendarStorage;
+  helps: HelpStorage;
   trustProviderEdi: TrustProviderEdiStorage;
   bulkMessages: BulkMessageStorage;
   bulkMessagesEmail: BulkMessagesEmailStorage;
@@ -377,6 +379,7 @@ export class DatabaseStorage implements IStorage {
   contracts: ContractStorage;
   sftpClientDestinations: SftpClientDestinationStorage;
   businessCalendars: BusinessCalendarStorage;
+  helps: HelpStorage;
   trustProviderEdi: TrustProviderEdiStorage;
   bulkMessages: BulkMessageStorage;
   bulkMessagesEmail: BulkMessagesEmailStorage;
@@ -601,6 +604,7 @@ export class DatabaseStorage implements IStorage {
       sftpClientDestinationLoggingConfig
     );
     this.businessCalendars = createBusinessCalendarStorage();
+    this.helps = createHelpStorage();
     this.trustProviderEdi = withStorageLogging(
       createTrustProviderEdiStorage(),
       trustProviderEdiLoggingConfig

@@ -62,6 +62,7 @@ import { registerBootstrapRoutes } from "./modules/system/bootstrap";
 import { registerBargainingUnitsRoutes } from "./modules/bargaining-units";
 import { registerSftpClientDestinationRoutes } from "./modules/sftp-client-destinations";
 import { registerBusinessCalendarRoutes } from "./modules/business-calendars";
+import { registerHelpRoutes } from "./modules/helps";
 import { registerTrustProviderEdiRoutes } from "./modules/trust/provider/edi";
 import { registerBulkMessageRoutes } from "./modules/bulk/messages";
 import { registerEmployerComplianceRoutes } from "./modules/employer-compliance";
@@ -440,6 +441,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Register SFTP client destination routes
   registerSftpClientDestinationRoutes(app, requireAuth, requireAccess, storage);
   registerBusinessCalendarRoutes(app, requireAuth, requireAccess, storage);
+  registerHelpRoutes(app, requireAuth, requireAccess, storage);
 
   // Register trust provider EDI routes
   registerTrustProviderEdiRoutes(app, requireAuth, requireAccess, storage);
