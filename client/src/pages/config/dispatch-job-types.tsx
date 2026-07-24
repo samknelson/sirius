@@ -1,4 +1,3 @@
-import { pluginManifestQueryKey, pluginConfigsUrl } from "@/plugins/_core";
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { usePageTitle } from "@/contexts/PageTitleContext";
@@ -10,13 +9,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { 
   Loader2, Plus,
   Briefcase, Truck, HardHat, Wrench, Clock, Calendar, 
-  ClipboardList, Package, MapPin, Users, Shield, ChevronRight,
+  ClipboardList, Package, MapPin, Users, ChevronRight,
   type LucideIcon
 } from "lucide-react";
 import {
@@ -54,8 +52,6 @@ import {
   insertDispatchJobTypeSchema, 
   type DispatchJobType, 
   type InsertDispatchJobType,
-  type EligibilityPluginMetadata,
-  type EligibilityPluginConfig,
   type JobTypeData,
 } from "@shared/schema";
 
@@ -82,14 +78,9 @@ export default function DispatchJobTypesPage() {
   const { toast } = useToast();
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [formIcon, setFormIcon] = useState<string>("Briefcase");
-  const [formEligibility, setFormEligibility] = useState<EligibilityPluginConfig[]>([]);
   
   const { data: jobTypes = [], isLoading } = useQuery<DispatchJobType[]>({
     queryKey: ["/api/options/dispatch-job-type"],
-  });
-  
-  const { data: eligibilityPlugins = [] } = useQuery<EligibilityPluginMetadata[]>({
-    queryKey: pluginManifestQueryKey("dispatch-eligibility"),
   });
 
   const addForm = useForm<InsertDispatchJobType>({
@@ -102,22 +93,6 @@ export default function DispatchJobTypesPage() {
 
   const resetFormState = () => {
     setFormIcon("Briefcase");
-    setFormEligibility([]);
-  };
-
-  const togglePluginEnabled = (pluginId: string) => {
-    setFormEligibility(prev => {
-      const existing = prev.find(p => p.pluginId === pluginId);
-      if (existing) {
-        return prev.map(p => p.pluginId === pluginId ? { ...p, enabled: !p.enabled } : p);
-      }
-      return [...prev, { pluginId, enabled: true, config: {} }];
-    });
-  };
-
-  const isPluginEnabled = (pluginId: string): boolean => {
-    const config = formEligibility.find(p => p.pluginId === pluginId);
-    return config?.enabled ?? false;
   };
 
   const createMutation = useMutation({
@@ -125,28 +100,10 @@ export default function DispatchJobTypesPage() {
       const jobTypeData: JobTypeData = {
         icon: formIcon,
       };
-      const created = await apiRequest("POST", "/api/options/dispatch-job-type", {
+      return apiRequest("POST", "/api/options/dispatch-job-type", {
         ...data,
         data: jobTypeData,
       });
-
-      // Eligibility entries live in the unified plugin_configs table (scoped to
-      // this job type), not in the job-type blob. Persist each selected entry as
-      // a dispatch-eligibility config row once the job type id is known.
-      const newJobTypeId = created?.id as string | undefined;
-      if (newJobTypeId && formEligibility.length > 0) {
-        const baseUrl = pluginConfigsUrl("dispatch-eligibility");
-        for (const entry of formEligibility) {
-          await apiRequest("POST", baseUrl, {
-            pluginId: entry.pluginId,
-            enabled: entry.enabled,
-            data: entry.config ?? {},
-            jobType: newJobTypeId,
-          });
-        }
-      }
-
-      return created;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/options/dispatch-job-type"] });
@@ -325,37 +282,6 @@ export default function DispatchJobTypesPage() {
                   </FormItem>
                 )}
               />
-              {eligibilityPlugins.length > 0 && (
-                <div className="space-y-3">
-                  <Label className="flex items-center gap-2">
-                    <Shield className="h-4 w-4" />
-                    Eligibility Criteria
-                  </Label>
-                  <div className="space-y-2">
-                    {eligibilityPlugins.map((plugin) => (
-                      <div
-                        key={plugin.id}
-                        className="flex items-center justify-between p-3 border rounded-md"
-                        data-testid={`eligibility-plugin-${plugin.id}`}
-                      >
-                        <div className="space-y-0.5">
-                          <div className="text-sm font-medium">{plugin.name}</div>
-                          <div className="text-xs text-muted-foreground">{plugin.description}</div>
-                          {!plugin.componentEnabled && (
-                            <div className="text-xs text-muted-foreground italic">Component disabled</div>
-                          )}
-                        </div>
-                        <Switch
-                          checked={isPluginEnabled(plugin.id)}
-                          onCheckedChange={() => togglePluginEnabled(plugin.id)}
-                          disabled={!plugin.componentEnabled}
-                          data-testid={`switch-plugin-${plugin.id}`}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
               <DialogFooter>
                 <Button
                   type="submit"
