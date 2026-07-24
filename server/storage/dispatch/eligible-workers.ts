@@ -250,6 +250,29 @@ async function buildEligibleWorkersQuery(jobId: string, filters?: EligibleWorker
         });
       }
 
+      case "exists_or_exists": {
+        const primarySubquery = client
+          .select({ one: sql`1` })
+          .from(workerDispatchEligDenorm)
+          .where(and(
+            eq(workerDispatchEligDenorm.workerId, workers.id),
+            eq(workerDispatchEligDenorm.category, condition.category),
+            eq(workerDispatchEligDenorm.value, condition.value)
+          ));
+        const alternativeSubquery = client
+          .select({ one: sql`1` })
+          .from(workerDispatchEligDenorm)
+          .where(and(
+            eq(workerDispatchEligDenorm.workerId, workers.id),
+            eq(workerDispatchEligDenorm.category, condition.orCategory!),
+            eq(workerDispatchEligDenorm.value, condition.orValue!)
+          ));
+        return [or(
+          exists(primarySubquery),
+          exists(alternativeSubquery)
+        )];
+      }
+
       case "not_exists_unless_exists": {
         const blockingSubquery = client
           .select({ one: sql`1` })
@@ -394,6 +417,27 @@ async function checkConditionForWorker(
       return { 
         passed: false, 
         explanation: `Missing ${condition.category} entries: ${missingValues.join(", ")}` 
+      };
+    }
+
+    case "exists_or_exists": {
+      if (entryValues.includes(condition.value)) {
+        return { passed: true, explanation: `Has required ${condition.category} entry` };
+      }
+      const alternativeEntries = await client
+        .select()
+        .from(workerDispatchEligDenorm)
+        .where(and(
+          eq(workerDispatchEligDenorm.workerId, workerId),
+          eq(workerDispatchEligDenorm.category, condition.orCategory!),
+          eq(workerDispatchEligDenorm.value, condition.orValue!)
+        ));
+      if (alternativeEntries.length > 0) {
+        return { passed: true, explanation: `Missing ${condition.category} entry but satisfied by ${condition.orCategory}: ${condition.orValue}` };
+      }
+      return {
+        passed: false,
+        explanation: `Missing required ${condition.category} entry (needs: ${condition.value}) and no ${condition.orCategory} ${condition.orValue} entry`,
       };
     }
 

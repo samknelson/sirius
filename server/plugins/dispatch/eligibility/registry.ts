@@ -10,11 +10,14 @@ import type { JsonSchema } from "@shared/json-schema-form";
  */
 export interface EligibilityCondition {
   category: string;
-  type: "exists" | "not_exists" | "exists_or_none" | "not_exists_category" | "exists_all" | "not_exists_unless_exists";
+  type: "exists" | "not_exists" | "exists_or_none" | "not_exists_category" | "exists_all" | "not_exists_unless_exists" | "exists_or_exists";
   value: string;
   values?: string[];
   unlessCategory?: string;
   unlessValue?: string;
+  /** For `exists_or_exists`: the alternative fact that also satisfies the condition. */
+  orCategory?: string;
+  orValue?: string;
 }
 
 export interface EligibilityQueryContext {
