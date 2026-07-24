@@ -39,7 +39,7 @@ export function createWorkerWshStorage(
   // committed history. The plugin writes `worker_wsh_denorm`, and the
   // WORKER_WS_CHANGED signal that dispatch eligibility depends on is emitted
   // from that writer when the computed value actually changes.
-  async function onWorkStatusHistoryChanged(workerId: string): Promise<void> {
+  async function onWorkStatusHistoryChanged(workerId: string, effectiveYmd: string | null): Promise<void> {
     if (onWorkerDataChanged) {
       await onWorkerDataChanged(workerId).catch(err => {
         console.error("Failed to trigger scan invalidation for worker", workerId, err);
@@ -47,7 +47,7 @@ export function createWorkerWshStorage(
     }
 
     onAfterCommit(() => {
-      void eventBus.emit(EventType.WORKER_WSH_SAVED, { workerId }).catch((err) => {
+      void eventBus.emit(EventType.WORKER_WSH_SAVED, { workerId, effectiveYmd }).catch((err) => {
         logger.error("Failed to emit WORKER_WSH_SAVED", {
           service: "worker-wsh",
           workerId,
@@ -96,7 +96,7 @@ export function createWorkerWshStorage(
         .values(data)
         .returning();
       
-      await onWorkStatusHistoryChanged(data.workerId);
+      await onWorkStatusHistoryChanged(data.workerId, wsh?.date ?? data.date ?? null);
       
       return wsh;
     },
@@ -104,6 +104,13 @@ export function createWorkerWshStorage(
     async updateWorkerWsh(id: string, data: { date?: string; wsId?: string; data?: any }): Promise<WorkerWsh | undefined> {
       validate.validateOrThrow(data);
       const client = getClient();
+      // Capture the pre-update date so a date move can report the EARLIEST
+      // date touched (old + new) — listeners rescan every affected period.
+      const [before] = await client
+        .select({ date: workerWsh.date })
+        .from(workerWsh)
+        .where(eq(workerWsh.id, id))
+        .limit(1);
       const [updated] = await client
         .update(workerWsh)
         .set(data)
@@ -111,7 +118,11 @@ export function createWorkerWshStorage(
         .returning();
       
       if (updated) {
-        await onWorkStatusHistoryChanged(updated.workerId);
+        const oldDate = before?.date ?? null;
+        const newDate = updated.date ?? null;
+        const effectiveYmd =
+          oldDate && newDate ? (oldDate < newDate ? oldDate : newDate) : (newDate ?? oldDate);
+        await onWorkStatusHistoryChanged(updated.workerId, effectiveYmd);
       }
       
       return updated || undefined;
@@ -125,7 +136,9 @@ export function createWorkerWshStorage(
         .returning();
       
       if (result.length > 0 && result[0].workerId) {
-        await onWorkStatusHistoryChanged(result[0].workerId);
+        // A deleted entry stops applying from its date onward; that date is
+        // the earliest period whose effective status may have changed.
+        await onWorkStatusHistoryChanged(result[0].workerId, result[0].date ?? null);
       }
       
       return result.length > 0;

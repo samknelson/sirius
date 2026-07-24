@@ -6,18 +6,25 @@ import {
   type TrustElectionSavedPayload,
   type TrustExemptionSavedPayload,
   type WorkerMshSavedPayload,
+  type WorkerWshSavedPayload,
+  type WmbSavedPayload,
 } from "./event-bus";
 import { onAfterCommit } from "../storage/transaction-context";
+import { isWmbScanWrite } from "../middleware/request-context";
 import { storage } from "../storage";
 import { logger } from "../logger";
 import { isComponentEnabledSync, isCacheInitialized } from "./component-cache";
-import { enqueueMonthScan, processNextQueueJob } from "./wmb-scan-queue";
+import {
+  enqueueMonthScan,
+  processNextQueueJob,
+  PER_WORKER_AUTO_TRIGGER_SOURCES,
+} from "./wmb-scan-queue";
 
 const SERVICE_NAME = "wmb-auto-rescan";
 const COMPONENT_ID = "trust.benefits";
 
 /** Trigger sources owned by this service; the drainer only claims these. */
-export const AUTO_TRIGGER_SOURCES = ["worker_update", "auto_hours_bulk"];
+export const AUTO_TRIGGER_SOURCES = [...PER_WORKER_AUTO_TRIGGER_SOURCES, "auto_hours_bulk"];
 
 /** How long we buffer hours events before deciding worker-vs-employer scope. */
 const HOURS_DEBOUNCE_MS = 5000;
@@ -121,6 +128,16 @@ function monthsInRange(startYmd: string, endYmd: string | null): MonthRef[] {
   return out.length > MAX_SPAN_MONTHS ? out.slice(out.length - MAX_SPAN_MONTHS) : out;
 }
 
+function isFutureMonth(ref: MonthRef, now: MonthRef): boolean {
+  return ref.year > now.year || (ref.year === now.year && ref.month > now.month);
+}
+
+function followingMonth(ref: MonthRef): MonthRef {
+  return ref.month === 12
+    ? { month: 1, year: ref.year + 1 }
+    : { month: ref.month + 1, year: ref.year };
+}
+
 function dedupeMonths(months: (MonthRef | null)[]): MonthRef[] {
   const seen = new Set<string>();
   const out: MonthRef[] = [];
@@ -138,6 +155,7 @@ export async function enqueueWorkerMonths(
   workerId: string,
   months: MonthRef[],
   reason: string,
+  triggerSource: string = "worker_update",
 ): Promise<void> {
   let enqueued = false;
   for (const { month, year } of months) {
@@ -147,7 +165,7 @@ export async function enqueueWorkerMonths(
       if (existing && (existing.status === "pending" || existing.status === "processing")) {
         continue;
       }
-      await storage.wmbScanQueue.enqueueWorker(workerId, month, year, "worker_update");
+      await storage.wmbScanQueue.enqueueWorker(workerId, month, year, triggerSource);
       enqueued = true;
       logger.info("Auto-enqueued WMB rescan for worker", {
         service: SERVICE_NAME,
@@ -296,6 +314,41 @@ async function handleMshSaved(payload: WorkerMshSavedPayload): Promise<void> {
   });
 }
 
+async function handleWshSaved(payload: WorkerWshSavedPayload): Promise<void> {
+  if (!componentActive()) return;
+  // A work-status change applies from its date onward; the payload's
+  // effectiveYmd is the earliest date touched (old + new for date moves),
+  // mirroring the member-status pattern.
+  const months = payload.effectiveYmd
+    ? dedupeMonths([...monthsInRange(payload.effectiveYmd, null), currentMonth()])
+    : [currentMonth()];
+  afterCommit(() => {
+    void enqueueWorkerMonths(payload.workerId, months, "work_status_saved", "work_status_saved");
+  });
+}
+
+async function handleWmbSaved(payload: WmbSavedPayload): Promise<void> {
+  if (!componentActive()) return;
+  // Loop guard: WMB rows written by the benefits scan itself are flagged via
+  // the ambient request context (see withWmbScanWrites in benefits-scan);
+  // reacting to them would feed the queue from its own output.
+  if (isWmbScanWrite()) return;
+  const now = currentMonth();
+  const sameMonth: MonthRef = { month: payload.month, year: payload.year };
+  // The following month re-evaluates the Prior Month chain; for deletes the
+  // same month is also rescanned so Linked rules re-evaluate. Future months
+  // are skipped — they have no data yet and are covered by their own monthly
+  // scan when the time comes.
+  const candidates = payload.isDeleted
+    ? [sameMonth, followingMonth(sameMonth)]
+    : [followingMonth(sameMonth)];
+  const months = dedupeMonths(candidates).filter((ref) => !isFutureMonth(ref, now));
+  if (months.length === 0) return;
+  afterCommit(() => {
+    void enqueueWorkerMonths(payload.workerId, months, "wmb_saved", "wmb_saved");
+  });
+}
+
 async function handleExemptionSaved(payload: TrustExemptionSavedPayload): Promise<void> {
   if (!componentActive()) return;
   // Exemption storage already defers the emit to after commit. Storage emits
@@ -347,6 +400,18 @@ export function initWmbAutoRescan(): void {
       description: "Re-scans a worker's benefits when an eligibility exemption is created, updated, or deleted.",
       event: EventType.TRUST_EXEMPTION_SAVED,
       handler: handleExemptionSaved,
+    }),
+    eventBus.on({
+      name: "wmb-auto-rescan-wsh",
+      description: "Re-scans a worker's benefits when their work-status history changes (effective date through the current month).",
+      event: EventType.WORKER_WSH_SAVED,
+      handler: handleWshSaved,
+    }),
+    eventBus.on({
+      name: "wmb-auto-rescan-wmb",
+      description: "Re-scans follow-up months when a benefit row is manually added or deleted; rows written by the benefits scan itself are ignored (loop guard).",
+      event: EventType.WMB_SAVED,
+      handler: handleWmbSaved,
     }),
   );
 

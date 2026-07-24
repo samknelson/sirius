@@ -8,6 +8,7 @@ import type { IStorage } from "../storage";
 import type { Worker, Policy, TrustBenefit, PluginConfigBenefitEligibility } from "@shared/schema";
 import { logger } from "../logger";
 import { isComponentEnabledSync } from "./component-cache";
+import { withWmbScanWrites } from "../middleware/request-context";
 
 interface PolicyData {
   benefitIds?: string[];
@@ -225,33 +226,40 @@ async function evaluatePersonBenefits(
   }
 
   if (mode === "live") {
-    for (const action of actions) {
-      try {
-        if (action.action === "create") {
-          await storage.trust.wmb.createWorkerBenefit({
-            workerId: personWorkerId,
-            month,
-            year,
-            employerId: employerIdForCreate,
-            benefitId: action.benefitId,
-          });
-          action.executed = true;
-        } else if (action.action === "delete") {
-          const existingRecord = currentMonthBenefitMap.get(action.benefitId);
-          if (existingRecord) {
-            await storage.trust.wmb.deleteWorkerBenefit(existingRecord.id);
+    // Loop guard: mark these writes as scan-originated so the WMB auto-rescan
+    // listener ignores the WMB_SAVED events they emit. Without this, every
+    // row a scan creates/deletes would re-enqueue follow-up scans, whose own
+    // writes would enqueue more — an unbounded feedback loop. Other listeners
+    // (charges, audit) still run normally.
+    await withWmbScanWrites(async () => {
+      for (const action of actions) {
+        try {
+          if (action.action === "create") {
+            await storage.trust.wmb.createWorkerBenefit({
+              workerId: personWorkerId,
+              month,
+              year,
+              employerId: employerIdForCreate,
+              benefitId: action.benefitId,
+            });
             action.executed = true;
+          } else if (action.action === "delete") {
+            const existingRecord = currentMonthBenefitMap.get(action.benefitId);
+            if (existingRecord) {
+              await storage.trust.wmb.deleteWorkerBenefit(existingRecord.id);
+              action.executed = true;
+            }
           }
+        } catch (error) {
+          action.executed = false;
+          action.executionError = error instanceof Error ? error.message : String(error);
+          logger.error(`Failed to execute action for benefit ${action.benefitId}`, {
+            service: "benefits-scan",
+            error: action.executionError,
+          });
         }
-      } catch (error) {
-        action.executed = false;
-        action.executionError = error instanceof Error ? error.message : String(error);
-        logger.error(`Failed to execute action for benefit ${action.benefitId}`, {
-          service: "benefits-scan",
-          error: action.executionError,
-        });
       }
-    }
+    });
   }
 
   return { previousMonthBenefitIds, actions };

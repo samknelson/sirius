@@ -160,6 +160,12 @@ export interface WorkerWsChangedPayload {
 
 export interface WorkerWshSavedPayload {
   workerId: string;
+  /**
+   * Earliest effective date (YYYY-MM-DD) touched by the change. For updates
+   * that move the date, this is the earlier of the old and new dates so
+   * listeners can rescan every affected period. Null when unknown.
+   */
+  effectiveYmd?: string | null;
 }
 
 export interface WorkerMshSavedPayload {

@@ -5,6 +5,19 @@ import { logger } from "../logger";
 import { eventBus, EventType } from "./event-bus";
 import type { TrustWmbScanStatus } from "@shared/schema";
 
+/**
+ * Per-worker, event-driven trigger sources. Jobs from these sources also
+ * re-evaluate the worker's covered dependents (e.g. a DP payment must re-gate
+ * the DP dependent's benefit, which is keyed to the dependent's own worker
+ * id). Batch runs (monthly_batch / auto_hours_bulk) keep dependents off
+ * because they already enqueue each worker in the population as its own job.
+ */
+export const PER_WORKER_AUTO_TRIGGER_SOURCES = [
+  "worker_update",
+  "work_status_saved",
+  "wmb_saved",
+];
+
 export interface QueueProcessorOptions {
   maxConcurrent?: number;
   batchSize?: number;
@@ -37,11 +50,8 @@ export async function processNextQueueJob(
 
   try {
     // Event-driven single-worker jobs also re-evaluate the worker's covered
-    // dependents (e.g. a DP payment must re-gate the DP dependent's benefit,
-    // which is keyed to the dependent's own worker id). Batch runs
-    // (monthly_batch / auto_hours_bulk) keep dependents off because they
-    // already enqueue each worker in the population as its own job.
-    const includeDependents = job.triggerSource === "worker_update";
+    // dependents; see PER_WORKER_AUTO_TRIGGER_SOURCES.
+    const includeDependents = PER_WORKER_AUTO_TRIGGER_SOURCES.includes(job.triggerSource);
     const result = await runBenefitsScan(
       storage,
       job.workerId,

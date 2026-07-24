@@ -28,6 +28,14 @@ export interface RequestContext {
    * means notify normally.
    */
   suppressNotifications?: boolean;
+  /**
+   * When true, WMB rows being written in this async scope originate from the
+   * benefits scan itself. The WMB auto-rescan listener checks this flag and
+   * skips enqueuing, so a scan's own creates/deletes never feed back into the
+   * scan queue (no self-amplifying loop). Set only via {@link withWmbScanWrites}
+   * around the scan's execution phase.
+   */
+  wmbScanWrite?: boolean;
 }
 
 export const requestContext = new AsyncLocalStorage<RequestContext>();
@@ -61,6 +69,28 @@ export function areNotificationsSuppressed(): boolean {
 export function withNotificationsSuppressed<T>(fn: () => Promise<T>): Promise<T> {
   const current = requestContext.getStore();
   const next: RequestContext = { ...(current ?? {}), suppressNotifications: true };
+  return requestContext.run(next, fn);
+}
+
+/**
+ * Whether the current async scope is executing benefits-scan writes. Read by
+ * the WMB auto-rescan listener to ignore WMB_SAVED events produced by the scan
+ * itself. Returns false when there is no ambient context (normal requests,
+ * crons), so manual admin edits enqueue normally.
+ */
+export function isWmbScanWrite(): boolean {
+  return requestContext.getStore()?.wmbScanWrite === true;
+}
+
+/**
+ * Run `fn` in a nested request context marked as benefits-scan writes. Any
+ * WMB_SAVED events emitted inside `fn` are ignored by the WMB auto-rescan
+ * listener (loop guard); every other listener (charges, audit) runs normally.
+ * The surrounding context is restored automatically on return.
+ */
+export function withWmbScanWrites<T>(fn: () => Promise<T>): Promise<T> {
+  const current = requestContext.getStore();
+  const next: RequestContext = { ...(current ?? {}), wmbScanWrite: true };
   return requestContext.run(next, fn);
 }
 
