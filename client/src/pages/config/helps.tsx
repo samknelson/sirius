@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import { HelpCircle, Plus, Loader2, Trash2, Pencil, X } from "lucide-react";
@@ -37,6 +37,11 @@ interface HelpFormState {
 
 const emptyForm: HelpFormState = { paths: [""], summary: "", details: "" };
 
+/** Strip HTML tags so the content filter matches visible text, not markup. */
+function stripHtml(html: string): string {
+  return html.replace(/<[^>]*>/g, " ");
+}
+
 type HelpWithSource = Help & { source?: "system" | "config" };
 
 export default function HelpsConfigPage() {
@@ -47,6 +52,8 @@ export default function HelpsConfigPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [form, setForm] = useState<HelpFormState>(emptyForm);
+  const [contentFilter, setContentFilter] = useState("");
+  const [pathFilter, setPathFilter] = useState("");
 
   const { data: helpEntries = [], isLoading } = useQuery<HelpWithSource[]>({
     queryKey: ["/api/helps"],
@@ -129,6 +136,34 @@ export default function HelpsConfigPage() {
     setForm((f) => ({ ...f, paths: f.paths.map((p, i) => (i === index ? value : p)) }));
   };
 
+  const visibleEntries = useMemo(() => {
+    const content = contentFilter.trim().toLowerCase();
+    const path = pathFilter.trim().toLowerCase();
+    const filtered = helpEntries.filter((h) => {
+      if (content) {
+        const haystack = `${h.summary} ${h.details ? stripHtml(h.details) : ""}`.toLowerCase();
+        if (!haystack.includes(content)) return false;
+      }
+      if (path && !h.paths.some((p) => p.toLowerCase().includes(path))) {
+        return false;
+      }
+      return true;
+    });
+    return [...filtered].sort((a, b) => {
+      const pa = a.paths[0]?.toLowerCase();
+      const pb = b.paths[0]?.toLowerCase();
+      if (pa === undefined && pb === undefined) {
+        return a.summary.localeCompare(b.summary, undefined, { sensitivity: "base" });
+      }
+      if (pa === undefined) return 1;
+      if (pb === undefined) return -1;
+      return (
+        pa.localeCompare(pb) ||
+        a.summary.localeCompare(b.summary, undefined, { sensitivity: "base" })
+      );
+    });
+  }, [helpEntries, contentFilter, pathFilter]);
+
   const deleteTarget = helpEntries.find((h) => h.id === deleteId);
 
   if (isLoading) {
@@ -170,18 +205,49 @@ export default function HelpsConfigPage() {
               No help entries yet. Add one to show help text on a page.
             </p>
           ) : (
+            <>
+            <div className="flex flex-col sm:flex-row gap-2 mb-4">
+              <Input
+                value={pathFilter}
+                onChange={(e) => setPathFilter(e.target.value)}
+                placeholder="Filter by path…"
+                className="sm:max-w-xs font-mono"
+                data-testid="input-filter-path"
+              />
+              <Input
+                value={contentFilter}
+                onChange={(e) => setContentFilter(e.target.value)}
+                placeholder="Filter by content (summary or details)…"
+                className="sm:max-w-sm"
+                data-testid="input-filter-content"
+              />
+            </div>
+            {visibleEntries.length === 0 ? (
+              <p className="text-muted-foreground text-sm py-8 text-center" data-testid="text-no-matching-helps">
+                No help entries match the current filters.
+              </p>
+            ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Summary</TableHead>
                   <TableHead>Paths</TableHead>
+                  <TableHead>Summary</TableHead>
                   <TableHead>Details</TableHead>
                   <TableHead className="w-24 text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {helpEntries.map((help) => (
+                {visibleEntries.map((help) => (
                   <TableRow key={help.id} data-testid={`row-help-${help.id}`}>
+                    <TableCell>
+                      <div className="flex flex-wrap gap-1">
+                        {help.paths.map((p, i) => (
+                          <Badge key={i} variant="secondary" className="font-mono text-xs" data-testid={`badge-help-path-${help.id}-${i}`}>
+                            {p}
+                          </Badge>
+                        ))}
+                      </div>
+                    </TableCell>
                     <TableCell className="max-w-md" data-testid={`text-help-summary-${help.id}`}>
                       <div className="flex items-center gap-2">
                         <span>{help.summary}</span>
@@ -190,15 +256,6 @@ export default function HelpsConfigPage() {
                             System
                           </Badge>
                         )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap gap-1">
-                        {help.paths.map((p, i) => (
-                          <Badge key={i} variant="secondary" className="font-mono text-xs" data-testid={`badge-help-path-${help.id}-${i}`}>
-                            {p}
-                          </Badge>
-                        ))}
                       </div>
                     </TableCell>
                     <TableCell>
@@ -238,6 +295,8 @@ export default function HelpsConfigPage() {
                 ))}
               </TableBody>
             </Table>
+            )}
+            </>
           )}
         </CardContent>
       </Card>
