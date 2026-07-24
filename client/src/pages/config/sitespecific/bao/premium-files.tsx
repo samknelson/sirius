@@ -81,7 +81,7 @@ export default function BaoPremiumFilesPage() {
   const [viewing, setViewing] = useState<BaoPremiumFileWithNames | null>(null);
 
   const { data: providers = [] } = useQuery<ProviderOption[]>({
-    queryKey: ["/api/trust-providers"],
+    queryKey: ["/api/trust/providers"],
   });
 
   const { data: accounts = [] } = useQuery<AccountOption[]>({

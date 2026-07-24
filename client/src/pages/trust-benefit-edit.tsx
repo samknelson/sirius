@@ -35,7 +35,7 @@ function TrustBenefitEditContent() {
   });
 
   const { data: providers = [] } = useQuery<{ id: string; name: string }[]>({
-    queryKey: ["/api/trust-providers"],
+    queryKey: ["/api/trust/providers"],
   });
 
   const updateBenefitMutation = useMutation({
