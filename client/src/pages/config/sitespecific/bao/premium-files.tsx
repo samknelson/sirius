@@ -38,6 +38,7 @@ import type {
 interface ProviderOption {
   id: string;
   name: string;
+  data?: { ledgerAccountId?: string } | null;
 }
 
 interface AccountOption {
@@ -77,7 +78,6 @@ export default function BaoPremiumFilesPage() {
   const [filterProviderId, setFilterProviderId] = useState<string>(ALL);
   const [generateOpen, setGenerateOpen] = useState(false);
   const [genProviderId, setGenProviderId] = useState<string>("");
-  const [genAccountId, setGenAccountId] = useState<string>("");
   const [viewing, setViewing] = useState<BaoPremiumFileWithNames | null>(null);
 
   const { data: providers = [] } = useQuery<ProviderOption[]>({
@@ -120,7 +120,7 @@ export default function BaoPremiumFilesPage() {
       return apiRequest(
         "POST",
         "/api/sitespecific/bao/premium/files/generate",
-        { providerId: genProviderId, accountId: genAccountId },
+        { providerId: genProviderId },
       );
     },
     onSuccess: async () => {
@@ -130,7 +130,6 @@ export default function BaoPremiumFilesPage() {
       toast({ title: "Premium file generated" });
       setGenerateOpen(false);
       setGenProviderId("");
-      setGenAccountId("");
     },
     onError: (error: any) => {
       toast({
@@ -270,8 +269,7 @@ export default function BaoPremiumFilesPage() {
           setGenerateOpen(open);
           if (!open) {
             setGenProviderId("");
-            setGenAccountId("");
-          }
+                }
         }}
       >
         <DialogContent>
@@ -299,21 +297,31 @@ export default function BaoPremiumFilesPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-1">
-              <Label>Ledger Account</Label>
-              <Select value={genAccountId} onValueChange={setGenAccountId}>
-                <SelectTrigger data-testid="select-generate-account">
-                  <SelectValue placeholder="Select a ledger account" />
-                </SelectTrigger>
-                <SelectContent>
-                  {accounts.map((a) => (
-                    <SelectItem key={a.id} value={a.id}>
-                      {a.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            {genProviderId && (
+              <div className="space-y-1">
+                <Label>Ledger Account</Label>
+                {(() => {
+                  const provider = providers.find((p) => p.id === genProviderId);
+                  const linkedId = provider?.data?.ledgerAccountId;
+                  const linked = linkedId
+                    ? accounts.find((a) => a.id === linkedId)
+                    : undefined;
+                  return linkedId ? (
+                    <p className="text-sm" data-testid="text-generate-account">
+                      {linked?.name ?? linkedId}
+                    </p>
+                  ) : (
+                    <p
+                      className="text-sm text-destructive"
+                      data-testid="text-generate-account-missing"
+                    >
+                      This provider has no linked ledger account. Set one on the
+                      provider's Edit tab first.
+                    </p>
+                  );
+                })()}
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button
@@ -325,7 +333,11 @@ export default function BaoPremiumFilesPage() {
             </Button>
             <Button
               onClick={() => generateMutation.mutate()}
-              disabled={!genProviderId || !genAccountId || generateMutation.isPending}
+              disabled={
+                !genProviderId ||
+                !providers.find((p) => p.id === genProviderId)?.data?.ledgerAccountId ||
+                generateMutation.isPending
+              }
               data-testid="button-confirm-generate"
             >
               {generateMutation.isPending && (

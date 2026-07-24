@@ -1,7 +1,7 @@
 import { createNoopValidator } from '../utils/validation';
 import { getClient } from '../transaction-context';
 import { trustProviders, InsertTrustProvider, TrustProvider } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { withStorageLogging, type StorageLoggingConfig } from "../middleware/logging";
 
 /**
@@ -14,6 +14,7 @@ export interface TrustProviderStorage {
   getTrustProvider(id: string): Promise<TrustProvider | undefined>;
   createTrustProvider(provider: InsertTrustProvider): Promise<TrustProvider>;
   updateTrustProvider(id: string, provider: Partial<InsertTrustProvider>): Promise<TrustProvider | undefined>;
+  setLedgerAccountId(id: string, accountId: string | null, name?: string): Promise<TrustProvider | undefined>;
   deleteTrustProvider(id: string): Promise<boolean>;
 }
 
@@ -97,6 +98,25 @@ function createTrustProviderStorageInternal(): TrustProviderStorage {
         }
         throw error;
       }
+    },
+
+    async setLedgerAccountId(id: string, accountId: string | null, name?: string): Promise<TrustProvider | undefined> {
+      validate.validateOrThrow(id);
+      const client = getClient();
+      // Atomic jsonb merge in SQL so concurrent writers to other `data` keys are not clobbered.
+      const dataExpr = accountId
+        ? sql`jsonb_set(coalesce(${trustProviders.data}, '{}'::jsonb), '{ledgerAccountId}', to_jsonb(${accountId}::text))`
+        : sql`nullif(coalesce(${trustProviders.data}, '{}'::jsonb) - 'ledgerAccountId', '{}'::jsonb)`;
+      const updates: Record<string, unknown> = { data: dataExpr };
+      if (name !== undefined) {
+        updates.name = name;
+      }
+      const [updated] = await client
+        .update(trustProviders)
+        .set(updates)
+        .where(eq(trustProviders.id, id))
+        .returning();
+      return updated || undefined;
     },
 
     async deleteTrustProvider(id: string): Promise<boolean> {

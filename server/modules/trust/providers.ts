@@ -1,4 +1,5 @@
 import type { Express } from "express";
+import { z } from "zod";
 import { storage } from "../../storage";
 import { insertTrustProviderSchema, type InsertTrustProvider } from "@shared/schema";
 import { requireComponent } from "../components";
@@ -83,6 +84,39 @@ export function registerTrustProvidersRoutes(
       res.json(updatedProvider);
     } catch (error: any) {
       res.status(500).json({ message: "Failed to update trust provider" });
+    }
+  });
+
+  // PATCH /api/trust/provider/:id/ledger-account - Set or clear the provider's linked ledger account
+  app.patch("/api/trust/provider/:id/ledger-account", requireAuth, trustProvidersComponent, requirePermission("staff"), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const parsed = z
+        .object({ accountId: z.string().min(1).nullable(), name: z.string().min(1).optional() })
+        .safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid data", errors: parsed.error.errors });
+      }
+      if (parsed.data.name !== undefined && !parsed.data.name.trim()) {
+        return res.status(400).json({ message: "Trust provider name cannot be empty" });
+      }
+      if (parsed.data.accountId) {
+        const account = await storage.ledger.accounts.get(parsed.data.accountId);
+        if (!account) {
+          return res.status(400).json({ message: "Ledger account not found" });
+        }
+      }
+      const updated = await storage.trustProviders.setLedgerAccountId(
+        id,
+        parsed.data.accountId,
+        parsed.data.name?.trim(),
+      );
+      if (!updated) {
+        return res.status(404).json({ message: "Trust provider not found" });
+      }
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to update provider ledger account" });
     }
   });
 

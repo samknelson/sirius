@@ -1,13 +1,21 @@
 import { useState } from "react";
 import { useParams, useLocation } from "wouter";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { Save, X } from "lucide-react";
 import TrustProviderLayout, { useTrustProviderLayout } from "@/components/layouts/TrustProviderLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+
+const NO_ACCOUNT = "__none__";
+
+interface AccountOption {
+  id: string;
+  name: string;
+}
 
 function TrustProviderEditContent() {
   const { id } = useParams<{ id: string }>();
@@ -15,10 +23,22 @@ function TrustProviderEditContent() {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const [editName, setEditName] = useState(provider?.name || "");
+  const linkedAccountId =
+    (provider?.data as { ledgerAccountId?: string } | null)?.ledgerAccountId ?? "";
+  const [editAccountId, setEditAccountId] = useState<string>(
+    linkedAccountId || NO_ACCOUNT,
+  );
+
+  const { data: accounts = [] } = useQuery<AccountOption[]>({
+    queryKey: ["/api/ledger/accounts"],
+  });
 
   const updateMutation = useMutation({
-    mutationFn: async (data: { name: string }) => {
-      return apiRequest("PATCH", `/api/trust/provider/${id}`, data);
+    mutationFn: async (data: { name: string; accountId: string | null }) => {
+      await apiRequest("PATCH", `/api/trust/provider/${id}/ledger-account`, {
+        name: data.name,
+        accountId: data.accountId,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/trust/provider", id] });
@@ -48,7 +68,10 @@ function TrustProviderEditContent() {
       return;
     }
 
-    updateMutation.mutate({ name: editName.trim() });
+    updateMutation.mutate({
+      name: editName.trim(),
+      accountId: editAccountId === NO_ACCOUNT ? null : editAccountId,
+    });
   };
 
   const handleCancel = () => {
@@ -83,6 +106,25 @@ function TrustProviderEditContent() {
                   data-testid="input-edit-name"
                   placeholder="Enter provider name"
                 />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Ledger Account</label>
+                <Select value={editAccountId} onValueChange={setEditAccountId}>
+                  <SelectTrigger className="mt-1" data-testid="select-ledger-account">
+                    <SelectValue placeholder="Select a ledger account" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NO_ACCOUNT}>None</SelectItem>
+                    {accounts.map((a) => (
+                      <SelectItem key={a.id} value={a.id}>
+                        {a.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Premium files generated for this provider will post to this account.
+                </p>
               </div>
             </div>
           </div>

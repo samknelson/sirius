@@ -149,7 +149,22 @@ export function registerBaoPremiumFilesRoutes(
           return res.status(503).json({ message: TABLE_MISSING_MESSAGE });
         }
         const parsed = generateBaoPremiumFileRequestSchema.parse(req.body);
-        const file = await filesStorage.generate(parsed.providerId, parsed.accountId);
+        let accountId = parsed.accountId;
+        if (!accountId) {
+          const provider = await storage.trustProviders.getTrustProvider(parsed.providerId);
+          if (!provider) {
+            return res.status(400).json({ message: "Trust provider not found" });
+          }
+          const linked = (provider.data as Record<string, unknown> | null)?.ledgerAccountId;
+          if (typeof linked !== "string" || !linked) {
+            return res.status(400).json({
+              message:
+                "This provider has no linked ledger account. Set one on the provider's Edit tab first.",
+            });
+          }
+          accountId = linked;
+        }
+        const file = await filesStorage.generate(parsed.providerId, accountId);
         if (!file) {
           return res.status(400).json({
             message:

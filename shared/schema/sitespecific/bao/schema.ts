@@ -1136,7 +1136,7 @@ export type BaoPremiumFileRowWithNames = BaoPremiumFileRow & {
 export const generateBaoPremiumFileRequestSchema = z
   .object({
     providerId: z.string().min(1, "A provider is required"),
-    accountId: z.string().min(1, "An account is required"),
+    accountId: z.string().min(1).optional(),
   })
   .strict();
 
