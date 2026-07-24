@@ -68,6 +68,13 @@ export interface CronContext {
   trigger: TriggerType.CRON;
   jobId: string;
   mode: "live" | "test";
+  /**
+   * When set, CRON-triggered plugins that support scoping (e.g. the BAO COBRA
+   * premium plugin) restrict their sweep to this worker's cases. Used by the
+   * election-saved fast path so a save bills immediately without sweeping
+   * every case; the nightly full sweep remains the safety net.
+   */
+  workerId?: string;
 }
 
 export interface DuesImportSavedContext {

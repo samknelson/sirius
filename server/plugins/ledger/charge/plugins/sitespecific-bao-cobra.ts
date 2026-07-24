@@ -216,7 +216,14 @@ class BaoCobraChargePlugin extends ChargePlugin {
     }
 
     try {
-      const activeCases = await storage.baoCobraCases.listElectedActiveCases();
+      let activeCases = await storage.baoCobraCases.listElectedActiveCases();
+      // Scoped run (election-saved fast path): only this worker's cases.
+      const scopeWorkerId = cron.workerId;
+      if (scopeWorkerId) {
+        activeCases = activeCases.filter(
+          (c) => c.coveredPersonWorkerId === scopeWorkerId,
+        );
+      }
       const today = new Date();
       const currentYm = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
 
@@ -232,7 +239,11 @@ class BaoCobraChargePlugin extends ChargePlugin {
       for (const caseId of billedCaseIds) {
         if (casesById.has(caseId)) continue;
         const raw = await storage.baoCobraCases.getRaw(caseId);
-        if (raw) casesById.set(caseId, raw);
+        if (!raw) continue;
+        if (scopeWorkerId && raw.coveredPersonWorkerId !== scopeWorkerId) {
+          continue;
+        }
+        casesById.set(caseId, raw);
       }
 
       const transactions: LedgerTransaction[] = [];

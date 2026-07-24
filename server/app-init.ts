@@ -25,7 +25,7 @@ import { getSession } from "./auth";
 
 // Side-effect imports: trigger plugin / provider / access-policy registration.
 import "./plugins/ledger/charge";
-import { registerWmbChargePluginListener } from "./plugins/ledger/charge";
+import { registerWmbChargePluginListener, registerCobraElectionChargeListener } from "./plugins/ledger/charge";
 import "./plugins/ledger/payment-gateway";
 import "./plugins/trust/eligibility";
 import "./services/comm/providers";
@@ -344,6 +344,11 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
   // directly from their own write paths, so registering the full
   // registerChargePluginListeners() would double-charge them.
   registerWmbChargePluginListener();
+
+  // COBRA election-saved fast path: bill (or reverse) a worker's COBRA
+  // premiums immediately when a COBRA election is saved, instead of waiting
+  // for the nightly COBRA billing cron. Idempotent alongside the cron.
+  registerCobraElectionChargeListener();
 
   // Register cron plugins (kind + adapter + self-registering plugin imports)
   initializeCronPluginSystem();

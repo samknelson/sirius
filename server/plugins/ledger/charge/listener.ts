@@ -1,4 +1,4 @@
-import { eventBus, EventType, HoursSavedPayload, PaymentSavedPayload, WmbSavedPayload, ParticipantSavedPayload, CronPayload } from "../../../services/event-bus";
+import { eventBus, EventType, HoursSavedPayload, PaymentSavedPayload, WmbSavedPayload, ParticipantSavedPayload, CronPayload, TrustElectionSavedPayload } from "../../../services/event-bus";
 import { executeChargePlugins } from "./executor";
 import { TriggerType } from "./types";
 import { logger } from "../../../logger";
@@ -96,6 +96,66 @@ async function handleCron(payload: CronPayload): Promise<void> {
       error: error instanceof Error ? error.message : String(error),
     });
   }
+}
+
+const COBRA_CHARGE_PLUGIN_ID = "sitespecific-bao-cobra";
+
+/**
+ * COBRA election-saved fast path: when a COBRA election is created, updated,
+ * or deleted, immediately run the COBRA premium charge plugin scoped to that
+ * worker's cases so charges (or reversals) post right away instead of waiting
+ * for the nightly billing cron. The plugin is fully idempotent, so the
+ * nightly full sweep remains the safety net and never double-charges.
+ */
+async function handleTrustElectionSavedForCobra(
+  payload: TrustElectionSavedPayload,
+): Promise<void> {
+  if (payload.enrollmentType !== "cobra") return;
+  try {
+    const result = await executeChargePlugins(
+      {
+        trigger: TriggerType.CRON,
+        jobId: `cobra-election-saved:${payload.electionId}`,
+        mode: "live",
+        workerId: payload.workerId,
+      },
+      { onlyPluginIds: [COBRA_CHARGE_PLUGIN_ID] },
+    );
+    if (result.totalTransactions.length > 0) {
+      logger.info("COBRA charges posted from election save", {
+        service: "charge-plugin-listener",
+        electionId: payload.electionId,
+        workerId: payload.workerId,
+        transactionCount: result.totalTransactions.length,
+      });
+    }
+  } catch (error) {
+    logger.error("Failed to run COBRA billing for saved election", {
+      service: "charge-plugin-listener",
+      electionId: payload.electionId,
+      workerId: payload.workerId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+/**
+ * Registers the COBRA election-saved billing listener. Safe alongside the
+ * nightly cron: both paths run the same idempotent plugin.
+ */
+export function registerCobraElectionChargeListener(): void {
+  eventBus.on({
+    name: "ledger-charge:cobra-election-saved",
+    description:
+      "Immediately bills (or reverses) COBRA premiums for a worker when a COBRA election is created, updated, or deleted, instead of waiting for the nightly COBRA billing cron.",
+    event: EventType.TRUST_ELECTION_SAVED,
+    handler: handleTrustElectionSavedForCobra,
+  });
+
+  logger.info("COBRA election charge listener registered", {
+    service: "charge-plugin-listener",
+    handlerCount: eventBus.getHandlerCount(EventType.TRUST_ELECTION_SAVED),
+  });
 }
 
 export function registerChargePluginListeners(): void {
