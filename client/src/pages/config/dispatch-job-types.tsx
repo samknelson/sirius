@@ -252,7 +252,7 @@ export default function DispatchJobTypesPage() {
           resetFormState();
         }
       }}>
-        <DialogContent data-testid="dialog-add">
+        <DialogContent data-testid="dialog-add" className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Add Dispatch Job Type</DialogTitle>
             <DialogDescription>
