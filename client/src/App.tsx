@@ -50,6 +50,7 @@ const WorkerDispatchStatus = lazy(() => import("@/pages/workers/dispatch-status"
 const WorkerDispatchDoNotCall = lazy(() => import("@/pages/workers/dispatch-do-not-call"));
 const WorkerDispatchHoldForEmployer = lazy(() => import("@/pages/workers/dispatch-hold-for-employer"));
 const WorkerDispatchEba = lazy(() => import("@/pages/workers/dispatch-eba"));
+const WorkerDispatchAsi = lazy(() => import("@/pages/workers/dispatch-asi"));
 const WorkerBans = lazy(() => import("@/pages/workers/bans"));
 const WorkerEdls = lazy(() => import("@/pages/worker-edls"));
 const WorkerSecondShift = lazy(() => import("@/pages/worker-sitespecific-freeman-2shift"));
@@ -1013,6 +1014,14 @@ function Router() {
         <ProtectedRoute tabId="dispatch-eba" entityType="worker">
           <AuthenticatedLayout>
             <WorkerDispatchEba />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/workers/:id/dispatch/asi">
+        <ProtectedRoute tabId="dispatch-asi" entityType="worker">
+          <AuthenticatedLayout>
+            <WorkerDispatchAsi />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

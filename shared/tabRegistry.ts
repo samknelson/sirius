@@ -189,6 +189,7 @@ export const workerTabTree: HierarchicalTab[] = [
       { id: 'dispatch-dnc', label: 'Do Not Call', hrefTemplate: '/workers/{id}/dispatch/do-not-call', policyId: 'worker.view', component: 'dispatch.dnc' },
       { id: 'dispatch-hfe', label: 'Employer Priority', hrefTemplate: '/workers/{id}/dispatch/hold-for-employer', policyId: 'worker.view', component: 'dispatch.hfe' },
       { id: 'dispatch-eba', label: 'Availability Dates', hrefTemplate: '/workers/{id}/dispatch/eba', policyId: 'worker.mine', component: 'dispatch.eba' },
+      { id: 'dispatch-asi', label: 'Auto Sign-In', hrefTemplate: '/workers/{id}/dispatch/asi', policyId: 'worker.dispatch.asi', component: 'dispatch.asi' },
     ]
   },
   { id: 'political', label: 'Political', hrefTemplate: '/workers/{id}/political', permission: 'staff', component: 'sitespecific.btu.political' },

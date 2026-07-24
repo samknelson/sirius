@@ -49,6 +49,7 @@ import './employer/dispatch';
 import './employer/dispatch/manage';
 import './worker/dispatch/dnc/view';
 import './worker/dispatch/dnc/edit';
+import './worker/dispatch/asi';
 import './dispatch/manage';
 
 import './edls/any';

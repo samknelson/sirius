@@ -85,6 +85,7 @@ import { registerWorkerDispatchStatusRoutes } from "./modules/dispatch/worker-st
 import { registerWorkerDispatchDncRoutes } from "./modules/dispatch/worker-dnc";
 import { registerWorkerDispatchHfeRoutes } from "./modules/dispatch/worker-hfe";
 import { registerWorkerDispatchEbaRoutes } from "./modules/dispatch/worker-eba";
+import { registerWorkerDispatchAsiRoutes } from "./modules/dispatch/worker-asi";
 import { registerWorkerBansRoutes } from "./modules/worker-bans";
 import { registerWorkerSkillsRoutes } from "./modules/workers/skills";
 import { registerWorkerRelationsRoutes } from "./modules/workers/relations";
@@ -1693,6 +1694,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register worker dispatch EBA routes (handles all access control internally)
   registerWorkerDispatchEbaRoutes(app, requireAuth, requireAccess);
+
+  // Register worker dispatch ASI routes (handles all access control internally)
+  registerWorkerDispatchAsiRoutes(app, requireAuth, requireAccess);
 
   // Register worker bans routes (handles all access control internally)
   registerWorkerBansRoutes(app, requireAuth, requireAccess);
