@@ -1,4 +1,5 @@
-import { getClient } from './transaction-context';
+import { getClient, onAfterCommit } from './transaction-context';
+import { eventBus, EventType } from '../services/event-bus';
 import { cardchecks, cardcheckDefinitions, workers, contacts, bargainingUnits, employers, esigs, workerHours, optionsEmploymentStatus, type Cardcheck, type InsertCardcheck, type Esig, type InsertEsig, type File } from "@shared/schema";
 import { eq, and, gte, lte, sql, isNull, isNotNull, inArray, count } from "drizzle-orm";
 import type { StorageLoggingConfig } from "./middleware/logging";
@@ -224,6 +225,35 @@ export interface CardcheckStorage {
   getOrganizingDistinctStats(primaryStatusIds: string[]): Promise<OrganizingDistinctStat[]>;
   getOrganizingNewMembers(days: number): Promise<OrganizingNewMember[]>;
   getMissingCardchecksForEmployer(employerId: string, primaryStatusIds: string[]): Promise<MissingCardcheckWorkerRow[]>;
+}
+
+/** Date → "YYYY-MM-DD" (UTC), null-safe. */
+function toYmd(date: Date | string | null | undefined): string | null {
+  if (!date) return null;
+  const d = date instanceof Date ? date : new Date(date);
+  if (isNaN(d.getTime())) return null;
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Defer a CARDCHECK_SAVED emit to after the surrounding transaction (if any)
+ * commits, so listeners never see uncommitted state. Emitted only for writes
+ * that change the worker's signed-cardcheck situation (sign / revoke /
+ * delete); see CardcheckSavedPayload.
+ */
+function emitCardcheckSaved(
+  cardcheck: Pick<Cardcheck, 'id' | 'workerId' | 'status' | 'signedDate'>,
+  operation: 'created' | 'updated' | 'deleted',
+): void {
+  onAfterCommit(() => {
+    void eventBus.emit(EventType.CARDCHECK_SAVED, {
+      cardcheckId: cardcheck.id,
+      workerId: cardcheck.workerId,
+      status: cardcheck.status,
+      signedYmd: toYmd(cardcheck.signedDate),
+      operation,
+    });
+  });
 }
 
 let storedDeps: CardcheckStorageDependencies | null = null;
@@ -598,6 +628,9 @@ export function createCardcheckStorage(): CardcheckStorage {
         .insert(cardchecks)
         .values(data)
         .returning();
+      if (cardcheck.status === 'signed') {
+        emitCardcheckSaved(cardcheck, 'created');
+      }
       return cardcheck;
     },
 
@@ -615,6 +648,13 @@ export function createCardcheckStorage(): CardcheckStorage {
         .set(data)
         .where(eq(cardchecks.id, id))
         .returning();
+      if (updated && (current.status === 'signed') !== (updated.status === 'signed')) {
+        // Sign or revoke: the worker's signed-cardcheck situation changed.
+        // Emit both the old and new states so listeners cover the previously
+        // effective month as well as the new one.
+        emitCardcheckSaved(current, 'updated');
+        emitCardcheckSaved(updated, 'updated');
+      }
       return updated || undefined;
     },
 
@@ -624,6 +664,9 @@ export function createCardcheckStorage(): CardcheckStorage {
         .delete(cardchecks)
         .where(eq(cardchecks.id, id))
         .returning();
+      if (result.length > 0) {
+        emitCardcheckSaved(result[0], 'deleted');
+      }
       return result.length > 0;
     },
 

@@ -10,6 +10,8 @@ import {
   type WmbSavedPayload,
   type WorkerRelationSavedPayload,
   type ContactEligibilitySavedPayload,
+  type CardcheckSavedPayload,
+  type BaoCobraCaseSavedPayload,
 } from "./event-bus";
 import { onAfterCommit } from "../storage/transaction-context";
 import { isWmbScanWrite } from "../middleware/request-context";
@@ -472,6 +474,34 @@ async function handleRelationSaved(payload: WorkerRelationSavedPayload): Promise
   void enqueueWorkerMonths(payload.subscriberWorkerId, months, "relation_saved");
 }
 
+async function handleCardcheckSaved(payload: CardcheckSavedPayload): Promise<void> {
+  if (!componentActive()) return;
+  // Cardcheck storage defers the emit to after commit and only fires when
+  // the worker's signed-cardcheck situation changes (sign, revoke, delete;
+  // on sign/revoke updates both the old and new states are emitted). The
+  // Cardcheck eligibility rule reads signed status, so re-scan the current
+  // month plus the cardcheck's signed month when it differs.
+  const months = dedupeMonths([
+    ...(payload.signedYmd ? [monthFromYmd(payload.signedYmd)] : []),
+    currentMonth(),
+  ]);
+  void enqueueWorkerMonths(payload.workerId, months, "cardcheck_saved", "cardcheck_saved");
+}
+
+async function handleCobraCaseSaved(payload: BaoCobraCaseSavedPayload): Promise<void> {
+  if (!componentActive()) return;
+  // COBRA case storage defers the emit to after commit and, when an update
+  // moves the coverage window, emits both the old and new windows. The BAO
+  // COBRA rule covers the effective month through the max-period month, so
+  // span that window (capped like elections) plus the current month. The
+  // covered person is the worker whose benefits the case drives.
+  const months = dedupeMonths([
+    ...monthsInRange(payload.cobraEffectiveYmd, payload.maxPeriodYmd),
+    currentMonth(),
+  ]);
+  void enqueueWorkerMonths(payload.coveredPersonWorkerId, months, "cobra_case_saved", "cobra_case_saved");
+}
+
 async function handleContactEligibilitySaved(payload: ContactEligibilitySavedPayload): Promise<void> {
   if (!componentActive()) return;
   // Contact storage defers the emit to after commit and only fires for
@@ -575,6 +605,18 @@ export function initWmbAutoRescan(): void {
       description: "Re-scans the associated worker (and, for birth-date changes, active subscribers) for the current month when a contact's birth date or primary postal address changes.",
       event: EventType.CONTACT_ELIGIBILITY_SAVED,
       handler: handleContactEligibilitySaved,
+    }),
+    eventBus.on({
+      name: "wmb-auto-rescan-cardcheck",
+      description: "Re-scans a worker's benefits when a cardcheck is signed, revoked, or deleted (current month plus the cardcheck's signed month).",
+      event: EventType.CARDCHECK_SAVED,
+      handler: handleCardcheckSaved,
+    }),
+    eventBus.on({
+      name: "wmb-auto-rescan-cobra-case",
+      description: "Re-scans the covered person's benefits when a BAO COBRA case is created, updated, or deleted (coverage window plus the current month).",
+      event: EventType.BAO_COBRA_CASE_SAVED,
+      handler: handleCobraCaseSaved,
     }),
   );
 

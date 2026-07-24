@@ -1,4 +1,5 @@
-import { getClient, runInTransaction } from '../../transaction-context';
+import { getClient, runInTransaction, onAfterCommit } from '../../transaction-context';
+import { eventBus, EventType } from '../../../services/event-bus';
 import { and, eq, gte, lte, ne, desc, sql, getTableName, aliasedTable } from "drizzle-orm";
 import { tableExists as tableExistsUtil } from "../../utils";
 import {
@@ -170,6 +171,39 @@ function enrichedQuery(client: ReturnType<typeof getClient>) {
     .leftJoin(dentalBenefits, eq(dentalBenefits.id, cases.dentalBenefitLostId));
 }
 
+/**
+ * Defer a BAO_COBRA_CASE_SAVED emit to after the surrounding transaction (if
+ * any) commits, so listeners never see uncommitted state. Updates that move
+ * the coverage window emit BOTH the old and new windows (two events).
+ */
+function emitCobraCaseSaved(
+  theCase: Pick<
+    BaoCobraCase,
+    'id' | 'coveredPersonWorkerId' | 'cobraEffectiveYmd' | 'maxPeriodYmd'
+  >,
+  operation: 'created' | 'updated' | 'deleted',
+): void {
+  onAfterCommit(() => {
+    void eventBus.emit(EventType.BAO_COBRA_CASE_SAVED, {
+      caseId: theCase.id,
+      coveredPersonWorkerId: theCase.coveredPersonWorkerId,
+      cobraEffectiveYmd: theCase.cobraEffectiveYmd,
+      maxPeriodYmd: theCase.maxPeriodYmd,
+      operation,
+    });
+  });
+}
+
+/** Emit for an update: old window too when the window (or person) moved. */
+function emitCobraCaseUpdated(existing: BaoCobraCase, updated: BaoCobraCase): void {
+  const changed =
+    existing.cobraEffectiveYmd !== updated.cobraEffectiveYmd ||
+    existing.maxPeriodYmd !== updated.maxPeriodYmd ||
+    existing.coveredPersonWorkerId !== updated.coveredPersonWorkerId;
+  if (changed) emitCobraCaseSaved(existing, 'updated');
+  emitCobraCaseSaved(updated, 'updated');
+}
+
 /** Transaction-scoped advisory lock serializing writers per covered person. */
 async function lockCoveredPerson(coveredPersonWorkerId: string): Promise<void> {
   const client = getClient();
@@ -251,6 +285,7 @@ export function createBaoCobraCasesStorage(): BaoCobraCasesStorage {
       }
       const client = getClient();
       const results = await client.insert(cases).values(entry).returning();
+      emitCobraCaseSaved(results[0], 'created');
       return results[0];
     },
 
@@ -262,11 +297,16 @@ export function createBaoCobraCasesStorage(): BaoCobraCasesStorage {
         throw new Error("COMPONENT_TABLE_NOT_FOUND");
       }
       const client = getClient();
+      const [existing] = await client.select().from(cases).where(eq(cases.id, id));
       const results = await client
         .update(cases)
         .set(record)
         .where(eq(cases.id, id))
         .returning();
+      if (results[0]) {
+        if (existing) emitCobraCaseUpdated(existing, results[0]);
+        else emitCobraCaseSaved(results[0], 'updated');
+      }
       return results[0];
     },
 
@@ -284,6 +324,7 @@ export function createBaoCobraCasesStorage(): BaoCobraCasesStorage {
         }
         const client = getClient();
         const results = await client.insert(cases).values(entry).returning();
+        emitCobraCaseSaved(results[0], 'created');
         return results[0];
       });
     },
@@ -303,11 +344,16 @@ export function createBaoCobraCasesStorage(): BaoCobraCasesStorage {
           await assertInvariants(this, coveredPersonWorkerId, id);
         }
         const client = getClient();
+        const [existing] = await client.select().from(cases).where(eq(cases.id, id));
         const results = await client
           .update(cases)
           .set(record)
           .where(eq(cases.id, id))
           .returning();
+        if (results[0]) {
+          if (existing) emitCobraCaseUpdated(existing, results[0]);
+          else emitCobraCaseSaved(results[0], 'updated');
+        }
         return results[0];
       });
     },
@@ -320,7 +366,10 @@ export function createBaoCobraCasesStorage(): BaoCobraCasesStorage {
       const results = await client
         .delete(cases)
         .where(eq(cases.id, id))
-        .returning({ id: cases.id });
+        .returning();
+      if (results.length > 0) {
+        emitCobraCaseSaved(results[0], 'deleted');
+      }
       return results.length > 0;
     },
 

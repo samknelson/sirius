@@ -16,6 +16,8 @@ export const PER_WORKER_AUTO_TRIGGER_SOURCES = [
   "worker_update",
   "work_status_saved",
   "wmb_saved",
+  "cardcheck_saved",
+  "cobra_case_saved",
 ];
 
 export interface QueueProcessorOptions {

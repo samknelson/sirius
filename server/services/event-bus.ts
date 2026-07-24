@@ -41,6 +41,8 @@ export enum EventType {
   TRUST_EXEMPTION_SAVED = "trust.exemption.saved",
   WORKER_RELATION_SAVED = "worker.relation.saved",
   CONTACT_ELIGIBILITY_SAVED = "contact.eligibility.saved",
+  CARDCHECK_SAVED = "cardcheck.saved",
+  BAO_COBRA_CASE_SAVED = "bao.cobra.case.saved",
   GRIEVANCE_STATUS_HISTORY_SAVED = "grievance.status-history.saved",
   GRIEVANCE_TIMELINE_CHANGED = "grievance.timeline.changed",
   GRIEVANCE_ASSIGNMENT_SAVED = "grievance.assignment.saved",
@@ -298,6 +300,37 @@ export interface ContactEligibilitySavedPayload {
 }
 
 /**
+ * Emitted after a cardcheck write that changes the worker's signed-cardcheck
+ * situation commits: a create with status "signed", an update that moves the
+ * status to or from "signed" (sign / revoke), or a delete. Pure metadata
+ * edits that leave signed-ness unchanged do NOT emit. `signedYmd` is the
+ * cardcheck's signed date (the effective month for eligibility), null when
+ * the card was never signed.
+ */
+export interface CardcheckSavedPayload {
+  cardcheckId: string;
+  workerId: string;
+  status: string;
+  signedYmd: string | null;
+  operation: "created" | "updated" | "deleted";
+}
+
+/**
+ * Emitted after a BAO COBRA case create, update, or delete commits. When an
+ * update moves the coverage window, storage emits BOTH the old and the new
+ * window (two events) so listeners can cover every affected period —
+ * mirroring the worker-relation pattern. The covered person (not the
+ * subscriber) is the worker whose benefits the case drives.
+ */
+export interface BaoCobraCaseSavedPayload {
+  caseId: string;
+  coveredPersonWorkerId: string;
+  cobraEffectiveYmd: string;
+  maxPeriodYmd: string | null;
+  operation: "created" | "updated" | "deleted";
+}
+
+/**
  * Emitted after an EDLS sheet create or update commits. Carries the sheet's
  * status before and after the write so a notifier can detect a genuine
  * arrival at a status: `previousStatus` is null on create (the sheet "arrives"
@@ -445,6 +478,8 @@ export interface EventPayloadMap {
   [EventType.TRUST_EXEMPTION_SAVED]: TrustExemptionSavedPayload;
   [EventType.WORKER_RELATION_SAVED]: WorkerRelationSavedPayload;
   [EventType.CONTACT_ELIGIBILITY_SAVED]: ContactEligibilitySavedPayload;
+  [EventType.CARDCHECK_SAVED]: CardcheckSavedPayload;
+  [EventType.BAO_COBRA_CASE_SAVED]: BaoCobraCaseSavedPayload;
   [EventType.GRIEVANCE_STATUS_HISTORY_SAVED]: GrievanceStatusHistorySavedPayload;
   [EventType.GRIEVANCE_TIMELINE_CHANGED]: GrievanceTimelineChangedPayload;
   [EventType.GRIEVANCE_ASSIGNMENT_SAVED]: GrievanceAssignmentSavedPayload;
