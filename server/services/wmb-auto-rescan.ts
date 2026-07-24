@@ -132,12 +132,6 @@ function isFutureMonth(ref: MonthRef, now: MonthRef): boolean {
   return ref.year > now.year || (ref.year === now.year && ref.month > now.month);
 }
 
-function followingMonth(ref: MonthRef): MonthRef {
-  return ref.month === 12
-    ? { month: 1, year: ref.year + 1 }
-    : { month: ref.month + 1, year: ref.year };
-}
-
 function dedupeMonths(months: (MonthRef | null)[]): MonthRef[] {
   const seen = new Set<string>();
   const out: MonthRef[] = [];
@@ -335,15 +329,15 @@ async function handleWmbSaved(payload: WmbSavedPayload): Promise<void> {
   if (isWmbScanWrite()) return;
   const now = currentMonth();
   const sameMonth: MonthRef = { month: payload.month, year: payload.year };
-  // The following month re-evaluates the Prior Month chain; for deletes the
-  // same month is also rescanned so Linked rules re-evaluate. Future months
-  // are skipped — they have no data yet and are covered by their own monthly
-  // scan when the time comes.
-  const candidates = payload.isDeleted
-    ? [sameMonth, followingMonth(sameMonth)]
-    : [followingMonth(sameMonth)];
-  const months = dedupeMonths(candidates).filter((ref) => !isFutureMonth(ref, now));
-  if (months.length === 0) return;
+  // Future months are skipped entirely — they have no data yet and are
+  // covered by their own monthly scan when the time comes.
+  if (isFutureMonth(sameMonth, now)) return;
+  // Rescan the edited month itself (Linked rules re-evaluate) and every
+  // month through the current one (the Prior Month chain re-evaluates).
+  // The full span is needed because the loop guard means scan-written rows
+  // never cascade enqueues on their own.
+  const startYmd = `${sameMonth.year}-${String(sameMonth.month).padStart(2, "0")}-01`;
+  const months = monthsInRange(startYmd, null);
   afterCommit(() => {
     void enqueueWorkerMonths(payload.workerId, months, "wmb_saved", "wmb_saved");
   });
@@ -409,7 +403,7 @@ export function initWmbAutoRescan(): void {
     }),
     eventBus.on({
       name: "wmb-auto-rescan-wmb",
-      description: "Re-scans follow-up months when a benefit row is manually added or deleted; rows written by the benefits scan itself are ignored (loop guard).",
+      description: "Re-scans the edited month through the current month when a benefit row is manually added or deleted; rows written by the benefits scan itself are ignored (loop guard).",
       event: EventType.WMB_SAVED,
       handler: handleWmbSaved,
     }),
