@@ -197,6 +197,7 @@ const TrustProviderEdiDetailsPage = lazy(() => import("@/pages/trust-provider-ed
 const TrustProviderEdiEditPage = lazy(() => import("@/pages/trust-provider-edi-edit"));
 const TrustProviderEdiLogsPage = lazy(() => import("@/pages/trust-provider-edi-logs"));
 const TrustProviderLogsPage = lazy(() => import("@/pages/trust-provider-logs"));
+const TrustProviderPremiumFilesPage = lazy(() => import("@/pages/trust-provider-premium-files"));
 const BargainingUnitsPage = lazy(() => import("@/pages/bargaining-units"));
 const BargainingUnitViewPage = lazy(() => import("@/pages/bargaining-unit-view"));
 const BargainingUnitEditPage = lazy(() => import("@/pages/bargaining-unit-edit"));
@@ -2093,6 +2094,14 @@ function Router() {
         <ProtectedRoute tabId="logs" entityType="provider">
           <AuthenticatedLayout>
             <TrustProviderLogsPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/trust/provider/:id/premium-files">
+        <ProtectedRoute tabId="premium-files" entityType="provider">
+          <AuthenticatedLayout>
+            <TrustProviderPremiumFilesPage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

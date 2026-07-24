@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -71,14 +72,23 @@ function formatTimestamp(value: string | Date | null | undefined): string {
   return d.toLocaleString();
 }
 
-export default function BaoPremiumFilesPage() {
-  usePageTitle("Premium Files");
+interface PremiumFilesViewProps {
+  /** When set, the view is locked to a single provider (provider page tab). */
+  providerId?: string;
+}
+
+export function PremiumFilesView({ providerId }: PremiumFilesViewProps) {
   const { toast } = useToast();
 
   const [filterProviderId, setFilterProviderId] = useState<string>(ALL);
   const [generateOpen, setGenerateOpen] = useState(false);
   const [genProviderId, setGenProviderId] = useState<string>("");
   const [viewing, setViewing] = useState<BaoPremiumFileWithNames | null>(null);
+
+  const fixedProviderId = providerId;
+  const effectiveFilterId =
+    fixedProviderId ?? (filterProviderId !== ALL ? filterProviderId : undefined);
+  const effectiveGenProviderId = fixedProviderId ?? genProviderId;
 
   const { data: providers = [] } = useQuery<ProviderOption[]>({
     queryKey: ["/api/trust/providers"],
@@ -89,10 +99,10 @@ export default function BaoPremiumFilesPage() {
   });
 
   const { data: files = [], isLoading } = useQuery<BaoPremiumFileWithNames[]>({
-    queryKey: ["/api/sitespecific/bao/premium/files", filterProviderId],
+    queryKey: ["/api/sitespecific/bao/premium/files", effectiveFilterId ?? ALL],
     queryFn: async () => {
       const params = new URLSearchParams();
-      if (filterProviderId !== ALL) params.set("providerId", filterProviderId);
+      if (effectiveFilterId) params.set("providerId", effectiveFilterId);
       const response = await fetch(
         `/api/sitespecific/bao/premium/files?${params.toString()}`,
       );
@@ -120,7 +130,7 @@ export default function BaoPremiumFilesPage() {
       return apiRequest(
         "POST",
         "/api/sitespecific/bao/premium/files/generate",
-        { providerId: genProviderId },
+        { providerId: effectiveGenProviderId },
       );
     },
     onSuccess: async () => {
@@ -140,6 +150,9 @@ export default function BaoPremiumFilesPage() {
     },
   });
 
+  const genProvider = providers.find((p) => p.id === effectiveGenProviderId);
+  const genLinkedAccountId = genProvider?.data?.ledgerAccountId;
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -155,6 +168,17 @@ export default function BaoPremiumFilesPage() {
             unpaid premium month for the provider and posts offsetting payment
             entries so those months cannot be paid twice.
           </p>
+          {fixedProviderId && (
+            <p className="text-sm mt-1">
+              <Link
+                href="/config/sitespecific/bao/premium-files"
+                className="text-primary hover:underline"
+                data-testid="link-all-premium-files"
+              >
+                View all premium files
+              </Link>
+            </p>
+          )}
         </div>
         <Button
           onClick={() => setGenerateOpen(true)}
@@ -165,29 +189,31 @@ export default function BaoPremiumFilesPage() {
         </Button>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Filters</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-wrap gap-4">
-          <div className="space-y-1">
-            <Label>Provider</Label>
-            <Select value={filterProviderId} onValueChange={setFilterProviderId}>
-              <SelectTrigger className="w-64" data-testid="select-filter-provider">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL}>All providers</SelectItem>
-                {providers.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </CardContent>
-      </Card>
+      {!fixedProviderId && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Filters</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-4">
+            <div className="space-y-1">
+              <Label>Provider</Label>
+              <Select value={filterProviderId} onValueChange={setFilterProviderId}>
+                <SelectTrigger className="w-64" data-testid="select-filter-provider">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL}>All providers</SelectItem>
+                  {providers.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardContent className="p-0">
@@ -207,7 +233,7 @@ export default function BaoPremiumFilesPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Generated</TableHead>
-                  <TableHead>Provider</TableHead>
+                  {!fixedProviderId && <TableHead>Provider</TableHead>}
                   <TableHead>Account</TableHead>
                   <TableHead>Rows</TableHead>
                   <TableHead>Total</TableHead>
@@ -220,9 +246,21 @@ export default function BaoPremiumFilesPage() {
                     <TableCell data-testid={`text-file-generated-${f.id}`}>
                       {formatTimestamp(f.generatedAt as any)}
                     </TableCell>
-                    <TableCell data-testid={`text-file-provider-${f.id}`}>
-                      {f.providerName ?? "—"}
-                    </TableCell>
+                    {!fixedProviderId && (
+                      <TableCell data-testid={`text-file-provider-${f.id}`}>
+                        {f.providerName ? (
+                          <Link
+                            href={`/trust/provider/${f.providerId}/premium-files`}
+                            className="text-primary hover:underline"
+                            data-testid={`link-file-provider-${f.id}`}
+                          >
+                            {f.providerName}
+                          </Link>
+                        ) : (
+                          "—"
+                        )}
+                      </TableCell>
+                    )}
                     <TableCell data-testid={`text-file-account-${f.id}`}>
                       {f.accountName ?? "—"}
                     </TableCell>
@@ -269,7 +307,7 @@ export default function BaoPremiumFilesPage() {
           setGenerateOpen(open);
           if (!open) {
             setGenProviderId("");
-                }
+          }
         }}
       >
         <DialogContent>
@@ -282,44 +320,40 @@ export default function BaoPremiumFilesPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="space-y-1">
-              <Label>Provider</Label>
-              <Select value={genProviderId} onValueChange={setGenProviderId}>
-                <SelectTrigger data-testid="select-generate-provider">
-                  <SelectValue placeholder="Select a provider" />
-                </SelectTrigger>
-                <SelectContent>
-                  {providers.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            {genProviderId && (
+            {!fixedProviderId && (
+              <div className="space-y-1">
+                <Label>Provider</Label>
+                <Select value={genProviderId} onValueChange={setGenProviderId}>
+                  <SelectTrigger data-testid="select-generate-provider">
+                    <SelectValue placeholder="Select a provider" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {providers.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            {effectiveGenProviderId && (
               <div className="space-y-1">
                 <Label>Ledger Account</Label>
-                {(() => {
-                  const provider = providers.find((p) => p.id === genProviderId);
-                  const linkedId = provider?.data?.ledgerAccountId;
-                  const linked = linkedId
-                    ? accounts.find((a) => a.id === linkedId)
-                    : undefined;
-                  return linkedId ? (
-                    <p className="text-sm" data-testid="text-generate-account">
-                      {linked?.name ?? linkedId}
-                    </p>
-                  ) : (
-                    <p
-                      className="text-sm text-destructive"
-                      data-testid="text-generate-account-missing"
-                    >
-                      This provider has no linked ledger account. Set one on the
-                      provider's Edit tab first.
-                    </p>
-                  );
-                })()}
+                {genLinkedAccountId ? (
+                  <p className="text-sm" data-testid="text-generate-account">
+                    {accounts.find((a) => a.id === genLinkedAccountId)?.name ??
+                      genLinkedAccountId}
+                  </p>
+                ) : (
+                  <p
+                    className="text-sm text-destructive"
+                    data-testid="text-generate-account-missing"
+                  >
+                    This provider has no linked ledger account. Set one on the
+                    provider's Edit tab first.
+                  </p>
+                )}
               </div>
             )}
           </div>
@@ -334,8 +368,8 @@ export default function BaoPremiumFilesPage() {
             <Button
               onClick={() => generateMutation.mutate()}
               disabled={
-                !genProviderId ||
-                !providers.find((p) => p.id === genProviderId)?.data?.ledgerAccountId ||
+                !effectiveGenProviderId ||
+                !genLinkedAccountId ||
                 generateMutation.isPending
               }
               data-testid="button-confirm-generate"
@@ -413,4 +447,9 @@ export default function BaoPremiumFilesPage() {
       </Dialog>
     </div>
   );
+}
+
+export default function BaoPremiumFilesPage() {
+  usePageTitle("Premium Files");
+  return <PremiumFilesView />;
 }

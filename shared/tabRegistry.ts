@@ -259,6 +259,7 @@ export const providerTabTree: HierarchicalTab[] = [
   { id: 'edit', label: 'Edit', hrefTemplate: '/trust/provider/{id}/edit', permission: 'staff' },
   { id: 'contacts', label: 'Contacts', hrefTemplate: '/trust/provider/{id}/contacts', policyId: 'trust.provider.mine' },
   { id: 'edi', label: 'EDI', hrefTemplate: '/trust/provider/{id}/edi', permission: 'admin', component: 'trust.providers.edi' },
+  { id: 'premium-files', label: 'Premium Files', hrefTemplate: '/trust/provider/{id}/premium-files', permission: 'staff', component: 'sitespecific.bao' },
   { id: 'logs', label: 'Logs', hrefTemplate: '/trust/provider/{id}/logs', permission: 'staff' },
 ];
 
