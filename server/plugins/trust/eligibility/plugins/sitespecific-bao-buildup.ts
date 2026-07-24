@@ -362,6 +362,23 @@ class BaoBuildupPlugin extends EligibilityPlugin<BaoBuildupConfig> {
     },
   };
 
+  /**
+   * The buildup walk starts `lagMonths` before the coverage month and steps
+   * backward until a buildup or a break completes. A change to month M's hours
+   * can therefore affect any coverage month whose walk reaches M. The walk is
+   * guaranteed to stop within `breakMonths` steps only when every month after
+   * M is below threshold, so `lagMonths + breakMonths` is the documented
+   * conservative bound for the common patterns (mixed above/below stretches
+   * can theoretically walk further, but the auto-rescan span is capped
+   * anyway).
+   */
+  hoursForwardImpactMonths(config: BaoBuildupConfig): number {
+    return (
+      (config.lagMonths ?? DEFAULT_LAG_MONTHS) +
+      (config.breakMonths ?? DEFAULT_BREAK_MONTHS)
+    );
+  }
+
   async evaluate(
     context: EligibilityContext,
     config: BaoBuildupConfig,

@@ -148,6 +148,14 @@ class BaoThresholdPlugin extends EligibilityPlugin<BaoThresholdConfig> {
     },
   };
 
+  /**
+   * This rule examines the single month LOOKBACK_MONTHS before the evaluated
+   * month, so an hours change in month M affects month M+LOOKBACK_MONTHS.
+   */
+  hoursForwardImpactMonths(_config: BaoThresholdConfig): number {
+    return LOOKBACK_MONTHS;
+  }
+
   async evaluate(
     context: EligibilityContext,
     config: BaoThresholdConfig,

@@ -14,6 +14,8 @@ import { isWmbScanWrite } from "../middleware/request-context";
 import { storage } from "../storage";
 import { logger } from "../logger";
 import { isComponentEnabledSync, isCacheInitialized } from "./component-cache";
+import { eligibilityPluginRegistry } from "../plugins/trust/eligibility/registry";
+import type { BaseEligibilityConfig } from "../plugins/trust/eligibility/types";
 import {
   enqueueMonthScan,
   processNextQueueJob,
@@ -92,6 +94,15 @@ function monthFromYmd(ymd: string): MonthRef | null {
   const m = /^(\d{4})-(\d{2})/.exec(ymd);
   if (!m) return null;
   return { year: Number(m[1]), month: Number(m[2]) };
+}
+
+function monthToYmd(ref: MonthRef): string {
+  return `${ref.year}-${String(ref.month).padStart(2, "0")}-01`;
+}
+
+function addMonths(ref: MonthRef, n: number): MonthRef {
+  const total = ref.year * 12 + (ref.month - 1) + n;
+  return { year: Math.floor(total / 12), month: (total % 12) + 1 };
 }
 
 /** Cap on how many months a single event may enqueue for one worker. */
@@ -193,6 +204,76 @@ function afterCommit(fn: () => void): void {
 }
 
 // ---------------------------------------------------------------------------
+// Hours-impact horizon: several eligibility rules read EARLIER months' hours
+// (GBHET Legal checks the month `monthsOffset` prior, BAO Threshold the month
+// 3 prior, BAO Buildup walks back from `lagMonths` prior), so a change to
+// month M's hours can flip eligibility for months after M. Each hours-reading
+// plugin reports its own forward impact from its config
+// (EligibilityPlugin.hoursForwardImpactMonths); the horizon is the maximum
+// across the configured trust-eligibility rules whose plugin's required
+// component is enabled (matching the executor, the rules' `enabled` flag is
+// not consulted). Capped at MAX_SPAN_MONTHS - 1 so the inclusive span
+// (hours month + horizon later months) never exceeds MAX_SPAN_MONTHS —
+// otherwise the cap in monthsInRange would drop the edited hours month
+// itself. Cached briefly, falling back to the capped conservative maximum
+// when resolution fails.
+// ---------------------------------------------------------------------------
+
+const HORIZON_CACHE_MS = 60_000;
+let horizonCache: { value: number; at: number } | null = null;
+
+async function resolveHoursImpactHorizon(): Promise<number> {
+  const nowMs = Date.now();
+  if (horizonCache && nowMs - horizonCache.at < HORIZON_CACHE_MS) {
+    return horizonCache.value;
+  }
+  try {
+    const rows = await storage.pluginConfigs.search("trust-eligibility", {});
+    let horizon = 0;
+    for (const row of rows) {
+      const plugin = eligibilityPluginRegistry.get(row.config.pluginId);
+      if (!plugin) continue;
+      const required = plugin.metadata.requiredComponent;
+      if (required && !isComponentEnabledSync(required)) continue;
+      const data = (row.config.data ?? {}) as BaseEligibilityConfig;
+      const impact = plugin.hoursForwardImpactMonths(data);
+      if (Number.isFinite(impact) && impact > horizon) horizon = impact;
+    }
+    horizon = Math.min(horizon, MAX_SPAN_MONTHS - 1);
+    horizonCache = { value: horizon, at: nowMs };
+    return horizon;
+  } catch (err) {
+    logger.error(
+      "Failed to resolve hours-impact horizon; using conservative maximum",
+      {
+        service: SERVICE_NAME,
+        error: err instanceof Error ? err.message : String(err),
+      },
+    );
+    // Not cached: retry resolution on the next flush.
+    return MAX_SPAN_MONTHS - 1;
+  }
+}
+
+/**
+ * The months a change to `hoursMonth`'s hours can affect: the month itself
+ * plus every later month within the resolved horizon, clamped to the current
+ * month (future months have no data yet) and capped at MAX_SPAN_MONTHS
+ * keeping the most recent. A future hours month keeps the pre-existing
+ * behavior of scanning just that month.
+ */
+async function affectedMonthsForHours(hoursMonth: MonthRef): Promise<MonthRef[]> {
+  if (isFutureMonth(hoursMonth, currentMonth())) {
+    return [hoursMonth];
+  }
+  const horizon = await resolveHoursImpactHorizon();
+  return monthsInRange(
+    monthToYmd(hoursMonth),
+    monthToYmd(addMonths(hoursMonth, horizon)),
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Hours buffering: many hours rows typically arrive in one import. Buffer per
 // employer/month for a few seconds; a large batch becomes one employer-scoped
 // run, a trickle becomes per-worker entries.
@@ -230,26 +311,34 @@ async function flushHoursBucket(
   if (!bucket || bucket.workerIds.size === 0) return;
 
   try {
+    // The hours month itself plus the later months whose eligibility rules
+    // read it (e.g. correcting April's hours changes July's eligibility).
+    const months = await affectedMonthsForHours({ month, year });
+
     if (bucket.workerIds.size >= BULK_WORKER_THRESHOLD) {
-      const result = await enqueueMonthScan(
-        storage,
-        month,
-        year,
-        { type: "employer", employerId },
-        "auto_hours_bulk",
-      );
-      logger.info("Auto-enqueued employer-scoped WMB rescan after bulk hours change", {
-        service: SERVICE_NAME,
-        employerId,
-        month,
-        year,
-        distinctWorkers: bucket.workerIds.size,
-        queuedCount: result.queuedCount,
-      });
+      for (const ref of months) {
+        const result = await enqueueMonthScan(
+          storage,
+          ref.month,
+          ref.year,
+          { type: "employer", employerId },
+          "auto_hours_bulk",
+        );
+        logger.info("Auto-enqueued employer-scoped WMB rescan after bulk hours change", {
+          service: SERVICE_NAME,
+          employerId,
+          month: ref.month,
+          year: ref.year,
+          hoursMonth: month,
+          hoursYear: year,
+          distinctWorkers: bucket.workerIds.size,
+          queuedCount: result.queuedCount,
+        });
+      }
       pokeDrainer();
     } else {
       for (const workerId of bucket.workerIds) {
-        await enqueueWorkerMonths(workerId, [{ month, year }], "hours_saved");
+        await enqueueWorkerMonths(workerId, months, "hours_saved");
       }
     }
   } catch (err) {
@@ -367,7 +456,7 @@ export function initWmbAutoRescan(): void {
   handlerIds.push(
     eventBus.on({
       name: "wmb-auto-rescan-hours",
-      description: "Re-scans worker benefits when worker hours change (debounced; bulk imports collapse to an employer-scoped run).",
+      description: "Re-scans worker benefits when worker hours change — the hours month plus the later months whose eligibility rules read it (debounced; bulk imports collapse to employer-scoped runs).",
       event: EventType.HOURS_SAVED,
       handler: handleHoursSaved,
     }),

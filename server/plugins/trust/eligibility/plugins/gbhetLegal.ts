@@ -38,6 +38,14 @@ class GbhetLegalPlugin extends EligibilityPlugin<GbhetLegalConfig> {
     },
   };
 
+  /**
+   * This rule reads the hours of the month `monthsOffset` months prior to the
+   * evaluated month, so an hours change in month M affects month M+monthsOffset.
+   */
+  hoursForwardImpactMonths(config: GbhetLegalConfig): number {
+    return config.monthsOffset ?? 4;
+  }
+
   async evaluate(
     context: EligibilityContext,
     config: GbhetLegalConfig

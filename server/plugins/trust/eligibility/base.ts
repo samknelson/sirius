@@ -39,4 +39,20 @@ export abstract class EligibilityPlugin<TConfig extends BaseEligibilityConfig = 
   appliesToScanType(config: BaseEligibilityConfig, scanType: "start" | "continue"): boolean {
     return config.appliesTo.includes(scanType);
   }
+
+  /**
+   * How many months AFTER a given hours month this rule's outcome can still
+   * depend on it, derived from this rule's configuration. For example, a rule
+   * that reads hours N months prior to the evaluated month returns N, because
+   * an hours change in month M can flip eligibility for month M+N. Plugins
+   * that never read worker hours keep the default of 0.
+   *
+   * Consumed by the WMB auto-rescan service to decide which later months to
+   * re-queue after an hours edit. Over-reporting is safe (extra rescans);
+   * under-reporting silently misses rescans — when a bound is uncertain,
+   * report the conservative (larger) value.
+   */
+  hoursForwardImpactMonths(_config: TConfig): number {
+    return 0;
+  }
 }
