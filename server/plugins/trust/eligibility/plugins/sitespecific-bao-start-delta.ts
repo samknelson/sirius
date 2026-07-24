@@ -7,10 +7,7 @@ import {
 } from "../types";
 import { registerEligibilityPlugin } from "../registry";
 import { storage } from "../../../../storage/database";
-import { createUnifiedOptionsStorage } from "../../../../storage/unified-options";
 import { toOrdinal, measureDistance, getPrimaryCoords } from "./bao-shared";
-
-const unifiedOptionsStorage = createUnifiedOptionsStorage();
 
 const DEFAULT_ALTERNATE_MONTHS = 24;
 
@@ -19,11 +16,11 @@ const DEFAULT_ALTERNATE_MONTHS = 24;
  * only enforced when fully configured.
  */
 interface BaoStartDeltaConfig extends BaseEligibilityConfig {
-  priorDelta?: {
-    benefitTypeId?: string;
+  priorBenefits?: {
+    benefitIds?: string[];
   };
-  alternateDental?: {
-    benefitTypeIds?: string[];
+  continuousBenefits?: {
+    benefitIds?: string[];
     months?: number;
   };
   geographic?: {
@@ -34,9 +31,9 @@ interface BaoStartDeltaConfig extends BaseEligibilityConfig {
 
 /** Flattened, shape-agnostic view of the config used by validate/evaluate. */
 interface NormalizedConfig {
-  deltaBenefitTypeId?: string;
-  alternateBenefitTypeIds?: string[];
-  alternateMonths?: number;
+  priorBenefitIds?: string[];
+  continuousBenefitIds?: string[];
+  continuousMonths?: number;
   distanceMiles?: number;
   facilityIds?: string[];
 }
@@ -44,25 +41,25 @@ interface NormalizedConfig {
 function normalizeConfig(config: unknown): NormalizedConfig {
   const c = (config ?? {}) as BaoStartDeltaConfig;
   return {
-    deltaBenefitTypeId: c.priorDelta?.benefitTypeId,
-    alternateBenefitTypeIds: c.alternateDental?.benefitTypeIds,
-    alternateMonths: c.alternateDental?.months,
+    priorBenefitIds: c.priorBenefits?.benefitIds,
+    continuousBenefitIds: c.continuousBenefits?.benefitIds,
+    continuousMonths: c.continuousBenefits?.months,
     distanceMiles: c.geographic?.distanceMiles,
     facilityIds: c.geographic?.facilityIds,
   };
 }
 
-function isPriorDeltaConfigured(n: NormalizedConfig): boolean {
-  return typeof n.deltaBenefitTypeId === "string" && n.deltaBenefitTypeId.length > 0;
+function isPriorConfigured(n: NormalizedConfig): boolean {
+  return Array.isArray(n.priorBenefitIds) && n.priorBenefitIds.length > 0;
 }
 
-function isAlternateConfigured(n: NormalizedConfig): boolean {
+function isContinuousConfigured(n: NormalizedConfig): boolean {
   return (
-    Array.isArray(n.alternateBenefitTypeIds) &&
-    n.alternateBenefitTypeIds.length > 0 &&
-    typeof n.alternateMonths === "number" &&
-    Number.isInteger(n.alternateMonths) &&
-    n.alternateMonths >= 1
+    Array.isArray(n.continuousBenefitIds) &&
+    n.continuousBenefitIds.length > 0 &&
+    typeof n.continuousMonths === "number" &&
+    Number.isInteger(n.continuousMonths) &&
+    n.continuousMonths >= 1
   );
 }
 
@@ -89,7 +86,7 @@ function monthLabel(ordinal: number): string {
 interface BenefitHistoryRow {
   month: number;
   year: number;
-  benefit?: { benefitType?: string | null } | null;
+  benefitId?: string | null;
 }
 
 class BaoStartDeltaPlugin extends EligibilityPlugin<BaoStartDeltaConfig> {
@@ -98,49 +95,53 @@ class BaoStartDeltaPlugin extends EligibilityPlugin<BaoStartDeltaConfig> {
     name: "BAO - Start Delta",
     description:
       "Trustee-approved Delta Dental election rule. A subscriber is eligible if they meet ANY ONE of the following criteria (each is checked only when configured):\n" +
-      "1. Prior Delta coverage — the subscriber held any benefit of the chosen Delta benefit type in at least ONE month before the evaluated date (even a single month qualifies, at this and all subsequent open enrollments).\n" +
-      "2. Continuous alternate dental — the subscriber held a benefit of ANY of the chosen alternate dental types (e.g. Liberty, UHDC) in EVERY one of the preceding months (default 24) immediately before the evaluated date.\n" +
+      "1. Prior coverage — the subscriber held ANY of the selected benefits in at least ONE month before the evaluated date (even a single month qualifies, at this and all subsequent open enrollments).\n" +
+      "2. Continuous coverage — the subscriber held ANY of the selected benefits in EVERY one of the preceding months (default 24) immediately before the evaluated date.\n" +
       "3. Outside the dental service area — the subscriber's primary address is MORE than the chosen distance from EVERY selected site (same geographic test as the Healthnet rule; driving distance preferred, straight-line fallback).\n" +
       "New enrollees inside the service area with no qualifying history are not eligible for Delta; they choose among the alternate dental plans instead.",
     requiredComponent: "sitespecific.bao",
     configSchema: {
       type: "object",
       properties: {
-        priorDelta: {
+        priorBenefits: {
           type: "object",
-          title: "Criterion 1 — Prior Delta coverage",
+          title: "Criterion 1 — Prior coverage of this benefit",
           description:
-            "Eligible if the worker held any benefit of the chosen Delta benefit type in at least one month before the evaluated date. Set the field to enable; leave unset to skip.",
+            "Eligible if the worker held ANY of the selected benefits in at least one month before the evaluated date. Select at least one benefit to enable; leave empty to skip.",
           properties: {
-            benefitTypeId: {
-              type: "string",
-              title: "Delta benefit type",
-              description: "Pick the benefit type that counts as Delta Dental.",
-              "x-options-resource": "trust-benefit-type",
-            },
-          },
-        },
-        alternateDental: {
-          type: "object",
-          title: "Criterion 2 — Continuous alternate dental coverage",
-          description:
-            "Eligible if the worker held any benefit of ANY of the chosen alternate dental types (Liberty, UHDC) in EVERY one of the preceding months (counting back from the evaluated date). Set both fields to enable; leave unset to skip.",
-          properties: {
-            benefitTypeIds: {
+            benefitIds: {
               type: "array",
-              title: "Alternate dental benefit types",
+              title: "Benefits",
               description:
-                "Pick the benefit types that count as alternate dental (e.g. Liberty, UHDC). Coverage under any of them counts toward the consecutive-month requirement.",
+                "Pick the benefit(s) that count (e.g. the Delta Dental benefits). Any single prior month with any of them qualifies.",
               items: {
                 type: "string",
               },
-              "x-options-resource": "trust-benefit-type",
+              "x-options-resource": "trust-benefit",
+            },
+          },
+        },
+        continuousBenefits: {
+          type: "object",
+          title: "Criterion 2 — Continuous preceding coverage of this benefit",
+          description:
+            "Eligible if the worker held ANY of the selected benefits in EVERY one of the preceding months (counting back from the evaluated date). Set both fields to enable; leave empty to skip.",
+          properties: {
+            benefitIds: {
+              type: "array",
+              title: "Benefits",
+              description:
+                "Pick the benefit(s) that count (e.g. the alternate dental benefits — Liberty, UHDC). Coverage under any of them counts toward the consecutive-month requirement.",
+              items: {
+                type: "string",
+              },
+              "x-options-resource": "trust-benefit",
             },
             months: {
               type: "integer",
               title: "Required preceding months",
               description:
-                "How many consecutive months immediately before the evaluated date must each have alternate dental coverage.",
+                "How many consecutive months immediately before the evaluated date must each have coverage under one of the selected benefits.",
               minimum: 1,
               default: DEFAULT_ALTERNATE_MONTHS,
             },
@@ -182,28 +183,27 @@ class BaoStartDeltaPlugin extends EligibilityPlugin<BaoStartDeltaConfig> {
 
     const n = normalizeConfig(config);
 
-    // Prior Delta: when configured, the chosen benefit type must exist.
-    if (isPriorDeltaConfigured(n)) {
-      const benefitType = await unifiedOptionsStorage.get(
-        "trust-benefit-type",
-        n.deltaBenefitTypeId!,
-      );
-      if (!benefitType) {
-        return {
-          valid: false,
-          errors: [`Prior Delta criterion: unknown benefit type (${n.deltaBenefitTypeId})`],
-        };
+    // Prior coverage: when configured, every chosen benefit must exist.
+    if (isPriorConfigured(n)) {
+      for (const id of n.priorBenefitIds!) {
+        const benefit = await storage.trustBenefits.getTrustBenefit(id);
+        if (!benefit) {
+          return {
+            valid: false,
+            errors: [`Prior coverage criterion: unknown benefit (${id})`],
+          };
+        }
       }
     }
 
-    // Alternate dental: when configured, every chosen benefit type must exist.
-    if (isAlternateConfigured(n)) {
-      for (const id of n.alternateBenefitTypeIds!) {
-        const benefitType = await unifiedOptionsStorage.get("trust-benefit-type", id);
-        if (!benefitType) {
+    // Continuous coverage: when configured, every chosen benefit must exist.
+    if (isContinuousConfigured(n)) {
+      for (const id of n.continuousBenefitIds!) {
+        const benefit = await storage.trustBenefits.getTrustBenefit(id);
+        if (!benefit) {
           return {
             valid: false,
-            errors: [`Alternate dental criterion: unknown benefit type (${id})`],
+            errors: [`Continuous coverage criterion: unknown benefit (${id})`],
           };
         }
       }
@@ -288,15 +288,15 @@ class BaoStartDeltaPlugin extends EligibilityPlugin<BaoStartDeltaConfig> {
   ): Promise<EligibilityResult> {
     const n = normalizeConfig(config);
 
-    const priorDelta = isPriorDeltaConfigured(n);
-    const alternate = isAlternateConfigured(n);
+    const prior = isPriorConfigured(n);
+    const continuous = isContinuousConfigured(n);
     const geographic = isGeographicConfigured(n);
 
-    if (!priorDelta && !alternate && !geographic) {
+    if (!prior && !continuous && !geographic) {
       return {
         eligible: false,
         reason:
-          "Not eligible — the rule has no criterion configured. Configure the Delta benefit type, the alternate dental types, and/or the service-area distance and sites.",
+          "Not eligible — the rule has no criterion configured. Configure the prior-coverage benefits, the continuous-coverage benefits, and/or the service-area distance and sites.",
       };
     }
 
@@ -310,41 +310,39 @@ class BaoStartDeltaPlugin extends EligibilityPlugin<BaoStartDeltaConfig> {
     )) as BenefitHistoryRow[];
     const asOfOrdinal = toOrdinal(context.asOfYear, context.asOfMonth);
 
-    // Criterion 1 — Prior Delta coverage: ANY month strictly before the
-    // evaluated date with a benefit of the Delta type.
-    if (priorDelta) {
-      const deltaOrdinals = rows
-        .filter((r) => r.benefit?.benefitType === n.deltaBenefitTypeId)
+    // Criterion 1 — Prior coverage: ANY month strictly before the
+    // evaluated date with any of the selected benefits.
+    if (prior) {
+      const priorSet = new Set(n.priorBenefitIds!);
+      const priorOrdinals = rows
+        .filter((r) => typeof r.benefitId === "string" && priorSet.has(r.benefitId))
         .map((r) => toOrdinal(r.year, r.month))
         .filter((ord) => ord < asOfOrdinal);
-      if (deltaOrdinals.length > 0) {
-        const earliest = Math.min(...deltaOrdinals);
-        const latest = Math.max(...deltaOrdinals);
+      if (priorOrdinals.length > 0) {
+        const earliest = Math.min(...priorOrdinals);
+        const latest = Math.max(...priorOrdinals);
         return {
           eligible: true,
-          reason: `Eligible (prior Delta coverage): worker held the Delta benefit type in ${deltaOrdinals.length} prior ${deltaOrdinals.length === 1 ? "month" : "months"} (${monthLabel(earliest)}${earliest === latest ? "" : ` → ${monthLabel(latest)}`}), before ${monthLabel(asOfOrdinal)} — any prior Delta month qualifies at this and all subsequent open enrollments`,
+          reason: `Eligible (prior coverage): worker held one of the selected benefits in ${priorOrdinals.length} prior ${priorOrdinals.length === 1 ? "month" : "months"} (${monthLabel(earliest)}${earliest === latest ? "" : ` → ${monthLabel(latest)}`}), before ${monthLabel(asOfOrdinal)} — any prior month qualifies at this and all subsequent open enrollments`,
         };
       }
       failures.push(
-        `Prior Delta coverage: worker has never held the Delta benefit type in any month before ${monthLabel(asOfOrdinal)}`,
+        `Prior coverage: worker has never held any of the selected benefits in any month before ${monthLabel(asOfOrdinal)}`,
       );
     }
 
-    // Criterion 2 — Continuous alternate dental across the preceding window.
-    if (alternate) {
-      const typeSet = new Set(n.alternateBenefitTypeIds!);
+    // Criterion 2 — Continuous coverage across the preceding window.
+    if (continuous) {
+      const continuousSet = new Set(n.continuousBenefitIds!);
       const coveredOrdinals = new Set(
         rows
-          .filter((r) => {
-            const t = r.benefit?.benefitType;
-            return typeof t === "string" && typeSet.has(t);
-          })
+          .filter((r) => typeof r.benefitId === "string" && continuousSet.has(r.benefitId))
           .map((r) => toOrdinal(r.year, r.month)),
       );
 
       // Window: the N consecutive months immediately preceding the as-of
       // month (the as-of month itself is excluded).
-      const windowStart = asOfOrdinal - n.alternateMonths!; // inclusive
+      const windowStart = asOfOrdinal - n.continuousMonths!; // inclusive
       const windowEnd = asOfOrdinal - 1; // inclusive
 
       const missing: number[] = [];
@@ -355,14 +353,14 @@ class BaoStartDeltaPlugin extends EligibilityPlugin<BaoStartDeltaConfig> {
       if (missing.length === 0) {
         return {
           eligible: true,
-          reason: `Eligible (continuous alternate dental): worker held an alternate dental benefit type (Liberty/UHDC) in every one of the ${n.alternateMonths} months preceding ${monthLabel(asOfOrdinal)} (${monthLabel(windowStart)} → ${monthLabel(windowEnd)})`,
+          reason: `Eligible (continuous coverage): worker held one of the selected benefits in every one of the ${n.continuousMonths} months preceding ${monthLabel(asOfOrdinal)} (${monthLabel(windowStart)} → ${monthLabel(windowEnd)})`,
         };
       }
 
       const preview = missing.slice(0, 6).map(monthLabel).join(", ");
       const suffix = missing.length > 6 ? `, … (+${missing.length - 6} more)` : "";
       failures.push(
-        `Continuous alternate dental: ${missing.length} of the ${n.alternateMonths} preceding months had no alternate dental coverage (missing: ${preview}${suffix})`,
+        `Continuous coverage: ${missing.length} of the ${n.continuousMonths} preceding months had none of the selected benefits (missing: ${preview}${suffix})`,
       );
     }
 
