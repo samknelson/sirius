@@ -76,6 +76,58 @@ export function createWorkerHoursStorage(
     }
   }
 
+  /**
+   * Derive the worker's current home employer from hours history: the first
+   * employer (by employer-id ordering) whose latest hours row is flagged
+   * home — the exact derivation `getCurrentEmployment` uses. Null when no
+   * latest row is flagged home.
+   */
+  async function deriveHomeEmployerId(workerId: string): Promise<string | null> {
+    const client = getClient();
+    const result = await client.execute(sql`
+      SELECT DISTINCT ON (employer_id)
+        employer_id,
+        home
+      FROM worker_hours
+      WHERE worker_id = ${workerId}
+      ORDER BY employer_id, year DESC, month DESC, day DESC
+    `);
+    const rows = result.rows as Array<{ employer_id: string; home: boolean | null }>;
+    return rows.find(r => r.home === true)?.employer_id ?? null;
+  }
+
+  function monthYmd(year: number, month: number): string {
+    return `${year}-${String(month).padStart(2, "0")}-01`;
+  }
+
+  /**
+   * Emit WORKER_EMPLOYMENT_SAVED when a mutation changed the worker's derived
+   * home employer. The home employer determines which policy scans the worker
+   * when they have no active election, so listeners (WMB auto-rescan) react
+   * by re-queueing the worker. Fire-and-forget like HOURS_SAVED; listeners
+   * defer their side effects to after commit.
+   */
+  function emitEmploymentSavedIfChanged(
+    workerId: string,
+    previousHomeEmployerId: string | null,
+    newHomeEmployerId: string | null,
+    effectiveYmd: string | null,
+  ): void {
+    if (previousHomeEmployerId === newHomeEmployerId) return;
+    eventBus.emit(EventType.WORKER_EMPLOYMENT_SAVED, {
+      workerId,
+      previousHomeEmployerId,
+      newHomeEmployerId,
+      effectiveYmd,
+    }).catch(err => {
+      logger.error("Failed to emit WORKER_EMPLOYMENT_SAVED event", {
+        service: "worker-hours-storage",
+        workerId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
+  }
+
   const storage: WorkerHoursStorage = {
     async getDistinctWorkerCountsByEmployer(): Promise<EmployerWorkerCount[]> {
       const client = getClient();
@@ -378,6 +430,7 @@ export function createWorkerHoursStorage(
     async createWorkerHours(data: { workerId: string; month: number; year: number; day: number; employerId: string; employmentStatusId: string; hours: number | null; home?: boolean }): Promise<WorkerHoursResult> {
       validate.validateOrThrow(data);
       const client = getClient();
+      const preHomeEmployerId = await deriveHomeEmployerId(data.workerId);
       const [savedHours] = await client
         .insert(workerHours)
         .values(data)
@@ -424,6 +477,15 @@ export function createWorkerHoursStorage(
         }
       }
 
+      if (savedHours) {
+        emitEmploymentSavedIfChanged(
+          savedHours.workerId,
+          preHomeEmployerId,
+          await deriveHomeEmployerId(savedHours.workerId),
+          monthYmd(savedHours.year, savedHours.month),
+        );
+      }
+
       await notifyWorkerDataChanged(savedHours.workerId);
       return { data: savedHours, notifications };
     },
@@ -431,6 +493,13 @@ export function createWorkerHoursStorage(
     async updateWorkerHours(id: string, data: { year?: number; month?: number; day?: number; employerId?: string; employmentStatusId?: string; hours?: number | null; home?: boolean }): Promise<WorkerHoursResult | undefined> {
       validate.validateOrThrow(data);
       const client = getClient();
+      // Pre-state for home-employer change detection: the row's worker and
+      // month before the update, plus the worker's derived home employer.
+      const [before] = await client
+        .select({ workerId: workerHours.workerId, year: workerHours.year, month: workerHours.month })
+        .from(workerHours)
+        .where(eq(workerHours.id, id));
+      const preHomeEmployerId = before ? await deriveHomeEmployerId(before.workerId) : null;
       const [updated] = await client
         .update(workerHours)
         .set(data)
@@ -480,12 +549,32 @@ export function createWorkerHoursStorage(
         });
       }
 
+      // Home-employer change detection: the effective date is the earlier of
+      // the row's old and new months, so listeners rescan every affected period.
+      {
+        const oldYmd = before ? monthYmd(before.year, before.month) : null;
+        const newYmd = monthYmd(updated.year, updated.month);
+        emitEmploymentSavedIfChanged(
+          updated.workerId,
+          preHomeEmployerId,
+          await deriveHomeEmployerId(updated.workerId),
+          oldYmd && oldYmd < newYmd ? oldYmd : newYmd,
+        );
+      }
+
       await notifyWorkerDataChanged(updated.workerId);
       return { data: updated, notifications };
     },
 
     async deleteWorkerHours(id: string): Promise<WorkerHoursDeleteResult> {
       const client = getClient();
+      // Pre-state for home-employer change detection: derive the worker's
+      // home employer before the row disappears.
+      const [before] = await client
+        .select({ workerId: workerHours.workerId })
+        .from(workerHours)
+        .where(eq(workerHours.id, id));
+      const preHomeEmployerId = before ? await deriveHomeEmployerId(before.workerId) : null;
       const result = await client
         .delete(workerHours)
         .where(eq(workerHours.id, id))
@@ -531,6 +620,13 @@ export function createWorkerHoursStorage(
             error: error instanceof Error ? error.message : String(error),
           });
         }
+        emitEmploymentSavedIfChanged(
+          deleted.workerId,
+          preHomeEmployerId,
+          await deriveHomeEmployerId(deleted.workerId),
+          monthYmd(deleted.year, deleted.month),
+        );
+
         await notifyWorkerDataChanged(deleted.workerId);
       }
       
@@ -539,6 +635,7 @@ export function createWorkerHoursStorage(
 
     async upsertWorkerHours(data: { workerId: string; month: number; year: number; employerId: string; employmentStatusId: string; hours: number | null; home?: boolean; jobTitle?: string | null }): Promise<WorkerHoursResult> {
       const client = getClient();
+      const preHomeEmployerId = await deriveHomeEmployerId(data.workerId);
       const setFields: Record<string, unknown> = {
         employmentStatusId: data.employmentStatusId,
         hours: data.hours,
@@ -597,6 +694,15 @@ export function createWorkerHoursStorage(
             error: error instanceof Error ? error.message : String(error),
           });
         }
+      }
+
+      if (savedHours) {
+        emitEmploymentSavedIfChanged(
+          savedHours.workerId,
+          preHomeEmployerId,
+          await deriveHomeEmployerId(savedHours.workerId),
+          monthYmd(savedHours.year, savedHours.month),
+        );
       }
 
       await notifyWorkerDataChanged(savedHours.workerId);

@@ -3,6 +3,8 @@ import { getClient } from '../transaction-context';
 import { employers, type Employer, type InsertEmployer } from "@shared/schema";
 import { eq, sql, inArray } from "drizzle-orm";
 import { defineLoggingConfig, type StorageLoggingConfig } from "../middleware/logging";
+import { eventBus, EventType } from "../../services/event-bus";
+import { storageLogger as logger } from "../../logger";
 
 /**
  * Stub validator - add validation logic here when needed
@@ -110,11 +112,42 @@ export function createEmployerStorage(): EmployerStorage {
       validate.validateOrThrow(employer);
       const client = getClient();
       try {
+        // Pre-state for industry-change detection: only read it when the
+        // patch actually carries an industry assignment.
+        let previousIndustryId: string | null = null;
+        const industryTouched = Object.prototype.hasOwnProperty.call(employer, "industryId");
+        if (industryTouched) {
+          const [before] = await client
+            .select({ industryId: employers.industryId })
+            .from(employers)
+            .where(eq(employers.id, id));
+          previousIndustryId = before?.industryId ?? null;
+        }
         const [updatedEmployer] = await client
           .update(employers)
           .set(employer)
           .where(eq(employers.id, id))
           .returning();
+        if (updatedEmployer && industryTouched) {
+          const newIndustryId = updatedEmployer.industryId ?? null;
+          if (newIndustryId !== previousIndustryId) {
+            // BAO thresholds resolve through the employer's industry, so an
+            // industry change silently shifts eligibility math for every
+            // worker at this employer. Fire-and-forget; listeners defer
+            // their side effects to after commit.
+            eventBus.emit(EventType.EMPLOYER_INDUSTRY_SAVED, {
+              employerId: updatedEmployer.id,
+              previousIndustryId,
+              newIndustryId,
+            }).catch(err => {
+              logger.error("Failed to emit EMPLOYER_INDUSTRY_SAVED event", {
+                service: "employer-storage",
+                employerId: updatedEmployer.id,
+                error: err instanceof Error ? err.message : String(err),
+              });
+            });
+          }
+        }
         return updatedEmployer || undefined;
       } catch (error: any) {
         if (error.code === '23505') {

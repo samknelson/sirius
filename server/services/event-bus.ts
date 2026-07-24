@@ -44,6 +44,8 @@ export enum EventType {
   CARDCHECK_SAVED = "cardcheck.saved",
   BAO_COBRA_CASE_SAVED = "bao.cobra.case.saved",
   LEDGER_ENTRY_SAVED = "ledger.entry.saved",
+  WORKER_EMPLOYMENT_SAVED = "worker.employment.saved",
+  EMPLOYER_INDUSTRY_SAVED = "employer.industry.saved",
   GRIEVANCE_STATUS_HISTORY_SAVED = "grievance.status-history.saved",
   GRIEVANCE_TIMELINE_CHANGED = "grievance.timeline.changed",
   GRIEVANCE_ASSIGNMENT_SAVED = "grievance.assignment.saved",
@@ -353,6 +355,37 @@ export interface LedgerEntrySavedPayload {
 }
 
 /**
+ * Emitted after a worker-hours mutation commits ONLY when it changed the
+ * worker's derived home employer (the home employer is derived from hours
+ * history: the first employer, by employer-id ordering, whose latest hours
+ * row is flagged home). Covers a home employer being added (null → id),
+ * ended (id → null), or changed (id → different id). Ordinary hours edits
+ * that leave the home employer unchanged do NOT emit — HOURS_SAVED covers
+ * those. `effectiveYmd` is the first day of the earliest hours month touched
+ * by the mutation (old + new for month moves), so listeners can rescan every
+ * period from the change onward.
+ */
+export interface WorkerEmploymentSavedPayload {
+  workerId: string;
+  previousHomeEmployerId: string | null;
+  newHomeEmployerId: string | null;
+  effectiveYmd: string | null;
+}
+
+/**
+ * Emitted after an employer update commits ONLY when the employer's industry
+ * assignment actually changed (set, swapped, or cleared). BAO Buildup and
+ * BAO Threshold resolve their hour thresholds through the employer's
+ * industry, so this silently changes eligibility math for every worker at
+ * the employer; listeners react with an employer-scoped rescan.
+ */
+export interface EmployerIndustrySavedPayload {
+  employerId: string;
+  previousIndustryId: string | null;
+  newIndustryId: string | null;
+}
+
+/**
  * Emitted after an EDLS sheet create or update commits. Carries the sheet's
  * status before and after the write so a notifier can detect a genuine
  * arrival at a status: `previousStatus` is null on create (the sheet "arrives"
@@ -503,6 +536,8 @@ export interface EventPayloadMap {
   [EventType.CARDCHECK_SAVED]: CardcheckSavedPayload;
   [EventType.BAO_COBRA_CASE_SAVED]: BaoCobraCaseSavedPayload;
   [EventType.LEDGER_ENTRY_SAVED]: LedgerEntrySavedPayload;
+  [EventType.WORKER_EMPLOYMENT_SAVED]: WorkerEmploymentSavedPayload;
+  [EventType.EMPLOYER_INDUSTRY_SAVED]: EmployerIndustrySavedPayload;
   [EventType.GRIEVANCE_STATUS_HISTORY_SAVED]: GrievanceStatusHistorySavedPayload;
   [EventType.GRIEVANCE_TIMELINE_CHANGED]: GrievanceTimelineChangedPayload;
   [EventType.GRIEVANCE_ASSIGNMENT_SAVED]: GrievanceAssignmentSavedPayload;

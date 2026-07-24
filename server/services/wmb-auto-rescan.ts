@@ -13,6 +13,8 @@ import {
   type CardcheckSavedPayload,
   type BaoCobraCaseSavedPayload,
   type LedgerEntrySavedPayload,
+  type WorkerEmploymentSavedPayload,
+  type EmployerIndustrySavedPayload,
 } from "./event-bus";
 import { onAfterCommit } from "../storage/transaction-context";
 import { isWmbScanWrite } from "../middleware/request-context";
@@ -31,7 +33,11 @@ const SERVICE_NAME = "wmb-auto-rescan";
 const COMPONENT_ID = "trust.benefits";
 
 /** Trigger sources owned by this service; the drainer only claims these. */
-export const AUTO_TRIGGER_SOURCES = [...PER_WORKER_AUTO_TRIGGER_SOURCES, "auto_hours_bulk"];
+export const AUTO_TRIGGER_SOURCES = [
+  ...PER_WORKER_AUTO_TRIGGER_SOURCES,
+  "auto_hours_bulk",
+  "auto_industry_bulk",
+];
 
 /** How long we buffer hours events before deciding worker-vs-employer scope. */
 const HOURS_DEBOUNCE_MS = 5000;
@@ -561,6 +567,59 @@ async function handleContactEligibilitySaved(payload: ContactEligibilitySavedPay
   }
 }
 
+async function handleEmploymentSaved(payload: WorkerEmploymentSavedPayload): Promise<void> {
+  if (!componentActive()) return;
+  // Worker-hours storage emits from inside the mutation, so defer to after
+  // commit. The home employer determines which policy scans the worker when
+  // they have no active election, so rescan every month from the change's
+  // effective date through the current month (capped by monthsInRange).
+  afterCommit(() => {
+    const months = dedupeMonths([
+      ...(payload.effectiveYmd ? monthsInRange(payload.effectiveYmd, null) : []),
+      currentMonth(),
+    ]);
+    void enqueueWorkerMonths(payload.workerId, months, "employment_saved", "employment_saved");
+  });
+}
+
+async function handleEmployerIndustrySaved(payload: EmployerIndustrySavedPayload): Promise<void> {
+  if (!componentActive()) return;
+  // Employer storage emits from inside the update, so defer to after commit.
+  // BAO thresholds resolve through the employer's industry, so an industry
+  // change shifts eligibility for every worker at the employer — enqueue an
+  // employer-scoped rescan of the current month (mirrors auto_hours_bulk).
+  afterCommit(() => {
+    void (async () => {
+      try {
+        const ref = currentMonth();
+        const result = await enqueueMonthScan(
+          storage,
+          ref.month,
+          ref.year,
+          { type: "employer", employerId: payload.employerId },
+          "auto_industry_bulk",
+        );
+        logger.info("Auto-enqueued employer-scoped WMB rescan after industry change", {
+          service: SERVICE_NAME,
+          employerId: payload.employerId,
+          previousIndustryId: payload.previousIndustryId,
+          newIndustryId: payload.newIndustryId,
+          month: ref.month,
+          year: ref.year,
+          queuedCount: result.queuedCount,
+        });
+        pokeDrainer();
+      } catch (err) {
+        logger.error("Failed to enqueue WMB rescan after employer industry change", {
+          service: SERVICE_NAME,
+          employerId: payload.employerId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    })();
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Init / shutdown
 // ---------------------------------------------------------------------------
@@ -637,6 +696,18 @@ export function initWmbAutoRescan(): void {
       description: "Re-scans a worker's benefits when a cardcheck is signed, revoked, or deleted (current month plus the cardcheck's signed month).",
       event: EventType.CARDCHECK_SAVED,
       handler: handleCardcheckSaved,
+    }),
+    eventBus.on({
+      name: "wmb-auto-rescan-employment",
+      description: "Re-scans a worker's benefits when their derived home employer changes (effective month through the current month) — the home employer decides which policy scans the worker absent an election.",
+      event: EventType.WORKER_EMPLOYMENT_SAVED,
+      handler: handleEmploymentSaved,
+    }),
+    eventBus.on({
+      name: "wmb-auto-rescan-industry",
+      description: "Enqueues an employer-scoped rescan of the current month when an employer's industry assignment changes — BAO thresholds resolve through the industry.",
+      event: EventType.EMPLOYER_INDUSTRY_SAVED,
+      handler: handleEmployerIndustrySaved,
     }),
     eventBus.on({
       name: "wmb-auto-rescan-cobra-case",

@@ -19,6 +19,7 @@ export const PER_WORKER_AUTO_TRIGGER_SOURCES = [
   "cardcheck_saved",
   "cobra_case_saved",
   "ledger_entry_saved",
+  "employment_saved",
 ];
 
 export interface QueueProcessorOptions {
