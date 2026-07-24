@@ -139,6 +139,7 @@ export function createWorkerDispatchStatusStorage(): WorkerDispatchStatusStorage
         statusId: created.id,
         workerId: created.workerId,
         status: created.status,
+        previousStatus: null,
       });
       
       return created;
@@ -147,6 +148,7 @@ export function createWorkerDispatchStatusStorage(): WorkerDispatchStatusStorage
     async update(id: string, status: Partial<InsertWorkerDispatchStatus>): Promise<WorkerDispatchStatus | undefined> {
       validate.validateOrThrow(id);
       const client = getClient();
+      const existing = await this.get(id);
       const [updated] = await client
         .update(workerDispatchStatus)
         .set(status)
@@ -158,6 +160,7 @@ export function createWorkerDispatchStatusStorage(): WorkerDispatchStatusStorage
           statusId: updated.id,
           workerId: updated.workerId,
           status: updated.status,
+          previousStatus: existing?.status ?? null,
         });
       }
       
@@ -188,6 +191,7 @@ export function createWorkerDispatchStatusStorage(): WorkerDispatchStatusStorage
         statusId: result.id,
         workerId: result.workerId,
         status: result.status,
+        previousStatus: existing?.status ?? null,
       });
       
       return result;

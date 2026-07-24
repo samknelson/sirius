@@ -121,6 +121,13 @@ export interface DispatchStatusSavedPayload {
   statusId: string;
   workerId: string;
   status: string;
+  /**
+   * The status value before this write, when known: null on create (no prior
+   * row), the pre-write value on update/upsert. Lets consumers (e.g. the
+   * dispatch-status notifier) skip saves that did not actually change the
+   * status. Absent on delete events.
+   */
+  previousStatus?: string | null;
   isDeleted?: boolean;
 }
 
