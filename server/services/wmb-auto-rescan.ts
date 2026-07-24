@@ -273,7 +273,14 @@ export async function affectedMonthsForHours(hoursMonth: MonthRef): Promise<Mont
   if (isFutureMonth(hoursMonth, currentMonth())) {
     return [hoursMonth];
   }
-  const horizon = await resolveHoursImpactHorizon();
+  // Cap the FORWARD months at MAX_SPAN_MONTHS - 1 so the total span
+  // (edited month + forward months) never exceeds MAX_SPAN_MONTHS.
+  // Otherwise monthsInRange's keep-most-recent truncation would drop the
+  // edited month itself, contradicting this function's contract.
+  const horizon = Math.min(
+    await resolveHoursImpactHorizon(),
+    MAX_SPAN_MONTHS - 1,
+  );
   return monthsInRange(
     monthToYmd(hoursMonth),
     monthToYmd(addMonths(hoursMonth, horizon)),

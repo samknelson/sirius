@@ -857,6 +857,13 @@ function GenericConfigDialog({
   const [envelope, setEnvelope] = useState<Record<string, string>>({});
   // Per-plugin field values, seeded from / persisted into the config's `data`.
   const [pluginData, setPluginData] = useState<Record<string, string>>({});
+  // Bumped after (re)seeding `settings` so the RJSF form remounts and
+  // initializes from the seeded values. RJSF v6 does not reliably re-sync
+  // custom `ui:field` components when the `formData` prop changes after
+  // mount, so seeding state in an effect AFTER the form mounted left saved
+  // selections (e.g. staff recipients) invisible on reopen. A key-based
+  // remount guarantees the form's initial formData is the saved data.
+  const [formSeedKey, setFormSeedKey] = useState(0);
 
   useEffect(() => {
     if (!open) return;
@@ -896,6 +903,7 @@ function GenericConfigDialog({
       setEnvelope(Object.fromEntries(envelopeFields.map((f) => [f.name, ""])));
       setPluginData(Object.fromEntries(pluginFields.map((f) => [f.name, ""])));
     }
+    setFormSeedKey((k) => k + 1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, config, plugin.id, pluginFields]);
 
@@ -1104,6 +1112,7 @@ function GenericConfigDialog({
 
           <div className="border-t pt-4">
             <SchemaForm
+              key={formSeedKey}
               schema={settingsSchema}
               uiSchema={settingsUiSchema}
               formData={settings}
