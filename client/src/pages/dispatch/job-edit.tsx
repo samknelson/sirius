@@ -29,7 +29,7 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Loader2, Save, X } from "lucide-react";
 import { Link } from "wouter";
-import { type Employer, type DispatchJobType, type JobTypeData, type OptionsSkill, dispatchJobStatusEnum, type DispatchJobStatus } from "@shared/schema";
+import { type Employer, type DispatchJobType, type JobTypeData, type OptionsSkill, type DispatchJobData, dispatchJobStatusEnum, type DispatchJobStatus } from "@shared/schema";
 import { DispatchJobLayout, useDispatchJobLayout } from "@/components/layouts/DispatchJobLayout";
 import { renderIcon } from "@/components/ui/icon-picker";
 
@@ -51,17 +51,15 @@ type FormData = {
   status: DispatchJobStatus;
 };
 
-interface JobData {
-  requiredSkills?: string[];
-}
-
 function DispatchJobEditContent() {
   const { job } = useDispatchJobLayout();
   const [, navigate] = useLocation();
   const { toast } = useToast();
   
-  const jobData = job.data as JobData | null;
+  const jobData = job.data as DispatchJobData | null;
   const [selectedSkills, setSelectedSkills] = useState<string[]>(jobData?.requiredSkills || []);
+  // Absent flag = allow EBA workers (default behavior).
+  const [allowEbaWorkers, setAllowEbaWorkers] = useState<boolean>(jobData?.allowEbaWorkers !== false);
 
   const { data: employers = [] } = useQuery<Employer[]>({
     queryKey: ["/api/employers"],
@@ -77,6 +75,10 @@ function DispatchJobEditContent() {
 
   const skillsComponentEnabled = componentConfigs.some(
     (c) => c.componentId === "worker.skills" && c.enabled
+  );
+
+  const ebaComponentEnabled = componentConfigs.some(
+    (c) => c.componentId === "dispatch.eba" && c.enabled
   );
 
   const { data: skills = [] } = useQuery<OptionsSkill[]>({
@@ -108,6 +110,7 @@ function DispatchJobEditContent() {
   const jobTypeData = selectedJobType?.data as JobTypeData | undefined;
   const minWorkers = jobTypeData?.minWorkers;
   const maxWorkers = jobTypeData?.maxWorkers;
+  const showAllowEbaField = ebaComponentEnabled && jobTypeData?.primary === "both";
   const isFixedWorkerCount = minWorkers !== undefined && maxWorkers !== undefined && minWorkers === maxWorkers;
 
   useEffect(() => {
@@ -119,10 +122,17 @@ function DispatchJobEditContent() {
   const updateMutation = useMutation({
     mutationFn: async (data: FormData) => {
       const workerCountNum = data.workerCount ? parseInt(data.workerCount, 10) : null;
-      const updatedJobData: JobData = {
+      const updatedJobData: DispatchJobData = {
         ...(jobData ?? {}),
         requiredSkills: selectedSkills.length > 0 ? selectedSkills : [],
       };
+      if (showAllowEbaField) {
+        updatedJobData.allowEbaWorkers = allowEbaWorkers;
+      } else {
+        // Field not applicable (component off or job type not "both") —
+        // drop any stale value instead of carrying it forward.
+        delete updatedJobData.allowEbaWorkers;
+      }
       const payRateVal = data.payRate && data.payRate.trim() !== "" ? data.payRate.trim() : null;
       return apiRequest("PUT", `/api/dispatch-jobs/${job.id}`, {
         ...data,
@@ -433,6 +443,26 @@ function DispatchJobEditContent() {
                 )}
               />
             </div>
+
+            {showAllowEbaField && (
+              <div className="flex items-start gap-3 p-3 border rounded-md bg-muted/30">
+                <Checkbox
+                  id="allow-eba-workers"
+                  checked={allowEbaWorkers}
+                  onCheckedChange={(checked) => setAllowEbaWorkers(checked === true)}
+                  data-testid="checkbox-allow-eba"
+                />
+                <div className="space-y-1">
+                  <label htmlFor="allow-eba-workers" className="text-sm font-medium cursor-pointer">
+                    Allow EBA Workers
+                  </label>
+                  <p className="text-sm text-muted-foreground">
+                    When unchecked, only workers with dispatch status Available are eligible —
+                    workers who are merely "Employed but Available" for the start date are excluded.
+                  </p>
+                </div>
+              </div>
+            )}
 
             {skillsComponentEnabled && skills.length > 0 && (
               <div className="space-y-3">

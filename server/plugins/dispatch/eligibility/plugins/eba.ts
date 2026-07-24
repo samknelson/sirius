@@ -2,6 +2,7 @@ import { registerDispatchEligPlugin } from "../registry";
 import { logger } from "../../../../logger";
 import { createDispatchJobStorage } from "../../../../storage/dispatch/jobs";
 import type { DispatchEligPlugin, EligibilityCondition, EligibilityQueryContext } from "../registry";
+import type { DispatchJobData } from "@shared/schema";
 
 const EBA_CATEGORY = "eba";
 const DISPSTATUS_CATEGORY = "dispstatus";
@@ -29,6 +30,18 @@ export const dispatchEbaPlugin: DispatchEligPlugin = {
         jobId: context.jobId,
       });
       return null;
+    }
+
+    // Per-job override: when the job explicitly disallows EBA workers,
+    // require dispatch status "Available" only (drop the EBA alternative).
+    // Absent flag = allow (preserves existing behavior for all jobs).
+    const jobData = (job.data ?? {}) as DispatchJobData;
+    if (jobData.allowEbaWorkers === false) {
+      return {
+        category: DISPSTATUS_CATEGORY,
+        type: "exists",
+        value: AVAILABLE_VALUE,
+      };
     }
 
     const startDate = String(job.startYmd).split(' ')[0].split('T')[0];

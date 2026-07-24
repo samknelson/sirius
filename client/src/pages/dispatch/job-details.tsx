@@ -10,7 +10,7 @@ import {
   type LucideIcon
 } from "lucide-react";
 import { renderIcon } from "@/components/ui/icon-picker";
-import type { OptionsSkill } from "@shared/schema";
+import type { OptionsSkill, JobTypeData, DispatchJobData } from "@shared/schema";
 
 interface DispatchStatusCounts {
   pending: number;
@@ -35,10 +35,6 @@ interface ComponentConfig {
   enabled: boolean;
 }
 
-interface JobData {
-  requiredSkills?: string[];
-}
-
 const iconMap: Record<string, LucideIcon> = {
   Briefcase, Truck, HardHat, Wrench, Clock, Calendar,
   ClipboardList, Package, MapPin, Users,
@@ -55,7 +51,7 @@ function formatTime12h(time: string): string {
 
 function DispatchJobDetailsContent() {
   const { job } = useDispatchJobLayout();
-  const jobData = job.data as JobData | null;
+  const jobData = job.data as DispatchJobData | null;
 
   const { data: componentConfigs = [] } = useQuery<ComponentConfig[]>({
     queryKey: ["/api/components/config"],
@@ -71,6 +67,14 @@ function DispatchJobDetailsContent() {
   });
 
   const requiredSkills = jobData?.requiredSkills || [];
+
+  const ebaComponentEnabled = componentConfigs.some(
+    (c) => c.componentId === "dispatch.eba" && c.enabled
+  );
+  const jobTypeData = job.jobType?.data as JobTypeData | null | undefined;
+  const showAllowEba = ebaComponentEnabled && jobTypeData?.primary === "both";
+  // Absent flag = allow (default behavior).
+  const allowEbaWorkers = jobData?.allowEbaWorkers !== false;
 
   const JobTypeIcon = job.jobType?.data && typeof job.jobType.data === 'object' && 'icon' in job.jobType.data
     ? iconMap[job.jobType.data.icon as string] || Briefcase
@@ -145,6 +149,24 @@ function DispatchJobDetailsContent() {
               <div className="flex items-center gap-2" data-testid="text-endtime">
                 <Clock className="h-4 w-4 text-muted-foreground" />
                 <p className="text-foreground">{formatTime12h(job.endTime)}</p>
+              </div>
+            </div>
+          )}
+          {showAllowEba && (
+            <div>
+              <h3 className="text-sm font-medium text-muted-foreground mb-1">Allow EBA Workers</h3>
+              <div data-testid="text-allow-eba">
+                {allowEbaWorkers ? (
+                  <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
+                    <CheckCircle className="h-4 w-4" />
+                    <span>Yes</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <XCircle className="h-4 w-4" />
+                    <span>No</span>
+                  </div>
+                )}
               </div>
             </div>
           )}
