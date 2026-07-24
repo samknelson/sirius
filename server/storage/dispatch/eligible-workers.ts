@@ -251,6 +251,13 @@ async function buildEligibleWorkersQuery(jobId: string, filters?: EligibleWorker
       }
 
       case "exists_or_exists": {
+        if (!condition.orCategory || !condition.orValue) {
+          throw new Error(
+            `Misconfigured exists_or_exists eligibility condition for category "${condition.category}": ` +
+            `orCategory and orValue are required (got orCategory=${JSON.stringify(condition.orCategory)}, orValue=${JSON.stringify(condition.orValue)}). ` +
+            `The plugin defining this condition must set both.`
+          );
+        }
         const primarySubquery = client
           .select({ one: sql`1` })
           .from(workerDispatchEligDenorm)
@@ -421,6 +428,13 @@ async function checkConditionForWorker(
     }
 
     case "exists_or_exists": {
+      if (!condition.orCategory || !condition.orValue) {
+        throw new Error(
+          `Misconfigured exists_or_exists eligibility condition for category "${condition.category}": ` +
+          `orCategory and orValue are required (got orCategory=${JSON.stringify(condition.orCategory)}, orValue=${JSON.stringify(condition.orValue)}). ` +
+          `The plugin defining this condition must set both.`
+        );
+      }
       if (entryValues.includes(condition.value)) {
         return { passed: true, explanation: `Has required ${condition.category} entry` };
       }
