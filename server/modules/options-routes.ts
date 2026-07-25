@@ -6,6 +6,45 @@ import { storage } from "../storage";
 import { requireComponent, isComponentEnabled } from "./components";
 import { getComponentById } from "../../shared/components";
 import { jobTypeBullpenEnum } from "@shared/schema";
+import { logger } from "../logger";
+
+/**
+ * Map a caught database error to a clear, user-facing message (or null if
+ * unrecognized). Logs the underlying error so 500s are diagnosable.
+ */
+function optionDbErrorMessage(error: any): { status: number; message: string } | null {
+  // Unique violation — name the offending field when the constraint tells us.
+  if (error?.code === "23505") {
+    const field = humanizeConstraintColumn(error);
+    return {
+      status: 400,
+      message: field
+        ? `An item with this ${field} already exists. ${field === "Sirius ID" ? "Sirius IDs must be unique." : "Please choose a different value."}`
+        : "An item with this value already exists",
+    };
+  }
+  // Not-null violation — name the missing column.
+  if (error?.code === "23502") {
+    const column = error?.column ? String(error.column) : null;
+    return {
+      status: 400,
+      message: column ? `${column.replace(/_/g, " ")} is required` : "A required field is missing",
+    };
+  }
+  // FK violation on insert/update — referenced record doesn't exist.
+  if (error?.code === "23503") {
+    return { status: 400, message: "A referenced record does not exist" };
+  }
+  return null;
+}
+
+function humanizeConstraintColumn(error: any): string | null {
+  const constraint = error?.constraint ? String(error.constraint) : "";
+  if (constraint.includes("sirius_id")) return "Sirius ID";
+  if (constraint.includes("name")) return "name";
+  if (constraint.includes("code")) return "code";
+  return null;
+}
 
 /**
  * Validate the bullpen fields inside a dispatch-job-type `data` payload
@@ -324,10 +363,17 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
       const item = await config.create(data);
       res.status(201).json(item);
     } catch (error: any) {
-      if (error.code === '23505') {
-        return res.status(400).json({ message: "An item with this value already exists" });
+      const mapped = optionDbErrorMessage(error);
+      if (mapped) {
+        return res.status(mapped.status).json({ message: mapped.message });
       }
-      res.status(500).json({ message: `Failed to create option` });
+      logger.error("Failed to create option", {
+        service: "options-routes",
+        type: req.params.type,
+        error: error?.message,
+        code: error?.code,
+      });
+      res.status(500).json({ message: `Failed to create option: ${error?.message ?? "unknown error"}` });
     }
   });
 
@@ -384,10 +430,18 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
       
       res.json(item);
     } catch (error: any) {
-      if (error.code === '23505') {
-        return res.status(400).json({ message: "An item with this value already exists" });
+      const mapped = optionDbErrorMessage(error);
+      if (mapped) {
+        return res.status(mapped.status).json({ message: mapped.message });
       }
-      res.status(500).json({ message: `Failed to update option` });
+      logger.error("Failed to update option", {
+        service: "options-routes",
+        type: req.params.type,
+        id: req.params.id,
+        error: error?.message,
+        code: error?.code,
+      });
+      res.status(500).json({ message: `Failed to update option: ${error?.message ?? "unknown error"}` });
     }
   });
 

@@ -447,7 +447,7 @@ const optionsMetadata: Record<OptionsTypeName, OptionsTableMetadata<any>> = {
     orderByColumn: "name" as const,
     loggingModule: "options.eventTypes",
     requiredFields: ["name"],
-    optionalFields: ["description", "data"],
+    optionalFields: ["description", "data", "siriusId", "category", "config"],
     supportsSequencing: false,
     fields: [
       { name: "name", label: "Name", inputType: "text", required: true, placeholder: "Event type name", showInTable: true, columnHeader: "Name" },

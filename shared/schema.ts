@@ -568,7 +568,7 @@ export const optionsCommTags = pgTable("options_comm_tags", {
 
 export const optionsEventType = pgTable("options_event_type", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  siriusId: varchar("sirius_id").notNull().unique(),
+  siriusId: varchar("sirius_id").unique(),
   name: text("name").notNull(),
   description: text("description"),
   category: varchar("category").notNull().default("public"),
