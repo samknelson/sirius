@@ -139,6 +139,8 @@ import { type BaoImmediateEligibilityStorage, createBaoImmediateEligibilityStora
 import { type BaoBeneficiariesStorage, createBaoBeneficiariesStorage, baoBeneficiariesLoggingConfig } from "./sitespecific/bao/beneficiaries";
 import { type WorkerBanStorage, createWorkerBanStorage, workerBanLoggingConfig } from "./worker-bans";
 import { type WorkerDispatchDncStorage, createWorkerDispatchDncStorage, workerDispatchDncLoggingConfig } from "./dispatch/worker-dnc";
+import { type WorkerDispatchDepartmentStorage, createWorkerDispatchDepartmentStorage, workerDispatchDepartmentLoggingConfig } from "./dispatch/worker-departments";
+import { type DispatchJobDepartmentStorage, createDispatchJobDepartmentStorage } from "./dispatch/job-departments";
 import { type WorkerSkillStorage, createWorkerSkillStorage, workerSkillLoggingConfig } from "./workers/skills";
 import { type WorkerTosStorage, createWorkerTosStorage, workerTosLoggingConfig } from "./workers/tos";
 import { type WorkerCertificationStorage, createWorkerCertificationStorage, workerCertificationLoggingConfig } from "./workers/certifications";
@@ -248,6 +250,8 @@ export interface IStorage {
   freemanCrewleads: FreemanCrewleadsStorage;
   workerBans: WorkerBanStorage;
   workerDispatchDnc: WorkerDispatchDncStorage;
+  workerDispatchDepartments: WorkerDispatchDepartmentStorage;
+  dispatchJobDepartments: DispatchJobDepartmentStorage;
   workerSkills: WorkerSkillStorage;
   workerTos: WorkerTosStorage;
   workerCertifications: WorkerCertificationStorage;
@@ -356,6 +360,8 @@ export class DatabaseStorage implements IStorage {
   freemanCrewleads: FreemanCrewleadsStorage;
   workerBans: WorkerBanStorage;
   workerDispatchDnc: WorkerDispatchDncStorage;
+  workerDispatchDepartments: WorkerDispatchDepartmentStorage;
+  dispatchJobDepartments: DispatchJobDepartmentStorage;
   workerSkills: WorkerSkillStorage;
   workerTos: WorkerTosStorage;
   workerCertifications: WorkerCertificationStorage;
@@ -576,6 +582,8 @@ export class DatabaseStorage implements IStorage {
     );
     this.workerBans = withStorageLogging(createWorkerBanStorage(), workerBanLoggingConfig);
     this.workerDispatchDnc = withStorageLogging(createWorkerDispatchDncStorage(), workerDispatchDncLoggingConfig);
+    this.workerDispatchDepartments = withStorageLogging(createWorkerDispatchDepartmentStorage(), workerDispatchDepartmentLoggingConfig);
+    this.dispatchJobDepartments = createDispatchJobDepartmentStorage();
     this.workerSkills = withStorageLogging(createWorkerSkillStorage(), workerSkillLoggingConfig);
     this.workerTos = withStorageLogging(createWorkerTosStorage(), workerTosLoggingConfig);
     this.workerCertifications = withStorageLogging(

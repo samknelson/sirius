@@ -43,6 +43,11 @@ interface ComponentConfig {
   enabled: boolean;
 }
 
+interface AvailableDepartment {
+  id: string;
+  name: string;
+}
+
 const formSchema = z.object({
   title: z.string().min(1, "Title is required"),
   description: z.string().optional(),
@@ -62,6 +67,7 @@ export default function DispatchJobNewPage() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
+  const [selectedDepartmentId, setSelectedDepartmentId] = useState<string>("");
 
   const { data: employers = [] } = useQuery<Employer[]>({
     queryKey: ["/api/employers"],
@@ -78,6 +84,15 @@ export default function DispatchJobNewPage() {
   const skillsComponentEnabled = componentConfigs.some(
     (c) => c.componentId === "worker.skills" && c.enabled,
   );
+
+  const departmentComponentEnabled = componentConfigs.some(
+    (c) => c.componentId === "dispatch.department" && c.enabled,
+  );
+
+  const { data: availableDepartments = [] } = useQuery<AvailableDepartment[]>({
+    queryKey: ["/api/dispatch-departments/available"],
+    enabled: departmentComponentEnabled,
+  });
 
   const { data: skills = [] } = useQuery<OptionsSkill[]>({
     queryKey: ["/api/options/skill"],
@@ -127,7 +142,20 @@ export default function DispatchJobNewPage() {
             : undefined,
       });
     },
-    onSuccess: (newJob) => {
+    onSuccess: async (newJob) => {
+      if (departmentComponentEnabled && selectedDepartmentId) {
+        try {
+          await apiRequest("PUT", `/api/dispatch-job-departments/job/${newJob.id}`, {
+            departmentId: selectedDepartmentId,
+          });
+        } catch (error) {
+          toast({
+            title: "Warning",
+            description: getApiErrorMessage(error, "The job was created but its department could not be saved."),
+            variant: "destructive",
+          });
+        }
+      }
       queryClient.invalidateQueries({ queryKey: ["/api/dispatch-jobs"] });
       toast({
         title: "Success",
@@ -259,6 +287,28 @@ export default function DispatchJobNewPage() {
                     </FormItem>
                   )}
                 />
+
+                {departmentComponentEnabled && (
+                  <FormItem>
+                    <FormLabel>Department</FormLabel>
+                    <Select
+                      value={selectedDepartmentId || "__none__"}
+                      onValueChange={(v) => setSelectedDepartmentId(v === "__none__" ? "" : v)}
+                    >
+                      <SelectTrigger data-testid="select-department">
+                        <SelectValue placeholder="No department" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">No department</SelectItem>
+                        {availableDepartments.map((department) => (
+                          <SelectItem key={department.id} value={department.id}>
+                            {department.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </FormItem>
+                )}
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

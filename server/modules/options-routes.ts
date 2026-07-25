@@ -46,6 +46,55 @@ function requireOptionTypeComponent() {
   };
 }
 
+/**
+ * Strip fields whose `requiredComponent` is disabled from a definition —
+ * removes them from `fields`, `schema.properties`, `schema.required`, and
+ * `uiSchema` so the client form and table never show them (e.g. the
+ * department "Available for dispatch?" flag when dispatch.department is off).
+ */
+async function filterDefinitionFieldsByComponent(definition: any): Promise<any> {
+  const gatedComponents: string[] = Array.from(new Set(
+    (definition.fields || [])
+      .map((f: any) => f.requiredComponent)
+      .filter((c: unknown): c is string => typeof c === 'string'),
+  ));
+  if (gatedComponents.length === 0) return definition;
+
+  const disabled = new Set<string>();
+  for (const componentId of gatedComponents) {
+    if (!(await isComponentEnabled(componentId))) {
+      disabled.add(componentId);
+    }
+  }
+  if (disabled.size === 0) return definition;
+
+  const removedNames = new Set<string>(
+    (definition.fields || [])
+      .filter((f: any) => f.requiredComponent && disabled.has(f.requiredComponent))
+      .map((f: any) => f.name),
+  );
+
+  const schema = definition.schema ? { ...definition.schema } : definition.schema;
+  if (schema?.properties) {
+    schema.properties = Object.fromEntries(
+      Object.entries(schema.properties).filter(([name]) => !removedNames.has(name)),
+    );
+    if (Array.isArray(schema.required)) {
+      schema.required = schema.required.filter((name: string) => !removedNames.has(name));
+    }
+  }
+  const uiSchema = definition.uiSchema
+    ? Object.fromEntries(Object.entries(definition.uiSchema).filter(([name]) => !removedNames.has(name)))
+    : definition.uiSchema;
+
+  return {
+    ...definition,
+    fields: (definition.fields || []).filter((f: any) => !removedNames.has(f.name)),
+    schema,
+    uiSchema,
+  };
+}
+
 export function registerConsolidatedOptionsRoutes(app: Express) {
   // GET /api/options - List all available options types
   app.get("/api/options", requireAccess('authenticated'), async (req: Request, res: Response) => {
@@ -61,7 +110,8 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
     try {
       const storage = getOptionsStorage();
       const definitions = storage.getAllDefinitions();
-      res.json(definitions);
+      const filtered = await Promise.all(definitions.map(filterDefinitionFieldsByComponent));
+      res.json(filtered);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch options definitions" });
     }
@@ -79,7 +129,7 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
         return res.status(404).json({ message: `Unknown options type: ${type}` });
       }
       
-      res.json(definition);
+      res.json(await filterDefinitionFieldsByComponent(definition));
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch options definition" });
     }

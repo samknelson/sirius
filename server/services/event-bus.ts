@@ -30,6 +30,7 @@ export enum EventType {
   DISPATCH_STATUS_SAVED = "dispatch.status.saved",
   DISPATCH_SAVED = "dispatch.saved",
   DISPATCH_FORE_SAVED = "dispatch.fore.saved",
+  DISPATCH_DEPARTMENT_SAVED = "dispatch.department.saved",
   WORKER_BAN_SAVED = "worker.ban.saved",
   WORKER_SKILL_SAVED = "worker.skill.saved",
   WORKER_WS_CHANGED = "worker.ws.changed",
@@ -138,6 +139,14 @@ export interface DispatchSavedPayload {
   jobId: string;
   status: string;
   previousStatus?: string;
+}
+
+export interface DispatchDepartmentSavedPayload {
+  entryId: string;
+  workerId: string;
+  departmentId: string;
+  preference: string;
+  isDeleted?: boolean;
 }
 
 export interface DispatchForeSavedPayload {
@@ -382,6 +391,7 @@ export interface EventPayloadMap {
   [EventType.DISPATCH_STATUS_SAVED]: DispatchStatusSavedPayload;
   [EventType.DISPATCH_SAVED]: DispatchSavedPayload;
   [EventType.DISPATCH_FORE_SAVED]: DispatchForeSavedPayload;
+  [EventType.DISPATCH_DEPARTMENT_SAVED]: DispatchDepartmentSavedPayload;
   [EventType.WORKER_BAN_SAVED]: WorkerBanSavedPayload;
   [EventType.WORKER_SKILL_SAVED]: WorkerSkillSavedPayload;
   [EventType.WORKER_WS_CHANGED]: WorkerWsChangedPayload;

@@ -34,6 +34,14 @@ function formatTime12h(time: string): string {
 }
 
 function AcceptedDispatchesSection({ workerId }: { workerId: string }) {
+  const { data: componentConfigs = [] } = useQuery<{ componentId: string; enabled: boolean }[]>({
+    queryKey: ["/api/components/config"],
+  });
+
+  const departmentComponentEnabled = componentConfigs.some(
+    (c) => c.componentId === "dispatch.department" && c.enabled,
+  );
+
   const { data: dispatches, isLoading } = useQuery<DispatchWithRelations[]>({
     queryKey: ["/api/dispatches/worker", workerId],
     queryFn: async () => {
@@ -48,6 +56,17 @@ function AcceptedDispatchesSection({ workerId }: { workerId: string }) {
   const accepted = (dispatches || [])
     .filter((d) => d.status === "accepted")
     .sort((a, b) => (a.isPrimary === b.isPrimary ? 0 : a.isPrimary ? -1 : 1));
+
+  const acceptedJobIdsKey = Array.from(new Set(accepted.map((d) => d.job?.id).filter(Boolean))).join(",");
+  const { data: jobDepartments = {} } = useQuery<Record<string, { departmentId: string; departmentName: string | null }>>({
+    queryKey: ["/api/dispatch-job-departments", { jobIds: acceptedJobIdsKey }],
+    queryFn: async () => {
+      const res = await fetch(`/api/dispatch-job-departments?jobIds=${encodeURIComponent(acceptedJobIdsKey)}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch job departments");
+      return res.json();
+    },
+    enabled: departmentComponentEnabled && acceptedJobIdsKey.length > 0,
+  });
 
   return (
     <Card>
@@ -122,6 +141,15 @@ function AcceptedDispatchesSection({ workerId }: { workerId: string }) {
                         {dispatch.job?.startTime ? formatTime12h(dispatch.job.startTime) : "—"}
                         {" – "}
                         {dispatch.job?.endTime ? formatTime12h(dispatch.job.endTime) : "—"}
+                      </span>
+                    </div>
+                  )}
+                  {departmentComponentEnabled && dispatch.job?.id && jobDepartments[dispatch.job.id]?.departmentName && (
+                    <div className="flex items-center gap-2">
+                      <Building2 className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-muted-foreground">Department:</span>
+                      <span data-testid={`text-dispatch-department-${dispatch.id}`}>
+                        {jobDepartments[dispatch.job.id]?.departmentName}
                       </span>
                     </div>
                   )}

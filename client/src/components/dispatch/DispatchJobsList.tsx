@@ -111,6 +111,25 @@ export function DispatchJobsList({
   });
 
   const jobs = result?.data || [];
+
+  const { data: componentConfigs = [] } = useQuery<{ componentId: string; enabled: boolean }[]>({
+    queryKey: ["/api/components/config"],
+  });
+
+  const departmentComponentEnabled = componentConfigs.some(
+    (c) => c.componentId === "dispatch.department" && c.enabled,
+  );
+
+  const jobIdsKey = jobs.map((j) => j.id).join(",");
+  const { data: jobDepartments = {} } = useQuery<Record<string, { departmentId: string; departmentName: string | null }>>({
+    queryKey: ["/api/dispatch-job-departments", { jobIds: jobIdsKey }],
+    queryFn: async () => {
+      const res = await fetch(`/api/dispatch-job-departments?jobIds=${encodeURIComponent(jobIdsKey)}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch job departments");
+      return res.json();
+    },
+    enabled: departmentComponentEnabled && jobIdsKey.length > 0,
+  });
   const total = result?.total || 0;
   const totalPages = Math.ceil(total / ITEMS_PER_PAGE);
 
@@ -266,6 +285,7 @@ export function DispatchJobsList({
                   <TableHead>Title</TableHead>
                   {showEmployerColumn && <TableHead>Employer</TableHead>}
                   <TableHead>Type</TableHead>
+                  {departmentComponentEnabled && <TableHead>Department</TableHead>}
                   <TableHead>Status</TableHead>
                   <TableHead>Running</TableHead>
                   <TableHead>Workers</TableHead>
@@ -302,6 +322,11 @@ export function DispatchJobsList({
                           </div>
                         ) : "—"}
                       </TableCell>
+                      {departmentComponentEnabled && (
+                        <TableCell data-testid={`text-department-${job.id}`}>
+                          {jobDepartments[job.id]?.departmentName || <span className="text-muted-foreground">—</span>}
+                        </TableCell>
+                      )}
                       <TableCell data-testid={`text-status-${job.id}`}>
                         <Badge 
                           variant="secondary"

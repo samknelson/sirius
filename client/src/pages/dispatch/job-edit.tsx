@@ -33,6 +33,11 @@ import { type Employer, type DispatchJobType, type JobTypeData, type OptionsSkil
 import { DispatchJobLayout, useDispatchJobLayout } from "@/components/layouts/DispatchJobLayout";
 import { renderIcon } from "@/components/ui/icon-picker";
 
+interface AvailableDepartment {
+  id: string;
+  name: string;
+}
+
 interface ComponentConfig {
   componentId: string;
   enabled: boolean;
@@ -80,6 +85,29 @@ function DispatchJobEditContent() {
   const ebaComponentEnabled = componentConfigs.some(
     (c) => c.componentId === "dispatch.eba" && c.enabled
   );
+
+  const departmentComponentEnabled = componentConfigs.some(
+    (c) => c.componentId === "dispatch.department" && c.enabled
+  );
+
+  const { data: availableDepartments = [] } = useQuery<AvailableDepartment[]>({
+    queryKey: ["/api/dispatch-departments/available"],
+    enabled: departmentComponentEnabled,
+  });
+
+  const { data: jobDepartment, isSuccess: jobDepartmentLoaded } = useQuery<{ departmentId: string } | null>({
+    queryKey: ["/api/dispatch-job-departments/job", job.id],
+    enabled: departmentComponentEnabled,
+  });
+
+  const [selectedDepartmentId, setSelectedDepartmentId] = useState<string>("");
+  const [departmentTouched, setDepartmentTouched] = useState(false);
+
+  useEffect(() => {
+    if (jobDepartmentLoaded && !departmentTouched) {
+      setSelectedDepartmentId(jobDepartment?.departmentId ?? "");
+    }
+  }, [jobDepartmentLoaded, jobDepartment, departmentTouched]);
 
   const { data: skills = [] } = useQuery<OptionsSkill[]>({
     queryKey: ["/api/options/skill"],
@@ -145,7 +173,21 @@ function DispatchJobEditContent() {
         data: updatedJobData,
       });
     },
-    onSuccess: () => {
+    onSuccess: async () => {
+      if (departmentComponentEnabled && departmentTouched) {
+        try {
+          await apiRequest("PUT", `/api/dispatch-job-departments/job/${job.id}`, {
+            departmentId: selectedDepartmentId || null,
+          });
+          queryClient.invalidateQueries({ queryKey: ["/api/dispatch-job-departments/job", job.id] });
+        } catch (error) {
+          toast({
+            title: "Warning",
+            description: getApiErrorMessage(error, "The job was updated but its department could not be saved."),
+            variant: "destructive",
+          });
+        }
+      }
       queryClient.invalidateQueries({ queryKey: ["/api/dispatch-jobs", job.id] });
       queryClient.invalidateQueries({ queryKey: ["/api/dispatch-jobs"] });
       toast({
@@ -292,6 +334,31 @@ function DispatchJobEditContent() {
                   </FormItem>
                 )}
               />
+
+              {departmentComponentEnabled && (
+                <FormItem>
+                  <FormLabel>Department</FormLabel>
+                  <Select
+                    value={selectedDepartmentId || "__none__"}
+                    onValueChange={(v) => {
+                      setDepartmentTouched(true);
+                      setSelectedDepartmentId(v === "__none__" ? "" : v);
+                    }}
+                  >
+                    <SelectTrigger data-testid="select-department">
+                      <SelectValue placeholder="No department" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">No department</SelectItem>
+                      {availableDepartments.map((department) => (
+                        <SelectItem key={department.id} value={department.id}>
+                          {department.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </FormItem>
+              )}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

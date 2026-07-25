@@ -45,6 +45,19 @@ export {
 } from "./schema/dispatch/fore-schema";
 
 export {
+  workerDispatchDepartment,
+  dispatchJobDepartment,
+  workerDispatchDepartmentPreferenceEnum,
+  insertWorkerDispatchDepartmentSchema,
+  insertDispatchJobDepartmentSchema,
+  type WorkerDispatchDepartment,
+  type InsertWorkerDispatchDepartment,
+  type DispatchJobDepartment,
+  type InsertDispatchJobDepartment,
+  type WorkerDispatchDepartmentPreference,
+} from "./schema/dispatch/department-schema";
+
+export {
   workerDispatchDnc,
   dispatchWorkerDncTypeEnum,
   insertWorkerDispatchDncSchema,

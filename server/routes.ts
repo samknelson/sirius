@@ -83,6 +83,7 @@ import { registerFacilityRoutes } from "./modules/facility/facilities";
 import { registerContractRoutes } from "./modules/contract/contract";
 import { registerDispatchesRoutes } from "./modules/dispatch/dispatches";
 import { registerDispatchForeRoutes } from "./modules/dispatch/fore";
+import { registerWorkerDispatchDepartmentRoutes } from "./modules/dispatch/worker-departments";
 import { registerWorkerDispatchStatusRoutes } from "./modules/dispatch/worker-status";
 import { registerWorkerDispatchDncRoutes } from "./modules/dispatch/worker-dnc";
 import { registerWorkerDispatchHfeRoutes } from "./modules/dispatch/worker-hfe";
@@ -1686,6 +1687,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Register dispatches routes
   registerDispatchesRoutes(app, requireAuth, requirePermission);
   registerDispatchForeRoutes(app);
+  registerWorkerDispatchDepartmentRoutes(app);
 
   // Register worker dispatch status routes (handles all access control internally)
   registerWorkerDispatchStatusRoutes(app, requireAuth, requireAccess);

@@ -77,6 +77,15 @@ function DispatchJobDetailsContent() {
     (c) => c.componentId === "dispatch.fore" && c.enabled
   );
 
+  const departmentComponentEnabled = componentConfigs.some(
+    (c) => c.componentId === "dispatch.department" && c.enabled
+  );
+
+  const { data: jobDepartment } = useQuery<{ departmentId: string; department?: { id: string; name: string } | null } | null>({
+    queryKey: ["/api/dispatch-job-departments/job", job.id],
+    enabled: departmentComponentEnabled,
+  });
+
   const { data: forepersons = [] } = useQuery<DispatchJobForeWithWorker[]>({
     queryKey: ["/api/dispatch-jobs", job.id, "fore"],
     enabled: foreComponentEnabled,
@@ -132,6 +141,14 @@ function DispatchJobDetailsContent() {
               <span className="text-foreground">{job.jobType?.name || "No type"}</span>
             </div>
           </div>
+          {departmentComponentEnabled && (
+            <div>
+              <h3 className="text-sm font-medium text-muted-foreground mb-1">Department</h3>
+              <p className="text-foreground" data-testid="text-department">
+                {jobDepartment?.department?.name || "No department"}
+              </p>
+            </div>
+          )}
           <div>
             <h3 className="text-sm font-medium text-muted-foreground mb-1">Start Date</h3>
             <p className="text-foreground" data-testid="text-startdate">

@@ -96,6 +96,12 @@ export interface FieldDefinition {
    * field opt into a `true` default so newly created rows come in checked.
    */
   default?: boolean;
+  /**
+   * Gate an individual field behind a component: the definition-serving
+   * routes strip the field (from `fields`, `schema`, and `uiSchema`) when the
+   * component is disabled, so the form and table never show it.
+   */
+  requiredComponent?: string;
 }
 
 /**
@@ -268,11 +274,12 @@ const optionsMetadata: Record<OptionsTypeName, OptionsTableMetadata<any>> = {
     orderByColumn: "name" as const,
     loggingModule: "options.departments",
     requiredFields: ["name"],
-    optionalFields: ["description"],
+    optionalFields: ["description", "data"],
     supportsSequencing: false,
     fields: [
       { name: "name", label: "Name", inputType: "text", required: true, placeholder: "Department name", showInTable: true, columnHeader: "Name" },
       { name: "description", label: "Description", inputType: "textarea", required: false, placeholder: "Optional description", showInTable: true, columnHeader: "Description" },
+      { name: "availableForDispatch", label: "Available for dispatch?", inputType: "checkbox", required: false, helperText: "Allow this department to be selected on dispatch jobs and worker department preferences", showInTable: true, columnHeader: "Available for Dispatch", dataField: true, requiredComponent: "dispatch.department" },
     ],
   },
   "employer-type": {
