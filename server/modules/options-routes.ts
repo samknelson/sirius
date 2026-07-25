@@ -17,16 +17,20 @@ function validateDispatchJobTypeBullpen(data: unknown): string | null {
   if (data === null || data === undefined || typeof data !== "object") return null;
   const d = data as Record<string, unknown>;
   const bullpen = d.bullpen;
-  if (bullpen !== undefined && bullpen !== null) {
+  if ("bullpen" in d) {
     if (typeof bullpen !== "string" || !(jobTypeBullpenEnum as readonly string[]).includes(bullpen)) {
       return `bullpen must be one of: ${jobTypeBullpenEnum.join(", ")}`;
     }
-    if (bullpen === "host" || bullpen === "shared") {
-      const eventTypeId = d.bullpenEventTypeId;
-      if (typeof eventTypeId !== "string" || eventTypeId.trim() === "") {
-        return "An event type is required when Bullpen is set to host or shared";
-      }
+  }
+  if (bullpen === "host" || bullpen === "shared") {
+    const eventTypeId = d.bullpenEventTypeId;
+    if (typeof eventTypeId !== "string" || eventTypeId.trim() === "") {
+      return "An event type is required when Bullpen is set to host or shared";
     }
+  } else {
+    // Keep persisted JSON consistent: no dangling event-type reference
+    // when bullpen is "none" or absent.
+    delete d.bullpenEventTypeId;
   }
   return null;
 }

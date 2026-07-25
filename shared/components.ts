@@ -66,6 +66,13 @@ export interface ComponentDefinition {
    * See {@link ComponentManagedPluginConfig}.
    */
   pluginConfigs?: ComponentManagedPluginConfig[];
+  /**
+   * Component IDs this component depends on, for components that do NOT
+   * manage a schema. Schema-managing components declare dependencies in
+   * `schemaManifest.dependsOnComponents` instead. The enable flow refuses
+   * to enable this component unless every listed component is enabled.
+   */
+  dependsOnComponents?: string[];
 }
 
 export interface ComponentConfig {
@@ -657,7 +664,8 @@ export const componentRegistry: ComponentDefinition[] = [
     name: "Dispatch Bullpen",
     description: "Bullpen functionality for dispatch job types (host/shared bullpens tied to event types)",
     enabledByDefault: false,
-    category: "dispatch"
+    category: "dispatch",
+    dependsOnComponents: ["dispatch"]
   },
   {
     id: "dispatch.dnc",
