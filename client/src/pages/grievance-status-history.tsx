@@ -42,7 +42,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { GrievanceLayout, useGrievanceLayout } from "@/components/layouts/GrievanceLayout";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import {
   readTimelineAdjustment,
@@ -120,7 +120,7 @@ function TimelineTemplateCard() {
     } catch (error: any) {
       toast({
         title: "Failed to update timeline template",
-        description: error?.message ?? "Please try again.",
+        description: getApiErrorMessage(error, "Please try again."),
         variant: "destructive",
       });
     } finally {
@@ -248,7 +248,7 @@ function GrievanceStatusHistoryContent() {
     onError: (error: any) => {
       toast({
         title: editingEntry ? "Failed to update entry" : "Failed to add entry",
-        description: error?.message ?? "Please try again.",
+        description: getApiErrorMessage(error, "Please try again."),
         variant: "destructive",
       });
     },
@@ -265,7 +265,7 @@ function GrievanceStatusHistoryContent() {
     onError: (error: any) => {
       toast({
         title: "Failed to delete entry",
-        description: error?.message ?? "Please try again.",
+        description: getApiErrorMessage(error, "Please try again."),
         variant: "destructive",
       });
     },
@@ -304,7 +304,7 @@ function GrievanceStatusHistoryContent() {
     onError: (error: any) => {
       toast({
         title: "Failed to save timeline adjustment",
-        description: error?.message ?? "Please try again.",
+        description: getApiErrorMessage(error, "Please try again."),
         variant: "destructive",
       });
     },

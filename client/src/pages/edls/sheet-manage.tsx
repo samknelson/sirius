@@ -27,7 +27,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { EdlsSheetLayout, useEdlsSheetLayout } from "@/components/layouts/EdlsSheetLayout";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import type { EdlsSheetStatus } from "@shared/schema";
 
 const statusOptions: { value: EdlsSheetStatus; label: string; description: string }[] = [
@@ -80,7 +80,7 @@ function EdlsSheetManageContent() {
     onError: (error: any) => {
       toast({
         title: "Failed to Update Status",
-        description: error?.message || "An error occurred while updating the status",
+        description: getApiErrorMessage(error, "An error occurred while updating the status"),
         variant: "destructive",
       });
     },
@@ -102,7 +102,7 @@ function EdlsSheetManageContent() {
     onError: (error: any) => {
       toast({
         title: "Failed to Update Trash Lock",
-        description: error?.message || "An error occurred while updating the trash lock",
+        description: getApiErrorMessage(error, "An error occurred while updating the trash lock"),
         variant: "destructive",
       });
     },
@@ -135,7 +135,7 @@ function EdlsSheetManageContent() {
     onError: (error: any) => {
       toast({
         title: "Failed to Copy Sheet",
-        description: error?.message || "An error occurred while copying the sheet",
+        description: getApiErrorMessage(error, "An error occurred while copying the sheet"),
         variant: "destructive",
       });
     },

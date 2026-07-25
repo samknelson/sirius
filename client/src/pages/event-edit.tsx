@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 
@@ -216,7 +216,7 @@ function EventEditContent() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to update event.",
+        description: getApiErrorMessage(error, "Failed to update event."),
         variant: "destructive",
       });
     },
@@ -248,7 +248,7 @@ function EventEditContent() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to add occurrence.",
+        description: getApiErrorMessage(error, "Failed to add occurrence."),
         variant: "destructive",
       });
     },
@@ -269,7 +269,7 @@ function EventEditContent() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to delete occurrence.",
+        description: getApiErrorMessage(error, "Failed to delete occurrence."),
         variant: "destructive",
       });
     },
@@ -800,7 +800,7 @@ function EventCreatePage() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to create event.",
+        description: getApiErrorMessage(error, "Failed to create event."),
         variant: "destructive",
       });
     },

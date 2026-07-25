@@ -18,7 +18,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { useAccessCheck } from "@/hooks/use-access-check";
 import {
   baoBeneficiaryListSchema,
@@ -103,7 +103,7 @@ function BeneficiariesContent() {
     onError: (error: Error) => {
       toast({
         title: "Failed to save",
-        description: error.message || "Could not save beneficiaries.",
+        description: getApiErrorMessage(error, "Could not save beneficiaries."),
         variant: "destructive",
       });
     },

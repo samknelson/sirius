@@ -26,7 +26,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Loader2, Save, ArrowLeft, X } from "lucide-react";
 import { Link } from "wouter";
 import {
@@ -138,7 +138,7 @@ export default function DispatchJobNewPage() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to create dispatch job.",
+        description: getApiErrorMessage(error, "Failed to create dispatch job."),
         variant: "destructive",
       });
     },

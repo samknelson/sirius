@@ -11,7 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Save, Settings, AlertCircle, Loader2, CheckCircle2, XCircle } from "lucide-react";
 import { type DispatchStatus } from "@shared/schema";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
 const statusLabels: Record<string, string> = {
@@ -63,11 +63,7 @@ function DispatchManageContent() {
       queryClient.invalidateQueries({ queryKey: ["/api/dispatches", dispatch.id, "status-options"] });
     },
     onError: async (err: any) => {
-      let message = "Failed to update status";
-      if (err?.message) {
-        message = err.message;
-      }
-      setError(message);
+      setError(getApiErrorMessage(err, "Failed to update status"));
     },
   });
 

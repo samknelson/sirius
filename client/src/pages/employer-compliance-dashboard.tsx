@@ -39,7 +39,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import type { WizardType } from "@/lib/wizard-types";
@@ -428,7 +428,7 @@ export default function EmployerComplianceDashboard() {
     onError: (err: any) => {
       toast({
         title: "Failed to queue bulk message",
-        description: err?.message ?? "Unknown error",
+        description: getApiErrorMessage(err, "Unknown error"),
         variant: "destructive",
       });
     },
@@ -533,7 +533,7 @@ export default function EmployerComplianceDashboard() {
     } catch (err: any) {
       toast({
         title: "Failed to export",
-        description: err?.message ?? "Unknown error",
+        description: getApiErrorMessage(err, "Unknown error"),
         variant: "destructive",
       });
     } finally {

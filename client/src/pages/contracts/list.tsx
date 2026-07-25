@@ -3,7 +3,7 @@ import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { FileText, Plus, Search, Loader2 } from "lucide-react";
 import type { Contract } from "@shared/schema";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -58,7 +58,7 @@ export default function ContractsListPage() {
     } catch (error) {
       toast({
         title: "Failed to create contract",
-        description: error instanceof Error ? error.message : "Please try again.",
+        description: getApiErrorMessage(error, "Please try again."),
         variant: "destructive",
       });
     } finally {

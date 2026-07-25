@@ -12,7 +12,7 @@ import { Switch } from "@/components/ui/switch";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { CommTagPicker } from "@/components/comm/CommTagPicker";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Loader2, AlertTriangle } from "lucide-react";
 
 const mediumLabels: Record<string, string> = {
@@ -80,7 +80,7 @@ function BulkMessageEditContent() {
       setLocation(`/bulk/${bulkMessage.id}`);
     },
     onError: (error: Error) => {
-      toast({ title: "Failed to update", description: error.message || "An error occurred", variant: "destructive" });
+      toast({ title: "Failed to update", description: getApiErrorMessage(error, "An error occurred"), variant: "destructive" });
     },
   });
 

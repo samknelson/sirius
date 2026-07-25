@@ -26,7 +26,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Loader2, Save, X } from "lucide-react";
 import { Link } from "wouter";
 import { type Employer, type DispatchJobType, type JobTypeData, type OptionsSkill, type DispatchJobData, dispatchJobStatusEnum, type DispatchJobStatus } from "@shared/schema";
@@ -157,7 +157,7 @@ function DispatchJobEditContent() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to update dispatch job.",
+        description: getApiErrorMessage(error, "Failed to update dispatch job."),
         variant: "destructive",
       });
     },

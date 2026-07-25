@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Loader2, ArrowLeft } from "lucide-react";
 import type { Facility } from "@shared/schema";
 
@@ -28,7 +28,7 @@ export default function FacilityNewPage() {
       setLocation(`/facility/${facility.id}`);
     },
     onError: (error: Error) => {
-      toast({ title: "Failed to create", description: error?.message || "An error occurred", variant: "destructive" });
+      toast({ title: "Failed to create", description: getApiErrorMessage(error, "An error occurred"), variant: "destructive" });
     },
   });
 

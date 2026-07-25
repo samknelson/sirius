@@ -29,7 +29,7 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Plus, Edit, Trash2, Building2, Loader2 } from "lucide-react";
 
 interface EmployerPlan {
@@ -85,7 +85,7 @@ export default function PensionEmployerPlansPage() {
       toast({ title: editingId ? "Employer plan updated" : "Employer plan assigned" });
     },
     onError: (error: any) => {
-      toast({ title: "Failed to save employer plan", description: error.message, variant: "destructive" });
+      toast({ title: "Failed to save employer plan", description: getApiErrorMessage(error, "An unexpected error occurred"), variant: "destructive" });
     },
   });
 
@@ -99,7 +99,7 @@ export default function PensionEmployerPlansPage() {
       toast({ title: "Employer plan removed" });
     },
     onError: (error: any) => {
-      toast({ title: "Failed to remove employer plan", description: error.message, variant: "destructive" });
+      toast({ title: "Failed to remove employer plan", description: getApiErrorMessage(error, "An unexpected error occurred"), variant: "destructive" });
     },
   });
 

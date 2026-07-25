@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { prettifySqlSimple } from "@shared/utils/sql-prettify";
+import { getApiErrorMessage } from "@/lib/queryClient";
 
 interface EligibleWorker {
   id: string;
@@ -115,7 +116,7 @@ function EligibleWorkersContent() {
     onError: (error) => {
       toast({
         title: "Error",
-        description: error instanceof Error ? error.message : "Failed to fetch SQL query",
+        description: getApiErrorMessage(error, "Failed to fetch SQL query"),
         variant: "destructive",
       });
     },
@@ -193,7 +194,7 @@ function EligibleWorkersContent() {
               Failed to Load Workers
             </h3>
             <p className="text-muted-foreground max-w-md mb-4">
-              {error instanceof Error ? error.message : "An error occurred while loading eligible workers."}
+              {getApiErrorMessage(error, "An error occurred while loading eligible workers.")}
             </p>
             <Button onClick={() => refetch()} data-testid="button-retry">
               Try Again

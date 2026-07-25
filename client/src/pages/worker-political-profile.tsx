@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import {
   Table,
   TableBody,
@@ -99,7 +99,7 @@ function WorkerPoliticalProfileContent() {
     onError: (error: any) => {
       toast({
         title: "Lookup failed",
-        description: error.message || "Failed to look up representatives",
+        description: getApiErrorMessage(error, "Failed to look up representatives"),
         variant: "destructive",
       });
     },

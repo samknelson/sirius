@@ -19,7 +19,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { DispatchJobForeWithWorker, ForeEligibleWorker } from "../../../../server/storage/dispatch/fore";
 
@@ -59,7 +59,7 @@ function JobForeContent() {
     onError: (error: any) => {
       toast({
         title: "Failed to add Foreperson",
-        description: error?.message || "An error occurred",
+        description: getApiErrorMessage(error, "An error occurred"),
         variant: "destructive",
       });
     },
@@ -77,7 +77,7 @@ function JobForeContent() {
     onError: (error: any) => {
       toast({
         title: "Failed to remove Foreperson",
-        description: error?.message || "An error occurred",
+        description: getApiErrorMessage(error, "An error occurred"),
         variant: "destructive",
       });
     },

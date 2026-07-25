@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import { BargainingUnitLayout, useBargainingUnitLayout } from "@/components/layouts/BargainingUnitLayout";
 import { IconPicker } from "@/components/ui/icon-picker";
 import { LedgerAccountBase } from "@/lib/ledger-types";
@@ -54,7 +54,7 @@ function AccountRatesSection({ bargainingUnitId }: { bargainingUnitId: string })
       setNewRate("");
     },
     onError: (error: any) => {
-      toast({ title: "Error", description: error.message || "Failed to add rate.", variant: "destructive" });
+      toast({ title: "Error", description: getApiErrorMessage(error, "Failed to add rate."), variant: "destructive" });
     },
   });
 
@@ -71,7 +71,7 @@ function AccountRatesSection({ bargainingUnitId }: { bargainingUnitId: string })
       setEditingRate("");
     },
     onError: (error: any) => {
-      toast({ title: "Error", description: error.message || "Failed to update rate.", variant: "destructive" });
+      toast({ title: "Error", description: getApiErrorMessage(error, "Failed to update rate."), variant: "destructive" });
     },
   });
 
@@ -85,7 +85,7 @@ function AccountRatesSection({ bargainingUnitId }: { bargainingUnitId: string })
       toast({ title: "Success", description: "Rate removed successfully." });
     },
     onError: (error: any) => {
-      toast({ title: "Error", description: error.message || "Failed to remove rate.", variant: "destructive" });
+      toast({ title: "Error", description: getApiErrorMessage(error, "Failed to remove rate."), variant: "destructive" });
     },
   });
 
@@ -371,7 +371,7 @@ function BargainingUnitEditContent() {
       setLocation(`/bargaining-units/${bargainingUnit.id}`);
     },
     onError: (error: any) => {
-      const message = error.message || "Failed to update bargaining unit. Please try again.";
+      const message = getApiErrorMessage(error, "Failed to update bargaining unit. Please try again.");
       toast({
         title: "Error",
         description: message,

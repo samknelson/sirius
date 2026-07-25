@@ -7,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { useState, useEffect } from "react";
 import { Save, Loader2 } from "lucide-react";
 import { useLocation } from "wouter";
@@ -121,7 +121,7 @@ function EditContent() {
     onError: (error: Error) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to update certification.",
+        description: getApiErrorMessage(error, "Failed to update certification."),
         variant: "destructive",
       });
     },

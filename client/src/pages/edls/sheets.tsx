@@ -34,7 +34,7 @@ import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { Plus, FileSpreadsheet, Calendar, Users, CalendarDays, Eye, Pencil, Settings, UserCheck, Layers, Factory, ChevronsUpDown, Check, X } from "lucide-react";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { EdlsSheetForm, type SheetFormData } from "@/components/edls/EdlsSheetForm";
 import type { EdlsSheet } from "@shared/schema";
 import { cn } from "@/lib/utils";
@@ -282,7 +282,7 @@ export default function EdlsSheetsPage() {
     onError: (error: Error) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to create sheet",
+        description: getApiErrorMessage(error, "Failed to create sheet"),
         variant: "destructive",
       });
     },

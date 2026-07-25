@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/table";
 import { Download, Upload, Database, Trash2, AlertTriangle } from "lucide-react";
 import { format } from "date-fns";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
 interface QuickstartMetadata {
@@ -60,7 +60,7 @@ export default function AdminQuickstarts() {
     onError: (error: Error) => {
       toast({
         title: "Export Failed",
-        description: error.message || "Failed to export database",
+        description: getApiErrorMessage(error, "Failed to export database"),
         variant: "destructive",
       });
     },
@@ -82,7 +82,7 @@ export default function AdminQuickstarts() {
     onError: (error: Error) => {
       toast({
         title: "Import Failed",
-        description: error.message || "Failed to import quickstart",
+        description: getApiErrorMessage(error, "Failed to import quickstart"),
         variant: "destructive",
       });
     },
@@ -102,7 +102,7 @@ export default function AdminQuickstarts() {
     onError: (error: Error) => {
       toast({
         title: "Delete Failed",
-        description: error.message || "Failed to delete quickstart",
+        description: getApiErrorMessage(error, "Failed to delete quickstart"),
         variant: "destructive",
       });
     },

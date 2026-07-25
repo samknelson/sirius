@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Trash2, Loader2, Pencil } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import { useState } from "react";
 
 const STATUS_COLORS: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
@@ -38,7 +38,7 @@ function BtuCsgViewContent() {
     onError: (error: any) => {
       toast({
         title: "Delete Failed",
-        description: error?.message || "Failed to delete record.",
+        description: getApiErrorMessage(error, "Failed to delete record."),
         variant: "destructive",
       });
       setShowDeleteDialog(false);

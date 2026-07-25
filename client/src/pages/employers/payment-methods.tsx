@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/select";
 import { EmployerLayout, useEmployerLayout } from "@/components/layouts/EmployerLayout";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -125,7 +125,7 @@ function PaymentMethodsContent() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to update payment method",
+        description: getApiErrorMessage(error, "Failed to update payment method"),
         variant: "destructive",
       });
     },
@@ -142,7 +142,7 @@ function PaymentMethodsContent() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to set default payment method",
+        description: getApiErrorMessage(error, "Failed to set default payment method"),
         variant: "destructive",
       });
     },
@@ -161,7 +161,7 @@ function PaymentMethodsContent() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to delete payment method",
+        description: getApiErrorMessage(error, "Failed to delete payment method"),
         variant: "destructive",
       });
     },
@@ -179,7 +179,7 @@ function PaymentMethodsContent() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to save payment method. You can retry.",
+        description: getApiErrorMessage(error, "Failed to save payment method. You can retry."),
         variant: "destructive",
       });
     },
@@ -230,7 +230,7 @@ function PaymentMethodsContent() {
     } catch (error: any) {
       toast({
         title: "Error",
-        description: error.message || "Failed to initialize payment method setup",
+        description: getApiErrorMessage(error, "Failed to initialize payment method setup"),
         variant: "destructive",
       });
       resetAddDialog();
@@ -264,7 +264,7 @@ function PaymentMethodsContent() {
     } catch (error: any) {
       toast({
         title: "Error",
-        description: error.message || "Failed to load payment method details",
+        description: getApiErrorMessage(error, "Failed to load payment method details"),
         variant: "destructive",
       });
       setDetailsDialogOpen(false);

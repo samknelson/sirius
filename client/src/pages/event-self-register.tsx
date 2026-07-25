@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import EventLayout, { useEventLayout } from "@/components/layouts/EventLayout";
 import { UserCheck, Clock, CheckCircle, XCircle } from "lucide-react";
 import { format } from "date-fns";
@@ -40,7 +40,7 @@ function EventSelfRegisterContent() {
     onError: (error: any) => {
       toast({
         title: "Registration failed",
-        description: error.message || "Failed to register for this event",
+        description: getApiErrorMessage(error, "Failed to register for this event"),
         variant: "destructive",
       });
     },
@@ -61,7 +61,7 @@ function EventSelfRegisterContent() {
     onError: (error: any) => {
       toast({
         title: "Update failed",
-        description: error.message || "Failed to update status",
+        description: getApiErrorMessage(error, "Failed to update status"),
         variant: "destructive",
       });
     },

@@ -10,7 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Link } from "wouter";
 import { ListBulkAction } from "@/components/bulk/list-bulk-action";
 import { BulkProvisionUsersAction } from "@/components/bulk/bulk-provision-users-action";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { 
   Eye, 
@@ -230,7 +230,7 @@ export default function AllEmployerContacts() {
     } catch (err: any) {
       toast({
         title: "Failed to select all",
-        description: err?.message ?? "Unknown error",
+        description: getApiErrorMessage(err, "Unknown error"),
         variant: "destructive",
       });
     } finally {

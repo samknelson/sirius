@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { WorkersTable, WorkerFilters } from "@/components/workers/workers-table";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { UserPlus, Loader2 } from "lucide-react";
 
@@ -165,7 +165,7 @@ function BulkMessageRecipientsAddContent() {
       queryClient.invalidateQueries({ queryKey: ["/api/bulk-messages", bulkMessage.id, "participants"] });
       toast({
         title: "Error adding recipients",
-        description: error.message,
+        description: getApiErrorMessage(error, "An unexpected error occurred"),
         variant: "destructive",
       });
     },

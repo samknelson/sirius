@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/select";
 import { CommTagPicker } from "@/components/comm/CommTagPicker";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import { CommWithDetails } from "@/lib/comm-types";
 import { Save } from "lucide-react";
 import { COMM_STATUSES, COMM_STATUS_LABELS, type CommStatus } from "@shared/commStatus";
@@ -95,7 +95,7 @@ export default function CommEdit() {
     onError: (error: any) => {
       toast({
         title: "Failed to update communication",
-        description: error?.message ?? "An unexpected error occurred.",
+        description: getApiErrorMessage(error, "An unexpected error occurred."),
         variant: "destructive",
       });
     },

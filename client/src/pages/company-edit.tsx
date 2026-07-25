@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Save } from "lucide-react";
 import { CompanyLayout, useCompanyLayout } from "@/components/layouts/CompanyLayout";
 
@@ -33,7 +33,7 @@ function CompanyEditContent() {
       });
     },
     onError: (error: any) => {
-      const message = error.message || "Failed to update company. Please try again.";
+      const message = getApiErrorMessage(error, "Failed to update company. Please try again.");
       toast({
         title: "Error",
         description: message,

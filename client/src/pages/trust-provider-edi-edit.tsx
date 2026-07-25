@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Loader2 } from "lucide-react";
 import type { SftpClientDestination } from "@shared/schema/system/sftp-client-schema";
 
@@ -66,7 +66,7 @@ function EdiEditContent() {
       setLocation(`/trust/provider-edi/${edi.id}`);
     },
     onError: (error: Error) => {
-      toast({ title: "Failed to update EDI record", description: error.message || "An error occurred", variant: "destructive" });
+      toast({ title: "Failed to update EDI record", description: getApiErrorMessage(error, "An error occurred"), variant: "destructive" });
     },
   });
 

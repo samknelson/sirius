@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Eye, FileText, Plus, Loader2 } from "lucide-react";
 import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import type { TrustProviderEdi } from "@shared/schema/trust/provider-edi-schema";
 import type { SftpClientDestination } from "@shared/schema/system/sftp-client-schema";
 
@@ -60,7 +60,7 @@ function TrustProviderEdiContent() {
       setIsAdding(false);
     },
     onError: (error: Error) => {
-      toast({ title: "Failed to create EDI record", description: error.message || "An error occurred", variant: "destructive" });
+      toast({ title: "Failed to create EDI record", description: getApiErrorMessage(error, "An error occurred"), variant: "destructive" });
     },
   });
 

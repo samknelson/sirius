@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { DispatchJobLayout, useDispatchJobLayout } from "@/components/layouts/DispatchJobLayout";
 import { Play, Square, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 
 function DispatchJobRunContent() {
   const { job } = useDispatchJobLayout();
@@ -31,7 +31,7 @@ function DispatchJobRunContent() {
     onError: (error: Error) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to update job status",
+        description: getApiErrorMessage(error, "Failed to update job status"),
         variant: "destructive",
       });
       setPendingRunning(job.running);

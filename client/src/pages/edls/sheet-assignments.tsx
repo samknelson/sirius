@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label";
 import { EdlsSheetLayout, useEdlsSheetLayout } from "@/components/layouts/EdlsSheetLayout";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { useAccessCheck } from "@/hooks/use-access-check";
 import { useToast } from "@/hooks/use-toast";
 import type { EdlsSheetStatus, EdlsCrew, AssignmentExtra } from "@shared/schema";
@@ -1294,7 +1294,7 @@ function EdlsSheetAssignmentsContent() {
       queryClient.invalidateQueries({ queryKey: ["/api/edls/sheets", sheet.id, "crews"] });
     },
     onError: (error: any) => {
-      const message = error?.message || "Failed to assign worker";
+      const message = getApiErrorMessage(error, "Failed to assign worker");
       toast({
         title: "Assignment failed",
         description: message,
@@ -1317,7 +1317,7 @@ function EdlsSheetAssignmentsContent() {
       queryClient.invalidateQueries({ queryKey: ["/api/edls/sheets", sheet.id, "crews"] });
     },
     onError: (error: any) => {
-      const message = error?.message || "Failed to unassign worker";
+      const message = getApiErrorMessage(error, "Failed to unassign worker");
       toast({
         title: "Unassignment failed",
         description: message,

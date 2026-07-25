@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient } from "@/lib/queryClient";
+import { queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import {
   Table,
   TableBody,
@@ -96,7 +96,7 @@ function WorkerMemberStatusContent() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to create member status entry",
+        description: getApiErrorMessage(error, "Failed to create member status entry"),
         variant: "destructive",
       });
     },
@@ -124,7 +124,7 @@ function WorkerMemberStatusContent() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to update member status entry",
+        description: getApiErrorMessage(error, "Failed to update member status entry"),
         variant: "destructive",
       });
     },
@@ -148,7 +148,7 @@ function WorkerMemberStatusContent() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to delete member status entry",
+        description: getApiErrorMessage(error, "Failed to delete member status entry"),
         variant: "destructive",
       });
     },
@@ -177,7 +177,7 @@ function WorkerMemberStatusContent() {
     onError: (error: any) => {
       toast({
         title: "Rescan failed",
-        description: error.message || "Failed to rescan member status",
+        description: getApiErrorMessage(error, "Failed to rescan member status"),
         variant: "destructive",
       });
     },

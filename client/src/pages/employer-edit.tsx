@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Save, Building, Building2, Factory, Store, Warehouse, Home, Landmark, Hospital, CircleHelp } from "lucide-react";
 import { EmployerLayout, useEmployerLayout } from "@/components/layouts/EmployerLayout";
 import { EmployerType } from "@shared/schema";
@@ -107,7 +107,7 @@ function EmployerEditContent() {
       });
     },
     onError: (error: any) => {
-      const message = error.message || "Failed to update employer. Please try again.";
+      const message = getApiErrorMessage(error, "Failed to update employer. Please try again.");
       toast({
         title: "Error",
         description: message,

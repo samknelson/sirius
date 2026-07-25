@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Loader2, Paperclip, X, Download, FileText } from "lucide-react";
 import type { File as FileRecord } from "@shared/schema";
 
@@ -51,7 +51,7 @@ function BatchEditContent() {
       setLocation(`/ledger/payment-batch/${batch.id}`);
     },
     onError: (error: Error) => {
-      toast({ title: "Failed to update batch", description: error.message, variant: "destructive" });
+      toast({ title: "Failed to update batch", description: getApiErrorMessage(error, "An unexpected error occurred"), variant: "destructive" });
     },
   });
 
@@ -82,7 +82,7 @@ function BatchEditContent() {
     } catch (err) {
       toast({
         title: "Upload failed",
-        description: err instanceof Error ? err.message : "Please try again.",
+        description: getApiErrorMessage(err, "Please try again."),
         variant: "destructive",
       });
     } finally {

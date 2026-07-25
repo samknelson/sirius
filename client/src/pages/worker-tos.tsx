@@ -8,7 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { CalendarOff, Play, Square, Pencil, Trash2, Save, X } from "lucide-react";
 import type { WorkerTos } from "@shared/schema";
 
@@ -65,7 +65,7 @@ function TosContent() {
   const activeRecord = records.find((r) => r.endDate === null);
 
   const showApiError = (err: unknown, fallback: string) => {
-    const message = err instanceof Error && err.message ? err.message : fallback;
+    const message = getApiErrorMessage(err, fallback);
     toast({ title: "Error", description: message, variant: "destructive" });
   };
 

@@ -29,7 +29,7 @@ import {
   ExternalLink, CheckCircle, XCircle, Pause, LogOut, Send, RotateCcw, Loader2,
   type LucideIcon,
 } from "lucide-react";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { DispatchStatus } from "@shared/schema";
 import type { CommSummary } from "../../../../server/storage/dispatch/dispatches";
@@ -187,7 +187,7 @@ function StatusTransitionActions({ dispatchId, currentStatus }: { dispatchId: st
     onError: (err: any) => {
       toast({
         title: "Failed to update status",
-        description: err?.message || "An error occurred while updating the dispatch status.",
+        description: getApiErrorMessage(err, "An error occurred while updating the dispatch status."),
         variant: "destructive",
       });
       setConfirmingStatus(null);

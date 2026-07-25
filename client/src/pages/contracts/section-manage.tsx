@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import type { ContractArticle, ContractSection } from "@shared/schema";
 import { ContractLayout } from "@/components/layouts/ContractLayout";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -81,7 +81,7 @@ function SectionEditor({
     } catch (error) {
       toast({
         title: "Failed to save section",
-        description: error instanceof Error ? error.message : "Please try again.",
+        description: getApiErrorMessage(error, "Please try again."),
         variant: "destructive",
       });
     } finally {
@@ -97,7 +97,7 @@ function SectionEditor({
     } catch (error) {
       toast({
         title: "Failed to reorder",
-        description: error instanceof Error ? error.message : "Please try again.",
+        description: getApiErrorMessage(error, "Please try again."),
         variant: "destructive",
       });
     } finally {
@@ -114,7 +114,7 @@ function SectionEditor({
     } catch (error) {
       toast({
         title: "Failed to delete section",
-        description: error instanceof Error ? error.message : "Please try again.",
+        description: getApiErrorMessage(error, "Please try again."),
         variant: "destructive",
       });
       setBusy(false);
@@ -305,7 +305,7 @@ function SectionManageBody() {
     } catch (error) {
       toast({
         title: "Failed to save article",
-        description: error instanceof Error ? error.message : "Please try again.",
+        description: getApiErrorMessage(error, "Please try again."),
         variant: "destructive",
       });
     } finally {
@@ -328,7 +328,7 @@ function SectionManageBody() {
     } catch (error) {
       toast({
         title: "Failed to add section",
-        description: error instanceof Error ? error.message : "Please try again.",
+        description: getApiErrorMessage(error, "Please try again."),
         variant: "destructive",
       });
     } finally {

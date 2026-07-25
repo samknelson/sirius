@@ -18,7 +18,7 @@ import { GrievanceLineSection } from "@/components/grievances/grievance-line-sec
 import { GrievanceUserManager } from "@/components/grievances/grievance-user-section";
 import { GrievanceContractSection } from "@/components/grievances/grievance-contract-section";
 import { GrievanceRepresentativeSection } from "@/components/grievances/grievance-representative-section";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -52,7 +52,7 @@ function GrievanceEditContent() {
     } catch (error: any) {
       toast({
         title: "Failed to update grievance",
-        description: error?.message ?? "Please try again.",
+        description: getApiErrorMessage(error, "Please try again."),
         variant: "destructive",
       });
     } finally {
@@ -188,7 +188,7 @@ function GrievanceStatusCard({
     } catch (error: any) {
       toast({
         title: "Failed to update status",
-        description: error?.message ?? "Please try again.",
+        description: getApiErrorMessage(error, "Please try again."),
         variant: "destructive",
       });
     } finally {

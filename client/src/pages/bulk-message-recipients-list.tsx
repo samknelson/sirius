@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
 import { Search, Trash2, ExternalLink, Users, Download } from "lucide-react";
@@ -109,7 +109,7 @@ function BulkMessageRecipientsListContent() {
     onError: (error: Error) => {
       toast({
         title: "Error removing recipient",
-        description: error.message,
+        description: getApiErrorMessage(error, "An unexpected error occurred"),
         variant: "destructive",
       });
     },

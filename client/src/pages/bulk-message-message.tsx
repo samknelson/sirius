@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Loader2, Save, Mail, MessageSquare, MapPin, Bell, Eye, AlertTriangle } from "lucide-react";
 import { TokenPicker } from "@/components/bulk/TokenPicker";
 import { SlashTokenField } from "@/components/bulk/SlashTokenField";
@@ -482,7 +482,7 @@ function BulkMessageMessageContent() {
       toast({ title: "Message content saved", description: `${mediumLabels[activeMedium] || activeMedium} content saved successfully.` });
     },
     onError: (error: Error) => {
-      toast({ title: "Failed to save", description: error.message || "An error occurred", variant: "destructive" });
+      toast({ title: "Failed to save", description: getApiErrorMessage(error, "An error occurred"), variant: "destructive" });
     },
   });
 

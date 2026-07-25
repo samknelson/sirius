@@ -59,8 +59,8 @@ function DispatchHoldForEmployerContent() {
         if (messages.length > 0) {
           errorMessage = messages.join(". ");
         }
-      } else if (error?.message) {
-        errorMessage = error.message;
+      } else {
+        errorMessage = getApiErrorMessage(error, errorMessage);
       }
       toast({
         title: "Error",

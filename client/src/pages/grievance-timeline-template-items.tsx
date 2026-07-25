@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -210,7 +210,7 @@ function ItemsContent() {
     } catch (error) {
       toast({
         title: "Could not save step",
-        description: error instanceof Error ? error.message : undefined,
+        description: getApiErrorMessage(error, "An unexpected error occurred"),
         variant: "destructive",
       });
     } finally {
@@ -244,7 +244,7 @@ function ItemsContent() {
     } catch (error) {
       toast({
         title: "Could not reorder step",
-        description: error instanceof Error ? error.message : undefined,
+        description: getApiErrorMessage(error, "An unexpected error occurred"),
         variant: "destructive",
       });
       await invalidate();
@@ -267,7 +267,7 @@ function ItemsContent() {
     } catch (error) {
       toast({
         title: "Could not remove step",
-        description: error instanceof Error ? error.message : undefined,
+        description: getApiErrorMessage(error, "An unexpected error occurred"),
         variant: "destructive",
       });
     } finally {

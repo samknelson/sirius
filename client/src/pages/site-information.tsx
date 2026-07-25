@@ -9,7 +9,7 @@ import { Loader2, Save } from "lucide-react";
 import { SimpleHtmlEditor } from "@/components/ui/simple-html-editor";
 import { useSiteSettings, useSetVariable, useVariableValue } from "@/lib/use-variable";
 import { useQuery } from "@tanstack/react-query";
-import { queryClient } from "@/lib/queryClient";
+import { queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import { DEFAULT_MENU_PLUGIN_ID, SITE_MENU_PLUGIN_VARIABLE, type ResolvedMenu, type ResolvedMenuItem } from "@shared/menu-types";
 import { useTerm } from "@/contexts/TerminologyContext";
 
@@ -49,10 +49,10 @@ export default function SiteInformation() {
       description: "Site settings have been updated successfully.",
     });
   };
-  const onSaveError = () => {
+  const onSaveError = (error: unknown) => {
     toast({
       title: "Error",
-      description: "Failed to update site settings.",
+      description: getApiErrorMessage(error, "Failed to update site settings."),
       variant: "destructive",
     });
   };

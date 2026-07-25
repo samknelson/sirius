@@ -7,7 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Wand2, ArrowLeft, Trash2, AlertTriangle, Clock, FileText } from "lucide-react";
 import { format } from "date-fns";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { RetentionSettings } from "@/components/wizards/RetentionSettings";
 import { FrameworkWizardBody } from "@/components/wizards/framework/FrameworkWizardBody";
@@ -80,7 +80,7 @@ export default function WizardView() {
     onError: (error: Error) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to delete wizard",
+        description: getApiErrorMessage(error, "Failed to delete wizard"),
         variant: "destructive",
       });
     },

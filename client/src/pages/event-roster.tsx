@@ -18,7 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import EventLayout, { useEventLayout } from "@/components/layouts/EventLayout";
 import { Users, Trash2 } from "lucide-react";
 import {
@@ -74,7 +74,7 @@ function EventRosterContent() {
     onError: (error: any) => {
       toast({
         title: "Update failed",
-        description: error.message || "Failed to update participant",
+        description: getApiErrorMessage(error, "Failed to update participant"),
         variant: "destructive",
       });
     },
@@ -94,7 +94,7 @@ function EventRosterContent() {
     onError: (error: any) => {
       toast({
         title: "Removal failed",
-        description: error.message || "Failed to remove participant",
+        description: getApiErrorMessage(error, "Failed to remove participant"),
         variant: "destructive",
       });
     },
