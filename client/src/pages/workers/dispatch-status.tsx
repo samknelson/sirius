@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, ApiError } from "@/lib/queryClient";
 import { useState } from "react";
 import { format } from "date-fns";
 import { Calendar, Truck, Edit, Save, X } from "lucide-react";
@@ -49,8 +49,13 @@ function DispatchStatusContent() {
       toast({ title: "Status updated", description: "Dispatch status has been saved." });
       setIsEditingStatus(false);
     },
-    onError: () => {
-      toast({ title: "Error", description: "Failed to update dispatch status.", variant: "destructive" });
+    onError: (error) => {
+      const serverMessage = error instanceof ApiError && typeof error.data?.error === "string" ? error.data.error : undefined;
+      toast({
+        title: serverMessage && error instanceof ApiError && error.status === 409 ? "Not allowed" : "Error",
+        description: serverMessage || "Failed to update dispatch status.",
+        variant: "destructive",
+      });
     },
   });
 
@@ -63,8 +68,13 @@ function DispatchStatusContent() {
       toast({ title: "Seniority date updated", description: "The seniority date has been saved." });
       setIsEditingSeniority(false);
     },
-    onError: () => {
-      toast({ title: "Error", description: "Failed to update seniority date.", variant: "destructive" });
+    onError: (error) => {
+      const serverMessage = error instanceof ApiError && typeof error.data?.error === "string" ? error.data.error : undefined;
+      toast({
+        title: serverMessage && error instanceof ApiError && error.status === 409 ? "Not allowed" : "Error",
+        description: serverMessage || "Failed to update seniority date.",
+        variant: "destructive",
+      });
     },
   });
 
