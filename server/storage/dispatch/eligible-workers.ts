@@ -352,6 +352,20 @@ async function checkConditionForWorker(
   workerId: string,
   condition: EligibilityCondition
 ): Promise<{ passed: boolean; explanation: string }> {
+  const result = await evaluateConditionForWorker(client, workerId, condition);
+  // A plugin-supplied human-readable message takes precedence over the
+  // generic category/value template when the condition fails.
+  if (!result.passed && condition.failureMessage) {
+    return { passed: false, explanation: condition.failureMessage };
+  }
+  return result;
+}
+
+async function evaluateConditionForWorker(
+  client: ReturnType<typeof getClient>,
+  workerId: string,
+  condition: EligibilityCondition
+): Promise<{ passed: boolean; explanation: string }> {
   const workerEntries = await client
     .select()
     .from(workerDispatchEligDenorm)

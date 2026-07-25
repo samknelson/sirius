@@ -18,6 +18,12 @@ export interface EligibilityCondition {
   /** For `exists_or_exists`: the alternative fact that also satisfies the condition. */
   orCategory?: string;
   orValue?: string;
+  /**
+   * Optional human-readable explanation shown when this condition FAILS for a
+   * worker. When omitted, a generic template built from category/values is
+   * used instead.
+   */
+  failureMessage?: string;
 }
 
 export interface EligibilityQueryContext {

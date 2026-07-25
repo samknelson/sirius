@@ -36,20 +36,26 @@ export const dispatchDepartmentPlugin: DispatchEligPlugin = {
           category: DEPT_INCLUDE_CATEGORY,
           type: "not_exists_category",
           value: "",
+          failureMessage:
+            "The worker has a preference to only work in specific departments, and this job has no department",
         },
       ];
     }
+
+    const departmentLabel = jobDepartment.department?.name || jobDepartment.departmentId;
 
     return [
       {
         category: DEPT_EXCLUDE_CATEGORY,
         type: "not_exists",
         value: jobDepartment.departmentId,
+        failureMessage: `The worker has a preference to not work in department [${departmentLabel}]`,
       },
       {
         category: DEPT_INCLUDE_CATEGORY,
         type: "exists_or_none",
         value: jobDepartment.departmentId,
+        failureMessage: `The worker has a preference to only work in specific departments not including [${departmentLabel}]`,
       },
     ];
   },
