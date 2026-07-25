@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/command";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest , getApiErrorMessage } from "@/lib/queryClient";
 import {
   BusinessCalendarLayout,
   useBusinessCalendarLayout,
@@ -200,7 +200,7 @@ function SettingsTabContent() {
   const region = [regionCountry, regionState, regionSub].filter(Boolean).join("-");
 
   const onMutationError = (fallback: string) => (error: any) =>
-    toast({ title: "Error", description: error.message || fallback, variant: "destructive" });
+    toast({ title: "Error", description: getApiErrorMessage(error, fallback), variant: "destructive" });
 
   const saveMutation = useMutation({
     mutationFn: async () => {

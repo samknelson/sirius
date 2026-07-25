@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { getApiErrorMessage } from "@/lib/queryClient";
 import { useQuery } from "@tanstack/react-query";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import { Loader2, Save, RotateCcw, Type, Eye } from "lucide-react";
@@ -113,7 +114,7 @@ export default function TerminologyConfigPage() {
     } catch (error: any) {
       toast({
         title: "Error",
-        description: error.message || "Failed to save terminology.",
+        description: getApiErrorMessage(error, "Failed to save terminology."),
         variant: "destructive",
       });
     }
@@ -130,7 +131,7 @@ export default function TerminologyConfigPage() {
     } catch (error: any) {
       toast({
         title: "Error",
-        description: error.message || "Failed to reset terminology.",
+        description: getApiErrorMessage(error, "Failed to reset terminology."),
         variant: "destructive",
       });
     }

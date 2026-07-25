@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { SimpleHtmlEditor } from "@/components/ui/simple-html-editor";
 import { Switch } from "@/components/ui/switch";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Loader2 } from "lucide-react";
 
 interface AccountData {
@@ -41,7 +41,7 @@ function AccountSettingsContent() {
     onError: (error: Error) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to save settings",
+        description: getApiErrorMessage(error, "Failed to save settings"),
         variant: "destructive",
       });
     },

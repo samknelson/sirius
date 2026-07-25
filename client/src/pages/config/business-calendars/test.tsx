@@ -12,7 +12,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest , getApiErrorMessage } from "@/lib/queryClient";
 import {
   BusinessCalendarLayout,
   useBusinessCalendarLayout,
@@ -236,7 +236,7 @@ function TestTabContent() {
   const { toast } = useToast();
 
   const onMutationError = (fallback: string) => (error: any) =>
-    toast({ title: "Error", description: error.message || fallback, variant: "destructive" });
+    toast({ title: "Error", description: getApiErrorMessage(error, fallback), variant: "destructive" });
 
   const [calcStart, setCalcStart] = useState("");
   const [calcN, setCalcN] = useState("1");

@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Loader2, Plus, Eye, Trash2, Server } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import type { SftpClientDestination } from "@shared/schema/system/sftp-client-schema";
@@ -52,7 +52,7 @@ export default function SftpClientsPage() {
       setFormData({ name: "", description: "", siriusId: "", active: true });
     },
     onError: (error: any) => {
-      toast({ title: "Failed to create destination", description: error?.message || "An error occurred", variant: "destructive" });
+      toast({ title: "Failed to create destination", description: getApiErrorMessage(error, "An error occurred"), variant: "destructive" });
     },
   });
 
@@ -64,7 +64,7 @@ export default function SftpClientsPage() {
       setDeleteTarget(null);
     },
     onError: (error: any) => {
-      toast({ title: "Failed to delete destination", description: error?.message || "An error occurred", variant: "destructive" });
+      toast({ title: "Failed to delete destination", description: getApiErrorMessage(error, "An error occurred"), variant: "destructive" });
     },
   });
 

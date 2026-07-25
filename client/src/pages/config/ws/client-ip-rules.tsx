@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Loader2, Plus, Shield, Trash2, Network } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { WsClientLayout, useWsClientLayout } from "@/components/layouts/WsClientLayout";
@@ -49,7 +49,7 @@ function IpRulesContent() {
       setIpForm({ ipAddress: "", description: "" });
     },
     onError: (error: any) => {
-      toast({ title: "Failed to create IP rule", description: error?.message || "An error occurred", variant: "destructive" });
+      toast({ title: "Failed to create IP rule", description: getApiErrorMessage(error, "An error occurred"), variant: "destructive" });
     },
   });
 
@@ -61,7 +61,7 @@ function IpRulesContent() {
       setDeleteIpTarget(null);
     },
     onError: (error: any) => {
-      toast({ title: "Failed to delete IP rule", description: error?.message || "An error occurred", variant: "destructive" });
+      toast({ title: "Failed to delete IP rule", description: getApiErrorMessage(error, "An error occurred"), variant: "destructive" });
     },
   });
 

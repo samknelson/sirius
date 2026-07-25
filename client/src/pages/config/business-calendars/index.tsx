@@ -26,7 +26,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 
 export default function BusinessCalendarsConfigPage() {
   usePageTitle("Business Calendars");
@@ -59,7 +59,7 @@ export default function BusinessCalendarsConfigPage() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to update default calendar.",
+        description: getApiErrorMessage(error, "Failed to update default calendar."),
         variant: "destructive",
       });
     },
@@ -82,7 +82,7 @@ export default function BusinessCalendarsConfigPage() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to create business calendar.",
+        description: getApiErrorMessage(error, "Failed to create business calendar."),
         variant: "destructive",
       });
     },
@@ -99,7 +99,7 @@ export default function BusinessCalendarsConfigPage() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to delete business calendar.",
+        description: getApiErrorMessage(error, "Failed to delete business calendar."),
         variant: "destructive",
       });
     },

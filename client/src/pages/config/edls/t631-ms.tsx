@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 
 const VARIABLE_NAME = "sitespecific.t631.ms_to_sync";
 
@@ -72,7 +72,7 @@ export default function T631MemberStatusSyncPage() {
     onError: (error: Error) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to save selection.",
+        description: getApiErrorMessage(error, "Failed to save selection."),
         variant: "destructive",
       });
     },

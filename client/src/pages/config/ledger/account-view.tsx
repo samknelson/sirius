@@ -14,7 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Trash2, Loader2 } from "lucide-react";
 import { LedgerAccountLayout, useLedgerAccountLayout } from "@/components/layouts/LedgerAccountLayout";
 import { pluginSearch, pluginConfigsQueryKey } from "@/plugins/_core/manifest";
@@ -56,7 +56,7 @@ function AccountDetailsContent() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to delete ledger account.",
+        description: getApiErrorMessage(error, "Failed to delete ledger account."),
         variant: "destructive",
       });
       setShowDeleteDialog(false);

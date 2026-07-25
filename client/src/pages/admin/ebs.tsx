@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { usePageTitle } from "@/contexts/PageTitleContext";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -345,7 +345,7 @@ function useFireEvent() {
     onError: (error) => {
       toast({
         title: "Failed to fire event",
-        description: error.message || "Unknown error",
+        description: getApiErrorMessage(error, "Unknown error"),
         variant: "destructive",
       });
     },

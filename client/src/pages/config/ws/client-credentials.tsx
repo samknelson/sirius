@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Loader2, Plus, Key, Copy, Check, Trash2, Ban, RotateCcw } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { WsClientLayout } from "@/components/layouts/WsClientLayout";
@@ -70,7 +70,7 @@ function CredentialsContent() {
       setCredForm({ label: "" });
     },
     onError: (error: any) => {
-      toast({ title: "Failed to create credential", description: error?.message || "An error occurred", variant: "destructive" });
+      toast({ title: "Failed to create credential", description: getApiErrorMessage(error, "An error occurred"), variant: "destructive" });
     },
   });
 
@@ -81,7 +81,7 @@ function CredentialsContent() {
       toast({ title: "Credential deactivated", description: "The credential can no longer be used." });
     },
     onError: (error: any) => {
-      toast({ title: "Failed to deactivate credential", description: error?.message || "An error occurred", variant: "destructive" });
+      toast({ title: "Failed to deactivate credential", description: getApiErrorMessage(error, "An error occurred"), variant: "destructive" });
     },
   });
 
@@ -92,7 +92,7 @@ function CredentialsContent() {
       toast({ title: "Credential reactivated", description: "The credential is now active." });
     },
     onError: (error: any) => {
-      toast({ title: "Failed to reactivate credential", description: error?.message || "An error occurred", variant: "destructive" });
+      toast({ title: "Failed to reactivate credential", description: getApiErrorMessage(error, "An error occurred"), variant: "destructive" });
     },
   });
 
@@ -104,7 +104,7 @@ function CredentialsContent() {
       setDeleteCredTarget(null);
     },
     onError: (error: any) => {
-      toast({ title: "Failed to delete credential", description: error?.message || "An error occurred", variant: "destructive" });
+      toast({ title: "Failed to delete credential", description: getApiErrorMessage(error, "An error occurred"), variant: "destructive" });
     },
   });
 

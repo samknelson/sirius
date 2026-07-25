@@ -37,7 +37,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { format } from "date-fns";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
 interface MonthStatus {
@@ -111,7 +111,7 @@ export default function WmbScanQueue() {
     onSuccess: (result: any) => {
       toast({
         title: "Month Enqueued",
-        description: result.message || "Workers queued successfully",
+        description: getApiErrorMessage(result, "Workers queued successfully"),
       });
       queryClient.invalidateQueries({ queryKey: ["/api/wmb-scan/status"] });
       queryClient.invalidateQueries({ queryKey: ["/api/wmb-scan/summary"] });
@@ -119,7 +119,7 @@ export default function WmbScanQueue() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to enqueue month",
+        description: getApiErrorMessage(error, "Failed to enqueue month"),
         variant: "destructive",
       });
     },
@@ -132,7 +132,7 @@ export default function WmbScanQueue() {
     onSuccess: (result: any) => {
       toast({
         title: "Batch Processed",
-        description: result.message || "Batch processed successfully",
+        description: getApiErrorMessage(result, "Batch processed successfully"),
       });
       queryClient.invalidateQueries({ queryKey: ["/api/wmb-scan/status"] });
       queryClient.invalidateQueries({ queryKey: ["/api/wmb-scan/summary"] });
@@ -140,7 +140,7 @@ export default function WmbScanQueue() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to process batch",
+        description: getApiErrorMessage(error, "Failed to process batch"),
         variant: "destructive",
       });
     },
@@ -153,7 +153,7 @@ export default function WmbScanQueue() {
     onSuccess: (result: any) => {
       toast({
         title: "Scan Canceled",
-        description: result.message || "Pending scans have been canceled",
+        description: getApiErrorMessage(result, "Pending scans have been canceled"),
       });
       queryClient.invalidateQueries({ queryKey: ["/api/wmb-scan/status"] });
       queryClient.invalidateQueries({ queryKey: ["/api/wmb-scan/summary"] });
@@ -161,7 +161,7 @@ export default function WmbScanQueue() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to cancel scan",
+        description: getApiErrorMessage(error, "Failed to cancel scan"),
         variant: "destructive",
       });
     },
@@ -174,7 +174,7 @@ export default function WmbScanQueue() {
     onSuccess: (result: any) => {
       toast({
         title: "Scan Resumed",
-        description: result.message || "Canceled scans have been resumed",
+        description: getApiErrorMessage(result, "Canceled scans have been resumed"),
       });
       queryClient.invalidateQueries({ queryKey: ["/api/wmb-scan/status"] });
       queryClient.invalidateQueries({ queryKey: ["/api/wmb-scan/summary"] });
@@ -182,7 +182,7 @@ export default function WmbScanQueue() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to resume scan",
+        description: getApiErrorMessage(error, "Failed to resume scan"),
         variant: "destructive",
       });
     },
@@ -242,7 +242,7 @@ export default function WmbScanQueue() {
       } catch (error: any) {
         toast({
           title: "Error",
-          description: error.message || "Failed to process batch",
+          description: getApiErrorMessage(error, "Failed to process batch"),
           variant: "destructive",
         });
         handleStopContinuous();

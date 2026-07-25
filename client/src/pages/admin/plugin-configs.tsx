@@ -81,7 +81,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import type { JsonSchema } from "@shared/json-schema-form";
 import type { IChangeEvent } from "@rjsf/core";
 import type { UiSchema } from "@rjsf/utils";
@@ -264,7 +264,7 @@ export default function GenericPluginConfigsPage({
     onError: (error: unknown) => {
       toast({
         title: "Error",
-        description: error instanceof Error ? error.message : "Failed to delete configuration.",
+        description: getApiErrorMessage(error, "Failed to delete configuration."),
         variant: "destructive",
       });
     },

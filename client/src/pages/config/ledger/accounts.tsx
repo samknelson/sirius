@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Loader2, Plus, Eye, Layers, ArrowLeftRight, CreditCard } from "lucide-react";
 import {
   Table,
@@ -74,7 +74,7 @@ export default function LedgerAccountsPage() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to create ledger account.",
+        description: getApiErrorMessage(error, "Failed to create ledger account."),
         variant: "destructive",
       });
     },

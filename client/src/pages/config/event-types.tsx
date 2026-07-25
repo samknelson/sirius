@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { 
@@ -161,7 +161,7 @@ export default function EventTypesPage() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to create event type.",
+        description: getApiErrorMessage(error, "Failed to create event type."),
         variant: "destructive",
       });
     },
@@ -191,7 +191,7 @@ export default function EventTypesPage() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to update event type.",
+        description: getApiErrorMessage(error, "Failed to update event type."),
         variant: "destructive",
       });
     },
@@ -212,7 +212,7 @@ export default function EventTypesPage() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to delete event type.",
+        description: getApiErrorMessage(error, "Failed to delete event type."),
         variant: "destructive",
       });
     },

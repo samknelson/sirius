@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { 
   Loader2, Plus,
   Briefcase, Truck, HardHat, Wrench, Clock, Calendar, 
@@ -118,7 +118,7 @@ export default function DispatchJobTypesPage() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to create dispatch job type.",
+        description: getApiErrorMessage(error, "Failed to create dispatch job type."),
         variant: "destructive",
       });
     },

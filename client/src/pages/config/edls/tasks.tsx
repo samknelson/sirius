@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Loader2, Plus, Edit, Trash2, Save, X, ListChecks } from "lucide-react";
 import {
   Table,
@@ -176,7 +176,7 @@ export default function EdlsTasksPage() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to create task.",
+        description: getApiErrorMessage(error, "Failed to create task."),
         variant: "destructive",
       });
     },
@@ -202,7 +202,7 @@ export default function EdlsTasksPage() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to update task.",
+        description: getApiErrorMessage(error, "Failed to update task."),
         variant: "destructive",
       });
     },
@@ -223,7 +223,7 @@ export default function EdlsTasksPage() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to delete task.",
+        description: getApiErrorMessage(error, "Failed to delete task."),
         variant: "destructive",
       });
     },

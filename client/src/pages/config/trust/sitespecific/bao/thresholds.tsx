@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/table";
 import { Loader2, Clock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 
 interface MemberStatus {
   id: string;
@@ -101,7 +101,7 @@ export default function BaoMemberStatusThresholdsPage() {
       toast({ title: "Saved", description: `Threshold updated for ${variables.status.name}.` });
     },
     onError: (err: Error) => {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
+      toast({ title: "Error", description: getApiErrorMessage(err, "Failed to save threshold."), variant: "destructive" });
     },
     onSettled: () => setSavingId(null),
   });

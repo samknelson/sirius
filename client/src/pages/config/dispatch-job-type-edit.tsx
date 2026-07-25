@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { DispatchJobTypeLayout, useDispatchJobTypeLayout } from "@/components/layouts/DispatchJobTypeLayout";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Loader2, Briefcase, Truck, HardHat, Wrench, Clock, Calendar, ClipboardList, Package, MapPin, Users, type LucideIcon } from "lucide-react";
 import {
   Form,
@@ -104,7 +104,7 @@ function DispatchJobTypeEditContent() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to update job type.",
+        description: getApiErrorMessage(error, "Failed to update job type."),
         variant: "destructive",
       });
     },

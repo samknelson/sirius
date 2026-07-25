@@ -27,7 +27,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { SimpleHtmlEditor } from "@/components/ui/simple-html-editor";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 
 interface HelpFormState {
   paths: string[];
@@ -93,7 +93,7 @@ export default function HelpsConfigPage() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to save help entry.",
+        description: getApiErrorMessage(error, "Failed to save help entry."),
         variant: "destructive",
       });
     },
@@ -109,7 +109,7 @@ export default function HelpsConfigPage() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to delete help entry.",
+        description: getApiErrorMessage(error, "Failed to delete help entry."),
         variant: "destructive",
       });
     },

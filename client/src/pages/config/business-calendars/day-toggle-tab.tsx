@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Calendar } from "@/components/ui/calendar";
 import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest , getApiErrorMessage } from "@/lib/queryClient";
 import { useBusinessCalendarLayout } from "@/components/layouts/BusinessCalendarLayout";
 import { ymdToLocalDate as ymdToDate, dateToYmd } from "@shared/utils/date";
 
@@ -44,7 +44,7 @@ export function DayToggleTab({
     queryClient.invalidateQueries({ queryKey: ["/api/business-calendars", id] });
 
   const onMutationError = (fallback: string) => (error: any) =>
-    toast({ title: "Error", description: error.message || fallback, variant: "destructive" });
+    toast({ title: "Error", description: getApiErrorMessage(error, fallback), variant: "destructive" });
 
   const addMutation = useMutation({
     mutationFn: async (ymd: string) =>

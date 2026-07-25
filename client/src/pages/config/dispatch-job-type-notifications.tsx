@@ -5,7 +5,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { DispatchJobTypeLayout, useDispatchJobTypeLayout } from "@/components/layouts/DispatchJobTypeLayout";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Bell, Mail, MessageSquare, Smartphone } from "lucide-react";
 import type { JobTypeData, NotificationMedia } from "@shared/schema";
 
@@ -59,7 +59,7 @@ function DispatchJobTypeNotificationsContent() {
       }
       toast({
         title: "Error",
-        description: error.message || "Failed to save notification settings.",
+        description: getApiErrorMessage(error, "Failed to save notification settings."),
         variant: "destructive",
       });
     },

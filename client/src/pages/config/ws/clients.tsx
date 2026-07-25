@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Loader2, Plus, Key, Eye, Trash2, Shield } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import type { WsClient, WsBundle } from "@shared/schema";
@@ -66,7 +66,7 @@ export default function WsClientsPage() {
       setFormData({ name: "", description: "", bundleId: "", status: "active", ipAllowlistEnabled: false });
     },
     onError: (error: any) => {
-      toast({ title: "Failed to create client", description: error?.message || "An error occurred", variant: "destructive" });
+      toast({ title: "Failed to create client", description: getApiErrorMessage(error, "An error occurred"), variant: "destructive" });
     },
   });
 
@@ -78,7 +78,7 @@ export default function WsClientsPage() {
       setDeleteTarget(null);
     },
     onError: (error: any) => {
-      toast({ title: "Failed to delete client", description: error?.message || "An error occurred", variant: "destructive" });
+      toast({ title: "Failed to delete client", description: getApiErrorMessage(error, "An error occurred"), variant: "destructive" });
     },
   });
 

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { getApiErrorMessage } from "@/lib/queryClient";
 import { useMutation } from "@tanstack/react-query";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import { Play, Loader2, CheckCircle2, XCircle, Clock, Zap, Send, ArrowDownToLine, RefreshCw, Eye } from "lucide-react";
@@ -96,7 +97,7 @@ export default function T631FetchPage() {
       });
     },
     onError: (error: Error) => {
-      toast({ title: "Fetch Workers failed", description: error.message, variant: "destructive" });
+      toast({ title: "Fetch Workers failed", description: getApiErrorMessage(error, "The operation failed."), variant: "destructive" });
     },
   });
 
@@ -123,7 +124,7 @@ export default function T631FetchPage() {
       }
     },
     onError: (error: Error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({ title: "Error", description: getApiErrorMessage(error, "The operation failed."), variant: "destructive" });
     },
   });
 

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { usePageTitle } from "@/contexts/PageTitleContext";
-import { queryClient, apiRequest } from '@/lib/queryClient';
+import { queryClient, apiRequest , getApiErrorMessage } from '@/lib/queryClient';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -81,7 +81,7 @@ export default function MasqueradePage() {
     onError: (error) => {
       toast({
         title: 'Error',
-        description: error instanceof Error ? error.message : 'Failed to start masquerade',
+        description: getApiErrorMessage(error, 'Failed to start masquerade'),
         variant: 'destructive',
       });
     },

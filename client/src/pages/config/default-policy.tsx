@@ -13,7 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 
 const VARIABLE_NAME = "policy_default";
 
@@ -75,7 +75,7 @@ export default function DefaultPolicyPage() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to save default policy.",
+        description: getApiErrorMessage(error, "Failed to save default policy."),
         variant: "destructive",
       });
     },
