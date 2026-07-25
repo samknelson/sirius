@@ -174,6 +174,12 @@ function ForepersonJobsSection({ workerId }: { workerId: string }) {
     },
   });
 
+  // Most workers are not forepersons: render nothing while loading and when
+  // there are no rows, so the card only appears when there is something to show.
+  if (isLoading || !foreJobs || foreJobs.length === 0) {
+    return null;
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -186,17 +192,7 @@ function ForepersonJobsSection({ workerId }: { workerId: string }) {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        {isLoading ? (
-          <div className="space-y-3">
-            <Skeleton className="h-12 w-full" />
-            <Skeleton className="h-12 w-full" />
-          </div>
-        ) : !foreJobs || foreJobs.length === 0 ? (
-          <p className="text-muted-foreground text-sm" data-testid="text-no-foreperson-jobs">
-            Not a Foreperson on any jobs.
-          </p>
-        ) : (
-          <div className="space-y-2" data-testid="list-foreperson-jobs">
+        <div className="space-y-2" data-testid="list-foreperson-jobs">
             {foreJobs.map((fore) => (
               <div
                 key={fore.id}
@@ -233,9 +229,8 @@ function ForepersonJobsSection({ workerId }: { workerId: string }) {
                   <ExternalLink className="h-3.5 w-3.5" />
                 </Link>
               </div>
-            ))}
-          </div>
-        )}
+          ))}
+        </div>
       </CardContent>
     </Card>
   );
