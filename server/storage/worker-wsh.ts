@@ -9,6 +9,7 @@ import { eq, desc, sql } from "drizzle-orm";
 import type { StorageLoggingConfig } from "./middleware/logging";
 import { eventBus, EventType } from "../services/event-bus";
 import { logger } from "../logger";
+import { parseYmdParts } from '@shared/utils/date';
 
 /**
  * Stub validator - add validation logic here when needed
@@ -147,8 +148,8 @@ export const workerWshLoggingConfig: StorageLoggingConfig<WorkerWshStorage> = {
         const date = result?.date || args[0]?.date || 'Unknown';
         let formattedDate = date;
         if (date !== 'Unknown' && typeof date === 'string' && date.match(/^\d{4}-\d{2}-\d{2}$/)) {
-          const [year, month, day] = date.split('-');
-          formattedDate = `${parseInt(month)}/${parseInt(day)}/${year}`;
+          const { year, month, day } = parseYmdParts(date);
+          formattedDate = `${month}/${day}/${year}`;
         }
         return `Created Work Status Entry [${workStatusName} ${formattedDate}]`;
       },
@@ -184,8 +185,8 @@ export const workerWshLoggingConfig: StorageLoggingConfig<WorkerWshStorage> = {
         const date = result?.date || beforeState?.wsh?.date || 'Unknown';
         let formattedDate = date;
         if (date !== 'Unknown' && typeof date === 'string' && date.match(/^\d{4}-\d{2}-\d{2}$/)) {
-          const [year, month, day] = date.split('-');
-          formattedDate = `${parseInt(month)}/${parseInt(day)}/${year}`;
+          const { year, month, day } = parseYmdParts(date);
+          formattedDate = `${month}/${day}/${year}`;
         }
         return `Updated Work Status Entry [${oldStatusName} → ${newStatusName} ${formattedDate}]`;
       },
@@ -240,8 +241,8 @@ export const workerWshLoggingConfig: StorageLoggingConfig<WorkerWshStorage> = {
         const date = beforeState?.wsh?.date || 'Unknown';
         let formattedDate = date;
         if (date !== 'Unknown' && typeof date === 'string' && date.match(/^\d{4}-\d{2}-\d{2}$/)) {
-          const [year, month, day] = date.split('-');
-          formattedDate = `${parseInt(month)}/${parseInt(day)}/${year}`;
+          const { year, month, day } = parseYmdParts(date);
+          formattedDate = `${month}/${day}/${year}`;
         }
         return `Deleted Work Status Entry [${workStatusName} ${formattedDate}]`;
       },

@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { CalendarDays, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import type { DashboardPluginProps } from "../registry";
 import { useDashboardContent } from "../useDashboardContent";
+import { getTodayYmd, addDaysYmd, formatYmd } from "@shared/utils/date";
 
 interface EdlsSummaryData {
   memberStatuses: string[];
@@ -29,28 +30,6 @@ const statusHeaderColors: Record<string, string> = {
   reserved: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
   lock: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
 };
-
-function getTodayYmd(): string {
-  const d = new Date();
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
-}
-
-function shiftYmd(ymd: string, days: number): string {
-  const [y, m, d] = ymd.split("-").map(Number);
-  const date = new Date(y, m - 1, d + days);
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-}
-
-function formatYmdDisplay(ymd: string): string {
-  const [y, m, d] = ymd.split("-").map(Number);
-  const date = new Date(y, m - 1, d);
-  const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  return `${days[date.getDay()]}, ${months[date.getMonth()]} ${d}, ${y}`;
-}
 
 export function EdlsSummary(_props: DashboardPluginProps) {
   const [selectedDate, setSelectedDate] = useState(getTodayYmd());
@@ -102,7 +81,7 @@ export function EdlsSummary(_props: DashboardPluginProps) {
               variant="outline"
               size="icon"
               className="h-8 w-8"
-              onClick={() => setSelectedDate(shiftYmd(selectedDate, -1))}
+              onClick={() => setSelectedDate(addDaysYmd(selectedDate, -1))}
               data-testid="button-edls-prev-day"
             >
               <ChevronLeft className="h-4 w-4" />
@@ -118,14 +97,14 @@ export function EdlsSummary(_props: DashboardPluginProps) {
                 data-testid="input-edls-date"
               />
               <span className="text-sm text-muted-foreground hidden sm:inline" data-testid="text-edls-date-display">
-                {formatYmdDisplay(selectedDate)}
+                {formatYmd(selectedDate, "weekday-short")}
               </span>
             </div>
             <Button
               variant="outline"
               size="icon"
               className="h-8 w-8"
-              onClick={() => setSelectedDate(shiftYmd(selectedDate, 1))}
+              onClick={() => setSelectedDate(addDaysYmd(selectedDate, 1))}
               data-testid="button-edls-next-day"
             >
               <ChevronRight className="h-4 w-4" />

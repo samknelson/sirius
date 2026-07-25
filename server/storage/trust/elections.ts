@@ -15,7 +15,7 @@ import {
 } from '@shared/schema';
 import { eq, and, asc, desc, isNull, lt, lte, gte, or, ne, inArray, type SQL } from 'drizzle-orm';
 import { defineLoggingConfig, type StorageLoggingConfig } from '../middleware/logging';
-import { normalizeToDateOnly, getTodayDateOnly } from '@shared/utils';
+import { toYmd, getTodayYmd, addDaysYmd } from '@shared/utils/date';
 
 export interface WorkerTrustElectionSearchParams {
   id?: string;
@@ -152,25 +152,6 @@ export class WorkerTrustElectionValidationError extends Error {
   }
 }
 
-function toYmd(value: Date | string | null | undefined): string | null {
-  if (value === null || value === undefined) return null;
-  const d = normalizeToDateOnly(value);
-  if (!d) return null;
-  const yr = d.getFullYear();
-  const mo = String(d.getMonth() + 1).padStart(2, '0');
-  const dy = String(d.getDate()).padStart(2, '0');
-  return `${yr}-${mo}-${dy}`;
-}
-
-function ymdMinusOneDay(ymd: string): string {
-  const d = new Date(ymd + 'T00:00:00Z');
-  d.setUTCDate(d.getUTCDate() - 1);
-  const yr = d.getUTCFullYear();
-  const mo = String(d.getUTCMonth() + 1).padStart(2, '0');
-  const dy = String(d.getUTCDate()).padStart(2, '0');
-  return `${yr}-${mo}-${dy}`;
-}
-
 interface ValidationInput {
   workerId?: string | null;
   employerId?: string | null;
@@ -196,7 +177,7 @@ async function validateElection(
   if (!policyId) throw new WorkerTrustElectionValidationError('policyId', 'policyId is required');
   if (!startYmd) throw new WorkerTrustElectionValidationError('startYmd', 'startYmd is required');
 
-  const today = toYmd(getTodayDateOnly())!;
+  const today = getTodayYmd();
   if (startYmd > today) {
     throw new WorkerTrustElectionValidationError('startYmd', 'startYmd cannot be in the future');
   }
@@ -422,7 +403,7 @@ async function endDatePreviousActive(
     .select()
     .from(workerTrustElections)
     .where(and(...conds));
-  const newEnd = ymdMinusOneDay(newStartYmd);
+  const newEnd = addDaysYmd(newStartYmd, -1);
   for (const prior of others) {
     if (prior.startYmd && prior.startYmd > newEnd) {
       throw new WorkerTrustElectionValidationError(

@@ -10,6 +10,7 @@ import { storage } from "../../../../storage";
 import { isPluginComponentEnabledSync } from "../../../_core";
 import { isCacheInitialized } from "../../../../services/component-cache";
 import { logger } from "../../../../logger";
+import { ymdToLocalDate } from "@shared/utils/date";
 
 /** Prefix + entity-type for this plugin's synthetic denorm entities. */
 const ENTITY_TYPE = "grievance-deadline-reminder";
@@ -108,12 +109,6 @@ async function resolveOffsets(): Promise<number[]> {
   return offsets.length > 0 ? offsets : DEFAULT_OFFSETS;
 }
 
-/** Parse a `YYYY-MM-DD` string to LOCAL midnight (avoids UTC off-by-one). */
-function ymdToLocalMidnight(ymd: string): Date {
-  const [y, m, d] = ymd.split("-").map((s) => Number(s));
-  return new Date(y, (m ?? 1) - 1, d ?? 1, 0, 0, 0, 0);
-}
-
 /** LOCAL midnight of `date` plus `days` whole days (days may be negative). */
 function midnightPlusDays(date: Date, days: number): Date {
   const d = new Date(date);
@@ -133,7 +128,7 @@ function reminderWindow(
   dueYmd: string,
   offset: number,
 ): { sendOn: Date; dontSendAfter: Date } {
-  const sendOn = midnightPlusDays(ymdToLocalMidnight(dueYmd), -offset);
+  const sendOn = midnightPlusDays(ymdToLocalDate(dueYmd), -offset);
   const dontSendAfter = midnightPlusDays(sendOn, DONT_SEND_AFTER_DAYS);
   return { sendOn, dontSendAfter };
 }

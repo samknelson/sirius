@@ -6,6 +6,7 @@ import {
   type ValidationError,
   createStorageValidator
 } from "./utils/validation";
+import { parseYmdParts } from '@shared/utils/date';
 
 export const addressValidate = createStorageValidator<InsertContactPostal, ContactPostal, {}>(
   (data, existing) => {
@@ -119,10 +120,7 @@ export const birthDateValidate = createStorageValidator<{ birthDate: string | nu
           message: "Invalid date format. Expected YYYY-MM-DD" 
         });
       } else {
-        const [yearStr, monthStr, dayStr] = birthDate.split('-');
-        const year = parseInt(yearStr, 10);
-        const month = parseInt(monthStr, 10);
-        const day = parseInt(dayStr, 10);
+        const { year, month, day } = parseYmdParts(birthDate);
         
         if (month < 1 || month > 12) {
           errors.push({ 

@@ -17,6 +17,12 @@ const HOLIDAY_TYPE_BY_SOURCE: Record<string, string> = {
   "date-holiday-optional": "optional",
 };
 
+// NOTE: The Ymd helpers below are intentionally UTC-based and deliberately NOT
+// the shared local-time helpers from @shared/utils/date. Business-calendar math
+// (holiday lookups via the `date-holidays` package, ISO weekday computation,
+// day stepping) is pure calendar arithmetic performed entirely in UTC so the
+// results are identical regardless of server timezone. Do not swap these for
+// the shared local-time variants.
 function parseYmd(ymd: string): { year: number; month: number; day: number } {
   const [y, m, d] = ymd.split("-").map((v) => parseInt(v, 10));
   return { year: y, month: m, day: d };

@@ -1206,6 +1206,7 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
       const sorted = [...monthKeys].sort();
       const firstMonth = sorted[0];
       const lastMonth = sorted[sorted.length - 1];
+      // YYYY-MM month key (not a full Ymd) — shared Ymd helpers don't apply.
       const [ly, lm] = lastMonth.split('-').map(Number);
       const nextYm = lm === 12
         ? `${ly + 1}-01`
@@ -1259,6 +1260,7 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
       if (!/^\d{4}-\d{2}$/.test(ym)) return [];
       const client = getClient();
 
+      // YYYY-MM month key (not a full Ymd) — shared Ymd helpers don't apply.
       const [yy, mm] = ym.split('-').map(Number);
       const nextYm = mm === 12
         ? `${yy + 1}-01`

@@ -14,6 +14,7 @@ import { isComponentEnabledSync } from "../../services/component-cache";
 import { runPoll } from "../../services/dispatch/poll";
 import { sendInapp } from "../../services/comm/senders/inapp";
 import { logger } from "../../logger";
+import { parseYmdParts } from "@shared/utils/date";
 
 const unifiedOptionsStorage = createUnifiedOptionsStorage();
 
@@ -115,7 +116,7 @@ export function registerDispatchJobsRoutes(
           typeof body.startDate === "string" &&
           /^\d{4}-\d{2}-\d{2}$/.test(body.startDate)
         ) {
-          const [year, month, day] = body.startDate.split("-").map(Number);
+          const { year, month, day } = parseYmdParts(body.startDate);
           body.startDate = new Date(year, month - 1, day, 12, 0, 0);
         }
 
@@ -242,7 +243,7 @@ export function registerDispatchJobsRoutes(
             typeof startYmd === "string" &&
             /^\d{4}-\d{2}-\d{2}$/.test(startYmd)
           ) {
-            const [year, month, day] = startYmd.split("-").map(Number);
+            const { year, month, day } = parseYmdParts(startYmd);
             updates.startYmd = new Date(year, month - 1, day, 12, 0, 0);
           } else if (startYmd !== null) {
             const d = new Date(startYmd);

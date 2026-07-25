@@ -30,6 +30,37 @@ export function assertYmd(value: unknown): Ymd {
   return value;
 }
 
+/**
+ * Normalize a Date or date-like string into a Ymd, or null when the input is
+ * null/undefined/unparseable.
+ *
+ * - `Date` values use LOCAL calendar fields (never UTC).
+ * - Strings whose first 10 chars are already `YYYY-MM-DD` (plain Ymd or an
+ *   ISO timestamp like `2024-01-07T00:00:00Z`) keep that date part verbatim —
+ *   NO timezone conversion, per this module's no-`new Date(ymd)` rule.
+ * - Any other string falls back to `Date` parsing with local fields.
+ */
+export function toYmd(value: Date | string | null | undefined): Ymd | null {
+  if (value === null || value === undefined) return null;
+  if (value instanceof Date) {
+    return isNaN(value.getTime()) ? null : dateToYmd(value);
+  }
+  const head = value.slice(0, 10);
+  if (isValidYmd(head)) return head;
+  const parsed = new Date(value);
+  return isNaN(parsed.getTime()) ? null : dateToYmd(parsed);
+}
+
+/**
+ * Split a Ymd into numeric parts. Pure string math — no Date construction,
+ * so there is no timezone drift. Assumes a valid Ymd (use isValidYmd first
+ * when the input is untrusted).
+ */
+export function parseYmdParts(ymd: Ymd): { year: number; month: number; day: number } {
+  const [year, month, day] = ymd.split('-').map(Number);
+  return { year, month, day };
+}
+
 export function getTodayYmd(): Ymd {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
@@ -44,7 +75,7 @@ function getDayOfWeekFromYmd(year: number, month: number, day: number): number {
   return ((h + 6) % 7);
 }
 
-export function formatYmd(ymd: Ymd, formatStr: 'long' | 'short' | 'weekday-long' = 'long'): string {
+export function formatYmd(ymd: Ymd, formatStr: 'long' | 'short' | 'weekday-long' | 'weekday-short' = 'long'): string {
   if (!isValidYmd(ymd)) return ymd;
   
   const [year, month, day] = ymd.split('-').map(Number);
@@ -61,6 +92,8 @@ export function formatYmd(ymd: Ymd, formatStr: 'long' | 'short' | 'weekday-long'
       return `${monthsShort[month - 1]} ${day}, ${year}`;
     case 'weekday-long':
       return `${weekdaysShort[dayOfWeek]}, ${months[month - 1]} ${day}, ${year}`;
+    case 'weekday-short':
+      return `${weekdaysShort[dayOfWeek]}, ${monthsShort[month - 1]} ${day}, ${year}`;
     case 'long':
     default:
       return `${months[month - 1]} ${day}, ${year}`;
@@ -85,9 +118,17 @@ export function isYmdInRange(ymd: Ymd, start: Ymd | null, end: Ymd | null): bool
   return true;
 }
 
-export function ymdToDateForPicker(ymd: Ymd): Date {
+/**
+ * Convert a Ymd to a Date at LOCAL midnight. Builds the Date from already-split
+ * components (never `new Date(ymd)`), so there is no UTC drift.
+ */
+export function ymdToLocalDate(ymd: Ymd): Date {
   const [year, month, day] = ymd.split('-').map(Number);
   return new Date(year, month - 1, day);
+}
+
+export function ymdToDateForPicker(ymd: Ymd): Date {
+  return ymdToLocalDate(ymd);
 }
 
 /**

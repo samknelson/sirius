@@ -7,6 +7,7 @@ import {
 } from "@shared/schema";
 import { eq, desc, sql } from "drizzle-orm";
 import type { StorageLoggingConfig } from "../middleware/logging";
+import { parseYmdParts } from '@shared/utils/date';
 
 /**
  * Stub validator - add validation logic here when needed
@@ -115,8 +116,8 @@ export const employerPolicyHistoryLoggingConfig: StorageLoggingConfig<EmployerPo
         const date = result?.date || args[0]?.date || 'Unknown';
         let formattedDate = date;
         if (date !== 'Unknown' && typeof date === 'string' && date.match(/^\d{4}-\d{2}-\d{2}$/)) {
-          const [year, month, day] = date.split('-');
-          formattedDate = `${parseInt(month)}/${parseInt(day)}/${year}`;
+          const { year, month, day } = parseYmdParts(date);
+          formattedDate = `${month}/${day}/${year}`;
         }
         return `Created Policy History Entry [${policyName} ${formattedDate}]`;
       },
@@ -152,8 +153,8 @@ export const employerPolicyHistoryLoggingConfig: StorageLoggingConfig<EmployerPo
         const date = result?.date || beforeState?.policyHistory?.date || 'Unknown';
         let formattedDate = date;
         if (date !== 'Unknown' && typeof date === 'string' && date.match(/^\d{4}-\d{2}-\d{2}$/)) {
-          const [year, month, day] = date.split('-');
-          formattedDate = `${parseInt(month)}/${parseInt(day)}/${year}`;
+          const { year, month, day } = parseYmdParts(date);
+          formattedDate = `${month}/${day}/${year}`;
         }
         return `Updated Policy History Entry [${oldPolicyName} → ${newPolicyName} ${formattedDate}]`;
       },
@@ -208,8 +209,8 @@ export const employerPolicyHistoryLoggingConfig: StorageLoggingConfig<EmployerPo
         const date = beforeState?.policyHistory?.date || 'Unknown';
         let formattedDate = date;
         if (date !== 'Unknown' && typeof date === 'string' && date.match(/^\d{4}-\d{2}-\d{2}$/)) {
-          const [year, month, day] = date.split('-');
-          formattedDate = `${parseInt(month)}/${parseInt(day)}/${year}`;
+          const { year, month, day } = parseYmdParts(date);
+          formattedDate = `${month}/${day}/${year}`;
         }
         return `Deleted Policy History Entry [${policyName} ${formattedDate}]`;
       },

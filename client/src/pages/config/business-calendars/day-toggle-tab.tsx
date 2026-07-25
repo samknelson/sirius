@@ -7,7 +7,7 @@ import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { useBusinessCalendarLayout } from "@/components/layouts/BusinessCalendarLayout";
-import { ymdToDate, dateToYmd } from "./ymd";
+import { ymdToLocalDate as ymdToDate, dateToYmd } from "@shared/utils/date";
 
 interface DayRow {
   id: string;

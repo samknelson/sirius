@@ -12,7 +12,7 @@ import {
   BusinessCalendarLayout,
   useBusinessCalendarLayout,
 } from "@/components/layouts/BusinessCalendarLayout";
-import { ymdToDate, dateToYmd } from "./ymd";
+import { ymdToLocalDate as ymdToDate, dateToYmd } from "@shared/utils/date";
 
 function VacationsContent() {
   const { full, calendarId: id } = useBusinessCalendarLayout();

@@ -5,6 +5,7 @@ import { z } from "zod";
 import { parsePhoneNumber } from "libphonenumber-js";
 import { employers } from "../../../schema";
 import { validateSSN } from "../../../utils/ssn";
+import { toYmd } from "../../../utils/date";
 
 export const sitespecificBaoEmployerImmediateEligibility = pgTable(
   "sitespecific_bao_employer_immediate_eligibility",
@@ -47,19 +48,9 @@ export type InsertBaoEmployerImmediateEligibility = z.infer<
   typeof insertBaoEmployerImmediateEligibilitySchema
 >;
 
-function toYmdString(value: string | Date): string {
-  if (value instanceof Date) {
-    const yr = value.getFullYear();
-    const mo = String(value.getMonth() + 1).padStart(2, "0");
-    const dy = String(value.getDate()).padStart(2, "0");
-    return `${yr}-${mo}-${dy}`;
-  }
-  return value.length >= 10 ? value.slice(0, 10) : value;
-}
-
 const ymdOrDate = z
   .union([z.string(), z.coerce.date()])
-  .transform((v) => toYmdString(v));
+  .transform((v) => toYmd(v) ?? String(v));
 
 export const createBaoEmployerImmediateEligibilityRequestSchema = z
   .object({

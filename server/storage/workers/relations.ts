@@ -19,7 +19,7 @@ import {
   type SQL,
 } from 'drizzle-orm';
 import { defineLoggingConfig, type StorageLoggingConfig } from '../middleware/logging';
-import { normalizeToDateOnly, getTodayDateOnly } from '@shared/utils';
+import { toYmd, getTodayYmd } from '@shared/utils/date';
 
 export interface WorkerRelationOtherWorker {
   id: string;
@@ -71,16 +71,6 @@ export class WorkerRelationValidationError extends Error {
   }
 }
 
-function toYmd(value: Date | string | null | undefined): string | null {
-  if (value === null || value === undefined) return null;
-  const d = normalizeToDateOnly(value);
-  if (!d) return null;
-  const yr = d.getFullYear();
-  const mo = String(d.getMonth() + 1).padStart(2, '0');
-  const dy = String(d.getDate()).padStart(2, '0');
-  return `${yr}-${mo}-${dy}`;
-}
-
 interface ValidationInput {
   worker1?: string | null;
   worker2?: string | null;
@@ -112,7 +102,7 @@ async function validateRelation(
     throw new WorkerRelationValidationError('startYmd', 'start_ymd is required');
   }
 
-  const today = toYmd(getTodayDateOnly())!;
+  const today = getTodayYmd();
   if (startYmd > today) {
     throw new WorkerRelationValidationError('startYmd', 'start_ymd cannot be in the future');
   }
@@ -254,7 +244,7 @@ export function createWorkerRelationsStorage(): WorkerRelationsStorage {
         : [];
       const byId = new Map<string, WorkerRelationOtherWorker>(otherWorkers.map((w) => [w.id, w]));
 
-      const today = toYmd(getTodayDateOnly())!;
+      const today = getTodayYmd();
       return rows.map((r) => {
         const rel = r.relation;
         const myRole: 'worker_1' | 'worker_2' = params.workerId

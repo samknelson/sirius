@@ -8,6 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { Contact } from "@shared/schema";
 import { Loader2, Save, Calendar } from "lucide-react";
+import { formatYmd } from "@shared/utils/date";
 
 interface BirthDateManagementProps {
   contactId: string;
@@ -114,12 +115,7 @@ export default function BirthDateManagement({ contactId, canEdit = true }: Birth
               <div className="flex-1">
                 <Label className="text-sm text-muted-foreground">Birth Date</Label>
                 <p className="text-lg font-medium text-foreground" data-testid="text-contact-birthdate">
-                  {contact?.birthDate ? (() => {
-                    const [year, month, day] = contact.birthDate.split('-');
-                    const monthNames = ["January", "February", "March", "April", "May", "June",
-                      "July", "August", "September", "October", "November", "December"];
-                    return `${monthNames[parseInt(month, 10) - 1]} ${parseInt(day, 10)}, ${year}`;
-                  })() : "Not set"}
+                  {contact?.birthDate ? formatYmd(contact.birthDate) : "Not set"}
                 </p>
               </div>
               {canEdit && (
