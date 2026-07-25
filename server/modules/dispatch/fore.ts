@@ -28,6 +28,23 @@ export function registerDispatchForeRoutes(app: Express) {
     }
   });
 
+  // Jobs where a worker is a foreperson (worker dispatch status page)
+  app.get("/api/workers/:workerId/dispatch-fore", foreComponent, requireAccess('worker.view', (req: any) => req.params.workerId), async (req, res) => {
+    try {
+      const { workerId } = req.params;
+      const worker = await storage.workers.getWorker(workerId);
+      if (!worker) {
+        res.status(404).json({ message: "Worker not found" });
+        return;
+      }
+      const foreJobs = await storage.dispatchJobFore.getByWorker(workerId);
+      res.json(foreJobs);
+    } catch (error: any) {
+      console.error("Failed to fetch worker foreperson jobs:", error?.message || error);
+      res.status(500).json({ message: "Failed to fetch foreperson jobs" });
+    }
+  });
+
   // Eligible workers picker: accepted primary dispatch at the job's employer,
   // not already a foreperson on this job.
   app.get("/api/dispatch-jobs/:jobId/fore/eligible", foreComponent, requireAccess('admin'), async (req, res) => {

@@ -38,8 +38,22 @@ export interface ForeEligibleWorker {
   displayName: string | null;
 }
 
+export interface DispatchJobForeWithJob extends DispatchJobFore {
+  job?: {
+    id: string;
+    title: string;
+    startYmd: string;
+    employer?: {
+      id: string;
+      name: string;
+    } | null;
+  } | null;
+}
+
 export interface DispatchJobForeStorage {
   getByJob(jobId: string): Promise<DispatchJobForeWithWorker[]>;
+  /** Foreperson rows for a worker joined with job and employer info. Read-only. */
+  getByWorker(workerId: string): Promise<DispatchJobForeWithJob[]>;
   get(id: string): Promise<DispatchJobFore | undefined>;
   getByJobAndWorker(jobId: string, workerId: string): Promise<DispatchJobFore | undefined>;
   /**
@@ -143,6 +157,33 @@ export function createDispatchJobForeStorage(): DispatchJobForeStorage {
         worker: row.worker
           ? { ...row.worker, contact: row.contact || null }
           : null,
+      }));
+    },
+
+    async getByWorker(workerId: string): Promise<DispatchJobForeWithJob[]> {
+      const client = getClient();
+      const rows = await client
+        .select({
+          fore: dispatchJobFore,
+          job: {
+            id: dispatchJobs.id,
+            title: dispatchJobs.title,
+            startYmd: dispatchJobs.startYmd,
+          },
+          employer: {
+            id: employers.id,
+            name: employers.name,
+          },
+        })
+        .from(dispatchJobFore)
+        .leftJoin(dispatchJobs, eq(dispatchJobFore.jobId, dispatchJobs.id))
+        .leftJoin(employers, eq(dispatchJobs.employerId, employers.id))
+        .where(eq(dispatchJobFore.workerId, workerId))
+        .orderBy(asc(dispatchJobs.startYmd));
+
+      return rows.map(row => ({
+        ...row.fore,
+        job: row.job ? { ...row.job, employer: row.employer } : null,
       }));
     },
 

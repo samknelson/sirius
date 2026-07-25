@@ -76,6 +76,7 @@ export interface DispatchWithRelations extends Dispatch {
     id: string;
     title: string;
     employerId: string;
+    startYmd: string;
     payRate: string | null;
     startTime: string | null;
     endTime: string | null;
@@ -222,6 +223,7 @@ async function searchDispatches(criteria: SearchDispatchesCriteria): Promise<Dis
         id: dispatchJobs.id,
         title: dispatchJobs.title,
         employerId: dispatchJobs.employerId,
+        startYmd: dispatchJobs.startYmd,
         payRate: dispatchJobs.payRate,
         startTime: dispatchJobs.startTime,
         endTime: dispatchJobs.endTime,
@@ -377,6 +379,7 @@ export function createDispatchStorage(): DispatchStorage {
             id: dispatchJobs.id,
             title: dispatchJobs.title,
             employerId: dispatchJobs.employerId,
+            startYmd: dispatchJobs.startYmd,
             payRate: dispatchJobs.payRate,
             startTime: dispatchJobs.startTime,
             endTime: dispatchJobs.endTime,
