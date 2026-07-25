@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -27,7 +27,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { insertDispatchJobTypeSchema, type InsertDispatchJobType, type JobTypeData, type JobTypePrimarySetting } from "@shared/schema";
+import { insertDispatchJobTypeSchema, type InsertDispatchJobType, type JobTypeData, type JobTypePrimarySetting, type JobTypeBullpenSetting } from "@shared/schema";
+
+const bullpenOptions: { value: JobTypeBullpenSetting; label: string }[] = [
+  { value: "none", label: "None" },
+  { value: "host", label: "Host" },
+  { value: "shared", label: "Shared" },
+];
 
 const primaryOptions: { value: JobTypePrimarySetting; label: string }[] = [
   { value: "primary", label: "Always primary" },
@@ -58,6 +64,21 @@ function DispatchJobTypeEditContent() {
   const [minWorkers, setMinWorkers] = useState<string>(jobTypeData?.minWorkers?.toString() || "");
   const [maxWorkers, setMaxWorkers] = useState<string>(jobTypeData?.maxWorkers?.toString() || "");
   const [primarySetting, setPrimarySetting] = useState<JobTypePrimarySetting>(jobTypeData?.primary || "secondary");
+  const [bullpenSetting, setBullpenSetting] = useState<JobTypeBullpenSetting>(jobTypeData?.bullpen || "none");
+  const [bullpenEventTypeId, setBullpenEventTypeId] = useState<string>(jobTypeData?.bullpenEventTypeId || "");
+  const [bullpenEventTypeError, setBullpenEventTypeError] = useState<string | null>(null);
+
+  const { data: componentConfigs = [] } = useQuery<{ componentId: string; enabled: boolean }[]>({
+    queryKey: ["/api/components/config"],
+  });
+  const bullpenComponentEnabled = componentConfigs.some(
+    (c) => c.componentId === "dispatch.bullpen" && c.enabled,
+  );
+
+  const { data: eventTypes = [] } = useQuery<{ id: string; name: string }[]>({
+    queryKey: ["/api/options/event-type"],
+    enabled: bullpenComponentEnabled,
+  });
 
   const form = useForm<InsertDispatchJobType>({
     resolver: zodResolver(insertDispatchJobTypeSchema),
@@ -76,6 +97,9 @@ function DispatchJobTypeEditContent() {
     setMinWorkers(jobTypeData?.minWorkers?.toString() || "");
     setMaxWorkers(jobTypeData?.maxWorkers?.toString() || "");
     setPrimarySetting(jobTypeData?.primary || "secondary");
+    setBullpenSetting(jobTypeData?.bullpen || "none");
+    setBullpenEventTypeId(jobTypeData?.bullpenEventTypeId || "");
+    setBullpenEventTypeError(null);
   }, [jobType, jobTypeData, form]);
 
   const updateMutation = useMutation({
@@ -87,6 +111,15 @@ function DispatchJobTypeEditContent() {
         maxWorkers: maxWorkers ? parseInt(maxWorkers, 10) : undefined,
         primary: primarySetting,
       };
+      if (bullpenComponentEnabled) {
+        if (bullpenSetting === "none") {
+          updatedData.bullpen = "none";
+          delete updatedData.bullpenEventTypeId;
+        } else {
+          updatedData.bullpen = bullpenSetting;
+          updatedData.bullpenEventTypeId = bullpenEventTypeId;
+        }
+      }
       return apiRequest("PUT", `/api/options/dispatch-job-type/${jobType.id}`, {
         ...data,
         data: updatedData,
@@ -111,6 +144,15 @@ function DispatchJobTypeEditContent() {
   });
 
   const onSubmit = (data: InsertDispatchJobType) => {
+    if (
+      bullpenComponentEnabled &&
+      (bullpenSetting === "host" || bullpenSetting === "shared") &&
+      !bullpenEventTypeId
+    ) {
+      setBullpenEventTypeError("An event type is required when Bullpen is set to Host or Shared.");
+      return;
+    }
+    setBullpenEventTypeError(null);
     updateMutation.mutate(data);
   };
 
@@ -180,6 +222,71 @@ function DispatchJobTypeEditContent() {
                 Controls whether dispatches for this job type are marked as the worker's primary dispatch.
               </p>
             </div>
+
+            {bullpenComponentEnabled && (
+              <>
+                <div className="space-y-2">
+                  <FormLabel>Bullpen?</FormLabel>
+                  <Select
+                    value={bullpenSetting}
+                    onValueChange={(v) => {
+                      const next = v as JobTypeBullpenSetting;
+                      setBullpenSetting(next);
+                      if (next === "none") {
+                        setBullpenEventTypeId("");
+                        setBullpenEventTypeError(null);
+                      }
+                    }}
+                  >
+                    <SelectTrigger data-testid="select-bullpen">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {bullpenOptions.map(({ value, label }) => (
+                        <SelectItem key={value} value={value} data-testid={`option-bullpen-${value}`}>
+                          {label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-sm text-muted-foreground">
+                    Whether this job type hosts a bullpen or shares one.
+                  </p>
+                </div>
+
+                {(bullpenSetting === "host" || bullpenSetting === "shared") && (
+                  <div className="space-y-2">
+                    <FormLabel>Event Type</FormLabel>
+                    <Select
+                      value={bullpenEventTypeId}
+                      onValueChange={(v) => {
+                        setBullpenEventTypeId(v);
+                        setBullpenEventTypeError(null);
+                      }}
+                    >
+                      <SelectTrigger data-testid="select-bullpen-event-type">
+                        <SelectValue placeholder="Select an event type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {eventTypes.map((et) => (
+                          <SelectItem key={et.id} value={et.id} data-testid={`option-event-type-${et.id}`}>
+                            {et.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {bullpenEventTypeError && (
+                      <p className="text-sm font-medium text-destructive" data-testid="error-bullpen-event-type">
+                        {bullpenEventTypeError}
+                      </p>
+                    )}
+                    <p className="text-sm text-muted-foreground">
+                      Required for host or shared bullpens.
+                    </p>
+                  </div>
+                )}
+              </>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">

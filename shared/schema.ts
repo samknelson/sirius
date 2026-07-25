@@ -110,6 +110,8 @@ export {
   type JobTypeData,
   jobTypePrimarySettingEnum,
   type JobTypePrimarySetting,
+  jobTypeBullpenEnum,
+  type JobTypeBullpenSetting,
   type DispatchJobData,
   type NotificationMedia,
   type PollPhaseStatus,

@@ -5,6 +5,31 @@ import { OptionsTypeName } from "../storage/unified-options";
 import { storage } from "../storage";
 import { requireComponent, isComponentEnabled } from "./components";
 import { getComponentById } from "../../shared/components";
+import { jobTypeBullpenEnum } from "@shared/schema";
+
+/**
+ * Validate the bullpen fields inside a dispatch-job-type `data` payload
+ * (dispatch.bullpen component). Returns an error message or null.
+ * Enforced whenever bullpen fields are present so a direct API call cannot
+ * persist an invalid combination regardless of what the UI shows.
+ */
+function validateDispatchJobTypeBullpen(data: unknown): string | null {
+  if (data === null || data === undefined || typeof data !== "object") return null;
+  const d = data as Record<string, unknown>;
+  const bullpen = d.bullpen;
+  if (bullpen !== undefined && bullpen !== null) {
+    if (typeof bullpen !== "string" || !(jobTypeBullpenEnum as readonly string[]).includes(bullpen)) {
+      return `bullpen must be one of: ${jobTypeBullpenEnum.join(", ")}`;
+    }
+    if (bullpen === "host" || bullpen === "shared") {
+      const eventTypeId = d.bullpenEventTypeId;
+      if (typeof eventTypeId !== "string" || eventTypeId.trim() === "") {
+        return "An event type is required when Bullpen is set to host or shared";
+      }
+    }
+  }
+  return null;
+}
 
 /**
  * Middleware for the generic `/api/options/:type*` routes that rejects
@@ -284,6 +309,13 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
           return res.status(400).json({ message: `${field} must be one of: ${allowed.join(', ')}` });
         }
       }
+
+      if (type === "dispatch-job-type") {
+        const bullpenError = validateDispatchJobTypeBullpen(data.data);
+        if (bullpenError) {
+          return res.status(400).json({ message: bullpenError });
+        }
+      }
       
       const item = await config.create(data);
       res.status(201).json(item);
@@ -330,6 +362,13 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
         const value = updates[field];
         if (value !== undefined && value !== null && !allowed.includes(value)) {
           return res.status(400).json({ message: `${field} must be one of: ${allowed.join(', ')}` });
+        }
+      }
+
+      if (type === "dispatch-job-type" && updates.data !== undefined) {
+        const bullpenError = validateDispatchJobTypeBullpen(updates.data);
+        if (bullpenError) {
+          return res.status(400).json({ message: bullpenError });
         }
       }
       

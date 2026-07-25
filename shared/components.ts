@@ -653,6 +653,13 @@ export const componentRegistry: ComponentDefinition[] = [
     }
   },
   {
+    id: "dispatch.bullpen",
+    name: "Dispatch Bullpen",
+    description: "Bullpen functionality for dispatch job types (host/shared bullpens tied to event types)",
+    enabledByDefault: false,
+    category: "dispatch"
+  },
+  {
     id: "dispatch.dnc",
     name: "Dispatch Do Not Call",
     description: "Do Not Call list management for dispatch",

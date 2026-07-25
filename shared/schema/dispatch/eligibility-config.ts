@@ -34,9 +34,22 @@ export type NotificationMedia = 'email' | 'sms' | 'in-app';
 export const jobTypePrimarySettingEnum = ["primary", "both", "secondary"] as const;
 export type JobTypePrimarySetting = typeof jobTypePrimarySettingEnum[number];
 
+/**
+ * Bullpen setting for a job type (dispatch.bullpen component).
+ * - "none": no bullpen behavior (default when absent)
+ * - "host": this job type hosts a bullpen
+ * - "shared": this job type participates in a shared bullpen
+ * When "host" or "shared", `bullpenEventTypeId` (an options_event_type id)
+ * is required.
+ */
+export const jobTypeBullpenEnum = ["none", "host", "shared"] as const;
+export type JobTypeBullpenSetting = typeof jobTypeBullpenEnum[number];
+
 export interface JobTypeData {
   icon?: string;
   primary?: JobTypePrimarySetting;
+  bullpen?: JobTypeBullpenSetting;
+  bullpenEventTypeId?: string;
   eligibility?: EligibilityPluginConfig[];
   minWorkers?: number;
   maxWorkers?: number;
