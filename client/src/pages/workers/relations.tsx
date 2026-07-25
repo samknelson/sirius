@@ -37,7 +37,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Plus, Pencil, Trash2, Users } from "lucide-react";
 
 interface OtherWorker {
@@ -156,7 +156,7 @@ function RelationsContent() {
       closeModal();
     },
     onError: (error: Error) => {
-      toast({ title: "Error", description: error.message || "Failed to add relation.", variant: "destructive" });
+      toast({ title: "Error", description: getApiErrorMessage(error, "Failed to add relation."), variant: "destructive" });
     },
   });
 
@@ -176,7 +176,7 @@ function RelationsContent() {
       closeModal();
     },
     onError: (error: Error) => {
-      toast({ title: "Error", description: error.message || "Failed to update relation.", variant: "destructive" });
+      toast({ title: "Error", description: getApiErrorMessage(error, "Failed to update relation."), variant: "destructive" });
     },
   });
 
@@ -186,8 +186,8 @@ function RelationsContent() {
       queryClient.invalidateQueries({ queryKey: ["/api/workers", worker.id, "relations"] });
       toast({ title: "Relation removed", description: "The worker relation has been removed." });
     },
-    onError: () => {
-      toast({ title: "Error", description: "Failed to remove relation.", variant: "destructive" });
+    onError: (error) => {
+      toast({ title: "Error", description: getApiErrorMessage(error, "Failed to remove relation."), variant: "destructive" });
     },
   });
 

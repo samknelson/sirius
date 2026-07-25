@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Save, Loader2 } from "lucide-react";
 
 function DispatchEditContent() {
@@ -36,10 +36,10 @@ function DispatchEditContent() {
       queryClient.invalidateQueries({ queryKey: ["/api/dispatches/job", dispatch.jobId] });
       setLocation(`/dispatch/${dispatch.id}`);
     },
-    onError: () => {
+    onError: (error) => {
       toast({
         title: "Error",
-        description: "Failed to update the dispatch. Please try again.",
+        description: getApiErrorMessage(error, "Failed to update the dispatch. Please try again."),
         variant: "destructive",
       });
     },

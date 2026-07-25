@@ -15,6 +15,23 @@ export class ApiError extends Error {
   }
 }
 
+export function getApiErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof ApiError) {
+    const serverMessage = error.data?.error || error.data?.message;
+    if (typeof serverMessage === "string" && serverMessage.trim()) {
+      return serverMessage;
+    }
+    if (error.message) {
+      return error.message.replace(/^\d{3}:\s*/, "") || fallback;
+    }
+    return fallback;
+  }
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  return fallback;
+}
+
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
     let data: any = null;

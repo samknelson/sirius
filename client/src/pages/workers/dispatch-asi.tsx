@@ -5,7 +5,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { LogIn, Loader2 } from "lucide-react";
 
 interface AsiResponse {
@@ -31,8 +31,8 @@ function DispatchAsiContent() {
         description: `Auto Sign-In is now ${result?.asi ? "on" : "off"}.`,
       });
     },
-    onError: () => {
-      toast({ title: "Error", description: "Failed to update Auto Sign-In.", variant: "destructive" });
+    onError: (error) => {
+      toast({ title: "Error", description: getApiErrorMessage(error, "Failed to update Auto Sign-In."), variant: "destructive" });
     },
   });
 

@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import {
   Table,
   TableBody,
@@ -64,10 +64,10 @@ function JobDispatchesCbnContent() {
       queryClient.invalidateQueries({ queryKey: [`/api/dispatch-jobs/${job.id}/eligible-workers`] });
       queryClient.invalidateQueries({ queryKey: ["/api/dispatches/job", job.id] });
     },
-    onError: () => {
+    onError: (error) => {
       toast({
         title: "Error",
-        description: "Failed to create one or more dispatches",
+        description: getApiErrorMessage(error, "Failed to create one or more dispatches"),
         variant: "destructive",
       });
     },

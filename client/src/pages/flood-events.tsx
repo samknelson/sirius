@@ -5,7 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Trash2, RefreshCw, Droplets, Filter } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import { format, formatDistanceToNow } from "date-fns";
 import { useState } from "react";
 import {
@@ -66,10 +66,10 @@ export default function FloodEventsPage() {
         description: "The flood event has been removed.",
       });
     },
-    onError: () => {
+    onError: (error) => {
       toast({
         title: "Error",
-        description: "Failed to delete flood event",
+        description: getApiErrorMessage(error, "Failed to delete flood event"),
         variant: "destructive",
       });
     },
@@ -92,10 +92,10 @@ export default function FloodEventsPage() {
           : "All flood events have been cleared.",
       });
     },
-    onError: () => {
+    onError: (error) => {
       toast({
         title: "Error",
-        description: "Failed to clear flood events",
+        description: getApiErrorMessage(error, "Failed to clear flood events"),
         variant: "destructive",
       });
     },

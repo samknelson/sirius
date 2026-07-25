@@ -8,7 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { useState } from "react";
 import { Building2, Plus, Trash2, Clock } from "lucide-react";
 import type { WorkerDispatchHfe } from "@shared/schema";
@@ -81,10 +81,10 @@ function DispatchHoldForEmployerContent() {
         description: "The Employer Priority entry has been removed.",
       });
     },
-    onError: () => {
+    onError: (error) => {
       toast({
         title: "Error",
-        description: "Failed to remove entry.",
+        description: getApiErrorMessage(error, "Failed to remove entry."),
         variant: "destructive",
       });
     },
