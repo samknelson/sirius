@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { prettifySqlSimple } from "@shared/utils/sql-prettify";
 import { getApiErrorMessage } from "@/lib/queryClient";
+import { useTerm } from "@/contexts/TerminologyContext";
 
 interface EligibleWorker {
   id: string;
@@ -56,6 +57,7 @@ interface SqlResponse {
 const PAGE_SIZE_OPTIONS = [25, 50, 100];
 
 function EligibleWorkersContent() {
+  const term = useTerm();
   const { id } = useParams<{ id: string }>();
   const { job } = useDispatchJobLayout();
   const { toast } = useToast();
@@ -311,7 +313,7 @@ function EligibleWorkersContent() {
                 <TableHead className="w-16">#</TableHead>
                 <TableHead className="w-32">ID</TableHead>
                 <TableHead>Name</TableHead>
-                <TableHead className="w-40">Last Offer Date</TableHead>
+                <TableHead className="w-40">{term("seniorityDate")}</TableHead>
                 <TableHead className="w-24 text-right">View</TableHead>
               </TableRow>
             </TableHeader>

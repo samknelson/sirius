@@ -14,6 +14,7 @@ import { format } from "date-fns";
 import { Calendar, Truck, Edit, Save, X, ClipboardList, HardHat, ExternalLink, Clock, DollarSign, Building2 } from "lucide-react";
 import { Link } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
+import { useTerm } from "@/contexts/TerminologyContext";
 import { formatYmd } from "@shared/utils/date";
 import type { WorkerDispatchStatus } from "@shared/schema";
 import type { DispatchWithRelations } from "../../../../server/storage/dispatch/dispatches";
@@ -268,6 +269,7 @@ function DispatchStatusContent() {
   const { worker } = useWorkerLayout();
   const { toast } = useToast();
   const { hasPermission } = useAuth();
+  const term = useTerm();
   const isStaff = hasPermission("staff");
 
   const [isEditingStatus, setIsEditingStatus] = useState(false);
@@ -439,7 +441,7 @@ function DispatchStatusContent() {
 
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-4 flex-wrap">
-            <Label className="text-muted-foreground text-sm">Last Offer Date</Label>
+            <Label className="text-muted-foreground text-sm">{term("seniorityDate")}</Label>
             {!isEditingSeniority && isStaff && (
               <Button variant="outline" size="sm" onClick={handleEditSeniority} data-testid="button-edit-seniority">
                 <Edit className="h-4 w-4 mr-2" />
