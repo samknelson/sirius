@@ -94,12 +94,15 @@ export interface DenormStorage {
    */
   upsertStatus(input: DenormStatusInput): Promise<Denorm>;
   /**
-   * Bulk-insert backfill seeds as `stale` rows, skipping any (entity, config)
-   * pair that already has a row (`ON CONFLICT DO NOTHING` on the
-   * (entity_id, config_id) unique index). Returns the number of rows actually
-   * inserted. This is the enqueue half of the backfill sweep: it only ever
-   * *adds* missing rows and never clobbers an existing row (e.g. a freshly
-   * event-written `ok` row), so backfill stays idempotent.
+   * Bulk-insert backfill seeds as `stale` rows; any (entity, config)
+   * pair that already has a row is re-marked stale (`ON CONFLICT DO UPDATE`
+   * on the (entity_id, config_id) unique index, setting status/stale_at only).
+   * Returns the number of rows inserted or re-marked. This is the enqueue half
+   * of the backfill sweep. Re-marking an existing row stale is safe and
+   * idempotent: plugins whose backfill anti-joins on "no denorm row" never
+   * return ids that conflict, and plugins that scan for live violations
+   * (e.g. `dispatch_primary_unavailable`) NEED the re-mark so a re-violation
+   * with an old computed row still gets re-enqueued for recompute.
    */
   insertStaleBatch(seeds: DenormStaleSeed[]): Promise<number>;
   /**
@@ -255,7 +258,10 @@ export function createDenormStorage(): DenormStorage {
       const inserted = await client
         .insert(denorm)
         .values(values)
-        .onConflictDoNothing({ target: [denorm.entityId, denorm.configId] })
+        .onConflictDoUpdate({
+          target: [denorm.entityId, denorm.configId],
+          set: { status: "stale", staleAt: now },
+        })
         .returning({ id: denorm.id });
       return inserted.length;
     },
