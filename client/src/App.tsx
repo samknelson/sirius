@@ -284,6 +284,7 @@ const DispatchJobDispatchesCbnPage = lazy(() => import("@/pages/dispatch/job-dis
 const DispatchJobEligibleWorkersPage = lazy(() => import("@/pages/dispatch/job-eligible-workers"));
 const DispatchJobEligibleWorkersCheckPage = lazy(() => import("@/pages/dispatch/job-eligible-check"));
 const DispatchJobNewPage = lazy(() => import("@/pages/dispatch/job-new"));
+const DispatchJobForePage = lazy(() => import("@/pages/dispatch/job-fore"));
 const DispatchJobRunPage = lazy(() => import("@/pages/dispatch/job-run"));
 const DispatchJobRunSettingsPage = lazy(() => import("@/pages/dispatch/job-run-settings"));
 const DispatchJobRunBatchPage = lazy(() => import("@/pages/dispatch/job-run-batch"));
@@ -2961,6 +2962,14 @@ function Router() {
         <ProtectedRoute tabId="eligible-workers-list" entityType="dispatch_job">
           <AuthenticatedLayout>
             <DispatchJobEligibleWorkersPage />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/dispatch/job/:id/foreperson">
+        <ProtectedRoute tabId="foreperson" entityType="dispatch_job">
+          <AuthenticatedLayout>
+            <DispatchJobForePage />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

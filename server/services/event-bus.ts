@@ -29,6 +29,7 @@ export enum EventType {
   DISPATCH_EBA_SAVED = "dispatch.eba.saved",
   DISPATCH_STATUS_SAVED = "dispatch.status.saved",
   DISPATCH_SAVED = "dispatch.saved",
+  DISPATCH_FORE_SAVED = "dispatch.fore.saved",
   WORKER_BAN_SAVED = "worker.ban.saved",
   WORKER_SKILL_SAVED = "worker.skill.saved",
   WORKER_WS_CHANGED = "worker.ws.changed",
@@ -137,6 +138,17 @@ export interface DispatchSavedPayload {
   jobId: string;
   status: string;
   previousStatus?: string;
+}
+
+export interface DispatchForeSavedPayload {
+  foreId: string;
+  jobId: string;
+  workerId: string;
+  /** Whether the worker was added to or removed from the job's forepersons. */
+  action: "added" | "removed";
+  /** Job title + employer name, resolved at emit time so notifiers need no lookups. */
+  jobTitle: string;
+  employerName: string;
 }
 
 export interface WorkerBanSavedPayload {
@@ -369,6 +381,7 @@ export interface EventPayloadMap {
   [EventType.DISPATCH_EBA_SAVED]: DispatchEbaSavedPayload;
   [EventType.DISPATCH_STATUS_SAVED]: DispatchStatusSavedPayload;
   [EventType.DISPATCH_SAVED]: DispatchSavedPayload;
+  [EventType.DISPATCH_FORE_SAVED]: DispatchForeSavedPayload;
   [EventType.WORKER_BAN_SAVED]: WorkerBanSavedPayload;
   [EventType.WORKER_SKILL_SAVED]: WorkerSkillSavedPayload;
   [EventType.WORKER_WS_CHANGED]: WorkerWsChangedPayload;

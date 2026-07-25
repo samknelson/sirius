@@ -38,6 +38,13 @@ export {
 } from "./schema/dispatch/schema";
 
 export {
+  dispatchJobFore,
+  insertDispatchJobForeSchema,
+  type DispatchJobFore,
+  type InsertDispatchJobFore,
+} from "./schema/dispatch/fore-schema";
+
+export {
   workerDispatchDnc,
   dispatchWorkerDncTypeEnum,
   insertWorkerDispatchDncSchema,

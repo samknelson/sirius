@@ -355,6 +355,7 @@ export const dispatchJobTabTree: HierarchicalTab[] = [
       { id: 'eligible-workers-check', label: 'Check', hrefTemplate: '/dispatch/job/{id}/eligible-workers/check', permission: 'staff', component: 'dispatch' },
     ]
   },
+  { id: 'foreperson', label: 'Foreperson', hrefTemplate: '/dispatch/job/{id}/foreperson', permission: 'staff', component: 'dispatch.fore' },
   { id: 'edit', label: 'Edit', hrefTemplate: '/dispatch/job/{id}/edit', permission: 'staff', component: 'dispatch' },
 ];
 

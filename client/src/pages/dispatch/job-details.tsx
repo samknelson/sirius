@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { renderIcon } from "@/components/ui/icon-picker";
 import type { OptionsSkill, JobTypeData, DispatchJobData } from "@shared/schema";
+import type { DispatchJobForeWithWorker } from "../../../../server/storage/dispatch/fore";
 
 interface DispatchStatusCounts {
   pending: number;
@@ -71,6 +72,15 @@ function DispatchJobDetailsContent() {
   const ebaComponentEnabled = componentConfigs.some(
     (c) => c.componentId === "dispatch.eba" && c.enabled
   );
+
+  const foreComponentEnabled = componentConfigs.some(
+    (c) => c.componentId === "dispatch.fore" && c.enabled
+  );
+
+  const { data: forepersons = [] } = useQuery<DispatchJobForeWithWorker[]>({
+    queryKey: ["/api/dispatch-jobs", job.id, "fore"],
+    enabled: foreComponentEnabled,
+  });
   const jobTypeData = job.jobType?.data as JobTypeData | null | undefined;
   const showAllowEba = ebaComponentEnabled && jobTypeData?.primary === "both";
   // Absent flag = allow (default behavior).
@@ -233,6 +243,30 @@ function DispatchJobDetailsContent() {
                 </div>
               )}
             </div>
+          </div>
+        )}
+        {foreComponentEnabled && (
+          <div>
+            <h3 className="text-sm font-medium text-muted-foreground mb-2">Forepersons</h3>
+            {forepersons.length === 0 ? (
+              <p className="text-muted-foreground text-sm" data-testid="text-no-forepersons">
+                No Forepersons designated for this job.
+              </p>
+            ) : (
+              <div className="flex flex-wrap gap-2" data-testid="forepersons-list">
+                {forepersons.map((fore) => (
+                  <Badge
+                    key={fore.id}
+                    variant="secondary"
+                    className="gap-1"
+                    data-testid={`badge-foreperson-${fore.id}`}
+                  >
+                    <HardHat className="h-3 w-3" />
+                    {fore.worker?.contact?.displayName || "Unknown Worker"}
+                  </Badge>
+                ))}
+              </div>
+            )}
           </div>
         )}
         {skillsComponentEnabled && requiredSkills.length > 0 && (
