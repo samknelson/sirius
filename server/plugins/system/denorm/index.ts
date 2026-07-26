@@ -104,6 +104,7 @@ import "./plugins/workerEmployment";
 import "./plugins/grievanceName";
 import "./plugins/grievanceTimeline";
 import "./plugins/tosAbsenceReminder";
+import "./plugins/dispatch/jobEvent";
 import "./plugins/grievanceDeadlineReminder";
 import "./plugins/employerMonthly";
 // Trust WMB lifecycle-event denorm plugins (shared trust_wmb_events table,

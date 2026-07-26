@@ -29,6 +29,7 @@ export enum EventType {
   DISPATCH_EBA_SAVED = "dispatch.eba.saved",
   DISPATCH_STATUS_SAVED = "dispatch.status.saved",
   DISPATCH_SAVED = "dispatch.saved",
+  DISPATCH_JOB_SAVED = "dispatch.job.saved",
   DISPATCH_FORE_SAVED = "dispatch.fore.saved",
   DISPATCH_DEPARTMENT_SAVED = "dispatch.department.saved",
   WORKER_BAN_SAVED = "worker.ban.saved",
@@ -139,6 +140,16 @@ export interface DispatchSavedPayload {
   jobId: string;
   status: string;
   previousStatus?: string;
+}
+
+/**
+ * Emitted after a dispatch job create or update commits (via the after-commit
+ * hook, so listeners never see pre-commit data). Deliberately minimal: jobs
+ * storage stays consumer-unaware; listeners (e.g. the `dispatch_job_event`
+ * denorm plugin) re-read whatever job state they need.
+ */
+export interface DispatchJobSavedPayload {
+  jobId: string;
 }
 
 export interface DispatchDepartmentSavedPayload {
@@ -390,6 +401,7 @@ export interface EventPayloadMap {
   [EventType.DISPATCH_EBA_SAVED]: DispatchEbaSavedPayload;
   [EventType.DISPATCH_STATUS_SAVED]: DispatchStatusSavedPayload;
   [EventType.DISPATCH_SAVED]: DispatchSavedPayload;
+  [EventType.DISPATCH_JOB_SAVED]: DispatchJobSavedPayload;
   [EventType.DISPATCH_FORE_SAVED]: DispatchForeSavedPayload;
   [EventType.DISPATCH_DEPARTMENT_SAVED]: DispatchDepartmentSavedPayload;
   [EventType.WORKER_BAN_SAVED]: WorkerBanSavedPayload;

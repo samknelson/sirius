@@ -45,6 +45,13 @@ export {
 } from "./schema/dispatch/fore-schema";
 
 export {
+  dispatchJobEvent,
+  insertDispatchJobEventSchema,
+  type DispatchJobEvent,
+  type InsertDispatchJobEvent,
+} from "./schema/dispatch/bullpen-schema";
+
+export {
   workerDispatchDepartment,
   dispatchJobDepartment,
   workerDispatchDepartmentPreferenceEnum,

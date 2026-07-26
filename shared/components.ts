@@ -665,7 +665,13 @@ export const componentRegistry: ComponentDefinition[] = [
     description: "Bullpen functionality for dispatch job types (host/shared bullpens tied to event types)",
     enabledByDefault: false,
     category: "dispatch",
-    dependsOnComponents: ["dispatch"]
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/dispatch/bullpen-schema.ts",
+      tables: ["dispatch_job_event"],
+      dependsOnComponents: ["dispatch"]
+    }
   },
   {
     id: "dispatch.dnc",
