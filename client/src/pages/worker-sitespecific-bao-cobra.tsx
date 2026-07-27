@@ -12,6 +12,14 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import type { BaoCobraCaseWithDetails } from "@shared/schema/sitespecific/bao/schema";
 
 type CobraCoverage = {
@@ -139,6 +147,89 @@ function CobraCostSentences({ view }: { view: CobraCaseView }) {
         </p>
       )}
     </div>
+  );
+}
+
+/**
+ * Rate breakdown beneath the cost sentences: one column per applicable tier
+ * (family tier first when the worker has dependents, then individual), with a
+ * row per continued benefit plus subtotal, admin fee, and total rows.
+ */
+function CobraRateBreakdown({ view }: { view: CobraCaseView }) {
+  const c = view.case;
+  const dependents = view.dependents;
+  const hasDependents = !!dependents && dependents.isSubscriber && dependents.count > 0;
+
+  const tiers: { tier: string; label: string }[] = [
+    ...(hasDependents
+      ? [{ tier: dependents.familyTier, label: "You and your dependents" }]
+      : []),
+    { tier: "1", label: "Individual" },
+  ];
+
+  const formatRate = (amount: string | null | undefined) =>
+    formatCurrency(amount) ?? "Not on file";
+
+  return (
+    <Table data-testid={`table-cobra-rates-${c.id}`}>
+      <TableHeader>
+        <TableRow>
+          <TableHead>Coverage</TableHead>
+          {tiers.map((t) => (
+            <TableHead key={t.tier}>{t.label}</TableHead>
+          ))}
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {view.coverage.map((cov) => (
+          <TableRow key={cov.benefitId} data-testid={`row-cobra-rate-${cov.benefitId}`}>
+            <TableCell className="font-medium">
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="capitalize">
+                  {cov.kind}
+                </Badge>
+                <span>{cov.benefitName ?? "Unknown benefit"}</span>
+              </div>
+            </TableCell>
+            {tiers.map((t) => (
+              <TableCell key={t.tier} data-testid={`text-cobra-rate-${cov.benefitId}-${t.tier}`}>
+                {formatRate(cov.ratesByTier[t.tier] ?? null)}
+              </TableCell>
+            ))}
+          </TableRow>
+        ))}
+        {view.totalsByTier && (
+          <>
+            <TableRow data-testid={`row-cobra-subtotal-${c.id}`}>
+              <TableCell className="text-muted-foreground">Subtotal</TableCell>
+              {tiers.map((t) => (
+                <TableCell key={t.tier} data-testid={`text-cobra-subtotal-${c.id}-${t.tier}`}>
+                  {formatRate(view.totalsByTier?.[t.tier]?.preFeeTotal ?? null)}
+                </TableCell>
+              ))}
+            </TableRow>
+            <TableRow data-testid={`row-cobra-admin-fee-${c.id}`}>
+              <TableCell className="text-muted-foreground">
+                COBRA administration fee (2%)
+              </TableCell>
+              {tiers.map((t) => (
+                <TableCell key={t.tier} data-testid={`text-cobra-admin-fee-${c.id}-${t.tier}`}>
+                  {formatRate(view.totalsByTier?.[t.tier]?.adminFee ?? null)}
+                </TableCell>
+              ))}
+            </TableRow>
+            <TableRow className="font-medium" data-testid={`row-cobra-total-${c.id}`}>
+              <TableCell>Total monthly cost</TableCell>
+              {tiers.map((t) => (
+                <TableCell key={t.tier} data-testid={`text-cobra-total-${c.id}-${t.tier}`}>
+                  {formatRate(view.totalsByTier?.[t.tier]?.total ?? null)}
+                </TableCell>
+              ))}
+            </TableRow>
+          </>
+        )}
+      </TableBody>
+    </Table>
   );
 }
 
@@ -296,6 +387,7 @@ function CobraCaseCard({ view, workerId }: { view: CobraCaseView; workerId: stri
                 ))}
               </div>
               <CobraCostSentences view={view} />
+              <CobraRateBreakdown view={view} />
             </div>
           )}
         </CardContent>
