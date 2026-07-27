@@ -1,0 +1,121 @@
+# BAO: External Database Handling — Final Instructions
+
+These instructions reproduce the DB connection setup that was ironed out on HTA
+(July 2026). Follow them exactly; the "Why" sections explain the reasoning so
+future changes don't accidentally undo the guarantees.
+
+## Why we are doing this
+
+1. **Replit silently injects `DATABASE_URL`** (plus `PGHOST/PGPORT/PGUSER/
+   PGPASSWORD/PGDATABASE`) whenever a Replit-managed Postgres exists in the
+   workspace or deployment. It cannot be unset. If we want the app to talk to
+   an external (Neon) database we control, we need an override variable that
+   always wins: `EXTERNAL_DATABASE_URL`.
+2. **Split-brain is the failure mode to prevent.** HTA originally had the app
+   runtime honoring `EXTERNAL_DATABASE_URL` while schema tooling (drizzle-kit,
+   db-push) read only `DATABASE_URL`. Result: tooling could diff or mutate a
+   different database than the one the app uses — the worst possible property
+   for destructive tooling. The fix: **one resolution order, everywhere.**
+3. **Visibility beats trust.** Any tool capable of DDL prints which database
+   it resolved before acting, so a wrong target is obvious in one line.
+
+## The rule (single source of truth)
+
+Resolution order for every DB consumer — runtime, sessions, logger, migration
+runner, drizzle-kit, push scripts:
+
+```
+EXTERNAL_DATABASE_URL || DATABASE_URL   →  else fail fast with a clear error
+```
+
+If `EXTERNAL_DATABASE_URL` is set, it is authoritative for **everything**.
+Never use the `PG*` piecewise variables; the connection is always one URL.
+
+## Implementation
+
+### 1. Single DB module (`server/storage/db.ts` or equivalent)
+
+```ts
+import { Pool, neonConfig } from '@neondatabase/serverless';
+import { drizzle } from 'drizzle-orm/neon-serverless';
+import ws from 'ws';
+import * as schema from '@shared/schema';
+
+neonConfig.webSocketConstructor = ws; // required in Node — Neon driver uses WebSocket
+
+const DATABASE_URL = process.env.EXTERNAL_DATABASE_URL || process.env.DATABASE_URL;
+if (!DATABASE_URL) {
+  throw new Error('EXTERNAL_DATABASE_URL or DATABASE_URL must be set. Did you forget to provision a database?');
+}
+
+export const pool = new Pool({ connectionString: DATABASE_URL });
+export const db = drizzle({ client: pool, schema });
+```
+
+Every other module imports `pool`/`db` from here. No other module reads the
+env vars directly, with one allowed exception: a `connect-pg-simple` session
+store's `conString`, which must use the identical
+`process.env.EXTERNAL_DATABASE_URL || process.env.DATABASE_URL` expression.
+
+### 2. `drizzle.config.ts`
+
+```ts
+const databaseUrl = process.env.EXTERNAL_DATABASE_URL || process.env.DATABASE_URL;
+if (!databaseUrl) {
+  throw new Error('EXTERNAL_DATABASE_URL or DATABASE_URL must be set, ensure the database is provisioned');
+}
+
+// Guardrail: show which database drizzle-kit will target (never credentials).
+try {
+  const u = new URL(databaseUrl);
+  const source = process.env.EXTERNAL_DATABASE_URL ? 'EXTERNAL_DATABASE_URL' : 'DATABASE_URL';
+  console.log(`[drizzle] Target database: ${u.hostname}${u.pathname} (from ${source})`);
+} catch {
+  console.log('[drizzle] Target database: <unparseable connection string>');
+}
+```
+
+### 3. Destructive tooling banner
+
+Any script that can run DDL (push wrappers, ad-hoc migration helpers) prints
+the same banner — resolved `hostname/pathname` and the source variable —
+before opening a connection. Never log the full URL (it contains credentials).
+
+### 4. Schema application
+
+- Apply schema at **boot** via the migration framework, with a startup drift
+  check that refuses to boot when the DB is out of sync.
+- Builds are DB-free: no database connection at build time.
+- `drizzle-kit push` is a dev-only diff *preview*, gated behind an explicit
+  env flag (`ALLOW_DB_PUSH=1`), never a production mechanism.
+
+## Environment matrix
+
+| Environment | `DATABASE_URL` | `EXTERNAL_DATABASE_URL` | Effective DB |
+|---|---|---|---|
+| Replit dev workspace | injected by Replit | set by us | external |
+| Replit deployment | injected (separate prod DB) | set by us if external | external if set, else injected |
+| Docker / self-hosted | provided via `-e` | optional | whichever resolves first |
+
+Dev and production deployments get **different** injected databases — a schema
+in sync in dev says nothing about prod. Verify prod separately.
+
+## Known gotchas (learned on HTA)
+
+1. **drizzle-kit push unique-constraint false positive.** push (0.31.x) may
+   propose re-adding a composite unique constraint that already exists in the
+   target DB (verified via `pg_constraint`). Trust the boot drift gate, not
+   push's diff. Never answer "truncate" at push's interactive prompt. When
+   this appears, verify the constraint directly in `pg_constraint` before
+   assuming drift or a wrong target.
+2. **Workspace SQL tools hit the injected DB.** Replit's built-in SQL tooling
+   connects to `DATABASE_URL`, not `EXTERNAL_DATABASE_URL`. Any manual DB
+   investigation must first confirm which database it's actually querying.
+3. **Neon autosuspend cold starts.** First request after idle can time out
+   (often surfacing as a session-store 500 that looks like an auth failure).
+   It's not a credentials problem; retry/re-warm resolves it.
+4. **The `PG*` variables are noise** for this pattern. Never build on them.
+5. **Latent-access reminder:** if `EXTERNAL_DATABASE_URL` is ever pointed
+   somewhere unexpected, *everything* (app + tooling) consistently follows it.
+   That consistency is the point — the banners exist so the mistake is visible
+   immediately.
