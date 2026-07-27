@@ -40,10 +40,10 @@ const statusOptions: { value: EdlsSheetStatus; label: string; description: strin
 
 const statusColors: Record<EdlsSheetStatus, string> = {
   draft: "bg-muted text-muted-foreground",
-  request: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
-  lock: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
+  request: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
+  lock: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
   trash: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
-  reserved: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
+  reserved: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
 };
 
 interface CopySheetResponse {
