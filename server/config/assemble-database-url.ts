@@ -69,6 +69,15 @@ function parseDbSecret(raw: string | undefined): { json?: ParsedSecret; rawPassw
  * so the failure is diagnosable remotely without leaking secrets.
  */
 export function assembleDatabaseUrl(): void {
+  // An explicit EXTERNAL_DATABASE_URL is authoritative for every DB consumer
+  // (see server/storage/db.ts). When it is set, assembly is unnecessary — an
+  // assembled DATABASE_URL must never win over the explicit external URL.
+  if (process.env.EXTERNAL_DATABASE_URL) {
+    console.log(
+      "[db-config] EXTERNAL_DATABASE_URL is set — skipping DATABASE_URL assembly (external URL is authoritative).",
+    );
+    return;
+  }
   if (process.env.DATABASE_URL) return;
 
   const { json, rawPassword } = parseDbSecret(process.env.DB_SECRET);

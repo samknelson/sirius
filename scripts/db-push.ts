@@ -325,9 +325,21 @@ async function main() {
     process.exit(2);
   }
 
-  const databaseUrl = process.env.DATABASE_URL;
+  // Same resolution rule as server/storage/db.ts and drizzle.config.ts:
+  // EXTERNAL_DATABASE_URL is authoritative for all DB consumers.
+  const databaseUrl = process.env.EXTERNAL_DATABASE_URL || process.env.DATABASE_URL;
   if (!databaseUrl) {
-    throw new Error("DATABASE_URL is not set");
+    throw new Error("EXTERNAL_DATABASE_URL or DATABASE_URL is not set");
+  }
+
+  // Guardrail banner: this tool can run DDL — show which database it resolved
+  // (hostname + path + source variable only; never the full URL/credentials).
+  try {
+    const u = new URL(databaseUrl);
+    const source = process.env.EXTERNAL_DATABASE_URL ? "EXTERNAL_DATABASE_URL" : "DATABASE_URL";
+    console.log(`[db:push] Target database: ${u.hostname}${u.pathname} (from ${source})`);
+  } catch {
+    console.log("[db:push] Target database: <unparseable connection string>");
   }
 
   cleanupRuntimeFiles();

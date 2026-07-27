@@ -72,3 +72,4 @@
 - [Payments need allocation config](payments-need-allocation-config.md) — cleared payments don't touch balances unless a payment-simple-allocation charge config exists for the account; replay via triggerPaymentChargePlugins.
 - [Wizard side-effect rows need reuse + ownership flag](wizard-side-effect-rows-ownership.md) — wizard-created persistent rows duplicate across drafts unless add reuses existing + tracks createdByWizard, and storage enforces the uniqueness invariant.
 - [BAO buildup forward impact unbounded](bao-buildup-forward-impact.md) — mixed above/below patterns make the buildup walk unbounded; report MAX_SAFE_INTEGER and cap at the consumer, never lag+break.
+- [EXTERNAL_DATABASE_URL resolution + Neon pooler rewrite](external-database-url.md) — one resolution rule everywhere; Neon `-pooler.` URL must be rewritten to direct endpoint for serverless driver (pooler blocks search_path + is unnecessary with NeonPool).
