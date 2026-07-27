@@ -376,6 +376,26 @@ export function registerBaoCobraRoutes(
             };
           }
 
+          // Dependents: only meaningful when the covered person is the
+          // subscriber (their own case). Count active dependent relations
+          // as of the same as-of date the rates use, and derive the
+          // covered-lives tier a full-family election would land on.
+          const isSubscriber =
+            !theCase.subscriberWorkerId ||
+            theCase.subscriberWorkerId === theCase.coveredPersonWorkerId;
+          let dependentCount = 0;
+          if (isSubscriber) {
+            const relations = await storage.workerRelations.searchWorkerRelations({
+              workerId: theCase.coveredPersonWorkerId,
+              role: "worker_1",
+              activeAt: new Date(`${asOfYmd}T00:00:00`),
+            });
+            dependentCount = relations.length;
+          }
+          const familyTier: BaoCobraCoveredLivesTier =
+            dependentCount >= 2 ? "3+" : dependentCount === 1 ? "2" : "1";
+          const dependents = { isSubscriber, count: dependentCount, familyTier };
+
           // Payment state + outstanding balance only apply once coverage has
           // been elected (billing starts at election).
           let payment = null;
@@ -390,7 +410,7 @@ export function registerBaoCobraRoutes(
             }
           }
 
-          results.push({ case: theCase, asOfYmd, coverage, totalsByTier, payment });
+          results.push({ case: theCase, asOfYmd, coverage, totalsByTier, dependents, payment });
         }
 
         res.json({ cases: results });

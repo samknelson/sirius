@@ -12,14 +12,6 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import type { BaoCobraCaseWithDetails } from "@shared/schema/sitespecific/bao/schema";
 
 type CobraCoverage = {
@@ -40,11 +32,18 @@ type CobraPayment = {
   balance: string;
 };
 
+type CobraDependents = {
+  isSubscriber: boolean;
+  count: number;
+  familyTier: "1" | "2" | "3+";
+};
+
 type CobraCaseView = {
   case: BaoCobraCaseWithDetails;
   asOfYmd: string;
   coverage: CobraCoverage[];
   totalsByTier?: Record<string, CobraTierTotals | null>;
+  dependents?: CobraDependents;
   payment: CobraPayment | null;
 };
 
@@ -72,12 +71,6 @@ type WorkerCobraResponse = {
   cases: CobraCaseView[];
 };
 
-const TIER_LABELS: Record<string, string> = {
-  "1": "1 covered life",
-  "2": "2 covered lives",
-  "3+": "3 or more covered lives",
-};
-
 function formatYmd(ymd: string | null | undefined): string {
   if (!ymd) return "—";
   const [y, m, d] = ymd.split("-");
@@ -85,10 +78,11 @@ function formatYmd(ymd: string | null | undefined): string {
   return `${m}/${d}/${y}`;
 }
 
-function formatRate(rate: string | null): string {
-  if (rate === null || rate === undefined) return "No rate on file";
-  const num = Number(rate);
-  if (!Number.isFinite(num)) return rate;
+/** Currency string for a valid amount, or null when missing/malformed. */
+function formatCurrency(amount: string | null | undefined): string | null {
+  if (amount === null || amount === undefined) return null;
+  const num = Number(amount);
+  if (!Number.isFinite(num)) return null;
   return num.toLocaleString("en-US", { style: "currency", currency: "USD" });
 }
 
@@ -108,6 +102,44 @@ function isElectable(view: CobraCaseView): boolean {
   if (c.electionMadeYmd) return false;
   if (c.lastDayToElectYmd && view.asOfYmd > c.lastDayToElectYmd) return false;
   return true;
+}
+
+function CobraCostSentences({ view }: { view: CobraCaseView }) {
+  const c = view.case;
+  const dependents = view.dependents;
+  const hasDependents = !!dependents && dependents.isSubscriber && dependents.count > 0;
+  const familyTotal = hasDependents
+    ? formatCurrency(view.totalsByTier?.[dependents.familyTier]?.total ?? null)
+    : null;
+  const individualTotal = formatCurrency(view.totalsByTier?.["1"]?.total ?? null);
+
+  return (
+    <div className="space-y-2 text-sm">
+      {hasDependents &&
+        (familyTotal ? (
+          <p data-testid={`text-cobra-family-cost-${c.id}`}>
+            The cost of continuing full coverage for you and your dependents is{" "}
+            <span className="font-medium">{familyTotal}</span>.
+          </p>
+        ) : (
+          <p className="text-muted-foreground" data-testid={`text-cobra-family-cost-${c.id}`}>
+            A rate for continuing coverage for you and your dependents is not on file.
+            Please contact the office for pricing.
+          </p>
+        ))}
+      {individualTotal ? (
+        <p data-testid={`text-cobra-individual-cost-${c.id}`}>
+          The cost of individual coverage will be{" "}
+          <span className="font-medium">{individualTotal}</span>.
+        </p>
+      ) : (
+        <p className="text-muted-foreground" data-testid={`text-cobra-individual-cost-${c.id}`}>
+          A rate for individual coverage is not on file. Please contact the office for
+          pricing.
+        </p>
+      )}
+    </div>
+  );
 }
 
 function CobraCaseCard({ view, workerId }: { view: CobraCaseView; workerId: string }) {
@@ -236,8 +268,7 @@ function CobraCaseCard({ view, workerId }: { view: CobraCaseView; workerId: stri
             <CardTitle>Coverage You Can Continue</CardTitle>
           </div>
           <CardDescription>
-            Monthly cost depends on how many people are covered. Rates shown as of{" "}
-            {formatYmd(view.asOfYmd)}.
+            Monthly costs shown as of {formatYmd(view.asOfYmd)}.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -247,67 +278,25 @@ function CobraCaseCard({ view, workerId }: { view: CobraCaseView; workerId: stri
               contact the office for details.
             </p>
           ) : (
-            <Table data-testid={`table-cobra-rates-${c.id}`}>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Coverage</TableHead>
-                  <TableHead>{TIER_LABELS["1"]}</TableHead>
-                  <TableHead>{TIER_LABELS["2"]}</TableHead>
-                  <TableHead>{TIER_LABELS["3+"]}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
+            <div className="space-y-4">
+              <div className="flex flex-wrap gap-x-4 gap-y-2">
                 {view.coverage.map((cov) => (
-                  <TableRow key={cov.benefitId} data-testid={`row-cobra-coverage-${cov.benefitId}`}>
-                    <TableCell className="font-medium">
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline" className="capitalize">
-                          {cov.kind}
-                        </Badge>
-                        <span data-testid={`text-cobra-benefit-${cov.benefitId}`}>
-                          {cov.benefitName ?? "Unknown benefit"}
-                        </span>
-                      </div>
-                    </TableCell>
-                    {["1", "2", "3+"].map((tier) => (
-                      <TableCell key={tier} data-testid={`text-cobra-rate-${cov.benefitId}-${tier}`}>
-                        {formatRate(cov.ratesByTier[tier] ?? null)}
-                      </TableCell>
-                    ))}
-                  </TableRow>
+                  <div
+                    key={cov.benefitId}
+                    className="flex items-center gap-2"
+                    data-testid={`row-cobra-coverage-${cov.benefitId}`}
+                  >
+                    <Badge variant="outline" className="capitalize">
+                      {cov.kind}
+                    </Badge>
+                    <span className="text-sm font-medium" data-testid={`text-cobra-benefit-${cov.benefitId}`}>
+                      {cov.benefitName ?? "Unknown benefit"}
+                    </span>
+                  </div>
                 ))}
-                {view.totalsByTier && (
-                  <>
-                    <TableRow data-testid={`row-cobra-subtotal-${c.id}`}>
-                      <TableCell className="text-muted-foreground">Subtotal</TableCell>
-                      {["1", "2", "3+"].map((tier) => (
-                        <TableCell key={tier} data-testid={`text-cobra-subtotal-${c.id}-${tier}`}>
-                          {formatRate(view.totalsByTier?.[tier]?.preFeeTotal ?? null)}
-                        </TableCell>
-                      ))}
-                    </TableRow>
-                    <TableRow data-testid={`row-cobra-admin-fee-${c.id}`}>
-                      <TableCell className="text-muted-foreground">
-                        COBRA administration fee (2%)
-                      </TableCell>
-                      {["1", "2", "3+"].map((tier) => (
-                        <TableCell key={tier} data-testid={`text-cobra-admin-fee-${c.id}-${tier}`}>
-                          {formatRate(view.totalsByTier?.[tier]?.adminFee ?? null)}
-                        </TableCell>
-                      ))}
-                    </TableRow>
-                    <TableRow className="font-medium" data-testid={`row-cobra-total-${c.id}`}>
-                      <TableCell>Total monthly cost</TableCell>
-                      {["1", "2", "3+"].map((tier) => (
-                        <TableCell key={tier} data-testid={`text-cobra-total-${c.id}-${tier}`}>
-                          {formatRate(view.totalsByTier?.[tier]?.total ?? null)}
-                        </TableCell>
-                      ))}
-                    </TableRow>
-                  </>
-                )}
-              </TableBody>
-            </Table>
+              </div>
+              <CobraCostSentences view={view} />
+            </div>
           )}
         </CardContent>
       </Card>
