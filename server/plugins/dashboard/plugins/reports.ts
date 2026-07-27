@@ -48,8 +48,15 @@ async function buildSchema(): Promise<JsonSchema> {
 }
 
 async function buildUiSchema() {
+  // RJSF v6 no longer reads `enumNames` from inside the schema — labels must
+  // come from the uiSchema (`ui:enumNames`, index-aligned with the enum).
+  // Keep the in-schema `enumNames` too: our read-only SchemaView still uses it.
+  const reportTypes = listReportTypes();
   return {
-    reports: { "ui:widget": "checkboxes" },
+    reports: {
+      "ui:widget": "checkboxes",
+      items: { "ui:enumNames": reportTypes.map((t) => t.displayName) },
+    },
   };
 }
 
@@ -164,7 +171,6 @@ export const reportsPlugin: DashboardPlugin = {
   settingsSchema: buildSchema,
   uiSchema: buildUiSchema,
   defaultSettings: {},
-  requiredPolicy: "admin",
 
   async content(ctx) {
     const userReportTypeNames = resolveSelectedReports(ctx.settings, ctx.userRoles);
@@ -233,7 +239,6 @@ export const reportsPlugin: DashboardPlugin = {
   client: {
     component: "reports:Reports",
     order: 3,
-    requiredPermissions: ["admin"],
   },
 };
 

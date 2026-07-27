@@ -204,6 +204,14 @@ export default function GenericPluginConfigsPage({
   const { data: plugins = [], isLoading: isLoadingPlugins } = useQuery<ManifestEntry[]>({
     queryKey: pluginManifestQueryKey(kind),
     enabled: isValidKind,
+    // The manifest carries each plugin's settings JSON Schema, including any
+    // dynamically-built enums (e.g. the reports widget's report list). The
+    // app-wide default of staleTime: Infinity would let a session-old cached
+    // manifest miss newly-registered options — and RJSF silently PRUNES saved
+    // array values that aren't in the enum, so an innocent re-save would wipe
+    // them. Always refetch on mount so the schema is current.
+    staleTime: 0,
+    refetchOnMount: "always",
   });
 
   const { data: meta } = useQuery<{
@@ -212,6 +220,10 @@ export default function GenericPluginConfigsPage({
   }>({
     queryKey: pluginConfigsMetaQueryKey(kind),
     enabled: isValidKind,
+    // Same freshness rule as the manifest: per-plugin field metadata must not
+    // go stale across a long-lived session.
+    staleTime: 0,
+    refetchOnMount: "always",
   });
   const envelopeFields = meta?.envelopeFields ?? [];
   const pluginFieldsByPlugin = meta?.pluginFields ?? {};
