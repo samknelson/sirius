@@ -18,6 +18,7 @@
  */
 import pg from "pg";
 import { getComponentById } from "../../shared/components";
+import { resolveDatabaseUrl } from "../../shared/database-url";
 import * as mainSchema from "../../shared/schema";
 import * as edlsSchema from "../../shared/schema/edls/schema";
 import {
@@ -58,7 +59,7 @@ function check(cond: boolean, msg: string) {
 }
 
 async function run() {
-  const base = new URL(process.env.DATABASE_URL!);
+  const base = new URL(resolveDatabaseUrl().url);
   base.pathname = "/scratch_730";
   const client = new pg.Client({ connectionString: base.toString() });
   await client.connect();

@@ -23,19 +23,17 @@ import pg from 'pg';
 import { drizzle as drizzlePg } from 'drizzle-orm/node-postgres';
 import ws from "ws";
 import * as schema from "@shared/schema";
+import { resolveDatabaseUrl, describeDatabaseTarget } from "@shared/database-url";
 
 // Resolution order (BAO external-database pattern): EXTERNAL_DATABASE_URL is
-// authoritative for EVERY DB consumer (runtime, sessions, logger, drizzle-kit,
-// db-push) — one identical rule everywhere so schema tooling can never target
-// a different database than the app ("split-brain"). Replit injects
-// DATABASE_URL and it cannot be unset, hence the override variable. The PG*
-// piecewise variables are never consulted.
-const databaseUrl = process.env.EXTERNAL_DATABASE_URL || process.env.DATABASE_URL;
-if (!databaseUrl) {
-  throw new Error(
-    "EXTERNAL_DATABASE_URL or DATABASE_URL must be set. Did you forget to provision a database?",
-  );
-}
+// authoritative for EVERY DB consumer — the shared resolver in
+// shared/database-url.ts is the single source of truth (enforced by
+// scripts/dev/check-db-url-resolution.ts).
+const resolvedDatabaseUrl = resolveDatabaseUrl();
+const databaseUrl = resolvedDatabaseUrl.url;
+// Guardrail banner: same format as drizzle.config.ts / scripts/db-push.ts so
+// the CI check can compare all consumers' targets verbatim.
+console.log(`[db] Target database: ${describeDatabaseTarget(resolvedDatabaseUrl)}`);
 
 type DriverKind = "neon" | "pg";
 

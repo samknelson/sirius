@@ -44,6 +44,7 @@ import { writeFileSync, unlinkSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 import * as fullSchema from "../shared/schema";
 import { getSchemaManagingComponents } from "../shared/components";
+import { resolveDatabaseUrl, describeDatabaseTarget } from "../shared/database-url";
 
 const RUNTIME_SCHEMA_FILE = resolve(process.cwd(), ".drizzle-runtime-schema.ts");
 const RUNTIME_CONFIG_FILE = resolve(process.cwd(), ".drizzle-runtime.json");
@@ -325,22 +326,13 @@ async function main() {
     process.exit(2);
   }
 
-  // Same resolution rule as server/storage/db.ts and drizzle.config.ts:
-  // EXTERNAL_DATABASE_URL is authoritative for all DB consumers.
-  const databaseUrl = process.env.EXTERNAL_DATABASE_URL || process.env.DATABASE_URL;
-  if (!databaseUrl) {
-    throw new Error("EXTERNAL_DATABASE_URL or DATABASE_URL is not set");
-  }
+  // Same resolution rule as server/storage/db.ts and drizzle.config.ts: the
+  // shared resolver in shared/database-url.ts is the single source of truth.
+  const resolved = resolveDatabaseUrl();
 
   // Guardrail banner: this tool can run DDL — show which database it resolved
   // (hostname + path + source variable only; never the full URL/credentials).
-  try {
-    const u = new URL(databaseUrl);
-    const source = process.env.EXTERNAL_DATABASE_URL ? "EXTERNAL_DATABASE_URL" : "DATABASE_URL";
-    console.log(`[db:push] Target database: ${u.hostname}${u.pathname} (from ${source})`);
-  } catch {
-    console.log("[db:push] Target database: <unparseable connection string>");
-  }
+  console.log(`[db:push] Target database: ${describeDatabaseTarget(resolved)}`);
 
   cleanupRuntimeFiles();
 

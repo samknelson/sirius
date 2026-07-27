@@ -34,3 +34,5 @@ Neon defaults `search_path = ''` (empty). Without the rewrite, unqualified table
 [drizzle|db:push] Target database: <hostname><pathname> (from EXTERNAL_DATABASE_URL|DATABASE_URL)
 ```
 Never log the full URL (contains credentials). Use `new URL(url).hostname + pathname`.
+
+**Enforcement (split-brain CI guard):** `shared/database-url.ts` is the single resolver every consumer imports; `scripts/dev/check-db-url-resolution.ts` (validation `db-url-check`) fails if any file reads `process.env.(EXTERNAL_)DATABASE_URL` directly outside its allowlist, and runs the real drizzle.config/db-push/db.ts banners in subprocesses to assert identical targets. New DB consumers must import the resolver, not the env vars.

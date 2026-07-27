@@ -1,25 +1,16 @@
 import { defineConfig } from "drizzle-kit";
 import { readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
+import { resolveDatabaseUrl, describeDatabaseTarget } from "./shared/database-url";
 
-// Same resolution rule as server/storage/db.ts: EXTERNAL_DATABASE_URL is
-// authoritative everywhere so drizzle-kit can never diff/mutate a different
-// database than the one the app runs against.
-const databaseUrl = process.env.EXTERNAL_DATABASE_URL || process.env.DATABASE_URL;
-if (!databaseUrl) {
-  throw new Error(
-    "EXTERNAL_DATABASE_URL or DATABASE_URL must be set, ensure the database is provisioned",
-  );
-}
+// Same resolution rule as server/storage/db.ts: the shared resolver in
+// shared/database-url.ts is the single source of truth, so drizzle-kit can
+// never diff/mutate a different database than the one the app runs against.
+const resolved = resolveDatabaseUrl();
+const databaseUrl = resolved.url;
 
 // Guardrail: show which database drizzle-kit will target (never credentials).
-try {
-  const u = new URL(databaseUrl);
-  const source = process.env.EXTERNAL_DATABASE_URL ? "EXTERNAL_DATABASE_URL" : "DATABASE_URL";
-  console.log(`[drizzle] Target database: ${u.hostname}${u.pathname} (from ${source})`);
-} catch {
-  console.log("[drizzle] Target database: <unparseable connection string>");
-}
+console.log(`[drizzle] Target database: ${describeDatabaseTarget(resolved)}`);
 
 // `scripts/db-push.ts` writes `.drizzle-runtime.json` (and a companion
 // `.drizzle-runtime-schema.ts`) before invoking drizzle-kit so we can hide

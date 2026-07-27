@@ -1,5 +1,6 @@
 import winston from "winston";
 import { LogsTransport } from "./services/logs-transport";
+import { resolveDatabaseUrlOptional } from "@shared/database-url";
 
 const isDevelopment = process.env.NODE_ENV === "development";
 
@@ -43,7 +44,10 @@ const storageTransports: winston.transport[] = [
 ];
 
 // Add custom logs transport for storage operations (writes via logs storage, emits LOG events)
-if (process.env.EXTERNAL_DATABASE_URL || process.env.DATABASE_URL) {
+// Same resolution rule as server/storage/db.ts (shared/database-url.ts is
+// the single source of truth): only attach the DB-backed transport when the
+// resolver finds a connection string.
+if (resolveDatabaseUrlOptional()) {
   try {
     const logsTransport = new LogsTransport({
       level: "info",
