@@ -10,7 +10,7 @@ import { useAccessCheck } from "@/hooks/use-access-check";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 
-type MissingWorkerIdSiriusId = "freeman" | "2nd";
+type MissingWorkerIdSiriusId = "freeman_ein" | "2nd";
 type MissingMemberStatusSiriusId = "2nd";
 
 interface ConfigErrorDetail {

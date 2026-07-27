@@ -16,7 +16,7 @@ type AccessMiddleware = (
   policyId: string,
 ) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 
-type MissingWorkerIdSiriusId = "freeman" | "2nd";
+type MissingWorkerIdSiriusId = "freeman_ein" | "2nd";
 type MissingMemberStatusSiriusId = "2nd";
 
 export interface ConfigErrorDetail {
@@ -70,12 +70,12 @@ async function resolveConfig(deps: SecondShiftDeps): Promise<ConfigResolution> {
     deps.unifiedOptions.list("worker-ms") as Promise<OptionsWorkerMsRow[]>,
   ]);
 
-  const freemanType = idTypeRows.find((r) => r.siriusId === "freeman");
+  const freemanType = idTypeRows.find((r) => r.siriusId === "freeman_ein");
   const secondType = idTypeRows.find((r) => r.siriusId === "2nd");
   const secondMs = msRows.find((r) => r.siriusId === "2nd");
 
   const missingTypes: MissingWorkerIdSiriusId[] = [];
-  if (!freemanType) missingTypes.push("freeman");
+  if (!freemanType) missingTypes.push("freeman_ein");
   if (!secondType) missingTypes.push("2nd");
 
   const missingMemberStatuses: MissingMemberStatusSiriusId[] = [];
@@ -138,7 +138,7 @@ async function resolvePartner(
  * Find the primary worker that the given worker is a 2nd shift OF.
  *
  * The given worker must carry a worker_id row of type "2nd"; we then
- * look up the worker that has a "freeman" worker_id with the same value.
+ * look up the worker that has a "freeman_ein" worker_id with the same value.
  */
 export async function findSecondShiftFrom(
   deps: SecondShiftDeps,
@@ -169,7 +169,7 @@ export async function findSecondShiftFrom(
 /**
  * Find the 2nd shift shadow worker FOR the given worker.
  *
- * The given worker must carry a worker_id row of type "freeman"; we then
+ * The given worker must carry a worker_id row of type "freeman_ein"; we then
  * look up the worker that has a "2nd" worker_id with the same value.
  */
 export async function findSecondShiftTo(
