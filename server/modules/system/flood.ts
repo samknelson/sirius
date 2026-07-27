@@ -108,7 +108,9 @@ export function registerFloodEventRoutes(
   });
 
   const floodConfigSchema = z.object({
-    threshold: z.number().int().positive(),
+    // threshold 0 is allowed: it disables the capped action outright (e.g.
+    // a 0 cap on wmb-immediate-scan turns the immediate fast path off).
+    threshold: z.number().int().nonnegative(),
     windowSeconds: z.number().int().positive(),
   });
 

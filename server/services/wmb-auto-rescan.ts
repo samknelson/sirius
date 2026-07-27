@@ -26,6 +26,7 @@ import type { BaseEligibilityConfig } from "../plugins/trust/eligibility/types";
 import {
   enqueueMonthScan,
   processNextQueueJob,
+  tryImmediateScan,
   PER_WORKER_AUTO_TRIGGER_SOURCES,
 } from "./wmb-scan-queue";
 
@@ -173,7 +174,7 @@ export async function enqueueWorkerMonths(
   reason: string,
   triggerSource: string = "worker_update",
 ): Promise<void> {
-  let enqueued = false;
+  const enqueuedIds: string[] = [];
   for (const { month, year } of months) {
     try {
       // Skip if this worker/month is already waiting to be scanned.
@@ -181,8 +182,8 @@ export async function enqueueWorkerMonths(
       if (existing && (existing.status === "pending" || existing.status === "processing")) {
         continue;
       }
-      await storage.wmbScanQueue.enqueueWorker(workerId, month, year, triggerSource);
-      enqueued = true;
+      const entry = await storage.wmbScanQueue.enqueueWorker(workerId, month, year, triggerSource);
+      enqueuedIds.push(entry.id);
       logger.info("Auto-enqueued WMB rescan for worker", {
         service: SERVICE_NAME,
         workerId,
@@ -201,7 +202,24 @@ export async function enqueueWorkerMonths(
       });
     }
   }
-  if (enqueued) pokeDrainer();
+  if (enqueuedIds.length === 0) return;
+
+  if (PER_WORKER_AUTO_TRIGGER_SOURCES.includes(triggerSource)) {
+    // Rate-capped immediate fast path (fire-and-forget so the event handler
+    // that caused the enqueue never blocks on the scan). When over budget,
+    // disabled, or on any flood error, tryImmediateScan quietly leaves the
+    // jobs pending for the cron — replacing the old unbounded drainer poke
+    // for per-worker sources so immediate load stays capped.
+    void tryImmediateScan(storage, workerId, enqueuedIds).catch((err) => {
+      logger.error("Immediate WMB scan attempt failed unexpectedly", {
+        service: SERVICE_NAME,
+        workerId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
+  } else {
+    pokeDrainer();
+  }
 }
 
 /**

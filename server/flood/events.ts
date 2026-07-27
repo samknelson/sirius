@@ -162,10 +162,62 @@ export const localPasswordChangeFloodEvent: FloodEventDefinition = {
   },
 };
 
+/**
+ * Immediate WMB scan rate caps. When a per-worker scan job is enqueued from an
+ * event-driven trigger source, an "immediate scan" fast path may process it
+ * right away instead of waiting for the 5-minute cron. Two caps bound that
+ * fast path:
+ *
+ * - `wmb-immediate-scan`: global budget — at most `threshold` immediate scans
+ *   per minute of clock time across ALL instances (the flood table is
+ *   DB-backed, so multi-instance ECS shares one budget). Setting the
+ *   threshold to 0 (via the `flood_wmb-immediate-scan` variable / flood-config
+ *   UI) disables the fast path entirely, reverting to pure cron behavior.
+ * - `wmb-immediate-scan-worker`: per-worker budget — a given worker is
+ *   immediately scanned at most once per minute (identifier = worker id).
+ *
+ * Both fail OPEN toward the cron path: any error checking/recording means
+ * "skip immediate, let the cron handle it" — never an error surfaced to the
+ * request/event that caused the enqueue.
+ */
+export const WMB_IMMEDIATE_SCAN_FLOOD_EVENT = "wmb-immediate-scan";
+export const WMB_IMMEDIATE_SCAN_WORKER_FLOOD_EVENT = "wmb-immediate-scan-worker";
+
+export const wmbImmediateScanFloodEvent: FloodEventDefinition = {
+  name: WMB_IMMEDIATE_SCAN_FLOOD_EVENT,
+  threshold: 30,
+  windowSeconds: 60,
+  // One shared global bucket: the cap is on total immediate scans per minute.
+  getIdentifier: (): string => "global",
+};
+
+export const wmbImmediateScanWorkerFloodEvent: FloodEventDefinition = {
+  name: WMB_IMMEDIATE_SCAN_WORKER_FLOOD_EVENT,
+  threshold: 1,
+  windowSeconds: 60,
+  getIdentifier: (context: FloodContext): string => {
+    if (!context.workerId) {
+      throw new Error("workerId is required for wmb-immediate-scan-worker flood event");
+    }
+    return context.workerId;
+  },
+  resolveIdentifierName: async (identifier: string): Promise<string | null> => {
+    try {
+      const worker = await storage.workers.getWorker(identifier);
+      if (!worker) return null;
+      return worker.siriusId != null ? `Worker #${worker.siriusId}` : identifier;
+    } catch {
+      return null;
+    }
+  },
+};
+
 export function registerFloodEvents(): void {
   registerFloodEvent(bookmarkFloodEvent);
   registerFloodEvent(localLoginFloodEvent);
   registerFloodEvent(localPasswordChangeFloodEvent);
+  registerFloodEvent(wmbImmediateScanFloodEvent);
+  registerFloodEvent(wmbImmediateScanWorkerFloodEvent);
   for (const event of notificationFloodEvents) {
     registerFloodEvent(event);
   }
@@ -183,7 +235,14 @@ export async function loadFloodConfigFromVariables(): Promise<void> {
           ? JSON.parse(variable.value) 
           : variable.value;
         
-        if (config.threshold && config.windowSeconds) {
+        // Explicit 0 thresholds are valid (they disable the capped action),
+        // so check numeric presence rather than truthiness.
+        if (
+          typeof config.threshold === "number" &&
+          config.threshold >= 0 &&
+          typeof config.windowSeconds === "number" &&
+          config.windowSeconds > 0
+        ) {
           floodEventRegistry.updateConfig(def.name, config.threshold, config.windowSeconds);
           logger.info(`Loaded custom flood config for "${def.name}"`, {
             service: 'flood-config',

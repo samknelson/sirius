@@ -85,6 +85,14 @@ export interface WmbScanQueueStorage {
    * drainer so it never steals jobs from a manually queued run).
    */
   claimNextJob(triggerSources?: string[]): Promise<TrustWmbScanQueue | undefined>;
+  /**
+   * Atomically claim ONE specific pending job by id — used by the immediate
+   * WMB scan fast path right after an enqueue. Identical claiming semantics
+   * to `claimNextJob` (pending → processing under FOR UPDATE SKIP LOCKED),
+   * so the cron and the immediate path can never double-process the same
+   * job: whichever claims first wins, the other sees undefined.
+   */
+  claimJobById(queueId: string): Promise<TrustWmbScanQueue | undefined>;
   recordJobResult(queueId: string, success: boolean, resultSummary: any, error?: string): Promise<JobResultInfo>;
   
   // Invalidation
@@ -563,6 +571,47 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
           await tx
             .update(trustWmbScanStatus)
             .set({ 
+              status: "running",
+              startedAt: sql`COALESCE(${trustWmbScanStatus.startedAt}, now())`,
+            })
+            .where(and(
+              eq(trustWmbScanStatus.id, job.statusId),
+              eq(trustWmbScanStatus.status, "queued")
+            ));
+        }
+
+        return job || undefined;
+      });
+    },
+
+    async claimJobById(queueId: string): Promise<TrustWmbScanQueue | undefined> {
+      const client = getClient();
+      return client.transaction(async (tx) => {
+        const [job] = await tx
+          .update(trustWmbScanQueue)
+          .set({
+            status: "processing",
+            pickedAt: new Date(),
+            attempts: sql`${trustWmbScanQueue.attempts} + 1`,
+          })
+          .where(
+            and(
+              eq(trustWmbScanQueue.status, "pending"),
+              sql`${trustWmbScanQueue.id} = (
+                SELECT id
+                FROM trust_wmb_scan_queue
+                WHERE id = ${queueId} AND status = 'pending'
+                FOR UPDATE SKIP LOCKED
+              )`
+            )
+          )
+          .returning();
+
+        if (job) {
+          // Update month status to running if needed (inside same transaction)
+          await tx
+            .update(trustWmbScanStatus)
+            .set({
               status: "running",
               startedAt: sql`COALESCE(${trustWmbScanStatus.startedAt}, now())`,
             })

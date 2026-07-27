@@ -32,6 +32,12 @@ if `allowed`, call `recordFloodEvent(name, ctx)` then proceed, else skip+log.
 avoid it where a throw would be miscaught as a generic failure; prefer the
 explicit check+record so you can skip cleanly.
 
+**Threshold 0 as an off switch:** if a cap treats `threshold <= 0` as "feature
+disabled", remember the surrounding plumbing must accept 0 explicitly — the
+flood-config API zod schema, the boot-time variable loader (a truthiness check
+on `config.threshold` silently drops 0), and the admin UI input (`parseInt(x)
+|| 1` coerces 0 to 1). All three were fixed to allow 0; keep them that way.
+
 **Fail OPEN:** wrap the check so a check/record error still lets the action
 proceed — throttling infrastructure must never silently swallow legitimate
 sends. Also enforce only once the action is known to be deliverable, so no-op

@@ -167,9 +167,14 @@ export default function FloodEventsConfigPage() {
                       {editingRow === def.name ? (
                         <Input
                           type="number"
-                          min={1}
+                          min={0}
                           value={editValues?.threshold ?? def.threshold}
-                          onChange={(e) => setEditValues(prev => ({ ...prev!, threshold: parseInt(e.target.value) || 1 }))}
+                          onChange={(e) => {
+                            // 0 is a valid threshold (disables the capped
+                            // action), so don't coerce it away with `|| 1`.
+                            const parsed = parseInt(e.target.value, 10);
+                            setEditValues(prev => ({ ...prev!, threshold: Number.isNaN(parsed) || parsed < 0 ? 0 : parsed }));
+                          }}
                           className="w-24"
                           data-testid={`input-threshold-${def.name}`}
                         />
