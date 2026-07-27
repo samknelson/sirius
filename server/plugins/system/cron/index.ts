@@ -38,7 +38,13 @@ function registerCronKind(): void {
         plugin.configSchema,
         (config ?? {}) as Record<string, unknown>,
       );
-      return { valid: result.valid, errors: result.errors };
+      if (!result.valid) return { valid: false, errors: result.errors };
+      // Optional plugin-level cross-field validation (e.g. "weekly requires
+      // day_of_week") that JSON Schema alone cannot express.
+      if (plugin.validateSettings) {
+        return plugin.validateSettings((config ?? {}) as Record<string, unknown>);
+      }
+      return { valid: true };
     },
   });
   // Cron configs hoist the cron `schedule` into a real subsidiary column
@@ -111,6 +117,7 @@ export function initializeCronPluginSystem(): void {
 import "./plugins/deleteExpiredReports";
 import "./plugins/deleteOldCronLogs";
 import "./plugins/processWmbBatch";
+import "./plugins/scheduledBenefitScan";
 import "./plugins/deleteExpiredFloodEvents";
 import "./plugins/deleteExpiredHfe";
 import "./plugins/sweepExpiredBanElig";

@@ -33,11 +33,18 @@ export interface CronJobResult {
  * in `bootstrap.ts` now ride on the plugin alongside its execution logic and
  * settings contract.
  *
- * Cron plugins are singletons (`metadata.singleton === true`): exactly one
- * `plugin_configs` row exists per plugin, created by the boot-time singleton
- * seeder from `defaultSchedule` / `defaultEnabled`. The operator edits that
- * single row's schedule / enabled / settings via the generic plugin admin
- * page; they cannot add a second or delete it.
+ * Most cron plugins are singletons (`metadata.singleton === true`): exactly
+ * one `plugin_configs` row exists per plugin, created by the boot-time
+ * singleton seeder from `defaultSchedule` / `defaultEnabled`. The operator
+ * edits that single row's schedule / enabled / settings via the generic
+ * plugin admin page; they cannot add a second or delete it.
+ *
+ * A cron plugin may instead be NON-singleton (`singleton` unset/false): the
+ * operator creates any number of config rows via the generic admin page, each
+ * with its own settings, and the scheduler runs each enabled config as its
+ * own scheduled task (keyed by config id). Non-singleton plugins are not
+ * seeded at boot. Run history (`cron_job_runs`) stays keyed by the plugin id,
+ * so all configs of one plugin share a history stream.
  */
 export interface CronPlugin {
   /**
@@ -64,6 +71,22 @@ export interface CronPlugin {
   configSchema?: JsonSchema;
   /** Optional RJSF UI hints paired with {@link configSchema}. */
   uiSchema?: UiSchema;
+  /**
+   * Optional: derive the effective cron expression (and the IANA time zone it
+   * must be evaluated in) from the config's saved `data`, OVERRIDING the
+   * stored `plugin_configs_cron.schedule`. Used by plugins whose config
+   * captures friendly schedule fields (frequency / day / time / time zone)
+   * instead of a raw cron expression. Throw to reject unschedulable settings
+   * (the scheduler logs and skips that config).
+   */
+  deriveSchedule?(settings: Record<string, unknown>): { schedule: string; timezone?: string };
+  /**
+   * Optional save-time validation of the editable `data` payload, run by the
+   * kind's `validateConfig` AFTER the JSON-schema check. Lets a plugin
+   * enforce cross-field rules (e.g. "weekly requires day_of_week") that JSON
+   * Schema alone cannot express.
+   */
+  validateSettings?(data: Record<string, unknown>): { valid: boolean; errors?: string[] };
 }
 
 /**

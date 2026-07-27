@@ -16,6 +16,9 @@ import { eventBus, EventType, type PluginConfigSavedPayload } from "../services/
  * the operator-saved `data`.
  */
 interface ScheduledCronJob {
+  /** The base config row's id — unique per config, so non-singleton plugins
+   * can run several configs of one plugin side by side. */
+  configId: string;
   name: string;
   schedule: string;
   enabled: boolean;
@@ -128,6 +131,7 @@ class CronScheduler {
   private toScheduledJob(envelope: PluginConfigWithSubsidiary): ScheduledCronJob {
     const subsidiary = envelope.subsidiary as { schedule?: string } | null;
     return {
+      configId: envelope.config.id,
       name: envelope.config.pluginId,
       schedule: subsidiary?.schedule ?? '',
       enabled: envelope.config.enabled,
@@ -137,7 +141,8 @@ class CronScheduler {
 
   private async scheduleJob(job: ScheduledCronJob): Promise<void> {
     // Check if a plugin is registered for this job
-    if (!cronPluginRegistry.has(job.name)) {
+    const plugin = cronPluginRegistry.get(job.name);
+    if (!plugin) {
       logger.warn(`No plugin registered for job: ${job.name}`, {
         service: 'cron-scheduler',
         jobName: job.name,
@@ -145,33 +150,61 @@ class CronScheduler {
       return;
     }
 
+    // A plugin may derive its effective schedule (and the time zone it must
+    // be evaluated in) from the config's friendly settings, overriding the
+    // stored cron expression. Derivation failures skip just this config.
+    let schedule = job.schedule;
+    let timezone: string | undefined;
+    if (plugin.deriveSchedule) {
+      try {
+        const derived = plugin.deriveSchedule(job.settings);
+        schedule = derived.schedule;
+        timezone = derived.timezone;
+      } catch (error) {
+        logger.error(`Failed to derive schedule for job: ${job.name}`, {
+          service: 'cron-scheduler',
+          jobName: job.name,
+          configId: job.configId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return;
+      }
+    }
+
     // Validate cron expression
-    if (!cron.validate(job.schedule)) {
+    if (!cron.validate(schedule)) {
       logger.error(`Invalid cron expression for job: ${job.name}`, {
         service: 'cron-scheduler',
         jobName: job.name,
-        schedule: job.schedule,
+        configId: job.configId,
+        schedule,
       });
       return;
     }
 
-    // Create scheduled task
+    // Create scheduled task (evaluated in the derived time zone when given,
+    // so runs fire at the configured local time regardless of server clock).
     const task = cron.schedule(
-      job.schedule,
+      schedule,
       async () => {
         await this.executeJob(job, false);
-      }
+      },
+      timezone ? { timezone } : undefined,
     );
 
     // Start the task immediately
     task.start();
 
-    this.scheduledJobs.set(job.name, { job, task });
+    // Keyed by config id so multiple configs of one non-singleton plugin can
+    // coexist (for singletons the id is the plugin's one config row).
+    this.scheduledJobs.set(job.configId, { job, task });
 
     logger.info(`Scheduled job: ${job.name}`, {
       service: 'cron-scheduler',
       jobName: job.name,
-      schedule: job.schedule,
+      configId: job.configId,
+      schedule,
+      ...(timezone ? { timezone } : {}),
     });
   }
 
@@ -286,9 +319,9 @@ class CronScheduler {
   }
 
   async manualRun(jobName: string, triggeredBy?: string, mode: "live" | "test" = "live"): Promise<void> {
-    const [config] = await storage.pluginConfigs.getByKindAndPlugin('cron', jobName);
+    const configs = await storage.pluginConfigs.getByKindAndPlugin('cron', jobName);
 
-    if (!config) {
+    if (configs.length === 0) {
       logger.error('Attempted to run non-existent cron job', {
         service: 'cron-scheduler',
         jobName,
@@ -308,16 +341,22 @@ class CronScheduler {
       );
     }
 
-    const envelope = await storage.pluginConfigs.getWithSubsidiary(config.id);
-    const job = this.toScheduledJob(
-      envelope ?? { config, subsidiary: null },
-    );
-
-    await this.executeJob(job, true, triggeredBy, mode);
+    // Non-singleton plugins may have several configs under one job name; a
+    // manual run executes each of them in turn (singletons have exactly one).
+    for (const config of configs) {
+      const envelope = await storage.pluginConfigs.getWithSubsidiary(config.id);
+      const job = this.toScheduledJob(
+        envelope ?? { config, subsidiary: null },
+      );
+      await this.executeJob(job, true, triggeredBy, mode);
+    }
   }
 
   isJobScheduled(jobName: string): boolean {
-    return this.scheduledJobs.has(jobName);
+    for (const { job } of Array.from(this.scheduledJobs.values())) {
+      if (job.name === jobName) return true;
+    }
+    return false;
   }
 
   getScheduledJobCount(): number {

@@ -67,6 +67,23 @@ export interface WmbScanQueueStorage {
    * home employer (worker_employment_denorm.home) is used.
    */
   getEmployerWorkerIdsForMonth(employerId: string, month: number, year: number): Promise<string[]>;
+
+  /**
+   * Distinct worker ids with a trust election ACTIVE at any point in the
+   * given month (election range overlaps the month). Used by the scheduled
+   * sweep's `active_elections` population resolver.
+   */
+  getWorkerIdsWithActiveElectionInMonth(month: number, year: number): Promise<string[]>;
+
+  /**
+   * Distinct worker ids with at least one WMB (benefit) row in the given
+   * month. Used by the scheduled sweep's `previous_month_benefit` resolver.
+   */
+  getWorkerIdsWithBenefitInMonth(month: number, year: number): Promise<string[]>;
+
+  /** Every worker id. Used by the scheduled sweep's `all_workers` resolver. */
+  getAllWorkerIds(): Promise<string[]>;
+
   
   // Queue methods
   getQueuedWorkers(statusId: string): Promise<TrustWmbScanQueue[]>;
@@ -176,6 +193,36 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
         WHERE COALESCE(el.employer_id, hed.employer_id) = ${employerId}
       `);
       return (result.rows as Array<{ id: string }>).map(r => r.id);
+    },
+
+    async getWorkerIdsWithActiveElectionInMonth(month: number, year: number): Promise<string[]> {
+      const client = getClient();
+      const monthStart = `${year}-${String(month).padStart(2, "0")}-01`;
+      const end = new Date(year, month, 0); // last day of the month
+      const monthEnd = `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, "0")}-${String(end.getDate()).padStart(2, "0")}`;
+      const result = await client.execute(sql`
+        SELECT DISTINCT e.worker_id AS id
+        FROM worker_trust_elections e
+        WHERE e.start_ymd <= ${monthEnd}
+          AND (e.end_ymd IS NULL OR e.end_ymd >= ${monthStart})
+      `);
+      return (result.rows as Array<{ id: string }>).map(r => r.id);
+    },
+
+    async getWorkerIdsWithBenefitInMonth(month: number, year: number): Promise<string[]> {
+      const client = getClient();
+      const result = await client.execute(sql`
+        SELECT DISTINCT b.worker_id AS id
+        FROM trust_wmb b
+        WHERE b.month = ${month} AND b.year = ${year}
+      `);
+      return (result.rows as Array<{ id: string }>).map(r => r.id);
+    },
+
+    async getAllWorkerIds(): Promise<string[]> {
+      const client = getClient();
+      const rows = await client.select({ id: workers.id }).from(workers);
+      return rows.map(r => r.id);
     },
 
     async createMonthStatus(month: number, year: number): Promise<TrustWmbScanStatus> {
