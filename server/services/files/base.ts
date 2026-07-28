@@ -65,6 +65,16 @@ export interface FileSystemProvider {
   mkdir?(path: string): Promise<void>;
   rmdir?(path: string): Promise<void>;
   /**
+   * Optional rename/move support. Providers that can atomically (local) or
+   * effectively (s3: copy+delete) relocate objects set supportsRename=true
+   * and implement rename (single object) and renameDirectory (recursive
+   * under a prefix). Both MUST refuse to overwrite an existing destination
+   * by throwing DestinationExistsError.
+   */
+  readonly supportsRename?: boolean;
+  rename?(fromPath: string, toPath: string): Promise<void>;
+  renameDirectory?(fromPath: string, toPath: string): Promise<void>;
+  /**
    * A time-limited URL for direct GET access, when the provider supports it.
    * Providers that cannot mint one (local) return null.
    */
@@ -99,6 +109,14 @@ export class DirectoryNotEmptyError extends Error {
   constructor(public readonly directoryPath: string) {
     super(`Directory is not empty: ${directoryPath}`);
     this.name = "DirectoryNotEmptyError";
+  }
+}
+
+/** Thrown by rename/renameDirectory when the destination already exists. */
+export class DestinationExistsError extends Error {
+  constructor(public readonly destinationPath: string) {
+    super(`Destination already exists: ${destinationPath}`);
+    this.name = "DestinationExistsError";
   }
 }
 

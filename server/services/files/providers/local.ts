@@ -1,6 +1,7 @@
 import * as fs from "fs/promises";
 import * as path from "path";
 import {
+  DestinationExistsError,
   DirectoryNotEmptyError,
   FilePathTraversalError,
   FileSystemOperationError,
@@ -22,6 +23,7 @@ import {
 export class LocalFileSystemProvider implements FileSystemProvider {
   readonly kind = "local" as const;
   readonly supportsDirectories = true;
+  readonly supportsRename = true;
   private readonly basePath: string;
   private realBasePromise: Promise<string> | null = null;
 
@@ -315,6 +317,53 @@ export class LocalFileSystemProvider implements FileSystemProvider {
         error,
       );
     }
+  }
+
+  /**
+   * Shared jailed rename: source must exist inside the jail, destination
+   * must not exist, destination's parent chain must stay inside the jail.
+   */
+  private async renameJailed(fromPath: string, toPath: string): Promise<void> {
+    const fromAbs = this.resolveSafe(fromPath);
+    const toAbs = this.resolveSafe(toPath);
+    try {
+      await this.assertRealContained(fromAbs, fromPath);
+      await this.assertWriteContained(toAbs, toPath);
+      try {
+        await fs.lstat(toAbs);
+        throw new DestinationExistsError(toPath);
+      } catch (error: any) {
+        if (error instanceof DestinationExistsError) throw error;
+        if (error?.code !== "ENOENT") throw error;
+      }
+      await fs.mkdir(path.dirname(toAbs), { recursive: true });
+      // Re-check after mkdir: the full parent chain now exists.
+      await this.assertWriteContained(toAbs, toPath);
+      await fs.rename(fromAbs, toAbs);
+    } catch (error: any) {
+      if (error instanceof FilePathTraversalError || error instanceof DestinationExistsError) {
+        throw error;
+      }
+      if (error?.code === "ENOENT") {
+        throw new FileSystemOperationError(`Source not found: ${fromPath}`, this.fileSystemId, error);
+      }
+      throw new FileSystemOperationError(
+        `Failed to rename: ${error?.message ?? error}`,
+        this.fileSystemId,
+        error,
+      );
+    }
+  }
+
+  async rename(fromPath: string, toPath: string): Promise<void> {
+    await this.renameJailed(fromPath, toPath);
+  }
+
+  async renameDirectory(fromPath: string, toPath: string): Promise<void> {
+    await this.renameJailed(
+      fromPath.replace(/^\/+|\/+$/g, ""),
+      toPath.replace(/^\/+|\/+$/g, ""),
+    );
   }
 
   async getSignedUrl(): Promise<string | null> {

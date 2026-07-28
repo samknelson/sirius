@@ -14,6 +14,7 @@ export {
   FileSystemOperationError,
   FilePathTraversalError,
   DirectoryNotEmptyError,
+  DestinationExistsError,
   type FileSystemProvider,
   type FileStat,
   type FileListPage,
@@ -110,6 +111,35 @@ export const fileSystemService = {
       );
     }
     await provider.rmdir(path);
+  },
+
+  /** Whether the filesystem's provider supports rename/move. */
+  supportsRename(fileSystemId: string): boolean {
+    return getFileSystemProvider(fileSystemId).supportsRename === true;
+  },
+
+  /** Rename/move a single object. Throws DestinationExistsError on conflict. */
+  async rename(fileSystemId: string, fromPath: string, toPath: string): Promise<void> {
+    const provider = getFileSystemProvider(fileSystemId);
+    if (!provider.supportsRename || !provider.rename) {
+      throw new FileSystemOperationError(
+        "This filesystem's provider does not support renaming.",
+        fileSystemId,
+      );
+    }
+    await provider.rename(fromPath, toPath);
+  },
+
+  /** Rename/move a directory recursively. Throws DestinationExistsError on conflict. */
+  async renameDirectory(fileSystemId: string, fromPath: string, toPath: string): Promise<void> {
+    const provider = getFileSystemProvider(fileSystemId);
+    if (!provider.supportsRename || !provider.renameDirectory) {
+      throw new FileSystemOperationError(
+        "This filesystem's provider does not support renaming directories.",
+        fileSystemId,
+      );
+    }
+    await provider.renameDirectory(fromPath, toPath);
   },
 
   /**

@@ -1,8 +1,13 @@
 import { createNoopValidator } from './utils/validation';
 import { getClient } from './transaction-context';
 import { files, type File, type InsertFile } from "@shared/schema";
-import { eq, and, desc, asc, gt, lt, inArray } from "drizzle-orm";
+import { eq, and, desc, asc, gt, lt, inArray, like, sql } from "drizzle-orm";
 import { defineLoggingConfig } from "./middleware/logging";
+
+/** Escape LIKE metacharacters so a path prefix matches literally. */
+function escapeLikePattern(value: string): string {
+  return value.replace(/[\\%_]/g, (c) => `\\${c}`);
+}
 
 /**
  * Stub validator - add validation logic here when needed
@@ -24,6 +29,12 @@ export interface FileStorage {
   delete(id: string): Promise<boolean>;
   /** Distinct file_system_id values referenced by rows — used by the boot warning. */
   listDistinctFileSystemIds(): Promise<string[]>;
+  /**
+   * Rewrite the storage_path prefix for every row of a filesystem whose
+   * path lives under `fromPrefix/` (folder rename/move). Returns the number
+   * of rows updated.
+   */
+  renameStoragePathPrefix(fileSystemId: string, fromPrefix: string, toPrefix: string): Promise<number>;
   /**
    * Keyset-paged listing for the consistency sweep: rows for one filesystem,
    * ordered by id, resuming after `cursor` (the last id of the previous page).
@@ -175,6 +186,25 @@ export function createFileStorage(): FileStorage {
         rows,
         cursor: rows.length === limit ? rows[rows.length - 1].id : undefined,
       };
+    },
+
+    async renameStoragePathPrefix(fileSystemId: string, fromPrefix: string, toPrefix: string): Promise<number> {
+      const client = getClient();
+      const from = fromPrefix.replace(/\/+$/, "") + "/";
+      const to = toPrefix.replace(/\/+$/, "") + "/";
+      const rows = await client
+        .update(files)
+        .set({
+          storagePath: sql`${to} || substring(${files.storagePath} from ${from.length + 1}::int)`,
+        })
+        .where(
+          and(
+            eq(files.fileSystemId, fileSystemId),
+            like(files.storagePath, escapeLikePattern(from) + "%"),
+          ),
+        )
+        .returning({ id: files.id });
+      return rows.length;
     },
 
     async listDistinctFileSystemIds(): Promise<string[]> {

@@ -43,6 +43,7 @@ import {
   FolderOpen,
   Folder,
   FolderPlus,
+  Pencil,
   ArrowLeft,
   ChevronRight,
   Home,
@@ -75,7 +76,7 @@ interface BrowsePage {
   message?: string;
   entries: BrowseEntry[];
   directories?: string[];
-  capabilities?: { mkdir: boolean; rmdir: boolean };
+  capabilities?: { mkdir: boolean; rmdir: boolean; move?: boolean };
   cursor?: string | null;
 }
 
@@ -138,9 +139,10 @@ export default function FileBrowserDetailPage() {
   // Accumulated pages: entries so far + the cursor to load the next page.
   const [pages, setPages] = useState<BrowseEntry[]>([]);
   const [directories, setDirectories] = useState<string[]>([]);
-  const [capabilities, setCapabilities] = useState<{ mkdir: boolean; rmdir: boolean }>({
+  const [capabilities, setCapabilities] = useState<{ mkdir: boolean; rmdir: boolean; move?: boolean }>({
     mkdir: false,
     rmdir: false,
+    move: false,
   });
   const [cursor, setCursor] = useState<string | null>(null);
   const [browseStatus, setBrowseStatus] = useState<BrowsePage["status"] | null>(null);
@@ -152,6 +154,8 @@ export default function FileBrowserDetailPage() {
   const [newFolderName, setNewFolderName] = useState("");
   const [replaceTarget, setReplaceTarget] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<BrowseEntry | null>(null);
+  const [moveTarget, setMoveTarget] = useState<{ from: string; isDirectory: boolean } | null>(null);
+  const [movePath, setMovePath] = useState("");
   const [deleteFolderTarget, setDeleteFolderTarget] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const replaceInputRef = useRef<HTMLInputElement>(null);
@@ -277,6 +281,32 @@ export default function FileBrowserDetailPage() {
       toast({ title: "Success", description: "Folder created." });
       setNewFolderOpen(false);
       setNewFolderName("");
+      refresh();
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const moveMutation = useMutation({
+    mutationFn: async ({ from, to, isDirectory }: { from: string; to: string; isDirectory: boolean }) => {
+      const res = await fetch(`/api/admin/filesystems/${encodeURIComponent(fsId)}/move`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ from, to, isDirectory }),
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.message || `Move failed (${res.status})`);
+      }
+      return res.json();
+    },
+    onSuccess: (data: { message?: string }) => {
+      toast({ title: "Success", description: data.message || "Moved." });
+      setMoveTarget(null);
+      setMovePath("");
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/filesystems"] });
       refresh();
     },
     onError: (error: Error) => {
@@ -515,7 +545,21 @@ export default function FileBrowserDetailPage() {
                       <TableCell>—</TableCell>
                       <TableCell>—</TableCell>
                       <TableCell>—</TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="text-right space-x-1">
+                        {capabilities.move && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setMoveTarget({ from: folder, isDirectory: true });
+                              setMovePath(folder);
+                            }}
+                            data-testid={`button-move-folder-${folder}`}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                        )}
                         {capabilities.rmdir && (
                           <Button
                             variant="ghost"
@@ -562,6 +606,20 @@ export default function FileBrowserDetailPage() {
                         >
                           <Upload className="h-4 w-4" />
                         </Button>
+                        {capabilities.move && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            disabled={entry.objectMissing}
+                            onClick={() => {
+                              setMoveTarget({ from: entry.path, isDirectory: false });
+                              setMovePath(entry.path);
+                            }}
+                            data-testid={`button-move-${entry.path}`}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                        )}
                         <Button
                           variant="ghost"
                           size="sm"
@@ -727,6 +785,66 @@ export default function FileBrowserDetailPage() {
             >
               {mkdirMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Create
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!moveTarget} onOpenChange={(open) => !open && setMoveTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{moveTarget?.isDirectory ? "Rename or move folder" : "Rename or move file"}</DialogTitle>
+            <DialogDescription>
+              Enter the new full path for <span className="font-mono">{moveTarget?.from}</span>.
+              Change just the name to rename, or include a different folder path to move it
+              {moveTarget?.isDirectory ? " (everything inside moves with it)" : ""}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1">
+            <Label htmlFor="move-path">New path</Label>
+            <Input
+              id="move-path"
+              value={movePath}
+              onChange={(e) => setMovePath(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && moveTarget && movePath.trim()) {
+                  const to = movePath.trim().replace(/^\/+|\/+$/g, "");
+                  if (to && to !== moveTarget.from) {
+                    moveMutation.mutate({ from: moveTarget.from, to, isDirectory: moveTarget.isDirectory });
+                  }
+                }
+              }}
+              data-testid="input-move-path"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setMoveTarget(null)} data-testid="button-cancel-move">
+              Cancel
+            </Button>
+            <Button
+              disabled={
+                moveMutation.isPending ||
+                !movePath.trim() ||
+                movePath.trim().replace(/^\/+|\/+$/g, "") === moveTarget?.from
+              }
+              onClick={() => {
+                if (!moveTarget) return;
+                const to = movePath.trim().replace(/^\/+|\/+$/g, "");
+                if (!to) return;
+                if (moveTarget.isDirectory && (to === moveTarget.from || to.startsWith(moveTarget.from + "/"))) {
+                  toast({
+                    title: "Error",
+                    description: "A folder cannot be moved into itself.",
+                    variant: "destructive",
+                  });
+                  return;
+                }
+                moveMutation.mutate({ from: moveTarget.from, to, isDirectory: moveTarget.isDirectory });
+              }}
+              data-testid="button-confirm-move"
+            >
+              {moveMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {moveTarget?.isDirectory ? "Move folder" : "Move"}
             </Button>
           </DialogFooter>
         </DialogContent>

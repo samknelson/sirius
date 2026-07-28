@@ -5,9 +5,11 @@ import {
   DeleteObjectCommand,
   HeadObjectCommand,
   ListObjectsV2Command,
+  CopyObjectCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import {
+  DestinationExistsError,
   DirectoryNotEmptyError,
   FileSystemOperationError,
   type FileListOptions,
@@ -30,6 +32,7 @@ export interface S3ProviderSettings {
 export class S3FileSystemProvider implements FileSystemProvider {
   readonly kind = "s3" as const;
   readonly supportsDirectories = true;
+  readonly supportsRename = true;
   private readonly client: S3Client;
   private readonly bucket: string;
   private readonly prefix: string;
@@ -202,6 +205,74 @@ export class S3FileSystemProvider implements FileSystemProvider {
     } catch (error) {
       if (error instanceof DirectoryNotEmptyError) throw error;
       throw this.wrap("rmdir", dir, error);
+    }
+  }
+
+  /** Copy one key then delete the original (S3 has no native rename). */
+  private async copyThenDelete(fromKey: string, toKey: string): Promise<void> {
+    await this.client.send(
+      new CopyObjectCommand({
+        Bucket: this.bucket,
+        CopySource: encodeURIComponent(`${this.bucket}/${fromKey}`).replace(/%2F/g, "/"),
+        Key: toKey,
+      }),
+    );
+    await this.client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: fromKey }));
+  }
+
+  async rename(fromPath: string, toPath: string): Promise<void> {
+    try {
+      const existing = await this.stat(toPath);
+      if (existing) throw new DestinationExistsError(toPath);
+      await this.copyThenDelete(this.key(fromPath), this.key(toPath));
+    } catch (error) {
+      if (error instanceof DestinationExistsError) throw error;
+      throw this.wrap("rename", fromPath, error);
+    }
+  }
+
+  /**
+   * Recursive prefix move: copy every key under fromPath/ (including any
+   * zero-byte directory markers) to the new prefix, then delete the
+   * originals. Not atomic — a mid-move failure leaves both prefixes
+   * partially populated, surfaced to the operator via the thrown error.
+   */
+  async renameDirectory(fromPath: string, toPath: string): Promise<void> {
+    const from = fromPath.replace(/^\/+|\/+$/g, "");
+    const to = toPath.replace(/^\/+|\/+$/g, "");
+    if (!from || !to) {
+      throw new FileSystemOperationError("Directory path is required", this.fileSystemId);
+    }
+    const fromPrefix = this.key(from) + "/";
+    const toPrefix = this.key(to) + "/";
+    try {
+      // Refuse when anything already lives under the destination prefix.
+      const destCheck = await this.client.send(
+        new ListObjectsV2Command({ Bucket: this.bucket, Prefix: toPrefix, MaxKeys: 1 }),
+      );
+      if ((destCheck.KeyCount ?? 0) > 0) {
+        throw new DestinationExistsError(to);
+      }
+      let cursor: string | undefined;
+      do {
+        const out = await this.client.send(
+          new ListObjectsV2Command({
+            Bucket: this.bucket,
+            Prefix: fromPrefix,
+            ContinuationToken: cursor,
+            MaxKeys: 1000,
+          }),
+        );
+        for (const o of out.Contents ?? []) {
+          if (!o.Key) continue;
+          const suffix = o.Key.slice(fromPrefix.length);
+          await this.copyThenDelete(o.Key, toPrefix + suffix);
+        }
+        cursor = out.IsTruncated ? out.NextContinuationToken : undefined;
+      } while (cursor);
+    } catch (error) {
+      if (error instanceof DestinationExistsError) throw error;
+      throw this.wrap("renameDirectory", from, error);
     }
   }
 

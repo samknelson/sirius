@@ -9,6 +9,7 @@ import {
   FileSystemOperationError,
   FilePathTraversalError,
   DirectoryNotEmptyError,
+  DestinationExistsError,
 } from "../services/files";
 import multer from "multer";
 import { logger } from "../logger";
@@ -163,11 +164,12 @@ export function registerFileBrowserRoutes(app: Express, requireAuth: AuthMiddlew
       }
 
       const supportsDirectories = fileSystemService.supportsDirectories(fileSystemId);
+      const supportsRename = fileSystemService.supportsRename(fileSystemId);
       res.json({
         status: "ok",
         entries,
         directories: page.directories ?? [],
-        capabilities: { mkdir: supportsDirectories, rmdir: supportsDirectories },
+        capabilities: { mkdir: supportsDirectories, rmdir: supportsDirectories, move: supportsRename },
         cursor: page.cursor ?? null,
       });
     } catch (error) {
@@ -269,6 +271,90 @@ export function registerFileBrowserRoutes(app: Express, requireAuth: AuthMiddlew
         error: error instanceof Error ? error.message : String(error),
       });
       res.status(500).json({ message: "Failed to remove folder" });
+    }
+  });
+
+  /**
+   * Rename or move a file or a folder. Body: { from, to, isDirectory }.
+   * Files: the object is renamed first, then the DB row's storagePath (and
+   * fileName) is updated. Folders: recursive provider rename, then a bulk
+   * storage_path prefix rewrite keeps all affected rows in sync.
+   */
+  app.post("/api/admin/filesystems/:id/move", ...adminOnly, async (req, res) => {
+    const fileSystemId = req.params.id;
+    try {
+      if (!isFileSystemConfigured(fileSystemId)) {
+        return res.status(503).json({
+          message: `Filesystem "${fileSystemId}" is not configured; renaming is not possible.`,
+        });
+      }
+      const from = normalizeDirPath(typeof req.body?.from === "string" ? req.body.from : "");
+      const to = normalizeDirPath(typeof req.body?.to === "string" ? req.body.to : "");
+      const isDirectory = req.body?.isDirectory === true;
+      if (!from || !to) {
+        return res.status(400).json({ message: "Invalid source or destination path" });
+      }
+      if (from === to) {
+        return res.status(400).json({ message: "Source and destination are the same" });
+      }
+      if (isDirectory && (to === from || to.startsWith(from + "/"))) {
+        return res.status(400).json({ message: "Cannot move a folder into itself" });
+      }
+      if (!fileSystemService.supportsRename(fileSystemId)) {
+        return res.status(400).json({
+          message: "This filesystem's provider does not support renaming or moving.",
+        });
+      }
+
+      if (isDirectory) {
+        await fileSystemService.renameDirectory(fileSystemId, from, to);
+        const updated = await storage.files.renameStoragePathPrefix(fileSystemId, from, to);
+        return res.json({ message: "Folder moved", from, to, rowsUpdated: updated });
+      }
+
+      // Refuse when a DB row already points at the destination (the object
+      // check happens inside the provider).
+      const existingAtDest = await storage.files.getByStoragePath(to, fileSystemId);
+      if (existingAtDest) {
+        return res.status(409).json({ message: "A file record already exists at the destination path." });
+      }
+
+      await fileSystemService.rename(fileSystemId, from, to);
+
+      const row = await storage.files.getByStoragePath(from, fileSystemId);
+      if (row) {
+        const newName = to.split("/").pop() || row.fileName;
+        const updated = await storage.files.update(row.id, {
+          storagePath: to,
+          fileName: newName,
+        });
+        if (!updated) {
+          logger.warn("File browser move: object renamed but row update failed", {
+            service: "file-browser",
+            fileSystemId,
+            from,
+            to,
+          });
+        }
+      }
+
+      res.json({ message: "File moved", from, to });
+    } catch (error) {
+      if (error instanceof DestinationExistsError) {
+        return res.status(409).json({ message: "Something already exists at the destination path." });
+      }
+      if (error instanceof FilePathTraversalError) {
+        return res.status(400).json({ message: "Invalid path" });
+      }
+      if (error instanceof FileSystemNotConfiguredError) {
+        return res.status(503).json({ message: error.message });
+      }
+      logger.error("File browser move failed", {
+        service: "file-browser",
+        fileSystemId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      res.status(500).json({ message: "Failed to rename or move" });
     }
   });
 
