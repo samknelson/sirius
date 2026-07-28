@@ -90,7 +90,10 @@ export function registerFileBrowserRoutes(app: Express, requireAuth: AuthMiddlew
       const objectPaths = new Set<string>();
       for (const entry of page.entries) {
         objectPaths.add(entry.path);
-        const row = await storage.files.getByStoragePath(entry.path, fileSystemId);
+      }
+      const rowsByPath = await storage.files.getByStoragePaths(Array.from(objectPaths), fileSystemId);
+      for (const entry of page.entries) {
+        const row = rowsByPath.get(entry.path);
         entries.push({
           path: entry.path,
           size: entry.size,

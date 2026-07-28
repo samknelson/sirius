@@ -1,7 +1,7 @@
 import { createNoopValidator } from './utils/validation';
 import { getClient } from './transaction-context';
 import { files, type File, type InsertFile } from "@shared/schema";
-import { eq, and, desc, asc, gt, lt } from "drizzle-orm";
+import { eq, and, desc, asc, gt, lt, inArray } from "drizzle-orm";
 import { defineLoggingConfig } from "./middleware/logging";
 
 /**
@@ -13,6 +13,12 @@ export interface FileStorage {
   list(filters?: { entityType?: string; entityId?: string; uploadedBy?: string; fileSystemId?: string; status?: string }): Promise<File[]>;
   getById(id: string): Promise<File | undefined>;
   getByStoragePath(storagePath: string, fileSystemId?: string): Promise<File | undefined>;
+  /**
+   * Batch lookup of file rows by storage path (one query for a whole
+   * browse page). Returns a map keyed by storagePath; when multiple rows
+   * share a path, the first row returned wins (matching getByStoragePath).
+   */
+  getByStoragePaths(storagePaths: string[], fileSystemId?: string): Promise<Map<string, File>>;
   create(file: InsertFile): Promise<File>;
   update(id: string, updates: Partial<Omit<InsertFile, 'id' | 'uploadedAt'>>): Promise<File | undefined>;
   delete(id: string): Promise<boolean>;
@@ -98,6 +104,22 @@ export function createFileStorage(): FileStorage {
         : eq(files.storagePath, storagePath);
       const [file] = await client.select().from(files).where(condition);
       return file || undefined;
+    },
+
+    async getByStoragePaths(storagePaths: string[], fileSystemId?: string): Promise<Map<string, File>> {
+      const result = new Map<string, File>();
+      if (storagePaths.length === 0) return result;
+      const client = getClient();
+      const condition = fileSystemId
+        ? and(inArray(files.storagePath, storagePaths), eq(files.fileSystemId, fileSystemId))
+        : inArray(files.storagePath, storagePaths);
+      const rows = await client.select().from(files).where(condition);
+      for (const row of rows) {
+        if (!result.has(row.storagePath)) {
+          result.set(row.storagePath, row);
+        }
+      }
+      return result;
     },
 
     async create(insertFile: InsertFile): Promise<File> {
