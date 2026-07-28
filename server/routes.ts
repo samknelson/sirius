@@ -366,6 +366,10 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Register file management routes
   registerFileRoutes(app, requireAuth, requirePermission);
 
+  // Admin raw file browser (Task #924)
+  const { registerFileBrowserRoutes } = await import("./modules/file-browser");
+  registerFileBrowserRoutes(app, requireAuth);
+
   // Register component configuration routes
   registerComponentRoutes(app, requireAuth, requirePermission);
 

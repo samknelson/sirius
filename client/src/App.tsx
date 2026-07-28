@@ -321,6 +321,7 @@ const LedgerPaymentTypesPage = lazy(() => import("@/pages/config/ledger-payment-
 // any navigation registry; reachable only via this route for verification.
 const GenericPluginConfigsPage = lazy(() => import("@/pages/admin/plugin-configs"));
 const PluginConfigsIndexPage = lazy(() => import("@/pages/admin/plugin-configs-index"));
+const FileBrowserPage = lazy(() => import("@/pages/admin/file-browser"));
 const DenormConfigsPage = lazy(() => import("@/pages/admin/denorm"));
 const DenormConfigDetailPage = lazy(() => import("@/pages/admin/denorm-detail"));
 const EbsInspectionPage = lazy(() => import("@/pages/admin/ebs"));
@@ -3358,6 +3359,17 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <PluginConfigsIndexPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      {/* Admin raw file browser over the configured filesystems. */}
+      <Route path="/admin/file-browser">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <FileBrowserPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>

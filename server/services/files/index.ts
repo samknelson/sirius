@@ -70,6 +70,18 @@ export const fileSystemService = {
   },
 
   /**
+   * Cursor-paged raw listing of a filesystem's objects. Throws
+   * FileSystemOperationError when the provider does not support listing
+   * (replit) or is inaccessible.
+   */
+  async list(
+    fileSystemId: string,
+    opts?: { prefix?: string; cursor?: string; limit?: number },
+  ) {
+    return getFileSystemProvider(fileSystemId).list(opts);
+  },
+
+  /**
    * A time-limited direct URL when the provider supports one; null for
    * providers (local) that must be streamed through the app.
    */
