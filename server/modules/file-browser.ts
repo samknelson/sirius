@@ -43,6 +43,7 @@ export function registerFileBrowserRoutes(app: Express, requireAuth: AuthMiddlew
       const configured = listFileSystemConfigs().map((c) => ({
         id: c.id,
         name: c.name,
+        description: c.description ?? null,
         access: c.access,
         provider: c.provider,
         configured: true,
@@ -51,7 +52,7 @@ export function registerFileBrowserRoutes(app: Express, requireAuth: AuthMiddlew
       const dbIds = await storage.files.listDistinctFileSystemIds();
       const unconfigured = dbIds
         .filter((id) => !configuredIds.has(id))
-        .map((id) => ({ id, name: id, access: null, provider: null, configured: false }));
+        .map((id) => ({ id, name: id, description: null, access: null, provider: null, configured: false }));
       res.json([...configured, ...unconfigured]);
     } catch (error) {
       logger.error("Failed to list filesystems", {

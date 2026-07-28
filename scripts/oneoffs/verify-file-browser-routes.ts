@@ -5,7 +5,7 @@
  * layer.
  *
  * Run:
- *   FILESYSTEMS='{"browsertest":{"name":"Browser Test","access":"private","provider":"local","provider_settings":{"base_path":"/tmp/browsertest-fs"}}}' \
+ *   FILESYSTEMS='{"browsertest":{"name":"Browser Test","description":"Test filesystem for the browser e2e check","access":"private","provider":"local","provider_settings":{"base_path":"/tmp/browsertest-fs"}}}' \
  *   npx tsx scripts/oneoffs/verify-file-browser-routes.ts
  */
 import express from "express";
@@ -87,6 +87,12 @@ async function main() {
       "filesystems lists browsertest",
       fsRes.status === 200 && Array.isArray(fsList) && fsList.some((f: any) => f.id === FS_ID && f.configured),
       { status: fsRes.status, body: Array.isArray(fsList) ? undefined : fsText.slice(0, 300) },
+    );
+    const btEntry = Array.isArray(fsList) ? fsList.find((f: any) => f.id === FS_ID) : null;
+    check(
+      "filesystems includes description passthrough",
+      !!btEntry && btEntry.description === "Test filesystem for the browser e2e check",
+      { description: btEntry?.description },
     );
 
     // 2. upload (auto path)

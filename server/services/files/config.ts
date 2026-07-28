@@ -48,6 +48,7 @@ const localSettingsSchema = z.object({
 
 const rawFileSystemSchema = z.object({
   name: z.string().min(1),
+  description: z.string().optional(),
   access: z.enum(["public", "private"]),
   provider: z.enum(["replit", "s3", "local"]),
   provider_settings: z.record(z.unknown()).default({}),
@@ -60,6 +61,7 @@ const fileSystemIdSchema = z
 export interface FileSystemConfig {
   id: string;
   name: string;
+  description?: string;
   access: FileSystemAccess;
   provider: FileSystemProviderKind;
   /** Provider settings with `_secret` references already resolved. */
@@ -154,6 +156,7 @@ export function parseFileSystemsEnv(
     configs.set(id, {
       id,
       name: entry.name,
+      description: entry.description,
       access: entry.access,
       provider: entry.provider,
       settings: settingsResult.data as Record<string, unknown>,
