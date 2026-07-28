@@ -24,6 +24,11 @@ export interface FileListEntry {
 
 export interface FileListPage {
   entries: FileListEntry[];
+  /**
+   * Present only in delimiter mode: sub-directory paths (relative to the
+   * filesystem root, no trailing slash) found directly under the prefix.
+   */
+  directories?: string[];
   /** Opaque cursor for the next page; undefined when exhausted. */
   cursor?: string;
 }
@@ -32,6 +37,12 @@ export interface FileListOptions {
   prefix?: string;
   cursor?: string;
   limit?: number;
+  /**
+   * When true, list a single directory level: only files directly under the
+   * prefix are returned as entries, and immediate sub-directories are
+   * surfaced via `directories`. The prefix is treated as a directory path.
+   */
+  delimiter?: boolean;
 }
 
 export interface FileSystemProvider {
@@ -44,6 +55,15 @@ export interface FileSystemProvider {
   /** Returns null when the object does not exist. */
   stat(path: string): Promise<FileStat | null>;
   list(opts?: FileListOptions): Promise<FileListPage>;
+  /**
+   * Optional directory support. Providers that can create/remove empty
+   * directories set supportsDirectories=true and implement mkdir/rmdir.
+   * rmdir MUST refuse to remove a non-empty directory by throwing
+   * DirectoryNotEmptyError.
+   */
+  readonly supportsDirectories?: boolean;
+  mkdir?(path: string): Promise<void>;
+  rmdir?(path: string): Promise<void>;
   /**
    * A time-limited URL for direct GET access, when the provider supports it.
    * Providers that cannot mint one (local) return null.
@@ -71,6 +91,14 @@ export class FileSystemOperationError extends Error {
   ) {
     super(message);
     this.name = "FileSystemOperationError";
+  }
+}
+
+/** Thrown by rmdir when the target directory still contains entries. */
+export class DirectoryNotEmptyError extends Error {
+  constructor(public readonly directoryPath: string) {
+    super(`Directory is not empty: ${directoryPath}`);
+    this.name = "DirectoryNotEmptyError";
   }
 }
 

@@ -8,6 +8,7 @@ import {
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import {
+  DirectoryNotEmptyError,
   FileSystemOperationError,
   type FileListOptions,
   type FileListPage,
@@ -28,6 +29,7 @@ export interface S3ProviderSettings {
 
 export class S3FileSystemProvider implements FileSystemProvider {
   readonly kind = "s3" as const;
+  readonly supportsDirectories = true;
   private readonly client: S3Client;
   private readonly bucket: string;
   private readonly prefix: string;
@@ -116,19 +118,29 @@ export class S3FileSystemProvider implements FileSystemProvider {
     }
   }
 
+  /** Zero-byte keys ending in "/" are directory markers, never files. */
+  private isDirectoryMarker(o: { Key?: string; Size?: number }): boolean {
+    return !!o.Key && o.Key.endsWith("/") && (o.Size ?? 0) === 0;
+  }
+
   async list(opts?: FileListOptions): Promise<FileListPage> {
     try {
+      let requestPrefix = opts?.prefix?.replace(/^\/+/, "") ?? "";
+      if (opts?.delimiter && requestPrefix && !requestPrefix.endsWith("/")) {
+        requestPrefix += "/";
+      }
       const out = await this.client.send(
         new ListObjectsV2Command({
           Bucket: this.bucket,
-          Prefix: this.prefix + (opts?.prefix?.replace(/^\/+/, "") ?? ""),
+          Prefix: this.prefix + requestPrefix,
+          ...(opts?.delimiter ? { Delimiter: "/" } : {}),
           ContinuationToken: opts?.cursor,
           MaxKeys: Math.min(Math.max(opts?.limit ?? 100, 1), 1000),
         }),
       );
-      return {
+      const page: FileListPage = {
         entries: (out.Contents ?? [])
-          .filter((o) => o.Key)
+          .filter((o) => o.Key && !this.isDirectoryMarker(o))
           .map((o) => ({
             path: this.prefix ? o.Key!.slice(this.prefix.length) : o.Key!,
             size: o.Size ?? 0,
@@ -136,8 +148,60 @@ export class S3FileSystemProvider implements FileSystemProvider {
           })),
         cursor: out.IsTruncated ? out.NextContinuationToken : undefined,
       };
+      if (opts?.delimiter) {
+        page.directories = (out.CommonPrefixes ?? [])
+          .map((p) => p.Prefix)
+          .filter((p): p is string => !!p)
+          .map((p) => (this.prefix ? p.slice(this.prefix.length) : p).replace(/\/+$/, ""))
+          .filter((p) => p.length > 0);
+      }
+      return page;
     } catch (error) {
       throw this.wrap("list", opts?.prefix ?? "", error);
+    }
+  }
+
+  async mkdir(path: string): Promise<void> {
+    const dir = path.replace(/^\/+|\/+$/g, "");
+    if (!dir) throw new FileSystemOperationError("Directory path is required", this.fileSystemId);
+    try {
+      // AWS-console convention: a zero-byte object whose key ends in "/".
+      await this.client.send(
+        new PutObjectCommand({
+          Bucket: this.bucket,
+          Key: this.key(dir) + "/",
+          Body: Buffer.alloc(0),
+          ContentType: "application/x-directory",
+        }),
+      );
+    } catch (error) {
+      throw this.wrap("mkdir", dir, error);
+    }
+  }
+
+  async rmdir(path: string): Promise<void> {
+    const dir = path.replace(/^\/+|\/+$/g, "");
+    if (!dir) throw new FileSystemOperationError("Directory path is required", this.fileSystemId);
+    const markerKey = this.key(dir) + "/";
+    try {
+      // Refuse when ANY key other than the marker itself lives under the prefix.
+      const out = await this.client.send(
+        new ListObjectsV2Command({
+          Bucket: this.bucket,
+          Prefix: markerKey,
+          MaxKeys: 2,
+        }),
+      );
+      const others = (out.Contents ?? []).filter((o) => o.Key && o.Key !== markerKey);
+      if (others.length > 0 || out.IsTruncated) {
+        throw new DirectoryNotEmptyError(dir);
+      }
+      await this.client.send(
+        new DeleteObjectCommand({ Bucket: this.bucket, Key: markerKey }),
+      );
+    } catch (error) {
+      if (error instanceof DirectoryNotEmptyError) throw error;
+      throw this.wrap("rmdir", dir, error);
     }
   }
 

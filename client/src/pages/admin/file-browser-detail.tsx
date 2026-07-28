@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useParams, Link } from "wouter";
+import { useParams, Link, useLocation, useSearch } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import { Card, CardContent } from "@/components/ui/card";
@@ -39,10 +39,13 @@ import {
   Download,
   Trash2,
   RefreshCw,
-  Search,
   AlertTriangle,
   FolderOpen,
+  Folder,
+  FolderPlus,
   ArrowLeft,
+  ChevronRight,
+  Home,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
@@ -71,6 +74,8 @@ interface BrowsePage {
   status: "ok" | "unconfigured" | "unsupported" | "inaccessible";
   message?: string;
   entries: BrowseEntry[];
+  directories?: string[];
+  capabilities?: { mkdir: boolean; rmdir: boolean };
   cursor?: string | null;
 }
 
@@ -79,6 +84,10 @@ function formatSize(bytes: number): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
+function baseName(path: string): string {
+  return path.split("/").pop() || path;
 }
 
 function StatusBadge({ entry }: { entry: BrowseEntry }) {
@@ -115,19 +124,35 @@ export default function FileBrowserDetailPage() {
   const fsId = params.id ?? "";
   usePageTitle("File Browser");
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
+  const search = useSearch();
 
-  const [prefixInput, setPrefixInput] = useState("");
-  const [prefix, setPrefix] = useState("");
+  // Current directory comes from the URL so it survives refresh.
+  const dir = new URLSearchParams(search).get("dir")?.replace(/^\/+|\/+$/g, "") ?? "";
+
+  const navigateToDir = (nextDir: string) => {
+    const base = `/admin/file-browser/${encodeURIComponent(fsId)}`;
+    setLocation(nextDir ? `${base}?dir=${encodeURIComponent(nextDir)}` : base);
+  };
+
   // Accumulated pages: entries so far + the cursor to load the next page.
   const [pages, setPages] = useState<BrowseEntry[]>([]);
+  const [directories, setDirectories] = useState<string[]>([]);
+  const [capabilities, setCapabilities] = useState<{ mkdir: boolean; rmdir: boolean }>({
+    mkdir: false,
+    rmdir: false,
+  });
   const [cursor, setCursor] = useState<string | null>(null);
   const [browseStatus, setBrowseStatus] = useState<BrowsePage["status"] | null>(null);
   const [browseMessage, setBrowseMessage] = useState<string | undefined>();
   const [isBrowsing, setIsBrowsing] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [uploadPath, setUploadPath] = useState("");
+  const [newFolderOpen, setNewFolderOpen] = useState(false);
+  const [newFolderName, setNewFolderName] = useState("");
   const [replaceTarget, setReplaceTarget] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<BrowseEntry | null>(null);
+  const [deleteFolderTarget, setDeleteFolderTarget] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const replaceInputRef = useRef<HTMLInputElement>(null);
 
@@ -137,13 +162,12 @@ export default function FileBrowserDetailPage() {
 
   const selectedFs = filesystems.find((f) => f.id === fsId);
 
-  const browse = async (opts: { reset: boolean; nextCursor?: string | null; usePrefix?: string }) => {
+  const browse = async (opts: { reset: boolean; nextCursor?: string | null }) => {
     if (!fsId) return;
     setIsBrowsing(true);
     try {
       const params = new URLSearchParams();
-      const effectivePrefix = opts.usePrefix !== undefined ? opts.usePrefix : prefix;
-      if (effectivePrefix) params.set("prefix", effectivePrefix);
+      if (dir) params.set("dir", dir);
       if (!opts.reset && opts.nextCursor) params.set("cursor", opts.nextCursor);
       params.set("limit", "50");
       const res = await fetch(`/api/admin/filesystems/${encodeURIComponent(fsId)}/browse?${params}`, {
@@ -154,6 +178,8 @@ export default function FileBrowserDetailPage() {
       setBrowseStatus(page.status);
       setBrowseMessage(page.message);
       setPages((prev) => (opts.reset ? page.entries : [...prev, ...page.entries]));
+      if (opts.reset) setDirectories(page.directories ?? []);
+      if (page.capabilities) setCapabilities(page.capabilities);
       setCursor(page.cursor ?? null);
     } catch (error) {
       toast({
@@ -166,53 +192,17 @@ export default function FileBrowserDetailPage() {
     }
   };
 
-  // Browse on mount and whenever the route's filesystem id changes.
+  // Browse on mount and whenever the filesystem id or directory changes.
   useEffect(() => {
     setPages([]);
+    setDirectories([]);
     setCursor(null);
     setBrowseStatus(null);
     setBrowseMessage(undefined);
-    setPrefix("");
-    setPrefixInput("");
     if (!fsId) return;
-    let cancelled = false;
-    (async () => {
-      setIsBrowsing(true);
-      try {
-        const params = new URLSearchParams();
-        params.set("limit", "50");
-        const res = await fetch(`/api/admin/filesystems/${encodeURIComponent(fsId)}/browse?${params}`, {
-          credentials: "include",
-        });
-        if (!res.ok) throw new Error(`Listing failed (${res.status})`);
-        const page: BrowsePage = await res.json();
-        if (cancelled) return;
-        setBrowseStatus(page.status);
-        setBrowseMessage(page.message);
-        setPages(page.entries);
-        setCursor(page.cursor ?? null);
-      } catch (error) {
-        if (!cancelled) {
-          toast({
-            title: "Error",
-            description: error instanceof Error ? error.message : "Failed to list files",
-            variant: "destructive",
-          });
-        }
-      } finally {
-        if (!cancelled) setIsBrowsing(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
+    void browse({ reset: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fsId]);
-
-  const applyPrefix = () => {
-    setPrefix(prefixInput);
-    void browse({ reset: true, usePrefix: prefixInput });
-  };
+  }, [fsId, dir]);
 
   const refresh = () => void browse({ reset: true });
 
@@ -269,6 +259,54 @@ export default function FileBrowserDetailPage() {
     },
   });
 
+  const mkdirMutation = useMutation({
+    mutationFn: async (path: string) => {
+      const res = await fetch(`/api/admin/filesystems/${encodeURIComponent(fsId)}/mkdir`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path }),
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.message || `Folder creation failed (${res.status})`);
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Success", description: "Folder created." });
+      setNewFolderOpen(false);
+      setNewFolderName("");
+      refresh();
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const rmdirMutation = useMutation({
+    mutationFn: async (path: string) => {
+      const res = await fetch(
+        `/api/admin/filesystems/${encodeURIComponent(fsId)}/directory?path=${encodeURIComponent(path)}`,
+        { method: "DELETE", credentials: "include" },
+      );
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.message || `Folder removal failed (${res.status})`);
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Removed", description: "Folder removed." });
+      setDeleteFolderTarget(null);
+      refresh();
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+      setDeleteFolderTarget(null);
+    },
+  });
+
   const download = (path: string) => {
     window.open(
       `/api/admin/filesystems/${encodeURIComponent(fsId)}/download?path=${encodeURIComponent(path)}`,
@@ -280,6 +318,8 @@ export default function FileBrowserDetailPage() {
     setReplaceTarget(path);
     replaceInputRef.current?.click();
   };
+
+  const crumbs = dir ? dir.split("/") : [];
 
   if (isLoadingFs) {
     return (
@@ -346,24 +386,7 @@ export default function FileBrowserDetailPage() {
       </div>
 
       {selectedFs.configured && (
-        <div className="flex flex-wrap items-end gap-4">
-          <div className="space-y-1">
-            <Label htmlFor="prefix">Folder / prefix</Label>
-            <div className="flex gap-2">
-              <Input
-                id="prefix"
-                className="w-64"
-                placeholder="e.g. reports/2026/"
-                value={prefixInput}
-                onChange={(e) => setPrefixInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && applyPrefix()}
-                data-testid="input-prefix"
-              />
-              <Button variant="outline" onClick={applyPrefix} data-testid="button-apply-prefix">
-                <Search className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
+        <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" onClick={refresh} disabled={isBrowsing} data-testid="button-refresh">
             <RefreshCw className="mr-2 h-4 w-4" />
             Refresh
@@ -372,7 +395,56 @@ export default function FileBrowserDetailPage() {
             <Upload className="mr-2 h-4 w-4" />
             Upload
           </Button>
+          {capabilities.mkdir && (
+            <Button variant="outline" onClick={() => setNewFolderOpen(true)} data-testid="button-new-folder">
+              <FolderPlus className="mr-2 h-4 w-4" />
+              New folder
+            </Button>
+          )}
         </div>
+      )}
+
+      {selectedFs.configured && browseStatus === "ok" && (
+        <nav
+          className="flex flex-wrap items-center gap-1 text-sm font-mono"
+          aria-label="Breadcrumb"
+          data-testid="breadcrumb-folders"
+        >
+          <Button
+            variant="ghost"
+            size="sm"
+            className="px-2"
+            onClick={() => navigateToDir("")}
+            disabled={!dir}
+            data-testid="breadcrumb-root"
+          >
+            <Home className="h-4 w-4" />
+          </Button>
+          {crumbs.map((segment, i) => {
+            const target = crumbs.slice(0, i + 1).join("/");
+            const isLast = i === crumbs.length - 1;
+            return (
+              <span key={target} className="flex items-center gap-1">
+                <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                {isLast ? (
+                  <span className="px-1 font-medium" data-testid={`breadcrumb-current`}>
+                    {segment}
+                  </span>
+                ) : (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="px-2"
+                    onClick={() => navigateToDir(target)}
+                    data-testid={`breadcrumb-segment-${target}`}
+                  >
+                    {segment}
+                  </Button>
+                )}
+              </span>
+            );
+          })}
+        </nav>
       )}
 
       {browseStatus && browseStatus !== "ok" && (
@@ -390,14 +462,12 @@ export default function FileBrowserDetailPage() {
 
       {selectedFs.configured && browseStatus === "ok" && (
         <>
-          {pages.length === 0 && !isBrowsing ? (
+          {pages.length === 0 && directories.length === 0 && !dir && !isBrowsing ? (
             <Card>
               <CardContent className="pt-6">
                 <div className="flex flex-col items-center gap-2 text-muted-foreground">
                   <FolderOpen className="h-8 w-8" />
-                  <p data-testid="text-empty-listing">
-                    {prefix ? `No files under "${prefix}".` : "This filesystem is empty."}
-                  </p>
+                  <p data-testid="text-empty-listing">This filesystem is empty.</p>
                 </div>
               </CardContent>
             </Card>
@@ -406,7 +476,7 @@ export default function FileBrowserDetailPage() {
               <Table data-testid="table-files">
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Path</TableHead>
+                    <TableHead>Name</TableHead>
                     <TableHead>Size</TableHead>
                     <TableHead>Modified</TableHead>
                     <TableHead>Record</TableHead>
@@ -414,10 +484,58 @@ export default function FileBrowserDetailPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
+                  {dir && (
+                    <TableRow
+                      className="cursor-pointer"
+                      onClick={() => navigateToDir(crumbs.slice(0, -1).join("/"))}
+                      data-testid="row-folder-up"
+                    >
+                      <TableCell className="font-mono text-sm" colSpan={4}>
+                        <span className="flex items-center gap-2">
+                          <Folder className="h-4 w-4 text-muted-foreground" />
+                          ..
+                        </span>
+                      </TableCell>
+                      <TableCell />
+                    </TableRow>
+                  )}
+                  {directories.map((folder) => (
+                    <TableRow
+                      key={`dir:${folder}`}
+                      className="cursor-pointer"
+                      onClick={() => navigateToDir(folder)}
+                      data-testid={`row-folder-${folder}`}
+                    >
+                      <TableCell className="font-mono text-sm max-w-md truncate" title={folder}>
+                        <span className="flex items-center gap-2">
+                          <Folder className="h-4 w-4 text-blue-500" />
+                          {baseName(folder)}/
+                        </span>
+                      </TableCell>
+                      <TableCell>—</TableCell>
+                      <TableCell>—</TableCell>
+                      <TableCell>—</TableCell>
+                      <TableCell className="text-right">
+                        {capabilities.rmdir && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDeleteFolderTarget(folder);
+                            }}
+                            data-testid={`button-delete-folder-${folder}`}
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
                   {pages.map((entry) => (
                     <TableRow key={entry.path} data-testid={`row-file-${entry.path}`}>
                       <TableCell className="font-mono text-sm max-w-md truncate" title={entry.path}>
-                        {entry.path}
+                        {baseName(entry.path)}
                       </TableCell>
                       <TableCell>{formatSize(entry.size)}</TableCell>
                       <TableCell>
@@ -455,6 +573,13 @@ export default function FileBrowserDetailPage() {
                       </TableCell>
                     </TableRow>
                   ))}
+                  {pages.length === 0 && directories.length === 0 && dir && !isBrowsing && (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-center text-muted-foreground" data-testid="text-empty-folder">
+                        This folder is empty.
+                      </TableCell>
+                    </TableRow>
+                  )}
                 </TableBody>
               </Table>
             </div>
@@ -476,7 +601,7 @@ export default function FileBrowserDetailPage() {
         </>
       )}
 
-      {isBrowsing && pages.length === 0 && (
+      {isBrowsing && pages.length === 0 && directories.length === 0 && (
         <div className="flex items-center justify-center h-32">
           <Loader2 className="h-8 w-8 animate-spin" />
         </div>
@@ -502,17 +627,23 @@ export default function FileBrowserDetailPage() {
           <DialogHeader>
             <DialogTitle>Upload file</DialogTitle>
             <DialogDescription>
-              Upload a file to {selectedFs.name}. Leave the path empty to auto-generate one, or
-              set a path (e.g. <span className="font-mono">reports/summary.pdf</span>) — uploading
-              to an existing path replaces that file.
+              Upload a file to {selectedFs.name}
+              {dir ? (
+                <>
+                  {" "}
+                  in <span className="font-mono">{dir}/</span>
+                </>
+              ) : null}
+              . Leave the name empty to use the file's own name — uploading to an existing
+              name replaces that file.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-1">
-              <Label htmlFor="upload-path">Path (optional)</Label>
+              <Label htmlFor="upload-path">File name (optional)</Label>
               <Input
                 id="upload-path"
-                placeholder="folder/name.ext"
+                placeholder="name.ext"
                 value={uploadPath}
                 onChange={(e) => setUploadPath(e.target.value)}
                 data-testid="input-upload-path"
@@ -535,12 +666,67 @@ export default function FileBrowserDetailPage() {
                   toast({ title: "Error", description: "Choose a file first.", variant: "destructive" });
                   return;
                 }
-                uploadMutation.mutate({ file, path: uploadPath.trim() || undefined });
+                const name = uploadPath.trim().replace(/^\/+/, "") || file.name;
+                const path = dir ? `${dir}/${name}` : name;
+                uploadMutation.mutate({ file, path });
               }}
               data-testid="button-confirm-upload"
             >
               {uploadMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Upload
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={newFolderOpen} onOpenChange={setNewFolderOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>New folder</DialogTitle>
+            <DialogDescription>
+              Create a folder in{" "}
+              <span className="font-mono">{dir ? `${dir}/` : "the root of"}</span>{" "}
+              {selectedFs.name}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1">
+            <Label htmlFor="new-folder-name">Folder name</Label>
+            <Input
+              id="new-folder-name"
+              placeholder="e.g. reports"
+              value={newFolderName}
+              onChange={(e) => setNewFolderName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && newFolderName.trim()) {
+                  const name = newFolderName.trim().replace(/^\/+|\/+$/g, "");
+                  mkdirMutation.mutate(dir ? `${dir}/${name}` : name);
+                }
+              }}
+              data-testid="input-new-folder-name"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNewFolderOpen(false)} data-testid="button-cancel-new-folder">
+              Cancel
+            </Button>
+            <Button
+              disabled={mkdirMutation.isPending || !newFolderName.trim()}
+              onClick={() => {
+                const name = newFolderName.trim().replace(/^\/+|\/+$/g, "");
+                if (!name || name.includes("/") || name === "." || name === "..") {
+                  toast({
+                    title: "Error",
+                    description: "Enter a folder name without slashes.",
+                    variant: "destructive",
+                  });
+                  return;
+                }
+                mkdirMutation.mutate(dir ? `${dir}/${name}` : name);
+              }}
+              data-testid="button-confirm-new-folder"
+            >
+              {mkdirMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Create
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -567,6 +753,32 @@ export default function FileBrowserDetailPage() {
             >
               {deleteMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={!!deleteFolderTarget}
+        onOpenChange={(open) => !open && setDeleteFolderTarget(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove folder?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This removes the folder <span className="font-mono">{deleteFolderTarget}</span>.
+              Folders can only be removed when they are empty.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-delete-folder">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => deleteFolderTarget && rmdirMutation.mutate(deleteFolderTarget)}
+              data-testid="button-confirm-delete-folder"
+            >
+              {rmdirMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Remove
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

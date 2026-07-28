@@ -8,6 +8,7 @@ import {
   FileSystemNotConfiguredError,
   FileSystemOperationError,
   FilePathTraversalError,
+  DirectoryNotEmptyError,
 } from "../services/files";
 import multer from "multer";
 import { logger } from "../logger";
@@ -30,6 +31,20 @@ const upload = multer({
  * - delete: remove the row FIRST, then the object (a failed object delete
  *   leaves a sweepable orphan, never a dangling row).
  */
+/**
+ * Normalize + validate a directory path from a request: strips leading /
+ * trailing slashes, rejects NUL bytes, empty segments, "." and "..".
+ * Returns null when invalid.
+ */
+function normalizeDirPath(raw: string): string | null {
+  if (raw.includes("\0")) return null;
+  const dir = raw.replace(/^\/+|\/+$/g, "");
+  if (!dir) return null;
+  const segments = dir.split("/");
+  if (segments.some((s) => !s || s === "." || s === "..")) return null;
+  return dir;
+}
+
 export function registerFileBrowserRoutes(app: Express, requireAuth: AuthMiddleware) {
   const adminOnly = [requireAuth, requireAccess("admin")] as const;
 
@@ -80,12 +95,27 @@ export function registerFileBrowserRoutes(app: Express, requireAuth: AuthMiddlew
         });
       }
 
-      const prefix = typeof req.query.prefix === "string" && req.query.prefix ? req.query.prefix : undefined;
+      // Current directory level ("" = root). Validated when present.
+      const rawDir = typeof req.query.dir === "string" ? req.query.dir : "";
+      let dir = "";
+      if (rawDir) {
+        const normalized = normalizeDirPath(rawDir);
+        if (!normalized) {
+          return res.status(400).json({ message: "Invalid directory path" });
+        }
+        dir = normalized;
+      }
       const cursor = typeof req.query.cursor === "string" && req.query.cursor ? req.query.cursor : undefined;
       const rawLimit = parseInt(String(req.query.limit ?? ""), 10);
       const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(rawLimit, 1), 200) : 50;
 
-      const page = await fileSystemService.list(fileSystemId, { prefix, cursor, limit });
+      const page = await fileSystemService.list(fileSystemId, {
+        prefix: dir || undefined,
+        cursor,
+        limit,
+        delimiter: true,
+      });
+      const prefix = dir ? dir + "/" : "";
 
       const entries = [];
       const objectPaths = new Set<string>();
@@ -115,7 +145,9 @@ export function registerFileBrowserRoutes(app: Express, requireAuth: AuthMiddlew
           const rows = await storage.files.list({ fileSystemId, status });
           for (const row of rows) {
             if (objectPaths.has(row.storagePath)) continue;
+            // Only rows directly in the current directory level.
             if (prefix && !row.storagePath.startsWith(prefix)) continue;
+            if (row.storagePath.slice(prefix.length).includes("/")) continue;
             entries.push({
               path: row.storagePath,
               size: row.size,
@@ -130,7 +162,14 @@ export function registerFileBrowserRoutes(app: Express, requireAuth: AuthMiddlew
         }
       }
 
-      res.json({ status: "ok", entries, cursor: page.cursor ?? null });
+      const supportsDirectories = fileSystemService.supportsDirectories(fileSystemId);
+      res.json({
+        status: "ok",
+        entries,
+        directories: page.directories ?? [],
+        capabilities: { mkdir: supportsDirectories, rmdir: supportsDirectories },
+        cursor: page.cursor ?? null,
+      });
     } catch (error) {
       if (error instanceof FileSystemOperationError && /does not support listing/i.test(error.message)) {
         return res.json({
@@ -150,6 +189,86 @@ export function registerFileBrowserRoutes(app: Express, requireAuth: AuthMiddlew
         message: `Filesystem is currently inaccessible: ${error instanceof Error ? error.message : String(error)}`,
         entries: [],
       });
+    }
+  });
+
+  /** Create an empty directory (local + s3 filesystems only). */
+  app.post("/api/admin/filesystems/:id/mkdir", ...adminOnly, async (req, res) => {
+    const fileSystemId = req.params.id;
+    try {
+      if (!isFileSystemConfigured(fileSystemId)) {
+        return res.status(503).json({
+          message: `Filesystem "${fileSystemId}" is not configured; directories cannot be created.`,
+        });
+      }
+      const rawPath = typeof req.body?.path === "string" ? req.body.path : "";
+      const dir = normalizeDirPath(rawPath);
+      if (!dir) {
+        return res.status(400).json({ message: "Invalid directory path" });
+      }
+      if (!fileSystemService.supportsDirectories(fileSystemId)) {
+        return res.status(400).json({
+          message: "This filesystem's provider does not support creating directories.",
+        });
+      }
+      await fileSystemService.mkdir(fileSystemId, dir);
+      res.status(201).json({ message: "Folder created", path: dir });
+    } catch (error) {
+      if (error instanceof FilePathTraversalError) {
+        return res.status(400).json({ message: "Invalid path" });
+      }
+      if (error instanceof FileSystemNotConfiguredError) {
+        return res.status(503).json({ message: error.message });
+      }
+      logger.error("File browser mkdir failed", {
+        service: "file-browser",
+        fileSystemId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      res.status(500).json({ message: "Failed to create folder" });
+    }
+  });
+
+  /** Remove an EMPTY directory. Non-empty directories are refused with 409. */
+  app.delete("/api/admin/filesystems/:id/directory", ...adminOnly, async (req, res) => {
+    const fileSystemId = req.params.id;
+    const rawPath = typeof req.query.path === "string" ? req.query.path : "";
+    try {
+      if (!isFileSystemConfigured(fileSystemId)) {
+        return res.status(503).json({
+          message: `Filesystem "${fileSystemId}" is not configured; directories cannot be removed.`,
+        });
+      }
+      const dir = normalizeDirPath(rawPath);
+      if (!dir) {
+        return res.status(400).json({ message: "Invalid directory path" });
+      }
+      if (!fileSystemService.supportsDirectories(fileSystemId)) {
+        return res.status(400).json({
+          message: "This filesystem's provider does not support removing directories.",
+        });
+      }
+      await fileSystemService.rmdir(fileSystemId, dir);
+      res.json({ message: "Folder removed" });
+    } catch (error) {
+      if (error instanceof DirectoryNotEmptyError) {
+        return res.status(409).json({
+          message: "This folder is not empty. Delete its contents first, then remove the folder.",
+        });
+      }
+      if (error instanceof FilePathTraversalError) {
+        return res.status(400).json({ message: "Invalid path" });
+      }
+      if (error instanceof FileSystemNotConfiguredError) {
+        return res.status(503).json({ message: error.message });
+      }
+      logger.error("File browser rmdir failed", {
+        service: "file-browser",
+        fileSystemId,
+        path: rawPath,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      res.status(500).json({ message: "Failed to remove folder" });
     }
   });
 

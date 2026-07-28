@@ -1,6 +1,7 @@
 import * as fs from "fs/promises";
 import * as path from "path";
 import {
+  DirectoryNotEmptyError,
   FilePathTraversalError,
   FileSystemOperationError,
   type FileListOptions,
@@ -20,6 +21,7 @@ import {
  */
 export class LocalFileSystemProvider implements FileSystemProvider {
   readonly kind = "local" as const;
+  readonly supportsDirectories = true;
   private readonly basePath: string;
   private realBasePromise: Promise<string> | null = null;
 
@@ -187,6 +189,9 @@ export class LocalFileSystemProvider implements FileSystemProvider {
    * point outside the jail.
    */
   async list(opts?: FileListOptions): Promise<FileListPage> {
+    if (opts?.delimiter) {
+      return this.listLevel(opts);
+    }
     const limit = Math.min(Math.max(opts?.limit ?? 100, 1), 1000);
     const prefix = opts?.prefix?.replace(/^\/+/, "") ?? "";
     const after = opts?.cursor;
@@ -228,6 +233,88 @@ export class LocalFileSystemProvider implements FileSystemProvider {
       entries,
       cursor: truncated ? entries[entries.length - 1]?.path : undefined,
     };
+  }
+
+  /**
+   * Delimiter mode: single-level readdir of the prefix directory. Returns
+   * files directly in the directory plus immediate sub-directories. Symlinks
+   * are skipped (same jail rule as the recursive walk). No pagination — a
+   * single directory level is returned whole.
+   */
+  private async listLevel(opts: FileListOptions): Promise<FileListPage> {
+    const dir = (opts.prefix ?? "").replace(/^\/+|\/+$/g, "");
+    const abs = this.resolveSafe(dir || ".");
+    const entries: FileListPage["entries"] = [];
+    const directories: string[] = [];
+    let names: string[];
+    try {
+      if (dir) await this.assertRealContained(abs, dir);
+      names = (await fs.readdir(abs)).sort();
+    } catch (error: any) {
+      if (error instanceof FilePathTraversalError) throw error;
+      if (error?.code === "ENOENT" || error?.code === "ENOTDIR") {
+        return { entries: [], directories: [] };
+      }
+      throw new FileSystemOperationError(
+        `Failed to list directory: ${error?.message ?? error}`,
+        this.fileSystemId,
+        error,
+      );
+    }
+    for (const name of names) {
+      const childAbs = path.join(abs, name);
+      const rel = dir ? `${dir}/${name}` : name;
+      const s = await fs.lstat(childAbs);
+      if (s.isSymbolicLink()) continue; // never follow symlinks out of the jail
+      if (s.isDirectory()) {
+        directories.push(rel);
+      } else if (s.isFile()) {
+        entries.push({ path: rel, size: s.size, lastModified: s.mtime });
+      }
+    }
+    return { entries, directories };
+  }
+
+  async mkdir(storagePath: string): Promise<void> {
+    const dir = storagePath.replace(/^\/+|\/+$/g, "");
+    if (!dir) {
+      throw new FileSystemOperationError("Directory path is required", this.fileSystemId);
+    }
+    const abs = this.resolveSafe(dir);
+    try {
+      await this.assertWriteContained(abs, dir);
+      await fs.mkdir(abs, { recursive: true });
+    } catch (error: any) {
+      if (error instanceof FilePathTraversalError) throw error;
+      throw new FileSystemOperationError(
+        `Failed to create directory: ${error?.message ?? error}`,
+        this.fileSystemId,
+        error,
+      );
+    }
+  }
+
+  async rmdir(storagePath: string): Promise<void> {
+    const dir = storagePath.replace(/^\/+|\/+$/g, "");
+    if (!dir) {
+      throw new FileSystemOperationError("Directory path is required", this.fileSystemId);
+    }
+    const abs = this.resolveSafe(dir);
+    try {
+      await this.assertRealContained(abs, dir);
+      await fs.rmdir(abs); // non-recursive: fails with ENOTEMPTY when not empty
+    } catch (error: any) {
+      if (error instanceof FilePathTraversalError) throw error;
+      if (error?.code === "ENOTEMPTY" || error?.code === "EEXIST") {
+        throw new DirectoryNotEmptyError(dir);
+      }
+      if (error?.code === "ENOENT") return; // already gone — idempotent
+      throw new FileSystemOperationError(
+        `Failed to remove directory: ${error?.message ?? error}`,
+        this.fileSystemId,
+        error,
+      );
+    }
   }
 
   async getSignedUrl(): Promise<string | null> {

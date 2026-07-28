@@ -58,6 +58,7 @@ async function main() {
   console.log("admin user:", adminUser.email ?? adminUser.id);
 
   const app = express();
+  app.use(express.json());
   const fakeAuth = (req: any, _res: any, next: any) => {
     req.user = { claims: { sub: adminUser.id }, dbUser: adminUser };
     req.isAuthenticated = () => true;
@@ -122,17 +123,45 @@ async function main() {
       { id: replaced.id, size: replaced.size },
     );
 
-    // 4. browse: annotation + orphan flag
+    // 4. browse root: folder-level listing, annotation + orphan flag,
+    //    "reports" surfaced as a directory (not its file)
     const browse = await (await fetch(`${base}/api/admin/filesystems/${FS_ID}/browse?limit=50`)).json();
     const orphanEntry = browse.entries.find((e: any) => e.path === "orphan.bin");
-    const trackedEntry = browse.entries.find((e: any) => e.path === "reports/report.txt");
     check("browse ok status", browse.status === "ok");
     check("orphan flagged", !!orphanEntry && orphanEntry.orphan === true);
-    check("tracked entry live + row id", !!trackedEntry && trackedEntry.orphan === false && trackedEntry.rowStatus === "live" && trackedEntry.fileId === created.id);
+    check("root hides nested files", !browse.entries.some((e: any) => e.path === "reports/report.txt"), browse.entries.map((e: any) => e.path));
+    check("root lists reports directory", Array.isArray(browse.directories) && browse.directories.includes("reports"), browse.directories);
+    check("capabilities present", browse.capabilities?.mkdir === true && browse.capabilities?.rmdir === true, browse.capabilities);
 
-    // 5. prefix filter
-    const prefixed = await (await fetch(`${base}/api/admin/filesystems/${FS_ID}/browse?prefix=reports/`)).json();
-    check("prefix filter", prefixed.entries.length === 1 && prefixed.entries[0].path === "reports/report.txt", prefixed.entries.map((e: any) => e.path));
+    // 5. browse into the reports directory
+    const inReports = await (await fetch(`${base}/api/admin/filesystems/${FS_ID}/browse?dir=reports`)).json();
+    const trackedEntry = inReports.entries.find((e: any) => e.path === "reports/report.txt");
+    check("dir listing shows tracked file", inReports.entries.length === 1 && !!trackedEntry, inReports.entries.map((e: any) => e.path));
+    check("tracked entry live + row id", !!trackedEntry && trackedEntry.orphan === false && trackedEntry.rowStatus === "live" && trackedEntry.fileId === created.id);
+    const badDir = await fetch(`${base}/api/admin/filesystems/${FS_ID}/browse?dir=${encodeURIComponent("../etc")}`);
+    check("browse rejects traversal dir", badDir.status === 400, badDir.status);
+
+    // 5b. mkdir / rmdir
+    const mk = await fetch(`${base}/api/admin/filesystems/${FS_ID}/mkdir`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: "newfolder" }),
+    });
+    check("mkdir 201", mk.status === 201, mk.status);
+    const afterMk = await (await fetch(`${base}/api/admin/filesystems/${FS_ID}/browse`)).json();
+    check("new folder listed", afterMk.directories.includes("newfolder"), afterMk.directories);
+    const mkBad = await fetch(`${base}/api/admin/filesystems/${FS_ID}/mkdir`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: "../escape" }),
+    });
+    check("mkdir rejects traversal", mkBad.status === 400, mkBad.status);
+    const rmNonEmpty = await fetch(`${base}/api/admin/filesystems/${FS_ID}/directory?path=reports`, { method: "DELETE" });
+    check("rmdir non-empty 409", rmNonEmpty.status === 409, rmNonEmpty.status);
+    const rmEmpty = await fetch(`${base}/api/admin/filesystems/${FS_ID}/directory?path=newfolder`, { method: "DELETE" });
+    check("rmdir empty 200", rmEmpty.status === 200, rmEmpty.status);
+    const afterRm = await (await fetch(`${base}/api/admin/filesystems/${FS_ID}/browse`)).json();
+    check("removed folder gone", !afterRm.directories.includes("newfolder"), afterRm.directories);
 
     // 6. download
     const dl = await fetch(`${base}/api/admin/filesystems/${FS_ID}/download?path=${encodeURIComponent("reports/report.txt")}`);
@@ -176,13 +205,13 @@ async function main() {
       fileSystemId: FS_ID,
       status: "pending_delete",
     });
-    const browse2 = await (await fetch(`${base}/api/admin/filesystems/${FS_ID}/browse`)).json();
+    const browse2 = await (await fetch(`${base}/api/admin/filesystems/${FS_ID}/browse?dir=ghosts`)).json();
     const ghost = browse2.entries.find((e: any) => e.path === "ghosts/ghost.txt");
     const pending = browse2.entries.find((e: any) => e.path === "ghosts/pending.txt");
     check("DB-only missing row surfaced", !!ghost && ghost.rowStatus === "missing" && ghost.objectMissing === true && ghost.fileId === missingRow.id);
     check("DB-only pending_delete row surfaced", !!pending && pending.rowStatus === "pending_delete" && pending.objectMissing === true);
-    const browsePrefixed = await (await fetch(`${base}/api/admin/filesystems/${FS_ID}/browse?prefix=reports/`)).json();
-    check("DB-only rows respect prefix", !browsePrefixed.entries.some((e: any) => e.path.startsWith("ghosts/")));
+    const browseRoot2 = await (await fetch(`${base}/api/admin/filesystems/${FS_ID}/browse`)).json();
+    check("DB-only rows scoped to their folder", !browseRoot2.entries.some((e: any) => e.path.startsWith("ghosts/")), browseRoot2.entries.map((e: any) => e.path));
     await storage.files.delete(missingRow.id);
     await storage.files.delete(pendingRow.id);
 

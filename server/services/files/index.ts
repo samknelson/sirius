@@ -13,6 +13,7 @@ export {
   FileSystemNotConfiguredError,
   FileSystemOperationError,
   FilePathTraversalError,
+  DirectoryNotEmptyError,
   type FileSystemProvider,
   type FileStat,
   type FileListPage,
@@ -29,6 +30,7 @@ export {
   listFileSystemConfigs,
 } from "./registry";
 
+import { FileSystemOperationError } from "./base";
 import { getFileSystemConfig, getFileSystemProvider } from "./registry";
 
 export interface UploadOptions {
@@ -76,9 +78,38 @@ export const fileSystemService = {
    */
   async list(
     fileSystemId: string,
-    opts?: { prefix?: string; cursor?: string; limit?: number },
+    opts?: { prefix?: string; cursor?: string; limit?: number; delimiter?: boolean },
   ) {
     return getFileSystemProvider(fileSystemId).list(opts);
+  },
+
+  /** Whether the filesystem's provider supports mkdir/rmdir. */
+  supportsDirectories(fileSystemId: string): boolean {
+    return getFileSystemProvider(fileSystemId).supportsDirectories === true;
+  },
+
+  /** Create an empty directory. Throws when the provider lacks support. */
+  async mkdir(fileSystemId: string, path: string): Promise<void> {
+    const provider = getFileSystemProvider(fileSystemId);
+    if (!provider.supportsDirectories || !provider.mkdir) {
+      throw new FileSystemOperationError(
+        "This filesystem's provider does not support directories.",
+        fileSystemId,
+      );
+    }
+    await provider.mkdir(path);
+  },
+
+  /** Remove an EMPTY directory. Throws DirectoryNotEmptyError otherwise. */
+  async rmdir(fileSystemId: string, path: string): Promise<void> {
+    const provider = getFileSystemProvider(fileSystemId);
+    if (!provider.supportsDirectories || !provider.rmdir) {
+      throw new FileSystemOperationError(
+        "This filesystem's provider does not support directories.",
+        fileSystemId,
+      );
+    }
+    await provider.rmdir(path);
   },
 
   /**
