@@ -283,8 +283,17 @@ export class ObjectStorageService {
       method: 'HEAD',
     });
 
-    if (!response.ok) {
+    if (response.status === 404) {
       throw new Error('File not found');
+    }
+    if (!response.ok) {
+      // Non-404 failures (auth, rate limiting, transient 5xx) must be
+      // distinguishable from a genuinely absent object — the consistency
+      // sweep relies on this to avoid marking rows missing when the bucket
+      // is merely inaccessible.
+      throw new ObjectStorageConnectionError(
+        `Metadata request for "${storagePath}" failed with HTTP ${response.status}`,
+      );
     }
 
     const contentLength = response.headers.get('content-length');

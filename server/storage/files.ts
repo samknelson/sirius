@@ -1,7 +1,7 @@
 import { createNoopValidator } from './utils/validation';
 import { getClient } from './transaction-context';
 import { files, type File, type InsertFile } from "@shared/schema";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, asc, gt, lt } from "drizzle-orm";
 import { defineLoggingConfig } from "./middleware/logging";
 
 /**
@@ -18,6 +18,16 @@ export interface FileStorage {
   delete(id: string): Promise<boolean>;
   /** Distinct file_system_id values referenced by rows — used by the boot warning. */
   listDistinctFileSystemIds(): Promise<string[]>;
+  /**
+   * Keyset-paged listing for the consistency sweep: rows for one filesystem,
+   * ordered by id, resuming after `cursor` (the last id of the previous page).
+   * `uploadedBefore` bounds `uploaded_at` (used for the orphan grace period).
+   */
+  listPage(filters: {
+    fileSystemId: string;
+    status?: string;
+    uploadedBefore?: Date;
+  }, options?: { cursor?: string; limit?: number }): Promise<{ rows: File[]; cursor?: string }>;
 }
 
 export const fileLoggingConfig = defineLoggingConfig<FileStorage>({
@@ -115,6 +125,34 @@ export function createFileStorage(): FileStorage {
       const client = getClient();
       const result = await client.delete(files).where(eq(files.id, id)).returning();
       return result.length > 0;
+    },
+
+    async listPage(
+      filters: { fileSystemId: string; status?: string; uploadedBefore?: Date },
+      options?: { cursor?: string; limit?: number },
+    ): Promise<{ rows: File[]; cursor?: string }> {
+      const client = getClient();
+      const limit = Math.min(Math.max(options?.limit ?? 200, 1), 1000);
+      const conditions = [eq(files.fileSystemId, filters.fileSystemId)];
+      if (filters.status) {
+        conditions.push(eq(files.status, filters.status));
+      }
+      if (filters.uploadedBefore) {
+        conditions.push(lt(files.uploadedAt, filters.uploadedBefore));
+      }
+      if (options?.cursor) {
+        conditions.push(gt(files.id, options.cursor));
+      }
+      const rows = await client
+        .select()
+        .from(files)
+        .where(and(...conditions))
+        .orderBy(asc(files.id))
+        .limit(limit);
+      return {
+        rows,
+        cursor: rows.length === limit ? rows[rows.length - 1].id : undefined,
+      };
     },
 
     async listDistinctFileSystemIds(): Promise<string[]> {

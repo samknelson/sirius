@@ -72,8 +72,18 @@ export class ReplitFileSystemProvider implements FileSystemProvider {
     try {
       const meta = await this.objectStorage.getFileMetadata(path);
       return { size: meta.size, mimeType: meta.mimeType, lastModified: meta.lastModified };
-    } catch {
-      return null;
+    } catch (error) {
+      // Only a genuine 404 means "no such object". Auth / connection /
+      // sidecar failures must propagate so callers (the consistency sweep)
+      // never mistake an inaccessible bucket for a missing file.
+      if (error instanceof Error && error.message === "File not found") {
+        return null;
+      }
+      throw new FileSystemOperationError(
+        `Failed to stat "${path}": ${error instanceof Error ? error.message : String(error)}`,
+        this.fileSystemId,
+        error,
+      );
     }
   }
 
