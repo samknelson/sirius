@@ -11,6 +11,7 @@ import {
 } from "../services/files";
 import multer from "multer";
 import { logger } from "../logger";
+import { getEffectiveUser } from "./masquerade";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 
@@ -169,6 +170,11 @@ export function registerFileBrowserRoutes(app: Express, requireAuth: AuthMiddlew
           });
         }
 
+        const { dbUser } = await getEffectiveUser((req.session as any) ?? {}, req.user as any);
+        if (!dbUser) {
+          return res.status(401).json({ message: "User not found" });
+        }
+
         // Optional explicit target path — used for "replace" and for
         // uploading into a folder/prefix. Normalized by the service layer;
         // the local provider additionally enforces its traversal jail.
@@ -202,7 +208,7 @@ export function registerFileBrowserRoutes(app: Express, requireAuth: AuthMiddlew
             storagePath: uploadResult.storagePath,
             mimeType: req.file.mimetype,
             size: uploadResult.size,
-            uploadedBy: (req.user as any)?.id ?? "admin",
+            uploadedBy: dbUser.id,
             fileSystemId,
             status: "live",
           });

@@ -95,6 +95,7 @@ async function main() {
     const upRes = await fetch(`${base}/api/admin/filesystems/${FS_ID}/upload`, { method: "POST", body: form });
     const uploaded = await upRes.json();
     check("upload 201 + live row", upRes.status === 201 && uploaded.status === "live" && uploaded.fileSystemId === FS_ID, uploaded.storagePath);
+    check("upload records real uploader id", uploaded.uploadedBy === adminUser.id, { uploadedBy: uploaded.uploadedBy, expected: adminUser.id });
 
     // 3. upload to explicit path, then replace it
     const form2 = new FormData();
