@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { storage } from "../../storage";
-import { isFileSystemConfigured } from "../files";
+import { isFileSystemConfigured, listFileSystemConfigs } from "../files";
 import { getEntityFileContext, listEntityFileContexts } from "./registry";
 
 /**
@@ -58,6 +58,15 @@ export const entityFilesConfigSchema = z
             .join(", ") || "(none)"}`,
         });
         continue;
+      }
+      if (!isFileSystemConfigured(config.file_system)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [contextId, "file_system"],
+          message: `Unknown filesystem "${config.file_system}". Configured: ${listFileSystemConfigs()
+            .map((f) => f.id)
+            .join(", ") || "(none)"}`,
+        });
       }
       const tokensInDirectory = config.directory.match(/:[a-z0-9-]+/gi) ?? [];
       for (const token of tokensInDirectory) {

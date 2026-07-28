@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Upload, Download, Pencil, Trash2, FileText, Check, X } from "lucide-react";
+import { Upload, Download, Pencil, Trash2, FileText, Check, X, NotebookPen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -15,6 +15,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -69,6 +77,8 @@ export function EntityFileManager({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<EntityFileItem | null>(null);
+  const [metaTarget, setMetaTarget] = useState<EntityFileItem | null>(null);
+  const [metaDescription, setMetaDescription] = useState("");
 
   const listKey = ["/api/entity-files", context, entityId];
 
@@ -116,6 +126,23 @@ export function EntityFileManager({
     onError: (error) => {
       toast({
         title: "Rename failed",
+        description: getApiErrorMessage(error, "Request failed"),
+        variant: "destructive",
+      });
+    },
+  });
+
+  const metadataMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: Record<string, unknown> }) =>
+      apiRequest("PATCH", `/api/entity-files/${context}/${entityId}/${id}`, { data }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: listKey });
+      setMetaTarget(null);
+      toast({ title: "File details updated" });
+    },
+    onError: (error) => {
+      toast({
+        title: "Update failed",
         description: getApiErrorMessage(error, "Request failed"),
         variant: "destructive",
       });
@@ -248,6 +275,15 @@ export function EntityFileManager({
                         {formatDate(item.file.uploadedAt)}
                         {item.file.status !== "live" ? ` · ${item.file.status}` : ""}
                       </p>
+                      {typeof (item.data as any)?.description === "string" &&
+                        (item.data as any).description.trim() !== "" && (
+                          <p
+                            className="text-xs text-muted-foreground truncate italic"
+                            data-testid={`text-file-description-${item.id}`}
+                          >
+                            {(item.data as any).description}
+                          </p>
+                        )}
                     </>
                   )}
                 </div>
@@ -281,6 +317,19 @@ export function EntityFileManager({
                     <Button
                       size="icon"
                       variant="ghost"
+                      className="h-8 w-8"
+                      onClick={() => {
+                        setMetaTarget(item);
+                        const desc = (item.data as any)?.description;
+                        setMetaDescription(typeof desc === "string" ? desc : "");
+                      }}
+                      data-testid={`button-edit-metadata-${item.id}`}
+                    >
+                      <NotebookPen className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
                       className="h-8 w-8 text-destructive"
                       onClick={() => setDeleteTarget(item)}
                       data-testid={`button-delete-${item.id}`}
@@ -294,6 +343,49 @@ export function EntityFileManager({
           </div>
         )}
       </CardContent>
+
+      <Dialog open={!!metaTarget} onOpenChange={(open) => !open && setMetaTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>File details</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2">
+            <label className="text-sm font-medium" htmlFor="entity-file-description">
+              Description
+            </label>
+            <Textarea
+              id="entity-file-description"
+              value={metaDescription}
+              onChange={(e) => setMetaDescription(e.target.value)}
+              placeholder="Optional notes about this file"
+              rows={4}
+              data-testid="input-file-description"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setMetaTarget(null)} data-testid="button-metadata-cancel">
+              Cancel
+            </Button>
+            <Button
+              disabled={metadataMutation.isPending}
+              onClick={() => {
+                if (!metaTarget) return;
+                const existing =
+                  metaTarget.data && typeof metaTarget.data === "object"
+                    ? (metaTarget.data as Record<string, unknown>)
+                    : {};
+                metadataMutation.mutate({
+                  id: metaTarget.id,
+                  data: { ...existing, description: metaDescription.trim() },
+                });
+              }}
+              data-testid="button-metadata-save"
+            >
+              {metadataMutation.isPending ? "Saving…" : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
         <AlertDialogContent>
