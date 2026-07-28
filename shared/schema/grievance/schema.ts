@@ -1,8 +1,8 @@
-import { foreignKey, pgTable, varchar, text, jsonb, boolean, integer, date, timestamp, uniqueIndex, check } from "drizzle-orm/pg-core";
+import { foreignKey, pgTable, varchar, text, jsonb, boolean, integer, date, timestamp, unique, uniqueIndex, check } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
-import { workers, employers, users, denorm, bargainingUnits, contacts } from "../../schema";
+import { workers, employers, users, denorm, bargainingUnits, contacts, files } from "../../schema";
 
 export const optionsGrievanceStatus = pgTable("options_grievance_status", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -559,3 +559,33 @@ export type GrievanceNameDenorm = typeof grievanceNameDenorm.$inferSelect;
 export type InsertGrievanceNameDenorm = z.infer<
   typeof insertGrievanceNameDenormSchema
 >;
+
+// Entity file attachments for grievances (generic entity-files framework
+// pilot). Each row links exactly one `files` row (file_id UNIQUE, cascade on
+// delete of either side) to a grievance and carries the user-editable display
+// `name` plus freeform `data` jsonb.
+export const grievanceFiles = pgTable("grievance_files", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  grievanceId: varchar("grievance_id").notNull(),
+  fileId: varchar("file_id").notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  data: jsonb("data"),
+}, (table) => [
+  foreignKey({
+    name: "grievance_files_grievance_id_grievances_id_fk",
+    columns: [table.grievanceId],
+    foreignColumns: [grievances.id],
+  }).onDelete("cascade"),
+  foreignKey({
+    name: "grievance_files_file_id_files_id_fk",
+    columns: [table.fileId],
+    foreignColumns: [files.id],
+  }).onDelete("cascade"),
+  unique("grievance_files_file_id_unique").on(table.fileId),
+]);
+
+export const insertGrievanceFileSchema = createInsertSchema(grievanceFiles).omit({
+  id: true,
+});
+export type GrievanceFile = typeof grievanceFiles.$inferSelect;
+export type InsertGrievanceFile = z.infer<typeof insertGrievanceFileSchema>;

@@ -51,6 +51,7 @@ export const configSections: NavSection[] = [
       { path: "/admin/denorm", label: "Denorm", icon: RefreshCw, testId: "nav-config-denorm", permission: "admin" },
       { path: "/config/logs", label: "System Logs", icon: FileText, testId: "nav-config-logs", permission: "admin" },
       { path: "/admin/file-browser", label: "File Browser", icon: FolderOpen, testId: "nav-config-file-browser", permission: "admin" },
+      { path: "/config/entity-files", label: "Entity Files", icon: FolderOpen, testId: "nav-config-entity-files", permission: "admin" },
       { path: "/admin/quickstarts", label: "Quickstarts", icon: Database, testId: "nav-config-quickstarts", permission: "admin" },
       { path: "/admin/cron-jobs", label: "Cron Jobs", icon: Clock, testId: "nav-config-cron-jobs", permission: "admin" },
       { path: "/config/sftp/clients", label: "SFTP Clients", icon: Server, testId: "nav-config-sftp-clients", permission: "admin", requiresComponent: "system.sftp.client" },

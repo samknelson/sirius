@@ -465,6 +465,7 @@ export const grievanceTabTree: HierarchicalTab[] = [
     ],
   },
   { id: 'settlements', label: 'Settlements', hrefTemplate: '/grievance/{id}/settlements', permission: 'staff', component: 'grievance.settlement' },
+  { id: 'files', label: 'Files', hrefTemplate: '/grievance/{id}/files', permission: 'staff', component: 'grievance' },
   { id: 'logs', label: 'Logs', hrefTemplate: '/grievance/{id}/logs', permission: 'staff', component: 'grievance' },
 ];
 

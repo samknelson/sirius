@@ -13,6 +13,8 @@ import { registerContactPostalRoutes } from "./modules/contact-postal";
 import { registerPhoneNumberRoutes } from "./modules/phone-numbers";
 import { registerCommRoutes } from "./modules/comm";
 import { registerGrievanceRoutes } from "./modules/grievances/grievances";
+import { registerGrievanceEntityFileContext } from "./modules/grievances/grievance-files-context";
+import { registerEntityFileRoutes } from "./modules/entity-files";
 import { registerGrievanceTimelineTemplateRoutes } from "./modules/grievances/grievance-timeline-templates";
 import { registerEmployerContactRoutes } from "./modules/employers/contacts";
 import { registerTrustBenefitsRoutes } from "./modules/trust/benefits";
@@ -297,6 +299,10 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register grievance routes
   registerGrievanceRoutes(app, requireAuth, requireAccess);
+
+  // Entity file attachments framework: register contexts, then the generic routes
+  registerGrievanceEntityFileContext();
+  registerEntityFileRoutes(app, requireAuth);
 
   // Register grievance timeline template routes
   registerGrievanceTimelineTemplateRoutes(app, requireAuth, requireAccess);

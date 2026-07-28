@@ -102,6 +102,8 @@ const GrievanceStatusHistory = lazy(() => import("@/pages/grievance-status-histo
 const GrievanceLogs = lazy(() => import("@/pages/grievance-logs"));
 const GrievanceTimeline = lazy(() => import("@/pages/grievance-timeline"));
 const GrievanceSettlements = lazy(() => import("@/pages/grievance-settlements"));
+const GrievanceFiles = lazy(() => import("@/pages/grievance-files"));
+const EntityFilesConfigPage = lazy(() => import("@/pages/config/entity-files"));
 const GrievanceTimelineTemplatesPage = lazy(() => import("@/pages/config/grievance-timeline-templates"));
 const GrievanceTimelineTemplateView = lazy(() => import("@/pages/grievance-timeline-template-view"));
 const GrievanceTimelineTemplateEdit = lazy(() => import("@/pages/grievance-timeline-template-edit"));
@@ -609,6 +611,14 @@ function Router() {
         <ProtectedRoute tabId="settlements" entityType="grievance">
           <AuthenticatedLayout>
             <GrievanceSettlements />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/grievance/:id/files">
+        <ProtectedRoute tabId="files" entityType="grievance">
+          <AuthenticatedLayout>
+            <GrievanceFiles />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -2492,6 +2502,16 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <PostalAddressesConfigPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/entity-files">
+        <ProtectedRoute permission="admin">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <EntityFilesConfigPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
