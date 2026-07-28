@@ -4,7 +4,7 @@ import { storage } from '../../../../storage/index.js';
 import { createBtuWorkerImportStorage, TerminatedWorkerInfo } from '../../../../storage/sitespecific/btu/worker-import.js';
 import { parse as parseCSV } from 'csv-parse/sync';
 import * as XLSX from 'xlsx';
-import { objectStorageService } from '../../../../services/objectStorage.js';
+import { fileSystemService } from '../../../../services/files/index.js';
 
 export interface ImportedWorkerInfo {
   workerId: string;
@@ -303,7 +303,7 @@ export class BtuWorkerImportWizard extends FeedWizard {
       throw new Error('File not found');
     }
 
-    const buffer = await objectStorageService.downloadFile(file.storagePath);
+    const buffer = await fileSystemService.download(file.fileSystemId, file.storagePath);
 
     let rawRows: any[] = [];
     if (file.mimeType === 'text/csv') {
@@ -671,7 +671,7 @@ export class BtuWorkerImportWizard extends FeedWizard {
 
     let fileBuffer: Buffer;
     try {
-      fileBuffer = await objectStorageService.downloadFile(fileRecord.storagePath);
+      fileBuffer = await fileSystemService.download(fileRecord.fileSystemId, fileRecord.storagePath);
     } catch {
       throw new Error('Could not download the uploaded file');
     }

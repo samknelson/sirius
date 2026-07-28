@@ -65,7 +65,7 @@ function BatchEditContent() {
       fd.append("file", file);
       fd.append("entityType", "ledger_payment_batch");
       fd.append("entityId", batch.id);
-      fd.append("accessLevel", "private");
+      fd.append("fileSystemId", "private");
 
       const res = await fetch("/api/files", {
         method: "POST",

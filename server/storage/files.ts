@@ -10,12 +10,14 @@ import { defineLoggingConfig } from "./middleware/logging";
 export const validate = createNoopValidator<InsertFile, File>();
 
 export interface FileStorage {
-  list(filters?: { entityType?: string; entityId?: string; uploadedBy?: string }): Promise<File[]>;
+  list(filters?: { entityType?: string; entityId?: string; uploadedBy?: string; fileSystemId?: string; status?: string }): Promise<File[]>;
   getById(id: string): Promise<File | undefined>;
-  getByStoragePath(storagePath: string): Promise<File | undefined>;
+  getByStoragePath(storagePath: string, fileSystemId?: string): Promise<File | undefined>;
   create(file: InsertFile): Promise<File>;
   update(id: string, updates: Partial<Omit<InsertFile, 'id' | 'uploadedAt'>>): Promise<File | undefined>;
   delete(id: string): Promise<boolean>;
+  /** Distinct file_system_id values referenced by rows — used by the boot warning. */
+  listDistinctFileSystemIds(): Promise<string[]>;
 }
 
 export const fileLoggingConfig = defineLoggingConfig<FileStorage>({
@@ -39,7 +41,7 @@ export const fileLoggingConfig = defineLoggingConfig<FileStorage>({
 
 export function createFileStorage(): FileStorage {
   return {
-    async list(filters?: { entityType?: string; entityId?: string; uploadedBy?: string }): Promise<File[]> {
+    async list(filters?: { entityType?: string; entityId?: string; uploadedBy?: string; fileSystemId?: string; status?: string }): Promise<File[]> {
       const client = getClient();
       const conditions = [];
       
@@ -51,6 +53,12 @@ export function createFileStorage(): FileStorage {
       }
       if (filters?.uploadedBy) {
         conditions.push(eq(files.uploadedBy, filters.uploadedBy));
+      }
+      if (filters?.fileSystemId) {
+        conditions.push(eq(files.fileSystemId, filters.fileSystemId));
+      }
+      if (filters?.status) {
+        conditions.push(eq(files.status, filters.status));
       }
 
       if (conditions.length > 0) {
@@ -73,9 +81,12 @@ export function createFileStorage(): FileStorage {
       return file || undefined;
     },
 
-    async getByStoragePath(storagePath: string): Promise<File | undefined> {
+    async getByStoragePath(storagePath: string, fileSystemId?: string): Promise<File | undefined> {
       const client = getClient();
-      const [file] = await client.select().from(files).where(eq(files.storagePath, storagePath));
+      const condition = fileSystemId
+        ? and(eq(files.storagePath, storagePath), eq(files.fileSystemId, fileSystemId))
+        : eq(files.storagePath, storagePath);
+      const [file] = await client.select().from(files).where(condition);
       return file || undefined;
     },
 
@@ -104,6 +115,14 @@ export function createFileStorage(): FileStorage {
       const client = getClient();
       const result = await client.delete(files).where(eq(files.id, id)).returning();
       return result.length > 0;
+    },
+
+    async listDistinctFileSystemIds(): Promise<string[]> {
+      const client = getClient();
+      const rows = await client
+        .selectDistinct({ fileSystemId: files.fileSystemId })
+        .from(files);
+      return rows.map((r) => r.fileSystemId);
     }
   };
 }

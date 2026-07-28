@@ -230,6 +230,16 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
   // SKIP_SCHEMA_DRIFT_CHECK=1 dev escape hatch.
   await enforceStartupSchemaDrift();
 
+  // Initialize environment-defined filesystems (FILESYSTEMS env var).
+  // Throws on malformed config; warns for any file_system_id referenced by
+  // files rows but absent from the environment.
+  {
+    const { initFileSystems } = await import("./services/files");
+    const referencedIds = await storage.files.listDistinctFileSystemIds();
+    initFileSystems(referencedIds);
+    logger.info("Filesystem registry initialized", { source: "startup" });
+  }
+
   // Register permissions from enabled components
   syncComponentPermissions();
   logger.info("Component permissions synced", { source: "startup" });

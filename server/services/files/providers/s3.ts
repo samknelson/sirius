@@ -1,0 +1,155 @@
+import {
+  S3Client,
+  GetObjectCommand,
+  PutObjectCommand,
+  DeleteObjectCommand,
+  HeadObjectCommand,
+  ListObjectsV2Command,
+} from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import {
+  FileSystemOperationError,
+  type FileListOptions,
+  type FileListPage,
+  type FileStat,
+  type FileSystemProvider,
+} from "../base";
+
+export interface S3ProviderSettings {
+  bucket: string;
+  region: string;
+  endpoint?: string;
+  force_path_style?: boolean;
+  /** Optional key prefix all objects for this filesystem live under. */
+  prefix?: string;
+  access_key_id: string;
+  secret_access_key: string;
+}
+
+export class S3FileSystemProvider implements FileSystemProvider {
+  readonly kind = "s3" as const;
+  private readonly client: S3Client;
+  private readonly bucket: string;
+  private readonly prefix: string;
+
+  constructor(
+    readonly fileSystemId: string,
+    settings: S3ProviderSettings,
+  ) {
+    this.bucket = settings.bucket;
+    this.prefix = settings.prefix ? settings.prefix.replace(/^\/+|\/+$/g, "") + "/" : "";
+    this.client = new S3Client({
+      region: settings.region,
+      ...(settings.endpoint ? { endpoint: settings.endpoint } : {}),
+      ...(settings.force_path_style ? { forcePathStyle: true } : {}),
+      credentials: {
+        accessKeyId: settings.access_key_id,
+        secretAccessKey: settings.secret_access_key,
+      },
+    });
+  }
+
+  private key(path: string): string {
+    return this.prefix + path.replace(/^\/+/, "");
+  }
+
+  private wrap(op: string, path: string, error: unknown): FileSystemOperationError {
+    return new FileSystemOperationError(
+      `S3 ${op} failed for "${path}": ${error instanceof Error ? error.message : String(error)}`,
+      this.fileSystemId,
+      error,
+    );
+  }
+
+  async read(path: string): Promise<Buffer> {
+    try {
+      const out = await this.client.send(
+        new GetObjectCommand({ Bucket: this.bucket, Key: this.key(path) }),
+      );
+      const bytes = await out.Body?.transformToByteArray();
+      if (!bytes) throw new Error("empty response body");
+      return Buffer.from(bytes);
+    } catch (error) {
+      throw this.wrap("read", path, error);
+    }
+  }
+
+  async write(path: string, content: Buffer, opts?: { mimeType?: string }): Promise<void> {
+    try {
+      await this.client.send(
+        new PutObjectCommand({
+          Bucket: this.bucket,
+          Key: this.key(path),
+          Body: content,
+          ContentType: opts?.mimeType || "application/octet-stream",
+        }),
+      );
+    } catch (error) {
+      throw this.wrap("write", path, error);
+    }
+  }
+
+  async delete(path: string): Promise<void> {
+    try {
+      // S3 DeleteObject is idempotent — deleting a missing key succeeds.
+      await this.client.send(
+        new DeleteObjectCommand({ Bucket: this.bucket, Key: this.key(path) }),
+      );
+    } catch (error) {
+      throw this.wrap("delete", path, error);
+    }
+  }
+
+  async stat(path: string): Promise<FileStat | null> {
+    try {
+      const out = await this.client.send(
+        new HeadObjectCommand({ Bucket: this.bucket, Key: this.key(path) }),
+      );
+      return {
+        size: out.ContentLength ?? 0,
+        mimeType: out.ContentType,
+        lastModified: out.LastModified,
+      };
+    } catch (error: any) {
+      if (error?.$metadata?.httpStatusCode === 404 || error?.name === "NotFound") return null;
+      throw this.wrap("stat", path, error);
+    }
+  }
+
+  async list(opts?: FileListOptions): Promise<FileListPage> {
+    try {
+      const out = await this.client.send(
+        new ListObjectsV2Command({
+          Bucket: this.bucket,
+          Prefix: this.prefix + (opts?.prefix?.replace(/^\/+/, "") ?? ""),
+          ContinuationToken: opts?.cursor,
+          MaxKeys: Math.min(Math.max(opts?.limit ?? 100, 1), 1000),
+        }),
+      );
+      return {
+        entries: (out.Contents ?? [])
+          .filter((o) => o.Key)
+          .map((o) => ({
+            path: this.prefix ? o.Key!.slice(this.prefix.length) : o.Key!,
+            size: o.Size ?? 0,
+            lastModified: o.LastModified,
+          })),
+        cursor: out.IsTruncated ? out.NextContinuationToken : undefined,
+      };
+    } catch (error) {
+      throw this.wrap("list", opts?.prefix ?? "", error);
+    }
+  }
+
+  async getSignedUrl(path: string, expiresInSeconds: number): Promise<string | null> {
+    try {
+      return await getSignedUrl(
+        this.client,
+        new GetObjectCommand({ Bucket: this.bucket, Key: this.key(path) }),
+        { expiresIn: expiresInSeconds },
+      );
+    } catch (error) {
+      throw this.wrap("sign", path, error);
+    }
+  }
+}

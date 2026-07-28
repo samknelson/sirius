@@ -180,6 +180,17 @@ async function signObjectURL({
 }
 
 export class ObjectStorageService {
+  /**
+   * When constructed with an explicit bucketId (the files-service replit
+   * provider does this), that bucket is used; otherwise falls back to the
+   * legacy DEFAULT_OBJECT_STORAGE_BUCKET_ID env var.
+   */
+  constructor(private readonly explicitBucketId?: string) {}
+
+  private bucket(): string {
+    return this.explicitBucketId ?? ensureBucketId();
+  }
+
   async uploadFile(options: UploadFileOptions): Promise<{ storagePath: string; size: number }> {
     const { fileName, fileContent, mimeType, accessLevel, customPath } = options;
 
@@ -187,7 +198,7 @@ export class ObjectStorageService {
     const storagePath = customPath || `${directory}/${Date.now()}-${fileName}`;
 
     // Get signed URL for upload
-    const fullPath = `/${ensureBucketId()}/${storagePath}`;
+    const fullPath = `/${this.bucket()}/${storagePath}`;
     const { bucketName, objectName } = parseObjectPath(fullPath);
     
     const signedUrl = await signObjectURL({
@@ -217,7 +228,7 @@ export class ObjectStorageService {
   }
 
   async downloadFile(storagePath: string): Promise<Buffer> {
-    const fullPath = `/${ensureBucketId()}/${storagePath}`;
+    const fullPath = `/${this.bucket()}/${storagePath}`;
     const { bucketName, objectName } = parseObjectPath(fullPath);
 
     const signedUrl = await signObjectURL({
@@ -238,7 +249,7 @@ export class ObjectStorageService {
   }
 
   async deleteFile(storagePath: string): Promise<void> {
-    const fullPath = `/${ensureBucketId()}/${storagePath}`;
+    const fullPath = `/${this.bucket()}/${storagePath}`;
     const { bucketName, objectName } = parseObjectPath(fullPath);
 
     const signedUrl = await signObjectURL({
@@ -258,7 +269,7 @@ export class ObjectStorageService {
   }
 
   async getFileMetadata(storagePath: string): Promise<FileMetadata> {
-    const fullPath = `/${ensureBucketId()}/${storagePath}`;
+    const fullPath = `/${this.bucket()}/${storagePath}`;
     const { bucketName, objectName } = parseObjectPath(fullPath);
 
     const signedUrl = await signObjectURL({
@@ -290,7 +301,7 @@ export class ObjectStorageService {
   }
 
   async generateSignedUrl(storagePath: string, expiresIn: number = 3600): Promise<string> {
-    const fullPath = `/${ensureBucketId()}/${storagePath}`;
+    const fullPath = `/${this.bucket()}/${storagePath}`;
     const { bucketName, objectName } = parseObjectPath(fullPath);
 
     return await signObjectURL({

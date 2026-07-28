@@ -2,7 +2,15 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 import { insertFileSchema } from "@shared/schema";
 import { requireAccess, checkAccess, buildContext } from "../services/access-policy-evaluator";
-import { objectStorageService } from "../services/objectStorage";
+import {
+  fileSystemService,
+  isFileSystemConfigured,
+  getFileSystemConfig,
+  getFileSystemProvider,
+  FileSystemNotConfiguredError,
+  FilePathTraversalError,
+} from "../services/files";
+import { LocalFileSystemProvider } from "../services/files/providers/local";
 import multer from "multer";
 import { logger } from "../logger";
 
@@ -30,7 +38,12 @@ export function registerFileRoutes(
           return res.status(400).json({ message: "No file provided" });
         }
 
-        const { entityType, entityId, accessLevel = 'private', metadata } = req.body;
+        const { entityType, entityId, fileSystemId, metadata } = req.body;
+        if (!fileSystemId || typeof fileSystemId !== 'string') {
+          return res.status(400).json({
+            message: "fileSystemId is required — specify which configured filesystem the file belongs to.",
+          });
+        }
         
         if (!req.user) {
           return res.status(401).json({ message: "Authentication required" });
@@ -98,11 +111,20 @@ export function registerFileRoutes(
           }
         }
 
-        const uploadResult = await objectStorageService.uploadFile({
+        if (!isFileSystemConfigured(fileSystemId)) {
+          return res.status(503).json({
+            message: `Filesystem "${fileSystemId}" is not configured. An operator must define it in the FILESYSTEMS environment variable.`,
+          });
+        }
+
+        // Create ordering: upload the object FIRST, insert the row second.
+        // A failed insert leaves an orphan object (sweepable), never a row
+        // pointing at nothing.
+        const uploadResult = await fileSystemService.upload({
+          fileSystemId,
           fileName: req.file.originalname,
           fileContent: req.file.buffer,
           mimeType: req.file.mimetype,
-          accessLevel: accessLevel as 'public' | 'private',
         });
 
         const fileData = {
@@ -113,7 +135,7 @@ export function registerFileRoutes(
           uploadedBy: context.user?.id,
           entityType: entityType || null,
           entityId: entityId || null,
-          accessLevel: accessLevel,
+          fileSystemId,
           metadata: metadata ? JSON.parse(metadata) : null,
         };
 
@@ -125,6 +147,8 @@ export function registerFileRoutes(
         console.error('File upload error:', error);
         if (error instanceof Error && error.name === "ZodError") {
           res.status(400).json({ message: "Invalid file data", error });
+        } else if (error instanceof FileSystemNotConfiguredError) {
+          res.status(503).json({ message: error.message });
         } else {
           res.status(500).json({ message: "Failed to upload file" });
         }
@@ -185,7 +209,7 @@ export function registerFileRoutes(
         return res.status(404).json({ message: "File not found" });
       }
 
-      const fileContent = await objectStorageService.downloadFile(file.storagePath);
+      const fileContent = await fileSystemService.download(file.fileSystemId, file.storagePath);
       
       const safeName = file.fileName.replace(/"/g, '');
       const mime = file.mimeType || 'application/octet-stream';
@@ -197,6 +221,9 @@ export function registerFileRoutes(
       res.send(fileContent);
     } catch (error) {
       console.error('File download error:', error);
+      if (error instanceof FileSystemNotConfiguredError) {
+        return res.status(503).json({ message: error.message });
+      }
       res.status(500).json({ message: "Failed to download file" });
     }
   });
@@ -212,14 +239,23 @@ export function registerFileRoutes(
         return res.status(404).json({ message: "File not found" });
       }
 
-      const url = await objectStorageService.generateSignedUrl(
+      const url = await fileSystemService.getSignedUrl(
+        file.fileSystemId,
         file.storagePath, 
         parseInt(expiresIn as string)
       );
+      if (!url) {
+        return res.status(400).json({
+          message: "This filesystem does not support signed URLs; use the download endpoint instead.",
+        });
+      }
       
       res.json({ url, expiresIn });
     } catch (error) {
       console.error('Generate signed URL error:', error);
+      if (error instanceof FileSystemNotConfiguredError) {
+        return res.status(503).json({ message: error.message });
+      }
       res.status(500).json({ message: "Failed to generate signed URL" });
     }
   });
@@ -233,16 +269,14 @@ export function registerFileRoutes(
         return res.status(404).json({ message: "File not found" });
       }
 
-      const allowedUpdates = ['metadata', 'accessLevel'];
+      // Only metadata is client-editable; fileSystemId/storagePath/status are
+      // managed by the service layer and the consistency sweep.
+      const allowedUpdates = ['metadata'];
       const updates: any = {};
       for (const key of allowedUpdates) {
         if (req.body[key] !== undefined) {
           updates[key] = req.body[key];
         }
-      }
-
-      if (updates.accessLevel && !['public', 'private'].includes(updates.accessLevel)) {
-        return res.status(400).json({ message: "Invalid accessLevel. Must be 'public' or 'private'" });
       }
 
       const validatedData = insertFileSchema.partial().parse(updates);
@@ -271,18 +305,80 @@ export function registerFileRoutes(
         return res.status(404).json({ message: "File not found" });
       }
 
-      await objectStorageService.deleteFile(existing.storagePath);
-      
+      // Delete ordering: remove the row FIRST, then the object. A failed
+      // object delete leaves an orphan object (sweepable), never a row
+      // pointing at nothing.
       const deleted = await storage.files.delete(id);
-      
       if (!deleted) {
         return res.status(404).json({ message: "File not found" });
+      }
+
+      try {
+        await fileSystemService.remove(existing.fileSystemId, existing.storagePath);
+      } catch (error) {
+        logger.warn('File row deleted but object removal failed - orphan object left for sweep', {
+          service: 'files',
+          fileId: id,
+          fileSystemId: existing.fileSystemId,
+          storagePath: existing.storagePath,
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
 
       res.json({ message: "File deleted successfully" });
     } catch (error) {
       console.error('File deletion error:', error);
       res.status(500).json({ message: "Failed to delete file" });
+    }
+  });
+
+  // Public serving route: files on a PUBLIC filesystem are readable without
+  // auth at a stable app URL. Local filesystems are streamed from disk (with
+  // strict path-traversal protection); providers that can mint URLs redirect.
+  app.get(/^\/public-files\/([^/]+)\/(.+)$/, async (req, res) => {
+    const fileSystemId = req.params[0];
+    const storagePath = req.params[1];
+    try {
+      if (!isFileSystemConfigured(fileSystemId)) {
+        return res.status(404).json({ message: "Not found" });
+      }
+      const config = getFileSystemConfig(fileSystemId);
+      if (config.access !== 'public') {
+        // Private filesystems are never exposed here — indistinguishable
+        // from a missing file to avoid leaking configuration.
+        return res.status(404).json({ message: "Not found" });
+      }
+
+      // Only serve objects that a live files row points at, so this route
+      // cannot be used to probe arbitrary paths.
+      const fileRow = await storage.files.getByStoragePath(storagePath, fileSystemId);
+      if (!fileRow || fileRow.status !== 'live') {
+        return res.status(404).json({ message: "Not found" });
+      }
+
+      const provider = getFileSystemProvider(fileSystemId);
+      if (provider instanceof LocalFileSystemProvider) {
+        const content = await provider.read(storagePath);
+        const mime = fileRow.mimeType || 'application/octet-stream';
+        res.setHeader('Content-Type', mime);
+        res.setHeader('Content-Length', content.length);
+        res.setHeader('Cache-Control', 'public, max-age=300');
+        return res.send(content);
+      }
+
+      const url = await provider.getSignedUrl(storagePath, 300);
+      if (url) return res.redirect(url);
+      return res.status(404).json({ message: "Not found" });
+    } catch (error) {
+      if (error instanceof FilePathTraversalError) {
+        return res.status(400).json({ message: "Invalid path" });
+      }
+      logger.error('Public file serving error', {
+        service: 'files',
+        fileSystemId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return res.status(500).json({ message: "Failed to serve file" });
     }
   });
 }

@@ -895,9 +895,15 @@ export const files = pgTable("files", {
   uploadedAt: timestamp("uploaded_at").default(sql`now()`).notNull(),
   entityType: varchar("entity_type"),
   entityId: varchar("entity_id"),
-  accessLevel: varchar("access_level").notNull().default('private'),
+  // Which environment-defined filesystem (FILESYSTEMS env var) holds the
+  // bytes. Pre-existing rows were backfilled to "legacy" by migration 1055.
+  fileSystemId: varchar("file_system_id").notNull(),
+  // live | missing | pending_delete — maintained by the consistency sweep.
+  status: varchar("status").notNull().default('live'),
   metadata: jsonb("metadata"),
-});
+}, (table) => [
+  unique("files_file_system_id_storage_path_unique").on(table.fileSystemId, table.storagePath),
+]);
 
 export const esigStatusEnum = pgEnum("esig_status", ["pending", "signed"]);
 export const esigTypeEnum = pgEnum("esig_type", ["online", "offline", "upload"]);

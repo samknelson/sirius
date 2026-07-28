@@ -7,7 +7,7 @@ import { wizardPluginRegistry } from "../plugins/wizards";
 import { enforceWizardEntityAccess } from "../plugins/wizards/entity-access";
 import { enforcePluginGating } from "../plugins/_core";
 import { createUnifiedOptionsStorage } from "../storage/unified-options.js";
-import { objectStorageService } from "../services/objectStorage.js";
+import { fileSystemService } from "../services/files/index.js";
 import { validateAgainstSchema } from "../lib/json-schema-validator";
 
 const upload = multer({
@@ -485,10 +485,10 @@ export function registerWizardRoutes(
       
       for (const file of wizardFiles) {
         try {
-          // Delete from object storage
-          await objectStorageService.deleteFile(file.storagePath);
-          // Delete from database
+          // Delete ordering: row first, object second — a failed object
+          // delete leaves a sweepable orphan, never a dangling row.
           await storage.files.delete(file.id);
+          await fileSystemService.remove(file.fileSystemId, file.storagePath);
         } catch (error) {
           console.error(`Failed to delete file ${file.id}:`, error);
           // Continue with deletion even if file deletion fails
