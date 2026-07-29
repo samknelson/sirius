@@ -5,7 +5,7 @@ import {
   trustWmbEvents,
   type TrustWmbEvent,
 } from "@shared/schema";
-import { eq, and, inArray, isNotNull } from "drizzle-orm";
+import { eq, and, inArray, isNotNull, sql } from "drizzle-orm";
 
 /**
  * One desired event row for `replaceForWorkerAndType`. The worker id and
@@ -56,6 +56,17 @@ export interface TrustWmbEventsStorage {
    * conflict). Safe to re-run at any time.
    */
   replaceForWorkerAndType(workerId: string, eventType: string, events: TrustWmbEventInput[]): Promise<void>;
+  /**
+   * Distinct workers with an event of `eventType` per benefit in one month,
+   * restricted to the given benefits. Benefits with no events produce no row
+   * (callers should default missing entries to 0).
+   */
+  countWorkersByBenefitForMonth(
+    benefitIds: string[],
+    eventType: string,
+    month: number,
+    year: number,
+  ): Promise<Array<{ benefitId: string; workerCount: number }>>;
   /** Distinct (benefit, year, month) coverage tuples from `trust_wmb`. */
   getWorkerBenefitCoverage(workerId: string): Promise<WorkerBenefitCoverage[]>;
   /**
@@ -140,6 +151,35 @@ export function createTrustWmbEventsStorage(): TrustWmbEventsStorage {
             });
         }
       });
+    },
+
+    async countWorkersByBenefitForMonth(
+      benefitIds: string[],
+      eventType: string,
+      month: number,
+      year: number,
+    ): Promise<Array<{ benefitId: string; workerCount: number }>> {
+      if (benefitIds.length === 0) return [];
+      const client = getClient();
+      const rows = await client
+        .select({
+          benefitId: trustWmbEvents.benefitId,
+          workerCount: sql<number>`count(distinct ${trustWmbEvents.workerId})::int`,
+        })
+        .from(trustWmbEvents)
+        .where(
+          and(
+            inArray(trustWmbEvents.benefitId, benefitIds),
+            eq(trustWmbEvents.eventType, eventType),
+            eq(trustWmbEvents.month, month),
+            eq(trustWmbEvents.year, year),
+          ),
+        )
+        .groupBy(trustWmbEvents.benefitId);
+      return rows.map((r) => ({
+        benefitId: r.benefitId,
+        workerCount: Number(r.workerCount) || 0,
+      }));
     },
 
     async getWorkerBenefitCoverage(workerId: string): Promise<WorkerBenefitCoverage[]> {

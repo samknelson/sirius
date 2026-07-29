@@ -1,6 +1,6 @@
 import { getClient } from '../transaction-context';
 import { trustWmb, trustBenefits, employers, optionsTrustBenefitType, type TrustWmb } from "@shared/schema";
-import { sql, eq, and, desc } from "drizzle-orm";
+import { sql, eq, and, desc, inArray, or } from "drizzle-orm";
 import { type StorageLoggingConfig } from "../middleware/logging";
 import { logger } from "../../logger";
 import { eventBus, EventType } from "../../services/event-bus";
@@ -29,8 +29,26 @@ export interface WorkerBenefitPresenceRow {
   benefitTypeIcon: string | null;
 }
 
+/** One (benefit, year, month) → distinct-worker coverage count. */
+export interface BenefitMonthWorkerCount {
+  benefitId: string;
+  year: number;
+  month: number;
+  workerCount: number;
+}
+
 export interface TrustWmbStorage {
   getActiveBenefitWorkerCountsByEmployerLatestPeriod(): Promise<ActiveBenefitWorkerCount[]>;
+  /**
+   * Distinct-worker coverage counts per (benefit, year, month), restricted to
+   * the given benefits and months. Months absent from `trust_wmb` simply
+   * produce no row (callers should default missing cells to 0). Used by the
+   * Benefit Summary dashboard widget.
+   */
+  countWorkersByBenefitForMonths(
+    benefitIds: string[],
+    months: Array<{ month: number; year: number }>,
+  ): Promise<BenefitMonthWorkerCount[]>;
   getById(id: string): Promise<TrustWmb | undefined>;
   getWorkerBenefits(workerId: string): Promise<any[]>;
   getWorkerBenefitPresence(workerId: string): Promise<WorkerBenefitPresenceRow[]>;
@@ -70,6 +88,33 @@ export function createTrustWmbStorage(): TrustWmbStorage {
         employerId: row.employer_id,
         benefitId: row.benefit_id,
         workerCount: Number(row.worker_count) || 0,
+      }));
+    },
+
+    async countWorkersByBenefitForMonths(
+      benefitIds: string[],
+      months: Array<{ month: number; year: number }>,
+    ): Promise<BenefitMonthWorkerCount[]> {
+      if (benefitIds.length === 0 || months.length === 0) return [];
+      const client = getClient();
+      const monthConditions = months.map((m) =>
+        and(eq(trustWmb.month, m.month), eq(trustWmb.year, m.year)),
+      );
+      const rows = await client
+        .select({
+          benefitId: trustWmb.benefitId,
+          year: trustWmb.year,
+          month: trustWmb.month,
+          workerCount: sql<number>`count(distinct ${trustWmb.workerId})::int`,
+        })
+        .from(trustWmb)
+        .where(and(inArray(trustWmb.benefitId, benefitIds), or(...monthConditions)))
+        .groupBy(trustWmb.benefitId, trustWmb.year, trustWmb.month);
+      return rows.map((r) => ({
+        benefitId: r.benefitId,
+        year: r.year,
+        month: r.month,
+        workerCount: Number(r.workerCount) || 0,
       }));
     },
 

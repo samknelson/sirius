@@ -159,3 +159,4 @@ import "./plugins/btu-dues-status";
 import "./plugins/btu-bu-summary";
 import "./plugins/edls-summary";
 import "./plugins/my-shops";
+import "./plugins/benefit-summary";
