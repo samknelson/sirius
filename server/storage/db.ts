@@ -172,9 +172,14 @@ export const driverKind: DriverKind = detectDriver(databaseUrl);
 let poolInstance: NeonPool | pg.Pool;
 let dbInstance: NeonDatabase<typeof schema>;
 
+// The EFFECTIVE connection string (post pooler-rewrite for Neon). Used only
+// to derive credential-free display info below.
+let effectiveDatabaseUrl = databaseUrl;
+
 if (driverKind === "neon") {
   neonConfig.webSocketConstructor = ws;
   const neonUrl = rewriteNeonPoolerUrl(databaseUrl);
+  effectiveDatabaseUrl = neonUrl;
   poolInstance = new NeonPool({ connectionString: neonUrl });
   dbInstance = drizzleNeon({ client: poolInstance as NeonPool, schema });
   console.log("[db] driver=neon (serverless/WebSocket)");
@@ -217,3 +222,55 @@ poolInstance.on("error", (err: Error) => {
 // Neon Pool is a runtime drop-in for every API surface used there.
 export const pool = poolInstance as pg.Pool;
 export const db = dbInstance;
+
+/**
+ * Credential-free description of the resolved database target, for admin
+ * display (Task #178). Derived from the EFFECTIVE connection string (after
+ * the Neon pooler rewrite), so the Neon endpoint ID matches the endpoint the
+ * app actually connects to. Never includes username, password, or the full
+ * connection string.
+ */
+export interface DatabaseSourceInfo {
+  /** Effective hostname the app connects to. */
+  host: string;
+  /** Database name (URL path without leading slash). */
+  database: string;
+  /** Which env var supplied the connection string. */
+  source: "EXTERNAL_DATABASE_URL" | "DATABASE_URL";
+  /** Selected driver: Neon serverless (WebSocket) or node-postgres (TCP). */
+  driver: DriverKind;
+  /** Neon endpoint ID (`ep-…` hostname prefix) when the host is a Neon endpoint. */
+  neonEndpointId: string | null;
+  /** True when the original URL targeted the `-pooler.` endpoint and was rewritten. */
+  poolerRewritten: boolean;
+}
+
+export const databaseSourceInfo: DatabaseSourceInfo = (() => {
+  let host = "<unparseable>";
+  let database = "<unparseable>";
+  try {
+    const u = new URL(effectiveDatabaseUrl);
+    host = u.hostname;
+    database = u.pathname.replace(/^\//, "");
+  } catch {
+    // leave placeholders — never fall back to the raw string (credentials).
+  }
+  const isNeonHost = host.endsWith(".neon.tech");
+  const neonEndpointId =
+    isNeonHost && host.startsWith("ep-") ? host.split(".")[0] : null;
+  let poolerRewritten = false;
+  try {
+    poolerRewritten =
+      new URL(databaseUrl).hostname !== host && isNeonHost;
+  } catch {
+    poolerRewritten = false;
+  }
+  return {
+    host,
+    database,
+    source: resolvedDatabaseUrl.source,
+    driver: driverKind,
+    neonEndpointId,
+    poolerRewritten,
+  };
+})();
