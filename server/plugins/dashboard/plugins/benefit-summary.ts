@@ -1,10 +1,13 @@
 import { registerDashboardPlugin } from "../registry";
-import { storage } from "../../../storage";
+import { createUnifiedOptionsStorage } from "../../../storage/unified-options";
 import type { JsonSchema } from "@shared/json-schema-form";
 import type { DashboardPlugin } from "../types";
-import type { TrustBenefit } from "@shared/schema";
+
+const unifiedOptionsStorage = createUnifiedOptionsStorage();
 
 interface BenefitSummarySettings {
+  benefitTypeIds?: string[];
+  /** Legacy shape (pre benefit-type rework): individual benefit ids. */
   benefitIds?: string[];
 }
 
@@ -17,18 +20,35 @@ export interface BenefitSummaryMonth {
   label: string;
 }
 
-export interface BenefitSummaryRow {
+/** Per-benefit detail within a benefit type group. */
+export interface BenefitSummaryBenefitRow {
   benefitId: string;
   benefitName: string;
-  /** Distinct workers with coverage, keyed by month key. */
+  /** Active coverage counts for this benefit, keyed by month key. */
   counts: Record<"last" | "current" | "next", number>;
-  /** Distinct workers with a "terminate" event this month. */
+  /** Distinct workers with a "terminate" event this month for this benefit. */
   lostThisMonth: number;
+}
+
+export interface BenefitSummaryGroup {
+  benefitTypeId: string;
+  benefitTypeName: string;
+  /** Type totals: coverage counts summed across the type's benefits. */
+  counts: Record<"last" | "current" | "next", number>;
+  /** Type total of lostThisMonth across the type's benefits. */
+  lostThisMonth: number;
+  /** Per-benefit breakdown for every active benefit of this type. */
+  benefits: BenefitSummaryBenefitRow[];
 }
 
 export interface BenefitSummaryContent {
   months: BenefitSummaryMonth[];
-  rows: BenefitSummaryRow[];
+  groups: BenefitSummaryGroup[];
+  /** True when the config has at least one benefit type selected (directly
+   * or derived from legacy per-benefit settings). Lets the client
+   * distinguish "nothing selected" from "selected types have no active
+   * benefits". */
+  configured: boolean;
 }
 
 const MONTH_NAMES = [
@@ -54,30 +74,37 @@ function buildMonths(now: Date): BenefitSummaryMonth[] {
 }
 
 /**
- * Dynamic settings schema: multi-select over the active trust benefits so
- * admins pick which benefit types the widget summarizes.
+ * Dynamic settings schema: multi-select over the trust benefit TYPES
+ * (Medical, Dental, ...) so admins pick categories, not individual benefits.
+ *
+ * Options are expressed as `anyOf` single-value-enum subschemas with titles
+ * (not `enum` + `enumNames`) so the RJSF multi-select renders readable
+ * labels instead of raw ids.
  */
 async function buildSchema(): Promise<JsonSchema> {
-  const benefits = (await storage.trustBenefits.getAllTrustBenefits()) as TrustBenefit[];
-  const active = benefits
-    .filter((b) => b.isActive)
-    .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+  const types = (await unifiedOptionsStorage.list("trust-benefit-type")) as Array<{
+    id: string;
+    name: string;
+  }>;
   return {
     type: "object",
     title: "Benefit Summary",
     description:
-      "Pick the benefits to summarize. The widget shows active coverage counts for last / this / next month and how many workers lost each benefit this month.",
+      "Pick the benefit types to summarize. The widget shows active coverage counts for last / this / next month and how many workers lost each benefit of those types this month.",
     properties: {
-      benefitIds: {
+      benefitTypeIds: {
         type: "array",
-        title: "Benefits",
-        description: "Benefits included in the summary",
+        title: "Benefit types",
+        description: "Benefit types included in the summary",
         uniqueItems: true,
         items: {
           type: "string",
-          enum: active.map((b) => b.id),
-          enumNames: active.map((b) => b.name || b.id),
-        } as any,
+          anyOf: types.map((t) => ({
+            type: "string",
+            enum: [t.id],
+            title: t.name || t.id,
+          })),
+        } as JsonSchema,
       },
     },
   };
@@ -87,25 +114,53 @@ export const benefitSummaryPlugin: DashboardPlugin = {
   id: "benefit-summary",
   name: "Benefit Summary",
   description:
-    "At-a-glance active coverage counts (last / this / next month) and losses this month for selected benefits",
+    "At-a-glance active coverage counts (last / this / next month) and losses this month for selected benefit types",
   requiredComponent: "trust.benefits",
   settingsSchema: buildSchema,
-  defaultSettings: { benefitIds: [] },
+  defaultSettings: { benefitTypeIds: [] },
 
   async content(ctx): Promise<BenefitSummaryContent> {
     const settings = (ctx.settings ?? {}) as BenefitSummarySettings;
-    const requestedIds = Array.isArray(settings.benefitIds)
-      ? settings.benefitIds.filter((id): id is string => typeof id === "string")
+    let requestedTypeIds = Array.isArray(settings.benefitTypeIds)
+      ? settings.benefitTypeIds.filter((id): id is string => typeof id === "string")
       : [];
 
     const months = buildMonths(new Date());
-    if (requestedIds.length === 0) return { months, rows: [] };
 
-    // Resolve names and drop ids that no longer exist (deleted benefits).
-    const allBenefits = (await ctx.storage.trustBenefits.getAllTrustBenefits()) as TrustBenefit[];
-    const benefitById = new Map(allBenefits.map((b) => [b.id, b]));
-    const benefitIds = requestedIds.filter((id) => benefitById.has(id));
-    if (benefitIds.length === 0) return { months, rows: [] };
+    const allBenefits = (await ctx.storage.trustBenefits.getAllTrustBenefits()) as Array<{
+      id: string;
+      name: string | null;
+      benefitType: string | null;
+      benefitTypeName: string | null;
+      benefitTypeSequence: number | null;
+      isActive: boolean;
+    }>;
+
+    // Legacy configs (pre benefit-type rework) stored individual benefit
+    // ids. Derive the corresponding types on read so old configs keep
+    // rendering until they are re-saved.
+    if (requestedTypeIds.length === 0 && Array.isArray(settings.benefitIds)) {
+      const legacyIds = new Set(
+        settings.benefitIds.filter((id): id is string => typeof id === "string"),
+      );
+      requestedTypeIds = Array.from(
+        new Set(
+          allBenefits
+            .filter((b) => legacyIds.has(b.id) && b.benefitType)
+            .map((b) => b.benefitType as string),
+        ),
+      );
+    }
+
+    if (requestedTypeIds.length === 0) return { months, groups: [], configured: false };
+
+    // Expand types -> active benefits of those types.
+    const selectedTypes = new Set(requestedTypeIds);
+    const benefits = allBenefits.filter(
+      (b) => b.isActive && b.benefitType && selectedTypes.has(b.benefitType),
+    );
+    if (benefits.length === 0) return { months, groups: [], configured: true };
+    const benefitIds = benefits.map((b) => b.id);
 
     const current = months.find((m) => m.key === "current")!;
 
@@ -130,21 +185,49 @@ export const benefitSummaryPlugin: DashboardPlugin = {
     }
     const lostByBenefit = new Map(lostCounts.map((l) => [l.benefitId, l.workerCount]));
 
-    const rows: BenefitSummaryRow[] = benefitIds.map((benefitId) => {
-      const counts = { last: 0, current: 0, next: 0 } as BenefitSummaryRow["counts"];
-      for (const m of months) {
-        counts[m.key] = coverageByKey.get(`${benefitId}:${m.year}:${m.month}`) ?? 0;
+    // Group by benefit type: every active benefit of the type gets its own
+    // row (month counts + lost this month); the group carries type totals.
+    const groupsByType = new Map<string, BenefitSummaryGroup & { sequence: number }>();
+    for (const b of benefits) {
+      const typeId = b.benefitType!;
+      let group = groupsByType.get(typeId);
+      if (!group) {
+        group = {
+          benefitTypeId: typeId,
+          benefitTypeName: b.benefitTypeName || typeId,
+          counts: { last: 0, current: 0, next: 0 },
+          lostThisMonth: 0,
+          benefits: [],
+          sequence: b.benefitTypeSequence ?? Number.MAX_SAFE_INTEGER,
+        };
+        groupsByType.set(typeId, group);
       }
-      return {
-        benefitId,
-        benefitName: benefitById.get(benefitId)?.name || benefitId,
-        counts,
-        lostThisMonth: lostByBenefit.get(benefitId) ?? 0,
+      const row: BenefitSummaryBenefitRow = {
+        benefitId: b.id,
+        benefitName: b.name || b.id,
+        counts: { last: 0, current: 0, next: 0 },
+        lostThisMonth: lostByBenefit.get(b.id) ?? 0,
       };
-    });
-    rows.sort((a, b) => a.benefitName.localeCompare(b.benefitName));
+      for (const m of months) {
+        const count = coverageByKey.get(`${b.id}:${m.year}:${m.month}`) ?? 0;
+        row.counts[m.key] = count;
+        group.counts[m.key] += count;
+      }
+      group.lostThisMonth += row.lostThisMonth;
+      group.benefits.push(row);
+    }
 
-    return { months, rows };
+    const groups = Array.from(groupsByType.values())
+      .sort(
+        (a, b) =>
+          a.sequence - b.sequence || a.benefitTypeName.localeCompare(b.benefitTypeName),
+      )
+      .map(({ sequence: _sequence, ...group }) => ({
+        ...group,
+        benefits: group.benefits.sort((a, b) => a.benefitName.localeCompare(b.benefitName)),
+      }));
+
+    return { months, groups, configured: true };
   },
 
   client: {
