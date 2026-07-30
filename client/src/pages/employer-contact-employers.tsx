@@ -1,3 +1,4 @@
+import { sortEmployerOptions } from "@/lib/employer-options";
 import { useState, useMemo } from "react";
 import { EmployerContactLayout, useEmployerContactLayout } from "@/components/layouts/EmployerContactLayout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -85,7 +86,7 @@ function EmployerContactEmployersContent() {
 
   const filteredEmployers = useMemo(() => {
     const q = employerSearch.trim().toLowerCase();
-    return availableEmployers.filter(e => {
+    const filtered = availableEmployers.filter(e => {
       if (q && !e.name.toLowerCase().includes(q)) return false;
       if (showCompany && companyFilter !== "all") {
         if (companyFilter === "none") {
@@ -96,6 +97,7 @@ function EmployerContactEmployersContent() {
       }
       return true;
     });
+    return sortEmployerOptions(filtered);
   }, [availableEmployers, employerSearch, showCompany, companyFilter]);
 
   const resetDialog = () => {

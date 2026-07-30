@@ -1,3 +1,4 @@
+import { formatEmployerLabel, sortEmployerOptions } from "@/lib/employer-options";
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { usePageTitle } from "@/contexts/PageTitleContext";
@@ -219,9 +220,9 @@ export default function PensionEmployerPlansPage() {
                   <SelectValue placeholder="Select an employer..." />
                 </SelectTrigger>
                 <SelectContent>
-                  {availableEmployers.map((emp) => (
+                  {sortEmployerOptions(availableEmployers).map((emp) => (
                     <SelectItem key={emp.id} value={emp.id}>
-                      {emp.name}
+                      {formatEmployerLabel(emp)}
                     </SelectItem>
                   ))}
                 </SelectContent>

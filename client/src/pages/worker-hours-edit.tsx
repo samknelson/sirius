@@ -1,3 +1,4 @@
+import { formatEmployerLabel, sortEmployerOptions } from "@/lib/employer-options";
 import { useState, useEffect } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
@@ -217,9 +218,9 @@ function WorkerHoursEditContent() {
                 <SelectValue placeholder="Select employer" />
               </SelectTrigger>
               <SelectContent>
-                {employers.map((employer) => (
+                {sortEmployerOptions(employers).map((employer) => (
                   <SelectItem key={employer.id} value={employer.id}>
-                    {employer.name}
+                    {formatEmployerLabel(employer)}
                   </SelectItem>
                 ))}
               </SelectContent>

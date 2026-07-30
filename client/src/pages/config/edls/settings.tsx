@@ -1,3 +1,4 @@
+import { formatEmployerLabel, sortEmployerOptions } from "@/lib/employer-options";
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { usePageTitle } from "@/contexts/PageTitleContext";
@@ -218,9 +219,9 @@ export default function EdlsSettingsPage() {
                 <SelectValue placeholder="Select an employer..." />
               </SelectTrigger>
               <SelectContent>
-                {employers.map((employer) => (
+                {sortEmployerOptions(employers).map((employer) => (
                   <SelectItem key={employer.id} value={employer.id} data-testid={`option-employer-${employer.id}`}>
-                    {employer.name}
+                    {formatEmployerLabel(employer)}
                   </SelectItem>
                 ))}
               </SelectContent>

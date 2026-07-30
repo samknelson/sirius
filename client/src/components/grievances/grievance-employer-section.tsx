@@ -1,3 +1,4 @@
+import { formatEmployerLabel, sortEmployerOptions } from "@/lib/employer-options";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,6 +15,7 @@ import { useToast } from "@/hooks/use-toast";
 export interface EmployerOption {
   id: string;
   name: string;
+  companyName?: string | null;
 }
 
 export interface SectionEmployer {
@@ -66,9 +68,9 @@ export function GrievanceEmployerSection({
             <SelectItem value={NO_EMPLOYER} data-testid="option-employer-none">
               No employer
             </SelectItem>
-            {employers.map((e) => (
+            {sortEmployerOptions(employers).map((e) => (
               <SelectItem key={e.id} value={e.id} data-testid={`option-employer-${e.id}`}>
-                {e.name}
+                {formatEmployerLabel(e)}
               </SelectItem>
             ))}
           </SelectContent>

@@ -8,11 +8,33 @@ type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void 
 type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type AccessMiddleware = (policy: string, getEntityId?: (req: Request) => string | undefined) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 
-export function registerEmployerRoutes(
+/**
+ * Fetch employerId -> { companyId, companyName } when the employer.company
+ * component is enabled; returns null when disabled or when company tables
+ * are absent (component never migrated in this environment).
+ */
+async function getCompanyMapIfEnabled(): Promise<Map<string, { companyId: string; companyName: string }> | null> {
+  const companyEnabled = await isComponentEnabled("employer.company");
+  if (!companyEnabled) return null;
+  try {
+    return await storage.employerCompanies.getAllWithCompanyName();
+  } catch (enrichError: any) {
+    const isTableMissing = enrichError?.message?.includes('relation') && enrichError?.message?.includes('does not exist');
+    if (!isTableMissing) {
+      console.error("Error enriching employers with company data:", enrichError);
+    }
+    return null;
+  }
+}
+
+/**
+ * Registers /api/my-employers and /api/employers/lookup. Kept separate from
+ * registerEmployerRoutes because routes.ts must register these BEFORE its
+ * legacy /api/employers/:id route, or Express captures "lookup" as :id.
+ */
+export function registerEmployerLookupRoutes(
   app: Express,
-  requireAuth: AuthMiddleware,
-  requirePermission: PermissionMiddleware,
-  requireAccess: AccessMiddleware
+  requireAuth: AuthMiddleware
 ) {
   app.get("/api/my-employers", requireAuth, async (req, res) => {
     try {
@@ -39,9 +61,14 @@ export function registerEmployerRoutes(
         employerIds.map(id => storage.employers.getEmployer(id))
       );
       
+      const companyMap = await getCompanyMapIfEnabled();
       const activeEmployers = employers
         .filter((emp): emp is NonNullable<typeof emp> => emp !== null && emp !== undefined && emp.isActive)
-        .map(emp => ({ id: emp.id, name: emp.name }));
+        .map(emp => ({
+          id: emp.id,
+          name: emp.name,
+          companyName: companyMap?.get(emp.id)?.companyName ?? null,
+        }));
       
       res.json(activeEmployers);
     } catch (error) {
@@ -53,15 +80,27 @@ export function registerEmployerRoutes(
   app.get("/api/employers/lookup", requireAuth, async (req, res) => {
     try {
       const allEmployers = await storage.employers.getAllEmployers();
+      const companyMap = await getCompanyMapIfEnabled();
       const lookup = allEmployers
         .filter(emp => emp.isActive)
-        .map(emp => ({ id: emp.id, name: emp.name }));
+        .map(emp => ({
+          id: emp.id,
+          name: emp.name,
+          companyName: companyMap?.get(emp.id)?.companyName ?? null,
+        }));
       res.json(lookup);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch employer lookup" });
     }
   });
+}
 
+export function registerEmployerRoutes(
+  app: Express,
+  requireAuth: AuthMiddleware,
+  requirePermission: PermissionMiddleware,
+  requireAccess: AccessMiddleware
+) {
   app.get("/api/employers", requireAuth, requireAccess('staff'), async (req, res) => {
     try {
       const includeInactive = req.query.includeInactive === 'true';
@@ -71,26 +110,17 @@ export function registerEmployerRoutes(
         ? allEmployers 
         : allEmployers.filter(emp => emp.isActive);
 
-      const companyEnabled = await isComponentEnabled("employer.company");
-      if (companyEnabled) {
-        try {
-          const companyMap = await storage.employerCompanies.getAllWithCompanyName();
-          const enriched = employers.map(emp => {
-            const entry = companyMap.get(emp.id);
-            return {
-              ...emp,
-              companyId: entry?.companyId || null,
-              companyName: entry?.companyName || null,
-            };
-          });
-          return res.json(enriched);
-        } catch (enrichError: any) {
-          const isTableMissing = enrichError?.message?.includes('relation') && enrichError?.message?.includes('does not exist');
-          if (!isTableMissing) {
-            console.error("Error enriching employers with company data:", enrichError);
-          }
-          return res.json(employers);
-        }
+      const companyMap = await getCompanyMapIfEnabled();
+      if (companyMap) {
+        const enriched = employers.map(emp => {
+          const entry = companyMap.get(emp.id);
+          return {
+            ...emp,
+            companyId: entry?.companyId || null,
+            companyName: entry?.companyName || null,
+          };
+        });
+        return res.json(enriched);
       }
       
       res.json(employers);

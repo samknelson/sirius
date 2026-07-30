@@ -1,3 +1,4 @@
+import { formatEmployerLabel, sortEmployerOptions } from "@/lib/employer-options";
 import { useState, useMemo, useEffect } from "react";
 import { ArrowUpDown, User, Eye, Search, Home, Building2, MapPin, CheckCircle2, XCircle, Scale, Stethoscope, Smile, Eye as EyeIcon, Star, Download, GraduationCap, Heart, Laptop, ShoppingBag, Mail, Phone, FileText, Briefcase, Users, Landmark, type LucideIcon } from "lucide-react";
 import { renderIcon } from "@/components/ui/icon-picker";
@@ -281,7 +282,7 @@ export function WorkersTable({
   });
 
   // Fetch employers for filter dropdown
-  const { data: employers = [] } = useQuery<Employer[]>({
+  const { data: employers = [] } = useQuery<(Employer & { companyName?: string | null })[]>({
     queryKey: ["/api/employers"],
   });
 
@@ -805,9 +806,7 @@ export function WorkersTable({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Employers</SelectItem>
-                {employers
-                  .filter(emp => emp.isActive)
-                  .sort((a, b) => a.name.localeCompare(b.name))
+                {sortEmployerOptions(employers.filter(emp => emp.isActive))
                   .map((employer) => {
                     const icon = employer.typeId ? employerTypeIconMap.get(employer.typeId) : null;
                     return (
@@ -818,7 +817,7 @@ export function WorkersTable({
                       >
                         <div className="flex items-center gap-2">
                           {renderIcon(icon || "Building", "h-4 w-4 text-muted-foreground")}
-                          <span>{employer.name}</span>
+                          <span>{formatEmployerLabel(employer)}</span>
                         </div>
                       </SelectItem>
                     );

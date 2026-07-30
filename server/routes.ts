@@ -65,7 +65,7 @@ import { registerSftpClientDestinationRoutes } from "./modules/sftp-client-desti
 import { registerTrustProviderEdiRoutes } from "./modules/trust/provider/edi";
 import { registerBulkMessageRoutes } from "./modules/bulk/messages";
 import { registerEmployerComplianceRoutes } from "./modules/employer-compliance";
-import { registerEmployerRoutes } from "./modules/employers/employers";
+import { registerEmployerRoutes, registerEmployerLookupRoutes } from "./modules/employers/employers";
 import { registerEmployerPolicyHistoryRoutes } from "./modules/employers/policy-history";
 import { registerWorkerBenefitsScanRoutes } from "./modules/worker-benefits-scan";
 import { registerWmbScanQueueRoutes } from "./modules/wmb-scan-queue";
@@ -1166,66 +1166,12 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   });
 
   // Employer routes (protected with authentication and permissions)
-  
-  // GET /api/my-employers - Get employers associated with current user's contact
-  // Returns employers where the user's contact is linked as an employer contact
-  // No permission required beyond auth - users only see their own associated employers
-  app.get("/api/my-employers", requireAuth, async (req, res) => {
-    try {
-      // Use getEffectiveUser to support masquerade
-      const user = (req as any).user;
-      const session = req.session as any;
-      const { dbUser } = await getEffectiveUser(session, user);
-      
-      if (!dbUser?.email) {
-        res.json([]);
-        return;
-      }
-      
-      // Find the contact matching the effective user's email
-      const contact = await storage.contacts?.getContactByEmail?.(dbUser.email);
-      if (!contact) {
-        res.json([]);
-        return;
-      }
-      
-      // Find all employer contacts for this contact
-      const employerContactRecords = await storage.employerContacts.listByContactId(contact.id);
-      
-      // Get unique employer IDs
-      const employerIds = Array.from(new Set(employerContactRecords.map(ec => ec.employerId)));
-      
-      // Fetch employer details
-      const employers = await Promise.all(
-        employerIds.map(id => storage.employers.getEmployer(id))
-      );
-      
-      // Filter out nulls and inactive employers, return minimal data
-      const activeEmployers = employers
-        .filter((emp): emp is NonNullable<typeof emp> => emp !== null && emp !== undefined && emp.isActive)
-        .map(emp => ({ id: emp.id, name: emp.name }));
-      
-      res.json(activeEmployers);
-    } catch (error) {
-      console.error("Failed to fetch user employers:", error);
-      res.status(500).json({ message: "Failed to fetch user employers" });
-    }
-  });
 
-  // GET /api/employers/lookup - Get employer names for dropdowns (all authenticated users)
-  // Returns minimal data (id + name) for use in dropdowns throughout the app
-  app.get("/api/employers/lookup", requireAuth, async (req, res) => {
-    try {
-      const allEmployers = await storage.employers.getAllEmployers();
-      // Return only active employers with minimal fields (id + name)
-      const lookup = allEmployers
-        .filter(emp => emp.isActive)
-        .map(emp => ({ id: emp.id, name: emp.name }));
-      res.json(lookup);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch employer lookup" });
-    }
-  });
+  // GET /api/my-employers and GET /api/employers/lookup - Handlers live in
+  // server/modules/employers/employers.ts; they enrich rows with companyName when
+  // the employer.company component is enabled. Must be registered HERE, before the
+  // legacy /api/employers/:id below, or Express captures "lookup" as :id.
+  registerEmployerLookupRoutes(app, requireAuth);
 
   // GET /api/employers - Handler moved to server/modules/employers.ts
   // (the modular handler additionally enriches each row with companyId/companyName

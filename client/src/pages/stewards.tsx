@@ -1,3 +1,4 @@
+import { formatEmployerLabel, sortEmployerOptions } from "@/lib/employer-options";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -54,7 +55,7 @@ export default function Stewards() {
     queryKey: ["/api/steward-assignments"],
   });
 
-  const { data: employers = [] } = useQuery<Employer[]>({
+  const { data: employers = [] } = useQuery<(Employer & { companyName?: string | null })[]>({
     queryKey: ["/api/employers"],
   });
 
@@ -279,9 +280,9 @@ export default function Stewards() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All employers</SelectItem>
-                    {employers.map(employer => (
+                    {sortEmployerOptions(employers).map(employer => (
                       <SelectItem key={employer.id} value={employer.id}>
-                        {employer.name}
+                        {formatEmployerLabel(employer)}
                       </SelectItem>
                     ))}
                   </SelectContent>

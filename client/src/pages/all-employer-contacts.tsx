@@ -1,3 +1,4 @@
+import { formatEmployerLabel, sortEmployerOptions } from "@/lib/employer-options";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -307,9 +308,9 @@ export default function AllEmployerContacts() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All employers</SelectItem>
-                  {employers?.map((employer) => (
+                  {sortEmployerOptions(employers ?? []).map((employer) => (
                     <SelectItem key={employer.id} value={employer.id}>
-                      {employer.name}
+                      {formatEmployerLabel(employer)}
                     </SelectItem>
                   ))}
                 </SelectContent>

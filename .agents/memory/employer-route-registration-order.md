@@ -18,3 +18,5 @@ works precisely because routes.ts has its own `/counts` before its `/:id`.)
 `/:id` handlers. Keep it storage-layer compliant — call a `storage.*` method
 (e.g. `storage.employerContacts.*`) rather than copying the legacy `/counts`
 inline `sql`/`getClient` pattern, which is pre-existing tech debt, not a model.
+
+Also: some employer routes exist BOTH in legacy server/routes.ts and in the modular registerEmployerRoutes (called later). Express keeps the first registration, so edits to the modular handler are silently dead until the legacy duplicate in routes.ts is deleted. Grep routes.ts for the path before editing modular employer handlers.

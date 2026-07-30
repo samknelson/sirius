@@ -1,3 +1,4 @@
+import { formatEmployerLabel, sortEmployerOptions } from "@/lib/employer-options";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   Card,
@@ -172,13 +173,13 @@ export function InputsForm({ wizardId, step, data }: WizardStepComponentProps) {
                 <SelectItem value="__none__" data-testid="option-employer-all">
                   All Employers
                 </SelectItem>
-                {employers.map((emp) => (
+                {sortEmployerOptions(employers).map((emp) => (
                   <SelectItem
                     key={emp.id}
                     value={emp.id}
                     data-testid={`option-employer-${emp.id}`}
                   >
-                    {emp.name}
+                    {formatEmployerLabel(emp)}
                   </SelectItem>
                 ))}
               </SelectContent>

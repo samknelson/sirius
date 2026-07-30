@@ -1,3 +1,4 @@
+import { formatEmployerLabel, sortEmployerOptions } from "@/lib/employer-options";
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { TrustWmb, TrustBenefit, Employer } from "@shared/schema";
@@ -225,9 +226,9 @@ function WorkerBenefitsContent() {
                       <SelectValue placeholder="Select employer" />
                     </SelectTrigger>
                     <SelectContent>
-                      {employers.map((employer) => (
+                      {sortEmployerOptions(employers).map((employer) => (
                         <SelectItem key={employer.id} value={employer.id}>
-                          {employer.name}
+                          {formatEmployerLabel(employer)}
                         </SelectItem>
                       ))}
                     </SelectContent>

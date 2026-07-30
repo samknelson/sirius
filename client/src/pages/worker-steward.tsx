@@ -1,3 +1,4 @@
+import { formatEmployerLabel, sortEmployerOptions } from "@/lib/employer-options";
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -269,7 +270,7 @@ function StewardAssignmentsSection() {
     queryKey: ["/api/workers", worker.id, "steward-assignments"],
   });
 
-  const { data: employers = [] } = useQuery<Employer[]>({
+  const { data: employers = [] } = useQuery<(Employer & { companyName?: string | null })[]>({
     queryKey: ["/api/employers/lookup"],
   });
 
@@ -377,9 +378,9 @@ function StewardAssignmentsSection() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value={NONE_VALUE}>(Select an employer)</SelectItem>
-                    {employers.map((employer) => (
+                    {sortEmployerOptions(employers).map((employer) => (
                       <SelectItem key={employer.id} value={employer.id}>
-                        {employer.name}
+                        {formatEmployerLabel(employer)}
                       </SelectItem>
                     ))}
                   </SelectContent>

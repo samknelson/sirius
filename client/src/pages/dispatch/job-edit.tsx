@@ -1,3 +1,4 @@
+import { formatEmployerLabel, sortEmployerOptions } from "@/lib/employer-options";
 import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
@@ -246,9 +247,9 @@ function DispatchJobEditContent() {
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {employers.map((employer) => (
+                        {sortEmployerOptions(employers).map((employer) => (
                           <SelectItem key={employer.id} value={employer.id}>
-                            {employer.name}
+                            {formatEmployerLabel(employer)}
                           </SelectItem>
                         ))}
                       </SelectContent>

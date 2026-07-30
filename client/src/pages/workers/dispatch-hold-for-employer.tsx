@@ -1,3 +1,4 @@
+import { formatEmployerLabel, sortEmployerOptions } from "@/lib/employer-options";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { WorkerLayout, useWorkerLayout } from "@/components/layouts/WorkerLayout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -176,9 +177,9 @@ function DispatchHoldForEmployerContent() {
                       <SelectValue placeholder="Select employer" />
                     </SelectTrigger>
                     <SelectContent>
-                      {employers.map((employer) => (
+                      {sortEmployerOptions(employers).map((employer) => (
                         <SelectItem key={employer.id} value={employer.id}>
-                          {employer.name}
+                          {formatEmployerLabel(employer)}
                         </SelectItem>
                       ))}
                     </SelectContent>

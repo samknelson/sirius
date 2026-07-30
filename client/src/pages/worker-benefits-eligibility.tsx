@@ -1,3 +1,4 @@
+import { formatEmployerLabel, sortEmployerOptions } from "@/lib/employer-options";
 import { pluginManifestQueryKey, pluginSearch } from "@/plugins/_core";
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -478,13 +479,13 @@ function WorkerBenefitsEligibilityContent() {
                   <SelectItem value={USE_RESOLVED_EMPLOYER}>
                     Use the subscriber's active election employer
                   </SelectItem>
-                  {employerOptions.map((emp) => (
+                  {sortEmployerOptions(employerOptions).map((emp) => (
                     <SelectItem
                       key={emp.id}
                       value={emp.id}
                       data-testid={`option-employer-${emp.id}`}
                     >
-                      {emp.name}
+                      {formatEmployerLabel(emp)}
                     </SelectItem>
                   ))}
                 </SelectContent>

@@ -1,3 +1,4 @@
+import { formatEmployerLabel, sortEmployerOptions } from "@/lib/employer-options";
 import { useEffect, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -22,6 +23,7 @@ import type {
 interface EmployerOption {
   id: string;
   name: string;
+  companyName?: string | null;
 }
 interface PolicyOption {
   id: string;
@@ -205,9 +207,9 @@ export function ElectionForm({
             <SelectValue placeholder="Choose an employer" />
           </SelectTrigger>
           <SelectContent>
-            {employers.map((e) => (
+            {sortEmployerOptions(employers).map((e) => (
               <SelectItem key={e.id} value={e.id} data-testid={`option-employer-${e.id}`}>
-                {e.name}
+                {formatEmployerLabel(e)}
               </SelectItem>
             ))}
           </SelectContent>
