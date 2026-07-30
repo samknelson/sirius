@@ -1642,6 +1642,33 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
+  // GET /api/workers/:workerId/wmb-scan-state - Last completed benefit scan + currently queued months (requires worker.view policy)
+  app.get("/api/workers/:workerId/wmb-scan-state", requireAccess('worker.view', req => req.params.workerId), async (req, res) => {
+    try {
+      const { workerId } = req.params;
+      const state = await storage.wmbScanQueue.getWorkerScanState(workerId);
+      res.json({
+        lastScan: state.lastScan
+          ? {
+              month: state.lastScan.month,
+              year: state.lastScan.year,
+              status: state.lastScan.status,
+              completedAt: state.lastScan.completedAt,
+              triggerSource: state.lastScan.triggerSource,
+            }
+          : null,
+        queued: state.queued.map((q) => ({
+          month: q.month,
+          year: q.year,
+          status: q.status,
+        })),
+      });
+    } catch (error) {
+      console.error("Failed to fetch worker scan state:", error);
+      res.status(500).json({ message: "Failed to fetch worker scan state" });
+    }
+  });
+
   // POST /api/workers/:workerId/benefits - Create a new benefit entry for a worker (requires staff permission)
   app.post("/api/workers/:workerId/benefits", requireAuth, requirePermission("staff"), async (req, res) => {
     try {

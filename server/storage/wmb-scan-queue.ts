@@ -90,6 +90,15 @@ export interface WmbScanQueueStorage {
   getQueueEntriesWithWorkerInfo(statusId: string): Promise<QueueEntryWithWorker[]>;
   getQueueEntriesPaged(statusId: string, page: number, pageSize: number, filter?: QueueEntriesFilter): Promise<PagedQueueEntriesResult>;
   getWorkerQueueEntry(workerId: string, month: number, year: number): Promise<TrustWmbScanQueue | undefined>;
+  /**
+   * Per-worker scan state for UI display: the most recently completed scan
+   * job (success or failed) plus any months currently waiting in the queue
+   * (pending or processing).
+   */
+  getWorkerScanState(workerId: string): Promise<{
+    lastScan: TrustWmbScanQueue | undefined;
+    queued: TrustWmbScanQueue[];
+  }>;
   
   // Bulk operations
   enqueueMonth(month: number, year: number, scope?: ScanScope, triggerSource?: string): Promise<{ statusId: string; queuedCount: number }>;
@@ -393,6 +402,37 @@ export function createWmbScanQueueStorage(): WmbScanQueueStorage {
         .orderBy(desc(trustWmbScanStatus.queuedAt))
         .limit(1);
       return row?.entry || undefined;
+    },
+
+    async getWorkerScanState(workerId: string): Promise<{
+      lastScan: TrustWmbScanQueue | undefined;
+      queued: TrustWmbScanQueue[];
+    }> {
+      const client = getClient();
+      const [[lastScan], queued] = await Promise.all([
+        client
+          .select()
+          .from(trustWmbScanQueue)
+          .where(
+            and(
+              eq(trustWmbScanQueue.workerId, workerId),
+              inArray(trustWmbScanQueue.status, ["success", "failed"]),
+            ),
+          )
+          .orderBy(desc(trustWmbScanQueue.completedAt))
+          .limit(1),
+        client
+          .select()
+          .from(trustWmbScanQueue)
+          .where(
+            and(
+              eq(trustWmbScanQueue.workerId, workerId),
+              inArray(trustWmbScanQueue.status, ["pending", "processing"]),
+            ),
+          )
+          .orderBy(desc(trustWmbScanQueue.year), desc(trustWmbScanQueue.month)),
+      ]);
+      return { lastScan: lastScan || undefined, queued };
     },
 
     async enqueueMonth(month: number, year: number, scope: ScanScope = { type: "all" }, triggerSource: string = "monthly_batch"): Promise<{ statusId: string; queuedCount: number }> {

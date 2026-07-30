@@ -29,6 +29,17 @@ interface CurrentBenefitRow {
   endDate: string | null;
 }
 
+interface WmbScanState {
+  lastScan: {
+    month: number;
+    year: number;
+    status: string;
+    completedAt: string | null;
+    triggerSource: string;
+  } | null;
+  queued: Array<{ month: number; year: number; status: string }>;
+}
+
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December",
@@ -86,12 +97,52 @@ function WorkerBenefitsCurrentContent() {
     },
   });
 
+  const { data: scanState } = useQuery<WmbScanState>({
+    queryKey: ["/api/workers", worker.id, "wmb-scan-state"],
+    queryFn: async () => {
+      const response = await fetch(`/api/workers/${worker.id}/wmb-scan-state`);
+      if (!response.ok) {
+        throw new Error("Failed to fetch scan state");
+      }
+      return response.json();
+    },
+    // Refresh while a scan is queued/processing so the line updates when it finishes.
+    refetchInterval: (query) =>
+      query.state.data && query.state.data.queued.length > 0 ? 10000 : false,
+  });
+
   const anyEnded = rows.some((r) => !r.activeInCurrentMonth);
 
   return (
     <Card>
       <CardHeader>
         <CardTitle>Current Benefits</CardTitle>
+        {scanState && (scanState.lastScan || scanState.queued.length > 0) && (
+          <div
+            className="text-xs text-muted-foreground space-y-0.5"
+            data-testid="text-scan-state"
+          >
+            {scanState.lastScan && (
+              <p data-testid="text-last-scan">
+                Last benefit scan:{" "}
+                {formatMonthYear(scanState.lastScan.month, scanState.lastScan.year)}
+                {scanState.lastScan.completedAt &&
+                  ` on ${formatYmd(scanState.lastScan.completedAt)}`}
+                {scanState.lastScan.status === "failed" && (
+                  <span className="text-destructive font-medium"> (failed)</span>
+                )}
+              </p>
+            )}
+            {scanState.queued.length > 0 && (
+              <p className="text-primary" data-testid="text-scan-queued">
+                Scan in progress:{" "}
+                {scanState.queued
+                  .map((q) => formatMonthYear(q.month, q.year))
+                  .join(", ")}
+              </p>
+            )}
+          </div>
+        )}
       </CardHeader>
       <CardContent>
         {isLoading ? (

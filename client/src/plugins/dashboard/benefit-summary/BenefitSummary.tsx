@@ -18,18 +18,20 @@ interface BenefitSummaryMonth {
   label: string;
 }
 
+type MonthKey = "last" | "current" | "next";
+
 interface BenefitSummaryBenefitRow {
   benefitId: string;
   benefitName: string;
-  counts: Record<"last" | "current" | "next", number>;
-  lostThisMonth: number;
+  counts: Record<MonthKey, number>;
+  lost: Record<MonthKey, number>;
 }
 
 interface BenefitSummaryGroup {
   benefitTypeId: string;
   benefitTypeName: string;
-  counts: Record<"last" | "current" | "next", number>;
-  lostThisMonth: number;
+  counts: Record<MonthKey, number>;
+  lost: Record<MonthKey, number>;
   benefits: BenefitSummaryBenefitRow[];
 }
 
@@ -72,16 +74,15 @@ export function BenefitSummary(props: DashboardPluginProps) {
           </p>
         ) : (
           <div data-testid="benefit-summary-groups">
-            <Table data-testid="benefit-summary-table">
+            <Table className="text-xs" data-testid="benefit-summary-table">
               <TableHeader>
                 <TableRow>
-                  <TableHead>Benefit</TableHead>
+                  <TableHead className="h-8 px-2">Benefit</TableHead>
                   {data.months.map((m) => (
-                    <TableHead key={m.key} className="text-right">
-                      {m.label}
+                    <TableHead key={m.key} className="h-8 px-2 text-right whitespace-nowrap">
+                      {m.label.split(" ")[0]}
                     </TableHead>
                   ))}
-                  <TableHead className="text-right">Lost this month</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -91,24 +92,21 @@ export function BenefitSummary(props: DashboardPluginProps) {
                       key={row.benefitId}
                       data-testid={`benefit-summary-benefit-row-${row.benefitId}`}
                     >
-                      <TableCell>
-                        <span className="font-medium">{row.benefitName}</span>{" "}
-                        <span className="text-xs text-muted-foreground">
-                          ({group.benefitTypeName})
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-right">{row.counts.last}</TableCell>
-                      <TableCell className="text-right">{row.counts.current}</TableCell>
-                      <TableCell className="text-right">{row.counts.next}</TableCell>
-                      <TableCell className="text-right">
-                        {row.lostThisMonth > 0 ? (
-                          <span className="text-destructive font-medium">
-                            {row.lostThisMonth}
-                          </span>
-                        ) : (
-                          0
-                        )}
-                      </TableCell>
+                      <TableCell className="py-1.5 px-2">{row.benefitName}</TableCell>
+                      {data.months.map((m) => (
+                        <TableCell
+                          key={m.key}
+                          className="py-1.5 px-2 text-right tabular-nums whitespace-nowrap"
+                        >
+                          {row.counts[m.key].toLocaleString()}
+                          {row.lost[m.key] > 0 && (
+                            <span className="text-destructive font-medium">
+                              {" "}
+                              ({row.lost[m.key].toLocaleString()})
+                            </span>
+                          )}
+                        </TableCell>
+                      ))}
                     </TableRow>
                   )),
                   <TableRow
@@ -116,25 +114,23 @@ export function BenefitSummary(props: DashboardPluginProps) {
                     className="bg-muted/50"
                     data-testid={`benefit-summary-row-${group.benefitTypeId}`}
                   >
-                    <TableCell className="font-medium">
+                    <TableCell className="py-1.5 px-2 font-medium whitespace-nowrap">
                       {group.benefitTypeName} total
                     </TableCell>
-                    <TableCell className="text-right font-medium">
-                      {group.counts.last}
-                    </TableCell>
-                    <TableCell className="text-right font-medium">
-                      {group.counts.current}
-                    </TableCell>
-                    <TableCell className="text-right font-medium">
-                      {group.counts.next}
-                    </TableCell>
-                    <TableCell className="text-right font-medium">
-                      {group.lostThisMonth > 0 ? (
-                        <span className="text-destructive">{group.lostThisMonth}</span>
-                      ) : (
-                        0
-                      )}
-                    </TableCell>
+                    {data.months.map((m) => (
+                      <TableCell
+                        key={m.key}
+                        className="py-1.5 px-2 text-right font-medium tabular-nums whitespace-nowrap"
+                      >
+                        {group.counts[m.key].toLocaleString()}
+                        {group.lost[m.key] > 0 && (
+                          <span className="text-destructive">
+                            {" "}
+                            ({group.lost[m.key].toLocaleString()})
+                          </span>
+                        )}
+                      </TableCell>
+                    ))}
                   </TableRow>,
                 ])}
               </TableBody>

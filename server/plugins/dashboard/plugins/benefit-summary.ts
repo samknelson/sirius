@@ -26,8 +26,8 @@ export interface BenefitSummaryBenefitRow {
   benefitName: string;
   /** Active coverage counts for this benefit, keyed by month key. */
   counts: Record<"last" | "current" | "next", number>;
-  /** Distinct workers with a "terminate" event this month for this benefit. */
-  lostThisMonth: number;
+  /** Distinct workers with a "terminate" event per month for this benefit. */
+  lost: Record<"last" | "current" | "next", number>;
 }
 
 export interface BenefitSummaryGroup {
@@ -35,8 +35,8 @@ export interface BenefitSummaryGroup {
   benefitTypeName: string;
   /** Type totals: coverage counts summed across the type's benefits. */
   counts: Record<"last" | "current" | "next", number>;
-  /** Type total of lostThisMonth across the type's benefits. */
-  lostThisMonth: number;
+  /** Type totals of workers lost per month across the type's benefits. */
+  lost: Record<"last" | "current" | "next", number>;
   /** Per-benefit breakdown for every active benefit of this type. */
   benefits: BenefitSummaryBenefitRow[];
 }
@@ -162,20 +162,20 @@ export const benefitSummaryPlugin: DashboardPlugin = {
     if (benefits.length === 0) return { months, groups: [], configured: true };
     const benefitIds = benefits.map((b) => b.id);
 
-    const current = months.find((m) => m.key === "current")!;
-
-    const [coverageCounts, lostCounts] = await Promise.all([
+    const [coverageCounts, ...lostPerMonth] = await Promise.all([
       ctx.storage.trust.wmb.countWorkersByBenefitForMonths(
         benefitIds,
         months.map((m) => ({ month: m.month, year: m.year })),
       ),
-      // "Lost this month" reads the recorded coverage "terminate" events for
-      // the current month — NOT a last-month vs this-month diff.
-      ctx.storage.trustWmbEvents.countWorkersByBenefitForMonth(
-        benefitIds,
-        "terminate",
-        current.month,
-        current.year,
+      // "Lost" reads the recorded coverage "terminate" events per month —
+      // NOT a month-over-month diff.
+      ...months.map((m) =>
+        ctx.storage.trustWmbEvents.countWorkersByBenefitForMonth(
+          benefitIds,
+          "terminate",
+          m.month,
+          m.year,
+        ),
       ),
     ]);
 
@@ -183,7 +183,13 @@ export const benefitSummaryPlugin: DashboardPlugin = {
     for (const c of coverageCounts) {
       coverageByKey.set(`${c.benefitId}:${c.year}:${c.month}`, c.workerCount);
     }
-    const lostByBenefit = new Map(lostCounts.map((l) => [l.benefitId, l.workerCount]));
+    // benefitId:monthKey -> lost count
+    const lostByKey = new Map<string, number>();
+    months.forEach((m, i) => {
+      for (const l of lostPerMonth[i]) {
+        lostByKey.set(`${l.benefitId}:${m.key}`, l.workerCount);
+      }
+    });
 
     // Group by benefit type: every active benefit of the type gets its own
     // row (month counts + lost this month); the group carries type totals.
@@ -196,7 +202,7 @@ export const benefitSummaryPlugin: DashboardPlugin = {
           benefitTypeId: typeId,
           benefitTypeName: b.benefitTypeName || typeId,
           counts: { last: 0, current: 0, next: 0 },
-          lostThisMonth: 0,
+          lost: { last: 0, current: 0, next: 0 },
           benefits: [],
           sequence: b.benefitTypeSequence ?? Number.MAX_SAFE_INTEGER,
         };
@@ -206,14 +212,16 @@ export const benefitSummaryPlugin: DashboardPlugin = {
         benefitId: b.id,
         benefitName: b.name || b.id,
         counts: { last: 0, current: 0, next: 0 },
-        lostThisMonth: lostByBenefit.get(b.id) ?? 0,
+        lost: { last: 0, current: 0, next: 0 },
       };
       for (const m of months) {
         const count = coverageByKey.get(`${b.id}:${m.year}:${m.month}`) ?? 0;
         row.counts[m.key] = count;
         group.counts[m.key] += count;
+        const lost = lostByKey.get(`${b.id}:${m.key}`) ?? 0;
+        row.lost[m.key] = lost;
+        group.lost[m.key] += lost;
       }
-      group.lostThisMonth += row.lostThisMonth;
       group.benefits.push(row);
     }
 
