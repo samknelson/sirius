@@ -97,4 +97,12 @@ export interface CronPlugin {
 export interface CronManifestEntry extends BasePluginMetadata {
   configSchema?: JsonSchema;
   uiSchema?: UiSchema;
+  /**
+   * Envelope field names whose values are DERIVED from the config's settings
+   * rather than typed by the operator (today: `schedule` for plugins that
+   * declare {@link CronPlugin.deriveSchedule}). The generic admin form renders
+   * these read-only with a hint instead of a required input; the server
+   * recomputes and stores the value on every save.
+   */
+  derivedEnvelopeFields?: string[];
 }

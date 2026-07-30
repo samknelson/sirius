@@ -42,7 +42,25 @@ function registerCronKind(): void {
       // Optional plugin-level cross-field validation (e.g. "weekly requires
       // day_of_week") that JSON Schema alone cannot express.
       if (plugin.validateSettings) {
-        return plugin.validateSettings((config ?? {}) as Record<string, unknown>);
+        const settingsResult = plugin.validateSettings(
+          (config ?? {}) as Record<string, unknown>,
+        );
+        if (!settingsResult.valid) return settingsResult;
+      }
+      // Derive-schedule plugins: the stored schedule is computed from the
+      // friendly settings, so unschedulable settings must reject the save
+      // rather than persist a stale/meaningless schedule.
+      if (plugin.deriveSchedule) {
+        try {
+          plugin.deriveSchedule((config ?? {}) as Record<string, unknown>);
+        } catch (error) {
+          return {
+            valid: false,
+            errors: [
+              `Cannot derive a schedule from these settings: ${error instanceof Error ? error.message : String(error)}`,
+            ],
+          };
+        }
       }
       return { valid: true };
     },
@@ -53,27 +71,62 @@ function registerCronKind(): void {
   // `data`.
   registerPluginConfigAdapter({
     pluginKind: "cron",
-    configSchema: z.object({
-      ...baseConfigSchemaShape,
-      schedule: z.string().min(1, "schedule is required"),
-    }),
+    configSchema: z
+      .object({
+        ...baseConfigSchemaShape,
+        // Optional at the schema level: derive-schedule plugins compute it
+        // from settings, so the client no longer sends it for them. The
+        // superRefine below keeps it required for every other plugin.
+        schedule: z.string().optional(),
+      })
+      .superRefine((val, ctx) => {
+        const plugin = cronPluginRegistry.get(val.pluginId);
+        if (plugin?.deriveSchedule) return;
+        if (!val.schedule || !val.schedule.trim()) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["schedule"],
+            message: "schedule is required",
+          });
+        }
+      }),
     searchParamsSchema: z.object({
       ...baseSearchSchemaShape,
       schedule: z.string().optional(),
     }),
-    toRows: (input) => ({
-      base: {
-        pluginKind: "cron",
-        pluginId: input.pluginId,
-        enabled: input.enabled,
-        name: input.name,
-        ordering: input.ordering,
-        data: input.data,
-      },
-      subsidiary: {
-        schedule: input.schedule,
-      },
-    }),
+    toRows: (input) => {
+      // Derive-schedule plugins: the stored `schedule` column mirrors the cron
+      // expression derived from the friendly settings, so list surfaces and
+      // the /cron-jobs viewer display what the scheduler will actually run.
+      // A derivation failure falls back to the incoming/default schedule here
+      // only because the kind's `validateConfig` (which runs right after
+      // toRows on every create/update) rejects those settings with a 400 —
+      // the fallback value is never persisted.
+      let schedule = input.schedule ?? "";
+      const plugin = cronPluginRegistry.get(input.pluginId);
+      if (plugin?.deriveSchedule) {
+        try {
+          schedule = plugin.deriveSchedule(
+            (input.data ?? {}) as Record<string, unknown>,
+          ).schedule;
+        } catch {
+          schedule = input.schedule ?? plugin.defaultSchedule;
+        }
+      }
+      return {
+        base: {
+          pluginKind: "cron",
+          pluginId: input.pluginId,
+          enabled: input.enabled,
+          name: input.name,
+          ordering: input.ordering,
+          data: input.data,
+        },
+        subsidiary: {
+          schedule,
+        },
+      };
+    },
     envelopeFields: [
       {
         name: "schedule",
@@ -87,14 +140,32 @@ function registerCronKind(): void {
     // config to insert when a plugin has no row yet. Pull the schedule and
     // enabled defaults off the plugin definition.
     seedDefault: (plugin) => {
-      const p = plugin as { metadata: { id: string; name: string }; defaultSchedule: string; defaultEnabled: boolean };
+      const p = plugin as {
+        metadata: { id: string; name: string };
+        defaultSchedule: string;
+        defaultEnabled: boolean;
+        getDefaultSettings?: () => Record<string, unknown>;
+        deriveSchedule?: (settings: Record<string, unknown>) => { schedule: string };
+      };
+      // Derive-schedule plugins seed their default settings and the schedule
+      // derived from them, so the stored column is accurate from day one.
+      const data = p.deriveSchedule ? (p.getDefaultSettings?.() ?? {}) : {};
+      let schedule = p.defaultSchedule;
+      if (p.deriveSchedule) {
+        try {
+          schedule = p.deriveSchedule(data).schedule;
+        } catch {
+          // Fall back to the declared default; the scheduler re-derives at
+          // run time and the next save reconciles the stored column.
+        }
+      }
       return {
         pluginId: p.metadata.id,
         name: p.metadata.name,
         enabled: p.defaultEnabled,
         ordering: 0,
-        data: {},
-        schedule: p.defaultSchedule,
+        data,
+        schedule,
       };
     },
   });

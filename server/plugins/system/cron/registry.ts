@@ -17,6 +17,9 @@ export const cronPluginRegistry = new PluginRegistry<CronPlugin, CronManifestEnt
     ...p.metadata,
     configSchema: p.configSchema,
     uiSchema: p.uiSchema,
+    // Surface the derived-schedule trait so the generic admin UI can render
+    // the Schedule envelope field read-only (the server derives + stores it).
+    ...(p.deriveSchedule ? { derivedEnvelopeFields: ["schedule"] } : {}),
   }),
 });
 

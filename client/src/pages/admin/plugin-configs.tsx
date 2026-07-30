@@ -111,6 +111,13 @@ interface ManifestEntry {
   description?: string;
   configSchema?: JsonSchema;
   uiSchema?: UiSchema;
+  /**
+   * Envelope field names the server DERIVES from the plugin's settings on
+   * every save (e.g. cron `schedule` for derive-schedule plugins). Rendered
+   * read-only with a hint instead of an editable/required input, and omitted
+   * from the save payload.
+   */
+  derivedEnvelopeFields?: string[];
 }
 
 interface PluginConfigRow {
@@ -942,11 +949,17 @@ function GenericConfigDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, config, plugin.id, pluginFields, envelopeFields]);
 
+  // Envelope fields the server derives from the plugin's settings on every
+  // save (e.g. cron `schedule` for derive-schedule plugins): shown read-only,
+  // never required client-side, and omitted from the save payload.
+  const derivedFieldNames = new Set(plugin.derivedEnvelopeFields ?? []);
+
   const handleSubmit = (validSettings: Record<string, unknown>) => {
     // Block save if any required envelope field is empty (client-side mirror of
     // the server-side adapter validation, e.g. charge's required account).
     const missing = envelopeFields.find(
-      (f) => f.required && !(envelope[f.name] ?? "").trim(),
+      (f) =>
+        f.required && !derivedFieldNames.has(f.name) && !(envelope[f.name] ?? "").trim(),
     );
     if (missing) {
       toast({
@@ -977,6 +990,9 @@ function GenericConfigDialog({
       // Empty string → null for optional fields; coerce number-typed fields.
       const envelopeBody: Record<string, unknown> = {};
       for (const f of envelopeFields) {
+        // Derived fields are computed server-side from the settings; sending
+        // a stale value would be ignored anyway, so omit them entirely.
+        if (derivedFieldNames.has(f.name)) continue;
         const raw = envelope[f.name] ?? "";
         if (raw === "") {
           envelopeBody[f.name] = null;
@@ -1088,9 +1104,24 @@ function GenericConfigDialog({
                   <div className="space-y-1" key={field.name}>
                     <Label>
                       {field.label}
-                      {field.required && <span className="text-destructive"> *</span>}
+                      {field.required && !derivedFieldNames.has(field.name) && (
+                        <span className="text-destructive"> *</span>
+                      )}
                     </Label>
-                    {field.multiple && field.options?.choices ? (
+                    {derivedFieldNames.has(field.name) ? (
+                      <div className="space-y-1">
+                        <Input
+                          value={envelope[field.name] || "(derived on save)"}
+                          readOnly
+                          disabled
+                          data-testid={`input-envelope-${field.name}-derived`}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Derived automatically from this plugin's settings below —
+                          it updates when you save.
+                        </p>
+                      </div>
+                    ) : field.multiple && field.options?.choices ? (
                       <EnvelopeCheckboxField
                         field={field}
                         value={envelope[field.name] ?? ""}

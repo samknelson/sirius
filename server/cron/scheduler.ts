@@ -160,6 +160,31 @@ class CronScheduler {
         const derived = plugin.deriveSchedule(job.settings);
         schedule = derived.schedule;
         timezone = derived.timezone;
+        // Reconcile pre-existing rows whose stored schedule predates the
+        // save-time derivation sync, so list/history surfaces display the
+        // schedule the job actually runs on. Only writes when different, so
+        // the reload triggered by the resulting PLUGIN_CONFIG_SAVED event
+        // converges immediately instead of looping.
+        if (schedule !== job.schedule) {
+          try {
+            await storage.pluginConfigs.upsertSubsidiary('cron', {
+              id: job.configId,
+              schedule,
+            });
+            logger.info(`Reconciled stored schedule for job: ${job.name}`, {
+              service: 'cron-scheduler',
+              configId: job.configId,
+              from: job.schedule,
+              to: schedule,
+            });
+          } catch (syncError) {
+            logger.warn(`Failed to reconcile stored schedule for job: ${job.name}`, {
+              service: 'cron-scheduler',
+              configId: job.configId,
+              error: syncError instanceof Error ? syncError.message : String(syncError),
+            });
+          }
+        }
       } catch (error) {
         logger.error(`Failed to derive schedule for job: ${job.name}`, {
           service: 'cron-scheduler',
