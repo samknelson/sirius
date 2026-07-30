@@ -3,6 +3,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button";
 import { StatementPicker, type StatementSelection } from "@/components/ledger/StatementPicker";
 import { Trash2 } from "lucide-react";
+import { formatEmployerLabel, sortEmployerOptions } from "@/lib/employer-options";
 
 export interface ParticipantBoxState {
   _id?: number;
@@ -18,6 +19,7 @@ interface EAOption {
   entityType: string;
   entityId: string;
   entityName: string | null;
+  companyName?: string | null;
 }
 
 interface ParticipantAllocationBoxProps {
@@ -39,8 +41,10 @@ export function ParticipantAllocationBox({
   index,
   usedEaIds,
 }: ParticipantAllocationBoxProps) {
-  const availableEAs = eaOptions.filter(
-    (ea) => ea.id === state.eaId || !usedEaIds.includes(ea.id)
+  const availableEAs = sortEmployerOptions(
+    eaOptions
+      .filter((ea) => ea.id === state.eaId || !usedEaIds.includes(ea.id))
+      .map((ea) => ({ ...ea, name: ea.entityName || ea.entityId }))
   );
 
   return (
@@ -82,7 +86,7 @@ export function ParticipantAllocationBox({
           <SelectContent>
             {availableEAs.map((ea) => (
               <SelectItem key={ea.id} value={ea.id}>
-                {ea.entityName || ea.entityId} ({ea.entityType})
+                {formatEmployerLabel(ea)} ({ea.entityType})
               </SelectItem>
             ))}
           </SelectContent>

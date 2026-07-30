@@ -5,6 +5,7 @@ import { requireAccess, checkAccessInline } from "../../services/access-policy-e
 import { requireComponent } from "../components";
 import { generateInvoicePdf } from "../../utils/pdfGenerator";
 import { isValidYmd, ymdToDateForPicker } from "@shared/utils/date";
+import { getCompanyMapIfEnabled } from "../employers/employers";
 
 async function checkEaAccessInline(req: Request, res: Response, ea: { entityType: string; entityId: string }, policyId: string): Promise<boolean> {
   const result = await checkAccessInline(req, policyId, ea.entityId, { entityType: ea.entityType, entityId: ea.entityId });
@@ -55,9 +56,12 @@ export function registerLedgerEaRoutes(app: Express) {
         }
       }
 
+      const companyMap = employerIds.length > 0 ? await getCompanyMapIfEnabled() : null;
+
       const enriched = entries.map(e => ({
         ...e,
         entityName: nameMap.get(e.entityId) || null,
+        companyName: e.entityType === "employer" ? (companyMap?.get(e.entityId)?.companyName ?? null) : null,
       }));
 
       res.json(enriched);

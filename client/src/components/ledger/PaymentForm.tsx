@@ -34,6 +34,7 @@ type EAListItem = {
   entityType: string;
   entityId: string;
   entityName: string | null;
+  companyName?: string | null;
   data: unknown;
 };
 

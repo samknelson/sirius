@@ -13,7 +13,7 @@ type AccessMiddleware = (policy: string, getEntityId?: (req: Request) => string 
  * component is enabled; returns null when disabled or when company tables
  * are absent (component never migrated in this environment).
  */
-async function getCompanyMapIfEnabled(): Promise<Map<string, { companyId: string; companyName: string }> | null> {
+export async function getCompanyMapIfEnabled(): Promise<Map<string, { companyId: string; companyName: string }> | null> {
   const companyEnabled = await isComponentEnabled("employer.company");
   if (!companyEnabled) return null;
   try {
