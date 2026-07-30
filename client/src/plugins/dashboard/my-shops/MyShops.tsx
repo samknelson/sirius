@@ -9,6 +9,8 @@ import { Badge } from "@/components/ui/badge";
 interface ShopSummary {
   employerId: string;
   employerName: string;
+  companyId: string | null;
+  companyName: string | null;
   latestWizard: {
     type: string;
     year: number;
@@ -32,6 +34,99 @@ function formatBalance(balance: string): string {
   if (isNaN(num)) return "$0.00";
   const sign = num < 0 ? "-" : "";
   return `${sign}$${Math.abs(num).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function ShopRow({ shop }: { shop: ShopSummary }) {
+  const totalBalance = shop.accounts.reduce(
+    (sum, a) => sum + parseFloat(a.balance || "0"),
+    0,
+  );
+  return (
+    <div
+      key={shop.employerId}
+      className="py-3 first:pt-0 last:pb-0"
+      data-testid={`shop-${shop.employerId}`}
+    >
+      <div className="flex items-center justify-between mb-2">
+        <Link
+          href={`/employers/${shop.employerId}`}
+          className="font-medium text-primary hover:underline flex items-center gap-1"
+        >
+          {shop.employerName}
+          <ArrowRight className="h-3 w-3" />
+        </Link>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
+        <div className="flex items-start gap-2">
+          <CalendarCheck className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+          {shop.latestWizard ? (
+            <div>
+              <span className="text-muted-foreground">Last upload: </span>
+              <span>
+                {monthNames[shop.latestWizard.month - 1]} {shop.latestWizard.year}
+              </span>
+              {shop.latestWizard.completedAt && (
+                <span className="text-muted-foreground ml-1">
+                  ({new Date(shop.latestWizard.completedAt).toLocaleDateString()})
+                </span>
+              )}
+            </div>
+          ) : (
+            <span className="text-muted-foreground">No uploads yet</span>
+          )}
+        </div>
+
+        <div className="flex items-start gap-2">
+          <DollarSign className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+          {shop.accounts.length > 0 ? (
+            <div>
+              <span className="text-muted-foreground">Balance: </span>
+              <span className={totalBalance < 0 ? "text-destructive font-medium" : ""}>
+                {formatBalance(totalBalance.toString())}
+              </span>
+              {shop.accounts.length > 1 && (
+                <Badge variant="secondary" className="ml-1 text-xs">
+                  {shop.accounts.length} accounts
+                </Badge>
+              )}
+            </div>
+          ) : (
+            <span className="text-muted-foreground">No accounts</span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+interface CompanyGroup {
+  key: string;
+  companyName: string | null;
+  shops: ShopSummary[];
+}
+
+function groupByCompany(shops: ShopSummary[]): CompanyGroup[] {
+  const groups = new Map<string, CompanyGroup>();
+  for (const shop of shops) {
+    const key = shop.companyId ?? "__none__";
+    let group = groups.get(key);
+    if (!group) {
+      group = { key, companyName: shop.companyName ?? null, shops: [] };
+      groups.set(key, group);
+    }
+    group.shops.push(shop);
+  }
+  const list = Array.from(groups.values());
+  for (const group of list) {
+    group.shops.sort((a, b) => a.employerName.localeCompare(b.employerName));
+  }
+  list.sort((a, b) => {
+    if (a.companyName === null) return 1;
+    if (b.companyName === null) return -1;
+    return a.companyName.localeCompare(b.companyName);
+  });
+  return list;
 }
 
 export function MyShops(_props: DashboardPluginProps) {
@@ -58,6 +153,10 @@ export function MyShops(_props: DashboardPluginProps) {
 
   if (error || !shops || shops.length === 0) return null;
 
+  const groups = groupByCompany(shops);
+  const multiCompany = groups.length > 1;
+  const singleCompanyName = !multiCompany ? groups[0]?.companyName ?? null : null;
+
   return (
     <Card data-testid="plugin-my-shops" className="col-span-full">
       <CardHeader>
@@ -67,71 +166,35 @@ export function MyShops(_props: DashboardPluginProps) {
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="divide-y">
-          {shops.map((shop) => {
-            const totalBalance = shop.accounts.reduce(
-              (sum, a) => sum + parseFloat(a.balance || "0"),
-              0,
-            );
-            return (
-              <div
-                key={shop.employerId}
-                className="py-3 first:pt-0 last:pb-0"
-                data-testid={`shop-${shop.employerId}`}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <Link
-                    href={`/employers/${shop.employerId}`}
-                    className="font-medium text-primary hover:underline flex items-center gap-1"
-                  >
-                    {shop.employerName}
-                    <ArrowRight className="h-3 w-3" />
-                  </Link>
+        {multiCompany ? (
+          <div className="space-y-4">
+            {groups.map((group) => (
+              <div key={group.key} data-testid={`company-group-${group.key}`}>
+                <div className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-1">
+                  {group.companyName ?? "Other"}
                 </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
-                  <div className="flex items-start gap-2">
-                    <CalendarCheck className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-                    {shop.latestWizard ? (
-                      <div>
-                        <span className="text-muted-foreground">Last upload: </span>
-                        <span>
-                          {monthNames[shop.latestWizard.month - 1]} {shop.latestWizard.year}
-                        </span>
-                        {shop.latestWizard.completedAt && (
-                          <span className="text-muted-foreground ml-1">
-                            ({new Date(shop.latestWizard.completedAt).toLocaleDateString()})
-                          </span>
-                        )}
-                      </div>
-                    ) : (
-                      <span className="text-muted-foreground">No uploads yet</span>
-                    )}
-                  </div>
-
-                  <div className="flex items-start gap-2">
-                    <DollarSign className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-                    {shop.accounts.length > 0 ? (
-                      <div>
-                        <span className="text-muted-foreground">Balance: </span>
-                        <span className={totalBalance < 0 ? "text-destructive font-medium" : ""}>
-                          {formatBalance(totalBalance.toString())}
-                        </span>
-                        {shop.accounts.length > 1 && (
-                          <Badge variant="secondary" className="ml-1 text-xs">
-                            {shop.accounts.length} accounts
-                          </Badge>
-                        )}
-                      </div>
-                    ) : (
-                      <span className="text-muted-foreground">No accounts</span>
-                    )}
-                  </div>
+                <div className="divide-y">
+                  {group.shops.map((shop) => (
+                    <ShopRow key={shop.employerId} shop={shop} />
+                  ))}
                 </div>
               </div>
-            );
-          })}
-        </div>
+            ))}
+          </div>
+        ) : (
+          <>
+            {singleCompanyName && (
+              <div className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-1">
+                {singleCompanyName}
+              </div>
+            )}
+            <div className="divide-y">
+              {groups[0]?.shops.map((shop) => (
+                <ShopRow key={shop.employerId} shop={shop} />
+              ))}
+            </div>
+          </>
+        )}
       </CardContent>
     </Card>
   );

@@ -58,6 +58,23 @@ export const myShopsPlugin: DashboardPlugin = {
     }
 
     const activeIds = activeEmployers.map((e) => e.id);
+
+    // Company enrichment: only when the employer.company component is enabled,
+    // and degrade gracefully (no company grouping) if the tables are absent.
+    let companyByEmployer = new Map<string, { companyId: string; companyName: string }>();
+    if (isComponentEnabledSync("employer.company")) {
+      try {
+        companyByEmployer =
+          await ctx.storage.employerCompanies.getByEmployerIdsWithCompanyName(activeIds);
+      } catch (enrichError: any) {
+        const isTableMissing =
+          enrichError?.message?.includes("relation") &&
+          enrichError?.message?.includes("does not exist");
+        if (!isTableMissing) {
+          console.error("Error enriching My Shops with company data:", enrichError);
+        }
+      }
+    }
     const gbhetLegalTypes = ["gbhet_legal_workers_monthly", "gbhet_legal_workers_corrections"];
 
     const latestWizards = await ctx.storage.readOnly.query(
@@ -122,9 +139,12 @@ export const myShopsPlugin: DashboardPlugin = {
     return activeEmployers.map((emp) => {
       const latestWiz = latestByEmployer.get(emp.id);
       const empEaRows = eaRows.filter((r) => r.entityId === emp.id);
+      const company = companyByEmployer.get(emp.id);
       return {
         employerId: emp.id,
         employerName: emp.name,
+        companyId: company?.companyId ?? null,
+        companyName: company?.companyName ?? null,
         latestWizard: latestWiz
           ? {
               type: latestWiz.wizardType,
