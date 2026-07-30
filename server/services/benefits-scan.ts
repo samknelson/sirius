@@ -9,6 +9,11 @@ import type { Worker, Policy, TrustBenefit, PluginConfigBenefitEligibility } fro
 import { logger } from "../logger";
 import { isComponentEnabledSync } from "./component-cache";
 import { withWmbScanWrites } from "../middleware/request-context";
+import {
+  resolveEmployerPolicyAsOf,
+  createPolicyResolutionCache,
+  type PolicyResolutionCache,
+} from "./policy-resolution";
 
 interface PolicyData {
   benefitIds?: string[];
@@ -71,6 +76,12 @@ export interface RunBenefitsScanOptions {
    * worker as its own subscriber job) does not double-process dependents.
    */
   includeDependents?: boolean;
+  /**
+   * Shared per-run policy-resolution cache. Batch loops pass one cache
+   * across all their scans so each employer's policy history (and the
+   * system default) is fetched once per run, not once per worker.
+   */
+  policyCache?: PolicyResolutionCache;
 }
 
 function getPreviousMonth(month: number, year: number): { month: number; year: number } {
@@ -357,7 +368,13 @@ export async function runBenefitsScan(
     throw new Error(`Worker not found: ${workerId}`);
   }
 
-  const { policy, policySource, employer } = await resolveWorkerPolicy(storage, worker, month, year);
+  const { policy, policySource, employer } = await resolveWorkerPolicy(
+    storage,
+    worker,
+    month,
+    year,
+    options.policyCache ?? createPolicyResolutionCache(),
+  );
   if (!policy) {
     throw new Error("No policy found for worker");
   }
@@ -484,83 +501,41 @@ async function resolveWorkerPolicy(
   storage: IStorage,
   worker: Worker,
   month: number,
-  year: number
+  year: number,
+  policyCache: PolicyResolutionCache,
 ): Promise<{ policy: Policy | null; policySource: string; employer: any | null }> {
-  let employer = null;
-
-  // 1) The worker's own benefit election is the most specific, authoritative
-  // source of their policy for the scan month. An election records the exact
-  // policy (and employer) the worker enrolled under, so it wins over the
-  // employer's policy history / current policy / the system default.
-  // Use the last day of the scan month as the "as of" date (matching the
-  // dependent-coverage resolution in this file) so an election that becomes
-  // active at any point during the scan month is picked up.
+  // 1) Pick the EMPLOYER: the worker's active election for the scan month
+  // (its employer, never its stored policy — the policy is derived from
+  // employer history so plan-rule changes take effect without touching
+  // elections), falling back to the worker's home employer.
+  // Use the last day of the scan month as the election "as of" date
+  // (matching the dependent-coverage resolution in this file) so an election
+  // that becomes active at any point during the scan month is picked up.
   const monthEnd = new Date(year, month, 0);
   const electionAsOfYmd = `${monthEnd.getFullYear()}-${String(monthEnd.getMonth() + 1).padStart(2, "0")}-${String(monthEnd.getDate()).padStart(2, "0")}`;
   const election = await storage.workerTrustElections.getActiveByWorkerAsOf(
     worker.id,
     electionAsOfYmd,
   );
-  if (election?.policyId) {
-    const policy = await storage.policies.getPolicyById(election.policyId);
-    if (policy) {
-      const electionEmployer = election.employerId
-        ? await storage.employers.getEmployer(election.employerId)
-        : null;
-      return {
-        policy,
-        policySource: electionEmployer
-          ? `Worker election (${electionEmployer.name || electionEmployer.siriusId})`
-          : "Worker election",
-        employer: electionEmployer,
-      };
-    }
+
+  let employer: any | null = null;
+  if (election?.employerId) {
+    employer = (await storage.employers.getEmployer(election.employerId)) ?? null;
+  }
+  if (!employer && worker.denormHomeEmployerId) {
+    employer =
+      (await storage.employers.getEmployer(worker.denormHomeEmployerId)) ?? null;
   }
 
-  if (worker.denormHomeEmployerId) {
-    employer = await storage.employers.getEmployer(worker.denormHomeEmployerId);
-    
-    if (employer) {
-      const policyHistory = await storage.employerPolicyHistory.getEmployerPolicyHistory(employer.id);
-      const targetDate = `${year}-${String(month).padStart(2, "0")}-01`;
-      
-      const effectiveEntry = policyHistory
-        .filter((entry: any) => entry.date <= targetDate)
-        .sort((a: any, b: any) => b.date.localeCompare(a.date))[0];
-      
-      if (effectiveEntry?.policy) {
-        return {
-          policy: effectiveEntry.policy,
-          policySource: `Employer policy history (${employer.name || employer.siriusId})`,
-          employer,
-        };
-      }
-      
-      if (employer.denormPolicyId) {
-        const policy = await storage.policies.getPolicyById(employer.denormPolicyId);
-        if (policy) {
-          return {
-            policy,
-            policySource: `Employer current policy (${employer.name || employer.siriusId})`,
-            employer,
-          };
-        }
-      }
-    }
-  }
-
-  const defaultPolicyVar = await storage.variables.getByName("policy_default");
-  if (defaultPolicyVar?.value) {
-    const policyId = defaultPolicyVar.value as string;
-    const policy = await storage.policies.getPolicyById(policyId);
-    if (policy) {
-      return {
-        policy,
-        policySource: "System default policy",
-        employer,
-      };
-    }
-  }
-
-  return { policy: null, policySource: "None", employer };
+  // 2) Resolve the policy from the employer's policy history as of the scan
+  // month (history → employer current policy → system default), via the
+  // shared resolver so every consumer applies the same chain.
+  const targetDate = `${year}-${String(month).padStart(2, "0")}-01`;
+  const resolved = await resolveEmployerPolicyAsOf(
+    storage,
+    employer?.id ?? null,
+    targetDate,
+    policyCache,
+  );
+  return { policy: resolved.policy, policySource: resolved.policySource, employer };
 }

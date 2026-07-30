@@ -14,6 +14,7 @@ import { storage } from "../../../../storage/database";
 import { toChargeConfig } from "../charge-config-resolution";
 import { createUnifiedOptionsStorage } from "../../../../storage/unified-options";
 import { fetchBuildupStatus } from "../../../trust/eligibility/plugins/sitespecific-bao-buildup";
+import { resolveEmployerPolicyAsOf } from "../../../../services/policy-resolution";
 import {
   baoEchpChargeSettingsSchema,
   DEFAULT_BAO_ECHP_BREAKPOINTS,
@@ -262,14 +263,24 @@ class BaoEchpChargePlugin extends ChargePlugin {
       return null;
     }
 
-    // The worker must have an active election (policy + employer) as of the
-    // targeted month.
+    // The worker must have an active election (with an employer) as of the
+    // targeted month. The policy is DERIVED from the election's employer's
+    // policy history as of that month — never read from the election row —
+    // so plan changes take effect without touching existing elections.
     const asOfYmd = lastDayOfMonthYmd(hoursContext.year, hoursContext.month);
     const election = await storage.workerTrustElections.getActiveByWorkerAsOf(
       hoursContext.workerId,
       asOfYmd,
     );
-    if (!election || !election.policyId || !election.employerId) {
+    if (!election || !election.employerId) {
+      return null;
+    }
+    const { policy } = await resolveEmployerPolicyAsOf(
+      storage,
+      election.employerId,
+      asOfYmd,
+    );
+    if (!policy) {
       return null;
     }
 
@@ -289,7 +300,7 @@ class BaoEchpChargePlugin extends ChargePlugin {
     );
     const threshold = buildup.threshold;
     const hoursWorked = Math.max(0, threshold - hoursContext.hours);
-    const quote = resolveEchpQuote(settings, election.policyId, hoursWorked);
+    const quote = resolveEchpQuote(settings, policy.id, hoursWorked);
     if (!quote.enabled) {
       return null;
     }
@@ -316,7 +327,7 @@ class BaoEchpChargePlugin extends ChargePlugin {
         pluginConfigId: config.id,
         workerId: hoursContext.workerId,
         employerId: election.employerId,
-        policyId: election.policyId,
+        policyId: policy.id,
         year: hoursContext.year,
         month: hoursContext.month,
         hoursPurchased: hoursContext.hours,

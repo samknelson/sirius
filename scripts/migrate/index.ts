@@ -106,6 +106,7 @@ import "./components/worker.ratings/001_add_sirius_id_to_options_worker_ratings"
 import "./components/trust.providers.edi/001_add_sftp_client_fk";
 import "./components/trust.elections/001_add_enrollment_type";
 import "./components/trust.elections/002_create_open_enrollment_windows";
+import "./components/trust.elections/003_policy_id_nullable";
 
 // Baseline scripts — one-off, per-deployment scripts that bring a database
 // into sync with the schema BEFORE the drift gate runs. Baseline scripts

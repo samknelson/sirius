@@ -25,7 +25,11 @@ export const workerTrustElections = pgTable("worker_trust_elections", {
   workerId: varchar("worker_id").notNull().references(() => workers.id, { onDelete: 'cascade' }),
   employerId: varchar("employer_id").notNull().references(() => employers.id, { onDelete: 'restrict' }),
   benefitIds: varchar("benefit_ids").array(),
-  policyId: varchar("policy_id").notNull().references(() => policies.id, { onDelete: 'restrict' }),
+  // Legacy/audit only: the policy in effect is DERIVED from the election's
+  // employer's policy history as of the relevant date (see
+  // server/services/policy-resolution.ts). New elections no longer store a
+  // policy; the column is kept nullable for audit/rollback.
+  policyId: varchar("policy_id").references(() => policies.id, { onDelete: 'restrict' }),
   startYmd: date("start_ymd").notNull(),
   endYmd: date("end_ymd"),
   relationshipIds: varchar("relationship_ids").array(),
@@ -69,7 +73,9 @@ const ymdOrDate = z
 export const createWorkerTrustElectionRequestSchema = z
   .object({
     employerId: z.string().min(1),
-    policyId: z.string().min(1),
+    /** Legacy/audit only — accepted but no longer required; the effective
+     * policy is derived from the employer's policy history. */
+    policyId: z.string().min(1).nullable().optional(),
     startYmd: ymdOrDate,
     endYmd: ymdOrDate.nullable().optional(),
     benefitIds: z.array(z.string()).nullable().optional(),
@@ -89,7 +95,7 @@ export const createWorkerTrustElectionRequestSchema = z
 export const updateWorkerTrustElectionRequestSchema = z
   .object({
     employerId: z.string().min(1).optional(),
-    policyId: z.string().min(1).optional(),
+    policyId: z.string().min(1).nullable().optional(),
     startYmd: ymdOrDate.optional(),
     endYmd: ymdOrDate.nullable().optional(),
     benefitIds: z.array(z.string()).nullable().optional(),

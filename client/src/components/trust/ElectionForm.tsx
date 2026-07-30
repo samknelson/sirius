@@ -23,10 +23,6 @@ interface EmployerOption {
   id: string;
   name: string;
 }
-interface PolicyOption {
-  id: string;
-  name: string;
-}
 interface TrustBenefitOption {
   id: string;
   name: string;
@@ -78,7 +74,6 @@ export function ElectionForm({
 }: ElectionFormProps) {
   const { toast } = useToast();
   const [employerId, setEmployerId] = useState<string>("");
-  const [policyId, setPolicyId] = useState<string>("");
   const [startYmd, setStartYmd] = useState<string>("");
   const [endYmd, setEndYmd] = useState<string>("");
   const [benefitIds, setBenefitIds] = useState<string[]>([]);
@@ -88,14 +83,12 @@ export function ElectionForm({
     if (!enabled) return;
     if (mode === "edit" && election) {
       setEmployerId(election.employerId ?? "");
-      setPolicyId(election.policyId ?? "");
       setStartYmd(ymdFromDate(election.startYmd));
       setEndYmd(ymdFromDate(election.endYmd));
       setBenefitIds(election.benefitIds ?? []);
       setRelationshipIds(election.relationshipIds ?? []);
     } else if (mode === "create") {
       setEmployerId("");
-      setPolicyId("");
       setStartYmd(todayYmd());
       setEndYmd("");
       setBenefitIds([]);
@@ -105,10 +98,6 @@ export function ElectionForm({
 
   const { data: employers = [] } = useQuery<EmployerOption[]>({
     queryKey: ["/api/employers/lookup"],
-    enabled,
-  });
-  const { data: policies = [] } = useQuery<PolicyOption[]>({
-    queryKey: ["/api/policies"],
     enabled,
   });
   const { data: benefits = [] } = useQuery<TrustBenefitOption[]>({
@@ -157,10 +146,6 @@ export function ElectionForm({
       toast({ title: "Validation", description: "Employer is required.", variant: "destructive" });
       return;
     }
-    if (!policyId) {
-      toast({ title: "Validation", description: "Policy is required.", variant: "destructive" });
-      return;
-    }
     if (!startYmd) {
       toast({ title: "Validation", description: "Start date is required.", variant: "destructive" });
       return;
@@ -168,7 +153,6 @@ export function ElectionForm({
     if (mode === "create") {
       createMutation.mutate({
         employerId,
-        policyId,
         startYmd,
         endYmd: endYmd || null,
         benefitIds,
@@ -177,7 +161,6 @@ export function ElectionForm({
     } else {
       updateMutation.mutate({
         employerId,
-        policyId,
         startYmd,
         endYmd: endYmd || null,
         benefitIds,
@@ -214,21 +197,9 @@ export function ElectionForm({
         </Select>
       </div>
 
-      <div className="space-y-2">
-        <Label>Policy</Label>
-        <Select value={policyId} onValueChange={setPolicyId}>
-          <SelectTrigger data-testid="select-policy">
-            <SelectValue placeholder="Choose a policy" />
-          </SelectTrigger>
-          <SelectContent>
-            {policies.map((p) => (
-              <SelectItem key={p.id} value={p.id} data-testid={`option-policy-${p.id}`}>
-                {p.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      <p className="text-sm text-muted-foreground">
+        The benefit policy is determined automatically from the employer's policy history.
+      </p>
 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">

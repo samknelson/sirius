@@ -268,10 +268,8 @@ async function submitReview(
     throw new Error("This life event has already been posted");
   }
   if (!data.workerId) throw new Error("Missing worker");
-  if (!data.employerId || !data.policyId) {
-    throw new Error(
-      "This worker's active election is missing an employer or policy",
-    );
+  if (!data.employerId) {
+    throw new Error("This worker's active election is missing an employer");
   }
   if (!data.startYmd) {
     throw new Error("Set the effective date before posting");
@@ -314,7 +312,7 @@ async function submitReview(
     data.workerId as string,
     {
       employerId: data.employerId,
-      policyId: data.policyId,
+      // No policyId: derived from employer policy history, not stored.
       startYmd: data.startYmd,
       benefitIds,
       relationshipIds,

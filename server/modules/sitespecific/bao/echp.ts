@@ -9,6 +9,7 @@ import {
   isEchpEnabledForPolicy,
   resolveEchpQuote,
 } from "../../../plugins/ledger/charge/plugins/sitespecific-bao-echp";
+import { resolveEmployerPolicyAsOf } from "../../../services/policy-resolution";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -119,12 +120,26 @@ async function evaluateEchpEligibility(workerId: string, asOf: AsOf): Promise<Ec
     );
   }
 
-  // 2. The worker must have an active election with a policy and an employer.
+  // 2. The worker must have an active election with an employer. The policy
+  //    is DERIVED from the election's employer's policy history as of the
+  //    evaluation date — never read from the election row.
   const election = await storage.workerTrustElections.getActiveViewByWorker(workerId);
-  if (!election || !election.policyId || !election.employerId) {
+  if (!election || !election.employerId) {
     return fail(
       "no_active_election",
-      "You do not have an active election with a policy and employer, so hours purchasing is unavailable.",
+      "You do not have an active election with an employer, so hours purchasing is unavailable.",
+    );
+  }
+  const asOfYmd = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  const { policy: effectivePolicy } = await resolveEmployerPolicyAsOf(
+    storage,
+    election.employerId,
+    asOfYmd,
+  );
+  if (!effectivePolicy) {
+    return fail(
+      "no_active_election",
+      "No benefit policy could be resolved for your employer, so hours purchasing is unavailable.",
     );
   }
 
@@ -132,7 +147,7 @@ async function evaluateEchpEligibility(workerId: string, asOf: AsOf): Promise<Ec
   //     owned by the ECHP charge plugin: a policy is enabled only when it
   //     appears in the policy list. No hardcoded fallback.
   const echpSettings = await loadEchpSettings();
-  if (!isEchpEnabledForPolicy(echpSettings, election.policyId)) {
+  if (!isEchpEnabledForPolicy(echpSettings, effectivePolicy.id)) {
     return fail(
       "denied",
       "Event Center Hours Purchasing is not available for your policy. Please contact the office for assistance.",
@@ -229,7 +244,7 @@ async function evaluateEchpEligibility(workerId: string, asOf: AsOf): Promise<Ec
   const hoursToPurchase = Math.max(0, threshold - hoursWorked);
   // Pricing is owned by the ECHP charge plugin: the single price ladder yields
   // exactly one price for the policy.
-  const quote = resolveEchpQuote(echpSettings, election.policyId, hoursWorked);
+  const quote = resolveEchpQuote(echpSettings, effectivePolicy.id, hoursWorked);
   const price = quote.price;
 
   return {

@@ -1103,8 +1103,8 @@ export function createEnrollmentFoundation(
       throw new Error("This enrollment has already been posted");
     }
     if (!data.workerId) throw new Error("Missing worker");
-    if (!data.employerId || !data.policyId) {
-      throw new Error("Choose an employer and policy before posting");
+    if (!data.employerId) {
+      throw new Error("Choose an employer before posting");
     }
     if (!Array.isArray(data.benefitIds) || data.benefitIds.length === 0) {
       throw new Error("Select at least one benefit before posting");
@@ -1124,7 +1124,8 @@ export function createEnrollmentFoundation(
       data.workerId as string,
       {
         employerId: data.employerId,
-        policyId: data.policyId,
+        // No policyId: the effective policy is derived from the employer's
+        // policy history as of the relevant date, not stored per election.
         startYmd: data.startYmd,
         benefitIds: data.benefitIds,
         relationshipIds,

@@ -455,9 +455,7 @@ async function submitReview(
   // Resolve the dedicated COBRA employer/policy at post time (never the
   // worker's real employer) — drafts created before this rule may carry a
   // stale real-employer pair, so the stored draft values are ignored.
-  const { employerId, policyId } = await resolveCobraEmployerPolicy(
-    ctx.storage,
-  );
+  const { employerId } = await resolveCobraEmployerPolicy(ctx.storage);
 
   // 1) Record the election on the case (deadlines recomputed centrally).
   const deadlines = computeCobraDeadlines(
@@ -488,7 +486,8 @@ async function submitReview(
       theCase.coveredPersonWorkerId,
       {
         employerId,
-        policyId,
+        // No policyId stored: the COBRA employer's denorm_policy_id points at
+        // the COBRA policy, so the shared resolver derives it from there.
         startYmd: theCase.cobraEffectiveYmd,
         benefitIds: benefits.map((b) => b.benefitId),
         relationshipIds: selectedRelationIds(data),

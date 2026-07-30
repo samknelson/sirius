@@ -165,6 +165,36 @@ async function hydrateElections(rows: WorkerTrustElection[]): Promise<WorkerTrus
 
   const policyMap = new Map(policyRows.map((p) => [p.id, p.name ?? null]));
   const employerMap = new Map(employerRows.map((e) => [e.id, e.name ?? null]));
+
+  // Derive each election's effective policy from its employer's policy
+  // history as-of today clamped into the election's coverage window (the
+  // stored policy_id is legacy/audit only). Dynamic imports avoid a
+  // storage-module init cycle; one cache per hydrate call de-dupes employer
+  // history fetches across rows.
+  const { resolveEmployerPolicyAsOf, createPolicyResolutionCache } = await import(
+    '../../services/policy-resolution'
+  );
+  const { storage } = await import('../index');
+  const policyCache = createPolicyResolutionCache();
+  const todayYmd = getTodayDateOnly().toISOString().slice(0, 10);
+  const derivedPolicyNames = new Map<string, string | null>();
+  for (const election of rows) {
+    const startYmd = toYmd(election.startYmd);
+    const endYmd = toYmd(election.endYmd);
+    let asOf = todayYmd;
+    if (startYmd && asOf < startYmd) asOf = startYmd;
+    if (endYmd && asOf > endYmd) asOf = endYmd;
+    const { policy } = await resolveEmployerPolicyAsOf(
+      storage,
+      election.employerId,
+      asOf,
+      policyCache,
+    );
+    derivedPolicyNames.set(
+      election.id,
+      policy?.name ?? (election.policyId ? policyMap.get(election.policyId) ?? null : null),
+    );
+  }
   const benefitMap = new Map(benefitRows.map((b) => [b.id, b.name ?? b.id]));
   const relMap = new Map(relRows.map((r) => [r.id, r]));
   const workerNameMap = new Map(workerNameRows.map((w) => [w.id, w]));
@@ -194,7 +224,7 @@ async function hydrateElections(rows: WorkerTrustElection[]): Promise<WorkerTrus
     return {
       ...election,
       workerName,
-      policyName: policyMap.get(election.policyId) ?? null,
+      policyName: derivedPolicyNames.get(election.id) ?? null,
       employerName: employerMap.get(election.employerId) ?? null,
       benefits,
       relationships,
@@ -239,10 +269,13 @@ interface ValidationInput {
 async function validateElection(
   data: ValidationInput,
   existing?: WorkerTrustElection,
-): Promise<{ workerId: string; employerId: string; policyId: string; startYmd: string; endYmd: string | null }> {
+): Promise<{ workerId: string; employerId: string; policyId: string | null; startYmd: string; endYmd: string | null }> {
   const workerId = data.workerId ?? existing?.workerId ?? undefined;
   const employerId = data.employerId ?? existing?.employerId ?? undefined;
-  const policyId = data.policyId ?? existing?.policyId ?? undefined;
+  // Legacy/audit only: elections no longer require a stored policy — the
+  // effective policy is derived from the employer's policy history as-of the
+  // relevant date. A provided value is still validated for existence.
+  const policyId = data.policyId !== undefined ? data.policyId : existing?.policyId ?? null;
   const startSource = data.startYmd !== undefined ? data.startYmd : existing?.startYmd ?? null;
   const endSource = data.endYmd !== undefined ? data.endYmd : existing?.endYmd ?? null;
   const startYmd = toYmd(startSource);
@@ -250,7 +283,6 @@ async function validateElection(
 
   if (!workerId) throw new WorkerTrustElectionValidationError('workerId', 'workerId is required');
   if (!employerId) throw new WorkerTrustElectionValidationError('employerId', 'employerId is required');
-  if (!policyId) throw new WorkerTrustElectionValidationError('policyId', 'policyId is required');
   if (!startYmd) throw new WorkerTrustElectionValidationError('startYmd', 'startYmd is required');
 
   // Future start dates are allowed: enrollment effective dates are
@@ -265,10 +297,12 @@ async function validateElection(
   if (!foundWorker) throw new WorkerTrustElectionValidationError('workerId', 'worker does not exist');
   const [foundEmployer] = await client.select({ id: employers.id }).from(employers).where(eq(employers.id, employerId));
   if (!foundEmployer) throw new WorkerTrustElectionValidationError('employerId', 'employer does not exist');
-  const [foundPolicy] = await client.select({ id: policies.id }).from(policies).where(eq(policies.id, policyId));
-  if (!foundPolicy) throw new WorkerTrustElectionValidationError('policyId', 'policy does not exist');
+  if (policyId) {
+    const [foundPolicy] = await client.select({ id: policies.id }).from(policies).where(eq(policies.id, policyId));
+    if (!foundPolicy) throw new WorkerTrustElectionValidationError('policyId', 'policy does not exist');
+  }
 
-  return { workerId, employerId, policyId, startYmd, endYmd };
+  return { workerId, employerId, policyId: policyId ?? null, startYmd, endYmd };
 }
 
 async function getWorkerFullName(

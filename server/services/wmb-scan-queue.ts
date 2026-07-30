@@ -1,6 +1,10 @@
 import type { IStorage } from "../storage";
 import type { ScanScope } from "../storage/wmb-scan-queue";
 import { runBenefitsScan, type BenefitsScanResult } from "./benefits-scan";
+import {
+  createPolicyResolutionCache,
+  type PolicyResolutionCache,
+} from "./policy-resolution";
 import { logger } from "../logger";
 import { eventBus, EventType } from "./event-bus";
 import type { TrustWmbScanStatus, TrustWmbScanQueue } from "@shared/schema";
@@ -42,13 +46,14 @@ export interface ProcessingResult {
 
 export async function processNextQueueJob(
   storage: IStorage,
-  triggerSources?: string[]
+  triggerSources?: string[],
+  policyCache?: PolicyResolutionCache
 ): Promise<{ processed: boolean; workerId?: string; success?: boolean }> {
   const job = await storage.wmbScanQueue.claimNextJob(triggerSources);
   if (!job) {
     return { processed: false };
   }
-  return processClaimedJob(storage, job);
+  return processClaimedJob(storage, job, policyCache);
 }
 
 /**
@@ -60,7 +65,8 @@ export async function processNextQueueJob(
  */
 export async function processClaimedJob(
   storage: IStorage,
-  job: TrustWmbScanQueue
+  job: TrustWmbScanQueue,
+  policyCache?: PolicyResolutionCache
 ): Promise<{ processed: boolean; workerId?: string; success?: boolean }> {
   logger.info(`Processing WMB scan job for worker ${job.workerId}`, {
     service: "wmb-scan-queue",
@@ -81,7 +87,7 @@ export async function processClaimedJob(
       job.month,
       job.year,
       "live",
-      { includeDependents }
+      { includeDependents, policyCache }
     );
 
     const jobResultInfo = await storage.wmbScanQueue.recordJobResult(
@@ -268,8 +274,12 @@ export async function processBatchQueueJobs(
   let succeeded = 0;
   let failed = 0;
 
+  // One policy-resolution cache per batch run: workers at the same employer
+  // share the employer's policy-history fetch instead of re-querying per job.
+  const policyCache = createPolicyResolutionCache();
+
   for (let i = 0; i < batchSize; i++) {
-    const result = await processNextQueueJob(storage);
+    const result = await processNextQueueJob(storage, undefined, policyCache);
     if (!result.processed) {
       break;
     }
