@@ -1,0 +1,119 @@
+# Task: Design the S1 → S2 migration mapping
+
+You already have full knowledge of S2 — its schema, application, and
+
+codebase. I'm giving you a **read-only Postgres connection to the S1
+
+database**, which lives in Neon alongside S2. Profile S1 directly from
+
+this connection and work out how to convert its data into S2's schema
+
+cleanly. Your S2 knowledge is the authority for the target; the live S1
+
+DB is the authority for the source.
+
+Connection (read-only, SELECT only):
+
+postgresql://s1_readonly_b:1mekdlsdjei2@ep-broad-flower-axtz6upv-pooler.c-4.us-east-2.aws.neon.tech/neondb?sslmode=require&channel_binding=require
+
+## What S1 is
+
+- Drupal 7. Entity-field model: each content field lives in its own
+
+  `field_data_<field>` table, with a `field_revision_<field>` twin for
+
+  history. Records join to `node` on `entity_id = nid`. One logical
+
+  record (member, grievance, trust/benefit election) spans dozens of
+
+  these tables.
+
+- Value column is usually `<field>_value`, but compound fields differ:
+
+  names split into `_given`/`_family`/etc., addresses into
+
+  `_thoroughfare`/`_locality`/`_postal_code`/etc., files into `_fid`,
+
+  entity refs into `_target_id`, taxonomy into `_tid`. The
+
+  `entity_type` + `bundle` columns say which content type each row serves —
+
+  one field table can serve several.
+
+- `sirius_*` tables are custom application tables (ledger, trust/benefit
+
+  scan log, quickhash, etc.), not D7 boilerplate. Treat them as the
+
+  business-logic core.
+
+- Everything loaded as Postgres `text`. Infer real types from the values.
+
+## The S1 data is anonymized — important
+
+- SSNs, names, emails, phones, addresses, and free-text are masked or
+
+  nulled. Structure (types, formats, cardinality, fill rates) is real;
+
+  contents are fake. Don't infer meaning from a specific masked value.
+
+- Some columns are fully nulled. A null column here does NOT mean the
+
+  field is unused in production — note it as "masked, confirm against
+
+  live system" rather than concluding it's empty.
+
+## What to produce (propose only — do not write to S2)
+
+1. **S1 field inventory** — profile each field table from the live
+
+   connection: value-bearing column(s), inferred type, multi-value or not
+
+   (any `delta > 0`), fill rate, and which `bundle`/entity type it serves.
+
+2. **Mapping to S2** — a row per S1 field → the specific S2 table.column
+
+   it lands in (you know S2, so be concrete). Classify anything without a
+
+   clean home: NEEDS-TRANSFORM / AMBIGUOUS-SOURCE / NO-S2-EQUIVALENT / DROP.
+
+3. **Transformation logic** — per NEEDS-TRANSFORM: the actual conversion
+
+   (type cast, coded-value remap, split/merge columns, unpack serialized
+
+   blobs, denormalize the scattered field tables into S2's shape). If S2's
+
+   codebase already has an import/ingestion path, prefer routing through it
+
+   over raw INSERTs and say so.
+
+4. **Entity reassembly** — how you'd join the `field_data_*` tables back
+
+   into whole records on `entity_id` and map them to S2's entity model.
+
+   State where `field_revision_*` history carries over vs is dropped.
+
+5. **Open questions** — anything unresolvable from the (anonymized) data +
+
+   your S2 knowledge. Masked/nulled columns are the likeliest source.
+
+## Constraints
+
+- **Read-only.** The connection grants SELECT only. Don't attempt writes,
+
+  DDL, or anything beyond profiling — this DB is a reference, not a target.
+
+- The live S1 data is the source of truth for S1 shape — verify column
+
+  meaning from values, not names. D7 names mislead (`_id`, `_id2`, `_id3`
+
+  are opaque; infer their role from values, `bundle`, and cross-table
+
+  references; mark AMBIGUOUS-SOURCE if you can't).
+
+- Propose; don't execute. I want the mapping spec and transform plan to
+
+  review before anything touches S2.
+
+- Flag any S1 field whose semantics you're inferring rather than certain
+
+  of, so I can confirm against the live un-anonymized system.
