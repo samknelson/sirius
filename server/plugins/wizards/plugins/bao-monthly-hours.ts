@@ -235,6 +235,44 @@ function prepareBaoDataUpdate(ctx: WizardUpdateContext): WizardUpdateResult {
   return result;
 }
 
+/**
+ * Review step: the shared feed results step, plus the upload's total stored
+ * withholding (summed from the first-class allocation rows) so the operator
+ * can see how much an employer payment must cover to consume this upload.
+ */
+function buildBaoReviewStep(): WizardStepHandler {
+  const base = buildFeedResultsStep({ id: "review", name: "Review" });
+  const baseGetData = base.getData!;
+  base.getData = async (ctx: WizardStepContext) => {
+    const data = await baseGetData(ctx);
+    let withholdingTotal: string | null = null;
+    let withholdingWorkerCount = 0;
+    let withholdingConsumedByPaymentId: string | null = null;
+    try {
+      const allocations = await ctx.storage.baoWithholdingAllocations.getByWizard(
+        ctx.wizardId,
+      );
+      if (allocations.length > 0) {
+        withholdingTotal = allocations
+          .reduce((sum, a) => sum + parseFloat(a.amount), 0)
+          .toFixed(2);
+        withholdingWorkerCount = allocations.length;
+        withholdingConsumedByPaymentId =
+          allocations.find((a) => a.consumedByPaymentId)?.consumedByPaymentId ?? null;
+      }
+    } catch {
+      // Allocation table absent (component disabled) — omit the summary.
+    }
+    return {
+      ...data,
+      withholdingTotal,
+      withholdingWorkerCount,
+      withholdingConsumedByPaymentId,
+    };
+  };
+  return base;
+}
+
 function buildBaoSteps(): WizardStepHandler[] {
   return [
     buildUploadStep(baoMonthlyHours, "Upload the monthly hours file"),
@@ -246,7 +284,7 @@ function buildBaoSteps(): WizardStepHandler[] {
     buildGbhetValidateStep(baoMonthlyHours),
     buildVerifyStep(),
     buildProcessStep(baoMonthlyHours),
-    buildFeedResultsStep({ id: "review", name: "Review" }),
+    buildBaoReviewStep(),
   ];
 }
 

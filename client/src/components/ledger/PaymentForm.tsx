@@ -382,7 +382,38 @@ export function PaymentForm({
     },
   });
 
+  // Upload-source payments (BAO withholding) carry `details.baoUploadSource`
+  // instead of participant allocations; the selection is preserved read-only
+  // in edit mode and per-participant validation does not apply.
+  const isUploadSourcePayment = Boolean(
+    (payment?.details as Record<string, unknown> | null)?.baoUploadSource,
+  );
+
   const onSubmit = form.handleSubmit((data) => {
+    if (isUploadSourcePayment) {
+      const existingDetails = { ...((payment?.details || {}) as Record<string, unknown>) };
+      if (category === "financial") {
+        if (merchant) existingDetails.merchant = merchant;
+        else delete existingDetails.merchant;
+        if (checkTransactionNumber) existingDetails.checkTransactionNumber = checkTransactionNumber;
+        else delete existingDetails.checkTransactionNumber;
+      } else {
+        if (adjustmentUser) existingDetails.adjustmentUser = adjustmentUser;
+        else delete existingDetails.adjustmentUser;
+        if (dateEntered) existingDetails.dateEntered = dateEntered;
+        else delete existingDetails.dateEntered;
+        if (effectiveDate) existingDetails.effectiveDate = effectiveDate;
+        else delete existingDetails.effectiveDate;
+      }
+      submitMutation.mutate({
+        ...data,
+        ledgerEaId: payment?.ledgerEaId,
+        details: existingDetails,
+        status: category === "adjustment" ? "cleared" : data.status,
+      });
+      return;
+    }
+
     for (let i = 0; i < participantBoxes.length; i++) {
       const box = participantBoxes[i];
       if (!box.eaId) {
@@ -815,6 +846,17 @@ export function PaymentForm({
           )}
         />
 
+        {isUploadSourcePayment ? (
+          <div className="rounded-md border p-4 space-y-1" data-testid="text-upload-source-info">
+            <p className="text-sm font-medium">Upload source allocation</p>
+            <p className="text-sm text-muted-foreground">
+              This payment is allocated from BAO hours upload withholding
+              ({(((payment?.details as Record<string, unknown>)?.baoUploadSource as { wizardIds?: string[] })?.wizardIds || []).length} upload(s)).
+              Worker credits are created when the payment clears and reversed when it is voided.
+              The upload selection cannot be changed here.
+            </p>
+          </div>
+        ) : (
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <label className="text-sm font-medium">Participant Allocation</label>
@@ -869,6 +911,7 @@ export function PaymentForm({
             </Button>
           )}
         </div>
+        )}
 
         <div className="flex gap-2">
           {onCancel && (

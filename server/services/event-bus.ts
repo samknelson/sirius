@@ -88,6 +88,16 @@ export interface PaymentSavedPayload {
   dateCleared: Date | null;
   memo: string | null;
   paymentTypeId: string;
+  /** Per-allocation dispatch identity (proposedAllocation path only). */
+  allocationId?: string;
+  allocationStatementYmd?: string;
+  /**
+   * The payment's `details` JSON. Must be included on every emission so
+   * detail-marker-driven plugins (e.g. `baoUploadSource` → the BAO ER-report
+   * allocation plugin) behave identically on the async event-bus path and
+   * the synchronous executor path.
+   */
+  details?: Record<string, unknown> | null;
 }
 
 export interface WmbSavedPayload {

@@ -3,7 +3,7 @@ import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { parsePhoneNumber } from "libphonenumber-js";
-import { employers, ledgerAccounts, ledgerEa, workers, trustBenefits, trustProviders } from "../../../schema";
+import { employers, ledgerAccounts, ledgerEa, ledgerPayments, workers, wizards, trustBenefits, trustProviders } from "../../../schema";
 import { validateSSN } from "../../../utils/ssn";
 import { toYmd } from "../../../utils/date";
 
@@ -1144,3 +1144,84 @@ export const generateBaoPremiumFileRequestSchema = z
 export type GenerateBaoPremiumFileRequest = z.infer<
   typeof generateBaoPremiumFileRequestSchema
 >;
+
+// ---------------------------------------------------------------------------
+// Withholding allocations — per-worker employee-withholding amounts recorded
+// by the BAO Monthly Hours Upload wizard. The upload stores ALLOCATIONS only
+// (no money is recognized); worker-side ledger credits are created later,
+// when an employer payment is posted with the upload(s) selected as its
+// allocation source (via the `bao-er-report-to-ee-allocation` charge plugin).
+//
+// `consumed_by_payment_id` links every allocation of an upload to the single
+// active payment that funded it; it is set race-safely when the payment
+// clears and reset to NULL when the payment is voided/edited away from
+// cleared, releasing the upload for selection again.
+// ---------------------------------------------------------------------------
+
+export const sitespecificBaoWithholdingAllocations = pgTable(
+  "sitespecific_bao_withholding_allocations",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    wizardId: varchar("wizard_id").notNull(),
+    employerId: varchar("employer_id").notNull(),
+    year: integer("year").notNull(),
+    month: integer("month").notNull(),
+    workerId: varchar("worker_id").notNull(),
+    workerEaId: varchar("worker_ea_id").notNull(),
+    amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
+    consumedByPaymentId: varchar("consumed_by_payment_id"),
+    data: jsonb("data"),
+  },
+  (table) => [
+    unique("sitespecific_bao_withholding_alloc_wizard_worker_uq").on(
+      table.wizardId,
+      table.workerId,
+    ),
+    foreignKey({
+      name: "sitespecific_bao_withholding_alloc_wizard_id_fkey",
+      columns: [table.wizardId],
+      foreignColumns: [wizards.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "sitespecific_bao_withholding_alloc_employer_id_fkey",
+      columns: [table.employerId],
+      foreignColumns: [employers.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "sitespecific_bao_withholding_alloc_worker_id_fkey",
+      columns: [table.workerId],
+      foreignColumns: [workers.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "sitespecific_bao_withholding_alloc_worker_ea_id_fkey",
+      columns: [table.workerEaId],
+      foreignColumns: [ledgerEa.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "sitespecific_bao_withholding_alloc_consumed_payment_fkey",
+      columns: [table.consumedByPaymentId],
+      foreignColumns: [ledgerPayments.id],
+    }).onDelete("set null"),
+  ],
+);
+
+export type BaoWithholdingAllocation =
+  typeof sitespecificBaoWithholdingAllocations.$inferSelect;
+
+export const insertBaoWithholdingAllocationSchema = createInsertSchema(
+  sitespecificBaoWithholdingAllocations,
+).omit({ id: true, consumedByPaymentId: true });
+
+export type InsertBaoWithholdingAllocation = z.infer<
+  typeof insertBaoWithholdingAllocationSchema
+>;
+
+/** One eligible upload as shown in the payment "Upload source" picker. */
+export type BaoWithholdingUploadSummary = {
+  wizardId: string;
+  year: number;
+  month: number;
+  totalAmount: string;
+  allocationCount: number;
+  consumedByPaymentId: string | null;
+};

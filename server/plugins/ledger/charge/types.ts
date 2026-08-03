@@ -39,6 +39,12 @@ export interface PaymentSavedContext {
   paymentTypeId: string;
   allocationId?: string;
   allocationStatementYmd?: string;
+  /**
+   * The payment's `details` JSON (when the emitter has it). Lets plugins key
+   * off detail markers — e.g. `baoUploadSource` routes the payment to the
+   * BAO ER-report allocation plugin and suppresses simple allocation.
+   */
+  details?: Record<string, unknown> | null;
 }
 
 export interface WmbSavedContext {

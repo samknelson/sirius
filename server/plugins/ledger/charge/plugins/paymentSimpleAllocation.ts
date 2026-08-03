@@ -63,6 +63,13 @@ class PaymentSimpleAllocationPlugin extends ChargePlugin {
     if (paymentContext.status !== "cleared") {
       return null;
     }
+    // Upload-source payments (BAO ER report → EE allocation) are expanded
+    // into per-worker entries by the bao-er-report-to-ee-allocation plugin;
+    // no entity-level allocation entry should exist for them. Returning null
+    // here still lets the reconcile paths delete any stale entries.
+    if ((paymentContext.details as Record<string, unknown> | null | undefined)?.baoUploadSource) {
+      return null;
+    }
 
     const paymentAmount = parseFloat(paymentContext.amount);
     const allocatedAmount = -paymentAmount;
@@ -412,6 +419,7 @@ class PaymentSimpleAllocationPlugin extends ChargePlugin {
         dateCleared: payment.dateCleared,
         memo: payment.memo,
         paymentTypeId: payment.paymentType,
+        details: payment.details as Record<string, unknown> | null,
       };
 
       // Look up payment type and currency for description

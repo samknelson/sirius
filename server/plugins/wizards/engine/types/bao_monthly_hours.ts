@@ -2,11 +2,8 @@ import { FeedConfig, FeedData, createMonthlyDateRange, getCurrentMonth, FeedFiel
 import { WizardStep } from '../base.js';
 import { GbhetLegalWorkersWizard } from './gbhet_legal_workers.js';
 import { storage } from '../../../../storage/index.js';
-import { createUnifiedOptionsStorage } from '../../../../storage/unified-options.js';
-import { triggerPaymentChargePlugins } from '../../../../modules/ledger/payments.js';
+import { WITHHOLDING_CONSUMED } from '../../../../storage/sitespecific/bao/withholding-allocations.js';
 import { logger } from '../../../../logger.js';
-
-const unifiedOptionsStorage = createUnifiedOptionsStorage();
 
 function pad2(n: number): string {
   return String(n).padStart(2, '0');
@@ -25,10 +22,13 @@ function pad2(n: number): string {
  * - Address (line 1, city, state, postal code), phone number, and date of
  *   birth are REQUIRED for every row.
  * - Optional "Employee Withholding Amount" column: when mapped and non-zero,
- *   an allocated ledger payment is recorded on the worker's behalf against
- *   the BAO fund account (from the enabled `bao-hourly` charge plugin
- *   config), with `statementYmd` anchored to the work month. Idempotent on
- *   re-upload via a `baoWithholding` marker in the payment's details.
+ *   a stored withholding ALLOCATION is recorded per worker (the worker's EA
+ *   on the BAO fund account — from the enabled `bao-hourly` charge plugin
+ *   config — is ensured at upload time). No ledger money moves at upload;
+ *   worker-side credits are created when an employer payment is posted with
+ *   this upload selected as its allocation source (charge plugin
+ *   `bao-er-report-to-ee-allocation`). Idempotent per upload+worker; blocked
+ *   once the upload's allocations are consumed by a payment.
  * - New-worker creation is reviewed (optionally) in the Verify step:
  *   `canCreateWorker` blocks creation only for rows explicitly rejected in
  *   `wizard.data.newWorkerDecisions`; unreviewed rows are created with a
@@ -148,9 +148,11 @@ export class BaoMonthlyHoursWizard extends GbhetLegalWorkersWizard {
 
   /**
    * Feed-processing hook (duck-typed from `processFeedData`): record the
-   * optional Employee Withholding Amount as an allocated ledger payment on
-   * the worker's behalf. Idempotent on re-upload: one payment per
-   * worker-EA + work month, updated in place when the amount changes.
+   * optional Employee Withholding Amount as a stored withholding ALLOCATION
+   * (upload/worker/month/worker-EA/amount). The worker's EA is ensured at
+   * upload time; no ledger payment or entry is created here. Idempotent per
+   * upload+worker; once a payment has consumed this upload's allocations,
+   * any change is rejected with a clear per-row error.
    */
   protected async processWorkerPayments(workerId: string, row: Record<string, any>, wizard: any): Promise<void> {
     const raw = row.withholdingAmount;
@@ -162,7 +164,6 @@ export class BaoMonthlyHoursWizard extends GbhetLegalWorkersWizard {
     if (!isFinite(amount)) {
       throw new Error(`Invalid withholding amount: ${raw}`);
     }
-    if (amount === 0) return;
     if (amount < 0) {
       throw new Error(`Withholding amount cannot be negative: ${raw}`);
     }
@@ -210,72 +211,45 @@ export class BaoMonthlyHoursWizard extends GbhetLegalWorkersWizard {
     }
     const accountId = (candidates[0].subsidiary as ChargeSub)!.account as string;
 
-    // Payment type: the ledger-payment-type option whose name mentions
-    // "withholding". Explicit error when missing — no silent fallback.
-    const paymentTypes = await unifiedOptionsStorage.list('ledger-payment-type');
-    const withholdingType = paymentTypes.find((t: { id: string; name: string }) =>
-      String(t.name || '').toLowerCase().includes('withholding'),
-    );
-    if (!withholdingType) {
-      throw new Error(
-        'No ledger payment type containing "withholding" is configured; add one under ledger payment types',
-      );
-    }
-
-    const ea = await storage.ledger.ea.getOrCreate('worker', workerId, accountId);
-    const amountStr = amount.toFixed(2);
-    const details = {
-      baoWithholding: { ym, workerId, wizardId: wizard.id },
-      proposedAllocation: [{ eaId: ea.id, amount: amountStr, statementYmd }],
-    };
-    const memo = `BAO employee withholding for ${ym} (hours upload)`;
-
-    const existingPayments = await storage.ledger.payments.getByLedgerEaId(ea.id);
-    const existing = existingPayments.find(
-      (p) => ((p.details as any) || {}).baoWithholding?.ym === ym,
-    );
-
-    if (existing) {
-      if (existing.amount === amountStr) {
-        // Same amount already recorded for this month — nothing to do.
+    try {
+      if (amount === 0) {
+        // Withholding dropped to zero on re-upload: remove any stored
+        // allocation (blocked when already consumed by a payment).
+        await storage.baoWithholdingAllocations.removeForWizardWorker(wizard.id, workerId);
         return;
       }
-      const updated = await storage.ledger.payments.update(existing.id, {
+
+      // Ensure the worker's EA exists at upload time, then upsert the stored
+      // allocation. No ledger payment/entry is created here — money is only
+      // recognized when an employer payment consumes this upload.
+      const ea = await storage.ledger.ea.getOrCreate('worker', workerId, accountId);
+      const amountStr = amount.toFixed(2);
+      await storage.baoWithholdingAllocations.upsert({
+        wizardId: wizard.id,
+        employerId,
+        year,
+        month,
+        workerId,
+        workerEaId: ea.id,
         amount: amountStr,
-        details,
-        memo,
+        data: { ym, statementYmd },
       });
-      if (updated) {
-        await triggerPaymentChargePlugins(updated);
-      }
-      logger.info('BAO withholding payment updated', {
+      logger.info('BAO withholding allocation stored', {
         service: 'wizard-bao-monthly-hours',
-        paymentId: existing.id,
+        wizardId: wizard.id,
         workerId,
         ym,
         amount: amountStr,
       });
-      return;
+    } catch (err) {
+      if (err instanceof Error && err.message === WITHHOLDING_CONSUMED) {
+        throw new Error(
+          `This upload's withholding for ${ym} has already been consumed by a payment; ` +
+            'void that payment before changing withholding amounts',
+        );
+      }
+      throw err;
     }
-
-    const payment = await storage.ledger.payments.create({
-      status: 'cleared',
-      amount: amountStr,
-      paymentType: withholdingType.id,
-      ledgerEaId: ea.id,
-      details,
-      dateReceived: new Date(),
-      dateCleared: new Date(),
-      memo,
-    });
-    await triggerPaymentChargePlugins(payment);
-    logger.info('BAO withholding payment created', {
-      service: 'wizard-bao-monthly-hours',
-      paymentId: payment.id,
-      workerId,
-      ym,
-      amount: amountStr,
-    });
   }
 }
 

@@ -9,6 +9,7 @@ import {
   createPaymentFromRequestBody,
   triggerPaymentChargePlugins,
   enrichWithAllocatedEntities,
+  cleanupUploadSourcePaymentArtifacts,
 } from "./payments";
 import type { LedgerNotification } from "../../plugins/ledger/charge/types";
 import type { LedgerPayment } from "@shared/schema";
@@ -268,6 +269,17 @@ export function registerLedgerPaymentBatchRoutes(app: Express) {
         }
 
         if (deletePayment) {
+          // Reverse any BAO upload-source worker entries and release the
+          // consumed uploads before deleting the payment (same cleanup the
+          // direct payment DELETE route runs). If cleanup fails, refuse to
+          // delete so we never orphan funded worker credits.
+          const payment = await storage.ledger.payments.get(paymentId);
+          if (payment) {
+            await cleanupUploadSourcePaymentArtifacts(
+              paymentId,
+              payment.details as Record<string, unknown> | null,
+            );
+          }
           await storage.ledger.payments.delete(paymentId);
         }
 

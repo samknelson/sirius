@@ -8,6 +8,7 @@ import { executeChargePlugins, TriggerType, PaymentSavedContext, LedgerNotificat
 import { logger } from "../../logger";
 import { eventBus, EventType } from "../../services/event-bus";
 import { isValidYmd, ymdToDateForPicker, dateToYmd } from "@shared/utils/date";
+import { isComponentEnabled } from "../components";
 
 const unifiedOptionsStorage = createUnifiedOptionsStorage();
 
@@ -134,6 +135,111 @@ export function validateProposedAllocation(
   return { valid: true, allocations };
 }
 
+export interface BaoUploadSourceDetails {
+  wizardIds: string[];
+}
+
+/**
+ * Parse and validate the `details.baoUploadSource` allocation method: the
+ * payment's amount must exactly equal the combined stored withholding of the
+ * selected uploads, every upload must be eligible (completed, same employer,
+ * unconsumed — or consumed by THIS payment when editing), and every worker EA
+ * must sit on the payment's ledger account. Returns `{ valid: true }` with
+ * no `source` when the details carry no upload-source marker.
+ */
+export async function validateBaoUploadSource(
+  details: Record<string, unknown> | null | undefined,
+  paymentAmount: string,
+  primaryEa: { id: string; accountId: string; entityType: string; entityId: string },
+  existingPaymentId?: string,
+): Promise<{ valid: boolean; error?: string; source?: BaoUploadSourceDetails }> {
+  const raw = details?.baoUploadSource;
+  if (!raw) return { valid: true };
+  if (typeof raw !== "object" || Array.isArray(raw)) {
+    return { valid: false, error: "baoUploadSource must be an object" };
+  }
+  const wizardIds = (raw as Record<string, unknown>).wizardIds;
+  if (!Array.isArray(wizardIds) || wizardIds.length === 0 || wizardIds.some((w) => typeof w !== "string" || !w)) {
+    return { valid: false, error: "baoUploadSource.wizardIds must be a non-empty array of upload ids" };
+  }
+  if (new Set(wizardIds).size !== wizardIds.length) {
+    return { valid: false, error: "Duplicate uploads selected as allocation source" };
+  }
+  if (!(await isComponentEnabled("sitespecific.bao"))) {
+    return { valid: false, error: "Upload-source allocation requires the BAO component" };
+  }
+  if (details?.proposedAllocation) {
+    return { valid: false, error: "A payment cannot combine upload-source and participant allocations" };
+  }
+  if (primaryEa.entityType !== "employer") {
+    return { valid: false, error: "Upload-source allocation is only available on employer accounts" };
+  }
+
+  // Fail explicitly unless the SAME canonical config resolution used at
+  // execution time yields a config for this account — otherwise the payment
+  // would clear without ever crediting the workers (employer-scoped configs
+  // never execute on payment dispatches, so only a global-scope config
+  // qualifies; duplicates resolve deterministically to one).
+  const { resolveBaoUploadSourceConfig } = await import(
+    "../../plugins/ledger/charge/plugins/sitespecific-bao-er-report-to-ee-allocation"
+  );
+  const canonicalConfig = await resolveBaoUploadSourceConfig(primaryEa.accountId);
+  if (!canonicalConfig) {
+    return {
+      valid: false,
+      error:
+        'No enabled global-scope "BAO ER report to EE Allocation" charge plugin config exists for this account',
+    };
+  }
+
+  const eligible = await storage.baoWithholdingAllocations.listEligibleUploads({
+    employerId: primaryEa.entityId,
+    accountId: primaryEa.accountId,
+    includePaymentId: existingPaymentId,
+  });
+  const eligibleById = new Map(eligible.map((u) => [u.wizardId, u]));
+  let totalCents = 0;
+  for (const wizardId of wizardIds as string[]) {
+    const upload = eligibleById.get(wizardId);
+    if (!upload) {
+      return {
+        valid: false,
+        error: "A selected upload is not eligible (it may be incomplete, already consumed by another payment, for a different employer, or on a different account)",
+      };
+    }
+    totalCents += Math.round(parseFloat(upload.totalAmount) * 100);
+  }
+  const paymentCents = Math.round(parseFloat(paymentAmount) * 100);
+  if (paymentCents !== totalCents) {
+    return {
+      valid: false,
+      error: `Payment amount must exactly equal the selected uploads' total withholding of $${(totalCents / 100).toFixed(2)}`,
+    };
+  }
+  return { valid: true, source: { wizardIds: wizardIds as string[] } };
+}
+
+/**
+ * Reverse the per-worker ledger entries created by the BAO upload-source
+ * charge plugin and release the consumed uploads for a payment that is about
+ * to be DELETED. The plugin cannot reconcile once the referenced payment row
+ * is gone, and the allocation FK only clears `consumed_by_payment_id` — it
+ * never touches ledger entries. No-op for payments without the marker.
+ */
+export async function cleanupUploadSourcePaymentArtifacts(
+  paymentId: string,
+  details: Record<string, unknown> | null | undefined,
+): Promise<void> {
+  if (!details?.baoUploadSource) return;
+  const entries = await storage.ledger.entries.getByReference("payment", paymentId);
+  for (const entry of entries) {
+    if (entry.chargePlugin === "bao-er-report-to-ee-allocation") {
+      await storage.ledger.entries.delete(entry.id);
+    }
+  }
+  await storage.baoWithholdingAllocations.release(paymentId);
+}
+
 export type CreatePaymentResult =
   | { ok: true; payment: LedgerPayment }
   | { ok: false; status: number; message: string };
@@ -203,6 +309,15 @@ export async function createPaymentFromRequestBody(
     }
   }
 
+  const uploadSourceValidation = await validateBaoUploadSource(
+    validated.details as Record<string, unknown> | null,
+    validated.amount,
+    primaryEa,
+  );
+  if (!uploadSourceValidation.valid) {
+    return { ok: false, status: 400, message: uploadSourceValidation.error || "Invalid upload source" };
+  }
+
   const payment = await storage.ledger.payments.create(validated);
   return { ok: true, payment };
 }
@@ -252,6 +367,7 @@ export async function triggerPaymentChargePlugins(payment: LedgerPayment): Promi
           paymentTypeId: payment.paymentType,
           allocationId: allocIdentity,
           allocationStatementYmd: alloc.statementYmd,
+          details,
         };
 
         eventBus.emit(EventType.PAYMENT_SAVED, payload).catch(err => {
@@ -327,6 +443,7 @@ export async function triggerPaymentChargePlugins(payment: LedgerPayment): Promi
       dateCleared: payment.dateCleared,
       memo: payment.memo,
       paymentTypeId: payment.paymentType,
+      details,
     };
 
     eventBus.emit(EventType.PAYMENT_SAVED, payload).catch(err => {
@@ -541,7 +658,24 @@ export function registerLedgerPaymentRoutes(app: Express) {
           }
         }
       }
-      
+
+      const effectiveEaId = validatedData.ledgerEaId ?? existingPayment.ledgerEaId;
+      const effectiveEa = await storage.ledger.ea.get(effectiveEaId);
+      if (!effectiveEa) {
+        res.status(400).json({ message: "Payment EA not found" });
+        return;
+      }
+      const uploadSourceValidation = await validateBaoUploadSource(
+        effectiveDetails,
+        effectiveAmount,
+        effectiveEa,
+        existingPayment.id,
+      );
+      if (!uploadSourceValidation.valid) {
+        res.status(400).json({ message: uploadSourceValidation.error });
+        return;
+      }
+
       const payment = await storage.ledger.payments.update(id, validatedData);
       
       if (!payment) {
@@ -582,7 +716,9 @@ export function registerLedgerPaymentRoutes(app: Express) {
         res.status(404).json({ message: "Payment not found" });
         return;
       }
-      
+
+      await cleanupUploadSourcePaymentArtifacts(id, payment.details as Record<string, unknown> | null);
+
       const success = await storage.ledger.payments.delete(id);
       
       if (!success) {

@@ -17,6 +17,23 @@ import type { z } from "zod";
 import { useAuth } from "@/contexts/AuthContext";
 import { StatementPicker, type StatementSelection } from "@/components/ledger/StatementPicker";
 import { dateToYmd } from "@shared/utils/date";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+
+const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+interface WithholdingUpload {
+  wizardId: string;
+  year: number;
+  month: number;
+  totalAmount: string;
+  allocationCount: number;
+  consumedByPaymentId: string | null;
+}
 
 type PaymentCategory = "financial" | "adjustment";
 
@@ -43,6 +60,8 @@ function EAPaymentCreateContent() {
   const [statementMonth, setStatementMonth] = useState<string>("");
   const [statementYear, setStatementYear] = useState<string>("");
   const [statementSelections, setStatementSelections] = useState<StatementSelection[]>([]);
+  const [allocationMethod, setAllocationMethod] = useState<"statement" | "uploadSource">("statement");
+  const [selectedUploadIds, setSelectedUploadIds] = useState<string[]>([]);
 
   const { data: eaData } = useQuery<{ id: string; accountId: string; entityName?: string; entityType?: string }>({
     queryKey: ["/api/ledger/ea", eaId],
@@ -57,6 +76,26 @@ function EAPaymentCreateContent() {
   const { data: paymentTypes = [] } = useQuery<LedgerPaymentType[]>({
     queryKey: ["/api/ledger/payment-types"],
   });
+
+  // BAO withholding uploads eligible as a payment's allocation source
+  // (employer EAs only; empty/error hides the "Upload source" method).
+  const { data: withholdingUploads = [] } = useQuery<WithholdingUpload[]>({
+    queryKey: ["/api/sitespecific/bao/withholding-uploads", { eaId }],
+    queryFn: async () => {
+      const res = await fetch(`/api/sitespecific/bao/withholding-uploads?eaId=${encodeURIComponent(eaId || "")}`, {
+        credentials: "include",
+      });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!eaId && eaData?.entityType === "employer",
+    retry: false,
+  });
+
+  const selectedUploads = withholdingUploads.filter((u) => selectedUploadIds.includes(u.wizardId));
+  const selectedUploadsTotal = selectedUploads
+    .reduce((sum, u) => sum + parseFloat(u.totalAmount), 0)
+    .toFixed(2);
 
   const filteredPaymentTypes = paymentTypes.filter(pt => pt.currencyCode === currencyCode);
 
@@ -189,6 +228,45 @@ function EAPaymentCreateContent() {
   };
 
   const onCreateSubmit = form.handleSubmit((data) => {
+    if (allocationMethod === "uploadSource") {
+      if (selectedUploadIds.length === 0) {
+        toast({
+          title: "Upload selection required",
+          description: "Select at least one upload as the payment's allocation source.",
+          variant: "destructive",
+        });
+        return;
+      }
+      const paymentAmount = parseFloat(data.amount) || 0;
+      if (Math.abs(paymentAmount - parseFloat(selectedUploadsTotal)) > 0.005) {
+        toast({
+          title: "Amount mismatch",
+          description: `Payment amount must exactly equal the selected uploads' total withholding of $${selectedUploadsTotal}.`,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const details: Record<string, unknown> = {};
+      if (category === "financial") {
+        if (merchant) details.merchant = merchant;
+        if (checkTransactionNumber) details.checkTransactionNumber = checkTransactionNumber;
+      } else {
+        if (adjustmentUser) details.adjustmentUser = adjustmentUser;
+        if (dateEntered) details.dateEntered = dateEntered;
+        if (effectiveDate) details.effectiveDate = effectiveDate;
+      }
+      details.baoUploadSource = { wizardIds: selectedUploadIds };
+
+      createPaymentMutation.mutate({
+        ...data,
+        ledgerEaId: eaId,
+        details,
+        status: category === "adjustment" ? "cleared" : data.status,
+      });
+      return;
+    }
+
     if (statementSelections.length > 1) {
       const missingAmounts = statementSelections.some(
         (s) => !s.amount || isNaN(parseFloat(s.amount)) || parseFloat(s.amount) <= 0
@@ -506,17 +584,75 @@ function EAPaymentCreateContent() {
               )}
             />
 
-            <StatementPicker
-              eaId={eaId || null}
-              currencyCode={currencyCode}
-              paymentAmount={form.watch("amount") || "0"}
-              selections={statementSelections}
-              onSelectionsChange={setStatementSelections}
-              manualMonth={statementMonth}
-              manualYear={statementYear}
-              onManualMonthChange={setStatementMonth}
-              onManualYearChange={setStatementYear}
-            />
+            {withholdingUploads.length > 0 && (
+              <div className="space-y-2">
+                <Label>Allocation Method</Label>
+                <RadioGroup
+                  value={allocationMethod}
+                  onValueChange={(v) => setAllocationMethod(v as "statement" | "uploadSource")}
+                  className="flex gap-6"
+                >
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="statement" id="alloc-statement" data-testid="radio-alloc-statement" />
+                    <Label htmlFor="alloc-statement" className="font-normal">Statement</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="uploadSource" id="alloc-upload-source" data-testid="radio-alloc-upload-source" />
+                    <Label htmlFor="alloc-upload-source" className="font-normal">Upload source</Label>
+                  </div>
+                </RadioGroup>
+              </div>
+            )}
+
+            {allocationMethod === "uploadSource" ? (
+              <div className="space-y-2 rounded-md border p-4">
+                <Label>Hours Uploads (employee withholding)</Label>
+                <p className="text-sm text-muted-foreground">
+                  Select the upload(s) this payment covers. The payment amount must exactly
+                  equal the selected uploads' total withholding; each worker's share is
+                  credited to their ledger when the payment clears.
+                </p>
+                <div className="space-y-2">
+                  {withholdingUploads.map((upload) => (
+                    <div key={upload.wizardId} className="flex items-center gap-3">
+                      <Checkbox
+                        id={`upload-${upload.wizardId}`}
+                        data-testid={`checkbox-upload-${upload.wizardId}`}
+                        checked={selectedUploadIds.includes(upload.wizardId)}
+                        onCheckedChange={(checked) => {
+                          setSelectedUploadIds((prev) =>
+                            checked
+                              ? [...prev, upload.wizardId]
+                              : prev.filter((id) => id !== upload.wizardId),
+                          );
+                        }}
+                      />
+                      <Label htmlFor={`upload-${upload.wizardId}`} className="font-normal">
+                        {MONTH_NAMES[upload.month - 1]} {upload.year} — ${upload.totalAmount}
+                        {" "}({upload.allocationCount} worker{upload.allocationCount === 1 ? "" : "s"})
+                      </Label>
+                    </div>
+                  ))}
+                </div>
+                {selectedUploadIds.length > 0 && (
+                  <p className="text-sm font-medium" data-testid="text-uploads-total">
+                    Selected total: ${selectedUploadsTotal}
+                  </p>
+                )}
+              </div>
+            ) : (
+              <StatementPicker
+                eaId={eaId || null}
+                currencyCode={currencyCode}
+                paymentAmount={form.watch("amount") || "0"}
+                selections={statementSelections}
+                onSelectionsChange={setStatementSelections}
+                manualMonth={statementMonth}
+                manualYear={statementYear}
+                onManualMonthChange={setStatementMonth}
+                onManualYearChange={setStatementYear}
+              />
+            )}
 
             <div className="flex gap-2 pt-4">
               <Button

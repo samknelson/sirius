@@ -145,6 +145,7 @@ import { type BaoCobraCasesStorage, createBaoCobraCasesStorage, baoCobraCasesLog
 import { type BaoDpRatesStorage, createBaoDpRatesStorage, baoDpRatesLoggingConfig } from "./sitespecific/bao/dp-rates";
 import { type BaoPremiumRatesStorage, createBaoPremiumRatesStorage, baoPremiumRatesLoggingConfig } from "./sitespecific/bao/premium-rates";
 import { type BaoPremiumFilesStorage, createBaoPremiumFilesStorage, baoPremiumFilesLoggingConfig } from "./sitespecific/bao/premium-files";
+import { type BaoWithholdingAllocationsStorage, createBaoWithholdingAllocationsStorage, baoWithholdingAllocationsLoggingConfig } from "./sitespecific/bao/withholding-allocations";
 import { type WorkerBanStorage, createWorkerBanStorage, workerBanLoggingConfig } from "./worker-bans";
 import { type WorkerDispatchDncStorage, createWorkerDispatchDncStorage, workerDispatchDncLoggingConfig } from "./dispatch/worker-dnc";
 import { type WorkerDispatchDepartmentStorage, createWorkerDispatchDepartmentStorage, workerDispatchDepartmentLoggingConfig } from "./dispatch/worker-departments";
@@ -270,6 +271,7 @@ export interface IStorage {
   baoDpRates: BaoDpRatesStorage;
   baoPremiumRates: BaoPremiumRatesStorage;
   baoPremiumFiles: BaoPremiumFilesStorage;
+  baoWithholdingAllocations: BaoWithholdingAllocationsStorage;
   freemanCrewleads: FreemanCrewleadsStorage;
   workerBans: WorkerBanStorage;
   workerDispatchDnc: WorkerDispatchDncStorage;
@@ -390,6 +392,7 @@ export class DatabaseStorage implements IStorage {
   baoDpRates: BaoDpRatesStorage;
   baoPremiumRates: BaoPremiumRatesStorage;
   baoPremiumFiles: BaoPremiumFilesStorage;
+  baoWithholdingAllocations: BaoWithholdingAllocationsStorage;
   freemanCrewleads: FreemanCrewleadsStorage;
   workerBans: WorkerBanStorage;
   workerDispatchDnc: WorkerDispatchDncStorage;
@@ -643,6 +646,10 @@ export class DatabaseStorage implements IStorage {
     this.baoPremiumFiles = withStorageLogging(
       createBaoPremiumFilesStorage(),
       baoPremiumFilesLoggingConfig,
+    );
+    this.baoWithholdingAllocations = withStorageLogging(
+      createBaoWithholdingAllocationsStorage(),
+      baoWithholdingAllocationsLoggingConfig,
     );
     this.freemanCrewleads = withStorageLogging(
       createFreemanCrewleadsStorage(),

@@ -147,3 +147,4 @@ import "./plugins/sitespecific-bao-dp";
 import "./plugins/sitespecific-bao-echp";
 import "./plugins/sitespecific-bao-premium";
 import "./plugins/sitespecific-bao-hourly";
+import "./plugins/sitespecific-bao-er-report-to-ee-allocation";
