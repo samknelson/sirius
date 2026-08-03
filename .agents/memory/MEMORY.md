@@ -77,6 +77,7 @@
 - [Wizard side-effect rows need reuse + ownership flag](wizard-side-effect-rows-ownership.md) — wizard-created persistent rows duplicate across drafts unless add reuses existing + tracks createdByWizard, and storage enforces the uniqueness invariant.
 - [BAO buildup forward impact unbounded](bao-buildup-forward-impact.md) — mixed above/below patterns make the buildup walk unbounded; report MAX_SAFE_INTEGER and cap at the consumer, never lag+break.
 - [Election policy is derived, not stored](election-policy-derived.md) — never read worker_trust_elections.policy_id; resolve via resolveEmployerPolicyAsOf (history→denorm→policy_default); COBRA relies on denorm fallback.
+- [S1 docs blocked GitHub pushes](s1-docs-push-protection.md) — docs/s1-migration holds live S1 credentials; push protection rejects any history containing it as opaque PUSH_REJECTED; keep it gitignored/untracked.
 - [S1 source of truth is MariaDB](s1-snapshot-profiling.md) — the Neon "S1" sample is retired; real S1 = Drupal 7 on MariaDB 10.6, shape lives in docs/s1-migration profile artifacts; sample-value inferences are suspect.
 - [EXTERNAL_DATABASE_URL resolution + Neon pooler rewrite](external-database-url.md) — one resolution rule everywhere; Neon `-pooler.` URL must be rewritten to direct endpoint for serverless driver (pooler blocks search_path + is unnecessary with NeonPool).
 - [Shared policy → server hook injection](shared-policy-server-hook-injection.md) — shared access-policy files can't import server registries; use a boot-wired injectable resolver that fails closed when unset.
