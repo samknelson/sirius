@@ -16,3 +16,7 @@ __replit_disk_meta.json
 # freeman-only directories: tracked on the freeman-dev branch, never on main
 .github/
 deploy/
+
+# S1 migration docs (contain live connection details; kept local only)
+docs/s1-migration/
+attached_assets/06-strategy-revision*
