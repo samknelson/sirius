@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNotNull } from "drizzle-orm";
 import {
   workers,
   contacts,
@@ -12,6 +12,7 @@ import {
   employers,
 } from "@shared/schema";
 import type { TrustProviderEdiContext } from "./registry";
+import { logger } from "../../../logger";
 
 /**
  * Shared base logic for trust-provider EDI plugins.
@@ -249,16 +250,25 @@ const personColumns = {
 
 /**
  * Materialize a batch of trust_wmb keys into the normalized member model:
- * subscriber demographics/address/phone, active dependents (canonical
- * semantics: start on/before the as-of date AND no end OR end on/after it)
- * with their own address/phone, COBRA flag, and contiguous coverage start.
+ * subscriber demographics/address/phone, covered dependents with their own
+ * address/phone, COBRA flag, and contiguous coverage start.
+ *
+ * Dependents are derived from trust_wmb itself: a dependent is anyone who
+ * holds a monthly benefit record for the SAME benefit and month whose
+ * `source_relation_id` points at a relation whose worker1 is the
+ * subscriber. This keeps the file in lockstep with what the benefits scan
+ * actually granted — a relation that looks active but was not granted the
+ * benefit does not appear, and a granted dependent always does (even if
+ * the relation has since ended). Relation-type codes still come from the
+ * relation the WMB row references, so provider role mappings are
+ * unchanged. Dependent rows with a dangling source relation are skipped
+ * with a warning (null-source rows are treated as subscribers upstream).
  * Order follows the batch's wmb rows; missing workers are skipped.
  */
 export async function buildMemberUnits(
   keys: string[],
   ctx: TrustProviderEdiContext,
 ): Promise<EdiMemberUnit[]> {
-  const asOfYmd = readAsOfYmd(ctx);
   return ctx.storage.readOnly.query(async (db) => {
     const wmbRows = await db
       .select()
@@ -328,6 +338,71 @@ export async function buildMemberUnits(
       return `${String(y).padStart(4, "0")}-${String(m).padStart(2, "0")}-01`;
     }
 
+    // Dependent WMB rows for the batch's benefits/months, keyed to their
+    // subscriber via the source relation's worker1. One batched query; the
+    // exact (benefit, year, month) match happens in JS since a batch can in
+    // principle span months.
+    const years = Array.from(new Set(wmbRows.map((r) => r.year)));
+    const months = Array.from(new Set(wmbRows.map((r) => r.month)));
+    const depWmbRows =
+      benefitIds.length && years.length
+        ? await db
+            .select({
+              depWmbId: trustWmb.id,
+              benefitId: trustWmb.benefitId,
+              year: trustWmb.year,
+              month: trustWmb.month,
+              depWorkerId: trustWmb.workerId,
+              sourceRelationId: trustWmb.sourceRelationId,
+              relationId: workerRelations.id,
+              subscriberWorkerId: workerRelations.worker1,
+              relationSiriusId: optionsWorkerRelationType.siriusId,
+              ...personColumns,
+            })
+            .from(trustWmb)
+            .leftJoin(
+              workerRelations,
+              eq(trustWmb.sourceRelationId, workerRelations.id),
+            )
+            .leftJoin(
+              optionsWorkerRelationType,
+              eq(workerRelations.relationType, optionsWorkerRelationType.id),
+            )
+            .innerJoin(workers, eq(trustWmb.workerId, workers.id))
+            .innerJoin(contacts, eq(workers.contactId, contacts.id))
+            .leftJoin(optionsGender, eq(contacts.gender, optionsGender.id))
+            .where(
+              and(
+                inArray(trustWmb.benefitId, benefitIds),
+                inArray(trustWmb.year, years),
+                inArray(trustWmb.month, months),
+                isNotNull(trustWmb.sourceRelationId),
+              ),
+            )
+        : [];
+    // subscriberWorkerId|benefitId|year-month → dependent rows.
+    const depsBySubscriber = new Map<string, typeof depWmbRows>();
+    for (const dep of depWmbRows) {
+      if (!dep.relationId || !dep.subscriberWorkerId) {
+        // Dangling source relation: the scan granted this row through a
+        // relation that no longer exists, so it can't be attached to a
+        // subscriber unit. Skip it rather than fail the batch.
+        logger.warn(
+          "EDI dependent WMB row has a dangling source relation; skipping",
+          {
+            service: "trust-provider-edi",
+            wmbId: dep.depWmbId,
+            sourceRelationId: dep.sourceRelationId,
+          },
+        );
+        continue;
+      }
+      const key = `${dep.subscriberWorkerId}|${dep.benefitId}|${dep.year}-${dep.month}`;
+      let list = depsBySubscriber.get(key);
+      if (!list) depsBySubscriber.set(key, (list = []));
+      list.push(dep);
+    }
+
     async function primaryPostal(contactId: string): Promise<EdiPostal | null> {
       const [postal] = await db
         .select({
@@ -373,49 +448,30 @@ export async function buildMemberUnits(
       const subscriberPostal = await primaryPostal(subscriber.contactId);
       const subscriberPhone = await primaryPhone(subscriber.contactId);
 
-      // Active dependents: the worker's relations active as of the run
-      // date (monthly benefit records carry no relationship list).
-      // Canonical active-relation semantics: start on/before the as-of
-      // date AND (no end OR end on/after the as-of date). Rows without a
-      // start date are not active.
-      const relations = await db
-        .select({
-          relationId: workerRelations.id,
-          relationSiriusId: optionsWorkerRelationType.siriusId,
-          startYmd: workerRelations.startYmd,
-          endYmd: workerRelations.endYmd,
-          ...personColumns,
-        })
-        .from(workerRelations)
-        .innerJoin(workers, eq(workerRelations.worker2, workers.id))
-        .innerJoin(contacts, eq(workers.contactId, contacts.id))
-        .leftJoin(optionsGender, eq(contacts.gender, optionsGender.id))
-        .innerJoin(
-          optionsWorkerRelationType,
-          eq(workerRelations.relationType, optionsWorkerRelationType.id),
-        )
-        .where(eq(workerRelations.worker1, wmb.workerId));
-      const activeRelations = relations.filter(
-        (rel) =>
-          rel.startYmd &&
-          rel.startYmd <= asOfYmd &&
-          !(rel.endYmd && rel.endYmd < asOfYmd),
-      );
-
+      // Covered dependents: WMB rows for the same benefit and month whose
+      // source relation points back at this subscriber. Deduped by
+      // dependent worker (lowest wmb row id wins deterministically).
+      const depKey = `${wmb.workerId}|${wmb.benefitId}|${wmb.year}-${wmb.month}`;
+      const depRows = (depsBySubscriber.get(depKey) ?? [])
+        .slice()
+        .sort((a, b) => (a.depWmbId < b.depWmbId ? -1 : 1));
       const dependents: EdiDependent[] = [];
-      for (const rel of activeRelations) {
+      const seenDepWorkers = new Set<string>();
+      for (const dep of depRows) {
+        if (seenDepWorkers.has(dep.depWorkerId)) continue;
+        seenDepWorkers.add(dep.depWorkerId);
         dependents.push({
-          relationId: rel.relationId,
-          relationSiriusId: rel.relationSiriusId ?? null,
-          ssn: rel.ssn,
-          contactId: rel.contactId,
-          givenName: rel.givenName,
-          familyName: rel.familyName,
-          middleName: rel.middleName,
-          birthDate: rel.birthDate,
-          genderCode: rel.genderCode,
-          postal: await primaryPostal(rel.contactId),
-          phoneNumber: await primaryPhone(rel.contactId),
+          relationId: dep.relationId!,
+          relationSiriusId: dep.relationSiriusId ?? null,
+          ssn: dep.ssn,
+          contactId: dep.contactId,
+          givenName: dep.givenName,
+          familyName: dep.familyName,
+          middleName: dep.middleName,
+          birthDate: dep.birthDate,
+          genderCode: dep.genderCode,
+          postal: await primaryPostal(dep.contactId),
+          phoneNumber: await primaryPhone(dep.contactId),
         });
       }
 
