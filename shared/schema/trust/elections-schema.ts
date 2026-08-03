@@ -3,7 +3,7 @@ import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { workers, policies, employers } from "../../schema";
-import { toYmd, getTodayYmd } from "../../utils/date";
+import { toYmd } from "../../utils/date";
 
 /**
  * The three ways a worker's benefit election can be submitted. Every

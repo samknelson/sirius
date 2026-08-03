@@ -19,7 +19,7 @@ import { eq, and, asc, desc, isNull, lt, lte, gte, or, ne, inArray, arrayOverlap
 import { defineLoggingConfig, type StorageLoggingConfig } from '../middleware/logging';
 import { normalizeToDateOnly, getTodayDateOnly } from '@shared/utils';
 import { eventBus, EventType } from '../../services/event-bus';
-import { toYmd, getTodayYmd, addDaysYmd } from '@shared/utils/date';
+import { toYmd, addDaysYmd } from '@shared/utils/date';
 
 export interface WorkerTrustElectionSearchParams {
   id?: string;
