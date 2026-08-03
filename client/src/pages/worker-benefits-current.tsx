@@ -27,6 +27,13 @@ interface CurrentBenefitRow {
   electedOn: string | null;
   activeInCurrentMonth: boolean;
   endDate: string | null;
+  /** Set when the benefit came through a relationship (dependent coverage). */
+  sourceRelation: {
+    id: string;
+    relationTypeName: string | null;
+    sourceWorkerId: string;
+    sourceWorkerName: string;
+  } | null;
 }
 
 interface WmbScanState {
@@ -72,13 +79,26 @@ function BenefitCell({ row }: { row: CurrentBenefitRow }) {
       >
         {iconEl ?? <Heart size={14} />}
       </div>
-      <span
-        className="font-medium"
-        style={color ? { color } : undefined}
-        data-testid={`text-benefit-name-${row.benefitId}`}
-      >
-        {row.benefitName ?? "Unknown benefit"}
-      </span>
+      <div className="flex flex-col">
+        <span
+          className="font-medium"
+          style={color ? { color } : undefined}
+          data-testid={`text-benefit-name-${row.benefitId}`}
+        >
+          {row.benefitName ?? "Unknown benefit"}
+        </span>
+        {row.sourceRelation && (
+          <span
+            className="text-xs text-muted-foreground"
+            data-testid={`text-benefit-source-${row.benefitId}`}
+          >
+            via {row.sourceRelation.sourceWorkerName}
+            {row.sourceRelation.relationTypeName
+              ? ` (${row.sourceRelation.relationTypeName})`
+              : ""}
+          </span>
+        )}
+      </div>
     </div>
   );
 }

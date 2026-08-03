@@ -21,6 +21,8 @@ export interface WorkerBenefitPresenceRow {
   benefitId: string;
   year: number;
   month: number;
+  /** Set when the month's coverage came through a relationship (dependent coverage). */
+  sourceRelationId: string | null;
   benefitName: string | null;
   benefitTypeId: string | null;
   benefitTypeName: string | null;
@@ -158,6 +160,7 @@ export function createTrustWmbStorage(): TrustWmbStorage {
           benefitId: trustWmb.benefitId,
           year: trustWmb.year,
           month: trustWmb.month,
+          sourceRelationId: trustWmb.sourceRelationId,
           benefitName: trustBenefits.name,
           benefitTypeId: optionsTrustBenefitType.id,
           benefitTypeName: optionsTrustBenefitType.name,
@@ -173,6 +176,7 @@ export function createTrustWmbStorage(): TrustWmbStorage {
         benefitId: r.benefitId,
         year: r.year,
         month: r.month,
+        sourceRelationId: r.sourceRelationId ?? null,
         benefitName: r.benefitName ?? null,
         benefitTypeId: r.benefitTypeId ?? null,
         benefitTypeName: r.benefitTypeName ?? null,

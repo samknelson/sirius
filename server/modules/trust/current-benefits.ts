@@ -16,6 +16,13 @@ export interface CurrentBenefitRow {
   electedOn: string | null;
   activeInCurrentMonth: boolean;
   endDate: string | null;
+  /** Set when the most-recent-month coverage came through a relationship (dependent coverage). */
+  sourceRelation: {
+    id: string;
+    relationTypeName: string | null;
+    sourceWorkerId: string;
+    sourceWorkerName: string;
+  } | null;
 }
 
 function periodKey(year: number, month: number): number {
@@ -66,6 +73,10 @@ export async function getWorkerCurrentBenefits(workerId: string): Promise<Curren
   // Per-benefit set of present period keys + metadata (metadata is constant per benefit).
   const presentByBenefit = new Map<string, Set<number>>();
   const metaByBenefit = new Map<string, WorkerBenefitPresenceRow>();
+  // Source relation of the most-recent-month (M*) row per benefit. When a
+  // benefit has multiple M* rows (e.g. across employers), prefer a non-null
+  // relation id so dependent coverage isn't hidden by a duplicate own row.
+  const sourceRelationIdByBenefit = new Map<string, string | null>();
   for (const row of presence) {
     let set = presentByBenefit.get(row.benefitId);
     if (!set) {
@@ -74,6 +85,10 @@ export async function getWorkerCurrentBenefits(workerId: string): Promise<Curren
     }
     set.add(periodKey(row.year, row.month));
     if (!metaByBenefit.has(row.benefitId)) metaByBenefit.set(row.benefitId, row);
+    if (periodKey(row.year, row.month) === mStar) {
+      const existing = sourceRelationIdByBenefit.get(row.benefitId);
+      if (!existing) sourceRelationIdByBenefit.set(row.benefitId, row.sourceRelationId);
+    }
   }
 
   // Current benefits = those present at M*.
@@ -93,6 +108,38 @@ export async function getWorkerCurrentBenefits(workerId: string): Promise<Curren
       if (!current || election.startYmd < current) {
         earliestElectionByBenefit.set(benefitId, election.startYmd);
       }
+    }
+  }
+
+  // Resolve source relations (dependent coverage) for the M* rows. The
+  // worker_relations table is owned by the optional worker.relations
+  // component, so only resolve when it is enabled; otherwise sourceRelation
+  // stays null.
+  const { isComponentEnabledSync } = await import("../../services/component-cache");
+  const relationIds = Array.from(
+    new Set(
+      currentBenefitIds
+        .map((benefitId) => sourceRelationIdByBenefit.get(benefitId) ?? null)
+        .filter((id): id is string => !!id),
+    ),
+  );
+  const sourceRelationById = new Map<
+    string,
+    { id: string; relationTypeName: string | null; sourceWorkerId: string; sourceWorkerName: string }
+  >();
+  if (relationIds.length > 0 && isComponentEnabledSync("worker.relations")) {
+    const relations = await storage.workerRelations.listByIdsWithType(relationIds);
+    const nameByWorkerId = new Map<string, string>();
+    for (const rel of relations) {
+      if (!nameByWorkerId.has(rel.worker1)) {
+        nameByWorkerId.set(rel.worker1, await storage.workers.getWorkerDisplayName(rel.worker1));
+      }
+      sourceRelationById.set(rel.id, {
+        id: rel.id,
+        relationTypeName: rel.relationTypeName,
+        sourceWorkerId: rel.worker1,
+        sourceWorkerName: nameByWorkerId.get(rel.worker1) ?? rel.worker1,
+      });
     }
   }
 
@@ -127,6 +174,10 @@ export async function getWorkerCurrentBenefits(workerId: string): Promise<Curren
       electedOn: earliestElectionByBenefit.get(benefitId) ?? null,
       activeInCurrentMonth,
       endDate,
+      sourceRelation: (() => {
+        const relId = sourceRelationIdByBenefit.get(benefitId);
+        return relId ? sourceRelationById.get(relId) ?? null : null;
+      })(),
     };
   });
 
