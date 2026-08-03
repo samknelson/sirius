@@ -37,6 +37,7 @@ import {
   Megaphone,
   Layers,
   Stethoscope,
+  FileOutput,
   type LucideIcon,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -89,6 +90,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   Megaphone,
   Layers,
   Stethoscope,
+  FileOutput,
 };
 
 function getIcon(name: string): LucideIcon {

@@ -11,7 +11,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { Info, Database, AlertTriangle, Loader2, Archive, Trash2, Shield, ChevronRight, ChevronDown, Plug } from "lucide-react";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest , getApiErrorMessage } from "@/lib/queryClient";
 import { getAllComponents, ComponentDefinition, ComponentConfig } from "@shared/components";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 
@@ -81,7 +81,7 @@ export default function ComponentsConfigPage() {
       setLastError({
         componentId: variables.componentId,
         title: isDependencyError ? "Missing prerequisite components" : "Update Failed",
-        message: data?.message || error?.message || "Failed to update component.",
+        message: data?.message || getApiErrorMessage(error, "Failed to update component."),
         missingDependencies: isDependencyError ? data.missingDependencies : [],
         failedOperations: failedOps,
         repairable: data?.repairable === true,
@@ -89,7 +89,7 @@ export default function ComponentsConfigPage() {
       });
       toast({
         title: isDependencyError ? "Missing Prerequisites" : "Update Failed",
-        description: data?.message || error?.message || "Failed to update component.",
+        description: data?.message || getApiErrorMessage(error, "Failed to update component."),
         variant: "destructive",
       });
       setLocalStates(prev => ({
@@ -130,7 +130,7 @@ export default function ComponentsConfigPage() {
       });
       toast({
         title: "Repair Failed",
-        description: data?.message || error?.message || "Failed to repair component.",
+        description: data?.message || getApiErrorMessage(error, "Failed to repair component."),
         variant: "destructive",
       });
     },

@@ -9,6 +9,11 @@ import { type StorageLoggingConfig } from "../middleware/logging";
  */
 export const validate = createNoopValidator();
 
+/** Escape a literal string for safe embedding in a Postgres regex. */
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 export interface ShowOnListsIdType {
   id: string;
   name: string;
@@ -30,6 +35,13 @@ export interface WorkerIdStorage {
   getWorkerIdsForListByWorkerIds(workerIdsList: string[]): Promise<WorkerIdForList[]>;
   getWorkerIdsByTypeForWorkerIds(typeId: string, workerIdsList: string[]): Promise<{ workerId: string; value: string }[]>;
   getWorkerIdByTypeAndValue(typeId: string, value: string): Promise<WorkerId | undefined>;
+  /**
+   * All rows for a type whose value equals `value` OR equals `value` with a
+   * single leading letter (case-insensitive), e.g. "118637" also matches
+   * "I118637" / "O118637". Returns every match so callers can prefer the
+   * exact match and detect ambiguity among prefixed variants.
+   */
+  getWorkerIdsByTypeAndValueWithOptionalPrefix(typeId: string, value: string): Promise<WorkerId[]>;
   getByTypeAndValues(typeId: string, values: string[]): Promise<Array<{ value: string; workerId: string }>>;
   getTypeIdBySiriusId(siriusId: string): Promise<string | null>;
 }
@@ -102,6 +114,17 @@ export function createWorkerIdStorage(): WorkerIdStorage {
         .where(and(eq(workerIds.typeId, typeId), eq(workerIds.value, value)))
         .limit(1);
       return row || undefined;
+    },
+
+    async getWorkerIdsByTypeAndValueWithOptionalPrefix(typeId: string, value: string): Promise<WorkerId[]> {
+      const client = getClient();
+      return client
+        .select()
+        .from(workerIds)
+        .where(and(
+          eq(workerIds.typeId, typeId),
+          sql`(${workerIds.value} = ${value} OR ${workerIds.value} ~* ${`^[A-Za-z]${escapeRegex(value)}$`})`,
+        ));
     },
 
     async getShowOnListsIdTypes(): Promise<ShowOnListsIdType[]> {

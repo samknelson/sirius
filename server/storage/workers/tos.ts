@@ -8,6 +8,7 @@ import {
 } from "@shared/schema";
 import { eq, and, desc, isNull, ne, inArray } from "drizzle-orm";
 import { defineLoggingConfig, type StorageLoggingConfig } from "../middleware/logging";
+import { formatDurationBetween } from "@shared/utils";
 
 export class WorkerTosValidationError extends Error {
   constructor(message: string) {
@@ -60,20 +61,6 @@ export interface WorkerTosStorage {
   create(input: InsertWorkerTos): Promise<WorkerTos>;
   update(id: string, patch: WorkerTosUpdate): Promise<WorkerTos | undefined>;
   delete(id: string, message?: string): Promise<boolean>;
-}
-
-function formatDuration(start: Date, end: Date): string {
-  const ms = end.getTime() - start.getTime();
-  if (ms < 0) return '0m';
-  const minutes = Math.floor(ms / 60000);
-  const days = Math.floor(minutes / (60 * 24));
-  const hours = Math.floor((minutes % (60 * 24)) / 60);
-  const mins = minutes % 60;
-  const parts: string[] = [];
-  if (days) parts.push(`${days}d`);
-  if (hours) parts.push(`${hours}h`);
-  if (mins || parts.length === 0) parts.push(`${mins}m`);
-  return parts.join(' ');
 }
 
 function validateDates(startDate: Date | null | undefined, endDate: Date | null | undefined): void {
@@ -138,7 +125,7 @@ export const workerTosLoggingConfig = defineLoggingConfig<WorkerTosStorage>({
         const before = beforeState?.record;
         // Detect "stop" transition: was active, now ended
         if (before && !before.endDate && result?.endDate) {
-          const dur = formatDuration(new Date(result.startDate), new Date(result.endDate));
+          const dur = formatDurationBetween(new Date(result.startDate), new Date(result.endDate)) ?? '0m';
           return `Ended absence for ${workerName} (${dur})`;
         }
         return `Updated absence for ${workerName}`;

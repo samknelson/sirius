@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Search, CheckCircle2, XCircle, AlertCircle, User } from "lucide-react";
+import { Search, CheckCircle2, XCircle, AlertCircle, User, RefreshCw } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Link } from "wouter";
 
@@ -53,7 +53,7 @@ function EligibleWorkersCheckContent() {
     enabled: searchQuery.trim().length >= 2,
   });
 
-  const { data: eligibilityResult, isLoading: isCheckingEligibility } = useQuery<WorkerEligibilityCheckResult>({
+  const { data: eligibilityResult, isLoading: isCheckingEligibility, isFetching: isRefetchingEligibility, refetch: refetchEligibility } = useQuery<WorkerEligibilityCheckResult>({
     queryKey: ['/api/dispatch-jobs', job.id, 'check-eligibility', selectedWorkerId],
     enabled: !!selectedWorkerId,
     staleTime: 0,
@@ -132,6 +132,16 @@ function EligibleWorkersCheckContent() {
                   </span>
                 )}
               </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => refetchEligibility()}
+                disabled={isRefetchingEligibility}
+                data-testid="button-check-again"
+              >
+                <RefreshCw className={`h-4 w-4 mr-1 ${isRefetchingEligibility ? "animate-spin" : ""}`} />
+                Check Again
+              </Button>
               <Link href={`/workers/${selectedWorkerId}`}>
                 <Button variant="outline" size="sm" data-testid="button-view-worker">
                   View Worker

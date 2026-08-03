@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { insertLedgerEaSchema, type SelectLedgerEa, type LedgerAccount } from "@shared/schema";
 import { formatAmount } from "@shared/currency";
 import { Button } from "@/components/ui/button";
@@ -71,10 +71,10 @@ function WorkerLedgerAccountsContent() {
       });
       setIsFormOpen(false);
     },
-    onError: () => {
+    onError: (error) => {
       toast({
         title: "Error",
-        description: "Failed to create ledger account entry",
+        description: getApiErrorMessage(error, "Failed to create ledger account entry"),
         variant: "destructive",
       });
     },
@@ -92,10 +92,10 @@ function WorkerLedgerAccountsContent() {
       });
       setDeleteId(null);
     },
-    onError: () => {
+    onError: (error) => {
       toast({
         title: "Error",
-        description: "Failed to delete ledger account entry",
+        description: getApiErrorMessage(error, "Failed to delete ledger account entry"),
         variant: "destructive",
       });
     },

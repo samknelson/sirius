@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { apiRequest } from '@/lib/queryClient';
+import { apiRequest, getApiErrorMessage } from '@/lib/queryClient';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -41,7 +41,7 @@ export default function AccountPasswordPage() {
     onError: (error: Error) => {
       toast({
         title: 'Failed to change password',
-        description: error.message,
+        description: getApiErrorMessage(error, "An unexpected error occurred"),
         variant: 'destructive',
       });
     },

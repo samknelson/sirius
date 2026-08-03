@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Plus, Search, Package, Loader2 } from "lucide-react";
 import {
   Dialog,
@@ -49,7 +49,7 @@ function AccountBatchesContent() {
       setNewBatchName("");
     },
     onError: (error: Error) => {
-      toast({ title: "Failed to create batch", description: error.message, variant: "destructive" });
+      toast({ title: "Failed to create batch", description: getApiErrorMessage(error, "The operation failed."), variant: "destructive" });
     },
   });
 

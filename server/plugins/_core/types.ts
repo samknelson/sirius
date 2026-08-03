@@ -51,4 +51,7 @@ export type PluginKind =
   | "event-notifier"
   | "cron"
   | "denorm"
-  | "menu";
+  | "data-retention"
+  | "menu"
+  | "system-status"
+  | "trust-provider-edi";

@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Html5Qrcode } from "html5-qrcode";
 import { Camera, CheckCircle, XCircle, ArrowLeft, Scan, UserCheck } from "lucide-react";
 
@@ -69,11 +69,11 @@ export default function EventScanCheckin() {
     onError: (error: any) => {
       setLastScanResult({
         success: false,
-        message: error.message || "Failed to process check-in",
+        message: getApiErrorMessage(error, "Failed to process check-in"),
       });
       toast({
         title: "Check-in Error",
-        description: error.message || "Failed to process check-in",
+        description: getApiErrorMessage(error, "Failed to process check-in"),
         variant: "destructive",
       });
     },

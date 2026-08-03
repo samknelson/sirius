@@ -13,7 +13,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { useState } from "react";
 import { Ban, Plus, Trash2, Pencil } from "lucide-react";
 import type { WorkerBan } from "@shared/schema";
@@ -55,7 +55,7 @@ function BansContent() {
     onError: (error: Error) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to add ban.",
+        description: getApiErrorMessage(error, "Failed to add ban."),
         variant: "destructive",
       });
     },
@@ -76,7 +76,7 @@ function BansContent() {
     onError: (error: Error) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to update ban.",
+        description: getApiErrorMessage(error, "Failed to update ban."),
         variant: "destructive",
       });
     },
@@ -93,10 +93,10 @@ function BansContent() {
         description: "The worker ban has been removed.",
       });
     },
-    onError: () => {
+    onError: (error) => {
       toast({
         title: "Error",
-        description: "Failed to remove ban.",
+        description: getApiErrorMessage(error, "Failed to remove ban."),
         variant: "destructive",
       });
     },

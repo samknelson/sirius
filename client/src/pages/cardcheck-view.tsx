@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest, ApiError } from "@/lib/queryClient";
+import { queryClient, apiRequest, ApiError, getApiErrorMessage } from "@/lib/queryClient";
 import { format } from "date-fns";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -145,7 +145,7 @@ export default function CardcheckViewPage() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to revoke cardcheck.",
+        description: getApiErrorMessage(error, "Failed to revoke cardcheck."),
         variant: "destructive",
       });
     },
@@ -170,7 +170,7 @@ export default function CardcheckViewPage() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to delete cardcheck.",
+        description: getApiErrorMessage(error, "Failed to delete cardcheck."),
         variant: "destructive",
       });
     },

@@ -3,7 +3,7 @@ import { useParams, Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { CommLayout } from "@/components/layouts/CommLayout";
 import { useCommTabAccess } from "@/hooks/useTabAccess";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import {
   AlertDialog,
@@ -88,7 +88,7 @@ export default function CommDetail() {
     onError: (error: any) => {
       toast({
         title: "Failed to update status",
-        description: error?.message ?? "An unexpected error occurred.",
+        description: getApiErrorMessage(error, "An unexpected error occurred."),
         variant: "destructive",
       });
     },

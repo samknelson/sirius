@@ -11,7 +11,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { UserPlus, Save, AlertCircle, CheckCircle2, KeyRound } from "lucide-react";
 import { Role } from "@/lib/entity-types";
 
@@ -128,7 +128,7 @@ function EmployerContactUserContent() {
     onError: (error: any) => {
       toast({
         title: data?.hasUser ? "Update Failed" : "Creation Failed",
-        description: error?.message || "Failed to save user account.",
+        description: getApiErrorMessage(error, "Failed to save user account."),
         variant: "destructive",
       });
     },

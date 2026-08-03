@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Loader2, Play, CheckCircle, XCircle, Clock, FlaskConical, Copy, Check, Terminal } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -147,7 +147,7 @@ function TestContent() {
     onError: (error: any) => {
       toast({
         title: "Test failed",
-        description: error?.message || "An error occurred",
+        description: getApiErrorMessage(error, "An error occurred"),
         variant: "destructive",
       });
     },

@@ -30,7 +30,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Plus, Edit, Trash2, Loader2, DollarSign } from "lucide-react";
 
 interface BenefitSchedule {
@@ -79,7 +79,7 @@ export default function PensionBenefitSchedulesPage() {
       toast({ title: "Benefit schedule created" });
     },
     onError: (error: any) => {
-      toast({ title: "Failed to create schedule", description: error.message, variant: "destructive" });
+      toast({ title: "Failed to create schedule", description: getApiErrorMessage(error, "An unexpected error occurred"), variant: "destructive" });
     },
   });
 
@@ -98,7 +98,7 @@ export default function PensionBenefitSchedulesPage() {
       toast({ title: "Benefit schedule updated" });
     },
     onError: (error: any) => {
-      toast({ title: "Failed to update schedule", description: error.message, variant: "destructive" });
+      toast({ title: "Failed to update schedule", description: getApiErrorMessage(error, "An unexpected error occurred"), variant: "destructive" });
     },
   });
 
@@ -112,7 +112,7 @@ export default function PensionBenefitSchedulesPage() {
       toast({ title: "Benefit schedule deleted" });
     },
     onError: (error: any) => {
-      toast({ title: "Failed to delete schedule", description: error.message, variant: "destructive" });
+      toast({ title: "Failed to delete schedule", description: getApiErrorMessage(error, "An unexpected error occurred"), variant: "destructive" });
     },
   });
 

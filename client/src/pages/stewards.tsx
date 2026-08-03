@@ -23,7 +23,7 @@ import { useState, useMemo } from "react";
 import { stringify } from "csv-stringify/browser/esm/sync";
 import type { Employer, BargainingUnit } from "@shared/schema";
 import { useTerm } from "@/contexts/TerminologyContext";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
 interface StewardAssignmentListItem {
@@ -89,7 +89,7 @@ export default function Stewards() {
     onError: (error: Error) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to remove assignments",
+        description: getApiErrorMessage(error, "Failed to remove assignments"),
         variant: "destructive",
       });
     },

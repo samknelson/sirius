@@ -13,15 +13,20 @@ import { registerContactPostalRoutes } from "./modules/contact-postal";
 import { registerPhoneNumberRoutes } from "./modules/phone-numbers";
 import { registerCommRoutes } from "./modules/comm";
 import { registerGrievanceRoutes } from "./modules/grievances/grievances";
+import { registerGrievanceEntityFileContext } from "./modules/grievances/grievance-files-context";
+import { registerEntityFileRoutes } from "./modules/entity-files";
+import { wireEntityFilesFileReadAccess } from "./services/entity-files/file-read-access";
 import { registerGrievanceTimelineTemplateRoutes } from "./modules/grievances/grievance-timeline-templates";
 import { registerEmployerContactRoutes } from "./modules/employers/contacts";
 import { registerTrustBenefitsRoutes } from "./modules/trust/benefits";
 import { registerTrustProvidersRoutes } from "./modules/trust/providers";
 import { registerTrustProviderContactRoutes } from "./modules/trust/provider/contacts";
+import { registerTrustProviderEdiDashboardRoutes } from "./modules/trust/provider-edi-dashboard";
 import { registerConsolidatedOptionsRoutes } from "./modules/options-routes";
 import { getOptionsType } from "./modules/options-registry";
 import { registerWorkerIdsRoutes } from "./modules/workers/ids";
 import { registerAddressValidationRoutes } from "./modules/address-validation";
+import { buildContentDisposition } from "./utils/content-disposition";
 import {
   registerMasqueradeRoutes,
   getEffectiveUser,
@@ -50,7 +55,6 @@ import { registerLogRoutes } from "./modules/system/logs";
 import { registerWorkerWshRoutes } from "./modules/worker-wsh";
 import { registerWorkerMshRoutes } from "./modules/worker-msh";
 import { registerWorkerHoursRoutes } from "./modules/worker-hours";
-import { registerQuickstartRoutes } from "./modules/quickstart";
 import { registerCronJobRoutes } from "./modules/system/cron";
 import { registerEventBusIntrospectRoutes } from "./modules/dev/event-bus-introspect";
 import { registerEbsInspectionRoutes } from "./modules/system/ebs";
@@ -62,7 +66,8 @@ import { registerPostalConfigRoutes } from "./modules/postal-config";
 import { registerBootstrapRoutes } from "./modules/system/bootstrap";
 import { registerBargainingUnitsRoutes } from "./modules/bargaining-units";
 import { registerSftpClientDestinationRoutes } from "./modules/sftp-client-destinations";
-import { registerTrustProviderEdiRoutes } from "./modules/trust/provider/edi";
+import { registerBusinessCalendarRoutes } from "./modules/business-calendars";
+import { registerHelpRoutes } from "./modules/helps";
 import { registerBulkMessageRoutes } from "./modules/bulk/messages";
 import { registerEmployerComplianceRoutes } from "./modules/employer-compliance";
 import { registerEmployerRoutes } from "./modules/employers/employers";
@@ -81,10 +86,13 @@ import { registerDispatchJobGroupsRoutes } from "./modules/dispatch/job-groups";
 import { registerFacilityRoutes } from "./modules/facility/facilities";
 import { registerContractRoutes } from "./modules/contract/contract";
 import { registerDispatchesRoutes } from "./modules/dispatch/dispatches";
+import { registerDispatchForeRoutes } from "./modules/dispatch/fore";
+import { registerWorkerDispatchDepartmentRoutes } from "./modules/dispatch/worker-departments";
 import { registerWorkerDispatchStatusRoutes } from "./modules/dispatch/worker-status";
 import { registerWorkerDispatchDncRoutes } from "./modules/dispatch/worker-dnc";
 import { registerWorkerDispatchHfeRoutes } from "./modules/dispatch/worker-hfe";
 import { registerWorkerDispatchEbaRoutes } from "./modules/dispatch/worker-eba";
+import { registerWorkerDispatchAsiRoutes } from "./modules/dispatch/worker-asi";
 import { registerWorkerBansRoutes } from "./modules/worker-bans";
 import { registerWorkerSkillsRoutes } from "./modules/workers/skills";
 import { registerWorkerRelationsRoutes } from "./modules/workers/relations";
@@ -118,6 +126,7 @@ import { registerT631ClientFetchRoutes } from "./modules/sitespecific/t631/clien
 import { registerFreemanSecondShiftRoutes } from "./modules/sitespecific/freeman/second-shift";
 import { registerFreemanCrewleadsRoutes } from "./modules/sitespecific/freeman/crewleads";
 import { registerEdlsSheetsRoutes } from "./modules/edls/sheets";
+import { registerSnapshotsRoutes } from "./modules/snapshots";
 import { registerEdlsTosRoutes } from "./modules/edls/tos";
 import { registerEdlsTasksRoutes } from "./modules/edls/tasks";
 import { registerWorkerEdlsRoutes } from "./modules/edls/workers";
@@ -307,6 +316,11 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Register grievance routes
   registerGrievanceRoutes(app, requireAuth, requireAccess);
 
+  // Entity file attachments framework: register contexts, then the generic routes
+  registerGrievanceEntityFileContext();
+  wireEntityFilesFileReadAccess();
+  registerEntityFileRoutes(app, requireAuth);
+
   // Register grievance timeline template routes
   registerGrievanceTimelineTemplateRoutes(app, requireAuth, requireAccess);
 
@@ -358,6 +372,11 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   const { registerPluginsAdminRoutes } = await import("./modules/system/plugins-admin");
   registerPluginsAdminRoutes(app, requireAuth);
 
+  // System status routes (Task #951) — admin-gated list + rescan endpoints
+  // over the in-memory status collector.
+  const { registerSystemStatusRoutes } = await import("./modules/system/status");
+  registerSystemStatusRoutes(app, requireAuth);
+
   // Register bookmark routes
   registerBookmarkRoutes(app, requireAuth, requirePermission);
 
@@ -374,6 +393,10 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register file management routes
   registerFileRoutes(app, requireAuth, requirePermission);
+
+  // Admin raw file browser (Task #924)
+  const { registerFileBrowserRoutes } = await import("./modules/file-browser");
+  registerFileBrowserRoutes(app, requireAuth);
 
   // Register component configuration routes
   registerComponentRoutes(app, requireAuth, requirePermission);
@@ -401,7 +424,6 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   registerWorkerWshRoutes(app, requireAuth, requirePermission, requireAccess, storage.workerWsh);
   registerWorkerMshRoutes(app, requireAuth, requirePermission, requireAccess, storage.workerMsh);
   registerWorkerHoursRoutes(app, requireAuth, requirePermission, requireAccess, storage.workerHours, storage.ledger);
-  registerQuickstartRoutes(app);
   
 
   // Register cron job management routes
@@ -454,9 +476,11 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register SFTP client destination routes
   registerSftpClientDestinationRoutes(app, requireAuth, requireAccess, storage);
+  registerBusinessCalendarRoutes(app, requireAuth, requireAccess, storage);
+  registerHelpRoutes(app, requireAuth, requireAccess, storage);
 
   // Register trust provider EDI routes
-  registerTrustProviderEdiRoutes(app, requireAuth, requireAccess, storage);
+  registerTrustProviderEdiDashboardRoutes(app, requireAuth);
 
   // Register bulk message routes
   registerBulkMessageRoutes(app, requireAuth, requireAccess, storage);
@@ -763,7 +787,7 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       // Send CSV response
       const filename = `workers_export_${new Date().toISOString().split('T')[0]}.csv`;
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Content-Disposition', buildContentDisposition('attachment', filename));
       res.send(csv);
     } catch (error) {
       console.error("Failed to export workers:", error);
@@ -1735,6 +1759,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register dispatches routes
   registerDispatchesRoutes(app, requireAuth, requirePermission);
+  registerDispatchForeRoutes(app);
+  registerWorkerDispatchDepartmentRoutes(app);
 
   // Register worker dispatch status routes (handles all access control internally)
   registerWorkerDispatchStatusRoutes(app, requireAuth, requireAccess);
@@ -1747,6 +1773,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
 
   // Register worker dispatch EBA routes (handles all access control internally)
   registerWorkerDispatchEbaRoutes(app, requireAuth, requireAccess);
+
+  // Register worker dispatch ASI routes (handles all access control internally)
+  registerWorkerDispatchAsiRoutes(app, requireAuth, requireAccess);
 
   // Register worker bans routes (handles all access control internally)
   registerWorkerBansRoutes(app, requireAuth, requireAccess);
@@ -1806,6 +1835,9 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // Register HTA routes
   registerHtaRoutes(app, requireAuth, requirePermission);
   registerGbhetPensionRoutes(app, requireAuth, requirePermission);
+
+  // Register generic snapshots routes
+  registerSnapshotsRoutes(app, requireAuth);
 
   // Register EDLS routes
   registerEdlsSheetsRoutes(app, requireAuth, requirePermission);

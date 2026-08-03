@@ -270,6 +270,8 @@ export function registerAccessPolicyRoutes(app: Express) {
         grievanceTimelineTemplate: 'admin',
         contract: 'staff',
         bao_cobra_case: 'staff',
+        edls_sheet: 'edls.sheet.view',
+        business_calendar: 'admin',
       };
       const basePolicy = entityPolicyMap[entityType] || 'authenticated';
       const baseAccessResult = await checkAccess(basePolicy, context.user, resolvedEntityId);

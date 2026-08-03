@@ -21,3 +21,15 @@ the barrel:
 - `import { recomputeStaleDenorm } from ".../denorm/recompute"`
 A plugin with no `requiredComponent` passes `isPluginComponentEnabledSync`
 without an initialized component cache, so backfill/recompute run standalone.
+
+**Alternate pattern that works even when narrow imports still cycle:** make
+the script's top-level import-free and use *sequential dynamic imports*,
+loading the storage barrel first and awaiting it before importing anything
+else:
+```ts
+await import(".../server/storage/index");
+const { reg } = await import(".../plugins/<kind>/registry");
+await import(".../plugins/<kind>/index"); // registers plugins
+```
+Each module graph fully settles before the next starts, which avoids the
+`createCommStorage` / wizard-registry init crashes that static imports hit.

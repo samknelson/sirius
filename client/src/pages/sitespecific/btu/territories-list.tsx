@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Plus, Trash2, Loader2, Search, X, MapPin, Pencil } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { useForm } from "react-hook-form";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -59,7 +59,7 @@ export default function BtuTerritoriesListPage() {
     onError: (error: any) => {
       toast({
         title: "Create Failed",
-        description: error?.message || "Failed to create territory.",
+        description: getApiErrorMessage(error, "Failed to create territory."),
         variant: "destructive",
       });
     },
@@ -81,7 +81,7 @@ export default function BtuTerritoriesListPage() {
     onError: (error: any) => {
       toast({
         title: "Update Failed",
-        description: error?.message || "Failed to update territory.",
+        description: getApiErrorMessage(error, "Failed to update territory."),
         variant: "destructive",
       });
     },
@@ -102,7 +102,7 @@ export default function BtuTerritoriesListPage() {
     onError: (error: any) => {
       toast({
         title: "Delete Failed",
-        description: error?.message || "Failed to delete territory.",
+        description: getApiErrorMessage(error, "Failed to delete territory."),
         variant: "destructive",
       });
     },

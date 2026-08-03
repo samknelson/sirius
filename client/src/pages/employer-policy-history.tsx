@@ -35,7 +35,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import type { Policy } from "@shared/schema";
 
 interface PolicyHistoryEntry {
@@ -86,7 +86,7 @@ function EmployerPolicyHistoryContent() {
       toast({ title: "Policy history entry created successfully" });
     },
     onError: (error: any) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({ title: "Error", description: getApiErrorMessage(error, "An unexpected error occurred"), variant: "destructive" });
     },
   });
 
@@ -104,7 +104,7 @@ function EmployerPolicyHistoryContent() {
       toast({ title: "Policy history entry updated successfully" });
     },
     onError: (error: any) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({ title: "Error", description: getApiErrorMessage(error, "An unexpected error occurred"), variant: "destructive" });
     },
   });
 
@@ -120,7 +120,7 @@ function EmployerPolicyHistoryContent() {
       toast({ title: "Policy history entry deleted successfully" });
     },
     onError: (error: any) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({ title: "Error", description: getApiErrorMessage(error, "An unexpected error occurred"), variant: "destructive" });
     },
   });
 

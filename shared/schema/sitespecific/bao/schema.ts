@@ -5,6 +5,7 @@ import { z } from "zod";
 import { parsePhoneNumber } from "libphonenumber-js";
 import { employers, ledgerAccounts, ledgerEa, workers, trustBenefits, trustProviders } from "../../../schema";
 import { validateSSN } from "../../../utils/ssn";
+import { toYmd } from "../../../utils/date";
 
 export const sitespecificBaoEmployerImmediateEligibility = pgTable(
   "sitespecific_bao_employer_immediate_eligibility",
@@ -371,7 +372,7 @@ function toYmdString(value: string | Date): string {
 
 const ymdOrDate = z
   .union([z.string(), z.coerce.date()])
-  .transform((v) => toYmdString(v));
+  .transform((v) => toYmd(v) ?? String(v));
 
 export const createBaoEmployerImmediateEligibilityRequestSchema = z
   .object({

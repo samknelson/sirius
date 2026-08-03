@@ -1,5 +1,5 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -125,7 +125,7 @@ export default function PostalConfigPage() {
     onError: (error) => {
       toast({
         title: "Error",
-        description: error instanceof Error ? error.message : "Failed to update provider",
+        description: getApiErrorMessage(error, "Failed to update provider"),
         variant: "destructive",
       });
     },
@@ -155,7 +155,7 @@ export default function PostalConfigPage() {
     onError: (error) => {
       toast({
         title: "Error",
-        description: error instanceof Error ? error.message : "Failed to test connection",
+        description: getApiErrorMessage(error, "Failed to test connection"),
         variant: "destructive",
       });
     },
@@ -176,7 +176,7 @@ export default function PostalConfigPage() {
     onError: (error) => {
       toast({
         title: "Error",
-        description: error instanceof Error ? error.message : "Failed to update return address",
+        description: getApiErrorMessage(error, "Failed to update return address"),
         variant: "destructive",
       });
     },
@@ -211,7 +211,7 @@ export default function PostalConfigPage() {
     onError: (error) => {
       toast({
         title: "Error",
-        description: error instanceof Error ? error.message : "Failed to verify address",
+        description: getApiErrorMessage(error, "Failed to verify address"),
         variant: "destructive",
       });
     },

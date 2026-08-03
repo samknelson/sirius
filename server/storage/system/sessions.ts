@@ -21,6 +21,7 @@ export interface SessionWithUser {
 export interface SessionStorage {
   getSessions(): Promise<SessionWithUser[]>;
   deleteSession(sid: string): Promise<boolean>;
+  countActiveSessions(): Promise<number>;
 }
 
 export function createSessionStorage(): SessionStorage {
@@ -59,6 +60,16 @@ export function createSessionStorage(): SessionStorage {
         .where(eq(sessions.sid, sid))
         .returning();
       return result.length > 0;
+    },
+
+    async countActiveSessions(): Promise<number> {
+      const client = getClient();
+      const now = new Date();
+      const [result] = await client
+        .select({ count: sql<number>`count(*)` })
+        .from(sessions)
+        .where(sql`${sessions.expire} > ${now}`);
+      return Number(result?.count ?? 0);
     },
 
   };

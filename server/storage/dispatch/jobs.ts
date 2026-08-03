@@ -1,5 +1,5 @@
 import { createNoopValidator } from '../utils/validation';
-import { getClient } from '../transaction-context';
+import { getClient, onAfterCommit } from '../transaction-context';
 import { 
   dispatchJobs, 
   dispatches,
@@ -10,11 +10,25 @@ import {
 } from "@shared/schema";
 import { eq, desc, and, gte, lte, sql, SQL, inArray } from "drizzle-orm";
 import { defineLoggingConfig } from "../middleware/logging";
+import { eventBus, EventType } from "../../services/event-bus";
 
 /**
  * Stub validator - add validation logic here when needed
  */
 export const validate = createNoopValidator<InsertDispatchJob, DispatchJob>();
+
+/**
+ * Emit DISPATCH_JOB_SAVED after the surrounding transaction commits (runs
+ * immediately when not in a transaction). Fire-and-forget: listener failures
+ * must never fail the save.
+ */
+function emitJobSaved(jobId: string): void {
+  onAfterCommit(() => {
+    eventBus.emit(EventType.DISPATCH_JOB_SAVED, { jobId }).catch(err => {
+      console.error("Failed to emit DISPATCH_JOB_SAVED event:", err);
+    });
+  });
+}
 
 export interface DispatchJobFilters {
   employerId?: string;
@@ -305,6 +319,7 @@ export function createDispatchJobStorage(): DispatchJobStorage {
       validate.validateOrThrow(insertJob);
       const client = getClient();
       const [job] = await client.insert(dispatchJobs).values(insertJob).returning();
+      emitJobSaved(job.id);
       return job;
     },
 
@@ -331,6 +346,9 @@ export function createDispatchJobStorage(): DispatchJobStorage {
         .set(updates)
         .where(eq(dispatchJobs.id, id))
         .returning();
+      if (job) {
+        emitJobSaved(job.id);
+      }
       return job || undefined;
     },
 

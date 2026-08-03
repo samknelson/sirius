@@ -37,7 +37,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import { Pencil, Trash2 } from "lucide-react";
 import type { TrustBenefitEligibilityExemption } from "@shared/schema";
 
@@ -132,7 +132,7 @@ function ExemptionFormDialog({
       onOpenChange(false);
     },
     onError: (err: Error) => {
-      toast({ title: "Error", description: err.message || "Failed to save", variant: "destructive" });
+      toast({ title: "Error", description: getApiErrorMessage(err, "Failed to save"), variant: "destructive" });
     },
   });
 
@@ -302,7 +302,7 @@ function ExemptionsContent() {
       setDeleteTarget(null);
     },
     onError: (err: Error) => {
-      toast({ title: "Error", description: err.message || "Failed to delete", variant: "destructive" });
+      toast({ title: "Error", description: getApiErrorMessage(err, "Failed to delete"), variant: "destructive" });
     },
   });
 

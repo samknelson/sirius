@@ -49,6 +49,15 @@ import "./core/1043_ledger_payments_date_received_nullable";
 import "./core/1044_create_ebs";
 import "./core/1045_ebs_subject_and_purge";
 import "./core/1046_add_edls_sheet_job_group_fk";
+import "./core/1047_create_snapshots";
+import "./core/1048_delete_legacy_cleanup_cron_configs";
+import "./core/1049_create_business_calendars";
+import "./core/1050_add_employer_business_calendar";
+import "./core/1051_dashboard_roles_array";
+import "./core/1052_add_dispatch_is_primary";
+import "./core/1053_create_help";
+import "./core/1054_options_event_type_sirius_id_nullable";
+import "./core/1055_files_file_system_id";
 
 // Per-component migrations — each registered via
 // `registerComponentMigration(componentId, migration)`. Tracked by the
@@ -56,6 +65,8 @@ import "./core/1046_add_edls_sheet_job_group_fk";
 // per-component migration files under `scripts/migrate/components/<id>/`
 // and import them here so they are loaded at startup.
 //
+import "./components/trust.providers.edi/001_drop_legacy_table";
+import "./components/trust.providers.edi/002_create_subsidiary_table";
 import "./components/trust.benefits.eligibility.exemptions/001_create_exemptions";
 import "./components/trust.benefits.eligibility.exemptions/002_require_benefit_and_plugins";
 import "./components/sitespecific.bao/001_create_immediate_eligibility";
@@ -94,14 +105,19 @@ import "./components/grievance/025_make_grievance_sirius_id_not_null";
 import "./components/grievance/026_add_employer_contact_id_to_grievances";
 import "./components/grievance/027_create_grievance_status_history_drop_status_id";
 import "./components/grievance/028_replace_grievance_steps_with_denorm";
+import "./components/grievance/029_create_grievance_files";
 import "./components/grievance.settlement/001_create_grievance_settlement";
 import "./components/grievance.contract/001_create_grievance_contract_sections";
 import "./components/grievance.contract/002_create_grievance_contracts";
 import "./components/dispatch/001_backfill_dispatch_eligibility_configs";
+import "./components/dispatch.fore/001_create_dispatch_job_fore";
+import "./components/dispatch.bullpen/001_create_dispatch_job_event";
+import "./components/dispatch.department/001_create_department_tables";
 import "./components/dispatch/002_worker_dispatch_elig_denorm_denorm_id";
 import "./components/trust.benefits/001_backfill_trust_eligibility_configs";
 import "./components/trust.benefits/002_create_trust_wmb_events";
 import "./components/contract/001_create_contract_tables";
+import "./components/edls/001_add_show_status";
 import "./components/worker.ratings/001_add_sirius_id_to_options_worker_ratings";
 import "./components/trust.providers.edi/001_add_sftp_client_fk";
 import "./components/trust.elections/001_add_enrollment_type";

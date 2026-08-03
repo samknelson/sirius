@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import type { EmployerContactType } from "@shared/schema";
 
 const updateContactTypeSchema = z.object({
@@ -65,7 +65,7 @@ function EmployerContactEditContent() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to update contact type",
+        description: getApiErrorMessage(error, "Failed to update contact type"),
         variant: "destructive",
       });
     },

@@ -1,5 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
+import { RoleInUseError } from "../storage/users";
 import { 
   createUserSchema,
   insertRoleSchema,
@@ -346,6 +347,11 @@ export function registerUserRoutes(
       
       res.status(204).send();
     } catch (error) {
+      // Storage-layer replacement for the old FK RESTRICT: a role still
+      // referenced by a dashboard config's roles array cannot be deleted.
+      if (error instanceof RoleInUseError) {
+        return res.status(409).json({ message: error.message });
+      }
       res.status(500).json({ message: "Failed to delete role" });
     }
   });

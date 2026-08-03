@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Loader2, Trash2 } from "lucide-react";
 import { useAccessCheck } from "@/hooks/use-access-check";
 
@@ -52,7 +52,7 @@ function EditContent() {
       toast({ title: "Job group updated", description: "The job group has been updated." });
     },
     onError: (error: Error) => {
-      toast({ title: "Failed to update", description: error?.message || "An error occurred", variant: "destructive" });
+      toast({ title: "Failed to update", description: getApiErrorMessage(error, "An error occurred"), variant: "destructive" });
     },
   });
 
@@ -64,7 +64,7 @@ function EditContent() {
       setLocation("/dispatch/job_groups");
     },
     onError: (error: Error) => {
-      toast({ title: "Failed to delete", description: error?.message || "An error occurred", variant: "destructive" });
+      toast({ title: "Failed to delete", description: getApiErrorMessage(error, "An error occurred"), variant: "destructive" });
     },
   });
 

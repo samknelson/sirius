@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, Trash2, Loader2, Search, X, Building2, Pencil, School, GraduationCap, BookOpen, Users, Building, Home, Landmark, Library, Microscope, Music, Palette, Trophy, Heart, Star, Flag, Circle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { useForm } from "react-hook-form";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -90,7 +90,7 @@ export default function BtuSchoolTypesListPage() {
     onError: (error: any) => {
       toast({
         title: "Create Failed",
-        description: error?.message || "Failed to create school type.",
+        description: getApiErrorMessage(error, "Failed to create school type."),
         variant: "destructive",
       });
     },
@@ -112,7 +112,7 @@ export default function BtuSchoolTypesListPage() {
     onError: (error: any) => {
       toast({
         title: "Update Failed",
-        description: error?.message || "Failed to update school type.",
+        description: getApiErrorMessage(error, "Failed to update school type."),
         variant: "destructive",
       });
     },
@@ -133,7 +133,7 @@ export default function BtuSchoolTypesListPage() {
     onError: (error: any) => {
       toast({
         title: "Delete Failed",
-        description: error?.message || "Failed to delete school type.",
+        description: getApiErrorMessage(error, "Failed to delete school type."),
         variant: "destructive",
       });
     },

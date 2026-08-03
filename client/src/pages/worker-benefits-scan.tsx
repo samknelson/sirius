@@ -20,7 +20,7 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { Scan, Loader2, Calendar, CheckCircle, XCircle, AlertCircle, ArrowRight, Play, FlaskConical, Users } from "lucide-react";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
 interface PluginResult {
@@ -119,7 +119,7 @@ function WorkerBenefitsScanContent() {
     onError: (error: any) => {
       toast({
         title: "Scan Failed",
-        description: error.message || "Failed to run benefits scan",
+        description: getApiErrorMessage(error, "Failed to run benefits scan"),
         variant: "destructive",
       });
     },

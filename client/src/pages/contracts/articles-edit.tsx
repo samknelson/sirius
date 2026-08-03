@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Plus, Trash2, ChevronUp, ChevronDown, Loader2, Pencil, Save, X, Layers } from "lucide-react";
 import type { ContractArticle } from "@shared/schema";
 import { ContractLayout } from "@/components/layouts/ContractLayout";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -63,7 +63,7 @@ function ArticlesEditBody() {
     } catch (error) {
       toast({
         title: "Failed to add article",
-        description: error instanceof Error ? error.message : "Please try again.",
+        description: getApiErrorMessage(error, "Please try again."),
         variant: "destructive",
       });
     } finally {
@@ -91,7 +91,7 @@ function ArticlesEditBody() {
     } catch (error) {
       toast({
         title: "Failed to update article",
-        description: error instanceof Error ? error.message : "Please try again.",
+        description: getApiErrorMessage(error, "Please try again."),
         variant: "destructive",
       });
     } finally {
@@ -107,7 +107,7 @@ function ArticlesEditBody() {
     } catch (error) {
       toast({
         title: "Failed to reorder",
-        description: error instanceof Error ? error.message : "Please try again.",
+        description: getApiErrorMessage(error, "Please try again."),
         variant: "destructive",
       });
     } finally {
@@ -125,7 +125,7 @@ function ArticlesEditBody() {
     } catch (error) {
       toast({
         title: "Failed to delete article",
-        description: error instanceof Error ? error.message : "Please try again.",
+        description: getApiErrorMessage(error, "Please try again."),
         variant: "destructive",
       });
     } finally {

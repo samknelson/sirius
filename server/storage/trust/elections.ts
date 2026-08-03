@@ -19,6 +19,7 @@ import { eq, and, asc, desc, isNull, lt, lte, gte, or, ne, inArray, arrayOverlap
 import { defineLoggingConfig, type StorageLoggingConfig } from '../middleware/logging';
 import { normalizeToDateOnly, getTodayDateOnly } from '@shared/utils';
 import { eventBus, EventType } from '../../services/event-bus';
+import { toYmd, getTodayYmd, addDaysYmd } from '@shared/utils/date';
 
 export interface WorkerTrustElectionSearchParams {
   id?: string;
@@ -237,25 +238,6 @@ export class WorkerTrustElectionValidationError extends Error {
     super(message);
     this.name = 'WorkerTrustElectionValidationError';
   }
-}
-
-function toYmd(value: Date | string | null | undefined): string | null {
-  if (value === null || value === undefined) return null;
-  const d = normalizeToDateOnly(value);
-  if (!d) return null;
-  const yr = d.getFullYear();
-  const mo = String(d.getMonth() + 1).padStart(2, '0');
-  const dy = String(d.getDate()).padStart(2, '0');
-  return `${yr}-${mo}-${dy}`;
-}
-
-function ymdMinusOneDay(ymd: string): string {
-  const d = new Date(ymd + 'T00:00:00Z');
-  d.setUTCDate(d.getUTCDate() - 1);
-  const yr = d.getUTCFullYear();
-  const mo = String(d.getUTCMonth() + 1).padStart(2, '0');
-  const dy = String(d.getUTCDate()).padStart(2, '0');
-  return `${yr}-${mo}-${dy}`;
 }
 
 interface ValidationInput {
@@ -822,7 +804,7 @@ async function endDatePreviousActive(
     .select()
     .from(workerTrustElections)
     .where(and(...conds));
-  const newEnd = ymdMinusOneDay(newStartYmd);
+  const newEnd = addDaysYmd(newStartYmd, -1);
   for (const prior of others) {
     if (prior.startYmd && prior.startYmd > newEnd) {
       throw new WorkerTrustElectionValidationError(

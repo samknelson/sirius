@@ -1,4 +1,5 @@
 import { usePageTitle } from "@/contexts/PageTitleContext";
+import { getApiErrorMessage } from "@/lib/queryClient";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -60,7 +61,7 @@ export default function DispatchSeniorityResetConfigPage() {
     onError: (error: Error) => {
       toast({
         title: "Error saving settings",
-        description: error.message,
+        description: getApiErrorMessage(error, "The operation failed."),
         variant: "destructive",
       });
     },

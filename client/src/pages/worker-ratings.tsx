@@ -6,7 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Star } from "lucide-react";
 import type { WorkerRating, OptionsWorkerRating } from "@shared/schema";
 
@@ -97,7 +97,7 @@ function RatingsContent() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to update rating",
+        description: getApiErrorMessage(error, "Failed to update rating"),
         variant: "destructive",
       });
     },

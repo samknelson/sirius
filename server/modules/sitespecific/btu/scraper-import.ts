@@ -1,6 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../../../storage";
-import { objectStorageService } from "../../../services/objectStorage";
+import { fileSystemService } from "../../../services/files";
 import { insertFileSchema } from "@shared/schema";
 import { logger } from "../../../logger";
 import { sendInapp } from "../../../services/comm/senders/inapp";
@@ -312,11 +312,11 @@ export function registerBtuScraperImportRoutes(
 
                 const fileName = `cardcheck_scrape_${nid}.pdf`;
 
-                const uploadResult = await objectStorageService.uploadFile({
+                const uploadResult = await fileSystemService.upload({
                   fileName,
                   fileContent: Buffer.from(combinedPdfBytes),
                   mimeType: 'application/pdf',
-                  accessLevel: 'private',
+                  fileSystemId: 'private',
                 });
 
                 const pdfFileData = insertFileSchema.parse({
@@ -327,7 +327,7 @@ export function registerBtuScraperImportRoutes(
                   uploadedBy: userId,
                   entityType: 'esig',
                   entityId: null,
-                  accessLevel: 'private',
+                  fileSystemId: 'private',
                   metadata: {
                     nid,
                     cardcheckId: cardcheck.id,

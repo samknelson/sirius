@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { getApiErrorMessage } from "@/lib/queryClient";
 import { useQuery } from "@tanstack/react-query";
 import { Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -388,7 +389,7 @@ export default function EmployersMonthlyUploads() {
             {error ? (
               <div className="text-center py-8 text-destructive" data-testid="text-error">
                 <p className="font-medium">Error loading data</p>
-                <p className="text-sm mt-1">{error instanceof Error ? error.message : 'Unknown error occurred'}</p>
+                <p className="text-sm mt-1">{getApiErrorMessage(error, 'Unknown error occurred')}</p>
               </div>
             ) : isLoading ? (
               <div className="text-center py-8 text-muted-foreground" data-testid="text-loading">

@@ -5,6 +5,74 @@ import { OptionsTypeName } from "../storage/unified-options";
 import { storage } from "../storage";
 import { requireComponent, isComponentEnabled } from "./components";
 import { getComponentById } from "../../shared/components";
+import { jobTypeBullpenEnum } from "@shared/schema";
+import { logger } from "../logger";
+
+/**
+ * Map a caught database error to a clear, user-facing message (or null if
+ * unrecognized). Logs the underlying error so 500s are diagnosable.
+ */
+function optionDbErrorMessage(error: any): { status: number; message: string } | null {
+  // Unique violation — name the offending field when the constraint tells us.
+  if (error?.code === "23505") {
+    const field = humanizeConstraintColumn(error);
+    return {
+      status: 400,
+      message: field
+        ? `An item with this ${field} already exists. ${field === "Sirius ID" ? "Sirius IDs must be unique." : "Please choose a different value."}`
+        : "An item with this value already exists",
+    };
+  }
+  // Not-null violation — name the missing column.
+  if (error?.code === "23502") {
+    const column = error?.column ? String(error.column) : null;
+    return {
+      status: 400,
+      message: column ? `${column.replace(/_/g, " ")} is required` : "A required field is missing",
+    };
+  }
+  // FK violation on insert/update — referenced record doesn't exist.
+  if (error?.code === "23503") {
+    return { status: 400, message: "A referenced record does not exist" };
+  }
+  return null;
+}
+
+function humanizeConstraintColumn(error: any): string | null {
+  const constraint = error?.constraint ? String(error.constraint) : "";
+  if (constraint.includes("sirius_id")) return "Sirius ID";
+  if (constraint.includes("name")) return "name";
+  if (constraint.includes("code")) return "code";
+  return null;
+}
+
+/**
+ * Validate the bullpen fields inside a dispatch-job-type `data` payload
+ * (dispatch.bullpen component). Returns an error message or null.
+ * Enforced whenever bullpen fields are present so a direct API call cannot
+ * persist an invalid combination regardless of what the UI shows.
+ */
+function validateDispatchJobTypeBullpen(data: unknown): string | null {
+  if (data === null || data === undefined || typeof data !== "object") return null;
+  const d = data as Record<string, unknown>;
+  const bullpen = d.bullpen;
+  if ("bullpen" in d) {
+    if (typeof bullpen !== "string" || !(jobTypeBullpenEnum as readonly string[]).includes(bullpen)) {
+      return `bullpen must be one of: ${jobTypeBullpenEnum.join(", ")}`;
+    }
+  }
+  if (bullpen === "host" || bullpen === "shared") {
+    const eventTypeId = d.bullpenEventTypeId;
+    if (typeof eventTypeId !== "string" || eventTypeId.trim() === "") {
+      return "An event type is required when Bullpen is set to host or shared";
+    }
+  } else {
+    // Keep persisted JSON consistent: no dangling event-type reference
+    // when bullpen is "none" or absent.
+    delete d.bullpenEventTypeId;
+  }
+  return null;
+}
 
 /**
  * Middleware for the generic `/api/options/:type*` routes that rejects
@@ -46,6 +114,55 @@ function requireOptionTypeComponent() {
   };
 }
 
+/**
+ * Strip fields whose `requiredComponent` is disabled from a definition —
+ * removes them from `fields`, `schema.properties`, `schema.required`, and
+ * `uiSchema` so the client form and table never show them (e.g. the
+ * department "Available for dispatch?" flag when dispatch.department is off).
+ */
+async function filterDefinitionFieldsByComponent(definition: any): Promise<any> {
+  const gatedComponents: string[] = Array.from(new Set(
+    (definition.fields || [])
+      .map((f: any) => f.requiredComponent)
+      .filter((c: unknown): c is string => typeof c === 'string'),
+  ));
+  if (gatedComponents.length === 0) return definition;
+
+  const disabled = new Set<string>();
+  for (const componentId of gatedComponents) {
+    if (!(await isComponentEnabled(componentId))) {
+      disabled.add(componentId);
+    }
+  }
+  if (disabled.size === 0) return definition;
+
+  const removedNames = new Set<string>(
+    (definition.fields || [])
+      .filter((f: any) => f.requiredComponent && disabled.has(f.requiredComponent))
+      .map((f: any) => f.name),
+  );
+
+  const schema = definition.schema ? { ...definition.schema } : definition.schema;
+  if (schema?.properties) {
+    schema.properties = Object.fromEntries(
+      Object.entries(schema.properties).filter(([name]) => !removedNames.has(name)),
+    );
+    if (Array.isArray(schema.required)) {
+      schema.required = schema.required.filter((name: string) => !removedNames.has(name));
+    }
+  }
+  const uiSchema = definition.uiSchema
+    ? Object.fromEntries(Object.entries(definition.uiSchema).filter(([name]) => !removedNames.has(name)))
+    : definition.uiSchema;
+
+  return {
+    ...definition,
+    fields: (definition.fields || []).filter((f: any) => !removedNames.has(f.name)),
+    schema,
+    uiSchema,
+  };
+}
+
 export function registerConsolidatedOptionsRoutes(app: Express) {
   // GET /api/options - List all available options types
   app.get("/api/options", requireAccess('authenticated'), async (req: Request, res: Response) => {
@@ -61,7 +178,8 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
     try {
       const storage = getOptionsStorage();
       const definitions = storage.getAllDefinitions();
-      res.json(definitions);
+      const filtered = await Promise.all(definitions.map(filterDefinitionFieldsByComponent));
+      res.json(filtered);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch options definitions" });
     }
@@ -79,7 +197,7 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
         return res.status(404).json({ message: `Unknown options type: ${type}` });
       }
       
-      res.json(definition);
+      res.json(await filterDefinitionFieldsByComponent(definition));
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch options definition" });
     }
@@ -234,14 +352,28 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
           return res.status(400).json({ message: `${field} must be one of: ${allowed.join(', ')}` });
         }
       }
+
+      if (type === "dispatch-job-type") {
+        const bullpenError = validateDispatchJobTypeBullpen(data.data);
+        if (bullpenError) {
+          return res.status(400).json({ message: bullpenError });
+        }
+      }
       
       const item = await config.create(data);
       res.status(201).json(item);
     } catch (error: any) {
-      if (error.code === '23505') {
-        return res.status(400).json({ message: "An item with this value already exists" });
+      const mapped = optionDbErrorMessage(error);
+      if (mapped) {
+        return res.status(mapped.status).json({ message: mapped.message });
       }
-      res.status(500).json({ message: `Failed to create option` });
+      logger.error("Failed to create option", {
+        service: "options-routes",
+        type: req.params.type,
+        error: error?.message,
+        code: error?.code,
+      });
+      res.status(500).json({ message: `Failed to create option: ${error?.message ?? "unknown error"}` });
     }
   });
 
@@ -282,6 +414,13 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
           return res.status(400).json({ message: `${field} must be one of: ${allowed.join(', ')}` });
         }
       }
+
+      if (type === "dispatch-job-type" && updates.data !== undefined) {
+        const bullpenError = validateDispatchJobTypeBullpen(updates.data);
+        if (bullpenError) {
+          return res.status(400).json({ message: bullpenError });
+        }
+      }
       
       const item = await config.update(id, updates);
       
@@ -291,10 +430,18 @@ export function registerConsolidatedOptionsRoutes(app: Express) {
       
       res.json(item);
     } catch (error: any) {
-      if (error.code === '23505') {
-        return res.status(400).json({ message: "An item with this value already exists" });
+      const mapped = optionDbErrorMessage(error);
+      if (mapped) {
+        return res.status(mapped.status).json({ message: mapped.message });
       }
-      res.status(500).json({ message: `Failed to update option` });
+      logger.error("Failed to update option", {
+        service: "options-routes",
+        type: req.params.type,
+        id: req.params.id,
+        error: error?.message,
+        code: error?.code,
+      });
+      res.status(500).json({ message: `Failed to update option: ${error?.message ?? "unknown error"}` });
     }
   });
 

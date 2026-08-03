@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { getApiErrorMessage } from "@/lib/queryClient";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -33,7 +34,7 @@ export default function WorkersTosConfigPage() {
     onError: (error: Error) => {
       toast({
         title: "Error saving settings",
-        description: error.message,
+        description: getApiErrorMessage(error, "The operation failed."),
         variant: "destructive",
       });
     },

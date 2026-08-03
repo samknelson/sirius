@@ -26,7 +26,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 
 export default function BargainingUnitsConfigPage() {
   usePageTitle("Bargaining Units");
@@ -60,7 +60,7 @@ export default function BargainingUnitsConfigPage() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to create bargaining unit.",
+        description: getApiErrorMessage(error, "Failed to create bargaining unit."),
         variant: "destructive",
       });
     },
@@ -81,7 +81,7 @@ export default function BargainingUnitsConfigPage() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to delete bargaining unit.",
+        description: getApiErrorMessage(error, "Failed to delete bargaining unit."),
         variant: "destructive",
       });
     },
@@ -110,7 +110,7 @@ export default function BargainingUnitsConfigPage() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to update bargaining unit.",
+        description: getApiErrorMessage(error, "Failed to update bargaining unit."),
         variant: "destructive",
       });
     },

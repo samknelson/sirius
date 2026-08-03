@@ -7,7 +7,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Play, Loader2, CheckCircle2, XCircle } from "lucide-react";
-import { queryClient } from "@/lib/queryClient";
+import { queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { CronJobLayout, useCronJobLayout } from "@/components/layouts/CronJobLayout";
@@ -47,7 +47,7 @@ function CronJobRunContent() {
     onError: (error: Error) => {
       toast({
         title: "Failed to Run Job",
-        description: error.message || "Failed to trigger the cron job",
+        description: getApiErrorMessage(error, "Failed to trigger the cron job"),
         variant: "destructive",
       });
     },

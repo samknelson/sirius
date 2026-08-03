@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient } from "@/lib/queryClient";
+import { queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import type { Employer } from "@shared/schema";
 import { EmploymentStatus } from "@/lib/entity-types";
 
@@ -98,7 +98,7 @@ function WorkerHoursEditContent() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to update hours entry",
+        description: getApiErrorMessage(error, "Failed to update hours entry"),
         variant: "destructive",
       });
     },

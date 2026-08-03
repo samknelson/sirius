@@ -10,7 +10,7 @@ import { useParams, useLocation } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertLedgerPaymentSchema, type LedgerPaymentType } from "@shared/schema";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect } from "react";
 import type { z } from "zod";
@@ -142,10 +142,10 @@ function EAPaymentCreateContent() {
         setLocation(`/ea/${eaId}/payments`);
       }
     },
-    onError: () => {
+    onError: (error) => {
       toast({
         title: "Error",
-        description: "Failed to create payment. Please try again.",
+        description: getApiErrorMessage(error, "Failed to create payment. Please try again."),
         variant: "destructive",
       });
     },

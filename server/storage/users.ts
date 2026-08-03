@@ -5,6 +5,7 @@ import {
   roles,
   userRoles,
   rolePermissions,
+  pluginConfigsDashboard,
   type User,
   type InsertUser,
   type UpsertUser,
@@ -16,7 +17,7 @@ import {
   type AssignPermission,
 } from "@shared/schema";
 import { permissionRegistry, type PermissionDefinition } from "@shared/permissions";
-import { eq, and, sql, inArray, ilike, exists } from "drizzle-orm";
+import { eq, and, sql, inArray, ilike, exists, count, arrayContains } from "drizzle-orm";
 import { defineLoggingConfig } from "./middleware/logging";
 import type { ContactsStorage } from "./contacts";
 import { createUserContactSyncService } from "../services/user-contact-sync";
@@ -25,6 +26,18 @@ import { createUserContactSyncService } from "../services/user-contact-sync";
  * Stub validator - add validation logic here when needed
  */
 export const validate = createNoopValidator<InsertUser, User>();
+
+/**
+ * Thrown by `deleteRole` when the role is still referenced by a dashboard
+ * plugin configuration's `roles` array. The array column cannot carry an FK,
+ * so this error is the storage-layer equivalent of the old FK RESTRICT.
+ */
+export class RoleInUseError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "RoleInUseError";
+  }
+}
 
 export interface UserStorage {
   // User operations
@@ -40,6 +53,8 @@ export interface UserStorage {
   searchUsers(query: string, roleIds?: string[], limit?: number): Promise<(User & { roles: Role[] })[]>;
   userHasAnyRole(userId: string, roleIds: string[]): Promise<boolean>;
   hasAnyUsers(): Promise<boolean>;
+  countUsers(): Promise<number>;
+  countUsersLoggedInSince(since: Date): Promise<number>;
   updateUserData(id: string, data: Record<string, unknown>): Promise<User | undefined>;
   getUserData(id: string): Promise<Record<string, unknown> | null>;
   
@@ -304,6 +319,24 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
       return (result?.count ?? 0) > 0;
     },
 
+    async countUsers(): Promise<number> {
+      const client = getClient();
+      const [result] = await client
+        .select({ count: count() })
+        .from(users)
+        .where(eq(users.isActive, true));
+      return Number(result?.count ?? 0);
+    },
+
+    async countUsersLoggedInSince(since: Date): Promise<number> {
+      const client = getClient();
+      const [result] = await client
+        .select({ count: count() })
+        .from(users)
+        .where(sql`${users.lastLogin} >= ${since}`);
+      return Number(result?.count ?? 0);
+    },
+
     async updateUserData(id: string, data: Record<string, unknown>): Promise<User | undefined> {
       const client = getClient();
       const [user] = await client
@@ -359,6 +392,18 @@ export function createUserStorage(contactsStorage?: ContactsStorage): UserStorag
 
     async deleteRole(id: string): Promise<boolean> {
       const client = getClient();
+      // The dashboard subsidiary stores roles as a varchar[] (no FK possible),
+      // so the old FK RESTRICT protection is enforced here instead: refuse to
+      // delete a role any dashboard config's roles array still references.
+      const [{ count: refCount }] = await client
+        .select({ count: count() })
+        .from(pluginConfigsDashboard)
+        .where(arrayContains(pluginConfigsDashboard.roles, [id]));
+      if (Number(refCount) > 0) {
+        throw new RoleInUseError(
+          `Role is still used by ${refCount} dashboard configuration(s). Remove it from those configurations before deleting.`,
+        );
+      }
       const result = await client.delete(roles).where(eq(roles.id, id)).returning();
       return result.length > 0;
     },

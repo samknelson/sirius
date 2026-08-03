@@ -9,6 +9,21 @@ import { facilities } from "../facility/schema";
 export const edlsSheetStatusEnum = ["draft", "request", "lock", "trash", "reserved"] as const;
 export type EdlsSheetStatus = typeof edlsSheetStatusEnum[number];
 
+export const optionsEdlsShowStatus = pgTable("options_edls_show_status", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  siriusId: varchar("sirius_id", { length: 255 }).unique("options_edls_show_status_sirius_id_unique"),
+  sequence: integer("sequence").notNull().default(0),
+  data: jsonb("data"),
+});
+
+export const insertEdlsShowStatusSchema = createInsertSchema(optionsEdlsShowStatus).omit({
+  id: true,
+});
+
+export type EdlsShowStatus = typeof optionsEdlsShowStatus.$inferSelect;
+export type InsertEdlsShowStatus = z.infer<typeof insertEdlsShowStatusSchema>;
+
 export const edlsSheets = pgTable("edls_sheets", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   employerId: varchar("employer_id").notNull().references(() => employers.id, { onDelete: 'cascade' }),
@@ -21,6 +36,7 @@ export const edlsSheets = pgTable("edls_sheets", {
   assignee: varchar("assignee").references(() => users.id, { onDelete: 'set null' }),
   jobGroupId: varchar("job_group_id").references(() => dispatchJobGroups.id, { onDelete: 'set null' }),
   facilityId: varchar("facility_id").references(() => facilities.id, { onDelete: 'set null' }),
+  showStatusId: varchar("show_status_id").references(() => optionsEdlsShowStatus.id, { onDelete: 'set null' }),
   data: jsonb("data"),
 });
 
@@ -30,6 +46,7 @@ export const insertEdlsSheetsSchema = createInsertSchema(edlsSheets).omit({
   assignee: z.string().nullish(),
   jobGroupId: z.string().nullish(),
   facilityId: z.string().nullish(),
+  showStatusId: z.string().nullish(),
 });
 
 export type EdlsSheet = typeof edlsSheets.$inferSelect;

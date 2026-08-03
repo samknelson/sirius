@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label";
 import { EdlsSheetLayout, useEdlsSheetLayout } from "@/components/layouts/EdlsSheetLayout";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { useAccessCheck } from "@/hooks/use-access-check";
 import { useToast } from "@/hooks/use-toast";
 import type { EdlsSheetStatus, EdlsCrew, AssignmentExtra } from "@shared/schema";
@@ -116,10 +116,10 @@ function formatUserName(user: UserInfo | undefined): string {
 
 const statusColors: Record<EdlsSheetStatus, string> = {
   draft: "bg-muted text-muted-foreground",
-  request: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
-  lock: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
+  request: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
+  lock: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
   trash: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
-  reserved: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
+  reserved: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
 };
 
 const statusLabels: Record<EdlsSheetStatus, string> = {
@@ -755,16 +755,16 @@ function AssignmentDetailCard({ label, detail }: { label: string; detail: Worker
   );
 }
 
-interface WorkerRatingWithName {
+interface WorkerRatingWithType {
   id: string;
   workerId: string;
   ratingId: string;
   value: number;
-  ratingName: string;
+  ratingType: { id: string; name: string } | null;
 }
 
 function WorkerRatingsSection({ workerId, ratingsEnabled }: { workerId: string; ratingsEnabled: boolean }) {
-  const { data: ratings = [], isLoading } = useQuery<WorkerRatingWithName[]>({
+  const { data: ratings = [], isLoading } = useQuery<WorkerRatingWithType[]>({
     queryKey: ["/api/worker-ratings/worker", workerId],
     queryFn: async () => {
       const response = await fetch(`/api/worker-ratings/worker/${workerId}`);
@@ -800,7 +800,7 @@ function WorkerRatingsSection({ workerId, ratingsEnabled }: { workerId: string; 
       <div className="grid grid-cols-2 gap-2">
         {ratings.map((rating) => (
           <div key={rating.id} className="flex items-center justify-between bg-muted/50 rounded-md px-2 py-1.5">
-            <span className="text-sm truncate mr-2">{rating.ratingName}</span>
+            <span className="text-sm truncate mr-2" data-testid={`text-rating-name-${rating.id}`}>{rating.ratingType?.name ?? "Unknown rating"}</span>
             <div className="flex items-center gap-0.5 flex-shrink-0">
               {[0, 1, 2, 3].map((i) => (
                 <Star
@@ -1294,7 +1294,7 @@ function EdlsSheetAssignmentsContent() {
       queryClient.invalidateQueries({ queryKey: ["/api/edls/sheets", sheet.id, "crews"] });
     },
     onError: (error: any) => {
-      const message = error?.message || "Failed to assign worker";
+      const message = getApiErrorMessage(error, "Failed to assign worker");
       toast({
         title: "Assignment failed",
         description: message,
@@ -1317,7 +1317,7 @@ function EdlsSheetAssignmentsContent() {
       queryClient.invalidateQueries({ queryKey: ["/api/edls/sheets", sheet.id, "crews"] });
     },
     onError: (error: any) => {
-      const message = error?.message || "Failed to unassign worker";
+      const message = getApiErrorMessage(error, "Failed to unassign worker");
       toast({
         title: "Unassignment failed",
         description: message,

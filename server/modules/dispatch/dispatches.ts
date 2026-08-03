@@ -1,5 +1,6 @@
 import type { Express } from "express";
 import { storage } from "../../storage";
+import { PrimaryDispatchConflictError, PRIMARY_DISPATCH_CONFLICT_MESSAGE } from "../../storage/dispatch/dispatches";
 import { insertDispatchSchema, dispatchStatusEnum } from "@shared/schema";
 import { requireAccess, buildContext, getAccessStorage } from "../../services/access-policy-evaluator";
 import { requireComponent } from "../components";
@@ -89,6 +90,10 @@ export function registerDispatchesRoutes(
       const dispatch = await storage.dispatches.create(parsed.data);
       res.status(201).json(dispatch);
     } catch (error: any) {
+      if (error instanceof PrimaryDispatchConflictError) {
+        res.status(409).json({ message: error.message });
+        return;
+      }
       console.error("Failed to create dispatch:", error?.message || error);
       res.status(500).json({ message: "Failed to create dispatch" });
     }
@@ -130,6 +135,10 @@ export function registerDispatchesRoutes(
       const dispatch = await storage.dispatches.update(id, updates);
       res.json(dispatch);
     } catch (error) {
+      if (error instanceof PrimaryDispatchConflictError) {
+        res.status(409).json({ message: error.message });
+        return;
+      }
       res.status(500).json({ message: "Failed to update dispatch" });
     }
   });
@@ -212,7 +221,8 @@ export function registerDispatchesRoutes(
       const result = await storage.dispatches.setStatus(id, status);
       
       if (!result.success) {
-        res.status(400).json({ message: result.error });
+        const isPrimaryConflict = result.error === PRIMARY_DISPATCH_CONFLICT_MESSAGE;
+        res.status(isPrimaryConflict ? 409 : 400).json({ message: result.error });
         return;
       }
 

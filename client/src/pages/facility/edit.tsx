@@ -9,7 +9,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Loader2, Trash2 } from "lucide-react";
 import { useAccessCheck } from "@/hooks/use-access-check";
 
@@ -28,7 +28,7 @@ function EditContent() {
       setLocation("/facilities");
     },
     onError: (error: Error) => {
-      toast({ title: "Failed to delete", description: error?.message || "An error occurred", variant: "destructive" });
+      toast({ title: "Failed to delete", description: getApiErrorMessage(error, "An error occurred"), variant: "destructive" });
     },
   });
 

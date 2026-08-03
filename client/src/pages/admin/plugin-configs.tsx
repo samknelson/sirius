@@ -11,6 +11,7 @@ import {
   pluginSearch,
   type ArrayManifestPluginKind,
   type PluginConfigEnvelopeField,
+  type PluginConfigEnvelopeFieldChoice,
   type PluginKindSummary,
 } from "@/plugins/_core";
 import { Card, CardContent } from "@/components/ui/card";
@@ -80,7 +81,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import type { JsonSchema } from "@shared/json-schema-form";
 import type { IChangeEvent } from "@rjsf/core";
 import type { UiSchema } from "@rjsf/utils";
@@ -155,9 +156,29 @@ function prettifyKind(kind: string): string {
     .join(" ");
 }
 
-export default function GenericPluginConfigsPage() {
+export interface GenericPluginConfigsPageProps {
+  /** Explicit plugin kind; falls back to the `:kind` URL param. */
+  kind?: string;
+  /**
+   * Filter values that are always applied to the search and hidden from the
+   * filter bar (e.g. an embedding entity page locking `jobType` to itself).
+   * These also flow into the create dialog, where the matching envelope field
+   * is pre-set and not editable.
+   */
+  lockedFilters?: Record<string, string>;
+  /** Suppress the standalone page chrome (back link, title, page title). */
+  embedded?: boolean;
+}
+
+const NO_LOCKED_FILTERS: Record<string, string> = {};
+
+export default function GenericPluginConfigsPage({
+  kind: kindProp,
+  lockedFilters = NO_LOCKED_FILTERS,
+  embedded = false,
+}: GenericPluginConfigsPageProps = {}) {
   const params = useParams<{ kind: string }>();
-  const kind = params.kind as ArrayManifestPluginKind;
+  const kind = (kindProp ?? params.kind) as ArrayManifestPluginKind;
 
   // The server's kinds index (/api/plugins/kinds) is the single source of truth
   // for which kinds are configurable — it lists every kind that has a registered
@@ -176,7 +197,7 @@ export default function GenericPluginConfigsPage() {
   const kindName = kindSummary?.label ?? prettifyKind(kind);
   const kindDescription = kindSummary?.description;
 
-  usePageTitle(`Plugin Configs - ${kindName}`);
+  usePageTitle(embedded ? undefined : `Plugin Configs - ${kindName}`);
   const { toast } = useToast();
 
   const [dialogPlugin, setDialogPlugin] = useState<ManifestEntry | null>(null);
@@ -195,6 +216,14 @@ export default function GenericPluginConfigsPage() {
   const { data: plugins = [], isLoading: isLoadingPlugins } = useQuery<ManifestEntry[]>({
     queryKey: pluginManifestQueryKey(kind),
     enabled: isValidKind,
+    // The manifest carries each plugin's settings JSON Schema, including any
+    // dynamically-built enums (e.g. the reports widget's report list). The
+    // app-wide default of staleTime: Infinity would let a session-old cached
+    // manifest miss newly-registered options — and RJSF silently PRUNES saved
+    // array values that aren't in the enum, so an innocent re-save would wipe
+    // them. Always refetch on mount so the schema is current.
+    staleTime: 0,
+    refetchOnMount: "always",
   });
 
   const { data: meta } = useQuery<{
@@ -203,22 +232,37 @@ export default function GenericPluginConfigsPage() {
   }>({
     queryKey: pluginConfigsMetaQueryKey(kind),
     enabled: isValidKind,
+    // Same freshness rule as the manifest: per-plugin field metadata must not
+    // go stale across a long-lived session.
+    staleTime: 0,
+    refetchOnMount: "always",
   });
   const envelopeFields = meta?.envelopeFields ?? NO_PLUGIN_FIELDS;
   const pluginFieldsByPlugin = meta?.pluginFields ?? {};
-  const filterableFields = envelopeFields.filter((f) => f.filterable);
+  // Locked filters are never user-editable, so hide them from the filter bar.
+  const filterableFields = envelopeFields.filter(
+    (f) => f.filterable && !(f.name in lockedFilters),
+  );
 
   // Drop empty selections so an unset filter contributes no search condition.
   // The synthetic "enabled" filter is applied client-side (the `enabled`
   // column is universal to every kind but is not part of any kind's search
   // schema), so it is excluded from the server search params.
-  const searchParams: Record<string, string> = {};
+  // Locked filters are always applied and cannot be cleared by the user.
+  const searchParams: Record<string, string> = { ...lockedFilters };
   for (const [name, value] of Object.entries(filters)) {
-    if (value && name !== ENABLED_FILTER_NAME) searchParams[name] = value;
+    if (value && name !== ENABLED_FILTER_NAME && !(name in lockedFilters)) {
+      searchParams[name] = value;
+    }
   }
   const hasActiveFilters = Object.keys(searchParams).length > 0;
   const enabledFilter = filters[ENABLED_FILTER_NAME] ?? "";
-  const hasAnyFilter = hasActiveFilters || !!enabledFilter;
+  // "User-clearable filters active" drives the empty-state copy: with only
+  // locked filters applied, an empty list still reads as "no configs yet".
+  const hasUserFilters =
+    Object.entries(filters).some(
+      ([name, value]) => value && !(name in lockedFilters),
+    ) || !!enabledFilter;
 
   const { data: configs = [], isLoading: isLoadingConfigs } = useQuery<PluginConfigRow[]>({
     // With no filters we hit the plain list endpoint so the unfiltered view
@@ -251,7 +295,7 @@ export default function GenericPluginConfigsPage() {
     onError: (error: unknown) => {
       toast({
         title: "Error",
-        description: error instanceof Error ? error.message : "Failed to delete configuration.",
+        description: getApiErrorMessage(error, "Failed to delete configuration."),
         variant: "destructive",
       });
     },
@@ -383,23 +427,29 @@ export default function GenericPluginConfigsPage() {
 
   return (
     <div className="space-y-6">
-      <Link href="/admin/plugin-configs">
-        <Button variant="ghost" size="sm" className="-ml-2" data-testid="button-back-to-plugin-configs">
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Back to Plugin Configs
-        </Button>
-      </Link>
+      {!embedded && (
+        <Link href="/admin/plugin-configs">
+          <Button variant="ghost" size="sm" className="-ml-2" data-testid="button-back-to-plugin-configs">
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back to Plugin Configs
+          </Button>
+        </Link>
+      )}
       <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-xl md:text-2xl font-bold text-foreground" data-testid="text-page-title">
-            {`Plugin Configs - ${kindName}`}
-          </h1>
-          {kindDescription && (
-            <p className="text-muted-foreground mt-2" data-testid="text-page-description">
-              {kindDescription}
-            </p>
-          )}
-        </div>
+        {!embedded ? (
+          <div>
+            <h1 className="text-xl md:text-2xl font-bold text-foreground" data-testid="text-page-title">
+              {`Plugin Configs - ${kindName}`}
+            </h1>
+            {kindDescription && (
+              <p className="text-muted-foreground mt-2" data-testid="text-page-description">
+                {kindDescription}
+              </p>
+            )}
+          </div>
+        ) : (
+          <div />
+        )}
         {sortedPlugins.length > 0 && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -445,7 +495,7 @@ export default function GenericPluginConfigsPage() {
       ) : rows.length === 0 ? (
         <Card>
           <CardContent className="pt-6">
-            {hasAnyFilter ? (
+            {hasUserFilters ? (
               <p className="text-center text-muted-foreground" data-testid="text-empty-filtered">
                 No configurations match the current filters.
               </p>
@@ -582,6 +632,7 @@ export default function GenericPluginConfigsPage() {
           config={dialogConfig}
           envelopeFields={envelopeFields}
           pluginFields={pluginFieldsByPlugin[dialogPlugin.id] ?? NO_PLUGIN_FIELDS}
+          lockedEnvelope={lockedFilters}
         />
       )}
     </div>
@@ -729,10 +780,15 @@ function useEnvelopeLabelMaps(envelopeFields: PluginConfigEnvelopeField[]) {
       );
       byField.set(field.name, {
         label: field.label,
-        resolve: (value) => {
-          const key = String(value);
-          return map.get(key) || key;
-        },
+        // Handle both single values and multi-value fields (arrays stringify
+        // to a comma-joined list, e.g. the dashboard roles array).
+        resolve: (value) =>
+          String(value)
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean)
+            .map((v) => map.get(v) || v)
+            .join(", "),
       });
     }
   }
@@ -831,6 +887,11 @@ interface GenericConfigDialogProps {
    * Rendered alongside the kind's envelope fields and persisted inside `data`.
    */
   pluginFields: PluginConfigEnvelopeField[];
+  /**
+   * Envelope values locked by an embedding page (e.g. jobType on the job type
+   * detail tab). Locked fields are pre-set on create and not editable.
+   */
+  lockedEnvelope?: Record<string, string>;
 }
 
 /**
@@ -849,6 +910,7 @@ function GenericConfigDialog({
   config,
   envelopeFields,
   pluginFields,
+  lockedEnvelope = NO_LOCKED_FILTERS,
 }: GenericConfigDialogProps) {
   const { toast } = useToast();
   const isEditMode = !!config;
@@ -942,12 +1004,21 @@ function GenericConfigDialog({
       setOrdering(0);
       setSiriusId("");
       setSettings({});
-      setEnvelope(Object.fromEntries(envelopeFields.map((f) => [f.name, ""])));
+      // New configs are pre-seeded with any locked envelope values so a
+      // config created from an embedded tab belongs to the locking entity.
+      setEnvelope(
+        Object.fromEntries(
+          envelopeFields.map((f) => [f.name, lockedEnvelope[f.name] ?? ""]),
+        ),
+      );
       setPluginData(Object.fromEntries(pluginFields.map((f) => [f.name, ""])));
     }
     setFormSeedKey((k) => k + 1);
+    // envelopeFields/lockedEnvelope are included so a create dialog opened
+    // before the kind metadata finishes loading still seeds locked values
+    // (and per-field defaults) once the fields arrive.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, config, plugin.id, pluginFields, envelopeFields]);
+  }, [open, config, plugin.id, pluginFields, envelopeFields, lockedEnvelope]);
 
   // Envelope fields the server derives from the plugin's settings on every
   // save (e.g. cron `schedule` for derive-schedule plugins): shown read-only,
@@ -994,7 +1065,14 @@ function GenericConfigDialog({
         // a stale value would be ignored anyway, so omit them entirely.
         if (derivedFieldNames.has(f.name)) continue;
         const raw = envelope[f.name] ?? "";
-        if (raw === "") {
+        if (f.multiple && f.options?.endpoint) {
+          // Endpoint-backed multi-selects (e.g. dashboard "Visible to roles")
+          // persist as real arrays; the comma-joined string is UI state only.
+          envelopeBody[f.name] = raw
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean);
+        } else if (raw === "") {
           envelopeBody[f.name] = null;
         } else if (f.type === "number") {
           envelopeBody[f.name] = Number(raw);
@@ -1100,56 +1178,61 @@ function GenericConfigDialog({
 
             {envelopeFields.length > 0 && (
               <div className="grid grid-cols-2 gap-4" data-testid="envelope-fields">
-                {envelopeFields.map((field) => (
-                  <div className="space-y-1" key={field.name}>
-                    <Label>
-                      {field.label}
-                      {field.required && !derivedFieldNames.has(field.name) && (
-                        <span className="text-destructive"> *</span>
-                      )}
-                    </Label>
-                    {derivedFieldNames.has(field.name) ? (
-                      <div className="space-y-1">
-                        <Input
-                          value={envelope[field.name] || "(derived on save)"}
-                          readOnly
-                          disabled
-                          data-testid={`input-envelope-${field.name}-derived`}
+                {envelopeFields.map((field) => {
+                  const isLocked = field.name in lockedEnvelope;
+                  return (
+                    <div className="space-y-1" key={field.name}>
+                      <Label>
+                        {field.label}
+                        {field.required && !derivedFieldNames.has(field.name) && (
+                          <span className="text-destructive"> *</span>
+                        )}
+                      </Label>
+                      {derivedFieldNames.has(field.name) ? (
+                        <div className="space-y-1">
+                          <Input
+                            value={envelope[field.name] || "(derived on save)"}
+                            readOnly
+                            disabled
+                            data-testid={`input-envelope-${field.name}-derived`}
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            Derived automatically from this plugin's settings below —
+                            it updates when you save.
+                          </p>
+                        </div>
+                      ) : field.multiple && field.options?.choices ? (
+                        <EnvelopeCheckboxField
+                          field={field}
+                          value={envelope[field.name] ?? ""}
+                          onChange={(value) =>
+                            setEnvelope((prev) => ({ ...prev, [field.name]: value }))
+                          }
                         />
-                        <p className="text-xs text-muted-foreground">
-                          Derived automatically from this plugin's settings below —
-                          it updates when you save.
-                        </p>
-                      </div>
-                    ) : field.multiple && field.options?.choices ? (
-                      <EnvelopeCheckboxField
-                        field={field}
-                        value={envelope[field.name] ?? ""}
-                        onChange={(value) =>
-                          setEnvelope((prev) => ({ ...prev, [field.name]: value }))
-                        }
-                      />
-                    ) : field.options ? (
-                      <EnvelopeSelectField
-                        field={field}
-                        value={envelope[field.name] ?? ""}
-                        onChange={(value) =>
-                          setEnvelope((prev) => ({ ...prev, [field.name]: value }))
-                        }
-                      />
-                    ) : (
-                      <Input
-                        type={field.type === "number" ? "number" : "text"}
-                        placeholder={field.required ? "Required" : "Optional"}
-                        value={envelope[field.name] ?? ""}
-                        onChange={(e) =>
-                          setEnvelope((prev) => ({ ...prev, [field.name]: e.target.value }))
-                        }
-                        data-testid={`input-envelope-${field.name}`}
-                      />
-                    )}
-                  </div>
-                ))}
+                      ) : field.options ? (
+                        <EnvelopeSelectField
+                          field={field}
+                          value={envelope[field.name] ?? ""}
+                          onChange={(value) =>
+                            setEnvelope((prev) => ({ ...prev, [field.name]: value }))
+                          }
+                          disabled={isLocked}
+                        />
+                      ) : (
+                        <Input
+                          type={field.type === "number" ? "number" : "text"}
+                          placeholder={field.required ? "Required" : "Optional"}
+                          value={envelope[field.name] ?? ""}
+                          onChange={(e) =>
+                            setEnvelope((prev) => ({ ...prev, [field.name]: e.target.value }))
+                          }
+                          disabled={isLocked}
+                          data-testid={`input-envelope-${field.name}`}
+                        />
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
 
@@ -1225,11 +1308,13 @@ function EnvelopeSelectField({
   value,
   onChange,
   testIdPrefix = "envelope",
+  disabled = false,
 }: {
   field: PluginConfigEnvelopeField;
   value: string;
   onChange: (value: string) => void;
   testIdPrefix?: string;
+  disabled?: boolean;
 }) {
   const options = field.options!;
   const isStatic = Array.isArray(options.choices);
@@ -1257,6 +1342,7 @@ function EnvelopeSelectField({
     <Select
       value={value || undefined}
       onValueChange={(v) => onChange(v === NONE ? "" : v)}
+      disabled={disabled}
     >
       <SelectTrigger data-testid={`select-${testIdPrefix}-${field.name}`}>
         <SelectValue placeholder={isLoading ? "Loading…" : "Select…"} />
@@ -1282,10 +1368,13 @@ function EnvelopeSelectField({
 }
 
 /**
- * Renders a fixed-choice envelope field as a checkbox group allowing multiple
- * selections. The value is stored as a comma-joined string of selected choice
- * values (e.g. "start,continue") so it round-trips through the flat envelope
- * state and the adapter's `string` payload field unchanged.
+ * Renders a multi-select envelope field as a checkbox group. Choices come
+ * either from the field's fixed `options.choices` list or from its remote
+ * `options.endpoint` (fetched once, mapped via valueKey/labelKey — e.g. the
+ * dashboard "Visible to roles" field backed by the roles endpoint). The value
+ * is stored as a comma-joined string of selected values (e.g.
+ * "start,continue") so it round-trips through the flat envelope state; the
+ * save path splits multi fields back into arrays for array-typed payloads.
  */
 function EnvelopeCheckboxField({
   field,
@@ -1296,7 +1385,21 @@ function EnvelopeCheckboxField({
   value: string;
   onChange: (value: string) => void;
 }) {
-  const choices = field.options!.choices ?? [];
+  const options = field.options!;
+  const isStatic = Array.isArray(options.choices);
+  const { data = [], isLoading } = useQuery<Record<string, unknown>[]>({
+    queryKey: [options.endpoint ?? `__static__${field.name}`],
+    enabled: !isStatic && !!options.endpoint,
+  });
+  const choices: PluginConfigEnvelopeFieldChoice[] = isStatic
+    ? options.choices!
+    : data.map((item) => {
+        const itemValue = String(item[options.valueKey!] ?? "");
+        return {
+          value: itemValue,
+          label: String(item[options.labelKey!] ?? itemValue),
+        };
+      });
   const selected = new Set(
     value
       .split(",")
@@ -1322,6 +1425,9 @@ function EnvelopeCheckboxField({
 
   return (
     <div className="space-y-2 pt-1" data-testid={`checkbox-group-envelope-${field.name}`}>
+      {!isStatic && isLoading && (
+        <p className="text-sm text-muted-foreground">Loading…</p>
+      )}
       {choices.map((choice) => (
         <div key={choice.value} className="flex items-center gap-2">
           <Checkbox

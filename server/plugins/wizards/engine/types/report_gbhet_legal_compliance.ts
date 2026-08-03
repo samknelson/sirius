@@ -84,6 +84,8 @@ export class ReportGbhetLegalCompliance extends WizardReport {
     let toYear: number | undefined;
     let toMonth: number | undefined;
 
+    // workMonthFrom/To are YYYY-MM month keys (not full Ymd) — shared Ymd
+    // helpers don't apply.
     if (config.workMonthFrom) {
       const [yearStr, monthStr] = config.workMonthFrom.split('-');
       fromYear = parseInt(yearStr, 10);

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -88,7 +88,7 @@ function TestContent() {
     onError: (error: Error) => {
       setIsConnected(false);
       addLog({ action: "Connect", success: false, duration: 0, message: error.message });
-      toast({ title: "Connection error", description: error.message, variant: "destructive" });
+      toast({ title: "Connection error", description: getApiErrorMessage(error, "The operation failed."), variant: "destructive" });
     },
   });
 
@@ -174,7 +174,7 @@ function TestContent() {
     },
     onError: (error: Error) => {
       addLog({ action: "Upload", success: false, duration: 0, message: error.message });
-      toast({ title: "Upload error", description: error.message, variant: "destructive" });
+      toast({ title: "Upload error", description: getApiErrorMessage(error, "The operation failed."), variant: "destructive" });
     },
   });
 
@@ -213,7 +213,7 @@ function TestContent() {
       URL.revokeObjectURL(blobUrl);
     } catch (error: unknown) {
       const duration = Date.now() - start;
-      const message = error instanceof Error ? error.message : "Download failed";
+      const message = getApiErrorMessage(error, "Download failed");
       addLog({ action: "Download", success: false, duration, message });
       toast({ title: "Download failed", description: message, variant: "destructive" });
     } finally {

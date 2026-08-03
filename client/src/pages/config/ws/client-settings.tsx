@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Loader2, Shield } from "lucide-react";
 import { WsClientLayout, useWsClientLayout } from "@/components/layouts/WsClientLayout";
 
@@ -60,7 +60,7 @@ function SettingsContent() {
       setIsEditOpen(false);
     },
     onError: (error: any) => {
-      toast({ title: "Failed to update client", description: error?.message || "An error occurred", variant: "destructive" });
+      toast({ title: "Failed to update client", description: getApiErrorMessage(error, "An error occurred"), variant: "destructive" });
     },
   });
 

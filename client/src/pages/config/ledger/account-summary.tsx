@@ -60,6 +60,7 @@ interface DrilldownResponse {
 }
 
 function formatMonthLabel(ym: string): string {
+  // YYYY-MM month key (not a full Ymd) — shared Ymd helpers don't apply.
   const [y, m] = ym.split("-").map(Number);
   if (!y || !m) return ym;
   const d = new Date(y, m - 1, 1);

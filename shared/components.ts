@@ -66,6 +66,13 @@ export interface ComponentDefinition {
    * See {@link ComponentManagedPluginConfig}.
    */
   pluginConfigs?: ComponentManagedPluginConfig[];
+  /**
+   * Component IDs this component depends on, for components that do NOT
+   * manage a schema. Schema-managing components declare dependencies in
+   * `schemaManifest.dependsOnComponents` instead. The enable flow refuses
+   * to enable this component unless every listed component is enabled.
+   */
+  dependsOnComponents?: string[];
 }
 
 export interface ComponentConfig {
@@ -224,9 +231,9 @@ export const componentRegistry: ComponentDefinition[] = [
     category: "core",
     managesSchema: true,
     schemaManifest: {
-      version: 15,
+      version: 16,
       schemaPath: "./shared/schema/grievance/schema.ts",
-      tables: ["options_grievance_status", "options_grievance_category", "options_grievance_steps", "options_grievance_complaints", "options_grievance_remedies", "options_grievance_roles", "grievances", "grievance_workers", "grievance_employers", "grievance_users", "grievance_complaints", "grievance_remedies", "grievance_steps_denorm", "grievance_timeline_templates", "grievance_timeline_template_steps", "grievance_name_denorm", "grievance_status_history"]
+      tables: ["options_grievance_status", "options_grievance_category", "options_grievance_steps", "options_grievance_complaints", "options_grievance_remedies", "options_grievance_roles", "grievances", "grievance_workers", "grievance_employers", "grievance_users", "grievance_complaints", "grievance_remedies", "grievance_steps_denorm", "grievance_timeline_templates", "grievance_timeline_template_steps", "grievance_name_denorm", "grievance_status_history", "grievance_files"]
     }
   },
   {
@@ -512,14 +519,14 @@ export const componentRegistry: ComponentDefinition[] = [
   {
     id: "trust.providers.edi",
     name: "Provider Data Interchange",
-    description: "Data interchange functionality for trust providers",
+    description: "Data interchange functionality for trust providers (EDI file plugin configs and delivery)",
     enabledByDefault: false,
     category: "trust.providers",
     managesSchema: true,
     schemaManifest: {
       version: 1,
       schemaPath: "./shared/schema/trust/provider-edi-schema.ts",
-      tables: ["trust_provider_edi"],
+      tables: ["plugin_configs_trust_provider_edi"],
       dependsOnComponents: ["system.sftp.client"]
     }
   },
@@ -625,6 +632,48 @@ export const componentRegistry: ComponentDefinition[] = [
     ]
   },
   {
+    id: "dispatch.fore",
+    name: "Dispatch Forepersons",
+    description: "Track Forepersons designated on dispatch jobs",
+    enabledByDefault: false,
+    category: "dispatch",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/dispatch/fore-schema.ts",
+      tables: ["dispatch_job_fore"],
+      dependsOnComponents: ["dispatch"]
+    }
+  },
+  {
+    id: "dispatch.department",
+    name: "Dispatch Departments",
+    description: "Worker department preferences and job departments for dispatch",
+    enabledByDefault: false,
+    category: "dispatch",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/dispatch/department-schema.ts",
+      tables: ["worker_dispatch_department", "dispatch_job_department"],
+      dependsOnComponents: ["dispatch"]
+    }
+  },
+  {
+    id: "dispatch.bullpen",
+    name: "Dispatch Bullpen",
+    description: "Bullpen functionality for dispatch job types (host/shared bullpens tied to event types)",
+    enabledByDefault: false,
+    category: "dispatch",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/dispatch/bullpen-schema.ts",
+      tables: ["dispatch_job_event"],
+      dependsOnComponents: ["dispatch"]
+    }
+  },
+  {
     id: "dispatch.dnc",
     name: "Dispatch Do Not Call",
     description: "Do Not Call list management for dispatch",
@@ -657,6 +706,25 @@ export const componentRegistry: ComponentDefinition[] = [
         rules: [
           { permission: "staff" }
         ]
+      }
+    ]
+  },
+  {
+    id: "dispatch.asi",
+    name: "Auto Sign-In",
+    description: "Auto Sign-In tracking for dispatch workers",
+    enabledByDefault: false,
+    category: "dispatch",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/dispatch/asi-schema.ts",
+      tables: ["worker_dispatch_asi"]
+    },
+    permissions: [
+      {
+        key: "worker.dispatch.asi",
+        description: "Access to Auto Sign-In dispatch functionality"
       }
     ]
   },
@@ -746,7 +814,7 @@ export const componentRegistry: ComponentDefinition[] = [
     schemaManifest: {
       version: 1,
       schemaPath: "./shared/schema/edls/schema.ts",
-      tables: ["options_edls_tasks", "edls_sheets", "edls_crews", "edls_assignments", "worker_edls"],
+      tables: ["options_edls_tasks", "options_edls_show_status", "edls_sheets", "edls_crews", "edls_assignments", "worker_edls"],
       dependsOnComponents: ["dispatch.job_group", "facility"]
     },
     permissions: [

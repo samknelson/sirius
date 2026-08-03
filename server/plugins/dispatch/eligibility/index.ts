@@ -106,6 +106,7 @@ export function initializeDispatchEligSystem(): void {
 // Plugin registrations (side-effect imports — each file self-registers).
 import "./plugins/ban";
 import "./plugins/dnc";
+import "./plugins/department";
 import "./plugins/eba";
 import "./plugins/hfe";
 import "./plugins/skill";

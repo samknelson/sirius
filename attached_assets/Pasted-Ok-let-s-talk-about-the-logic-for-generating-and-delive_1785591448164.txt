@@ -1,0 +1,31 @@
+Ok, let's talk about the logic for generating and delivering EDI files.
+
+There are about 15 different "EDI File Types". For example:
+- sitespecific-bao-hinge
+- sitespecific-bao-dentwell
+- sitespecific-bao-mlk
+
+Each needs to be defined in code, because it will have its own logic. The lifecycle is:
+
+1. Manually or automatically via cron, an "EDI file" is generated. It will generally have one row for each subscriber, or perhaps one row for each subscriber/dependent. It is associated with a provider, and there might be multiple EDI files for each provider.
+
+2. The results can be viewed manually, or (automatically or manually) be sent to a designated SFTP destination.
+
+Here's how I'm thinking that this will work.
+
+1. There is a new plugin "kind", gated by the "trust.provider.edi" component. Each plugin has functions to:
+- Get the list of primary keys
+- Process a batch of primary keys, outputting the data
+
+2. We build lots of plugin configurations. Each configuration includes:
+- Which plugin type (e.g. "sitespecific-bao-hinge")
+- Which provider (e.g. "Hinge")
+- Which SFTP destination (e.g. "Hinge SFPT Site")
+
+3. There is a single new report-style wizard, "trust-provider-edi" (gated by the same somponent). The first step asks you to pick an EDI configuration. It then runs as a normal report, deferring its "get list of records" and "process batch" features to the designated EDI configuration.
+
+4. Once the report has been generated, the wizard has steps to let you view the results, and then to deliver them via SFTP to the designated destination. That step probably requires outputting the records from the "wizard_report_data" into a static temporary file, although I'd be fine if we could just stream the file directly from the table without generating a temporary file.
+
+Note that this will replace the "trust_provider_edi" table, and the corresponding tab under "providers". We no longer need a dedicated table, because the list of "EDI Targets" is simply the list of configurations of this plugin kind.
+
+What do you think of this structure?

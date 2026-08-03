@@ -46,6 +46,15 @@ export const TERM_REGISTRY: Record<string, TermDefinition> = {
       plural: "Employers",
     },
   },
+  seniorityDate: {
+    key: "seniorityDate",
+    label: "Seniority Date",
+    description: "The date used to rank workers for dispatch ordering (formerly shown as \"Last Offer Date\")",
+    defaults: {
+      singular: "Seniority Date",
+      plural: "Seniority Dates",
+    },
+  },
 };
 
 export const TERMINOLOGY_VARIABLE_NAME = "site_terminology";

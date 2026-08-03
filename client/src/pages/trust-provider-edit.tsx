@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 
 const NO_ACCOUNT = "__none__";
 
@@ -52,7 +52,7 @@ function TrustProviderEditContent() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to update trust provider.",
+        description: getApiErrorMessage(error, "Failed to update trust provider."),
         variant: "destructive",
       });
     },

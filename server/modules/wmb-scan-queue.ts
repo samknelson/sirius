@@ -2,6 +2,7 @@ import type { Express, Request, Response } from "express";
 import { z } from "zod";
 import type { IStorage } from "../storage";
 import { enqueueMonthScan, processBatchQueueJobs, invalidateWorkerScans } from "../services/wmb-scan-queue";
+import { buildContentDisposition } from "../utils/content-disposition";
 
 type RequireAccess = (policy: any) => (req: Request, res: Response, next: () => void) => void;
 type RequireAuth = (req: Request, res: Response, next: () => void) => void;
@@ -234,7 +235,7 @@ export function registerWmbScanQueueRoutes(
         filename += ".csv";
         
         res.setHeader("Content-Type", "text/csv");
-        res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+        res.setHeader("Content-Disposition", buildContentDisposition("attachment", filename));
         res.send(csv);
       } catch (error: any) {
         console.error("Error exporting WMB scan results:", error);

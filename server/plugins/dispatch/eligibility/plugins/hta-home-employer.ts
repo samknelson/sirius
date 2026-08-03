@@ -3,6 +3,7 @@ import { logger } from "../../../../logger";
 import { createDispatchJobStorage } from "../../../../storage/dispatch/jobs";
 import { createEmployerCompanyStorage } from "../../../../storage/employers/companies";
 import type { DispatchEligPlugin, EligibilityCondition, EligibilityQueryContext } from "../registry";
+import { toYmd, isValidYmd, parseYmdParts } from "@shared/utils/date";
 
 const HTA_HOME_EMPLOYER_CATEGORY = "sitespecific:hta:home-employer";
 const HTA_HOME_COMPANY_CATEGORY = "sitespecific:hta:home-company";
@@ -44,10 +45,10 @@ export const dispatchHtaHomeEmployerPlugin: DispatchEligPlugin = {
       return null;
     }
 
-    const startYmd = String(job.startYmd).split("T")[0].split(" ")[0];
-    const [yearStr, monthStr] = startYmd.split("-");
-    const year = parseInt(yearStr, 10);
-    const month = parseInt(monthStr, 10);
+    const startYmd = toYmd(String(job.startYmd)) ?? "";
+    const { year, month } = isValidYmd(startYmd)
+      ? parseYmdParts(startYmd)
+      : { year: NaN, month: NaN };
 
     if (isNaN(year) || isNaN(month)) {
       logger.warn(`Invalid start date for HTA home employer eligibility`, {

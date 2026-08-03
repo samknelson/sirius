@@ -26,6 +26,7 @@ import {
   createPaymentGatewaySubsidiaryStorage,
   createEventNotifierSubsidiaryStorage,
   createCronSubsidiaryStorage,
+  createTrustProviderEdiSubsidiaryStorage,
   type SubsidiaryStorage,
 } from "./plugin-configs-subsidiary";
 
@@ -135,8 +136,9 @@ export interface PluginConfigSearchParams {
   appliesTo?: string | null;
   // Dispatch subsidiary
   jobType?: string | null;
-  // Dashboard subsidiary: admin single-role filter (`role`) + render-side
-  // viewer role-set filter (`roleIn`).
+  // Dashboard subsidiary: admin single-role filter (`role` — configs whose
+  // roles array CONTAINS the role) + render-side viewer role-set filter
+  // (`roleIn` — configs whose roles array OVERLAPS the viewer's roles).
   role?: string | null;
   roleIn?: string[];
   // Event-notifier subsidiary: single active medium token.
@@ -228,6 +230,7 @@ export function createPluginConfigStorage(): PluginConfigStorage {
     "payment-gateway": createPaymentGatewaySubsidiaryStorage() as SubsidiaryStorage<any, any>,
     "event-notifier": createEventNotifierSubsidiaryStorage() as SubsidiaryStorage<any, any>,
     cron: createCronSubsidiaryStorage() as SubsidiaryStorage<any, any>,
+    "trust-provider-edi": createTrustProviderEdiSubsidiaryStorage() as SubsidiaryStorage<any, any>,
   };
 
   /** Fetch the subsidiary row for a base config of a given type, if any. */

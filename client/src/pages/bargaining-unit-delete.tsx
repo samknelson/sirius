@@ -4,7 +4,7 @@ import { Trash2, Loader2, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { BargainingUnitLayout, useBargainingUnitLayout } from "@/components/layouts/BargainingUnitLayout";
 
 function BargainingUnitDeleteContent() {
@@ -28,7 +28,7 @@ function BargainingUnitDeleteContent() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to delete bargaining unit.",
+        description: getApiErrorMessage(error, "Failed to delete bargaining unit."),
         variant: "destructive",
       });
     },

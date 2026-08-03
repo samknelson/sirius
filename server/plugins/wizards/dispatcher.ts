@@ -5,6 +5,7 @@ import { logger } from "../../logger";
 import { validateAgainstSchema } from "../../lib/json-schema-validator";
 import { enforcePluginGating } from "../_core";
 import { wizardPluginRegistry } from "./registry";
+import { buildContentDisposition } from "../../utils/content-disposition";
 import { enforceWizardEntityAccess } from "./entity-access";
 import { WorkerTrustElectionValidationError } from "../../storage/trust/elections";
 import type {
@@ -482,7 +483,7 @@ export function registerWizardDispatcherRoutes(
         res.setHeader("Content-Type", "text/csv");
         res.setHeader(
           "Content-Disposition",
-          `attachment; filename="${filename}"`,
+          buildContentDisposition("attachment", filename),
         );
         res.send(csv);
       } catch (error) {
@@ -543,11 +544,10 @@ export function registerWizardDispatcherRoutes(
             status: "completed",
             completedAt: new Date().toISOString(),
           };
-          // Don't mark `run` steps as in_progress on navigation: for those
-          // steps the progress status means "the async run is executing",
-          // and pre-setting it makes the client believe a run is already
-          // underway (disabled Run button, frozen 0% bar). Their status is
-          // owned by the run route.
+          // Never stamp "in_progress" onto a `run` step on navigation: the
+          // run route owns run progress, and "in_progress" there means "a
+          // run is executing" (spinner + disabled Run button), not "step is
+          // active". Position is already tracked by `currentStep`.
           if (data.progress[next.id]?.status !== "completed" && !next.run) {
             data.progress[next.id] = {
               ...data.progress[next.id],
@@ -568,8 +568,10 @@ export function registerWizardDispatcherRoutes(
           const prev = steps[idx - 1];
           // Same rule as `next`: never overwrite a run step's status on
           // navigation (it would clobber completed/failed run outcomes and
-          // fake an executing run).
-          if (!prev.run) {
+          // fake an executing run). Also preserve completed/failed progress
+          // when navigating back; `currentStep` alone tracks position.
+          const prevStatus = data.progress[prev.id]?.status;
+          if (!prev.run && prevStatus !== "completed" && prevStatus !== "failed") {
             data.progress[prev.id] = {
               ...data.progress[prev.id],
               status: "in_progress",

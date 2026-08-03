@@ -313,6 +313,7 @@ export function buildDefaultMenuTree(): MenuItemDef[] {
         anyOf: [
           { allOf: [{ component: "trust.providers" }, { permission: "staff" }] },
           { allOf: [{ permission: "admin" }, { component: "trust.benefits.scan" }] },
+          { allOf: [{ component: "trust.providers.edi" }, { permission: "admin" }] },
         ],
       },
       children: [
@@ -324,6 +325,15 @@ export function buildDefaultMenuTree(): MenuItemDef[] {
           active: { type: "prefix", value: "/trust/provider" },
           testId: "menu-trust-providers",
           gate: { allOf: [{ component: "trust.providers" }, { permission: "staff" }] },
+        },
+        {
+          id: "trust-provider-edi",
+          label: "Provider EDI",
+          icon: "FileOutput",
+          href: "/trust/provider-edi",
+          active: { type: "prefix", value: "/trust/provider-edi" },
+          testId: "menu-trust-provider-edi",
+          gate: { allOf: [{ component: "trust.providers.edi" }, { permission: "admin" }] },
         },
         {
           id: "benefit-scan",

@@ -2,7 +2,7 @@ import puppeteer, { type Browser, type Page } from "puppeteer-core";
 import { PDFDocument } from "pdf-lib";
 import { registerWizardPlugin } from "../registry";
 import type { WizardPlugin, WizardStepContext } from "../types";
-import { objectStorageService } from "../../../services/objectStorage";
+import { fileSystemService } from "../../../services/files";
 import { insertFileSchema } from "@shared/schema";
 import { logger } from "../../../logger";
 import { sendInapp } from "../../../services/comm/senders/inapp";
@@ -342,11 +342,11 @@ export const btuCardcheckScrapeImportPlugin: WizardPlugin = {
               }
 
               const fileName = `cardcheck_scrape_${nid}.pdf`;
-              const uploadResult = await objectStorageService.uploadFile({
+              const uploadResult = await fileSystemService.upload({
                 fileName,
                 fileContent: Buffer.from(combinedPdfBytes),
                 mimeType: "application/pdf",
-                accessLevel: "private",
+                fileSystemId: "private",
               });
 
               const pdfFileRecord = await ctx.storage.files.create(
@@ -358,7 +358,7 @@ export const btuCardcheckScrapeImportPlugin: WizardPlugin = {
                   uploadedBy: userId,
                   entityType: "esig",
                   entityId: null,
-                  accessLevel: "private",
+                  fileSystemId: "private",
                   metadata: {
                     nid,
                     cardcheckId: cardcheck.id,

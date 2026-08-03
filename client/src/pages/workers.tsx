@@ -7,7 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { useAuth } from "@/contexts/AuthContext";
 import { ListBulkAction } from "@/components/bulk/list-bulk-action";
-import { apiRequest, serializeQueryKey } from "@/lib/queryClient";
+import { apiRequest, serializeQueryKey, getApiErrorMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
 interface PaginatedWorkersResponse {
@@ -117,7 +117,7 @@ export default function Workers() {
     } catch (err: any) {
       toast({
         title: "Failed to select all",
-        description: err?.message ?? "Unknown error",
+        description: getApiErrorMessage(err, "Unknown error"),
         variant: "destructive",
       });
     } finally {

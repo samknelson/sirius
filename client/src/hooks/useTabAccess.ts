@@ -434,17 +434,6 @@ export function useSftpClientDestinationTabAccess(destinationId: string | undefi
   });
 }
 
-/**
- * Hook specifically for Trust Provider EDI entity tabs
- */
-export function useTrustProviderEdiTabAccess(ediId: string | undefined, enabled = true) {
-  return useTabAccess({ 
-    entityType: 'trust_provider_edi', 
-    entityId: ediId, 
-    enabled 
-  });
-}
-
 export function useBulkMessageTabAccess(bulkMessageId: string | undefined, enabled = true) {
   return useTabAccess({ 
     entityType: 'bulk_message', 
@@ -466,6 +455,14 @@ export function useLedgerPaymentBatchTabAccess(batchId: string | undefined, enab
     entityType: 'ledger_payment_batch', 
     entityId: batchId, 
     enabled 
+  });
+}
+
+export function useBusinessCalendarTabAccess(calendarId: string | undefined, enabled = true) {
+  return useTabAccess({
+    entityType: 'business_calendar',
+    entityId: calendarId,
+    enabled,
   });
 }
 

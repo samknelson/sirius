@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { queryClient } from "@/lib/queryClient";
+import { queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -193,7 +193,7 @@ function BulkLookupDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
         }
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Unknown error";
+      const msg = getApiErrorMessage(err, "Unknown error");
       toast({ title: "Bulk lookup failed", description: msg, variant: "destructive" });
       setRunning(false);
       setFinished(true);

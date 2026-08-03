@@ -12,7 +12,7 @@ import { SimpleHtmlEditor } from "@/components/ui/simple-html-editor";
 import { IconPicker } from "@/components/ui/icon-picker";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 
 export default function CardcheckDefinitionEditPage() {
   const params = useParams<{ id: string }>();
@@ -73,7 +73,7 @@ export default function CardcheckDefinitionEditPage() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to update cardcheck definition.",
+        description: getApiErrorMessage(error, "Failed to update cardcheck definition."),
         variant: "destructive",
       });
     },

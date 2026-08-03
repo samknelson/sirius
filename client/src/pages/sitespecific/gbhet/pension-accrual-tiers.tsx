@@ -30,7 +30,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Plus, Edit, Trash2, Loader2, Layers, CalendarClock } from "lucide-react";
 
 interface AccrualTier {
@@ -90,7 +90,7 @@ export default function PensionAccrualTiersPage() {
       toast({ title: "Accrual tier created" });
     },
     onError: (error: any) => {
-      toast({ title: "Failed to create tier", description: error.message, variant: "destructive" });
+      toast({ title: "Failed to create tier", description: getApiErrorMessage(error, "An unexpected error occurred"), variant: "destructive" });
     },
   });
 
@@ -109,7 +109,7 @@ export default function PensionAccrualTiersPage() {
       toast({ title: "Accrual tier updated" });
     },
     onError: (error: any) => {
-      toast({ title: "Failed to update tier", description: error.message, variant: "destructive" });
+      toast({ title: "Failed to update tier", description: getApiErrorMessage(error, "An unexpected error occurred"), variant: "destructive" });
     },
   });
 
@@ -123,7 +123,7 @@ export default function PensionAccrualTiersPage() {
       toast({ title: "Accrual tier deleted" });
     },
     onError: (error: any) => {
-      toast({ title: "Failed to delete tier", description: error.message, variant: "destructive" });
+      toast({ title: "Failed to delete tier", description: getApiErrorMessage(error, "An unexpected error occurred"), variant: "destructive" });
     },
   });
 

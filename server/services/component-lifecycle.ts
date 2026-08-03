@@ -111,7 +111,7 @@ function logLifecycleFailure(
 export async function checkSchemaDependencies(
   component: ComponentDefinition,
 ): Promise<MissingDependency[]> {
-  const deps = component.schemaManifest?.dependsOnComponents ?? [];
+  const deps = component.schemaManifest?.dependsOnComponents ?? component.dependsOnComponents ?? [];
   if (deps.length === 0) return [];
 
   if (!isCacheInitialized()) {
@@ -209,15 +209,6 @@ export async function enableComponentSchema(componentId: string): Promise<Compon
     };
   }
 
-  if (!component.managesSchema || !component.schemaManifest) {
-    return {
-      success: true,
-      componentId,
-      schemaOperations: [],
-      schemaState: null,
-    };
-  }
-
   const missingDependencies = await checkSchemaDependencies(component);
   if (missingDependencies.length > 0) {
     return {
@@ -227,6 +218,15 @@ export async function enableComponentSchema(componentId: string): Promise<Compon
       schemaState: null,
       missingDependencies,
       error: formatMissingDependencies(component.name, missingDependencies),
+    };
+  }
+
+  if (!component.managesSchema || !component.schemaManifest) {
+    return {
+      success: true,
+      componentId,
+      schemaOperations: [],
+      schemaState: null,
     };
   }
 

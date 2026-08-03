@@ -10,7 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { useState, useEffect } from "react";
 import { PhoneOff, Plus, Trash2, Building2 } from "lucide-react";
 import type { WorkerDispatchDnc } from "@shared/schema";
@@ -65,10 +65,10 @@ function DispatchDoNotCallContent() {
       setNewType("employer");
       setNewMessage("");
     },
-    onError: () => {
+    onError: (error) => {
       toast({
         title: "Error",
-        description: "Failed to add entry. The combination may already exist.",
+        description: getApiErrorMessage(error, "Failed to add entry. The combination may already exist."),
         variant: "destructive",
       });
     },
@@ -85,10 +85,10 @@ function DispatchDoNotCallContent() {
         description: "The Do Not Call entry has been removed.",
       });
     },
-    onError: () => {
+    onError: (error) => {
       toast({
         title: "Error",
-        description: "Failed to remove entry.",
+        description: getApiErrorMessage(error, "Failed to remove entry."),
         variant: "destructive",
       });
     },

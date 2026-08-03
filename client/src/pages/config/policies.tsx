@@ -24,7 +24,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 
 export default function PoliciesConfigPage() {
@@ -59,7 +59,7 @@ export default function PoliciesConfigPage() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to create policy.",
+        description: getApiErrorMessage(error, "Failed to create policy."),
         variant: "destructive",
       });
     },
@@ -102,7 +102,7 @@ export default function PoliciesConfigPage() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to delete policy.",
+        description: getApiErrorMessage(error, "Failed to delete policy."),
         variant: "destructive",
       });
     },

@@ -4,7 +4,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DispatchJobTypeLayout, useDispatchJobTypeLayout } from "@/components/layouts/DispatchJobTypeLayout";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import { Briefcase, Truck, HardHat, Wrench, Clock, Calendar, ClipboardList, Package, MapPin, Users, type LucideIcon } from "lucide-react";
-import type { JobTypeData } from "@shared/schema";
+import type { JobTypeData, JobTypePrimarySetting } from "@shared/schema";
+
+const primaryLabels: Record<JobTypePrimarySetting, string> = {
+  primary: "Always primary",
+  both: "Primary if possible, otherwise secondary",
+  secondary: "Always secondary",
+};
 
 const iconMap: Record<string, LucideIcon> = {
   Briefcase, Truck, HardHat, Wrench, Clock, Calendar, ClipboardList, Package, MapPin, Users,
@@ -64,6 +70,12 @@ function DispatchJobTypeViewContent() {
             <h3 className="text-sm font-medium text-muted-foreground mb-1">Maximum Workers</h3>
             <p className="text-foreground" data-testid="text-max-workers">
               {jobTypeData?.maxWorkers !== undefined ? jobTypeData.maxWorkers : "Not set"}
+            </p>
+          </div>
+          <div>
+            <h3 className="text-sm font-medium text-muted-foreground mb-1">Primary?</h3>
+            <p className="text-foreground" data-testid="text-primary">
+              {primaryLabels[jobTypeData?.primary ?? "secondary"]}
             </p>
           </div>
         </div>

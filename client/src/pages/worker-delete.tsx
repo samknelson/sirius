@@ -15,7 +15,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { WorkerLayout, useWorkerLayout } from "@/components/layouts/WorkerLayout";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
 function WorkerDeleteContent() {
@@ -38,7 +38,7 @@ function WorkerDeleteContent() {
     onError: (error: Error) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to delete worker",
+        description: getApiErrorMessage(error, "Failed to delete worker"),
         variant: "destructive",
       });
     },

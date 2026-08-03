@@ -7,7 +7,7 @@ import { wizardPluginRegistry } from "../plugins/wizards";
 import { enforceWizardEntityAccess } from "../plugins/wizards/entity-access";
 import { enforcePluginGating } from "../plugins/_core";
 import { createUnifiedOptionsStorage } from "../storage/unified-options.js";
-import { objectStorageService } from "../services/objectStorage.js";
+import { fileSystemService } from "../services/files/index.js";
 import { validateAgainstSchema } from "../lib/json-schema-validator";
 
 const upload = multer({
@@ -353,7 +353,14 @@ export function registerWizardRoutes(
         }
         const wdata: any = (validatedData.data as any) || {};
         wdata.progress = wdata.progress || {};
-        if (validatedData.currentStep) {
+        // Mark the starting step active — but never for `run` steps: the
+        // dispatcher owns run progress, and presetting "in_progress" here
+        // would make a freshly created wizard look like it's already
+        // running (spinner + disabled Run button) before any run started.
+        const startingStep = frameworkPlugin.steps.find(
+          (s) => s.id === validatedData.currentStep,
+        );
+        if (validatedData.currentStep && startingStep?.kind !== "run") {
           wdata.progress[validatedData.currentStep] = {
             ...wdata.progress[validatedData.currentStep],
             status: "in_progress",
@@ -539,10 +546,10 @@ export function registerWizardRoutes(
       
       for (const file of wizardFiles) {
         try {
-          // Delete from object storage
-          await objectStorageService.deleteFile(file.storagePath);
-          // Delete from database
+          // Delete ordering: row first, object second — a failed object
+          // delete leaves a sweepable orphan, never a dangling row.
           await storage.files.delete(file.id);
+          await fileSystemService.remove(file.fileSystemId, file.storagePath);
         } catch (error) {
           console.error(`Failed to delete file ${file.id}:`, error);
           // Continue with deletion even if file deletion fails

@@ -29,6 +29,11 @@ interface EmployerCompanyInfo {
   companyName: string | null;
 }
 
+interface BusinessCalendarOption {
+  id: string;
+  name: string;
+}
+
 function EmployerDetailsContent() {
   const { employer } = useEmployerLayout();
   const { hasComponent } = useAuth();
@@ -46,6 +51,15 @@ function EmployerDetailsContent() {
     queryKey: ["/api/employers", employer.id, "company"],
     enabled: showCompany,
   });
+
+  const { data: businessCalendars = [], isLoading: isLoadingCalendars } = useQuery<BusinessCalendarOption[]>({
+    queryKey: ["/api/business-calendars"],
+    enabled: !!employer.businessCalendarId,
+  });
+
+  const businessCalendar = employer.businessCalendarId
+    ? businessCalendars.find(c => c.id === employer.businessCalendarId)
+    : null;
 
   const employerType = employer.typeId 
     ? employerTypes.find(t => t.id === employer.typeId) 
@@ -108,6 +122,20 @@ function EmployerDetailsContent() {
                   <span className="text-muted-foreground">Loading...</span>
                 ) : (
                   industry?.name || "Not specified"
+                )}
+              </p>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-muted-foreground">Business Calendar</label>
+              <p className="text-foreground" data-testid="text-employer-business-calendar">
+                {employer.businessCalendarId ? (
+                  isLoadingCalendars ? (
+                    <span className="text-muted-foreground">Loading...</span>
+                  ) : (
+                    businessCalendar?.name || "Unknown calendar"
+                  )
+                ) : (
+                  "Default"
                 )}
               </p>
             </div>

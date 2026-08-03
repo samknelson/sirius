@@ -18,8 +18,13 @@ interface ChangelogEntry {
 // the TOP of this array.
 const CHANGELOG_ENTRIES: ChangelogEntry[] = [
   {
+    date: "7/17/2026",
+    version: "1.0.0-a2",
+    changes: ["Fixed display bug in rating labels on modal popup"],
+  },
+  {
     date: "7/16/2026",
-    version: "1.0.0.A",
+    version: "1.0.0-a1",
     changes: [
       "Initial docker bundle and deployment",
       "Built changelog page",

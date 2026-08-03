@@ -73,6 +73,7 @@ function toMonthKey(date: Date): string {
  * once it is).
  */
 function monthWindow(month: string): { sendOn: Date; dontSendAfter: Date } {
+  // YYYY-MM month key (not a full Ymd) — shared Ymd helpers don't apply.
   const [y, m] = month.split("-").map((s) => Number(s));
   const sendOn = new Date(y, m - 1, SEND_ON_DAY, 0, 0, 0, 0);
   const dontSendAfter = new Date(y, m - 1, DONT_SEND_AFTER_DAY, 0, 0, 0, 0);

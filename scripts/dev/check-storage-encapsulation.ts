@@ -50,9 +50,6 @@ const ALLOWED_DIRECTORIES = [
 
 const ALLOWED_FILES = [
   'server/db.ts',
-  // Admin-only database snapshot utility that needs bulk operations across all tables
-  // This is intentionally excluded as it operates at the infrastructure level
-  'server/services/quickstart.ts',
 ];
 
 // Files under server/plugins/ that call storage.readOnly.query(...) but are
@@ -70,12 +67,17 @@ const READONLY_FLAG_EXEMPT_FILES = [
   // implementation, not a separate plugin carrying its own flag, so they are
   // exempt from the per-file flag requirement. Each entry corresponds to a
   // plugin wrapper that declares `needsReadOnlyDb: true`.
+  // Trust-provider EDI file-type plugins: their read queries live here while
+  // the `needsReadOnlyDb: true` flag is declared on the single
+  // trust_provider_edi wizard wrapper that drives them.
+  'server/plugins/trust/provider-edi/plugins/sitespecific-bao-kaiser.ts',
   'server/plugins/wizards/engine/types/report_workers_missing_ssn.ts',
   'server/plugins/wizards/engine/types/report_workers_invalid_ssn.ts',
   'server/plugins/wizards/engine/types/report_workers_duplicate_ssn.ts',
   'server/plugins/wizards/engine/types/report_gbhet_legal_compliance.ts',
   'server/plugins/wizards/engine/types/report_employer_users.ts',
   'server/plugins/wizards/engine/types/report_btu_workers_invalid_cardcheck.ts',
+  'server/plugins/wizards/engine/types/report_edls_scheduled_too_soon.ts',
   'server/plugins/wizards/engine/types/btu_dues_allocation.ts',
   'server/plugins/wizards/engine/types/btu_cardcheck_import.ts',
 ];

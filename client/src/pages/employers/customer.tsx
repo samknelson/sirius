@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { getApiErrorMessage } from "@/lib/queryClient";
 import { useQuery } from "@tanstack/react-query";
 import { ExternalLink, Loader2 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -134,7 +135,7 @@ function CustomerContent() {
         ) : error ? (
           <Alert variant="destructive">
             <AlertDescription data-testid="text-customer-error">
-              {error instanceof Error ? error.message : "Failed to load customer information."}
+              {getApiErrorMessage(error, "Failed to load customer information.")}
             </AlertDescription>
           </Alert>
         ) : !data ? null : (

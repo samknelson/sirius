@@ -8,6 +8,7 @@ import { dispatchEbaSettingsSchema } from "../dispatch/eba-config";
 import { dispatchSeniorityResetSettingsSchema } from "../dispatch/seniority-reset-config";
 import { dispatchDncNotificationConfigSchema } from "../dispatch/dnc-config";
 import { workerBanNotificationConfigSchema } from "../worker-ban-config";
+import { entityFilesConfigSchema } from "../../services/entity-files/config";
 import { invalidateTerminologyCache, loadTerminology } from "../terminology";
 
 /**
@@ -84,6 +85,11 @@ const VARIABLE_REGISTRY: Record<string, VariableRegistryEntry> = {
 
   // Worker ban notification settings (admin read/write)
   worker_ban_notifications: { schema: workerBanNotificationConfigSchema },
+
+  // Entity file attachments framework: per-context {file_system, directory,
+  // allowed?} map (admin read/write). Validated against the registered
+  // contexts (unknown ids / unknown directory tokens are rejected).
+  entity_files_config: { schema: entityFilesConfigSchema },
 
   // Worker TOS absence banner HTML (any authenticated user can read,
   // staff can write; gated by the worker.tos component)

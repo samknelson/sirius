@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # List Structure Changes Script
-# Shows files changed since last push to origin/main, excluding client/*, attached_assets/*, data/*.json, and database/quickstarts/* files
+# Shows files changed since last push to origin/main, excluding client/*, attached_assets/*, data/*.json files
 # For each file: displays filename, change summary, and diff
 #
 # Usage:
@@ -242,7 +242,7 @@ match_files_by_patterns() {
 
 if [ ${#APPROVE_ARGS[@]} -gt 0 ]; then
     mkdir -p "$APPROVALS_DIR"
-    changed_for_approve=$(git --no-pager diff -w --name-only "$BASE_COMMIT"..HEAD -- ':!client/*' ':!attached_assets/*' ':!data/*.json' ':!database/quickstarts/*' 2>/dev/null)
+    changed_for_approve=$(git --no-pager diff -w --name-only "$BASE_COMMIT"..HEAD -- ':!client/*' ':!attached_assets/*' ':!data/*.json' 2>/dev/null)
     matched_files=$(match_files_by_patterns "$changed_for_approve" "${APPROVE_ARGS[@]}")
 
     if [ -z "$matched_files" ]; then
@@ -279,7 +279,7 @@ fi
 
 if [ ${#REJECT_ARGS[@]} -gt 0 ]; then
     mkdir -p "$APPROVALS_DIR"
-    changed_for_reject=$(git --no-pager diff -w --name-only "$BASE_COMMIT"..HEAD -- ':!client/*' ':!attached_assets/*' ':!data/*.json' ':!database/quickstarts/*' 2>/dev/null)
+    changed_for_reject=$(git --no-pager diff -w --name-only "$BASE_COMMIT"..HEAD -- ':!client/*' ':!attached_assets/*' ':!data/*.json' 2>/dev/null)
     matched_files=$(match_files_by_patterns "$changed_for_reject" "${REJECT_ARGS[@]}")
 
     if [ -z "$matched_files" ]; then
@@ -364,7 +364,7 @@ fi
 
 # Get list of changed files, excluding client/* and attached_assets/*
 # Use -w to ignore whitespace-only changes
-changed_files=$(git --no-pager diff -w --name-only "$BASE_COMMIT"..HEAD -- ':!client/*' ':!attached_assets/*' ':!data/*.json' ':!database/quickstarts/*' 2>/dev/null)
+changed_files=$(git --no-pager diff -w --name-only "$BASE_COMMIT"..HEAD -- ':!client/*' ':!attached_assets/*' ':!data/*.json' 2>/dev/null)
 
 if [ -z "$changed_files" ]; then
     echo -e "${YELLOW}No files changed since ${BASE_COMMIT:0:12} (excluding client/*, attached_assets/*, data/*.json).${NC}"
@@ -418,7 +418,7 @@ if [ "$LIST_ONLY" = true ]; then
     echo -e "${BLUE}════════════════════════════════════════════════════════════════${NC}"
     echo -e "${BLUE}  Files Changed Since: ${BASE_COMMIT:0:12}${NC}"
     echo -e "${BLUE}  (excluding client/*, attached_assets/*, data/*.json,${NC}"
-    echo -e "${BLUE}   database/quickstarts/*, whitespace-only changes)${NC}"
+    echo -e "${BLUE}   whitespace-only changes)${NC}"
     echo -e "${BLUE}  Total: ${file_count} file(s)${NC}"
     echo -e "${BLUE}════════════════════════════════════════════════════════════════${NC}"
     echo ""
@@ -658,7 +658,7 @@ echo ""
 echo -e "${BLUE}════════════════════════════════════════════════════════════════${NC}"
 echo -e "${BLUE}  Files Changed Since: ${BASE_COMMIT:0:12}${NC}"
 echo -e "${BLUE}  (excluding client/*, attached_assets/*, data/*.json,${NC}"
-echo -e "${BLUE}   database/quickstarts/*, whitespace-only changes)${NC}"
+echo -e "${BLUE}   whitespace-only changes)${NC}"
 echo -e "${BLUE}  Total: ${file_count} file(s)${NC}"
 echo -e "${BLUE}════════════════════════════════════════════════════════════════${NC}"
 echo ""

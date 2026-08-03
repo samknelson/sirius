@@ -12,6 +12,8 @@ import { captureRequestContext } from "./middleware/request-context";
 import { cronScheduler } from "./cron";
 import { initializeCronPluginSystem } from "./plugins/system/cron";
 import { initializeDenormPluginSystem } from "./plugins/system/denorm";
+import { initializeDataRetentionPluginSystem } from "./plugins/system/data-retention";
+import { initializeSystemStatusPluginSystem } from "./plugins/system/status";
 import { bootstrapSingletonPluginConfigs } from "./plugins/_core";
 import { initDispatchSeniorityReset } from "./services/dispatch/seniority-reset";
 import { loadComponentCache } from "./services/component-cache";
@@ -36,8 +38,10 @@ import { initializeDashboardPluginSystem } from "./plugins/dashboard";
 import { initializeClientInjectionPluginSystem } from "./plugins/client-injection";
 import { initializeEventNotifierPluginSystem } from "./plugins/event-notifier";
 import { initializeWizardPluginSystem } from "./plugins/wizards";
+import { initializeTrustProviderEdiSystem } from "./plugins/trust/provider-edi";
 import { initializeMenuPluginSystem } from "./plugins/menu";
 import { initWorkerBanNotifications } from "./services/worker-ban-notifications";
+import { initSnapshotCapture } from "./services/snapshots/capture";
 import { initDispatchNotifications } from "./services/dispatch/notifications";
 import { initWmbAutoRescan } from "./services/wmb-auto-rescan";
 import { initBaoCobraAutoCase } from "./services/bao-cobra-auto-case";
@@ -231,6 +235,16 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
   // SKIP_SCHEMA_DRIFT_CHECK=1 dev escape hatch.
   await enforceStartupSchemaDrift();
 
+  // Initialize environment-defined filesystems (FILESYSTEMS env var).
+  // Throws on malformed config; warns for any file_system_id referenced by
+  // files rows but absent from the environment.
+  {
+    const { initFileSystems } = await import("./services/files");
+    const referencedIds = await storage.files.listDistinctFileSystemIds();
+    initFileSystems(referencedIds);
+    logger.info("Filesystem registry initialized", { source: "startup" });
+  }
+
   // Register permissions from enabled components
   syncComponentPermissions();
   logger.info("Component permissions synced", { source: "startup" });
@@ -319,6 +333,7 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
 
   // Initialize worker ban notifications
   initWorkerBanNotifications();
+  initSnapshotCapture();
   logger.info("Worker ban notifications initialized", { source: "startup" });
 
   // Initialize dispatch notifications
@@ -358,7 +373,19 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
   initializeDenormPluginSystem();
   logger.info("Denorm plugins registered", { source: "startup" });
 
+  // Register data-retention plugins (kind + adapter + self-registering plugin imports)
+  initializeDataRetentionPluginSystem();
+  logger.info("Data-retention plugins registered", { source: "startup" });
+
+  // Register system-status plugins (kind + self-registering plugin imports;
+  // no config adapter — results are in-memory only)
+  initializeSystemStatusPluginSystem();
+  logger.info("System status plugins registered", { source: "startup" });
+
   // Register wizards as the sixth plugin kind (self-registering plugin imports)
+  initializeTrustProviderEdiSystem();
+  logger.info("Trust provider EDI system initialized", { source: "startup" });
+
   initializeWizardPluginSystem();
   logger.info("Wizard plugins registered", { source: "startup" });
 

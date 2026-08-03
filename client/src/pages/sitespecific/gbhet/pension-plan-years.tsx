@@ -31,7 +31,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Plus, Edit, Trash2, Calendar, Loader2, Calculator, Settings } from "lucide-react";
 
 interface PlanYear {
@@ -91,7 +91,7 @@ export default function PensionPlanYearsPage() {
       toast({ title: "Plan year created successfully" });
     },
     onError: (error: any) => {
-      toast({ title: "Failed to create plan year", description: error.message, variant: "destructive" });
+      toast({ title: "Failed to create plan year", description: getApiErrorMessage(error, "An unexpected error occurred"), variant: "destructive" });
     },
   });
 
@@ -116,7 +116,7 @@ export default function PensionPlanYearsPage() {
       toast({ title: "Plan year updated successfully" });
     },
     onError: (error: any) => {
-      toast({ title: "Failed to update plan year", description: error.message, variant: "destructive" });
+      toast({ title: "Failed to update plan year", description: getApiErrorMessage(error, "An unexpected error occurred"), variant: "destructive" });
     },
   });
 
@@ -130,7 +130,7 @@ export default function PensionPlanYearsPage() {
       toast({ title: "Plan year deleted" });
     },
     onError: (error: any) => {
-      toast({ title: "Failed to delete plan year", description: error.message, variant: "destructive" });
+      toast({ title: "Failed to delete plan year", description: getApiErrorMessage(error, "An unexpected error occurred"), variant: "destructive" });
     },
   });
 
@@ -166,7 +166,7 @@ export default function PensionPlanYearsPage() {
       toast({ title: "SLA configuration saved" });
     },
     onError: (error: any) => {
-      toast({ title: "Failed to save SLA configuration", description: error.message, variant: "destructive" });
+      toast({ title: "Failed to save SLA configuration", description: getApiErrorMessage(error, "An unexpected error occurred"), variant: "destructive" });
     },
   });
 
@@ -204,7 +204,7 @@ export default function PensionPlanYearsPage() {
       toast({ title: "Variable contribution configuration saved" });
     },
     onError: (error: any) => {
-      toast({ title: "Failed to save variable contribution configuration", description: error.message, variant: "destructive" });
+      toast({ title: "Failed to save variable contribution configuration", description: getApiErrorMessage(error, "An unexpected error occurred"), variant: "destructive" });
     },
   });
 
@@ -229,7 +229,7 @@ export default function PensionPlanYearsPage() {
     },
     onError: (error: any) => {
       setBatchConfirmOpen(false);
-      toast({ title: "Batch SLA Failed", description: error.message, variant: "destructive" });
+      toast({ title: "Batch SLA Failed", description: getApiErrorMessage(error, "An unexpected error occurred"), variant: "destructive" });
     },
   });
 

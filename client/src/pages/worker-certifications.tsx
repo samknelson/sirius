@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { useState, useCallback, useMemo } from "react";
 import { Award, Plus, ExternalLink } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
@@ -85,7 +85,7 @@ function CertificationsContent() {
     onError: (error: Error) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to add certification.",
+        description: getApiErrorMessage(error, "Failed to add certification."),
         variant: "destructive",
       });
     },

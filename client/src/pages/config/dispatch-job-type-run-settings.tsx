@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { DispatchJobTypeLayout, useDispatchJobTypeLayout } from "@/components/layouts/DispatchJobTypeLayout";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Loader2 } from "lucide-react";
 import { usePageTitle } from "@/contexts/PageTitleContext";
 import type { JobTypeData } from "@shared/schema";
@@ -49,7 +49,7 @@ function RunSettingsContent() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to save run settings.",
+        description: getApiErrorMessage(error, "Failed to save run settings."),
         variant: "destructive",
       });
     },

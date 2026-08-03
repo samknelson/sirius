@@ -5,7 +5,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { WorkerLayout, useWorkerLayout } from "@/components/layouts/WorkerLayout";
 import { useAccessCheck } from "@/hooks/use-access-check";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -36,7 +36,7 @@ function WorkerEdlsContent() {
       toast({ title: "EDLS state updated" });
     },
     onError: (err: unknown) => {
-      const description = err instanceof Error ? err.message : "Unknown error";
+      const description = getApiErrorMessage(err, "Unknown error");
       toast({
         title: "Failed to update EDLS state",
         description,

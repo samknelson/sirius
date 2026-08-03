@@ -26,7 +26,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 
 export default function CardcheckDefinitionsPage() {
   const { toast } = useToast();
@@ -59,7 +59,7 @@ export default function CardcheckDefinitionsPage() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to create cardcheck definition.",
+        description: getApiErrorMessage(error, "Failed to create cardcheck definition."),
         variant: "destructive",
       });
     },
@@ -80,7 +80,7 @@ export default function CardcheckDefinitionsPage() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to delete cardcheck definition.",
+        description: getApiErrorMessage(error, "Failed to delete cardcheck definition."),
         variant: "destructive",
       });
     },

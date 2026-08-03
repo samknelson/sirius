@@ -19,7 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import { Trash2, User, Clock, RefreshCw } from "lucide-react";
 import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import { format, formatDistanceToNow } from "date-fns";
 import {
   AlertDialog,
@@ -64,10 +64,10 @@ export default function SessionsPage() {
         description: "The user has been logged out.",
       });
     },
-    onError: () => {
+    onError: (error) => {
       toast({
         title: "Error",
-        description: "Failed to delete session",
+        description: getApiErrorMessage(error, "Failed to delete session"),
         variant: "destructive",
       });
     },

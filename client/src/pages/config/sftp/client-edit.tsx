@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Loader2 } from "lucide-react";
 
 function EditContent() {
@@ -59,7 +59,7 @@ function EditContent() {
       toast({ title: "Destination updated", description: "The SFTP client destination has been updated." });
     },
     onError: (error: any) => {
-      toast({ title: "Failed to update destination", description: error?.message || "An error occurred", variant: "destructive" });
+      toast({ title: "Failed to update destination", description: getApiErrorMessage(error, "An error occurred"), variant: "destructive" });
     },
   });
 

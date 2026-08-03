@@ -14,7 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Role } from "@/lib/entity-types";
 
 const VARIABLE_NAME = "edls_settings";
@@ -120,7 +120,7 @@ export default function EdlsSettingsPage() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to save EDLS settings.",
+        description: getApiErrorMessage(error, "Failed to save EDLS settings."),
         variant: "destructive",
       });
     },

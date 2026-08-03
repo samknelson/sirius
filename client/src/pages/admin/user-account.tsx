@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { getApiErrorMessage } from "@/lib/queryClient";
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { queryClient, apiRequest } from '@/lib/queryClient';
 import { Button } from '@/components/ui/button';
@@ -44,7 +45,7 @@ function UserAccountContent() {
     onError: (error: Error) => {
       toast({
         title: 'Failed to set password',
-        description: error.message,
+        description: getApiErrorMessage(error, "The operation failed."),
         variant: 'destructive',
       });
     },
@@ -98,7 +99,7 @@ function UserAccountContent() {
     onError: (error) => {
       toast({
         title: 'Error',
-        description: error instanceof Error ? error.message.replace(/^\d+:\s*/, '') : 'Failed to update user status',
+        description: getApiErrorMessage(error, 'Failed to update user status'),
         variant: 'destructive',
       });
     },
@@ -119,7 +120,7 @@ function UserAccountContent() {
     onError: (error) => {
       toast({
         title: 'Error',
-        description: error instanceof Error ? error.message.replace(/^\d+:\s*/, '') : 'Failed to assign role',
+        description: getApiErrorMessage(error, 'Failed to assign role'),
         variant: 'destructive',
       });
     },
@@ -141,7 +142,7 @@ function UserAccountContent() {
     onError: (error) => {
       toast({
         title: 'Error',
-        description: error instanceof Error ? error.message.replace(/^\d+:\s*/, '') : 'Failed to unassign role',
+        description: getApiErrorMessage(error, 'Failed to unassign role'),
         variant: 'destructive',
       });
     },

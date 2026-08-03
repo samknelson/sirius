@@ -13,7 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 
 const formSchema = z.object({
   bpsId: z.string().optional(),
@@ -104,7 +104,7 @@ function BtuCsgEditContent() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error?.message || "Failed to update record.",
+        description: getApiErrorMessage(error, "Failed to update record."),
         variant: "destructive",
       });
     },

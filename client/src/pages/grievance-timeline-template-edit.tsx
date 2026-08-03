@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -42,7 +42,7 @@ function EditContent() {
     } catch (error) {
       toast({
         title: "Could not update timeline template",
-        description: error instanceof Error ? error.message : undefined,
+        description: getApiErrorMessage(error, "An unexpected error occurred"),
         variant: "destructive",
       });
     } finally {

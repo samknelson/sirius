@@ -104,6 +104,7 @@ import "./plugins/workerEmployment";
 import "./plugins/grievanceName";
 import "./plugins/grievanceTimeline";
 import "./plugins/tosAbsenceReminder";
+import "./plugins/dispatch/jobEvent";
 import "./plugins/grievanceDeadlineReminder";
 import "./plugins/employerMonthly";
 // Trust WMB lifecycle-event denorm plugins (shared trust_wmb_events table,
@@ -113,11 +114,16 @@ import "./plugins/trustWmbRestart";
 import "./plugins/trustWmbTerminate";
 // Dispatch-eligibility denorm plugins (write side of dispatch eligibility).
 import "./plugins/dispatch/accepted";
+// Auto Sign-In: sets workers back to Available when their accepted primary
+// dispatch ends (gated by the dispatch.asi component).
+import "./plugins/dispatch/asi-sign-in";
 import "./plugins/dispatch/ban";
+import "./plugins/dispatch/department";
 import "./plugins/dispatch/dnc";
 import "./plugins/dispatch/eba";
 import "./plugins/dispatch/hfe";
 import "./plugins/dispatch/hta-home-employer";
+import "./plugins/dispatch/primary-unavailable";
 import "./plugins/dispatch/singleshift";
 import "./plugins/dispatch/skill";
 import "./plugins/dispatch/status";

@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { DispatchJobTypeLayout, useDispatchJobTypeLayout } from "@/components/layouts/DispatchJobTypeLayout";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Loader2, AlertTriangle } from "lucide-react";
 
 function DispatchJobTypeDeleteContent() {
@@ -28,7 +28,7 @@ function DispatchJobTypeDeleteContent() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to delete job type.",
+        description: getApiErrorMessage(error, "Failed to delete job type."),
         variant: "destructive",
       });
     },

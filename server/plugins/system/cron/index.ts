@@ -185,8 +185,10 @@ export function initializeCronPluginSystem(): void {
 }
 
 // Plugin registrations (side-effect imports — each file self-registers).
-import "./plugins/deleteExpiredReports";
-import "./plugins/deleteOldCronLogs";
+// NOTE: the five legacy cleanup jobs (delete-expired-hfe, delete-expired-reports,
+// delete-expired-flood-events, dispatch-eba-cleanup, delete-old-cron-logs) were
+// consolidated into data-retention plugins swept by the single dataRetention cron.
+import "./plugins/dataRetention";
 import "./plugins/processWmbBatch";
 import "./plugins/scheduledBenefitScan";
 import "./plugins/deleteExpiredFloodEvents";
@@ -213,3 +215,4 @@ import "./plugins/gbhetPensionSharesReconcile";
 import "./plugins/denormBackfill";
 import "./plugins/denormStale";
 import "./plugins/ebsPump";
+import "./plugins/fileConsistencySweep";

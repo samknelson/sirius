@@ -5,7 +5,7 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, getApiErrorMessage } from "@/lib/queryClient";
 import { Link } from "wouter";
 import type { Bookmark as BookmarkType } from "@shared/schema";
 import {
@@ -47,10 +47,10 @@ export default function Bookmarks() {
       });
       setDeleteTarget(null);
     },
-    onError: () => {
+    onError: (error) => {
       toast({
         title: "Error",
-        description: "Failed to delete bookmark",
+        description: getApiErrorMessage(error, "Failed to delete bookmark"),
         variant: "destructive",
       });
     },

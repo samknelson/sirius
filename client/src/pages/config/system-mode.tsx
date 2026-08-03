@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { usePageTitle } from "@/contexts/PageTitleContext";
+import { getApiErrorMessage } from "@/lib/queryClient";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -148,7 +149,7 @@ export default function SystemModePage() {
     onError: (error) => {
       toast({
         title: "Error",
-        description: error instanceof Error ? error.message : "Failed to update system mode",
+        description: getApiErrorMessage(error, "Failed to update system mode"),
         variant: "destructive",
       });
     },

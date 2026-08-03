@@ -19,13 +19,16 @@ export default function Reports({ activeCategory }: ReportsProps = {}) {
     queryKey: ["/api/wizard-types"],
   });
 
-  const reportTypes = allWizardTypes?.filter(wt => wt.name.startsWith('report_')) || [];
+  // A wizard type is a report if it carries the isReport flag (plugin
+  // wizards) or follows the legacy `report_` naming convention.
+  const reportTypes = allWizardTypes?.filter(wt => wt.isReport || wt.name.startsWith('report_')) || [];
+  const reportTypeNames = new Set(reportTypes.map(rt => rt.name));
 
   const { data: allWizards, isLoading: wizardsLoading } = useQuery<Wizard[]>({
     queryKey: ["/api/wizards"],
   });
 
-  const reportWizards = allWizards?.filter(w => w.type.startsWith('report_')) || [];
+  const reportWizards = allWizards?.filter(w => reportTypeNames.has(w.type)) || [];
 
   // Get unique categories
   const categories = Array.from(new Set(reportTypes.map(rt => rt.category).filter(Boolean))) as string[];

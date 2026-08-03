@@ -24,6 +24,8 @@ import "./plugins/report-workers-duplicate-ssn";
 import "./plugins/report-employer-users";
 import "./plugins/report-ledger-integrity";
 import "./plugins/report-btu-workers-invalid-cardcheck";
+import "./plugins/report-edls-soop";
+import "./plugins/report-edls-scheduled-too-soon";
 import "./plugins/btu-worker-import";
 import "./plugins/btu-dues-allocation";
 import "./plugins/btu-cardcheck-import";
@@ -38,6 +40,7 @@ import "./plugins/benefit-election-enrollment";
 import "./plugins/open-enrollment-enrollment";
 import "./plugins/life-event-enrollment";
 import "./plugins/bao-cobra-enrollment";
+import "./plugins/trust-provider-edi";
 
 let kindRegistered = false;
 

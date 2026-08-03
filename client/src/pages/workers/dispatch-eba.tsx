@@ -3,7 +3,7 @@ import { WorkerLayout, useWorkerLayout } from "@/components/layouts/WorkerLayout
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { useRef, useMemo, useCallback } from "react";
 import { CalendarDays, Loader2 } from "lucide-react";
 import { addDays, startOfDay, isSameDay } from "date-fns";
@@ -107,9 +107,9 @@ function DispatchEbaContent() {
       queryClient.invalidateQueries({ queryKey: ["/api/worker-dispatch-eba/worker", worker.id] });
       pendingDateRef.current = null;
     },
-    onError: () => {
+    onError: (error) => {
       pendingDateRef.current = null;
-      toast({ title: "Error", description: "Failed to update availability.", variant: "destructive" });
+      toast({ title: "Error", description: getApiErrorMessage(error, "Failed to update availability."), variant: "destructive" });
     },
   });
 

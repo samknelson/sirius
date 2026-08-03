@@ -38,6 +38,33 @@ export {
 } from "./schema/dispatch/schema";
 
 export {
+  dispatchJobFore,
+  insertDispatchJobForeSchema,
+  type DispatchJobFore,
+  type InsertDispatchJobFore,
+} from "./schema/dispatch/fore-schema";
+
+export {
+  dispatchJobEvent,
+  insertDispatchJobEventSchema,
+  type DispatchJobEvent,
+  type InsertDispatchJobEvent,
+} from "./schema/dispatch/bullpen-schema";
+
+export {
+  workerDispatchDepartment,
+  dispatchJobDepartment,
+  workerDispatchDepartmentPreferenceEnum,
+  insertWorkerDispatchDepartmentSchema,
+  insertDispatchJobDepartmentSchema,
+  type WorkerDispatchDepartment,
+  type InsertWorkerDispatchDepartment,
+  type DispatchJobDepartment,
+  type InsertDispatchJobDepartment,
+  type WorkerDispatchDepartmentPreference,
+} from "./schema/dispatch/department-schema";
+
+export {
   workerDispatchDnc,
   dispatchWorkerDncTypeEnum,
   insertWorkerDispatchDncSchema,
@@ -52,6 +79,13 @@ export {
   type InsertWorkerDispatchHfe,
   type WorkerDispatchHfe,
 } from "./schema/dispatch/hfe-schema";
+
+export {
+  workerDispatchAsi,
+  insertWorkerDispatchAsiSchema,
+  type InsertWorkerDispatchAsi,
+  type WorkerDispatchAsi,
+} from "./schema/dispatch/asi-schema";
 
 export {
   workerDispatchEba,
@@ -81,6 +115,10 @@ export {
   type JobTypeEligibility,
   type EligibilityPluginMetadata,
   type JobTypeData,
+  jobTypePrimarySettingEnum,
+  type JobTypePrimarySetting,
+  jobTypeBullpenEnum,
+  type JobTypeBullpenSetting,
   type DispatchJobData,
   type NotificationMedia,
   type PollPhaseStatus,
@@ -252,7 +290,14 @@ export const employers = pgTable("employers", {
   typeId: varchar("type_id").references(() => optionsEmployerType.id, { onDelete: 'set null' }),
   industryId: varchar("industry_id").references(() => optionsIndustry.id, { onDelete: 'set null' }),
   denormPolicyId: varchar("denorm_policy_id").references(() => policies.id, { onDelete: 'set null' }),
-});
+  businessCalendarId: varchar("business_calendar_id"),
+}, (table) => [
+  foreignKey({
+    name: "employers_business_calendar_id_fkey",
+    columns: [table.businessCalendarId],
+    foreignColumns: [businessCalendars.id],
+  }).onDelete("set null"),
+]);
 
 export const policies = pgTable("policies", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -539,7 +584,7 @@ export const optionsCommTags = pgTable("options_comm_tags", {
 
 export const optionsEventType = pgTable("options_event_type", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  siriusId: varchar("sirius_id").notNull().unique(),
+  siriusId: varchar("sirius_id").unique(),
   name: text("name").notNull(),
   description: text("description"),
   category: varchar("category").notNull().default("public"),
@@ -859,9 +904,15 @@ export const files = pgTable("files", {
   uploadedAt: timestamp("uploaded_at").default(sql`now()`).notNull(),
   entityType: varchar("entity_type"),
   entityId: varchar("entity_id"),
-  accessLevel: varchar("access_level").notNull().default('private'),
+  // Which environment-defined filesystem (FILESYSTEMS env var) holds the
+  // bytes. Pre-existing rows were backfilled to "legacy" by migration 1055.
+  fileSystemId: varchar("file_system_id").notNull(),
+  // live | missing | pending_delete — maintained by the consistency sweep.
+  status: varchar("status").notNull().default('live'),
   metadata: jsonb("metadata"),
-});
+}, (table) => [
+  unique("files_file_system_id_storage_path_unique").on(table.fileSystemId, table.storagePath),
+]);
 
 export const esigStatusEnum = pgEnum("esig_status", ["pending", "signed"]);
 export const esigTypeEnum = pgEnum("esig_type", ["online", "offline", "upload"]);
@@ -1027,10 +1078,10 @@ export {
 } from "./schema/system/sftp-client-schema";
 
 export {
-  trustProviderEdi,
-  insertTrustProviderEdiSchema,
-  type TrustProviderEdi,
-  type InsertTrustProviderEdi,
+  pluginConfigsTrustProviderEdi,
+  insertPluginConfigTrustProviderEdiSchema,
+  type PluginConfigTrustProviderEdi,
+  type InsertPluginConfigTrustProviderEdi,
 } from "./schema/trust/provider-edi-schema";
 
 export {
@@ -1132,6 +1183,10 @@ export {
   insertGrievanceStatusHistorySchema,
   type GrievanceStatusHistory,
   type InsertGrievanceStatusHistory,
+  grievanceFiles,
+  insertGrievanceFileSchema,
+  type GrievanceFile,
+  type InsertGrievanceFile,
   grievanceTimelineAdjustmentSchema,
   type GrievanceTimelineAdjustment,
   TIMELINE_ADJUSTMENT_DATA_KEY,
@@ -1282,6 +1337,10 @@ export {
   insertEdlsTaskSchema,
   type EdlsTask,
   type InsertEdlsTask,
+  optionsEdlsShowStatus,
+  insertEdlsShowStatusSchema,
+  type EdlsShowStatus,
+  type InsertEdlsShowStatus,
   workerEdls,
   insertWorkerEdlsSchema,
   type WorkerEdls,
@@ -2067,14 +2126,15 @@ export {
 } from "./schema/trust/benefit-eligibility-schema";
 
 // Dashboard subsidiary — role-based visibility hoisted out of the opaque
-// settings blob. Each dashboard config targets exactly one role; a viewer
-// sees the widget only when they hold that role. The role FK is RESTRICT so a
-// role still referenced by a dashboard config cannot be deleted out from under
-// it (which would otherwise leave the config with no subsidiary row and make it
-// vanish from the inner-joined search/render path).
+// settings blob. Each dashboard config targets one or MORE roles (a varchar
+// array); a viewer sees the widget when they hold ANY of the config's roles.
+// An array column cannot carry an FK, so the RESTRICT protection that used to
+// live on the old single `role` FK is enforced in the storage layer instead:
+// `storage.users.deleteRole` refuses to delete a role that any dashboard
+// config's roles array still references.
 export const pluginConfigsDashboard = pgTable("plugin_configs_dashboard", {
   id: varchar("id").primaryKey().references(() => pluginConfigs.id, { onDelete: 'cascade' }),
-  role: varchar("role").notNull().references(() => roles.id, { onDelete: 'restrict' }),
+  roles: varchar("roles").array().notNull(),
 });
 
 export const insertPluginConfigDashboardSchema = createInsertSchema(pluginConfigsDashboard);
@@ -2610,3 +2670,158 @@ export const insertFloodSchema = createInsertSchema(flood).omit({
 
 export type InsertFlood = z.infer<typeof insertFloodSchema>;
 export type Flood = typeof flood.$inferSelect;
+
+// Snapshots — generic point-in-time entity copies (self-contained JSON
+// export bundles). Core table: entity types from any domain may participate.
+export const snapshots = pgTable("snapshots", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  entityType: varchar("entity_type", { length: 100 }).notNull(),
+  entityId: varchar("entity_id").notNull(),
+  createdAt: timestamp("created_at").default(sql`now()`).notNull(),
+  authorId: varchar("author_id").references(() => users.id, { onDelete: 'set null' }),
+  authorName: text("author_name"),
+  label: text("label"),
+  data: jsonb("data").notNull(),
+}, (table) => ({
+  entityIdx: index("snapshots_entity_type_entity_id_created_at_idx").on(table.entityType, table.entityId, table.createdAt),
+}));
+
+export const insertSnapshotSchema = createInsertSchema(snapshots).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertSnapshot = z.infer<typeof insertSnapshotSchema>;
+export type Snapshot = typeof snapshots.$inferSelect;
+
+// Business Calendars — core tool for business-day computations (e.g. "11
+// business days after start"). A calendar composes closure/open "sources":
+// weekends, manual closed days, vacations, forced-open days, and holiday
+// types from the date-holidays library (region lives in data.region).
+export const businessCalendarSources = [
+  "weekends",
+  "manual-byday",
+  "manual-vacation",
+  "manual-open",
+  "date-holiday-public",
+  "date-holiday-bank",
+  "date-holiday-observance",
+  "date-holiday-school",
+  "date-holiday-optional",
+] as const;
+export type BusinessCalendarSource = (typeof businessCalendarSources)[number];
+
+export const businessCalendarDataSchema = z.object({
+  region: z.string().optional(),
+  weekends: z.array(z.number().int().min(1).max(7)).optional(),
+}).passthrough();
+export type BusinessCalendarData = z.infer<typeof businessCalendarDataSchema>;
+
+export const businessCalendars = pgTable("business_calendars", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  siriusId: varchar("sirius_id").unique(),
+  name: text("name").notNull(),
+  description: text("description"),
+  sources: text("sources").array().notNull().default(sql`'{}'::text[]`),
+  data: jsonb("data").notNull().default(sql`'{}'::jsonb`),
+});
+
+export const businessCalendarManualByday = pgTable("business_calendar_manual_byday", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  calendarId: varchar("calendar_id").notNull(),
+  ymd: varchar("ymd").notNull(),
+}, (table) => ({
+  fkCalendar: foreignKey({
+    name: "bcal_manual_byday_calendar_id_fkey",
+    columns: [table.calendarId],
+    foreignColumns: [businessCalendars.id],
+  }).onDelete("cascade"),
+  uniqueCalendarYmd: unique("bcal_manual_byday_calendar_id_ymd_unique").on(table.calendarId, table.ymd),
+}));
+
+export const businessCalendarManualVacation = pgTable("business_calendar_manual_vacation", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  calendarId: varchar("calendar_id").notNull(),
+  startYmd: varchar("start_ymd").notNull(),
+  endYmd: varchar("end_ymd").notNull(),
+}, (table) => ({
+  fkCalendar: foreignKey({
+    name: "bcal_manual_vacation_calendar_id_fkey",
+    columns: [table.calendarId],
+    foreignColumns: [businessCalendars.id],
+  }).onDelete("cascade"),
+  startBeforeEnd: check("bcal_manual_vacation_range_check", sql`start_ymd <= end_ymd`),
+}));
+
+export const businessCalendarManualOpen = pgTable("business_calendar_manual_open", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  calendarId: varchar("calendar_id").notNull(),
+  ymd: varchar("ymd").notNull(),
+}, (table) => ({
+  fkCalendar: foreignKey({
+    name: "bcal_manual_open_calendar_id_fkey",
+    columns: [table.calendarId],
+    foreignColumns: [businessCalendars.id],
+  }).onDelete("cascade"),
+  uniqueCalendarYmd: unique("bcal_manual_open_calendar_id_ymd_unique").on(table.calendarId, table.ymd),
+}));
+
+const ymdString = z.string().refine(isValidYmd, "must be YYYY-MM-DD");
+
+export const insertBusinessCalendarSchema = createInsertSchema(businessCalendars).omit({
+  id: true,
+}).extend({
+  siriusId: z.string().nullish(),
+  description: z.string().nullish(),
+  sources: z.array(z.enum(businessCalendarSources)).default([]),
+  data: businessCalendarDataSchema.default({}),
+});
+
+export const insertBusinessCalendarManualBydaySchema = createInsertSchema(businessCalendarManualByday).omit({
+  id: true,
+}).extend({ ymd: ymdString });
+
+export const insertBusinessCalendarManualVacationSchema = createInsertSchema(businessCalendarManualVacation).omit({
+  id: true,
+}).extend({ startYmd: ymdString, endYmd: ymdString }).refine(
+  (v) => v.startYmd <= v.endYmd,
+  { message: "startYmd must be <= endYmd", path: ["endYmd"] },
+);
+
+export const insertBusinessCalendarManualOpenSchema = createInsertSchema(businessCalendarManualOpen).omit({
+  id: true,
+}).extend({ ymd: ymdString });
+
+// ── Help entries ────────────────────────────────────────────────────
+// Site-wide configurable help text. Each entry lists one or more URL
+// path patterns (SQL LIKE-style, `%` wildcards, e.g.
+// `/config/dispatch-job-type/%/eligibility-plugins`). Pages fetch the
+// entries matching their current path and render the summary inline,
+// with `details` (limited HTML) behind a "more" affordance.
+export const helps = pgTable("help", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  paths: text("paths").array().notNull().default(sql`'{}'::text[]`),
+  summary: text("summary").notNull(),
+  details: text("details"),
+  data: jsonb("data"),
+});
+
+export const insertHelpSchema = createInsertSchema(helps).omit({
+  id: true,
+}).extend({
+  paths: z.array(z.string().trim().min(1, "path pattern cannot be empty")).min(1, "at least one path pattern is required"),
+  summary: z.string().trim().min(1, "summary is required"),
+  details: z.string().nullish(),
+});
+
+export type InsertHelp = z.infer<typeof insertHelpSchema>;
+export type Help = typeof helps.$inferSelect;
+
+export type InsertBusinessCalendar = z.infer<typeof insertBusinessCalendarSchema>;
+export type BusinessCalendar = typeof businessCalendars.$inferSelect;
+export type InsertBusinessCalendarManualByday = z.infer<typeof insertBusinessCalendarManualBydaySchema>;
+export type BusinessCalendarManualByday = typeof businessCalendarManualByday.$inferSelect;
+export type InsertBusinessCalendarManualVacation = z.infer<typeof insertBusinessCalendarManualVacationSchema>;
+export type BusinessCalendarManualVacation = typeof businessCalendarManualVacation.$inferSelect;
+export type InsertBusinessCalendarManualOpen = z.infer<typeof insertBusinessCalendarManualOpenSchema>;
+export type BusinessCalendarManualOpen = typeof businessCalendarManualOpen.$inferSelect;

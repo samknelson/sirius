@@ -1,7 +1,7 @@
 import AdmZip from "adm-zip";
 import { registerWizardPlugin } from "../registry";
 import type { WizardPlugin, WizardStepContext } from "../types";
-import { objectStorageService } from "../../../services/objectStorage";
+import { fileSystemService } from "../../../services/files";
 import { createBtuWorkerImportStorage } from "../../../storage/sitespecific/btu/worker-import";
 import { insertFileSchema } from "@shared/schema";
 
@@ -90,11 +90,11 @@ export const btuCardcheckSigImportPlugin: WizardPlugin = {
         }
         const userId = resolveUserId(ctx);
 
-        const uploadResult = await objectStorageService.uploadFile({
+        const uploadResult = await fileSystemService.upload({
           fileName: file.originalname,
           fileContent: file.buffer,
           mimeType: "application/zip",
-          accessLevel: "private",
+          fileSystemId: "private",
         });
 
         const validatedData = insertFileSchema.parse({
@@ -105,7 +105,7 @@ export const btuCardcheckSigImportPlugin: WizardPlugin = {
           uploadedBy: userId,
           entityType: "wizard",
           entityId: ctx.wizardId,
-          accessLevel: "private",
+          fileSystemId: "private",
           metadata: { wizardType: "btu_cardcheck_sig_import" },
         });
         const fileRecord = await ctx.storage.files.create(validatedData);
@@ -270,7 +270,7 @@ export const btuCardcheckSigImportPlugin: WizardPlugin = {
         }
         const userId = resolveUserId(ctx);
 
-        const zipBuffer = await objectStorageService.downloadFile(zipStoragePath);
+        const zipBuffer = await fileSystemService.download("private", zipStoragePath);
         const zip = new AdmZip(zipBuffer);
         const btuStorage = createBtuWorkerImportStorage();
 
@@ -318,11 +318,11 @@ export const btuCardcheckSigImportPlugin: WizardPlugin = {
             }
 
             const pdfBuffer = pdfEntry.getData();
-            const pdfUploadResult = await objectStorageService.uploadFile({
+            const pdfUploadResult = await fileSystemService.upload({
               fileName: matchedFile.filename,
               fileContent: pdfBuffer,
               mimeType: "application/pdf",
-              accessLevel: "private",
+              fileSystemId: "private",
             });
 
             const pdfFileRecord = await ctx.storage.files.create(
@@ -334,7 +334,7 @@ export const btuCardcheckSigImportPlugin: WizardPlugin = {
                 uploadedBy: userId,
                 entityType: "esig",
                 entityId: null,
-                accessLevel: "private",
+                fileSystemId: "private",
                 metadata: {
                   bpsId: matchedFile.bpsId,
                   wizardId: ctx.wizardId,

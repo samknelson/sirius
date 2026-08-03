@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { 
@@ -141,6 +141,7 @@ export default function EventTypesPage() {
     mutationFn: async (data: InsertEventType) => {
       return apiRequest("POST", "/api/options/event-type", {
         ...data,
+        siriusId: data.siriusId?.trim() ? data.siriusId.trim() : null,
         category: formCategory,
         config: Object.keys(formConfig).length > 0 ? formConfig : null,
         data: { icon: formIcon }
@@ -161,7 +162,7 @@ export default function EventTypesPage() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to create event type.",
+        description: getApiErrorMessage(error, "Failed to create event type."),
         variant: "destructive",
       });
     },
@@ -171,6 +172,7 @@ export default function EventTypesPage() {
     mutationFn: async (data: { id: string; updates: InsertEventType }) => {
       return apiRequest("PUT", `/api/options/event-type/${data.id}`, {
         ...data.updates,
+        siriusId: data.updates.siriusId?.trim() ? data.updates.siriusId.trim() : null,
         category: formCategory,
         config: Object.keys(formConfig).length > 0 ? formConfig : null,
         data: { icon: formIcon }
@@ -191,7 +193,7 @@ export default function EventTypesPage() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to update event type.",
+        description: getApiErrorMessage(error, "Failed to update event type."),
         variant: "destructive",
       });
     },
@@ -212,7 +214,7 @@ export default function EventTypesPage() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to delete event type.",
+        description: getApiErrorMessage(error, "Failed to delete event type."),
         variant: "destructive",
       });
     },
@@ -375,12 +377,13 @@ export default function EventTypesPage() {
                                   name="siriusId"
                                   render={({ field }) => (
                                     <FormItem>
-                                      <FormLabel>Sirius ID *</FormLabel>
+                                      <FormLabel>Sirius ID</FormLabel>
                                       <FormControl>
                                         <Input
-                                          placeholder="e.g., CONFERENCE"
+                                          placeholder="e.g., CONFERENCE (optional)"
                                           data-testid="input-edit-siriusId"
                                           {...field}
+                                          value={field.value || ""}
                                         />
                                       </FormControl>
                                       <FormMessage />
@@ -585,12 +588,13 @@ export default function EventTypesPage() {
                 name="siriusId"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Sirius ID *</FormLabel>
+                    <FormLabel>Sirius ID</FormLabel>
                     <FormControl>
                       <Input
-                        placeholder="e.g., CONFERENCE, WORKSHOP, WEBINAR"
+                        placeholder="e.g., CONFERENCE, WORKSHOP, WEBINAR (optional)"
                         data-testid="input-add-siriusId"
                         {...field}
+                        value={field.value || ""}
                       />
                     </FormControl>
                     <FormMessage />

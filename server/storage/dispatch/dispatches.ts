@@ -1,25 +1,58 @@
 import { createNoopValidator } from '../utils/validation';
-import { getClient } from '../transaction-context';
+import { getClient, runInTransaction } from '../transaction-context';
 import { 
   dispatches, 
   dispatchJobs,
+  optionsDispatchJobType,
   workers,
   contacts,
   comm,
   employers,
+  workerDispatchStatus,
   type Dispatch, 
   type InsertDispatch,
   type DispatchStatus,
+  type JobTypeData,
+  type JobTypePrimarySetting,
   type Comm
 } from "@shared/schema";
 import { eq, desc, and, inArray, ne, arrayContains } from "drizzle-orm";
 import { eventBus, EventType } from "../../services/event-bus";
-import { defineLoggingConfig } from "../middleware/logging";
+import { defineLoggingConfig, withStorageLogging } from "../middleware/logging";
+import { createWorkerDispatchStatusStorage, workerDispatchStatusLoggingConfig } from "./worker-status";
 
 /**
  * Stub validator - add validation logic here when needed
  */
 export const validate = createNoopValidator<InsertDispatch, Dispatch>();
+
+/**
+ * Name of the partial unique index enforcing "at most one accepted primary
+ * dispatch per worker" (see shared/schema/dispatch/schema.ts and core
+ * migration 1052).
+ */
+const ONE_PRIMARY_ACCEPTED_INDEX = "dispatches_one_primary_accepted_per_worker";
+
+export const PRIMARY_DISPATCH_CONFLICT_MESSAGE =
+  "This worker already has an accepted primary dispatch. A worker can only have one accepted primary dispatch at a time.";
+
+/** Error thrown when a change would create a second accepted primary dispatch for a worker. */
+export class PrimaryDispatchConflictError extends Error {
+  constructor() {
+    super(PRIMARY_DISPATCH_CONFLICT_MESSAGE);
+    this.name = "PrimaryDispatchConflictError";
+  }
+}
+
+function isPrimaryDispatchUniqueViolation(err: unknown): boolean {
+  const e = err as { code?: string; constraint?: string; message?: string } | null;
+  if (!e) return false;
+  return (
+    e.code === "23505" &&
+    (e.constraint === ONE_PRIMARY_ACCEPTED_INDEX ||
+      (typeof e.message === "string" && e.message.includes(ONE_PRIMARY_ACCEPTED_INDEX)))
+  );
+}
 
 export interface CommSummary {
   id: string;
@@ -43,6 +76,7 @@ export interface DispatchWithRelations extends Dispatch {
     id: string;
     title: string;
     employerId: string;
+    startYmd: string;
     payRate: string | null;
     startTime: string | null;
     endTime: string | null;
@@ -72,6 +106,15 @@ export interface DispatchStorage {
   setStatus(dispatchId: string, newStatus: DispatchStatus): Promise<{ success: boolean; dispatch?: Dispatch; error?: string }>;
   findByCommId(commId: string): Promise<Dispatch | undefined>;
   expireRemainingIfJobFull(jobId: string): Promise<void>;
+  /** Whether the worker currently has an accepted primary dispatch. Read-only. */
+  hasAcceptedPrimary(workerId: string): Promise<boolean>;
+  /**
+   * Integrity-scan query for the `dispatch_primary_unavailable` denorm plugin:
+   * distinct worker ids whose dispatch status is "available" while they hold
+   * an accepted+primary dispatch (invariant violators), capped at `limit`.
+   * Read-only.
+   */
+  findWorkerIdsAvailableWithAcceptedPrimary(limit: number): Promise<string[]>;
 }
 
 async function getJobTitle(jobId: string): Promise<string> {
@@ -90,6 +133,57 @@ async function getJobEmployerId(jobId: string): Promise<string | undefined> {
     .from(dispatchJobs)
     .where(eq(dispatchJobs.id, jobId));
   return job?.employerId;
+}
+
+/**
+ * Resolve the "Primary?" setting for a job's job type. Defaults to
+ * "secondary" when the job has no job type or the setting is absent.
+ */
+async function getJobPrimarySetting(jobId: string): Promise<JobTypePrimarySetting> {
+  const client = getClient();
+  const [row] = await client
+    .select({ data: optionsDispatchJobType.data })
+    .from(dispatchJobs)
+    .leftJoin(optionsDispatchJobType, eq(dispatchJobs.jobTypeId, optionsDispatchJobType.id))
+    .where(eq(dispatchJobs.id, jobId));
+  const setting = (row?.data as JobTypeData | null)?.primary;
+  return setting === "primary" || setting === "both" ? setting : "secondary";
+}
+
+/** Whether the worker already has an accepted primary dispatch (optionally excluding one dispatch). */
+async function workerHasAcceptedPrimary(workerId: string, excludeDispatchId?: string): Promise<boolean> {
+  const client = getClient();
+  const conditions = [
+    eq(dispatches.workerId, workerId),
+    eq(dispatches.status, "accepted"),
+    eq(dispatches.isPrimary, true),
+  ];
+  if (excludeDispatchId) {
+    conditions.push(ne(dispatches.id, excludeDispatchId));
+  }
+  const [existing] = await client
+    .select({ id: dispatches.id })
+    .from(dispatches)
+    .where(and(...conditions))
+    .limit(1);
+  return !!existing;
+}
+
+/**
+ * Hard invariant: a worker on an accepted PRIMARY dispatch cannot be
+ * "available". Called from the same transaction context that accepted the
+ * dispatch, so the status flip commits (or rolls back) atomically with the
+ * acceptance. Convergent no-op when the status is already `not_available`.
+ * Uses the logging-wrapped status storage so the change is audit-logged.
+ */
+async function setWorkerNotAvailableForAcceptedPrimary(workerId: string): Promise<void> {
+  const statusStorage = withStorageLogging(
+    createWorkerDispatchStatusStorage(),
+    workerDispatchStatusLoggingConfig,
+  );
+  const current = await statusStorage.getByWorker(workerId);
+  if (current?.status === "not_available") return;
+  await statusStorage.upsertByWorker(workerId, { status: "not_available" });
 }
 
 interface SearchDispatchesCriteria {
@@ -129,6 +223,7 @@ async function searchDispatches(criteria: SearchDispatchesCriteria): Promise<Dis
         id: dispatchJobs.id,
         title: dispatchJobs.title,
         employerId: dispatchJobs.employerId,
+        startYmd: dispatchJobs.startYmd,
         payRate: dispatchJobs.payRate,
         startTime: dispatchJobs.startTime,
         endTime: dispatchJobs.endTime,
@@ -284,6 +379,7 @@ export function createDispatchStorage(): DispatchStorage {
             id: dispatchJobs.id,
             title: dispatchJobs.title,
             employerId: dispatchJobs.employerId,
+            startYmd: dispatchJobs.startYmd,
             payRate: dispatchJobs.payRate,
             startTime: dispatchJobs.startTime,
             endTime: dispatchJobs.endTime,
@@ -352,7 +448,55 @@ export function createDispatchStorage(): DispatchStorage {
     async create(insertDispatch: InsertDispatch): Promise<Dispatch> {
       validate.validateOrThrow(insertDispatch);
       const client = getClient();
-      const [dispatch] = await client.insert(dispatches).values(insertDispatch).returning();
+
+      // is_primary is server-derived from the job type's "Primary?" setting.
+      // Any caller-supplied value is ignored (the insert schema omits it too).
+      const primarySetting = await getJobPrimarySetting(insertDispatch.jobId);
+      let isPrimary = false;
+      if (primarySetting === "primary") {
+        isPrimary = true;
+      } else if (primarySetting === "both") {
+        isPrimary = !(await workerHasAcceptedPrimary(insertDispatch.workerId));
+      }
+
+      // Insert + (when accepted primary) the worker-status flip run in ONE
+      // transaction so the hard rule "accepted primary ⇒ not available" is
+      // atomic with the dispatch write. A unique violation aborts the whole
+      // transaction, so the race-safe retry runs as a fresh transaction.
+      const insertAttempt = (isPrimaryValue: boolean): Promise<Dispatch> =>
+        runInTransaction(async () => {
+          const tx = getClient();
+          const [created] = await tx.insert(dispatches).values({ ...insertDispatch, isPrimary: isPrimaryValue }).returning();
+          if (created.status === "accepted" && created.isPrimary) {
+            await setWorkerNotAvailableForAcceptedPrimary(created.workerId);
+          }
+          return created;
+        });
+
+      let dispatch: Dispatch;
+      try {
+        dispatch = await insertAttempt(isPrimary);
+      } catch (err) {
+        if (isPrimaryDispatchUniqueViolation(err)) {
+          if (primarySetting === "both") {
+            // Race-safe fallback: someone else grabbed the primary slot
+            // between our pre-check and the insert. Retry as secondary.
+            dispatch = await insertAttempt(false);
+            eventBus.emit(EventType.DISPATCH_SAVED, {
+              dispatchId: dispatch.id,
+              workerId: dispatch.workerId,
+              jobId: dispatch.jobId,
+              status: dispatch.status,
+              previousStatus: undefined,
+            }).catch(emitErr => {
+              console.error("Failed to emit DISPATCH_SAVED event from create:", emitErr);
+            });
+            return dispatch;
+          }
+          throw new PrimaryDispatchConflictError();
+        }
+        throw err;
+      }
 
       eventBus.emit(EventType.DISPATCH_SAVED, {
         dispatchId: dispatch.id,
@@ -370,12 +514,41 @@ export function createDispatchStorage(): DispatchStorage {
     async update(id: string, dispatchUpdate: Partial<InsertDispatch>): Promise<Dispatch | undefined> {
       validate.validateOrThrow(dispatchUpdate);
       const client = getClient();
-      const [dispatch] = await client
-        .update(dispatches)
-        .set(dispatchUpdate)
-        .where(eq(dispatches.id, id))
-        .returning();
-      return dispatch || undefined;
+      try {
+        const [existing] = await client.select().from(dispatches).where(eq(dispatches.id, id));
+        // Update + (when the row ends up accepted primary) the worker-status
+        // flip run in ONE transaction: the hard rule "accepted primary ⇒ not
+        // available" must hold for direct updates too, not just setStatus.
+        const dispatch = await runInTransaction(async () => {
+          const tx = getClient();
+          const [updated] = await tx
+            .update(dispatches)
+            .set(dispatchUpdate)
+            .where(eq(dispatches.id, id))
+            .returning();
+          if (updated && updated.status === "accepted" && updated.isPrimary) {
+            await setWorkerNotAvailableForAcceptedPrimary(updated.workerId);
+          }
+          return updated;
+        });
+        if (dispatch) {
+          eventBus.emit(EventType.DISPATCH_SAVED, {
+            dispatchId: dispatch.id,
+            workerId: dispatch.workerId,
+            jobId: dispatch.jobId,
+            status: dispatch.status,
+            previousStatus: existing?.status,
+          }).catch(err => {
+            console.error("Failed to emit DISPATCH_SAVED event from update:", err);
+          });
+        }
+        return dispatch || undefined;
+      } catch (err) {
+        if (isPrimaryDispatchUniqueViolation(err)) {
+          throw new PrimaryDispatchConflictError();
+        }
+        throw err;
+      }
     },
 
     async delete(id: string): Promise<boolean> {
@@ -480,11 +653,66 @@ export function createDispatchStorage(): DispatchStorage {
 
       const previousStatus = currentDispatch.status;
 
-      const [updatedDispatch] = await client
-        .update(dispatches)
-        .set({ status: newStatus })
-        .where(eq(dispatches.id, dispatchId))
-        .returning();
+      // On acceptance, re-derive is_primary from the job type's "Primary?"
+      // setting: "primary" → true (conflict surfaces as a clear error),
+      // "secondary" → false, "both" → primary only if no other accepted
+      // primary dispatch exists for the worker (race-safe fallback below).
+      const updateSet: { status: DispatchStatus; isPrimary?: boolean } = { status: newStatus };
+      let primarySetting: JobTypePrimarySetting | undefined;
+      if (newStatus === "accepted") {
+        primarySetting = await getJobPrimarySetting(currentDispatch.jobId);
+        if (primarySetting === "primary") {
+          updateSet.isPrimary = true;
+        } else if (primarySetting === "secondary") {
+          updateSet.isPrimary = false;
+        } else {
+          updateSet.isPrimary = !(await workerHasAcceptedPrimary(currentDispatch.workerId, dispatchId));
+        }
+      }
+
+      // Status update + (when accepted primary) the worker-status flip run in
+      // ONE transaction so the hard rule "accepted primary ⇒ not available"
+      // is atomic with the acceptance. A unique violation aborts the whole
+      // transaction, so the race-safe retry runs as a fresh transaction and
+      // only fires the flip when the dispatch truly ended up primary (the
+      // retry demotes a "both"-type to secondary).
+      const updateAttempt = (set: { status: DispatchStatus; isPrimary?: boolean }): Promise<Dispatch | undefined> =>
+        runInTransaction(async () => {
+          const tx = getClient();
+          const [updated] = await tx
+            .update(dispatches)
+            .set(set)
+            .where(eq(dispatches.id, dispatchId))
+            .returning();
+          if (updated && updated.status === "accepted" && updated.isPrimary) {
+            await setWorkerNotAvailableForAcceptedPrimary(updated.workerId);
+          }
+          return updated;
+        });
+
+      let updatedDispatch: Dispatch | undefined;
+      try {
+        updatedDispatch = await updateAttempt(updateSet);
+      } catch (err) {
+        if (isPrimaryDispatchUniqueViolation(err)) {
+          if (newStatus === "accepted" && primarySetting === "both") {
+            // Race-safe fallback: another dispatch became the accepted
+            // primary between our pre-check and the update. Accept as secondary.
+            try {
+              updatedDispatch = await updateAttempt({ status: newStatus, isPrimary: false });
+            } catch (retryErr) {
+              if (isPrimaryDispatchUniqueViolation(retryErr)) {
+                return { success: false, error: PRIMARY_DISPATCH_CONFLICT_MESSAGE };
+              }
+              throw retryErr;
+            }
+          } else {
+            return { success: false, error: PRIMARY_DISPATCH_CONFLICT_MESSAGE };
+          }
+        } else {
+          throw err;
+        }
+      }
 
       if (!updatedDispatch) {
         return { success: false, error: "Failed to update dispatch status" };
@@ -507,6 +735,28 @@ export function createDispatchStorage(): DispatchStorage {
       }
 
       return { success: true, dispatch: updatedDispatch };
+    },
+
+    async hasAcceptedPrimary(workerId: string): Promise<boolean> {
+      return workerHasAcceptedPrimary(workerId);
+    },
+
+    async findWorkerIdsAvailableWithAcceptedPrimary(limit: number): Promise<string[]> {
+      const client = getClient();
+      const rows = await client
+        .selectDistinct({ workerId: dispatches.workerId })
+        .from(dispatches)
+        .innerJoin(
+          workerDispatchStatus,
+          eq(workerDispatchStatus.workerId, dispatches.workerId),
+        )
+        .where(and(
+          eq(dispatches.status, "accepted"),
+          eq(dispatches.isPrimary, true),
+          eq(workerDispatchStatus.status, "available"),
+        ))
+        .limit(limit);
+      return rows.map((r) => r.workerId);
     },
 
     async expireRemainingIfJobFull(jobId: string): Promise<void> {

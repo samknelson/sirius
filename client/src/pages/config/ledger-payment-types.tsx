@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Loader2, Plus, Edit, Trash2, Save, X, ArrowUp, ArrowDown } from "lucide-react";
 import { getAllCurrencies } from "@shared/currency";
 import {
@@ -82,7 +82,7 @@ export default function LedgerPaymentTypesPage() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to create ledger payment type.",
+        description: getApiErrorMessage(error, "Failed to create ledger payment type."),
         variant: "destructive",
       });
     },
@@ -109,7 +109,7 @@ export default function LedgerPaymentTypesPage() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to update ledger payment type.",
+        description: getApiErrorMessage(error, "Failed to update ledger payment type."),
         variant: "destructive",
       });
     },
@@ -130,7 +130,7 @@ export default function LedgerPaymentTypesPage() {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to delete ledger payment type.",
+        description: getApiErrorMessage(error, "Failed to delete ledger payment type."),
         variant: "destructive",
       });
     },
