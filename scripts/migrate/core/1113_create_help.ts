@@ -30,7 +30,7 @@ async function up(): Promise<void> {
 }
 
 const migration: Migration = {
-  version: 1053,
+  version: 1113,
   name: "create_help",
   description:
     "Create the core help table for configurable per-page help text (path patterns with % wildcards, summary, limited-HTML details).",

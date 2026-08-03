@@ -38,7 +38,7 @@ async function up(): Promise<void> {
 }
 
 const migration: Migration = {
-  version: 1047,
+  version: 1107,
   name: "create_snapshots",
   description: "Create the core snapshots table (generic point-in-time entity copies) with its (entity_type, entity_id, created_at) index",
   up,

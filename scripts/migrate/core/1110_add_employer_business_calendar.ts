@@ -29,7 +29,7 @@ async function up(): Promise<void> {
 }
 
 const migration: Migration = {
-  version: 1050,
+  version: 1110,
   name: "add_employer_business_calendar",
   description: "Add nullable employers.business_calendar_id FK to business_calendars (ON DELETE SET NULL)",
   up,

@@ -27,7 +27,7 @@ async function up(): Promise<void> {
 }
 
 const migration: Migration = {
-  version: 1052,
+  version: 1112,
   name: "add_dispatch_is_primary",
   description:
     "Add dispatches.is_primary boolean (not null, default false) and partial unique index dispatches_one_primary_accepted_per_worker on (worker_id) WHERE status = 'accepted' AND is_primary = true",

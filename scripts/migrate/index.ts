@@ -49,15 +49,15 @@ import "./core/1043_ledger_payments_date_received_nullable";
 import "./core/1044_create_ebs";
 import "./core/1045_ebs_subject_and_purge";
 import "./core/1046_add_edls_sheet_job_group_fk";
-import "./core/1047_create_snapshots";
-import "./core/1048_delete_legacy_cleanup_cron_configs";
-import "./core/1049_create_business_calendars";
-import "./core/1050_add_employer_business_calendar";
-import "./core/1051_dashboard_roles_array";
-import "./core/1052_add_dispatch_is_primary";
-import "./core/1053_create_help";
-import "./core/1054_options_event_type_sirius_id_nullable";
-import "./core/1055_files_file_system_id";
+import "./core/1107_create_snapshots";
+import "./core/1108_delete_legacy_cleanup_cron_configs";
+import "./core/1109_create_business_calendars";
+import "./core/1110_add_employer_business_calendar";
+import "./core/1111_dashboard_roles_array";
+import "./core/1112_add_dispatch_is_primary";
+import "./core/1113_create_help";
+import "./core/1114_options_event_type_sirius_id_nullable";
+import "./core/1115_files_file_system_id";
 
 // Per-component migrations — each registered via
 // `registerComponentMigration(componentId, migration)`. Tracked by the
@@ -65,8 +65,8 @@ import "./core/1055_files_file_system_id";
 // per-component migration files under `scripts/migrate/components/<id>/`
 // and import them here so they are loaded at startup.
 //
-import "./components/trust.providers.edi/001_drop_legacy_table";
-import "./components/trust.providers.edi/002_create_subsidiary_table";
+import "./components/trust.providers.edi/002_drop_legacy_table";
+import "./components/trust.providers.edi/003_create_subsidiary_table";
 import "./components/trust.benefits.eligibility.exemptions/001_create_exemptions";
 import "./components/trust.benefits.eligibility.exemptions/002_require_benefit_and_plugins";
 import "./components/sitespecific.bao/001_create_immediate_eligibility";

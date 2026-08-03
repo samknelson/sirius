@@ -43,7 +43,7 @@ async function up(): Promise<void> {
 }
 
 const migration: Migration = {
-  version: 1051,
+  version: 1111,
   name: "dashboard_roles_array",
   description:
     "Convert plugin_configs_dashboard.role (varchar FK) to non-null roles varchar[]; existing values become one-element arrays; FK dropped (role-deletion guard moves to storage)",

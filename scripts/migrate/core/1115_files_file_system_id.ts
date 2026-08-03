@@ -76,7 +76,7 @@ async function up(): Promise<void> {
 }
 
 const migration: Migration = {
-  version: 1055,
+  version: 1115,
   name: "files_file_system_id",
   description:
     "Replace files.access_level with file_system_id (backfilled to 'legacy') + status (live/missing/pending_delete), and add a unique (file_system_id, storage_path) constraint after a duplicate check.",

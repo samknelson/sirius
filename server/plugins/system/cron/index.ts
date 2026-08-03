@@ -191,8 +191,6 @@ export function initializeCronPluginSystem(): void {
 import "./plugins/dataRetention";
 import "./plugins/processWmbBatch";
 import "./plugins/scheduledBenefitScan";
-import "./plugins/deleteExpiredFloodEvents";
-import "./plugins/deleteExpiredHfe";
 import "./plugins/sweepExpiredBanElig";
 import "./plugins/workerBanActiveScan";
 import "./plugins/workerCertificationActiveScan";
@@ -203,7 +201,6 @@ import "./plugins/baoCobraBilling";
 import "./plugins/baoDpBilling";
 import "./plugins/baoCobraStatusScan";
 import "./plugins/baoCobraCaseReconcile";
-import "./plugins/dispatchEbaCleanup";
 import "./plugins/dispatchJobPoll";
 import "./plugins/bulkDeliver";
 import "./plugins/t631DispatchJobGroupFetch";

@@ -28,7 +28,7 @@ async function up(): Promise<void> {
 }
 
 const migration: Migration = {
-  version: 1048,
+  version: 1108,
   name: "delete_legacy_cleanup_cron_configs",
   description:
     "Delete orphaned plugin_configs rows for the five legacy cleanup cron jobs consolidated into the data-retention sweep",

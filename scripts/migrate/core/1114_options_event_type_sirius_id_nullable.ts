@@ -20,7 +20,7 @@ async function up(): Promise<void> {
 }
 
 const migration: Migration = {
-  version: 1054,
+  version: 1114,
   name: "options_event_type_sirius_id_nullable",
   description:
     "Drop NOT NULL from options_event_type.sirius_id (Sirius ID becomes optional; unique constraint retained)",

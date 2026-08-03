@@ -19,7 +19,7 @@ async function up(): Promise<void> {
 }
 
 const migration: Migration = {
-  version: 1,
+  version: 2,
   name: "drop_legacy_table",
   description:
     "Drop the legacy trust_provider_edi table; EDI targets now live in plugin_configs (kind trust-provider-edi). Idempotent via IF EXISTS.",

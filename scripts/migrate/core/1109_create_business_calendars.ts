@@ -67,7 +67,7 @@ async function up(): Promise<void> {
 }
 
 const migration: Migration = {
-  version: 1049,
+  version: 1109,
   name: "create_business_calendars",
   description:
     "Create core business calendar tables: business_calendars plus manual byday (closed days), vacation (closed ranges), and open (forced-open override) tables",

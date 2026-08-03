@@ -33,7 +33,7 @@ async function up(): Promise<void> {
 }
 
 const migration: Migration = {
-  version: 2,
+  version: 3,
   name: "create_subsidiary_table",
   description:
     "Create the plugin_configs_trust_provider_edi subsidiary table (provider + SFTP destination dimensions for trust-provider-edi plugin configs).",
