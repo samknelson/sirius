@@ -30,7 +30,7 @@ import {
   workerRelations,
   optionsWorkerRelationType,
 } from "@shared/schema";
-import { buildMemberUnits } from "../../server/plugins/trust/provider-edi/base";
+import { buildMemberUnits, wmbPrimaryKeys } from "../../server/plugins/trust/provider-edi/base";
 import { trustProviderEdiPluginRegistry } from "../../server/plugins/trust/provider-edi/registry";
 import { KAISER_EDI_FIELDS } from "../../server/plugins/trust/provider-edi/plugins/sitespecific-bao-kaiser";
 import { HEALTHNET_EDI_FIELDS } from "../../server/plugins/trust/provider-edi/plugins/sitespecific-bao-healthnet";
@@ -148,8 +148,10 @@ async function main() {
 
     // Dangling source relation (only insertable when the conditional FK is absent).
     let danglingInserted = false;
+    let danglingWmbId: string | null = null;
     try {
-      await wmb(dep2.workerId, cobraEmp.id, "00000000-0000-0000-0000-000000000000");
+      const danglingRow = await wmb(dep2.workerId, cobraEmp.id, "00000000-0000-0000-0000-000000000000");
+      danglingWmbId = danglingRow.id;
       danglingInserted = true;
     } catch {
       console.log("note: FK on source_relation_id present; dangling row not insertable (integrity enforced by DB)");
@@ -163,6 +165,45 @@ async function main() {
       input: { asOfDate: AS_OF },
       storage,
     };
+
+    // --- subscriber selection (wmbPrimaryKeys) --------------------------
+    // Decision: relation-sourced rows whose subscriber is in the file are
+    // NOT their own subscriber; kept only when the subscriber is absent.
+    const sub3 = await makeWorker("SubNoWmb"); // subscriber with NO wmb row
+    const dep4 = await makeWorker("DepOrphanSub");
+    for (const p of [sub3, dep4]) {
+      created.workerIds.push(p.workerId);
+      created.contactIds.push(p.contactId);
+    }
+    const [rel4] = await db
+      .insert(workerRelations)
+      .values({ worker1: sub3.workerId, worker2: dep4.workerId, relationType: cType, startYmd: "2020-01-01" })
+      .returning();
+    created.relationIds.push(rel4.id);
+    const dep4Wmb = await wmb(dep4.workerId, emp.id, rel4.id);
+
+    const keys = await wmbPrimaryKeys(ctx, []);
+    const keySet = new Set(keys);
+    check("wmbPrimaryKeys: subscribers included", keySet.has(subWmb.id) && keySet.has(cobraWmb.id));
+    const depWmbIds = created.wmbIds.filter(
+      (id) =>
+        id !== subWmb.id &&
+        id !== cobraWmb.id &&
+        id !== dep4Wmb.id &&
+        id !== danglingWmbId, // dangling source relation → kept (fail-safe)
+    );
+    if (danglingInserted && danglingWmbId) {
+      check("wmbPrimaryKeys: dangling-source row kept (fail-safe)", keySet.has(danglingWmbId));
+    }
+    check(
+      "wmbPrimaryKeys: relation-sourced rows with subscriber in file excluded",
+      depWmbIds.every((id) => !keySet.has(id)),
+      keys.length,
+    );
+    check(
+      "wmbPrimaryKeys: relation-sourced row kept when subscriber NOT in file",
+      keySet.has(dep4Wmb.id),
+    );
 
     // --- shared assembly ----------------------------------------------
     const units = await buildMemberUnits([subWmb.id, cobraWmb.id], ctx);

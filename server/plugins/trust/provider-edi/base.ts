@@ -145,6 +145,16 @@ export async function resolveBenefitIds(
  * benefit record for any of the benefits in the as-of month. If a worker
  * has several qualifying rows (e.g. two employers), pick deterministically —
  * prefer a non-COBRA employer row, then lowest row id.
+ *
+ * DECISION (dependents-as-subscribers): a covered dependent must appear on
+ * the file ONLY as a dependent record under their subscriber — never also as
+ * their own standalone subscriber. So relation-sourced rows (non-null
+ * `source_relation_id`) are excluded from subscriber selection whenever the
+ * relation's subscriber (worker1) also holds their OWN (null-source) row for
+ * the same benefit/month, i.e. is a subscriber on this file. Fail-safe: when
+ * the subscriber is NOT in the file (or the source relation is dangling),
+ * the relation-sourced row is kept as a standalone subscriber so the covered
+ * person never silently drops off the file.
  */
 export async function wmbPrimaryKeys(
   ctx: TrustProviderEdiContext,
@@ -160,10 +170,17 @@ export async function wmbPrimaryKeys(
       .select({
         id: trustWmb.id,
         workerId: trustWmb.workerId,
+        benefitId: trustWmb.benefitId,
+        sourceRelationId: trustWmb.sourceRelationId,
+        subscriberWorkerId: workerRelations.worker1,
         employerSiriusId: employers.siriusId,
       })
       .from(trustWmb)
       .leftJoin(employers, eq(trustWmb.employerId, employers.id))
+      .leftJoin(
+        workerRelations,
+        eq(trustWmb.sourceRelationId, workerRelations.id),
+      )
       .where(
         and(
           inArray(trustWmb.benefitId, benefitIds),
@@ -172,8 +189,23 @@ export async function wmbPrimaryKeys(
         ),
       ),
   );
+  // Subscribers on this file: workers holding their own (null-source) row
+  // for a benefit. Keyed per benefit so multi-benefit runs don't cross-mask.
+  const subscriberKeys = new Set(
+    wmbRows
+      .filter((r) => r.sourceRelationId == null)
+      .map((r) => `${r.workerId}|${r.benefitId}`),
+  );
+  // Exclude dependent (relation-sourced) rows whose subscriber is in the
+  // file — those people are emitted as dependent records instead.
+  const candidateRows = wmbRows.filter(
+    (r) =>
+      r.sourceRelationId == null ||
+      !r.subscriberWorkerId ||
+      !subscriberKeys.has(`${r.subscriberWorkerId}|${r.benefitId}`),
+  );
   const byWorker = new Map<string, (typeof wmbRows)[number]>();
-  for (const row of wmbRows) {
+  for (const row of candidateRows) {
     const prev = byWorker.get(row.workerId);
     if (!prev) {
       byWorker.set(row.workerId, row);
