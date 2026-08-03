@@ -32,16 +32,25 @@ interface ExpectedEntry {
 /**
  * BAO provider premium accounting.
  *
- * When a worker-month-benefit (WMB) row is saved for a benefit that is linked
- * to a trust provider, this plugin charges that provider's entity account the
- * effective monthly premium for the worker's coverage tier (1 / 2 / 3+
- * covered people, derived from the worker's active trust election as of the
- * first of the benefit month). The entry's statement month is the benefit
- * month, so premium files can settle whole months at a time.
+ * Premium charges are keyed to SUBSCRIBERS only. When a worker-month-benefit
+ * (WMB) row is saved or deleted for a benefit linked to a trust provider:
  *
- * Idempotent per (config, provider EA, worker, benefit, year, month): re-runs
- * update the existing entry when the tier or rate changed, and deleting the
- * WMB deletes the charge.
+ * - Subscriber rows (source_relation_id NULL) recompute the subscriber's own
+ *   charge.
+ * - Dependent rows (source_relation_id set) never get their own charge;
+ *   instead the source relation's subscriber (worker_1) is resolved and THAT
+ *   subscriber's charge is recomputed for the same benefit/month.
+ *
+ * The coverage tier (1 / 2 / 3+) is derived from live WMB rows: the
+ * subscriber themselves plus every dependent WMB row whose source relation
+ * points back at the subscriber for that benefit/month. If dependents have
+ * rows but the subscriber has none, the subscriber is still charged and the
+ * entry is flagged (orphanSubscriberWmb metadata + "NO SUBSCRIBER WMB" memo
+ * marker, surfaced on premium file rows) so the anomaly is not silent.
+ *
+ * Idempotent per (config, worker, benefit, year, month): re-runs update the
+ * existing entry when the tier or rate changed, and when the last coverage
+ * row for a month is deleted the charge is deleted.
  */
 class SitespecificBaoPremiumPlugin extends ChargePlugin {
   readonly metadata: ChargePluginMetadata = {
@@ -58,46 +67,49 @@ class SitespecificBaoPremiumPlugin extends ChargePlugin {
     requiredComponent: "sitespecific.bao",
   };
 
-  private async resolveCoverageTier(
-    workerId: string,
-    asOfYmd: string,
-  ): Promise<{ tier: BaoPremiumCoverageTier; coveredCount: number }> {
-    const election = await storage.workerTrustElections.getActiveByWorkerAsOf(
-      workerId,
-      asOfYmd,
-    );
-    const coveredCount = 1 + (election?.relationshipIds?.length ?? 0);
-    const tier: BaoPremiumCoverageTier =
-      coveredCount >= 3 ? "3+" : coveredCount === 2 ? "2" : "1";
-    return { tier, coveredCount };
-  }
-
   private async computeExpectedEntry(
-    wmbContext: WmbSavedContext,
+    subscriberWorkerId: string,
+    benefitId: string,
+    year: number,
+    month: number,
+    fallbackEmployerId: string,
     config: any,
   ): Promise<ExpectedEntry | null> {
     if (!config.account) {
       return null;
     }
-    if (wmbContext.isDeleted) {
-      return null;
-    }
 
-    const benefit = await storage.trustBenefits.getTrustBenefit(wmbContext.benefitId);
+    const benefit = await storage.trustBenefits.getTrustBenefit(benefitId);
     if (!benefit?.providerId) {
       return null;
     }
 
-    const monthStr = String(wmbContext.month).padStart(2, "0");
-    const statementYmd = `${wmbContext.year}-${monthStr}-01`;
-
-    const { tier, coveredCount } = await this.resolveCoverageTier(
-      wmbContext.workerId,
-      statementYmd,
+    // Tier from live WMB rows: subscriber's own row plus dependent rows whose
+    // source relation points back at the subscriber, for this benefit/month.
+    const coverage = await storage.trust.wmb.getPremiumCoverage(
+      subscriberWorkerId,
+      benefitId,
+      month,
+      year,
     );
+    const dependentCount = coverage.dependentWmbIds.length;
+    if (!coverage.ownWmbId && dependentCount === 0) {
+      // No coverage rows at all — no charge (existing entry gets deleted).
+      return null;
+    }
+
+    // The subscriber is always counted, even when they have no own WMB row
+    // (orphan-dependent state — flagged below so it isn't silent).
+    const coveredCount = 1 + dependentCount;
+    const tier: BaoPremiumCoverageTier =
+      coveredCount >= 3 ? "3+" : coveredCount === 2 ? "2" : "1";
+    const orphanSubscriberWmb = !coverage.ownWmbId;
+
+    const monthStr = String(month).padStart(2, "0");
+    const statementYmd = `${year}-${monthStr}-01`;
 
     const rate = await storage.baoPremiumRates.getEffectiveRate(
-      wmbContext.benefitId,
+      benefitId,
       tier,
       statementYmd,
     );
@@ -115,10 +127,10 @@ class SitespecificBaoPremiumPlugin extends ChargePlugin {
     // that when a benefit is re-linked to a different provider, the existing
     // entry is found and moved (delete + recreate) instead of stranding a
     // charge on the old provider's account.
-    const chargePluginKey = `${config.id}:${wmbContext.workerId}:${wmbContext.benefitId}:${wmbContext.year}:${wmbContext.month}`;
+    const chargePluginKey = `${config.id}:${subscriberWorkerId}:${benefitId}:${year}:${month}`;
 
     let workerName = "";
-    const worker = await storage.workers.getWorker(wmbContext.workerId);
+    const worker = await storage.workers.getWorker(subscriberWorkerId);
     if (worker) {
       const contact = await storage.contacts.getContact(worker.contactId);
       if (contact?.displayName) {
@@ -126,32 +138,39 @@ class SitespecificBaoPremiumPlugin extends ChargePlugin {
       }
     }
 
-    const benefitYearMonth = `${wmbContext.year}-${monthStr}`;
-    const description = workerName
+    const benefitYearMonth = `${year}-${monthStr}`;
+    let description = workerName
       ? `Premium ${benefit.name} - ${benefitYearMonth} | ${workerName} | Tier ${tier}`
       : `Premium ${benefit.name} - ${benefitYearMonth} | Tier ${tier}`;
+    if (orphanSubscriberWmb) {
+      description += " | NO SUBSCRIBER WMB";
+    }
 
     return {
       chargePluginKey,
       amount: Number(rate.rate).toFixed(2),
       description,
-      transactionDate: new Date(wmbContext.year, wmbContext.month - 1, 1),
+      transactionDate: new Date(year, month - 1, 1),
       statementYmd,
       eaId: ea.id,
       providerId: benefit.providerId,
       referenceType: "wmb",
-      referenceId: wmbContext.wmbId,
+      // Anchor on the subscriber's own row; in the orphan state, on the
+      // first dependent row (deleting it re-triggers a recompute anyway).
+      referenceId: coverage.ownWmbId ?? coverage.dependentWmbIds[0],
       metadata: {
         pluginId: this.metadata.id,
         pluginConfigId: config.id,
-        workerId: wmbContext.workerId,
-        employerId: wmbContext.employerId,
-        benefitId: wmbContext.benefitId,
+        workerId: subscriberWorkerId,
+        employerId: coverage.employerId ?? fallbackEmployerId,
+        benefitId,
         providerId: benefit.providerId,
-        benefitYear: wmbContext.year,
-        benefitMonth: wmbContext.month,
+        benefitYear: year,
+        benefitMonth: month,
         coverageTier: tier,
         coveredCount,
+        dependentWmbCount: dependentCount,
+        orphanSubscriberWmb,
         rate: Number(rate.rate),
         rateEffectiveYmd: rate.effectiveYmd,
       },
@@ -186,9 +205,104 @@ class SitespecificBaoPremiumPlugin extends ChargePlugin {
         };
       }
 
-      const chargePluginKey = `${config.id}:${wmbContext.workerId}:${wmbContext.benefitId}:${wmbContext.year}:${wmbContext.month}`;
+      // Dependent WMB rows never get their own charge: resolve the source
+      // relation's subscriber (worker_1) and recompute THAT subscriber's
+      // charge for the same benefit/month instead.
+      let subscriberWorkerId = wmbContext.workerId;
+      if (wmbContext.sourceRelationId) {
+        const relation = await storage.workerRelations.get(wmbContext.sourceRelationId);
+        if (!relation) {
+          logger.warn(
+            "Dependent WMB has an unresolvable source relation; skipping premium recompute",
+            {
+              service: SERVICE,
+              wmbId: wmbContext.wmbId,
+              sourceRelationId: wmbContext.sourceRelationId,
+            },
+          );
+          return {
+            success: true,
+            transactions: [],
+            message: "Dependent WMB source relation not found - no premium action",
+          };
+        }
+        subscriberWorkerId = relation.worker1;
 
-      const expectedEntry = await this.computeExpectedEntry(wmbContext, config);
+        // Self-heal: before the subscriber-only rework, dependent WMB saves
+        // created charges keyed to the DEPENDENT worker. When a dependent
+        // event comes through, delete any such legacy entry for the same
+        // benefit/month so it cannot double-bill alongside the subscriber's
+        // recomputed charge — unless it was already swept into a premium
+        // file (deleting a settled charge would unbalance the payment; those
+        // are left for manual review).
+        if (subscriberWorkerId !== wmbContext.workerId) {
+          const legacyKey = `${config.id}:${wmbContext.workerId}:${wmbContext.benefitId}:${wmbContext.year}:${wmbContext.month}`;
+          const legacyEntry = await storage.ledger.entries.getByChargePluginKey(
+            this.metadata.id,
+            legacyKey,
+          );
+          if (legacyEntry) {
+            const legacyStatementYmd = `${wmbContext.year}-${String(wmbContext.month).padStart(2, "0")}-01`;
+            const swept = await storage.baoPremiumFiles.isMonthSwept(
+              legacyEntry.eaId,
+              wmbContext.workerId,
+              wmbContext.benefitId,
+              legacyStatementYmd,
+            );
+            if (swept) {
+              // The legacy dependent-keyed charge was already settled by a
+              // premium file. Creating a subscriber-keyed charge for the same
+              // coverage month would bill it a second time (the settled pair
+              // nets to zero; a new charge is an additional unpaid group), so
+              // stop here entirely and leave this config-month for manual
+              // review.
+              logger.warn(
+                "Legacy dependent-keyed premium entry already swept into a premium file; skipping subscriber recompute for this month - manual review required",
+                {
+                  service: SERVICE,
+                  legacyEntryId: legacyEntry.id,
+                  legacyKey,
+                  dependentWorkerId: wmbContext.workerId,
+                  subscriberWorkerId,
+                  benefitId: wmbContext.benefitId,
+                  year: wmbContext.year,
+                  month: wmbContext.month,
+                },
+              );
+              return {
+                success: true,
+                transactions: [],
+                message:
+                  "Legacy dependent-keyed premium already settled by a premium file - subscriber recompute skipped (manual review required)",
+              };
+            } else {
+              await storage.ledger.entries.deleteByChargePluginKey(
+                this.metadata.id,
+                legacyKey,
+              );
+              logger.info("Deleted legacy dependent-keyed premium entry", {
+                service: SERVICE,
+                legacyEntryId: legacyEntry.id,
+                legacyKey,
+                dependentWorkerId: wmbContext.workerId,
+                subscriberWorkerId,
+                amount: legacyEntry.amount,
+              });
+            }
+          }
+        }
+      }
+
+      const chargePluginKey = `${config.id}:${subscriberWorkerId}:${wmbContext.benefitId}:${wmbContext.year}:${wmbContext.month}`;
+
+      const expectedEntry = await this.computeExpectedEntry(
+        subscriberWorkerId,
+        wmbContext.benefitId,
+        wmbContext.year,
+        wmbContext.month,
+        wmbContext.employerId,
+        config,
+      );
       const existingEntry = await storage.ledger.entries.getByChargePluginKey(
         this.metadata.id,
         chargePluginKey,
@@ -310,8 +424,14 @@ class SitespecificBaoPremiumPlugin extends ChargePlugin {
         const amountChanged = existingEntry.amount !== expectedEntry.amount;
         const memoChanged = existingEntry.memo !== expectedEntry.description;
         const referenceIdChanged = existingEntry.referenceId !== expectedEntry.referenceId;
+        // Metadata drives the premium-file sweep (workerId/benefitId grouping,
+        // orphan flag) — refresh it whenever it drifts, even when the billed
+        // amount happens to match (e.g. legacy election-derived metadata).
+        const metadataChanged =
+          JSON.stringify(existingEntry.data ?? null) !==
+          JSON.stringify(expectedEntry.metadata);
 
-        if (!amountChanged && !memoChanged && !referenceIdChanged) {
+        if (!amountChanged && !memoChanged && !referenceIdChanged && !metadataChanged) {
           return {
             success: true,
             transactions: [],
@@ -407,17 +527,14 @@ class SitespecificBaoPremiumPlugin extends ChargePlugin {
         };
       }
 
-      const wmbContext: WmbSavedContext = {
-        trigger: TriggerType.WMB_SAVED,
-        wmbId: entry.referenceId,
-        workerId: data.workerId,
-        employerId: data.employerId ?? "",
-        benefitId: data.benefitId,
-        year: data.benefitYear,
-        month: data.benefitMonth,
-      };
-
-      const expectedEntry = await this.computeExpectedEntry(wmbContext, config);
+      const expectedEntry = await this.computeExpectedEntry(
+        data.workerId,
+        data.benefitId,
+        data.benefitYear,
+        data.benefitMonth,
+        data.employerId ?? "",
+        config,
+      );
 
       if (!expectedEntry) {
         return {

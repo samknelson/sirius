@@ -39,6 +39,19 @@ export interface BaoPremiumFilesStorage {
    * throws NO_UNPAID_PREMIUMS when every month already nets to zero.
    */
   generate(providerId: string, accountId: string): Promise<BaoPremiumFile | undefined>;
+  /**
+   * Whether a (worker, benefit, statement month) group on an entity account
+   * has already been swept into a premium file (i.e. an offsetting
+   * premium-file payment entry exists for it). Used by the premium charge
+   * plugin to avoid deleting legacy dependent-keyed charges that have been
+   * settled — deleting those would leave the payment unbalanced.
+   */
+  isMonthSwept(
+    eaId: string,
+    workerId: string,
+    benefitId: string,
+    statementYmd: string,
+  ): Promise<boolean>;
   tableExists(): Promise<boolean>;
 }
 
@@ -122,6 +135,25 @@ export function createBaoPremiumFilesStorage(): BaoPremiumFilesStorage {
       return rows as BaoPremiumFileRowWithNames[];
     },
 
+    async isMonthSwept(
+      eaId: string,
+      workerId: string,
+      benefitId: string,
+      statementYmd: string,
+    ): Promise<boolean> {
+      const client = getClient();
+      const result = await client.execute(sql`
+        SELECT 1 FROM ledger
+        WHERE ea_id = ${eaId}
+          AND charge_plugin = ${PREMIUM_FILE_LEDGER_PLUGIN}
+          AND data->>'workerId' = ${workerId}
+          AND data->>'benefitId' = ${benefitId}
+          AND date_trunc('month', statement_ymd)::date = date_trunc('month', ${statementYmd}::date)::date
+        LIMIT 1
+      `);
+      return (result.rows?.length ?? 0) > 0;
+    },
+
     async generate(providerId: string, accountId: string): Promise<BaoPremiumFile | undefined> {
       if (!(await this.tableExists())) {
         throw new Error("COMPONENT_TABLE_NOT_FOUND");
@@ -160,7 +192,8 @@ export function createBaoPremiumFilesStorage(): BaoPremiumFilesStorage {
             date_trunc('month', statement_ymd)::date AS statement_month,
             data->>'workerId' AS worker_id,
             data->>'benefitId' AS benefit_id,
-            SUM(amount) AS net_amount
+            SUM(amount) AS net_amount,
+            bool_or(COALESCE((data->>'orphanSubscriberWmb')::boolean, false)) AS orphan_subscriber_wmb
           FROM ledger
           WHERE ea_id = ${ea.id}
             AND charge_plugin IN ('sitespecific-bao-premium', ${PREMIUM_FILE_LEDGER_PLUGIN})
@@ -174,6 +207,7 @@ export function createBaoPremiumFilesStorage(): BaoPremiumFilesStorage {
           worker_id: string | null;
           benefit_id: string | null;
           net_amount: string;
+          orphan_subscriber_wmb: boolean | null;
         }>;
         if (rows.length === 0) {
           throw new Error(NO_UNPAID_PREMIUMS);
@@ -206,6 +240,9 @@ export function createBaoPremiumFilesStorage(): BaoPremiumFilesStorage {
             benefitId: row.benefit_id,
             statementYmd,
             amount: amount.toFixed(2),
+            // Staff-visible anomaly marker: the swept charge was billed to a
+            // subscriber with no WMB row of their own (dependents only).
+            data: row.orphan_subscriber_wmb ? { orphanSubscriberWmb: true } : undefined,
           });
 
           // Offsetting payment entry: zeroes the group so the next

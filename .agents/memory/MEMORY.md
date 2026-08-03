@@ -86,3 +86,4 @@
 - [Cross-component nullable pointer](cross-component-nullable-fk.md) — core column pointing at an optional-component table: plain varchar in schema.ts (no .references(), avoids cycle).
 - [Wizard advance via navigate](wizard-advance-via-navigate.md) — advance programmatic wizard launches with dispatch/navigate, not a currentStep PATCH (else next step stays pending.
 - [BAO upload-source payment allocation](bao-upload-source-payments.md) — withholding uploads store allocations only; details.baoUploadSource on a cleared payment drives per-worker credits.
+- [BAO premium subscriber-only charges](bao-premium-subscriber-only.md) — premium charges key to subscribers; dependent WMB events retarget worker_1 + self-heal unswept legacy entries.

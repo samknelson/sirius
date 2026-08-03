@@ -55,6 +55,8 @@ export interface WmbSavedContext {
   benefitId: string;
   year: number;
   month: number;
+  /** worker_relations row that sourced the WMB; set = dependent coverage. */
+  sourceRelationId?: string | null;
   isDeleted?: boolean;
 }
 

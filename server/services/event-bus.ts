@@ -107,6 +107,12 @@ export interface WmbSavedPayload {
   benefitId: string;
   year: number;
   month: number;
+  /**
+   * Which worker_relations row sourced the WMB (NULL/absent = the worker's
+   * own subscriber row; set = dependent coverage). Lets charge plugins
+   * retarget dependent-row saves to the subscriber's charge.
+   */
+  sourceRelationId?: string | null;
   isDeleted?: boolean;
 }
 

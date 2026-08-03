@@ -1,6 +1,7 @@
 import { getClient } from '../transaction-context';
-import { trustWmb, trustBenefits, employers, optionsTrustBenefitType, type TrustWmb } from "@shared/schema";
-import { sql, eq, and, desc, inArray, or } from "drizzle-orm";
+import { trustWmb, trustBenefits, employers, optionsTrustBenefitType, workerRelations, type TrustWmb } from "@shared/schema";
+import { sql, eq, and, desc, inArray, or, isNull, asc } from "drizzle-orm";
+import { tableExists as tableExistsUtil } from "../utils";
 import { type StorageLoggingConfig } from "../middleware/logging";
 import { logger } from "../../logger";
 import { eventBus, EventType } from "../../services/event-bus";
@@ -39,6 +40,23 @@ export interface BenefitMonthWorkerCount {
   workerCount: number;
 }
 
+/**
+ * The live WMB rows that make up a subscriber's premium coverage for one
+ * (benefit, month): the subscriber's own row (source_relation_id NULL), if
+ * present, plus every dependent row whose source relation points back at the
+ * subscriber (worker_relations.worker_1 = subscriber). Used by the BAO
+ * premium charge plugin to derive the billed coverage tier from actual
+ * coverage rows instead of the trust election.
+ */
+export interface WmbPremiumCoverage {
+  /** The subscriber's own WMB row id, or null when they have none. */
+  ownWmbId: string | null;
+  /** Dependent WMB row ids sourced from the subscriber's relations, id-ordered. */
+  dependentWmbIds: string[];
+  /** Employer from the own row, else the first dependent row, else null. */
+  employerId: string | null;
+}
+
 export interface TrustWmbStorage {
   getActiveBenefitWorkerCountsByEmployerLatestPeriod(): Promise<ActiveBenefitWorkerCount[]>;
   /**
@@ -56,6 +74,17 @@ export interface TrustWmbStorage {
   getWorkerBenefitPresence(workerId: string): Promise<WorkerBenefitPresenceRow[]>;
   createWorkerBenefit(data: { workerId: string; month: number; year: number; employerId: string; benefitId: string; sourceRelationId?: string | null }): Promise<TrustWmb>;
   deleteWorkerBenefit(id: string): Promise<boolean>;
+  /**
+   * Resolve the subscriber's premium coverage rows for one (benefit, month).
+   * Tolerates the optional worker.relations component being absent (no
+   * worker_relations table => dependent rows can't exist, own row only).
+   */
+  getPremiumCoverage(
+    subscriberWorkerId: string,
+    benefitId: string,
+    month: number,
+    year: number,
+  ): Promise<WmbPremiumCoverage>;
   workerBenefitExists(workerId: string, benefitId: string, month: number, year: number): Promise<boolean>;
 }
 
@@ -201,6 +230,7 @@ export function createTrustWmbStorage(): TrustWmbStorage {
           benefitId: wmb.benefitId,
           year: wmb.year,
           month: wmb.month,
+          sourceRelationId: wmb.sourceRelationId ?? null,
         };
 
         // Emit WMB_SAVED. Charge plugins (and any future listeners) react to
@@ -238,6 +268,7 @@ export function createTrustWmbStorage(): TrustWmbStorage {
           benefitId: deleted.benefitId,
           year: deleted.year,
           month: deleted.month,
+          sourceRelationId: deleted.sourceRelationId ?? null,
           isDeleted: true,
         };
 
@@ -254,6 +285,53 @@ export function createTrustWmbStorage(): TrustWmbStorage {
       }
 
       return result.length > 0;
+    },
+
+    async getPremiumCoverage(
+      subscriberWorkerId: string,
+      benefitId: string,
+      month: number,
+      year: number,
+    ): Promise<WmbPremiumCoverage> {
+      const client = getClient();
+
+      const ownRows = await client
+        .select({ id: trustWmb.id, employerId: trustWmb.employerId })
+        .from(trustWmb)
+        .where(
+          and(
+            eq(trustWmb.workerId, subscriberWorkerId),
+            eq(trustWmb.benefitId, benefitId),
+            eq(trustWmb.month, month),
+            eq(trustWmb.year, year),
+            isNull(trustWmb.sourceRelationId),
+          ),
+        )
+        .limit(1);
+      const own = ownRows[0];
+
+      let dependents: Array<{ id: string; employerId: string }> = [];
+      if (await tableExistsUtil("worker_relations")) {
+        dependents = await client
+          .select({ id: trustWmb.id, employerId: trustWmb.employerId })
+          .from(trustWmb)
+          .innerJoin(workerRelations, eq(workerRelations.id, trustWmb.sourceRelationId))
+          .where(
+            and(
+              eq(workerRelations.worker1, subscriberWorkerId),
+              eq(trustWmb.benefitId, benefitId),
+              eq(trustWmb.month, month),
+              eq(trustWmb.year, year),
+            ),
+          )
+          .orderBy(asc(trustWmb.id));
+      }
+
+      return {
+        ownWmbId: own?.id ?? null,
+        dependentWmbIds: dependents.map((d) => d.id),
+        employerId: own?.employerId ?? dependents[0]?.employerId ?? null,
+      };
     },
 
     async workerBenefitExists(workerId: string, benefitId: string, month: number, year: number): Promise<boolean> {
