@@ -401,6 +401,15 @@ export const trustWmb = pgTable("trust_wmb", {
   workerId: varchar("worker_id").notNull().references(() => workers.id, { onDelete: 'cascade' }),
   employerId: varchar("employer_id").notNull().references(() => employers.id, { onDelete: 'cascade' }),
   benefitId: varchar("benefit_id").notNull().references(() => trustBenefits.id, { onDelete: 'cascade' }),
+  // Which worker_relations row sourced this benefit. NULL = the worker's own
+  // benefit (subscriber); set = the benefit came through a relationship
+  // (dependent coverage via the subscriber's election). Declared WITHOUT a
+  // drizzle-level .references() on purpose: worker_relations is owned by the
+  // optional worker.relations component (may be absent from a deployment),
+  // and importing its schema here would create a module cycle. The DB-level
+  // FK (ON DELETE SET NULL) is added conditionally by core migration 1116
+  // when the table exists; the startup drift gate does not compare FKs.
+  sourceRelationId: varchar("source_relation_id"),
 }, (table) => ({
   // Declared in TABLE-column order (month, year, worker, employer, benefit)
   // with an explicit name, on purpose. drizzle-kit push's diff is

@@ -52,7 +52,7 @@ export interface TrustWmbStorage {
   getById(id: string): Promise<TrustWmb | undefined>;
   getWorkerBenefits(workerId: string): Promise<any[]>;
   getWorkerBenefitPresence(workerId: string): Promise<WorkerBenefitPresenceRow[]>;
-  createWorkerBenefit(data: { workerId: string; month: number; year: number; employerId: string; benefitId: string }): Promise<TrustWmb>;
+  createWorkerBenefit(data: { workerId: string; month: number; year: number; employerId: string; benefitId: string; sourceRelationId?: string | null }): Promise<TrustWmb>;
   deleteWorkerBenefit(id: string): Promise<boolean>;
   workerBenefitExists(workerId: string, benefitId: string, month: number, year: number): Promise<boolean>;
 }
@@ -138,6 +138,7 @@ export function createTrustWmbStorage(): TrustWmbStorage {
           workerId: trustWmb.workerId,
           employerId: trustWmb.employerId,
           benefitId: trustWmb.benefitId,
+          sourceRelationId: trustWmb.sourceRelationId,
           benefit: trustBenefits,
           employer: employers,
         })
@@ -181,7 +182,7 @@ export function createTrustWmbStorage(): TrustWmbStorage {
       }));
     },
 
-    async createWorkerBenefit(data: { workerId: string; month: number; year: number; employerId: string; benefitId: string }): Promise<TrustWmb> {
+    async createWorkerBenefit(data: { workerId: string; month: number; year: number; employerId: string; benefitId: string; sourceRelationId?: string | null }): Promise<TrustWmb> {
       const client = getClient();
       const [wmb] = await client
         .insert(trustWmb)

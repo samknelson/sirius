@@ -23,6 +23,13 @@ import { Badge } from "@/components/ui/badge";
 interface WorkerBenefit extends TrustWmb {
   benefit: TrustBenefit;
   employer: Employer;
+  /** Set when the benefit came through a relationship (dependent coverage). */
+  sourceRelation: {
+    id: string;
+    relationTypeName: string | null;
+    sourceWorkerId: string;
+    sourceWorkerName: string;
+  } | null;
 }
 
 function WorkerBenefitsContent() {
@@ -283,6 +290,7 @@ function WorkerBenefitsContent() {
                 <TableHead>Year</TableHead>
                 <TableHead>Month</TableHead>
                 <TableHead>Benefit</TableHead>
+                <TableHead>Source</TableHead>
                 <TableHead>Employer</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
@@ -294,6 +302,18 @@ function WorkerBenefitsContent() {
                   <TableCell>{getMonthName(benefit.month)}</TableCell>
                   <TableCell>
                     <Badge variant="outline">{benefit.benefit.name}</Badge>
+                  </TableCell>
+                  <TableCell data-testid={`text-benefit-source-${benefit.id}`}>
+                    {benefit.sourceRelation ? (
+                      <span className="text-muted-foreground">
+                        via {benefit.sourceRelation.sourceWorkerName}
+                        {benefit.sourceRelation.relationTypeName
+                          ? ` (${benefit.sourceRelation.relationTypeName})`
+                          : ""}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">Own</span>
+                    )}
                   </TableCell>
                   <TableCell>{benefit.employer.name}</TableCell>
                   <TableCell className="text-right">

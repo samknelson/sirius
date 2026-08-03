@@ -114,6 +114,15 @@ async function evaluatePersonBenefits(
     subscriberWorker: Worker;
     personWorkerId: string;
     relationship: { dependentWorkerId: string } | undefined;
+    /**
+     * The worker_relations row this person's coverage comes through
+     * (dependents only). Persisted on every WMB row the scan creates so
+     * staff can tell an own benefit from a relation-sourced one. Not part
+     * of the create/delete diff: existing rows are matched purely on
+     * (worker, benefit, month, year), so re-running a scan on an
+     * already-correct worker never churns on this field.
+     */
+    sourceRelationId: string | null;
     month: number;
     year: number;
     mode: "test" | "live";
@@ -128,6 +137,7 @@ async function evaluatePersonBenefits(
     subscriberWorker,
     personWorkerId,
     relationship,
+    sourceRelationId,
     month,
     year,
     mode,
@@ -252,6 +262,7 @@ async function evaluatePersonBenefits(
               year,
               employerId: employerIdForCreate,
               benefitId: action.benefitId,
+              sourceRelationId,
             });
             action.executed = true;
           } else if (action.action === "delete") {
@@ -288,7 +299,7 @@ async function resolveCoveredDependents(
   subscriberWorkerId: string,
   month: number,
   year: number,
-): Promise<Array<{ workerId: string; name: string; relationType: string | null }>> {
+): Promise<Array<{ workerId: string; name: string; relationType: string | null; relationId: string }>> {
   const asOfDate = new Date(year, month, 0);
   const asOfYmd = `${asOfDate.getFullYear()}-${String(asOfDate.getMonth() + 1).padStart(2, "0")}-${String(asOfDate.getDate()).padStart(2, "0")}`;
 
@@ -312,7 +323,7 @@ async function resolveCoveredDependents(
   });
 
   const seen = new Set<string>();
-  const dependents: Array<{ workerId: string; name: string; relationType: string | null }> = [];
+  const dependents: Array<{ workerId: string; name: string; relationType: string | null; relationId: string }> = [];
 
   for (const rel of relations) {
     if (!relationshipIds.has(rel.id)) continue;
@@ -329,6 +340,7 @@ async function resolveCoveredDependents(
       workerId: dependentWorkerId,
       name,
       relationType: rel.relationTypeName ?? null,
+      relationId: rel.id,
     });
   }
 
@@ -412,6 +424,7 @@ export async function runBenefitsScan(
     subscriberWorker: worker,
     personWorkerId: workerId,
     relationship: undefined,
+    sourceRelationId: null,
     month,
     year,
     mode,
@@ -441,6 +454,7 @@ export async function runBenefitsScan(
         subscriberWorker: worker,
         personWorkerId: dep.workerId,
         relationship: { dependentWorkerId: dep.workerId },
+        sourceRelationId: dep.relationId,
         month,
         year,
         mode,

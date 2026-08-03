@@ -1647,7 +1647,43 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     try {
       const { workerId } = req.params;
       const benefits = await storage.trust.wmb.getWorkerBenefits(workerId);
-      res.json(benefits);
+
+      // Enrich relation-sourced rows with the source worker's name and the
+      // relation-type label. worker_relations is owned by the optional
+      // worker.relations component, so only resolve when it is enabled;
+      // otherwise sourceRelation stays null (the raw id is still returned).
+      const { isComponentEnabledSync } = await import("./services/component-cache");
+      const relationIds = Array.from(
+        new Set(
+          benefits
+            .map((b: any) => b.sourceRelationId)
+            .filter((id: string | null): id is string => !!id),
+        ),
+      );
+      const sourceRelationById = new Map<string, { id: string; relationTypeName: string | null; sourceWorkerId: string; sourceWorkerName: string }>();
+      if (relationIds.length > 0 && isComponentEnabledSync("worker.relations")) {
+        const relations = await storage.workerRelations.listByIdsWithType(relationIds);
+        const nameByWorkerId = new Map<string, string>();
+        for (const rel of relations) {
+          if (!nameByWorkerId.has(rel.worker1)) {
+            nameByWorkerId.set(rel.worker1, await storage.workers.getWorkerDisplayName(rel.worker1));
+          }
+          sourceRelationById.set(rel.id, {
+            id: rel.id,
+            relationTypeName: rel.relationTypeName,
+            sourceWorkerId: rel.worker1,
+            sourceWorkerName: nameByWorkerId.get(rel.worker1) ?? rel.worker1,
+          });
+        }
+      }
+      res.json(
+        benefits.map((b: any) => ({
+          ...b,
+          sourceRelation: b.sourceRelationId
+            ? sourceRelationById.get(b.sourceRelationId) ?? null
+            : null,
+        })),
+      );
     } catch (error) {
       console.error("Failed to fetch worker benefits:", error);
       res.status(500).json({ message: "Failed to fetch worker benefits" });

@@ -58,6 +58,7 @@ import "./core/1112_add_dispatch_is_primary";
 import "./core/1113_create_help";
 import "./core/1114_options_event_type_sirius_id_nullable";
 import "./core/1115_files_file_system_id";
+import "./core/1116_add_trust_wmb_source_relation";
 
 // Per-component migrations — each registered via
 // `registerComponentMigration(componentId, migration)`. Tracked by the

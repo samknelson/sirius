@@ -82,4 +82,5 @@
 - [Shared policy → server hook injection](shared-policy-server-hook-injection.md) — shared access-policy files can't import server registries; use a boot-wired injectable resolver that fails closed when unset.
 - [Trust-provider EDI scoping](trust-provider-edi-scoping.md) — EDI file membership scopes by benefitSiriusId, not config providerId (no provider↔benefit relation exists); COBRA = employer siriusId "COBRA".
 - [Tx race handling: ON CONFLICT, not catch](tx-race-onconflict-not-catch.md) — inside a Postgres transaction, catch-and-continue after a unique violation leaves the tx aborted; use ON CONFLICT DO NOTHING + returning() rowcount and undo side-effect inserts when losing the race.
+- [Cross-component nullable pointer](cross-component-nullable-fk.md) — core column pointing at an optional-component table: plain varchar in schema.ts (no .references(), avoids cycle), conditional FK in migration; drift gate ignores FKs.
 - [Wizard advance via navigate](wizard-advance-via-navigate.md) — advance programmatic wizard launches with dispatch/navigate, not a currentStep PATCH (else next step stays pending, UI treats it as inactive).
