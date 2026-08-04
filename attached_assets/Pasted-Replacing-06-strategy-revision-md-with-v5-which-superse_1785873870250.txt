@@ -1,0 +1,21 @@
+Replacing 06-strategy-revision.md with v5, which supersedes everything you have. Delete prior versions — do not merge. This round folds in a full production profiling pass; most previously-open questions are now closed with live data.
+
+Two reclassifications you must act on:
+
+1. smf_worker_month is EXTRACT-AND-STAGE, not migrate (§4.2). The tags turned out to be S1's computed eligibility state — 59 terms across five families (Hours/Benefit/Election/Plan/Status), every one derivable from source data S2 will migrate anyway. Loading them into S2 would import stale conclusions computed under old rules. Instead they stage as validation evidence: when S2's scan regenerates eligibility, diff against these 2.5M recorded S1 decisions. Same treatment as benefit history in §4.13.
+
+2. node.changed is a real timestamp (§4.14). The "anonymization artifact" caveat was wrong — the full monthly distribution runs continuously from 2011. Remove any logic avoiding it.
+
+One reversal: member-status delta order is NOT meaningful (§4.8, reverses v4). Production shows every multi-assignment crosses industries, so industry disambiguates and delta drops. The mapping is now mechanical: term → options_worker_ms by tid, one worker_msh row per industry.
+
+New sections to read before touching the affected areas:
+
+§4.15 — carrier consolidation. Six aliases are one dental carrier; MLK has two administrators over time. A sirius_id-keyed provider carry-over creates phantom carriers. Requires a fund-authored alias table (N19).
+§4.16 — the variable table holds live credentials (S3, Stripe, Twilio, Okta, SMTP, more). Never bulk-migrates; secrets to the secret store; all rotate at cutover.
+§4.17 — empirical freeze-list. Note sirius_trust_worker_benefit is updated 5× more than inserted — staging extracts must run at freeze, not before.
+§4.18 — ledger facts. All 261,808 ledger rows are Cleared (Q19 closed). Payment→ledger is one-to-many. Do not pin a dollar figure as a parity target — S1's numbers are under active remediation; parity is measured against the freeze snapshot, reported per-participant and per-account, and the ETL never silently normalizes a status/ledger disagreement.
+§4.19 — smaller closures: SSN (one true duplicate; 11,839 nulls → review queue), opt-outs (don't exist in S1 — provider-level, blocks first send not migration), log types (cold archive except SMS lifecycle), language (add a column to contacts), the 10 legacy payperiod nids (documented skip, listed in §4.12).
+
+Work through §10 in order. Items 1–5 are spec corrections and come before ETL code. The dev database already matches v4-era findings; a regeneration pass for v5 (real tag vocabulary, carrier aliases) will follow — don't block on it.
+
+Open questions are consolidated in §8 with owners. None block milestone 1 (sirius_payperiod → worker_hours) except OPEN-2/3/5, which are pending with Sam and Kristin — build up to those boundaries and surface them in the run report rather than guessing.
