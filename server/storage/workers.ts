@@ -247,6 +247,13 @@ export interface WorkerStorage {
     family: string | null;
   }>>;
   createWorker(name: string): Promise<Worker>;
+  /** S1-migration only (03-transformations T1): insert a worker with an
+   * EXPLICIT sirius_id (S1 nid) and a pre-existing contact. The migration
+   * runs setval() on the sirius_id sequence after the load. */
+  createWorkerForMigration(input: { siriusId: number; contactId: string; ssn: string | null; data?: Record<string, unknown> | null }): Promise<Worker>;
+  /** S1-migration only: absorb a stub worker created by an earlier loader —
+   * stamps the real sirius_id / ssn / data onto the existing row. */
+  updateWorkerForMigration(workerId: string, updates: { siriusId?: number; contactId?: string; ssn?: string | null; data?: Record<string, unknown> | null }): Promise<Worker | undefined>;
   createWorkerWithNameParts(parts: { given: string | null; family: string | null; displayName: string }): Promise<Worker>;
   // Update methods that delegate to contact storage (contact storage already has logging)
   updateWorkerContactName(workerId: string, name: string): Promise<Worker | undefined>;
@@ -1220,6 +1227,39 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         .returning();
       
       return stripWorkerData(worker);
+    },
+
+    async createWorkerForMigration(input: { siriusId: number; contactId: string; ssn: string | null; data?: Record<string, unknown> | null }): Promise<Worker> {
+      const client = getClient();
+      const [worker] = await client
+        .insert(workers)
+        .values({
+          siriusId: input.siriusId,
+          contactId: input.contactId,
+          ssn: input.ssn,
+          data: input.data ?? null,
+        })
+        .returning();
+      return stripWorkerData(worker);
+    },
+
+    async updateWorkerForMigration(workerId: string, updates: { siriusId?: number; contactId?: string; ssn?: string | null; data?: Record<string, unknown> | null }): Promise<Worker | undefined> {
+      const client = getClient();
+      const set: Record<string, unknown> = {};
+      if (updates.siriusId !== undefined) set.siriusId = updates.siriusId;
+      if (updates.contactId !== undefined) set.contactId = updates.contactId;
+      if (updates.ssn !== undefined) set.ssn = updates.ssn;
+      if (updates.data !== undefined) set.data = updates.data;
+      if (Object.keys(set).length === 0) {
+        const [w] = await client.select().from(workers).where(eq(workers.id, workerId));
+        return w ? stripWorkerData(w) : undefined;
+      }
+      const [worker] = await client
+        .update(workers)
+        .set(set)
+        .where(eq(workers.id, workerId))
+        .returning();
+      return worker ? stripWorkerData(worker) : undefined;
     },
 
     async createWorkerWithNameParts(parts: { given: string | null; family: string | null; displayName: string }): Promise<Worker> {

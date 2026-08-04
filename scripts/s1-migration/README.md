@@ -98,7 +98,34 @@ recorded in `s1_staging.runs` (args + per-bundle report).
   (dev-only — synthetic terms stage no fields). Sequence only written for
   sequence-capable types. Re-run must report zero created/updated.
 
+- `load-contacts-workers.ts` — T3+T1: `sirius_contact` → contacts (+ phones,
+  addresses), `sirius_worker` → workers (+ worker_ids) with EXPLICIT
+  `sirius_id = nid` and a post-load `setval` (the one raw-SQL write,
+  spec-sanctioned). Absorbs hours-loader stubs: adopts the stub worker's
+  auto-created contact (no duplicate contact rows), stamps the real
+  sirius_id/ssn onto the stub worker, flips id_map stub=false. Email/SSN
+  uniqueness pre-checked (dups → report, Q36); worker-level contact-style
+  mirror fields ignored (N10, contact node wins). Storage side: workers
+  storage gained `createWorkerForMigration`/`updateWorkerForMigration` —
+  migration-only, per T1. Re-run must report zero creates/updates.
+  Note: T12's `data.duplicateEmail` stash and Q10's language column need a
+  `contacts.data`/`contacts.language` schema addition that doesn't exist yet —
+  duplicate emails currently live only in the run report.
+
 ## Known production-hardening TODOs (before the real run)
+
+- **Write + id_map atomicity (contacts/workers loader):** a crash between a
+  contact/worker create and its `putMapping` leaves an unmapped row; the
+  re-run then creates a duplicate (or trips the unique email/SSN). Windows
+  are single-row-narrow and the verify pass + unique constraints surface
+  them, but for the real 129k/117k run either wrap create+map in one
+  transaction (needs storage-layer tx plumbing) or sweep for unmapped
+  migration-era rows before re-running after a crash.
+- **Per-row lookups in contacts/workers loader:** phones/addresses/worker_ids
+  are fetched per contact/worker and email/SSN uniqueness is prefetched as
+  full in-memory maps. Fine at ≤130k rows (bounded memory, one query each),
+  but the per-row satellite reads should be batched (keyset paging like the
+  hours loader) before production.
 
 - Bulk transport (`COPY`/temp-table ingest) + per-bundle checkpointing for
   the 9.15M-node volume; benchmark against real payperiod JSON sizes.

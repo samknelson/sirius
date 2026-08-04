@@ -64,3 +64,11 @@ export async function putMapping(
   const rows = (res as unknown as { rows: Array<{ s2_id: string }> }).rows;
   return rows[0]?.s2_id ?? s2Id;
 }
+
+/** Mark a stub mapping as absorbed by the entity's real loader (stub=false). */
+export async function markAbsorbed(entity: string, s1Id: number, loader: string): Promise<void> {
+  await db.execute(sql`
+    UPDATE s1_staging.id_map SET stub = false, loader = ${loader}
+     WHERE entity = ${entity} AND s1_id = ${s1Id} AND stub = true
+  `);
+}
