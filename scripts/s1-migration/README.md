@@ -88,6 +88,16 @@ recorded in `s1_staging.runs` (args + per-bundle report).
   changed requires wiping the loader's output first (or ownership tracking —
   see TODOs).
 
+- `load-options.ts` — T4: staged taxonomy terms → `options_*` via unified-options
+  storage. Vocab dispositions are explicit (unhandled vocab = preflight failure,
+  before any write). Resolution per term: id_map → siriusId column (tables
+  without one, e.g. `options_ledger_payment_type`, carry the tid in `data.s1Tid`
+  with id_map authoritative) → unambiguous case-insensitive name adoption →
+  create. `worker-ms` requires the term-attached `field_sirius_industry` (Q37);
+  unresolved industries FAIL the run unless `--allow-unresolved-industry`
+  (dev-only — synthetic terms stage no fields). Sequence only written for
+  sequence-capable types. Re-run must report zero created/updated.
+
 ## Known production-hardening TODOs (before the real run)
 
 - Bulk transport (`COPY`/temp-table ingest) + per-bundle checkpointing for
