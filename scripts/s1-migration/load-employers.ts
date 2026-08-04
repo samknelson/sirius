@@ -20,8 +20,12 @@
  *     given/family guessing (T24); email with cross-contact dedupe (T12)
  *   - contact types: co_role free text + contact_types term names →
  *     options_employer_contact_type ensured BY NAME via unified options
- *     (dedupe case/whitespace); one employer_contacts row per (contact,
- *     employer, type); no type at all → one row with contact_type_id NULL
+ *     (dedupe case/whitespace). DEVIATION from T24's "one row per type":
+ *     the employer-contacts storage allows exactly ONE link per (contact,
+ *     employer), so the FIRST type (co_role first, then term order) becomes
+ *     the link's type and overflow types are counted as
+ *     `extra_contact_types_dropped` (surfaced by the reject policy — needs a
+ *     spec ruling before the prod run; see README TODO)
  *   - phones co_phone/_phone_2/_fax → E.164 rows (Phone / Phone 2 / Fax)
  *   - address co_address(+_2 merged into street — createOrMatchAddress has no
  *     line2)/city/state/zip → contact_postal via createOrMatchAddress
@@ -31,8 +35,13 @@
  * Writes go through the storage layer under notification suppression.
  * Idempotent: re-runs resolve via id_map and only write on drift.
  *
+ * REJECT POLICY (fail loud): every reject reason present in the run must be
+ * explicitly allowed via `--allow-rejects r1,r2,...` or the run exits 1
+ * (after the full report). Production: start with NO allowances; each
+ * allowance must be a conscious ruling.
+ *
  * Usage:
- *   npx tsx scripts/s1-migration/load-employers.ts [--dry-run]
+ *   npx tsx scripts/s1-migration/load-employers.ts [--dry-run] [--allow-rejects r1,r2]
  *
  * Output is AGGREGATES ONLY (plus S1 nids / opaque ids) — safe inside the
  * HIPAA boundary.
@@ -46,7 +55,17 @@ import { ensureIdMap, getMappings, putMapping, markAbsorbed } from "./lib/idmap"
 import { RejectLog, loadStaged, strOf, tidOf, targetNidOf, toE164 } from "./lib/loader-utils";
 
 const DRY_RUN = process.argv.includes("--dry-run");
+const ALLOWED_REJECTS: string[] = (() => {
+  const i = process.argv.indexOf("--allow-rejects");
+  return i >= 0 ? String(process.argv[i + 1] ?? "").split(",").filter(Boolean) : [];
+})();
 const LOADER = "t7t24-employers";
+
+/** Row-skipping (fatal) reasons — the verify pass skips exactly these.
+ * Annotation reasons (bad phone, unresolved industry, dropped extra types…)
+ * must NOT mask verification of rows that DID load. */
+const FATAL_SHOP_REASONS = ["shop_no_name", "mapped_employer_missing"] as const;
+const FATAL_SHOPCONTACT_REASONS = ["shopcontact_no_name", "shopcontact_employer_unresolved"] as const;
 
 /** §9b fields with no S2 home yet — counted so the prod run surfaces volume. */
 const SHOP_UNLOADED_FIELDS = [
@@ -150,7 +169,7 @@ async function main() {
   report.shopFieldsWithoutS2Home = unloadedFieldCounts;
 
   // ---------------- shop-contacts pass (§9c, T24) ----------------
-  const scStats = { matched: 0, created: 0, updated: 0, linksCreated: 0, phonesCreated: 0, addressesUpserted: 0, addressesMatched: 0, typesEnsured: 0, companyRefsDeferred: 0 };
+  const scStats = { matched: 0, created: 0, updated: 0, linksCreated: 0, linksUpdated: 0, phonesCreated: 0, addressesUpserted: 0, addressesMatched: 0, typesEnsured: 0, companyRefsDeferred: 0 };
 
   const contactMap = await getMappings("contact", shopContacts.map((c) => c.nid));
   const employerMapFinal = await getMappings("employer", shops.map((s) => s.nid));
@@ -258,7 +277,8 @@ async function main() {
 
     if (DRY_RUN || !contactId) continue;
 
-    // contact types (T24): role free text + contact_types term names
+    // contact types (T24, single-link deviation): role free text first, then
+    // contact_types term names — FIRST resolved type becomes the link type
     const typeLabels: string[] = [];
     const role = strOf(c.fields, "field_grievance_co_role");
     if (role) typeLabels.push(role);
@@ -273,23 +293,28 @@ async function main() {
         else rejects.add("contact_type_term_unstaged", { nid: c.nid, tid });
       }
     }
-    const typeIds: Array<string | null> = [];
+    const typeIds: string[] = [];
     for (const label of [...new Set(typeLabels.map((l) => l.trim().replace(/\s+/g, " ")).filter(Boolean))]) {
       const id = await ensureType(label);
       if (id) typeIds.push(id);
     }
-    if (typeIds.length === 0) typeIds.push(null);
+    const primaryTypeId = typeIds[0] ?? null;
+    if (typeIds.length > 1) {
+      rejects.add("extra_contact_types_dropped", { nid: c.nid, dropped: typeIds.length - 1 });
+    }
 
     const existingLinks = await storage.employerContacts.listByContactId(contactId);
-    for (const typeId of typeIds) {
-      const dup = existingLinks.some(
-        (l) => l.employerId === employerMapping.s2Id && (l.contactTypeId ?? null) === (typeId ?? null),
-      );
-      if (dup) continue;
+    const link = existingLinks.find((l) => l.employerId === employerMapping.s2Id);
+    if (!link) {
       await withNotificationsSuppressed(() =>
-        storage.employerContacts.create({ contactId: contactId!, employerId: employerMapping.s2Id, contactTypeId: typeId }),
+        storage.employerContacts.create({ contactId: contactId!, employerId: employerMapping.s2Id, contactTypeId: primaryTypeId }),
       );
       scStats.linksCreated++;
+    } else if (primaryTypeId != null && (link.contactTypeId ?? null) !== primaryTypeId) {
+      // drift-reconcile the type; never null-out an operator-set type when
+      // the source has no type info at all
+      await withNotificationsSuppressed(() => storage.employerContacts.update(link.id, { contactTypeId: primaryTypeId }));
+      scStats.linksUpdated++;
     }
 
     // phones (T5): Phone / Phone 2 / Fax
@@ -365,7 +390,7 @@ async function main() {
   if (!DRY_RUN) {
     const vEmployerMap = await getMappings("employer", shops.map((s) => s.nid));
     for (const s of shops) {
-      if (rejects.hasAny(s.nid)) continue;
+      if (rejects.hasAnyIn(s.nid, FATAL_SHOP_REASONS)) continue;
       const m = vEmployerMap.get(s.nid);
       if (!m || m.stub) {
         console.error(`VERIFY: shop nid ${s.nid} ${!m ? "has no id_map entry" : "still marked stub"}`);
@@ -380,7 +405,7 @@ async function main() {
     }
     const vContactMap = await getMappings("contact", shopContacts.map((c) => c.nid));
     for (const c of shopContacts) {
-      if (rejects.hasAny(c.nid)) continue;
+      if (rejects.hasAnyIn(c.nid, FATAL_SHOPCONTACT_REASONS)) continue;
       const m = vContactMap.get(c.nid);
       if (!m) {
         console.error(`VERIFY: shop contact nid ${c.nid} has no id_map entry`);
@@ -404,11 +429,21 @@ async function main() {
   report.rejects = rejects.counts;
   report.rejectSamples = rejects.samples;
   report.verifyFailures = verifyFailures;
+  report.allowedRejects = ALLOWED_REJECTS;
 
+  const disallowed = rejects.disallowedReasons(ALLOWED_REJECTS);
   console.log(JSON.stringify(report, null, 2));
-  if (!DRY_RUN) await recordRun(startedAt, { loader: LOADER }, report);
+  if (!DRY_RUN) await recordRun(startedAt, { loader: LOADER, allowedRejects: ALLOWED_REJECTS }, report);
 
-  process.exit(verifyFailures > 0 ? 1 : 0);
+  if (verifyFailures > 0) process.exit(1);
+  if (disallowed.length > 0) {
+    console.error(
+      `FAIL: reject reason(s) not allowed for this run: ${disallowed.map((d) => `${d.reason}=${d.count}`).join(", ")}. ` +
+        `Every expected reject class must be explicitly allowed via --allow-rejects.`,
+    );
+    process.exit(1);
+  }
+  process.exit(0);
 }
 
 main().catch((err) => {

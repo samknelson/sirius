@@ -117,14 +117,20 @@ recorded in `s1_staging.runs` (args + per-bundle report).
   id_map → industry options `siriusId` fallback, unresolved = counted reject +
   NULL), `grievance_shop_contact` → contacts + `employer_contacts` (contact
   types ensured BY NAME in `options_employer_contact_type` from `co_role` free
-  text + `contact_types` term names, T24; no type info → one NULL-type link),
-  phones (Phone / Phone 2 / Fax) and address (`address_2` merged into street —
+  text + `contact_types` term names). **T24 deviation:** the employer-contacts
+  storage allows ONE link per (contact, employer), so the first resolved type
+  (co_role first, then term order) becomes the link type and overflow types
+  count as `extra_contact_types_dropped` (needs a ruling — see TODOs); no type
+  info → NULL-type link, and drift-reconcile never nulls an operator-set type.
+  Phones (Phone / Phone 2 / Fax) and address (`address_2` merged into street —
   the address storage has no line2 input). Shop fields with no S2 home are
   counted, never loaded: `external_id` (Q26 — employers has no data column),
   `name_tts`, tags, `dispatch_job_types` (Q24), contract/attachments (T10/T23
   file milestone), company refs (`companies`/`employer_companies` deferred —
   absent from synthetic; the counter surfaces prod volume). Re-run must report
-  zero creates/links.
+  zero creates/links. Reject policy: ANY reject reason must be explicitly
+  allowed via `--allow-rejects r1,r2` or the run exits 1 (fail-loud; verify
+  skips only row-skipping reasons, annotations never mask verification).
 
 - `load-policies.ts` — ADOPT-ONLY mapper, not a creator: S1 policy references
   (election `field_sirius_trust_policy` targets + any staged
@@ -147,11 +153,17 @@ recorded in `s1_staging.runs` (args + per-bundle report).
   not contacts). Reltype tid → term id_map →
   `options_worker_relation_type.siriusId` fallback. `active=No` with no end
   date end-dates from `node.changed` (documented convention).
-  `field_sirius_count` → `data.sequence` (ordering, Q14). Relations-storage
-  validation failures (duplicate pair, self-relation) become counted rejects.
-  Owner-side rejects HARD-FAIL without `--allow-missing-owner` — dev-only
-  flag: the synthetic DB stages NO owning field (all 15 reject); Q13 says
-  production has it on ALL 35,774 rows, so the flag must never be used there.
+  `field_sirius_count` → `data.sequence` (ordering, Q14). The relations
+  storage contract (start date REQUIRED, no future starts, end ≥ start) is
+  pre-validated into dedicated fatal rejects (`missing_start_date`,
+  `future_start_date`, `end_before_start`) BEFORE any shell creation, so a
+  reject can't orphan a shell; residual storage failures surface as SANITIZED
+  codes (`validation_<field>`/`storage_error` — never raw error text, HIPAA).
+  Matched rows drift-reconcile dates/type/sequence. Reject policy: ANY reject
+  reason must be explicitly allowed via `--allow-rejects r1,r2` or the run
+  exits 1. Dev: `--allow-rejects owner_missing` (synthetic stages NO owning
+  field — all 15 reject; Q13: production has it on ALL 35,774 rows, so prod
+  runs with no allowance until counts justify a conscious ruling).
 
 ## Known production-hardening TODOs (before the real run)
 
@@ -199,3 +211,14 @@ recorded in `s1_staging.runs` (args + per-bundle report).
   `companies`/`employer_companies` is deferred (absent from synthetic). The
   loader counts prod volume; build the mapping when the file/company milestone
   lands.
+- **T24 multi-type shop contacts vs single-type links.** S2's
+  `employer_contacts` storage enforces one link per (contact, employer) with a
+  single `contact_type_id`; T24 prescribes one row per type. The loader keeps
+  the first type and counts `extra_contact_types_dropped` — get a spec ruling
+  (widen S2 to multi-link, or accept primary-type-only) before the prod run.
+- **Relationship date constraints.** The relations storage REQUIRES a start
+  date and forbids future starts / end&lt;start. S1 prevalence of missing or
+  odd `date_start` on `sirius_contact_relationship` is unknown (synthetic has
+  full dates); if the prod run rejects materially on `missing_start_date` /
+  `future_start_date` / `end_before_start`, get a ruling (default date vs
+  skip) rather than allowing the reject class blind.

@@ -122,4 +122,20 @@ export class RejectLog {
     for (const set of Object.values(this.keys)) if (set.has(key)) return true;
     return false;
   }
+  /** True if nid was rejected under any of the GIVEN reasons. Verify passes
+   * must gate on the row-skipping (fatal) reasons only — an annotation reject
+   * (e.g. a bad phone) must NOT mask verification of a row that DID load. */
+  hasAnyIn(key: number, reasons: Iterable<string>): boolean {
+    for (const r of reasons) if (this.keys[r]?.has(key)) return true;
+    return false;
+  }
+  /** Reject reasons present in this run that are NOT in the allowlist.
+   * Loaders fail loud (exit non-zero) when this is non-empty: every expected
+   * reject class must be explicitly allowed by the operator per run. */
+  disallowedReasons(allowed: Iterable<string>): Array<{ reason: string; count: number }> {
+    const allow = new Set(allowed);
+    return Object.entries(this.counts)
+      .filter(([r]) => !allow.has(r))
+      .map(([reason, count]) => ({ reason, count }));
+  }
 }

@@ -5,28 +5,40 @@
  *   - worker_1 = OWNING worker: `field_sirius_contact` (contact nid) →
  *     the worker node referencing that contact → worker id_map.
  *     Q13 closed: production has the owning field on ALL 35,774 nodes. The
- *     synthetic DB stages it on NONE (term/field gap), so missing owners are
- *     counted rejects that HARD-FAIL unless `--allow-missing-owner` (dev-only;
- *     prod run must see 0).
+ *     synthetic DB stages it on NONE (field gap), so dev runs need
+ *     `--allow-rejects owner_missing`.
  *   - worker_2 = `field_sirius_contact_alt` contact → its worker if one
  *     exists, else CREATE A SHELL WORKER for that contact (S2 relations join
  *     workers, not contacts — same approach S2's DP/COBRA flows use).
  *     Shells: no S1 worker nid → serial sirius_id (post-setval, above the nid
  *     range), data.migrationShell=true, id_map entity "shell-worker" keyed by
- *     the CONTACT nid (idempotency).
+ *     the CONTACT nid (idempotency). Shells are created ONLY after every
+ *     other resolution/validation for the row has passed, so a reject can't
+ *     leave an orphan shell behind.
  *   - relation_type: reltype tid → term id_map (T4) → fallback
  *     options_worker_relation_type.sirius_id.
- *   - start/end: field_sirius_date_start/_date_end date-cast. Active=No with
- *     no end date end-dates from node.changed (documented convention).
+ *   - start/end: field_sirius_date_start/_date_end date-cast. The S2 relations
+ *     storage REQUIRES a start date, forbids future start dates, and requires
+ *     end >= start — rows violating any of these are pre-validated into
+ *     dedicated fatal rejects (missing_start_date / future_start_date /
+ *     end_before_start) instead of surfacing as create-time surprises.
+ *     Active=No with no end date end-dates from node.changed (documented
+ *     convention).
  *   - field_sirius_count → data.sequence (ordering, not a quantity — Q14).
  *
- * Writes go through workerRelations storage under notification suppression;
- * its own validation (duplicate/self-relation checks) turns per-row failures
- * into counted rejects, not silent skips. Idempotent via id_map entity
- * "relation".
+ * REJECT POLICY (fail loud): every reject reason present in the run must be
+ * explicitly allowed via `--allow-rejects r1,r2,...` or the run exits 1
+ * (after the full report, so the operator sees complete counts). Dev:
+ * `--allow-rejects owner_missing`. Production: run with NO allowances first;
+ * every allowance must be a conscious ruling.
+ *
+ * Writes go through workerRelations storage under notification suppression.
+ * Idempotent via id_map entity "relation"; matched rows drift-reconcile
+ * dates/type/sequence. Create/update failures are reported as SANITIZED codes
+ * (validation_<field> / storage_error) — never raw error text (HIPAA).
  *
  * Usage:
- *   npx tsx scripts/s1-migration/load-relationships.ts [--dry-run] [--allow-missing-owner]
+ *   npx tsx scripts/s1-migration/load-relationships.ts [--dry-run] [--allow-rejects r1,r2]
  *
  * Output is AGGREGATES ONLY (plus S1 nids / opaque ids) — safe inside the
  * HIPAA boundary.
@@ -34,26 +46,54 @@
 import { db } from "../../server/storage/db";
 import { sql } from "drizzle-orm";
 import { storage } from "../../server/storage/database";
+import { WorkerRelationValidationError } from "../../server/storage/workers/relations";
 import { withNotificationsSuppressed } from "../../server/middleware/request-context";
 import { ensureStagingSchema, recordRun } from "./lib/staging";
 import { ensureIdMap, getMappings, putMapping } from "./lib/idmap";
 import { RejectLog, loadStaged, strOf, tidOf, targetNidOf, toYmd, epochToYmd, yesNo, scalarOf } from "./lib/loader-utils";
 
 const DRY_RUN = process.argv.includes("--dry-run");
-const ALLOW_MISSING_OWNER = process.argv.includes("--allow-missing-owner");
+const ALLOWED_REJECTS: string[] = (() => {
+  const i = process.argv.indexOf("--allow-rejects");
+  return i >= 0 ? String(process.argv[i + 1] ?? "").split(",").filter(Boolean) : [];
+})();
 const LOADER = "t15-relationships";
 
-/** Reject reasons that mean "the owning side could not be resolved" — these
- * hard-fail without --allow-missing-owner (Q13: prod has owners on ALL rows). */
-const OWNER_REJECTS = ["owner_missing", "owner_has_no_worker", "owner_worker_unmapped"] as const;
+/** All relationship reject reasons are row-skipping (fatal) — the verify pass
+ * skips exactly these. Kept explicit so a future annotation-style reason
+ * can't silently widen the verify allowlist. */
+const FATAL_REASONS = [
+  "owner_missing",
+  "alt_missing",
+  "owner_equals_alt",
+  "owner_has_no_worker",
+  "owner_worker_unmapped",
+  "alt_worker_unmapped",
+  "alt_contact_unmapped",
+  "reltype_unresolved",
+  "missing_start_date",
+  "future_start_date",
+  "bad_end_date",
+  "end_before_start",
+  "relation_create_failed",
+  "relation_update_failed",
+] as const;
+
+/** Storage errors → sanitized report codes. NEVER store raw error text —
+ * database diagnostics can embed row values (HIPAA). */
+function sanitizeStorageError(err: unknown): string {
+  if (err instanceof WorkerRelationValidationError) return `validation_${err.field}`;
+  return "storage_error";
+}
 
 async function main() {
   const startedAt = new Date();
   await ensureStagingSchema();
   await ensureIdMap();
 
-  const report: Record<string, unknown> = { loader: LOADER, dryRun: DRY_RUN, allowMissingOwner: ALLOW_MISSING_OWNER };
+  const report: Record<string, unknown> = { loader: LOADER, dryRun: DRY_RUN, allowedRejects: ALLOWED_REJECTS };
   const rejects = new RejectLog();
+  const todayYmd = new Date().toISOString().slice(0, 10);
 
   const rels = await loadStaged("sirius_contact_relationship");
   const stagedWorkers = await loadStaged("sirius_worker");
@@ -94,12 +134,14 @@ async function main() {
     return termMap.get(tid)?.s2Id ?? reltypeBySiriusId.get(String(tid)) ?? null;
   };
 
-  const stats = { matched: 0, created: 0, shellWorkersCreated: 0, shellWorkersReused: 0, endDatedFromChanged: 0 };
+  const stats = { matched: 0, created: 0, updated: 0, shellWorkersCreated: 0, shellWorkersReused: 0, endDatedFromChanged: 0 };
   /** nid → expected row shape (for the verify pass). */
   const expected = new Map<number, { worker1: string; worker2: string; relationType: string }>();
 
   for (const r of rels) {
-    // ---- owning side (worker_1)
+    // ---- resolve + validate EVERYTHING before any write for this row ----
+
+    // owning side (worker_1)
     const ownerNid = targetNidOf(r.fields, "field_sirius_contact");
     if (ownerNid == null) {
       rejects.add("owner_missing", { nid: r.nid }, r.nid);
@@ -125,8 +167,9 @@ async function main() {
       continue;
     }
 
-    // ---- alt side (worker_2): worker if it exists, else shell worker
+    // alt side (worker_2): existing worker, existing shell, or shell-to-create
     let w2Id: string | null = null;
+    let needShellForContactId: string | null = null;
     const altWorkerNid = workerNidByContactNid.get(altNid);
     if (altWorkerNid != null) {
       const w2 = workerMap.get(altWorkerNid);
@@ -136,34 +179,21 @@ async function main() {
       }
       w2Id = w2.s2Id;
     } else {
-      const altContact = contactMap.get(altNid);
-      if (!altContact) {
-        rejects.add("alt_contact_unmapped", { nid: r.nid, altContactNid: altNid }, r.nid);
-        continue;
-      }
       const shell = shellMap.get(altNid);
       if (shell) {
         w2Id = shell.s2Id;
         stats.shellWorkersReused++;
-      } else if (!DRY_RUN) {
-        const created = await withNotificationsSuppressed(() =>
-          storage.workers.createWorkerForMigration({
-            contactId: altContact.s2Id,
-            ssn: null,
-            data: { migrationShell: true, s1ContactNid: altNid },
-          }),
-        );
-        const winner = await putMapping("shell-worker", altNid, created.id, { stub: false, loader: LOADER });
-        if (winner !== created.id) {
-          console.error(`RACE: shell worker for contact nid ${altNid} already mapped to ${winner}; row ${created.id} may be an orphan`);
+      } else {
+        const altContact = contactMap.get(altNid);
+        if (!altContact) {
+          rejects.add("alt_contact_unmapped", { nid: r.nid, altContactNid: altNid }, r.nid);
+          continue;
         }
-        w2Id = winner;
-        shellMap.set(altNid, { s2Id: winner, stub: false });
-        stats.shellWorkersCreated++;
+        needShellForContactId = altContact.s2Id;
       }
     }
 
-    // ---- relation type
+    // relation type
     const tid = tidOf(r.fields, "field_sirius_contact_reltype");
     const relationType = resolveReltype(tid);
     if (!relationType) {
@@ -171,34 +201,104 @@ async function main() {
       continue;
     }
 
-    // ---- dates + sequence
+    // dates — pre-validate against the storage contract (start required,
+    // no future start, end >= start) so failures are dedicated rejects
     const startRaw = strOf(r.fields, "field_sirius_date_start");
     const endRaw = strOf(r.fields, "field_sirius_date_end");
     const startYmd = startRaw ? toYmd(startRaw) : null;
+    if (!startYmd) {
+      rejects.add("missing_start_date", { nid: r.nid, hadValue: startRaw != null }, r.nid);
+      continue;
+    }
+    if (startYmd > todayYmd) {
+      rejects.add("future_start_date", { nid: r.nid, startYmd }, r.nid);
+      continue;
+    }
     let endYmd = endRaw ? toYmd(endRaw) : null;
-    if (startRaw && !startYmd) rejects.add("bad_start_date", { nid: r.nid });
-    if (endRaw && !endYmd) rejects.add("bad_end_date", { nid: r.nid });
+    if (endRaw && !endYmd) {
+      rejects.add("bad_end_date", { nid: r.nid }, r.nid);
+      continue;
+    }
     const active = yesNo(strOf(r.fields, "field_sirius_active"));
+    let endDatedFromChanged = false;
     if (active === false && !endYmd && r.changed != null) {
       endYmd = epochToYmd(r.changed); // end-dating convention (§4 active flag)
-      stats.endDatedFromChanged++;
+      endDatedFromChanged = true;
+    }
+    if (endYmd && endYmd < startYmd) {
+      rejects.add("end_before_start", { nid: r.nid, fromChanged: endDatedFromChanged }, r.nid);
+      continue;
     }
     const seqRaw = scalarOf(r.fields["field_sirius_count"]);
     const sequence =
       typeof seqRaw === "number" ? seqRaw : typeof seqRaw === "string" && /^\d+$/.test(seqRaw) ? Number(seqRaw) : null;
 
+    // ---- matched: drift-reconcile; new: shell (if needed) + create ----
+
     const mapped = relMap.get(r.nid);
     if (mapped) {
       stats.matched++;
       if (w2Id) expected.set(r.nid, { worker1: w1.s2Id, worker2: w2Id, relationType });
+      if (!DRY_RUN) {
+        const row = await storage.workerRelations.get(mapped.s2Id);
+        if (row) {
+          const rowSeq = (row.data as Record<string, unknown> | null)?.sequence ?? null;
+          const drift =
+            (row.startYmd ?? null) !== startYmd ||
+            (row.endYmd ?? null) !== (endYmd ?? null) ||
+            row.relationType !== relationType ||
+            (sequence != null && rowSeq !== sequence);
+          if (drift) {
+            try {
+              await withNotificationsSuppressed(() =>
+                storage.workerRelations.update(mapped.s2Id, {
+                  startYmd,
+                  endYmd,
+                  relationType,
+                  ...(sequence != null ? { data: { sequence } } : {}),
+                }),
+              );
+              if (endDatedFromChanged) stats.endDatedFromChanged++;
+              stats.updated++;
+            } catch (err) {
+              rejects.add("relation_update_failed", { nid: r.nid, code: sanitizeStorageError(err) }, r.nid);
+            }
+          }
+        }
+        // structural drift (worker1/worker2) is NOT auto-fixed — verify flags it
+      }
       continue;
     }
 
     if (DRY_RUN) {
+      if (needShellForContactId) stats.shellWorkersCreated++;
+      if (endDatedFromChanged) stats.endDatedFromChanged++;
       stats.created++;
       continue;
     }
-    if (!w2Id) continue; // dry-run-only path; real run always has w2Id here
+
+    // all validation passed — safe to create the shell now
+    if (needShellForContactId) {
+      const created = await withNotificationsSuppressed(() =>
+        storage.workers.createWorkerForMigration({
+          contactId: needShellForContactId!,
+          ssn: null,
+          data: { migrationShell: true, s1ContactNid: altNid },
+        }),
+      );
+      const winner = await putMapping("shell-worker", altNid, created.id, { stub: false, loader: LOADER });
+      if (winner !== created.id) {
+        console.error(`RACE: shell worker for contact nid ${altNid} already mapped to ${winner}; row ${created.id} may be an orphan`);
+      }
+      w2Id = winner;
+      shellMap.set(altNid, { s2Id: winner, stub: false });
+      stats.shellWorkersCreated++;
+    }
+    if (!w2Id) {
+      // unreachable by construction (worker, shell reuse, or shell create above)
+      rejects.add("alt_worker_unmapped", { nid: r.nid }, r.nid);
+      continue;
+    }
 
     try {
       const created = await withNotificationsSuppressed(() =>
@@ -215,12 +315,12 @@ async function main() {
       if (winner !== created.id) {
         console.error(`RACE: relation nid ${r.nid} already mapped to ${winner}; row ${created.id} may be an orphan`);
       }
+      if (endDatedFromChanged) stats.endDatedFromChanged++;
       stats.created++;
       expected.set(r.nid, { worker1: w1.s2Id, worker2: w2Id, relationType });
     } catch (err) {
-      // storage validation (duplicate pair/self-relation/missing worker) —
-      // surfaced as a counted reject, loader continues
-      rejects.add("relation_create_failed", { nid: r.nid, message: (err as Error).message }, r.nid);
+      // storage validation — sanitized code only, never raw error text
+      rejects.add("relation_create_failed", { nid: r.nid, code: sanitizeStorageError(err) }, r.nid);
     }
   }
   report.relations = stats;
@@ -230,7 +330,7 @@ async function main() {
   if (!DRY_RUN) {
     const vMap = await getMappings("relation", rels.map((r) => r.nid));
     for (const r of rels) {
-      if (rejects.hasAny(r.nid)) continue;
+      if (rejects.hasAnyIn(r.nid, FATAL_REASONS)) continue;
       const m = vMap.get(r.nid);
       if (!m) {
         console.error(`VERIFY: relation nid ${r.nid} has no id_map entry`);
@@ -255,15 +355,15 @@ async function main() {
   report.rejectSamples = rejects.samples;
   report.verifyFailures = verifyFailures;
 
-  const ownerRejectCount = OWNER_REJECTS.reduce((n, k) => n + (rejects.counts[k] ?? 0), 0);
+  const disallowed = rejects.disallowedReasons(ALLOWED_REJECTS);
   console.log(JSON.stringify(report, null, 2));
-  if (!DRY_RUN) await recordRun(startedAt, { loader: LOADER, allowMissingOwner: ALLOW_MISSING_OWNER }, report);
+  if (!DRY_RUN) await recordRun(startedAt, { loader: LOADER, allowedRejects: ALLOWED_REJECTS }, report);
 
   if (verifyFailures > 0) process.exit(1);
-  if (ownerRejectCount > 0 && !ALLOW_MISSING_OWNER) {
+  if (disallowed.length > 0) {
     console.error(
-      `FAIL: ${ownerRejectCount} relationship(s) with unresolvable owning side (Q13: production has owners on all rows). ` +
-        `Pass --allow-missing-owner ONLY against the synthetic dev DB.`,
+      `FAIL: reject reason(s) not allowed for this run: ${disallowed.map((d) => `${d.reason}=${d.count}`).join(", ")}. ` +
+        `Every expected reject class must be explicitly allowed via --allow-rejects (dev synthetic gap: owner_missing).`,
     );
     process.exit(1);
   }
