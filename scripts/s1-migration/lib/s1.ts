@@ -26,6 +26,11 @@ export function createS1Pool(): Pool {
     uri: getS1Url(),
     waitForConnections: true,
     connectionLimit: 4,
+    // Verbatim staging: D7 DATE/DATETIME columns are wall-time STRINGS with
+    // per-field timezone conventions (06 §5). Without this, mysql2 converts
+    // them to JS Dates (an extract-time transform) and the staged value picks
+    // up a spurious UTC marker. All timezone interpretation is load-time.
+    dateStrings: true,
     // Dev (Railway synthetic DB) has no TLS; the production run inside the
     // HIPAA boundary must set ?ssl parameters on the URL itself.
   });

@@ -72,6 +72,22 @@ recorded in `s1_staging.runs` (args + per-bundle report).
   large JSON payloads (production payperiods) can't build enormous
   single statements.
 
+## Loaders (milestone 1: T20 hours)
+
+- `load-hours.ts` — staged `sirius_payperiod` → `worker_hours` through
+  `storage.workerHours.upsertWorkerHours` (notification-suppressed). Rules per
+  06 v5 §4.12 / T20; run report is aggregates-only + S1 nids. `--dry-run`,
+  `--stub-missing` (dev-only, single-process: creates minimal S2
+  workers/employers via storage, recorded in `s1_staging.id_map` with
+  `stub=true` for T4/T7 to enrich later).
+- `lib/idmap.ts` — `s1_staging.id_map`, the S1→S2 crosswalk all loaders share.
+  On mapping races the existing row wins (`putMapping` returns the winner).
+- **Loader semantics are one-shot-at-freeze, not continuous sync**: re-runs
+  upsert current groups but do NOT delete `worker_hours` rows whose source
+  payperiods disappeared from a re-extraction. A full reload after the source
+  changed requires wiping the loader's output first (or ownership tracking —
+  see TODOs).
+
 ## Known production-hardening TODOs (before the real run)
 
 - Bulk transport (`COPY`/temp-table ingest) + per-bundle checkpointing for
@@ -79,3 +95,16 @@ recorded in `s1_staging.runs` (args + per-bundle report).
 - A consistent S1 read snapshot (single REPEATABLE READ connection or a
   frozen replica) — the cutover plan's freeze window covers this, but the
   extractor should not assume it.
+- **Loader migration mode with charge plugins disabled.** `upsertWorkerHours`
+  executes charge plugins per row (`bao-hourly` fired 298 no-ops in the dev
+  run). In production the migration must NOT replay charge plugins — ledger
+  history arrives via T18 and replaying would double-bill. Needs an explicit
+  ambient migration flag (same pattern as notification suppression) checked in
+  the charge-plugin executor, plus per-row event/listener cost review.
+- **Loader-side paging.** `load-hours.ts` currently materializes all staged
+  payperiods in memory and upserts sequentially — fine at dev scale, not at
+  3.6M rows. Needs keyset-paged staging reads, bounded write batches, and
+  checkpointing.
+- Row-level provenance (`$.entries` keys) is only aggregated in the run
+  report; if per-row provenance must land in S2, `worker_hours` needs a home
+  for it (no data column today).
