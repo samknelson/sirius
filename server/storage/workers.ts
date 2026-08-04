@@ -250,7 +250,7 @@ export interface WorkerStorage {
   /** S1-migration only (03-transformations T1): insert a worker with an
    * EXPLICIT sirius_id (S1 nid) and a pre-existing contact. The migration
    * runs setval() on the sirius_id sequence after the load. */
-  createWorkerForMigration(input: { siriusId: number; contactId: string; ssn: string | null; data?: Record<string, unknown> | null }): Promise<Worker>;
+  createWorkerForMigration(input: { siriusId?: number; contactId: string; ssn: string | null; data?: Record<string, unknown> | null }): Promise<Worker>;
   /** S1-migration only: absorb a stub worker created by an earlier loader —
    * stamps the real sirius_id / ssn / data onto the existing row. */
   updateWorkerForMigration(workerId: string, updates: { siriusId?: number; contactId?: string; ssn?: string | null; data?: Record<string, unknown> | null }): Promise<Worker | undefined>;
@@ -1229,12 +1229,14 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       return stripWorkerData(worker);
     },
 
-    async createWorkerForMigration(input: { siriusId: number; contactId: string; ssn: string | null; data?: Record<string, unknown> | null }): Promise<Worker> {
+    async createWorkerForMigration(input: { siriusId?: number; contactId: string; ssn: string | null; data?: Record<string, unknown> | null }): Promise<Worker> {
       const client = getClient();
       const [worker] = await client
         .insert(workers)
         .values({
-          siriusId: input.siriusId,
+          // omit siriusId → serial assigns (shell workers for migrated
+          // relations, T15 — they have no S1 worker node)
+          ...(input.siriusId != null ? { siriusId: input.siriusId } : {}),
           contactId: input.contactId,
           ssn: input.ssn,
           data: input.data ?? null,

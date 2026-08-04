@@ -1,0 +1,125 @@
+/**
+ * Shared helpers for S1-migration loaders: staged-field decoding (D7 shapes),
+ * value normalization transforms (T5/T14/date), and the reject log.
+ *
+ * Staged `fields` values arrive in three shapes depending on the D7 column:
+ * `{value: ...}` objects, bare scalars (entityreference target ids, tids),
+ * and arrays for multi-value fields. `scalarOf` collapses all of them.
+ */
+import { db } from "../../../server/storage/db";
+import { sql } from "drizzle-orm";
+
+export const REJECT_SAMPLE_CAP = 25;
+
+export interface StagedNode {
+  nid: number;
+  title: string | null;
+  /** node.changed epoch seconds (end-dating conventions read this). */
+  changed: number | null;
+  fields: Record<string, unknown>;
+}
+
+export function scalarOf(v: unknown): unknown {
+  const s = Array.isArray(v) ? v[0] : v;
+  if (s && typeof s === "object" && "value" in (s as Record<string, unknown>)) {
+    return (s as Record<string, unknown>).value;
+  }
+  return s;
+}
+
+export function strOf(fields: Record<string, unknown>, key: string): string | null {
+  const v = scalarOf(fields[key]);
+  if (v == null) return null;
+  const s = String(v).trim();
+  return s.length > 0 ? s : null;
+}
+
+export function tidOf(fields: Record<string, unknown>, key: string): number | null {
+  const v = scalarOf(fields[key]);
+  if (typeof v === "number") return v;
+  if (typeof v === "string" && /^\d+$/.test(v)) return Number(v);
+  if (v && typeof v === "object" && "tid" in (v as Record<string, unknown>)) {
+    return Number((v as Record<string, unknown>).tid) || null;
+  }
+  return null;
+}
+
+export function targetNidOf(fields: Record<string, unknown>, key: string): number | null {
+  const raw = fields[key];
+  const s = Array.isArray(raw) ? raw[0] : raw;
+  if (typeof s === "number") return s;
+  if (typeof s === "string" && /^\d+$/.test(s)) return Number(s);
+  if (s && typeof s === "object") {
+    const o = s as Record<string, unknown>;
+    const cand = o.target_id ?? o.value;
+    if (typeof cand === "number") return cand;
+    if (typeof cand === "string" && /^\d+$/.test(cand)) return Number(cand);
+  }
+  return null;
+}
+
+/** T5: bare/formatted phone → E.164 (+1...), or null if not 10/11-leading-1 digits. */
+export function toE164(raw: string): string | null {
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
+  return null;
+}
+
+/** T14: Yes/No text → boolean (case-insensitive), null passthrough. */
+export function yesNo(v: string | null): boolean | null {
+  if (v == null) return null;
+  const s = v.trim().toLowerCase();
+  if (s === "yes") return true;
+  if (s === "no") return false;
+  return null;
+}
+
+/** "1971-06-07 00:00:00" → "1971-06-07" (D7 wall-time datetimes, date-only). */
+export function toYmd(raw: string): string | null {
+  const m = raw.trim().match(/^(\d{4}-\d{2}-\d{2})/);
+  return m ? m[1] : null;
+}
+
+/** Epoch seconds → "YYYY-MM-DD" (UTC). For end-dating conventions off node.changed. */
+export function epochToYmd(epoch: number): string {
+  return new Date(epoch * 1000).toISOString().slice(0, 10);
+}
+
+export async function loadStaged(bundle: string): Promise<StagedNode[]> {
+  const res = await db.execute(sql`
+    SELECT nid, title, changed, fields FROM s1_staging.records WHERE bundle = ${bundle} ORDER BY nid
+  `);
+  return (
+    res as unknown as {
+      rows: Array<{ nid: string | number; title: string | null; changed: string | number | null; fields: unknown }>;
+    }
+  ).rows.map((r) => ({
+    nid: Number(r.nid),
+    title: r.title,
+    changed: r.changed == null ? null : Number(r.changed),
+    fields: (typeof r.fields === "string" ? JSON.parse(r.fields) : r.fields ?? {}) as Record<string, unknown>,
+  }));
+}
+
+export class RejectLog {
+  counts: Record<string, number> = {};
+  samples: Record<string, Array<Record<string, unknown>>> = {};
+  /** FULL key membership per reason (verify allowlists) — samples are capped
+   * for the report, but verification must never depend on the cap. */
+  private keys: Record<string, Set<number>> = {};
+  add(reason: string, detail: Record<string, unknown>, key?: number) {
+    this.counts[reason] = (this.counts[reason] ?? 0) + 1;
+    const arr = (this.samples[reason] ??= []);
+    if (arr.length < REJECT_SAMPLE_CAP) arr.push(detail);
+    if (key != null) (this.keys[reason] ??= new Set()).add(key);
+  }
+  has(reason: string, key: number): boolean {
+    return this.keys[reason]?.has(key) ?? false;
+  }
+  /** True if nid was rejected under ANY reason (verify allowlist). */
+  hasAny(key: number): boolean {
+    for (const set of Object.values(this.keys)) if (set.has(key)) return true;
+    return false;
+  }
+}

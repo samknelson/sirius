@@ -112,6 +112,47 @@ recorded in `s1_staging.runs` (args + per-bundle report).
   `contacts.data`/`contacts.language` schema addition that doesn't exist yet —
   duplicate emails currently live only in the run report.
 
+- `load-employers.ts` — T7+T24: `grievance_shop` → employers (absorbs
+  hours-loader stubs in place; `sirius_id = String(nid)`; industry via term
+  id_map → industry options `siriusId` fallback, unresolved = counted reject +
+  NULL), `grievance_shop_contact` → contacts + `employer_contacts` (contact
+  types ensured BY NAME in `options_employer_contact_type` from `co_role` free
+  text + `contact_types` term names, T24; no type info → one NULL-type link),
+  phones (Phone / Phone 2 / Fax) and address (`address_2` merged into street —
+  the address storage has no line2 input). Shop fields with no S2 home are
+  counted, never loaded: `external_id` (Q26 — employers has no data column),
+  `name_tts`, tags, `dispatch_job_types` (Q24), contract/attachments (T10/T23
+  file milestone), company refs (`companies`/`employer_companies` deferred —
+  absent from synthetic; the counter surfaces prod volume). Re-run must report
+  zero creates/links.
+
+- `load-policies.ts` — ADOPT-ONLY mapper, not a creator: S1 policy references
+  (election `field_sirius_trust_policy` targets + any staged
+  `sirius_trust_policy` bundle rows) resolve to EXISTING `policies` rows by
+  name / `sirius_id` (case-insensitive) and land in id_map entity `policy`.
+  S2 policies are configuration (benefitIds etc.) — creating them from S1
+  titles would produce broken configs, so unresolvable refs hard-fail BEFORE
+  any id_map write. Elections never store a policy id in S2 (02 §5b — derived
+  via `resolveEmployerPolicyAsOf`); the id_map exists for T16's
+  `data.s1PolicyNid` stash + audit. Dev: the synthetic policy field table is
+  EMPTY → documented no-op. **Prod prereq: 07 §P4** must identify the target
+  bundle; stage it (add to `stage.ts` in-scope list if missing) before running.
+
+- `load-relationships.ts` — T15: `sirius_contact_relationship` →
+  `worker_relations`. `worker_1` = owning contact's worker
+  (`field_sirius_contact` → contact→worker reverse map); `worker_2` = alt
+  contact's worker, else a SHELL worker is created for that contact (serial
+  sirius_id above the post-setval range, `data.migrationShell=true`, id_map
+  entity `shell-worker` keyed by the CONTACT nid — S2 relations join workers,
+  not contacts). Reltype tid → term id_map →
+  `options_worker_relation_type.siriusId` fallback. `active=No` with no end
+  date end-dates from `node.changed` (documented convention).
+  `field_sirius_count` → `data.sequence` (ordering, Q14). Relations-storage
+  validation failures (duplicate pair, self-relation) become counted rejects.
+  Owner-side rejects HARD-FAIL without `--allow-missing-owner` — dev-only
+  flag: the synthetic DB stages NO owning field (all 15 reject); Q13 says
+  production has it on ALL 35,774 rows, so the flag must never be used there.
+
 ## Known production-hardening TODOs (before the real run)
 
 - **Write + id_map atomicity (contacts/workers loader):** a crash between a
@@ -145,3 +186,16 @@ recorded in `s1_staging.runs` (args + per-bundle report).
 - Row-level provenance (`$.entries` keys) is only aggregated in the run
   report; if per-row provenance must land in S2, `worker_hours` needs a home
   for it (no data column today).
+- **Policy target bundle unknown (load-policies).** The production census has
+  no policy bundle, yet elections carry 223,909 `field_sirius_trust_policy`
+  refs. Run 07 §P4 in prod, add the answering bundle to `stage.ts`, re-stage,
+  and confirm its titles match the configured S2 `policies` rows BEFORE
+  running `load-policies.ts` there.
+- **Employer external codes (Q26).** `field_grievance_external_id`
+  ("H0000"-style) has no S2 home (`employers` lacks a data column). Counted in
+  the run report and preserved in `s1_staging`; if EDI/exports need it later,
+  add a column/`data` home and backfill from staging.
+- **Shop company refs.** `field_grievance_company` →
+  `companies`/`employer_companies` is deferred (absent from synthetic). The
+  loader counts prod volume; build the mapping when the file/company milestone
+  lands.
