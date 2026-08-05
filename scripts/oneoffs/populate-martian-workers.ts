@@ -139,6 +139,8 @@ async function populateWorkers() {
     const workerName = generateWorkerName();
     
     try {
+      // PII triage (accepted): this dev-only seeder prints randomly
+      // generated Martian-themed fixture data, not real people.
       console.log(`[${i + 1}/${workersToCreate}] Creating worker: ${workerName}`);
       
       // Create worker
@@ -189,6 +191,7 @@ async function populateWorkers() {
           isPrimary: true,
           isActive: true
         });
+        // PII triage (accepted): randomly generated fixture address.
         console.log(`  ✓ Address: ${address.street}, ${address.city}, ${address.state}`);
 
         // 20% chance of additional address
@@ -202,6 +205,7 @@ async function populateWorkers() {
             isPrimary: false,
             isActive: true
           });
+          // PII triage (accepted): randomly generated fixture address.
           console.log(`  ✓ Address: ${address2.street}, ${address2.city}, ${address2.state} (Secondary)`);
         }
       }
@@ -276,6 +280,7 @@ async function populateWorkers() {
       console.log(`  ✅ Worker created successfully\n`);
 
     } catch (error: any) {
+      // PII triage (accepted): randomly generated fixture name.
       console.error(`  ✗ Error creating ${workerName}:`, error.message);
     }
   }

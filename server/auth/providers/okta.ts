@@ -109,11 +109,9 @@ async function checkUserAccess(
   const profileImageUrl =
     claims["picture"] || claims["profile_image_url"] || undefined;
 
+  // PII triage: log only the provider externalId; email/name stay out of logs.
   logger.info("Okta auth attempt", {
     externalId,
-    email,
-    firstName,
-    lastName,
   });
 
   if (!externalId) {
@@ -214,8 +212,9 @@ async function checkUserAccess(
           });
         } else if (matches.length > 1) {
           logger.warn(
+            // PII triage: identify by user/identity ids, not email.
             "Existing-identity worker backfill skipped: multiple workers share contact email",
-            { email, workerCount: matches.length }
+            { userId: user.id, workerCount: matches.length }
           );
         }
       } catch (err) {
@@ -283,14 +282,16 @@ async function checkUserAccess(
       const matchingWorkers =
         await storage.workers.getWorkersByContactEmail(email);
       if (matchingWorkers.length === 0) {
+        // PII triage: identify the attempt by provider externalId, not email.
         logger.info("Okta email-based worker linking: no worker match", {
-          email,
+          externalId,
         });
       } else if (matchingWorkers.length > 1) {
         logger.warn(
           "Okta email-based worker linking skipped: multiple workers share contact email",
           {
-            email,
+            // PII triage: externalId + worker ids identify the case, not email.
+            externalId,
             workerCount: matchingWorkers.length,
             workerIds: matchingWorkers.map((w) => w.id),
           }
@@ -314,8 +315,9 @@ async function checkUserAccess(
         return { allowed: true, user: result.user };
       }
     } catch (err) {
+      // PII triage: identify the attempt by provider externalId, not email.
       logger.error("Okta email-based worker linking failed", {
-        email,
+        externalId,
         error: err,
       });
       // Fall through to admin-email path; do not block.
@@ -325,7 +327,8 @@ async function checkUserAccess(
   const user = await storage.users.getUserByEmail(email);
 
   if (!user) {
-    logger.info("No provisioned account found for Okta email", { email });
+    // PII triage: identify the attempt by provider externalId, not email.
+    logger.info("No provisioned account found for Okta email", { externalId });
     return { allowed: false };
   }
 
@@ -336,7 +339,6 @@ async function checkUserAccess(
 
   logger.info("Linking Okta account to provisioned user", {
     userId: user.id,
-    email,
   });
 
   await storage.authIdentities.create({
@@ -364,11 +366,8 @@ async function checkUserAccess(
 }
 
 function logLoginEvent(user: any, externalId: string, accountLinked: boolean) {
-  const userName =
-    user.firstName && user.lastName
-      ? `${user.firstName} ${user.lastName}`
-      : user.email;
-
+  // PII triage: audit login events carry userId + provider externalId only;
+  // names/emails stay out of routine logs.
   setImmediate(() => {
     const context = getRequestContext();
     storageLogger.info("Authentication event: login", {
@@ -376,14 +375,12 @@ function logLoginEvent(user: any, externalId: string, accountLinked: boolean) {
       operation: "login",
       entity_id: user.id,
       description: accountLinked
-        ? `User logged in (account linked): ${userName}`
-        : `User logged in: ${userName}`,
+        ? "User logged in (account linked)"
+        : "User logged in",
       user_id: user.id,
-      user_email: user.email,
       ip_address: context?.ipAddress,
       meta: {
         userId: user.id,
-        email: user.email,
         externalId,
         accountLinked,
         provider: "okta",
@@ -485,7 +482,6 @@ export function createProvider(config: OktaProviderConfig): AuthProvider {
         try {
           logger.info("Okta worker registration: complete-registration called", {
             hasVerifiedWorker: !!getVerifiedWorker(req),
-            hasEmailInBody: !!req.body?.email,
           });
           const verified = getVerifiedWorker(req);
           if (!verified) {
@@ -588,9 +584,9 @@ export function createProvider(config: OktaProviderConfig): AuthProvider {
           logger.info(
             "Created Okta user for worker; activation email dispatched by Okta",
             {
+              // PII triage: workerId + oktaUserId identify the account, not email.
               workerId: worker.id,
               oktaUserId: created.id,
-              email: created.email,
             }
           );
 
@@ -678,9 +674,6 @@ export function createProvider(config: OktaProviderConfig): AuthProvider {
         const session = req.session as any;
         let logData: {
           userId?: string;
-          email?: string;
-          firstName?: string;
-          lastName?: string;
           wasMasquerading?: boolean;
         } | null = null;
         const idToken = (user as any)?.id_token;
@@ -707,9 +700,6 @@ export function createProvider(config: OktaProviderConfig): AuthProvider {
             if (dbUser) {
               logData = {
                 userId: dbUser.id,
-                email: dbUser.email,
-                firstName: dbUser.firstName || undefined,
-                lastName: dbUser.lastName || undefined,
                 wasMasquerading,
               };
             }
@@ -721,22 +711,17 @@ export function createProvider(config: OktaProviderConfig): AuthProvider {
         req.logout(() => {
           if (logData) {
             setImmediate(() => {
-              const name =
-                logData!.firstName && logData!.lastName
-                  ? `${logData!.firstName} ${logData!.lastName}`
-                  : logData!.email;
+              // PII triage: audit logout events carry userId only.
               const context = getRequestContext();
               storageLogger.info("Authentication event: logout", {
                 module: "auth",
                 operation: "logout",
                 entity_id: logData!.userId,
-                description: `User logged out: ${name}`,
+                description: "User logged out",
                 user_id: logData!.userId,
-                user_email: logData!.email,
                 ip_address: context?.ipAddress,
                 meta: {
                   userId: logData!.userId,
-                  email: logData!.email,
                   wasMasquerading: logData!.wasMasquerading,
                   provider: "okta",
                 },

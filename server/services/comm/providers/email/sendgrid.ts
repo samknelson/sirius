@@ -194,11 +194,11 @@ export class SendGridEmailProvider implements EmailTransport {
         };
       }
 
+      // PII triage: addresses and staff-entered subject text stay out of
+      // logs; the comm record stores the full message if needed.
       logger.info('Sending email via SendGrid', {
         service: 'email-provider-sendgrid',
-        to: toRecipients.map(r => r.email),
-        from: fromAddress.email,
-        subject: params.subject,
+        toCount: toRecipients.length,
       });
 
       const [response] = await sgMail.send(msg as unknown as sgMail.MailDataRequired);

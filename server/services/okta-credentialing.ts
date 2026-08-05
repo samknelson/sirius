@@ -164,10 +164,10 @@ export async function credentialUserInOkta(
 
   if (matches.length > 1) {
     const ids = matches.map((m) => `${m.id} (${m.status})`).join(", ");
+    // PII triage: userId/persona + Okta ids identify the case, not email.
     logger.warn("Multiple Okta users match email; refusing to credential", {
       userId: args.userId,
       persona: args.persona,
-      email,
       matches: matches.map((m) => ({ id: m.id, status: m.status })),
     });
     throw new OktaCredentialingError(

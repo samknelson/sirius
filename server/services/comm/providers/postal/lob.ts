@@ -296,6 +296,8 @@ export class LobPostalProvider implements PostalTransport {
       const hasOriginalAddressFields = Boolean(address.addressLine1 && address.city && address.state && address.zip);
       const isValidInTestMode = isTestMode && hasOriginalAddressFields;
       
+      // PII triage (accepted, false positive): all four values are booleans
+      // (mode/presence/validity flags), not address contents.
       console.log('[Lob] isTestMode:', isTestMode, 'hasLobComponents:', hasValidLobComponents, 'hasOriginalFields:', hasOriginalAddressFields, 'valid_address:', data.valid_address);
 
       return {

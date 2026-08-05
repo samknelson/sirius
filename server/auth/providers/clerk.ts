@@ -12,11 +12,8 @@ import {
 } from "../worker-provisioning";
 
 function logLoginEvent(user: any, externalId: string, accountLinked: boolean) {
-  const userName =
-    user.firstName && user.lastName
-      ? `${user.firstName} ${user.lastName}`
-      : user.email;
-
+  // PII triage: audit login events carry userId + provider externalId only;
+  // names/emails stay out of routine logs.
   setImmediate(() => {
     const context = getRequestContext();
     storageLogger.info("Authentication event: login", {
@@ -24,14 +21,12 @@ function logLoginEvent(user: any, externalId: string, accountLinked: boolean) {
       operation: "login",
       entity_id: user.id,
       description: accountLinked
-        ? `User logged in (account linked): ${userName}`
-        : `User logged in: ${userName}`,
+        ? "User logged in (account linked)"
+        : "User logged in",
       user_id: user.id,
-      user_email: user.email,
       ip_address: context?.ipAddress,
       meta: {
         userId: user.id,
-        email: user.email,
         externalId,
         accountLinked,
         provider: "clerk",
@@ -51,11 +46,9 @@ async function resolveClerkUser(
 ): Promise<{ allowed: boolean; user?: any }> {
   const { email, firstName, lastName, profileImageUrl } = clerkUserData;
 
+  // PII triage: log only the provider externalId; email/name stay out of logs.
   logger.info("Clerk auth attempt", {
     externalId: clerkUserId,
-    email,
-    firstName,
-    lastName,
   });
 
   let identity = await storage.authIdentities.getByProviderAndExternalId("clerk", clerkUserId);
@@ -100,10 +93,10 @@ async function resolveClerkUser(
           const contact = await storage.contacts.getContact(linkedWorker.contactId);
           if (contact && contact.email !== email) {
             await storage.contacts.updateEmail(linkedWorker.contactId, email);
+            // PII triage: ids identify the rows; the emails themselves stay out of logs.
             logger.info("Synced updated Clerk email to worker contact on login", {
               workerId: linkedWorker.id,
-              previousEmail: contact.email,
-              newEmail: email,
+              contactId: linkedWorker.contactId,
             });
           }
         }
@@ -126,7 +119,8 @@ async function resolveClerkUser(
   const user = await storage.users.getUserByEmail(email);
 
   if (!user) {
-    logger.info("No provisioned account found for email", { email });
+    // PII triage: identify the attempt by provider externalId, not email.
+    logger.info("No provisioned account found for email", { clerkUserId });
     return { allowed: false };
   }
 
@@ -547,39 +541,28 @@ export function createProvider(config: ClerkProviderConfig): AuthProvider {
         const user = req.user as AuthenticatedUser | undefined;
         let logData: {
           userId?: string;
-          email?: string;
-          firstName?: string;
-          lastName?: string;
         } | null = null;
 
         if (user?.dbUser) {
           logData = {
             userId: user.dbUser.id,
-            email: user.dbUser.email,
-            firstName: user.dbUser.firstName || undefined,
-            lastName: user.dbUser.lastName || undefined,
           };
         }
 
         req.logout(() => {
           if (logData) {
             setImmediate(() => {
-              const name =
-                logData!.firstName && logData!.lastName
-                  ? `${logData!.firstName} ${logData!.lastName}`
-                  : logData!.email;
+              // PII triage: audit logout events carry userId only.
               const context = getRequestContext();
               storageLogger.info("Authentication event: logout", {
                 module: "auth",
                 operation: "logout",
                 entity_id: logData!.userId,
-                description: `User logged out: ${name}`,
+                description: "User logged out",
                 user_id: logData!.userId,
-                user_email: logData!.email,
                 ip_address: context?.ipAddress,
                 meta: {
                   userId: logData!.userId,
-                  email: logData!.email,
                   provider: "clerk",
                 },
               });

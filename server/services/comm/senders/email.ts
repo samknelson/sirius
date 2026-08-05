@@ -159,10 +159,10 @@ export async function sendEmail(request: SendEmailRequest): Promise<SendEmailRes
         },
       });
 
+      // PII triage: commId identifies the message; the address stays out of logs.
       logger.warn('Email not sent - not opted in', {
         service: 'email-sender',
         commId: comm.id,
-        to: normalizedEmail,
       });
 
       return {
@@ -187,10 +187,10 @@ export async function sendEmail(request: SendEmailRequest): Promise<SendEmailRes
         },
       });
 
+      // PII triage: commId identifies the message; the address stays out of logs.
       logger.warn('Email not sent - not allowlisted', {
         service: 'email-sender',
         commId: comm.id,
-        to: normalizedEmail,
         systemMode,
       });
 
@@ -203,12 +203,11 @@ export async function sendEmail(request: SendEmailRequest): Promise<SendEmailRes
       };
     }
     
+    // PII triage: commId identifies the message; addresses and staff-entered
+    // subject text stay out of logs.
     logger.info('Sending email', {
       service: 'email-sender',
       commId: comm.id,
-      to: normalizedEmail,
-      from: fromRecipient?.email,
-      subject,
       systemMode,
     });
 

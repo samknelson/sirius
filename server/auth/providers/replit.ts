@@ -32,11 +32,9 @@ async function checkUserAccess(
   const externalId = claims["sub"];
   const email = claims["email"];
 
+  // PII triage: log only the provider externalId; email/name stay out of logs.
   logger.info("Replit Auth attempt", {
     externalId: externalId,
-    email: email,
-    firstName: claims["first_name"],
-    lastName: claims["last_name"],
   });
 
   let identity = await storage.authIdentities.getByProviderAndExternalId("replit", externalId);
@@ -78,7 +76,8 @@ async function checkUserAccess(
   const user = await storage.users.getUserByEmail(email);
 
   if (!user) {
-    logger.info("No provisioned account found for email", { email });
+    // PII triage: identify the attempt by provider externalId, not email.
+    logger.info("No provisioned account found for email", { externalId });
     return { allowed: false };
   }
 
@@ -113,11 +112,8 @@ async function checkUserAccess(
 }
 
 function logLoginEvent(user: any, externalId: string, accountLinked: boolean) {
-  const userName =
-    user.firstName && user.lastName
-      ? `${user.firstName} ${user.lastName}`
-      : user.email;
-
+  // PII triage: audit login events carry userId + provider externalId only;
+  // names/emails stay out of routine logs.
   setImmediate(() => {
     const context = getRequestContext();
     storageLogger.info("Authentication event: login", {
@@ -125,14 +121,12 @@ function logLoginEvent(user: any, externalId: string, accountLinked: boolean) {
       operation: "login",
       entity_id: user.id,
       description: accountLinked
-        ? `User logged in (account linked): ${userName}`
-        : `User logged in: ${userName}`,
+        ? "User logged in (account linked)"
+        : "User logged in",
       user_id: user.id,
-      user_email: user.email,
       ip_address: context?.ipAddress,
       meta: {
         userId: user.id,
-        email: user.email,
         externalId: externalId,
         accountLinked,
         provider: "replit",
@@ -225,9 +219,6 @@ export function createProvider(config: ReplitProviderConfig): AuthProvider {
         const session = req.session as any;
         let logData: {
           userId?: string;
-          email?: string;
-          firstName?: string;
-          lastName?: string;
           wasMasquerading?: boolean;
         } | null = null;
 
@@ -250,9 +241,6 @@ export function createProvider(config: ReplitProviderConfig): AuthProvider {
             if (dbUser) {
               logData = {
                 userId: dbUser.id,
-                email: dbUser.email,
-                firstName: dbUser.firstName || undefined,
-                lastName: dbUser.lastName || undefined,
                 wasMasquerading,
               };
             }
@@ -264,22 +252,17 @@ export function createProvider(config: ReplitProviderConfig): AuthProvider {
         req.logout(() => {
           if (logData) {
             setImmediate(() => {
-              const name =
-                logData!.firstName && logData!.lastName
-                  ? `${logData!.firstName} ${logData!.lastName}`
-                  : logData!.email;
+              // PII triage: audit logout events carry userId only.
               const context = getRequestContext();
               storageLogger.info("Authentication event: logout", {
                 module: "auth",
                 operation: "logout",
                 entity_id: logData!.userId,
-                description: `User logged out: ${name}`,
+                description: "User logged out",
                 user_id: logData!.userId,
-                user_email: logData!.email,
                 ip_address: context?.ipAddress,
                 meta: {
                   userId: logData!.userId,
-                  email: logData!.email,
                   wasMasquerading: logData!.wasMasquerading,
                   provider: "replit",
                 },

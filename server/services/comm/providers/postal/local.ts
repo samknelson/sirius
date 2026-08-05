@@ -41,14 +41,11 @@ export class LocalPostalProvider implements PostalTransport {
   }
 
   async verifyAddress(address: PostalAddress): Promise<AddressVerificationResult> {
+    // PII triage (accepted, false positive): hasAllRequiredFields is a
+    // boolean presence flag; no address contents are logged.
     log.info('Local postal provider: verifying address', { 
       service: 'postal-local',
-      address: {
-        addressLine1: address.addressLine1,
-        city: address.city,
-        state: address.state,
-        zip: address.zip,
-      }
+      hasAllRequiredFields: !!(address.addressLine1 && address.city && address.state && address.zip && address.country),
     });
 
     const hasRequiredFields = !!(
@@ -119,24 +116,11 @@ export class LocalPostalProvider implements PostalTransport {
   }
 
   async sendLetter(params: SendLetterParams): Promise<LetterSendResult> {
+    // PII triage: no address fields or staff-supplied description in logs;
+    // only non-PII operational options for this simulated send.
     log.warn('Local postal provider: sendLetter called but no actual mailing will occur', {
       service: 'postal-local',
-      to: {
-        name: params.to.name,
-        addressLine1: params.to.addressLine1,
-        city: params.to.city,
-        state: params.to.state,
-        zip: params.to.zip,
-      },
-      from: {
-        name: params.from.name,
-        addressLine1: params.from.addressLine1,
-        city: params.from.city,
-        state: params.from.state,
-        zip: params.from.zip,
-      },
       options: params.options,
-      description: params.description,
     });
 
     const mockLetterId = `local_${Date.now()}_${Math.random().toString(36).substring(7)}`;

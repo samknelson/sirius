@@ -179,7 +179,8 @@ export function registerCardchecksRoutes(
       // Verify the user still exists in the database (session cache may be stale)
       const verifiedUser = await storage.users.getUser(dbUser.id);
       if (!verifiedUser) {
-        console.warn(`Stale session detected: user ${dbUser.id} (${dbUser.email}) no longer exists in users table`);
+        // PII triage: userId identifies the stale session; email stays out of logs.
+        console.warn(`Stale session detected: user ${dbUser.id} no longer exists in users table`);
         return res.status(401).json({ message: "Your user session is stale. Please log out and log back in." });
       }
 

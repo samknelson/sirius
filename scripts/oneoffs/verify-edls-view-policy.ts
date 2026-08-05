@@ -50,6 +50,9 @@ async function main() {
   // edls_manager@gmail.com -> {edls.manager} only; edls_supervisor@gmail.com -> {edls.supervisor} only.
   const managerUser = await storage.users.getUserByEmail("edls_manager@gmail.com");
   const supervisorOnlyUser = await storage.users.getUserByEmail("edls_supervisor@gmail.com");
+  // PII triage (accepted): operator-run dev verification script printing
+  // well-known dev fixture emails (edls_manager@/edls_supervisor@), not
+  // real user data; output goes to the operator's terminal only.
   console.log("manager-only user:", managerUser?.email ?? "(none found)");
   console.log("supervisor-only user:", supervisorOnlyUser?.email ?? "(none found)");
   if (!managerUser || !supervisorOnlyUser) {

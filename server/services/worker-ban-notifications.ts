@@ -231,6 +231,8 @@ async function handleWorkerBanSaved(payload: WorkerBanSavedPayload): Promise<voi
       });
     }
 
+    // PII triage (accepted, false positive): results.email is a boolean
+    // success flag per channel, not an email address.
     logger.info(`Worker ban notification processed`, {
       service: SERVICE_NAME,
       banId: payload.banId,

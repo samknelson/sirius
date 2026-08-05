@@ -115,6 +115,8 @@ async function importStewards() {
   }
 
   console.log("\n=== Import Complete ===");
+  // PII triage (accepted, false positive): these print COUNTS of updated /
+  // skipped rows, not any email address.
   console.log(`Emails updated: ${emailsUpdated}`);
   console.log(`Steward assignments created: ${stewardsCreated}`);
   console.log(`Workers not found: ${workersNotFound}`);

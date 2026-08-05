@@ -387,11 +387,8 @@ class LocalAuthProvider implements AuthProvider {
   }
 
   private logLoginEvent(user: { id: string; email: string | null; firstName?: string | null; lastName?: string | null }, externalId: string) {
-    const userName =
-      user.firstName && user.lastName
-        ? `${user.firstName} ${user.lastName}`
-        : user.email;
-
+    // PII triage: audit login events carry userId + externalId only;
+    // names/emails stay out of routine logs.
     setImmediate(() => {
       const context = getRequestContext();
       storageLogger.info("Authentication event: login", {
@@ -402,7 +399,6 @@ class LocalAuthProvider implements AuthProvider {
         details: {
           provider: "local",
           externalId,
-          userName,
           accountLinked: false,
         },
         request: context

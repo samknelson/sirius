@@ -168,8 +168,8 @@ export function registerAccessPolicyRoutes(app: Express) {
       logger.info(`Policy check: ${policyId}`, {
         service: 'access-policies',
         policyId,
+        // PII triage: userId identifies the actor; email stays out of logs.
         userId: context.user?.id,
-        userEmail: context.user?.email,
         granted: result.granted,
         reason: result.reason,
         isModular,

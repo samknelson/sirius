@@ -205,10 +205,10 @@ export async function sendPostal(request: SendPostalRequest): Promise<SendPostal
         },
       });
 
+      // PII triage: commId identifies the message; the address stays out of logs.
       logger.warn('Postal mail not sent - not opted in', {
         service: 'postal-sender',
         commId: comm.id,
-        canonicalAddress,
       });
 
       return {
@@ -233,10 +233,10 @@ export async function sendPostal(request: SendPostalRequest): Promise<SendPostal
         },
       });
 
+      // PII triage: commId identifies the message; the address stays out of logs.
       logger.warn('Postal mail not sent - not allowlisted', {
         service: 'postal-sender',
         commId: comm.id,
-        canonicalAddress,
         systemMode,
       });
 
@@ -249,13 +249,10 @@ export async function sendPostal(request: SendPostalRequest): Promise<SendPostal
       };
     }
     
+    // PII triage: commId identifies the message; address fields stay out of logs.
     logger.info('Sending postal mail', {
       service: 'postal-sender',
       commId: comm.id,
-      toCity: normalizedAddress.city,
-      toState: normalizedAddress.state,
-      fromCity: returnAddress.city,
-      fromState: returnAddress.state,
       systemMode,
     });
 

@@ -129,6 +129,8 @@ export async function sendCardcheckRevocationNotification(
       });
     }
 
+    // PII triage (accepted, false positive): results.email is a boolean
+    // success flag per channel, not an email address.
     logger.info(`Card check revocation notification processed`, {
       service: SERVICE_NAME,
       cardcheckId,

@@ -89,4 +89,5 @@
 - [BAO premium subscriber-only charges](bao-premium-subscriber-only.md) — premium charges key to subscribers; dependent WMB events retarget worker_1 + self-heal unswept legacy entries.
 - [EDI member-model new fields](edi-member-model-new-fields.md) — new EdiPerson fields must also be added to buildMemberUnits' explicit dependent literal or deps silently lack them.
 - [Scanner taint is file-local](scanner-taint-file-local.md) — clear SSN/secret findings by isolating the sensitive step in its own no-logging module; IP audit logs are accepted mediums.
+- [HoundDog log-PII remediation](hounddog-log-pii-remediation.md) — masking never clears findings; log stable ids instead of emails/names, annotate accepted sites.
 - [S1 loader reject policy](s1-loader-reject-policy.md) — loaders fail unless every reject reason is per-run allowed (--allow-rejects); verify gates on FATAL reasons only; pre-validate storage contracts before satellite writes; sanitized error codes.

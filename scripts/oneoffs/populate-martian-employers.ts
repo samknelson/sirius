@@ -81,6 +81,8 @@ async function populateEmployers() {
           contactTypeId
         });
 
+        // PII triage (accepted): this dev-only seeder prints randomly
+        // generated Martian-themed fixture data, not real people.
         console.log(`    ✓ ${firstName} ${lastName} (${contactTypeName}) - ${email}`);
       }
 

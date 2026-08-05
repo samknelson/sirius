@@ -179,12 +179,11 @@ export async function linkWorkerToAuthIdentity(
   if (idpEmail && idpEmail !== contactEmail) {
     try {
       await storage.contacts.updateEmail(worker.contactId, idpEmail);
+      // PII triage: ids identify the rows; the emails themselves stay out of logs.
       logger.info("Synced IdP email to worker contact", {
         providerType,
         workerId: worker.id,
         contactId: worker.contactId,
-        previousEmail: contactEmail || "(none)",
-        newEmail: idpEmail,
       });
     } catch (err) {
       logger.warn("Failed to sync IdP email to worker contact", {

@@ -41,8 +41,8 @@ export async function checkClerkConflict(email: string): Promise<ClerkConflictCh
       const existingIdentity = await storage.authIdentities.getByProviderAndExternalId("clerk", existingClerkUser.id);
 
       if (existingIdentity) {
+        // PII triage: ids identify the accounts; email stays out of logs.
         logger.warn("Clerk account already linked to another user", {
-          email,
           clerkUserId: existingClerkUser.id,
           existingUserId: existingIdentity.userId,
         });
@@ -60,8 +60,8 @@ export async function checkClerkConflict(email: string): Promise<ClerkConflictCh
       };
     }
   } catch (lookupErr) {
+    // PII triage: email stays out of logs; the error identifies the failure.
     logger.warn("Failed to look up existing Clerk user, proceeding with creation", {
-      email,
       error: lookupErr,
     });
   }
@@ -102,10 +102,10 @@ export async function provisionClerkAccount(params: {
         skipPasswordRequirement: true,
       });
       clerkUserId = newClerkUser.id;
+      // PII triage: userId + clerkUserId identify the account, not email.
       logger.info("Created Clerk account for provisioned user", {
         userId,
         clerkUserId: newClerkUser.id,
-        email,
       });
     }
 
@@ -136,9 +136,9 @@ export async function provisionClerkAccount(params: {
       code: err?.code,
       raw: JSON.stringify(err, Object.getOwnPropertyNames(err || {})),
     };
+    // PII triage: userId identifies the account; email stays out of logs.
     logger.error("Failed to create/link Clerk account for provisioned user", {
       userId,
-      email,
       ...errorDetails,
     });
     return {

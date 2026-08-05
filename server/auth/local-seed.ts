@@ -51,7 +51,8 @@ export async function seedLocalCredential(): Promise<void> {
     const user = await storage.users.getUserByEmail(email);
     if (!user) {
       logger.warn(
-        `Local credential seeding: no user exists with email ${email}. Create the user first (bootstrap flow or admin), then restart — or the bootstrap flow will seed it automatically.`,
+        // PII triage: the operator configured the seed email; keep it out of logs.
+        `Local credential seeding: no user exists with the configured seed email. Create the user first (bootstrap flow or admin), then restart — or the bootstrap flow will seed it automatically.`,
         { source: "local-auth-seed" }
       );
       return;
@@ -70,7 +71,8 @@ export async function seedLocalCredential(): Promise<void> {
         email,
         passwordHash,
       });
-      logger.info(`Local credential seeded for ${email} (new identity)`, {
+      // PII triage: userId identifies the account; email stays out of logs.
+      logger.info(`Local credential seeded (new identity)`, {
         source: "local-auth-seed",
         userId: user.id,
       });
@@ -79,21 +81,23 @@ export async function seedLocalCredential(): Promise<void> {
 
     if (existing.userId !== user.id) {
       logger.error(
-        `Local credential seeding: identity for ${email} belongs to a different user — refusing to overwrite`,
+        // PII triage: identityId identifies the row; email stays out of logs.
+        `Local credential seeding: identity for the configured seed email belongs to a different user — refusing to overwrite`,
         { source: "local-auth-seed", identityId: existing.id }
       );
       return;
     }
 
     if (existing.passwordHash === passwordHash) {
-      logger.info(`Local credential for ${email} already up to date`, {
+      logger.info(`Local credential for the configured seed email already up to date`, {
         source: "local-auth-seed",
       });
       return;
     }
 
     await storage.authIdentities.update(existing.id, { passwordHash });
-    logger.info(`Local credential updated for ${email}`, {
+    // PII triage: identityId identifies the row; email stays out of logs.
+    logger.info(`Local credential updated`, {
       source: "local-auth-seed",
       identityId: existing.id,
     });

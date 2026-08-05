@@ -55,16 +55,19 @@ async function checkUserAccess(
 ): Promise<{ allowed: boolean; user?: any }> {
   const { externalId, email, firstName, lastName, displayName } = extractProfileData(profile);
 
+  // PII triage: log only the provider externalId; email/name stay out of logs.
   logger.info("SAML Auth attempt", {
     service: "saml-auth",
     externalId,
-    email,
-    firstName,
-    lastName,
   });
 
   if (!externalId) {
-    logger.warn("SAML profile missing nameID", { profile });
+    // PII triage: never dump the raw SAML profile (assertion claims can carry
+    // names/emails); log only non-PII diagnostic metadata.
+    logger.warn("SAML profile missing nameID", {
+      issuer: (profile as any)?.issuer,
+      claimCount: profile ? Object.keys(profile).length : 0,
+    });
     return { allowed: false };
   }
 
@@ -108,7 +111,8 @@ async function checkUserAccess(
   const user = await storage.users.getUserByEmail(email);
 
   if (!user) {
-    logger.info("No provisioned account found for SAML email", { email });
+    // PII triage: identify the attempt by provider externalId, not email.
+    logger.info("No provisioned account found for SAML email", { externalId });
     return { allowed: false };
   }
 
@@ -117,7 +121,7 @@ async function checkUserAccess(
     return { allowed: false };
   }
 
-  logger.info("Linking SAML account to provisioned user", { userId: user.id, email });
+  logger.info("Linking SAML account to provisioned user", { userId: user.id });
 
   await storage.authIdentities.create({
     userId: user.id,
@@ -141,11 +145,8 @@ async function checkUserAccess(
 }
 
 function logLoginEvent(user: any, externalId: string, accountLinked: boolean) {
-  const userName =
-    user.firstName && user.lastName
-      ? `${user.firstName} ${user.lastName}`
-      : user.email;
-
+  // PII triage: audit login events carry userId + provider externalId only;
+  // names/emails stay out of routine logs.
   setImmediate(() => {
     const context = getRequestContext();
     storageLogger.info("Authentication event: login", {
@@ -156,7 +157,6 @@ function logLoginEvent(user: any, externalId: string, accountLinked: boolean) {
       details: {
         provider: "saml",
         externalId,
-        userName,
         accountLinked,
       },
       request: context

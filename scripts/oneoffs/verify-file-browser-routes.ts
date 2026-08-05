@@ -55,6 +55,8 @@ async function main() {
     console.error("FAIL: no admin user in dev DB; cannot verify");
     process.exit(1);
   }
+  // PII triage (accepted): operator-run dev verification script printing a
+  // dev-DB admin fixture email to the operator's terminal only.
   console.log("admin user:", adminUser.email ?? adminUser.id);
 
   const app = express();
