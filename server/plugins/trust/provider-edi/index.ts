@@ -110,7 +110,6 @@ export function initializeTrustProviderEdiSystem(): void {
     plugins: trustProviderEdiPluginRegistry.listIds(),
   });
 }
-
 // Plugin registrations (side-effect imports — each file self-registers).
 import "./plugins/sitespecific-bao-kaiser";
 import "./plugins/sitespecific-bao-healthnet";
@@ -119,3 +118,6 @@ import "./plugins/sitespecific-smf-hinge";
 import "./plugins/sitespecific-smf-dentwell";
 import "./plugins/sitespecific-smf-mlk";
 import "./plugins/sitespecific-smf-carelon";
+import "./plugins/sitespecific-smf-vsp";
+import "./plugins/sitespecific-smf-delta";
+import "./plugins/sitespecific-smf-expressscripts";
