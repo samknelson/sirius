@@ -55,6 +55,9 @@ loaders against ANY target (fresh branch or production), ensure:
   On a fresh database run `seed-employment-statuses.ts` first, then review
   the `employed` flags with the fund (they gate eligibility and the
   member-status scan).
+- On a fresh branch, `copy-fund-config.ts` copies providers/benefits/policies
+  (and their option types) id-preserving from another S2 database via
+  `SOURCE_CONFIG_DATABASE_URL`; idempotent, never touches migrated-data tables.
 - **Policies** — `load-policies.ts` is ADOPT-ONLY: every referenced S1 trust
   policy must match an existing S2 `policies` row by name or `sirius_id`
   (case-insensitive). Unmatched or unstaged targets hard-fail the whole run
