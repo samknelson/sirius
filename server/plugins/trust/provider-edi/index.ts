@@ -115,3 +115,7 @@ export function initializeTrustProviderEdiSystem(): void {
 import "./plugins/sitespecific-bao-kaiser";
 import "./plugins/sitespecific-bao-healthnet";
 import "./plugins/sitespecific-smf-local11";
+import "./plugins/sitespecific-smf-hinge";
+import "./plugins/sitespecific-smf-dentwell";
+import "./plugins/sitespecific-smf-mlk";
+import "./plugins/sitespecific-smf-carelon";

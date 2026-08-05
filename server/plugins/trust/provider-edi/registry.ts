@@ -14,6 +14,11 @@ import type { storage as storageType } from "../../../storage";
 export interface EdiBatchAggregates {
   /** Number of detail records in the file (excludes header/trailer/CSV header). */
   detailRecordCount: number;
+  /**
+   * The persisted detail rows in file order, so trailers can compute
+   * row-derived aggregates (e.g. Dentwell's subscriber/dependent counts).
+   */
+  detailRows: ReadonlyArray<Record<string, unknown>>;
 }
 
 export interface TrustProviderEdiContext {

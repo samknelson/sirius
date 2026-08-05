@@ -113,7 +113,10 @@ export function assembleEdiFileLines(
   ctx: TrustProviderEdiContext,
 ): string[] {
   const detail = rows.map((r) => plugin.encodeRow(r, ctx));
-  const aggregates: EdiBatchAggregates = { detailRecordCount: detail.length };
+  const aggregates: EdiBatchAggregates = {
+    detailRecordCount: detail.length,
+    detailRows: rows,
+  };
   const lines: string[] = [];
   const push = (v: string | string[] | null | undefined) => {
     if (v == null) return;
@@ -320,6 +323,9 @@ export interface EdiPostal {
 export interface EdiPerson {
   ssn: string | null;
   contactId: string;
+  /** Numeric worker Sirius ID (legacy `field_sirius_id`). */
+  workerSiriusId: number;
+  email: string | null;
   givenName: string | null;
   familyName: string | null;
   middleName: string | null;
@@ -361,6 +367,8 @@ export interface EdiMemberUnit {
 const personColumns = {
   ssn: workers.ssn,
   contactId: contacts.id,
+  workerSiriusId: workers.siriusId,
+  email: contacts.email,
   givenName: contacts.given,
   familyName: contacts.family,
   middleName: contacts.middle,
@@ -597,6 +605,8 @@ export async function buildMemberUnits(
           relationSiriusId: dep.relationSiriusId ?? null,
           ssn: dep.ssn,
           contactId: dep.contactId,
+          workerSiriusId: dep.workerSiriusId,
+          email: dep.email,
           givenName: dep.givenName,
           familyName: dep.familyName,
           middleName: dep.middleName,
