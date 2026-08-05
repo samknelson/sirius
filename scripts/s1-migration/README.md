@@ -117,11 +117,17 @@ recorded in `s1_staging.runs` (args + per-bundle report).
   id_map → industry options `siriusId` fallback, unresolved = counted reject +
   NULL), `grievance_shop_contact` → contacts + `employer_contacts` (contact
   types ensured BY NAME in `options_employer_contact_type` from `co_role` free
-  text + `contact_types` term names). **T24 deviation:** the employer-contacts
-  storage allows ONE link per (contact, employer), so the first resolved type
-  (co_role first, then term order) becomes the link type and overflow types
-  count as `extra_contact_types_dropped` (needs a ruling — see TODOs); no type
-  info → NULL-type link, and drift-reconcile never nulls an operator-set type.
+  text + `contact_types` term names). **T24 multi-link (N25 ruling
+  2026-08-05):** one `employer_contacts` row per (contact, employer, type) —
+  co_role-derived type first, then term order; storage now enforces
+  uniqueness on the (contact, employer, type) triple instead of the pair.
+  Milestone-3 single-link rows self-heal on re-run (an untyped link is
+  retyped to the first missing type, remaining types become new links);
+  operator-added links with other types are KEPT (`s2ExtraLinksKept`); no
+  type info → one NULL-type link, and drift-reconcile never nulls an
+  operator-set type. Prod expectation (07 §P5): 557 contacts → ~920 links
+  (the 363 assignments dropped under single-link now load); verify checks
+  every resolved type has its link.
   Phones (Phone / Phone 2 / Fax) and address (`address_2` merged into street —
   the address storage has no line2 input). Shop fields with no S2 home are
   counted, never loaded: `external_id` (Q26 — employers has no data column),
@@ -155,11 +161,17 @@ recorded in `s1_staging.runs` (args + per-bundle report).
   date end-dates from `node.changed` (documented convention).
   `field_sirius_count` → `data.sequence` (ordering, Q14). The relations
   storage contract (start date REQUIRED, no future starts, end ≥ start) is
-  pre-validated into dedicated fatal rejects (`missing_start_date`,
-  `future_start_date`, `end_before_start`) BEFORE any shell creation, so a
-  reject can't orphan a shell; residual storage failures surface as SANITIZED
-  codes (`validation_<field>`/`storage_error` — never raw error text, HIPAA).
-  Matched rows drift-reconcile dates/type/sequence. Reject policy: ANY reject
+  pre-validated BEFORE any shell creation, so a reject can't orphan a shell.
+  **N26 ruling (2026-08-05): missing start dates are DEFAULTED, not
+  rejected** — start `2000-01-01`; end keeps a real S1 end date, else
+  `2000-01-02`; `data.datesDefaulted=true`; counters `datesDefaulted` /
+  `datesDefaultedActiveYes` (prod expects 115 per 07 §P6). Remaining fatal
+  date rejects: `bad_start_date` (present but unparseable — expect 0),
+  `future_start_date` (the 2 prod rows were fixed directly in S1 — expect 0),
+  `bad_end_date`, `end_before_start`. Residual storage failures surface as
+  SANITIZED codes (`validation_<field>`/`storage_error` — never raw error
+  text, HIPAA). Matched rows drift-reconcile dates/type/sequence/defaulted
+  flag. Reject policy: ANY reject
   reason must be explicitly allowed via `--allow-rejects r1,r2` or the run
   exits 1. Dev: `--allow-rejects owner_missing` (synthetic stages NO owning
   field — all 15 reject; Q13: production has the owning field on ALL rows
@@ -212,19 +224,14 @@ recorded in `s1_staging.runs` (args + per-bundle report).
   `companies`/`employer_companies` is deferred (absent from synthetic). The
   loader counts prod volume; build the mapping when the file/company milestone
   lands.
-- **T24 multi-type shop contacts vs single-type links.** S2's
-  `employer_contacts` storage enforces one link per (contact, employer) with a
-  single `contact_type_id`; T24 prescribes one row per type. The loader keeps
-  the first type and counts `extra_contact_types_dropped`. **Prod measured
-  (2026-08-05): 557 contacts — 351 multi-type (63%), 363 assignments lost
-  under single-link; 356 of those are exactly 1 role + 1 term, only 12 have
-  ≥2 terms.** Ruling still needed before the prod run (widen S2 to
-  multi-link, accept primary-type-only, or treat role as a contact attribute
-  and the term as the link type).
-- **Relationship date constraints.** The relations storage REQUIRES a start
-  date and forbids future starts / end&lt;start. **Prod measured (2026-08-05,
-  35,793 rows): 115 `missing_start_date`, 2 `future_start_date` (the same 2
-  are inactive-without-end rows whose changed/created fallbacks precede
-  start), 0 `end_before_start` — reject envelope ≤117 rows (~0.33%).**
-  Get the per-class ruling (default date vs skip for the 115; fix-in-S1 vs
-  reject for the 2) before the prod run — never blanket-allow these classes.
+- **T24 multi-type shop contacts — RESOLVED (N25 ruling 2026-08-05).**
+  `employer_contacts` widened to MULTI-LINK: one row per (contact, employer,
+  type); storage guard + loader + verify updated, smoke-tested by
+  `scripts/oneoffs/s1-n25-n26-smoke.ts`. Prod numbers in 07 §P5 (557
+  contacts, 351 multi-type, 363 previously-dropped assignments now load).
+- **Relationship date constraints — RESOLVED (N26 ruling 2026-08-05).**
+  The 115 missing-start rows load with default dates (start `2000-01-01`,
+  end `2000-01-02` unless a real S1 end exists; `data.datesDefaulted=true`).
+  The 2 future-start rows were fixed directly in S1 by the fund;
+  `future_start_date` stays a fatal tripwire (expect 0). Never blanket-allow
+  the remaining date classes. Prod numbers in 07 §P6.

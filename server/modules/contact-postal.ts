@@ -3,6 +3,7 @@ import { storage } from "../storage";
 import { insertContactPostalSchema } from "@shared/schema";
 import type { AddressSource } from "../storage/contacts";
 import { addressValidationService } from "../services/comm/validators/address";
+import { checkAccessInline } from "../services/access-policy-evaluator";
 
 // Type for middleware functions that we'll accept from the main routes
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -86,7 +87,19 @@ export function registerContactPostalRoutes(
 
     const employerContacts = await storage.employerContacts.listByContactId(req.params.contactId);
     if (employerContacts && employerContacts.length > 0) {
-      return requireAccess('employer.manage', () => employerContacts[0].employerId)(req, res, next);
+      // Multi-link contacts: grant when the actor can manage ANY linked
+      // employer; never authorize against an arbitrary first link.
+      const employerIds = [...new Set(employerContacts.map((ec) => ec.employerId))];
+      for (const employerId of employerIds) {
+        const check = await checkAccessInline(req, 'employer.manage', employerId);
+        if (check.granted) return next();
+      }
+      return res.status(403).json({
+        message: 'Access denied',
+        error: 'ACCESS_DENIED',
+        policy: 'employer.manage',
+        entityId: employerIds[0] ?? null,
+      });
     }
 
     const facility = await storage.facilities.getByContactId(req.params.contactId);

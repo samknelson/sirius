@@ -2,6 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { storage, createCommSmsOptinStorage } from "../storage";
 import { insertPhoneNumberSchema, insertCommSmsOptinSchema } from "@shared/schema";
 import { phoneValidationService, type PhoneValidationResult } from "../services/comm/validators/phone";
+import { checkAccessInline } from "../services/access-policy-evaluator";
 import { z } from "zod";
 
 const updateSmsOptinSchema = z.object({
@@ -71,8 +72,21 @@ export function registerPhoneNumberRoutes(
     // Check if this contact belongs to an employer contact
     const employerContacts = await storage.employerContacts.listByContactId(req.params.contactId);
     if (employerContacts && employerContacts.length > 0) {
-      // Employer contact - use employer.manage policy with employer ID
-      return requireAccess('employer.manage', () => employerContacts[0].employerId)(req, res, next);
+      // Employer contact — contacts can hold MULTIPLE links (across employers
+      // and, since the 2026-08-05 multi-link change, several typed links to
+      // one employer). Grant when the actor can manage ANY linked employer;
+      // never authorize against an arbitrary first link.
+      const employerIds = [...new Set(employerContacts.map((ec) => ec.employerId))];
+      for (const employerId of employerIds) {
+        const check = await checkAccessInline(req, 'employer.manage', employerId);
+        if (check.granted) return next();
+      }
+      return res.status(403).json({
+        message: 'Access denied',
+        error: 'ACCESS_DENIED',
+        policy: 'employer.manage',
+        entityId: employerIds[0] ?? null,
+      });
     }
     
     // Check if this contact belongs to a facility

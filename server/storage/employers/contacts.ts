@@ -37,8 +37,14 @@ export function createEmployerContactStorage(contactsStorage: ContactsStorage): 
   return {
     async create(data: { contactId: string; employerId: string; contactTypeId?: string | null }): Promise<EmployerContact> {
       const client = getClient();
+      const requestedTypeId = data.contactTypeId || null;
 
-      const [existingLink] = await client
+      // employer_contacts is MULTI-LINK (ruling 2026-08-05): a contact may
+      // hold several links to the same employer, one per contact type. Only
+      // an exact (employer, contact, type) duplicate is rejected — including
+      // a second untyped link. Guard is storage-level (no DB unique exists),
+      // same enforcement level as the previous single-link rule.
+      const existingLinks = await client
         .select()
         .from(employerContacts)
         .where(
@@ -46,11 +52,10 @@ export function createEmployerContactStorage(contactsStorage: ContactsStorage): 
             eq(employerContacts.employerId, data.employerId),
             eq(employerContacts.contactId, data.contactId)
           )
-        )
-        .limit(1);
+        );
 
-      if (existingLink) {
-        throw new Error("This contact is already linked to this employer");
+      if (existingLinks.some((l) => (l.contactTypeId ?? null) === requestedTypeId)) {
+        throw new Error("This contact is already linked to this employer with this contact type");
       }
 
       const [employerContact] = await client
@@ -58,7 +63,7 @@ export function createEmployerContactStorage(contactsStorage: ContactsStorage): 
         .values({
           employerId: data.employerId,
           contactId: data.contactId,
-          contactTypeId: data.contactTypeId || null,
+          contactTypeId: requestedTypeId,
         })
         .returning();
 
@@ -207,6 +212,29 @@ export function createEmployerContactStorage(contactsStorage: ContactsStorage): 
 
     async update(id: string, data: { contactTypeId?: string | null }): Promise<(EmployerContact & { contact: Contact; contactType?: { id: string; name: string; description: string | null } | null }) | null> {
       const client = getClient();
+
+      // Multi-link: retyping a link must not collide with a sibling link of
+      // the same (employer, contact) that already carries the target type.
+      const current = await client.query.employerContacts.findFirst({
+        where: eq(employerContacts.id, id),
+      });
+      if (!current) {
+        return null;
+      }
+      const targetTypeId = data.contactTypeId ?? null;
+      const siblings = await client
+        .select()
+        .from(employerContacts)
+        .where(
+          and(
+            eq(employerContacts.employerId, current.employerId),
+            eq(employerContacts.contactId, current.contactId)
+          )
+        );
+      if (siblings.some((l) => l.id !== id && (l.contactTypeId ?? null) === targetTypeId)) {
+        throw new Error("This contact is already linked to this employer with this contact type");
+      }
+
       const [updated] = await client
         .update(employerContacts)
         .set({ contactTypeId: data.contactTypeId })

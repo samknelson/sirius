@@ -282,7 +282,7 @@ export function registerEmployerContactRoutes(
 
       res.status(201).json({ employerContact, contact, ...(linked ? { linked: true } : {}) });
     } catch (error: any) {
-      if (error?.message === "This contact is already linked to this employer") {
+      if (error?.message === "This contact is already linked to this employer with this contact type") {
         return res.status(409).json({ message: error.message });
       }
       if (error?.code === '23505' && error?.constraint === 'contacts_email_unique') {
@@ -374,7 +374,10 @@ export function registerEmployerContactRoutes(
       }
       
       res.status(400).json({ message: "No valid update fields provided" });
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.message === "This contact is already linked to this employer with this contact type") {
+        return res.status(409).json({ message: error.message });
+      }
       res.status(500).json({ message: "Failed to update employer contact" });
     }
   });
@@ -670,7 +673,7 @@ export function registerEmployerContactRoutes(
 
       res.status(201).json(result);
     } catch (error: any) {
-      if (error.message === "This contact is already linked to this employer") {
+      if (error.message === "This contact is already linked to this employer with this contact type") {
         return res.status(409).json({ message: error.message });
       }
       res.status(500).json({ message: "Failed to link contact to employer" });

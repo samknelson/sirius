@@ -139,3 +139,18 @@ export class RejectLog {
       .map(([reason, count]) => ({ reason, count }));
   }
 }
+
+/** N26 ruling (2026-08-05): relationship rows with NO start date load with
+ * default dates instead of rejecting — start 2000-01-01; end keeps a real S1
+ * end date when present, else defaults to 2000-01-02. A kept real end that
+ * precedes the default start still fails loud downstream (end_before_start).
+ * Prod measured 115 missing-start rows of 35,793 (07 §P6). */
+export const N26_DEFAULT_START_YMD = "2000-01-01";
+export const N26_DEFAULT_END_YMD = "2000-01-02";
+export function defaultRelationshipDates(
+  startYmd: string | null,
+  endYmd: string | null,
+): { startYmd: string; endYmd: string | null; defaulted: boolean } {
+  if (startYmd) return { startYmd, endYmd, defaulted: false };
+  return { startYmd: N26_DEFAULT_START_YMD, endYmd: endYmd ?? N26_DEFAULT_END_YMD, defaulted: true };
+}

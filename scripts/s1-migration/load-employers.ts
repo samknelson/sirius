@@ -20,12 +20,13 @@
  *     given/family guessing (T24); email with cross-contact dedupe (T12)
  *   - contact types: co_role free text + contact_types term names →
  *     options_employer_contact_type ensured BY NAME via unified options
- *     (dedupe case/whitespace). DEVIATION from T24's "one row per type":
- *     the employer-contacts storage allows exactly ONE link per (contact,
- *     employer), so the FIRST type (co_role first, then term order) becomes
- *     the link's type and overflow types are counted as
- *     `extra_contact_types_dropped` (surfaced by the reject policy — needs a
- *     spec ruling before the prod run; see README TODO)
+ *     (dedupe case/whitespace). MULTI-LINK per the 2026-08-05 ruling (N25
+ *     closed): one employer_contacts row per (contact, employer, type) —
+ *     co_role first, then term order. A milestone-3 single-link row gets
+ *     healed: an untyped link is retyped to the first missing type, then the
+ *     remaining types are created as additional links. Operator-added links
+ *     with types the source doesn't carry are KEPT (counted
+ *     s2ExtraLinksKept); no type info at all → one untyped link.
  *   - phones co_phone/_phone_2/_fax → E.164 rows (Phone / Phone 2 / Fax)
  *   - address co_address(+_2 merged into street — createOrMatchAddress has no
  *     line2)/city/state/zip → contact_postal via createOrMatchAddress
@@ -169,7 +170,9 @@ async function main() {
   report.shopFieldsWithoutS2Home = unloadedFieldCounts;
 
   // ---------------- shop-contacts pass (§9c, T24) ----------------
-  const scStats = { matched: 0, created: 0, updated: 0, linksCreated: 0, linksUpdated: 0, phonesCreated: 0, addressesUpserted: 0, addressesMatched: 0, typesEnsured: 0, companyRefsDeferred: 0 };
+  const scStats = { matched: 0, created: 0, updated: 0, linksCreated: 0, linksRetyped: 0, s2ExtraLinksKept: 0, phonesCreated: 0, addressesUpserted: 0, addressesMatched: 0, typesEnsured: 0, companyRefsDeferred: 0 };
+  /** contact nid → the employer + full type set the verify pass must see (N25 multi-link). */
+  const expectedLinksByContactNid = new Map<number, { employerId: string; typeIds: string[] }>();
 
   const contactMap = await getMappings("contact", shopContacts.map((c) => c.nid));
   const employerMapFinal = await getMappings("employer", shops.map((s) => s.nid));
@@ -277,8 +280,9 @@ async function main() {
 
     if (DRY_RUN || !contactId) continue;
 
-    // contact types (T24, single-link deviation): role free text first, then
-    // contact_types term names — FIRST resolved type becomes the link type
+    // contact types (T24, MULTI-LINK per N25 ruling 2026-08-05): one
+    // employer_contacts row per (contact, employer, type) — role free text
+    // first, then contact_types term names (delta order)
     const typeLabels: string[] = [];
     const role = strOf(c.fields, "field_grievance_co_role");
     if (role) typeLabels.push(role);
@@ -298,24 +302,44 @@ async function main() {
       const id = await ensureType(label);
       if (id) typeIds.push(id);
     }
-    const primaryTypeId = typeIds[0] ?? null;
-    if (typeIds.length > 1) {
-      rejects.add("extra_contact_types_dropped", { nid: c.nid, dropped: typeIds.length - 1 });
-    }
 
-    const existingLinks = await storage.employerContacts.listByContactId(contactId);
-    const link = existingLinks.find((l) => l.employerId === employerMapping.s2Id);
-    if (!link) {
-      await withNotificationsSuppressed(() =>
-        storage.employerContacts.create({ contactId: contactId!, employerId: employerMapping.s2Id, contactTypeId: primaryTypeId }),
-      );
-      scStats.linksCreated++;
-    } else if (primaryTypeId != null && (link.contactTypeId ?? null) !== primaryTypeId) {
-      // drift-reconcile the type; never null-out an operator-set type when
-      // the source has no type info at all
-      await withNotificationsSuppressed(() => storage.employerContacts.update(link.id, { contactTypeId: primaryTypeId }));
-      scStats.linksUpdated++;
+    const allLinks = await storage.employerContacts.listByContactId(contactId);
+    const links = allLinks.filter((l) => l.employerId === employerMapping.s2Id);
+    const haveTypes = new Set(links.map((l) => (l.contactTypeId ?? null) as string | null));
+
+    if (typeIds.length === 0) {
+      // no type info at all → ensure ONE untyped link; never null-out an
+      // operator-set type on an existing link
+      if (links.length === 0) {
+        await withNotificationsSuppressed(() =>
+          storage.employerContacts.create({ contactId: contactId!, employerId: employerMapping.s2Id, contactTypeId: null }),
+        );
+        scStats.linksCreated++;
+      }
+    } else {
+      const missingTypes = typeIds.filter((t) => !haveTypes.has(t));
+      // heal milestone-3 single-link rows: retype an untyped link to the
+      // first missing type instead of leaving a stray untyped link behind
+      const nullLink = links.find((l) => (l.contactTypeId ?? null) === null);
+      if (nullLink && missingTypes.length > 0) {
+        const t = missingTypes.shift()!;
+        await withNotificationsSuppressed(() => storage.employerContacts.update(nullLink.id, { contactTypeId: t }));
+        haveTypes.delete(null);
+        haveTypes.add(t);
+        scStats.linksRetyped++;
+      }
+      for (const t of missingTypes) {
+        await withNotificationsSuppressed(() =>
+          storage.employerContacts.create({ contactId: contactId!, employerId: employerMapping.s2Id, contactTypeId: t }),
+        );
+        haveTypes.add(t);
+        scStats.linksCreated++;
+      }
+      // operator-added links whose type the source doesn't carry are KEPT
+      const extras = links.filter((l) => (l.contactTypeId ?? null) !== null && !typeIds.includes(l.contactTypeId!)).length;
+      if (extras > 0) scStats.s2ExtraLinksKept += extras;
     }
+    expectedLinksByContactNid.set(c.nid, { employerId: employerMapping.s2Id, typeIds });
 
     // phones (T5): Phone / Phone 2 / Fax
     const phoneSpecs: Array<{ key: string; friendly: string; primary: boolean }> = [
@@ -422,6 +446,19 @@ async function main() {
       if (links.length === 0) {
         console.error(`VERIFY: shop contact nid ${c.nid} has no employer_contacts link`);
         verifyFailures++;
+        continue;
+      }
+      // N25 multi-link: every resolved source type must have its own link row
+      const exp = expectedLinksByContactNid.get(c.nid);
+      if (exp && exp.typeIds.length > 0) {
+        const have = new Set(
+          links.filter((l) => l.employerId === exp.employerId).map((l) => (l.contactTypeId ?? null) as string | null),
+        );
+        const missing = exp.typeIds.filter((t) => !have.has(t));
+        if (missing.length > 0) {
+          console.error(`VERIFY: shop contact nid ${c.nid} missing ${missing.length} typed employer link(s)`);
+          verifyFailures++;
+        }
       }
     }
   }

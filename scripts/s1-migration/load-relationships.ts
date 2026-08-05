@@ -19,11 +19,14 @@
  *     options_worker_relation_type.sirius_id.
  *   - start/end: field_sirius_date_start/_date_end date-cast. The S2 relations
  *     storage REQUIRES a start date, forbids future start dates, and requires
- *     end >= start — rows violating any of these are pre-validated into
- *     dedicated fatal rejects (missing_start_date / future_start_date /
- *     end_before_start) instead of surfacing as create-time surprises.
+ *     end >= start. N26 ruling (2026-08-05): rows with NO start date load
+ *     with defaults (start 2000-01-01; end keeps a real S1 end, else
+ *     2000-01-02; data.datesDefaulted=true) — prod measured 115 such rows.
+ *     The 2 future-start rows were fixed in S1 by the fund; future_start_date
+ *     stays a fatal tripwire (expect 0 in prod), as do bad_start_date
+ *     (present but unparseable), bad_end_date, and end_before_start.
  *     Active=No with no end date end-dates from node.changed (documented
- *     convention).
+ *     convention; defaulted rows always carry an end already).
  *   - field_sirius_count → data.sequence (ordering, not a quantity — Q14).
  *
  * REJECT POLICY (fail loud): every reject reason present in the run must be
@@ -50,7 +53,7 @@ import { WorkerRelationValidationError } from "../../server/storage/workers/rela
 import { withNotificationsSuppressed } from "../../server/middleware/request-context";
 import { ensureStagingSchema, recordRun } from "./lib/staging";
 import { ensureIdMap, getMappings, putMapping } from "./lib/idmap";
-import { RejectLog, loadStaged, strOf, tidOf, targetNidOf, toYmd, epochToYmd, yesNo, scalarOf } from "./lib/loader-utils";
+import { RejectLog, loadStaged, strOf, tidOf, targetNidOf, toYmd, epochToYmd, yesNo, scalarOf, defaultRelationshipDates } from "./lib/loader-utils";
 
 const DRY_RUN = process.argv.includes("--dry-run");
 const ALLOWED_REJECTS: string[] = (() => {
@@ -71,7 +74,7 @@ const FATAL_REASONS = [
   "alt_worker_unmapped",
   "alt_contact_unmapped",
   "reltype_unresolved",
-  "missing_start_date",
+  "bad_start_date",
   "future_start_date",
   "bad_end_date",
   "end_before_start",
@@ -134,7 +137,7 @@ async function main() {
     return termMap.get(tid)?.s2Id ?? reltypeBySiriusId.get(String(tid)) ?? null;
   };
 
-  const stats = { matched: 0, created: 0, updated: 0, shellWorkersCreated: 0, shellWorkersReused: 0, endDatedFromChanged: 0 };
+  const stats = { matched: 0, created: 0, updated: 0, shellWorkersCreated: 0, shellWorkersReused: 0, endDatedFromChanged: 0, datesDefaulted: 0, datesDefaultedActiveYes: 0 };
   /** nid → expected row shape (for the verify pass). */
   const expected = new Map<number, { worker1: string; worker2: string; relationType: string }>();
 
@@ -202,16 +205,15 @@ async function main() {
     }
 
     // dates — pre-validate against the storage contract (start required,
-    // no future start, end >= start) so failures are dedicated rejects
+    // no future start, end >= start) so failures are dedicated rejects.
+    // N26 ruling (2026-08-05): rows with NO start value load with default
+    // dates instead of rejecting; a present-but-unparseable start stays
+    // fatal (bad_start_date — expect 0).
     const startRaw = strOf(r.fields, "field_sirius_date_start");
     const endRaw = strOf(r.fields, "field_sirius_date_end");
-    const startYmd = startRaw ? toYmd(startRaw) : null;
-    if (!startYmd) {
-      rejects.add("missing_start_date", { nid: r.nid, hadValue: startRaw != null }, r.nid);
-      continue;
-    }
-    if (startYmd > todayYmd) {
-      rejects.add("future_start_date", { nid: r.nid, startYmd }, r.nid);
+    const parsedStart = startRaw ? toYmd(startRaw) : null;
+    if (startRaw && !parsedStart) {
+      rejects.add("bad_start_date", { nid: r.nid }, r.nid);
       continue;
     }
     let endYmd = endRaw ? toYmd(endRaw) : null;
@@ -220,18 +222,34 @@ async function main() {
       continue;
     }
     const active = yesNo(strOf(r.fields, "field_sirius_active"));
+    const dated = defaultRelationshipDates(parsedStart, endYmd);
+    const startYmd = dated.startYmd;
+    endYmd = dated.endYmd;
+    if (startYmd > todayYmd) {
+      rejects.add("future_start_date", { nid: r.nid, startYmd }, r.nid);
+      continue;
+    }
     let endDatedFromChanged = false;
     if (active === false && !endYmd && r.changed != null) {
-      endYmd = epochToYmd(r.changed); // end-dating convention (§4 active flag)
+      // end-dating convention (§4 active flag); defaulted rows never reach
+      // this branch — they always carry an end date already
+      endYmd = epochToYmd(r.changed);
       endDatedFromChanged = true;
     }
     if (endYmd && endYmd < startYmd) {
-      rejects.add("end_before_start", { nid: r.nid, fromChanged: endDatedFromChanged }, r.nid);
+      rejects.add("end_before_start", { nid: r.nid, fromChanged: endDatedFromChanged, datesDefaulted: dated.defaulted }, r.nid);
       continue;
+    }
+    if (dated.defaulted) {
+      stats.datesDefaulted++;
+      if (active === true) stats.datesDefaultedActiveYes++;
     }
     const seqRaw = scalarOf(r.fields["field_sirius_count"]);
     const sequence =
       typeof seqRaw === "number" ? seqRaw : typeof seqRaw === "string" && /^\d+$/.test(seqRaw) ? Number(seqRaw) : null;
+    const dataPayload: Record<string, unknown> = {};
+    if (sequence != null) dataPayload.sequence = sequence;
+    if (dated.defaulted) dataPayload.datesDefaulted = true;
 
     // ---- matched: drift-reconcile; new: shell (if needed) + create ----
 
@@ -242,12 +260,15 @@ async function main() {
       if (!DRY_RUN) {
         const row = await storage.workerRelations.get(mapped.s2Id);
         if (row) {
-          const rowSeq = (row.data as Record<string, unknown> | null)?.sequence ?? null;
+          const rowData = row.data as Record<string, unknown> | null;
+          const rowSeq = rowData?.sequence ?? null;
+          const rowDefaulted = rowData?.datesDefaulted === true;
           const drift =
             (row.startYmd ?? null) !== startYmd ||
             (row.endYmd ?? null) !== (endYmd ?? null) ||
             row.relationType !== relationType ||
-            (sequence != null && rowSeq !== sequence);
+            (sequence != null && rowSeq !== sequence) ||
+            (dated.defaulted && !rowDefaulted);
           if (drift) {
             try {
               await withNotificationsSuppressed(() =>
@@ -255,7 +276,7 @@ async function main() {
                   startYmd,
                   endYmd,
                   relationType,
-                  ...(sequence != null ? { data: { sequence } } : {}),
+                  ...(Object.keys(dataPayload).length > 0 ? { data: dataPayload } : {}),
                 }),
               );
               if (endDatedFromChanged) stats.endDatedFromChanged++;
@@ -308,7 +329,7 @@ async function main() {
           relationType,
           startYmd,
           endYmd,
-          data: sequence != null ? { sequence } : null,
+          data: Object.keys(dataPayload).length > 0 ? dataPayload : null,
         }),
       );
       const winner = await putMapping("relation", r.nid, created.id, { stub: false, loader: LOADER });
