@@ -50,6 +50,7 @@ const FATAL_REASONS = [
   "ms_term_unmapped",
   "ms_option_missing",
   "duplicate_industry_assignment",
+  "duplicate_existing_rows",
   "industry_ms_conflict",
   "msh_create_failed",
 ] as const;
@@ -162,6 +163,12 @@ async function main() {
       : await storage.workerMsh.getWorkerMsh(list[0].workerId);
     for (const r of list) {
       const byIndustry = existing.filter((e) => e.industryId === r.industryId);
+      if (byIndustry.length > 1) {
+        // Target already violates the one-current-row-per-(worker,industry)
+        // invariant — never adopt into a duplicated state; manual repair.
+        rejects.add("duplicate_existing_rows", { nid, tid: r.tid, industryId: r.industryId, rows: byIndustry.length }, nid);
+        continue;
+      }
       const same = byIndustry.find((e) => e.msId === r.msId);
       if (same) {
         adopted++;
@@ -199,6 +206,7 @@ async function main() {
 
   // ---------------- verify pass ----------------
   let verifyFailures = 0;
+  let extraIndustryRows = 0;
   if (!DRY_RUN) {
     // group expectations per worker, re-read once per worker
     const byWorker = new Map<string, Resolved[]>();
@@ -206,17 +214,27 @@ async function main() {
     for (const [workerId, exps] of byWorker) {
       const rows: Array<{ msId: string; industryId: string }> = await storage.workerMsh.getWorkerMsh(workerId);
       for (const e of exps) {
-        if (!rows.some((row) => row.msId === e.msId && row.industryId === e.industryId)) {
-          console.error(`VERIFY: worker nid ${e.nid} missing worker_msh row for tid ${e.tid}`);
+        // exact cardinality: EXACTLY one row for the industry, carrying our ms
+        const industryRows = rows.filter((row) => row.industryId === e.industryId);
+        if (industryRows.length !== 1 || industryRows[0].msId !== e.msId) {
+          console.error(
+            `VERIFY: worker nid ${e.nid} tid ${e.tid} — expected exactly 1 worker_msh row for its industry with the mapped ms, found ${industryRows.length}`,
+          );
           verifyFailures++;
         }
       }
+      // informational: rows in industries the source has no assignment for
+      // (legit post-migration data on a live target; should be 0 on a fresh
+      // migration target — surfaced in the report, not fatal).
+      const expectedIndustries = new Set(exps.map((e) => e.industryId));
+      extraIndustryRows += rows.filter((row) => !expectedIndustries.has(row.industryId)).length;
     }
   }
 
   report.rejects = rejects.counts;
   report.rejectSamples = rejects.samples;
   report.verifyFailures = verifyFailures;
+  report.extraIndustryRows = extraIndustryRows;
 
   const disallowed = rejects.disallowedReasons(ALLOWED_REJECTS);
   console.log(JSON.stringify(report, null, 2));

@@ -240,7 +240,8 @@ recorded in `s1_staging.runs` (args + per-bundle report).
   reconstruction, NO `worker_wsh` (06 §4.8a). Dev prereq: run
   `load-options.ts --fallback-industry <name>` first so the synthetic
   worker-ms terms (which stage no industry field) exist — synthetic-only
-  flag, never production.
+  flag; it fail-closes (refuses to run) if ANY staged worker-ms term carries
+  `field_sirius_industry`, so it cannot mask a broken production reference.
 
 - `load-relationships.ts` — T15: `sirius_contact_relationship` →
   `worker_relations`. `worker_1` = owning contact's worker

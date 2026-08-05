@@ -143,6 +143,11 @@ async function main() {
   let workerMsFallbackIndustry = 0;
   /** resolved lazily on first use; null = lookup failed (throws) */
   let fallbackIndustryId: string | null | undefined = undefined;
+  /** synthetic-signature gate: if ANY worker-ms term stages an industry
+   * field, the staging set is production-shaped and fallback is refused. */
+  const anyWorkerMsHasIndustryField = terms.some(
+    (t) => VOCAB_TO_TYPE[t.vocabulary] === "worker-ms" && industryTidOf(t.fields) != null,
+  );
   const skippedTids = new Set<number>();
 
   // ---- preflight: every vocabulary needs an explicit disposition BEFORE any write ----
@@ -196,7 +201,21 @@ async function main() {
       if (type === "worker-ms") {
         const itid = industryTidOf(t.fields);
         industryId = itid != null ? industryByTid.get(itid) : undefined;
-        if (!industryId && FALLBACK_INDUSTRY_NAME) {
+        // Fail-closed gating for --fallback-industry (Q37): it may ONLY apply
+        // to the synthetic signature — a term that stages NO
+        // field_sirius_industry at all, in a staging set where NO worker-ms
+        // term carries the field. A term that HAS the field but doesn't
+        // resolve is a real broken reference and must never be masked.
+        const fallbackApplicable =
+          !industryId && FALLBACK_INDUSTRY_NAME != null && industryTidOf(t.fields) == null && !anyWorkerMsHasIndustryField;
+        if (!industryId && FALLBACK_INDUSTRY_NAME && !fallbackApplicable) {
+          throw new Error(
+            `--fallback-industry refused: worker-ms tid ${t.tid} does not match the synthetic signature ` +
+              `(field_sirius_industry present somewhere in this staging set). This flag is dev-only — ` +
+              `a production term with an unresolvable industry is a broken reference, fix the source.`,
+          );
+        }
+        if (fallbackApplicable) {
           if (fallbackIndustryId === undefined) {
             const industries: Array<{ id: string; name: string }> = await options.list("industry");
             fallbackIndustryId = industries.find((r) => r.name.toLowerCase() === FALLBACK_INDUSTRY_NAME.toLowerCase())?.id ?? null;
