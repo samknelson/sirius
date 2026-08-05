@@ -33,6 +33,14 @@ const DRY_RUN = process.argv.includes("--dry-run");
  * production every term must resolve (Q37) — without this flag, unresolved
  * industries fail the run. */
 const ALLOW_UNRESOLVED_INDUSTRY = process.argv.includes("--allow-unresolved-industry");
+/** Dev-only: `--fallback-industry <name>` assigns worker-ms terms whose
+ * industry cannot be resolved (synthetic terms stage no fields) to the named
+ * EXISTING options_industries row so downstream T6 is exercisable. NEVER for
+ * production — prod terms all carry field_sirius_industry (Q37). */
+const FALLBACK_INDUSTRY_NAME: string | null = (() => {
+  const i = process.argv.indexOf("--fallback-industry");
+  return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : null;
+})();
 
 const VOCAB_TO_TYPE: Record<string, OptionsTypeName> = {
   grievance_industry: "industry", // synthetic dev DB vocab name
@@ -132,6 +140,9 @@ async function main() {
   /** industry term tid → S2 options_industries id (filled while loading industries) */
   const industryByTid = new Map<number, string>();
   let workerMsUnresolvedIndustry = 0;
+  let workerMsFallbackIndustry = 0;
+  /** resolved lazily on first use; null = lookup failed (throws) */
+  let fallbackIndustryId: string | null | undefined = undefined;
   const skippedTids = new Set<number>();
 
   // ---- preflight: every vocabulary needs an explicit disposition BEFORE any write ----
@@ -185,6 +196,17 @@ async function main() {
       if (type === "worker-ms") {
         const itid = industryTidOf(t.fields);
         industryId = itid != null ? industryByTid.get(itid) : undefined;
+        if (!industryId && FALLBACK_INDUSTRY_NAME) {
+          if (fallbackIndustryId === undefined) {
+            const industries: Array<{ id: string; name: string }> = await options.list("industry");
+            fallbackIndustryId = industries.find((r) => r.name.toLowerCase() === FALLBACK_INDUSTRY_NAME.toLowerCase())?.id ?? null;
+            if (!fallbackIndustryId) {
+              throw new Error(`--fallback-industry "${FALLBACK_INDUSTRY_NAME}" matches no options_industries row — it must already exist`);
+            }
+          }
+          industryId = fallbackIndustryId ?? undefined;
+          workerMsFallbackIndustry++;
+        }
         if (!industryId) {
           // Counted skip (synthetic dev terms stage no fields; production
           // terms carry field_sirius_industry — this must be 0 in prod).
@@ -287,6 +309,7 @@ async function main() {
 
   report.perVocab = perVocab;
   report.workerMsUnresolvedIndustry = workerMsUnresolvedIndustry;
+  report.workerMsFallbackIndustry = workerMsFallbackIndustry;
   report.skippedVocabs = skippedVocabs;
   report.unhandledVocabularies = unhandled;
   report.verifyFailures = verifyFailures;

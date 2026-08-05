@@ -86,7 +86,8 @@ loaders against ANY target (fresh branch or production), ensure:
   Without the flag, the loader preflights and ABORTS before writing if any
   charge plugin is runnable (component enabled + enabled config).
 - **Load order matters:** stage → seed-employment-statuses (fresh DB) →
-  options → contacts/workers → employers → policies → relationships → hours.
+  options → contacts/workers → member-statuses → employers → policies →
+  relationships → hours.
   Later loaders resolve earlier loaders' `id_map` entries; missing mappings
   are rejects/skips. `id_map` rows pointing at deleted S2 rows hard-fail —
   repair the map, never delete it.
@@ -225,6 +226,21 @@ recorded in `s1_staging.runs` (args + per-bundle report).
   `data.s1PolicyNid` stash + audit. Dev: the synthetic policy field table is
   EMPTY → documented no-op. **Prod prereq: 07 §P4** must identify the target
   bundle; stage it (add to `stage.ts` in-scope list if missing) before running.
+
+- `load-member-statuses.ts` — T6: worker `field_sirius_member_status`
+  (multi-tid, delta order ignored) → one CURRENT `worker_msh` row per
+  (worker, industry). Term tid → id_map(`term`) → `options_worker_ms`; the
+  option's `industry_id` is authoritative (Q37 — never parsed from names).
+  Two terms landing on the same industry reject
+  (`duplicate_industry_assignment` — prod co-assignments always cross
+  industries); an existing row with a DIFFERENT ms for the same industry
+  rejects (`industry_ms_conflict`), same ms adopts (idempotent by natural
+  key; provenance in `data.s1WorkerNid`/`data.s1Tid`). Row date =
+  `node.changed` (sentinel 2000-01-01 when absent). NO history
+  reconstruction, NO `worker_wsh` (06 §4.8a). Dev prereq: run
+  `load-options.ts --fallback-industry <name>` first so the synthetic
+  worker-ms terms (which stage no industry field) exist — synthetic-only
+  flag, never production.
 
 - `load-relationships.ts` — T15: `sirius_contact_relationship` →
   `worker_relations`. `worker_1` = owning contact's worker
