@@ -162,8 +162,9 @@ recorded in `s1_staging.runs` (args + per-bundle report).
   Matched rows drift-reconcile dates/type/sequence. Reject policy: ANY reject
   reason must be explicitly allowed via `--allow-rejects r1,r2` or the run
   exits 1. Dev: `--allow-rejects owner_missing` (synthetic stages NO owning
-  field — all 15 reject; Q13: production has it on ALL 35,774 rows, so prod
-  runs with no allowance until counts justify a conscious ruling).
+  field — all 15 reject; Q13: production has the owning field on ALL rows
+  — 35,793 as of 2026-08-05 — so prod runs with no allowance until counts
+  justify a conscious ruling).
 
 ## Known production-hardening TODOs (before the real run)
 
@@ -214,11 +215,16 @@ recorded in `s1_staging.runs` (args + per-bundle report).
 - **T24 multi-type shop contacts vs single-type links.** S2's
   `employer_contacts` storage enforces one link per (contact, employer) with a
   single `contact_type_id`; T24 prescribes one row per type. The loader keeps
-  the first type and counts `extra_contact_types_dropped` — get a spec ruling
-  (widen S2 to multi-link, or accept primary-type-only) before the prod run.
+  the first type and counts `extra_contact_types_dropped`. **Prod measured
+  (2026-08-05): 557 contacts — 351 multi-type (63%), 363 assignments lost
+  under single-link; 356 of those are exactly 1 role + 1 term, only 12 have
+  ≥2 terms.** Ruling still needed before the prod run (widen S2 to
+  multi-link, accept primary-type-only, or treat role as a contact attribute
+  and the term as the link type).
 - **Relationship date constraints.** The relations storage REQUIRES a start
-  date and forbids future starts / end&lt;start. S1 prevalence of missing or
-  odd `date_start` on `sirius_contact_relationship` is unknown (synthetic has
-  full dates); if the prod run rejects materially on `missing_start_date` /
-  `future_start_date` / `end_before_start`, get a ruling (default date vs
-  skip) rather than allowing the reject class blind.
+  date and forbids future starts / end&lt;start. **Prod measured (2026-08-05,
+  35,793 rows): 115 `missing_start_date`, 2 `future_start_date` (the same 2
+  are inactive-without-end rows whose changed/created fallbacks precede
+  start), 0 `end_before_start` — reject envelope ≤117 rows (~0.33%).**
+  Get the per-class ruling (default date vs skip for the 115; fix-in-S1 vs
+  reject for the 2) before the prod run — never blanket-allow these classes.
