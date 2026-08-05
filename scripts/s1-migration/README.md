@@ -31,6 +31,66 @@ S1 MariaDB (S1_DATABASE_URL)          S2 Postgres (EXTERNAL_DATABASE_URL)
 `s1_staging` is deliberately **outside** `shared/schema.ts` and the drift
 gate — it is migration scratch space, not app schema.
 
+## S2 target preconditions
+
+The loaders write through the S2 storage layer, and several of them treat
+parts of S2 as **fund configuration that must already exist** — they verify
+or adopt against it and fail loudly rather than invent it. Before running the
+loaders against ANY target (fresh branch or production), ensure:
+
+**Environment**
+- `EXTERNAL_DATABASE_URL` → the S2 target. Every loader prints the resolved
+  target banner at startup — read it before continuing.
+- `S1_DATABASE_URL` → the S1 MariaDB source (stage only; production URL must
+  carry SSL params).
+- The S2 DB role must be able to create the `s1_staging` schema/tables.
+- The S2 schema must be fully migrated (start the app once; it must report
+  "No pending migrations").
+
+**Preconfigured S2 data (loaders never create these)**
+- `options_employment_status` must contain all 11 names in the T20 hour-type
+  mapping: Active, No Charge, Terminated, LOA, FMLA, Disability, Military
+  Leave, Initial Eligibility, Deceased, Event Center Hours Purchasing, COBRA
+  (case-insensitive). Missing any → T4 and T20 hard-fail, no flag relaxes it.
+  On a fresh database run `seed-employment-statuses.ts` first, then review
+  the `employed` flags with the fund (they gate eligibility and the
+  member-status scan).
+- **Policies** — `load-policies.ts` is ADOPT-ONLY: every referenced S1 trust
+  policy must match an existing S2 `policies` row by name or `sirius_id`
+  (case-insensitive). Unmatched or unstaged targets hard-fail the whole run
+  before any writes; no allowance flag. Matched policies are assumed to be
+  correctly configured (benefit lists etc.) — the loader does not validate
+  that. Synthetic runs have zero policy refs (no-op); production must stage
+  the policy bundle explicitly (`--bundles`, it is not in the default list)
+  and have the policy catalogue configured beforehand.
+- `options_gender` rows for any gender values the contacts loader must
+  resolve by name (unresolvable → counted reject, not silent).
+
+**Adopted-if-present, created-if-missing (no preconfig required)**
+- T4 options types (`industry`, `worker-ms`, `ledger-payment-type`,
+  `worker-relation-type`): existing rows are adopted by unambiguous
+  case-insensitive name (ambiguous names or conflicting `sirius_id`s
+  hard-fail); missing rows are created.
+- `options_employer_contact_type`: ensured by normalized name from shop
+  contact roles/terms.
+
+**Operational preconditions**
+- **Charge plugins:** the hours loader writes `worker_hours` through storage,
+  which can trigger hour-driven charge plugins. On production the charge
+  plugins must be disabled (or a migration mode implemented) before T20, or
+  the load can double-bill. There is no CLI flag for this yet.
+- **Load order matters:** stage → seed-employment-statuses (fresh DB) →
+  options → contacts/workers → employers → policies → relationships → hours.
+  Later loaders resolve earlier loaders' `id_map` entries; missing mappings
+  are rejects/skips. `id_map` rows pointing at deleted S2 rows hard-fail —
+  repair the map, never delete it.
+- **Sequences:** the contacts/workers loader runs the one sanctioned
+  `setval`; relationship shell workers allocate above that range. Don't load
+  relationships before contacts/workers.
+- **Synthetic-only allowances** (never on production):
+  `--allow-unresolved-industry` (T4), `--allow-rejects owner_missing` (T15),
+  `--stub-missing` (T20).
+
 ## Field discovery
 
 Primary: Drupal's `field_config_instance`/`field_config` (authoritative
