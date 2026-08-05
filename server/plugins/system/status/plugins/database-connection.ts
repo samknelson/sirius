@@ -1,30 +1,19 @@
 import { sql } from "drizzle-orm";
 import { registerSystemStatusPlugin } from "../registry";
 import type { StatusMessage } from "../types";
+import { databaseSourceInfo } from "../../../../storage/db";
 
 /**
- * Describe the configured database connection WITHOUT leaking credentials:
- * only the driver family, host, port, and database name are surfaced.
+ * Describe the database connection the app ACTUALLY uses, without leaking
+ * credentials. Derived from the boot-time resolved target in
+ * server/storage/db.ts (single source of truth: EXTERNAL_DATABASE_URL wins
+ * over DATABASE_URL, Neon pooler rewrite applied) — never from a direct
+ * process.env read, which previously reported the Replit-injected
+ * DATABASE_URL even when the app was connected elsewhere.
  */
 function describeConnection(): string {
-  const url = process.env.DATABASE_URL;
-  if (!url) return "DATABASE_URL is not set";
-  try {
-    const parsed = new URL(url);
-    const host = parsed.hostname;
-    const override = process.env.DATABASE_DRIVER;
-    const driver =
-      override === "neon" || override === "pg"
-        ? override
-        : host.endsWith(".neon.tech") || host.includes(".neon.")
-          ? "neon"
-          : "pg";
-    const dbName = parsed.pathname.replace(/^\//, "") || "(unnamed)";
-    const port = parsed.port ? `:${parsed.port}` : "";
-    return `driver=${driver}, host=${host}${port}, database=${dbName}`;
-  } catch {
-    return "DATABASE_URL is set but could not be parsed";
-  }
+  const { driver, host, database, source } = databaseSourceInfo;
+  return `driver=${driver}, host=${host}, database=${database} (from ${source})`;
 }
 
 registerSystemStatusPlugin({
