@@ -88,6 +88,14 @@ recorded in `s1_staging.runs` (args + per-bundle report).
   changed requires wiping the loader's output first (or ownership tracking —
   see TODOs).
 
+- `seed-employment-statuses.ts` — fresh-database prerequisite for T4/T20:
+  idempotently creates the 11 `options_employment_status` rows the hour-type
+  mapping (06 §4.12) verifies against. Employment statuses are S2
+  configuration, not migrated S1 data — a long-lived dev database already has
+  them, a schema-only branch does not (T4 then fails its verify pass). Never
+  updates existing rows; review the seeded `employed` flags with the fund
+  (they gate eligibility and the member-status scan).
+
 - `load-options.ts` — T4: staged taxonomy terms → `options_*` via unified-options
   storage. Vocab dispositions are explicit (unhandled vocab = preflight failure,
   before any write). Resolution per term: id_map → siriusId column (tables
