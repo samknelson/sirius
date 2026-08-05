@@ -36,6 +36,17 @@ export interface RequestContext {
    * around the scan's execution phase.
    */
   wmbScanWrite?: boolean;
+  /**
+   * When true, the charge-plugin executor refuses to run any charge plugin
+   * within this async scope (it logs and returns an empty result instead).
+   * This is the S1→S2 migration mode: bulk loaders (e.g. the T20 hours
+   * loader) write core rows through storage, and those writes must NOT
+   * generate new ledger charges — historical ledger state arrives via its own
+   * loader, so re-running hour-driven plugins would double-bill. Set only via
+   * {@link withChargePluginsSuppressed}; there is deliberately no HTTP header
+   * for this (it is a loader/operator concern, never a client opt-in).
+   */
+  suppressChargePlugins?: boolean;
 }
 
 export const requestContext = new AsyncLocalStorage<RequestContext>();
@@ -69,6 +80,31 @@ export function areNotificationsSuppressed(): boolean {
 export function withNotificationsSuppressed<T>(fn: () => Promise<T>): Promise<T> {
   const current = requestContext.getStore();
   const next: RequestContext = { ...(current ?? {}), suppressNotifications: true };
+  return requestContext.run(next, fn);
+}
+
+/**
+ * Whether charge-plugin execution is suppressed for this async scope
+ * (migration mode). Read by the charge-plugin executor. Returns false when
+ * there is no ambient context (normal requests, crons), preserving the
+ * charge-normally default.
+ */
+export function areChargePluginsSuppressed(): boolean {
+  return requestContext.getStore()?.suppressChargePlugins === true;
+}
+
+/**
+ * Run `fn` in a nested request context with charge-plugin execution turned
+ * OFF (migration mode). Any storage writes inside `fn` that would normally
+ * trigger charge plugins (e.g. worker_hours upserts firing HOURS_SAVED into
+ * the executor) produce no ledger transactions; every other listener (events,
+ * audit, cache invalidation) runs normally. Suppression applies only for the
+ * duration of `fn`; the surrounding context is restored automatically on
+ * return, so the flag can never be accidentally left on.
+ */
+export function withChargePluginsSuppressed<T>(fn: () => Promise<T>): Promise<T> {
+  const current = requestContext.getStore();
+  const next: RequestContext = { ...(current ?? {}), suppressChargePlugins: true };
   return requestContext.run(next, fn);
 }
 

@@ -27,8 +27,15 @@
  * storage (marked stub=true in id_map) so the pipeline verifies end-to-end in
  * dev. Without the flag, unresolved references are counted skips.
  *
+ * Charge plugins: worker_hours upserts trigger hour-driven charge plugins
+ * (bao-hourly, ECHP, ...). During a production migration these must NOT run —
+ * ledger history arrives via its own loader, so replay would double-bill.
+ * Pass --migration-mode to run every write inside a charge-plugin-suppressed
+ * scope. Without it, the loader preflights: if any charge plugin is runnable
+ * (component enabled + enabled config), it ABORTS before writing anything.
+ *
  * Usage:
- *   npx tsx scripts/s1-migration/load-hours.ts [--dry-run] [--stub-missing]
+ *   npx tsx scripts/s1-migration/load-hours.ts [--dry-run] [--stub-missing] [--migration-mode]
  *
  * Output is AGGREGATES ONLY (plus S1 nids, which are opaque ids) — safe inside
  * the HIPAA boundary.
@@ -36,12 +43,31 @@
 import { db } from "../../server/storage/db";
 import { sql } from "drizzle-orm";
 import { storage } from "../../server/storage/database";
-import { withNotificationsSuppressed } from "../../server/middleware/request-context";
+import {
+  withNotificationsSuppressed,
+  withChargePluginsSuppressed,
+} from "../../server/middleware/request-context";
+// IMPORTANT: import via the charge package barrel, NOT ./charge/executor —
+// the barrel's side-effect imports register every charge plugin. Importing
+// the executor module directly leaves the registry empty, and the preflight
+// below would falsely report "no runnable plugins".
+import { hasRunnableChargePlugins, getAllChargePlugins } from "../../server/plugins/ledger/charge";
 import { ensureStagingSchema, recordRun } from "./lib/staging";
 import { ensureIdMap, getMappings, putMapping } from "./lib/idmap";
 
 const DRY_RUN = process.argv.includes("--dry-run");
 const STUB_MISSING = process.argv.includes("--stub-missing");
+const MIGRATION_MODE = process.argv.includes("--migration-mode");
+
+/**
+ * Run `fn` in a notification-suppressed scope, additionally suppressing
+ * charge-plugin execution when --migration-mode is set.
+ */
+function loaderScope<T>(fn: () => Promise<T>): Promise<T> {
+  return MIGRATION_MODE
+    ? withChargePluginsSuppressed(() => withNotificationsSuppressed(fn))
+    : withNotificationsSuppressed(fn);
+}
 
 /** S1 sirius_hour_type tid → S2 options_employment_status.name (v5 §4.12 —
  * the live 1600-series plus 1544; the five 900-series terms never occur). */
@@ -98,6 +124,34 @@ async function main() {
   const startedAt = new Date();
   await ensureStagingSchema();
   await ensureIdMap();
+
+  // ---- charge-plugin preflight (fail loudly BEFORE any write) ----
+  // worker_hours upserts trigger hour-driven charge plugins. In migration
+  // mode all writes run charge-suppressed; without it, refuse to write while
+  // any charge plugin is runnable — otherwise the load double-bills.
+  if (!DRY_RUN && !MIGRATION_MODE) {
+    if (getAllChargePlugins().length === 0) {
+      // The preflight is only meaningful if the plugin registry actually
+      // loaded. The barrel import above registers >0 plugins statically, so
+      // an empty registry means a wiring regression — refuse to proceed.
+      throw new Error(
+        "ABORTING: charge plugin registry is empty — preflight cannot verify charge-plugin state. " +
+          "This is a loader wiring bug (charge package barrel not imported). Nothing was written.",
+      );
+    }
+    const { runnable, pluginIds } = await hasRunnableChargePlugins();
+    if (runnable) {
+      throw new Error(
+        `ABORTING: charge plugins are enabled and runnable (${pluginIds.join(", ")}). ` +
+          `Loading hours now would execute hour-driven charge plugins and double-bill. ` +
+          `Re-run with --migration-mode (suppresses charge plugins for this load) ` +
+          `or disable the charge plugin configs first. Nothing was written.`,
+      );
+    }
+  }
+  if (MIGRATION_MODE) {
+    console.error("MIGRATION MODE: charge-plugin execution is suppressed for all writes in this run.");
+  }
 
   // ---- resolve the employment-status mapping up front; fail loudly ----
   const statusRes = await db.execute(sql`SELECT id, name FROM options_employment_status`);
@@ -291,7 +345,7 @@ async function main() {
     for (const nid of workerNids) {
       if (workerMap.has(nid)) continue;
       const name = (await stagedTitle("sirius_worker", nid)) ?? `S1 worker ${nid}`;
-      const worker = await withNotificationsSuppressed(() => storage.workers.createWorker(name));
+      const worker = await loaderScope(() => storage.workers.createWorker(name));
       const winner = await putMapping("worker", nid, worker.id, { stub: true, loader: "t20-hours" });
       if (winner !== worker.id) {
         console.error(`RACE: worker nid ${nid} already mapped; created S2 worker ${worker.id} is an ORPHAN — clean up manually`);
@@ -302,7 +356,7 @@ async function main() {
     for (const nid of employerNids) {
       if (employerMap.has(nid)) continue;
       const name = (await stagedTitle("grievance_shop", nid)) ?? `S1 employer ${nid}`;
-      const employer = await withNotificationsSuppressed(() =>
+      const employer = await loaderScope(() =>
         storage.employers.createEmployer({ name }),
       );
       const winner = await putMapping("employer", nid, employer.id, { stub: true, loader: "t20-hours" });
@@ -334,7 +388,7 @@ async function main() {
       written++;
       continue;
     }
-    const result = await withNotificationsSuppressed(() =>
+    const result = await loaderScope(() =>
       storage.workerHours.upsertWorkerHours({
         workerId: worker.s2Id,
         employerId: employer.s2Id,
@@ -389,6 +443,7 @@ async function main() {
   const report = {
     loader: "t20-hours",
     dryRun: DRY_RUN,
+    migrationMode: MIGRATION_MODE,
     stagedPayperiods: rows.length,
     parsed: parsed.length,
     skips,
@@ -413,7 +468,7 @@ async function main() {
   };
 
   console.log(JSON.stringify(report, null, 2));
-  if (!DRY_RUN) await recordRun(startedAt, { loader: "t20-hours", stubMissing: STUB_MISSING }, report);
+  if (!DRY_RUN) await recordRun(startedAt, { loader: "t20-hours", stubMissing: STUB_MISSING, migrationMode: MIGRATION_MODE }, report);
 
   if (!DRY_RUN && (mismatches.length > 0 || written !== verified)) {
     console.error(`VERIFY FAILED: wrote ${written}, verified ${verified}`);

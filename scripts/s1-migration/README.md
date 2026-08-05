@@ -79,9 +79,12 @@ loaders against ANY target (fresh branch or production), ensure:
 
 **Operational preconditions**
 - **Charge plugins:** the hours loader writes `worker_hours` through storage,
-  which can trigger hour-driven charge plugins. On production the charge
-  plugins must be disabled (or a migration mode implemented) before T20, or
-  the load can double-bill. There is no CLI flag for this yet.
+  which can trigger hour-driven charge plugins. On production, run T20 with
+  `--migration-mode` — every write then runs inside a
+  charge-plugin-suppressed ambient scope (`withChargePluginsSuppressed`,
+  checked in the charge-plugin executor), so the load cannot double-bill.
+  Without the flag, the loader preflights and ABORTS before writing if any
+  charge plugin is runnable (component enabled + enabled config).
 - **Load order matters:** stage → seed-employment-statuses (fresh DB) →
   options → contacts/workers → employers → policies → relationships → hours.
   Later loaders resolve earlier loaders' `id_map` entries; missing mappings
@@ -140,7 +143,9 @@ recorded in `s1_staging.runs` (args + per-bundle report).
 - `load-hours.ts` — staged `sirius_payperiod` → `worker_hours` through
   `storage.workerHours.upsertWorkerHours` (notification-suppressed). Rules per
   06 v5 §4.12 / T20; run report is aggregates-only + S1 nids. `--dry-run`,
-  `--stub-missing` (dev-only, single-process: creates minimal S2
+  `--migration-mode` (suppresses charge-plugin execution for all writes;
+  REQUIRED on production — without it the loader aborts if any charge plugin
+  is runnable), `--stub-missing` (dev-only, single-process: creates minimal S2
   workers/employers via storage, recorded in `s1_staging.id_map` with
   `stub=true` for T4/T7 to enrich later).
 - `lib/idmap.ts` — `s1_staging.id_map`, the S1→S2 crosswalk all loaders share.
@@ -269,12 +274,11 @@ recorded in `s1_staging.runs` (args + per-bundle report).
 - A consistent S1 read snapshot (single REPEATABLE READ connection or a
   frozen replica) — the cutover plan's freeze window covers this, but the
   extractor should not assume it.
-- **Loader migration mode with charge plugins disabled.** `upsertWorkerHours`
-  executes charge plugins per row (`bao-hourly` fired 298 no-ops in the dev
-  run). In production the migration must NOT replay charge plugins — ledger
-  history arrives via T18 and replaying would double-bill. Needs an explicit
-  ambient migration flag (same pattern as notification suppression) checked in
-  the charge-plugin executor, plus per-row event/listener cost review.
+- ~~Loader migration mode with charge plugins disabled.~~ DONE: T20 has
+  `--migration-mode` (ambient `withChargePluginsSuppressed`, same pattern as
+  notification suppression, checked at the top of the charge-plugin
+  executor), plus a preflight that aborts a non-migration-mode run while any
+  charge plugin is runnable. Remaining: per-row event/listener cost review.
 - **Loader-side paging.** `load-hours.ts` currently materializes all staged
   payperiods in memory and upserts sequentially — fine at dev scale, not at
   3.6M rows. Needs keyset-paged staging reads, bounded write batches, and

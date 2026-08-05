@@ -5,7 +5,8 @@ import {
   LedgerTransaction,
   LedgerNotification,
 } from "./types";
-import { getEnabledChargePluginsByTrigger } from "./registry";
+import { getEnabledChargePluginsByTrigger, getAllEnabledChargePlugins } from "./registry";
+import { areChargePluginsSuppressed } from "../../../middleware/request-context";
 import { mergeEnabledChargeConfigs, toChargeConfig } from "./charge-config-resolution";
 import { storage } from "../../../storage";
 import { dateToYmd } from "@shared/utils/date";
@@ -34,7 +35,22 @@ export async function executeChargePlugins(
   options?: { onlyPluginIds?: string[] }
 ): Promise<ChargePluginExecutionResult> {
   const trigger = context.trigger;
-  
+
+  // Migration mode: bulk loaders (S1→S2) wrap their storage writes in
+  // withChargePluginsSuppressed so historical data loads cannot generate new
+  // ledger charges (double-billing). Loud skip, empty result.
+  if (areChargePluginsSuppressed()) {
+    logger.warn("Charge plugin execution suppressed (migration mode) — no charges generated", {
+      service: "charge-plugin-executor",
+      trigger,
+    });
+    return {
+      executed: [],
+      totalTransactions: [],
+      notifications: [],
+    };
+  }
+
   logger.info("Executing charge plugins", {
     service: "charge-plugin-executor",
     trigger,
@@ -220,6 +236,29 @@ async function createLedgerEntries(transactions: LedgerTransaction[]): Promise<v
       // Don't throw - just log and continue
     }
   }
+}
+
+/**
+ * Whether any charge plugin is actually runnable right now: registered,
+ * its required component enabled, AND at least one enabled plugin_configs
+ * row exists for it (any scope). Used by migration loaders as a preflight —
+ * if this returns true, a bulk load without migration mode would generate
+ * charges.
+ */
+export async function hasRunnableChargePlugins(): Promise<{
+  runnable: boolean;
+  pluginIds: string[];
+}> {
+  const enabledPlugins = await getAllEnabledChargePlugins();
+  if (enabledPlugins.length === 0) return { runnable: false, pluginIds: [] };
+
+  // search() returns composed { config, subsidiary } envelopes.
+  const enabledConfigs = await storage.pluginConfigs.search("charge", { enabled: true });
+  const configuredPluginIds = new Set(enabledConfigs.map(({ config }) => config.pluginId));
+  const pluginIds = enabledPlugins
+    .map((p) => p.metadata.id)
+    .filter((id) => configuredPluginIds.has(id));
+  return { runnable: pluginIds.length > 0, pluginIds };
 }
 
 /**
