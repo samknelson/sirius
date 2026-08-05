@@ -108,6 +108,9 @@ export function logWsRequest(data: WsRequestLogData): void {
   const level = data.status >= 500 ? 'error' : data.status >= 400 ? 'warn' : 'info';
   const message = `WS ${data.method} ${data.path} ${data.status} ${data.duration}ms`;
   
+  // PII triage (accepted): ip_address is part of the web-service request
+  // audit trail (client authentication + abuse investigation). No other PII
+  // fields are logged here.
   storageLogger.log(level, message, {
     source: 'ws_request',
     module: 'webservices',

@@ -149,7 +149,7 @@ async function populateWorkers() {
       if (Math.random() < 0.85) {
         const ssn = generateSSN();
         await storage.workers.updateWorkerSSN(worker.id, ssn);
-        console.log(`  ✓ SSN: ${ssn}`);
+        console.log(`  ✓ SSN assigned`);
       }
 
       // 85% chance of primary phone
@@ -162,7 +162,7 @@ async function populateWorkers() {
           isPrimary: true,
           isActive: true
         });
-        console.log(`  ✓ Phone: ${phone} (Primary)`);
+        console.log(`  ✓ Phone added (Primary)`);
 
         // 20% chance of additional phone
         if (Math.random() < 0.2) {
@@ -175,7 +175,7 @@ async function populateWorkers() {
             isPrimary: false,
             isActive: true
           });
-          console.log(`  ✓ Phone: ${phone2} (${getRandomElement(phoneTypes)})`);
+          console.log(`  ✓ Phone added (${getRandomElement(phoneTypes)})`);
         }
       }
 

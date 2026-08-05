@@ -7,7 +7,8 @@ async function main() {
   console.log('strict 9xx:', strict.ok ? 'OK (BAD)' : `rejected: ${(strict as any).errors[0].message}`);
   // ITIN-style with opt-out: should pass
   const relaxed = await ssnValidate.validate({ ssn: '912-34-5678', allowSsaRuleInvalid: true });
-  console.log('relaxed 9xx:', relaxed.ok ? `accepted ssn=${(relaxed as any).value.ssn}` : 'rejected (BAD)');
+  // Never print the SSN value itself, even test data (PII-dataflow hygiene).
+  console.log('relaxed 9xx:', relaxed.ok ? 'accepted' : 'rejected (BAD)');
   // Malformed with opt-out: should still fail
   const malformed = await ssnValidate.validate({ ssn: '12-3456-78901', allowSsaRuleInvalid: true });
   console.log('relaxed malformed:', malformed.ok ? 'OK (BAD)' : `rejected: ${(malformed as any).errors[0].message}`);

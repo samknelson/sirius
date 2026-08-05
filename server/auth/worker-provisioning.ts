@@ -1,9 +1,8 @@
 import type { Express, Request } from "express";
-import { z } from "zod";
 import type { AuthProviderType } from "@shared/schema";
 import { storage } from "../storage";
 import { logger } from "../logger";
-import { parseSSN } from "@shared/utils/ssn";
+import { verifyWorkerIdentity } from "./identity-verification";
 
 export interface VerifiedWorkerSession {
   workerId: string;
@@ -208,13 +207,6 @@ export async function linkWorkerToAuthIdentity(
   };
 }
 
-const verifyWorkerSchema = z.object({
-  firstName: z.string().min(1, "First name is required"),
-  lastName: z.string().min(1, "Last name is required"),
-  ssn: z.string().min(1, "SSN is required"),
-  dateOfBirth: z.string().min(1, "Date of birth is required"),
-});
-
 export interface RegisterPreVerifyOptions {
   providerType: AuthProviderType;
 }
@@ -242,26 +234,21 @@ export function registerPreVerifyWorkerRoute(
         return res.status(400).json({ message: "Already provisioned" });
       }
 
-      const validation = verifyWorkerSchema.safeParse(req.body);
-      if (!validation.success) {
+      const result = await verifyWorkerIdentity(req.body);
+
+      if (result.status === "invalid_input") {
         return res.status(400).json({
           message: "Invalid input",
-          errors: validation.error.errors.map((e) => e.message),
+          errors: result.errors,
         });
       }
 
-      const { firstName, lastName, ssn, dateOfBirth } = validation.data;
-
-      let normalizedSSN: string;
-      try {
-        normalizedSSN = parseSSN(ssn);
-      } catch {
+      if (result.status === "invalid_ssn") {
         return res.status(400).json({ message: "Invalid SSN format" });
       }
 
-      const worker = await storage.workers.getWorkerBySSN(normalizedSSN);
-      if (!worker) {
-        logger.info("Worker pre-verification failed: no worker for SSN", {
+      if (result.status === "no_match") {
+        logger.info("Worker pre-verification failed: no matching worker", {
           providerType: options.providerType,
         });
         return res.status(404).json({
@@ -270,11 +257,10 @@ export function registerPreVerifyWorkerRoute(
         });
       }
 
-      const contact = await storage.contacts.getContact(worker.contactId);
-      if (!contact) {
+      if (result.status === "no_contact") {
         logger.warn("Worker pre-verification failed: contact not found", {
-          workerId: worker.id,
-          contactId: worker.contactId,
+          workerId: result.workerId,
+          contactId: result.contactId,
         });
         return res.status(404).json({
           message:
@@ -282,20 +268,12 @@ export function registerPreVerifyWorkerRoute(
         });
       }
 
-      const fnMatch =
-        (contact.given || "").toLowerCase().trim() ===
-        firstName.toLowerCase().trim();
-      const lnMatch =
-        (contact.family || "").toLowerCase().trim() ===
-        lastName.toLowerCase().trim();
-      const dobMatch = contact.birthDate === dateOfBirth;
-
-      if (!fnMatch || !lnMatch || !dobMatch) {
+      if (result.status === "field_mismatch") {
         logger.info("Worker pre-verification failed: field mismatch", {
-          workerId: worker.id,
-          fnMatch,
-          lnMatch,
-          dobMatch,
+          workerId: result.workerId,
+          fnMatch: result.fnMatch,
+          lnMatch: result.lnMatch,
+          dobMatch: result.dobMatch,
         });
         return res.status(404).json({
           message:
@@ -303,8 +281,8 @@ export function registerPreVerifyWorkerRoute(
         });
       }
 
-      const existingUser = contact.email
-        ? await storage.users.getUserByEmail(contact.email)
+      const existingUser = result.contactEmail
+        ? await storage.users.getUserByEmail(result.contactEmail)
         : null;
       if (existingUser) {
         const identities = await storage.authIdentities.getByUserId(
@@ -314,7 +292,7 @@ export function registerPreVerifyWorkerRoute(
           identities.some((i: any) => i.providerType === options.providerType)
         ) {
           logger.info("Worker pre-verification blocked: already registered", {
-            workerId: worker.id,
+            workerId: result.workerId,
             providerType: options.providerType,
           });
           return res.status(409).json({
@@ -325,8 +303,8 @@ export function registerPreVerifyWorkerRoute(
       }
 
       (req.session as any).verifiedWorker = {
-        workerId: worker.id,
-        contactId: worker.contactId,
+        workerId: result.workerId,
+        contactId: result.contactId,
         verifiedAt: Date.now(),
       };
 
@@ -335,15 +313,15 @@ export function registerPreVerifyWorkerRoute(
       });
 
       logger.info("Worker pre-verification successful", {
-        workerId: worker.id,
+        workerId: result.workerId,
         providerType: options.providerType,
       });
 
       res.json({
         success: true,
         verified: true,
-        workerName: `${contact.given || ""} ${contact.family || ""}`.trim(),
-        contactEmail: contact.email || "",
+        workerName: result.workerName,
+        contactEmail: result.contactEmail,
       });
     } catch (error) {
       logger.error("Worker pre-verification error", { error });

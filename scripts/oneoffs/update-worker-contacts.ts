@@ -140,6 +140,8 @@ async function updateWorkerContacts() {
   
   console.log("\n=== Update Complete ===");
   console.log(`Updated ${updatedContacts} contact emails`);
+  // PII triage (accepted, false positive): this prints a COUNT of updated
+  // rows, not any phone number.
   console.log(`Updated ${updatedPhones} phone numbers`);
   console.log(`Updated ${updatedAddresses} addresses`);
   console.log(`Total workers processed: ${workers.rows.length}`);

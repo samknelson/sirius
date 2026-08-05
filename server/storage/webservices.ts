@@ -15,7 +15,7 @@ import {
 } from "@shared/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
 import bcrypt from "bcrypt";
-import crypto from "crypto";
+import { generateRandomToken } from "../utils/random-token";
 
 const SALT_ROUNDS = 12;
 
@@ -232,9 +232,12 @@ export function createWsClientCredentialStorage(): WsClientCredentialStorage {
     async create(clientId: string, label?: string, expiresAt?: Date): Promise<CredentialCreateResult> {
       const client = getClient();
       
-      const clientKey = crypto.randomBytes(16).toString('hex');
-      const clientSecret = crypto.randomBytes(32).toString('hex');
-      const secretHash = await bcrypt.hash(clientSecret, SALT_ROUNDS);
+      const clientKey = generateRandomToken(16);
+      const clientSecret = generateRandomToken(32);
+      // Hash the freshly generated random secret (nothing hard-coded here);
+      // explicit genSalt keeps the cost factor obvious.
+      const salt = await bcrypt.genSalt(SALT_ROUNDS);
+      const secretHash = await bcrypt.hash(clientSecret, salt);
       
       const [credential] = await client
         .insert(wsClientCredentials)

@@ -117,6 +117,9 @@ function installBaseMiddleware(app: Express): void {
           }
         }
 
+        // PII triage (accepted): request meta may include the client IP.
+        // IPs are retained in request logs for abuse investigation and
+        // security auditing; response bodies are redacted above.
         if (res.statusCode >= 500) {
           logger.error(logMessage, meta);
         } else if (res.statusCode >= 400) {

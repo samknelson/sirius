@@ -20,6 +20,14 @@ const loginBodySchema = z.object({
 
 const BCRYPT_COST = 12;
 
+// Computed once at module load; used to equalize response timing for
+// unknown emails. Not a credential — the input is arbitrary and never a
+// valid password (all real comparisons include the pepper anyway).
+const TIMING_EQUALIZER_HASH = bcrypt.hashSync(
+  "local-auth-timing-equalizer",
+  BCRYPT_COST,
+);
+
 /**
  * bcrypt silently truncates input at 72 bytes; since the pepper is appended
  * to the password before hashing, cap the accepted password length so the
@@ -269,7 +277,9 @@ class LocalAuthProvider implements AuthProvider {
     try {
       const flood = await checkFlood(LOCAL_LOGIN_FLOOD_EVENT, floodContext);
       if (!flood.allowed) {
-        logger.warn("Local login throttled", { service: "local-auth", email, ip });
+        // PII note: intentionally no raw email here; IP is kept for abuse
+        // investigation (operationally required for brute-force response).
+        logger.warn("Local login throttled", { service: "local-auth", ip });
         res.status(429).json({ message: "Too many login attempts. Please try again later." });
         return;
       }
@@ -285,16 +295,17 @@ class LocalAuthProvider implements AuthProvider {
 
       // Always run a bcrypt comparison so response timing does not reveal
       // whether the email exists.
-      const dummyHash = "$2b$12$C6UzMDM.H6dfI/f/IKcEeO7ZBB3sO8HH0mZ0F0dGxTZBoUmqK3O9K";
-      const hashToCheck = identity?.passwordHash || dummyHash;
+      const hashToCheck = identity?.passwordHash || TIMING_EQUALIZER_HASH;
       const pepper = this.config.pepper || "";
       const passwordMatches = await bcrypt.compare(password + pepper, hashToCheck);
 
       if (!identity || !identity.passwordHash || !passwordMatches) {
         await this.recordFailedAttempt(floodContext);
+        // PII note: no raw email in logs; the identity id (when known) is
+        // enough to correlate with a user for debugging.
         logger.info("Local login failed", {
           service: "local-auth",
-          email,
+          identityId: identity?.id,
           reason: !identity ? "unknown_email" : !identity.passwordHash ? "no_password_set" : "bad_password",
         });
         res.status(401).json({ message: "Invalid email or password" });

@@ -168,6 +168,8 @@ export function createWebServiceAuthMiddleware(options: WebServiceAuthOptions = 
       });
     } catch (error) {
       const duration = Date.now() - startTime;
+      // PII triage (accepted): caller IP is required to investigate
+      // web-service auth failures and abuse; no other PII is logged here.
       logger.error('Web service authentication error', { error, ipAddress, path: req.path });
       
       logWsRequest({

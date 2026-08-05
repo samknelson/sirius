@@ -39,11 +39,12 @@ async function main() {
     const worker = await storage.workers.getWorker(workerId);
     if (worker) {
       const phones = await storage.contacts.phoneNumbers.getPhoneNumbersByContact(worker.contactId);
-      console.log("PHONES NOW:", JSON.stringify(phones.map((p) => ({ id: p.id, phoneNumber: p.phoneNumber, isActive: p.isActive, isPrimary: p.isPrimary })), null, 2));
+      // Mask phone numbers in output (last 4 only) — PII-dataflow hygiene.
+      console.log("PHONES NOW:", JSON.stringify(phones.map((p) => ({ id: p.id, phoneLast4: p.phoneNumber.slice(-4), isActive: p.isActive, isPrimary: p.isPrimary })), null, 2));
       const optinStorage = createCommSmsOptinStorage();
       for (const p of phones) {
         const optin = await optinStorage.getSmsOptinByPhoneNumber(p.phoneNumber);
-        console.log("OPTIN for", p.phoneNumber, ":", JSON.stringify(optin ?? null));
+        console.log("OPTIN for phone id", p.id, ":", JSON.stringify(optin ?? null));
       }
     }
   }

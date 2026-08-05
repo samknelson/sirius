@@ -4,8 +4,7 @@ import type { AuthProvider, ClerkProviderConfig, AuthenticatedUser } from "../ty
 import { storage } from "../../storage";
 import { storageLogger, logger } from "../../logger";
 import { getRequestContext } from "../../middleware/request-context";
-import { parseSSN } from "@shared/utils/ssn";
-import { z } from "zod";
+import { verifyWorkerIdentity } from "../identity-verification";
 import {
   registerPreVerifyWorkerRoute,
   linkWorkerToAuthIdentity,
@@ -365,47 +364,33 @@ export function createProvider(config: ClerkProviderConfig): AuthProvider {
           let verifiedWorker = (req.session as any).verifiedWorker;
 
           if (!verifiedWorker || !verifiedWorker.workerId) {
-            const { firstName: vfn, lastName: vln, ssn: vssn, dateOfBirth: vdob } = req.body || {};
-            if (vfn && vln && vssn && vdob) {
-              logger.info("Session lost during registration, re-verifying inline", {
+            logger.info("Session lost during registration, re-verifying inline", {
+              clerkUserId: auth.userId,
+            });
+
+            const result = await verifyWorkerIdentity(req.body);
+
+            if (result.status === "invalid_ssn") {
+              return res.status(400).json({ message: "Invalid SSN format" });
+            }
+
+            if (result.status === "verified") {
+              verifiedWorker = {
+                workerId: result.workerId,
+                contactId: result.contactId,
+                verifiedAt: Date.now(),
+              };
+              logger.info("Inline re-verification successful", {
+                workerId: result.workerId,
                 clerkUserId: auth.userId,
               });
-
-              let normalizedSSN: string;
-              try {
-                normalizedSSN = parseSSN(vssn);
-              } catch {
-                return res.status(400).json({ message: "Invalid SSN format" });
-              }
-
-              const worker = await storage.workers.getWorkerBySSN(normalizedSSN);
-              if (worker) {
-                const contact = await storage.contacts.getContact(worker.contactId);
-                if (contact) {
-                  const fnMatch = (contact.given || "").toLowerCase().trim() === vfn.toLowerCase().trim();
-                  const lnMatch = (contact.family || "").toLowerCase().trim() === vln.toLowerCase().trim();
-                  const dobMatch = contact.birthDate === vdob;
-
-                  if (fnMatch && lnMatch && dobMatch) {
-                    verifiedWorker = {
-                      workerId: worker.id,
-                      contactId: worker.contactId,
-                      verifiedAt: Date.now(),
-                    };
-                    logger.info("Inline re-verification successful", {
-                      workerId: worker.id,
-                      clerkUserId: auth.userId,
-                    });
-                  } else {
-                    logger.warn("Inline re-verification failed: field mismatch", {
-                      clerkUserId: auth.userId,
-                      fnMatch,
-                      lnMatch,
-                      dobMatch,
-                    });
-                  }
-                }
-              }
+            } else if (result.status === "field_mismatch") {
+              logger.warn("Inline re-verification failed: field mismatch", {
+                clerkUserId: auth.userId,
+                fnMatch: result.fnMatch,
+                lnMatch: result.lnMatch,
+                dobMatch: result.dobMatch,
+              });
             }
           }
 
