@@ -11,7 +11,11 @@ import {
   optionsWorkerRelationType,
   employers,
 } from "@shared/schema";
-import type { TrustProviderEdiContext } from "./registry";
+import type {
+  TrustProviderEdiContext,
+  TrustProviderEdiPlugin,
+  EdiBatchAggregates,
+} from "./registry";
 import { logger } from "../../../logger";
 
 /**
@@ -58,6 +62,77 @@ export function encodeFixedWidthRow(
 }
 
 // ---------------------------------------------------------------------------
+// CSV encoding
+// ---------------------------------------------------------------------------
+
+/** One CSV output column: `get` reads from the persisted row; no `get` emits empty. */
+export interface EdiCsvField {
+  name: string;
+  get?: (row: Record<string, unknown>) => string;
+}
+
+/** RFC-4180 escaping: quote when the value contains a comma, quote, or newline. */
+export function csvEscape(value: string): string {
+  return /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+}
+
+/** Encode one row as a CSV line (no trailing newline). */
+export function encodeCsvRow(
+  fields: readonly EdiCsvField[],
+  row: Record<string, unknown>,
+): string {
+  return fields.map((f) => csvEscape(f.get ? f.get(row) : "")).join(",");
+}
+
+/** The CSV column-header line (field names, escaped). */
+export function encodeCsvHeaderRow(fields: readonly EdiCsvField[]): string {
+  return fields.map((f) => csvEscape(f.name)).join(",");
+}
+
+// ---------------------------------------------------------------------------
+// File assembly (detail rows + optional header/trailer + CSV column header)
+// ---------------------------------------------------------------------------
+
+/**
+ * Assemble the full ordered list of output lines for an EDI file:
+ *
+ *   1. `encodeFileHeader` record(s), when the plugin provides them
+ *   2. the CSV column-header row (CSV format only, unless suppressed via
+ *      `csvIncludeHeaderRow: false`)
+ *   3. one detail line per persisted row (`encodeRow`)
+ *   4. `encodeFileTrailer` record(s), when the plugin provides them
+ *
+ * Header/trailer hooks receive batch aggregates (currently the detail
+ * record count) so trailers can carry record counts. Plugins with none of
+ * the optional hooks produce exactly the detail lines — byte-identical to
+ * the pre-header/trailer behavior (Kaiser, Health Net).
+ */
+export function assembleEdiFileLines(
+  plugin: TrustProviderEdiPlugin,
+  rows: ReadonlyArray<Record<string, unknown>>,
+  ctx: TrustProviderEdiContext,
+): string[] {
+  const detail = rows.map((r) => plugin.encodeRow(r, ctx));
+  const aggregates: EdiBatchAggregates = { detailRecordCount: detail.length };
+  const lines: string[] = [];
+  const push = (v: string | string[] | null | undefined) => {
+    if (v == null) return;
+    if (Array.isArray(v)) lines.push(...v);
+    else lines.push(v);
+  };
+  push(plugin.encodeFileHeader?.(ctx, aggregates));
+  if (
+    (plugin.outputFormat ?? "fixed-width") === "csv" &&
+    plugin.csvIncludeHeaderRow !== false
+  ) {
+    push(plugin.encodeCsvHeaderRow?.(ctx));
+  }
+  lines.push(...detail);
+  push(plugin.encodeFileTrailer?.(ctx, aggregates));
+  return lines;
+}
+
+// ---------------------------------------------------------------------------
 // Value normalization
 // ---------------------------------------------------------------------------
 
@@ -101,14 +176,22 @@ export function readAsOfYmd(ctx: TrustProviderEdiContext): string {
 
 /**
  * The benefit Sirius IDs a run should use: the config-level override
- * (`benefitSiriusId` in the config data blob) when present, else the
- * plugin's registered defaults.
+ * (`benefitSiriusIds` array or single `benefitSiriusId` in the config data
+ * blob) when present, else the plugin's registered defaults.
  */
 export function effectiveBenefitSiriusIds(
   ctx: TrustProviderEdiContext,
   registeredSiriusIds: readonly string[],
 ): string[] {
-  const override = (ctx.configData ?? {}).benefitSiriusId;
+  const data = ctx.configData ?? {};
+  const listOverride = data.benefitSiriusIds;
+  if (Array.isArray(listOverride)) {
+    const ids = listOverride.filter(
+      (s): s is string => typeof s === "string" && !!s,
+    );
+    if (ids.length) return ids;
+  }
+  const override = data.benefitSiriusId;
   if (typeof override === "string" && override) return [override];
   return [...registeredSiriusIds];
 }
@@ -258,6 +341,11 @@ export interface EdiDependent extends EdiPerson {
 /** One subscriber (wmb row) plus their active dependents. */
 export interface EdiMemberUnit {
   wmb: typeof trustWmb.$inferSelect;
+  /**
+   * Sirius ID of the benefit this unit's wmb row belongs to — lets a
+   * multi-benefit plugin tell which benefit a member unit came from.
+   */
+  benefitSiriusId: string | null;
   /** True when the wmb row's employer has the Sirius ID "COBRA". */
   isCobra: boolean;
   /**
@@ -330,6 +418,18 @@ export async function buildMemberUnits(
     // (worker, year, month) pairs for the batch's workers + benefits once.
     const workerIds = Array.from(new Set(wmbRows.map((r) => r.workerId)));
     const benefitIds = Array.from(new Set(wmbRows.map((r) => r.benefitId)));
+
+    // Benefit Sirius IDs so multi-benefit plugins can tell which benefit a
+    // unit came from.
+    const benefitRows = benefitIds.length
+      ? await db
+          .select({ id: trustBenefits.id, siriusId: trustBenefits.siriusId })
+          .from(trustBenefits)
+          .where(inArray(trustBenefits.id, benefitIds))
+      : [];
+    const siriusByBenefitId = new Map(
+      benefitRows.map((b) => [b.id, b.siriusId]),
+    );
     const allMonths = workerIds.length
       ? await db
           .select({
@@ -509,6 +609,7 @@ export async function buildMemberUnits(
 
       units.push({
         wmb,
+        benefitSiriusId: siriusByBenefitId.get(wmb.benefitId) ?? null,
         isCobra: cobraEmployerIds.has(wmb.employerId),
         coverageStartYmd: coverageStartFor(wmb.workerId, wmb.year, wmb.month),
         subscriber: {

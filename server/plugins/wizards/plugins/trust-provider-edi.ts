@@ -6,6 +6,7 @@ import {
   type TrustProviderEdiContext,
   type TrustProviderEdiPlugin,
 } from "../../trust/provider-edi/registry";
+import { assembleEdiFileLines } from "../../trust/provider-edi/base";
 
 /**
  * The single trust-provider EDI wizard. Generation, preview, and SFTP
@@ -220,10 +221,15 @@ async function encodeAllRows(
   ediCtx: TrustProviderEdiContext,
 ): Promise<{ content: string; rowCount: number }> {
   const rows = await ctx.storage.wizards.getReportData(ctx.wizardId);
-  const lines = rows.map((r) =>
-    plugin.encodeRow((r.data ?? {}) as Record<string, unknown>, ediCtx),
+  const lines = assembleEdiFileLines(
+    plugin,
+    rows.map((r) => (r.data ?? {}) as Record<string, unknown>),
+    ediCtx,
   );
-  return { content: lines.join("\r\n") + (lines.length ? "\r\n" : ""), rowCount: lines.length };
+  return {
+    content: lines.join("\r\n") + (lines.length ? "\r\n" : ""),
+    rowCount: rows.length,
+  };
 }
 
 /** Step 5 — deliver the encoded file to the configured SFTP destination. */

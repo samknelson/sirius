@@ -13,6 +13,7 @@ export {
   registerTrustProviderEdiPlugin,
   type TrustProviderEdiPlugin,
   type TrustProviderEdiContext,
+  type EdiBatchAggregates,
 } from "./registry";
 
 let kindRegistered = false;
