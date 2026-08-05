@@ -30,6 +30,17 @@ async function columnExists(table: string, column: string): Promise<boolean> {
   return res.rows[0]?.exists === true || res.rows[0]?.exists === "t";
 }
 
+async function tableExists(table: string): Promise<boolean> {
+  const res = await db.execute(sql`
+    SELECT EXISTS (
+      SELECT 1
+      FROM information_schema.tables
+      WHERE table_schema = 'public' AND table_name = ${table}
+    ) AS exists
+  `);
+  return res.rows[0]?.exists === true || res.rows[0]?.exists === "t";
+}
+
 async function constraintExists(name: string): Promise<boolean> {
   const res = await db.execute(sql`
     SELECT EXISTS (
@@ -40,6 +51,16 @@ async function constraintExists(name: string): Promise<boolean> {
 }
 
 async function up(): Promise<void> {
+  // Fresh schema-only databases may already be on the unified plugin-config
+  // path and therefore have no legacy table to alter or backfill. The later
+  // 1015/1016 migrations create and populate the unified tables directly.
+  if (!(await tableExists("charge_plugin_configs"))) {
+    logger.info("Legacy charge_plugin_configs absent; skipping legacy upgrade", {
+      service: SERVICE,
+    });
+    return;
+  }
+
   // 1. Add `name` column.
   if (!(await columnExists("charge_plugin_configs", "name"))) {
     await db.execute(sql`ALTER TABLE charge_plugin_configs ADD COLUMN name text`);
