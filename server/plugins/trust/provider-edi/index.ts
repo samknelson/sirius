@@ -113,3 +113,4 @@ export function initializeTrustProviderEdiSystem(): void {
 // Plugin registrations (side-effect imports — each file self-registers).
 import "./plugins/sitespecific-bao-kaiser";
 import "./plugins/sitespecific-bao-healthnet";
+import "./plugins/sitespecific-smf-local11";
