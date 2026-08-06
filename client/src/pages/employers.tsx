@@ -70,7 +70,7 @@ export default function Employers() {
     enabled: showBenefits,
   });
 
-  const activeBenefits = benefits.filter((b) => b.isActive);
+  const activeBenefits = benefits.filter((b) => b.isActive && b.showOnWorkerList);
 
   const tabs = [
     { id: "list", label: "List", href: "/employers" },

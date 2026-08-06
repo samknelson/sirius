@@ -16,7 +16,42 @@ import { useQuery } from "@tanstack/react-query";
 import { renderIcon } from "@/components/ui/icon-picker";
 
 type EmployerWithCompany = Employer & { companyId?: string | null; companyName?: string | null };
-type BenefitWithIcon = TrustBenefit & { benefitTypeIcon?: string | null; color?: string | null };
+type BenefitWithIcon = TrustBenefit & {
+  benefitTypeIcon?: string | null;
+  color?: string | null;
+  benefitTypeName?: string | null;
+  benefitTypeSequence?: number | null;
+};
+
+interface BenefitGroup {
+  key: string;
+  name: string;
+  benefits: BenefitWithIcon[];
+}
+
+function groupBenefitsByType(benefits: BenefitWithIcon[]): BenefitGroup[] {
+  const groups = new Map<string, BenefitGroup & { sequence: number }>();
+  for (const b of benefits) {
+    const key = b.benefitType ?? "__none__";
+    let group = groups.get(key);
+    if (!group) {
+      group = {
+        key,
+        name: b.benefitTypeName || "Other",
+        sequence: b.benefitTypeSequence ?? Number.MAX_SAFE_INTEGER,
+        benefits: [],
+      };
+      groups.set(key, group);
+    }
+    group.benefits.push(b);
+  }
+  const list = Array.from(groups.values());
+  list.sort((a, b) => a.sequence - b.sequence || a.name.localeCompare(b.name));
+  for (const g of list) {
+    g.benefits.sort((a, b) => a.name.localeCompare(b.name));
+  }
+  return list;
+}
 
 interface ContactIndicator {
   contactId: string;
@@ -152,6 +187,8 @@ export function EmployersTable({ employers, isLoading, includeInactive, onToggle
     setSortOrder(sortOrder === "asc" ? "desc" : "asc");
   };
 
+  const benefitGroups = useMemo(() => groupBenefitsByType(benefits), [benefits]);
+
   if (isLoading) {
     return (
       <Card className="shadow-sm overflow-hidden">
@@ -267,6 +304,22 @@ export function EmployersTable({ employers, isLoading, includeInactive, onToggle
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-muted/20">
+              {showBenefits && benefitGroups.length > 0 && (
+                <tr>
+                  <th colSpan={(selectable ? 1 : 0) + 4} />
+                  {benefitGroups.map((g) => (
+                    <th
+                      key={g.key}
+                      colSpan={g.benefits.length}
+                      className="px-2 py-1.5 text-center text-[10px] font-semibold text-muted-foreground uppercase tracking-wider border-l border-border"
+                      data-testid={`th-benefit-group-${g.key}`}
+                    >
+                      {g.name}
+                    </th>
+                  ))}
+                  <th />
+                </tr>
+              )}
               <tr>
                 {selectable && (
                   <th className="px-6 py-3 text-left w-10">
@@ -290,11 +343,6 @@ export function EmployersTable({ employers, isLoading, includeInactive, onToggle
                     />
                   </th>
                 )}
-                {showCompany && (
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                    <span>Company</span>
-                  </th>
-                )}
                 <th 
                   className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider cursor-pointer hover:text-foreground transition-colors"
                   onClick={toggleSort}
@@ -314,26 +362,28 @@ export function EmployersTable({ employers, isLoading, includeInactive, onToggle
                 <th className="px-6 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider whitespace-nowrap">
                   <span>Workers</span>
                 </th>
-                {showBenefits && benefits.map((b) => (
-                  <th
-                    key={b.id}
-                    className="px-4 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider whitespace-nowrap"
-                    title={b.name}
-                    data-testid={`th-benefit-${b.id}`}
-                  >
-                    <div className="flex items-center justify-end gap-1">
-                      {b.benefitTypeIcon && (
-                        <span
-                          className="inline-flex"
-                          style={b.color ? { color: b.color } : undefined}
-                        >
-                          {renderIcon(b.benefitTypeIcon, b.color ? "w-3.5 h-3.5" : "w-3.5 h-3.5 text-muted-foreground")}
-                        </span>
-                      )}
-                      <span>{b.name}</span>
-                    </div>
-                  </th>
-                ))}
+                {showBenefits && benefitGroups.map((g) =>
+                  g.benefits.map((b, i) => (
+                    <th
+                      key={b.id}
+                      className={`px-2 py-3 text-center text-xs font-medium text-muted-foreground whitespace-nowrap ${i === 0 ? "border-l border-border" : ""}`}
+                      title={b.name}
+                      data-testid={`th-benefit-${b.id}`}
+                    >
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span
+                            className="inline-flex justify-center"
+                            style={b.color ? { color: b.color } : undefined}
+                          >
+                            {renderIcon(b.benefitTypeIcon || "Circle", b.color ? "w-4 h-4" : "w-4 h-4 text-muted-foreground")}
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent>{b.name}</TooltipContent>
+                      </Tooltip>
+                    </th>
+                  ))
+                )}
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   <span>Actions</span>
                 </th>
@@ -361,17 +411,15 @@ export function EmployersTable({ employers, isLoading, includeInactive, onToggle
                       />
                     </td>
                   )}
-                  {showCompany && (
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span
-                        className="text-sm text-muted-foreground"
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    {showCompany && employer.companyName && (
+                      <div
+                        className="text-xs text-muted-foreground"
                         data-testid={`text-employer-company-${employer.id}`}
                       >
-                        {employer.companyName || ""}
-                      </span>
-                    </td>
-                  )}
-                  <td className="px-6 py-4 whitespace-nowrap">
+                        {employer.companyName}
+                      </div>
+                    )}
                     <span
                       className="text-sm font-medium text-foreground"
                       data-testid={`text-employer-name-${employer.id}`}
@@ -437,16 +485,17 @@ export function EmployersTable({ employers, isLoading, includeInactive, onToggle
                       <span className="text-muted-foreground tabular-nums">0</span>
                     )}
                   </td>
-                  {showBenefits && benefits.map((b) => {
+                  {showBenefits && benefitGroups.map((g) =>
+                    g.benefits.map((b, i) => {
                     const count = benefitCounts?.[employer.id]?.[b.id] ?? 0;
                     return (
                       <td
                         key={b.id}
-                        className="px-4 py-4 whitespace-nowrap text-right text-sm"
+                        className={`px-2 py-4 whitespace-nowrap text-center text-sm ${i === 0 ? "border-l border-border" : ""}`}
                         data-testid={`text-employer-benefit-count-${employer.id}-${b.id}`}
                       >
                         {countsLoading && !benefitCounts ? (
-                          <Skeleton className="h-4 w-6 ml-auto" />
+                          <Skeleton className="h-4 w-6 mx-auto" />
                         ) : count > 0 ? (
                           <span className="font-medium tabular-nums">{count}</span>
                         ) : (
@@ -454,7 +503,7 @@ export function EmployersTable({ employers, isLoading, includeInactive, onToggle
                         )}
                       </td>
                     );
-                  })}
+                  }))}
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
                     <div className="flex items-center space-x-2">
                       <Link href={`/employers/${employer.id}`}>
