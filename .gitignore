@@ -20,3 +20,5 @@ deploy/
 # S1 migration docs (contain live connection details; kept local only)
 docs/s1-migration/
 attached_assets/06-strategy-revision*
+attached_assets/Pasted--ledger-*
+attached_assets/Pasted--payment-*
