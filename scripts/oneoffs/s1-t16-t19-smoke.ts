@@ -43,6 +43,9 @@ const N = {
   payment: 99900501,
   ar1: 99900601, // +50.00 charge referencing wb1 (→ trust_wmb anchor)
   ar2: 99900602, // -25.00 allocation referencing payment (→ ledger_payment)
+  // T-policies smoke (§P4 N27 alias table)
+  policyDef: 99900701,         // sirius_json_definition node: title "UNITE HERE Plan"
+  electionWithPolicy: 99900702,// election referencing policyDef via field_sirius_trust_policy
 };
 const EPOCH_2024_04_15 = Date.UTC(2024, 3, 15) / 1000; // node.changed for end-dating
 const EPOCH_AR_TS = Date.UTC(2024, 5, 1, 12) / 1000; // 2024-06-01T12:00Z → LA 2024-06-01
@@ -370,6 +373,48 @@ async function main() {
     check("t18b created 0", t18b.report.created === 0, t18b.report.created);
     check("t18b adopted 52", t18b.report.adopted === 52, t18b.report.adopted);
     check("t18b verify clean", t18b.report.verifyFailures === 0, t18b.report.verifyFailures);
+
+    // ---- T-policies (N27 alias table: sirius_json_definition bundle) -------
+    // Seed one sirius_json_definition node + one election referencing it.
+    // Title "UNITE HERE Plan" must resolve via the alias table to S2 siriusId=R.
+    // Policy_ref_not_staged allowed because the election also carries the ref
+    // but the policy node IS staged — no actual orphan in this smoke run.
+    console.log("T-policies run 1 (alias-table match + idmap write):");
+    const policyBase = { vid: null as number | null, uid: 1, status: 1, created: EPOCH_2024_04_15, changed: EPOCH_2024_04_15 };
+    await upsertRecords([
+      {
+        ...policyBase,
+        bundle: "sirius_json_definition",
+        nid: N.policyDef,
+        title: "UNITE HERE Plan",
+        fields: {},
+      },
+      {
+        ...policyBase,
+        bundle: "sirius_trust_worker_election",
+        nid: N.electionWithPolicy,
+        title: null,
+        // field_sirius_trust_policy = reference to policyDef
+        fields: { field_sirius_trust_policy: N.policyDef },
+      },
+    ]);
+    const tPol1 = runLoader("load-policies.ts", []);
+    check("tPol1 exit 0", tPol1.status === 0, tPol1.status);
+    check("tPol1 distinctPolicyRefs ≥ 1", (tPol1.report.distinctPolicyRefs as number) >= 1, tPol1.report.distinctPolicyRefs);
+    check("tPol1 mappingsWritten ≥ 1", (tPol1.report.mappingsWritten as number) >= 1, tPol1.report.mappingsWritten);
+    check("tPol1 verify clean", tPol1.report.verifyFailures === 0, tPol1.report.verifyFailures);
+    // Confirm id_map entry points at S2 policy with siriusId=R
+    const policyMaps = await getMappings("policy", [N.policyDef]);
+    const mappedPolicyId = policyMaps.get(N.policyDef)?.s2Id;
+    const policyRow = mappedPolicyId ? await storage.policies.getPolicyById(mappedPolicyId) : null;
+    check("tPol1 alias UNITE HERE Plan → R", policyRow?.siriusId === "R", policyRow?.siriusId);
+
+    console.log("T-policies run 2 (idempotent — zero writes):");
+    const tPol2 = runLoader("load-policies.ts", []);
+    check("tPol2 exit 0", tPol2.status === 0, tPol2.status);
+    check("tPol2 mappingsWritten 0", tPol2.report.mappingsWritten === 0, tPol2.report.mappingsWritten);
+    check("tPol2 matchedIdMap ≥ 1", (tPol2.report.matchedIdMap as number) >= 1, tPol2.report.matchedIdMap);
+    check("tPol2 verify clean", tPol2.report.verifyFailures === 0, tPol2.report.verifyFailures);
   } finally {
     // ---- cleanup (best-effort, loud on error) -------------------------------
     console.log("cleanup:");

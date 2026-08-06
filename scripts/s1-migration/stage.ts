@@ -46,6 +46,10 @@ const IN_SCOPE_BUNDLES = [
   "sirius_trust_benefit",
   "sirius_trust_worker_election",
   "sirius_trust_worker_benefit",
+  // P4 RULED 2026-08-06 (N27): field_sirius_trust_policy targets are
+  // sirius_json_definition nodes (242,664 prod refs to 15 distinct nodes);
+  // staging this bundle lets load-policies.ts resolve the policy nids.
+  "sirius_json_definition",
   "sirius_payperiod",
   "smf_worker_month",
   "sirius_employee",
