@@ -79,7 +79,10 @@ export function getSession(): RequestHandler {
   // sanctioned use of the db pool outside the storage layer because the session
   // store is owned by connect-pg-simple.
   const sessionStore = new pgStore({
-    pool,
+    // Cast: the Neon serverless Pool is API-compatible with pg.Pool for
+    // connect-pg-simple's usage, but the nominal types diverge across pg
+    // versions in the dependency tree.
+    pool: pool as any,
     createTableIfMissing: false,
     ttl: sessionTtl,
     tableName: "sessions",

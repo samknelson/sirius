@@ -127,22 +127,23 @@ function reviveDates(rows: any[]): any[] {
 /**
  * Validate and sanitize quickstart name to prevent path traversal
  */
-function validateQuickstartName(name: string): void {
-  // Only allow alphanumeric, hyphens, and underscores
+function resolveQuickstartPath(name: string): string {
+  // Only allow alphanumeric, hyphens, and underscores (no separators, dots,
+  // or other special characters — structurally rules out traversal input)
   const validNameRegex = /^[a-zA-Z0-9_-]+$/;
-  if (!validNameRegex.test(name)) {
+  if (!validNameRegex.test(name) || name.length > 100) {
     throw new Error('Invalid quickstart name. Use only letters, numbers, hyphens, and underscores.');
   }
-  
-  // Additional safety: ensure the resolved path stays within quickstarts directory
-  const filename = `${name}.json`;
-  const filepath = path.join(QUICKSTARTS_DIR, filename);
-  const resolvedPath = path.resolve(filepath);
+
+  // Defense in depth: ensure the resolved path stays within quickstarts directory
+  const resolvedPath = path.resolve(QUICKSTARTS_DIR, `${name}.json`);
   const resolvedDir = path.resolve(QUICKSTARTS_DIR);
-  
+
   if (!resolvedPath.startsWith(resolvedDir + path.sep)) {
     throw new Error('Invalid quickstart name: path traversal detected.');
   }
+
+  return resolvedPath;
 }
 
 /**
@@ -182,8 +183,8 @@ function validateQuickstartData(data: any): void {
  * Export current database state to a named quickstart file
  */
 export async function exportQuickstart(name: string): Promise<QuickstartMetadata> {
-  // Validate name to prevent path traversal
-  validateQuickstartName(name);
+  // Validate name and resolve a path guaranteed inside QUICKSTARTS_DIR
+  const filepath = resolveQuickstartPath(name);
   
   const data: Record<string, any[]> = {};
   const tableCounts: Record<string, number> = {};
@@ -217,9 +218,7 @@ export async function exportQuickstart(name: string): Promise<QuickstartMetadata
   // Ensure directory exists
   await fs.mkdir(QUICKSTARTS_DIR, { recursive: true });
 
-  // Write to file
-  const filename = `${name}.json`;
-  const filepath = path.join(QUICKSTARTS_DIR, filename);
+  // Write to file (path already validated by resolveQuickstartPath)
   await fs.writeFile(filepath, JSON.stringify(quickstartData, null, 2), 'utf-8');
 
   return metadata;
@@ -229,11 +228,8 @@ export async function exportQuickstart(name: string): Promise<QuickstartMetadata
  * Import a quickstart file, replacing all data in the database
  */
 export async function importQuickstart(name: string): Promise<QuickstartMetadata> {
-  // Validate name to prevent path traversal
-  validateQuickstartName(name);
-  
-  const filename = `${name}.json`;
-  const filepath = path.join(QUICKSTARTS_DIR, filename);
+  // Validate name and resolve a path guaranteed inside QUICKSTARTS_DIR
+  const filepath = resolveQuickstartPath(name);
 
   // Read and parse file
   const fileContent = await fs.readFile(filepath, 'utf-8');
@@ -313,10 +309,7 @@ export async function listQuickstarts(): Promise<QuickstartMetadata[]> {
  * Delete a quickstart file
  */
 export async function deleteQuickstart(name: string): Promise<void> {
-  // Validate name to prevent path traversal
-  validateQuickstartName(name);
-  
-  const filename = `${name}.json`;
-  const filepath = path.join(QUICKSTARTS_DIR, filename);
+  // Validate name and resolve a path guaranteed inside QUICKSTARTS_DIR
+  const filepath = resolveQuickstartPath(name);
   await fs.unlink(filepath);
 }

@@ -296,6 +296,26 @@ nested `max-w-7xl` is harmless inside the layout's container). New config
 pages can simply render their content directly and rely on the layout for
 width.
 
+# Security: accepted residual risks (Aug 2026 scan remediation)
+
+-   **`xlsx` (SheetJS)** — high advisories (prototype pollution, ReDoS)
+    with **no fixed version published**. Retained with mitigations:
+    spreadsheets are only parsed from staff-authenticated wizard/import
+    uploads (never anonymous input) and all upload routes enforce multer
+    file-size limits. Revisit if a fixed release or drop-in maintained
+    fork appears; replacing with `exceljs` would touch all wizard
+    import/export paths.
+-   **`vite`/`esbuild` (dev tooling)** — moderate advisory on the dev
+    server only; not part of the production bundle. The Vite 5→6 major
+    upgrade is deferred.
+-   **SAST `fs-express` flags on `server/services/quickstart.ts`** —
+    verified false positives: every user-supplied quickstart name goes
+    through `resolveQuickstartPath()` (strict `[a-zA-Z0-9_-]` allowlist
+    plus a post-resolve containment check inside `QUICKSTARTS_DIR`).
+-   Remaining `npm audit` moderates are transitive
+    (officeparser→file-type, @google-cloud/storage→uuid,
+    drizzle-kit→esbuild-kit) with no non-breaking fix path.
+
 # Where to read more
 
 -   **Architecture decisions** (YMD date convention, charge plugin

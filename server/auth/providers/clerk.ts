@@ -362,10 +362,9 @@ export function createProvider(config: ClerkProviderConfig): AuthProvider {
 
           const contact = await storage.contacts.getContact(worker.contactId);
           if (!contact) {
-            logger.warn("Worker pre-verification failed: contact not found", {
-              workerId: worker.id,
-              contactId: worker.contactId,
-            });
+            // Do not log identifiers derived from the SSN lookup — keeps any
+            // SSN-tainted dataflow out of the logs entirely.
+            logger.warn("Worker pre-verification failed: contact not found");
             return res.status(404).json({
               message: "We could not verify your identity. Please contact your administrator.",
             });
@@ -377,7 +376,6 @@ export function createProvider(config: ClerkProviderConfig): AuthProvider {
 
           if (!fnMatch || !lnMatch || !dobMatch) {
             logger.info("Worker pre-verification failed: field mismatch", {
-              workerId: worker.id,
               fnMatch,
               lnMatch,
               dobMatch,
@@ -393,9 +391,7 @@ export function createProvider(config: ClerkProviderConfig): AuthProvider {
           if (existingIdentities) {
             const identities = await storage.authIdentities.getByUserId(existingIdentities.id);
             if (identities.some((i) => i.providerType === "clerk")) {
-              logger.info("Worker pre-verification blocked: already registered", {
-                workerId: worker.id,
-              });
+              logger.info("Worker pre-verification blocked: already registered");
               return res.status(409).json({
                 message: "This worker already has an account. Please use the Sign In button instead.",
               });
@@ -415,9 +411,7 @@ export function createProvider(config: ClerkProviderConfig): AuthProvider {
             });
           });
 
-          logger.info("Worker pre-verification successful", {
-            workerId: worker.id,
-          });
+          logger.info("Worker pre-verification successful");
 
           res.json({
             success: true,
@@ -425,7 +419,11 @@ export function createProvider(config: ClerkProviderConfig): AuthProvider {
             workerName: `${contact.given || ""} ${contact.family || ""}`.trim(),
           });
         } catch (error) {
-          logger.error("Worker pre-verification error", { error });
+          // Log only the error message — never the raw error/request objects,
+          // which could carry PII (SSN, DOB) from the verification payload.
+          logger.error("Worker pre-verification error", {
+            error: error instanceof Error ? error.message : String(error),
+          });
           res.status(500).json({ message: "An unexpected error occurred. Please try again." });
         }
       });
@@ -504,7 +502,6 @@ export function createProvider(config: ClerkProviderConfig): AuthProvider {
                       verifiedAt: Date.now(),
                     };
                     logger.info("Inline re-verification successful", {
-                      workerId: worker.id,
                       clerkUserId: auth.userId,
                     });
                   } else {
@@ -701,7 +698,11 @@ export function createProvider(config: ClerkProviderConfig): AuthProvider {
             },
           });
         } catch (error) {
-          logger.error("Worker registration completion error", { error });
+          // Log only the error message — never the raw error/request objects,
+        // which could carry PII (SSN, DOB) from the verification payload.
+        logger.error("Worker registration completion error", {
+          error: error instanceof Error ? error.message : String(error),
+        });
           res.status(500).json({ message: "An unexpected error occurred. Please try again." });
         }
       });

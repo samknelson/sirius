@@ -149,7 +149,7 @@ async function populateWorkers() {
       if (Math.random() < 0.85) {
         const ssn = generateSSN();
         await storage.workers.updateWorkerSSN(worker.id, ssn);
-        console.log(`  ✓ SSN: ${ssn}`);
+        console.log(`  ✓ SSN assigned (redacted)`);
       }
 
       // 85% chance of primary phone
