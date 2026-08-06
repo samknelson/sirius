@@ -84,7 +84,7 @@ const KNOWN_SKIPPED: Record<string, string> = {
   // s1_staging.terms by other loaders — no S2 options table to load into:
   sirius_gender: "consumed_by_T3_gender_name_match", // T3 resolves worker gender tid -> staged term name -> options_gender by name
   grievance_contact_types: "consumed_by_T24_contact_type_names", // T24 resolves contact-type tids -> staged term names -> options_employer_contact_type
-  sirius_contact_tags: "no_consumer_yet_worker_month_tags", // smf_worker_month tag terms; no loader consumes them yet
+  sirius_contact_tags: "stage_only_except_T29_keep_tag", // smf_worker_month tag terms stay staged; T29 consumes ONLY "Comms: Received Enrollment Packet" straight from s1_staging.terms (N24 ruling 2026-08-05)
 };
 
 /** Fallback capability check when the target table is empty (list() rows

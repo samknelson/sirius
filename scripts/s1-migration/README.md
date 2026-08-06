@@ -91,8 +91,11 @@ loaders against ANY target (fresh branch or production), ensure:
 - **Load order matters:** stage → seed-employment-statuses (fresh DB) →
   options → contacts/workers → member-statuses → employers → policies →
   relationships → employee-ids → elections → benefit-history → **payments →
-  ledger** → hours. Payments run BEFORE ledger: negative AR rows reference
-  payment nids, and T18 resolves them through id_map `payment`.
+  ledger** → hours → enrollment-packet-tags. Payments run BEFORE ledger:
+  negative AR rows reference payment nids, and T18 resolves them through
+  id_map `payment`. T29 (enrollment-packet-tags) only needs the `worker`
+  id_map, so any slot after contacts/workers works; it is listed last to
+  keep the spine loads together.
   Later loaders resolve earlier loaders' `id_map` entries; missing mappings
   are rejects/skips. `id_map` rows pointing at deleted S2 rows hard-fail —
   repair the map, never delete it.
@@ -383,6 +386,36 @@ doesn't match. It must never point at production.
   `referenceType='s1-unknown'` + `referenceId=String(nid)`, and
   `data.s1ReferenceNid` is always stashed for audit. `date` = raw epoch ts;
   `statement_ymd` = LA-calendar first-of-month of that ts.
+
+- `load-enrollment-packet-tags.ts` — T29 (closes N24, ruled 2026-08-05):
+  `smf_worker_month` tags stay extract-and-stage only EXCEPT exactly one —
+  **"Comms: Received Enrollment Packet"** — which loads as one offline
+  `comm` record per tagged (worker, month). **S2 home decision (build-time
+  ruling, recorded here + in the loader header):** NOT comm +
+  comm_interaction (its `call_reason_id` is a NOT NULL FK into the seeded
+  MSR call reasons and its channel is constrained to the six call/visit
+  channels — a packet is not a member-service interaction) and NOT
+  comm_postal (NOT NULL to-address columns; S1 has no packet address).
+  Instead: a parent-only `comm` row, medium `offline`, status `logged`,
+  contact = the worker's contact, `sent` = `received` = first-of-month UTC,
+  provenance + month in `data` (`s1Loader`, `kind:
+  enrollment_packet_received`, `ym`, `s1.{nid,workerNid,tid}`). The comm
+  history UI renders unknown mediums as a plain capitalized label with no
+  child-details requirement. Keep-tag tid(s) resolve from `s1_staging.terms`
+  by normalized name in vocabulary `sirius_contact_tags`; the same name in
+  any OTHER vocabulary hard-fails before any write. Grain is one comm per
+  (worker, month): duplicate tagged nodes adopt the first node's comm
+  (`duplicateWorkerMonth`). Idempotent via id_map `wm-packet`; crash repair
+  re-adopts by (contact, month) provenance (T16/T19 pattern); mapped-but-
+  deleted comms hard-reject (`mapped_comm_missing` — repair the map).
+  Prod scale (2.53M nodes / 13.57M tag rows) is covered by `pagedStaged`
+  keyset paging + page-batched IN-queries for every lookup. Dev: the
+  synthetic S1 MariaDB predates the tag vocabulary (all worker-month tag
+  tids are NULL, no `sirius_contact_tags` terms), so the dev run is a
+  documented no-op (`keepTagTids=[]`, `inScope=0`);
+  `scripts/oneoffs/s1-t29-packet-tag-smoke.ts` seeds self-cleaning fakes
+  for the real paths (scope filter, grain adoption, reject gate, idempotent
+  re-run, crash repair, foreign-vocabulary preflight).
 
 `scripts/oneoffs/s1-t16-t19-smoke.ts` covers the four loaders end-to-end:
 it seeds fully-populated fake staged rows against real dev entities (the
