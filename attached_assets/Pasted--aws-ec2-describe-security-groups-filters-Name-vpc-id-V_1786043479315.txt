@@ -1,0 +1,13 @@
+~ $ aws ec2 describe-security-groups --filters Name=vpc-id,Values=vpc-094aaf59441dcabb8 \
+>   --query 'SecurityGroups[].[GroupId,GroupName,Description]' --output table
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+|                                                                                               DescribeSecurityGroups                                                                                               |
++----------------------+--------------------------------------------------------------------------------------------------------------------------------+------------------------------------------------------------+
+|  sg-03a162311ed5df938|  default                                                                                                                       |  default VPC security group                                |
+|  sg-008fa104f252ef22e|  s1-migration-copy-db                                                                                                          |  S1 copy - 3306 from FC tasks                              |
+|  sg-08647859cd80842e1|  build-system-security-group-ok2x71dva                                                                                         |  Security group for build system                           |
+|  sg-0706494f584922bae|  fc-ue2ts0zjx-baos2-migrationstage-cmshuhpl200odkz1dyolmfdpr-cmshuhpl200odkz1dyolmfdpr-ContainerSecurityGroup-7SJB63gCO4OX     |  fc-web-server-4bcead-vm2tt0zzoContainerSecurityGroup      |
+|  sg-0bb10694b0e2a1e96|  fc-migration-stage-5annqx-5g2vg1-NoIngressSecurityGroup-diJuXAafIDei                                                          |  Security group with no ingress rule                       |
+|  sg-0586b1d5e4f9d656b|  fc-ue2ts0zjx-baos2-migrationstage-cmshuhpl200odkz1dyolmfdpr-cmshuhpl200odkz1dyolmfdpr-LoadBalancerSecurityGroup-sVEcz6Q2B7qL  |  fc-web-server-4bcead-vm2tt0zzo-LoadBalancerSecurityGroup  |
++----------------------+--------------------------------------------------------------------------------------------------------------------------------+------------------------------------------------------------+
