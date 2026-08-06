@@ -69,6 +69,56 @@ const stagedFsidCte = sql`
   )
 `;
 
+/**
+ * Defense-in-depth redaction for run args/report jsonb before it leaves the
+ * server. Reports are aggregate-only by design (counters, reason codes,
+ * nid/uid samples), but recordRun accepts arbitrary JSON and some harnesses
+ * persist raw argv — so we cannot rely on convention alone. This pass:
+ *   - redacts values under credential-ish keys (password/secret/token/dsn/…)
+ *   - redacts strings that look like URLs/DSNs, emails, or dashed SSNs
+ *   - truncates very long strings (free text has no place in a report)
+ *   - caps depth/breadth so a pathological report can't flood the response
+ */
+const SENSITIVE_KEY_RE =
+  /(password|passwd|secret|token|credential|dsn|connection|conn_str|authorization|cookie|apikey|api_key|private)/i;
+const URLISH_RE = /[a-z][a-z0-9+.-]*:\/\//i;
+const EMAIL_RE = /[^\s@]+@[^\s@]+\.[^\s@]+/;
+const SSN_RE = /\b\d{3}-\d{2}-\d{4}\b/;
+const MAX_STRING = 300;
+const MAX_DEPTH = 8;
+const MAX_KEYS = 200;
+const MAX_ARRAY = 100;
+
+function sanitizeRunJson(value: unknown, depth = 0): unknown {
+  if (depth > MAX_DEPTH) return "[depth capped]";
+  if (typeof value === "string") {
+    if (URLISH_RE.test(value) || EMAIL_RE.test(value) || SSN_RE.test(value)) {
+      return "[redacted]";
+    }
+    return value.length > MAX_STRING ? `${value.slice(0, MAX_STRING)}…[truncated]` : value;
+  }
+  if (Array.isArray(value)) {
+    const out = value.slice(0, MAX_ARRAY).map((v) => sanitizeRunJson(v, depth + 1));
+    if (value.length > MAX_ARRAY) out.push(`[${value.length - MAX_ARRAY} more]`);
+    return out;
+  }
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    let n = 0;
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      if (++n > MAX_KEYS) {
+        out["…"] = "[keys capped]";
+        break;
+      }
+      out[k] = SENSITIVE_KEY_RE.test(k) || k === "argv"
+        ? "[redacted]"
+        : sanitizeRunJson(v, depth + 1);
+    }
+    return out;
+  }
+  return value;
+}
+
 export function registerS1MigrationRoutes(app: Express, requireAuth: RequestHandler) {
   const gates: RequestHandler[] = [
     requireAuth,
@@ -228,8 +278,8 @@ export function registerS1MigrationRoutes(app: Express, requireAuth: RequestHand
         id: Number(r.id),
         startedAt: String(r.started_at),
         finishedAt: String(r.finished_at),
-        args: (r.args ?? {}) as Record<string, unknown>,
-        report: (r.report ?? {}) as Record<string, unknown>,
+        args: sanitizeRunJson(r.args ?? {}) as Record<string, unknown>,
+        report: sanitizeRunJson(r.report ?? {}) as Record<string, unknown>,
       }));
       res.json({ stagingPresent: true, runs });
     } catch (e) {

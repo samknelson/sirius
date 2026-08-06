@@ -140,6 +140,14 @@ function durationS(run: RunRow): string {
 }
 
 type CheckState = "pass" | "fail" | "pending";
+
+/** Latest parity run → readiness state; indeterminate outcomes stay pending. */
+function parityState(run: RunRow | undefined): CheckState {
+  if (!run) return "pending";
+  const ok = runOutcome(run).ok;
+  if (ok === null) return "pending";
+  return ok ? "pass" : "fail";
+}
 function CheckIcon({ state }: { state: CheckState }) {
   if (state === "pass") return <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />;
   if (state === "fail") return <XCircle className="h-4 w-4 text-destructive" />;
@@ -217,7 +225,7 @@ export default function S1MigrationDashboard() {
     {
       id: "balance-parity",
       label: "Balance parity",
-      state: latestBalance ? (runOutcome(latestBalance).ok ? "pass" : "fail") : "pending",
+      state: parityState(latestBalance),
       detail: latestBalance
         ? `${runOutcome(latestBalance).label} at ${fmtTs(latestBalance.finishedAt)}`
         : "not yet run",
@@ -225,7 +233,7 @@ export default function S1MigrationDashboard() {
     {
       id: "month-parity",
       label: "Month parity",
-      state: latestMonth ? (runOutcome(latestMonth).ok ? "pass" : "fail") : "pending",
+      state: parityState(latestMonth),
       detail: latestMonth
         ? `${runOutcome(latestMonth).label} at ${fmtTs(latestMonth.finishedAt)}`
         : "not yet run",
@@ -309,6 +317,11 @@ export default function S1MigrationDashboard() {
                       {collisions.nonNumericSiriusId} non-numeric (reject note)
                     </Badge>
                   </div>
+                  {collisions.duplicates.length >= 200 && (
+                    <p className="text-sm text-muted-foreground">
+                      Showing the first 200 colliding values — the full list is longer.
+                    </p>
+                  )}
                   {collisions.duplicates.length > 0 && (
                     <Table data-testid="table-collision-duplicates">
                       <TableHeader>
