@@ -61,6 +61,7 @@ import "./core/1115_files_file_system_id";
 import "./core/1116_add_trust_wmb_source_relation";
 import "./core/1117_create_comm_interaction";
 import "./core/1118_rename_member_status_scan_cron";
+import "./core/1119_cleanup_resurrected_member_status_scan";
 
 // Per-component migrations — each registered via
 // `registerComponentMigration(componentId, migration)`. Tracked by the
