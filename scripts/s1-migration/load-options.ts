@@ -80,6 +80,11 @@ const KNOWN_SKIPPED: Record<string, string> = {
   sirius_work_status: "not_migrated_4_8a",
   sirius_hour_type: "verify_only_employment_status",
   sirius_election_type: "consumed_by_T16_enrollment_type",
+  // Production-real vocabularies whose terms are consumed straight from
+  // s1_staging.terms by other loaders — no S2 options table to load into:
+  sirius_gender: "consumed_by_T3_gender_name_match", // T3 resolves worker gender tid -> staged term name -> options_gender by name
+  grievance_contact_types: "consumed_by_T24_contact_type_names", // T24 resolves contact-type tids -> staged term names -> options_employer_contact_type
+  sirius_contact_tags: "no_consumer_yet_worker_month_tags", // smf_worker_month tag terms; no loader consumes them yet
 };
 
 /** Fallback capability check when the target table is empty (list() rows
