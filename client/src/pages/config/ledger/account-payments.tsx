@@ -48,9 +48,10 @@ function AccountPaymentsContent() {
 
   const [currentPage, setCurrentPage] = useState(1);
 
-  const [showFilters, setShowFilters] = useState(false);
+  const [showFilters, setShowFilters] = useState(true);
   const [filterPaymentType, setFilterPaymentType] = useState<string>("all");
-  const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [filterStatus, setFilterStatus] = useState<string>("cleared");
+  const [statusTouched, setStatusTouched] = useState(false);
   const [filterMerchant, setFilterMerchant] = useState("");
   const [filterEntityType, setFilterEntityType] = useState<string>("all");
   const [filterEntityName, setFilterEntityName] = useState("");
@@ -67,8 +68,19 @@ function AccountPaymentsContent() {
   const [sortField, setSortField] = useState<SortField>("dateCleared");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
 
+  // Require explicit filter input (a date range and/or a deliberate status
+  // choice) before loading or displaying any payment rows.
+  const hasFilterInput =
+    statusTouched ||
+    Boolean(
+      filterDateCreatedFrom || filterDateCreatedTo ||
+      filterDateReceivedFrom || filterDateReceivedTo ||
+      filterDateClearedFrom || filterDateClearedTo
+    );
+
   const { data: payments, isLoading } = useQuery<LedgerPaymentWithEntity[]>({
     queryKey: ["/api/ledger/accounts", id, "payments"],
+    enabled: hasFilterInput,
   });
 
   const { data: paymentTypes = [] } = useQuery<LedgerPaymentType[]>({
@@ -318,10 +330,19 @@ function AccountPaymentsContent() {
     return Array.from(types).sort();
   }, [payments]);
 
-  // Clear all filters
+  // Total amount for the currently filtered set (same set the CSV export uses)
+  const filteredTotal = useMemo(() => {
+    return filteredAndSortedPayments.reduce((sum, p) => {
+      const amt = parseFloat(p.amount);
+      return sum + (isNaN(amt) ? 0 : amt);
+    }, 0);
+  }, [filteredAndSortedPayments]);
+
+  // Clear all filters (back to the default cleared-only, no-results-loaded state)
   const clearFilters = () => {
     setFilterPaymentType("all");
-    setFilterStatus("all");
+    setFilterStatus("cleared");
+    setStatusTouched(false);
     setFilterEntityType("all");
     setFilterEntityName("");
     setFilterMerchant("");
@@ -421,7 +442,9 @@ function AccountPaymentsContent() {
           <div>
             <CardTitle>Payments</CardTitle>
             <CardDescription>
-              {payments && payments.length > 0 ? (
+              {!hasFilterInput ? (
+                "Select filters to load payments"
+              ) : payments && payments.length > 0 ? (
                 <>
                   {filteredAndSortedPayments.length !== payments.length ? (
                     <>Showing {filteredAndSortedPayments.length} of {payments.length} payments (filtered)</>
@@ -470,6 +493,16 @@ function AccountPaymentsContent() {
       </CardHeader>
 
       <CardContent>
+        {filterStatus === "cleared" && (
+          <div
+            className="mb-4 p-3 rounded-lg border border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-950/40 text-sm text-amber-900 dark:text-amber-200"
+            data-testid="notice-cleared-filter"
+          >
+            <span className="font-medium">Showing cleared payments only.</span>{" "}
+            Draft, canceled, and error payments are excluded{filterStatus === "cleared" && !statusTouched ? " by default" : ""}. Change the Status filter to include them.
+          </div>
+        )}
+
         {showFilters && (
           <div className="mb-6 p-4 bg-muted/50 rounded-lg space-y-4">
             <div className="flex items-center justify-between mb-2">
@@ -505,7 +538,13 @@ function AccountPaymentsContent() {
 
               <div className="space-y-2">
                 <label className="text-sm font-medium">Status</label>
-                <Select value={filterStatus} onValueChange={setFilterStatus}>
+                <Select
+                  value={filterStatus}
+                  onValueChange={(value) => {
+                    setFilterStatus(value);
+                    setStatusTouched(true);
+                  }}
+                >
                   <SelectTrigger data-testid="select-filter-status">
                     <SelectValue placeholder="All statuses" />
                   </SelectTrigger>
@@ -634,7 +673,16 @@ function AccountPaymentsContent() {
           </div>
         )}
 
-        {isLoading ? (
+        {!hasFilterInput ? (
+          <div className="text-center py-12 text-muted-foreground" data-testid="prompt-select-filters">
+            <Filter className="h-8 w-8 mx-auto mb-3 opacity-50" />
+            <p className="font-medium">Choose filters to view payments</p>
+            <p className="text-sm mt-1">
+              Select a date range and/or confirm a status above to load results.
+              No payments are shown until you do.
+            </p>
+          </div>
+        ) : isLoading ? (
           <div className="text-center py-8 text-muted-foreground">
             Loading payments...
           </div>
@@ -644,6 +692,14 @@ function AccountPaymentsContent() {
           </div>
         ) : (
           <div className="border rounded-lg overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-2 bg-muted/50 border-b text-sm" data-testid="filtered-total">
+              <span className="text-muted-foreground">
+                Total for {totalFilteredPayments} filtered payment{totalFilteredPayments === 1 ? "" : "s"} (matches CSV export)
+              </span>
+              <span className="font-semibold tabular-nums">
+                {filteredTotal.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
+            </div>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -823,9 +879,11 @@ function AccountPaymentsContent() {
           </div>
         )}
 
-        <div className="mt-4 text-sm text-muted-foreground text-center">
-          Showing {paginatedPayments.length > 0 ? offset + 1 : 0} - {offset + paginatedPayments.length} of {totalFilteredPayments} {filteredAndSortedPayments.length !== (payments?.length || 0) ? 'filtered ' : ''}payments
-        </div>
+        {hasFilterInput && (
+          <div className="mt-4 text-sm text-muted-foreground text-center">
+            Showing {paginatedPayments.length > 0 ? offset + 1 : 0} - {offset + paginatedPayments.length} of {totalFilteredPayments} {filteredAndSortedPayments.length !== (payments?.length || 0) ? 'filtered ' : ''}payments
+          </div>
+        )}
       </CardContent>
     </Card>
   );
