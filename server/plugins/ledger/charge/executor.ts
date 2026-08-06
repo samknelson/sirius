@@ -190,6 +190,7 @@ async function createLedgerEntries(transactions: LedgerTransaction[]): Promise<v
         eaId: ea.id,
         referenceType: transaction.referenceType || "charge_plugin",
         referenceId: transaction.referenceId,
+        date: transaction.transactionDate,
         statementYmd: transaction.statementYmd || dateToYmd(transaction.transactionDate),
         memo: transaction.memo !== undefined ? transaction.memo : transaction.description,
         data: transaction.metadata,
