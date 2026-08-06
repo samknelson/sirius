@@ -44,6 +44,27 @@ export async function getMappings(
   return out;
 }
 
+/** ALL mappings for one entity type (used for lifecycle reconciliation). */
+export async function getAllMappings(
+  entity: string,
+): Promise<Map<number, { s2Id: string; stub: boolean }>> {
+  const out = new Map<number, { s2Id: string; stub: boolean }>();
+  const res = await db.execute(sql`
+    SELECT s1_id, s2_id, stub FROM s1_staging.id_map WHERE entity = ${entity}
+  `);
+  for (const row of (res as unknown as { rows: Array<{ s1_id: string | number; s2_id: string; stub: boolean }> }).rows) {
+    out.set(Number(row.s1_id), { s2Id: row.s2_id, stub: row.stub });
+  }
+  return out;
+}
+
+/** Remove a mapping (lifecycle remediation, e.g. reserved uids). */
+export async function deleteMapping(entity: string, s1Id: number): Promise<void> {
+  await db.execute(sql`
+    DELETE FROM s1_staging.id_map WHERE entity = ${entity} AND s1_id = ${s1Id}
+  `);
+}
+
 /**
  * Record a mapping and return the WINNING s2_id. On conflict the existing
  * mapping wins — a caller that created an S2 row and lost the race must use

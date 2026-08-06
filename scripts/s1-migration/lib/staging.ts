@@ -317,3 +317,210 @@ export async function* pagedRawLedger(pageSize: number): AsyncGenerator<RawLedge
     if (rows.length < pageSize) return;
   }
 }
+
+// ---------------------------------------------------------------------------
+// Raw Drupal user tables (T27) — `users`, `users_roles`, `role`, `authmap`
+// are core tables, not node bundles, so (like raw_ledger_ar) they get their
+// own lossless staging tables with watermark/stale-delete + count-verify
+// semantics. `pass`/`tfa_*` are NEVER staged (dropped at extraction, by
+// design — S2 is Okta-only).
+// ---------------------------------------------------------------------------
+
+export interface RawUserRow {
+  uid: number;
+  name: string | null;
+  mail: string | null;
+  created: number | null; // epoch seconds
+  access: number | null;
+  login: number | null;
+  status: number; // 1 = active, 0 = blocked
+  timezone: string | null;
+  data: string | null; // serialized D7 blob staged verbatim (profile extras)
+}
+
+export interface RawUserRoleRow {
+  uid: number;
+  rid: number;
+}
+
+export interface RawRoleRow {
+  rid: number;
+  name: string | null;
+  weight: number | null;
+}
+
+export interface RawAuthmapRow {
+  aid: number;
+  uid: number;
+  authname: string | null;
+  module: string | null;
+}
+
+export async function ensureRawUserTables(): Promise<void> {
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS s1_staging.raw_users (
+      uid bigint PRIMARY KEY,
+      name text,
+      mail text,
+      created bigint,
+      access bigint,
+      login bigint,
+      status int NOT NULL DEFAULT 0,
+      timezone text,
+      data text,
+      extracted_at timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS s1_staging.raw_users_roles (
+      uid bigint NOT NULL,
+      rid bigint NOT NULL,
+      extracted_at timestamptz NOT NULL DEFAULT now(),
+      PRIMARY KEY (uid, rid)
+    )
+  `);
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS s1_staging.raw_roles (
+      rid bigint PRIMARY KEY,
+      name text,
+      weight int,
+      extracted_at timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS s1_staging.raw_authmap (
+      aid bigint PRIMARY KEY,
+      uid bigint NOT NULL,
+      authname text,
+      module text,
+      extracted_at timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+}
+
+export async function upsertRawUsers(rows: RawUserRow[]): Promise<void> {
+  if (rows.length === 0) return;
+  for (let i = 0; i < rows.length; i += MAX_CHUNK_ROWS) {
+    const chunk = rows.slice(i, i + MAX_CHUNK_ROWS);
+    const values = chunk.map(
+      (r) =>
+        sql`(${r.uid}, ${r.name}, ${r.mail}, ${r.created}, ${r.access}, ${r.login}, ${r.status}, ${r.timezone}, ${r.data}, now())`,
+    );
+    await db.execute(sql`
+      INSERT INTO s1_staging.raw_users (uid, name, mail, created, access, login, status, timezone, data, extracted_at)
+      VALUES ${sql.join(values, sql`, `)}
+      ON CONFLICT (uid) DO UPDATE SET
+        name = EXCLUDED.name, mail = EXCLUDED.mail, created = EXCLUDED.created,
+        access = EXCLUDED.access, login = EXCLUDED.login, status = EXCLUDED.status,
+        timezone = EXCLUDED.timezone, data = EXCLUDED.data, extracted_at = EXCLUDED.extracted_at
+    `);
+  }
+}
+
+export async function upsertRawUsersRoles(rows: RawUserRoleRow[]): Promise<void> {
+  if (rows.length === 0) return;
+  for (let i = 0; i < rows.length; i += MAX_CHUNK_ROWS) {
+    const chunk = rows.slice(i, i + MAX_CHUNK_ROWS);
+    const values = chunk.map((r) => sql`(${r.uid}, ${r.rid}, now())`);
+    await db.execute(sql`
+      INSERT INTO s1_staging.raw_users_roles (uid, rid, extracted_at)
+      VALUES ${sql.join(values, sql`, `)}
+      ON CONFLICT (uid, rid) DO UPDATE SET extracted_at = EXCLUDED.extracted_at
+    `);
+  }
+}
+
+export async function upsertRawRoles(rows: RawRoleRow[]): Promise<void> {
+  if (rows.length === 0) return;
+  const values = rows.map((r) => sql`(${r.rid}, ${r.name}, ${r.weight}, now())`);
+  await db.execute(sql`
+    INSERT INTO s1_staging.raw_roles (rid, name, weight, extracted_at)
+    VALUES ${sql.join(values, sql`, `)}
+    ON CONFLICT (rid) DO UPDATE SET
+      name = EXCLUDED.name, weight = EXCLUDED.weight, extracted_at = EXCLUDED.extracted_at
+  `);
+}
+
+export async function upsertRawAuthmap(rows: RawAuthmapRow[]): Promise<void> {
+  if (rows.length === 0) return;
+  for (let i = 0; i < rows.length; i += MAX_CHUNK_ROWS) {
+    const chunk = rows.slice(i, i + MAX_CHUNK_ROWS);
+    const values = chunk.map((r) => sql`(${r.aid}, ${r.uid}, ${r.authname}, ${r.module}, now())`);
+    await db.execute(sql`
+      INSERT INTO s1_staging.raw_authmap (aid, uid, authname, module, extracted_at)
+      VALUES ${sql.join(values, sql`, `)}
+      ON CONFLICT (aid) DO UPDATE SET
+        uid = EXCLUDED.uid, authname = EXCLUDED.authname, module = EXCLUDED.module,
+        extracted_at = EXCLUDED.extracted_at
+    `);
+  }
+}
+
+const RAW_USER_TABLES = ["raw_users", "raw_users_roles", "raw_roles", "raw_authmap"] as const;
+export type RawUserTable = (typeof RAW_USER_TABLES)[number];
+
+export async function deleteStaleRawUserTable(table: RawUserTable, watermark: string): Promise<number> {
+  const res = await db.execute(
+    sql`DELETE FROM ${sql.raw(`s1_staging.${table}`)} WHERE extracted_at < ${watermark}::timestamptz`,
+  );
+  return (res as unknown as { rowCount?: number }).rowCount ?? 0;
+}
+
+export async function stagedRawUserTableCount(table: RawUserTable): Promise<number> {
+  const res = await db.execute(sql`SELECT count(*)::int AS n FROM ${sql.raw(`s1_staging.${table}`)}`);
+  return Number((res as unknown as { rows: Array<{ n: number }> }).rows[0]?.n ?? 0);
+}
+
+/** T27 read path: staged users ordered by uid (keyset-paged). */
+export async function* pagedRawUsers(pageSize: number): AsyncGenerator<RawUserRow[]> {
+  let last = -1;
+  for (;;) {
+    const res = await db.execute(sql`
+      SELECT uid, name, mail, created, access, login, status, timezone, data
+        FROM s1_staging.raw_users WHERE uid > ${last}
+       ORDER BY uid LIMIT ${pageSize}
+    `);
+    const rows = (res as unknown as { rows: Array<Record<string, unknown>> }).rows.map((r) => ({
+      uid: Number(r.uid),
+      name: r.name == null ? null : String(r.name),
+      mail: r.mail == null ? null : String(r.mail),
+      created: r.created == null ? null : Number(r.created),
+      access: r.access == null ? null : Number(r.access),
+      login: r.login == null ? null : Number(r.login),
+      status: Number(r.status ?? 0),
+      timezone: r.timezone == null ? null : String(r.timezone),
+      data: r.data == null ? null : String(r.data),
+    }));
+    if (rows.length === 0) return;
+    last = rows[rows.length - 1].uid;
+    yield rows;
+    if (rows.length < pageSize) return;
+  }
+}
+
+export async function loadRawUsersRoles(): Promise<RawUserRoleRow[]> {
+  const res = await db.execute(sql`SELECT uid, rid FROM s1_staging.raw_users_roles ORDER BY uid, rid`);
+  return (res as unknown as { rows: Array<Record<string, unknown>> }).rows.map((r) => ({
+    uid: Number(r.uid),
+    rid: Number(r.rid),
+  }));
+}
+
+export async function loadRawRoles(): Promise<RawRoleRow[]> {
+  const res = await db.execute(sql`SELECT rid, name, weight FROM s1_staging.raw_roles ORDER BY rid`);
+  return (res as unknown as { rows: Array<Record<string, unknown>> }).rows.map((r) => ({
+    rid: Number(r.rid),
+    name: r.name == null ? null : String(r.name),
+    weight: r.weight == null ? null : Number(r.weight),
+  }));
+}
+
+export async function loadRawAuthmap(): Promise<RawAuthmapRow[]> {
+  const res = await db.execute(sql`SELECT aid, uid, authname, module FROM s1_staging.raw_authmap ORDER BY aid`);
+  return (res as unknown as { rows: Array<Record<string, unknown>> }).rows.map((r) => ({
+    aid: Number(r.aid),
+    uid: Number(r.uid),
+    authname: r.authname == null ? null : String(r.authname),
+    module: r.module == null ? null : String(r.module),
+  }));
+}

@@ -30,6 +30,14 @@ import {
   deleteStaleRawLedger,
   stagedRawLedgerCount,
   type RawLedgerRow,
+  ensureRawUserTables,
+  upsertRawUsers,
+  upsertRawUsersRoles,
+  upsertRawRoles,
+  upsertRawAuthmap,
+  deleteStaleRawUserTable,
+  stagedRawUserTableCount,
+  type RawUserTable,
 } from "./lib/staging";
 import { pool as pgPool } from "../../server/storage/db";
 import type { Pool } from "mysql2/promise";
@@ -153,6 +161,146 @@ async function stageRawLedgerAr(
   return { table: "sirius_ledger_ar", s1Count, extracted, staged, staleRemoved, durationMs: Date.now() - t0 };
 }
 
+interface RawTableReport {
+  table: string;
+  s1Count: number;
+  extracted: number;
+  staged: number;
+  staleRemoved: number;
+  durationMs: number;
+}
+
+/**
+ * T27 raw user tables: `users` (uid>1 only — anonymous + superuser excluded;
+ * pass/tfa columns never selected),
+ * `users_roles`, `role`, `authmap`. Small tables in prod (~2.5k users) but
+ * users is keyset-paged anyway for uniformity.
+ */
+async function stageRawUserTables(s1: Pool, batch: number): Promise<RawTableReport[]> {
+  await ensureRawUserTables();
+  const reports: RawTableReport[] = [];
+
+  // users — NEVER select pass / tfa columns (dropped by design).
+  {
+    const t0 = Date.now();
+    const watermark = await stagingNow();
+    // uid 0 (anonymous) and uid 1 (Drupal superuser) are NEVER staged — the
+    // superuser must not be migrated or role-mapped (privilege escalation).
+    const [cntRows] = await s1.query<RowDataPacket[]>(`SELECT COUNT(*) AS n FROM users WHERE uid > 1`);
+    const s1Count = Number(cntRows[0]?.n ?? 0);
+    let lastId = 1;
+    let extracted = 0;
+    for (;;) {
+      const [rows] = await s1.query<RowDataPacket[]>(
+        `SELECT uid, name, mail, created, access, login, status, timezone, data
+           FROM users WHERE uid > ? ORDER BY uid LIMIT ?`,
+        [lastId, batch],
+      );
+      if (rows.length === 0) break;
+      await upsertRawUsers(
+        rows.map((r) => ({
+          uid: Number(r.uid),
+          name: r.name == null ? null : String(r.name),
+          mail: r.mail == null ? null : String(r.mail),
+          created: r.created == null ? null : Number(r.created),
+          access: r.access == null ? null : Number(r.access),
+          login: r.login == null ? null : Number(r.login),
+          status: Number(r.status ?? 0),
+          timezone: r.timezone == null ? null : String(r.timezone),
+          data: r.data == null ? null : String(r.data),
+        })),
+      );
+      extracted += rows.length;
+      lastId = Number(rows[rows.length - 1].uid);
+    }
+    const staleRemoved = await deleteStaleRawUserTable("raw_users", watermark);
+    reports.push({
+      table: "users",
+      s1Count,
+      extracted,
+      staged: await stagedRawUserTableCount("raw_users"),
+      staleRemoved,
+      durationMs: Date.now() - t0,
+    });
+  }
+
+  const simple: Array<{
+    table: string;
+    raw: RawUserTable;
+    countSql: string;
+    selectSql: string;
+    upsert: (rows: RowDataPacket[]) => Promise<void>;
+  }> = [
+    {
+      table: "users_roles",
+      raw: "raw_users_roles",
+      countSql: `SELECT COUNT(*) AS n FROM users_roles`,
+      selectSql: `SELECT uid, rid FROM users_roles ORDER BY uid, rid`,
+      upsert: (rows) => upsertRawUsersRoles(rows.map((r) => ({ uid: Number(r.uid), rid: Number(r.rid) }))),
+    },
+    {
+      table: "role",
+      raw: "raw_roles",
+      countSql: `SELECT COUNT(*) AS n FROM role`,
+      selectSql: `SELECT rid, name, weight FROM role ORDER BY rid`,
+      upsert: (rows) =>
+        upsertRawRoles(
+          rows.map((r) => ({
+            rid: Number(r.rid),
+            name: r.name == null ? null : String(r.name),
+            weight: r.weight == null ? null : Number(r.weight),
+          })),
+        ),
+    },
+    {
+      table: "authmap",
+      raw: "raw_authmap",
+      countSql: `SELECT COUNT(*) AS n FROM authmap`,
+      selectSql: `SELECT aid, uid, authname, module FROM authmap ORDER BY aid`,
+      upsert: (rows) =>
+        upsertRawAuthmap(
+          rows.map((r) => ({
+            aid: Number(r.aid),
+            uid: Number(r.uid),
+            authname: r.authname == null ? null : String(r.authname),
+            module: r.module == null ? null : String(r.module),
+          })),
+        ),
+    },
+  ];
+  for (const t of simple) {
+    const t0 = Date.now();
+    const watermark = await stagingNow();
+    let s1Count = 0;
+    let extracted = 0;
+    try {
+      const [cntRows] = await s1.query<RowDataPacket[]>(t.countSql);
+      s1Count = Number(cntRows[0]?.n ?? 0);
+      const [rows] = await s1.query<RowDataPacket[]>(t.selectSql);
+      await t.upsert(rows);
+      extracted = rows.length;
+    } catch (err: unknown) {
+      // Synthetic dev MariaDB may lack `role`/`authmap` — stage 0 rows and
+      // report the absence; the count check still verifies staged==s1 (0==0).
+      if ((err as { code?: string })?.code === "ER_NO_SUCH_TABLE") {
+        console.warn(`raw ${t.table}: table absent in S1 (synthetic gap) — staged 0 rows`);
+      } else {
+        throw err;
+      }
+    }
+    const staleRemoved = await deleteStaleRawUserTable(t.raw, watermark);
+    reports.push({
+      table: t.table,
+      s1Count,
+      extracted,
+      staged: await stagedRawUserTableCount(t.raw),
+      staleRemoved,
+      durationMs: Date.now() - t0,
+    });
+  }
+  return reports;
+}
+
 async function main() {
   const startedAt = new Date();
   const args = parseArgs(process.argv.slice(2));
@@ -254,11 +402,27 @@ async function main() {
     console.log("raw sirius_ledger_ar: skipped (selective --bundles run)");
   }
 
+  // T27 raw user tables stage under the same policy as raw AR.
+  let rawUserReports: RawTableReport[] | null = null;
+  if (!args.skipRaw && args.bundles == null) {
+    rawUserReports = await stageRawUserTables(s1, args.batch);
+    for (const r of rawUserReports) {
+      const ok = r.staged === r.s1Count ? "OK" : "MISMATCH";
+      if (ok === "MISMATCH") mismatches++;
+      console.log(
+        `raw ${r.table}: s1=${r.s1Count} extracted=${r.extracted} staged=${r.staged}${r.staleRemoved ? ` staleRemoved=${r.staleRemoved}` : ""} ${ok} (${r.durationMs}ms)`,
+      );
+    }
+  } else if (args.bundles != null && !args.skipRaw) {
+    console.log("raw user tables: skipped (selective --bundles run)");
+  }
+
   await recordRun(startedAt, args as unknown as Record<string, unknown>, {
     reports,
     mismatches,
     documentedSkips,
     rawLedgerAr: rawLedgerReport,
+    rawUserTables: rawUserReports,
   });
 
   console.log(

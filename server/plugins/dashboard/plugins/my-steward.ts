@@ -1,4 +1,5 @@
 import { registerDashboardPlugin } from "../registry";
+import { resolveLinkedWorkerId } from "../../../auth/worker-link";
 import type { DashboardPlugin } from "../types";
 import { workerStewardAssignments, workers, contacts } from "@shared/schema";
 import { and, eq } from "drizzle-orm";
@@ -24,7 +25,10 @@ export const myStewardPlugin: DashboardPlugin = {
       return { stewards: [], worker: null };
     }
 
-    const worker = await ctx.storage.workers.getWorkerByContactEmail(dbUser.email);
+    // Same resolution /api/auth/user uses (identity metadata preferred; no
+    // email fallback for S1-migrated accounts — see server/auth/worker-link).
+    const workerId = await resolveLinkedWorkerId(dbUser);
+    const worker = workerId ? await ctx.storage.workers.getWorker(workerId) : undefined;
     if (!worker) {
       return { stewards: [], worker: null };
     }

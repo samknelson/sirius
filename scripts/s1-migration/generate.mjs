@@ -331,7 +331,7 @@ async function fd(table, rows) {
   if (!FIELD_TABLES_WIPED.has(table)) { await truncateIf(table); FIELD_TABLES_WIPED.add(table); }
   return writeField(table, rows);
 }
-for (const t of ['node','node_revision','users','users_roles','taxonomy_term_data','taxonomy_term_hierarchy',
+for (const t of ['node','node_revision','users','users_roles','role','authmap','taxonomy_term_data','taxonomy_term_hierarchy',
   'taxonomy_vocabulary','file_managed','comment','sirius_ledger_ar','sirius_ledger_balance',
   'field_config','field_config_instance']) {
   await truncateIf(t);
@@ -465,14 +465,37 @@ await makeVocab('sirius_contact_tags', [
 ]);
 console.log('taxonomy: done');
 
-// ---- 2. users ------------------------------------------------------------
+// ---- 2. users (staff) + roles ---------------------------------------------
+// T27 coverage: D7 role table (built-ins rid 1/2 skipped by the loader),
+// masked prod-like custom roles, staff accounts with and without mail
+// (missing mail = missing_mail reject trap), users_roles assignments,
+// authmap rows (staged for audit only).
+const ROLE_RIDS = { anonymous: 1, authenticated: 2, administrator: 3, staff: 4, member: 5 };
+for (const [name, rid] of [['anonymous user',1],['authenticated user',2],['administrator',3],['Fund Office Staff',4],['Member',5]]) {
+  await conn.query(`INSERT INTO role (rid, name, weight) VALUES (?,?,?)`, [rid, name, rid]);
+}
 const userUids = [];
-for (let i = 0; i < 6; i++) {
+async function makeUser({ name, mail, status = 1, rids = [], login = unix(2026, 7, 1) }) {
   const uid = allocUid();
-  userUids.push(uid);
   await conn.query(`INSERT INTO users (uid, name, pass, mail, theme, signature, signature_format, created, access, login, status, timezone, language, picture, init, data)
-    VALUES (?,?,'','', '','',NULL,?,?,?,1,?, '',0,'',NULL)`,
-    [uid, `staff${i+1}`, unix(2020, 1, 1), unix(2026, 7, 1), unix(2026, 7, 1), TZ_NOTE]);
+    VALUES (?,?,'',?, '','',NULL,?,?,?,?,?, '',0,'',NULL)`,
+    [uid, name, mail ?? '', unix(2020, 1, 1), unix(2026, 7, 1), login, status, TZ_NOTE]);
+  for (const rid of [ROLE_RIDS.authenticated, ...rids]) {
+    await conn.query(`INSERT INTO users_roles (uid, rid) VALUES (?,?)`, [uid, rid]);
+  }
+  return uid;
+}
+for (let i = 0; i < 6; i++) {
+  // TRAP: staff4-6 keep the prod quirk of empty mail → missing_mail reject.
+  const mail = i < 3 ? `staff${i + 1}@fund.example.test` : '';
+  const uid = await makeUser({
+    name: `staff${i + 1}`,
+    mail,
+    rids: [i === 0 ? ROLE_RIDS.administrator : ROLE_RIDS.staff],
+  });
+  userUids.push(uid);
+  if (!mail) trap('user_missing_mail');
+  else trap('staff_user_with_mail');
 }
 console.log('users: done');
 
@@ -581,6 +604,7 @@ console.log('employers: done');
 
 // ---- 6. contacts + workers ----------------------------------------------
 const contacts = [];   // {nid, first, last}
+const contactEmails = []; // index-aligned with contacts (T27 member users)
 const workers = [];    // {nid, contactNid, first, last, homeShop}
 const usedSsns = [];
 const TAG_TIDS_CONTACT = ['vip','spanish','returned-mail'].map(n => vocab['sirius_contact_tags'][n]);
@@ -626,7 +650,14 @@ for (let i = 0; i < N_WORKERS; i++) {
   const cnid = await makeNode('sirius_contact', `${first} ${last}`);
   contacts.push({ nid: cnid, first, last });
   await contactSatellites(cnid, first, last, i);
-  await fd('field_data_field_sirius_email', [{bundle:'sirius_contact', entity_id:cnid, values:{field_sirius_email_value:`${first}.${last}.${i}@example.test`.toLowerCase()}}]);
+  // T27 canary: worker index 1's contact carries the designated canary email
+  // (the ONE real Okta test account) — override via S1_CANARY_EMAIL.
+  const contactEmail = i === 1
+    ? (process.env.S1_CANARY_EMAIL || 'sirius.canary@example.test').toLowerCase()
+    : `${first}.${last}.${i}@example.test`.toLowerCase();
+  if (i === 1) trap('canary_contact_email');
+  await fd('field_data_field_sirius_email', [{bundle:'sirius_contact', entity_id:cnid, values:{field_sirius_email_value:contactEmail}}]);
+  contactEmails.push(contactEmail);
   await fd('field_data_field_sirius_phone', [{bundle:'sirius_contact', entity_id:cnid, values:{field_sirius_phone_value:`310-555-${String(ri(0,9999)).padStart(4,'0')}`}}]);
   if (i < 2) await fd('field_data_field_sirius_phone_alt', [{bundle:'sirius_contact', entity_id:cnid, values:{field_sirius_phone_alt_value:`424-555-${String(ri(0,9999)).padStart(4,'0')}`}}]);
   if (chance(0.08)) await fd('field_data_field_sirius_id', [{bundle:'sirius_contact', entity_id:cnid, values:{field_sirius_id_value:`C${700000 + i}`}}]);
@@ -747,6 +778,46 @@ await fd('field_data_field_sirius_id', [
 ]);
 trap('nonnode_entity_rows', 2);
 console.log(`contacts+workers: done (${workers.length} workers)`);
+
+// ---- 6b. member user accounts (T27) ---------------------------------------
+// Worker-facing S1 accounts whose mail equals the contact email (the
+// deterministic uid→worker resolution path), plus the T27 edge-case traps:
+// mail/contact mismatch, duplicate emails, blocked account, invalid mail.
+// Worker index 1 is the CANARY: its user mail == the canary contact email ==
+// the real Okta test account (S1_CANARY_EMAIL), so the live end-to-end
+// rehearsal lands in a synthetic worker with member statuses/benefits.
+{
+  const N_MEMBER_USERS = 15; // workers 0..14 get accounts
+  for (let i = 0; i < N_MEMBER_USERS; i++) {
+    await makeUser({
+      name: `member${i}`,
+      mail: contactEmails[i],
+      rids: [ROLE_RIDS.member],
+      login: unix(2026, ri(1, 7), ri(1, 28)),
+    });
+    trap('member_user_linked');
+    if (i === 1) trap('canary_member_user');
+  }
+  // TRAP: login mail does not match any contact email → no_resolvable_worker
+  await makeUser({ name: 'mismatch-mail', mail: 'nobody.matches@example.test', rids: [ROLE_RIDS.member] });
+  trap('user_mail_contact_mismatch');
+  // TRAP: duplicate emails — two S1 accounts share worker 20's contact email;
+  // the lower uid wins, the higher rejects duplicate_user_email.
+  await makeUser({ name: 'dup-a', mail: contactEmails[20], rids: [ROLE_RIDS.member] });
+  await makeUser({ name: 'dup-b', mail: contactEmails[20], rids: [ROLE_RIDS.member] });
+  trap('user_duplicate_email_pair');
+  // TRAP: blocked (status=0) account — never migrated.
+  await makeUser({ name: 'blocked-member', mail: contactEmails[22], status: 0, rids: [ROLE_RIDS.member] });
+  trap('user_blocked');
+  // TRAP: invalid mail string.
+  await makeUser({ name: 'bad-mail', mail: 'not-an-email', rids: [ROLE_RIDS.member] });
+  trap('user_invalid_mail');
+  // authmap rows (staged for audit only, never loaded)
+  await conn.query(`INSERT INTO authmap (aid, uid, authname, module) VALUES (1, ?, ?, 'openid'), (2, ?, ?, 'openid')`,
+    [userUids[0], `staff1@fund.example.test`, userUids[1], `staff2@fund.example.test`]);
+  trap('authmap_rows', 2);
+  console.log('member users: done');
+}
 
 // ---- 7. relationships ----------------------------------------------------
 // Production shape (35,774 rows): owner field_sirius_contact on ALL rows,

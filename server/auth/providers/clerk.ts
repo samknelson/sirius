@@ -10,6 +10,12 @@ import {
   linkWorkerToAuthIdentity,
   isWorkerSelfRegistrationEnabled,
 } from "../worker-provisioning";
+import {
+  isMigratedAccount,
+  getMigratedWorkerId,
+  resolveLinkedWorkerId,
+  reconcileMigrationIdentityLink,
+} from "../worker-link";
 
 function logLoginEvent(user: any, externalId: string, accountLinked: boolean) {
   // PII triage: audit login events carry userId + provider externalId only;
@@ -35,7 +41,9 @@ function logLoginEvent(user: any, externalId: string, accountLinked: boolean) {
   });
 }
 
-async function resolveClerkUser(
+// Exported for the T27 first-login smoke harness (fabricated identities);
+// runtime callers stay inside this module.
+export async function resolveClerkUser(
   clerkUserId: string,
   clerkUserData: {
     email?: string;
@@ -65,6 +73,16 @@ async function resolveClerkUser(
       return { allowed: false };
     }
 
+    // T27 reconciliation: a migration-owned identity worker link must match
+    // the authoritative recorded link on the user row (shared with the Okta
+    // provider via worker-link.ts).
+    if (await reconcileMigrationIdentityLink(identity, user)) {
+      logger.warn("Reconciled stale migration-owned identity worker link", {
+        identityId: identity.id,
+        userId: user.id,
+      });
+    }
+
     await storage.authIdentities.update(identity.id, {
       email: email,
       displayName: `${firstName || ""} ${lastName || ""}`.trim() || undefined,
@@ -81,14 +99,13 @@ async function resolveClerkUser(
 
     if (email && email !== user.email) {
       try {
-        const meta = identity.metadata as Record<string, any> | null;
-        let linkedWorker = null;
-        if (meta?.workerId) {
-          linkedWorker = await storage.workers.getWorker(meta.workerId);
-        }
-        if (!linkedWorker && user.email) {
-          linkedWorker = await storage.workers.getWorkerByContactEmail(user.email);
-        }
+        // Shared resolver: validated identity metadata first; email fallback
+        // is prohibited for migrated (S1-provenance) accounts, so a stale
+        // migration link can never redirect the sync to the wrong worker.
+        const resolvedWorkerId = await resolveLinkedWorkerId(user);
+        const linkedWorker = resolvedWorkerId
+          ? await storage.workers.getWorker(resolvedWorkerId)
+          : null;
         if (linkedWorker) {
           const contact = await storage.contacts.getContact(linkedWorker.contactId);
           if (contact && contact.email !== email) {
@@ -132,7 +149,37 @@ async function resolveClerkUser(
   logger.info("Linking Clerk account to provisioned user", { userId: user.id });
 
   let linkedWorkerId: string | null = null;
-  if (email) {
+  let migrationOwnedLink = false;
+  if (isMigratedAccount(user)) {
+    // T27: migrated accounts NEVER email-discover a worker. Only the
+    // loader-recorded deterministic link may associate a worker, and it must
+    // resolve — a recorded link to a missing worker fails closed.
+    const recorded = getMigratedWorkerId(user);
+    if (recorded) {
+      let worker = null;
+      try {
+        worker = await storage.workers.getWorker(recorded);
+      } catch (err) {
+        logger.error("Recorded migration worker lookup failed; denying login", {
+          userId: user.id,
+          workerId: recorded,
+          error: err,
+        });
+        return { allowed: false };
+      }
+      if (!worker) {
+        logger.error("Recorded migration worker missing; denying login", {
+          userId: user.id,
+          workerId: recorded,
+        });
+        return { allowed: false };
+      }
+      linkedWorkerId = recorded;
+      migrationOwnedLink = true;
+    }
+    // else: unlinked migrated account — links WITHOUT worker association;
+    // SSN+DOB self-verification remains the only way to attach a worker.
+  } else if (email) {
     const worker = await storage.workers.getWorkerByContactEmail(email);
     if (worker) {
       linkedWorkerId = worker.id;
@@ -146,7 +193,11 @@ async function resolveClerkUser(
     email: email,
     displayName: `${firstName || ""} ${lastName || ""}`.trim() || undefined,
     profileImageUrl: profileImageUrl || undefined,
-    metadata: linkedWorkerId ? { workerId: linkedWorkerId } : undefined,
+    metadata: linkedWorkerId
+      ? migrationOwnedLink
+        ? { workerId: linkedWorkerId, source: "s1-user-migration" }
+        : { workerId: linkedWorkerId }
+      : undefined,
   });
 
   const linkedUser = await storage.users.updateUser(user.id, {
@@ -225,6 +276,9 @@ export function createProvider(config: ClerkProviderConfig): AuthProvider {
           if (identity) {
             const user = await storage.users.getUser(identity.userId);
             if (user && user.isActive) {
+              // T27: strip stale migration-owned worker links before the
+              // session is (re-)established.
+              await reconcileMigrationIdentityLink(identity, user);
               await storage.authIdentities.updateLastUsed(identity.id);
               await storage.users.updateUserLastLogin(user.id);
 

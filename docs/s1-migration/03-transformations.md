@@ -123,3 +123,59 @@ Grain: per worker × employer × period (`date_start`/`date_end`; ⚠ "monthly" 
 > Strict calendar validation in `toYmd`/`parseUtcInstant` (no Feb-30
 > normalization — malformed dates reject). Loader top-level crashes print
 > sanitized one-liners (`S1_MIGRATION_DEBUG=1` restores full errors locally).
+
+
+## Addendum 2026-08-06 — T27 build conventions (as shipped)
+
+**T27 users & roles (load-users.ts).** Only ACTIVE (`status=1`) S1 accounts
+migrate; blocked accounts are counted and reported, never created. uid 0/1
+(anonymous/superuser) are excluded at STAGING (`uid > 1`) and defensively
+skipped by the loader; any historical uid 0/1 mapping is deactivated and
+unmapped on the next run. Lifecycle rerun reconciliation: previously migrated
+accounts whose S1 account became blocked or was deleted from staging are
+deactivated and their migration-owned worker link + `worker` role revoked
+(`deactivatedBlocked`/`deactivatedDeleted`, `reconciliation.lifecycleRevoked`).
+`pass`/`tfa_*` are never even SELECTed at staging. Raw Drupal core
+tables stage as `s1_staging.raw_users` / `raw_users_roles` / `raw_roles` /
+`raw_authmap` (raw_ledger_ar pattern: keyset paging, stale-delete, count
+verify). `authmap` stages for AUDIT ONLY and is not loaded — S2 Okta
+identities are keyed by the Okta user id (unknown to S1), so pre-creating
+identity rows from Drupal authmap would be fiction.
+
+**uid→worker resolution (RULED 2026-08-06, deterministic, load-time):**
+`lower(users.mail)` must equal the staged contact email
+(`field_sirius_email`) of EXACTLY ONE staged contact that is referenced by
+EXACTLY ONE staged worker (`field_sirius_contact`) resolvable through id_map
+`worker`. Zero matches → annotation `no_resolvable_worker`; more than one →
+annotation `ambiguous_worker_email`. Annotations never block the account —
+it migrates UNLINKED and lands on the reconciliation report for staff
+review; unlinked people still self-verify via SSN+DOB at first login.
+The resolved link is recorded in `users.data` as
+`{ migratedWorkerId, workerLinkSource: "s1-user-migration", s1: {uid, name, created} }`
+— first-login linking prefers this recorded id over any email heuristic.
+
+**Roles.** S1 `role` names create S2 `roles` with ZERO permissions; D7
+built-ins (`anonymous user`, `authenticated user`) are skipped. Name
+collisions FAIL CLOSED: an S1 role whose name matches a pre-existing S2 role
+(one this migration didn't create, per the `(T27)` description marker, and
+that isn't listed in the loader's `APPROVED_ROLE_BINDINGS` allowlist) binds
+to a zero-permission `<name> (s1-migrated)` review role instead — it never
+inherits the existing role's permissions (privileged names like
+"administrator" would escalate). Collisions are reported under
+`roles.collisionDetails`. Loader-created roles get a description flagging
+them for manual permission review (role→permission mapping is deliberately
+NOT migrated; Okta group→role mapping is Task #2).
+Linked workers additionally get the `worker` role (created if absent).
+Duplicate active mails: lowest uid wins, later uids reject
+`duplicate_user_email` (fatal class — triage, then allow observed count).
+
+**Okta pre-provisioning (provision-okta-users.ts).** Idempotent, DRY-RUN BY
+DEFAULT; `--execute` + `--only email[,email]` filter (used to run for-real
+against ONLY the canary in rehearsal). Existing Okta account with the same
+login → reused; >1 Okta match → `ambiguousOkta`, surfaced and skipped, exit 1.
+Success records `auth_identities` (providerType `okta`, externalId = Okta user
+id = the future OIDC `sub`, metadata `{workerId, preProvisioned: true,
+source: "s1-user-migration", s1Uid}`) so first sign-in takes the
+existing-identity fast path with zero matching. Resume-safe: an existing okta
+identity row = done, skipped. Bulk REAL provisioning is a cutover runbook
+step, never part of rehearsal.

@@ -96,7 +96,22 @@ function updateUserSession(
   user.providerType = "okta";
 }
 
-async function checkUserAccess(
+// getMigratedWorkerId lives in worker-link.ts (shared with the session
+// resolver); re-exported here for existing imports.
+export { getMigratedWorkerId };
+
+// Migrated accounts (S1 provenance) may ONLY be associated with a worker via
+// the recorded migratedWorkerId or the verified-worker (SSN+DOB) session —
+// never via contact-email discovery. Shared with /api/auth/user & co.
+import {
+  isMigratedAccount,
+  getMigratedWorkerId,
+  reconcileMigrationIdentityLink,
+} from "../worker-link";
+export { isMigratedAccount };
+
+/** Exported for harness tests (fabricated claims + fake req). */
+export async function checkUserAccess(
   claims: any,
   req?: Request
 ): Promise<{ allowed: boolean; user?: any }> {
@@ -138,6 +153,16 @@ async function checkUserAccess(
       return { allowed: false };
     }
 
+    // T27 reconciliation: a migration-owned identity worker link must match
+    // the authoritative recorded link on the user row (shared with the
+    // Clerk provider via worker-link.ts).
+    if (await reconcileMigrationIdentityLink(identity, user)) {
+      logger.warn("Reconciled stale migration-owned identity worker link", {
+        identityId: identity.id,
+        userId: user.id,
+      });
+    }
+
     await storage.authIdentities.update(identity.id, {
       email,
       displayName:
@@ -156,17 +181,28 @@ async function checkUserAccess(
     await storage.users.updateUserLastLogin(user.id);
 
     // Backfill: if an existing Okta identity is not yet tagged with a
-    // workerId, try to discover the worker by IdP email (single match
-    // only) and persist the link. This handles users who signed in with
-    // Okta before worker self-provisioning existed, and admin-created
-    // accounts that were later assigned the worker role.
+    // workerId, persist the link. The migration-recorded worker link
+    // (users.data.migratedWorkerId, T27) wins outright; only when absent do
+    // we fall back to discovering the worker by IdP email (single match
+    // only). This handles users who signed in with Okta before worker
+    // self-provisioning existed, admin-created accounts that were later
+    // assigned the worker role, and S1-migrated accounts.
     if (
       isWorkerSelfRegistrationEnabled() &&
       email &&
       !(identity.metadata as any)?.workerId
     ) {
       try {
-        const matches = await storage.workers.getWorkersByContactEmail(email);
+        const migratedWorkerId = getMigratedWorkerId(user);
+        // Migrated accounts without a recorded link must NOT be associated
+        // with a worker by email discovery — they self-verify via SSN+DOB.
+        const matches = migratedWorkerId
+          ? await storage.workers
+              .getWorker(migratedWorkerId)
+              .then((w: any) => (w ? [w] : []))
+          : isMigratedAccount(user)
+            ? []
+            : await storage.workers.getWorkersByContactEmail(email);
         if (matches.length === 1) {
           const worker = matches[0];
           const workerRole = await storage.users.getRoleByName("worker");
@@ -274,11 +310,95 @@ async function checkUserAccess(
       }
     }
 
+    // Migrated account path (T27): a pre-created S2 user whose loader
+    // recorded a deterministic worker link. AUTHORITATIVE and fail-closed:
+    // once a recorded link exists, any failure to use it (missing/deleted
+    // worker, storage error) DENIES the sign-in for remediation — it must
+    // never fall through to the contact-email heuristic, which could attach
+    // the identity to a different worker.
+    let provisioned: Awaited<ReturnType<typeof storage.users.getUserByEmail>>;
+    try {
+      provisioned = await storage.users.getUserByEmail(email);
+    } catch (err) {
+      logger.error("Okta migrated-account lookup failed", {
+        externalId,
+        error: err,
+      });
+      return { allowed: false };
+    }
+    const migratedWorkerId = getMigratedWorkerId(provisioned);
+    if (provisioned && migratedWorkerId) {
+      if (!provisioned.isActive) {
+        logger.info("User account is inactive", { userId: provisioned.id });
+        return { allowed: false };
+      }
+      try {
+        const worker = await storage.workers.getWorker(migratedWorkerId);
+        if (!worker) {
+          logger.error(
+            "Okta migrated-account linking denied: recorded worker missing",
+            { externalId, userId: provisioned.id, workerId: migratedWorkerId }
+          );
+          return { allowed: false };
+        }
+        const result = await linkWorkerToAuthIdentity({
+          providerType: "okta",
+          externalId,
+          workerId: migratedWorkerId,
+          email,
+          firstName,
+          lastName,
+          profileImageUrl,
+        });
+        // Tag the identity as migration-owned so the fast path reconciles
+        // it against the recorded link on later logins.
+        const created = await storage.authIdentities.getByProviderAndExternalId(
+          "okta",
+          externalId
+        );
+        if (created) {
+          await storage.authIdentities.update(created.id, {
+            metadata: {
+              ...((created.metadata as Record<string, unknown> | null) ?? {}),
+              source: "s1-user-migration",
+            },
+          });
+        }
+        logger.info("Linked Okta identity to migrated worker (T27 pre-link)", {
+          workerId: migratedWorkerId,
+          userId: result.user.id,
+        });
+        logLoginEvent(result.user, externalId, true);
+        return { allowed: true, user: result.user };
+      } catch (err) {
+        logger.error("Okta migrated-account linking failed — denying (fail-closed)", {
+          externalId,
+          userId: provisioned.id,
+          workerId: migratedWorkerId,
+          error: err,
+        });
+        return { allowed: false };
+      }
+    }
+
+    // Migrated account WITHOUT a recorded link (unresolved/ambiguous per the
+    // loader's reconciliation): never email-discover a worker for it — the
+    // account still links to its own pre-created user below (roles intact,
+    // no worker association) and the person attaches a worker only through
+    // the SSN+DOB verified path.
+    const migratedUnlinked = provisioned != null && isMigratedAccount(provisioned);
+    if (migratedUnlinked) {
+      logger.info(
+        "Okta email-based worker linking skipped: migrated account without recorded link",
+        { externalId, userId: provisioned!.id }
+      );
+    }
+
     // No verified-worker session — try to discover a worker by contact email.
     // Only link when EXACTLY ONE worker matches; otherwise fall through to
     // the admin email-link path. Multi-match would be ambiguous and could
     // mis-associate the auth identity with the wrong worker.
-    try {
+    if (!migratedUnlinked) try {
       const matchingWorkers =
         await storage.workers.getWorkersByContactEmail(email);
       if (matchingWorkers.length === 0) {

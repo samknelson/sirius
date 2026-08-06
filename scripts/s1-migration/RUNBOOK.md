@@ -65,8 +65,9 @@ Remaining manual preconditions:
 ```
 bootstrap-target → stage → seed-trust-config → options → contacts/workers
 → member-statuses → employers → policies → relationships → employee-ids
-→ elections → benefit-history → payments → ledger → hours
+→ users → elections → benefit-history → payments → ledger → hours
 → call-logs → enrollment-packet-tags → parity gates
+→ okta pre-provisioning (dry-run; real bulk run is a CUTOVER step)
 ```
 
 Key ordering facts:
@@ -78,6 +79,8 @@ Key ordering facts:
   workers + wmb.
 - **seed-trust-config after stage, before elections/benefit-history** — it
   creates `trust_providers`/`trust_benefits` from the staged S1 nodes.
+- **users after contacts/workers** — the T27 uid→worker pre-link resolves
+  through id_map `worker`; running users first leaves every account unlinked.
 
 ## 4. Command sequence
 
@@ -138,7 +141,12 @@ wiped target, `created == staged` on both sides.
 | 12 | `npx tsx scripts/s1-migration/load-hours.ts --migration-mode` | same | **`--migration-mode` is REQUIRED on prod** (suppresses charge plugins — T18 already migrated ledger; replay = double-billing; the loader preflight aborts if runnable charge plugins exist without it). `verifyMismatchCount: 0`, `unresolvedWorker/Employer: 0`; `legacy_json_format` skips are known-format legacy rows | 300 staged → 298 written+verified, 2 legacy skips |
 | 13 | `npx tsx scripts/s1-migration/load-call-logs.ts --migration-mode` | + `--allow-rejects category_missing,category_unmapped,handler_missing,handler_unresolved` (4 synthetic traps, 1 each) | Prod ~12K sirius_log rows, only MSR types in scope (others silently out-of-scope, not rejects). Run clean first; triage real handler/category rejects before allowing. | 42 staged → 25 in scope → 21 created, 4 trap rejects |
 | 14 | `npx tsx scripts/s1-migration/load-enrollment-packet-tags.ts --migration-mode` | same (dev no-ops: synthetic data lacks the keep tag) | `inScope > 0` on prod (dev `keepTagTids: []` no-op is a synthetic gap, NOT expected in prod); `duplicateWorkerMonth` small; `rejects: {}` | 200 staged, 0 in scope (documented no-op) |
+| 15 | `npx tsx scripts/s1-migration/load-users.ts` | `--allow-rejects missing_mail,invalid_mail,duplicate_user_email` (synthetic traps) | **After contacts/workers** (T27, active accounts only; uid 0/1 never migrate). Run clean first; triage every fatal class. Reconciliation report (`reconciliation` in output) lists `no_resolvable_worker` / `ambiguous_worker_email` annotations for staff review — annotations don't block accounts. Reruns deactivate accounts blocked/deleted in S1 since the last run (`deactivatedBlocked`/`deactivatedDeleted`) and revoke their migration-owned worker link + role. Role name collisions with pre-existing S2 roles bind to zero-permission `<name> (s1-migrated)` review roles (`roles.collisionDetails`) — review before cutover. `verifyFailures: 0`; `workerLinked` should cover the expected member-account share. | see §4.15 |
 
+
+### 4.15 Okta pre-provisioning (after load-users + parity)
+
+```bash
 ## 5. Allow-rejects policy table
 
 | Reject class | Loader | Dev rehearsal | Production |
@@ -154,12 +162,14 @@ wiped target, `created == staged` on both sides.
 | `category_missing` / `category_unmapped` / `handler_missing` / `handler_unresolved` | call-logs | ALLOWED (1 each, synthetic traps) | Run clean; triage real occurrences, then allow with observed counts |
 | `ssn_collision_q36`, `worker_contact_unresolved`, `worker_gender_unresolved`, `sirius_id_assigned`, … | contacts-workers | reported (annotations — non-fatal) | Same; review the report, no flag needed. `sirius_id_assigned` = workers with no/non-numeric `field_sirius_id` loaded with a sequence-assigned sirius_id (documented T1 rule) |
 | sirius_id collision (pre-scan / cross-run) | contacts-workers | not present | **FATAL, no allow flag exists.** Fund finding 2026-08-06: S1's unlocked ID counter duplicated ~1 in 410 sirius_ids; 19 values are each shared by two DISTINCT people (38 workers). The loader aborts before any write and lists the colliding values + nids. NEVER dedupe/merge — that combines two people's benefit histories. Triage: fund re-numbers one member of each pair in S1 (or rules a manual assignment), re-stage, re-run. |
+| `missing_mail` / `invalid_mail` | users | ALLOWED (synthetic traps: 3 staff w/o mail, 1 bad mail) | Run clean; prod staff accounts may genuinely lack mail — inspect, then allow observed counts (those accounts cannot use Okta and need manual handling) |
+| `duplicate_user_email` | users | ALLOWED (1 synthetic dup pair) | Run clean; lowest uid wins — triage which account the person actually uses, then allow |
+| `no_resolvable_worker` / `ambiguous_worker_email` | users | reported (annotations — non-fatal) | Same; the reconciliation report is the staff-review artifact; unlinked users self-verify via SSN+DOB |
 
 **Forbidden in production (synthetic-only, now unnecessary even in dev):**
 `--stub-missing`, `--allow-unresolved-industry`, `--fallback-industry`,
 `--fallback-payment-type`, `--allow-rejects owner_missing` (relationships),
 `--allow-rejects worker_ref_missing` (elections/employee-ids).
-
 ## 6. Parity gate (the run is a FAIL without this)
 
 Both harnesses must PASS. A load that completes but fails parity is a failed
@@ -290,3 +300,62 @@ Dev-only notes:
 - Dev uses `--open-end-through 2026-12` (synthetic open spans extend past the
   ruled prod freeze month); production uses **2026-09**. The parity harness must
   be given the same value the loader used, in each environment.
+
+
+# ALWAYS first: dry-run — reports would-create/reuse/ambiguous, touches nothing
+npx tsx scripts/s1-migration/provision-okta-users.ts
+
+# CUTOVER ONLY: full real run (creates Okta accounts + sends activation emails)
+OKTA_API_TOKEN=... npx tsx scripts/s1-migration/provision-okta-users.ts --execute
+```
+
+- Dry-run is the default; `--execute` is required to touch Okta. Without
+  `OKTA_API_TOKEN`, dry-run uses a stubbed client (existence checks report
+  "not found" — a warning says so). With a token set, dry-run performs REAL
+  lookups; a stale/invalid token fails loudly as `okta_lookup_failed` on
+  every user (observed dev 2026-08-06: 401 Invalid token) — either fix the
+  token or unset it (`env -u OKTA_API_TOKEN …`) for a DB-state-only report.
+- Idempotent + resume-safe: users with an existing okta `auth_identities` row
+  are skipped, so a partially-failed run is re-run with the same command.
+- `ambiguousOkta` (>1 Okta account with the login) and `failures` exit 1 —
+  triage each before re-running.
+- Expected dry-run shape (rehearsal): `wouldCreate == active migrated users`,
+  `ambiguousOkta: []`, every would-create row with a worker link flagged.
+
+### 4.16 Canary end-to-end procedure (repeatable)
+
+The single REAL Okta test account proves loader → provisioning → live
+sign-in → pre-linked worker, end to end. Everything else stays synthetic.
+
+1. **Designate** the canary email = the real Okta test account's login.
+   Regenerate synthetic S1 with `S1_CANARY_EMAIL=<email>` — worker index 1's
+   contact and its member user account both carry that email.
+2. **Run the pipeline** (§4.0–§4.15): stage → loaders (incl. load-users) →
+   provisioning dry-run. Confirm in the load-users report that the canary is
+   in `workerLinked`, and in the S2 DB that
+   `users.data.migratedWorkerId` points at the synthetic worker.
+3. **Provision the canary only**:
+   `provision-okta-users.ts --execute --only <canary-email>` with a real
+   `OKTA_API_TOKEN`. Confirm one Okta account (member group assigned) and one
+   `auth_identities` row (externalId = Okta user id, metadata.workerId set).
+4. **Sign in for real** through the new Okta app with the canary account
+   (activation email → set password). Verify the session lands on the
+   pre-created S2 user (NOT a new account), the worker profile is the
+   attached synthetic worker, roles include `worker` + migrated S1 roles, and
+   worker-facing data (statuses/benefits) renders.
+5. **Reset (to re-run):** delete the canary's `auth_identities` row and the
+   Okta test account (or deactivate+delete in Okta admin), reset
+   `users.account_status` to `pending`; re-run from step 3. A full data reset
+   is §9.
+
+### 4.17 CUTOVER (manual, runbook-only)
+
+- The **activation-email wave** = §4.15 full `--execute` run at cutover, after
+  the final prod load + parity PASS. It is deliberately NOT part of any
+  rehearsal or automated sequence.
+- Staff accounts with no mail (missing_mail rejects) need manual Okta
+  handling — list them from the final reconciliation report.
+
+# Canary only (rehearsal / pre-cutover check) — the ONLY real run before cutover
+OKTA_API_TOKEN=... npx tsx scripts/s1-migration/provision-okta-users.ts \
+  --execute --only "$S1_CANARY_EMAIL"

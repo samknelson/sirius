@@ -7,6 +7,7 @@ import type { InsertBtuEmployerMap } from "../../../storage/sitespecific/btu/emp
 import { insertBtuEmployerMapSchema } from "../../../../shared/schema/sitespecific/btu/schema";
 import { z } from "zod";
 import { getEffectiveUser } from "../../masquerade";
+import { resolveLinkedWorkerId } from "../../../auth/worker-link";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -83,7 +84,12 @@ export function registerBtuCsgRoutes(
         }
       }
 
-      const worker = await storage.workers.getWorkerByContactEmail(dbUser.email);
+      // Same resolution /api/auth/user uses (identity metadata preferred; no
+      // email fallback for S1-migrated accounts).
+      const linkedWorkerId = await resolveLinkedWorkerId(dbUser);
+      const worker = linkedWorkerId
+        ? await storage.workers.getWorker(linkedWorkerId)
+        : undefined;
       if (worker && worker.denormHomeEmployerId) {
         const employer = await storage.employers.getEmployer(worker.denormHomeEmployerId);
         if (employer) {

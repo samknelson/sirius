@@ -7,6 +7,7 @@ import { pickFirstByAccountOrder, toChargeConfig } from "./plugins/ledger/charge
 import { insertWorkerSchema, insertWorkerDispatchHfeSchema, type WorkerId, type ContactPostal, type PhoneNumber } from "@shared/schema";
 import { z } from "zod";
 import { registerUserRoutes } from "./modules/users";
+import { resolveLinkedWorkerId } from "./auth/worker-link";
 import { registerVariableRoutes } from "./modules/system/variables";
 import { registerDenormRoutes } from "./modules/system/denorm";
 import { registerContactPostalRoutes } from "./modules/contact-postal";
@@ -231,18 +232,11 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       const userPermissions = await storage.users.getUserPermissions(dbUser.id);
       const enabledComponents = await getEnabledComponentIds();
       
-      // Get user's associated worker. Prefer auth_identities.metadata.workerId
-      // (the durable link written when an Okta/Clerk identity is bound to a
-      // worker) and fall back to a contact-email match for legacy users that
-      // were linked before metadata was tracked.
-      let workerId: string | null =
-        await storage.authIdentities.getWorkerIdForUser(dbUser.id);
-      if (!workerId && dbUser.email) {
-        const worker = await storage.workers.getWorkerByContactEmail(dbUser.email);
-        if (worker) {
-          workerId = worker.id;
-        }
-      }
+      // Get user's associated worker. Prefers auth_identities.metadata.workerId;
+      // contact-email fallback applies only to legacy non-migrated accounts
+      // (S1-migrated accounts must never email-link a worker — see
+      // server/auth/worker-link.ts).
+      const workerId: string | null = await resolveLinkedWorkerId(dbUser);
       
       res.json({
         user: {

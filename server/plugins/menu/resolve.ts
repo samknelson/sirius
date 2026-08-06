@@ -6,6 +6,7 @@ import { isComponentEnabled } from "../../modules/components";
 import { storage } from "../../storage";
 import { menuPluginRegistry } from "./registry";
 import type { MenuGate, MenuItemDef } from "./types";
+import { resolveLinkedWorkerId } from "../../auth/worker-link";
 
 interface GateContext {
   req: Request;
@@ -190,12 +191,9 @@ export async function resolveMenuForRequest(
     return { plugin: pluginId, items: [] };
   }
 
-  // Linked worker: same resolution /api/auth/user uses for `user.workerId`.
-  let workerId: string | null = null;
-  if (context.user.email) {
-    const worker = await storage.workers.getWorkerByContactEmail(context.user.email);
-    if (worker) workerId = worker.id;
-  }
+  // Linked worker: same resolution /api/auth/user uses for `user.workerId`
+  // (identity metadata preferred; no email fallback for migrated accounts).
+  const workerId: string | null = await resolveLinkedWorkerId(context.user);
 
   const tree = plugin.buildTree();
 

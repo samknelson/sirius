@@ -443,6 +443,25 @@ types on payments), runs each loader as a real CLI, asserts report counters,
 DB rows, idempotent re-runs and the T19 fail-closed guard, then cleans up.
 
 
+- `load-users.ts` — T27: `s1_staging.raw_users`/`raw_users_roles`/`raw_roles`
+  → S2 `users`/`roles`/`user_roles`. Active (`status=1`) accounts only; blocked
+  counted, never created; `pass`/`tfa_*` never staged. Deterministic
+  uid→worker pre-link (mail == exactly-one staged contact email of exactly-one
+  worker via id_map) recorded as `users.data.migratedWorkerId`; zero/multiple
+  matches become `no_resolvable_worker`/`ambiguous_worker_email` ANNOTATIONS
+  on the reconciliation report — the account still migrates unlinked and the
+  person self-verifies via SSN+DOB at first login. Roles upsert by name (D7
+  built-ins skipped, created roles flagged for manual permission review);
+  linked workers get the `worker` role. Duplicate mails: lowest uid wins,
+  later reject `duplicate_user_email`. Idempotent via id_map `user`; re-runs
+  drift-reconcile while keeping operator-added roles. Companion:
+  `provision-okta-users.ts` — idempotent bulk Okta pre-provisioning, dry-run
+  by default, `--execute --only email` for the canary; records
+  `auth_identities` (externalId = Okta user id, metadata.workerId) so first
+  sign-in takes the existing-identity fast path. Smokes:
+  `scripts/oneoffs/s1-t27-users-smoke.ts`, `s1-t27-provision-okta-smoke.ts`,
+  `s1-t27-first-login-smoke.ts`.
+
 ## Parity harnesses (the cutover gates)
 
 The fund ruled (2026-08-05) that cutover is judged by **validation, not
