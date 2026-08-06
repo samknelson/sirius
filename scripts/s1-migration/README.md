@@ -418,17 +418,22 @@ DB rows, idempotent re-runs and the T19 fail-closed guard, then cleans up.
   notification suppression, checked at the top of the charge-plugin
   executor), plus a preflight that aborts a non-migration-mode run while any
   charge plugin is runnable. Remaining: per-row event/listener cost review.
-- **Loader-side paging.** `load-hours.ts` currently materializes all staged
-  payperiods in memory and upserts sequentially — fine at dev scale, not at
-  3.6M rows. Needs keyset-paged staging reads, bounded write batches, and
-  checkpointing.
-- **T16–T18 paging (same Track C umbrella).** The elections, benefit-history
-  and ledger loaders also materialize their staged sets in memory; T17
-  additionally prefetches all existing `trust_wmb` rows per worker set and
-  does a per-span anchor lookup, and T18 does a per-row
-  `getByChargePluginKey` existence check. At prod volume (223,909 elections
-  per 07) these need keyset paging + batched existence checks; the per-row
-  storage writes stay (they're the correctness boundary).
+- ~~Loader-side paging (Track C).~~ DONE: T16–T20 all stream staged rows via
+  keyset paging (`pagedStaged`/`pagedRawLedger`, page size 2000, override
+  `S1_LOADER_PAGE_SIZE`). Per-row lookups are now page-batched IN-queries:
+  T16 adoption existence + verify, T17 election-employer fallback, per-page
+  `trust_wmb` prefetch and batched anchor checks, T18 `charge_plugin_key`
+  existence, T19 per-page mappings + batched verify. T20 streams payperiods
+  ordered by worker (expression index on staging, created by the loader) so
+  each worker's month-groups flush — resolve + write + verify — as soon as
+  the stream passes that worker; memory is bounded by one worker's groups +
+  a 1000-group flush buffer, never total month-group cardinality. Benchmarked
+  at prod volume by `scripts/oneoffs/s1-trackc-bench.ts` (synthetic 220k
+  elections / 100k spans / 150k payments / 200k AR / 400k payperiods): each
+  dry-run finishes in 15–35s under a hard 512MB Node heap cap. Per-row
+  storage writes stay — they're the correctness boundary. Remaining (not
+  paging): per-bundle checkpointing for crash-resume mid-run (crash-repair
+  provenance already covers correctness).
 - Row-level provenance (`$.entries` keys) is only aggregated in the run
   report; if per-row provenance must land in S2, `worker_hours` needs a home
   for it (no data column today).

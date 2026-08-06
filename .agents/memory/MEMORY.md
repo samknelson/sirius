@@ -96,4 +96,5 @@
 - [Charge-plugin migration suppression](charge-plugin-migration-suppression.md) — loaders wrap writes in withChargePluginsSuppressed; notification suppression alone doesn't stop charges; preflight aborts runnable-plugin loads.
 - [S1 relation-type letter-code sirius_ids](s1-reltype-letter-codes.md) — reltype options carry S1 letter codes not tids; ES→EX ruling; EX/RP must be handled in every EDI mapping.
 - [Managed secret provisioning](managed-secret-provisioning.md) — Replit Secrets reach managed workflows, not necessarily ordinary Shell commands; use short-lived, idempotent hooks and remove them.
+- [S1 loader keyset paging](s1-loader-keyset-paging.md) — loaders page staged rows + batch IN-query checks; jsonb_build_object params need explicit casts on Neon.
 - [Migration scripts outside app tsconfig](scripts-tsconfig-gap.md) — app tsc green says nothing about scripts/; run tsc -p tsconfig.scripts.json before first execution of new loaders.

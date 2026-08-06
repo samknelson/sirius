@@ -47,7 +47,9 @@ import { ensureStagingSchema, recordRun } from "./lib/staging";
 import { ensureIdMap, getMappings, putMapping } from "./lib/idmap";
 import {
   RejectLog,
-  loadStaged,
+  pagedStaged,
+  stagedCountOf,
+  chunk,
   strOf,
   tidOf,
   targetNidOf,
@@ -143,8 +145,7 @@ async function main() {
   const report: Record<string, unknown> = { loader: LOADER, dryRun: DRY_RUN, allowedRejects: ALLOWED_REJECTS };
   const rejects = new RejectLog();
 
-  const staged = await loadStaged(BUNDLE);
-  report.staged = staged.length;
+  report.staged = await stagedCountOf(BUNDLE);
 
   // ---- benefit nid → trust_benefits.id (shared T16/T17 resolution) ----
   const benefitRes = await resolveBenefitNidMap(LOADER, DRY_RUN);
@@ -166,32 +167,60 @@ async function main() {
   const termNameByTid = new Map<number, string>(termRows.map((r) => [Number(r.tid), r.name]));
   report.electionTypeTerms = termRows.length;
 
-  // ---- bulk id_map lookups ----
-  const workerNids: number[] = [];
-  const employerNids: number[] = [];
-  const relationNids: number[] = [];
-  for (const s of staged) {
-    const w = targetNidOf(s.fields, "field_sirius_worker");
-    if (w != null) workerNids.push(w);
-    const e = targetNidOf(s.fields, "field_grievance_shop");
-    if (e != null) employerNids.push(e);
-    relationNids.push(...targetNidsOf(s.fields, "field_sirius_contact_relations"));
+  // ---- crash-repair provenance (single bounded query; ids only) ----
+  // An election created before its putMapping landed is re-found by its
+  // stashed s1Nid and re-adopted into id_map, not duplicated.
+  const provenanceRes = await db.execute(sql`
+    SELECT id, data->>'s1Nid' AS nid FROM worker_trust_elections
+    WHERE data->>'source' = 's1-migration' AND data->>'s1Nid' IS NOT NULL
+  `);
+  const provenanceByNid = new Map<number, string>();
+  for (const p of (provenanceRes as unknown as { rows: Array<{ id: string; nid: string }> }).rows) {
+    const n = Number(p.nid);
+    if (Number.isFinite(n) && !provenanceByNid.has(n)) provenanceByNid.set(n, p.id);
   }
-  const [workerMap, employerMap, relationMap, electionMap] = await Promise.all([
-    getMappings("worker", workerNids),
-    getMappings("employer", employerNids),
-    getMappings("relation", relationNids),
-    getMappings("election", staged.map((s) => s.nid)),
-  ]);
 
-  // ---- resolve pass (reject-complete before any write) ----
-  const resolved: ResolvedElection[] = [];
+  // ---- global counters (accumulated across pages) ----
+  let resolvedCount = 0;
   let typed = 0;
   let untyped = 0;
   let endDatedFromChanged = 0;
   const perType: Record<string, number> = {};
+  let created = 0;
+  let adopted = 0;
+  let adoptedByProvenance = 0;
+  let verifyFailures = 0;
+  const verifySamples: Array<Record<string, unknown>> = [];
+  let pages = 0;
 
-  for (const s of staged) {
+  // ---- keyset-paged pipeline: resolve → write → verify, one page at a time.
+  // Staged rows, id_map lookups, existence checks and verification are all
+  // page-bounded — memory stays flat at production volume (~224k elections).
+  for await (const staged of pagedStaged(BUNDLE)) {
+    pages++;
+
+    // ---- per-page bulk id_map lookups ----
+    const workerNids: number[] = [];
+    const employerNids: number[] = [];
+    const relationNids: number[] = [];
+    for (const s of staged) {
+      const w = targetNidOf(s.fields, "field_sirius_worker");
+      if (w != null) workerNids.push(w);
+      const e = targetNidOf(s.fields, "field_grievance_shop");
+      if (e != null) employerNids.push(e);
+      relationNids.push(...targetNidsOf(s.fields, "field_sirius_contact_relations"));
+    }
+    const [workerMap, employerMap, relationMap, electionMap] = await Promise.all([
+      getMappings("worker", workerNids),
+      getMappings("employer", employerNids),
+      getMappings("relation", relationNids),
+      getMappings("election", staged.map((s) => s.nid)),
+    ]);
+
+    // ---- resolve pass (page-scoped; reject-complete before any page write) ----
+    const resolved: ResolvedElection[] = [];
+
+    for (const s of staged) {
     const nid = s.nid;
     const f = s.fields;
 
@@ -312,108 +341,125 @@ async function main() {
     if (rowEndDatedFromChanged) data.endDatedFromChanged = true;
 
     resolved.push({ nid, workerId, employerId, startYmd, endYmd, benefitIds, relationshipIds, enrollmentType, data });
+    }
+    resolvedCount += resolved.length;
+
+    // ---- batched adoption existence check (one IN-query set per page) ----
+    const mappedIds = resolved
+      .map((r) => electionMap.get(r.nid)?.s2Id)
+      .filter((id): id is string => !!id);
+    const mappedExists = new Set<string>();
+    for (const ids of chunk([...new Set(mappedIds)], 500)) {
+      const res = (await db.execute(sql`
+        SELECT id FROM worker_trust_elections
+         WHERE id IN (${sql.join(ids.map((id) => sql`${id}`), sql`, `)})
+      `)) as unknown as { rows: Array<{ id: string }> };
+      for (const row of res.rows) mappedExists.add(row.id);
+    }
+
+    // ---- write pass (page-scoped) ----
+    const expectations: Array<{ nid: number; s2Id: string; want: ResolvedElection }> = [];
+
+    for (const r of resolved) {
+      const mapped = electionMap.get(r.nid)?.s2Id;
+      if (mapped) {
+        if (!mappedExists.has(mapped)) {
+          rejects.add("mapped_row_missing", { nid: r.nid }, r.nid);
+          continue;
+        }
+        adopted++;
+        expectations.push({ nid: r.nid, s2Id: mapped, want: r });
+        continue;
+      }
+      // crash-repair: row exists (provenance) but id_map lost the mapping
+      const orphanId = provenanceByNid.get(r.nid);
+      if (orphanId) {
+        const winner = DRY_RUN ? orphanId : await putMapping("election", r.nid, orphanId, { stub: false, loader: LOADER });
+        adopted++;
+        adoptedByProvenance++;
+        expectations.push({ nid: r.nid, s2Id: winner, want: r });
+        continue;
+      }
+      if (DRY_RUN) {
+        created++;
+        continue;
+      }
+      try {
+        const row = await withNotificationsSuppressed(() =>
+          withChargePluginsSuppressed(() =>
+            storage.workerTrustElections.createForMigration({
+              workerId: r.workerId,
+              employerId: r.employerId,
+              startYmd: r.startYmd,
+              endYmd: r.endYmd,
+              benefitIds: r.benefitIds,
+              relationshipIds: r.relationshipIds,
+              enrollmentType: r.enrollmentType,
+              data: r.data,
+            }),
+          ),
+        );
+        const winner = await putMapping("election", r.nid, row.id, { stub: false, loader: LOADER });
+        created++;
+        expectations.push({ nid: r.nid, s2Id: winner, want: r });
+      } catch (e) {
+        rejects.add("election_create_failed", { nid: r.nid, code: classifyError(e) }, r.nid);
+      }
+    }
+
+    // ---- verify pass (page-scoped, batched; exact field equality) ----
+    interface VerifyRow {
+      id: string;
+      worker_id: string;
+      employer_id: string;
+      start_ymd: string;
+      end_ymd: string | null;
+      enrollment_type: string | null;
+      benefit_ids: string[] | null;
+      relationship_ids: string[] | null;
+    }
+    const verifyById = new Map<string, VerifyRow>();
+    for (const batch of chunk(expectations, 500)) {
+      const res = (await db.execute(sql`
+        SELECT id, worker_id, employer_id, start_ymd::text AS start_ymd, end_ymd::text AS end_ymd,
+               enrollment_type, benefit_ids, relationship_ids
+          FROM worker_trust_elections
+         WHERE id IN (${sql.join(batch.map((e) => sql`${e.s2Id}`), sql`, `)})
+      `)) as unknown as { rows: VerifyRow[] };
+      for (const row of res.rows) verifyById.set(row.id, row);
+    }
+    for (const ex of expectations) {
+      const row = verifyById.get(ex.s2Id);
+      const w = ex.want;
+      const mismatches: string[] = [];
+      if (!row) {
+        mismatches.push("row_missing");
+      } else {
+        if (row.worker_id !== w.workerId) mismatches.push("workerId");
+        if (row.employer_id !== w.employerId) mismatches.push("employerId");
+        if (row.start_ymd !== w.startYmd) mismatches.push("startYmd");
+        if ((row.end_ymd ?? null) !== w.endYmd) mismatches.push("endYmd");
+        if ((row.enrollment_type ?? null) !== w.enrollmentType) mismatches.push("enrollmentType");
+        if (JSON.stringify(row.benefit_ids ?? []) !== JSON.stringify(w.benefitIds)) mismatches.push("benefitIds");
+        if (JSON.stringify(row.relationship_ids ?? []) !== JSON.stringify(w.relationshipIds))
+          mismatches.push("relationshipIds");
+      }
+      if (mismatches.length > 0) {
+        verifyFailures++;
+        if (verifySamples.length < 25) verifySamples.push({ nid: ex.nid, fields: mismatches });
+      }
+    }
   }
 
-  report.resolved = resolved.length;
+  report.pages = pages;
+  report.resolved = resolvedCount;
   report.typedElections = typed;
   report.untypedElections = untyped;
   report.perEnrollmentType = perType;
   report.endDatedFromChanged = endDatedFromChanged;
-
-  // ---- write pass ----
-  // Crash-repair provenance: an election created before its putMapping landed
-  // is re-found by its stashed s1Nid and re-adopted into id_map, not duplicated.
-  const provenanceRes = await db.execute(sql`
-    SELECT id, data->>'s1Nid' AS nid FROM worker_trust_elections
-    WHERE data->>'source' = 's1-migration' AND data->>'s1Nid' IS NOT NULL
-  `);
-  const provenanceByNid = new Map<number, string>();
-  for (const p of (provenanceRes as unknown as { rows: Array<{ id: string; nid: string }> }).rows) {
-    const n = Number(p.nid);
-    if (Number.isFinite(n) && !provenanceByNid.has(n)) provenanceByNid.set(n, p.id);
-  }
-
-  let created = 0;
-  let adopted = 0;
-  let adoptedByProvenance = 0;
-  const expectations: Array<{ nid: number; s2Id: string; want: ResolvedElection }> = [];
-
-  for (const r of resolved) {
-    const mapped = electionMap.get(r.nid)?.s2Id;
-    if (mapped) {
-      const existing = await storage.workerTrustElections.getById(mapped);
-      if (!existing) {
-        rejects.add("mapped_row_missing", { nid: r.nid }, r.nid);
-        continue;
-      }
-      adopted++;
-      expectations.push({ nid: r.nid, s2Id: mapped, want: r });
-      continue;
-    }
-    // crash-repair: row exists (provenance) but id_map lost the mapping
-    const orphanId = provenanceByNid.get(r.nid);
-    if (orphanId) {
-      const winner = DRY_RUN ? orphanId : await putMapping("election", r.nid, orphanId, { stub: false, loader: LOADER });
-      adopted++;
-      adoptedByProvenance++;
-      expectations.push({ nid: r.nid, s2Id: winner, want: r });
-      continue;
-    }
-    if (DRY_RUN) {
-      created++;
-      continue;
-    }
-    try {
-      const row = await withNotificationsSuppressed(() =>
-        withChargePluginsSuppressed(() =>
-          storage.workerTrustElections.createForMigration({
-            workerId: r.workerId,
-            employerId: r.employerId,
-            startYmd: r.startYmd,
-            endYmd: r.endYmd,
-            benefitIds: r.benefitIds,
-            relationshipIds: r.relationshipIds,
-            enrollmentType: r.enrollmentType,
-            data: r.data,
-          }),
-        ),
-      );
-      const winner = await putMapping("election", r.nid, row.id, { stub: false, loader: LOADER });
-      created++;
-      expectations.push({ nid: r.nid, s2Id: winner, want: r });
-    } catch (e) {
-      rejects.add("election_create_failed", { nid: r.nid, code: classifyError(e) }, r.nid);
-    }
-  }
-
   report.created = created;
   report.adopted = adopted;
   report.adoptedByProvenance = adoptedByProvenance;
-
-  // ---- verify pass (exact field equality on every loaded row) ----
-  let verifyFailures = 0;
-  const verifySamples: Array<Record<string, unknown>> = [];
-  for (const ex of expectations) {
-    const row = await storage.workerTrustElections.getById(ex.s2Id);
-    const w = ex.want;
-    const mismatches: string[] = [];
-    if (!row) {
-      mismatches.push("row_missing");
-    } else {
-      if (row.workerId !== w.workerId) mismatches.push("workerId");
-      if (row.employerId !== w.employerId) mismatches.push("employerId");
-      if (row.startYmd !== w.startYmd) mismatches.push("startYmd");
-      if ((row.endYmd ?? null) !== w.endYmd) mismatches.push("endYmd");
-      if ((row.enrollmentType ?? null) !== w.enrollmentType) mismatches.push("enrollmentType");
-      if (JSON.stringify(row.benefitIds ?? []) !== JSON.stringify(w.benefitIds)) mismatches.push("benefitIds");
-      if (JSON.stringify(row.relationshipIds ?? []) !== JSON.stringify(w.relationshipIds))
-        mismatches.push("relationshipIds");
-    }
-    if (mismatches.length > 0) {
-      verifyFailures++;
-      if (verifySamples.length < 25) verifySamples.push({ nid: ex.nid, fields: mismatches });
-    }
-  }
 
   report.rejects = rejects.counts;
   report.rejectSamples = rejects.samples;

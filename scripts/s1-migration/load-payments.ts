@@ -48,7 +48,7 @@ import { db, pool as pgPool } from "../../server/storage/db";
 import { sql } from "drizzle-orm";
 import { ensureStagingSchema, recordRun } from "./lib/staging";
 import { ensureIdMap, getMappings, putMapping } from "./lib/idmap";
-import { RejectLog, loadStaged, strOf, tidOf, targetNidOf, toYmd } from "./lib/loader-utils";
+import { RejectLog, pagedStaged, stagedCountOf, chunk, strOf, tidOf, targetNidOf, toYmd } from "./lib/loader-utils";
 import { buildEntityResolver, ensureLedgerAccounts } from "./lib/resolvers";
 
 const LOADER = "t19-payments";
@@ -105,12 +105,6 @@ function parseUtcInstant(raw: string): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-function chunk<T>(arr: T[], n: number): T[][] {
-  const out: T[][] = [];
-  for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n));
-  return out;
-}
-
 async function main() {
   const startedAt = new Date();
   await ensureStagingSchema();
@@ -123,8 +117,7 @@ async function main() {
   };
   const rejects = new RejectLog();
 
-  const staged = await loadStaged(BUNDLE);
-  report.staged = staged.length;
+  report.staged = await stagedCountOf(BUNDLE);
 
   // ---- accounts (T18a shared policy: id_map → adopt by name → create) ----
   const accounts = await ensureLedgerAccounts(LOADER, DRY_RUN);
@@ -144,21 +137,6 @@ async function main() {
   ).rows;
   const optionIds = new Set(optionRows.map((r) => r.id));
   const typeCurrency = new Map(optionRows.map((r) => [r.id, r.currency_code] as const));
-
-  // ---- bulk id_map lookups ----
-  const typeTids: number[] = [];
-  const payerNids: number[] = [];
-  for (const s of staged) {
-    const t = tidOf(s.fields, "field_sirius_payment_type");
-    if (t != null) typeTids.push(t);
-    const p = targetNidOf(s.fields, "field_sirius_payer");
-    if (p != null) payerNids.push(p);
-  }
-  const [termMap, paymentMap] = await Promise.all([
-    getMappings("term", typeTids),
-    getMappings("payment", staged.map((s) => s.nid)),
-  ]);
-  const resolveEntity = await buildEntityResolver(payerNids);
 
   // Crash-repair provenance: a payment created before its putMapping landed is
   // re-found by its stashed s1Nid and re-adopted into id_map instead of duplicated.
@@ -181,23 +159,48 @@ async function main() {
     ),
   );
 
-  // ---- resolve + write pass ----
+  // ---- global counters (accumulated across pages) ----
   let created = 0;
   let adopted = 0;
   let adoptedByProvenance = 0;
   let negativeAmounts = 0;
   let payerContactEAs = 0;
+  let verifyFailures = 0;
+  const verifySamples: Array<Record<string, unknown>> = [];
   const perStatus: Record<string, number> = {};
   const eaCache = new Map<string, string>();
-  const expectations: Array<{
-    nid: number;
-    s2Id: string;
-    amount: string;
-    status: S2PaymentStatus;
-    ledgerEaId: string | null; // null = adopted before EA resolution (dry)
-  }> = [];
+  let pages = 0;
 
-  for (const s of staged) {
+  // ---- keyset-paged pipeline: resolve → write → verify per page. Staged
+  // rows, id_map lookups and verification reads are page-bounded so memory
+  // stays flat at production volume.
+  for await (const staged of pagedStaged(BUNDLE)) {
+    pages++;
+
+    // ---- per-page bulk id_map lookups ----
+    const typeTids: number[] = [];
+    const payerNids: number[] = [];
+    for (const s of staged) {
+      const t = tidOf(s.fields, "field_sirius_payment_type");
+      if (t != null) typeTids.push(t);
+      const p = targetNidOf(s.fields, "field_sirius_payer");
+      if (p != null) payerNids.push(p);
+    }
+    const [termMap, paymentMap] = await Promise.all([
+      getMappings("term", typeTids),
+      getMappings("payment", staged.map((s) => s.nid)),
+    ]);
+    const resolveEntity = await buildEntityResolver(payerNids);
+
+    const expectations: Array<{
+      nid: number;
+      s2Id: string;
+      amount: string;
+      status: S2PaymentStatus;
+      ledgerEaId: string | null; // null = adopted before EA resolution (dry)
+    }> = [];
+
+    for (const s of staged) {
     const nid = s.nid;
     const f = s.fields;
 
@@ -343,37 +346,37 @@ async function main() {
     } catch {
       rejects.add("payment_create_failed", { nid }, nid);
     }
+    }
+
+    // ---- verify pass (page-scoped): exact row equality for every loaded payment ----
+    for (const batch of chunk(expectations, 200)) {
+      const rows = await storage.ledger.payments.getByIds(batch.map((e) => e.s2Id));
+      const byId = new Map(rows.map((r) => [r.id, r]));
+      for (const ex of batch) {
+        const row = byId.get(ex.s2Id);
+        const mismatches: string[] = [];
+        if (!row) {
+          mismatches.push("row_missing");
+        } else {
+          if (Number(row.amount) !== Number(ex.amount)) mismatches.push("amount");
+          if (row.status !== ex.status) mismatches.push("status");
+          if (ex.ledgerEaId && row.ledgerEaId !== ex.ledgerEaId) mismatches.push("ledgerEaId");
+        }
+        if (mismatches.length > 0) {
+          verifyFailures++;
+          if (verifySamples.length < 25) verifySamples.push({ nid: ex.nid, fields: mismatches });
+        }
+      }
+    }
   }
 
+  report.pages = pages;
   report.created = created;
   report.adopted = adopted;
   report.adoptedByProvenance = adoptedByProvenance;
   report.perStatus = perStatus;
   report.negativeAmounts = negativeAmounts;
   report.payerContactEAs = payerContactEAs;
-
-  // ---- verify pass: exact row equality for every loaded payment ----
-  let verifyFailures = 0;
-  const verifySamples: Array<Record<string, unknown>> = [];
-  for (const batch of chunk(expectations, 200)) {
-    const rows = await storage.ledger.payments.getByIds(batch.map((e) => e.s2Id));
-    const byId = new Map(rows.map((r) => [r.id, r]));
-    for (const ex of batch) {
-      const row = byId.get(ex.s2Id);
-      const mismatches: string[] = [];
-      if (!row) {
-        mismatches.push("row_missing");
-      } else {
-        if (Number(row.amount) !== Number(ex.amount)) mismatches.push("amount");
-        if (row.status !== ex.status) mismatches.push("status");
-        if (ex.ledgerEaId && row.ledgerEaId !== ex.ledgerEaId) mismatches.push("ledgerEaId");
-      }
-      if (mismatches.length > 0) {
-        verifyFailures++;
-        if (verifySamples.length < 25) verifySamples.push({ nid: ex.nid, fields: mismatches });
-      }
-    }
-  }
 
   // ---- per-account aggregate parity (loaded s1 payments vs staged) ----
   const loadedAgg = (

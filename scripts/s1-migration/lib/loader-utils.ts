@@ -92,20 +92,68 @@ export function epochToYmd(epoch: number): string {
   return new Date(epoch * 1000).toISOString().slice(0, 10);
 }
 
-export async function loadStaged(bundle: string): Promise<StagedNode[]> {
-  const res = await db.execute(sql`
-    SELECT nid, title, changed, fields FROM s1_staging.records WHERE bundle = ${bundle} ORDER BY nid
-  `);
-  return (
-    res as unknown as {
-      rows: Array<{ nid: string | number; title: string | null; changed: string | number | null; fields: unknown }>;
-    }
-  ).rows.map((r) => ({
+type RawStagedRow = { nid: string | number; title: string | null; changed: string | number | null; fields: unknown };
+
+function mapStagedRow(r: RawStagedRow): StagedNode {
+  return {
     nid: Number(r.nid),
     title: r.title,
     changed: r.changed == null ? null : Number(r.changed),
     fields: (typeof r.fields === "string" ? JSON.parse(r.fields) : r.fields ?? {}) as Record<string, unknown>,
-  }));
+  };
+}
+
+export async function loadStaged(bundle: string): Promise<StagedNode[]> {
+  const res = await db.execute(sql`
+    SELECT nid, title, changed, fields FROM s1_staging.records WHERE bundle = ${bundle} ORDER BY nid
+  `);
+  return (res as unknown as { rows: RawStagedRow[] }).rows.map(mapStagedRow);
+}
+
+/** Loader page size for keyset-paged staged reads (Track C production
+ * hardening). Overridable per run via S1_LOADER_PAGE_SIZE. */
+export const LOADER_PAGE_SIZE = (() => {
+  const n = Number(process.env.S1_LOADER_PAGE_SIZE ?? "");
+  return Number.isInteger(n) && n > 0 ? n : 2000;
+})();
+
+/**
+ * Keyset-paged staged read: yields pages of at most `pageSize` StagedNodes in
+ * ascending nid order without ever materializing the whole bundle. Memory is
+ * bounded by one page of raw field payloads regardless of staged volume.
+ */
+export async function* pagedStaged(
+  bundle: string,
+  pageSize: number = LOADER_PAGE_SIZE,
+): AsyncGenerator<StagedNode[]> {
+  let lastNid = -1;
+  for (;;) {
+    const res = await db.execute(sql`
+      SELECT nid, title, changed, fields FROM s1_staging.records
+       WHERE bundle = ${bundle} AND nid > ${lastNid}
+       ORDER BY nid LIMIT ${pageSize}
+    `);
+    const rows = (res as unknown as { rows: RawStagedRow[] }).rows.map(mapStagedRow);
+    if (rows.length === 0) return;
+    lastNid = rows[rows.length - 1].nid;
+    yield rows;
+    if (rows.length < pageSize) return;
+  }
+}
+
+/** Fast staged count (report header) without loading any rows. */
+export async function stagedCountOf(bundle: string): Promise<number> {
+  const res = await db.execute(
+    sql`SELECT count(*)::int AS n FROM s1_staging.records WHERE bundle = ${bundle}`,
+  );
+  return Number((res as unknown as { rows: Array<{ n: number }> }).rows[0]?.n ?? 0);
+}
+
+/** Chunk helper shared by the loaders' batched IN-queries. */
+export function chunk<T>(arr: T[], n: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n));
+  return out;
 }
 
 export class RejectLog {

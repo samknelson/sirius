@@ -41,9 +41,9 @@ import {
 } from "../../server/middleware/request-context";
 import { db, pool as pgPool } from "../../server/storage/db";
 import { sql } from "drizzle-orm";
-import { ensureStagingSchema, recordRun, loadRawLedger, ensureRawLedgerTable } from "./lib/staging";
+import { ensureStagingSchema, recordRun, pagedRawLedger, stagedRawLedgerCount, ensureRawLedgerTable } from "./lib/staging";
 import { ensureIdMap, getMappings } from "./lib/idmap";
-import { RejectLog } from "./lib/loader-utils";
+import { RejectLog, LOADER_PAGE_SIZE, chunk } from "./lib/loader-utils";
 import { buildEntityResolver, ensureLedgerAccounts, laStatementYmd } from "./lib/resolvers";
 
 const LOADER = "t18-ledger";
@@ -102,11 +102,8 @@ async function main() {
   const report: Record<string, unknown> = { loader: LOADER, dryRun: DRY_RUN, allowedRejects: ALLOWED_REJECTS };
   const rejects = new RejectLog();
 
-  const staged = await loadRawLedger();
-  report.staged = staged.length;
+  report.staged = await stagedRawLedgerCount();
   const byStatus: Record<string, number> = {};
-  for (const r of staged) byStatus[r.status ?? "NULL"] = (byStatus[r.status ?? "NULL"] ?? 0) + 1;
-  report.stagedByStatus = byStatus;
 
   // ---- accounts (T18a: id_map → adopt-by-name → create) ----
   const accounts = await ensureLedgerAccounts(LOADER, DRY_RUN);
@@ -118,26 +115,7 @@ async function main() {
     failed: accounts.failed.size,
   };
 
-  // ---- participant + reference resolution maps ----
-  const participantNids = staged.map((r) => r.participant).filter((n): n is number => n != null);
-  const resolveEntity = await buildEntityResolver(participantNids);
-
-  const refNids = [...new Set(staged.map((r) => r.reference).filter((n): n is number => n != null))];
-  const refMaps = new Map<string, Map<number, { s2Id: string; stub: boolean }>>();
-  await Promise.all(
-    REFERENCE_ENTITIES.map(async ({ entity }) => {
-      refMaps.set(entity, await getMappings(entity, refNids));
-    }),
-  );
-  function resolveReference(nid: number): { referenceType: string; referenceId: string } {
-    for (const { entity, referenceType } of REFERENCE_ENTITIES) {
-      const hit = refMaps.get(entity)?.get(nid);
-      if (hit) return { referenceType, referenceId: hit.s2Id };
-    }
-    return { referenceType: "s1-unknown", referenceId: String(nid) };
-  }
-
-  // ---- resolve + write pass ----
+  // ---- global counters (accumulated across pages) ----
   let created = 0;
   let adopted = 0;
   let participantContactEAs = 0;
@@ -147,8 +125,50 @@ async function main() {
   const eaCache = new Map<string, string>();
   // expected per-account tallies (resolved rows only) for the verify pass
   const expected = new Map<string, { count: number; cents: number }>();
+  let pages = 0;
 
-  for (const r of staged) {
+  // ---- keyset-paged pipeline. Staged AR rows, participant/reference id_map
+  // lookups and the chargePluginKey existence check are all page-bounded —
+  // the per-row getByChargePluginKey is replaced by one batched IN-query set
+  // per page. Per-account verify aggregates stay global (tiny).
+  for await (const staged of pagedRawLedger(LOADER_PAGE_SIZE)) {
+    pages++;
+    for (const r of staged) byStatus[r.status ?? "NULL"] = (byStatus[r.status ?? "NULL"] ?? 0) + 1;
+
+    // ---- per-page participant + reference resolution maps ----
+    const participantNids = staged.map((r) => r.participant).filter((n): n is number => n != null);
+    const resolveEntity = await buildEntityResolver(participantNids);
+
+    const refNids = [...new Set(staged.map((r) => r.reference).filter((n): n is number => n != null))];
+    const refMaps = new Map<string, Map<number, { s2Id: string; stub: boolean }>>();
+    await Promise.all(
+      REFERENCE_ENTITIES.map(async ({ entity }) => {
+        refMaps.set(entity, await getMappings(entity, refNids));
+      }),
+    );
+    const resolveReference = (nid: number): { referenceType: string; referenceId: string } => {
+      for (const { entity, referenceType } of REFERENCE_ENTITIES) {
+        const hit = refMaps.get(entity)?.get(nid);
+        if (hit) return { referenceType, referenceId: hit.s2Id };
+      }
+      return { referenceType: "s1-unknown", referenceId: String(nid) };
+    };
+
+    // ---- batched existence check (replaces per-row getByChargePluginKey) ----
+    const existingKeys = new Set<string>();
+    if (!DRY_RUN) {
+      for (const batch of chunk(staged, 500)) {
+        const keys = batch.map((r) => `ar-${r.ledgerId}`);
+        const res = (await db.execute(sql`
+          SELECT charge_plugin_key FROM ledger
+           WHERE charge_plugin = ${CHARGE_PLUGIN}
+             AND charge_plugin_key IN (${sql.join(keys.map((k) => sql`${k}`), sql`, `)})
+        `)) as unknown as { rows: Array<{ charge_plugin_key: string }> };
+        for (const row of res.rows) existingKeys.add(row.charge_plugin_key);
+      }
+    }
+
+    for (const r of staged) {
     const id = r.ledgerId;
 
     if ((r.status ?? "").trim().toLowerCase() !== "cleared") {
@@ -211,8 +231,7 @@ async function main() {
     }
 
     try {
-      const existing = await storage.ledger.entries.getByChargePluginKey(CHARGE_PLUGIN, chargePluginKey);
-      if (existing) {
+      if (existingKeys.has(chargePluginKey)) {
         adopted++;
         continue;
       }
@@ -253,8 +272,11 @@ async function main() {
       back.count--;
       back.cents -= cents;
     }
+    }
   }
 
+  report.pages = pages;
+  report.stagedByStatus = byStatus;
   report.created = created;
   report.adopted = adopted;
   report.positiveRows = positiveRows;

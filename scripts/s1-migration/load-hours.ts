@@ -54,6 +54,7 @@ import {
 import { hasRunnableChargePlugins, getAllChargePlugins } from "../../server/plugins/ledger/charge";
 import { ensureStagingSchema, recordRun } from "./lib/staging";
 import { ensureIdMap, getMappings, putMapping } from "./lib/idmap";
+import { LOADER_PAGE_SIZE } from "./lib/loader-utils";
 
 const DRY_RUN = process.argv.includes("--dry-run");
 const STUB_MISSING = process.argv.includes("--stub-missing");
@@ -174,31 +175,244 @@ async function main() {
     );
   }
 
-  // ---- read staged payperiods ----
-  const staged = await db.execute(sql`
-    SELECT nid, title, fields FROM s1_staging.records
-     WHERE bundle = 'sirius_payperiod' ORDER BY nid
-  `);
-  const rows = (staged as unknown as { rows: StagedPayperiod[] }).rows.map((r) => ({
-    ...r,
-    nid: Number(r.nid),
-    fields: typeof r.fields === "string" ? JSON.parse(r.fields as unknown as string) : r.fields,
-  }));
-
-  // ---- parse & validate ----
+  // ---- parse & validate (keyset-paged staged read — Track C: production
+  // payperiod JSON payloads never all materialize in memory at once) ----
+  let stagedCount = 0;
   const skips: Record<string, number> = {};
-  const skipNids: Record<string, number[]> = {};
+  const skipNids: Record<string, number[]> = {}; // ≤20 sample nids per reason (counts stay exact)
   const skip = (reason: string, nid: number) => {
     skips[reason] = (skips[reason] ?? 0) + 1;
-    (skipNids[reason] ??= []).push(nid);
+    const arr = (skipNids[reason] ??= []);
+    if (arr.length < 20) arr.push(nid);
   };
   const provenanceCounts: Record<string, number> = {};
   const hourTypeCounts: Record<string, number> = {};
   let negativeHours = 0;
   let boundarySpanning = 0;
 
-  const parsed: ParsedRow[] = [];
-  for (const r of rows) {
+  // ---- aggregate per (worker, employer, year, month), worker-ordered.
+  // Track C: the staged read streams ordered by (worker_key, nid) via an
+  // expression index, so a worker's month-groups are COMPLETE the moment the
+  // stream reaches the next worker and are flushed (resolved + written +
+  // verified) immediately. Memory is bounded by one worker's groups plus one
+  // flush buffer — never by total month-group cardinality.
+  interface Group {
+    workerNid: number;
+    employerNid: number;
+    year: number;
+    month: number;
+    hours: number;
+    tids: Set<string>;
+    latest: ParsedRow;
+  }
+  const groups = new Map<string, Group>(); // current worker's groups only
+  let parsedCount = 0;
+  const addToGroup = (p: ParsedRow) => {
+    parsedCount++;
+    const key = `${p.workerNid}|${p.employerNid}|${p.year}|${p.month}`;
+    const g = groups.get(key);
+    if (!g) {
+      groups.set(key, {
+        workerNid: p.workerNid,
+        employerNid: p.employerNid,
+        year: p.year,
+        month: p.month,
+        hours: p.hours,
+        tids: new Set([p.hourTypeTid]),
+        latest: p,
+      });
+    } else {
+      g.hours += p.hours;
+      g.tids.add(p.hourTypeTid);
+      if (
+        p.dateStart > g.latest.dateStart ||
+        (p.dateStart === g.latest.dateStart && p.nid > g.latest.nid)
+      ) {
+        g.latest = p; // status = most recent payperiod's hour type (§4.8a)
+      }
+    }
+  };
+
+  // ---- flush machinery (bounded write/verify batches) ----
+  let monthGroups = 0;
+  let multiStatusMonths = 0;
+  let written = 0;
+  let verified = 0;
+  let unresolvedWorker = 0;
+  let unresolvedEmployer = 0;
+  let stubbedWorkers = 0;
+  let stubbedEmployers = 0;
+  let verifyMismatchCount = 0;
+  const verifyMismatchSamples: string[] = []; // ≤20 samples; count stays exact
+  // employer cache is global (distinct employers are few); worker mappings are per-flush.
+  const employerMap = new Map<number, { s2Id: string; stub: boolean }>();
+  const employerSeen = new Set<number>();
+
+  const stagedTitle = async (bundle: string, nid: number): Promise<string | null> => {
+    const res = await db.execute(sql`
+      SELECT title FROM s1_staging.records WHERE bundle = ${bundle} AND nid = ${nid}
+    `);
+    return (res as unknown as { rows: Array<{ title: string | null }> }).rows[0]?.title ?? null;
+  };
+
+  const flush = async (batch: Group[]): Promise<void> => {
+    if (batch.length === 0) return;
+    monthGroups += batch.length;
+    for (const g of batch) if (g.tids.size > 1) multiStatusMonths++;
+
+    // resolve references through id_map (batched per flush)
+    const workerNids = [...new Set(batch.map((g) => g.workerNid))];
+    const workerMap = await getMappings("worker", workerNids);
+    const newEmployers = [...new Set(batch.map((g) => g.employerNid))].filter((n) => !employerSeen.has(n));
+    if (newEmployers.length > 0) {
+      for (const [nid, v] of await getMappings("employer", newEmployers)) employerMap.set(nid, v);
+      for (const n of newEmployers) employerSeen.add(n);
+    }
+
+    if (STUB_MISSING && !DRY_RUN) {
+      for (const nid of workerNids) {
+        if (workerMap.has(nid)) continue;
+        const name = (await stagedTitle("sirius_worker", nid)) ?? `S1 worker ${nid}`;
+        const worker = await loaderScope(() => storage.workers.createWorker(name));
+        const winner = await putMapping("worker", nid, worker.id, { stub: true, loader: "t20-hours" });
+        if (winner !== worker.id) {
+          console.error(`RACE: worker nid ${nid} already mapped; created S2 worker ${worker.id} is an ORPHAN — clean up manually`);
+        }
+        workerMap.set(nid, { s2Id: winner, stub: true });
+        stubbedWorkers++;
+      }
+      for (const nid of new Set(batch.map((g) => g.employerNid))) {
+        if (employerMap.has(nid)) continue;
+        const name = (await stagedTitle("grievance_shop", nid)) ?? `S1 employer ${nid}`;
+        const employer = await loaderScope(() => storage.employers.createEmployer({ name }));
+        const winner = await putMapping("employer", nid, employer.id, { stub: true, loader: "t20-hours" });
+        if (winner !== employer.id) {
+          console.error(`RACE: employer nid ${nid} already mapped; created S2 employer ${employer.id} is an ORPHAN — clean up manually`);
+        }
+        employerMap.set(nid, { s2Id: winner, stub: true });
+        stubbedEmployers++;
+      }
+    }
+
+    // write through storage, notifications suppressed
+    const writtenKeys: Array<{ workerId: string; employerId: string; year: number; month: number; hours: number }> = [];
+    for (const g of batch) {
+      const worker = workerMap.get(g.workerNid);
+      const employer = employerMap.get(g.employerNid);
+      if (!worker) {
+        unresolvedWorker++;
+        continue;
+      }
+      if (!employer) {
+        unresolvedEmployer++;
+        continue;
+      }
+      if (DRY_RUN) {
+        written++;
+        continue;
+      }
+      const result = await loaderScope(() =>
+        storage.workerHours.upsertWorkerHours({
+          workerId: worker.s2Id,
+          employerId: employer.s2Id,
+          year: g.year,
+          month: g.month,
+          employmentStatusId: tidToStatusId.get(g.latest.hourTypeTid)!,
+          hours: g.hours,
+        }),
+      );
+      if (!result.data) {
+        throw new Error(
+          `upsertWorkerHours returned no row for S1 worker nid ${g.workerNid} ${g.year}-${g.month} — aborting (nothing is silently dropped)`,
+        );
+      }
+      writtenKeys.push({ workerId: worker.s2Id, employerId: employer.s2Id, year: g.year, month: g.month, hours: g.hours });
+      written++;
+    }
+
+    // verify: re-read every written key and compare hours exactly
+    if (!DRY_RUN) {
+      for (let i = 0; i < writtenKeys.length; i += 200) {
+        const chunk = writtenKeys.slice(i, i + 200);
+        const conditions = chunk.map(
+          (k) =>
+            sql`(worker_id = ${k.workerId} AND employer_id = ${k.employerId} AND year = ${k.year} AND month = ${k.month} AND day = 1)`,
+        );
+        const res = await db.execute(sql`
+          SELECT worker_id, employer_id, year, month, hours FROM worker_hours
+           WHERE ${sql.join(conditions, sql` OR `)}
+        `);
+        const found = new Map(
+          (res as unknown as { rows: Array<{ worker_id: string; employer_id: string; year: number; month: number; hours: number | null }> }).rows.map(
+            (r) => [`${r.worker_id}|${r.employer_id}|${r.year}|${r.month}`, r.hours],
+          ),
+        );
+        for (const k of chunk) {
+          const hours = found.get(`${k.workerId}|${k.employerId}|${k.year}|${k.month}`);
+          if (hours != null && Math.abs(hours - k.hours) < 1e-9) verified++;
+          else {
+            verifyMismatchCount++;
+            if (verifyMismatchSamples.length < 20)
+              verifyMismatchSamples.push(`${k.year}-${String(k.month).padStart(2, "0")}`);
+          }
+        }
+      }
+    }
+  };
+
+  // ---- worker-ordered keyset paging over staged payperiods ----
+  // Expression must match the index exactly; -1 buckets unparseable refs
+  // (they all skip as missing_worker_ref) so the sort key is total.
+  const WORKER_KEY_EXPR = sql`
+    CASE
+      WHEN jsonb_typeof(fields->'field_sirius_worker') = 'number'
+        THEN (fields->>'field_sirius_worker')::bigint
+      WHEN jsonb_typeof(fields->'field_sirius_worker') = 'array'
+       AND jsonb_typeof(fields->'field_sirius_worker'->0) = 'number'
+        THEN (fields->'field_sirius_worker'->>0)::bigint
+      WHEN fields->>'field_sirius_worker' ~ '^[0-9]+$'
+        THEN (fields->>'field_sirius_worker')::bigint
+      ELSE '-1'::bigint
+    END`;
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS records_payperiod_worker_nid_idx
+      ON s1_staging.records ((${WORKER_KEY_EXPR}), nid)
+      WHERE bundle = 'sirius_payperiod'
+  `);
+
+  const FLUSH_AT = 1000; // groups buffered across finished workers before a write flush
+  let pending: Group[] = [];
+  let currentWorkerKey: number | null = null;
+  let lastKey = Number.MIN_SAFE_INTEGER;
+  let lastNid = -1;
+  for (;;) {
+    const staged = await db.execute(sql`
+      SELECT nid, title, fields, (${WORKER_KEY_EXPR}) AS worker_key FROM s1_staging.records
+       WHERE bundle = 'sirius_payperiod' AND ((${WORKER_KEY_EXPR}), nid) > (${lastKey}, ${lastNid})
+       ORDER BY (${WORKER_KEY_EXPR}), nid LIMIT ${LOADER_PAGE_SIZE}
+    `);
+    const rows = (staged as unknown as { rows: Array<StagedPayperiod & { worker_key: string | number }> }).rows.map((r) => ({
+      ...r,
+      nid: Number(r.nid),
+      worker_key: Number(r.worker_key),
+      fields: typeof r.fields === "string" ? JSON.parse(r.fields as unknown as string) : r.fields,
+    }));
+    if (rows.length === 0) break;
+    lastKey = rows[rows.length - 1].worker_key;
+    lastNid = rows[rows.length - 1].nid;
+    stagedCount += rows.length;
+
+    for (const r of rows) {
+    // Worker boundary: this worker's groups are complete — move to the flush buffer.
+    if (currentWorkerKey !== null && r.worker_key !== currentWorkerKey) {
+      pending.push(...groups.values());
+      groups.clear();
+      if (pending.length >= FLUSH_AT) {
+        await flush(pending);
+        pending = [];
+      }
+    }
+    currentWorkerKey = r.worker_key;
     // Production stages this field as an object ({value, json_denorm_external_id}
     // — two payload columns, confirmed in profile/columns.tsv); tolerate a
     // scalar-staged shape too (single-column environments stage the value bare).
@@ -275,7 +489,7 @@ async function main() {
     }
     hourTypeCounts[tid] = (hourTypeCounts[tid] ?? 0) + 1;
 
-    parsed.push({
+    addToGroup({
       nid: r.nid,
       workerNid,
       employerNid,
@@ -285,177 +499,32 @@ async function main() {
       hours: Number(total), // ALWAYS decimal — doublePrecision column
       hourTypeTid: tid,
     });
+    }
+    if (rows.length < LOADER_PAGE_SIZE) break;
   }
-
-  // ---- aggregate per (worker, employer, year, month) ----
-  interface Group {
-    workerNid: number;
-    employerNid: number;
-    year: number;
-    month: number;
-    hours: number;
-    tids: Set<string>;
-    latest: ParsedRow;
-    sourceNids: number[];
-  }
-  const groups = new Map<string, Group>();
-  for (const p of parsed) {
-    const key = `${p.workerNid}|${p.employerNid}|${p.year}|${p.month}`;
-    const g = groups.get(key);
-    if (!g) {
-      groups.set(key, {
-        workerNid: p.workerNid,
-        employerNid: p.employerNid,
-        year: p.year,
-        month: p.month,
-        hours: p.hours,
-        tids: new Set([p.hourTypeTid]),
-        latest: p,
-        sourceNids: [p.nid],
-      });
-    } else {
-      g.hours += p.hours;
-      g.tids.add(p.hourTypeTid);
-      g.sourceNids.push(p.nid);
-      if (
-        p.dateStart > g.latest.dateStart ||
-        (p.dateStart === g.latest.dateStart && p.nid > g.latest.nid)
-      ) {
-        g.latest = p; // status = most recent payperiod's hour type (§4.8a)
-      }
-    }
-  }
-  const multiStatusMonths = [...groups.values()].filter((g) => g.tids.size > 1).length;
-
-  // ---- resolve references through id_map ----
-  const workerNids = [...new Set([...groups.values()].map((g) => g.workerNid))];
-  const employerNids = [...new Set([...groups.values()].map((g) => g.employerNid))];
-  const workerMap = await getMappings("worker", workerNids);
-  const employerMap = await getMappings("employer", employerNids);
-
-  let stubbedWorkers = 0;
-  let stubbedEmployers = 0;
-  if (STUB_MISSING && !DRY_RUN) {
-    const stagedTitle = async (bundle: string, nid: number): Promise<string | null> => {
-      const res = await db.execute(sql`
-        SELECT title FROM s1_staging.records WHERE bundle = ${bundle} AND nid = ${nid}
-      `);
-      return (res as unknown as { rows: Array<{ title: string | null }> }).rows[0]?.title ?? null;
-    };
-    for (const nid of workerNids) {
-      if (workerMap.has(nid)) continue;
-      const name = (await stagedTitle("sirius_worker", nid)) ?? `S1 worker ${nid}`;
-      const worker = await loaderScope(() => storage.workers.createWorker(name));
-      const winner = await putMapping("worker", nid, worker.id, { stub: true, loader: "t20-hours" });
-      if (winner !== worker.id) {
-        console.error(`RACE: worker nid ${nid} already mapped; created S2 worker ${worker.id} is an ORPHAN — clean up manually`);
-      }
-      workerMap.set(nid, { s2Id: winner, stub: true });
-      stubbedWorkers++;
-    }
-    for (const nid of employerNids) {
-      if (employerMap.has(nid)) continue;
-      const name = (await stagedTitle("grievance_shop", nid)) ?? `S1 employer ${nid}`;
-      const employer = await loaderScope(() =>
-        storage.employers.createEmployer({ name }),
-      );
-      const winner = await putMapping("employer", nid, employer.id, { stub: true, loader: "t20-hours" });
-      if (winner !== employer.id) {
-        console.error(`RACE: employer nid ${nid} already mapped; created S2 employer ${employer.id} is an ORPHAN — clean up manually`);
-      }
-      employerMap.set(nid, { s2Id: winner, stub: true });
-      stubbedEmployers++;
-    }
-  }
-
-  // ---- write through storage, notifications suppressed ----
-  let written = 0;
-  let unresolvedWorker = 0;
-  let unresolvedEmployer = 0;
-  const writtenKeys: Array<{ workerId: string; employerId: string; year: number; month: number; hours: number }> = [];
-  for (const g of groups.values()) {
-    const worker = workerMap.get(g.workerNid);
-    const employer = employerMap.get(g.employerNid);
-    if (!worker) {
-      unresolvedWorker++;
-      continue;
-    }
-    if (!employer) {
-      unresolvedEmployer++;
-      continue;
-    }
-    if (DRY_RUN) {
-      written++;
-      continue;
-    }
-    const result = await loaderScope(() =>
-      storage.workerHours.upsertWorkerHours({
-        workerId: worker.s2Id,
-        employerId: employer.s2Id,
-        year: g.year,
-        month: g.month,
-        employmentStatusId: tidToStatusId.get(g.latest.hourTypeTid)!,
-        hours: g.hours,
-      }),
-    );
-    if (!result.data) {
-      throw new Error(
-        `upsertWorkerHours returned no row for S1 worker nid ${g.workerNid} ${g.year}-${g.month} — aborting (nothing is silently dropped)`,
-      );
-    }
-    writtenKeys.push({
-      workerId: worker.s2Id,
-      employerId: employer.s2Id,
-      year: g.year,
-      month: g.month,
-      hours: g.hours,
-    });
-    written++;
-  }
-
-  // ---- verify: re-read every written key and compare hours exactly ----
-  let verified = 0;
-  const mismatches: string[] = [];
-  if (!DRY_RUN) {
-    for (let i = 0; i < writtenKeys.length; i += 200) {
-      const chunk = writtenKeys.slice(i, i + 200);
-      const conditions = chunk.map(
-        (k) =>
-          sql`(worker_id = ${k.workerId} AND employer_id = ${k.employerId} AND year = ${k.year} AND month = ${k.month} AND day = 1)`,
-      );
-      const res = await db.execute(sql`
-        SELECT worker_id, employer_id, year, month, hours FROM worker_hours
-         WHERE ${sql.join(conditions, sql` OR `)}
-      `);
-      const found = new Map(
-        (res as unknown as { rows: Array<{ worker_id: string; employer_id: string; year: number; month: number; hours: number | null }> }).rows.map(
-          (r) => [`${r.worker_id}|${r.employer_id}|${r.year}|${r.month}`, r.hours],
-        ),
-      );
-      for (const k of chunk) {
-        const hours = found.get(`${k.workerId}|${k.employerId}|${k.year}|${k.month}`);
-        if (hours != null && Math.abs(hours - k.hours) < 1e-9) verified++;
-        else mismatches.push(`${k.year}-${String(k.month).padStart(2, "0")}`);
-      }
-    }
-  }
+  // final worker + buffer
+  pending.push(...groups.values());
+  groups.clear();
+  await flush(pending);
+  pending = [];
 
   const report = {
     loader: "t20-hours",
     dryRun: DRY_RUN,
     migrationMode: MIGRATION_MODE,
-    stagedPayperiods: rows.length,
-    parsed: parsed.length,
+    stagedPayperiods: stagedCount,
+    parsed: parsedCount,
     skips,
     // Only nids (opaque ids) — never values. legacy_json_format nids are the
     // N18 documented-skip requirement.
     skipNids: Object.fromEntries(
       Object.entries(skipNids).map(([k, v]) => [k, v.slice(0, 20)]),
     ),
-    monthGroups: groups.size,
+    monthGroups,
     written,
     verified,
-    verifyMismatchMonths: mismatches.slice(0, 20),
+    verifyMismatchCount,
+    verifyMismatchMonths: verifyMismatchSamples,
     unresolvedWorker,
     unresolvedEmployer,
     stubbedWorkers,
@@ -470,7 +539,7 @@ async function main() {
   console.log(JSON.stringify(report, null, 2));
   if (!DRY_RUN) await recordRun(startedAt, { loader: "t20-hours", stubMissing: STUB_MISSING, migrationMode: MIGRATION_MODE }, report);
 
-  if (!DRY_RUN && (mismatches.length > 0 || written !== verified)) {
+  if (!DRY_RUN && (verifyMismatchCount > 0 || written !== verified)) {
     console.error(`VERIFY FAILED: wrote ${written}, verified ${verified}`);
     process.exit(1);
   }

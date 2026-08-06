@@ -270,14 +270,19 @@ export async function stagedRawLedgerCount(): Promise<number> {
   return Number((res as unknown as { rows: Array<{ n: number }> }).rows[0]?.n ?? 0);
 }
 
-/** T18 read path: all staged AR rows ordered by ledger_id. */
+/** T18 read path: all staged AR rows ordered by ledger_id. Prefer
+ * pagedRawLedger for production-size sets. */
 export async function loadRawLedger(): Promise<RawLedgerRow[]> {
   const res = await db.execute(sql`
     SELECT ledger_id, ledger_amount, ledger_status, ledger_account, ledger_participant,
            ledger_reference, ledger_ts, ledger_memo, ledger_key, ledger_json
       FROM s1_staging.raw_ledger_ar ORDER BY ledger_id
   `);
-  return (res as unknown as { rows: Array<Record<string, unknown>> }).rows.map((r) => ({
+  return (res as unknown as { rows: Array<Record<string, unknown>> }).rows.map(mapRawLedgerRow);
+}
+
+function mapRawLedgerRow(r: Record<string, unknown>): RawLedgerRow {
+  return {
     ledgerId: Number(r.ledger_id),
     amount: r.ledger_amount == null ? null : String(r.ledger_amount),
     status: r.ledger_status == null ? null : String(r.ledger_status),
@@ -288,5 +293,27 @@ export async function loadRawLedger(): Promise<RawLedgerRow[]> {
     memo: r.ledger_memo == null ? null : String(r.ledger_memo),
     key: r.ledger_key == null ? null : String(r.ledger_key),
     json: r.ledger_json == null ? null : String(r.ledger_json),
-  }));
+  };
+}
+
+/**
+ * Keyset-paged raw AR read (Track C): yields pages of at most `pageSize`
+ * rows in ascending ledger_id order — memory stays bounded at production
+ * volume (large ledger_json payloads never materialize all at once).
+ */
+export async function* pagedRawLedger(pageSize: number): AsyncGenerator<RawLedgerRow[]> {
+  let last = -1;
+  for (;;) {
+    const res = await db.execute(sql`
+      SELECT ledger_id, ledger_amount, ledger_status, ledger_account, ledger_participant,
+             ledger_reference, ledger_ts, ledger_memo, ledger_key, ledger_json
+        FROM s1_staging.raw_ledger_ar WHERE ledger_id > ${last}
+       ORDER BY ledger_id LIMIT ${pageSize}
+    `);
+    const rows = (res as unknown as { rows: Array<Record<string, unknown>> }).rows.map(mapRawLedgerRow);
+    if (rows.length === 0) return;
+    last = rows[rows.length - 1].ledgerId;
+    yield rows;
+    if (rows.length < pageSize) return;
+  }
 }
