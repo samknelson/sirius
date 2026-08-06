@@ -58,9 +58,12 @@ loaders against ANY target (fresh branch or production), ensure:
   On a fresh database run `seed-employment-statuses.ts` first, then review
   the `employed` flags with the fund (they gate eligibility and the
   member-status scan).
-- On a fresh branch, `copy-fund-config.ts` copies providers/benefits/policies
-  (and their option types) id-preserving from another S2 database via
-  `SOURCE_CONFIG_DATABASE_URL`; idempotent, never touches migrated-data tables.
+- Target setup is one command: `bootstrap-target.ts` (schema + optional `--wipe`
+  preserving the admin user + components + idempotent seeds). `trust_providers`
+  and `trust_benefits` are NOT preconfigured — `seed-trust-config.ts` derives
+  them from the staged S1 nodes after `stage.ts` (§4.15 carry-over-as-is).
+  (`copy-fund-config.ts` remains as a dev utility for id-preserving copies from
+  `SOURCE_CONFIG_DATABASE_URL`, but is no longer part of the run.)
 - **Policies** — `load-policies.ts` is ADOPT-ONLY: every referenced S1 trust
   policy must match an existing S2 `policies` row by name or `sirius_id`
   (case-insensitive). Unmatched or unstaged targets hard-fail the whole run
@@ -93,7 +96,7 @@ loaders against ANY target (fresh branch or production), ensure:
   table, expected counters, timings, parity gate) — proven by a full dev
   rehearsal on 2026-08-06. Operators follow the runbook; this README is the
   loader reference.
-- **Load order matters:** stage → seed-employment-statuses (fresh DB) →
+- **Load order matters:** bootstrap-target → stage → seed-trust-config →
   options → contacts/workers → member-statuses → employers → policies →
   relationships → employee-ids → elections → benefit-history → **payments →
   ledger** → hours → enrollment-packet-tags. Payments run BEFORE ledger:

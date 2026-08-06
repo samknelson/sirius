@@ -27,6 +27,31 @@ import { pool as pgPool } from "../../server/storage/db";
 import { storage } from "../../server/storage/database";
 
 const NEW_POLICIES = [
+  // Core fund policies. Historically seeded "at DB setup time" — but an
+  // empty-DB-bootstrapped or wiped target has none (data-seed migrations are
+  // stamped, not run), so bootstrap-target relies on this script seeding ALL
+  // seven. Names match the fund's S2 config (verified against the fund
+  // config source 2026-08-06).
+  {
+    siriusId: "PA",
+    name: "Participation Agreement",
+    data: { migrationNote: "Core fund policy (seeded by seed-migration-policies for zero-preconfig bootstrap)." },
+  },
+  {
+    siriusId: "R",
+    name: "Restaurant Plan",
+    data: { migrationNote: "Core fund policy (seeded by seed-migration-policies for zero-preconfig bootstrap)." },
+  },
+  {
+    siriusId: "EC",
+    name: "Event Center Plan",
+    data: { migrationNote: "Core fund policy (seeded by seed-migration-policies for zero-preconfig bootstrap)." },
+  },
+  {
+    siriusId: "COBRA",
+    name: "COBRA",
+    data: { migrationNote: "Core fund policy (seeded by seed-migration-policies for zero-preconfig bootstrap)." },
+  },
   {
     siriusId: "RES",
     name: "RESTAURANT Plan",

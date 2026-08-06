@@ -25,41 +25,44 @@ never bulk-migrate).
 The production run happens **inside the HIPAA boundary**. Loader/harness output is
 aggregates-only by design and safe to share; never paste raw S1 rows anywhere.
 
-## 2. Preconditions (verify BEFORE the freeze window)
+## 2. Target bootstrap (ONE command — no manual preconfiguration)
 
-All of these are fund configuration on the long-lived prod S2 target. Verify, do not create:
+```bash
+npx tsx scripts/s1-migration/bootstrap-target.ts          # fresh/empty target
+npx tsx scripts/s1-migration/bootstrap-target.ts --wipe   # populated target
+```
 
-1. **Migrations current** — app booted at least once at core migration ≥ 1117
-   (`options_call_reason` seeded with sirius_ids `enrollment`, `enrollment followup`,
-   `mlk issues`, `id card not received`, `appeal denial`, `other` — the N21 loader
-   aborts loudly if any are missing).
-2. **Components enabled** — the fund's component set, including at minimum
-   `worker.relations`, `trust.benefits`, `trust.elections`, `trust.providers`,
-   `ledger`, `ledger.payment.batch`, `employer.company`, `sitespecific.bao`.
-   (T4 writes `options_worker_relation_type`; T15 writes `worker_relations`.)
-3. **Fund config rows present:**
-   - `trust_benefits` with (at least) the names the S1 benefit nodes resolve to:
-     Kaiser, Health Net, Delta Dental, VSP, Life Insurance, MLK, Express Scripts.
-   - `policies` with sirius_ids `PA`, `R`, `EC`, `COBRA`.
-   - `options_gender` populated (T3 resolves S1 gender **by name**; missing names
-     annotate `worker_gender_unresolved`).
-   - `options_employment_status` — run `seed-employment-statuses.ts` only on a
-     fresh DB; on prod verify the 11 statuses exist and T20's tid→name mapping
-     resolves (the T4 run verifies this and fails loud).
-4. **Seed the three migration policies** (idempotent, run on every target):
-   ```bash
-   npx tsx scripts/s1-migration/seed-migration-policies.ts
-   ```
-   Expect `totalPolicies: 7` (PA, R, EC, COBRA + RES, TT, U).
-5. **S1 access** — read access to the frozen S1 MariaDB from the migration host.
-6. **App traffic stopped** on the target for the duration of the run (loaders
+The bootstrap brings ANY target (empty, schema-only, or previously populated)
+to the exact state the loaders expect:
+
+1. **Schema** — empty-DB bootstrap (if empty) + core migrations + component
+   migrations, the same sequence the app boots with.
+2. **Wipe** — a populated target is refused unless `--wipe` is passed. `--wipe`
+   truncates every table EXCEPT `variables` (migration/schema bookkeeping),
+   `roles`, and `role_permissions`, **always preserving the admin user**
+   (`--admin-email`, default `mmcdermott@cgtconsultinginc.com`) with their auth
+   identities and role assignments, and drops `s1_staging` for a fresh stage
+   (`--keep-staging` to skip).
+3. **Admin** — creates the admin user + full-permission `admin` role if absent.
+4. **Components** — enables the fund set: `bulk`, `debug`, `employer.company`,
+   `ledger` + all `ledger.*`, `sitespecific.bao`, `system.sftp.client`, all
+   `trust.*`, `worker.relations`.
+5. **Seeds** (all idempotent) — policies (all 7: PA, R, EC, COBRA + RES, TT, U),
+   employment statuses, genders, call reasons.
+
+`trust_providers` / `trust_benefits` are **not** seeded here — they derive from
+the staged S1 nodes (§4.0b), so no hand-maintained benefit list exists anywhere.
+
+Remaining manual preconditions:
+1. **S1 access** — read access to the frozen S1 MariaDB from the migration host.
+2. **App traffic stopped** on the target for the duration of the run (loaders
    suppress notifications and — with `--migration-mode` — charge plugins, but
    concurrent user writes would race the id_map).
 
 ## 3. Load order (load-bearing — do not reorder)
 
 ```
-stage → (fresh DB only: seed-employment-statuses) → options → contacts/workers
+bootstrap-target → stage → seed-trust-config → options → contacts/workers
 → member-statuses → employers → policies → relationships → employee-ids
 → elections → benefit-history → payments → ledger → hours
 → call-logs → enrollment-packet-tags → parity gates
@@ -72,6 +75,8 @@ Key ordering facts:
 - **policies after employers**, **elections after policies + benefit config**.
 - call-logs needs contacts (handler resolution); enrollment-packet-tags needs
   workers + wmb.
+- **seed-trust-config after stage, before elections/benefit-history** — it
+  creates `trust_providers`/`trust_benefits` from the staged S1 nodes.
 
 ## 4. Command sequence
 
@@ -95,6 +100,24 @@ npx tsx scripts/s1-migration/stage.ts          # prod: default in-scope bundles
 - Also stages taxonomy terms and `raw sirius_ledger_ar`.
 - Prod volume is ~1M+ nodes; use `--batch` sizing if memory pressure appears.
   Staging extracts for actively-rewritten tables must run at freeze (06 §4.17).
+
+### 4.0b Trust config from staging (providers + benefits)
+
+```bash
+npx tsx scripts/s1-migration/seed-trust-config.ts
+```
+
+Creates `trust_providers` and `trust_benefits` from the staged
+`sirius_trust_provider` / `sirius_trust_benefit` nodes — the §4.15
+"carry over as-is" ruling. Because the set derives from S1 itself, the prod
+run automatically carries EVERY live benefit (Carelon EAP and Carelon
+Behavioral Health as two distinct benefits, VSP and VSP Enhanced both live,
+Progyny, Hinge, Liberty, Kaiser E, feed-less Life and AD&D, and the
+historical plans) — no hand-maintained name list to go stale. Idempotent
+(id_map → sirius_id/provenance → unique-name adopt → create); exits 1 on any
+staged node missing a title. Benefit↔provider links are intentionally not
+created (S1 has no such relation). Expect `titleMissingNids: []` and, on a
+wiped target, `created == staged` on both sides.
 
 ### 4.1 – 4.14 Loaders
 
@@ -229,28 +252,16 @@ recreate, then:
 # 0. (once per synthetic refresh) regenerate prod-shaped S1 synthetic data
 S1_DATABASE_URL="$(printf %s "$S1_DATABASE_URL" | tr -d '[:space:]')" node scripts/s1-migration/generate.mjs
 
-# 1. drop + recreate the rehearsal DB (connect to the dev host as the owner role)
-#    DROP DATABASE IF EXISTS s2_rehearsal WITH (FORCE); CREATE DATABASE s2_rehearsal;
-#    ALTER DATABASE s2_rehearsal SET search_path TO public;
-
-# 2. point everything at it (all subsequent commands)
+# 1. point everything at it (all subsequent commands)
 export EXTERNAL_DATABASE_URL="<dev-host-url>/s2_rehearsal"
 
-# 3. schema: one-shot empty-DB bootstrap (creates core + default component tables,
-#    stamps migrations_version — data-seed migrations do NOT run, hence step 5)
-ALLOW_EMPTY_DB_BOOTSTRAP=1 PORT=5798 timeout 100 npx tsx server/index.ts
+# 2. one command: schema + wipe (admin preserved) + components + seeds
+#    (creates the DB's contents in place; if the DB itself doesn't exist yet,
+#     CREATE DATABASE s2_rehearsal on the dev host first)
+npx tsx scripts/s1-migration/bootstrap-target.ts --wipe
 
-# 4. optional components (mirrors the dev component set; lifecycle-checked)
-npx tsx scripts/s1-migration/dev/enable-components.ts
-
-# 5. fund config + seeds
-npx tsx scripts/s1-migration/copy-fund-config.ts        # from SOURCE_CONFIG_DATABASE_URL
-npx tsx scripts/s1-migration/seed-migration-policies.ts
-npx tsx scripts/s1-migration/seed-employment-statuses.ts
-npx tsx scripts/s1-migration/dev/seed-genders.ts
-npx tsx scripts/s1-migration/dev/seed-call-reasons.ts   # migration 1117's seed (bootstrap gap)
-
-# 6. run §4 with the dev-column flags, then §6 with --open-end-through 2026-12
+# 3. run §4 with the dev-column flags (stage → seed-trust-config → loaders),
+#    then §6 with --open-end-through 2026-12
 ```
 
 Dev-only notes:
