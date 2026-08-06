@@ -27,6 +27,12 @@
  * These become policy_ref_not_staged rejects — expected and allowable:
  *   --allow-rejects policy_ref_not_staged
  *
+ * Staged sirius_json_definition rows that NO election references and that
+ * match no S2 policy reject as policy_unmatched_unreferenced (the bundle is a
+ * generic JSON-definition store — dev carries a non-policy "workers_v1" node;
+ * allow after inspecting the reported titles). Referenced-but-unmatched is
+ * always fatal.
+ *
  * Elections themselves do NOT store a policy id in S2 (02 §5b — policy is
  * derived via resolveEmployerPolicyAsOf); id_map entries exist so T16 can
  * stash/audit and so employer policy setup can be cross-checked.
@@ -105,11 +111,12 @@ async function main() {
     ...(await loadStaged("sirius_trust_policy")),
     ...(await loadStaged("sirius_json_definition")),
   ];
-  const refNids = new Set<number>(policyBundleRows.map((r) => r.nid));
+  const electionReferencedNids = new Set<number>();
   for (const e of elections) {
     const nid = targetNidOf(e.fields, "field_sirius_trust_policy");
-    if (nid != null) refNids.add(nid);
+    if (nid != null) electionReferencedNids.add(nid);
   }
+  const refNids = new Set<number>([...policyBundleRows.map((r) => r.nid), ...electionReferencedNids]);
   report.stagedElections = elections.length;
   report.stagedPolicyBundleRows = policyBundleRows.length;
   report.distinctPolicyRefs = refNids.size;
@@ -192,7 +199,18 @@ async function main() {
       match = candidates.map((c) => byName.get(c.trim().toLowerCase())).find((id) => id != null);
     }
     if (!match) {
-      rejects.add("policy_unmatched", { nid, bundle: staged.bundle, title: staged.title }, nid);
+      // A row of the policy bundle that no election references and that
+      // matches no S2 policy is NOT a policy ref — sirius_json_definition is a
+      // generic JSON-definition store and can hold non-policy nodes (dev:
+      // "workers_v1"; prod §P4 only confirms the 15 REFERENCED nodes are
+      // plans). Distinct, allowable reject class so the operator explicitly
+      // acknowledges every skipped title. Referenced-but-unmatched stays
+      // unconditionally fatal.
+      if (electionReferencedNids.has(nid)) {
+        rejects.add("policy_unmatched", { nid, bundle: staged.bundle, title: staged.title }, nid);
+      } else {
+        rejects.add("policy_unmatched_unreferenced", { nid, bundle: staged.bundle, title: staged.title }, nid);
+      }
       continue;
     }
     resolved.set(nid, match);
@@ -201,7 +219,8 @@ async function main() {
 
   // policy_unmatched is always fatal (fix the alias table or seed missing S2
   // policy rows). policy_ref_not_staged is expected (23 prod orphans) and
-  // allowable via --allow-rejects.
+  // allowable via --allow-rejects, as is policy_unmatched_unreferenced
+  // (non-policy rows of the sirius_json_definition bundle).
   const unmatchedCount = rejects.counts["policy_unmatched"] ?? 0;
   if (unmatchedCount > 0) {
     report.rejects = rejects.counts;
@@ -237,6 +256,7 @@ async function main() {
     const vMap = await getMappings("policy", nidList);
     for (const nid of nidList) {
       if (!stagedByNid.has(nid)) continue; // orphan — not expected to have a mapping
+      if (rejects.has("policy_unmatched_unreferenced", nid)) continue; // non-policy bundle row — no mapping by design
       const m = vMap.get(nid);
       if (!m) {
         console.error(`VERIFY: policy nid ${nid} has no id_map entry`);

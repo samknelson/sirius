@@ -99,3 +99,4 @@
 - [S1 loader keyset paging](s1-loader-keyset-paging.md) — loaders page staged rows + batch IN-query checks; jsonb_build_object params need explicit casts on Neon.
 - [Migration scripts outside app tsconfig](scripts-tsconfig-gap.md) — app tsc green says nothing about scripts/; run tsc -p tsconfig.scripts.json before first execution of new loaders.
 - [Synthetic S1 tag-data gap](s1-synthetic-tag-gap.md) — dev MariaDB predates sirius_contact_tags (NULL tids, no terms); tag consumers legitimately no-op in dev; cover via seeded staged fakes, don't regenerate.
+- [S1 rehearsal target pattern](s1-rehearsal-pattern.md) — separate s2_rehearsal DB; empty bootstrap skips data seeds + optional components; S1 DSN whitespace; RUNBOOK.md is the prod procedure.

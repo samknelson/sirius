@@ -88,6 +88,11 @@ loaders against ANY target (fresh branch or production), ensure:
   checked in the charge-plugin executor), so the load cannot double-bill.
   Without the flag, the loader preflights and ABORTS before writing if any
   charge plugin is runnable (component enabled + enabled config).
+- **Production runbook:** `RUNBOOK.md` in this directory is the verified,
+  step-by-step production procedure (exact commands, allow-rejects policy
+  table, expected counters, timings, parity gate) — proven by a full dev
+  rehearsal on 2026-08-06. Operators follow the runbook; this README is the
+  loader reference.
 - **Load order matters:** stage → seed-employment-statuses (fresh DB) →
   options → contacts/workers → member-statuses → employers → policies →
   relationships → employee-ids → elections → benefit-history → **payments →
