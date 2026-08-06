@@ -45,6 +45,7 @@ import { ensureStagingSchema, recordRun, pagedRawLedger, stagedRawLedgerCount, e
 import { ensureIdMap, getMappings } from "./lib/idmap";
 import { RejectLog, LOADER_PAGE_SIZE, chunk } from "./lib/loader-utils";
 import { buildEntityResolver, ensureLedgerAccounts, laStatementYmd } from "./lib/resolvers";
+import { AMOUNT_RE, toCents as parseCents, centsToStr } from "./lib/parity";
 
 const LOADER = "t18-ledger";
 const CHARGE_PLUGIN = "s1-import";
@@ -67,17 +68,9 @@ const FATAL_REASONS = [
   "entry_create_failed",
 ] as const;
 
-const AMOUNT_RE = /^-?\d{1,8}(\.\d{1,2})?$/;
-
-/** "-6421.35" → integer cents (exact; never floats). */
-function toCents(amount: string): number {
-  const neg = amount.startsWith("-");
-  const [whole, frac = ""] = (neg ? amount.slice(1) : amount).split(".");
-  const cents = Number(whole) * 100 + Number((frac + "00").slice(0, 2));
-  return neg ? -cents : cents;
-}
-
-const centsToStr = (c: number) => `${c < 0 ? "-" : ""}${Math.trunc(Math.abs(c) / 100)}.${String(Math.abs(c) % 100).padStart(2, "0")}`;
+/** "-6421.35" → integer cents. Inputs are AMOUNT_RE-validated (or DB numeric
+ * text) so a null parse is impossible; shared exact math lives in lib/parity. */
+const toCents = (amount: string): number => parseCents(amount) ?? 0;
 
 /** Reference resolution priority (first id_map hit wins; nids are unique per
  * node so overlaps only exist for shell-worker vs contact, resolved worker-

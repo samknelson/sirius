@@ -50,6 +50,7 @@ import { ensureStagingSchema, recordRun } from "./lib/staging";
 import { ensureIdMap, getMappings, putMapping } from "./lib/idmap";
 import { RejectLog, pagedStaged, stagedCountOf, chunk, strOf, tidOf, targetNidOf, toYmd } from "./lib/loader-utils";
 import { buildEntityResolver, ensureLedgerAccounts } from "./lib/resolvers";
+import { AMOUNT_RE, PAYMENT_STATUS_MAP as STATUS_MAP, type S2PaymentStatus } from "./lib/parity";
 
 const LOADER = "t19-payments";
 const BUNDLE = "sirius_payment";
@@ -58,15 +59,6 @@ const ALLOWED_REJECTS: string[] = (() => {
   const i = process.argv.indexOf("--allow-rejects");
   return i >= 0 && process.argv[i + 1] ? process.argv[i + 1].split(",").map((s) => s.trim()).filter(Boolean) : [];
 })();
-type S2PaymentStatus = "draft" | "canceled" | "cleared" | "error";
-/** Explicit S1 → S2 status table (06 §4.18). Unmapped statuses reject. */
-const STATUS_MAP: Record<string, { status: S2PaymentStatus; setCleared?: true; setReceived?: true }> = {
-  cleared: { status: "cleared", setCleared: true },
-  canceled: { status: "canceled" },
-  failed: { status: "error" },
-  pending: { status: "draft" },
-  received: { status: "draft", setReceived: true },
-};
 
 /** All reasons are row-skipping (fatal for that payment). */
 const FATAL_REASONS = [
@@ -87,7 +79,6 @@ const FATAL_REASONS = [
   "mapped_row_missing",
 ] as const;
 
-const AMOUNT_RE = /^-?\d{1,8}(\.\d{1,2})?$/;
 const DT_RE = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}(?::\d{2})?)$/;
 
 /** "YYYY-MM-DD HH:MM[:SS]" site-convention (stored UTC) → UTC Date.

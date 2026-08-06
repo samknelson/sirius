@@ -423,6 +423,90 @@ synthetic dev data is structurally sparse — no worker refs on elections, no
 types on payments), runs each loader as a real CLI, asserts report counters,
 DB rows, idempotent re-runs and the T19 fail-closed guard, then cleans up.
 
+
+## Parity harnesses (the cutover gates)
+
+The fund ruled (2026-08-05) that cutover is judged by **validation, not
+loading**: benefit history imports directly and is validated by a
+month-parity run, and balance correctness requires reconciling BOTH S1
+ledger AR and S1 payments together — neither is complete alone. Two
+read-only harnesses produce aggregate PASS/FAIL reports with non-zero exit
+on any breach (CI-able; a production run can be judged objectively). Both
+follow the loader conventions: JSON report to stdout, run recorded in
+`s1_staging.runs`, HIPAA-safe output (counts, rates, cents sums per
+fund-level account, reason codes; samples are S1 nids or opaque S2 row ids —
+never names, never per-person amounts tied to identity). Neither writes to
+S2 or staged data.
+
+- `verify-balance-parity.ts` — the N6 balance gate. Per ledger account and
+  in aggregate, recomputes cents-exact counts + sums on both sides of both
+  money streams and reports the drift plus a combined net position
+  (AR − cleared payments):
+  - AR: staged `raw_ledger_ar` Cleared rows ↔ `ledger` entries under charge
+    plugin `s1-import` (key `ar-<ledger_id>`), signs verbatim. Forward pass
+    (staged→S2, keyset-paged with batched key lookups) catches
+    missing/amount/account drift; a reverse pass over the S2 `s1-import` set
+    catches `ar_extra_in_s2`.
+  - Payments: staged `sirius_payment` ↔ `ledger_payments` with
+    `details.source='s1-migration'`, matched by `details.s1Nid`; the sign is
+    restored from `details.s1NegativeAmount` before comparing. Only cleared
+    rows count toward money sums; every row gets presence/status/amount/
+    account checks.
+
+  Flags: `--tolerance-cents` (default **0** — cents-exact is the
+  conservative default; any nonzero tolerance is a fund decision) and
+  `--allow-mismatches r1,r2` (same fail-loud contract as the loaders'
+  `--allow-rejects`: every mismatch class present must be explicitly
+  allowed or the run exits 1; allowed rows are excluded from BOTH sides'
+  sums so drift shows only unexplained money). Tolerance never masks a
+  disallowed mismatch class — the two gates are independent.
+
+- `verify-month-parity.ts` — the benefit-history gate. For
+  `--month YYYY-MM`, compares S2's `trust_wmb` rows against the staged
+  `sirius_trust_worker_benefit` spans covering that month, resolved with the
+  exact T17 rules but read-only (benefit crosswalk in dry mode, dependents
+  via relations → `worker_2`, employer fallback via the linked election,
+  inactive-no-end end-dating from `node.changed`). Open-ended spans follow
+  the EXACT T17 horizon semantics: `--open-end-through YYYY-MM` treats them
+  as ending at that horizon; without the flag every open span is unresolved
+  (`open_end_through_required` — T17 refused to load such spans without an
+  operator-named horizon, so the harness refuses to guess about them too),
+  and an open span starting after the horizon is unresolved
+  (`open_span_after_through`). Pass the same horizon the loader ran with,
+  or the gate would judge coverage T17 deliberately never loaded.
+  Classification per worker: `matched`, `employer_mismatch` (same
+  worker+benefit, different employer), `wrong_benefit` (covered both sides
+  by different benefits), `missing_in_s2`, `extra_in_s2`; reported overall
+  and per benefit. `disagreementPct` = disagreeing tuple-sides / total
+  tuple-sides.
+
+  Flags: `--max-disagreement-pct` is **required with no default** — the
+  threshold is an explicit operator decision every run; and
+  `--allow-unresolved r1,r2` for S1-side resolution rejects (loader reject
+  policy: every reason present must be allowed; dev's synthetic spans all
+  need `start_missing`).
+
+  The S1 side is a pluggable **evidence source** (`EVIDENCE_SOURCES`): when
+  the staged worker-month tags land (T29), they register as a second source
+  and the same comparison/gate machinery reports both independently —
+  cross-source disagreement then shows up as diverging per-source reports.
+
+**Thresholds:** the defaults (0-cent tolerance, no month-parity default at
+all) are deliberately the most conservative options; they came from the
+2026-08-05 ruling that validation gates cutover, not from a fund-approved
+error budget. Final production thresholds need fund sign-off — Laura/Sam
+own the N6/parity test design.
+
+`scripts/oneoffs/s1-parity-smoke.ts` proves the gates CATCH problems: it
+baselines both harnesses green on dev, seeds a staged Cleared AR row and
+payment with no S2 counterpart (asserting exit 1, exact mismatch classes and
+cents-exact drift; that `--tolerance-cents` alone cannot mask class
+failures; that allowances green the run and pull the allowed rows out of the
+sums), seeds a 2031-05 month with exactly one of each disagreement class
+(asserting the exact counts and `disagreementPct`, the threshold edge, and
+that the threshold flag is required), then cleans up and asserts both
+harnesses are green again.
+
 ## Known production-hardening TODOs (before the real run)
 
 - **Write + id_map atomicity (contacts/workers loader):** a crash between a

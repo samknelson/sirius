@@ -1,8 +1,10 @@
 /**
- * DEV-ONLY guard wrapper for scripts/oneoffs/s1-t16-t19-smoke.ts.
+ * DEV-ONLY guard wrapper for the seeding smoke suites:
+ *   - scripts/oneoffs/s1-t16-t19-smoke.ts   (loader end-to-end)
+ *   - scripts/oneoffs/s1-parity-smoke.ts    (parity-harness gates)
  *
- * The smoke suite SEEDS AND DELETES fake staged rows, id_map entries and S2
- * rows in the target database. It must NEVER run against production. A
+ * The smoke suites SEED AND DELETE fake staged rows, id_map entries and S2
+ * rows in the target database. They must NEVER run against production. A
  * hostname check is not reliable (dev branches are Neon-hosted too), so this
  * wrapper fingerprints the SYNTHETIC dev dataset before allowing the run:
  *
@@ -61,12 +63,13 @@ async function main() {
     process.exit(1);
   }
 
-  console.log("[s1-smoke guard] synthetic-dev fingerprint OK — running smoke suite");
-  const res = spawnSync("npx", ["tsx", "scripts/oneoffs/s1-t16-t19-smoke.ts"], {
-    stdio: "inherit",
-    timeout: 30 * 60_000,
-  });
-  process.exit(res.status ?? 1);
+  console.log("[s1-smoke guard] synthetic-dev fingerprint OK — running smoke suites");
+  for (const script of ["scripts/oneoffs/s1-t16-t19-smoke.ts", "scripts/oneoffs/s1-parity-smoke.ts"]) {
+    console.log(`[s1-smoke guard] running ${script}`);
+    const res = spawnSync("npx", ["tsx", script], { stdio: "inherit", timeout: 30 * 60_000 });
+    if ((res.status ?? 1) !== 0) process.exit(res.status ?? 1);
+  }
+  process.exit(0);
 }
 
 main().catch((err) => {
