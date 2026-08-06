@@ -271,6 +271,22 @@ recorded in `s1_staging.runs` (args + per-bundle report).
   — 35,793 as of 2026-08-05 — so prod runs with no allowance until counts
   justify a conscious ruling).
 
+- `load-employee-ids.ts` — N4 (closed 2026-08-06): `sirius_employee` →
+  `worker_ids` via one `options_worker_id_type` per employer
+  ("<employer name> Employee ID", `sirius_id = s1-employee-shop-<shopNid>`
+  so reruns find the type even after a rename), mirroring the BPS Employee
+  ID precedent. Row = worker ref (`field_sirius_worker`) + employer ref
+  (`field_grievance_shop`) + code (`field_sirius_id`). Idempotent via id_map
+  entity `employee-id`; matched rows drift-reconcile the value; an
+  operator-added identical (type,value) row on the SAME worker is adopted,
+  on a different worker it rejects (`code_owned_by_other_worker`).
+  Duplicate codes within one employer reject as `duplicate_code` (the
+  (type,value) UNIQUE would trip). Reject policy as everywhere: any reason
+  must be allowed via `--allow-rejects` or exit 1. Dev:
+  `--allow-rejects worker_ref_missing` (synthetic stages NO fields on the 3
+  dev rows; production profiles all 541 rows with complete field sets —
+  run with no allowance first).
+
 ## Known production-hardening TODOs (before the real run)
 
 - **Write + id_map atomicity (contacts/workers loader):** a crash between a
