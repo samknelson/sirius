@@ -25,6 +25,43 @@ never bulk-migrate).
 The production run happens **inside the HIPAA boundary**. Loader/harness output is
 aggregates-only by design and safe to share; never paste raw S1 rows anywhere.
 
+### Running in the prod boundary (migration image)
+
+The deployed web image is lean (no `tsx`, no `scripts/`), so the migration runs
+from the dedicated **`migration` build target** of the same `Dockerfile`:
+
+```bash
+docker build --target migration -t sirius-migration:<git-sha> .
+```
+
+It contains the full source tree + all node_modules (incl. `tsx`) and starts
+no server. Execute it as an **ECS one-off task** (`run-task`) in the same VPC
+as the target DB — never through the web app or any HTTP path. One task per
+runbook step, the step command passed as a container command override:
+
+```jsonc
+// aws ecs run-task --overrides (per step):
+{ "containerOverrides": [{
+    "name": "migration",
+    "command": ["npx", "tsx", "scripts/s1-migration/bootstrap-target.ts"],
+    "environment": []   // env comes from the task definition secrets below
+}]}
+```
+
+Task definition requirements:
+- **Env/secrets:** `EXTERNAL_DATABASE_URL` (S2 target) and `S1_DATABASE_URL`
+  (S1 MariaDB) via Secrets Manager — the only two variables the scripts need.
+- **Size:** ~1–2 GB memory, 1 vCPU. Loaders are keyset-paged and benched under
+  a 512 MB heap cap; 2 GB gives headroom for the ~1M-node stage step.
+- **No timeout / long-lived:** the long poles (hours, benefit-history) are
+  potentially tens of hours — run as a one-off task (not Lambda, not a service
+  with health checks), and disable any scheduler-imposed stop.
+- Run steps **sequentially** (one task at a time) per the §3 load order;
+  bootstrap/seed concurrency is refused by an advisory lock anyway.
+
+Running the image with no command prints usage and exits — nothing touches a
+database without an explicit runbook command.
+
 ## 2. Target bootstrap (ONE command — no manual preconfiguration)
 
 ```bash

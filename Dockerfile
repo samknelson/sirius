@@ -4,10 +4,15 @@
 # Sirius — production Docker image
 # ----------------------------------------------------------------------------
 # Multi-stage build:
-#   1. builder  — installs all deps (incl. the toolchain for native modules
-#                 like bcrypt), builds the Vite client and the esbuild server
-#                 bundle, then prunes dev dependencies.
-#   2. runtime  — a lean image with only production node_modules + dist/.
+#   1. deps      — installs all deps (incl. the toolchain for native modules
+#                  like bcrypt) and copies the source tree.
+#   2. builder   — builds the Vite client and the esbuild server bundle,
+#                  then prunes dev dependencies.
+#   3. migration — fat one-off image (full source + all node_modules + tsx)
+#                  for the S1 migration inside the prod boundary; build with
+#                  `docker build --target migration ...`. Never serves traffic.
+#   4. runtime   — a lean image with only production node_modules + dist/
+#                  (the default target).
 #
 # IMPORTANT: this build intentionally does NOT run `npm run build` directly,
 # because that script begins with `npm run db:push`, which contacts a live
@@ -53,9 +58,10 @@
 
 
 # ----------------------------------------------------------------------------
-# Stage 1: builder
+# Stage 1: deps — full dependency install + source copy, shared by both the
+# production builder and the migration image.
 # ----------------------------------------------------------------------------
-FROM node:20-bookworm-slim AS builder
+FROM node:20-bookworm-slim AS deps
 
 # Toolchain required to compile native modules (bcrypt, bufferutil).
 RUN apt-get update \
@@ -84,6 +90,12 @@ RUN npm ci \
 # scripts, and the build config files). See .dockerignore for exclusions.
 COPY . .
 
+
+# ----------------------------------------------------------------------------
+# Stage 2: builder — client + server bundle build, then dev-dep prune
+# ----------------------------------------------------------------------------
+FROM deps AS builder
+
 # Publishable Clerk key is compiled into the client bundle at build time.
 ARG VITE_CLERK_PUBLISHABLE_KEY=""
 ENV VITE_CLERK_PUBLISHABLE_KEY=${VITE_CLERK_PUBLISHABLE_KEY}
@@ -103,7 +115,38 @@ RUN npm prune --omit=dev
 
 
 # ----------------------------------------------------------------------------
-# Stage 2: runtime
+# Stage 3: migration — one-off S1→S2 migration image (NOT the web app)
+# ----------------------------------------------------------------------------
+# A fat image for running scripts/s1-migration/* inside the HIPAA boundary as
+# a long-lived one-off process (e.g. an ECS one-off task in the same VPC as
+# the target DB). Unlike `runtime` it keeps the full source tree, ALL
+# node_modules (tsx is a devDependency), and no web server is started.
+#
+# BUILD (only this target — skips the vite/esbuild build entirely):
+#   docker build --target migration -t sirius-migration:latest .
+#
+# RUN (each runbook step is a command override; see
+# scripts/s1-migration/RUNBOOK.md §1 "Running in the prod boundary"):
+#   docker run --rm \
+#     -e EXTERNAL_DATABASE_URL="postgres://..." \
+#     -e S1_DATABASE_URL="mysql://...:3306/..." \
+#     sirius-migration:latest \
+#     npx tsx scripts/s1-migration/bootstrap-target.ts
+# ----------------------------------------------------------------------------
+FROM deps AS migration
+
+ENV NODE_ENV=production
+WORKDIR /app
+USER node
+
+# No default command: every invocation is an explicit runbook step passed as
+# the container command (ECS containerOverrides.command). Running the image
+# bare prints usage instead of doing anything to a database.
+CMD ["node", "-e", "console.error('sirius-migration: pass a runbook command, e.g.\\n  npx tsx scripts/s1-migration/bootstrap-target.ts\\nSee scripts/s1-migration/RUNBOOK.md'); process.exit(2)"]
+
+
+# ----------------------------------------------------------------------------
+# Stage 4: runtime
 # ----------------------------------------------------------------------------
 FROM node:20-bookworm-slim AS runtime
 
