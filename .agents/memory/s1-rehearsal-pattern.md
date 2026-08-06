@@ -15,3 +15,9 @@ The verified procedure lives in `scripts/s1-migration/RUNBOOK.md` (§9 dev reset
 - Dev-to-prod timing extrapolation is unreliable (WAN round-trips dominate at ~4 rows/s per loader); the runbook mandates re-measuring rates in-boundary on day one before committing to the freeze window.
 
 **Why:** the first full rehearsal (2026-08-06) failed at exactly these points (components missing → relation-type writes failed, call-logs abort on unseeded reasons, policies fatal on workers_v1) before running clean end-to-end with all parity gates at 0 drift/0 disagreement.
+
+## Zero-preconfig bootstrap (2026-08-06)
+- `bootstrap-target.ts` is the ONE setup command (schema + `--wipe` + components + seeds); `seed-trust-config.ts` derives trust_providers/trust_benefits from staged S1 nodes AFTER stage.ts — no hand benefit list anywhere (§4.15 carry-over-as-is; covers Carelon EAP vs BH, VSP vs VSP Enhanced, Progyny).
+- Wipe is one atomic tx (snapshot admin → truncate all except variables/roles/role_permissions → restore); `--keep-staging` must clear s1_staging.id_map+runs or loaders skip recreation against truncated targets.
+- Advisory lock key 727001 = single-run guard for migration tooling; release the lock client BEFORE pool.end() or the process hangs forever.
+- Month-parity `--allow-unresolved` must mirror the benefit-history loader's `--allow-rejects` exactly, else spurious FAIL.
