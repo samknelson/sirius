@@ -46,7 +46,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { formatPhoneNumberForDisplay } from "@/lib/phone-utils";
-import { CommWithDetails } from "@/lib/comm-types";
+import { CommWithDetails, interactionChannelLabel } from "@/lib/comm-types";
 import { WinstonLog } from "@/lib/system-types";
 
 export default function CommDetail() {
@@ -278,6 +278,7 @@ export default function CommDetail() {
               <div className="flex items-center gap-2 mt-1">
                 {comm.medium === "sms" && <Phone className="w-4 h-4" />}
                 {comm.medium === "email" && <Mail className="w-4 h-4" />}
+                {comm.medium === "interaction" && <Phone className="w-4 h-4" />}
                 <span className="capitalize font-medium" data-testid="text-comm-medium">{comm.medium}</span>
               </div>
             </div>
@@ -324,10 +325,53 @@ export default function CommDetail() {
                           </div>
                         </div>
                       )
-                      : "-"}
+                      : comm.medium === 'interaction' && comm.interactionDetails
+                        ? interactionChannelLabel(comm.interactionDetails.channel)
+                        : "-"}
               </div>
             </div>
           </div>
+
+          {comm.interactionDetails && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-muted-foreground">Channel</Label>
+                  <div className="mt-1 text-sm" data-testid="text-interaction-channel">
+                    {interactionChannelLabel(comm.interactionDetails.channel)}
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">Reason</Label>
+                  <div className="mt-1 text-sm" data-testid="text-interaction-reason">
+                    {comm.interactionDetails.reasonName || "-"}
+                  </div>
+                </div>
+              </div>
+              {comm.interactionDetails.notes && (
+                <div>
+                  <Label className="text-muted-foreground">Notes</Label>
+                  <div
+                    className="mt-2 p-4 bg-muted rounded-md whitespace-pre-wrap text-sm"
+                    data-testid="text-interaction-notes"
+                  >
+                    {comm.interactionDetails.notes}
+                  </div>
+                </div>
+              )}
+              {comm.interactionDetails.data && Object.keys(comm.interactionDetails.data).length > 0 && (
+                <div>
+                  <Label className="text-muted-foreground">Interaction Data</Label>
+                  <pre
+                    className="mt-2 p-4 bg-muted rounded-md text-xs overflow-x-auto"
+                    data-testid="text-comm-interaction-data"
+                  >
+                    {JSON.stringify(comm.interactionDetails.data, null, 2)}
+                  </pre>
+                </div>
+              )}
+            </div>
+          )}
 
           {comm.smsDetails?.body && (
             <div>

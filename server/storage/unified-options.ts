@@ -25,6 +25,7 @@ import {
   optionsWorkerMs,
   optionsWorkerRelationType,
   optionsCommTags,
+  optionsCallReason,
   optionsGrievanceStatus,
   optionsGrievanceCategory,
   optionsGrievanceSteps,
@@ -67,6 +68,7 @@ export type OptionsTypeName =
   | "worker-ms"
   | "worker-relation-type"
   | "comm-tag"
+  | "call-reason"
   | "grievance-status"
   | "grievance-category"
   | "grievance-step"
@@ -788,6 +790,23 @@ const optionsMetadata: Record<OptionsTypeName, OptionsTableMetadata<any>> = {
       { name: "name", label: "Name", inputType: "text", required: true, placeholder: "Industry name", showInTable: true, columnHeader: "Name" },
       { name: "code", label: "Code", inputType: "text", required: false, placeholder: "Short code", showInTable: true, columnHeader: "Code" },
       { name: "siriusId", label: "Sirius ID", inputType: "text", required: false, placeholder: "External ID", showInTable: true, columnHeader: "Sirius ID" },
+    ],
+  },
+  "call-reason": {
+    table: optionsCallReason,
+    displayName: "Call Reasons",
+    description: "Curated reasons for logged member interactions (calls, office visits). Sirius ID carries the normalized S1 log type for migration keying.",
+    singularName: "Call Reason",
+    pluralName: "Call Reasons",
+    orderByColumn: "sequence" as const,
+    loggingModule: "options.callReasons",
+    requiredFields: ["name"],
+    optionalFields: ["description", "siriusId", "sequence", "data"],
+    supportsSequencing: true,
+    fields: [
+      { name: "name", label: "Name", inputType: "text", required: true, placeholder: "Reason name", showInTable: true, columnHeader: "Name" },
+      { name: "siriusId", label: "Sirius ID", inputType: "text", required: false, placeholder: "Optional Sirius ID", showInTable: true, columnHeader: "Sirius ID" },
+      { name: "description", label: "Description", inputType: "textarea", required: false, placeholder: "Optional description", showInTable: true, columnHeader: "Description" },
     ],
   },
   "comm-tag": {

@@ -94,6 +94,7 @@ const WorkerSendSms = lazy(() => import("@/pages/worker-send-sms"));
 const WorkerSendEmail = lazy(() => import("@/pages/worker-send-email"));
 const WorkerSendPostal = lazy(() => import("@/pages/worker-send-postal"));
 const WorkerSendInApp = lazy(() => import("@/pages/worker-send-inapp"));
+const WorkerLogCall = lazy(() => import("@/pages/worker-log-call"));
 const CommDetail = lazy(() => import("@/pages/comm-detail"));
 const CommEdit = lazy(() => import("@/pages/comm-edit"));
 const Grievances = lazy(() => import("@/pages/grievances"));
@@ -215,6 +216,7 @@ const UserSendSms = lazy(() => import("@/pages/admin/user-send-sms"));
 const UserSendEmail = lazy(() => import("@/pages/admin/user-send-email"));
 const UserSendPostal = lazy(() => import("@/pages/admin/user-send-postal"));
 const UserSendInApp = lazy(() => import("@/pages/admin/user-send-inapp"));
+const UserLogCall = lazy(() => import("@/pages/admin/user-log-call"));
 const AdminRolesPage = lazy(() => import("@/pages/admin/roles"));
 const AdminPermissionsPage = lazy(() => import("@/pages/admin/permissions"));
 const WmbScanQueue = lazy(() => import("@/pages/admin/wmb-scan-queue"));
@@ -557,6 +559,14 @@ function Router() {
         <ProtectedRoute tabId="send-inapp" entityType="worker">
           <AuthenticatedLayout>
             <WorkerSendInApp />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/workers/:id/comm/log-call">
+        <ProtectedRoute tabId="log-call" entityType="worker">
+          <AuthenticatedLayout>
+            <WorkerLogCall />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>
@@ -3838,6 +3848,14 @@ function Router() {
         <ProtectedRoute tabId="send-inapp" entityType="user">
           <AuthenticatedLayout>
             <UserSendInApp />
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/users/:id/comm/log-call">
+        <ProtectedRoute tabId="log-call" entityType="user">
+          <AuthenticatedLayout>
+            <UserLogCall />
           </AuthenticatedLayout>
         </ProtectedRoute>
       </Route>

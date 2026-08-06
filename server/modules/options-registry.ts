@@ -83,6 +83,7 @@ export const optionsTypeRegistry: Record<string, OptionsTypeConfig> = {
   "worker-ms": createTypeConfig("worker-ms"),
   "worker-relation-type": createTypeConfig("worker-relation-type"),
   "comm-tag": createTypeConfig("comm-tag"),
+  "call-reason": createTypeConfig("call-reason"),
   "grievance-status": createTypeConfig("grievance-status"),
   "grievance-category": createTypeConfig("grievance-category"),
   "grievance-step": createTypeConfig("grievance-step"),

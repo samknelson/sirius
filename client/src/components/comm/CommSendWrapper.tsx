@@ -2,15 +2,16 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AlertCircle, Mail, MessageSquare, Bell } from "lucide-react";
+import { AlertCircle, Mail, MessageSquare, Bell, Phone } from "lucide-react";
 import { CommEmail } from "./CommEmail";
 import { CommSms } from "./CommSms";
 import { CommPostal } from "./CommPostal";
 import { CommInApp } from "./CommInApp";
+import { CommLogInteraction } from "./CommLogInteraction";
 import { PhoneNumber, Address } from "@/lib/entity-types";
 import type { LucideIcon } from "lucide-react";
 
-export type CommChannel = "email" | "sms" | "postal" | "inapp";
+export type CommChannel = "email" | "sms" | "postal" | "inapp" | "interaction";
 
 interface ChannelConfig {
   icon: LucideIcon;
@@ -41,6 +42,12 @@ const channelConfigs: Record<CommChannel, ChannelConfig> = {
   inapp: {
     icon: Bell,
     title: "Send In-App Message",
+    errorTitle: "Contact Not Found",
+    errorDescription: "Unable to load contact information.",
+  },
+  interaction: {
+    icon: Phone,
+    title: "Log Call / Visit",
     errorTitle: "Contact Not Found",
     errorDescription: "Unable to load contact information.",
   },
@@ -178,6 +185,8 @@ export function CommSendWrapper({
       );
     case "inapp":
       return <CommInApp contactId={contact.id} />;
+    case "interaction":
+      return <CommLogInteraction contactId={contact.id} />;
     default:
       return null;
   }

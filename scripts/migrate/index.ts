@@ -59,6 +59,7 @@ import "./core/1113_create_help";
 import "./core/1114_options_event_type_sirius_id_nullable";
 import "./core/1115_files_file_system_id";
 import "./core/1116_add_trust_wmb_source_relation";
+import "./core/1117_create_comm_interaction";
 
 // Per-component migrations — each registered via
 // `registerComponentMigration(componentId, migration)`. Tracked by the

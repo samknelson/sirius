@@ -591,6 +591,17 @@ export const optionsCommTags = pgTable("options_comm_tags", {
   data: jsonb("data"),
 });
 
+// Call/interaction reasons (N21) — curated list; sirius_id is the normalized
+// S1 `field_sirius_type` string the migration loader keys by.
+export const optionsCallReason = pgTable("options_call_reason", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  siriusId: varchar("sirius_id", { length: 255 }).unique(),
+  sequence: integer("sequence").notNull().default(0),
+  data: jsonb("data"),
+});
+
 export const optionsEventType = pgTable("options_event_type", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   siriusId: varchar("sirius_id").unique(),
@@ -1617,6 +1628,17 @@ export const insertCommTagSchema = createInsertSchema(optionsCommTags).omit({
 
 export type OptionsCommTag = typeof optionsCommTags.$inferSelect;
 export type InsertOptionsCommTag = z.infer<typeof insertCommTagSchema>;
+
+export const insertCallReasonSchema = createInsertSchema(optionsCallReason).omit({
+  id: true,
+}).extend({
+  name: z.string().trim().min(1, "Name is required"),
+  siriusId: z.string().trim().nullable().optional(),
+  data: z.record(z.unknown()).nullable().optional(),
+});
+
+export type OptionsCallReason = typeof optionsCallReason.$inferSelect;
+export type InsertOptionsCallReason = z.infer<typeof insertCallReasonSchema>;
 
 export const insertWorkerWsSchema = createInsertSchema(optionsWorkerWs).omit({
   id: true,
@@ -2646,6 +2668,35 @@ export const insertCommInappSchema = createInsertSchema(commInapp, {
 
 export type InsertCommInapp = z.infer<typeof insertCommInappSchema>;
 export type CommInapp = typeof commInapp.$inferSelect;
+
+// Communications - Interaction (structured call/office-visit log, N21)
+export const INTERACTION_CHANNELS = [
+  "call_from_member",
+  "call_to_member",
+  "office_visit",
+  "helpline",
+  "hotline",
+  "walk_in",
+] as const;
+export type InteractionChannel = (typeof INTERACTION_CHANNELS)[number];
+
+export const commInteraction = pgTable("comm_interaction", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  commId: varchar("comm_id").notNull().references(() => comm.id, { onDelete: 'cascade' }),
+  channel: varchar("channel").notNull(),
+  callReasonId: varchar("call_reason_id").notNull().references(() => optionsCallReason.id),
+  notes: text("notes"),
+  data: jsonb("data"),
+});
+
+export const insertCommInteractionSchema = createInsertSchema(commInteraction, {
+  channel: z.enum(INTERACTION_CHANNELS),
+}).omit({
+  id: true,
+});
+
+export type InsertCommInteraction = z.infer<typeof insertCommInteractionSchema>;
+export type CommInteraction = typeof commInteraction.$inferSelect;
 
 // Communications - Tag Links (many-to-many between comm and options_comm_tags)
 export const commTags = pgTable("comm_tags", {

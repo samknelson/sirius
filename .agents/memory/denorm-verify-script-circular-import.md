@@ -14,6 +14,11 @@ real app boot sequence, not an ad-hoc entrypoint.
 **Why:** ES-module circular init order is entrypoint-sensitive; the running
 server boots fine because app-init imports things in the right order.
 
+**Related (storage tree):** the same TDZ crash pattern hits standalone
+scripts that import a storage submodule directly: import the storage
+barrel/singleton first so its module graph finishes initializing before the
+direct submodule import.
+
 **How to apply:** In a one-off verification script, import narrowly instead of
 the barrel:
 - `import "../../server/plugins/system/denorm/plugins/<plugin>"` (registers it)

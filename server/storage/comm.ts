@@ -1,5 +1,5 @@
 import { getClient, runInTransaction } from './transaction-context';
-import { comm, commSms, commSmsOptin, commEmail, commEmailOptin, commPostal, commPostalOptin, commInapp, contacts, type Comm, type InsertComm, type CommSms, type InsertCommSms, type CommSmsOptin, type InsertCommSmsOptin, type CommEmail, type InsertCommEmail, type CommEmailOptin, type InsertCommEmailOptin, type CommPostal, type InsertCommPostal, type CommPostalOptin, type InsertCommPostalOptin, type CommInapp, type InsertCommInapp, type OptionsCommTag } from "@shared/schema";
+import { comm, commSms, commSmsOptin, commEmail, commEmailOptin, commPostal, commPostalOptin, commInapp, commInteraction, optionsCallReason, contacts, type Comm, type InsertComm, type CommSms, type InsertCommSms, type CommSmsOptin, type InsertCommSmsOptin, type CommEmail, type InsertCommEmail, type CommEmailOptin, type InsertCommEmailOptin, type CommPostal, type InsertCommPostal, type CommPostalOptin, type InsertCommPostalOptin, type CommInapp, type InsertCommInapp, type CommInteraction, type InsertCommInteraction, type OptionsCommTag } from "@shared/schema";
 import { eq, desc, and, SQL, inArray } from "drizzle-orm";
 import { phoneValidationService } from "../services/comm/validators/phone";
 import { storageLogger } from "../logger";
@@ -80,11 +80,16 @@ export interface CommWithPostal extends Comm {
   tags?: OptionsCommTag[];
 }
 
+export interface CommInteractionDetails extends CommInteraction {
+  reasonName?: string | null;
+}
+
 export interface CommWithDetails extends Comm {
   smsDetails?: CommSms | null;
   emailDetails?: CommEmail | null;
   postalDetails?: CommPostal | null;
   inappDetails?: CommInapp | null;
+  interactionDetails?: CommInteractionDetails | null;
   tags?: OptionsCommTag[];
 }
 
@@ -166,6 +171,17 @@ export interface CommEmailStorage {
   deleteCommEmail(id: string): Promise<boolean>;
 }
 
+async function loadInteractionDetails(commId: string): Promise<CommInteractionDetails | null> {
+  const client = getClient();
+  const [row] = await client
+    .select({ interaction: commInteraction, reasonName: optionsCallReason.name })
+    .from(commInteraction)
+    .leftJoin(optionsCallReason, eq(optionsCallReason.id, commInteraction.callReasonId))
+    .where(eq(commInteraction.commId, commId));
+  if (!row) return null;
+  return { ...row.interaction, reasonName: row.reasonName ?? null };
+}
+
 export function createCommStorage(
   commTagsStorage: CommTagsStorage = createCommTagsStorage(),
 ): CommStorage {
@@ -228,7 +244,7 @@ export function createCommStorage(
       const result: CommWithDetails[] = await Promise.all(
         comms.map(async (c) => {
           const tags = tagsByComm.get(c.id) ?? [];
-          const base = { smsDetails: null as CommSms | null, emailDetails: null as CommEmail | null, postalDetails: null as CommPostal | null, inappDetails: null as CommInapp | null };
+          const base = { smsDetails: null as CommSms | null, emailDetails: null as CommEmail | null, postalDetails: null as CommPostal | null, inappDetails: null as CommInapp | null, interactionDetails: null as CommInteractionDetails | null };
           if (c.medium === 'sms') {
             const [smsDetails] = await client.select().from(commSms).where(eq(commSms.commId, c.id));
             return { ...c, ...base, smsDetails: smsDetails || null, tags };
@@ -241,6 +257,9 @@ export function createCommStorage(
           } else if (c.medium === 'inapp') {
             const [inappDetails] = await client.select().from(commInapp).where(eq(commInapp.commId, c.id));
             return { ...c, ...base, inappDetails: inappDetails || null, tags };
+          } else if (c.medium === 'interaction') {
+            const interactionDetails = await loadInteractionDetails(c.id);
+            return { ...c, ...base, interactionDetails, tags };
           }
           return { ...c, ...base, tags };
         })
@@ -255,7 +274,7 @@ export function createCommStorage(
       if (!c) return undefined;
 
       const tags = await commTagsStorage.listForComm(c.id);
-      const base = { smsDetails: null as CommSms | null, emailDetails: null as CommEmail | null, postalDetails: null as CommPostal | null, inappDetails: null as CommInapp | null };
+      const base = { smsDetails: null as CommSms | null, emailDetails: null as CommEmail | null, postalDetails: null as CommPostal | null, inappDetails: null as CommInapp | null, interactionDetails: null as CommInteractionDetails | null };
       if (c.medium === 'sms') {
         const [smsDetails] = await client.select().from(commSms).where(eq(commSms.commId, c.id));
         return { ...c, ...base, smsDetails: smsDetails || null, tags };
@@ -268,6 +287,9 @@ export function createCommStorage(
       } else if (c.medium === 'inapp') {
         const [inappDetails] = await client.select().from(commInapp).where(eq(commInapp.commId, c.id));
         return { ...c, ...base, inappDetails: inappDetails || null, tags };
+      } else if (c.medium === 'interaction') {
+        const interactionDetails = await loadInteractionDetails(c.id);
+        return { ...c, ...base, interactionDetails, tags };
       }
 
       return { ...c, ...base, tags };
@@ -907,6 +929,87 @@ export function createCommInappStorage(): CommInappStorage {
     async deleteCommInapp(id: string): Promise<boolean> {
       const client = getClient();
       const result = await client.delete(commInapp).where(eq(commInapp.id, id)).returning();
+      return result.length > 0;
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Interaction (structured call/office-visit log, N21)
+// ---------------------------------------------------------------------------
+
+export interface CreateInteractionInput {
+  contactId: string;
+  channel: string;
+  callReasonId: string;
+  notes?: string | null;
+  /** When the interaction happened; defaults to now. */
+  occurredAt?: Date | null;
+  /** Extra metadata stored on the comm_interaction row (e.g. S1 provenance). */
+  data?: Record<string, unknown> | null;
+  /** Extra metadata stored on the parent comm row (e.g. loggedBy). */
+  commData?: Record<string, unknown> | null;
+}
+
+export interface CommInteractionStorage {
+  getCommInteraction(id: string): Promise<CommInteraction | undefined>;
+  getCommInteractionByComm(commId: string): Promise<CommInteraction | undefined>;
+  createCommInteraction(data: InsertCommInteraction): Promise<CommInteraction>;
+  /** Creates the parent comm row (medium "interaction") and the child row in one transaction. */
+  createInteractionWithComm(input: CreateInteractionInput): Promise<{ comm: Comm; interaction: CommInteraction }>;
+  deleteCommInteraction(id: string): Promise<boolean>;
+}
+
+export function createCommInteractionStorage(): CommInteractionStorage {
+  return {
+    async getCommInteraction(id: string): Promise<CommInteraction | undefined> {
+      const client = getClient();
+      const [result] = await client.select().from(commInteraction).where(eq(commInteraction.id, id));
+      return result || undefined;
+    },
+
+    async getCommInteractionByComm(commId: string): Promise<CommInteraction | undefined> {
+      const client = getClient();
+      const [result] = await client.select().from(commInteraction).where(eq(commInteraction.commId, commId));
+      return result || undefined;
+    },
+
+    async createCommInteraction(data: InsertCommInteraction): Promise<CommInteraction> {
+      const client = getClient();
+      const [result] = await client.insert(commInteraction).values(data).returning();
+      return result;
+    },
+
+    async createInteractionWithComm(input: CreateInteractionInput): Promise<{ comm: Comm; interaction: CommInteraction }> {
+      return runInTransaction(async () => {
+        const client = getClient();
+        const [commRow] = await client
+          .insert(comm)
+          .values({
+            medium: 'interaction',
+            contactId: input.contactId,
+            status: 'logged',
+            sent: input.occurredAt ?? new Date(),
+            data: input.commData ?? null,
+          })
+          .returning();
+        const [interactionRow] = await client
+          .insert(commInteraction)
+          .values({
+            commId: commRow.id,
+            channel: input.channel,
+            callReasonId: input.callReasonId,
+            notes: input.notes ?? null,
+            data: input.data ?? null,
+          })
+          .returning();
+        return { comm: commRow, interaction: interactionRow };
+      });
+    },
+
+    async deleteCommInteraction(id: string): Promise<boolean> {
+      const client = getClient();
+      const result = await client.delete(commInteraction).where(eq(commInteraction.id, id)).returning();
       return result.length > 0;
     },
   };

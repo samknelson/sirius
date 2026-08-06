@@ -38,6 +38,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { formatPhoneNumberForDisplay } from "@/lib/phone-utils";
+import { interactionChannelLabel } from "@/lib/comm-types";
 
 interface CommSmsDetails {
   id: string;
@@ -103,6 +104,16 @@ interface CommTag {
   data?: { icon?: string; applicableCommTypes?: string[] } | null;
 }
 
+interface CommInteractionDetails {
+  id: string;
+  commId: string;
+  channel: string;
+  callReasonId: string;
+  notes: string | null;
+  data: Record<string, unknown> | null;
+  reasonName?: string | null;
+}
+
 interface CommWithDetails {
   id: string;
   medium: string;
@@ -115,6 +126,7 @@ interface CommWithDetails {
   emailDetails?: CommEmailDetails | null;
   postalDetails?: CommPostalDetails | null;
   inappDetails?: CommInappDetails | null;
+  interactionDetails?: CommInteractionDetails | null;
   tags?: CommTag[];
 }
 
@@ -246,6 +258,8 @@ export function CommList({
         return <Mail className="h-4 w-4" />;
       case "inapp":
         return <Bell className="h-4 w-4" />;
+      case "interaction":
+        return <Phone className="h-4 w-4" />;
       default:
         return <MessageSquare className="h-4 w-4" />;
     }
@@ -522,7 +536,9 @@ export function CommList({
                             ? `${record.postalDetails.toName || ''} - ${record.postalDetails.toCity || ''}, ${record.postalDetails.toState || ''}`.replace(/^[\s-]+|[\s-]+$/g, '') || "-"
                             : record.medium === 'inapp' && record.inappDetails
                               ? "(In-App)"
-                              : "-"}
+                              : record.medium === 'interaction' && record.interactionDetails
+                                ? interactionChannelLabel(record.interactionDetails.channel)
+                                : "-"}
                     </TableCell>
                     <TableCell className="max-w-[300px]">
                       <span className="text-sm text-muted-foreground">
@@ -532,7 +548,9 @@ export function CommList({
                             ? truncateBody(stripHtml(record.postalDetails.body) || record.postalDetails.description)
                             : record.medium === 'inapp' && record.inappDetails?.title
                               ? truncateBody(record.inappDetails.title)
-                              : truncateBody(record.smsDetails?.body || null)}
+                              : record.medium === 'interaction' && record.interactionDetails
+                                ? truncateBody([record.interactionDetails.reasonName, record.interactionDetails.notes].filter(Boolean).join(' — ') || null)
+                                : truncateBody(record.smsDetails?.body || null)}
                       </span>
                       {record.tags && record.tags.length > 0 && (
                         <div className="flex flex-wrap gap-1 mt-1" data-testid={`tags-comm-${record.id}`}>

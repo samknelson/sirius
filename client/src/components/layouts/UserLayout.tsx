@@ -179,7 +179,7 @@ export function UserLayout({ activeTab, children }: UserLayoutProps) {
   const commSubTabs = tabSubTabs['comm'] || [];
 
   const isContactSubTab = ["email", "phone-numbers", "addresses"].includes(activeTab);
-  const isCommSubTab = ["comm-history", "send-sms", "send-email", "send-postal", "send-inapp"].includes(activeTab);
+  const isCommSubTab = ["comm-history", "log-call", "send-sms", "send-email", "send-postal", "send-inapp"].includes(activeTab);
   const showContactSubTabs = isContactSubTab;
   const showCommSubTabs = isCommSubTab;
 
