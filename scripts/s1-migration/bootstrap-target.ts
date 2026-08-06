@@ -44,8 +44,8 @@ const ADMIN_EMAIL = emailIdx >= 0 ? process.argv[emailIdx + 1] : "mmcdermott@cgt
  * are access config the preserved admin's user_roles rows point at. */
 const KEEP_TABLES = new Set(["variables", "roles", "role_permissions"]);
 
-/** Row-count probe deciding "populated" (migrated/app data, not config). */
-const PROBE_TABLES = ["workers", "contacts", "employers", "ledger_payments", "worker_hours", "trust_wmb", "worker_trust_elections"];
+/** Advisory lock key shared by migration tooling (single-run guard). */
+const MIGRATION_LOCK_KEY = 727001;
 
 function runStep(label: string, script: string) {
   console.log(`\n=== ${label}: npx tsx ${script} ===`);
@@ -65,6 +65,35 @@ async function main() {
   const { pool } = await import("../../server/storage/db");
   const q = async (text: string, params?: unknown[]) => (await pool.query(text, params)).rows;
 
+  // --- 0. Single-run guard (advisory lock, session-scoped on one client) ---
+  const lockClient = await pool.connect();
+  const [{ got }] = (await lockClient.query(`SELECT pg_try_advisory_lock(${MIGRATION_LOCK_KEY}) AS got`)).rows;
+  if (!got) {
+    console.error("FAIL: another migration process holds the advisory lock on this target.");
+    process.exit(1);
+  }
+
+  // --- 0b. Populated guard BEFORE any mutating step (schema included) ---
+  // Any row in any public table other than bookkeeping/access-config/admin
+  // identity/sessions counts as data — not just the seven spine tables.
+  const probeExclude = new Set([...KEEP_TABLES, "users", "auth_identities", "user_roles", "sessions"]);
+  const preTables = (await q(`SELECT tablename FROM pg_tables WHERE schemaname = 'public'`)) as Array<{ tablename: string }>;
+  const populatedTables: string[] = [];
+  for (const { tablename } of preTables) {
+    if (probeExclude.has(tablename)) continue;
+    const rows = await q(`SELECT EXISTS (SELECT 1 FROM "${tablename}" LIMIT 1) AS x`);
+    if (rows[0]?.x) populatedTables.push(tablename);
+  }
+  console.log(`populated probe: ${populatedTables.length} non-empty data table(s)`);
+  if (populatedTables.length > 0 && !WIPE) {
+    console.error(
+      `FAIL: target holds data (${populatedTables.slice(0, 8).join(", ")}${populatedTables.length > 8 ? ", …" : ""}).\n` +
+        `Nothing was modified. Re-run with --wipe to truncate everything except\n` +
+        `roles/permissions/variables, preserving admin ${ADMIN_EMAIL}.`,
+    );
+    process.exit(1);
+  }
+
   // --- 1. Schema ---
   await ensureEmptyDatabaseBootstrap();
   const { runMigrations } = await import("../../scripts/migrate");
@@ -79,61 +108,66 @@ async function main() {
   const { runPendingComponentMigrationsAtStartup } = await import("../../server/services/migration-runner");
   await runPendingComponentMigrationsAtStartup();
 
-  // --- 2. Populated check / wipe ---
-  let populatedRows = 0;
-  const existing: string[] = [];
-  for (const t of PROBE_TABLES) {
-    const rows = await q(`SELECT to_regclass($1) reg`, [`public.${t}`]);
-    if (rows[0]?.reg) existing.push(t);
-  }
-  for (const t of existing) {
-    const rows = await q(`SELECT count(*)::int n FROM "${t}"`);
-    populatedRows += rows[0].n;
-  }
-  console.log(`populated probe: ${populatedRows} row(s) across ${existing.length} data table(s)`);
-
-  if (populatedRows > 0 && !WIPE) {
-    console.error(
-      `FAIL: target holds data. Re-run with --wipe to truncate everything except\n` +
-        `roles/permissions/variables, preserving admin ${ADMIN_EMAIL}.`,
-    );
-    process.exit(1);
-  }
-
+  // --- 2. Wipe (single transaction: snapshot → truncate → restore → staging) ---
+  // Atomic on one dedicated client: a failure at ANY point (including admin
+  // restore) rolls back the truncate — the target is never left wiped without
+  // its admin.
   if (WIPE) {
     console.log(`wiping target (preserving admin ${ADMIN_EMAIL}) ...`);
-    const adminUsers = await q(`SELECT * FROM users WHERE lower(email) = lower($1)`, [ADMIN_EMAIL]);
-    const adminUser = adminUsers[0];
-    const adminIdentities = adminUser ? await q(`SELECT * FROM auth_identities WHERE user_id = $1`, [adminUser.id]) : [];
-    const adminUserRoles = adminUser ? await q(`SELECT * FROM user_roles WHERE user_id = $1`, [adminUser.id]) : [];
+    const tx = await pool.connect();
+    try {
+      await tx.query("BEGIN");
+      const adminUser = (await tx.query(`SELECT * FROM users WHERE lower(email) = lower($1)`, [ADMIN_EMAIL])).rows[0];
+      const adminIdentities = adminUser
+        ? (await tx.query(`SELECT * FROM auth_identities WHERE user_id = $1`, [adminUser.id])).rows
+        : [];
+      const adminUserRoles = adminUser
+        ? (await tx.query(`SELECT * FROM user_roles WHERE user_id = $1`, [adminUser.id])).rows
+        : [];
 
-    const allTables = (await q(`SELECT tablename FROM pg_tables WHERE schemaname = 'public'`)) as Array<{ tablename: string }>;
-    const toTruncate = allTables.map((r) => r.tablename).filter((t) => !KEEP_TABLES.has(t));
-    await pool.query(`TRUNCATE TABLE ${toTruncate.map((t) => `"${t}"`).join(", ")} RESTART IDENTITY CASCADE`);
-    console.log(`truncated ${toTruncate.length} table(s); kept: ${[...KEEP_TABLES].join(", ")}`);
+      const allTables = (await tx.query(`SELECT tablename FROM pg_tables WHERE schemaname = 'public'`)).rows as Array<{ tablename: string }>;
+      const toTruncate = allTables.map((r) => r.tablename).filter((t) => !KEEP_TABLES.has(t));
+      await tx.query(`TRUNCATE TABLE ${toTruncate.map((t) => `"${t}"`).join(", ")} RESTART IDENTITY CASCADE`);
 
-    const reinsert = async (table: string, rows: Array<Record<string, unknown>>) => {
-      for (const row of rows) {
-        const cols = Object.keys(row);
-        await pool.query(
-          `INSERT INTO "${table}" (${cols.map((c) => `"${c}"`).join(", ")})
-           VALUES (${cols.map((_, i) => `$${i + 1}`).join(", ")})`,
-          cols.map((c) => row[c]),
-        );
+      const reinsert = async (table: string, rows: Array<Record<string, unknown>>) => {
+        for (const row of rows) {
+          const cols = Object.keys(row);
+          await tx.query(
+            `INSERT INTO "${table}" (${cols.map((c) => `"${c}"`).join(", ")})
+             VALUES (${cols.map((_, i) => `$${i + 1}`).join(", ")})`,
+            cols.map((c) => row[c]),
+          );
+        }
+      };
+      if (adminUser) {
+        await reinsert("users", [adminUser]);
+        await reinsert("auth_identities", adminIdentities);
+        await reinsert("user_roles", adminUserRoles);
       }
-    };
-    if (adminUser) {
-      await reinsert("users", [adminUser]);
-      await reinsert("auth_identities", adminIdentities);
-      await reinsert("user_roles", adminUserRoles);
-      console.log(`restored admin: users=1 auth_identities=${adminIdentities.length} user_roles=${adminUserRoles.length}`);
-    } else {
-      console.log("no existing admin user row to preserve (will create below)");
-    }
 
-    if (!KEEP_STAGING) {
-      await pool.query(`DROP SCHEMA IF EXISTS s1_staging CASCADE`);
-      console.log("dropped s1_staging (re-run stage.ts before loaders)");
+      if (KEEP_STAGING) {
+        // Staged S1 records survive, but id_map/runs point at rows that no
+        // longer exist — stale mappings would make every loader (and
+        // seed-trust-config) skip recreation. Always clear them on wipe.
+        await tx.query(`TRUNCATE TABLE s1_staging.id_map`).catch(() => undefined);
+        await tx.query(`TRUNCATE TABLE s1_staging.runs`).catch(() => undefined);
+      } else {
+        await tx.query(`DROP SCHEMA IF EXISTS s1_staging CASCADE`);
+      }
+      await tx.query("COMMIT");
+      console.log(
+        `truncated ${toTruncate.length} table(s); kept: ${[...KEEP_TABLES].join(", ")}; ` +
+          (adminUser
+            ? `restored admin (users=1 auth_identities=${adminIdentities.length} user_roles=${adminUserRoles.length}); `
+            : `no existing admin row (will create below); `) +
+          (KEEP_STAGING ? "kept staged records, CLEARED id_map+runs" : "dropped s1_staging (re-run stage.ts)"),
+      );
+    } catch (e) {
+      await tx.query("ROLLBACK").catch(() => undefined);
+      console.error("FAIL: wipe rolled back — target unchanged.");
+      throw e;
+    } finally {
+      tx.release();
     }
   }
 
@@ -170,6 +204,7 @@ async function main() {
     console.log(`admin present: ${ADMIN_EMAIL}`);
   }
 
+  lockClient.release(); // advisory lock is session-scoped; freed when pool closes
   await pool.end();
 
   // --- 4/5. Components + seeds (child processes: fresh caches per step) ---

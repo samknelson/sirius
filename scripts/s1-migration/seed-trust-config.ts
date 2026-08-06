@@ -145,6 +145,16 @@ async function seedBenefits(): Promise<SideReport> {
 async function main() {
   const startedAt = new Date();
   console.log(`[${LOADER}] target: ${describeDatabaseTarget(resolveDatabaseUrl())}${DRY_RUN ? " (DRY RUN)" : ""}`);
+
+  // Single-run guard: read-then-create resolution is not concurrency-safe.
+  // Session-scoped advisory lock (same key as bootstrap-target); released on exit.
+  const lockClient = await pool.connect();
+  const [{ got }] = (await lockClient.query(`SELECT pg_try_advisory_lock(727001) AS got`)).rows;
+  if (!got) {
+    console.error("FAIL: another migration process holds the advisory lock on this target.");
+    process.exit(1);
+  }
+
   await ensureIdMap();
 
   const { providers, benefits } = await withNotificationsSuppressed(async () => {
@@ -167,9 +177,11 @@ async function main() {
   const missing = providers.titleMissingNids.length + benefits.titleMissingNids.length;
   if (missing > 0) {
     console.error(`FAIL: ${missing} staged node(s) have no title — cannot carry over. nids: ${[...providers.titleMissingNids, ...benefits.titleMissingNids].join(",")}`);
+    lockClient.release();
     await pool.end();
     process.exit(1);
   }
+  lockClient.release();
   await pool.end();
   process.exit(0);
 }
