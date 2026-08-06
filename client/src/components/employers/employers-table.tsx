@@ -306,7 +306,7 @@ export function EmployersTable({ employers, isLoading, includeInactive, onToggle
             <thead className="bg-muted/20">
               {showBenefits && benefitGroups.length > 0 && (
                 <tr>
-                  <th colSpan={(selectable ? 1 : 0) + 4} />
+                  <th colSpan={(selectable ? 1 : 0) + 3} />
                   {benefitGroups.map((g) => (
                     <th
                       key={g.key}
@@ -355,9 +355,6 @@ export function EmployersTable({ employers, isLoading, includeInactive, onToggle
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   <span>Contacts</span>
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  <span>Status</span>
                 </th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider whitespace-nowrap">
                   <span>Workers</span>
@@ -426,6 +423,14 @@ export function EmployersTable({ employers, isLoading, includeInactive, onToggle
                     >
                       {employer.name}
                     </span>
+                    {!employer.isActive && (
+                      <span
+                        className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200"
+                        data-testid={`badge-inactive-employer-${employer.id}`}
+                      >
+                        Inactive
+                      </span>
+                    )}
                   </td>
                   <td className="px-6 py-4" data-testid={`cell-employer-contacts-${employer.id}`}>
                     {(() => {
@@ -463,18 +468,6 @@ export function EmployersTable({ employers, isLoading, includeInactive, onToggle
                         </div>
                       );
                     })()}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span 
-                      className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                        employer.isActive 
-                          ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' 
-                          : 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200'
-                      }`}
-                      data-testid={`status-employer-${employer.id}`}
-                    >
-                      {employer.isActive ? 'Active' : 'Inactive'}
-                    </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm" data-testid={`text-employer-worker-count-${employer.id}`}>
                     {countsLoading && !workerCounts ? (
