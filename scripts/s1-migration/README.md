@@ -220,7 +220,9 @@ doesn't match. It must never point at production.
   post-load `setval` (the one raw-SQL write, spec-sanctioned). Missing/
   non-numeric `field_sirius_id` → worker loads with a sequence-assigned
   sirius_id + reject note (`sirius_id_assigned`/`sirius_id_not_numeric`);
-  cross-worker collisions reject (`sirius_id_collision`). Re-runs repair
+  cross-worker collisions are FATAL (pre-write scan; colliding sirius_ids
+  are distinct people per the 2026-08-06 fund finding — never dedupe/merge,
+  no allow flag). Re-runs repair
   old nid-mapped rows in place (counters `oldMappingRepaired`,
   `oldSiriusIdRowsRemoved`); swaps/cycles among old values are made
   collision-safe by a parking pre-pass (`parkedForRekey`). SSN ownership is keyed on nid via id_map, not

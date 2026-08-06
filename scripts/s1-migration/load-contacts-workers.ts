@@ -32,10 +32,13 @@
  *     field_sirius_id range and the current DB max) + reject-report note
  *     (`sirius_id_assigned`, plus `sirius_id_not_numeric` when a value
  *     existed but failed numeric validation). Never silently defaulted.
- *   - cross-worker field_sirius_id collisions: first (lowest nid) wins; later
- *     ones reject (`sirius_id_collision`) and are NOT loaded. A staged value
- *     already owned by a different S2 row rejects
- *     (`sirius_id_owned_by_other_row`).
+ *   - cross-worker field_sirius_id collisions are FATAL (data-integrity
+ *     ruling 2026-08-06: colliding sirius_ids belong to DISTINCT PEOPLE —
+ *     S1's unlocked ID counter duplicated ~1 in 410 values). A pre-scan
+ *     aborts BEFORE any write; no first-wins, no dedupe, no merge, no
+ *     --allow-rejects class. A staged value already owned by a different S2
+ *     row (cross-run collision) throws mid-loop for the same reason. Both
+ *     stop the run for fund triage.
  *   - re-runs REPAIR rows loaded under the old nid-based mapping: a mapped
  *     worker whose sirius_id equals its nid (≠ staged field_sirius_id) is
  *     updated in place, its old "Sirius ID" worker_ids row (value == staged
@@ -68,7 +71,7 @@
  * Output is AGGREGATES ONLY (plus S1 nids / opaque ids) — safe inside the
  * HIPAA boundary.
  */
-import { db } from "../../server/storage/db";
+import { db, pool } from "../../server/storage/db";
 import { sql } from "drizzle-orm";
 import { storage } from "../../server/storage/database";
 import { withNotificationsSuppressed } from "../../server/middleware/request-context";
@@ -227,6 +230,39 @@ async function main() {
   const stagedWorkers = await loadStaged("sirius_worker");
   report.stagedContacts = stagedContacts.length;
   report.stagedWorkers = stagedWorkers.length;
+
+  // ---- FATAL pre-scan: cross-worker field_sirius_id collisions ----
+  // Data-integrity ruling 2026-08-06 (fund finding: S1's unlocked ID counter
+  // duplicated ~1 in 410 sirius_ids; colliding workers are DISTINCT PEOPLE).
+  // A collision is NEVER auto-resolved: no first-wins, no dedupe, no merge —
+  // merging would combine two people's benefit histories. There is NO
+  // --allow-rejects class for this. The scan runs BEFORE any write (contacts
+  // included); the run stops here and the fund must re-number one of the
+  // colliding members in S1 (or rule a manual assignment) before retrying.
+  {
+    const byFsid = new Map<number, number[]>(); // fsid → staged worker nids
+    for (const w of stagedWorkers) {
+      const raw = strOf(w.fields, "field_sirius_id");
+      if (raw == null || !/^\d+$/.test(raw)) continue;
+      const v = Number(raw);
+      byFsid.set(v, [...(byFsid.get(v) ?? []), w.nid]);
+    }
+    const collisions = [...byFsid.entries()].filter(([, nids]) => nids.length > 1);
+    if (collisions.length > 0) {
+      console.error(
+        `FATAL: ${collisions.length} field_sirius_id value(s) are each claimed by multiple staged workers ` +
+          `(${collisions.reduce((n, [, nids]) => n + nids.length, 0)} workers). ` +
+          `NOT auto-resolvable — colliding sirius_ids belong to distinct people; ` +
+          `no allow flag exists. Nothing was written. Triage with the fund:`,
+      );
+      for (const [fsid, nids] of collisions.slice(0, 50)) {
+        console.error(`  sirius_id ${fsid}: worker nids ${nids.join(", ")}`);
+      }
+      if (collisions.length > 50) console.error(`  … and ${collisions.length - 50} more`);
+      await pool.end();
+      process.exit(1);
+    }
+  }
 
   // contact nid → referencing worker nid (for stub absorption)
   const workerNidByContactNid = new Map<number, number>();
@@ -721,15 +757,24 @@ async function main() {
       rejects.add("sirius_id_not_numeric", { workerNid: w.nid }, w.nid);
     }
     if (fsid != null && fsidFirstOwner.get(fsid) !== w.nid) {
-      // later duplicate of a staged collision — NOT loaded
-      rejects.add("sirius_id_collision", { workerNid: w.nid, firstNid: fsidFirstOwner.get(fsid) }, w.nid);
-      continue;
+      // Unreachable after the fatal pre-scan — kept as defense in depth.
+      // A collision must NEVER load partially (no first-wins).
+      throw new Error(
+        `sirius_id collision reached the load loop (fsid=${fsid}, nids ${fsidFirstOwner.get(fsid)}/${w.nid}) — aborting`,
+      );
     }
     if (fsid != null) {
       const ownerRow = siriusOwner.get(fsid);
       if (ownerRow && (!mapped || ownerRow !== mapped.s2Id)) {
-        rejects.add("sirius_id_owned_by_other_row", { workerNid: w.nid }, w.nid);
-        continue;
+        // A DIFFERENT S2 worker row (not mapped to this nid) already owns this
+        // member number — a cross-run person collision. Same ruling as the
+        // pre-scan: fatal, never auto-resolved, no allow flag. The loader is
+        // idempotent; nothing about this staged worker was written.
+        throw new Error(
+          `FATAL sirius_id collision: staged worker nid ${w.nid} claims sirius_id ${fsid}, ` +
+            `already owned by a different S2 worker row. Never auto-resolved (distinct people) — ` +
+            `triage with the fund, then re-run.`,
+        );
       }
     }
     let expectedSirius: number;
@@ -906,11 +951,7 @@ async function main() {
       const cnid = targetNidOf(w.fields, "field_sirius_contact");
       const m = vWorkerMap.get(w.nid);
       if (!m) {
-        if (
-          !rejects.has("worker_contact_unresolved", w.nid) &&
-          !rejects.has("sirius_id_collision", w.nid) &&
-          !rejects.has("sirius_id_owned_by_other_row", w.nid)
-        ) {
+        if (!rejects.has("worker_contact_unresolved", w.nid)) {
           console.error(`VERIFY: worker nid ${w.nid} has no id_map entry`);
           verifyFailures++;
         }
