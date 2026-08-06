@@ -1,6 +1,10 @@
 {
   "extends": "./tsconfig.json",
-  "include": ["scripts/s1-migration/**/*", "scripts/oneoffs/s1-t16-t19-smoke.ts"],
+  "include": [
+    "scripts/s1-migration/**/*",
+    "scripts/oneoffs/s1-t16-t19-smoke.ts",
+    "scripts/dev/run-s1-smoke-guarded.ts"
+  ],
   "compilerOptions": {
     "incremental": false,
     "tsBuildInfoFile": null

@@ -132,6 +132,19 @@ app `tsc` does NOT cover them. After touching anything under
 npx tsc -p tsconfig.scripts.json --noEmit
 ```
 
+This command is also registered as the `typecheck-scripts` validation, so it
+runs as a named CI-style check (safe against any target — it never touches a
+database).
+
+**Smoke suite as a validation:** the T16–T19 regression harness is registered
+as the `s1-smoke-dev-only` validation. It runs through
+`scripts/dev/run-s1-smoke-guarded.ts`, which is **DEV-ONLY**: the smoke seeds
+and deletes fake staged rows / id_map entries / S2 rows, so the wrapper
+fingerprints the synthetic dev dataset first (small `s1_staging.records`,
+exactly 30 type-less staged `sirius_payment` rows, < 10k workers) and refuses
+to run — writing nothing — if the resolved `EXTERNAL_DATABASE_URL` target
+doesn't match. It must never point at production.
+
 ## Rules honored (docs/s1-migration, 06 ETL traps)
 
 - Output is **aggregates only** — counts, durations, anomaly tallies; never
