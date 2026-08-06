@@ -1,0 +1,51 @@
+Application initialization failed
+Schema drift detected at startup — refusing to boot. Checked: 93 core table(s) + 11 enabled component(s). Missing tables (expected by schema, not in DB): - trust_provider_edi Extra tables (in DB, not owned by core or any component manifest): - open_enrollment_windows - options_bao_cobra_qualifying_event - options_bao_cobra_status - plugin_configs_trust_provider_edi - sitespecific_bao_cobra_cases - sitespecific_bao_cobra_rates - sitespecific_bao_distance_cache - sitespecific_bao_dp_rates - sitespecific_bao_employer_rates - sitespecific_bao_premium_file_rows - sitespecific_bao_premium_files - sitespecific_bao_premium_rates - sitespecific_bao_rate_source_employers - sitespecific_bao_rate_sources Per-table drift: Table worker_trust_elections: - extra columns: enrollment_type Table trust_benefits: - extra columns: color, show_on_worker_list, provider_id Table trust_wmb: - extra columns: source_relation_id Table trust_wmb_scan_queue: - missing constraints: UNIQUE trust_wmb_scan_queue_worker_id_year_month_unique: (worker_id,month,year) Table trust_wmb_scan_status: - extra columns: scope_type, scope_employer_id To resolve: 1. If this is a developer making a schema change without a migration: add a migration file under scripts/migrate/core/ or scripts/migrate/components/<id>/ and register it from scripts/migrate/index.ts. 2. If this is a deployment whose DB is out of sync: write a baseline script under scripts/migrate/baseline/<replit-name>-<YYYYMMDD>.ts following the procedure documented in replit.md → 'Baselining a deployment'. 3. To bypass the gate in a dev emergency, set SKIP_SCHEMA_DRIFT_CHECK=1 (NOT for production).
+
+StartupSchemaDriftError: Schema drift detected at startup — refusing to boot.
+
+Checked: 93 core table(s) + 11 enabled component(s).
+
+Missing tables (expected by schema, not in DB):
+  - trust_provider_edi
+
+Extra tables (in DB, not owned by core or any component manifest):
+  - open_enrollment_windows
+  - options_bao_cobra_qualifying_event
+  - options_bao_cobra_status
+  - plugin_configs_trust_provider_edi
+  - sitespecific_bao_cobra_cases
+  - sitespecific_bao_cobra_rates
+  - sitespecific_bao_distance_cache
+  - sitespecific_bao_dp_rates
+  - sitespecific_bao_employer_rates
+  - sitespecific_bao_premium_file_rows
+  - sitespecific_bao_premium_files
+  - sitespecific_bao_premium_rates
+  - sitespecific_bao_rate_source_employers
+  - sitespecific_bao_rate_sources
+
+Per-table drift:
+  Table worker_trust_elections:
+    - extra columns: enrollment_type
+  Table trust_benefits:
+    - extra columns: color, show_on_worker_list, provider_id
+  Table trust_wmb:
+    - extra columns: source_relation_id
+  Table trust_wmb_scan_queue:
+    - missing constraints: UNIQUE trust_wmb_scan_queue_worker_id_year_month_unique: (worker_id,month,year)
+  Table trust_wmb_scan_status:
+    - extra columns: scope_type, scope_employer_id
+
+To resolve:
+  1. If this is a developer making a schema change without a migration:
+     add a migration file under scripts/migrate/core/ or scripts/migrate/components/<id>/
+     and register it from scripts/migrate/index.ts.
+  2. If this is a deployment whose DB is out of sync:
+     write a baseline script under scripts/migrate/baseline/<replit-name>-<YYYYMMDD>.ts
+     following the procedure documented in replit.md → 'Baselining a deployment'.
+  3. To bypass the gate in a dev emergency, set SKIP_SCHEMA_DRIFT_CHECK=1 (NOT for production).
+    at enforceStartupSchemaDrift (file:///app/dist/app-init.js:41789:9)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async bootstrapApp (file:///app/dist/app-init.js:45879:3)
+    at async startApp (file:///app/dist/app-init.js:45999:3)
+    at async Server.<anonymous> (file:///app/dist/production-entry.js:153:5)
