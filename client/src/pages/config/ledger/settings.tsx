@@ -12,8 +12,18 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { Loader2, Save } from "lucide-react";
+import { Loader2, Save, RefreshCw, Search } from "lucide-react";
 import { useState, useEffect } from "react";
+
+interface ResaveResult {
+  dryRun: boolean;
+  totalPayments: number;
+  paymentsWithEntriesBefore: number;
+  paymentsWithoutEntriesBefore: number;
+  clearedPaymentsWithoutEntriesBefore: number;
+  processed: number;
+  errors: Array<{ paymentId: string; error: string }>;
+}
 
 interface LedgerPaymentType {
   id: string;
@@ -72,6 +82,32 @@ export default function LedgerSettingsPage() {
       toast({
         title: "Error",
         description: error.message || "Failed to save setting.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const [resaveResult, setResaveResult] = useState<ResaveResult | null>(null);
+
+  const resaveMutation = useMutation({
+    mutationFn: async (dryRun: boolean): Promise<ResaveResult> => {
+      return apiRequest("POST", "/api/ledger/payments/resave-charge-entries", { dryRun });
+    },
+    onSuccess: (result) => {
+      setResaveResult(result);
+      if (!result.dryRun) {
+        queryClient.invalidateQueries({ queryKey: ["/api/ledger/payments"] });
+        toast({
+          title: "Rebuild complete",
+          description: `Re-saved ${result.processed} of ${result.totalPayments} payments${result.errors.length > 0 ? ` (${result.errors.length} errors)` : ""}.`,
+          variant: result.errors.length > 0 ? "destructive" : undefined,
+        });
+      }
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to re-save payments.",
         variant: "destructive",
       });
     },
@@ -159,6 +195,62 @@ export default function LedgerSettingsPage() {
               {saveMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               <Save className="mr-2 h-4 w-4" />
               Save Settings
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle>Rebuild Payment Ledger Entries</CardTitle>
+          <CardDescription>
+            Re-saves every payment so charge plugins (such as payment allocation) recreate any
+            missing ledger entries — useful if payments were saved while a plugin was turned off.
+            Existing plugin-generated entries are replaced, not duplicated. Run a check first to
+            see how many payments are missing entries.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {resaveResult && (
+            <div className="rounded-md border p-4 text-sm space-y-1" data-testid="resave-result">
+              <p>Total payments: <span className="font-medium">{resaveResult.totalPayments}</span></p>
+              <p>With ledger entries: <span className="font-medium">{resaveResult.paymentsWithEntriesBefore}</span></p>
+              <p>Missing ledger entries: <span className="font-medium">{resaveResult.paymentsWithoutEntriesBefore}</span>{" "}
+                <span className="text-muted-foreground">({resaveResult.clearedPaymentsWithoutEntriesBefore} cleared — only cleared payments generate entries)</span>
+              </p>
+              {!resaveResult.dryRun && (
+                <p>Re-saved: <span className="font-medium">{resaveResult.processed}</span></p>
+              )}
+              {resaveResult.errors.length > 0 && (
+                <div className="text-destructive">
+                  <p>{resaveResult.errors.length} error(s):</p>
+                  <ul className="list-disc pl-5">
+                    {resaveResult.errors.slice(0, 5).map((e) => (
+                      <li key={e.paymentId}>{e.paymentId}: {e.error}</li>
+                    ))}
+                    {resaveResult.errors.length > 5 && <li>…and {resaveResult.errors.length - 5} more</li>}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => resaveMutation.mutate(true)}
+              disabled={resaveMutation.isPending}
+              data-testid="button-resave-dry-run"
+            >
+              {resaveMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Search className="mr-2 h-4 w-4" />}
+              Check for Missing Entries
+            </Button>
+            <Button
+              onClick={() => resaveMutation.mutate(false)}
+              disabled={resaveMutation.isPending}
+              data-testid="button-resave-all"
+            >
+              {resaveMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+              Re-save All Payments
             </Button>
           </div>
         </CardContent>

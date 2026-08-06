@@ -24,6 +24,8 @@ export interface ChargePluginExecutionResult {
   executed: PluginExecutionSummary[];
   totalTransactions: LedgerTransaction[];
   notifications: LedgerNotification[];
+  /** Set when the ledger-entry write for the produced transactions failed (soft-fail). */
+  entryCreationError?: string;
 }
 
 /**
@@ -126,6 +128,7 @@ export async function executeChargePlugins(
   }
 
   // Create ledger entries for all transactions (soft-fail - don't throw on error)
+  let entryCreationError: string | undefined;
   if (totalTransactions.length > 0) {
     logger.info("About to create ledger entries for transactions", {
       service: "charge-plugin-executor",
@@ -146,6 +149,7 @@ export async function executeChargePlugins(
       });
     } catch (error) {
       // Log error but don't throw - plugin failures should not block core functionality
+      entryCreationError = error instanceof Error ? error.message : String(error);
       logger.error("Error during ledger entry creation for charge plugin transactions", {
         service: "charge-plugin-executor",
         error: error instanceof Error ? error.message : String(error),
@@ -166,6 +170,7 @@ export async function executeChargePlugins(
     executed,
     totalTransactions,
     notifications,
+    entryCreationError,
   };
 }
 

@@ -217,7 +217,30 @@ async function checkPaymentEaAccessInline(req: Request, res: Response, ea: { ent
   return true;
 }
 
-export async function triggerPaymentChargePlugins(payment: LedgerPayment): Promise<LedgerNotification[]> {
+export interface ChargePluginFailure {
+  pluginId?: string;
+  error: string;
+}
+
+function collectExecutionFailures(
+  result: Awaited<ReturnType<typeof executeChargePlugins>>,
+  failures?: ChargePluginFailure[]
+): void {
+  if (!failures) return;
+  for (const summary of result.executed) {
+    if (!summary.success) {
+      failures.push({ pluginId: summary.pluginId, error: summary.error || summary.message || "Plugin execution failed" });
+    }
+  }
+  if (result.entryCreationError) {
+    failures.push({ error: `Ledger entry creation failed: ${result.entryCreationError}` });
+  }
+}
+
+export async function triggerPaymentChargePlugins(
+  payment: LedgerPayment,
+  failures?: ChargePluginFailure[]
+): Promise<LedgerNotification[]> {
   try {
     const allNotifications: LedgerNotification[] = [];
     const details = (payment.details || {}) as Record<string, unknown>;
@@ -234,6 +257,7 @@ export async function triggerPaymentChargePlugins(payment: LedgerPayment): Promi
             paymentId: payment.id,
             ledgerEaId: alloc.eaId,
           });
+          failures?.push({ error: `Allocation EA not found: ${alloc.eaId}` });
           continue;
         }
 
@@ -269,6 +293,7 @@ export async function triggerPaymentChargePlugins(payment: LedgerPayment): Promi
         };
 
         const result = await executeChargePlugins(context);
+        collectExecutionFailures(result, failures);
         allNotifications.push(...result.notifications);
       }
 
@@ -312,6 +337,7 @@ export async function triggerPaymentChargePlugins(payment: LedgerPayment): Promi
         paymentId: payment.id,
         ledgerEaId: payment.ledgerEaId,
       });
+      failures?.push({ error: `EA not found: ${payment.ledgerEaId}` });
       return [];
     }
 
@@ -343,6 +369,7 @@ export async function triggerPaymentChargePlugins(payment: LedgerPayment): Promi
     };
 
     const result = await executeChargePlugins(context);
+    collectExecutionFailures(result, failures);
     return result.notifications;
   } catch (error) {
     logger.error("Failed to execute charge plugins for payment", {
@@ -350,6 +377,7 @@ export async function triggerPaymentChargePlugins(payment: LedgerPayment): Promi
       paymentId: payment.id,
       error: error instanceof Error ? error.message : String(error),
     });
+    failures?.push({ error: error instanceof Error ? error.message : String(error) });
     return [];
   }
 }
@@ -366,6 +394,83 @@ export function registerLedgerPaymentRoutes(app: Express) {
   });
 
   // GET /api/ledger/payments/ea/:eaId - Get all payments for a specific EA entry
+  // POST /api/ledger/payments/resave-charge-entries - Re-run charge plugins for all payments (admin only).
+  // Used to backfill missing ledger entries for payments saved while the allocation
+  // plugin/component was off. Must be registered before /api/ledger/payments/:id routes.
+  app.post("/api/ledger/payments/resave-charge-entries", requireComponent("ledger"), requireAccess('admin'), async (req, res) => {
+    try {
+      const dryRun = req.body?.dryRun === true;
+      const payments = await storage.ledger.payments.getAll();
+
+      let withEntries = 0;
+      let withoutEntries = 0;
+      let clearedWithoutEntries = 0;
+      let processed = 0;
+      const errors: Array<{ paymentId: string; error: string }> = [];
+
+      for (const payment of payments) {
+        try {
+          const entries = await storage.ledger.entries.getByReference("payment", payment.id);
+          // Only entries created by a charge plugin count — unrelated ledger rows
+          // referencing the payment do not mean the plugin ran.
+          const pluginEntries = entries.filter(e => e.chargePlugin);
+          if (pluginEntries.length > 0) withEntries++;
+          else {
+            withoutEntries++;
+            if (payment.status === "cleared") clearedWithoutEntries++;
+          }
+
+          if (!dryRun) {
+            const failures: ChargePluginFailure[] = [];
+            await triggerPaymentChargePlugins(payment, failures);
+            if (failures.length > 0) {
+              for (const f of failures) {
+                errors.push({
+                  paymentId: payment.id,
+                  error: f.pluginId ? `${f.pluginId}: ${f.error}` : f.error,
+                });
+              }
+            } else {
+              processed++;
+            }
+          }
+        } catch (err) {
+          errors.push({
+            paymentId: payment.id,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+        if (errors.length >= 100) break;
+      }
+
+      logger.info("Payment charge-entry resave completed", {
+        service: "ledger-payments",
+        dryRun,
+        totalPayments: payments.length,
+        withEntries,
+        withoutEntries,
+        processed,
+        errorCount: errors.length,
+      });
+
+      res.json({
+        dryRun,
+        totalPayments: payments.length,
+        paymentsWithEntriesBefore: withEntries,
+        paymentsWithoutEntriesBefore: withoutEntries,
+        clearedPaymentsWithoutEntriesBefore: clearedWithoutEntries,
+        processed,
+        errors,
+      });
+    } catch (error) {
+      logger.error("Failed to resave payment charge entries", {
+        service: "ledger-payments",
+        error: error instanceof Error ? error.message : String(error),
+      });
+      res.status(500).json({ message: "Failed to resave payment charge entries" });
+    }
+  });
+
   app.get("/api/ledger/payments/ea/:eaId", requireComponent("ledger"), requireAccess('authenticated'), async (req, res) => {
     try {
       const { eaId } = req.params;
