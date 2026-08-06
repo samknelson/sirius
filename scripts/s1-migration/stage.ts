@@ -25,8 +25,15 @@ import {
   deleteStaleRecords,
   deleteStaleTerms,
   recordRun,
+  ensureRawLedgerTable,
+  upsertRawLedger,
+  deleteStaleRawLedger,
+  stagedRawLedgerCount,
+  type RawLedgerRow,
 } from "./lib/staging";
 import { pool as pgPool } from "../../server/storage/db";
+import type { Pool } from "mysql2/promise";
+import type { RowDataPacket } from "mysql2/promise";
 
 /** In-scope node bundles per docs/s1-migration (02-mapping, 03 §12 load order). */
 const IN_SCOPE_BUNDLES = [
@@ -66,11 +73,12 @@ interface CliArgs {
   bundles: string[] | null;
   all: boolean;
   skipTerms: boolean;
+  skipRaw: boolean;
   batch: number;
 }
 
 function parseArgs(argv: string[]): CliArgs {
-  const args: CliArgs = { bundles: null, all: false, skipTerms: false, batch: 500 };
+  const args: CliArgs = { bundles: null, all: false, skipTerms: false, skipRaw: false, batch: 500 };
   for (let i = 0; i < argv.length; i++) {
     switch (argv[i]) {
       case "--bundles":
@@ -82,6 +90,9 @@ function parseArgs(argv: string[]): CliArgs {
       case "--skip-terms":
         args.skipTerms = true;
         break;
+      case "--skip-raw":
+        args.skipRaw = true;
+        break;
       case "--batch":
         args.batch = Math.max(1, Number(argv[++i] ?? 500));
         break;
@@ -90,6 +101,52 @@ function parseArgs(argv: string[]): CliArgs {
     }
   }
   return args;
+}
+
+/**
+ * Raw (non-node) table staging — sirius_ledger_ar (T18). Same lossless +
+ * watermark + count-verify contract as bundles; keyset-paginated by the
+ * ledger_id PK. Decimal amounts arrive as strings from mysql2 and are staged
+ * verbatim (never parsed to float).
+ */
+async function stageRawLedgerAr(
+  s1: Pool,
+  batch: number,
+): Promise<{ table: string; s1Count: number; extracted: number; staged: number; staleRemoved: number; durationMs: number }> {
+  const t0 = Date.now();
+  await ensureRawLedgerTable();
+  const watermark = await stagingNow();
+  const [cntRows] = await s1.query<RowDataPacket[]>(`SELECT COUNT(*) AS n FROM sirius_ledger_ar`);
+  const s1Count = Number(cntRows[0]?.n ?? 0);
+  let lastId = 0;
+  let extracted = 0;
+  for (;;) {
+    const [rows] = await s1.query<RowDataPacket[]>(
+      `SELECT ledger_id, ledger_amount, ledger_status, ledger_account, ledger_participant,
+              ledger_reference, ledger_ts, ledger_memo, ledger_key, ledger_json
+         FROM sirius_ledger_ar WHERE ledger_id > ? ORDER BY ledger_id LIMIT ?`,
+      [lastId, batch],
+    );
+    if (rows.length === 0) break;
+    const mapped: RawLedgerRow[] = rows.map((r) => ({
+      ledgerId: Number(r.ledger_id),
+      amount: r.ledger_amount == null ? null : String(r.ledger_amount),
+      status: r.ledger_status == null ? null : String(r.ledger_status),
+      account: r.ledger_account == null ? null : Number(r.ledger_account),
+      participant: r.ledger_participant == null ? null : Number(r.ledger_participant),
+      reference: r.ledger_reference == null ? null : Number(r.ledger_reference),
+      ts: r.ledger_ts == null ? null : Number(r.ledger_ts),
+      memo: r.ledger_memo == null ? null : String(r.ledger_memo),
+      key: r.ledger_key == null ? null : String(r.ledger_key),
+      json: r.ledger_json == null ? null : String(r.ledger_json),
+    }));
+    await upsertRawLedger(mapped);
+    extracted += rows.length;
+    lastId = mapped[mapped.length - 1].ledgerId;
+  }
+  const staleRemoved = await deleteStaleRawLedger(watermark);
+  const staged = await stagedRawLedgerCount();
+  return { table: "sirius_ledger_ar", s1Count, extracted, staged, staleRemoved, durationMs: Date.now() - t0 };
 }
 
 async function main() {
@@ -179,10 +236,25 @@ async function main() {
     logAnomalies(report.anomalies);
   }
 
+  // Raw tables stage on default and --all runs; selective --bundles runs
+  // skip them (like bundles they weren't asked for), --skip-raw always skips.
+  let rawLedgerReport: Awaited<ReturnType<typeof stageRawLedgerAr>> | null = null;
+  if (!args.skipRaw && args.bundles == null) {
+    rawLedgerReport = await stageRawLedgerAr(s1, args.batch);
+    const ok = rawLedgerReport.staged === rawLedgerReport.s1Count ? "OK" : "MISMATCH";
+    if (ok === "MISMATCH") mismatches++;
+    console.log(
+      `raw sirius_ledger_ar: s1=${rawLedgerReport.s1Count} extracted=${rawLedgerReport.extracted} staged=${rawLedgerReport.staged}${rawLedgerReport.staleRemoved ? ` staleRemoved=${rawLedgerReport.staleRemoved}` : ""} ${ok} (${rawLedgerReport.durationMs}ms)`,
+    );
+  } else if (args.bundles != null && !args.skipRaw) {
+    console.log("raw sirius_ledger_ar: skipped (selective --bundles run)");
+  }
+
   await recordRun(startedAt, args as unknown as Record<string, unknown>, {
     reports,
     mismatches,
     documentedSkips,
+    rawLedgerAr: rawLedgerReport,
   });
 
   console.log(

@@ -214,8 +214,10 @@ async function main() {
     if (!id && !DRY_RUN) {
       const created = await withNotificationsSuppressed(() => options.create("employer-contact-type", { name: norm }));
       id = created.id;
-      typeIdByNorm.set(key, id);
-      scStats.typesEnsured++;
+      if (id) {
+        typeIdByNorm.set(key, id);
+        scStats.typesEnsured++;
+      }
     }
     return id ?? null;
   };

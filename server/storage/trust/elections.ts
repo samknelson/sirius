@@ -83,8 +83,30 @@ export interface WorkerTrustElectionsStorage {
   getViewById(id: string): Promise<WorkerTrustElectionView | undefined>;
   getActiveViewByWorker(workerId: string): Promise<WorkerTrustElectionView | undefined>;
   create(workerId: string, input: unknown): Promise<WorkerTrustElection>;
+  /**
+   * MIGRATION-ONLY create (S1→S2 T16 loader; cf. createWorkerForMigration).
+   * Historical elections must land VERBATIM: unlike `create`, this skips the
+   * dual-coverage assert and never auto-end-dates a prior open election —
+   * S1 is the system of record for its own history, and rewriting or
+   * rejecting it here would corrupt the import. FK existence and the
+   * end-after-start contract are still enforced, and TRUST_ELECTION_SAVED
+   * still fires after commit so denorm listeners observe the row. Never call
+   * this from application code — wizard/API paths must use `create`.
+   */
+  createForMigration(input: MigrationElectionInput): Promise<WorkerTrustElection>;
   update(id: string, input: unknown): Promise<WorkerTrustElection | undefined>;
   delete(id: string): Promise<boolean>;
+}
+
+export interface MigrationElectionInput {
+  workerId: string;
+  employerId: string;
+  startYmd: string;
+  endYmd?: string | null;
+  benefitIds?: string[] | null;
+  relationshipIds?: string[] | null;
+  enrollmentType?: EnrollmentType | null;
+  data?: Record<string, unknown> | null;
 }
 
 async function hydrateElections(rows: WorkerTrustElection[]): Promise<WorkerTrustElectionView[]> {
@@ -670,6 +692,45 @@ export function createWorkerTrustElectionsStorage(): WorkerTrustElectionsStorage
             relationshipIds: parsed.relationshipIds ?? null,
             enrollmentType: parsed.enrollmentType ?? null,
             data: (parsed.data ?? null) as WorkerTrustElection['data'],
+          })
+          .returning();
+        emitTrustElectionSaved(
+          created.id,
+          created.workerId,
+          (created.enrollmentType ?? null) as EnrollmentType | null,
+          'created',
+          created.startYmd,
+          created.endYmd ?? null,
+        );
+        return created;
+      });
+    },
+
+    // MIGRATION-ONLY — see interface doc. Verbatim historical insert: no
+    // dual-coverage assert, no auto-end of prior open elections. FK + date
+    // contract still enforced via validateElection.
+    async createForMigration(input) {
+      const validated = await validateElection({
+        workerId: input.workerId,
+        employerId: input.employerId,
+        policyId: null,
+        startYmd: input.startYmd,
+        endYmd: input.endYmd ?? null,
+      });
+      return await runInTransaction(async () => {
+        const client = getClient();
+        const [created] = await client
+          .insert(workerTrustElections)
+          .values({
+            workerId: validated.workerId,
+            employerId: validated.employerId,
+            policyId: null,
+            startYmd: validated.startYmd,
+            endYmd: validated.endYmd,
+            benefitIds: input.benefitIds ?? null,
+            relationshipIds: input.relationshipIds ?? null,
+            enrollmentType: input.enrollmentType ?? null,
+            data: (input.data ?? null) as WorkerTrustElection['data'],
           })
           .returning();
         emitTrustElectionSaved(

@@ -75,10 +75,16 @@ export function yesNo(v: string | null): boolean | null {
   return null;
 }
 
-/** "1971-06-07 00:00:00" → "1971-06-07" (D7 wall-time datetimes, date-only). */
+/** "1971-06-07 00:00:00" → "1971-06-07" (D7 wall-time datetimes, date-only).
+ * Strict: the Y-M-D must be a real calendar date (2024-02-30 → null) — a
+ * malformed source date must become a counted reject, not a normalized fiction. */
 export function toYmd(raw: string): string | null {
-  const m = raw.trim().match(/^(\d{4}-\d{2}-\d{2})/);
-  return m ? m[1] : null;
+  const m = raw.trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return null;
+  const y = Number(m[1]), mo = Number(m[2]), d = Number(m[3]);
+  const dt = new Date(Date.UTC(y, mo - 1, d));
+  if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== mo - 1 || dt.getUTCDate() !== d) return null;
+  return `${m[1]}-${m[2]}-${m[3]}`;
 }
 
 /** Epoch seconds → "YYYY-MM-DD" (UTC). For end-dating conventions off node.changed. */

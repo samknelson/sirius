@@ -135,7 +135,7 @@ async function main() {
   }));
 
   const report: Record<string, unknown> = { loader: "t4-options", dryRun: DRY_RUN, stagedTerms: terms.length };
-  const perVocab: Record<string, { matchedSiriusId: number; adoptedByName: number; created: number; updated: number }> = {};
+  const perVocab: Record<string, { matchedIdMap: number; matchedSiriusId: number; adoptedByName: number; created: number; updated: number }> = {};
   const skippedVocabs: Record<string, { reason: string; terms: number }> = {};
   const unhandled: Record<string, number> = {};
 

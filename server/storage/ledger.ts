@@ -72,6 +72,8 @@ export interface LedgerPaymentStorage {
     offset: number
   ): Promise<{ data: LedgerPaymentWithEntity[]; total: number }>;
   create(payment: InsertLedgerPayment): Promise<LedgerPayment>;
+  /** Migration-only: like create, but preserves a verbatim historical dateCreated. */
+  createForMigration(payment: InsertLedgerPayment & { dateCreated?: Date | null }): Promise<LedgerPayment>;
   update(id: string, payment: Partial<InsertLedgerPayment>): Promise<LedgerPayment | undefined>;
   delete(id: string): Promise<boolean>;
 }
@@ -682,6 +684,21 @@ export function createLedgerPaymentStorage(): LedgerPaymentStorage {
         throw new Error(`Currency mismatch: Payment type "${paymentType.name}" uses ${paymentType.currencyCode} but account "${account.name}" uses ${account.currencyCode}`);
       }
       
+      const [payment] = await client.insert(ledgerPayments)
+        .values(insertPayment as any)
+        .returning();
+      return payment;
+    },
+
+    async createForMigration(insertPayment: InsertLedgerPayment & { dateCreated?: Date | null }): Promise<LedgerPayment> {
+      // Migration-only path: identical to create, but the input type admits a
+      // verbatim historical dateCreated (create's public type omits it so the
+      // column defaults to now() for app-originated payments). Skips the
+      // currency cross-check — the T19 loader preflights payment-type/account
+      // currency parity per row before calling this (currency_mismatch reject)
+      // and verifies every written row post-write.
+      validate.validateOrThrow(insertPayment);
+      const client = getClient();
       const [payment] = await client.insert(ledgerPayments)
         .values(insertPayment as any)
         .returning();

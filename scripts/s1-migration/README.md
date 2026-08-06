@@ -17,6 +17,9 @@ S1 MariaDB (S1_DATABASE_URL)          S2 Postgres (EXTERNAL_DATABASE_URL)
   spec's entity-reassembly pattern (`entity_type='node'`, unquoted
   `deleted=0`, delta-ordered multi-value aggregation, no language assumption)
   and upserts them losslessly into the `s1_staging` Postgres schema.
+  Besides node bundles, it also mirrors S1's raw (non-node) `sirius_ledger_ar`
+  table into `s1_staging.raw_ledger_ar` (keyset-paginated, count-verified;
+  `--skip-raw` to omit).
   Idempotent and self-reconciling — re-runs upsert by `(bundle, nid)`, and
   after a bundle extracts successfully, rows the run did not touch (records
   gone from S1) are deleted before count verification, so a green check
@@ -87,7 +90,9 @@ loaders against ANY target (fresh branch or production), ensure:
   charge plugin is runnable (component enabled + enabled config).
 - **Load order matters:** stage → seed-employment-statuses (fresh DB) →
   options → contacts/workers → member-statuses → employers → policies →
-  relationships → hours.
+  relationships → employee-ids → elections → benefit-history → **payments →
+  ledger** → hours. Payments run BEFORE ledger: negative AR rows reference
+  payment nids, and T18 resolves them through id_map `payment`.
   Later loaders resolve earlier loaders' `id_map` entries; missing mappings
   are rejects/skips. `id_map` rows pointing at deleted S2 rows hard-fail —
   repair the map, never delete it.
@@ -118,6 +123,14 @@ npx tsx scripts/s1-migration/stage.ts --skip-terms --batch 1000
 
 Exit code 1 if any staged count mismatches the S1 node count. Every run is
 recorded in `s1_staging.runs` (args + per-bundle report).
+
+**Typechecking:** the migration scripts live OUTSIDE the app tsconfig, so the
+app `tsc` does NOT cover them. After touching anything under
+`scripts/s1-migration/`, run:
+
+```bash
+npx tsc -p tsconfig.scripts.json --noEmit
+```
 
 ## Rules honored (docs/s1-migration, 06 ETL traps)
 
@@ -287,6 +300,83 @@ recorded in `s1_staging.runs` (args + per-bundle report).
   dev rows; production profiles all 541 rows with complete field sets —
   run with no allowance first).
 
+- `load-elections.ts` — T16: `sirius_trust_worker_election` →
+  `worker_trust_elections` via migration-only
+  `workerTrustElections.createForMigration` (keeps FK/date validation and the
+  TRUST_ELECTION_SAVED emit; skips the dual-coverage assert and
+  auto-end-dating that reshape operator edits — history loads verbatim).
+  Benefit refs resolve id_map → `trust_benefits.sirius_id` → unambiguous
+  name (name-resolved pairs are adopted INTO id_map `benefit`); benefit ORDER
+  is preserved. Election type: tid → staged term name → canonical code
+  (FirstTime/OpenEnrollment/LifeEvent → `first_time`/`open_enrollment`/
+  `life_event`; `--type-map tid=code` for prod surprises); untyped elections
+  load with NULL `enrollment_type`. Policy refs never land in S2 (02 §5b,
+  policy is derived) — stashed as `data.s1PolicyNid`. Relations resolve via
+  id_map `relation`. `active=No` with no end date end-dates from
+  `node.changed` (T15 convention). Verify = full field equality on every
+  created/adopted row. Dev: `--allow-rejects worker_ref_missing` (synthetic
+  elections stage no worker field — all 40 reject; smoke covers the real
+  paths).
+
+- `load-benefit-history.ts` — T17: `sirius_trust_worker_benefit` coverage
+  spans → per-month `trust_wmb` rows through `storage.trust.wmb`
+  (notification+charge suppressed). Expansion is calendar-month inclusive of
+  both endpoints. OPEN spans (no end date) require an explicit
+  `--open-end-through YYYY-MM` horizon — the loader refuses to guess the
+  fund's intent (prod needs a ruling: likely the freeze month). Dependent
+  rows: `field_sirius_contact_relation` → id_map `relation`; the relation's
+  `worker_2` becomes the row's worker with `source_relation_id` set, and the
+  staged subscriber must equal the relation's `worker_1`
+  (`relation_subscriber_mismatch` otherwise). Employer: shop ref, else the
+  referenced election's employer. Inactive no-end spans end-date from
+  `node.changed`. id_map `wb` anchor = the span's first-month row; existing
+  months are adopted (idempotent re-runs). Dev: `--allow-rejects
+  benefit_unmapped` (synthetic benefit titles don't match fund-config names;
+  smoke seeds mapped ones).
+
+- `load-payments.ts` — T19, runs BEFORE T18: `sirius_payment` →
+  `ledger_payments` via migration-only `ledger.payments.createForMigration`
+  (the public create's input type omits `dateCreated` so app payments default
+  to now(); the migration path preserves the verbatim historical timestamp).
+  Payer → EA: worker → shell-worker → contact → employer priority, then
+  `ledger.ea.getOrCreate`. Account: id_map `ledger-account`, else adopt by
+  exact name, else create (broken id_map rows fail loud). Status map:
+  Cleared→`cleared` (+`dateCleared`=dateCreated, `allocated`),
+  Canceled→`canceled`, Failed→`error`, Pending→`draft`,
+  Received→`draft` (+`dateReceived`). Amount = abs(dollar_amt); negative
+  sources are counted and flagged in `details`. Type: tid → id_map `term` →
+  payment-type option. Type-less rows reject (`payment_type_missing`) — there
+  is deliberately NO fallback flag; genuinely type-less production rows would
+  need a conscious fund ruling first. Payment-type/account currency parity is
+  preflighted per row (`currency_mismatch` reject) because
+  `createForMigration` skips the storage cross-check. Crash repair: a payment
+  created before its id_map write landed is re-adopted by provenance
+  (`details.s1Nid`), never duplicated (same pattern in T16 via `data.s1Nid`).
+  Dev: the 30 synthetic payments stage no type → run with
+  `--allow-rejects payment_type_missing`; the smoke covers the typed path,
+  currency preflight, and crash repair end-to-end.
+
+- `load-ledger.ts` — T18: `s1_staging.raw_ledger_ar` → `ledger` charge
+  entries under charge plugin `s1-import` with
+  `chargePluginKey='ar-<ledger_id>'` (charge plugins + notifications
+  suppressed; entries are inert history). Only Cleared rows load — prod AR is
+  100% Cleared; dev's 10 Pending run under `--allow-rejects
+  non_cleared_status`. Amounts land VERBATIM (sign included: positive
+  charges, negative allocations), and the verify pass recomputes per-account
+  count + cents-exact sum of the FULL resolved set against the DB's
+  s1-import aggregate — any drift is exit 1. Reference nids resolve wb →
+  election → payment → worker → shell-worker → relation → employer →
+  contact; unresolved references keep the row loadable with
+  `referenceType='s1-unknown'` + `referenceId=String(nid)`, and
+  `data.s1ReferenceNid` is always stashed for audit. `date` = raw epoch ts;
+  `statement_ymd` = LA-calendar first-of-month of that ts.
+
+`scripts/oneoffs/s1-t16-t19-smoke.ts` covers the four loaders end-to-end:
+it seeds fully-populated fake staged rows against real dev entities (the
+synthetic dev data is structurally sparse — no worker refs on elections, no
+types on payments), runs each loader as a real CLI, asserts report counters,
+DB rows, idempotent re-runs and the T19 fail-closed guard, then cleans up.
+
 ## Known production-hardening TODOs (before the real run)
 
 - **Write + id_map atomicity (contacts/workers loader):** a crash between a
@@ -301,6 +391,9 @@ recorded in `s1_staging.runs` (args + per-bundle report).
   full in-memory maps. Fine at ≤130k rows (bounded memory, one query each),
   but the per-row satellite reads should be batched (keyset paging like the
   hours loader) before production.
+  T16 (elections) and T19 (payments) self-heal this gap: they re-adopt
+  orphaned rows by provenance (`s1Nid` in data/details) and repair id_map
+  on the next run — port that pattern to contacts/workers before prod.
 
 - Bulk transport (`COPY`/temp-table ingest) + per-bundle checkpointing for
   the 9.15M-node volume; benchmark against real payperiod JSON sizes.
@@ -316,6 +409,13 @@ recorded in `s1_staging.runs` (args + per-bundle report).
   payperiods in memory and upserts sequentially — fine at dev scale, not at
   3.6M rows. Needs keyset-paged staging reads, bounded write batches, and
   checkpointing.
+- **T16–T18 paging (same Track C umbrella).** The elections, benefit-history
+  and ledger loaders also materialize their staged sets in memory; T17
+  additionally prefetches all existing `trust_wmb` rows per worker set and
+  does a per-span anchor lookup, and T18 does a per-row
+  `getByChargePluginKey` existence check. At prod volume (223,909 elections
+  per 07) these need keyset paging + batched existence checks; the per-row
+  storage writes stay (they're the correctness boundary).
 - Row-level provenance (`$.entries` keys) is only aggregated in the run
   report; if per-row provenance must land in S2, `worker_hours` needs a home
   for it (no data column today).

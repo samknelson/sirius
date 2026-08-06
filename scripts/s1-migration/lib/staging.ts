@@ -183,3 +183,110 @@ export async function recordRun(
     VALUES (${startedAt.toISOString()}::timestamptz, ${JSON.stringify(args)}::jsonb, ${JSON.stringify(report)}::jsonb)
   `);
 }
+
+// ---------------------------------------------------------------------------
+// Raw (non-node) S1 tables. sirius_ledger_ar is the only in-scope one (T18):
+// the AR ledger is a bare MariaDB table, not a node bundle, so it gets its
+// own lossless staging table with the same watermark/stale-delete semantics.
+// ---------------------------------------------------------------------------
+
+export interface RawLedgerRow {
+  ledgerId: number;
+  amount: string | null; // decimal(10,2) staged VERBATIM as text (lossless)
+  status: string | null;
+  account: number | null; // nid → sirius_ledger_account
+  participant: number | null; // nid → worker/contact/employer
+  reference: number | null; // nid → charged-for entity (grant, election, ...)
+  ts: number | null; // epoch seconds
+  memo: string | null;
+  key: string | null;
+  json: string | null; // longtext staged verbatim
+}
+
+export async function ensureRawLedgerTable(): Promise<void> {
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS s1_staging.raw_ledger_ar (
+      ledger_id bigint PRIMARY KEY,
+      ledger_amount text,
+      ledger_status text,
+      ledger_account bigint,
+      ledger_participant bigint,
+      ledger_reference bigint,
+      ledger_ts bigint,
+      ledger_memo text,
+      ledger_key text,
+      ledger_json text,
+      extracted_at timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+}
+
+export async function upsertRawLedger(rows: RawLedgerRow[]): Promise<void> {
+  if (rows.length === 0) return;
+  let chunk: RawLedgerRow[] = [];
+  let chunkBytes = 0;
+  const flush = async () => {
+    if (chunk.length === 0) return;
+    const values = chunk.map(
+      (r) =>
+        sql`(${r.ledgerId}, ${r.amount}, ${r.status}, ${r.account}, ${r.participant}, ${r.reference}, ${r.ts}, ${r.memo}, ${r.key}, ${r.json}, now())`,
+    );
+    await db.execute(sql`
+      INSERT INTO s1_staging.raw_ledger_ar
+        (ledger_id, ledger_amount, ledger_status, ledger_account, ledger_participant, ledger_reference, ledger_ts, ledger_memo, ledger_key, ledger_json, extracted_at)
+      VALUES ${sql.join(values, sql`, `)}
+      ON CONFLICT (ledger_id) DO UPDATE SET
+        ledger_amount = EXCLUDED.ledger_amount,
+        ledger_status = EXCLUDED.ledger_status,
+        ledger_account = EXCLUDED.ledger_account,
+        ledger_participant = EXCLUDED.ledger_participant,
+        ledger_reference = EXCLUDED.ledger_reference,
+        ledger_ts = EXCLUDED.ledger_ts,
+        ledger_memo = EXCLUDED.ledger_memo,
+        ledger_key = EXCLUDED.ledger_key,
+        ledger_json = EXCLUDED.ledger_json,
+        extracted_at = EXCLUDED.extracted_at
+    `);
+    chunk = [];
+    chunkBytes = 0;
+  };
+  for (const r of rows) {
+    chunk.push(r);
+    chunkBytes += (r.json?.length ?? 0) + (r.memo?.length ?? 0) + 128;
+    if (chunk.length >= MAX_CHUNK_ROWS || chunkBytes >= MAX_CHUNK_BYTES) await flush();
+  }
+  await flush();
+}
+
+export async function deleteStaleRawLedger(watermark: string): Promise<number> {
+  const res = await db.execute(
+    sql`DELETE FROM s1_staging.raw_ledger_ar WHERE extracted_at < ${watermark}::timestamptz`,
+  );
+  return (res as unknown as { rowCount?: number }).rowCount ?? 0;
+}
+
+export async function stagedRawLedgerCount(): Promise<number> {
+  const res = await db.execute(sql`SELECT count(*)::int AS n FROM s1_staging.raw_ledger_ar`);
+  return Number((res as unknown as { rows: Array<{ n: number }> }).rows[0]?.n ?? 0);
+}
+
+/** T18 read path: all staged AR rows ordered by ledger_id. */
+export async function loadRawLedger(): Promise<RawLedgerRow[]> {
+  const res = await db.execute(sql`
+    SELECT ledger_id, ledger_amount, ledger_status, ledger_account, ledger_participant,
+           ledger_reference, ledger_ts, ledger_memo, ledger_key, ledger_json
+      FROM s1_staging.raw_ledger_ar ORDER BY ledger_id
+  `);
+  return (res as unknown as { rows: Array<Record<string, unknown>> }).rows.map((r) => ({
+    ledgerId: Number(r.ledger_id),
+    amount: r.ledger_amount == null ? null : String(r.ledger_amount),
+    status: r.ledger_status == null ? null : String(r.ledger_status),
+    account: r.ledger_account == null ? null : Number(r.ledger_account),
+    participant: r.ledger_participant == null ? null : Number(r.ledger_participant),
+    reference: r.ledger_reference == null ? null : Number(r.ledger_reference),
+    ts: r.ledger_ts == null ? null : Number(r.ledger_ts),
+    memo: r.ledger_memo == null ? null : String(r.ledger_memo),
+    key: r.ledger_key == null ? null : String(r.ledger_key),
+    json: r.ledger_json == null ? null : String(r.ledger_json),
+  }));
+}
