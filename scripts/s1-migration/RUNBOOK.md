@@ -39,11 +39,12 @@ to the exact state the loaders expect:
    migrations, the same sequence the app boots with.
 2. **Wipe** — a populated target is refused unless `--wipe` is passed. `--wipe`
    truncates every table EXCEPT `variables` (migration/schema bookkeeping),
-   `roles`, and `role_permissions`, **always preserving the admin user**
-   (`--admin-email`, default `mmcdermott@cgtconsultinginc.com`) with their auth
-   identities and role assignments, and drops `s1_staging` for a fresh stage
-   (`--keep-staging` to skip).
-3. **Admin** — creates the admin user + full-permission `admin` role if absent.
+   `roles`, and `role_permissions`, **always preserving the admin users**
+   (`--admin-email`, comma-separated; default `mmcdermott@cgtconsultinginc.com`
+   + `john.young@activistcentral.net`) with their auth identities and role
+   assignments, and drops `s1_staging` for a fresh stage (`--keep-staging` to
+   skip).
+3. **Admin** — creates each listed admin user + full-permission `admin` role if absent.
 4. **Components** — enables the fund set: `bulk`, `debug`, `employer.company`,
    `ledger` + all `ledger.*`, `sitespecific.bao`, `system.sftp.client`, all
    `trust.*`, `worker.relations`.

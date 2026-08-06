@@ -9,10 +9,11 @@
  *      with.
  *   2. Wipe (only with --wipe): if the target holds data, truncate every
  *      table EXCEPT `variables` (migration/schema bookkeeping), `roles` and
- *      `role_permissions` (access config), preserving the admin user
- *      (--admin-email, default mmcdermott@cgtconsultinginc.com) with their
- *      auth identities and role assignments. Also drops `s1_staging` for a
- *      fresh stage (unless --keep-staging).
+ *      `role_permissions` (access config), preserving the admin users
+ *      (--admin-email, comma-separated; default mmcdermott@cgtconsultinginc.com
+ *      + john.young@activistcentral.net) with their auth identities and role
+ *      assignments. Also drops `s1_staging` for a fresh stage
+ *      (unless --keep-staging).
  *      Refuses to touch a populated DB without --wipe.
  *   3. Admin: creates the admin user + full-permission `admin` role if absent
  *      (fresh target), so the operator can always sign in.
@@ -28,7 +29,7 @@
  *
  * Usage:
  *   npx tsx scripts/s1-migration/bootstrap-target.ts [--wipe] [--keep-staging]
- *       [--admin-email you@example.com]
+ *       [--admin-email a@example.com,b@example.com]
  */
 import { spawnSync } from "child_process";
 import path from "path";
@@ -37,7 +38,16 @@ import { resolveDatabaseUrl, describeDatabaseTarget } from "../../shared/databas
 const WIPE = process.argv.includes("--wipe");
 const KEEP_STAGING = process.argv.includes("--keep-staging");
 const emailIdx = process.argv.indexOf("--admin-email");
-const ADMIN_EMAIL = emailIdx >= 0 ? process.argv[emailIdx + 1] : "mmcdermott@cgtconsultinginc.com";
+/** Comma-separated list; every listed user survives --wipe and is created
+ * (with the full-permission admin role) if absent. */
+const ADMIN_EMAILS = (emailIdx >= 0
+  ? process.argv[emailIdx + 1]
+  : "mmcdermott@cgtconsultinginc.com,john.young@activistcentral.net"
+)
+  .split(",")
+  .map((e) => e.trim())
+  .filter(Boolean);
+const ADMIN_EMAILS_LABEL = ADMIN_EMAILS.join(", ");
 
 /** Tables never truncated by --wipe. `variables` carries migrations_version +
  * component schema state (truncating it bricks boot); roles/role_permissions
@@ -108,7 +118,7 @@ async function main() {
     console.error(
       `FAIL: target holds data (${populatedTables.slice(0, 8).join(", ")}${populatedTables.length > 8 ? ", …" : ""}).\n` +
         `Nothing was modified. Re-run with --wipe to truncate everything except\n` +
-        `roles/permissions/variables, preserving admin ${ADMIN_EMAIL}.`,
+        `roles/permissions/variables, preserving admin(s) ${ADMIN_EMAILS_LABEL}.`,
     );
     process.exit(1);
   }
@@ -132,16 +142,22 @@ async function main() {
   // restore) rolls back the truncate — the target is never left wiped without
   // its admin.
   if (WIPE) {
-    console.log(`wiping target (preserving admin ${ADMIN_EMAIL}) ...`);
+    console.log(`wiping target (preserving admin(s) ${ADMIN_EMAILS_LABEL}) ...`);
     const tx = await pool.connect();
     try {
       await tx.query("BEGIN");
-      const adminUser = (await tx.query(`SELECT * FROM users WHERE lower(email) = lower($1)`, [ADMIN_EMAIL])).rows[0];
-      const adminIdentities = adminUser
-        ? (await tx.query(`SELECT * FROM auth_identities WHERE user_id = $1`, [adminUser.id])).rows
+      const adminUsers = (
+        await tx.query(
+          `SELECT * FROM users WHERE lower(email) = ANY($1::text[])`,
+          [ADMIN_EMAILS.map((e) => e.toLowerCase())],
+        )
+      ).rows;
+      const adminIds = adminUsers.map((u) => u.id);
+      const adminIdentities = adminIds.length
+        ? (await tx.query(`SELECT * FROM auth_identities WHERE user_id = ANY($1::text[])`, [adminIds])).rows
         : [];
-      const adminUserRoles = adminUser
-        ? (await tx.query(`SELECT * FROM user_roles WHERE user_id = $1`, [adminUser.id])).rows
+      const adminUserRoles = adminIds.length
+        ? (await tx.query(`SELECT * FROM user_roles WHERE user_id = ANY($1::text[])`, [adminIds])).rows
         : [];
 
       const allTables = (await tx.query(`SELECT tablename FROM pg_tables WHERE schemaname = 'public'`)).rows as Array<{ tablename: string }>;
@@ -159,8 +175,8 @@ async function main() {
           );
         }
       };
-      if (adminUser) {
-        await reinsert("users", [adminUser]);
+      if (adminUsers.length > 0) {
+        await reinsert("users", adminUsers);
         await reinsert("auth_identities", adminIdentities);
         await reinsert("user_roles", adminUserRoles);
       }
@@ -178,9 +194,9 @@ async function main() {
       await tx.query("COMMIT");
       console.log(
         `truncated ${toTruncate.length} table(s); kept: ${[...KEEP_TABLES].join(", ")}; ` +
-          (adminUser
-            ? `restored admin (users=1 auth_identities=${adminIdentities.length} user_roles=${adminUserRoles.length}); `
-            : `no existing admin row (will create below); `) +
+          (adminUsers.length > 0
+            ? `restored admin(s) (users=${adminUsers.length} auth_identities=${adminIdentities.length} user_roles=${adminUserRoles.length}); `
+            : `no existing admin rows (will create below); `) +
           (KEEP_STAGING ? "kept staged records, CLEARED id_map+runs" : "dropped s1_staging (re-run stage.ts)"),
       );
     } catch (e) {
@@ -195,34 +211,36 @@ async function main() {
   // --- 3. Ensure admin exists (fresh target or admin row was absent) ---
   const { storage } = await import("../../server/storage/database");
   const { withNotificationsSuppressed } = await import("../../server/middleware/request-context");
-  const adminNow = await q(`SELECT id FROM users WHERE lower(email) = lower($1)`, [ADMIN_EMAIL]);
-  if (adminNow.length === 0) {
-    await withNotificationsSuppressed(async () => {
-      let roleId: string;
-      const roleRows = await q(`SELECT id FROM roles WHERE name = 'admin'`);
-      if (roleRows.length > 0) {
-        roleId = roleRows[0].id;
-      } else {
-        const role = await storage.users.createRole({ name: "admin", description: "Administrator role with all permissions" });
-        roleId = role.id;
-        const allPermissions = await storage.users.getAllPermissions();
-        for (const p of allPermissions) {
-          await storage.users.assignPermissionToRole({ roleId, permissionKey: p.key });
+  for (const adminEmail of ADMIN_EMAILS) {
+    const adminNow = await q(`SELECT id FROM users WHERE lower(email) = lower($1)`, [adminEmail]);
+    if (adminNow.length === 0) {
+      await withNotificationsSuppressed(async () => {
+        let roleId: string;
+        const roleRows = await q(`SELECT id FROM roles WHERE name = 'admin'`);
+        if (roleRows.length > 0) {
+          roleId = roleRows[0].id;
+        } else {
+          const role = await storage.users.createRole({ name: "admin", description: "Administrator role with all permissions" });
+          roleId = role.id;
+          const allPermissions = await storage.users.getAllPermissions();
+          for (const p of allPermissions) {
+            await storage.users.assignPermissionToRole({ roleId, permissionKey: p.key });
+          }
+          console.log(`created role admin with ${allPermissions.length} permission(s)`);
         }
-        console.log(`created role admin with ${allPermissions.length} permission(s)`);
-      }
-      const user = await storage.users.createUser({
-        email: ADMIN_EMAIL,
-        firstName: null,
-        lastName: null,
-        accountStatus: "active",
-        isActive: true,
+        const user = await storage.users.createUser({
+          email: adminEmail,
+          firstName: null,
+          lastName: null,
+          accountStatus: "active",
+          isActive: true,
+        });
+        await storage.users.assignRoleToUser({ userId: user.id, roleId });
+        console.log(`created admin user ${adminEmail}`);
       });
-      await storage.users.assignRoleToUser({ userId: user.id, roleId });
-      console.log(`created admin user ${ADMIN_EMAIL}`);
-    });
-  } else {
-    console.log(`admin present: ${ADMIN_EMAIL}`);
+    } else {
+      console.log(`admin present: ${adminEmail}`);
+    }
   }
 
   lockClient.release(); // advisory lock is session-scoped; freed when pool closes
