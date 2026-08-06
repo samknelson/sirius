@@ -264,6 +264,22 @@ npx tsx scripts/s1-migration/bootstrap-target.ts --wipe
 #    then §6 with --open-end-through 2026-12
 ```
 
+Wipe-and-retry guarantees are covered by automated failure-injection tests
+(throwaway DB, created and dropped on the dev Postgres host — nothing shared
+is touched):
+
+```bash
+npx tsx scripts/oneoffs/s1-wipe-retry-tests.ts
+```
+
+They prove: (1) a wipe aborted mid-transaction (thrown error or SIGKILL,
+after truncate and pre-commit) leaves the target unchanged; (2) `--wipe
+--keep-staging` clears `s1_staging.id_map`/`runs` so retrying
+seed-trust-config + a loader recreates every row (no stale id_map skips, no
+duplicates); (3) concurrent bootstrap/seed runs are refused by the advisory
+lock (key 727001). Run them after any change to `bootstrap-target.ts` wipe
+logic — also registered as the `s1-wipe-retry` validation step.
+
 Dev-only notes:
 - The `s1-smoke-dev-only` validation fingerprints the OLD staged shape on the
   shared dev DB; it stays green as long as the shared dev staging schema is not

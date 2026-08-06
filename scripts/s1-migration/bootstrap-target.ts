@@ -47,6 +47,25 @@ const KEEP_TABLES = new Set(["variables", "roles", "role_permissions"]);
 /** Advisory lock key shared by migration tooling (single-run guard). */
 const MIGRATION_LOCK_KEY = 727001;
 
+/**
+ * TEST-ONLY fault injection for the wipe transaction (used by
+ * scripts/oneoffs/s1-wipe-retry-tests.ts to prove atomicity). Values:
+ *   S1_BOOTSTRAP_TEST_FAULT=after_truncate|before_commit        → throw mid-tx
+ *   S1_BOOTSTRAP_TEST_FAULT=after_truncate:kill|before_commit:kill → SIGKILL self
+ * Never set in production; unset = zero behavior change.
+ */
+function injectTestFault(point: "after_truncate" | "before_commit") {
+  const fault = process.env.S1_BOOTSTRAP_TEST_FAULT;
+  if (!fault) return;
+  if (fault === `${point}:kill`) {
+    console.error(`TEST FAULT: hard-killing process at ${point}`);
+    process.kill(process.pid, "SIGKILL");
+  }
+  if (fault === point) {
+    throw new Error(`TEST FAULT injected at ${point}`);
+  }
+}
+
 function runStep(label: string, script: string) {
   console.log(`\n=== ${label}: npx tsx ${script} ===`);
   const res = spawnSync("npx", ["tsx", script], { stdio: "inherit", env: process.env });
@@ -128,6 +147,7 @@ async function main() {
       const allTables = (await tx.query(`SELECT tablename FROM pg_tables WHERE schemaname = 'public'`)).rows as Array<{ tablename: string }>;
       const toTruncate = allTables.map((r) => r.tablename).filter((t) => !KEEP_TABLES.has(t));
       await tx.query(`TRUNCATE TABLE ${toTruncate.map((t) => `"${t}"`).join(", ")} RESTART IDENTITY CASCADE`);
+      injectTestFault("after_truncate");
 
       const reinsert = async (table: string, rows: Array<Record<string, unknown>>) => {
         for (const row of rows) {
@@ -154,6 +174,7 @@ async function main() {
       } else {
         await tx.query(`DROP SCHEMA IF EXISTS s1_staging CASCADE`);
       }
+      injectTestFault("before_commit");
       await tx.query("COMMIT");
       console.log(
         `truncated ${toTruncate.length} table(s); kept: ${[...KEEP_TABLES].join(", ")}; ` +
