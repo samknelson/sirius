@@ -10,8 +10,9 @@
  *   - worker_2 = `field_sirius_contact_alt` contact → its worker if one
  *     exists, else CREATE A SHELL WORKER for that contact (S2 relations join
  *     workers, not contacts — same approach S2's DP/COBRA flows use).
- *     Shells: no S1 worker nid → serial sirius_id (post-setval, above the nid
- *     range), data.migrationShell=true, id_map entity "shell-worker" keyed by
+ *     Shells: no S1 worker nid → serial sirius_id (post-setval, above the
+ *     migrated field_sirius_id / assigned range — T1 ruling 2026-08-06),
+ *     data.migrationShell=true, id_map entity "shell-worker" keyed by
  *     the CONTACT nid (idempotency). Shells are created ONLY after every
  *     other resolution/validation for the row has passed, so a reject can't
  *     leave an orphan shell behind.

@@ -214,8 +214,17 @@ doesn't match. It must never point at production.
 
 - `load-contacts-workers.ts` — T3+T1: `sirius_contact` → contacts (+ phones,
   addresses), `sirius_worker` → workers (+ worker_ids) with EXPLICIT
-  `sirius_id = nid` and a post-load `setval` (the one raw-SQL write,
-  spec-sanctioned). Absorbs hours-loader stubs: adopts the stub worker's
+  `sirius_id = field_sirius_id` (**ruling 2026-08-06** — the nid is a disjoint
+  node-counter space and loads as a "Legacy NID" `worker_ids` row instead;
+  type seeded `sirius_id='s1-legacy-nid'`; no "Sirius ID" row anymore) and a
+  post-load `setval` (the one raw-SQL write, spec-sanctioned). Missing/
+  non-numeric `field_sirius_id` → worker loads with a sequence-assigned
+  sirius_id + reject note (`sirius_id_assigned`/`sirius_id_not_numeric`);
+  cross-worker collisions reject (`sirius_id_collision`). Re-runs repair
+  old nid-mapped rows in place (counters `oldMappingRepaired`,
+  `oldSiriusIdRowsRemoved`); swaps/cycles among old values are made
+  collision-safe by a parking pre-pass (`parkedForRekey`). SSN ownership is keyed on nid via id_map, not
+  sirius_id. Absorbs hours-loader stubs: adopts the stub worker's
   auto-created contact (no duplicate contact rows), stamps the real
   sirius_id/ssn onto the stub worker, flips id_map stub=false. Email/SSN
   uniqueness pre-checked (dups → report, Q36); worker-level contact-style

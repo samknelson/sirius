@@ -12,7 +12,7 @@ The following *(inferred)* entries were derived from **values in the retired 10-
 
 | Where | Inference at risk | Why suspect |
 |---|---|---|
-| ~~§1 `field_sirius_id2`/`_id3`~~ | **RESOLVED (06 §4.9, Q2/Q8 closed):** id=Sirius ID, id2=Union ID, id3=External ID, aat=AAT — four `worker_ids` types | — |
+| ~~§1 `field_sirius_id2`/`_id3`~~ | **RESOLVED (06 §4.9, Q2/Q8 closed; AMENDED 2026-08-06):** id → `workers.sirius_id` itself (no "Sirius ID" `worker_ids` row), id2=Union ID, id3=External ID, aat=AAT; nid → "Legacy NID" `worker_ids` row | — |
 | ~~§1 dispatch fields (availdate, skill_expire, …)~~ | **OUT OF SCOPE (06 §4.7)** | — |
 | ~~§4 `field_sirius_count` on relationships~~ | **RESOLVED (06 §4.10, Q14 closed):** it is a **Sequence** (ordering), not a count | — |
 | §7 `field_sirius_datetime`/`_datetime_completed` → DROP | "processing timestamps, audit only" from sample values | if they encode period submission/completion, they may matter for N3 pairing. §5 timezone note: both are UTC (`site`) fields |
@@ -27,13 +27,13 @@ The following *(inferred)* entries were derived from **values in the retired 10-
 
 ## 1. Workers — bundle `node/sirius_worker` → `workers` (+ `contacts`, satellites)
 
-S1 keeps person data on a separate `sirius_contact` node referenced by the worker — the same worker/contact split S2 uses (`workers.contact_id → contacts.id`). Worker identity key: `workers.sirius_id` ← S1 `nid`. **Note:** `workers.sirius_id` is a `serial`; importing explicit S1 nids requires sequence handling → T1.
+S1 keeps person data on a separate `sirius_contact` node referenced by the worker — the same worker/contact split S2 uses (`workers.contact_id → contacts.id`). Worker identity key (**RULED 2026-08-06**): `workers.sirius_id` ← S1 **`field_sirius_id`** (the ~600k-range business series — verified 1:1 on production by joining `node` type `sirius_worker`, status 1, against `field_data_field_sirius_id`/`_id2`/`_id3`, delta 0, deleted 0). The S1 `nid` (~2.4M-range node counter — a **disjoint** id space) is preserved as a `worker_ids` row of type **"Legacy NID"**. `s1_staging.id_map` semantics are unchanged (still nid → S2 UUID). **Note:** `workers.sirius_id` is a `serial`; importing explicit values requires sequence handling → T1.
 
 **Production census update (06):** the worker bundle also carries `field_sirius_name` (117,679), `field_sirius_email` (17,009), `field_sirius_phone` (36,319), `field_sirius_phone_alt` (752), `field_sirius_address` (51,962), `field_sirius_id` (117,679 — every worker), `field_sirius_json` (116,605), `field_sirius_industry` (**multi**, max delta 3; 68,836) and `field_grievance_shop` (7,489) — none of which were visible in the sample. Contact-style fields directly on workers must be reconciled with the contact-node mapping (which record wins when both exist?) — **new question N10**. Also note: current-state `field_sirius_work_status` has only **167** live rows (vs 68,673 member_status) — worker status history evidently lives elsewhere (revisions, or member_status carries the real state).
 
 | S1 field | Value col | S2 destination | Class |
 |---|---|---|---|
-| `node.nid` (sirius_worker) | — | `workers.sirius_id` | NEEDS-TRANSFORM T1 (serial + explicit values) |
+| `node.nid` (sirius_worker) | — | `worker_ids` row, type **"Legacy NID"** (type seeded `sirius_id='s1-legacy-nid'`); also keys `s1_staging.id_map` (unchanged) | NEEDS-TRANSFORM T1 (ruling 2026-08-06 — nid is NOT the sirius_id) |
 | `field_sirius_contact` | `_target_id` → sirius_contact nid | `workers.contact_id` (via contact nid→id map) | NEEDS-TRANSFORM T2 (nid remap) |
 | `field_sirius_ssn` | `_value` (`XXX-XX-…` masked) | `workers.ssn` | NEEDS-TRANSFORM T3 (normalize format; unique) |
 | `field_sirius_dob` | `_value` date | `contacts.birth_date` (worker's contact) | direct (date cast) |
@@ -41,7 +41,7 @@ S1 keeps person data on a separate `sirius_contact` node referenced by the worke
 | `field_sirius_gender_nota_val` | `_value` MASKED | `contacts.gender_nota` | masked, confirm (Q1) |
 | `field_sirius_gender_nota_calc` | `_value` "Male/Female" | `contacts.gender_calc` | direct |
 | `field_sirius_phone_mobile` | `_value` 10-digit | `contact_phone` row (`phone_number`, `is_primary=true`) via worker's contact | NEEDS-TRANSFORM T5 |
-| `field_sirius_id` | `_value` (every worker) | **Sirius ID** (06 §4.9 — Q2 closed) → `worker_ids` row, type "Sirius ID" | direct |
+| `field_sirius_id` | `_value` (every worker) | **`workers.sirius_id`** (RULED 2026-08-06, supersedes the "Sirius ID" `worker_ids` row of 06 §4.9) — numeric-validated; missing/non-numeric → sequence-assigned + reject-report note; cross-worker collisions reject | NEEDS-TRANSFORM T1 |
 | `field_sirius_id2` | `_value` | **Union ID** (06 §4.9) → `worker_ids` row, type "Union ID" | direct |
 | `field_sirius_id3` | `_value` (e.g. `U05990600`) | **External ID** (06 §4.9) → `worker_ids` row, type "External ID" | direct |
 | `field_sirius_aat` | `_value` (variable-length external IDs, not quantities — 06 §4.9, Q8 closed) | **AAT** identifier → `worker_ids` row, type "AAT" | direct |

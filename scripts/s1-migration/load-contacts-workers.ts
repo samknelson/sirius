@@ -21,8 +21,25 @@
  *     of creating a duplicate (update name/email in place)
  *
  * Workers pass (02-mapping §1):
- *   - workers.sirius_id ← S1 nid EXPLICITLY (T1); sequence setval() runs once
- *     after the load — the only raw SQL write in this loader (spec-sanctioned)
+ *   - workers.sirius_id ← S1 field_sirius_id (T1 — fund ruling 2026-08-06:
+ *     field_sirius_id IS the S2 sirius_id; the S1 nid is a node counter in a
+ *     disjoint id space). The nid is preserved as a "Legacy NID" worker_ids
+ *     row (type seeded with stable sirius_id "s1-legacy-nid"). Sequence
+ *     setval() runs once after the load — the only raw SQL write in this
+ *     loader (spec-sanctioned).
+ *   - missing/non-numeric field_sirius_id (RULE, documented): the worker
+ *     still loads with a SEQUENCE-ASSIGNED sirius_id (above both the staged
+ *     field_sirius_id range and the current DB max) + reject-report note
+ *     (`sirius_id_assigned`, plus `sirius_id_not_numeric` when a value
+ *     existed but failed numeric validation). Never silently defaulted.
+ *   - cross-worker field_sirius_id collisions: first (lowest nid) wins; later
+ *     ones reject (`sirius_id_collision`) and are NOT loaded. A staged value
+ *     already owned by a different S2 row rejects
+ *     (`sirius_id_owned_by_other_row`).
+ *   - re-runs REPAIR rows loaded under the old nid-based mapping: a mapped
+ *     worker whose sirius_id equals its nid (≠ staged field_sirius_id) is
+ *     updated in place, its old "Sirius ID" worker_ids row (value == staged
+ *     field_sirius_id) is removed, and a "Legacy NID" row is added.
  *   - contact_id via id_map (contact nid → contacts.id); missing → reject
  *   - ssn (T3): digits-only, must be 9 digits; uniqueness pre-checked — the
  *     first worker keeps a colliding SSN, later ones load ssn=null + reject
@@ -30,9 +47,11 @@
  *     are counted (expected in dev, must be ~0 in production).
  *   - dob/gender → the worker's CONTACT (updateBirthDate/updateGender);
  *     gender tid resolves via id_map term else options_gender name match
- *   - worker_ids (06 §4.9): field_sirius_id → "Sirius ID", _id2 → "Union ID",
- *     _id3 → "External ID", _aat → "AAT"; types ensured via unified options;
- *     (type, value) is UNIQUE — cross-worker collisions are rejects
+ *   - worker_ids (06 §4.9, amended 2026-08-06): nid → "Legacy NID",
+ *     _id2 → "Union ID", _id3 → "External ID", _aat → "AAT"; NO "Sirius ID"
+ *     row anymore (the value lives on workers.sirius_id itself); types
+ *     ensured via unified options; (type, value) is UNIQUE — cross-worker
+ *     collisions are rejects
  *   - field_sirius_aat_required (T14 Yes/No) → workers.data.aatRequired
  *   - contact-style fields directly on the worker bundle are MIRRORS — the
  *     contact node wins (N10); they are not read
@@ -236,15 +255,45 @@ async function main() {
   const emailOwner = new Map(
     (emailRes as unknown as { rows: Array<{ id: string; email: string }> }).rows.map((r) => [r.email, r.id]),
   );
-  // ssn → owning sirius_id (NULL for pre-migration rows) so a re-run doesn't
-  // count a worker's own already-loaded SSN as a collision
-  const ssnRes = await db.execute(sql`SELECT ssn, sirius_id FROM workers WHERE ssn IS NOT NULL`);
+  // ssn → owning S1 nid via id_map (NULL for pre-migration rows) so a re-run
+  // doesn't count a worker's own already-loaded SSN as a collision. Keyed on
+  // nid through id_map — workers.sirius_id is NOT the nid anymore (T1 ruling
+  // 2026-08-06), so sirius_id can no longer identify the owner.
+  const ssnRes = await db.execute(sql`
+    SELECT w.ssn, m.s1_id
+      FROM workers w
+      LEFT JOIN s1_staging.id_map m ON m.entity = 'worker' AND m.s2_id = w.id
+     WHERE w.ssn IS NOT NULL
+  `);
   const ssnOwner = new Map(
-    (ssnRes as unknown as { rows: Array<{ ssn: string; sirius_id: number | string | null }> }).rows.map((r) => [
+    (ssnRes as unknown as { rows: Array<{ ssn: string; s1_id: number | string | null }> }).rows.map((r) => [
       r.ssn,
-      r.sirius_id == null ? null : Number(r.sirius_id),
+      r.s1_id == null ? null : Number(r.s1_id),
     ]),
   );
+  // sirius_id → owning S2 worker id (collision pre-check + assign base), plus
+  // the reverse (row → current sirius_id) so rekeys keep both in sync
+  const siriusRes = await db.execute(sql`SELECT id, sirius_id FROM workers`);
+  const siriusOwner = new Map(
+    (siriusRes as unknown as { rows: Array<{ id: string; sirius_id: number | string }> }).rows.map((r) => [
+      Number(r.sirius_id),
+      r.id,
+    ]),
+  );
+  const rowSirius = new Map(
+    (siriusRes as unknown as { rows: Array<{ id: string; sirius_id: number | string }> }).rows.map((r) => [
+      r.id,
+      Number(r.sirius_id),
+    ]),
+  );
+  // keep ownership maps exact when a row is created or rekeyed — a freed old
+  // value (e.g. a repaired nid) must stop looking "owned"
+  const rekeyOwnerMaps = (rowId: string, newVal: number) => {
+    const old = rowSirius.get(rowId);
+    if (old != null && siriusOwner.get(old) === rowId) siriusOwner.delete(old);
+    siriusOwner.set(newVal, rowId);
+    rowSirius.set(rowId, newVal);
+  };
 
   // gender resolution: options_gender by lowered name (term remap fallback)
   const genderRes = await db.execute(sql`SELECT id, name FROM options_gender`);
@@ -539,11 +588,13 @@ async function main() {
   // worker-id types (06 §4.9) via unified options — ensure by name
   const { createUnifiedOptionsStorage } = await import("../../server/storage/unified-options");
   const options = createUnifiedOptionsStorage();
+  const LEGACY_NID_SIRIUS_ID = "s1-legacy-nid"; // stable seed so re-runs find the type
   const idTypeByLabel = new Map<string, string>();
+  let oldSiriusIdTypeId: string | null = null; // legacy "Sirius ID" type — repair only, never created
   {
     const rows: Array<{ id: string; name: string }> = await options.list("worker-id-type");
     const byName = new Map(rows.map((r) => [r.name.toLowerCase(), r.id]));
-    for (const label of ["Sirius ID", "Union ID", "External ID", "AAT"]) {
+    for (const label of ["Union ID", "External ID", "AAT"]) {
       let id = byName.get(label.toLowerCase());
       if (!id && !DRY_RUN) {
         const created = await withNotificationsSuppressed(() => options.create("worker-id-type", { name: label }));
@@ -551,10 +602,92 @@ async function main() {
       }
       if (id) idTypeByLabel.set(label, id);
     }
+    // "Legacy NID": resolve by stable sirius_id first, then adopt by name
+    // (patching the sirius_id in), else create with the stable seed.
+    let legacyId = await storage.workerIds.getTypeIdBySiriusId(LEGACY_NID_SIRIUS_ID);
+    if (!legacyId) {
+      const byNameHit = byName.get("legacy nid");
+      if (byNameHit) {
+        legacyId = byNameHit;
+        if (!DRY_RUN) {
+          await withNotificationsSuppressed(() =>
+            options.update("worker-id-type", byNameHit, { siriusId: LEGACY_NID_SIRIUS_ID }),
+          );
+        }
+      } else if (!DRY_RUN) {
+        const created = await withNotificationsSuppressed(() =>
+          options.create("worker-id-type", { name: "Legacy NID", siriusId: LEGACY_NID_SIRIUS_ID }),
+        );
+        legacyId = created.id;
+      }
+    }
+    if (legacyId) idTypeByLabel.set("Legacy NID", legacyId);
+    oldSiriusIdTypeId = byName.get("sirius id") ?? null;
   }
 
-  const wStats = { matched: 0, absorbedStubs: 0, created: 0, updated: 0, workerIdsCreated: 0 };
+  const wStats = {
+    matched: 0,
+    absorbedStubs: 0,
+    created: 0,
+    updated: 0,
+    workerIdsCreated: 0,
+    siriusIdAssigned: 0,
+    oldMappingRepaired: 0,
+    oldSiriusIdRowsRemoved: 0,
+    parkedForRekey: 0,
+  };
   const finalContactMap = await getMappings("contact", stagedContacts.map((c) => c.nid));
+
+  // ---- sirius_id resolution (T1, ruling 2026-08-06) ----
+  const fsidOf = (w: StagedNode): { value: number | null; raw: string | null } => {
+    const raw = strOf(w.fields, "field_sirius_id");
+    if (raw == null) return { value: null, raw: null };
+    return /^\d+$/.test(raw) ? { value: Number(raw), raw } : { value: null, raw };
+  };
+  // cross-worker staged collisions: first (lowest nid — stagedWorkers is
+  // nid-ordered) wins
+  const fsidFirstOwner = new Map<number, number>(); // fsid → first nid
+  for (const w of stagedWorkers) {
+    const { value } = fsidOf(w);
+    if (value != null && !fsidFirstOwner.has(value)) fsidFirstOwner.set(value, w.nid);
+  }
+  // assign counter for missing/invalid field_sirius_id: above BOTH the staged
+  // field_sirius_id range and everything already in the DB (nids from an
+  // old-mapping load included), so assignment can never collide.
+  let nextAssigned =
+    Math.max(0, ...fsidFirstOwner.keys(), ...siriusOwner.keys()) + 1;
+
+  // ---- collision-safe repair pre-pass (swaps/cycles among old values) ----
+  // Plan every already-mapped worker's target sirius_id first; any mapped row
+  // whose CURRENT value blocks a DIFFERENT mapped worker's target — while the
+  // row itself is scheduled to move elsewhere — is PARKED on a temporary
+  // non-conflicting value. Sequential updates in the main loop then can't
+  // trip the (sirius_id) unique constraint, and true external ownership
+  // (a row that keeps its value) still rejects in the main loop.
+  if (!DRY_RUN) {
+    const plannedByRow = new Map<string, number>(); // s2 row id → target sirius_id
+    for (const w of stagedWorkers) {
+      const m = workerMap.get(w.nid);
+      if (!m) continue;
+      const { value } = fsidOf(w);
+      if (value != null && fsidFirstOwner.get(value) === w.nid) plannedByRow.set(m.s2Id, value);
+    }
+    const targetWanter = new Map<number, string>(); // target value → row that wants it
+    for (const [rowId, t] of plannedByRow) targetWanter.set(t, rowId);
+    let parkNext = nextAssigned + 1_000_000; // parked values sit far above assigns
+    for (const [rowId, cur] of [...rowSirius]) {
+      const wanter = targetWanter.get(cur);
+      if (!wanter || wanter === rowId) continue; // nobody else wants this value
+      const ownTarget = plannedByRow.get(rowId);
+      if (ownTarget == null || ownTarget === cur) continue; // true owner — main loop rejects the wanter
+      const parked = parkNext++;
+      await withNotificationsSuppressed(() =>
+        storage.workers.updateWorkerForMigration(rowId, { siriusId: parked }),
+      );
+      rekeyOwnerMaps(rowId, parked);
+      wStats.parkedForRekey++;
+    }
+  }
 
   for (const w of stagedWorkers) {
     const cnid = targetNidOf(w.fields, "field_sirius_contact");
@@ -582,6 +715,39 @@ async function main() {
     const mapped = workerMap.get(w.nid);
     let workerId = mapped?.s2Id;
 
+    // ---- resolve target sirius_id (T1 ruling: field_sirius_id) ----
+    const { value: fsid, raw: fsidRaw } = fsidOf(w);
+    if (fsidRaw != null && fsid == null) {
+      rejects.add("sirius_id_not_numeric", { workerNid: w.nid }, w.nid);
+    }
+    if (fsid != null && fsidFirstOwner.get(fsid) !== w.nid) {
+      // later duplicate of a staged collision — NOT loaded
+      rejects.add("sirius_id_collision", { workerNid: w.nid, firstNid: fsidFirstOwner.get(fsid) }, w.nid);
+      continue;
+    }
+    if (fsid != null) {
+      const ownerRow = siriusOwner.get(fsid);
+      if (ownerRow && (!mapped || ownerRow !== mapped.s2Id)) {
+        rejects.add("sirius_id_owned_by_other_row", { workerNid: w.nid }, w.nid);
+        continue;
+      }
+    }
+    let expectedSirius: number;
+    if (fsid != null) {
+      expectedSirius = fsid;
+    } else {
+      // missing/invalid field_sirius_id — documented rule: adopt an existing
+      // non-nid value (a prior run's assignment), else sequence-assign + note
+      const existingRow = mapped && !DRY_RUN ? await storage.workers.getWorker(mapped.s2Id) : undefined;
+      if (existingRow && existingRow.siriusId !== w.nid) {
+        expectedSirius = existingRow.siriusId;
+      } else {
+        expectedSirius = nextAssigned++;
+        wStats.siriusIdAssigned++;
+        rejects.add("sirius_id_assigned", { workerNid: w.nid, assigned: expectedSirius }, w.nid);
+      }
+    }
+
     if (mapped && !mapped.stub) {
       // already loaded — reconcile drift (resumability after a partial run)
       wStats.matched++;
@@ -591,19 +757,23 @@ async function main() {
           rejects.add("mapped_worker_missing", { workerNid: w.nid, s2Id: mapped.s2Id });
           continue;
         }
+        if (worker.siriusId === w.nid && worker.siriusId !== expectedSirius) {
+          wStats.oldMappingRepaired++; // row loaded under the old nid-based mapping
+        }
         const drift =
-          worker.siriusId !== w.nid ||
+          worker.siriusId !== expectedSirius ||
           (worker.ssn ?? null) !== ssn ||
           worker.contactId !== contactMapping.s2Id;
         if (drift) {
           await withNotificationsSuppressed(() =>
             storage.workers.updateWorkerForMigration(mapped.s2Id, {
-              siriusId: w.nid,
+              siriusId: expectedSirius,
               contactId: contactMapping.s2Id,
               ssn,
               ...(data ? { data } : {}),
             }),
           );
+          rekeyOwnerMaps(mapped.s2Id, expectedSirius);
           wStats.updated++;
         }
       }
@@ -623,12 +793,13 @@ async function main() {
         }
         await withNotificationsSuppressed(() =>
           storage.workers.updateWorkerForMigration(mapped.s2Id, {
-            siriusId: w.nid,
+            siriusId: expectedSirius,
             contactId: contactMapping.s2Id,
             ssn,
             ...(data ? { data } : {}),
           }),
         );
+        rekeyOwnerMaps(mapped.s2Id, expectedSirius);
         if (ssn) ssnOwner.set(ssn, w.nid);
         await markAbsorbed("worker", w.nid, LOADER);
       }
@@ -637,13 +808,14 @@ async function main() {
       if (!DRY_RUN) {
         const created = await withNotificationsSuppressed(() =>
           storage.workers.createWorkerForMigration({
-            siriusId: w.nid,
+            siriusId: expectedSirius,
             contactId: contactMapping.s2Id,
             ssn,
             data,
           }),
         );
         workerId = created.id;
+        rekeyOwnerMaps(created.id, expectedSirius);
         if (ssn) ssnOwner.set(ssn, w.nid);
         const winner = await putMapping("worker", w.nid, created.id, { stub: false, loader: LOADER });
         if (winner !== created.id) {
@@ -655,16 +827,28 @@ async function main() {
 
     if (DRY_RUN || !workerId) continue;
 
-    // worker_ids (06 §4.9) — idempotent per (worker, type, value); (type,value) UNIQUE
-    const idSpecs: Array<{ key: string; label: string }> = [
-      { key: "field_sirius_id", label: "Sirius ID" },
+    // worker_ids (06 §4.9, amended 2026-08-06) — idempotent per
+    // (worker, type, value); (type,value) UNIQUE. NO "Sirius ID" row anymore
+    // — the value lives on workers.sirius_id; the nid loads as "Legacy NID".
+    const idSpecs: Array<{ key: string | null; label: string; fixedValue?: string }> = [
+      { key: null, label: "Legacy NID", fixedValue: String(w.nid) },
       { key: "field_sirius_id2", label: "Union ID" },
       { key: "field_sirius_id3", label: "External ID" },
       { key: "field_sirius_aat", label: "AAT" },
     ];
     const existingIds = await storage.workerIds.getWorkerIdsByWorkerId(workerId);
+    // repair: drop the old-mapping "Sirius ID" row (loader-created — its value
+    // equals the staged field_sirius_id); operator rows with other values stay
+    if (oldSiriusIdTypeId && fsidRaw != null) {
+      for (const e of existingIds) {
+        if (e.typeId === oldSiriusIdTypeId && e.value === fsidRaw) {
+          await withNotificationsSuppressed(() => storage.workerIds.deleteWorkerId(e.id));
+          wStats.oldSiriusIdRowsRemoved++;
+        }
+      }
+    }
     for (const spec of idSpecs) {
-      const value = strOf(w.fields, spec.key);
+      const value = spec.fixedValue ?? (spec.key ? strOf(w.fields, spec.key) : null);
       if (!value) continue;
       const typeId = idTypeByLabel.get(spec.label);
       if (!typeId) {
@@ -688,6 +872,9 @@ async function main() {
   report.workers = wStats;
 
   // ---------------- setval (T1 — the one raw-SQL write, spec-sanctioned) ----------------
+  // max(sirius_id) now reflects the field_sirius_id value space (plus any
+  // sequence-assigned ids above it) — NOT the nid space. Shell workers
+  // (relationships loader) and app-created workers allocate above this.
   if (!DRY_RUN) {
     await db.execute(sql`
       SELECT setval(pg_get_serial_sequence('workers','sirius_id'), (SELECT max(sirius_id) FROM workers))
@@ -713,12 +900,17 @@ async function main() {
         verifyFailures++;
       }
     }
+    const legacyNidTypeId = idTypeByLabel.get("Legacy NID");
     const vWorkerMap = await getMappings("worker", stagedWorkers.map((w) => w.nid));
     for (const w of stagedWorkers) {
       const cnid = targetNidOf(w.fields, "field_sirius_contact");
       const m = vWorkerMap.get(w.nid);
       if (!m) {
-        if (!rejects.has("worker_contact_unresolved", w.nid)) {
+        if (
+          !rejects.has("worker_contact_unresolved", w.nid) &&
+          !rejects.has("sirius_id_collision", w.nid) &&
+          !rejects.has("sirius_id_owned_by_other_row", w.nid)
+        ) {
           console.error(`VERIFY: worker nid ${w.nid} has no id_map entry`);
           verifyFailures++;
         }
@@ -735,9 +927,25 @@ async function main() {
         verifyFailures++;
         continue;
       }
-      if (row.siriusId !== w.nid) {
-        console.error(`VERIFY: worker nid ${w.nid} row has sirius_id ${row.siriusId}`);
+      // sirius_id == staged field_sirius_id (T1 ruling); workers without one
+      // must carry an assigned/adopted value that is NOT the nid
+      const { value: vFsid } = fsidOf(w);
+      if (vFsid != null) {
+        if (row.siriusId !== vFsid) {
+          console.error(`VERIFY: worker nid ${w.nid} row has sirius_id ${row.siriusId}, expected field_sirius_id ${vFsid}`);
+          verifyFailures++;
+        }
+      } else if (row.siriusId === w.nid) {
+        console.error(`VERIFY: worker nid ${w.nid} still carries nid-based sirius_id`);
         verifyFailures++;
+      }
+      // Legacy NID coverage: every loaded worker carries its nid
+      if (legacyNidTypeId) {
+        const ids = await storage.workerIds.getWorkerIdsByWorkerId(m.s2Id);
+        if (!ids.some((e) => e.typeId === legacyNidTypeId && e.value === String(w.nid))) {
+          console.error(`VERIFY: worker nid ${w.nid} has no Legacy NID worker_ids row`);
+          verifyFailures++;
+        }
       }
       const cm = cnid != null ? vContactMap.get(cnid) : undefined;
       if (cm && row.contactId !== cm.s2Id) {

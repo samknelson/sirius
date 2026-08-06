@@ -251,7 +251,7 @@ Confirmed from S1 field labels and the worker edit form:
 | `field_sirius_id3` | **External ID** | `U05990600` |
 | `field_sirius_aat` | **AAT** | `6917` |
 
-All four map to `worker_ids` rows with distinct `options_worker_id_type` entries. AAT is an identifier, not a measurement — Q8's observation that values `365 / 415499 / 92464` "defy single-unit interpretation" is explained: they are variable-length IDs from an external system, not quantities.
+**AMENDED 2026-08-06 (fund ruling):** `field_sirius_id` does NOT become a `worker_ids` row — it maps exactly to `workers.sirius_id` itself (the id spaces were verified on production: nid ≈ 2.4M node counter, field_sirius_id ≈ 600k business series, zero overlap). The S1 `nid` is preserved as a new `worker_ids` type **"Legacy NID"** (seeded `sirius_id='s1-legacy-nid'`). `_id2` → "Union ID", `_id3` → "External ID", `_aat` → "AAT" `worker_ids` rows are unchanged. AAT is an identifier, not a measurement — Q8's observation that values `365 / 415499 / 92464` "defy single-unit interpretation" is explained: they are variable-length IDs from an external system, not quantities.
 
 `field_sirius_id` carries different meanings on other bundles: **Call Number** on `sirius_dispatch_job`, **ListID** on `sirius_member_status` terms, plain "ID" elsewhere.
 
