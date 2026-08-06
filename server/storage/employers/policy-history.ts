@@ -16,6 +16,8 @@ export const validate = createNoopValidator<{ employerId: string; date: string; 
 
 export interface EmployerPolicyHistoryStorage {
   getEmployerPolicyHistory(employerId: string): Promise<any[]>;
+  /** All history rows (joined with their policy) across every employer, for batch policy resolution. */
+  getAllEmployerPolicyHistory(): Promise<any[]>;
   createEmployerPolicyHistory(data: { employerId: string; date: string; policyId: string; data?: any }): Promise<EmployerPolicyHistory>;
   updateEmployerPolicyHistory(id: string, data: { date?: string; policyId?: string; data?: any }): Promise<EmployerPolicyHistory | undefined>;
   deleteEmployerPolicyHistory(id: string): Promise<boolean>;
@@ -52,6 +54,23 @@ export function createEmployerPolicyHistoryStorage(
         .from(employerPolicyHistory)
         .leftJoin(policies, eq(employerPolicyHistory.policyId, policies.id))
         .where(eq(employerPolicyHistory.employerId, employerId))
+        .orderBy(desc(employerPolicyHistory.date));
+
+      return results;
+    },
+
+    async getAllEmployerPolicyHistory(): Promise<any[]> {
+      const client = getClient();
+      const results = await client
+        .select({
+          id: employerPolicyHistory.id,
+          date: employerPolicyHistory.date,
+          employerId: employerPolicyHistory.employerId,
+          policyId: employerPolicyHistory.policyId,
+          policy: policies,
+        })
+        .from(employerPolicyHistory)
+        .leftJoin(policies, eq(employerPolicyHistory.policyId, policies.id))
         .orderBy(desc(employerPolicyHistory.date));
 
       return results;

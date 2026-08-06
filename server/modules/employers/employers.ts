@@ -3,6 +3,77 @@ import { storage } from "../../storage";
 import { type InsertEmployer } from "@shared/schema";
 import { getEffectiveUser } from "../masquerade";
 import { isComponentEnabled } from "../components";
+import { createUnifiedOptionsStorage } from "../../storage/unified-options";
+import {
+  resolveEmployerPolicyAsOf,
+  createPolicyResolutionCache,
+  type PolicyResolutionCache,
+} from "../../services/policy-resolution";
+import { getTodayYmd } from "@shared/utils/date";
+import type { Policy, Employer } from "@shared/schema";
+
+const unifiedOptionsStorage = createUnifiedOptionsStorage();
+
+/**
+ * Batch-enrich employers with industry name + current policy without per-row
+ * queries: industries are listed once, and the policy resolution cache is
+ * prewarmed from a single all-employers history query + a single policies
+ * list, then the central resolver runs against the warm cache (so the
+ * history → denorm → default chain is identical to everywhere else).
+ */
+async function enrichEmployersList(employersList: Employer[]): Promise<any[]> {
+  const today = getTodayYmd();
+
+  const [industries, allHistory, allPolicies] = await Promise.all([
+    unifiedOptionsStorage.list("industry").catch(() => [] as any[]),
+    storage.employerPolicyHistory.getAllEmployerPolicyHistory(),
+    storage.policies.getAllPolicies(),
+  ]);
+
+  const industryNames = new Map<string, string>(
+    industries.map((i: any) => [i.id, i.name]),
+  );
+  const policyById = new Map<string, Policy>(allPolicies.map((p) => [p.id, p]));
+
+  const historyByEmployer = new Map<string, Array<{ date: string; policy: Policy | null }>>();
+  for (const row of allHistory) {
+    let list = historyByEmployer.get(row.employerId);
+    if (!list) {
+      list = [];
+      historyByEmployer.set(row.employerId, list);
+    }
+    list.push({
+      date: String(row.date).slice(0, 10),
+      policy: (row.policy as Policy | null) ?? null,
+    });
+  }
+
+  const cache: PolicyResolutionCache = createPolicyResolutionCache();
+  for (const emp of employersList) {
+    const history = (historyByEmployer.get(emp.id) ?? []).sort((a, b) =>
+      b.date.localeCompare(a.date),
+    );
+    cache.employers.set(emp.id, {
+      employerLabel: emp.name || emp.siriusId || null,
+      history,
+      denormPolicy: emp.denormPolicyId
+        ? policyById.get(emp.denormPolicyId) ?? null
+        : null,
+    });
+  }
+
+  return Promise.all(
+    employersList.map(async (emp) => {
+      const { policy } = await resolveEmployerPolicyAsOf(storage, emp.id, today, cache);
+      return {
+        ...emp,
+        industryName: emp.industryId ? industryNames.get(emp.industryId) ?? null : null,
+        currentPolicyId: policy?.id ?? null,
+        currentPolicyName: policy ? policy.name || policy.siriusId || null : null,
+      };
+    }),
+  );
+}
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -67,9 +138,11 @@ export function registerEmployerRoutes(
       const includeInactive = req.query.includeInactive === 'true';
       const allEmployers = await storage.employers.getAllEmployers();
       
-      const employers = includeInactive 
+      const filtered = includeInactive 
         ? allEmployers 
         : allEmployers.filter(emp => emp.isActive);
+
+      const employers = await enrichEmployersList(filtered);
 
       const companyEnabled = await isComponentEnabled("employer.company");
       if (companyEnabled) {

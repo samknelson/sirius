@@ -15,7 +15,13 @@ import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { renderIcon } from "@/components/ui/icon-picker";
 
-type EmployerWithCompany = Employer & { companyId?: string | null; companyName?: string | null };
+type EmployerWithCompany = Employer & {
+  companyId?: string | null;
+  companyName?: string | null;
+  industryName?: string | null;
+  currentPolicyId?: string | null;
+  currentPolicyName?: string | null;
+};
 type BenefitWithIcon = TrustBenefit & {
   benefitTypeIcon?: string | null;
   color?: string | null;
@@ -430,6 +436,23 @@ export function EmployersTable({ employers, isLoading, includeInactive, onToggle
                       >
                         Inactive
                       </span>
+                    )}
+                    {(employer.industryName || employer.currentPolicyName) && (
+                      <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1.5">
+                        {employer.industryName && (
+                          <span data-testid={`text-employer-industry-${employer.id}`}>
+                            {employer.industryName}
+                          </span>
+                        )}
+                        {employer.industryName && employer.currentPolicyName && (
+                          <span aria-hidden="true">·</span>
+                        )}
+                        {employer.currentPolicyName && (
+                          <span data-testid={`text-employer-policy-${employer.id}`}>
+                            {employer.currentPolicyName}
+                          </span>
+                        )}
+                      </div>
                     )}
                   </td>
                   <td className="px-6 py-4" data-testid={`cell-employer-contacts-${employer.id}`}>
