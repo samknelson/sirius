@@ -41,7 +41,6 @@ const IN_SCOPE_BUNDLES = [
   "sirius_trust_worker_benefit",
   "sirius_payperiod",
   "smf_worker_month",
-  "sirius_employer_payperiod",
   "sirius_employee",
   "sirius_payment",
   "sirius_ledger_account",
@@ -49,6 +48,19 @@ const IN_SCOPE_BUNDLES = [
   "sirius_log",
   "sirius_bulk",
 ];
+
+/**
+ * Ruled-DROP bundles: never staged, never silently ignored. Each run logs the
+ * live S1 node count with the documented skip reason so the production run
+ * report accounts for every row (docs/s1-migration N-item pattern, cf. N18).
+ */
+const DOCUMENTED_SKIP_BUNDLES: Record<string, string> = {
+  // N3 CLOSED 2026-08-06: epayperiod hours-reporting workflow tracker; S2's
+  // wizard_employer_monthly recreates equivalent state per import. Written
+  // daily in S1 — post-freeze rows are expected and also dropped.
+  // See docs/n3-employer-payperiod-drop.md (tracked ruling record).
+  sirius_employer_payperiod: "employer_payperiod_workflow_state",
+};
 
 interface CliArgs {
   bundles: string[] | null;
@@ -104,6 +116,27 @@ async function main() {
     if (empty.length > 0) console.log(`in-scope bundles with zero S1 nodes (skipped): ${empty.join(", ")}`);
   }
 
+  // Ruled-DROP bundles are excluded in every mode (including --all/--bundles),
+  // with the documented reason + live S1 count logged — never a silent drop.
+  const documentedSkips: Array<{ bundle: string; reason: string; s1NodeCount: number }> = [];
+  targets = targets.filter((b) => {
+    const reason = DOCUMENTED_SKIP_BUNDLES[b];
+    if (!reason) return true;
+    const s1NodeCount = populated.find((p) => p.bundle === b)?.count ?? 0;
+    documentedSkips.push({ bundle: b, reason, s1NodeCount });
+    return false;
+  });
+  for (const [bundle, reason] of Object.entries(DOCUMENTED_SKIP_BUNDLES)) {
+    if (documentedSkips.some((s) => s.bundle === bundle)) continue;
+    const s1NodeCount = populated.find((p) => p.bundle === bundle)?.count ?? 0;
+    documentedSkips.push({ bundle, reason, s1NodeCount });
+  }
+  for (const s of documentedSkips) {
+    console.log(
+      `${s.bundle}: DOCUMENTED SKIP reason=${s.reason} s1=${s.s1NodeCount} (ruled DROP — see docs/n3-employer-payperiod-drop.md)`,
+    );
+  }
+
   const { catalog: nodeCatalog, source: catalogSource } = await buildFieldCatalog(s1, "node");
   console.log(`field catalog: source=${catalogSource}, bundles with fields=${nodeCatalog.size}`);
 
@@ -149,6 +182,7 @@ async function main() {
   await recordRun(startedAt, args as unknown as Record<string, unknown>, {
     reports,
     mismatches,
+    documentedSkips,
   });
 
   console.log(

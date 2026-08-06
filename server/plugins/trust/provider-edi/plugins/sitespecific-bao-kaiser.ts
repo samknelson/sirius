@@ -13,6 +13,7 @@ import {
   buildMemberUnits,
   displayName,
   postalFields,
+  isQmscoRelation,
 } from "../base";
 
 /**
@@ -124,12 +125,23 @@ export function kaiserEncodeNumber(amount: number, width = 7): string {
   return digits.slice(0, -1) + overpunch;
 }
 
-/** Relation-type sirius id → Kaiser account role. */
-function accountRole(relationSiriusId: string | null): string {
+/**
+ * Relation-type sirius id → Kaiser account role.
+ * S1-taxonomy rulings (2026-08-05): RP (QMSCO variant) is a child role like
+ * QMSCO; EX (Ex Spouse, retired "ES") is NEVER spouse-like or self — it
+ * emits blank so a covered ex-spouse surfaces as a data error in the file
+ * rather than being enrolled as the subscriber or a spouse.
+ */
+export function accountRole(relationSiriusId: string | null): string {
   if (!relationSiriusId) return "01";
   if (relationSiriusId === "DP") return "05";
-  if (["C", "AC", "H", "QMSCO", "SC", "G"].includes(relationSiriusId)) return "06";
+  if (
+    ["C", "AC", "H", "SC", "G"].includes(relationSiriusId) ||
+    isQmscoRelation(relationSiriusId)
+  )
+    return "06";
   if (relationSiriusId === "SP") return "07";
+  if (relationSiriusId === "EX") return "";
   return "01";
 }
 
@@ -305,7 +317,7 @@ registerTrustProviderEdiPlugin({
           birthDate: ymdCompact(dep.birthDate),
           ...postalFields(dep.postal),
           phone: phoneDigits(dep.phoneNumber),
-          supplementalId: dep.relationSiriusId === "QMSCO" ? "08" : "",
+          supplementalId: isQmscoRelation(dep.relationSiriusId) ? "08" : "",
         });
       }
     }

@@ -8,17 +8,16 @@ description: Relation-type options carry S1 letter codes (ES→EX override), not
 — every EDI carrier plugin matches these codes, and it is the ONE options
 type where T4 does not stamp the tid.
 
-**Why:** S1 code `ES` (Ex Spouse) collided with spouse-like `ES` entries in
-carelon/hinge/vsp mappings — ex-spouses would have emitted as covered
-spouses in carrier files. Ruling (2026-08-05): T4 rewrites `ES`→`EX` at
-import; `ES` is banned from mapping lists; `EX` is explicitly never
-spouse-like (emits blank/Other). `RP` is QMSCO-equivalent everywhere via
-`isQmscoRelation` in provider-edi base (carrier code + no address
-inheritance + QMSCO feed selection).
+**Why:** S1 code `ES` (Ex Spouse) collided with spouse-like entries in
+carrier mappings — ex-spouses would have emitted as covered spouses in
+carrier files. Fund ruling: `ES` rewrites to `EX` at import and is banned
+from mapping lists; `EX` is never spouse-like or self (emits blank/Other).
+`RP` is QMSCO-equivalent everywhere (use the shared QMSCO predicate in the
+provider-edi base rather than per-plugin string lists).
 
 **How to apply:** anything consuming relation types (election loader,
-validations, new EDI plugins) must key on letter codes, handle all 10
-(incl. EX/RP), and never re-introduce `ES`. Full tid→code table + rulings:
-`docs/s1-migration/02-mapping.md` §4.1 (prod pre-check: 07 §P7). Spouse/DP
-carry Maximum Count=1 on the S1 term — candidate election validation, not
-yet enforced.
+validations, new EDI plugins) must key on letter codes, handle ALL codes
+including EX/RP, and never re-introduce `ES`. A new carrier mapping that
+omits EX/RP silently classifies them as self/subscriber — add explicit
+cases and cover them in the reltype smoke test. Full tid→code table +
+rulings: local `docs/s1-migration/02-mapping.md` §4.1.

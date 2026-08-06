@@ -15,6 +15,7 @@ import {
   buildMemberUnits,
   displayName,
   postalFields,
+  isQmscoRelation,
 } from "../base";
 
 /**
@@ -109,13 +110,17 @@ export const HEALTHNET_EDI_FIELDS: ReadonlyArray<{ name: string; width: number }
  * M = Self (subscriber), P = Domestic Partner, S = Spouse, Q = QMSCO,
  * D = child of any other flavor. Unknown types fall back to M like the
  * legacy generator did.
+ * S1-taxonomy rulings (2026-08-05): RP (QMSCO variant) → Q like QMSCO;
+ * EX (Ex Spouse, retired "ES") is NEVER spouse-like or self — it emits
+ * blank so a covered ex-spouse surfaces as a data error, not an enrollee.
  */
 export function memberType(relationSiriusId: string | null): string {
   if (!relationSiriusId) return "M";
   if (relationSiriusId === "DP") return "P";
   if (["C", "AC", "H", "SC", "G"].includes(relationSiriusId)) return "D";
   if (relationSiriusId === "SP") return "S";
-  if (relationSiriusId === "QMSCO") return "Q";
+  if (isQmscoRelation(relationSiriusId)) return "Q";
+  if (relationSiriusId === "EX") return "";
   return "M";
 }
 
