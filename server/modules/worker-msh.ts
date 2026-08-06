@@ -1,6 +1,6 @@
 import type { Express } from "express";
 import type { WorkerMshStorage } from "../storage/worker-msh";
-import { scanWorkerMemberStatus, scanAllWorkers } from "../services/member-status-scan";
+import { scanWorkerMemberStatus, scanAllWorkers } from "../services/btu-member-status-scan";
 
 export function registerWorkerMshRoutes(
   app: Express,

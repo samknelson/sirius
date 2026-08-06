@@ -170,7 +170,7 @@ export async function scanWorkerMemberStatus(workerId: string): Promise<ScanResu
         });
       }
       logger.info("Member status updated by scan", {
-        service: "member-status-scan",
+        service: "btu-member-status-scan",
         workerId,
         previousCode,
         newCode,
@@ -206,7 +206,7 @@ export async function scanAllWorkers(mode: "live" | "test"): Promise<BulkScanRes
 
   const workerRows = activeWorkers.rows as any[];
   logger.info(`Member status scan: found ${workerRows.length} active workers`, {
-    service: "member-status-scan",
+    service: "btu-member-status-scan",
     mode,
   });
 
@@ -326,7 +326,7 @@ export async function scanAllWorkers(mode: "live" | "test"): Promise<BulkScanRes
     } catch (error) {
       result.errors++;
       logger.error("Error scanning worker member status", {
-        service: "member-status-scan",
+        service: "btu-member-status-scan",
         workerId: workerRow.id,
         error: error instanceof Error ? error.message : String(error),
       });
@@ -334,7 +334,7 @@ export async function scanAllWorkers(mode: "live" | "test"): Promise<BulkScanRes
   }
 
   logger.info("Member status scan completed", {
-    service: "member-status-scan",
+    service: "btu-member-status-scan",
     mode,
     ...result,
   });

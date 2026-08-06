@@ -6,7 +6,7 @@ import { SignedCardcheckWithDetails } from '../../../../storage/cardchecks.js';
 import { createBargainingUnitStorage, type BargainingUnitData } from '../../../../storage/bargaining-units.js';
 import { toChargeConfig } from '../../../../plugins/ledger/charge/charge-config-resolution.js';
 import { executeChargePlugins, TriggerType, DuesImportSavedContext } from '../../../../plugins/ledger/charge/index.js';
-import { scanWorkerMemberStatus } from '../../../../services/member-status-scan.js';
+import { scanWorkerMemberStatus } from '../../../../services/btu-member-status-scan.js';
 import { parse as parseCSV } from 'csv-parse/sync';
 import * as XLSX from 'xlsx';
 import { fileSystemService } from '../../../../services/files/index.js';

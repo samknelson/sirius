@@ -1,12 +1,12 @@
-import { scanAllWorkers } from "../../../../services/member-status-scan";
+import { scanAllWorkers } from "../../../../services/btu-member-status-scan";
 import { registerCronPlugin } from "../registry";
 import type { CronJobContext, CronJobResult } from "../types";
 
 registerCronPlugin({
   metadata: {
-    id: 'member-status-scan',
-    name: 'Member Status Scan',
-    description: 'Scans all active workers and updates their member status based on card check and dues payment history',
+    id: 'btu-member-status-scan',
+    name: 'BTU Member Status Scan',
+    description: 'BTU: scans all active workers and updates their member status based on card check and dues payment history',
     singleton: true,
   },
   defaultSchedule: '0 7 * * *', // Daily at 7 AM
