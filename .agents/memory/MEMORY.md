@@ -103,4 +103,5 @@
 - [Dev curl auth shortcut](dev-local-auth-curl.md) — local login is dev default (seeded admin + INITIAL_ADMIN_PASSWORD); component enables via SQL need a restart (boot-time cache); tsx server has no hot reload.
 - [S1 rehearsal target pattern](s1-rehearsal-pattern.md) — separate s2_rehearsal DB; empty bootstrap skips data seeds + optional components; S1 DSN whitespace; RUNBOOK.md is the prod procedure.
 - [ShellExec background process lifetime](shellexec-background-process-lifetime.md) — nohup jobs die when the call ends; use a temp console workflow for long one-shots.
+- [FC migration ECS ops](fc-migration-ecs-ops.md) — CloudShell regular tab = internet/AWS APIs, VPC tab = RDS only; silent stall = wrong tab; run-task per runbook step.
 - [Synthetic S1 regen invalidates id_map](s1-regen-idmap-staleness.md) — regen assigns new nids; restage + re-run contacts-workers before any id_map-resolving loader.
