@@ -344,6 +344,23 @@ export interface EdiDependent extends EdiPerson {
   relationSiriusId: string | null;
 }
 
+/**
+ * S1-migration relation-code taxonomy ruling (2026-08-05, S1 tids 1512–1679):
+ *   C=Child, SP=Spouse, SC=Step Child, DP=Domestic Partner,
+ *   QMSCO=QMSCO Child, G=Guardian/Protected Person, AC=Adopted Child,
+ *   RP=QMSCO Child (RP variant), H=Handicapped Child,
+ *   EX=Ex Spouse (S1 code "ES" is RETIRED at import — see docs/s1-migration).
+ * `ES` must never appear in a mapping list again: it made ex-spouses look
+ * like covered spouses in carrier files. A covered ex-spouse is a data error
+ * (should be their own COBRA case) and must never emit spouse-like codes.
+ */
+
+/** QMSCO-flavored relation codes: RP is the QMSCO (RP) variant and follows
+ * every QMSCO rule (carrier code + no address/email inheritance). */
+export function isQmscoRelation(relationSiriusId: string | null): boolean {
+  return relationSiriusId === "QMSCO" || relationSiriusId === "RP";
+}
+
 /** One subscriber (wmb row) plus their active dependents. */
 export interface EdiMemberUnit {
   wmb: typeof trustWmb.$inferSelect;

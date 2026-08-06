@@ -61,12 +61,16 @@ export const DENTWELL_CSV_FIELDS = CSV_FIELDS;
  * Relation-type sirius id → Dentwell relationship code. Legacy comment:
  * 18 = Self, 01 = Spouse/Domestic Partner, 19 = child of any flavor,
  * 08 = QMSCO child. Unknown types emit blank like the legacy generator.
+ * S1-taxonomy rulings (2026-08-05): SC (Step Child) added to the child
+ * family (legacy omitted it); RP → 08 like QMSCO; EX (Ex Spouse, retired
+ * "ES") is explicitly blank — never spouse-like.
  */
 export function dentwellRelationshipCode(relationSiriusId: string | null): string {
   if (!relationSiriusId) return "18";
-  if (["C", "G", "AC", "H"].includes(relationSiriusId)) return "19";
+  if (["C", "G", "AC", "H", "SC"].includes(relationSiriusId)) return "19";
   if (["SP", "DP"].includes(relationSiriusId)) return "01";
-  if (relationSiriusId === "QMSCO") return "08";
+  if (relationSiriusId === "QMSCO" || relationSiriusId === "RP") return "08";
+  if (relationSiriusId === "EX") return "";
   return "";
 }
 

@@ -10,6 +10,7 @@ import {
   ymdCompact,
   buildMemberUnits,
   displayName,
+  isQmscoRelation,
   type EdiPerson,
   type EdiDependent,
   type EdiPostal,
@@ -52,12 +53,23 @@ const CSV_FIELDS: EdiCsvField[] = [
 /** Exported for the smoke test. */
 export const HINGE_CSV_FIELDS = CSV_FIELDS;
 
-/** Relation-type sirius id → Hinge relationship label (legacy mapping). */
+/**
+ * Relation-type sirius id → Hinge relationship label.
+ * S1-taxonomy rulings (2026-08-05):
+ *  - "ES" retired (ex-spouses were leaking as Spouse); "EX" is explicitly
+ *    NOT spouse-like → "Other".
+ *  - Legacy list had "DB" (a dead code that exists in no taxonomy) and was
+ *    MISSING "DP" — Domestic Partners fell through to "Other". Fixed: DP is
+ *    spouse-like, DB removed.
+ *  - G (Guardian/Protected Person) → "Child" is intentional (legacy parity).
+ *  - RP (QMSCO variant) → "Q" like QMSCO.
+ */
 export function hingeRelationship(relationSiriusId: string | null): string {
   if (!relationSiriusId) return "EE";
-  if (["DB", "ES", "SP"].includes(relationSiriusId)) return "Spouse";
+  if (["DP", "SP"].includes(relationSiriusId)) return "Spouse";
   if (["G", "C", "AC", "H", "SC"].includes(relationSiriusId)) return "Child";
-  if (relationSiriusId === "QMSCO") return "Q";
+  if (relationSiriusId === "QMSCO" || relationSiriusId === "RP") return "Q";
+  if (relationSiriusId === "EX") return "Other";
   return "Other";
 }
 
@@ -177,7 +189,7 @@ registerTrustProviderEdiPlugin({
           birthDate: ymdCompact(dep.birthDate),
           relationship: hingeRelationship(dep.relationSiriusId),
           sex: hingeSex(dep.genderCode),
-          ...hingeAddressFields(dep, subscriber, dep.relationSiriusId === "QMSCO"),
+          ...hingeAddressFields(dep, subscriber, isQmscoRelation(dep.relationSiriusId)),
         });
       }
     }

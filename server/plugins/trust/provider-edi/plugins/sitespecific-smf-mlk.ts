@@ -12,6 +12,7 @@ import {
   phoneDigits,
   buildMemberUnits,
   displayName,
+  isQmscoRelation,
   type EdiPerson,
 } from "../base";
 
@@ -72,13 +73,18 @@ export const MLK_CSV_FIELDS = CSV_FIELDS;
  * Relation-type sirius id → MLK dependent relationship code. Legacy
  * comment: 01 = Self, 05 = Domestic Partner, 06 = child of any flavor,
  * 07 = Spouse, 08 = QMSCO child. Unknown types emit blank.
+ * S1-taxonomy rulings (2026-08-05): SC (Step Child) added to the child
+ * family (legacy omitted it — "child of any flavor" now really is);
+ * RP → 08 like QMSCO; EX (Ex Spouse, retired "ES") is explicitly blank —
+ * never spouse-like.
  */
 export function mlkDepRel(relationSiriusId: string | null): string {
   if (!relationSiriusId) return "01";
-  if (["C", "G", "AC", "H"].includes(relationSiriusId)) return "06";
+  if (["C", "G", "AC", "H", "SC"].includes(relationSiriusId)) return "06";
   if (relationSiriusId === "SP") return "07";
   if (relationSiriusId === "DP") return "05";
-  if (relationSiriusId === "QMSCO") return "08";
+  if (relationSiriusId === "QMSCO" || relationSiriusId === "RP") return "08";
+  if (relationSiriusId === "EX") return "";
   return "";
 }
 
@@ -235,7 +241,7 @@ registerTrustProviderEdiPlugin({
           birthDate: ymdCompact(dep.birthDate),
           sex: mlkSex(dep.genderCode),
           email: dep.email ?? "",
-          ...mlkAddressFields(dep, subscriber, dep.relationSiriusId === "QMSCO"),
+          ...mlkAddressFields(dep, subscriber, isQmscoRelation(dep.relationSiriusId)),
         });
       }
     }

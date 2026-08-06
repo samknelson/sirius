@@ -94,4 +94,5 @@
 - [S1 loader reject policy](s1-loader-reject-policy.md) — loaders fail unless every reject reason is per-run allowed (--allow-rejects); verify gates on FATAL reasons only; pre-validate storage contracts before satellite writes; sanitized error codes.
 - [Employer-contacts multi-link](employer-contacts-multilink.md) — one link per (contact,employer,type); contact-scoped authz must any-of over ALL linked employers via checkAccessInline, never links[0].
 - [Charge-plugin migration suppression](charge-plugin-migration-suppression.md) — loaders wrap writes in withChargePluginsSuppressed; notification suppression alone doesn't stop charges; preflight aborts runnable-plugin loads.
+- [S1 relation-type letter-code sirius_ids](s1-reltype-letter-codes.md) — reltype options carry S1 letter codes not tids; ES→EX ruling; EX/RP must be handled in every EDI mapping.
 - [Managed secret provisioning](managed-secret-provisioning.md) — Replit Secrets reach managed workflows, not necessarily ordinary Shell commands; use short-lived, idempotent hooks and remove them.

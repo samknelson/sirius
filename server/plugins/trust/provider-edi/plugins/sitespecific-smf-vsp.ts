@@ -101,15 +101,21 @@ export function vspDivisionCode(isEnhanced: boolean, isCobra: boolean): string {
   return isCobra ? "1002" : "1001";
 }
 
-/** Relation-type sirius id → VSP family indicator (dependent records). */
+/**
+ * Relation-type sirius id → VSP family indicator (dependent records).
+ * S1-taxonomy rulings (2026-08-05): "ES" retired — an ex-spouse ("EX") is
+ * never partner/spouse-like and emits blank; RP (QMSCO variant) → C like
+ * QMSCO.
+ */
 export function vspDependentFamilyIndicator(
   relationSiriusId: string | null,
 ): string {
   if (!relationSiriusId) return "";
   if (relationSiriusId === "SP") return "S";
-  if (["DP", "ES"].includes(relationSiriusId)) return "P";
-  if (["C", "AC", "QMSCO", "SC", "G"].includes(relationSiriusId)) return "C";
+  if (relationSiriusId === "DP") return "P";
+  if (["C", "AC", "QMSCO", "RP", "SC", "G"].includes(relationSiriusId)) return "C";
   if (relationSiriusId === "H") return "H";
+  if (relationSiriusId === "EX") return "";
   return "";
 }
 

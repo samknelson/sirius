@@ -47,8 +47,33 @@ const VOCAB_TO_TYPE: Record<string, OptionsTypeName> = {
   sirius_industry: "industry", // production vocab name
   sirius_member_status: "worker-ms",
   sirius_payment_type: "ledger-payment-type",
-  sirius_reltype: "worker-relation-type",
+  sirius_reltype: "worker-relation-type", // synthetic dev DB vocab name
+  sirius_contact_relationship_types: "worker-relation-type", // production vocab name
 };
+
+/**
+ * Relation types are the ONE options type whose sirius_id must carry the S1
+ * LETTER CODE (term-attached `field_sirius_id`: C/SP/SC/DP/QMSCO/G/AC/RP/H),
+ * not the tid — every EDI carrier plugin matches these codes. Ruling
+ * (2026-08-05): S1 "ES" (Ex Spouse) is RETIRED at import and becomes "EX",
+ * because carrier mappings historically treated "ES" as spouse-like and
+ * ex-spouses must never emit as covered spouses. Terms staging no code
+ * (synthetic dev vocab) fall back to the tid string.
+ */
+const RELTYPE_CODE_OVERRIDES: Record<string, string> = { ES: "EX" };
+function reltypeSiriusIdOf(t: StagedTermRow): string {
+  const v = t.fields["field_sirius_id"];
+  const scalar = Array.isArray(v) ? v[0] : v;
+  const raw =
+    typeof scalar === "string"
+      ? scalar
+      : scalar && typeof scalar === "object" && "value" in (scalar as any)
+        ? String((scalar as any).value)
+        : null;
+  const code = raw?.trim() || null;
+  if (!code) return String(t.tid);
+  return RELTYPE_CODE_OVERRIDES[code] ?? code;
+}
 
 /** Vocabularies with an explicit non-options disposition — skipped WITHOUT alarm. */
 const KNOWN_SKIPPED: Record<string, string> = {
@@ -194,7 +219,9 @@ async function main() {
     };
 
     for (const t of vterms) {
-      const tidStr = String(t.tid);
+      // The sirius_id VALUE for this term: letter code for relation types
+      // (EDI plugins match codes), tid string for everything else.
+      const tidStr = type === "worker-relation-type" ? reltypeSiriusIdOf(t) : String(t.tid);
       // worker-ms rows REQUIRE an industry (schema NOT NULL) — resolve the
       // term-attached industry tid (Q37) through this run's industry load.
       let industryId: string | undefined;
@@ -246,7 +273,10 @@ async function main() {
       if (row || (row = bySiriusId.get(tidStr))) {
         if (mapped && byId.has(mapped.s2Id)) stats.matchedIdMap++;
         else stats.matchedSiriusId++;
-        const patch = driftOf(row, t, industryId);
+        const patch: Record<string, unknown> = driftOf(row, t, industryId);
+        // Heal sirius_id drift on matched rows (e.g. relation-type letter
+        // codes introduced 2026-08-05, incl. the ES→EX ruling).
+        if (supportsSiriusId && row.siriusId !== tidStr) patch.siriusId = tidStr;
         if (!DRY_RUN && Object.keys(patch).length > 0) {
           await withNotificationsSuppressed(() => options.update(type, row!.id, patch));
           stats.updated++;
@@ -317,7 +347,8 @@ async function main() {
       for (const t of vterms) {
         if (skippedTids.has(t.tid)) continue; // counted skip, not a verify failure
         const m = finalMap.get(t.tid);
-        const ok = haveSiriusId.has(String(t.tid)) || (m != null && haveId.has(m.s2Id));
+        const expectedSid = type === "worker-relation-type" ? reltypeSiriusIdOf(t) : String(t.tid);
+        const ok = haveSiriusId.has(expectedSid) || (m != null && haveId.has(m.s2Id));
         if (!ok) {
           console.error(`VERIFY: ${vocab} tid ${t.tid} "${t.name}" not resolvable in ${type} (siriusId or id_map)`);
           verifyFailures++;

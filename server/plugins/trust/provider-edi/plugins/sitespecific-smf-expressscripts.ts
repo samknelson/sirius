@@ -13,6 +13,7 @@ import {
   readAsOfYmd,
   buildMemberUnits,
   displayName,
+  isQmscoRelation,
 } from "../base";
 import { clientGroupIdsByWorker, readModeIndicator } from "./sitespecific-smf-shared";
 
@@ -212,12 +213,19 @@ export function encodeEsiTrailer(aggregates: EdiBatchAggregates): string {
   });
 }
 
-/** Relation-type sirius id → ESI relationship code. */
+/**
+ * Relation-type sirius id → ESI relationship code.
+ * S1-taxonomy ruling (2026-08-05): EX (Ex Spouse, retired "ES") emits blank
+ * instead of riding the child-family default "3" — never spouse-like, and
+ * visible in carrier-file QA. All child flavors (C/AC/SC/G/QMSCO/RP) stay
+ * on the legacy default "3".
+ */
 export function esiRelationshipCode(relationSiriusId: string | null): string {
   if (!relationSiriusId) return "1";
   if (relationSiriusId === "SP") return "2";
   if (relationSiriusId === "H") return "5";
   if (relationSiriusId === "DP") return "7";
+  if (relationSiriusId === "EX") return "";
   return "3";
 }
 
@@ -346,7 +354,8 @@ registerTrustProviderEdiPlugin({
 
       // Dependent records, split by the QMSCO feed selector.
       for (const dep of unit.dependents) {
-        const isQmsco = dep.relationSiriusId === "QMSCO";
+        // RP rides the QMSCO feed too (S1-taxonomy ruling 2026-08-05).
+        const isQmsco = isQmscoRelation(dep.relationSiriusId);
         if (isQmsco !== qmscoOnly) continue;
         out.push({
           pk: `${wmb.id}:${dep.relationId}`,

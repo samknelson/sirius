@@ -174,7 +174,11 @@ export function encodeDeltaTrailer(aggregates: EdiBatchAggregates): string {
   });
 }
 
-/** Relation-type sirius id → Delta member classification. */
+/**
+ * Relation-type sirius id → Delta member classification.
+ * S1-taxonomy rulings (2026-08-05): RP (QMSCO variant) → 13 like QMSCO;
+ * EX (Ex Spouse, retired "ES") is explicitly blank — never spouse-like.
+ */
 export function deltaMemberClassification(
   relationSiriusId: string | null,
 ): string {
@@ -184,7 +188,8 @@ export function deltaMemberClassification(
   if (relationSiriusId === "DP") return "21";
   if (relationSiriusId === "H") return "32";
   if (relationSiriusId === "G") return "40";
-  if (relationSiriusId === "QMSCO") return "13";
+  if (relationSiriusId === "QMSCO" || relationSiriusId === "RP") return "13";
+  if (relationSiriusId === "EX") return "";
   return "";
 }
 

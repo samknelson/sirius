@@ -69,14 +69,21 @@ const CSV_FIELDS: EdiCsvField[] = [
 /** Exported for the smoke test. */
 export const CARELON_CSV_FIELDS = CSV_FIELDS;
 
-/** Relation-type sirius id → Carelon relationship code (01 self / 02 spouse / 03 child). */
+/**
+ * Relation-type sirius id → Carelon relationship code (01 self / 02 spouse /
+ * 03 child). S1-taxonomy ruling (2026-08-05): RP is a QMSCO-variant child →
+ * 03; EX (Ex Spouse) is NEVER spouse-like — it emits blank so a covered
+ * ex-spouse is visible in carrier-file QA instead of masquerading as self
+ * (legacy fell through to 01) or spouse.
+ */
 export function carelonRelCode(relationSiriusId: string | null): string {
   if (relationSiriusId && ["SP", "DP"].includes(relationSiriusId)) return "02";
   if (
     relationSiriusId &&
-    ["C", "AC", "H", "QMSCO", "SC", "G"].includes(relationSiriusId)
+    ["C", "AC", "H", "QMSCO", "RP", "SC", "G"].includes(relationSiriusId)
   )
     return "03";
+  if (relationSiriusId === "EX") return "";
   return "01";
 }
 
@@ -95,8 +102,12 @@ export function carelonTierCode(
   let hasSpouse = false;
   let hasChild = false;
   for (const id of relationSiriusIds) {
-    if (id && ["DP", "ES", "SP"].includes(id)) hasSpouse = true;
-    if (id && ["C", "AC", "H", "QMSCO", "SC"].includes(id)) hasChild = true;
+    // S1-taxonomy ruling (2026-08-05): "ES" retired — an ex-spouse (now
+    // "EX") never counts as a spouse for the family-composition tier.
+    // G (Guardian/Protected Person) stays OUT of the child family here
+    // (legacy parity — it is a relCode 03 child but not a tier child).
+    if (id && ["DP", "SP"].includes(id)) hasSpouse = true;
+    if (id && ["C", "AC", "H", "QMSCO", "RP", "SC"].includes(id)) hasChild = true;
   }
   if (hasSpouse && hasChild) return "FMLY";
   if (hasSpouse) return "SEMP";
