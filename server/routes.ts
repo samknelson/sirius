@@ -611,25 +611,85 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
         return res.json({});
       }
       const limitedWorkerIds = workerIds.slice(0, 100);
-      const config = pickFirstByAccountOrder(
-        (await storage.pluginConfigs.search("charge", {
-          pluginId: 'btu-dues-allocation',
-          enabled: true,
-        })).map(toChargeConfig),
-      );
-      const settings = (config?.settings ?? null) as { accountIds?: string[] } | null;
-      const duesAccountId = settings?.accountIds?.[0];
-      const duesMap: Record<string, { amount: string; date: string }> = {};
+      // Account resolution: the worker-list membership-column config (when it
+      // names an account) wins; otherwise fall back to the legacy behavior of
+      // the first enabled btu-dues-allocation charge config's account.
+      const { getMembershipColumnSettings } = await import("./plugins/worker-list/settings");
+      const wlSettings = await getMembershipColumnSettings();
+      let duesAccountId = wlSettings?.accountId;
+      if (!duesAccountId) {
+        const config = pickFirstByAccountOrder(
+          (await storage.pluginConfigs.search("charge", {
+            pluginId: 'btu-dues-allocation',
+            enabled: true,
+          })).map(toChargeConfig),
+        );
+        const settings = (config?.settings ?? null) as { accountIds?: string[] } | null;
+        duesAccountId = settings?.accountIds?.[0];
+      }
+      const duesMap: Record<string, { amount?: string; date?: string; balance?: string }> = {};
       if (duesAccountId) {
-        const latest = await storage.ledger.entries.getLatestByAccountAndEntities(duesAccountId, 'worker', limitedWorkerIds);
+        const [latest, balances] = await Promise.all([
+          storage.ledger.entries.getLatestByAccountAndEntities(duesAccountId, 'worker', limitedWorkerIds),
+          storage.ledger.entries.getBalancesByEntityAndAccount('worker', limitedWorkerIds, [duesAccountId]),
+        ]);
         for (const row of latest) {
           duesMap[row.entityId] = { amount: row.amount, date: row.date };
+        }
+        for (const row of balances) {
+          duesMap[row.entityId] = { ...(duesMap[row.entityId] ?? {}), balance: row.total };
         }
       }
       res.json(duesMap);
     } catch (error) {
       console.error("Failed to fetch latest dues:", error);
       res.status(500).json({ message: "Failed to fetch latest dues" });
+    }
+  });
+
+  // GET /api/workers/list-settings - Effective worker-list column settings for
+  // staff viewers (the admin-gated /api/plugins/worker-list/configs surface is
+  // not readable by plain staff, so the list page reads this instead).
+  app.get("/api/workers/list-settings", requireAuth, requirePermission("staff"), async (req, res) => {
+    try {
+      const { getMembershipColumnSettings } = await import("./plugins/worker-list/settings");
+      const settings = await getMembershipColumnSettings();
+      res.json({
+        displayMode: settings?.displayMode ?? "member-status",
+        accountConfigured: !!settings?.accountId,
+        cardcheckDefinitionIds: settings?.cardcheckDefinitionIds ?? [],
+      });
+    } catch (error) {
+      console.error("Failed to fetch worker list settings:", error);
+      res.status(500).json({ message: "Failed to fetch worker list settings" });
+    }
+  });
+
+  // POST /api/workers/cardcheck-authorizations - Batch "has a signed cardcheck
+  // of a configured definition" lookup for the displayed workers (authorization
+  // display mode of the Membership column).
+  app.post("/api/workers/cardcheck-authorizations", requireAuth, requirePermission("staff"), async (req, res) => {
+    try {
+      const { workerIds } = req.body;
+      if (!Array.isArray(workerIds) || workerIds.length === 0) {
+        return res.json({});
+      }
+      const limitedWorkerIds = workerIds.slice(0, 100);
+      const { getMembershipColumnSettings } = await import("./plugins/worker-list/settings");
+      const settings = await getMembershipColumnSettings();
+      const signedIds = await storage.cardchecks.getSignedWorkerIds(
+        limitedWorkerIds,
+        settings?.cardcheckDefinitionIds ?? [],
+      );
+      const signedSet = new Set(signedIds);
+      const out: Record<string, boolean> = {};
+      for (const id of limitedWorkerIds) {
+        out[id] = signedSet.has(id);
+      }
+      res.json(out);
+    } catch (error) {
+      console.error("Failed to fetch cardcheck authorizations:", error);
+      res.status(500).json({ message: "Failed to fetch cardcheck authorizations" });
     }
   });
 

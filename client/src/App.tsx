@@ -236,6 +236,7 @@ const EmployerUserSettingsPage = lazy(() => import("@/pages/config/users/employe
 const TrustProviderUserSettingsPage = lazy(() => import("@/pages/config/users/trust-provider-settings"));
 const OpenEnrollmentWindowsPage = lazy(() => import("@/pages/config/trust/open-enrollment-windows"));
 const WorkerUserSettingsPage = lazy(() => import("@/pages/config/users/worker-settings"));
+const WorkerListSettingsPage = lazy(() => import("@/pages/config/worker-list-settings"));
 const SessionsPage = lazy(() => import("@/pages/sessions"));
 const FloodEventsPage = lazy(() => import("@/pages/flood-events"));
 const FloodEventsConfigPage = lazy(() => import("@/pages/flood-events-config"));
@@ -2499,6 +2500,16 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <WorkerUserSettingsPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/workers/list-settings">
+        <ProtectedRoute permission="admin" component="cardcheck">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <WorkerListSettingsPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>

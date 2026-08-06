@@ -376,6 +376,13 @@ export async function bootstrapApp(app: Express, server: Server): Promise<void> 
   initializeDenormPluginSystem();
   logger.info("Denorm plugins registered", { source: "startup" });
 
+  // Register worker-list plugins (kind + adapter + self-registering plugin imports)
+  {
+    const { initializeWorkerListPluginSystem } = await import("./plugins/worker-list");
+    initializeWorkerListPluginSystem();
+  }
+  logger.info("Worker-list plugins registered", { source: "startup" });
+
   // Register data-retention plugins (kind + adapter + self-registering plugin imports)
   initializeDataRetentionPluginSystem();
   logger.info("Data-retention plugins registered", { source: "startup" });

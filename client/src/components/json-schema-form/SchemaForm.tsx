@@ -80,7 +80,10 @@ function buildVendorUiSchema(
       field = "staffRecipients";
     } else if (subAny["x-widget"] === "system-roles") {
       field = "systemRoles";
-    } else if (typeof subAny["x-options-resource"] === "string") {
+    } else if (
+      typeof subAny["x-options-resource"] === "string" ||
+      typeof subAny["x-options-endpoint"] === "string"
+    ) {
       const isArray = (sub as RJSFSchema).type === "array";
       widget = isArray ? "remoteOptionsMulti" : "remoteOptions";
     } else if (subAny["x-options-self"] === true) {

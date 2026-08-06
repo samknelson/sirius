@@ -886,7 +886,7 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
         INNER JOIN ledger l ON l.ea_id = ea.id
         WHERE ea.entity_type = ${entityType}
           AND ea.account_id = ${accountId}
-          AND ea.entity_id = ANY(${entityIds})
+          AND ea.entity_id IN (${sqlRaw.join(entityIds.map((id) => sqlRaw`${id}`), sqlRaw`, `)})
         ORDER BY ea.entity_id, l.date DESC
       `);
       return (result.rows as Array<{ entity_id: string; amount: string; date: string }>).map(row => ({

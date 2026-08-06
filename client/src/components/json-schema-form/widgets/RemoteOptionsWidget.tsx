@@ -36,11 +36,14 @@ export function RemoteOptionsWidget(props: WidgetProps) {
   } = props;
 
   const optionsType = (schema as Record<string, unknown>)["x-options-resource"] as string | undefined;
+  // Alternative source: a full API endpoint (e.g. "/api/ledger/accounts")
+  // returning an array of { id, name } rows. Takes precedence when present.
+  const optionsEndpoint = (schema as Record<string, unknown>)["x-options-endpoint"] as string | undefined;
   const isMulti = (schema as { type?: string }).type === "array";
 
   const { data: options, isLoading } = useQuery<OptionItem[]>({
-    queryKey: ["/api/options", optionsType],
-    enabled: !!optionsType,
+    queryKey: optionsEndpoint ? [optionsEndpoint] : ["/api/options", optionsType],
+    enabled: !!(optionsEndpoint || optionsType),
   });
 
   const selectedSet = useMemo(
@@ -48,7 +51,7 @@ export function RemoteOptionsWidget(props: WidgetProps) {
     [value],
   );
 
-  if (!optionsType) {
+  if (!optionsType && !optionsEndpoint) {
     return (
       <p className="text-sm text-destructive">
         Missing x-options-resource for field {label || id}

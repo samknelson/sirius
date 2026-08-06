@@ -142,6 +142,7 @@ export const configSections: NavSection[] = [
       { path: "/config/workers/ban", label: "Ban Notifications", icon: Shield, testId: "nav-config-workers-ban", permission: "admin", requiresComponent: "worker.ban" },
       { path: "/config/workers/tos", label: "Time Off Sick", icon: Calendar, testId: "nav-config-workers-tos", permission: "admin", requiresComponent: "worker.tos" },
       { path: "/config/workers/user-settings", label: "Worker User Settings", icon: Settings, testId: "nav-config-users-worker-settings", permission: "admin" },
+      { path: "/config/workers/list-settings", label: "Worker List", icon: Settings, testId: "nav-config-worker-list-settings", permission: "admin", requiresComponent: "cardcheck" },
     ],
   },
   {

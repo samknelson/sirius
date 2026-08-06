@@ -211,6 +211,12 @@ export interface CardcheckStorage {
   getCardchecksByDefinitionId(definitionId: string): Promise<Cardcheck[]>;
   getCardchecksWithExternalIdMissingEsig(cardcheckDefinitionId?: string): Promise<Cardcheck[]>;
   getCardcheckStatusSummary(): Promise<CardcheckStatusSummary[]>;
+  /**
+   * Of `workerIds`, the distinct ids that have a signed cardcheck — limited
+   * to `definitionIds` when non-empty, otherwise counting ANY definition
+   * (mirrors the member-status scan's semantics).
+   */
+  getSignedWorkerIds(workerIds: string[], definitionIds?: string[]): Promise<string[]>;
   getCardcheckReport(filters: CardcheckReportFilters): Promise<CardcheckReportItem[]>;
   createCardcheck(data: InsertCardcheck): Promise<Cardcheck>;
   updateCardcheck(id: string, data: Partial<InsertCardcheck>): Promise<Cardcheck | undefined>;
@@ -361,6 +367,23 @@ export function createCardcheckStorage(): CardcheckStorage {
       }
       
       return summaries;
+    },
+
+    async getSignedWorkerIds(workerIds: string[], definitionIds?: string[]): Promise<string[]> {
+      if (workerIds.length === 0) return [];
+      const client = getClient();
+      const conditions = [
+        inArray(cardchecks.workerId, workerIds),
+        eq(cardchecks.status, "signed" as const),
+      ];
+      if (definitionIds && definitionIds.length > 0) {
+        conditions.push(inArray(cardchecks.cardcheckDefinitionId, definitionIds));
+      }
+      const rows = await client
+        .selectDistinct({ workerId: cardchecks.workerId })
+        .from(cardchecks)
+        .where(and(...conditions));
+      return rows.map((r) => r.workerId);
     },
 
     async getCardcheckReport(filters: CardcheckReportFilters): Promise<CardcheckReportItem[]> {

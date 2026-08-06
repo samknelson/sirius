@@ -398,8 +398,39 @@ export function WorkersTable({
     return map;
   }, [workerIdsForList]);
 
-  // Fetch latest dues payment for displayed workers
-  const { data: latestDuesMap = {} } = useQuery<Record<string, { amount: string; date: string }>>({
+  // Effective worker-list column settings (display mode of the Membership
+  // column). Defaults to member-status when unconfigured, matching today's
+  // behavior exactly.
+  const { data: listSettings } = useQuery<{
+    displayMode: "member-status" | "authorization";
+    accountConfigured: boolean;
+    cardcheckDefinitionIds: string[];
+  }>({
+    queryKey: ["/api/workers/list-settings"],
+    enabled: cardcheckEnabled,
+  });
+  const authorizationMode = listSettings?.displayMode === "authorization";
+
+  // Batch "has a signed cardcheck of a configured definition" lookup —
+  // only needed in authorization mode.
+  const { data: cardcheckAuthMap = {} } = useQuery<Record<string, boolean>>({
+    queryKey: ["/api/workers/cardcheck-authorizations", workerIdsList],
+    queryFn: async () => {
+      if (workerIdsList.length === 0) return {};
+      const res = await fetch("/api/workers/cardcheck-authorizations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workerIds: workerIdsList }),
+        credentials: "include",
+      });
+      if (!res.ok) return {};
+      return res.json();
+    },
+    enabled: workerIdsList.length > 0 && cardcheckEnabled && authorizationMode,
+  });
+
+  // Fetch latest dues payment (and account balance) for displayed workers
+  const { data: latestDuesMap = {} } = useQuery<Record<string, { amount?: string; date?: string; balance?: string }>>({
     queryKey: ["/api/workers/latest-dues", workerIdsList],
     queryFn: async () => {
       if (workerIdsList.length === 0) return {};
@@ -1259,6 +1290,58 @@ export function WorkersTable({
                           : statusCode === 'pend' ? 'text-yellow-600'
                           : 'text-muted-foreground';
 
+                        if (authorizationMode) {
+                          const authorized = cardcheckAuthMap[worker.id] === true;
+                          const balance = dues?.balance;
+                          return (
+                            <HoverCard>
+                              <HoverCardTrigger asChild>
+                                <div className="cursor-pointer flex flex-col" data-testid={`membership-${worker.id}`}>
+                                  {buName && (
+                                    <span className="text-xs text-muted-foreground" data-testid={`membership-bu-${worker.id}`}>{buName}</span>
+                                  )}
+                                  <span className={`text-sm font-medium ${authorized ? 'text-green-600' : 'text-muted-foreground'}`}>
+                                    {authorized ? 'Authorized' : 'Not Authorized'}
+                                  </span>
+                                  {balance !== undefined && (
+                                    <span className="text-xs text-muted-foreground" data-testid={`membership-balance-${worker.id}`}>
+                                      Balance: ${parseFloat(balance).toFixed(2)}
+                                    </span>
+                                  )}
+                                </div>
+                              </HoverCardTrigger>
+                              <HoverCardContent className="w-64" data-testid={`membership-hover-${worker.id}`}>
+                                <div className="space-y-2">
+                                  {buName && (
+                                    <p className="text-xs text-muted-foreground">{buName}</p>
+                                  )}
+                                  <p className="text-sm font-semibold text-foreground">
+                                    {authorized ? 'Withholding Authorized' : 'No Withholding Authorization'}
+                                  </p>
+                                  <div className="text-sm text-muted-foreground">
+                                    {balance !== undefined && (
+                                      <p>Balance: ${parseFloat(balance).toFixed(2)}</p>
+                                    )}
+                                    {dues?.amount !== undefined && dues?.date ? (
+                                      <>
+                                        <p>Last payment: ${parseFloat(dues.amount).toFixed(2)}</p>
+                                        <p>Date: {dues.date}</p>
+                                      </>
+                                    ) : (
+                                      <p className="italic">No payments on record</p>
+                                    )}
+                                  </div>
+                                  <Link href={`/workers/${worker.id}/union/cardchecks`}>
+                                    <span className="text-sm text-primary hover:underline cursor-pointer" data-testid={`link-cardchecks-${worker.id}`}>
+                                      View Card Checks →
+                                    </span>
+                                  </Link>
+                                </div>
+                              </HoverCardContent>
+                            </HoverCard>
+                          );
+                        }
+
                         if (!statusName && !buName) {
                           return <span className="text-sm text-muted-foreground italic" data-testid={`membership-${worker.id}`}>-</span>;
                         }
@@ -1295,7 +1378,7 @@ export function WorkersTable({
                                   <p className="text-xs text-muted-foreground">{buName}</p>
                                 )}
                                 <p className="text-sm font-semibold text-foreground">{statusName}</p>
-                                {dues ? (
+                                {dues?.amount !== undefined && dues?.date ? (
                                   <div className="text-sm text-muted-foreground">
                                     <p>Last dues: ${parseFloat(dues.amount).toFixed(2)}</p>
                                     <p>Date: {dues.date}</p>

@@ -13,7 +13,8 @@ export type PluginKind =
   | "client-injection"
   | "payment-gateway"
   | "event-notifier"
-  | "denorm";
+  | "denorm"
+  | "worker-list";
 
 /**
  * Kinds whose `/api/plugins/:kind/manifest` returns a flat array of
@@ -172,6 +173,7 @@ export interface PluginSearchParamsByKind {
   "payment-gateway": BasePluginSearchParams;
   "event-notifier": BasePluginSearchParams;
   denorm: BasePluginSearchParams;
+  "worker-list": BasePluginSearchParams;
 }
 
 /**
