@@ -432,7 +432,7 @@ export abstract class FeedWizard extends BaseWizard {
    * Handles: string dates (M/D/YYYY, MM/DD/YYYY, YYYY-MM-DD, etc.), 
    * Excel serial numbers (days since 1900-01-01), and Date objects
    */
-  private parseDate(dateValue: unknown): string | null {
+  protected parseDate(dateValue: unknown): string | null {
     if (dateValue === null || dateValue === undefined) {
       return null;
     }

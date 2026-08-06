@@ -53,7 +53,13 @@ export interface WorkerHoursStorage {
   createWorkerHours(data: { workerId: string; month: number; year: number; day: number; employerId: string; employmentStatusId: string; hours: number | null; home?: boolean; jobTitle?: string | null }): Promise<WorkerHoursResult>;
   updateWorkerHours(id: string, data: { year?: number; month?: number; day?: number; employerId?: string; employmentStatusId?: string; hours?: number | null; home?: boolean; jobTitle?: string | null }): Promise<WorkerHoursResult | undefined>;
   deleteWorkerHours(id: string): Promise<WorkerHoursDeleteResult>;
-  upsertWorkerHours(data: { workerId: string; month: number; year: number; employerId: string; employmentStatusId: string; hours: number | null; home?: boolean; jobTitle?: string | null }): Promise<WorkerHoursResult>;
+  /**
+   * Upsert one hours row keyed by (worker, employer, year, month, day).
+   * `day` defaults to 1 — the historical single-row-per-month behavior.
+   * Callers that need MULTIPLE rows in the same month (e.g. the BAO FMLA
+   * split writing an Active row and an FMLA row) pass distinct days.
+   */
+  upsertWorkerHours(data: { workerId: string; month: number; year: number; day?: number; employerId: string; employmentStatusId: string; hours: number | null; home?: boolean; jobTitle?: string | null }): Promise<WorkerHoursResult>;
   getDistinctWorkerIdsByStatusAndMonths(
     statusIds: string[],
     months: Array<{ year: number; month: number }>,
@@ -633,7 +639,7 @@ export function createWorkerHoursStorage(
       return { success: result.length > 0, notifications };
     },
 
-    async upsertWorkerHours(data: { workerId: string; month: number; year: number; employerId: string; employmentStatusId: string; hours: number | null; home?: boolean; jobTitle?: string | null }): Promise<WorkerHoursResult> {
+    async upsertWorkerHours(data: { workerId: string; month: number; year: number; day?: number; employerId: string; employmentStatusId: string; hours: number | null; home?: boolean; jobTitle?: string | null }): Promise<WorkerHoursResult> {
       const client = getClient();
       const preHomeEmployerId = await deriveHomeEmployerId(data.workerId);
       const setFields: Record<string, unknown> = {
@@ -647,7 +653,7 @@ export function createWorkerHoursStorage(
         .insert(workerHours)
         .values({
           ...data,
-          day: 1,
+          day: data.day ?? 1,
         })
         .onConflictDoUpdate({
           target: [workerHours.workerId, workerHours.employerId, workerHours.year, workerHours.month, workerHours.day],
@@ -896,7 +902,7 @@ export const workerHoursLoggingConfig: StorageLoggingConfig<WorkerHoursStorage> 
               eq(workerHours.employerId, args[0].employerId),
               eq(workerHours.year, args[0].year),
               eq(workerHours.month, args[0].month),
-              eq(workerHours.day, 1)
+              eq(workerHours.day, args[0].day ?? 1)
             )
           );
         

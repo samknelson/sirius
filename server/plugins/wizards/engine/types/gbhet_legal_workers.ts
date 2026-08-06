@@ -325,12 +325,12 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
   /**
    * Get employment status options from the database
    */
-  private async getEmploymentStatusOptions(): Promise<Array<{ id: string; name: string; code: string; employed: boolean }>> {
+  protected async getEmploymentStatusOptions(): Promise<Array<{ id: string; name: string; code: string; employed: boolean }>> {
     const statuses = await unifiedOptionsStorage.list("employment-status");
     return statuses.map(s => ({ id: s.id, name: s.name, code: s.code, employed: s.employed }));
   }
 
-  private async getEmployerStatusMappings(): Promise<Array<{ sourceStatus: string; targetStatusId: string }>> {
+  protected async getEmployerStatusMappings(): Promise<Array<{ sourceStatus: string; targetStatusId: string }>> {
     const ctx = runContextStorage.getStore();
     if (!ctx) return [];
     if (ctx.mappings) return ctx.mappings;
@@ -637,6 +637,57 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
   }
 
   /**
+   * Run `fn` inside a fresh employment-status RunContext for `employerId` so
+   * employer-scoped status mappings resolve outside the validate/process
+   * wrappers (e.g. during a read-only preview computation).
+   */
+  protected async runWithEmployerStatusContext<T>(employerId: string, fn: () => Promise<T>): Promise<T> {
+    const ctx: RunContext = { employerId, mappings: null, unmappedValues: new Set(), unmappedOnlyRows: new Set(), ssnWarnings: [] };
+    return runContextStorage.run(ctx, fn);
+  }
+
+  /**
+   * Resolve an employment-status value (direct option ID, normalized name or
+   * code, or an employer-scoped source-status mapping) to its option row.
+   * Returns undefined when nothing matches. Shared by processing and any
+   * subclass that needs the resolved option (e.g. the BAO FMLA split /
+   * preview).
+   */
+  protected async resolveEmploymentStatusOption(
+    employmentStatusValue: unknown,
+  ): Promise<{ id: string; name: string; code: string; employed: boolean } | undefined> {
+    const employmentStatusOptions = await this.getEmploymentStatusOptions();
+
+    // First, check if the value is a direct ID match
+    let matchingOption = employmentStatusOptions.find(option => option.id === employmentStatusValue);
+
+    // If not a direct ID, try normalized name/code matching
+    if (!matchingOption) {
+      const normalizedInput = normalizeForComparison(String(employmentStatusValue));
+      matchingOption = employmentStatusOptions.find(option => {
+        if (normalizeForComparison(option.name) === normalizedInput) {
+          return true;
+        }
+        if (option.code && normalizeForComparison(option.code) === normalizedInput) {
+          return true;
+        }
+        return false;
+      });
+    }
+
+    if (!matchingOption) {
+      const mappings = await this.getEmployerStatusMappings();
+      const normalizedInput2 = normalizeForComparison(String(employmentStatusValue));
+      const mappedEntry = mappings.find(m => normalizeForComparison(m.sourceStatus) === normalizedInput2);
+      if (mappedEntry) {
+        matchingOption = employmentStatusOptions.find(o => o.id === mappedEntry.targetStatusId);
+      }
+    }
+
+    return matchingOption;
+  }
+
+  /**
    * Process worker hours for a row during feed processing
    * This method is called by the processFeedData method when processing each worker
    */
@@ -686,34 +737,7 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
     }
 
     // Look up employment status ID by direct ID, name, or code
-    const employmentStatusOptions = await this.getEmploymentStatusOptions();
-    
-    // First, check if the value is a direct ID match
-    let matchingOption = employmentStatusOptions.find(option => option.id === employmentStatusValue);
-    
-    // If not a direct ID, try normalized name/code matching
-    if (!matchingOption) {
-      const normalizedInput = normalizeForComparison(String(employmentStatusValue));
-      matchingOption = employmentStatusOptions.find(option => {
-        if (normalizeForComparison(option.name) === normalizedInput) {
-          return true;
-        }
-        if (option.code && normalizeForComparison(option.code) === normalizedInput) {
-          return true;
-        }
-        return false;
-      });
-    }
-
-    if (!matchingOption) {
-      const mappings = await this.getEmployerStatusMappings();
-      const normalizedInput2 = normalizeForComparison(String(employmentStatusValue));
-      const mappedEntry = mappings.find(m => normalizeForComparison(m.sourceStatus) === normalizedInput2);
-      if (mappedEntry) {
-        matchingOption = employmentStatusOptions.find(o => o.id === mappedEntry.targetStatusId);
-      }
-    }
-
+    const matchingOption = await this.resolveEmploymentStatusOption(employmentStatusValue);
     if (!matchingOption) {
       throw new Error(`Employment status "${employmentStatusValue}" not found; verify name, code, or ID`);
     }

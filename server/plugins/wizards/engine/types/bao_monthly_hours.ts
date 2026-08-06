@@ -1,12 +1,96 @@
-import { FeedConfig, FeedData, createMonthlyDateRange, getCurrentMonth, FeedField } from '../feed.js';
+import { FeedConfig, FeedData, createMonthlyDateRange, getCurrentMonth, FeedField, ValidationError } from '../feed.js';
 import { WizardStep } from '../base.js';
 import { GbhetLegalWorkersWizard } from './gbhet_legal_workers.js';
 import { storage } from '../../../../storage/index.js';
 import { WITHHOLDING_CONSUMED } from '../../../../storage/sitespecific/bao/withholding-allocations.js';
 import { logger } from '../../../../logger.js';
+import { resolveBaoThreshold, lastDayOfMonthYmd } from '../../../trust/eligibility/plugins/bao-shared.js';
+import { isStatusBilled } from '../../../ledger/charge/plugins/sitespecific-bao-hourly.js';
 
 function pad2(n: number): string {
   return String(n).padStart(2, '0');
+}
+
+/** True when a YYYY-MM-DD string names a real calendar date (no rollover). */
+export function isRealCalendarYmd(ymd: string): boolean {
+  const m = ymd.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return false;
+  const year = parseInt(m[1], 10);
+  const month = parseInt(m[2], 10);
+  const day = parseInt(m[3], 10);
+  if (month < 1 || month > 12 || day < 1) return false;
+  return day <= new Date(year, month, 0).getDate();
+}
+
+function normalizeStatus(value: string): string {
+  return String(value).toLowerCase().replace(/\s+/g, '');
+}
+
+/** Day-of-month used for the (earlier) Active row when an FMLA month is split. */
+export const FMLA_SPLIT_ACTIVE_DAY = 1;
+/** Day-of-month used for the FMLA top-up row (later, so the timeline reads "went on FMLA"). */
+export const FMLA_SPLIT_FMLA_DAY = 15;
+
+export interface FmlaSplit {
+  /** True when the month should be recorded as two rows (Active + FMLA top-up). */
+  split: boolean;
+  /** Hours recorded as Active (the reported amount when splitting). */
+  activeHours: number;
+  /** FMLA top-up hours (threshold − reported); 0 when not splitting. */
+  fmlaHours: number;
+}
+
+/**
+ * Pure FMLA split math: an FMLA-status month with reported hours > 0 is
+ * split into Active (as reported) + FMLA (top-up to the worker's threshold)
+ * ONLY when the threshold resolved and the reported hours fall short of it.
+ * At/over threshold, unresolvable threshold, or non-positive hours → record
+ * as reported (no split, never a negative top-up).
+ */
+export function computeFmlaSplit(reportedHours: number, threshold: number, thresholdResolved: boolean): FmlaSplit {
+  if (!thresholdResolved || !isFinite(reportedHours) || reportedHours <= 0 || !isFinite(threshold) || threshold <= reportedHours) {
+    return { split: false, activeHours: 0, fmlaHours: 0 };
+  }
+  return { split: true, activeHours: reportedHours, fmlaHours: threshold - reportedHours };
+}
+
+/** Parse a withholding value the way processing does ($ and commas stripped). */
+export function parseWithholdingAmount(raw: unknown): number {
+  return typeof raw === 'number' ? raw : parseFloat(String(raw).replace(/[$,]/g, ''));
+}
+
+export interface PreviewWorkerRow {
+  rowIndex: number;
+  ssnMasked: string;
+  name: string | null;
+  workerId: string | null;
+  statusName: string;
+  reportedHours: number;
+  activeHours: number;
+  fmlaHours: number;
+  totalHours: number;
+  fmlaSplit: boolean;
+  threshold: number | null;
+  billedAmount: string;
+  withholdingAmount: string | null;
+  notes: string[];
+}
+
+export interface PreviewResults {
+  year: number;
+  month: number;
+  withholdingMapped: boolean;
+  workers: PreviewWorkerRow[];
+  totals: {
+    workers: number;
+    reportedHours: number;
+    activeHours: number;
+    fmlaHours: number;
+    totalHours: number;
+    billedAmount: string;
+    withholdingTotal: string | null;
+  };
+  completedAt: string;
 }
 
 /**
@@ -84,9 +168,463 @@ export class BaoMonthlyHoursWizard extends GbhetLegalWorkersWizard {
       { id: 'map', name: 'Map', description: 'Map fields to schema' },
       { id: 'validate', name: 'Validate', description: 'Validate data integrity' },
       { id: 'verify', name: 'Verify New Workers', description: 'Confirm or reject creation of unknown-SSN workers' },
+      { id: 'preview', name: 'Preview', description: 'Preview per-worker hours, billing, and withholding before processing' },
       { id: 'process', name: 'Process', description: 'Process and transform data' },
       { id: 'review', name: 'Review', description: 'Review results' },
     ];
+  }
+
+  /**
+   * Stricter validation: fully parse date and amount fields that would
+   * otherwise only fail during the Process step, so a run that passes
+   * Validate does not die mid-processing on data-format issues.
+   */
+  async validateRow(row: Record<string, any>, rowIndex: number, mode: 'create' | 'update'): Promise<ValidationError[]> {
+    const errors = await super.validateRow(row, rowIndex, mode);
+
+    // Date of birth must actually PARSE (the parent only checks presence).
+    const rawDob = row.dateOfBirth;
+    if (rawDob !== undefined && rawDob !== null && String(rawDob).trim() !== '') {
+      try {
+        const ymd = this.parseDate(rawDob);
+        // parseDate is lenient (JS Date rolls 2/30 → 3/2 and passes
+        // YYYY-MM-DD through untouched); require a REAL calendar date whose
+        // components round-trip exactly so a rolled-over date can't be
+        // silently persisted as a different valid date.
+        if (ymd !== null) {
+          if (!isRealCalendarYmd(ymd)) {
+            throw new Error(`Invalid calendar date: ${rawDob}`);
+          }
+          // Extract the ORIGINAL components for every textual format the
+          // parser accepts (M/D/YYYY, M-D-YYYY, YYYY/MM/DD, YYYY-MM-DD) and
+          // require them to match the normalized output exactly.
+          const s = String(rawDob).trim();
+          let y: number | null = null, mo = 0, d = 0;
+          let m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+          if (m) { y = parseInt(m[3], 10); mo = parseInt(m[1], 10); d = parseInt(m[2], 10); }
+          else if ((m = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/))) {
+            y = parseInt(m[1], 10); mo = parseInt(m[2], 10); d = parseInt(m[3], 10);
+          }
+          if (y !== null && `${y}-${pad2(mo)}-${pad2(d)}` !== ymd) {
+            throw new Error(`Invalid calendar date: ${rawDob}`);
+          }
+        }
+      } catch (err) {
+        errors.push({
+          rowIndex,
+          field: 'dateOfBirth',
+          message: err instanceof Error ? err.message : 'Invalid date format',
+          value: rawDob,
+        });
+      }
+    }
+
+    // Withholding amount must parse the same way processing parses it
+    // ($ and commas allowed) and cannot be negative. Remove any parent
+    // "must be a number" error for values processing would accept.
+    const rawWh = row.withholdingAmount;
+    if (rawWh !== undefined && rawWh !== null && String(rawWh).trim() !== '') {
+      const amount = parseWithholdingAmount(rawWh);
+      for (let i = errors.length - 1; i >= 0; i--) {
+        if (errors[i].field === 'withholdingAmount' && isFinite(amount) && amount >= 0) {
+          errors.splice(i, 1);
+        }
+      }
+      if (!isFinite(amount)) {
+        errors.push({
+          rowIndex,
+          field: 'withholdingAmount',
+          message: `Invalid withholding amount: ${rawWh}`,
+          value: rawWh,
+        });
+      } else if (amount < 0) {
+        errors.push({
+          rowIndex,
+          field: 'withholdingAmount',
+          message: `Withholding amount cannot be negative: ${rawWh}`,
+          value: rawWh,
+        });
+      }
+    }
+
+    // Hours must be a finite number (blank was already coerced to 0 by the
+    // parent) and cannot be negative.
+    const rawHours = row.numberOfHours;
+    if (rawHours !== undefined && rawHours !== null && String(rawHours).trim() !== '') {
+      const hours = typeof rawHours === 'number' ? rawHours : parseFloat(String(rawHours));
+      if (isFinite(hours) && hours < 0) {
+        errors.push({
+          rowIndex,
+          field: 'numberOfHours',
+          message: `Number of Hours cannot be negative: ${rawHours}`,
+          value: rawHours,
+        });
+      }
+    }
+
+    return errors;
+  }
+
+  /** True when this employment-status option is the FMLA status. */
+  private isFmlaOption(option: { name: string; code: string }): boolean {
+    return normalizeStatus(option.name) === 'fmla' || normalizeStatus(option.code || '') === 'fmla';
+  }
+
+  /** Find the "Active" employment-status option (by name, falling back to code `default`). */
+  private async findActiveOption(): Promise<{ id: string; name: string; code: string; employed: boolean } | undefined> {
+    const options = await this.getEmploymentStatusOptions();
+    return (
+      options.find((o) => normalizeStatus(o.name) === 'active') ||
+      options.find((o) => normalizeStatus(o.code || '') === 'active') ||
+      options.find((o) => normalizeStatus(o.code || '') === 'default')
+    );
+  }
+
+  /**
+   * Resolve the FMLA split for a worker-month: threshold as-of the last day
+   * of the reporting month via the shared BAO threshold resolution
+   * (employer → industry → member status). Unresolvable threshold → no split.
+   */
+  private async resolveFmlaSplit(
+    workerId: string,
+    employerId: string,
+    year: number,
+    month: number,
+    reportedHours: number,
+  ): Promise<FmlaSplit & { threshold: number | null }> {
+    const asOfYmd = lastDayOfMonthYmd(year, month);
+    const { threshold, resolved } = await resolveBaoThreshold(workerId, employerId, asOfYmd, 0);
+    const split = computeFmlaSplit(reportedHours, threshold, resolved);
+    return { ...split, threshold: resolved ? threshold : null };
+  }
+
+  /**
+   * Reconcile the full worker/employer/month row set: delete every existing
+   * hours row whose day is not in `keepDays` (stale FMLA top-ups, legacy
+   * multi-day/manual rows) BEFORE the upserts write the intended rows, so the
+   * month never carries duplicate hours. `deleteWorkerHours` executes the
+   * charge plugins with hours:0 for each removed row, reversing its charges.
+   */
+  private async reconcileMonthRows(
+    workerId: string,
+    employerId: string,
+    year: number,
+    month: number,
+    keepDays: number[],
+  ): Promise<void> {
+    const keep = new Set(keepDays);
+    const rows = await storage.workerHours.getWorkerHours(workerId);
+    const stale = rows.filter(
+      (r: any) => r.employerId === employerId && r.year === year && r.month === month && !keep.has(r.day ?? 1),
+    );
+    for (const r of stale) {
+      await storage.workerHours.deleteWorkerHours(r.id);
+    }
+  }
+
+  /**
+   * FMLA split: a row whose status resolves to FMLA with reported hours > 0
+   * becomes TWO hours rows — the reported amount as Active (dated day 1) plus
+   * an FMLA row topping up to the worker's threshold (dated day 15) — so
+   * billing can distinguish Active vs FMLA hours per fund. When the reported
+   * hours already meet/exceed the threshold, the threshold can't be resolved,
+   * or no Active status option exists, the month is recorded as reported
+   * (single row, parent behavior) and any stale top-up row is removed.
+   */
+  protected async processWorkerHours(workerId: string, row: Record<string, any>, wizard: any): Promise<void> {
+    const employerId = wizard.entityId;
+    const wizardData = (wizard.data as any) || {};
+    const launchArguments = wizardData.launchArguments || {};
+    const year = typeof launchArguments.year === 'number' ? launchArguments.year : parseInt(String(launchArguments.year), 10);
+    const month = typeof launchArguments.month === 'number' ? launchArguments.month : parseInt(String(launchArguments.month), 10);
+
+    const rawHours = row.numberOfHours;
+    const isBlankHours = rawHours === undefined || rawHours === null || rawHours === '';
+    const hours = isBlankHours ? 0 : typeof rawHours === 'number' ? rawHours : parseFloat(String(rawHours));
+
+    // Decide whether the FMLA split applies; anything unusual falls back to
+    // the parent's single-row behavior (which re-validates everything).
+    let splitPlan:
+      | { activeOption: { id: string }; fmlaOption: { id: string; name: string; code: string; employed: boolean }; activeHours: number; fmlaHours: number }
+      | null = null;
+    if (
+      employerId &&
+      isFinite(year) &&
+      isFinite(month) &&
+      isFinite(hours) &&
+      hours > 0 &&
+      row.employmentStatus
+    ) {
+      const option = await this.resolveEmploymentStatusOption(row.employmentStatus);
+      if (option && this.isFmlaOption(option)) {
+        const split = await this.resolveFmlaSplit(workerId, employerId, year, month, hours);
+        if (split.split) {
+          const activeOption = await this.findActiveOption();
+          if (activeOption) {
+            splitPlan = { activeOption, fmlaOption: option, activeHours: split.activeHours, fmlaHours: split.fmlaHours };
+          } else {
+            logger.warn('BAO FMLA split skipped: no Active employment-status option found', {
+              service: 'wizard-bao-monthly-hours',
+              wizardId: wizard.id,
+              workerId,
+            });
+          }
+        }
+      }
+    }
+
+    if (!splitPlan) {
+      // Record as reported (single day-1 row) and remove every other row in
+      // the month (e.g. a stale FMLA top-up from a prior split upload).
+      if (employerId && isFinite(year) && isFinite(month)) {
+        await this.reconcileMonthRows(workerId, employerId, year, month, [FMLA_SPLIT_ACTIVE_DAY]);
+      }
+      await super.processWorkerHours(workerId, row, wizard);
+      return;
+    }
+
+    const jobTitle = row.jobTitle?.toString().trim() || null;
+
+    // Only the day-1 Active and day-15 FMLA rows may survive for the month.
+    await this.reconcileMonthRows(workerId, employerId, year, month, [FMLA_SPLIT_ACTIVE_DAY, FMLA_SPLIT_FMLA_DAY]);
+
+    // Active row (reported hours), dated earlier in the month.
+    await storage.workerHours.upsertWorkerHours({
+      workerId,
+      employerId,
+      employmentStatusId: splitPlan.activeOption.id,
+      year,
+      month,
+      day: FMLA_SPLIT_ACTIVE_DAY,
+      hours: splitPlan.activeHours,
+      jobTitle,
+    });
+
+    // FMLA top-up row, dated later so the timeline shows the FMLA transition.
+    await storage.workerHours.upsertWorkerHours({
+      workerId,
+      employerId,
+      employmentStatusId: splitPlan.fmlaOption.id,
+      year,
+      month,
+      day: FMLA_SPLIT_FMLA_DAY,
+      hours: splitPlan.fmlaHours,
+      jobTitle,
+    });
+
+    logger.info('BAO FMLA split recorded', {
+      service: 'wizard-bao-monthly-hours',
+      wizardId: wizard.id,
+      workerId,
+      year,
+      month,
+      activeHours: splitPlan.activeHours,
+      fmlaHours: splitPlan.fmlaHours,
+    });
+
+    // Work status syncs from the REPORTED (FMLA) status.
+    await this.syncWorkStatusFromEmployment(workerId, splitPlan.fmlaOption, year, month);
+  }
+
+  /**
+   * Read-only Preview computation: per-worker hour totals with the
+   * Active/FMLA breakout after the FMLA bump, the amount that WOULD be
+   * billed (effective employer rates × billed-status rules of the enabled
+   * `bao-hourly` charge configs), and the expected employee withholding when
+   * that column is mapped. Persists nothing.
+   */
+  async computePreview(wizardId: string): Promise<PreviewResults> {
+    const { wizard, wizardData, mappedRows } = await this.loadMappedRows(wizardId);
+    const employerId = wizard.entityId;
+    if (!employerId) {
+      throw new Error('Wizard is not linked to an employer');
+    }
+    const launchArguments = (wizardData || {}).launchArguments || {};
+    const year = typeof launchArguments.year === 'number' ? launchArguments.year : parseInt(String(launchArguments.year), 10);
+    const month = typeof launchArguments.month === 'number' ? launchArguments.month : parseInt(String(launchArguments.month), 10);
+    if (!isFinite(year) || !isFinite(month) || month < 1 || month > 12) {
+      throw new Error('Year and month are required in wizard launch arguments');
+    }
+
+    const columnMapping = (wizardData?.columnMapping || {}) as Record<string, string>;
+    const withholdingMapped =
+      Object.values(columnMapping).includes('withholdingAmount') ||
+      Object.keys(columnMapping).includes('withholdingAmount');
+
+    // Billing configs: enabled bao-hourly configs with an account; employer
+    // configs override globals targeting the same account (matches the charge
+    // executor's merge).
+    type ChargeSub = { account?: string | null; employerId?: string | null } | null;
+    const allConfigs = await storage.pluginConfigs.search('charge', { pluginId: 'bao-hourly', enabled: true });
+    const withAccount = allConfigs.filter((c) => (c.subsidiary as ChargeSub)?.account);
+    const employerConfigs = withAccount.filter((c) => (c.subsidiary as ChargeSub)?.employerId === employerId);
+    const globalConfigs = withAccount.filter((c) => !(c.subsidiary as ChargeSub)?.employerId);
+    const overriddenAccounts = new Set(employerConfigs.map((c) => (c.subsidiary as ChargeSub)!.account));
+    const billingConfigs = [
+      ...employerConfigs,
+      ...globalConfigs.filter((c) => !overriddenAccounts.has((c.subsidiary as ChargeSub)!.account)),
+    ].map((c) => ({
+      account: (c.subsidiary as ChargeSub)!.account as string,
+      settings: ((c.config as any).data ?? {}) as { billedEmploymentStatusIds?: string[]; nonBilledEmploymentStatusIds?: string[] },
+    }));
+
+    // Effective-rate cache keyed by account + as-of date.
+    const rateCache = new Map<string, number>();
+    const getRate = async (account: string, asOfYmd: string): Promise<number> => {
+      const key = `${account}|${asOfYmd}`;
+      if (rateCache.has(key)) return rateCache.get(key)!;
+      const rateRow = await storage.baoEmployerRates.getEffectiveRate(employerId, account, asOfYmd);
+      const rate = rateRow ? parseFloat(rateRow.rate) : 0;
+      const value = Number.isFinite(rate) ? rate : 0;
+      rateCache.set(key, value);
+      return value;
+    };
+
+    const billFor = async (statusId: string, hours: number, day: number): Promise<number> => {
+      if (!hours) return 0;
+      const asOfYmd = `${year}-${pad2(month)}-${pad2(day)}`;
+      let total = 0;
+      for (const cfg of billingConfigs) {
+        if (!isStatusBilled(cfg.settings, statusId)) continue;
+        total += hours * (await getRate(cfg.account, asOfYmd));
+      }
+      return total;
+    };
+
+    return this.runWithEmployerStatusContext(employerId, async () => {
+      const bySsn = new Map<string, PreviewWorkerRow>();
+
+      for (let i = 0; i < mappedRows.length; i++) {
+        const row = mappedRows[i];
+        const rawSsn = row.ssn?.toString().trim();
+        const digits = (rawSsn || '').replace(/\D/g, '');
+        const padded = digits.length > 0 && digits.length <= 9 ? digits.padStart(9, '0') : null;
+        const key = padded ?? `row-${i}`;
+
+        const notes: string[] = [];
+        if (bySsn.has(key)) {
+          notes.push('Duplicate SSN in file — later row replaces earlier one (matches processing behavior)');
+        }
+
+        const name = [row.firstName, row.lastName].map((v) => v?.toString().trim()).filter(Boolean).join(' ') || null;
+        const ssnMasked = padded ? `***-**-${padded.slice(-4)}` : '(invalid SSN)';
+
+        const rawHours = row.numberOfHours;
+        const isBlankHours = rawHours === undefined || rawHours === null || rawHours === '';
+        const reportedHours = isBlankHours ? 0 : typeof rawHours === 'number' ? rawHours : parseFloat(String(rawHours));
+        const hours = isFinite(reportedHours) ? reportedHours : 0;
+
+        const option = row.employmentStatus ? await this.resolveEmploymentStatusOption(row.employmentStatus) : undefined;
+        const statusName = option?.name ?? String(row.employmentStatus ?? '');
+        if (!option) {
+          notes.push(`Employment status "${row.employmentStatus}" could not be resolved`);
+        }
+
+        const worker = padded ? await storage.workers.getWorkerBySSN(padded) : undefined;
+        const workerId = worker?.id ?? null;
+        if (!worker) {
+          notes.push('New worker (will be created during processing)');
+        }
+
+        // FMLA split (mirrors processing exactly).
+        let activeHours = 0;
+        let fmlaHours = 0;
+        let fmlaSplit = false;
+        let threshold: number | null = null;
+        let billedAmount = 0;
+
+        if (option && this.isFmlaOption(option) && hours > 0) {
+          if (worker) {
+            const split = await this.resolveFmlaSplit(worker.id, employerId, year, month, hours);
+            threshold = split.threshold;
+            if (split.split && (await this.findActiveOption())) {
+              fmlaSplit = true;
+              activeHours = split.activeHours;
+              fmlaHours = split.fmlaHours;
+            }
+          }
+          if (!fmlaSplit) {
+            if (threshold === null) {
+              // A brand-new worker is created by processing with NO
+              // member-status history, so resolveBaoThreshold cannot resolve
+              // and processing deterministically records hours as reported —
+              // this preview matches that exactly.
+              notes.push(
+                worker
+                  ? 'FMLA threshold could not be resolved — hours will be recorded as reported'
+                  : 'New worker has no member-status history, so no FMLA threshold can resolve — hours will be recorded as reported (no split)',
+              );
+            } else {
+              notes.push('Reported FMLA hours meet or exceed the threshold — recorded as reported');
+            }
+          }
+        }
+
+        if (fmlaSplit && option) {
+          const activeOption = (await this.findActiveOption())!;
+          billedAmount =
+            (await billFor(activeOption.id, activeHours, FMLA_SPLIT_ACTIVE_DAY)) +
+            (await billFor(option.id, fmlaHours, FMLA_SPLIT_FMLA_DAY));
+        } else if (option) {
+          billedAmount = await billFor(option.id, hours, 1);
+        }
+
+        // Withholding (only when the column is mapped and the value parses).
+        let withholdingAmount: string | null = null;
+        if (withholdingMapped) {
+          const rawWh = row.withholdingAmount;
+          if (rawWh !== undefined && rawWh !== null && String(rawWh).trim() !== '') {
+            const amount = parseWithholdingAmount(rawWh);
+            if (isFinite(amount) && amount >= 0) {
+              withholdingAmount = amount.toFixed(2);
+            } else {
+              notes.push(`Invalid withholding amount: ${rawWh}`);
+            }
+          }
+        }
+
+        const totalHours = fmlaSplit ? activeHours + fmlaHours : hours;
+        bySsn.set(key, {
+          rowIndex: i,
+          ssnMasked,
+          name,
+          workerId,
+          statusName,
+          reportedHours: hours,
+          activeHours: fmlaSplit ? activeHours : hours,
+          fmlaHours,
+          totalHours,
+          fmlaSplit,
+          threshold,
+          billedAmount: billedAmount.toFixed(2),
+          withholdingAmount,
+          notes,
+        });
+      }
+
+      const workers = Array.from(bySsn.values()).sort((a, b) => a.rowIndex - b.rowIndex);
+      const sum = (fn: (w: PreviewWorkerRow) => number) => workers.reduce((acc, w) => acc + fn(w), 0);
+      const withholdingTotal = withholdingMapped
+        ? sum((w) => (w.withholdingAmount ? parseFloat(w.withholdingAmount) : 0)).toFixed(2)
+        : null;
+
+      return {
+        year,
+        month,
+        withholdingMapped,
+        workers,
+        totals: {
+          workers: workers.length,
+          reportedHours: sum((w) => w.reportedHours),
+          activeHours: sum((w) => w.activeHours),
+          fmlaHours: sum((w) => w.fmlaHours),
+          totalHours: sum((w) => w.totalHours),
+          billedAmount: sum((w) => parseFloat(w.billedAmount)).toFixed(2),
+          withholdingTotal,
+        },
+        completedAt: new Date().toISOString(),
+      };
+    });
   }
 
   async generateFeed(config: FeedConfig, data: any): Promise<FeedData> {

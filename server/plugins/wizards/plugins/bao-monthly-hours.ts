@@ -217,19 +217,76 @@ function buildVerifyStep(): WizardStepHandler {
 }
 
 /**
+ * Preview step: read-only computation of per-worker hour totals (with the
+ * Active/FMLA breakout), the amount that would be billed, and expected
+ * employee withholding. Nothing is persisted to worker hours, ledger, or
+ * withholding allocations — the results live only in wizard data.
+ */
+function buildPreviewStep(): WizardStepHandler {
+  return {
+    id: "preview",
+    name: "Preview",
+    description:
+      "Preview per-worker hours, billing impact, and expected withholding before processing",
+    kind: "run",
+    component: "BaoPreview",
+    getState: (wizard) => {
+      const data = (wizard.data as any) || {};
+      const vr = data.validationResults;
+      const validated =
+        vr &&
+        (vr.invalidRows ?? 0) === 0 &&
+        !(vr.unmappedStatuses && vr.unmappedStatuses.length > 0);
+      if (!validated) {
+        return wizard.currentStep === "preview" ? "in_progress" : "pending";
+      }
+      if (!data.previewResults) {
+        return wizard.currentStep === "preview" ? "in_progress" : "pending";
+      }
+      return "completed";
+    },
+    run: async (ctx: WizardStepContext) => {
+      const previewResults = await baoMonthlyHours.computePreview(ctx.wizardId);
+      return { data: { previewResults } };
+    },
+    getData: async (ctx: WizardStepContext) => {
+      const data = (ctx.wizard.data as any) || {};
+      return { previewResults: data.previewResults ?? null };
+    },
+  };
+}
+
+/**
  * Wrap the shared feed prepareUpdate to ALSO clear verify-step data whenever
  * the upstream input changes (new upload, changed mapping/headers/mode) —
  * i.e. exactly when validationResults get cleared.
  */
-function prepareBaoDataUpdate(ctx: WizardUpdateContext): WizardUpdateResult {
+export function prepareBaoDataUpdate(ctx: WizardUpdateContext): WizardUpdateResult {
   const result = prepareFeedDataUpdate(ctx);
   if ("error" in result && result.error) return result;
   const mergedData = (result as { data?: any }).data;
   if (mergedData && mergedData.validationResults === undefined) {
     delete mergedData.verifyNewWorkers;
     delete mergedData.newWorkerDecisions;
+    delete mergedData.previewResults;
     if (mergedData.progress) {
       delete mergedData.progress.verify;
+      delete mergedData.progress.preview;
+    }
+  }
+  // A validation RERUN (incoming update writes new validationResults) also
+  // stales any previously computed preview: the projection must be recomputed
+  // from the current validated data before Process can trust it.
+  const incomingData = (ctx.incoming ?? {}) as any;
+  const existingData = ((ctx.existing?.data ?? {})) as any;
+  if (
+    mergedData &&
+    incomingData.validationResults !== undefined &&
+    incomingData.validationResults !== existingData.validationResults
+  ) {
+    delete mergedData.previewResults;
+    if (mergedData.progress) {
+      delete mergedData.progress.preview;
     }
   }
   return result;
@@ -273,6 +330,27 @@ function buildBaoReviewStep(): WizardStepHandler {
   return base;
 }
 
+/**
+ * Process step gated on a FRESH preview: previewResults are cleared whenever
+ * the upload, mapping, or validation changes, so requiring their presence
+ * here guarantees the operator saw a projection of the data about to be
+ * written.
+ */
+function buildBaoProcessStep(): WizardStepHandler {
+  const base = buildProcessStep(baoMonthlyHours);
+  const baseRun = base.run!;
+  base.run = async (ctx: WizardStepContext) => {
+    const data = (ctx.wizard.data as any) || {};
+    if (!data.previewResults) {
+      throw new Error(
+        "Preview is missing or out of date — run the Preview step before processing",
+      );
+    }
+    return baseRun(ctx);
+  };
+  return base;
+}
+
 function buildBaoSteps(): WizardStepHandler[] {
   return [
     buildUploadStep(baoMonthlyHours, "Upload the monthly hours file"),
@@ -283,7 +361,8 @@ function buildBaoSteps(): WizardStepHandler[] {
     ),
     buildGbhetValidateStep(baoMonthlyHours),
     buildVerifyStep(),
-    buildProcessStep(baoMonthlyHours),
+    buildPreviewStep(),
+    buildBaoProcessStep(),
     buildBaoReviewStep(),
   ];
 }
