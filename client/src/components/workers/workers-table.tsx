@@ -429,6 +429,26 @@ export function WorkersTable({
     enabled: workerIdsList.length > 0 && cardcheckEnabled && authorizationMode,
   });
 
+  // Batch active-election + resolved-policy lookup — only needed in
+  // authorization mode. Policy is derived server-side via the
+  // policy-resolution service (the election's stored policy id is
+  // legacy/audit only).
+  const { data: electionPolicyMap = {} } = useQuery<Record<string, { hasActiveElection: boolean; policyName: string | null }>>({
+    queryKey: ["/api/workers/election-policies", workerIdsList],
+    queryFn: async () => {
+      if (workerIdsList.length === 0) return {};
+      const res = await fetch("/api/workers/election-policies", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workerIds: workerIdsList }),
+        credentials: "include",
+      });
+      if (!res.ok) return {};
+      return res.json();
+    },
+    enabled: workerIdsList.length > 0 && cardcheckEnabled && authorizationMode,
+  });
+
   // Fetch latest dues payment (and account balance) for displayed workers
   const { data: latestDuesMap = {} } = useQuery<Record<string, { amount?: string; date?: string; balance?: string }>>({
     queryKey: ["/api/workers/latest-dues", workerIdsList],
@@ -1293,6 +1313,9 @@ export function WorkersTable({
                         if (authorizationMode) {
                           const authorized = cardcheckAuthMap[worker.id] === true;
                           const balance = dues?.balance;
+                          const election = electionPolicyMap[worker.id];
+                          const hasElection = election?.hasActiveElection === true;
+                          const policyName = election?.policyName ?? null;
                           return (
                             <HoverCard>
                               <HoverCardTrigger asChild>
@@ -1300,9 +1323,18 @@ export function WorkersTable({
                                   {buName && (
                                     <span className="text-xs text-muted-foreground" data-testid={`membership-bu-${worker.id}`}>{buName}</span>
                                   )}
-                                  <span className={`text-sm font-medium ${authorized ? 'text-green-600' : 'text-muted-foreground'}`}>
-                                    {authorized ? 'Authorized' : 'Not Authorized'}
-                                  </span>
+                                  {hasElection ? (
+                                    <span className="text-sm font-medium text-foreground" data-testid={`membership-policy-${worker.id}`}>
+                                      {policyName ?? 'Active election'}
+                                    </span>
+                                  ) : (
+                                    <span className="text-sm text-muted-foreground italic" data-testid={`membership-no-election-${worker.id}`}>-</span>
+                                  )}
+                                  {authorized && (
+                                    <span className="text-sm font-medium text-green-600" data-testid={`membership-authorized-${worker.id}`}>
+                                      Authorized
+                                    </span>
+                                  )}
                                   {balance !== undefined && (
                                     <span className="text-xs text-muted-foreground" data-testid={`membership-balance-${worker.id}`}>
                                       Balance: ${parseFloat(balance).toFixed(2)}
@@ -1316,8 +1348,13 @@ export function WorkersTable({
                                     <p className="text-xs text-muted-foreground">{buName}</p>
                                   )}
                                   <p className="text-sm font-semibold text-foreground">
-                                    {authorized ? 'Withholding Authorized' : 'No Withholding Authorization'}
+                                    {hasElection
+                                      ? (policyName ? `Covered by ${policyName}` : 'Active election')
+                                      : 'No active election'}
                                   </p>
+                                  {authorized && (
+                                    <p className="text-sm font-semibold text-green-600">Withholding Authorized</p>
+                                  )}
                                   <div className="text-sm text-muted-foreground">
                                     {balance !== undefined && (
                                       <p>Balance: ${parseFloat(balance).toFixed(2)}</p>

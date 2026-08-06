@@ -24,6 +24,8 @@ import { toYmd, addDaysYmd } from '@shared/utils/date';
 export interface WorkerTrustElectionSearchParams {
   id?: string;
   workerId?: string;
+  /** Batch filter; an empty array matches nothing. */
+  workerIds?: string[];
   policyId?: string;
   enrollmentType?: EnrollmentType;
   activeOnly?: boolean;
@@ -80,6 +82,14 @@ export interface WorkerTrustElectionsStorage {
    */
   checkDualCoverage(input: DualCoverageInput): Promise<DualCoverageConflict[]>;
   searchViews(params: WorkerTrustElectionSearchParams): Promise<WorkerTrustElectionView[]>;
+  /**
+   * Batch variant of `getActiveViewByWorker`: at most one hydrated view per
+   * worker (the currently-active election with the latest start). Workers
+   * with no active election are simply absent from the result. Used by the
+   * worker-list Membership column (authorization mode) so the policy is
+   * derived the same way as everywhere else (hydrateElections).
+   */
+  getActiveViewsByWorkers(workerIds: string[]): Promise<WorkerTrustElectionView[]>;
   getViewById(id: string): Promise<WorkerTrustElectionView | undefined>;
   getActiveViewByWorker(workerId: string): Promise<WorkerTrustElectionView | undefined>;
   create(workerId: string, input: unknown): Promise<WorkerTrustElection>;
@@ -569,6 +579,10 @@ export function createWorkerTrustElectionsStorage(): WorkerTrustElectionsStorage
       const conds: SQL[] = [];
       if (params.id) conds.push(eq(workerTrustElections.id, params.id));
       if (params.workerId) conds.push(eq(workerTrustElections.workerId, params.workerId));
+      if (params.workerIds) {
+        if (params.workerIds.length === 0) return [];
+        conds.push(inArray(workerTrustElections.workerId, params.workerIds));
+      }
       if (params.policyId) conds.push(eq(workerTrustElections.policyId, params.policyId));
       if (params.enrollmentType) conds.push(eq(workerTrustElections.enrollmentType, params.enrollmentType));
       if (params.activeOnly) {
@@ -657,6 +671,18 @@ export function createWorkerTrustElectionsStorage(): WorkerTrustElectionsStorage
       if (!row) return undefined;
       const [view] = await hydrateElections([row]);
       return view;
+    },
+
+    async getActiveViewsByWorkers(workerIds) {
+      if (workerIds.length === 0) return [];
+      const rows = await storage.search({ workerIds, activeOnly: true, sort: 'startDesc' });
+      // First row per worker wins (startDesc = latest-start active election),
+      // matching getActiveByWorker's single-worker semantics.
+      const firstByWorker = new Map<string, WorkerTrustElection>();
+      for (const row of rows) {
+        if (!firstByWorker.has(row.workerId)) firstByWorker.set(row.workerId, row);
+      }
+      return await hydrateElections(Array.from(firstByWorker.values()));
     },
 
     async getActiveViewByWorker(workerId) {

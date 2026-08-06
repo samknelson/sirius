@@ -693,6 +693,41 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     }
   });
 
+  // POST /api/workers/election-policies - Batch active-election + resolved
+  // policy lookup for the displayed workers (authorization display mode of
+  // the Membership column). Policy comes from the hydrated election view,
+  // which derives it via the policy-resolution service (the stored
+  // policy_id is legacy/audit only). Returns {} unless the membership-column
+  // config is in authorization mode.
+  app.post("/api/workers/election-policies", requireAuth, requirePermission("staff"), async (req, res) => {
+    try {
+      const { workerIds } = req.body;
+      if (!Array.isArray(workerIds) || workerIds.length === 0) {
+        return res.json({});
+      }
+      const { getMembershipColumnSettings } = await import("./plugins/worker-list/settings");
+      const settings = await getMembershipColumnSettings();
+      if (settings?.displayMode !== "authorization") {
+        return res.json({});
+      }
+      const limitedWorkerIds = workerIds
+        .filter((id: unknown): id is string => typeof id === "string")
+        .slice(0, 100);
+      const views = await storage.workerTrustElections.getActiveViewsByWorkers(limitedWorkerIds);
+      const out: Record<string, { hasActiveElection: boolean; policyName: string | null }> = {};
+      for (const id of limitedWorkerIds) {
+        out[id] = { hasActiveElection: false, policyName: null };
+      }
+      for (const view of views) {
+        out[view.workerId] = { hasActiveElection: true, policyName: view.policyName ?? null };
+      }
+      res.json(out);
+    } catch (error) {
+      console.error("Failed to fetch election policies:", error);
+      res.status(500).json({ message: "Failed to fetch election policies" });
+    }
+  });
+
   // GET /api/workers/export - Export workers to CSV with filters
   app.get("/api/workers/export", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
