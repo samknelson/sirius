@@ -2,7 +2,9 @@
 name: S1 doc publication split
 description: How to deliver S1-migration design docs — sanitized tracked copy in docs/, record-level evidence stays in untracked docs/s1-migration
 ---
-Rule: an S1-migration deliverable that reviewers/operators need must be published as a **sanitized tracked doc in `docs/`** (aggregates only — no prod entity nids, no payment-level amounts, no connection details), with a pointer stub + record-level "local evidence appendix" left in the untracked `docs/s1-migration/` so existing cross-references resolve. Raw prod dry-run exports (pasted attachments with entity ids/amounts) must be untracked/gitignored too.
+**UPDATE 2026-08-06:** `docs/s1-migration/` is now tracked (user ruling — task agents need the context; contents verified sanitized first). The split is retired for design docs. What SURVIVES: the sanitization bar itself — tracked files must stay aggregate-only (no prod entity nids, no payment-level amounts, no connection details/full hostnames). Raw prod dry-run exports and pasted attachments remain untracked (gitignore tripwires) and were deleted from disk.
+
+Old rule (historical): an S1-migration deliverable that reviewers/operators need must be published as a **sanitized tracked doc in `docs/`** (aggregates only — no prod entity nids, no payment-level amounts, no connection details), with a pointer stub + record-level "local evidence appendix" left in the untracked `docs/s1-migration/` so existing cross-references resolve. Raw prod dry-run exports (pasted attachments with entity ids/amounts) must be untracked/gitignored too.
 
 **Why:** completion code review rejects work whose deliverables live only in the gitignored `docs/s1-migration/` (invisible in the diff), but force-adding that dir is forbidden (push protection — see s1-docs-push-protection.md), and review also rejects tracked files carrying record-level production financial data. The split satisfies all three constraints (first done for the N6 balance-parity doc: tracked `docs/n6-balance-parity.md` + local `docs/s1-migration/08-*` stub/appendix).
 

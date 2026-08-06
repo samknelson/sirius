@@ -77,8 +77,8 @@
 - [Wizard side-effect rows need reuse + ownership flag](wizard-side-effect-rows-ownership.md) — wizard-created persistent rows duplicate across drafts unless add reuses existing + tracks.
 - [BAO buildup forward impact unbounded](bao-buildup-forward-impact.md) — mixed above/below patterns make the buildup walk unbounded; report MAX_SAFE_INTEGER and cap at the consumer, never lag+break.
 - [Election policy is derived, not stored](election-policy-derived.md) — never read worker_trust_elections.policy_id; resolve via resolveEmployerPolicyAsOf (history→denorm→policy_default).
-- [S1 doc publication split](s1-doc-publication-split.md) — deliverables = sanitized tracked doc in docs/ + record-level evidence in untracked docs/s1-migration; never force-add, never track prod nids/amounts.
-- [S1 docs blocked GitHub pushes](s1-docs-push-protection.md) — docs/s1-migration holds live S1 credentials; push protection rejects any history containing it as opaque PUSH_REJECTED; keep it.
+- [S1 doc publication split](s1-doc-publication-split.md) — docs/s1-migration now TRACKED (sanitized 2026-08-06); the bar survives: no prod nids/amounts/hostnames in tracked files; raw pasted evidence never tracked.
+- [S1 docs blocked GitHub pushes](s1-docs-push-protection.md) — PUSH_REJECTED is opaque; cause was old history revs with S1 conn details (scrubbed). On reject, check pushed-range history for credential-bearing paths first.
 - [S1 source of truth is MariaDB](s1-snapshot-profiling.md) — the Neon "S1" sample is retired; real S1 = Drupal 7 on MariaDB 10.6, shape lives in docs/s1-migration profile artifacts.
 - [EXTERNAL_DATABASE_URL resolution + Neon pooler rewrite](external-database-url.md) — one resolution rule everywhere; Neon `-pooler.` URL must be rewritten to direct endpoint for serverless driver.
 - [Shared policy → server hook injection](shared-policy-server-hook-injection.md) — shared access-policy files can't import server registries; use a boot-wired injectable resolver that fails closed.

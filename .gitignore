@@ -17,8 +17,7 @@ __replit_disk_meta.json
 .github/
 deploy/
 
-# S1 migration docs (contain live connection details; kept local only)
-docs/s1-migration/
+# S1 raw pasted evidence (prod connection details / record-level data; never track — tripwire against re-uploads)
 attached_assets/06-strategy-revision*
 attached_assets/Pasted--ledger-*
 attached_assets/Pasted--payment-*
