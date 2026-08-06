@@ -58,6 +58,7 @@ export const configSections: NavSection[] = [
       { path: "/config/business-calendars", label: "Business Calendars", icon: Calendar, testId: "nav-config-business-calendars", permission: "admin" },
       { path: "/config/helps", label: "Help Text", icon: HelpCircle, testId: "nav-config-helps", permission: "admin" },
       { path: "/admin/debug/event-bus", label: "Event Bus", icon: Radio, testId: "nav-admin-debug-event-bus", permission: "admin", requiresComponent: "debug" },
+      { path: "/config/s1-migration", label: "S1 Migration", icon: Database, testId: "nav-config-s1-migration", permission: "admin", requiresComponent: "sitespecific.bao.s1migration" },
       { path: "/admin/ebs", label: "Event Scheduler", icon: Calendar, testId: "nav-config-ebs", permission: "admin" },
     ],
   },

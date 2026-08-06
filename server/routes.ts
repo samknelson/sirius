@@ -399,6 +399,10 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   const { registerFileBrowserRoutes } = await import("./modules/file-browser");
   registerFileBrowserRoutes(app, requireAuth);
 
+  // S1 → S2 migration dashboard (read-only, component-gated for BAO)
+  const { registerS1MigrationRoutes } = await import("./modules/s1-migration");
+  registerS1MigrationRoutes(app, requireAuth);
+
   // Register component configuration routes
   registerComponentRoutes(app, requireAuth, requirePermission);
 

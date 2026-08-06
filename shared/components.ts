@@ -873,6 +873,14 @@ export const componentRegistry: ComponentDefinition[] = [
     }
   },
   {
+    id: "sitespecific.bao.s1migration",
+    name: "S1 Migration Dashboard",
+    description:
+      "Read-only pre-flight and results dashboard for the S1 → S2 data migration: staging mirror status, sirius_id collision pre-scan, loader run reports with reject tables, and parity results. Execution stays in the CLI runbook (scripts/s1-migration/RUNBOOK.md); this component only observes.",
+    enabledByDefault: false,
+    category: "site-specific"
+  },
+  {
     id: "bulk",
     name: "Bulk Messaging",
     description: "Bulk messaging functionality",

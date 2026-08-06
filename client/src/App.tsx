@@ -327,6 +327,7 @@ const DispatchManagePage = lazy(() => import("@/pages/dispatch/dispatch-manage")
 const MasqueradePage = lazy(() => import("@/pages/config/masquerade"));
 const SystemModePage = lazy(() => import("@/pages/config/system-mode"));
 const SystemStatusPage = lazy(() => import("@/pages/config/system-status"));
+const S1MigrationPage = lazy(() => import("@/pages/config/s1-migration"));
 const DefaultPolicyPage = lazy(() => import("@/pages/config/default-policy"));
 const TwilioConfigPage = lazy(() => import("@/pages/config/twilio"));
 const EmailConfigPage = lazy(() => import("@/pages/config/email"));
@@ -3468,6 +3469,16 @@ function Router() {
           <AuthenticatedLayout>
             <ConfigurationLayout>
               <SystemStatusPage />
+            </ConfigurationLayout>
+          </AuthenticatedLayout>
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/config/s1-migration">
+        <ProtectedRoute permission="admin" component="sitespecific.bao.s1migration">
+          <AuthenticatedLayout>
+            <ConfigurationLayout>
+              <S1MigrationPage />
             </ConfigurationLayout>
           </AuthenticatedLayout>
         </ProtectedRoute>
