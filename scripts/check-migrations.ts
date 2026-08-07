@@ -60,6 +60,129 @@ function changedFiles(base: string | undefined): string[] {
   return Array.from(new Set(output.split("\n").map(s => s.trim()).filter(Boolean)));
 }
 
+/**
+ * Files ADDED relative to the base (or untracked) — used to identify brand-new
+ * core migration files for the version-collision check.
+ */
+function addedFiles(base: string | undefined): string[] {
+  let output = "";
+  try {
+    if (base) {
+      output += execSync(`git diff --name-only --diff-filter=A ${base}...HEAD`, { encoding: "utf8" });
+    }
+    output += "\n" + execSync("git diff --name-only --diff-filter=A HEAD", { encoding: "utf8" });
+  } catch {
+    // ignore — fall through to untracked
+  }
+  try {
+    output += "\n" + execSync("git ls-files --others --exclude-standard", { encoding: "utf8" });
+  } catch {
+    // ignore
+  }
+  return Array.from(new Set(output.split("\n").map(s => s.trim()).filter(Boolean)));
+}
+
+function coreVersionOf(file: string): number | null {
+  const m = /^scripts\/migrate\/core\/(\d+)_/.exec(file);
+  return m ? parseInt(m[1], 10) : null;
+}
+
+/**
+ * Version-counter collision guard (the 1117/1120 incident).
+ *
+ * All core migrations share ONE `migrations_version` counter, and the runner
+ * only applies migrations with `version > counter`. If a branch merges in a
+ * core migration whose version is at or below the highest version already on
+ * the target branch, a deployed database whose counter has passed that number
+ * SILENTLY SKIPS it — and prod then refuses to boot at the drift gate.
+ *
+ * So: every NEWLY ADDED core migration must be numbered strictly above the
+ * max version already present, and new versions must not collide with each
+ * other. Exits the process on failure.
+ */
+function checkCoreVersionCollisions(base: string | undefined): void {
+  const added = addedFiles(base);
+  const newCore = added
+    .map(f => ({ file: f, version: coreVersionOf(f) }))
+    .filter((x): x is { file: string; version: number } => x.version !== null);
+  if (newCore.length === 0) return;
+
+  // Existing = every core migration in the current tree that is NOT new,
+  // UNION every core migration on the base ref. The base-tree side matters in
+  // the divergent-branch case: the target branch may have gained a HIGHER
+  // version (e.g. 1121) that this branch's tree does not contain — a new
+  // migration here numbered at or below it would be silently skipped after
+  // merge, so the floor must account for both trees.
+  const newSet = new Set(newCore.map(x => x.file));
+  let allCore: string[] = [];
+  try {
+    allCore = execSync("git ls-files scripts/migrate/core", { encoding: "utf8" })
+      .split("\n").map(s => s.trim()).filter(Boolean);
+  } catch {
+    // ignore
+  }
+  let baseCore: string[] = [];
+  if (base) {
+    try {
+      baseCore = execSync(`git ls-tree -r --name-only ${base} scripts/migrate/core`, { encoding: "utf8" })
+        .split("\n").map(s => s.trim()).filter(Boolean);
+    } catch {
+      // base unreachable — fall back to current-tree accounting only
+    }
+  }
+  const existingVersions = [
+    ...allCore.filter(f => !newSet.has(f)),
+    ...baseCore,
+  ]
+    .map(coreVersionOf)
+    .filter((v): v is number => v !== null);
+  const maxExisting = existingVersions.length > 0 ? Math.max(...existingVersions) : 0;
+
+  const problems: string[] = [];
+  const seenNew = new Map<number, string>();
+  for (const { file, version } of newCore) {
+    if (version <= maxExisting) {
+      problems.push(
+        `  - ${file}: version ${version} is <= the max existing core migration version (${maxExisting}).`,
+      );
+    }
+    const dup = seenNew.get(version);
+    if (dup) {
+      problems.push(`  - ${file}: duplicates version ${version} also used by new file ${dup}.`);
+    } else {
+      seenNew.set(version, file);
+    }
+  }
+
+  if (problems.length > 0) {
+    console.error(
+      [
+        "",
+        "[check-migrations] FAILED — core migration version-counter collision.",
+        "",
+        ...problems,
+        "",
+        "Why this matters: all core migrations share the single `migrations_version`",
+        "counter, and the runner only applies versions ABOVE it. On any database whose",
+        "counter has already passed your migration's number (e.g. because another",
+        "branch merged first), your migration is treated as already-applied and",
+        "SILENTLY SKIPPED — prod then fails to boot at the schema drift gate.",
+        "(This is exactly the 1117/1120 incident.)",
+        "",
+        `Fix: renumber the new migration(s) strictly above ${maxExisting} (and above each`,
+        "other), update the filename, the `version:` field inside the file, and the",
+        "import in scripts/migrate/index.ts, then re-run this check.",
+        "",
+      ].join("\n"),
+    );
+    process.exit(1);
+  }
+
+  console.log(
+    `[check-migrations] core migration versions OK — ${newCore.length} new file(s), all above max existing version ${maxExisting}`,
+  );
+}
+
 function commitMessagesContain(marker: string, base: string | undefined): boolean {
   if (!base) return false;
   try {
@@ -71,6 +194,11 @@ function commitMessagesContain(marker: string, base: string | undefined): boolea
 }
 
 function main(): void {
+  // The version-collision guard runs even with --skip / [skip-migration-check]:
+  // those escape hatches cover pure type refactors, not a mis-numbered
+  // migration that would be silently skipped on deployed databases.
+  checkCoreVersionCollisions(arg("base"));
+
   if (process.argv.includes("--skip")) {
     console.log("[check-migrations] skipped via --skip flag");
     process.exit(0);

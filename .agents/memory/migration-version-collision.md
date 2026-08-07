@@ -5,6 +5,11 @@ description: Why a low-version incoming migration silently does nothing after me
 
 # Migration version-counter collision (Sirius migration framework)
 
+**Author-time guard exists:** the migration check now rejects newly added core
+migrations numbered at or below the version floor of both the current and base
+branches — run it with `--base=<target>` when merging so target-only versions
+count.
+
 The core migration runner applies migrations in version order and only runs
 those with `version > migrations_version`, bumping the counter on each success.
 The same counter is shared by ALL core migration files.
