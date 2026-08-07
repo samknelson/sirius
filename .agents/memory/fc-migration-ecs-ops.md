@@ -9,5 +9,7 @@ Operational setup for running the S1 migration in the FC AWS account (us-west-2)
 - Task def `sirius-migration`: Fargate 1 vCPU/2GB, secrets `sirius-migration/EXTERNAL_DATABASE_URL` + `sirius-migration/S1_DATABASE_URL` from Secrets Manager, awslogs group `/sirius-migration`, reuses FC web taskdef's executionRoleArn. Each runbook step = one `run-task` with a containerOverrides command; tasks survive CloudShell timeouts.
 - S1 copy: RDS `s1-migration-copy`, db `smf_prod` (~9.2M node rows), read-only user `s1ro` (SELECT + SHOW VIEW). DSN passwords must avoid `@ : / #` (no URL-encoding in the loaders' DSN parsing assumption).
 
+Full reproducible procedure is tracked in `docs/s1-migration/FC-ENVIRONMENT-SETUP.md` (sanitized, placeholders only).
+
 **Why:** first FC rehearsal (2026-08) burned time on tab confusion (mysql hanging in regular tab, secretsmanager hanging in VPC tab).
 **How to apply:** any future FC migration run or debugging session — check which tab before diagnosing "stalls".
