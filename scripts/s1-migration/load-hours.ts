@@ -54,7 +54,8 @@ import {
 import { hasRunnableChargePlugins, getAllChargePlugins } from "../../server/plugins/ledger/charge";
 import { ensureStagingSchema, recordRun } from "./lib/staging";
 import { ensureIdMap, getMappings, putMapping } from "./lib/idmap";
-import { LOADER_PAGE_SIZE } from "./lib/loader-utils";
+import { LOADER_PAGE_SIZE, stagedCountOf, throttleStorageOpLogs } from "./lib/loader-utils";
+import { makeProgressLogger } from "./lib/progress";
 
 const DRY_RUN = process.argv.includes("--dry-run");
 const STUB_MISSING = process.argv.includes("--stub-missing");
@@ -175,6 +176,13 @@ async function main() {
     );
   }
 
+  // throttle per-row storage-op logging + heartbeat (aggregates only —
+  // staged payperiod rows consumed / elapsed / rate; flush phases are the
+  // silent write+verify stretches).
+  throttleStorageOpLogs();
+  const progress = makeProgressLogger("t20-hours", await stagedCountOf("sirius_payperiod"));
+  progress.phase("pre-scan");
+
   // ---- parse & validate (keyset-paged staged read — Track C: production
   // payperiod JSON payloads never all materialize in memory at once) ----
   let stagedCount = 0;
@@ -257,6 +265,7 @@ async function main() {
 
   const flush = async (batch: Group[]): Promise<void> => {
     if (batch.length === 0) return;
+    progress.phase("flush"); // liveness during the write+verify stretch
     monthGroups += batch.length;
     for (const g of batch) if (g.tids.size > 1) multiStatusMonths++;
 
@@ -358,6 +367,7 @@ async function main() {
         }
       }
     }
+    progress.phase(null);
   };
 
   // ---- worker-ordered keyset paging over staged payperiods ----
@@ -379,6 +389,7 @@ async function main() {
       ON s1_staging.records ((${WORKER_KEY_EXPR}), nid)
       WHERE bundle = 'sirius_payperiod'
   `);
+  progress.phase(null);
 
   const FLUSH_AT = 1000; // groups buffered across finished workers before a write flush
   let pending: Group[] = [];
@@ -401,6 +412,7 @@ async function main() {
     lastKey = rows[rows.length - 1].worker_key;
     lastNid = rows[rows.length - 1].nid;
     stagedCount += rows.length;
+    progress.update(stagedCount);
 
     for (const r of rows) {
     // Worker boundary: this worker's groups are complete — move to the flush buffer.
@@ -507,6 +519,7 @@ async function main() {
   groups.clear();
   await flush(pending);
   pending = [];
+  progress.stop();
 
   const report = {
     loader: "t20-hours",

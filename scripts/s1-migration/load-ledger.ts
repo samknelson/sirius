@@ -43,7 +43,8 @@ import { db, pool as pgPool } from "../../server/storage/db";
 import { sql } from "drizzle-orm";
 import { ensureStagingSchema, recordRun, pagedRawLedger, stagedRawLedgerCount, ensureRawLedgerTable } from "./lib/staging";
 import { ensureIdMap, getMappings } from "./lib/idmap";
-import { RejectLog, LOADER_PAGE_SIZE, chunk } from "./lib/loader-utils";
+import { RejectLog, LOADER_PAGE_SIZE, chunk, throttleStorageOpLogs } from "./lib/loader-utils";
+import { makeProgressLogger } from "./lib/progress";
 import { buildEntityResolver, ensureLedgerAccounts, laStatementYmd } from "./lib/resolvers";
 import { AMOUNT_RE, toCents as parseCents, centsToStr } from "./lib/parity";
 
@@ -98,6 +99,11 @@ async function main() {
   report.staged = await stagedRawLedgerCount();
   const byStatus: Record<string, number> = {};
 
+  // throttle per-row storage-op logging + heartbeat (aggregates only)
+  throttleStorageOpLogs();
+  const progress = makeProgressLogger(LOADER, report.staged as number);
+  progress.phase("pre-scan");
+
   // ---- accounts (T18a: id_map → adopt-by-name → create) ----
   const accounts = await ensureLedgerAccounts(LOADER, DRY_RUN);
   report.accounts = {
@@ -126,6 +132,7 @@ async function main() {
   // per page. Per-account verify aggregates stay global (tiny).
   for await (const staged of pagedRawLedger(LOADER_PAGE_SIZE)) {
     pages++;
+    progress.phase(null);
     for (const r of staged) byStatus[r.status ?? "NULL"] = (byStatus[r.status ?? "NULL"] ?? 0) + 1;
 
     // ---- per-page participant + reference resolution maps ----
@@ -162,6 +169,7 @@ async function main() {
     }
 
     for (const r of staged) {
+    progress.add(1);
     const id = r.ledgerId;
 
     if ((r.status ?? "").trim().toLowerCase() !== "cleared") {
@@ -278,6 +286,7 @@ async function main() {
   report.referenceTypes = refTypeCounts;
 
   // ---- verify pass: per-account count + cents-exact sum parity ----
+  progress.phase("verify");
   let verifyFailures = 0;
   const perAccount: Array<Record<string, unknown>> = [];
   if (!DRY_RUN) {
@@ -310,6 +319,7 @@ async function main() {
     }
   }
   report.perAccount = perAccount;
+  progress.stop();
 
   report.rejects = rejects.counts;
   report.rejectSamples = rejects.samples;

@@ -77,6 +77,8 @@ import { storage } from "../../server/storage/database";
 import { withNotificationsSuppressed } from "../../server/middleware/request-context";
 import { ensureStagingSchema, recordRun } from "./lib/staging";
 import { ensureIdMap, getMappings, putMapping, markAbsorbed } from "./lib/idmap";
+import { throttleStorageOpLogs } from "./lib/loader-utils";
+import { makeProgressLogger } from "./lib/progress";
 
 const DRY_RUN = process.argv.includes("--dry-run");
 const LOADER = "t3t1-contacts-workers";
@@ -230,6 +232,12 @@ async function main() {
   const stagedWorkers = await loadStaged("sirius_worker");
   report.stagedContacts = stagedContacts.length;
   report.stagedWorkers = stagedWorkers.length;
+
+  // throttle per-row storage-op logging + heartbeat (aggregates only:
+  // counts/elapsed/rate — never names, SSNs, or row contents)
+  throttleStorageOpLogs();
+  const progress = makeProgressLogger(LOADER, stagedContacts.length + stagedWorkers.length);
+  progress.phase("pre-scan");
 
   // ---- FATAL pre-scan: cross-worker field_sirius_id collisions ----
   // Data-integrity ruling 2026-08-06 (fund finding: S1's unlocked ID counter
@@ -433,7 +441,9 @@ async function main() {
     return writes;
   };
 
+  progress.phase(null); // contacts row loop
   for (const c of stagedContacts) {
+    progress.add(1);
     const parts = namePartsOf(c.fields);
     const displayName =
       c.title?.trim() ||
@@ -730,6 +740,7 @@ async function main() {
   }
 
   for (const w of stagedWorkers) {
+    progress.add(1);
     const cnid = targetNidOf(w.fields, "field_sirius_contact");
     const contactMapping = cnid != null ? finalContactMap.get(cnid) : undefined;
     if (!contactMapping) {
@@ -931,6 +942,7 @@ async function main() {
   }
 
   // ---------------- verify pass ----------------
+  progress.phase("verify");
   let verifyFailures = 0;
   if (!DRY_RUN) {
     const vContactMap = await getMappings("contact", stagedContacts.map((c) => c.nid));
@@ -999,6 +1011,8 @@ async function main() {
       }
     }
   }
+
+  progress.stop();
 
   report.rejects = rejects.counts;
   report.rejectSamples = rejects.samples;

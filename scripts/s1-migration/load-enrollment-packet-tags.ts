@@ -85,7 +85,8 @@ import {
 } from "../../server/middleware/request-context";
 import { ensureStagingSchema, recordRun } from "./lib/staging";
 import { ensureIdMap, getMappings, putMapping } from "./lib/idmap";
-import { RejectLog, pagedStaged, stagedCountOf, chunk, strOf, toYmd } from "./lib/loader-utils";
+import { RejectLog, pagedStaged, stagedCountOf, chunk, strOf, toYmd, throttleStorageOpLogs } from "./lib/loader-utils";
+import { makeProgressLogger } from "./lib/progress";
 import { createCommStorage } from "../../server/storage/comm";
 
 const LOADER = "t29-enrollment-packet-tags";
@@ -171,6 +172,13 @@ async function main() {
 
   report.staged = await stagedCountOf(BUNDLE);
 
+  // throttle per-row storage-op logging + heartbeat. done= counts staged
+  // rows SCANNED (most are out of scope at prod volume — the scan itself is
+  // the long pole); aggregates only.
+  throttleStorageOpLogs();
+  const progress = makeProgressLogger(LOADER, report.staged as number);
+  progress.phase("pre-scan");
+
   // ---- resolve the keep-tag term(s) from staged taxonomy -------------------
   // Name-normalized match across ALL vocabularies: a hit outside the expected
   // vocabulary is a scope surprise and hard-fails before any write.
@@ -215,6 +223,8 @@ async function main() {
   // ---- keyset-paged pipeline: filter → resolve → write → verify per page ----
   for await (const staged of pagedStaged(BUNDLE)) {
     pages++;
+    progress.phase(null);
+    progress.add(staged.length); // scan progress (in-scope writes are page-bounded)
 
     // scope filter first — at prod volume most rows carry no keep-tag.
     const scoped = keepTagTids.size === 0
@@ -375,6 +385,7 @@ async function main() {
     }
 
     // ---- verify pass (page-scoped, batched) ----
+    progress.phase("verify");
     if (!DRY_RUN && expected.size > 0) {
       const vMap = await getMappings(ID_MAP_ENTITY, [...expected.keys()]);
       const vIds = [...new Set([...vMap.values()].map((v) => v.s2Id))];
@@ -396,6 +407,8 @@ async function main() {
       }
     }
   }
+
+  progress.stop();
 
   report.pages = pages;
   report.inScope = inScope;

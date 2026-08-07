@@ -48,7 +48,8 @@ import { db, pool as pgPool } from "../../server/storage/db";
 import { sql } from "drizzle-orm";
 import { ensureStagingSchema, recordRun } from "./lib/staging";
 import { ensureIdMap, getMappings, putMapping } from "./lib/idmap";
-import { RejectLog, pagedStaged, stagedCountOf, chunk, strOf, tidOf, targetNidOf, toYmd } from "./lib/loader-utils";
+import { RejectLog, pagedStaged, stagedCountOf, chunk, strOf, tidOf, targetNidOf, toYmd, throttleStorageOpLogs } from "./lib/loader-utils";
+import { makeProgressLogger } from "./lib/progress";
 import { buildEntityResolver, ensureLedgerAccounts } from "./lib/resolvers";
 import { AMOUNT_RE, PAYMENT_STATUS_MAP as STATUS_MAP, type S2PaymentStatus } from "./lib/parity";
 
@@ -107,8 +108,13 @@ async function main() {
     allowedRejects: ALLOWED_REJECTS,
   };
   const rejects = new RejectLog();
+  throttleStorageOpLogs();
 
   report.staged = await stagedCountOf(BUNDLE);
+
+  // heartbeat: aggregates only (counts/elapsed/rate — never row contents)
+  const progress = makeProgressLogger(LOADER, report.staged as number);
+  progress.phase("pre-scan");
 
   // ---- accounts (T18a shared policy: id_map → adopt by name → create) ----
   const accounts = await ensureLedgerAccounts(LOADER, DRY_RUN);
@@ -167,6 +173,7 @@ async function main() {
   // stays flat at production volume.
   for await (const staged of pagedStaged(BUNDLE)) {
     pages++;
+    progress.phase(null);
 
     // ---- per-page bulk id_map lookups ----
     const typeTids: number[] = [];
@@ -192,6 +199,7 @@ async function main() {
     }> = [];
 
     for (const s of staged) {
+    progress.add(1);
     const nid = s.nid;
     const f = s.fields;
 
@@ -340,6 +348,7 @@ async function main() {
     }
 
     // ---- verify pass (page-scoped): exact row equality for every loaded payment ----
+    progress.phase("verify");
     for (const batch of chunk(expectations, 200)) {
       const rows = await storage.ledger.payments.getByIds(batch.map((e) => e.s2Id));
       const byId = new Map(rows.map((r) => [r.id, r]));
@@ -360,6 +369,7 @@ async function main() {
       }
     }
   }
+  progress.stop();
 
   report.pages = pages;
   report.created = created;

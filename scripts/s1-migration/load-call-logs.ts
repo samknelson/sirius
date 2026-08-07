@@ -54,7 +54,8 @@ import {
 } from "../../server/middleware/request-context";
 import { ensureStagingSchema, recordRun } from "./lib/staging";
 import { ensureIdMap, getMappings, putMapping } from "./lib/idmap";
-import { RejectLog, strOf } from "./lib/loader-utils";
+import { RejectLog, strOf, throttleStorageOpLogs } from "./lib/loader-utils";
+import { makeProgressLogger } from "./lib/progress";
 import { createCommInteractionStorage } from "../../server/storage/comm";
 
 const DRY_RUN = process.argv.includes("--dry-run");
@@ -196,6 +197,11 @@ async function main() {
   });
   report.inScope = rows.length;
 
+  // throttle per-row storage-op logging + heartbeat (aggregates only)
+  throttleStorageOpLogs();
+  const progress = makeProgressLogger(LOADER, rows.length);
+  progress.phase("pre-scan");
+
   const idMap = await getMappings(ID_MAP_ENTITY, rows.map((r) => r.nid));
   const handlerNids = new Set<number>();
   for (const r of rows) for (const n of targetNidsOf(r.fields, "field_sirius_log_handler")) handlerNids.add(n);
@@ -209,7 +215,9 @@ async function main() {
   /** nid → created comm id (verify pass). */
   const expected = new Map<number, string>();
 
+  progress.phase(null); // row loop
   for (const r of rows) {
+    progress.add(1);
     if (idMap.has(r.nid)) {
       stats.alreadyMapped++;
       continue;
@@ -278,6 +286,7 @@ async function main() {
   }
 
   // ---------------- verify pass ----------------
+  progress.phase("verify");
   let verifyFailures = 0;
   if (!DRY_RUN) {
     const vMap = await getMappings(ID_MAP_ENTITY, rows.map((r) => r.nid));
@@ -301,6 +310,8 @@ async function main() {
       }
     }
   }
+
+  progress.stop();
 
   report.stats = stats;
   report.byReason = byReason;

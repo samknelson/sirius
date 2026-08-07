@@ -15,6 +15,11 @@
 import type { Pool, RowDataPacket } from "mysql2/promise";
 import type { FieldCatalog, S1FieldInstance } from "./s1";
 import type { StagedRecord, StagedTerm } from "./staging";
+import { makeProgressLogger, type ProgressLogger } from "./progress";
+
+// The timer-backed heartbeat now lives in ./progress (shared with the
+// loaders); re-exported so existing import sites (stage.ts) are unchanged.
+export { makeProgressLogger, type ProgressLogger };
 
 export interface ExtractAnomalies {
   /** rows with language != 'und' (trap: never assume, count instead) */
@@ -36,48 +41,6 @@ export interface BundleExtractReport {
 
 function emptyAnomalies(): ExtractAnomalies {
   return { nonUndLanguage: 0, duplicateDelta: 0, extraDeltaOnSingle: 0 };
-}
-
-/** Progress heartbeat interval (ms). Long bundles emit a line at most this often. */
-const PROGRESS_INTERVAL_MS = 60_000;
-
-export interface ProgressLogger {
-  /** Record the latest successfully staged count (called after each batch). */
-  update(done: number): void;
-  /** Stop the heartbeat timer — always call in `finally`. */
-  stop(): void;
-}
-
-/**
- * Timer-backed heartbeat for multi-hour extractions (aggregates only:
- * counts, elapsed, rows/s — never row content). Emits one line per
- * PROGRESS_INTERVAL_MS even while a single slow batch (query/merge/upsert)
- * is still awaited, reporting the last completed count — so silence really
- * does mean hung, not merely slow. Silent for runs that finish inside the
- * first interval, so small-bundle output is unchanged. The timer is
- * unref()'d and stop()'d in the callers' `finally`, so it never keeps the
- * process alive.
- */
-export function makeProgressLogger(label: string, total: number): ProgressLogger {
-  const start = Date.now();
-  let done = 0;
-  const timer = setInterval(() => {
-    const elapsedS = (Date.now() - start) / 1000;
-    const rate = elapsedS > 0 ? Math.round(done / elapsedS) : 0;
-    const pct = total > 0 ? ` (${((done / total) * 100).toFixed(1)}%)` : "";
-    console.log(
-      `  progress ${label}: staged=${done}/${total}${pct} elapsed=${Math.round(elapsedS)}s rate=${rate} rows/s`,
-    );
-  }, PROGRESS_INTERVAL_MS);
-  timer.unref();
-  return {
-    update(n: number) {
-      done = n;
-    },
-    stop() {
-      clearInterval(timer);
-    },
-  };
 }
 
 function rowPayload(field: S1FieldInstance, row: RowDataPacket): unknown {
@@ -163,7 +126,7 @@ export async function extractBundle(
     [bundle],
   );
   const s1NodeCount = Number(countRow?.n ?? 0);
-  const progress = makeProgressLogger(bundle, s1NodeCount);
+  const progress = makeProgressLogger(bundle, s1NodeCount, { verb: "staged" });
   try {
   let cursor = 0;
   let extracted = 0;
@@ -247,7 +210,7 @@ export async function extractTerms(
     `SELECT COUNT(*) AS n FROM taxonomy_term_data`,
   );
   const s1TermCount = Number(countRow?.n ?? 0);
-  const progress = makeProgressLogger("terms", s1TermCount);
+  const progress = makeProgressLogger("terms", s1TermCount, { verb: "staged" });
   try {
 
   // vocabulary machine names, and per-vocabulary field instances

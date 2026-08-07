@@ -138,7 +138,7 @@ async function stageRawLedgerAr(
   const watermark = await stagingNow();
   const [cntRows] = await s1.query<RowDataPacket[]>(`SELECT COUNT(*) AS n FROM sirius_ledger_ar`);
   const s1Count = Number(cntRows[0]?.n ?? 0);
-  const progress = makeProgressLogger("raw sirius_ledger_ar", s1Count);
+  const progress = makeProgressLogger("raw sirius_ledger_ar", s1Count, { verb: "staged" });
   let lastId = 0;
   let extracted = 0;
   try {

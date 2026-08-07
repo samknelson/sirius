@@ -170,6 +170,51 @@ wiped target, `created == staged` on both sides.
 
 ### 4.1 – 4.14 Loaders
 
+**Liveness (heartbeats now cover the loaders, not just staging).** Every
+long-running loader (contacts-workers, relationships, elections,
+benefit-history, payments, ledger, hours, call-logs, enrollment-packet-tags)
+emits a once-a-minute heartbeat to stdout — the same timer-driven mechanism as
+the staging heartbeat, aggregates only (counts/elapsed/rate; never names, nids
+beyond counts, or row contents):
+
+```
+  progress <loader>: done=N/M (P%) elapsed=Es rate=R rows/s        # row loop
+  progress <loader>: phase=pre-scan done=N/M elapsed=Es (liveness) # silent phases
+```
+
+- The `phase=` form fires during the otherwise-silent stretches (`pre-scan`,
+  `flush`, `verify`) so a hung connection is distinguishable from a slow
+  healthy phase.
+- The heartbeat fires even while a single slow batch is in flight (it reports
+  the last completed count). **For these loaders, no heartbeat line for
+  several minutes = hung connection — investigate.** The tiny loaders
+  (options, member-statuses, employers, policies, employee-ids, users) have no
+  heartbeat and finish in seconds; silence there is normal.
+- `S1_PROGRESS_INTERVAL_MS` overrides the 60s interval (dev/smoke only).
+- Heartbeat lines are separate stdout lines; the final JSON report block and
+  exit-code gates are unchanged.
+
+**Storage-op log throttling (migration runs only).** The same loaders throttle
+the per-row `Storage operation: ...` logging — both the console line and the
+`winston_logs` DB insert — to 1-in-500 per operation by default, so each row
+write costs one round-trip instead of several. A one-line notice on stderr at
+loader start confirms throttling is active. `S1_LOADER_LOG_SAMPLE` tunes it
+(`0` = suppress entirely, `1` = full per-row logging, `N` = every Nth).
+App-server logging behavior is unchanged — only loader processes throttle.
+
+⚠ **Consequence: `winston_logs` is no longer a reliable progress proxy** once
+throttling is active. Measure progress from the heartbeat lines in the ECS
+CloudWatch stream, or with plain table counts from the Neon SQL editor:
+
+```sql
+SELECT entity, count(*) FROM s1_staging.id_map GROUP BY entity ORDER BY 1;
+SELECT count(*) FROM contacts;                -- contacts-workers
+SELECT count(*) FROM workers;                 -- contacts-workers
+SELECT count(*) FROM trust_wmb;               -- benefit-history month rows
+SELECT count(*) FROM worker_hours;            -- hours
+SELECT count(*) FROM worker_trust_elections;  -- elections
+```
+
 | # | Command (prod) | Dev rehearsal delta | Expected counter shape (prod) | Dev-observed (reference) |
 |---|---|---|---|---|
 | 1 | `npx tsx scripts/s1-migration/load-options.ts` | same | `unhandledVocabularies: {}`, `workerMsUnresolvedIndustry: 0`, `hourTypeVerify: "ok"`, `verifyFailures: 0`. Every worker-ms term resolves an industry (Q37). | 70 terms; created 4 industries, 10 relation types, 7 member statuses, 8 payment types |

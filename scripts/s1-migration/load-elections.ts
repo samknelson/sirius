@@ -56,7 +56,9 @@ import {
   toYmd,
   epochToYmd,
   yesNo,
+  throttleStorageOpLogs,
 } from "./lib/loader-utils";
+import { makeProgressLogger } from "./lib/progress";
 import { targetNidsOf, resolveBenefitNidMap } from "./lib/resolvers";
 
 const LOADER = "t16-elections";
@@ -141,11 +143,17 @@ async function main() {
   const startedAt = new Date();
   await ensureStagingSchema();
   await ensureIdMap();
+  throttleStorageOpLogs();
 
   const report: Record<string, unknown> = { loader: LOADER, dryRun: DRY_RUN, allowedRejects: ALLOWED_REJECTS };
   const rejects = new RejectLog();
 
   report.staged = await stagedCountOf(BUNDLE);
+
+  // heartbeat: aggregates only (counts/elapsed/rate — never row contents)
+  const progress = makeProgressLogger(LOADER, report.staged as number);
+  let progressDone = 0;
+  progress.phase("pre-scan");
 
   // ---- benefit nid → trust_benefits.id (shared T16/T17 resolution) ----
   const benefitRes = await resolveBenefitNidMap(LOADER, DRY_RUN);
@@ -199,6 +207,7 @@ async function main() {
   // page-bounded — memory stays flat at production volume (~224k elections).
   for await (const staged of pagedStaged(BUNDLE)) {
     pages++;
+    progress.phase(null);
 
     // ---- per-page bulk id_map lookups ----
     const workerNids: number[] = [];
@@ -344,6 +353,9 @@ async function main() {
     resolved.push({ nid, workerId, employerId, startYmd, endYmd, benefitIds, relationshipIds, enrollmentType, data });
     }
     resolvedCount += resolved.length;
+    // rejected rows are fully handled — count them toward progress now
+    progressDone += staged.length - resolved.length;
+    progress.update(progressDone);
 
     // ---- batched adoption existence check (one IN-query set per page) ----
     const mappedIds = resolved
@@ -362,6 +374,7 @@ async function main() {
     const expectations: Array<{ nid: number; s2Id: string; want: ResolvedElection }> = [];
 
     for (const r of resolved) {
+      progress.update(++progressDone);
       const mapped = electionMap.get(r.nid)?.s2Id;
       if (mapped) {
         if (!mappedExists.has(mapped)) {
@@ -409,6 +422,7 @@ async function main() {
     }
 
     // ---- verify pass (page-scoped, batched; exact field equality) ----
+    progress.phase("verify");
     interface VerifyRow {
       id: string;
       worker_id: string;
@@ -451,6 +465,7 @@ async function main() {
       }
     }
   }
+  progress.stop();
 
   report.pages = pages;
   report.resolved = resolvedCount;

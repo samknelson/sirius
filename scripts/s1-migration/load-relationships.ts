@@ -54,7 +54,8 @@ import { WorkerRelationValidationError } from "../../server/storage/workers/rela
 import { withNotificationsSuppressed } from "../../server/middleware/request-context";
 import { ensureStagingSchema, recordRun } from "./lib/staging";
 import { ensureIdMap, getMappings, putMapping } from "./lib/idmap";
-import { RejectLog, loadStaged, strOf, tidOf, targetNidOf, toYmd, epochToYmd, yesNo, scalarOf, defaultRelationshipDates } from "./lib/loader-utils";
+import { RejectLog, loadStaged, strOf, tidOf, targetNidOf, toYmd, epochToYmd, yesNo, scalarOf, defaultRelationshipDates, throttleStorageOpLogs } from "./lib/loader-utils";
+import { makeProgressLogger } from "./lib/progress";
 
 const DRY_RUN = process.argv.includes("--dry-run");
 const ALLOWED_REJECTS: string[] = (() => {
@@ -103,6 +104,11 @@ async function main() {
   const stagedWorkers = await loadStaged("sirius_worker");
   report.stagedRelationships = rels.length;
 
+  // throttle per-row storage-op logging + heartbeat (aggregates only)
+  throttleStorageOpLogs();
+  const progress = makeProgressLogger(LOADER, rels.length);
+  progress.phase("pre-scan");
+
   // contact nid → worker nid (owning-side + alt-side resolution)
   const workerNidByContactNid = new Map<number, number>();
   for (const w of stagedWorkers) {
@@ -142,7 +148,9 @@ async function main() {
   /** nid → expected row shape (for the verify pass). */
   const expected = new Map<number, { worker1: string; worker2: string; relationType: string }>();
 
+  progress.phase(null); // row loop
   for (const r of rels) {
+    progress.add(1);
     // ---- resolve + validate EVERYTHING before any write for this row ----
 
     // owning side (worker_1)
@@ -348,6 +356,7 @@ async function main() {
   report.relations = stats;
 
   // ---------------- verify pass ----------------
+  progress.phase("verify");
   let verifyFailures = 0;
   if (!DRY_RUN) {
     const vMap = await getMappings("relation", rels.map((r) => r.nid));
@@ -372,6 +381,8 @@ async function main() {
       }
     }
   }
+
+  progress.stop();
 
   report.rejects = rejects.counts;
   report.rejectSamples = rejects.samples;

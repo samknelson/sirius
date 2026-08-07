@@ -51,7 +51,8 @@ import { db, pool as pgPool } from "../../server/storage/db";
 import { sql } from "drizzle-orm";
 import { ensureStagingSchema, recordRun } from "./lib/staging";
 import { ensureIdMap, getMappings, putMapping } from "./lib/idmap";
-import { RejectLog, pagedStaged, stagedCountOf, chunk, strOf, targetNidOf, toYmd, epochToYmd, yesNo } from "./lib/loader-utils";
+import { RejectLog, pagedStaged, stagedCountOf, chunk, strOf, targetNidOf, toYmd, epochToYmd, yesNo, throttleStorageOpLogs } from "./lib/loader-utils";
+import { makeProgressLogger } from "./lib/progress";
 import {
   resolveBenefitNidMap,
   ymOfYmd,
@@ -124,8 +125,14 @@ async function main() {
     openEndThrough: OPEN_END_THROUGH ? ymKey(OPEN_END_THROUGH) : null,
   };
   const rejects = new RejectLog();
+  throttleStorageOpLogs();
 
   report.staged = await stagedCountOf(BUNDLE);
+
+  // heartbeat: aggregates only (span counts/elapsed/rate — never row contents)
+  const progress = makeProgressLogger(LOADER, report.staged as number);
+  let progressDone = 0;
+  progress.phase("pre-scan");
 
   const benefitRes = await resolveBenefitNidMap(LOADER, DRY_RUN);
   report.benefitResolution = {
@@ -162,6 +169,7 @@ async function main() {
   // page's worker set (earlier pages' creates are visible as existing rows).
   for await (const staged of pagedStaged(BUNDLE)) {
     pages++;
+    progress.phase(null);
 
     // ---- per-page bulk id_map lookups ----
     const workerNids: number[] = [];
@@ -348,6 +356,9 @@ async function main() {
     resolved.push({ nid, workerId, employerId, benefitId, sourceRelationId, months });
     }
     resolvedSpans += resolved.length;
+    // rejected spans are fully handled — count them toward progress now
+    progressDone += staged.length - resolved.length;
+    progress.update(progressDone);
 
     // ---- prefetch existing month rows for the page's target workers ----
     const existingByKey = new Map<string, string>(); // rowKey → trust_wmb.id
@@ -390,6 +401,7 @@ async function main() {
     const loadedSpans: ResolvedSpan[] = [];
 
     for (const span of resolved) {
+      progress.update(++progressDone);
       const mappedAnchor = wbMap.get(span.nid)?.s2Id;
       let anchorId: string | null = mappedAnchor ?? null;
       if (mappedAnchor) {
@@ -449,6 +461,7 @@ async function main() {
     }
 
     // ---- verify pass (page-scoped): every expected (tuple, month) row exists ----
+    progress.phase("verify");
     if (!DRY_RUN && loadedSpans.length > 0) {
       const verifyByKey = new Set<string>();
       for (const ids of chunk(targetWorkerIds, 200)) {
@@ -472,6 +485,7 @@ async function main() {
       }
     }
   }
+  progress.stop();
 
   report.pages = pages;
   report.resolvedSpans = resolvedSpans;

@@ -483,6 +483,48 @@ function resolveHooks<T extends Record<string, any>>(
 }
 
 /**
+ * Process-wide storage-operation log sampling (migration-mode throttle).
+ *
+ * The S1 migration loaders call setStorageLogSampling() so bulk historical
+ * writes don't pay per-row logging overhead: the logged path costs extra DB
+ * round-trips (the before-state fetch plus the winston_logs insert) on every
+ * call. Sampled-out calls invoke the underlying storage method DIRECTLY —
+ * no before/after hooks, no console line, no winston_logs row.
+ *
+ * The app server NEVER calls the setter, so normal audit logging is
+ * completely unchanged there. This is intentionally process-wide, not
+ * per-request: loaders are single-purpose processes.
+ *
+ *   setStorageLogSampling(null) — full logging (default)
+ *   setStorageLogSampling(0)    — suppress all storage-operation logging
+ *   setStorageLogSampling(n>1)  — log the 1st call per module.method, then
+ *                                 every nth (a faint audit trail that proves
+ *                                 writes went through the storage layer)
+ *
+ * NOTE: sampled-out calls that throw also skip the "Storage operation
+ * failed" log line — loader RejectLog reporting covers failures there.
+ */
+let storageLogSampleEvery: number | null = null;
+const storageLogSampleCounts = new Map<string, number>();
+
+export function setStorageLogSampling(sampleEvery: number | null): void {
+  storageLogSampleEvery =
+    sampleEvery != null && Number.isFinite(sampleEvery) && sampleEvery >= 0 && sampleEvery !== 1
+      ? Math.floor(sampleEvery)
+      : null;
+  storageLogSampleCounts.clear();
+}
+
+/** True when this call should skip the logging path entirely. */
+function sampledOut(opKey: string): boolean {
+  if (storageLogSampleEvery == null) return false;
+  if (storageLogSampleEvery === 0) return true;
+  const n = (storageLogSampleCounts.get(opKey) ?? 0) + 1;
+  storageLogSampleCounts.set(opKey, n);
+  return n % storageLogSampleEvery !== 1;
+}
+
+/**
  * Wraps a storage module with logging middleware
  * 
  * @param storage - The storage instance to wrap (from createXStorage() factory)
@@ -516,8 +558,15 @@ export function withStorageLogging<T extends Record<string, any>>(
     }
 
     const hooks = resolveHooks(key, methodConfig, config, storage);
+    const opKey = `${config.module}.${String(key)}`;
 
     wrappedStorage[key] = async function(...args: any[]) {
+      // Migration-mode sampling: skip the ENTIRE logging path (before-state
+      // fetch, hooks, console + winston_logs write) for sampled-out calls.
+      if (sampledOut(opKey)) {
+        return method.apply(storage, args);
+      }
+
       let beforeState: any;
       let afterState: any;
       let result: any;
