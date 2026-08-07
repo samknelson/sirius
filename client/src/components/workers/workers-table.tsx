@@ -1316,12 +1316,22 @@ export function WorkersTable({
                           const election = electionPolicyMap[worker.id];
                           const hasElection = election?.hasActiveElection === true;
                           const policyName = election?.policyName ?? null;
+                          const memberStatusText = statuses.length === 1
+                            ? statuses[0].name
+                            : statuses.length > 1
+                              ? statuses.map(ms => ms.code || ms.name).join(", ")
+                              : null;
                           return (
                             <HoverCard>
                               <HoverCardTrigger asChild>
                                 <div className="cursor-pointer flex flex-col" data-testid={`membership-${worker.id}`}>
                                   {buName && (
                                     <span className="text-xs text-muted-foreground" data-testid={`membership-bu-${worker.id}`}>{buName}</span>
+                                  )}
+                                  {memberStatusText && (
+                                    <span className="text-sm font-medium text-foreground" data-testid={`membership-status-${worker.id}`}>
+                                      {memberStatusText}
+                                    </span>
                                   )}
                                   {hasElection ? (
                                     <span className="text-sm font-medium text-foreground" data-testid={`membership-policy-${worker.id}`}>
@@ -1346,6 +1356,9 @@ export function WorkersTable({
                                 <div className="space-y-2">
                                   {buName && (
                                     <p className="text-xs text-muted-foreground">{buName}</p>
+                                  )}
+                                  {memberStatusText && (
+                                    <p className="text-sm font-semibold text-foreground" data-testid={`membership-hover-status-${worker.id}`}>{memberStatusText}</p>
                                   )}
                                   <p className="text-sm font-semibold text-foreground">
                                     {hasElection
