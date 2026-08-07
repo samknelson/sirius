@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Push the workspace's main branch to a deployment branch on GitHub.
 # Usage: scripts/dev/push-branch.sh <bao-dev|bao-prd>
-# Also refreshes the replit-main mirror branch.
+# Also refreshes the bao-replit-main mirror branch.
 # Requires GITHUB_TOKEN (a GitHub PAT with repo push access) as a Replit Secret.
 set -euo pipefail
 
@@ -18,15 +18,15 @@ fi
 
 REMOTE="https://x-access-token:${GITHUB_TOKEN}@github.com/samknelson/sirius.git"
 HEAD_SHA=$(git rev-parse main)
-echo "Pushing main ($HEAD_SHA) -> origin/$TARGET and origin/replit-main"
+echo "Pushing main ($HEAD_SHA) -> origin/$TARGET and origin/bao-replit-main"
 
 if ! git diff --quiet || ! git diff --cached --quiet; then
   echo "NOTE: working tree has uncommitted changes; they are NOT included (only committed work on main is pushed)."
 fi
 
-git push "$REMOTE" "main:refs/heads/$TARGET" "main:refs/heads/replit-main"
+git push "$REMOTE" "main:refs/heads/$TARGET" "main:refs/heads/bao-replit-main"
 
-echo "Done. $TARGET and replit-main are now at $HEAD_SHA."
+echo "Done. $TARGET and bao-replit-main are now at $HEAD_SHA."
 echo "This window will stay open so you can read the output; close/stop it when done."
 # Keep output visible; workflow consoles close fast otherwise.
 sleep 5
