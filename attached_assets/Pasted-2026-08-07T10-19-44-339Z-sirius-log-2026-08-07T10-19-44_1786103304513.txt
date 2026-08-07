@@ -1,0 +1,62 @@
+2026-08-07T10:19:44.339Z
+'sirius_log',
+2026-08-07T10:19:44.339Z
+... 1700 more items
+2026-08-07T10:19:44.339Z
+],
+2026-08-07T10:19:44.339Z
+cause: error: unsupported Unicode escape sequence
+2026-08-07T10:19:44.339Z
+at file:///app/node_modules/@neondatabase/serverless/index.mjs:1345:74
+2026-08-07T10:19:44.339Z
+at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+2026-08-07T10:19:44.339Z
+at async <anonymous> (/app/node_modules/src/neon-serverless/session.ts:148:12)
+2026-08-07T10:19:44.339Z
+at async NeonPreparedQuery.queryWithCache (/app/node_modules/src/pg-core/session.ts:71:12)
+2026-08-07T10:19:44.339Z
+at async NeonPreparedQuery.execute (/app/node_modules/src/neon-serverless/session.ts:147:11)
+2026-08-07T10:19:44.339Z
+at async flush (/app/scripts/s1-migration/lib/staging.ts:88:5)
+2026-08-07T10:19:44.339Z
+at async upsertRecords (/app/scripts/s1-migration/lib/staging.ts:108:74)
+2026-08-07T10:19:44.339Z
+at async extractBundle (/app/scripts/s1-migration/lib/extract.ts:167:5)
+2026-08-07T10:19:44.339Z
+at async main (/app/scripts/s1-migration/stage.ts:372:20) {
+2026-08-07T10:19:44.339Z
+length: 252,
+2026-08-07T10:19:44.339Z
+severity: 'ERROR',
+2026-08-07T10:19:44.339Z
+code: '22P05',
+2026-08-07T10:19:44.339Z
+detail: '\\u0000 cannot be converted to text.',
+2026-08-07T10:19:44.339Z
+hint: undefined,
+2026-08-07T10:19:44.339Z
+position: undefined,
+2026-08-07T10:19:44.339Z
+internalPosition: undefined,
+2026-08-07T10:19:44.339Z
+internalQuery: undefined,
+2026-08-07T10:19:44.339Z
+where: 'JSON data, line 1: ...om"}},"result":{"success":true,"message":{"\\u0000...\n' +
+2026-08-07T10:19:44.339Z
+"unnamed portal parameter $585 = '...'",
+2026-08-07T10:19:44.339Z
+schema: undefined,
+2026-08-07T10:19:44.339Z
+table: undefined,
+2026-08-07T10:19:44.339Z
+column: undefined,
+2026-08-07T10:19:44.339Z
+dataType: undefined,
+2026-08-07T10:19:44.339Z
+constraint: undefined,
+2026-08-07T10:19:44.339Z
+file: 'jsonfuncs.c',
+2026-08-07T10:19:44.339Z
+line: '645',
+2026-08-07T10:19:44.339Z
+routine: 'json_errsave_error'
