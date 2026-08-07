@@ -10,6 +10,45 @@
 import { db } from "../../../server/storage/db";
 import { sql } from "drizzle-orm";
 
+/**
+ * Postgres cannot represent NUL (\u0000) in text or jsonb (error 22P05) —
+ * real S1 prod data contains NUL bytes inside JSON payloads (observed:
+ * sirius_log message blobs). "Verbatim" staging therefore means verbatim
+ * MINUS NUL characters: they are stripped at this write boundary, counted,
+ * and reported (see nulSanitizedCount / stage.ts final report). Loaders never
+ * see NUL either way, so downstream behavior is unaffected.
+ */
+let nulSanitizedValues = 0;
+
+/** Number of string values that had NUL characters stripped this run. */
+export function nulSanitizedCount(): number {
+  return nulSanitizedValues;
+}
+
+function stripNul(s: string): string {
+  if (s.indexOf("\u0000") === -1) return s;
+  nulSanitizedValues++;
+  return s.split("\u0000").join("");
+}
+
+function stripNulNullable(s: string | null): string | null {
+  return s == null ? null : stripNul(s);
+}
+
+/** Deep-sanitize NUL out of every string (values and keys) in a JSON-safe structure. */
+function sanitizeNulDeep<T>(v: T): T {
+  if (typeof v === "string") return stripNul(v) as unknown as T;
+  if (Array.isArray(v)) return v.map(sanitizeNulDeep) as unknown as T;
+  if (v !== null && typeof v === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+      out[stripNul(k)] = sanitizeNulDeep(val);
+    }
+    return out as unknown as T;
+  }
+  return v;
+}
+
 export interface StagedRecord {
   bundle: string;
   nid: number;
@@ -83,7 +122,7 @@ export async function upsertRecords(rows: StagedRecord[]): Promise<void> {
     if (chunk.length === 0) return;
     const values = chunk.map(
       ({ r, fieldsJson }) =>
-        sql`(${r.bundle}, ${r.nid}, ${r.vid}, ${r.title}, ${r.uid}, ${r.status}, ${r.created}, ${r.changed}, ${fieldsJson}::jsonb, now())`,
+        sql`(${r.bundle}, ${r.nid}, ${r.vid}, ${stripNulNullable(r.title)}, ${r.uid}, ${r.status}, ${r.created}, ${r.changed}, ${fieldsJson}::jsonb, now())`,
     );
     await db.execute(sql`
       INSERT INTO s1_staging.records (bundle, nid, vid, title, uid, status, created, changed, fields, extracted_at)
@@ -102,7 +141,7 @@ export async function upsertRecords(rows: StagedRecord[]): Promise<void> {
     chunkBytes = 0;
   };
   for (const r of rows) {
-    const fieldsJson = JSON.stringify(r.fields);
+    const fieldsJson = JSON.stringify(sanitizeNulDeep(r.fields));
     chunk.push({ r, fieldsJson });
     chunkBytes += fieldsJson.length + (r.title?.length ?? 0) + 64;
     if (chunk.length >= MAX_CHUNK_ROWS || chunkBytes >= MAX_CHUNK_BYTES) await flush();
@@ -114,7 +153,7 @@ export async function upsertTerms(rows: StagedTerm[]): Promise<void> {
   if (rows.length === 0) return;
   const values = rows.map(
     (r) =>
-      sql`(${r.tid}, ${r.vocabulary}, ${r.name}, ${r.description}, ${r.weight}, ${JSON.stringify(r.fields)}::jsonb, now())`,
+      sql`(${r.tid}, ${stripNul(r.vocabulary)}, ${stripNul(r.name)}, ${stripNulNullable(r.description)}, ${r.weight}, ${JSON.stringify(sanitizeNulDeep(r.fields))}::jsonb, now())`,
   );
   await db.execute(sql`
     INSERT INTO s1_staging.terms (tid, vocabulary, name, description, weight, fields, extracted_at)
@@ -229,7 +268,7 @@ export async function upsertRawLedger(rows: RawLedgerRow[]): Promise<void> {
     if (chunk.length === 0) return;
     const values = chunk.map(
       (r) =>
-        sql`(${r.ledgerId}, ${r.amount}, ${r.status}, ${r.account}, ${r.participant}, ${r.reference}, ${r.ts}, ${r.memo}, ${r.key}, ${r.json}, now())`,
+        sql`(${r.ledgerId}, ${stripNulNullable(r.amount)}, ${stripNulNullable(r.status)}, ${r.account}, ${r.participant}, ${r.reference}, ${r.ts}, ${stripNulNullable(r.memo)}, ${stripNulNullable(r.key)}, ${stripNulNullable(r.json)}, now())`,
     );
     await db.execute(sql`
       INSERT INTO s1_staging.raw_ledger_ar
@@ -404,7 +443,7 @@ export async function upsertRawUsers(rows: RawUserRow[]): Promise<void> {
     const chunk = rows.slice(i, i + MAX_CHUNK_ROWS);
     const values = chunk.map(
       (r) =>
-        sql`(${r.uid}, ${r.name}, ${r.mail}, ${r.created}, ${r.access}, ${r.login}, ${r.status}, ${r.timezone}, ${r.data}, now())`,
+        sql`(${r.uid}, ${stripNulNullable(r.name)}, ${stripNulNullable(r.mail)}, ${r.created}, ${r.access}, ${r.login}, ${r.status}, ${stripNulNullable(r.timezone)}, ${stripNulNullable(r.data)}, now())`,
     );
     await db.execute(sql`
       INSERT INTO s1_staging.raw_users (uid, name, mail, created, access, login, status, timezone, data, extracted_at)
@@ -445,7 +484,7 @@ export async function upsertRawAuthmap(rows: RawAuthmapRow[]): Promise<void> {
   if (rows.length === 0) return;
   for (let i = 0; i < rows.length; i += MAX_CHUNK_ROWS) {
     const chunk = rows.slice(i, i + MAX_CHUNK_ROWS);
-    const values = chunk.map((r) => sql`(${r.aid}, ${r.uid}, ${r.authname}, ${r.module}, now())`);
+    const values = chunk.map((r) => sql`(${r.aid}, ${r.uid}, ${stripNulNullable(r.authname)}, ${r.module}, now())`);
     await db.execute(sql`
       INSERT INTO s1_staging.raw_authmap (aid, uid, authname, module, extracted_at)
       VALUES ${sql.join(values, sql`, `)}

@@ -38,6 +38,7 @@ import {
   deleteStaleRawUserTable,
   stagedRawUserTableCount,
   type RawUserTable,
+  nulSanitizedCount,
 } from "./lib/staging";
 import { pool as pgPool } from "../../server/storage/db";
 import type { Pool } from "mysql2/promise";
@@ -417,10 +418,17 @@ async function main() {
     console.log("raw user tables: skipped (selective --bundles run)");
   }
 
+  if (nulSanitizedCount() > 0) {
+    console.log(
+      `nul-sanitized: ${nulSanitizedCount()} string value(s) had \\u0000 stripped (Postgres cannot store NUL in text/jsonb)`,
+    );
+  }
+
   await recordRun(startedAt, args as unknown as Record<string, unknown>, {
     reports,
     mismatches,
     documentedSkips,
+    nulSanitizedValues: nulSanitizedCount(),
     rawLedgerAr: rawLedgerReport,
     rawUserTables: rawUserReports,
   });
