@@ -138,6 +138,14 @@ npx tsx scripts/s1-migration/stage.ts          # prod: default in-scope bundles
 - Exits 1 if any bundle's staged count ≠ S1 node count — that is the gate.
 - Expected shape: every line `s1=N extracted=N staged=N OK`; final
   `Done: <n> bundle(s) staged, all counts verified.`
+- **Liveness:** bundles that run longer than ~60s emit a timer-driven
+  heartbeat once a minute — `  progress <bundle>: staged=N/M (P%) elapsed=Es
+  rate=R rows/s` (aggregates only). The heartbeat fires even while a single
+  slow batch is still in flight (it reports the last completed count), so a
+  big bundle (sirius_payperiod, smf_worker_month) with no progress line for
+  several minutes indicates a hung connection, not a slow healthy run.
+  Heartbeats do not change the final `s1=N … OK` verification lines or
+  exit-code gate.
 - Also stages taxonomy terms and `raw sirius_ledger_ar`.
 - Prod volume is ~1M+ nodes; use `--batch` sizing if memory pressure appears.
   Staging extracts for actively-rewritten tables must run at freeze (06 §4.17).

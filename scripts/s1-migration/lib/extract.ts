@@ -38,6 +38,48 @@ function emptyAnomalies(): ExtractAnomalies {
   return { nonUndLanguage: 0, duplicateDelta: 0, extraDeltaOnSingle: 0 };
 }
 
+/** Progress heartbeat interval (ms). Long bundles emit a line at most this often. */
+const PROGRESS_INTERVAL_MS = 60_000;
+
+export interface ProgressLogger {
+  /** Record the latest successfully staged count (called after each batch). */
+  update(done: number): void;
+  /** Stop the heartbeat timer — always call in `finally`. */
+  stop(): void;
+}
+
+/**
+ * Timer-backed heartbeat for multi-hour extractions (aggregates only:
+ * counts, elapsed, rows/s — never row content). Emits one line per
+ * PROGRESS_INTERVAL_MS even while a single slow batch (query/merge/upsert)
+ * is still awaited, reporting the last completed count — so silence really
+ * does mean hung, not merely slow. Silent for runs that finish inside the
+ * first interval, so small-bundle output is unchanged. The timer is
+ * unref()'d and stop()'d in the callers' `finally`, so it never keeps the
+ * process alive.
+ */
+export function makeProgressLogger(label: string, total: number): ProgressLogger {
+  const start = Date.now();
+  let done = 0;
+  const timer = setInterval(() => {
+    const elapsedS = (Date.now() - start) / 1000;
+    const rate = elapsedS > 0 ? Math.round(done / elapsedS) : 0;
+    const pct = total > 0 ? ` (${((done / total) * 100).toFixed(1)}%)` : "";
+    console.log(
+      `  progress ${label}: staged=${done}/${total}${pct} elapsed=${Math.round(elapsedS)}s rate=${rate} rows/s`,
+    );
+  }, PROGRESS_INTERVAL_MS);
+  timer.unref();
+  return {
+    update(n: number) {
+      done = n;
+    },
+    stop() {
+      clearInterval(timer);
+    },
+  };
+}
+
 function rowPayload(field: S1FieldInstance, row: RowDataPacket): unknown {
   if (field.dataColumns.length === 1) return row[field.dataColumns[0]];
   const obj: Record<string, unknown> = {};
@@ -121,7 +163,8 @@ export async function extractBundle(
     [bundle],
   );
   const s1NodeCount = Number(countRow?.n ?? 0);
-
+  const progress = makeProgressLogger(bundle, s1NodeCount);
+  try {
   let cursor = 0;
   let extracted = 0;
   for (;;) {
@@ -166,6 +209,7 @@ export async function extractBundle(
 
     await onBatch(records);
     extracted += records.length;
+    progress.update(extracted);
   }
 
   return {
@@ -176,6 +220,9 @@ export async function extractBundle(
     anomalies,
     durationMs: Date.now() - start,
   };
+  } finally {
+    progress.stop();
+  }
 }
 
 export interface TermExtractReport {
@@ -200,6 +247,8 @@ export async function extractTerms(
     `SELECT COUNT(*) AS n FROM taxonomy_term_data`,
   );
   const s1TermCount = Number(countRow?.n ?? 0);
+  const progress = makeProgressLogger("terms", s1TermCount);
+  try {
 
   // vocabulary machine names, and per-vocabulary field instances
   const [vocabs] = await pool.query<RowDataPacket[]>(
@@ -264,6 +313,7 @@ export async function extractTerms(
 
     await onBatch(terms);
     extracted += terms.length;
+    progress.update(extracted);
   }
 
   // recount per vocabulary accurately (cheap)
@@ -275,4 +325,7 @@ export async function extractTerms(
   for (const r of perVocab) vocabularies[String(r.name)] = Number(r.n);
 
   return { s1TermCount, extracted, vocabularies, anomalies, durationMs: Date.now() - start };
+  } finally {
+    progress.stop();
+  }
 }

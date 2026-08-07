@@ -14,7 +14,7 @@
  * Exit code 1 if any bundle's staged count != S1 node count.
  */
 import { createS1Pool, listNodeBundles, buildFieldCatalog } from "./lib/s1";
-import { extractBundle, extractTerms, type BundleExtractReport } from "./lib/extract";
+import { extractBundle, extractTerms, makeProgressLogger, type BundleExtractReport } from "./lib/extract";
 import {
   ensureStagingSchema,
   upsertRecords,
@@ -138,8 +138,10 @@ async function stageRawLedgerAr(
   const watermark = await stagingNow();
   const [cntRows] = await s1.query<RowDataPacket[]>(`SELECT COUNT(*) AS n FROM sirius_ledger_ar`);
   const s1Count = Number(cntRows[0]?.n ?? 0);
+  const progress = makeProgressLogger("raw sirius_ledger_ar", s1Count);
   let lastId = 0;
   let extracted = 0;
+  try {
   for (;;) {
     const [rows] = await s1.query<RowDataPacket[]>(
       `SELECT ledger_id, ledger_amount, ledger_status, ledger_account, ledger_participant,
@@ -162,7 +164,11 @@ async function stageRawLedgerAr(
     }));
     await upsertRawLedger(mapped);
     extracted += rows.length;
+    progress.update(extracted);
     lastId = mapped[mapped.length - 1].ledgerId;
+  }
+  } finally {
+    progress.stop();
   }
   const staleRemoved = await deleteStaleRawLedger(watermark);
   const staged = await stagedRawLedgerCount();
