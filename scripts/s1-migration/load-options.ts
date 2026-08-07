@@ -49,6 +49,11 @@ const VOCAB_TO_TYPE: Record<string, OptionsTypeName> = {
   sirius_payment_type: "ledger-payment-type",
   sirius_reltype: "worker-relation-type", // synthetic dev DB vocab name
   sirius_contact_relationship_types: "worker-relation-type", // production vocab name
+  // Rehearsal finding 2026-08-07: empty bootstrap seeds NO options_gender
+  // rows, so T3's name-match fallback resolves nothing in a real cutover.
+  // Load the staged gender terms as options; T3 resolves via term id_map
+  // first (its code already anticipates "sirius_gender loaded as options").
+  sirius_gender: "gender",
 };
 
 /**
@@ -82,7 +87,6 @@ const KNOWN_SKIPPED: Record<string, string> = {
   sirius_election_type: "consumed_by_T16_enrollment_type",
   // Production-real vocabularies whose terms are consumed straight from
   // s1_staging.terms by other loaders — no S2 options table to load into:
-  sirius_gender: "consumed_by_T3_gender_name_match", // T3 resolves worker gender tid -> staged term name -> options_gender by name
   grievance_contact_types: "consumed_by_T24_contact_type_names", // T24 resolves contact-type tids -> staged term names -> options_employer_contact_type
   sirius_contact_tags: "stage_only_except_T29_keep_tag", // smf_worker_month tag terms stay staged; T29 consumes ONLY "Comms: Received Enrollment Packet" straight from s1_staging.terms (N24 ruling 2026-08-05)
   // Production vocabulary name for the election-type terms (synthetic dev DB
