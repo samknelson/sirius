@@ -122,7 +122,7 @@ export async function upsertRecords(rows: StagedRecord[]): Promise<void> {
     if (chunk.length === 0) return;
     const values = chunk.map(
       ({ r, fieldsJson }) =>
-        sql`(${r.bundle}, ${r.nid}, ${r.vid}, ${stripNulNullable(r.title)}, ${r.uid}, ${r.status}, ${r.created}, ${r.changed}, ${fieldsJson}::jsonb, now())`,
+        sql`(${stripNul(r.bundle)}, ${r.nid}, ${r.vid}, ${stripNulNullable(r.title)}, ${r.uid}, ${r.status}, ${r.created}, ${r.changed}, ${fieldsJson}::jsonb, now())`,
     );
     await db.execute(sql`
       INSERT INTO s1_staging.records (bundle, nid, vid, title, uid, status, created, changed, fields, extracted_at)
@@ -219,7 +219,7 @@ export async function recordRun(
 ): Promise<void> {
   await db.execute(sql`
     INSERT INTO s1_staging.runs (started_at, args, report)
-    VALUES (${startedAt.toISOString()}::timestamptz, ${JSON.stringify(args)}::jsonb, ${JSON.stringify(report)}::jsonb)
+    VALUES (${startedAt.toISOString()}::timestamptz, ${JSON.stringify(sanitizeNulDeep(args))}::jsonb, ${JSON.stringify(sanitizeNulDeep(report))}::jsonb)
   `);
 }
 
@@ -471,7 +471,7 @@ export async function upsertRawUsersRoles(rows: RawUserRoleRow[]): Promise<void>
 
 export async function upsertRawRoles(rows: RawRoleRow[]): Promise<void> {
   if (rows.length === 0) return;
-  const values = rows.map((r) => sql`(${r.rid}, ${r.name}, ${r.weight}, now())`);
+  const values = rows.map((r) => sql`(${r.rid}, ${stripNulNullable(r.name)}, ${r.weight}, now())`);
   await db.execute(sql`
     INSERT INTO s1_staging.raw_roles (rid, name, weight, extracted_at)
     VALUES ${sql.join(values, sql`, `)}
@@ -484,7 +484,7 @@ export async function upsertRawAuthmap(rows: RawAuthmapRow[]): Promise<void> {
   if (rows.length === 0) return;
   for (let i = 0; i < rows.length; i += MAX_CHUNK_ROWS) {
     const chunk = rows.slice(i, i + MAX_CHUNK_ROWS);
-    const values = chunk.map((r) => sql`(${r.aid}, ${r.uid}, ${stripNulNullable(r.authname)}, ${r.module}, now())`);
+    const values = chunk.map((r) => sql`(${r.aid}, ${r.uid}, ${stripNulNullable(r.authname)}, ${stripNulNullable(r.module)}, now())`);
     await db.execute(sql`
       INSERT INTO s1_staging.raw_authmap (aid, uid, authname, module, extracted_at)
       VALUES ${sql.join(values, sql`, `)}
