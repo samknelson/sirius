@@ -87,11 +87,12 @@ interface CliArgs {
   all: boolean;
   skipTerms: boolean;
   skipRaw: boolean;
+  rawOnly: boolean;
   batch: number;
 }
 
 function parseArgs(argv: string[]): CliArgs {
-  const args: CliArgs = { bundles: null, all: false, skipTerms: false, skipRaw: false, batch: 500 };
+  const args: CliArgs = { bundles: null, all: false, skipTerms: false, skipRaw: false, rawOnly: false, batch: 500 };
   for (let i = 0; i < argv.length; i++) {
     switch (argv[i]) {
       case "--bundles":
@@ -105,6 +106,12 @@ function parseArgs(argv: string[]): CliArgs {
         break;
       case "--skip-raw":
         args.skipRaw = true;
+        break;
+      case "--raw-only":
+        // Stage ONLY the raw (non-node) tables — for resuming a run that
+        // completed its bundles (or is being finished selectively via
+        // --bundles) without re-extracting any node bundle or terms.
+        args.rawOnly = true;
         break;
       case "--batch":
         args.batch = Math.max(1, Number(argv[++i] ?? 500));
@@ -312,7 +319,13 @@ async function main() {
   const populatedNames = new Set(populated.map((b) => b.bundle));
 
   let targets: string[];
-  if (args.bundles) {
+  if (args.rawOnly) {
+    if (args.bundles) throw new Error("--raw-only cannot be combined with --bundles");
+    if (args.skipRaw) throw new Error("--raw-only cannot be combined with --skip-raw");
+    targets = [];
+    args.skipTerms = true;
+    console.log("raw-only run: skipping terms and all node bundles");
+  } else if (args.bundles) {
     targets = args.bundles;
     const missing = targets.filter((b) => !populatedNames.has(b));
     if (missing.length > 0) {
@@ -392,7 +405,7 @@ async function main() {
   // Raw tables stage on default and --all runs; selective --bundles runs
   // skip them (like bundles they weren't asked for), --skip-raw always skips.
   let rawLedgerReport: Awaited<ReturnType<typeof stageRawLedgerAr>> | null = null;
-  if (!args.skipRaw && args.bundles == null) {
+  if (!args.skipRaw && (args.bundles == null || args.rawOnly)) {
     rawLedgerReport = await stageRawLedgerAr(s1, args.batch);
     const ok = rawLedgerReport.staged === rawLedgerReport.s1Count ? "OK" : "MISMATCH";
     if (ok === "MISMATCH") mismatches++;
@@ -405,7 +418,7 @@ async function main() {
 
   // T27 raw user tables stage under the same policy as raw AR.
   let rawUserReports: RawTableReport[] | null = null;
-  if (!args.skipRaw && args.bundles == null) {
+  if (!args.skipRaw && (args.bundles == null || args.rawOnly)) {
     rawUserReports = await stageRawUserTables(s1, args.batch);
     for (const r of rawUserReports) {
       const ok = r.staged === r.s1Count ? "OK" : "MISMATCH";
