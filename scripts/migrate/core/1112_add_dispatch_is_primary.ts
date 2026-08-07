@@ -10,6 +10,25 @@ import { logger } from "../../../server/logger";
  * backfilled as primary.
  */
 async function up(): Promise<void> {
+  // `dispatches` is owned by the optional `dispatch` component. Core
+  // migrations must tolerate optional-component tables being absent: on a
+  // deployment where the component was never enabled, this migration must
+  // no-op instead of failing (which would stall the shared migrations_version
+  // counter and block every later core migration). The column + partial
+  // unique index are both in the dispatch component's schema manifest, so
+  // the component-enable flow creates them when the component is enabled.
+  const tableCheck = await db.execute(sql`
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = 'public' AND table_name = 'dispatches'
+  `);
+  if (tableCheck.rows.length === 0) {
+    logger.info(
+      "Skipping dispatches.is_primary migration — dispatches table absent (dispatch component not enabled); enable flow will create it from the schema manifest",
+      { service: "migration-1112" },
+    );
+    return;
+  }
+
   await db.execute(sql`
     ALTER TABLE dispatches
       ADD COLUMN IF NOT EXISTS is_primary boolean NOT NULL DEFAULT false

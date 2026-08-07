@@ -7,7 +7,12 @@ Sirius is a full-stack web application designed for comprehensive worker managem
 -   **Automated validations** (registered, run on every task completion —
     no manual invocation needed): `constraint-names`
     (`scripts/dev/check-constraint-names.ts`), `migrations`
-    (`scripts/check-migrations.ts --base=origin/main`),
+    (`scripts/dev/check-migrations-merge.sh` — runs
+    `scripts/check-migrations.ts` with `--base=origin/bao-dev` AND
+    `--base=origin/bao-prd`, so a new core migration must be numbered above
+    the max on BOTH deployment branches regardless of merge direction;
+    origin/main is a stale pre-split trunk and is deliberately not used as a
+    base),
     `storage-encapsulation` (`scripts/dev/check-storage-encapsulation.ts`),
     and `typecheck` (`NODE_OPTIONS=--max-old-space-size=8192 npm run check`
     — tsc with the memory headroom it needs; incremental, so re-runs are
