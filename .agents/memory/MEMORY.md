@@ -108,4 +108,5 @@
 - [S1 prod vocab renames](s1-prod-vocab-renames.md) — prod taxonomy vocab names differ from synthetic dev (election type etc.); terms-querying loaders must accept both.
 - [S1 staging NUL bytes](s1-staging-nul-bytes.md) — real S1 data has \u0000 in JSON; Postgres 22P05; staging strips at write boundary (only "verbatim" exception).
 - [Prod boot verification via DB](prod-boot-verification-via-db.md) — no AWS/URL access here; confirm boot/migrations from migrations_version + winston_logs liveness (startup logs never hit DB).
+- [gitPush needs upstream tracking](gitpush-callback-upstream.md) — pushing to an existing remote branch requires `git branch -u origin/<b>` first, else opaque BRANCH_ALREADY_EXISTS.
 - [BAO member status scan codes](bao-member-status-codes.md) — scan resolves options by code (EC100/EC80/H60); dev DB options lack codes → scan fails explicitly until seeded.
