@@ -149,6 +149,8 @@ import "./core/1103_add_trust_benefit_show_on_worker_list";
 import "./core/1104_wmb_scan_scope";
 import "./core/1105_reapply_ebs";
 import "./core/1106_add_trust_benefit_provider";
+// Re-apply of 1117, skipped on prod by the version-counter collision.
+import "./core/1120_reapply_comm_interaction";
 
 export {
   runMigrations,
