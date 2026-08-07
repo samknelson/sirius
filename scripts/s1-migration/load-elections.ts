@@ -161,7 +161,8 @@ async function main() {
   // ---- election-type terms (staged vocabulary; coded remap, NOT options) ----
   const termRows = (
     (await db.execute(sql`
-      SELECT tid, name FROM s1_staging.terms WHERE vocabulary = 'sirius_election_type'
+      SELECT tid, name FROM s1_staging.terms
+      WHERE vocabulary IN ('sirius_election_type', 'sirius_trust_election_type')
     `)) as unknown as { rows: Array<{ tid: string | number; name: string }> }
   ).rows;
   const termNameByTid = new Map<number, string>(termRows.map((r) => [Number(r.tid), r.name]));

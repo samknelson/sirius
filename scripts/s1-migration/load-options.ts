@@ -85,6 +85,48 @@ const KNOWN_SKIPPED: Record<string, string> = {
   sirius_gender: "consumed_by_T3_gender_name_match", // T3 resolves worker gender tid -> staged term name -> options_gender by name
   grievance_contact_types: "consumed_by_T24_contact_type_names", // T24 resolves contact-type tids -> staged term names -> options_employer_contact_type
   sirius_contact_tags: "stage_only_except_T29_keep_tag", // smf_worker_month tag terms stay staged; T29 consumes ONLY "Comms: Received Enrollment Packet" straight from s1_staging.terms (N24 ruling 2026-08-05)
+  // Production vocabulary name for the election-type terms (synthetic dev DB
+  // named it sirius_election_type). T16 queries BOTH names (load-elections.ts).
+  sirius_trust_election_type: "consumed_by_T16_enrollment_type",
+  // --- Out-of-ETL-scope vocabularies observed in the real prod DB (first
+  // full-data rehearsal 2026-08-07). Terms stay staged; nothing loads. ---
+  // Grievance entity is DESCOPED/greenfield: prod has 0 grievance nodes
+  // (06 §4.1); grievance config vocabularies have no S2 load target. Note
+  // grievance_contact_types (T24) and grievance_industry (synthetic industry
+  // name) are handled above — these are the remaining config vocabularies:
+  grievance_alert_types: "grievance_descoped_greenfield",
+  grievance_assignee_notes: "grievance_descoped_greenfield",
+  grievance_broughtby: "grievance_descoped_greenfield",
+  grievance_category: "grievance_descoped_greenfield",
+  grievance_contract_clause_tags: "grievance_descoped_greenfield",
+  grievance_contract_section_tags: "grievance_descoped_greenfield",
+  grievance_department: "grievance_descoped_greenfield",
+  grievance_document_types: "grievance_descoped_greenfield",
+  grievance_job_classification: "grievance_descoped_greenfield",
+  grievance_log_types: "grievance_descoped_greenfield",
+  grievance_outcome: "grievance_descoped_greenfield",
+  grievance_remedies: "grievance_descoped_greenfield",
+  grievance_settlement_tags: "grievance_descoped_greenfield",
+  grievance_shift: "grievance_descoped_greenfield",
+  grievance_status: "grievance_descoped_greenfield",
+  grievance_tags: "employer_tags_no_s2_equivalent_02_226",
+  grievance_types: "grievance_descoped_greenfield",
+  grievance_work_status: "grievance_descoped_greenfield",
+  // Dispatch + skills out of scope (02 §8, 06 §4.7):
+  sirius_dispatch_job_tags: "dispatch_out_of_scope",
+  sirius_dispatch_job_type: "dispatch_out_of_scope",
+  sirius_dispatch_sib: "dispatch_out_of_scope",
+  sirius_worker_dispatch_status: "dispatch_out_of_scope",
+  sirius_skill: "dispatch_skills_out_of_scope",
+  // Events configured-but-empty in prod (0 sirius_event nodes, 06 §4.1):
+  sirius_event_participant_role: "events_empty_no_etl",
+  sirius_event_participant_status: "events_empty_no_etl",
+  sirius_event_type: "events_empty_no_etl",
+  // Benefit types resolve via sirius_trust_benefit NODES (lib/resolvers.ts),
+  // never via these terms; ledger types are not consumed by T18 (raw ledger
+  // stages verbatim):
+  sirius_trust_benefit_type: "benefits_resolve_via_nodes_not_terms",
+  sirius_ledger_type: "not_consumed_raw_ledger_verbatim",
 };
 
 /** Fallback capability check when the target table is empty (list() rows
