@@ -341,11 +341,15 @@ async function main() {
     stagedWorkers.map((w) => tidOf(w.fields, "field_sirius_gender")).filter((t): t is number => t != null),
   );
   // tid → staged term name (sirius_gender vocab may not be migrated as options)
-  const gtids = stagedWorkers.map((w) => tidOf(w.fields, "field_sirius_gender")).filter((t): t is number => t != null);
+  const gtids = Array.from(
+    new Set(stagedWorkers.map((w) => tidOf(w.fields, "field_sirius_gender")).filter((t): t is number => t != null)),
+  );
   const termNameByTid = new Map<number, string>();
-  if (gtids.length > 0) {
+  // chunk to stay far below the 65535 bind-parameter protocol limit
+  for (let i = 0; i < gtids.length; i += 10000) {
+    const chunk = gtids.slice(i, i + 10000);
     const tres = await db.execute(sql`
-      SELECT tid, name FROM s1_staging.terms WHERE tid IN (${sql.join(gtids.map((t) => sql`${t}`), sql`, `)})
+      SELECT tid, name FROM s1_staging.terms WHERE tid IN (${sql.join(chunk.map((t) => sql`${t}`), sql`, `)})
     `);
     for (const r of (tres as unknown as { rows: Array<{ tid: string | number; name: string }> }).rows) {
       termNameByTid.set(Number(r.tid), r.name);
