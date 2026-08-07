@@ -105,4 +105,6 @@
 - [ShellExec background process lifetime](shellexec-background-process-lifetime.md) — nohup jobs die when the call ends; use a temp console workflow for long one-shots.
 - [FC migration ECS ops](fc-migration-ecs-ops.md) — CloudShell regular tab = internet/AWS APIs, VPC tab = RDS only; silent stall = wrong tab; run-task per runbook step.
 - [Synthetic S1 regen invalidates id_map](s1-regen-idmap-staleness.md) — regen assigns new nids; restage + re-run contacts-workers before any id_map-resolving loader.
+- [S1 prod vocab renames](s1-prod-vocab-renames.md) — prod taxonomy vocab names differ from synthetic dev (election type etc.); terms-querying loaders must accept both.
+- [S1 staging NUL bytes](s1-staging-nul-bytes.md) — real S1 data has \u0000 in JSON; Postgres 22P05; staging strips at write boundary (only "verbatim" exception).
 - [BAO member status scan codes](bao-member-status-codes.md) — scan resolves options by code (EC100/EC80/H60); dev DB options lack codes → scan fails explicitly until seeded.
