@@ -406,6 +406,7 @@ export function registerLedgerPaymentRoutes(app: Express) {
       let withoutEntries = 0;
       let clearedWithoutEntries = 0;
       let processed = 0;
+      let deletedEntries = 0;
       const errors: Array<{ paymentId: string; error: string }> = [];
 
       for (const payment of payments) {
@@ -421,6 +422,11 @@ export function registerLedgerPaymentRoutes(app: Express) {
           }
 
           if (!dryRun) {
+            // Wipe ALL existing payment-linked ledger entries first, then rebuild
+            // from scratch. This clears duplicates left behind when plugin key
+            // logic changes (e.g. the entry-date change) — key-based replacement
+            // alone can't find and remove entries created under old keys.
+            deletedEntries += await storage.ledger.entries.deleteByReference("payment", payment.id);
             const failures: ChargePluginFailure[] = [];
             await triggerPaymentChargePlugins(payment, failures);
             if (failures.length > 0) {
@@ -449,6 +455,7 @@ export function registerLedgerPaymentRoutes(app: Express) {
         totalPayments: payments.length,
         withEntries,
         withoutEntries,
+        deletedEntries,
         processed,
         errorCount: errors.length,
       });
@@ -459,6 +466,7 @@ export function registerLedgerPaymentRoutes(app: Express) {
         paymentsWithEntriesBefore: withEntries,
         paymentsWithoutEntriesBefore: withoutEntries,
         clearedPaymentsWithoutEntriesBefore: clearedWithoutEntries,
+        deletedEntries,
         processed,
         errors,
       });

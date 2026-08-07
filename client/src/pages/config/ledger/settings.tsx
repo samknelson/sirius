@@ -21,6 +21,7 @@ interface ResaveResult {
   paymentsWithEntriesBefore: number;
   paymentsWithoutEntriesBefore: number;
   clearedPaymentsWithoutEntriesBefore: number;
+  deletedEntries: number;
   processed: number;
   errors: Array<{ paymentId: string; error: string }>;
 }
@@ -204,10 +205,10 @@ export default function LedgerSettingsPage() {
         <CardHeader>
           <CardTitle>Rebuild Payment Ledger Entries</CardTitle>
           <CardDescription>
-            Re-saves every payment so charge plugins (such as payment allocation) recreate any
-            missing ledger entries — useful if payments were saved while a plugin was turned off.
-            Existing plugin-generated entries are replaced, not duplicated. Run a check first to
-            see how many payments are missing entries.
+            Deletes all existing payment-linked ledger entries and rebuilds them from scratch by
+            re-saving every payment. Use this to fix missing entries (e.g. payments saved while a
+            plugin was off) or duplicates left behind by logic changes. Run a check first to see
+            how many payments are missing entries.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -219,7 +220,10 @@ export default function LedgerSettingsPage() {
                 <span className="text-muted-foreground">({resaveResult.clearedPaymentsWithoutEntriesBefore} cleared — only cleared payments generate entries)</span>
               </p>
               {!resaveResult.dryRun && (
-                <p>Re-saved: <span className="font-medium">{resaveResult.processed}</span></p>
+                <>
+                  <p>Old entries deleted: <span className="font-medium">{resaveResult.deletedEntries}</span></p>
+                  <p>Re-saved: <span className="font-medium">{resaveResult.processed}</span></p>
+                </>
               )}
               {resaveResult.errors.length > 0 && (
                 <div className="text-destructive">
@@ -250,7 +254,7 @@ export default function LedgerSettingsPage() {
               data-testid="button-resave-all"
             >
               {resaveMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-              Re-save All Payments
+              Delete &amp; Rebuild All Payment Entries
             </Button>
           </div>
         </CardContent>
