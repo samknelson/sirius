@@ -82,6 +82,7 @@ const FATAL_REASONS = [
   "bad_end_date",
   "end_before_start",
   "bad_changed_epoch",
+  "duplicate_overlapping_relation",
   "relation_create_failed",
   "relation_update_failed",
 ] as const;
@@ -89,7 +90,13 @@ const FATAL_REASONS = [
 /** Storage errors → sanitized report codes. NEVER store raw error text —
  * database diagnostics can embed row values (HIPAA). */
 function sanitizeStorageError(err: unknown): string {
-  if (err instanceof WorkerRelationValidationError) return `validation_${err.field}`;
+  if (err instanceof WorkerRelationValidationError) {
+    // The duplicate-overlap guard throws on field `startYmd`, which reads as
+    // a date bug in reports. Classify it distinctly: S1 duplicate rows (same
+    // directed pair + type, overlapping window) are a known source condition.
+    if (/overlapping period/i.test(err.message)) return "duplicate_overlapping_relation";
+    return `validation_${err.field}`;
+  }
   return "storage_error";
 }
 
@@ -366,7 +373,12 @@ async function main() {
       expected.set(r.nid, { worker1: w1.s2Id, worker2: w2Id, relationType });
     } catch (err) {
       // storage validation — sanitized code only, never raw error text
-      rejects.add("relation_create_failed", { nid: r.nid, code: sanitizeStorageError(err) }, r.nid);
+      const code = sanitizeStorageError(err);
+      rejects.add(
+        code === "duplicate_overlapping_relation" ? "duplicate_overlapping_relation" : "relation_create_failed",
+        { nid: r.nid, code },
+        r.nid,
+      );
     }
   }
   report.relations = stats;
