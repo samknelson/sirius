@@ -344,13 +344,14 @@ async function main() {
           );
         }
         stats.adoptedByName++;
-        if (!DRY_RUN) {
+        const adoptionPatch = {
+          ...(supportsSequence ? { sequence: t.weight } : {}),
+          ...(supportsSiriusId ? { siriusId: tidStr } : {}),
+          ...(type === "worker-ms" && industryId ? { industryId } : {}),
+        };
+        if (!DRY_RUN && Object.keys(adoptionPatch).length > 0) {
           await withNotificationsSuppressed(() =>
-            options.update(type, row!.id, {
-              ...(supportsSequence ? { sequence: t.weight } : {}),
-              ...(supportsSiriusId ? { siriusId: tidStr } : {}),
-              ...(type === "worker-ms" && industryId ? { industryId } : {}),
-            }),
+            options.update(type, row!.id, adoptionPatch),
           );
         }
       } else {
