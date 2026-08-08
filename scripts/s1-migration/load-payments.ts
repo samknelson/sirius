@@ -76,6 +76,7 @@ const FATAL_REASONS = [
   "payment_type_missing",
   "payment_type_term_unmapped",
   "payment_type_option_missing",
+  "currency_mismatch",
   "payment_create_failed",
   "mapped_row_missing",
 ] as const;

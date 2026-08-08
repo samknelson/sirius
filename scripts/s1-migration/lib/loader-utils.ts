@@ -122,8 +122,13 @@ export function toYmd(raw: string): string | null {
   return `${m[1]}-${m[2]}-${m[3]}`;
 }
 
-/** Epoch seconds → "YYYY-MM-DD" (UTC). For end-dating conventions off node.changed. */
-export function epochToYmd(epoch: number): string {
+/** Epoch seconds → "YYYY-MM-DD" (UTC). For end-dating conventions off node.changed.
+ * Strict: a non-finite or wildly out-of-range epoch (staged `changed` passes a
+ * `!= null` guard but can be NaN after Number() coercion of dirty source data)
+ * returns null so the caller rejects the row — never an opaque
+ * `toISOString()` RangeError mid-run. Accepted range: 1970-01-01..2100-01-01. */
+export function epochToYmd(epoch: number): string | null {
+  if (!Number.isFinite(epoch) || epoch < 0 || epoch > 4102444800) return null;
   return new Date(epoch * 1000).toISOString().slice(0, 10);
 }
 

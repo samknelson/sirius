@@ -200,7 +200,12 @@ const stagedSpansSource: EvidenceSource = {
             unresolved.add("inactive_no_end", { nid: s.nid }, s.nid);
             continue;
           }
-          endYmd = epochToYmd(s.changed);
+          const changedYmd = epochToYmd(s.changed);
+          if (!changedYmd) {
+            unresolved.add("bad_changed_epoch", { nid: s.nid, changed: s.changed }, s.nid);
+            continue;
+          }
+          endYmd = changedYmd;
           inactiveEnded = true;
         }
         const startYm = ymOfYmd(startYmd);

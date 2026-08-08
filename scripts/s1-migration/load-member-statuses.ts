@@ -132,7 +132,13 @@ async function main() {
       rejects.add("ms_option_missing", { nid: a.nid, tid: a.tid, s2Id: t.s2Id }, a.nid);
       continue;
     }
-    const dateYmd = a.changed != null && a.changed > 0 ? epochToYmd(a.changed) : SENTINEL_DATE_YMD;
+    const changedYmd = a.changed != null && a.changed > 0 ? epochToYmd(a.changed) : SENTINEL_DATE_YMD;
+    if (!changedYmd) {
+      // changed passed the >0 guard but is not a sane epoch (e.g. absurd future value)
+      rejects.add("bad_changed_epoch", { nid: a.nid, tid: a.tid, changed: a.changed }, a.nid);
+      continue;
+    }
+    const dateYmd = changedYmd;
     const list = perWorker.get(a.nid) ?? [];
     list.push({ nid: a.nid, tid: a.tid, workerId: w.s2Id, msId: ms.id, industryId: ms.industryId, dateYmd });
     perWorker.set(a.nid, list);

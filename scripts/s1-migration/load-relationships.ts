@@ -242,7 +242,12 @@ async function main() {
     if (active === false && !endYmd && r.changed != null) {
       // end-dating convention (§4 active flag); defaulted rows never reach
       // this branch — they always carry an end date already
-      endYmd = epochToYmd(r.changed);
+      const changedYmd = epochToYmd(r.changed);
+      if (!changedYmd) {
+        rejects.add("bad_changed_epoch", { nid: r.nid, changed: r.changed }, r.nid);
+        continue;
+      }
+      endYmd = changedYmd;
       endDatedFromChanged = true;
     }
     if (endYmd && endYmd < startYmd) {

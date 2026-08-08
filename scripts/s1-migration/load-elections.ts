@@ -285,7 +285,12 @@ async function main() {
         rejects.add("inactive_no_end", { nid }, nid);
         continue;
       }
-      endYmd = epochToYmd(s.changed);
+      const changedYmd = epochToYmd(s.changed);
+      if (!changedYmd) {
+        rejects.add("bad_changed_epoch", { nid, changed: s.changed }, nid);
+        continue;
+      }
+      endYmd = changedYmd;
       rowEndDatedFromChanged = true;
     }
 
