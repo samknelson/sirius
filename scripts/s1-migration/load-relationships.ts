@@ -51,6 +51,7 @@ import { db } from "../../server/storage/db";
 import { sql } from "drizzle-orm";
 import { storage } from "../../server/storage/database";
 import { WorkerRelationValidationError } from "../../server/storage/workers/relations";
+import { getTodayYmd } from "../../shared/utils/date";
 import { withNotificationsSuppressed } from "../../server/middleware/request-context";
 import { ensureStagingSchema, recordRun } from "./lib/staging";
 import { ensureIdMap, getMappings, putMapping } from "./lib/idmap";
@@ -99,7 +100,13 @@ async function main() {
 
   const report: Record<string, unknown> = { loader: LOADER, dryRun: DRY_RUN, allowedRejects: ALLOWED_REJECTS };
   const rejects = new RejectLog();
-  const todayYmd = new Date().toISOString().slice(0, 10);
+  // MUST be the same clock as the storage contract's future-start check
+  // (validateRelation uses getTodayYmd() — server-LOCAL calendar date). A UTC
+  // date here is ahead of local until local midnight, letting "starts
+  // tomorrow" rows slip past this pre-check and surface as opaque
+  // relation_create_failed(validation_startYmd) instead of the dedicated
+  // future_start_date reject.
+  const todayYmd = getTodayYmd();
 
   // throttle per-row storage-op logging + heartbeat (aggregates only) — from
   // process start: the staged loads below (incl. ~250k workers) are minutes
