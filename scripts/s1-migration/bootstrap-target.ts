@@ -208,26 +208,44 @@ async function main() {
     }
   }
 
-  // --- 3. Ensure admin exists (fresh target or admin row was absent) ---
+  // --- 3. Ensure admin role exists and carries ALL current permissions ---
+  //
+  // This block runs unconditionally so a re-run after a copy (where the role
+  // already existed but its role_permissions rows were absent) is idempotent.
   const { storage } = await import("../../server/storage/database");
   const { withNotificationsSuppressed } = await import("../../server/middleware/request-context");
-  for (const adminEmail of ADMIN_EMAILS) {
-    const adminNow = await q(`SELECT id FROM users WHERE lower(email) = lower($1)`, [adminEmail]);
-    if (adminNow.length === 0) {
-      await withNotificationsSuppressed(async () => {
-        let roleId: string;
-        const roleRows = await q(`SELECT id FROM roles WHERE name = 'admin'`);
-        if (roleRows.length > 0) {
-          roleId = roleRows[0].id;
-        } else {
-          const role = await storage.users.createRole({ name: "admin", description: "Administrator role with all permissions" });
-          roleId = role.id;
-          const allPermissions = await storage.users.getAllPermissions();
-          for (const p of allPermissions) {
-            await storage.users.assignPermissionToRole({ roleId, permissionKey: p.key });
-          }
-          console.log(`created role admin with ${allPermissions.length} permission(s)`);
-        }
+
+  await withNotificationsSuppressed(async () => {
+    // Ensure the admin role exists.
+    let roleId: string;
+    const roleRows = await q(`SELECT id FROM roles WHERE name = 'admin'`);
+    if (roleRows.length > 0) {
+      roleId = roleRows[0].id;
+    } else {
+      const role = await storage.users.createRole({ name: "admin", description: "Administrator role with all permissions" });
+      roleId = role.id;
+      console.log(`created role admin`);
+    }
+
+    // Reconcile permissions: grant every currently registered permission to
+    // the admin role. ON CONFLICT DO NOTHING makes this idempotent so
+    // re-running after a DB copy (empty role_permissions) heals the gap.
+    const allPermissions = await storage.users.getAllPermissions();
+    let granted = 0;
+    for (const p of allPermissions) {
+      try {
+        await storage.users.assignPermissionToRole({ roleId, permissionKey: p.key });
+        granted++;
+      } catch {
+        // already assigned — skip
+      }
+    }
+    console.log(`admin role: ${allPermissions.length} permission(s) registered, ${granted} newly granted`);
+
+    // Ensure each configured admin user exists and has the admin role.
+    for (const adminEmail of ADMIN_EMAILS) {
+      const adminNow = await q(`SELECT id FROM users WHERE lower(email) = lower($1)`, [adminEmail]);
+      if (adminNow.length === 0) {
         const user = await storage.users.createUser({
           email: adminEmail,
           firstName: null,
@@ -237,11 +255,17 @@ async function main() {
         });
         await storage.users.assignRoleToUser({ userId: user.id, roleId });
         console.log(`created admin user ${adminEmail}`);
-      });
-    } else {
-      console.log(`admin present: ${adminEmail}`);
+      } else {
+        // User exists — ensure the role is still attached (idempotent).
+        try {
+          await storage.users.assignRoleToUser({ userId: adminNow[0].id, roleId });
+        } catch {
+          // already assigned — skip
+        }
+        console.log(`admin present: ${adminEmail}`);
+      }
     }
-  }
+  });
 
   lockClient.release(); // advisory lock is session-scoped; freed when pool closes
   await pool.end();
