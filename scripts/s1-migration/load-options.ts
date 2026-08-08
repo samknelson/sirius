@@ -66,6 +66,25 @@ const VOCAB_TO_TYPE: Record<string, OptionsTypeName> = {
  * (synthetic dev vocab) fall back to the tid string.
  */
 const RELTYPE_CODE_OVERRIDES: Record<string, string> = { ES: "EX" };
+
+/**
+ * options_gender.code is NOT NULL UNIQUE and terms stage no code, so derive
+ * one deterministically at create time. The ONLY consumer of gender codes is
+ * the Kaiser EDI plugin (M→01, F→02, everything else→03), so Male/Female must
+ * get exactly "M"/"F"; any other term gets its name upper-cased and stripped
+ * to alphanumerics (e.g. "Non-Binary" → "NONBINARY"). Fails loud on an empty
+ * result; the DB unique constraint catches collisions.
+ */
+function genderCodeOf(name: string, tid: number): string {
+  const n = name.trim().toLowerCase();
+  if (n === "male" || n === "m") return "M";
+  if (n === "female" || n === "f") return "F";
+  const derived = name.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (!derived) {
+    throw new Error(`sirius_gender tid ${tid} "${name}" derives an empty code — fix the source term name`);
+  }
+  return derived;
+}
 function reltypeSiriusIdOf(t: StagedTermRow): string {
   const v = t.fields["field_sirius_id"];
   const scalar = Array.isArray(v) ? v[0] : v;
@@ -360,6 +379,7 @@ async function main() {
           row = await withNotificationsSuppressed(() =>
             options.create(type, {
               name: t.name,
+              ...(type === "gender" ? { code: genderCodeOf(t.name, t.tid) } : {}),
               ...(supportsSequence ? { sequence: t.weight } : {}),
               ...(supportsSiriusId
                 ? { siriusId: tidStr }
