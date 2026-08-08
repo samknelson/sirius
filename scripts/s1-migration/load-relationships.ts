@@ -101,14 +101,17 @@ async function main() {
   const rejects = new RejectLog();
   const todayYmd = new Date().toISOString().slice(0, 10);
 
+  // throttle per-row storage-op logging + heartbeat (aggregates only) — from
+  // process start: the staged loads below (incl. ~250k workers) are minutes
+  // on the real target and must emit liveness, not silence.
+  throttleStorageOpLogs();
+  const progress = makeProgressLogger(LOADER, 0);
+  progress.phase("pre-scan");
+
   const rels = await loadStaged("sirius_contact_relationship");
   const stagedWorkers = await loadStaged("sirius_worker");
   report.stagedRelationships = rels.length;
-
-  // throttle per-row storage-op logging + heartbeat (aggregates only)
-  throttleStorageOpLogs();
-  const progress = makeProgressLogger(LOADER, rels.length);
-  progress.phase("pre-scan");
+  progress.setTotal(rels.length);
 
   // contact nid → worker nid (owning-side + alt-side resolution)
   const workerNidByContactNid = new Map<number, number>();

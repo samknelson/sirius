@@ -187,6 +187,13 @@ async function main() {
     );
   }
 
+  // throttle per-row storage-op logging + heartbeat (aggregates only) — from
+  // process start: the staged log load below is the long pole at prod volume
+  // and must emit liveness, not silence.
+  throttleStorageOpLogs();
+  const progress = makeProgressLogger(LOADER, 0);
+  progress.phase("pre-scan");
+
   const allRows = await loadStagedLogs();
   report.stagedLogs = allRows.length;
 
@@ -196,11 +203,7 @@ async function main() {
     return t != null && t in TYPE_TO_REASON_SIRIUS_ID;
   });
   report.inScope = rows.length;
-
-  // throttle per-row storage-op logging + heartbeat (aggregates only)
-  throttleStorageOpLogs();
-  const progress = makeProgressLogger(LOADER, rows.length);
-  progress.phase("pre-scan");
+  progress.setTotal(rows.length);
 
   const idMap = await getMappings(ID_MAP_ENTITY, rows.map((r) => r.nid));
   const handlerNids = new Set<number>();

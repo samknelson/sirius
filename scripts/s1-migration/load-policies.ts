@@ -51,6 +51,7 @@ import { storage } from "../../server/storage/database";
 import { ensureStagingSchema, recordRun } from "./lib/staging";
 import { ensureIdMap, getMappings, putMapping } from "./lib/idmap";
 import { RejectLog, loadStaged, targetNidOf, strOf } from "./lib/loader-utils";
+import { makeProgressLogger } from "./lib/progress";
 
 const DRY_RUN = process.argv.includes("--dry-run");
 const LOADER = "t-policies";
@@ -101,6 +102,12 @@ async function main() {
 
   const report: Record<string, unknown> = { loader: LOADER, dryRun: DRY_RUN, allowedRejects: ALLOWED_REJECTS };
   const rejects = new RejectLog();
+
+  // Heartbeat: the ~243k-row staged election load below is this loader's only
+  // long stretch (the resolution work after it is ~150 refs); liveness-only
+  // for the whole run — aggregates only.
+  const progress = makeProgressLogger(LOADER, 0);
+  progress.phase("pre-scan");
 
   // 1) Every S1 policy reference: election field targets + any staged
   //    sirius_json_definition bundle rows (the confirmed prod bundle — P4 RULED
@@ -271,6 +278,7 @@ async function main() {
     }
   }
 
+  progress.stop();
   report.rejects = rejects.counts;
   report.rejectSamples = rejects.samples;
   report.verifyFailures = verifyFailures;

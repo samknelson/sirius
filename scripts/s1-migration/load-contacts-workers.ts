@@ -228,16 +228,19 @@ async function main() {
   const report: Record<string, unknown> = { loader: LOADER, dryRun: DRY_RUN };
   const rejects = new RejectLog();
 
+  // throttle per-row storage-op logging + heartbeat (aggregates only:
+  // counts/elapsed/rate — never names, SSNs, or row contents) — from process
+  // start: the two ~250k-row staged loads below are minutes on the real
+  // target and must emit liveness, not silence.
+  throttleStorageOpLogs();
+  const progress = makeProgressLogger(LOADER, 0);
+  progress.phase("pre-scan");
+
   const stagedContacts = await loadStaged("sirius_contact");
   const stagedWorkers = await loadStaged("sirius_worker");
   report.stagedContacts = stagedContacts.length;
   report.stagedWorkers = stagedWorkers.length;
-
-  // throttle per-row storage-op logging + heartbeat (aggregates only:
-  // counts/elapsed/rate — never names, SSNs, or row contents)
-  throttleStorageOpLogs();
-  const progress = makeProgressLogger(LOADER, stagedContacts.length + stagedWorkers.length);
-  progress.phase("pre-scan");
+  progress.setTotal(stagedContacts.length + stagedWorkers.length);
 
   // ---- FATAL pre-scan: cross-worker field_sirius_id collisions ----
   // Data-integrity ruling 2026-08-06 (fund finding: S1's unlocked ID counter
