@@ -205,7 +205,7 @@ async function main() {
   }));
 
   const report: Record<string, unknown> = { loader: "t4-options", dryRun: DRY_RUN, stagedTerms: terms.length };
-  const perVocab: Record<string, { matchedIdMap: number; matchedSiriusId: number; adoptedByName: number; created: number; updated: number }> = {};
+  const perVocab: Record<string, { matchedIdMap: number; matchedSiriusId: number; adoptedByName: number; adoptedByCode: number; created: number; updated: number }> = {};
   const skippedVocabs: Record<string, { reason: string; terms: number }> = {};
   const unhandled: Record<string, number> = {};
 
@@ -262,14 +262,22 @@ async function main() {
       skippedVocabs[vocab] = { reason: KNOWN_SKIPPED[vocab], terms: vterms.length };
       continue;
     }
-    const stats = (perVocab[vocab] = { matchedIdMap: 0, matchedSiriusId: 0, adoptedByName: 0, created: 0, updated: 0 });
-    const rows: Array<{ id: string; name: string; siriusId?: string | null; sequence?: number | null; industryId?: string | null }> =
+    const stats = (perVocab[vocab] = { matchedIdMap: 0, matchedSiriusId: 0, adoptedByName: 0, adoptedByCode: 0, created: 0, updated: 0 });
+    const rows: Array<{ id: string; name: string; code?: string | null; siriusId?: string | null; sequence?: number | null; industryId?: string | null }> =
       await options.list(type);
     const supportsSiriusId = rows.length > 0 ? "siriusId" in rows[0] : SIRIUSID_SUPPORTED.has(type);
     const supportsSequence = SEQUENCE_SUPPORTED.has(type);
     const byId = new Map(rows.map((r) => [r.id, r]));
     const bySiriusId = new Map(rows.filter((r) => r.siriusId).map((r) => [String(r.siriusId), r]));
     const byName = new Map(rows.map((r) => [r.name.toLowerCase(), r]));
+    // gender only: options_gender.code is NOT NULL UNIQUE and genderCodeOf()
+    // collapses punctuation/case ("Non-binary"/"Nonbinary" → NONBINARY), so
+    // distinct S1 term names can derive the SAME code. Resolve by code after
+    // name-adoption misses, otherwise the create path hits the unique
+    // constraint (seen on the first real-data run, 2026-08-08).
+    const byCode = new Map(
+      type === "gender" ? rows.filter((r) => r.code).map((r) => [String(r.code), r]) : [],
+    );
     const ambiguousNames = new Set<string>();
     {
       const seen = new Set<string>();
@@ -373,6 +381,15 @@ async function main() {
             options.update(type, row!.id, adoptionPatch),
           );
         }
+      } else if (type === "gender" && (row = byCode.get(genderCodeOf(t.name, t.tid)))) {
+        // Distinct S1 names collapsing to one code (e.g. "Non-binary" after a
+        // "Nonbinary" row) are the SAME logical gender — adopt the existing
+        // row; id_map records this tid → the shared S2 row. The existing
+        // row's name wins (first term loaded).
+        stats.adoptedByCode++;
+        console.log(
+          `${vocab} tid ${t.tid} "${t.name}" adopts existing gender row "${row.name}" (code ${genderCodeOf(t.name, t.tid)})`,
+        );
       } else {
         stats.created++;
         if (!DRY_RUN) {
@@ -388,6 +405,15 @@ async function main() {
               ...(t.description ? { description: t.description } : {}),
             }),
           );
+          // Register the new row in the lookup maps so a LATER term in this
+          // same run that name- or code-collides adopts it instead of hitting
+          // the DB unique constraint.
+          const created = row!;
+          byId.set(created.id, created);
+          const nk = t.name.toLowerCase();
+          if (byName.has(nk)) ambiguousNames.add(nk);
+          else byName.set(nk, created);
+          if (type === "gender") byCode.set(genderCodeOf(t.name, t.tid), created);
         }
       }
       if (!DRY_RUN && row) {
