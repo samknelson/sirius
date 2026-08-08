@@ -349,8 +349,9 @@ async function main() {
     }
 
     // ---- verify pass (page-scoped): exact row equality for every loaded payment ----
-    progress.phase("verify");
+    progress.phase("verify", expectations.length);
     for (const batch of chunk(expectations, 200)) {
+      progress.add(batch.length);
       const rows = await storage.ledger.payments.getByIds(batch.map((e) => e.s2Id));
       const byId = new Map(rows.map((r) => [r.id, r]));
       for (const ex of batch) {

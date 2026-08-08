@@ -428,7 +428,7 @@ async function main() {
     }
 
     // ---- verify pass (page-scoped, batched; exact field equality) ----
-    progress.phase("verify");
+    progress.phase("verify", expectations.length);
     interface VerifyRow {
       id: string;
       worker_id: string;
@@ -441,6 +441,7 @@ async function main() {
     }
     const verifyById = new Map<string, VerifyRow>();
     for (const batch of chunk(expectations, 500)) {
+      progress.add(batch.length);
       const res = (await db.execute(sql`
         SELECT id, worker_id, employer_id, start_ymd::text AS start_ymd, end_ymd::text AS end_ymd,
                enrollment_type, benefit_ids, relationship_ids

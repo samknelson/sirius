@@ -389,8 +389,10 @@ async function main() {
     if (!DRY_RUN && expected.size > 0) {
       const vMap = await getMappings(ID_MAP_ENTITY, [...expected.keys()]);
       const vIds = [...new Set([...vMap.values()].map((v) => v.s2Id))];
+      progress.phase("verify", vIds.length);
       const vExists = new Set<string>();
       for (const ids of chunk(vIds, 500)) {
+        progress.add(ids.length);
         const res = (await db.execute(sql`
           SELECT id FROM comm WHERE medium = ${COMM_MEDIUM}
              AND id IN (${sql.join(ids.map((id) => sql`${id}`), sql`, `)})

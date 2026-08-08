@@ -286,11 +286,12 @@ async function main() {
   }
 
   // ---------------- verify pass ----------------
-  progress.phase("verify");
+  progress.phase("verify", rows.length);
   let verifyFailures = 0;
   if (!DRY_RUN) {
     const vMap = await getMappings(ID_MAP_ENTITY, rows.map((r) => r.nid));
     for (const r of rows) {
+      progress.add(1);
       if (rejects.hasAnyIn(r.nid, FATAL_REASONS)) continue;
       const m = vMap.get(r.nid);
       if (!m) {

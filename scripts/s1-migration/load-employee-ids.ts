@@ -48,6 +48,7 @@ import { withNotificationsSuppressed } from "../../server/middleware/request-con
 import { ensureStagingSchema, recordRun } from "./lib/staging";
 import { ensureIdMap, getMappings, putMapping } from "./lib/idmap";
 import { RejectLog, loadStaged, strOf, targetNidOf } from "./lib/loader-utils";
+import { makeProgressLogger } from "./lib/progress";
 
 const DRY_RUN = process.argv.includes("--dry-run");
 const ALLOWED_REJECTS: string[] = (() => {
@@ -136,7 +137,9 @@ async function main() {
     return created.id;
   }
 
+  const progress = makeProgressLogger(LOADER, rows.length);
   for (const r of rows) {
+    progress.add(1);
     // ---- resolve + validate EVERYTHING before any write for this row ----
     const workerNid = targetNidOf(r.fields, "field_sirius_worker");
     if (workerNid == null) {
@@ -243,10 +246,12 @@ async function main() {
   report.employeeIds = stats;
 
   // ---------------- verify pass ----------------
+  progress.phase("verify", rows.length);
   let verifyFailures = 0;
   if (!DRY_RUN) {
     const vMap = await getMappings("employee-id", rows.map((r) => r.nid));
     for (const r of rows) {
+      progress.add(1);
       if (rejects.hasAnyIn(r.nid, FATAL_REASONS)) continue;
       const m = vMap.get(r.nid);
       if (!m) {
@@ -267,6 +272,8 @@ async function main() {
       }
     }
   }
+
+  progress.stop();
 
   report.rejects = rejects.counts;
   report.rejectSamples = rejects.samples;

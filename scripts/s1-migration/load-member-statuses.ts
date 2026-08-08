@@ -33,6 +33,7 @@ import { withNotificationsSuppressed } from "../../server/middleware/request-con
 import { ensureStagingSchema, recordRun } from "./lib/staging";
 import { ensureIdMap, getMappings } from "./lib/idmap";
 import { RejectLog, loadStaged, epochToYmd } from "./lib/loader-utils";
+import { makeProgressLogger } from "./lib/progress";
 
 const LOADER = "t6-member-statuses";
 const DRY_RUN = process.argv.includes("--dry-run");
@@ -160,10 +161,12 @@ async function main() {
   }
 
   // ---------------- write pass ----------------
+  const progress = makeProgressLogger(LOADER, perWorker.size, { verb: "workers" });
   let created = 0;
   let adopted = 0;
   const expected: Array<Resolved> = [];
   for (const [nid, list] of perWorker) {
+    progress.add(1);
     // existing rows for this worker (adopt-by-natural-key)
     const existing: Array<{ id: string; msId: string; industryId: string }> = DRY_RUN
       ? []
@@ -218,7 +221,9 @@ async function main() {
     // group expectations per worker, re-read once per worker
     const byWorker = new Map<string, Resolved[]>();
     for (const e of expected) (byWorker.get(e.workerId) ?? byWorker.set(e.workerId, []).get(e.workerId)!).push(e);
+    progress.phase("verify", byWorker.size);
     for (const [workerId, exps] of byWorker) {
+      progress.add(1);
       const rows: Array<{ msId: string; industryId: string }> = await storage.workerMsh.getWorkerMsh(workerId);
       for (const e of exps) {
         // exact cardinality: EXACTLY one row for the industry, carrying our ms
@@ -237,6 +242,8 @@ async function main() {
       extraIndustryRows += rows.filter((row) => !expectedIndustries.has(row.industryId)).length;
     }
   }
+
+  progress.stop();
 
   report.rejects = rejects.counts;
   report.rejectSamples = rejects.samples;

@@ -362,11 +362,12 @@ async function main() {
   report.relations = stats;
 
   // ---------------- verify pass ----------------
-  progress.phase("verify");
+  progress.phase("verify", rels.length);
   let verifyFailures = 0;
   if (!DRY_RUN) {
     const vMap = await getMappings("relation", rels.map((r) => r.nid));
     for (const r of rels) {
+      progress.add(1);
       if (rejects.hasAnyIn(r.nid, FATAL_REASONS)) continue;
       const m = vMap.get(r.nid);
       if (!m) {

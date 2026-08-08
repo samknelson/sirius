@@ -14,11 +14,19 @@
  *    slow.
  *  - Row-loop form:   `  progress <label>: done=N/M (P%) elapsed=Es rate=R rows/s`
  *    (the verb is `staged=` for the extractor, for output compatibility).
- *  - Silent phases (pre-scan, verify, flush, …) set `phase(name)`; ticks
- *    then emit a distinct liveness line
- *    `  progress <label>: phase=<name> done=N/M elapsed=Es (liveness)`
- *    so a hung connection is distinguishable from a slow healthy phase.
- *    `phase(null)` returns to the row-loop form.
+ *  - Named phases come in two forms:
+ *      phase(name)         — silent phase (single set-based query, unknown
+ *                            span): ticks emit a liveness line
+ *                            `  progress <label>: phase=<name> done=N/M elapsed=Es (liveness)`
+ *                            so a hung connection is distinguishable from a
+ *                            slow healthy phase. add()/update() still apply
+ *                            to the MAIN counter (pre-2026-08 behavior).
+ *      phase(name, total)  — counted phase (verify loops etc.): starts a
+ *                            fresh per-phase counter; add()/update() apply to
+ *                            IT, and ticks emit real progress
+ *                            `  progress <label>: phase=<name> done=N/M (P%) elapsed=Es rate=R rows/s`
+ *                            with rate computed from the phase's own start.
+ *    `phase(null)` returns to the row-loop form and the main counter.
  *  - Silent for runs that finish inside the first interval, so small-volume
  *    output is unchanged. The timer is unref()'d and stop()'d by callers, so
  *    it never keeps the process alive.
@@ -30,12 +38,18 @@ const PROGRESS_INTERVAL_MS = (() => {
 })();
 
 export interface ProgressLogger {
-  /** Record the latest successfully completed count (absolute). */
+  /** Record the latest successfully completed count (absolute). Applies to the
+   * current counted phase when one is active, else the main counter. */
   update(done: number): void;
-  /** Increment the completed count (per-row convenience). */
+  /** Increment the completed count (per-row convenience). Applies to the
+   * current counted phase when one is active, else the main counter. */
   add(n?: number): void;
-  /** Enter a named silent phase (liveness ticks); `null` returns to rows. */
-  phase(name: string | null): void;
+  /**
+   * Enter a named phase. With `total`, the phase gets its own counter and
+   * ticks report real progress; without, ticks are liveness-only and
+   * add()/update() keep mutating the main counter. `null` returns to rows.
+   */
+  phase(name: string | null, total?: number): void;
   /** Stop the heartbeat timer — call when the loop is done. */
   stop(): void;
 }
@@ -49,15 +63,28 @@ export function makeProgressLogger(
   const start = Date.now();
   let done = 0;
   let currentPhase: string | null = null;
+  let phaseTotal: number | null = null;
+  let phaseDone = 0;
+  let phaseStart = start;
   const timer = setInterval(() => {
-    const elapsedS = (Date.now() - start) / 1000;
-    const elapsed = Math.round(elapsedS);
+    const now = Date.now();
+    const elapsed = Math.round((now - start) / 1000);
     if (currentPhase) {
-      console.log(
-        `  progress ${label}: phase=${currentPhase} ${verb}=${done}/${total} elapsed=${elapsed}s (liveness)`,
-      );
+      if (phaseTotal != null) {
+        const phaseElapsedS = (now - phaseStart) / 1000;
+        const rate = phaseElapsedS > 0 ? Math.round(phaseDone / phaseElapsedS) : 0;
+        const pct = phaseTotal > 0 ? ` (${((phaseDone / phaseTotal) * 100).toFixed(1)}%)` : "";
+        console.log(
+          `  progress ${label}: phase=${currentPhase} ${verb}=${phaseDone}/${phaseTotal}${pct} elapsed=${elapsed}s rate=${rate} rows/s`,
+        );
+      } else {
+        console.log(
+          `  progress ${label}: phase=${currentPhase} ${verb}=${done}/${total} elapsed=${elapsed}s (liveness)`,
+        );
+      }
       return;
     }
+    const elapsedS = (now - start) / 1000;
     const rate = elapsedS > 0 ? Math.round(done / elapsedS) : 0;
     const pct = total > 0 ? ` (${((done / total) * 100).toFixed(1)}%)` : "";
     console.log(
@@ -67,13 +94,18 @@ export function makeProgressLogger(
   timer.unref();
   return {
     update(n: number) {
-      done = n;
+      if (currentPhase && phaseTotal != null) phaseDone = n;
+      else done = n;
     },
     add(n = 1) {
-      done += n;
+      if (currentPhase && phaseTotal != null) phaseDone += n;
+      else done += n;
     },
-    phase(name: string | null) {
+    phase(name: string | null, total?: number) {
       currentPhase = name;
+      phaseTotal = name != null && total != null ? total : null;
+      phaseDone = 0;
+      phaseStart = Date.now();
     },
     stop() {
       clearInterval(timer);

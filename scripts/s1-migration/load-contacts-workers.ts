@@ -942,11 +942,12 @@ async function main() {
   }
 
   // ---------------- verify pass ----------------
-  progress.phase("verify");
+  progress.phase("verify", stagedContacts.length + stagedWorkers.length);
   let verifyFailures = 0;
   if (!DRY_RUN) {
     const vContactMap = await getMappings("contact", stagedContacts.map((c) => c.nid));
     for (const c of stagedContacts) {
+      progress.add(1);
       const m = vContactMap.get(c.nid);
       if (!m) {
         if (!rejects.has("contact_no_name", c.nid)) {
@@ -964,6 +965,7 @@ async function main() {
     const legacyNidTypeId = idTypeByLabel.get("Legacy NID");
     const vWorkerMap = await getMappings("worker", stagedWorkers.map((w) => w.nid));
     for (const w of stagedWorkers) {
+      progress.add(1);
       const cnid = targetNidOf(w.fields, "field_sirius_contact");
       const m = vWorkerMap.get(w.nid);
       if (!m) {

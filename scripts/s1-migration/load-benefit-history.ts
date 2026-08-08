@@ -467,10 +467,11 @@ async function main() {
     }
 
     // ---- verify pass (page-scoped): every expected (tuple, month) row exists ----
-    progress.phase("verify");
+    progress.phase("verify", targetWorkerIds.length);
     if (!DRY_RUN && loadedSpans.length > 0) {
       const verifyByKey = new Set<string>();
       for (const ids of chunk(targetWorkerIds, 200)) {
+        progress.add(ids.length);
         const res = (await db.execute(sql`
           SELECT month, year, worker_id, employer_id, benefit_id FROM trust_wmb
            WHERE worker_id IN (${sql.join(ids.map((id) => sql`${id}`), sql`, `)})
