@@ -85,6 +85,11 @@ async function main() {
   const report: Record<string, unknown> = { loader: LOADER, dryRun: DRY_RUN, allowedRejects: ALLOWED_REJECTS };
   const rejects = new RejectLog();
 
+  // Heartbeat from process start — staged load + bulk id_map lookups emit
+  // liveness ticks until the row total is known.
+  const progress = makeProgressLogger(LOADER, 0);
+  progress.phase("pre-scan");
+
   const rows = await loadStaged("sirius_employee");
   report.stagedEmployees = rows.length;
 
@@ -137,7 +142,8 @@ async function main() {
     return created.id;
   }
 
-  const progress = makeProgressLogger(LOADER, rows.length);
+  progress.setTotal(rows.length);
+  progress.phase(null);
   for (const r of rows) {
     progress.add(1);
     // ---- resolve + validate EVERYTHING before any write for this row ----

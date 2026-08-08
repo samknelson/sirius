@@ -83,6 +83,12 @@ async function main() {
   const report: Record<string, unknown> = { loader: LOADER, dryRun: DRY_RUN, allowedRejects: ALLOWED_REJECTS };
   const rejects = new RejectLog();
 
+  // Heartbeat from process start: the staged-worker load + bulk crosswalks
+  // below are the dominant wall-clock on the real target — total is unknown
+  // until perWorker is built, so pre-scan ticks are liveness-only.
+  const progress = makeProgressLogger(LOADER, 0, { verb: "workers" });
+  progress.phase("pre-scan");
+
   const workers = await loadStaged("sirius_worker");
   report.stagedWorkers = workers.length;
 
@@ -161,7 +167,8 @@ async function main() {
   }
 
   // ---------------- write pass ----------------
-  const progress = makeProgressLogger(LOADER, perWorker.size, { verb: "workers" });
+  progress.setTotal(perWorker.size);
+  progress.phase(null);
   let created = 0;
   let adopted = 0;
   const expected: Array<Resolved> = [];

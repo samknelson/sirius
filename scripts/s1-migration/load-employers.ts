@@ -54,6 +54,7 @@ import { withNotificationsSuppressed } from "../../server/middleware/request-con
 import { ensureStagingSchema, recordRun } from "./lib/staging";
 import { ensureIdMap, getMappings, putMapping, markAbsorbed } from "./lib/idmap";
 import { RejectLog, loadStaged, strOf, tidOf, targetNidOf, toE164 } from "./lib/loader-utils";
+import { makeProgressLogger } from "./lib/progress";
 
 const DRY_RUN = process.argv.includes("--dry-run");
 const ALLOWED_REJECTS: string[] = (() => {
@@ -86,10 +87,16 @@ async function main() {
   const report: Record<string, unknown> = { loader: LOADER, dryRun: DRY_RUN };
   const rejects = new RejectLog();
 
+  // Heartbeat from process start — liveness ticks during the staged loads and
+  // bulk crosswalks, then real progress across the shops + shop-contacts rows.
+  const progress = makeProgressLogger(LOADER, 0);
+  progress.phase("pre-scan");
+
   const shops = await loadStaged("grievance_shop");
   const shopContacts = await loadStaged("grievance_shop_contact");
   report.stagedShops = shops.length;
   report.stagedShopContacts = shopContacts.length;
+  progress.setTotal(shops.length + shopContacts.length);
 
   // ---------------- shops pass (§9b) ----------------
   const employerMap = await getMappings("employer", shops.map((s) => s.nid));
@@ -111,7 +118,9 @@ async function main() {
   const unloadedFieldCounts: Record<string, number> = {};
   const eStats = { matched: 0, absorbedStubs: 0, created: 0, updated: 0 };
 
+  progress.phase(null);
   for (const s of shops) {
+    progress.add(1);
     const name = s.title?.trim();
     if (!name) {
       rejects.add("shop_no_name", { nid: s.nid }, s.nid);
@@ -223,6 +232,7 @@ async function main() {
   };
 
   for (const c of shopContacts) {
+    progress.add(1);
     const displayName = strOf(c.fields, "field_grievance_co_name") ?? c.title?.trim() ?? null;
     if (!displayName) {
       rejects.add("shopcontact_no_name", { nid: c.nid }, c.nid);
@@ -412,10 +422,12 @@ async function main() {
   report.shopContacts = scStats;
 
   // ---------------- verify pass ----------------
+  progress.phase("verify", shops.length + shopContacts.length);
   let verifyFailures = 0;
   if (!DRY_RUN) {
     const vEmployerMap = await getMappings("employer", shops.map((s) => s.nid));
     for (const s of shops) {
+      progress.add(1);
       if (rejects.hasAnyIn(s.nid, FATAL_SHOP_REASONS)) continue;
       const m = vEmployerMap.get(s.nid);
       if (!m || m.stub) {
@@ -431,6 +443,7 @@ async function main() {
     }
     const vContactMap = await getMappings("contact", shopContacts.map((c) => c.nid));
     for (const c of shopContacts) {
+      progress.add(1);
       if (rejects.hasAnyIn(c.nid, FATAL_SHOPCONTACT_REASONS)) continue;
       const m = vContactMap.get(c.nid);
       if (!m) {
@@ -467,6 +480,7 @@ async function main() {
 
   report.rejects = rejects.counts;
   report.rejectSamples = rejects.samples;
+  progress.stop();
   report.verifyFailures = verifyFailures;
   report.allowedRejects = ALLOWED_REJECTS;
 

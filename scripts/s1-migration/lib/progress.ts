@@ -50,6 +50,13 @@ export interface ProgressLogger {
    * add()/update() keep mutating the main counter. `null` returns to rows.
    */
   phase(name: string | null, total?: number): void;
+  /**
+   * Set/replace the MAIN counter's total. Lets a loader start the heartbeat
+   * BEFORE the staged load (when the total is still unknown, pass 0 at
+   * construction) and fill it in once counted — the pre-scan stretch then
+   * still emits liveness ticks instead of silence.
+   */
+  setTotal(total: number): void;
   /** Stop the heartbeat timer — call when the loop is done. */
   stop(): void;
 }
@@ -78,8 +85,9 @@ export function makeProgressLogger(
           `  progress ${label}: phase=${currentPhase} ${verb}=${phaseDone}/${phaseTotal}${pct} elapsed=${elapsed}s rate=${rate} rows/s`,
         );
       } else {
+        const counted = total > 0 ? `${done}/${total}` : `${done}`;
         console.log(
-          `  progress ${label}: phase=${currentPhase} ${verb}=${done}/${total} elapsed=${elapsed}s (liveness)`,
+          `  progress ${label}: phase=${currentPhase} ${verb}=${counted} elapsed=${elapsed}s (liveness)`,
         );
       }
       return;
@@ -87,8 +95,9 @@ export function makeProgressLogger(
     const elapsedS = (now - start) / 1000;
     const rate = elapsedS > 0 ? Math.round(done / elapsedS) : 0;
     const pct = total > 0 ? ` (${((done / total) * 100).toFixed(1)}%)` : "";
+    const counted = total > 0 ? `${done}/${total}` : `${done}`;
     console.log(
-      `  progress ${label}: ${verb}=${done}/${total}${pct} elapsed=${elapsed}s rate=${rate} rows/s`,
+      `  progress ${label}: ${verb}=${counted}${pct} elapsed=${elapsed}s rate=${rate} rows/s`,
     );
   }, PROGRESS_INTERVAL_MS);
   timer.unref();
@@ -101,11 +110,14 @@ export function makeProgressLogger(
       if (currentPhase && phaseTotal != null) phaseDone += n;
       else done += n;
     },
-    phase(name: string | null, total?: number) {
+    phase(name: string | null, phaseTotalArg?: number) {
       currentPhase = name;
-      phaseTotal = name != null && total != null ? total : null;
+      phaseTotal = name != null && phaseTotalArg != null ? phaseTotalArg : null;
       phaseDone = 0;
       phaseStart = Date.now();
+    },
+    setTotal(n: number) {
+      total = n;
     },
     stop() {
       clearInterval(timer);

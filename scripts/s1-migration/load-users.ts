@@ -64,6 +64,7 @@ import {
 } from "./lib/staging";
 import { ensureIdMap, getMappings, getAllMappings, putMapping, deleteMapping } from "./lib/idmap";
 import { RejectLog, loadStaged, strOf, targetNidOf } from "./lib/loader-utils";
+import { makeProgressLogger } from "./lib/progress";
 
 const DRY_RUN = process.argv.includes("--dry-run");
 const ALLOWED_REJECTS: string[] = (() => {
@@ -117,6 +118,12 @@ async function main() {
 
   // ---- worker resolution index: lower(contact email) → contact nids →
   // worker nids → id_map worker s2 ids -------------------------------------
+  // Heartbeat from process start — the staged contact/worker loads and bulk
+  // crosswalks below are minutes on the real target; liveness ticks until the
+  // user total is known.
+  const progress = makeProgressLogger(LOADER, 0, { verb: "users" });
+  progress.phase("pre-scan");
+
   const contacts = await loadStaged("sirius_contact");
   const workers = await loadStaged("sirius_worker");
   const contactNidsByEmail = new Map<string, number[]>();
@@ -269,7 +276,10 @@ async function main() {
 
   const idMap = await getMappings("user", activeStaged.map((u) => u.uid));
 
+  progress.setTotal(activeStaged.length);
+  progress.phase(null);
   for (const u of activeStaged) {
+    progress.add(1);
     const mailRaw = (u.mail ?? "").trim();
     if (!mailRaw) {
       rejects.add("missing_mail", { uid: u.uid }, u.uid);
@@ -559,6 +569,7 @@ async function main() {
   };
 
   // ---------------- verify pass ----------------
+  progress.phase("verify", activeStaged.length);
   let verifyFailures = 0;
   if (!DRY_RUN) {
     // uid 0/1 must never be mapped/migrated (Drupal anonymous + superuser)
@@ -584,6 +595,7 @@ async function main() {
     }
     const vMap = await getMappings("user", activeStaged.map((u) => u.uid));
     for (const u of activeStaged) {
+      progress.add(1);
       if (rejects.hasAnyIn(u.uid, FATAL_REASONS)) continue;
       const m = vMap.get(u.uid);
       if (!m) {
@@ -636,6 +648,7 @@ async function main() {
 
   report.rejects = rejects.counts;
   report.rejectSamples = rejects.samples;
+  progress.stop();
   report.verifyFailures = verifyFailures;
   report.annotations = ANNOTATIONS;
 
