@@ -231,14 +231,18 @@ async function main() {
     // the admin role. ON CONFLICT DO NOTHING makes this idempotent so
     // re-running after a DB copy (empty role_permissions) heals the gap.
     const allPermissions = await storage.users.getAllPermissions();
+    const existingPerms = new Set(
+      (await q(`SELECT permission_key FROM role_permissions WHERE role_id = $1`, [roleId])).map(
+        (r: { permission_key: string }) => r.permission_key,
+      ),
+    );
     let granted = 0;
     for (const p of allPermissions) {
-      try {
-        await storage.users.assignPermissionToRole({ roleId, permissionKey: p.key });
-        granted++;
-      } catch {
-        // already assigned — skip
-      }
+      if (existingPerms.has(p.key)) continue; // explicit existence check —
+      // any error below (DB, registry, schema) must FAIL the bootstrap, not
+      // be silently treated as "already assigned"
+      await storage.users.assignPermissionToRole({ roleId, permissionKey: p.key });
+      granted++;
     }
     console.log(`admin role: ${allPermissions.length} permission(s) registered, ${granted} newly granted`);
 
@@ -256,13 +260,18 @@ async function main() {
         await storage.users.assignRoleToUser({ userId: user.id, roleId });
         console.log(`created admin user ${adminEmail}`);
       } else {
-        // User exists — ensure the role is still attached (idempotent).
-        try {
+        // User exists — ensure the role is still attached (idempotent via an
+        // explicit existence check; unexpected failures propagate).
+        const hasRole = await q(`SELECT 1 FROM user_roles WHERE user_id = $1 AND role_id = $2`, [
+          adminNow[0].id,
+          roleId,
+        ]);
+        if (hasRole.length === 0) {
           await storage.users.assignRoleToUser({ userId: adminNow[0].id, roleId });
-        } catch {
-          // already assigned — skip
+          console.log(`admin present: ${adminEmail} (admin role re-attached)`);
+        } else {
+          console.log(`admin present: ${adminEmail}`);
         }
-        console.log(`admin present: ${adminEmail}`);
       }
     }
   });

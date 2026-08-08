@@ -94,6 +94,7 @@ const FATAL_REASONS = [
   "bad_end_date",
   "end_before_start",
   "inactive_no_end",
+  "bad_changed_epoch",
   "open_end_through_required",
   "open_span_after_through",
   "span_too_long",

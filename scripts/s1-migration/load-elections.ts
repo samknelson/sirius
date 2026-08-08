@@ -112,6 +112,7 @@ const FATAL_REASONS = [
   "bad_end_date",
   "end_not_after_start",
   "inactive_no_end",
+  "bad_changed_epoch",
   "benefit_unmapped",
   "relation_unmapped",
   "election_type_unmapped",

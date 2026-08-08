@@ -49,6 +49,7 @@ const FATAL_REASONS = [
   "worker_unmapped",
   "ms_term_unmapped",
   "ms_option_missing",
+  "bad_changed_epoch",
   "duplicate_industry_assignment",
   "duplicate_existing_rows",
   "industry_ms_conflict",

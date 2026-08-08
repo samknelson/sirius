@@ -80,6 +80,7 @@ const FATAL_REASONS = [
   "future_start_date",
   "bad_end_date",
   "end_before_start",
+  "bad_changed_epoch",
   "relation_create_failed",
   "relation_update_failed",
 ] as const;
