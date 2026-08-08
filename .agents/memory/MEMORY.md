@@ -110,4 +110,5 @@
 - [Prod boot verification via DB](prod-boot-verification-via-db.md) — no AWS/URL access here; verify via migrations_version + winston liveness; SOURCE_CONFIG_DATABASE_URL is John's bao-prd DB, EXTERNAL is Mitchell's.
 - [gitPush needs upstream tracking](gitpush-callback-upstream.md) — pushing to an existing remote branch requires `git branch -u origin/<b>` first, else opaque BRANCH_ALREADY_EXISTS.
 - [BAO member status scan codes](bao-member-status-codes.md) — scan resolves options by code (EC100/EC80/H60); dev DB options lack codes → scan fails explicitly until seeded.
+- [S1 load-options required-column gaps](s1-load-options-required-columns.md) — fresh-target create/adopt paths hit NOT NULL columns (gender.code) and empty-patch updates that id_map-matched runs never exercised.
 - [S1 loader heartbeats & log throttling](s1-loader-observability.md) — shared progress heartbeat + storage-op log sampling knobs; winston_logs no longer a loader progress proxy.

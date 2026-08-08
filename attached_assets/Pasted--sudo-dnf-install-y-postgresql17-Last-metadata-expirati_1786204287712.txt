@@ -1,0 +1,340 @@
+~ $ sudo dnf install -y postgresql17
+Last metadata expiration check: 0:04:29 ago on Sat 08 Aug 2026 03:45:40 PM UTC.
+Dependencies resolved.
+========================================================================================================================================
+ Package                                  Architecture          Version                                Repository                  Size
+========================================================================================================================================
+Installing:
+ postgresql17                             x86_64                17.10-1.amzn2023.0.1                   amazonlinux                1.9 M
+Installing dependencies:
+ postgresql17-private-libs                x86_64                17.10-1.amzn2023.0.1                   amazonlinux                149 k
+Downgrading:
+ postgresql16                             x86_64                16.8-1.amzn2023.0.1                    amazonlinux                1.9 M
+ postgresql16-private-libs                x86_64                16.8-1.amzn2023.0.1                    amazonlinux                144 k
+
+Transaction Summary
+========================================================================================================================================
+Install    2 Packages
+Downgrade  2 Packages
+
+Total size: 4.1 M
+Downloading Packages:
+[SKIPPED] postgresql16-16.8-1.amzn2023.0.1.x86_64.rpm: Already downloaded                                                              
+[SKIPPED] postgresql16-private-libs-16.8-1.amzn2023.0.1.x86_64.rpm: Already downloaded                                                 
+[SKIPPED] postgresql17-17.10-1.amzn2023.0.1.x86_64.rpm: Already downloaded                                                             
+[SKIPPED] postgresql17-private-libs-17.10-1.amzn2023.0.1.x86_64.rpm: Already downloaded                                                
+Running transaction check
+Transaction check succeeded.
+Running transaction test
+The downloaded packages were saved in cache until the next successful transaction.
+You can remove cached packages by executing 'dnf clean packages'.
+Error: Transaction test error:
+  file /usr/bin/clusterdb conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/bin/createdb conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/bin/createuser conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/bin/dropdb conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/bin/dropuser conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/bin/pg_dump conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/bin/pg_dumpall conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/bin/pg_isready conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/bin/pg_restore conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/bin/pg_upgrade conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/bin/psql conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/bin/reindexdb conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/bin/vacuumdb conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man1/clusterdb.1.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man1/createdb.1.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man1/createuser.1.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man1/dropdb.1.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man1/dropuser.1.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man1/pg_dump.1.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man1/pg_dumpall.1.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man1/pg_isready.1.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man1/pg_restore.1.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man1/pg_upgrade.1.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man1/psql.1.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man1/reindexdb.1.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man1/vacuumdb.1.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/ABORT.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/ALTER_AGGREGATE.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/ALTER_COLLATION.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/ALTER_CONVERSION.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/ALTER_DATABASE.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/ALTER_DEFAULT_PRIVILEGES.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/ALTER_DOMAIN.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/ALTER_EVENT_TRIGGER.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/ALTER_EXTENSION.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/ALTER_FOREIGN_DATA_WRAPPER.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/ALTER_FOREIGN_TABLE.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/ALTER_FUNCTION.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/ALTER_GROUP.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/ALTER_INDEX.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/ALTER_LANGUAGE.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/ALTER_LARGE_OBJECT.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/ALTER_MATERIALIZED_VIEW.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/ALTER_OPERATOR.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/ALTER_OPERATOR_CLASS.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/ALTER_OPERATOR_FAMILY.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/ALTER_POLICY.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/ALTER_PROCEDURE.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/ALTER_PUBLICATION.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/ALTER_ROLE.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/ALTER_ROUTINE.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/ALTER_RULE.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/ALTER_SCHEMA.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/ALTER_SEQUENCE.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/ALTER_SERVER.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/ALTER_STATISTICS.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/ALTER_SUBSCRIPTION.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/ALTER_SYSTEM.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/ALTER_TABLE.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/ALTER_TABLESPACE.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/ALTER_TEXT_SEARCH_CONFIGURATION.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/ALTER_TEXT_SEARCH_DICTIONARY.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/ALTER_TEXT_SEARCH_PARSER.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/ALTER_TEXT_SEARCH_TEMPLATE.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/ALTER_TRIGGER.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/ALTER_TYPE.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/ALTER_USER.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/ALTER_USER_MAPPING.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/ALTER_VIEW.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/ANALYZE.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/BEGIN.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/CALL.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/CHECKPOINT.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/CLOSE.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/CLUSTER.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/COMMENT.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/COMMIT.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/COMMIT_PREPARED.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/COPY.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/CREATE_ACCESS_METHOD.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/CREATE_AGGREGATE.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/CREATE_CAST.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/CREATE_COLLATION.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/CREATE_CONVERSION.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/CREATE_DATABASE.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/CREATE_DOMAIN.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/CREATE_EVENT_TRIGGER.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/CREATE_EXTENSION.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/CREATE_FOREIGN_DATA_WRAPPER.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/CREATE_FOREIGN_TABLE.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/CREATE_FUNCTION.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/CREATE_GROUP.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/CREATE_INDEX.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/CREATE_LANGUAGE.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/CREATE_MATERIALIZED_VIEW.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/CREATE_OPERATOR.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/CREATE_OPERATOR_CLASS.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/CREATE_OPERATOR_FAMILY.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/CREATE_POLICY.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/CREATE_PROCEDURE.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/CREATE_PUBLICATION.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/CREATE_ROLE.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/CREATE_RULE.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/CREATE_SCHEMA.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/CREATE_SEQUENCE.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/CREATE_SERVER.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/CREATE_STATISTICS.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/CREATE_SUBSCRIPTION.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/CREATE_TABLE.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/CREATE_TABLESPACE.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/CREATE_TABLE_AS.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/CREATE_TEXT_SEARCH_CONFIGURATION.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/CREATE_TEXT_SEARCH_DICTIONARY.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/CREATE_TEXT_SEARCH_PARSER.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/CREATE_TEXT_SEARCH_TEMPLATE.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/CREATE_TRANSFORM.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/CREATE_TRIGGER.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/CREATE_TYPE.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/CREATE_USER.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/CREATE_USER_MAPPING.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/CREATE_VIEW.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/DEALLOCATE.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/DECLARE.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/DELETE.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/DISCARD.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/DO.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/DROP_ACCESS_METHOD.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/DROP_AGGREGATE.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/DROP_CAST.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/DROP_COLLATION.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/DROP_CONVERSION.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/DROP_DATABASE.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/DROP_DOMAIN.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/DROP_EVENT_TRIGGER.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/DROP_EXTENSION.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/DROP_FOREIGN_DATA_WRAPPER.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/DROP_FOREIGN_TABLE.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/DROP_FUNCTION.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/DROP_GROUP.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/DROP_INDEX.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/DROP_LANGUAGE.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/DROP_MATERIALIZED_VIEW.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/DROP_OPERATOR.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/DROP_OPERATOR_CLASS.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/DROP_OPERATOR_FAMILY.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/DROP_OWNED.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/DROP_POLICY.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/DROP_PROCEDURE.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/DROP_PUBLICATION.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/DROP_ROLE.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/DROP_ROUTINE.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/DROP_RULE.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/DROP_SCHEMA.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/DROP_SEQUENCE.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/DROP_SERVER.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/DROP_STATISTICS.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/DROP_SUBSCRIPTION.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/DROP_TABLE.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/DROP_TABLESPACE.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/DROP_TEXT_SEARCH_CONFIGURATION.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/DROP_TEXT_SEARCH_DICTIONARY.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/DROP_TEXT_SEARCH_PARSER.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/DROP_TEXT_SEARCH_TEMPLATE.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/DROP_TRANSFORM.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/DROP_TRIGGER.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/DROP_TYPE.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/DROP_USER.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/DROP_USER_MAPPING.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/DROP_VIEW.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/END.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/EXECUTE.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/EXPLAIN.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/FETCH.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/GRANT.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/IMPORT_FOREIGN_SCHEMA.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/INSERT.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/LISTEN.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/LOAD.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/LOCK.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/MERGE.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/MOVE.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/NOTIFY.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/PREPARE.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/PREPARE_TRANSACTION.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/REASSIGN_OWNED.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/REFRESH_MATERIALIZED_VIEW.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/REINDEX.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/RELEASE_SAVEPOINT.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/RESET.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/REVOKE.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/ROLLBACK.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql 6-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/ROLLBACK_PREPARED.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/ROLLBACK_TO_SAVEPOINT.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/SAVEPOINT.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/SECURITY_LABEL.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/SELECT.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/SELECT_INTO.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/SET.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/SET_CONSTRAINTS.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/SET_ROLE.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/SET_SESSION_AUTHORIZATION.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/SET_TRANSACTION.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/SHOW.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/START_TRANSACTION.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/TRUNCATE.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/UNLISTEN.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/UPDATE.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/VACUUM.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+  file /usr/share/man/man7/VALUES.7.gz conflicts between attempted installs of postgresql17-17.10-1.amzn2023.0.1.x86_64 and postgresql16-16.8-1.amzn2023.0.1.x86_64
+
+~ $ dnf clean packages
+0 files removed
+~ $ pg_dump --version
+pg_dump (PostgreSQL) 16.14
+~ $ sudo dnf search postgresql
+
+Last metadata expiration check: 0:05:19 ago on Sat 08 Aug 2026 03:45:40 PM UTC.
+================================================== Name & Summary Matched: postgresql ==================================================
+collectd-postgresql.x86_64 : PostgreSQL plugin for collectd
+freeradius-postgresql.x86_64 : Postgresql support for freeradius
+opendbx-postgresql.x86_64 : PostgreSQL backend - provides postgresql support in opendbx
+postgresql-odbc.x86_64 : PostgreSQL ODBC driver
+postgresql15.x86_64 : PostgreSQL client programs
+postgresql15-contrib.x86_64 : Extension modules distributed with PostgreSQL
+postgresql15-docs.x86_64 : Extra documentation for PostgreSQL
+postgresql15-llvmjit.x86_64 : Just-in-time compilation support for PostgreSQL
+postgresql15-plperl.x86_64 : The Perl procedural language for PostgreSQL
+postgresql15-plpython3.x86_64 : The Python3 procedural language for PostgreSQL
+postgresql15-pltcl.x86_64 : The Tcl procedural language for PostgreSQL
+postgresql15-private-devel.x86_64 : PostgreSQL development header files for this build of PostgreSQL server
+postgresql15-private-libs.x86_64 : The shared libraries required only for this build of PostgreSQL server
+postgresql15-server.x86_64 : The programs needed to create and run a PostgreSQL server
+postgresql15-server-devel.x86_64 : PostgreSQL development header files and libraries
+postgresql15-static.x86_64 : Statically linked PostgreSQL libraries
+postgresql15-test.x86_64 : The test suite distributed with PostgreSQL
+postgresql15-test-rpm-macros.noarch : Convenience RPM macros for build-time testing against PostgreSQL server
+postgresql15-upgrade.x86_64 : Support for upgrading from the previous major release of PostgreSQL
+postgresql16.x86_64 : PostgreSQL client programs
+postgresql16-contrib.x86_64 : Extension modules distributed with PostgreSQL
+postgresql16-docs.x86_64 : Extra documentation for PostgreSQL
+postgresql16-llvmjit.x86_64 : Just-in-time compilation support for PostgreSQL
+postgresql16-plperl.x86_64 : The Perl procedural language for PostgreSQL
+postgresql16-plpython3.x86_64 : The Python3 procedural language for PostgreSQL
+postgresql16-pltcl.x86_64 : The Tcl procedural language for PostgreSQL
+postgresql16-private-devel.x86_64 : PostgreSQL development header files for this build of PostgreSQL server
+postgresql16-private-libs.x86_64 : The shared libraries required only for this build of PostgreSQL server
+postgresql16-server.x86_64 : The programs needed to create and run a PostgreSQL server
+postgresql16-server-devel.x86_64 : PostgreSQL development header files and libraries
+postgresql16-static.x86_64 : Statically linked PostgreSQL libraries
+postgresql16-test.x86_64 : The test suite distributed with PostgreSQL
+postgresql16-test-rpm-macros.noarch : Convenience RPM macros for build-time testing against PostgreSQL server
+postgresql16-upgrade.x86_64 : Support for upgrading from the previous major release of PostgreSQL
+postgresql17.x86_64 : PostgreSQL client programs
+postgresql17-contrib.x86_64 : Extension modules distributed with PostgreSQL
+postgresql17-docs.x86_64 : Extra documentation for PostgreSQL
+postgresql17-llvmjit.x86_64 : Just-in-time compilation support for PostgreSQL
+postgresql17-plperl.x86_64 : The Perl procedural language for PostgreSQL
+postgresql17-plpython3.x86_64 : The Python3 procedural language for PostgreSQL
+postgresql17-pltcl.x86_64 : The Tcl procedural language for PostgreSQL
+postgresql17-private-devel.x86_64 : PostgreSQL development header files for this build of PostgreSQL server
+postgresql17-private-libs.x86_64 : The shared libraries required only for this build of PostgreSQL server
+postgresql17-server.x86_64 : The programs needed to create and run a PostgreSQL server
+postgresql17-server-devel.x86_64 : PostgreSQL development header files and libraries
+postgresql17-static.x86_64 : Statically linked PostgreSQL libraries
+postgresql17-test.x86_64 : The test suite distributed with PostgreSQL
+postgresql17-test-rpm-macros.noarch : Convenience RPM macros for build-time testing against PostgreSQL server
+postgresql17-upgrade.x86_64 : Support for upgrading from the previous major release of PostgreSQL
+postgresql18.x86_64 : PostgreSQL client programs
+postgresql18-contrib.x86_64 : Extension modules distributed with PostgreSQL
+postgresql18-docs.x86_64 : Extra documentation for PostgreSQL
+postgresql18-llvmjit.x86_64 : Just-in-time compilation support for PostgreSQL
+postgresql18-plperl.x86_64 : The Perl procedural language for PostgreSQL
+postgresql18-plpython3.x86_64 : The Python3 procedural language for PostgreSQL
+postgresql18-pltcl.x86_64 : The Tcl procedural language for PostgreSQL
+postgresql18-private-devel.x86_64 : PostgreSQL development header files for this build of PostgreSQL server
+postgresql18-private-libs.x86_64 : The shared libraries required only for this build of PostgreSQL server
+postgresql18-server.x86_64 : The programs needed to create and run a PostgreSQL server
+postgresql18-server-devel.x86_64 : PostgreSQL development header files and libraries
+postgresql18-static.x86_64 : Statically linked PostgreSQL libraries
+postgresql18-test.x86_64 : The test suite distributed with PostgreSQL
+postgresql18-test-rpm-macros.noarch : Convenience RPM macros for build-time testing against PostgreSQL server
+postgresql18-upgrade.x86_64 : Support for upgrading from the previous major release of PostgreSQL
+tuned-profiles-postgresql.noarch : Additional tuned profile(s) targeted to PostgreSQL server loads
+======================================================= Name Matched: postgresql =======================================================
+postgresql-odbc-tests.x86_64 : Testsuite files for psqlodbc
+postgresql15-upgrade-devel.x86_64 : Support for build of extensions required for upgrade process
+postgresql16-upgrade-devel.x86_64 : Support for build of extensions required for upgrade process
+postgresql17-upgrade-devel.x86_64 : Support for build of extensions required for upgrade process
+postgresql18-upgrade-devel.x86_64 : Support for build of extensions required for upgrade process
+===================================================== Summary Matched: postgresql ======================================================
+BabelfishDump.x86_64 : Postgresql dump utilities modified for Babelfish
+apr-util-pgsql.x86_64 : APR utility library PostgreSQL DBD driver
+libpgtypes.x86_64 : Map PostgreSQL database types to C equivalents
+libpq.x86_64 : PostgreSQL client library
+libpq-devel.x86_64 : Development files for building PostgreSQL client tools
+perl-DBD-Pg.x86_64 : A PostgreSQL interface for Perl
+perl-DateTime-Format-Pg.noarch : Parse and format PostgreSQL dates and times
+php8.1-pgsql.x86_64 : A PostgreSQL database module for PHP 8.1
+php8.2-pgsql.x86_64 : A PostgreSQL database module for PHP 8.2
+php8.3-pgsql.x86_64 : A PostgreSQL database module for PHP 8.3
+php8.4-pgsql.x86_64 : A PostgreSQL database module for PHP 8.4
+php8.5-pgsql.x86_64 : A PostgreSQL database module for PHP 8.5
+postfix-pgsql.x86_64 : Postfix PostgreSQL map support
+python-psycopg2-doc.x86_64 : Documentation for psycopg python PostgreSQL database adapter
+python3-psycopg2.x86_64 : A PostgreSQL database adapter for Python 3
+python3-psycopg2-debug.x86_64 : A PostgreSQL database adapter for Python 3 (debug build)
+python3-psycopg2-tests.x86_64 : A testsuite for A PostgreSQL database adapter for Python 3
+~ $ 
+~ $ 

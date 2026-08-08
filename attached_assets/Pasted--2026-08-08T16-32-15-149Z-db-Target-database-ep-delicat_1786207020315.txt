@@ -1,0 +1,77 @@
+
+2026-08-08T16:32:15.149Z
+[db] Target database: ep-delicate-frog-aflo0zan.c-2.us-west-2.aws.neon.tech/neondb (from EXTERNAL_DATABASE_URL)
+2026-08-08T16:32:15.156Z
+[db] driver=neon (serverless/WebSocket)
+2026-08-08T16:32:15.428Z
+DrizzleQueryError: Failed query: insert into "options_gender" ("id", "name", "code", "nota", "sequence", "data") values (default, $1, default, default, default, $2) returning "id", "name", "code", "nota", "sequence", "data"
+2026-08-08T16:32:15.428Z
+params: Non-Binary,{"s1Tid":1528}
+2026-08-08T16:32:15.428Z
+at NeonPreparedQuery.queryWithCache (/app/node_modules/src/pg-core/session.ts:73:11)
+2026-08-08T16:32:15.428Z
+at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+2026-08-08T16:32:15.428Z
+at async NeonPreparedQuery.execute (/app/node_modules/src/neon-serverless/session.ts:152:18)
+2026-08-08T16:32:15.428Z
+at async Object.create (/app/server/storage/unified-options.ts:922:25)
+2026-08-08T16:32:15.428Z
+at async main (/app/scripts/s1-migration/load-options.ts:360:17) {
+2026-08-08T16:32:15.428Z
+query: 'insert into "options_gender" ("id", "name", "code", "nota", "sequence", "data") values (default, $1, default, default, default, $2) returning "id", "name", "code", "nota", "sequence", "data"',
+2026-08-08T16:32:15.428Z
+params: [ 'Non-Binary', '{"s1Tid":1528}' ],
+2026-08-08T16:32:15.428Z
+cause: error: null value in column "code" of relation "options_gender" violates not-null constraint
+2026-08-08T16:32:15.428Z
+at file:///app/node_modules/@neondatabase/serverless/index.mjs:1345:74
+2026-08-08T16:32:15.428Z
+at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+2026-08-08T16:32:15.428Z
+at async <anonymous> (/app/node_modules/src/neon-serverless/session.ts:153:11)
+2026-08-08T16:32:15.428Z
+at async NeonPreparedQuery.queryWithCache (/app/node_modules/src/pg-core/session.ts:71:12)
+2026-08-08T16:32:15.428Z
+at async NeonPreparedQuery.execute (/app/node_modules/src/neon-serverless/session.ts:152:18)
+2026-08-08T16:32:15.428Z
+at async Object.create (/app/server/storage/unified-options.ts:922:25)
+2026-08-08T16:32:15.428Z
+at async main (/app/scripts/s1-migration/load-options.ts:360:17) {
+2026-08-08T16:32:15.428Z
+length: 281,
+2026-08-08T16:32:15.428Z
+severity: 'ERROR',
+2026-08-08T16:32:15.428Z
+code: '23502',
+2026-08-08T16:32:15.428Z
+detail: 'Failing row contains (5b12663c-0d03-4136-83e6-972d6c093dd7, Non-Binary, null, f, 0, {"s1Tid": 1528}).',
+2026-08-08T16:32:15.428Z
+hint: undefined,
+2026-08-08T16:32:15.428Z
+position: undefined,
+2026-08-08T16:32:15.428Z
+internalPosition: undefined,
+2026-08-08T16:32:15.428Z
+internalQuery: undefined,
+2026-08-08T16:32:15.428Z
+where: undefined,
+2026-08-08T16:32:15.428Z
+schema: 'public',
+2026-08-08T16:32:15.428Z
+table: 'options_gender',
+2026-08-08T16:32:15.428Z
+column: 'code',
+2026-08-08T16:32:15.428Z
+dataType: undefined,
+2026-08-08T16:32:15.428Z
+constraint: undefined,
+2026-08-08T16:32:15.428Z
+file: 'execMain.c',
+2026-08-08T16:32:15.428Z
+line: '2032',
+2026-08-08T16:32:15.428Z
+routine: 'ExecConstraints'
+2026-08-08T16:32:15.428Z
+}
+2026-08-08T16:32:15.428Z
+}
