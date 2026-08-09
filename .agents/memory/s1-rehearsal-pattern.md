@@ -15,3 +15,5 @@ The verified procedure lives in `scripts/s1-migration/RUNBOOK.md` (incl. the dev
 - Wipe is one atomic tx (snapshot admin state → truncate → restore); a keep-staging wipe must still clear id_map + run history or loaders skip recreation against truncated targets.
 - A single advisory lock guards all migration tooling; release the lock client BEFORE ending the pool or the process hangs.
 - After touching wipe/retry logic, rerun its failure-injection harness. SIGKILLed children's DB backends briefly outlive the process — poll pg_stat_activity before asserting rollback, and scope assertions to fixture rows.
+
+**DB nomenclature (user ruling 2026-08-09):** the S2 rehearsal target Neon DB is named **migration-rehearsal-2026-08-06**; the source stays **S1**. Never invent ad-hoc names ("rehearsal PG") — pinned in RUNBOOK §1.

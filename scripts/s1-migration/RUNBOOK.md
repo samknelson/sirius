@@ -25,6 +25,14 @@ never bulk-migrate).
 The production run happens **inside the HIPAA boundary**. Loader/harness output is
 aggregates-only by design and safe to share; never paste raw S1 rows anywhere.
 
+### Database nomenclature (fixed terms — use these names everywhere)
+
+| Name | What it is |
+|---|---|
+| **S1** | The source: Drupal 7 / MariaDB production copy (`S1_DATABASE_URL`). |
+| **migration-rehearsal-2026-08-06** | The S2 rehearsal target (Neon, Oregon) that the 2026-08 rehearsal loaders point at via `EXTERNAL_DATABASE_URL`. Holds `s1_staging.*` (records, id_map) plus the loaded S2 schema. |
+| **prod target** | The real S2 production database (bao-prd) written only at cutover. |
+
 ### Running in the prod boundary (migration image)
 
 The deployed web image is lean (no `tsx`, no `scripts/`), so the migration runs
