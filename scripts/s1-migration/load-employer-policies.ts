@@ -54,9 +54,10 @@
  */
 import { storage } from "../../server/storage/database";
 import { withNotificationsSuppressed } from "../../server/middleware/request-context";
+import { runInTransaction } from "../../server/storage/transaction-context";
 import { ensureStagingSchema, recordRun } from "./lib/staging";
 import { ensureIdMap, getMappings } from "./lib/idmap";
-import { RejectLog, loadStaged, toYmd } from "./lib/loader-utils";
+import { RejectLog, loadStaged, toYmd, throttleStorageOpLogs } from "./lib/loader-utils";
 import { makeProgressLogger } from "./lib/progress";
 
 const DRY_RUN = process.argv.includes("--dry-run");
@@ -87,10 +88,28 @@ function parseShopJson(fields: Record<string, unknown>): { json: unknown; presen
   return { json: v, present: true, parseError: false };
 }
 
+/** The row that syncEmployerCurrentPolicy would pick as "current": max
+ * (date, createdAt NULLS LAST, id) — same ordering as the storage query.
+ * (uuid text compare matches Postgres uuid byte order for canonical hex.) */
+function winnerOf<T extends { id: string; date: string; policyId: string; createdAt?: unknown; data?: unknown }>(
+  history: T[],
+): T | null {
+  if (history.length === 0) return null;
+  return [...history].sort((a, b) => {
+    if (a.date !== b.date) return a.date < b.date ? 1 : -1;
+    const ac = a.createdAt ? new Date(a.createdAt as any).getTime() : -Infinity;
+    const bc = b.createdAt ? new Date(b.createdAt as any).getTime() : -Infinity;
+    if (ac !== bc) return ac < bc ? 1 : -1;
+    return a.id < b.id ? 1 : -1;
+  })[0];
+}
+
 async function main() {
   const startedAt = new Date();
   await ensureStagingSchema();
   await ensureIdMap();
+
+  throttleStorageOpLogs();
 
   const report: Record<string, unknown> = { loader: LOADER, dryRun: DRY_RUN, allowedRejects: ALLOWED_REJECTS };
   const rejects = new RejectLog();
@@ -157,6 +176,7 @@ async function main() {
   let created = 0;
   let adopted = 0;
   let employersTouched = 0;
+  let denormRepaired = 0;
   const okShops: Array<{ nid: number; employerId: string; expectedCurrentPolicyId: string | null }> = [];
 
   for (const shop of withPolicy) {
@@ -226,25 +246,41 @@ async function main() {
     try {
       const existing = await storage.employerPolicyHistory.getEmployerPolicyHistory(emp.s2Id);
       const existingKeys = new Set(existing.map((r: any) => `${r.date}|${r.policyId}`));
-      let wrote = false;
-      for (const e of entries) {
-        const policyId = policyMap.get(e.s1PolicyNid)!.s2Id;
-        if (existingKeys.has(`${e.date}|${policyId}`)) {
-          adopted++;
-          continue;
-        }
+      const toCreate = entries.filter((e) => !existingKeys.has(`${e.date}|${policyMap.get(e.s1PolicyNid)!.s2Id}`));
+      adopted += entries.length - toCreate.length;
+
+      if (toCreate.length > 0) {
+        // One transaction per shop: either ALL of this shop's rows land (and
+        // the denorm sync sees the complete history) or none do — a mid-shop
+        // failure must never leave a partial history driving denorm_policy_id.
         await withNotificationsSuppressed(() =>
-          storage.employerPolicyHistory.createEmployerPolicyHistory({
-            employerId: emp.s2Id,
-            date: e.date,
-            policyId,
-            data: { source: "s1-migration", s1ShopNid: shop.nid, s1PolicyNid: e.s1PolicyNid },
+          runInTransaction(async () => {
+            for (const e of toCreate) {
+              await storage.employerPolicyHistory.createEmployerPolicyHistory({
+                employerId: emp.s2Id,
+                date: e.date,
+                policyId: policyMap.get(e.s1PolicyNid)!.s2Id,
+                data: { source: "s1-migration", s1ShopNid: shop.nid, s1PolicyNid: e.s1PolicyNid },
+              });
+            }
           }),
         );
-        created++;
-        wrote = true;
+        created += toCreate.length;
+        employersTouched++;
+      } else {
+        // Adopt-only rerun: rows already exist, but a past crash between
+        // insert-commit and denorm sync (or a manual edit) can leave
+        // denorm_policy_id stale. Reconcile — only when a migration-owned row
+        // is the rightful winner (foreign winners belong to S2 operators).
+        const winner = winnerOf(existing as any[]);
+        if (winner && (winner.data as any)?.source === "s1-migration") {
+          const empRow = await storage.employers.getEmployer(emp.s2Id);
+          if (empRow && (((empRow as any).denormPolicyId ?? null) !== winner.policyId)) {
+            await withNotificationsSuppressed(() => storage.employers.updateEmployerPolicy(emp.s2Id, winner.policyId));
+            denormRepaired++;
+          }
+        }
       }
-      if (wrote) employersTouched++;
       okShops.push({ nid: shop.nid, employerId: emp.s2Id, expectedCurrentPolicyId });
     } catch (err) {
       // Sanitized: class/code only — never raw error text (HIPAA boundary).
@@ -256,6 +292,7 @@ async function main() {
   report.historyCreated = created;
   report.historyAdopted = adopted;
   report.employersTouched = employersTouched;
+  report.denormRepaired = denormRepaired;
 
   // ── Verify: denorm_policy_id synced for every ok shop ─────────────────────
   let verifyFailures = 0;
@@ -270,20 +307,28 @@ async function main() {
         continue;
       }
       const denorm = (emp as any).denormPolicyId ?? null;
-      if (denorm == null) {
-        console.error(`VERIFY: shop nid ${ok.nid} employer has no denorm_policy_id after load`);
+      const history = await storage.employerPolicyHistory.getEmployerPolicyHistory(ok.employerId);
+      const winner = winnerOf(history as any[]);
+      if (!winner) {
+        console.error(`VERIFY: shop nid ${ok.nid} employer has no policy history after load`);
         verifyFailures++;
         continue;
       }
-      // Only assert equality when this loader's rows are the whole history —
-      // pre-existing S2 rows with later dates may legitimately win the sync.
-      if (ok.expectedCurrentPolicyId != null && denorm !== ok.expectedCurrentPolicyId) {
-        const history = await storage.employerPolicyHistory.getEmployerPolicyHistory(ok.employerId);
-        const foreign = history.some((r: any) => (r.data as any)?.source !== "s1-migration");
-        if (!foreign) {
-          console.error(`VERIFY: shop nid ${ok.nid} denorm_policy_id != latest S1 ebh policy`);
-          verifyFailures++;
-        }
+      // denorm must equal the row the storage ordering actually picks —
+      // whether that row is ours or a legitimately-later foreign S2 row.
+      if (denorm !== winner.policyId) {
+        console.error(`VERIFY: shop nid ${ok.nid} denorm_policy_id != winning history row`);
+        verifyFailures++;
+        continue;
+      }
+      // And when a migration row wins, it must be the S1 latest-ebh policy.
+      if (
+        (winner.data as any)?.source === "s1-migration" &&
+        ok.expectedCurrentPolicyId != null &&
+        winner.policyId !== ok.expectedCurrentPolicyId
+      ) {
+        console.error(`VERIFY: shop nid ${ok.nid} winning migration row != latest S1 ebh policy`);
+        verifyFailures++;
       }
     }
   }
