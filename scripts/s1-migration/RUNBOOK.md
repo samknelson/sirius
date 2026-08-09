@@ -255,9 +255,14 @@ SELECT count(*) FROM worker_trust_elections;  -- elections
 | `policy_ref_not_staged` | policies | not present | **Expected: 23** (deleted-node orphan refs, §P4). Allow. |
 | `policy_unmatched` (referenced) | policies | never | NEVER allowable — fix alias table / seed policies |
 | `duplicate_code` | employee-ids | ALLOWED (2 synthetic) | Run clean; if present, inspect + allow observed count. Re-run shape differs (adopt + `code_owned_by_other_worker`). |
-| `start_missing` | benefit-history | ALLOWED (1 synthetic trap) | Run clean; triage before allowing |
-| `subscriber_worker_mismatch` | benefit-history | ALLOWED (1 synthetic trap) | Run clean; triage before allowing |
+| `start_missing` | benefit-history | ALLOWED (1 synthetic trap) | **RULED 2026-08-09 (rehearsal triage): allow.** 16 spans with no start anchor (mostly inactive end-only rows) — unloadable. |
+| `subscriber_worker_mismatch` | benefit-history | ALLOWED (1 synthetic trap) | **RULED 2026-08-09: allow.** 69 spans / 4 distinct pairs; the `field_sirius_worker` side is deleted from S1 (subscriber side maps fine) — unresolvable either way. |
 | `relation_subscriber_mismatch` | benefit-history | ALLOWED (1 synthetic trap) | Run clean; triage before allowing |
+| `end_before_start` | benefit-history | not present | **RULED 2026-08-09: allow.** Zero/negative-length spans (dominant pattern end = start − 1 day, an S1 cancellation convention, plus raw dirt) — they encode no coverage months. |
+| `benefit_unmapped` | benefit-history, elections | not present | **RULED 2026-08-09: allow.** Entirely deleted benefit nid 2457521 (BPA-era bad data) — out of scope. |
+| `worker_unmapped` | benefit-history, elections | ALLOWED (synthetic) | Sampled nids all deleted from S1 (deleted/merged contacts). Allow with observed counts. |
+| `relation_unmapped` | benefit-history | not present | Deleted relationship nodes (15,778 of 37,520 distinct refs). **Pending fund ruling**: confirm none of the dangling spans are actively granting benefits (active relationship required to grant), then allow with documented loss. BPA-era bad data. |
+| `employer_unresolved` | benefit-history | not present | Shopless spans (heavily 2020–2021, BPA era). **First rerun t16 elections with the typed-elections fix** (pre-fix, 61,823 coverage-tier-typed elections were skipped entirely and never reached id_map, so the election→employer fallback failed). Remainder after that = fund ruling (drop vs designated employer). |
 | `non_cleared_status` | ledger | ALLOWED (2 Pending) | **Expected** — verify count == frozen S1 non-cleared AR count, then allow |
 | `category_missing` / `category_unmapped` / `handler_missing` / `handler_unresolved` | call-logs | ALLOWED (1 each, synthetic traps) | Run clean; triage real occurrences, then allow with observed counts |
 | `ssn_collision_q36`, `worker_contact_unresolved`, `worker_gender_unresolved`, `sirius_id_assigned`, … | contacts-workers | reported (annotations — non-fatal) | Same; review the report, no flag needed. `sirius_id_assigned` = workers with no/non-numeric `field_sirius_id` loaded with a sequence-assigned sirius_id (documented T1 rule) |

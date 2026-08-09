@@ -341,16 +341,20 @@ async function main() {
         const code = name != null ? CANONICAL_TYPES[normalizeTypeName(name)] : undefined;
         if (!code) {
           // S1's election-type vocab contains coverage tiers (single/family/waived),
-          // not S2 enrollment event types. Unrecognized terms are silently dropped
-          // (enrollmentType stays null). A --type-map override can still force-map
-          // specific tids when needed.
+          // not S2 enrollment event types. Only the TYPE is dropped — the election
+          // itself must still load with enrollmentType null. (A previous `continue`
+          // here skipped the whole election: 61,823 elections never reached id_map,
+          // which broke t17's election→employer fallback for shopless spans.)
+          // A --type-map override can still force-map specific tids when needed.
           typedButIrrelevant++;
-          continue; // skip typed/perType counters; enrollmentType remains null
+        } else {
+          enrollmentType = code;
         }
-        enrollmentType = code;
       }
-      typed++;
-      perType[enrollmentType] = (perType[enrollmentType] ?? 0) + 1;
+      if (enrollmentType != null) {
+        typed++;
+        perType[enrollmentType] = (perType[enrollmentType] ?? 0) + 1;
+      }
     }
     if (rowEndDatedFromChanged) endDatedFromChanged++;
 
