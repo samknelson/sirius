@@ -115,7 +115,6 @@ const FATAL_REASONS = [
   "bad_changed_epoch",
   "benefit_unmapped",
   "relation_unmapped",
-  "election_type_unmapped",
   "election_create_failed",
   "mapped_row_missing",
 ] as const;
@@ -194,6 +193,7 @@ async function main() {
   let resolvedCount = 0;
   let typed = 0;
   let untyped = 0;
+  let typedButIrrelevant = 0; // S1 type tid present but maps to a coverage-tier term (single/family/waived), not an S2 enrollment event type — silently null
   let endDatedFromChanged = 0;
   const perType: Record<string, number> = {};
   let created = 0;
@@ -340,8 +340,12 @@ async function main() {
         const name = termNameByTid.get(typeTid);
         const code = name != null ? CANONICAL_TYPES[normalizeTypeName(name)] : undefined;
         if (!code) {
-          rejects.add("election_type_unmapped", { nid, tid: typeTid }, nid);
-          continue;
+          // S1's election-type vocab contains coverage tiers (single/family/waived),
+          // not S2 enrollment event types. Unrecognized terms are silently dropped
+          // (enrollmentType stays null). A --type-map override can still force-map
+          // specific tids when needed.
+          typedButIrrelevant++;
+          continue; // skip typed/perType counters; enrollmentType remains null
         }
         enrollmentType = code;
       }
@@ -478,6 +482,7 @@ async function main() {
   report.resolved = resolvedCount;
   report.typedElections = typed;
   report.untypedElections = untyped;
+  report.typedButIrrelevant = typedButIrrelevant;
   report.perEnrollmentType = perType;
   report.endDatedFromChanged = endDatedFromChanged;
   report.created = created;
