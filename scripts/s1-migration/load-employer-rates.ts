@@ -134,7 +134,9 @@ async function resolveHourlyAccount(): Promise<{ accountId: string; configName: 
   if (envelopes.length !== 1) {
     console.error(
       `FAIL: expected exactly 1 enabled bao-hourly charge config, found ${envelopes.length}. ` +
-        `The loader targets that config's account; run copy-fund-config first / resolve duplicates.`,
+        `The loader targets that config's account. Charge configs are FUND CONFIG — no loader creates ` +
+        `them; configure the bao-hourly charge config (global scope, employer-contributions account) ` +
+        `on the target first, or resolve duplicates.`,
     );
     process.exit(1);
   }
