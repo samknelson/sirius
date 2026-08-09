@@ -24,6 +24,17 @@ table counts.
   line; RejectLog/report output is the failure surface during loads.
 - Heartbeats are aggregates-only (HIPAA); phase lines (`pre-scan`, `flush`,
   `verify`) mean silence > a few minutes = hung connection.
+- `phase(name, total)` starts a COUNTED phase: add()/update() route to a
+  per-phase counter with its own rate. Use it for any per-row/per-chunk verify
+  loop; bare `phase(name)` (liveness-only) is ONLY for set-based single-query
+  stretches (ledger verify, hours flush).
+- Instrument from PROCESS START, not from the row loop: on the real target the
+  staged load + bulk id_map crosswalks dominate wall clock, so a logger created
+  after them looks hung/silent. Construct with total=0 + `phase("pre-scan")`,
+  then `setTotal(n)` + `phase(null)` once counted.
+- Don't size heartbeat needs from dev data: loaders assumed "small" (users,
+  employers) ran minutes on real volume. Every loader with per-row DB work
+  gets a heartbeat, period.
 - App server never calls the sampling setter — normal audit logging unchanged.
 - Gotcha found here: `Number(undefined ?? "")` is 0 — env-default parsing must
   explicitly treat unset/empty as "use default" or 0-meaning-suppress kicks in.

@@ -113,3 +113,5 @@
 - [S1 load-options required-column gaps](s1-load-options-required-columns.md) — fresh-target create/adopt paths hit NOT NULL columns (gender.code) and empty-patch updates that id_map-matched runs never exercised.
 - [Loader FATAL_REASONS ↔ verify coupling](loader-fatal-reasons-verify-coupling.md) — every new reject reason must join FATAL_REASONS or verify inflates; reject smoke tests must diff against a baseline run.
 - [S1 loader heartbeats & log throttling](s1-loader-observability.md) — shared progress heartbeat + storage-op log sampling knobs; winston_logs no longer a loader progress proxy.
+- [Loader pre-checks must use the storage contract's clock](loader-precheck-contract-clock.md) — UTC "today" vs getTodayYmd() local lets tomorrow-dated rows die as opaque storage errors.
+- [S1 shop JSON is the employer config store](s1-shop-json-config.md) — policy history + charge-plugin rate histories live in field_sirius_json; hourly-uuid allow-list ruling inside; variable dumps carry live Stripe keys.
