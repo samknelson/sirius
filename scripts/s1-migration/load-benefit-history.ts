@@ -130,6 +130,16 @@ async function main() {
 
   report.staged = await stagedCountOf(BUNDLE);
 
+  // True start-of-run snapshot: rows already in trust_wmb before this run
+  // writes anything. (The old metric summed each page's worker-prefetch map,
+  // which re-counts a worker's rows created by EARLIER PAGES OF THE SAME RUN
+  // every time more of their spans land on a later page — it reported 3.85M
+  // "preexisting" rows on a run that verifiably started from an empty table.)
+  const wmbAtStart = (await db.execute(
+    sql`SELECT count(*)::bigint AS c FROM trust_wmb`,
+  )) as unknown as { rows: Array<{ c: string | number }> };
+  report.preexistingMonthRows = Number(wmbAtStart.rows[0]?.c ?? 0);
+
   // heartbeat: aggregates only (span counts/elapsed/rate — never row contents)
   const progress = makeProgressLogger(LOADER, report.staged as number);
   let progressDone = 0;
@@ -158,7 +168,6 @@ async function main() {
   let overlapSharedMonths = 0;
   let anchorsCreated = 0;
   let anchorsAdopted = 0;
-  let preexistingMonthRows = 0;
   let verifyFailures = 0;
   const verifySamples: Array<Record<string, unknown>> = [];
   let pages = 0;
@@ -380,7 +389,6 @@ async function main() {
         existingByKey.set(rowKey(r.worker_id, r.employer_id, r.benefit_id, { y: Number(r.year), m: Number(r.month) }), r.id);
       }
     }
-    preexistingMonthRows += existingByKey.size;
     const existingIds = new Set(existingByKey.values());
 
     // ---- batched anchor existence check (one IN-query set per page) ----
@@ -503,7 +511,6 @@ async function main() {
   report.monthsExpanded = monthsExpanded;
   report.maxSpanMonths = maxSpanMonths;
   report.avgSpanMonths = resolvedSpans > 0 ? Math.round((monthsExpanded / resolvedSpans) * 10) / 10 : 0;
-  report.preexistingMonthRows = preexistingMonthRows;
   report.monthsCreated = monthsCreated;
   report.monthsAdopted = monthsAdopted;
   report.overlapSharedMonths = overlapSharedMonths;
