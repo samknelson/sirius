@@ -28,6 +28,18 @@ export interface ChargePluginExecutionResult {
 }
 
 /**
+ * Throttle for the migration-mode suppression WARN: bulk loaders trigger the
+ * suppression path once per row, so an unthrottled WARN floods CloudWatch.
+ * One WARN per trigger per interval, carrying the count suppressed since the
+ * previous WARN.
+ */
+const SUPPRESSION_WARN_INTERVAL_MS = 5 * 60 * 1000;
+const suppressionLogState = new Map<
+  string,
+  { lastWarnAt: number; suppressedSinceWarn: number }
+>();
+
+/**
  * Execute all enabled charge plugins for a given trigger and context
  */
 export async function executeChargePlugins(
@@ -38,12 +50,23 @@ export async function executeChargePlugins(
 
   // Migration mode: bulk loaders (S1→S2) wrap their storage writes in
   // withChargePluginsSuppressed so historical data loads cannot generate new
-  // ledger charges (double-billing). Loud skip, empty result.
+  // ledger charges (double-billing). Still a loud skip, but throttled: bulk
+  // loads fire this once per row, and one WARN per row floods CloudWatch
+  // (2026-08-09 hours load). One WARN per trigger per window carries the same
+  // signal; the suppressed count since the last WARN is included.
   if (areChargePluginsSuppressed()) {
-    logger.warn("Charge plugin execution suppressed (migration mode) — no charges generated", {
-      service: "charge-plugin-executor",
-      trigger,
-    });
+    const now = Date.now();
+    const state = suppressionLogState.get(trigger);
+    if (!state || now - state.lastWarnAt >= SUPPRESSION_WARN_INTERVAL_MS) {
+      logger.warn("Charge plugin execution suppressed (migration mode) — no charges generated", {
+        service: "charge-plugin-executor",
+        trigger,
+        suppressedSinceLastWarn: (state?.suppressedSinceWarn ?? 0) + 1,
+      });
+      suppressionLogState.set(trigger, { lastWarnAt: now, suppressedSinceWarn: 0 });
+    } else {
+      state.suppressedSinceWarn += 1;
+    }
     return {
       executed: [],
       totalTransactions: [],
