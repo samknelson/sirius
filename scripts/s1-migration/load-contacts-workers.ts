@@ -84,6 +84,24 @@ const DRY_RUN = process.argv.includes("--dry-run");
 const LOADER = "t3t1-contacts-workers";
 const REJECT_SAMPLE_CAP = 25;
 
+// ---------- placeholder email suppression (T12 ruling) ----------
+/** Exact addresses (lowercased) that must never be stored in contacts.email.
+ * Adding a new placeholder is a one-line change to one of these two sets. */
+const PLACEHOLDER_EMAILS = new Set(["fastload@nodomain.com", "no_email@avolta.net"]);
+/** Every address at these domains is non-routable and must be suppressed. */
+const PLACEHOLDER_DOMAINS = new Set(["nodomain.com"]);
+
+/** Returns true when an email address is a non-routable placeholder that must
+ * be suppressed before the duplicate-email dedupe check.  Matching is
+ * case-insensitive and trim-safe, consistent with the existing dedupe logic. */
+function isPlaceholderEmail(email: string): boolean {
+  const norm = email.trim().toLowerCase();
+  if (PLACEHOLDER_EMAILS.has(norm)) return true;
+  const atIdx = norm.lastIndexOf("@");
+  if (atIdx >= 0 && PLACEHOLDER_DOMAINS.has(norm.slice(atIdx + 1))) return true;
+  return false;
+}
+
 interface StagedNode {
   nid: number;
   title: string | null;
@@ -377,6 +395,9 @@ async function main() {
 
   // ---------------- contacts pass ----------------
   const cStats = { matched: 0, adoptedStubContact: 0, created: 0, updated: 0, phonesCreated: 0, addressesUpserted: 0, addressesMatched: 0 };
+  // per-address suppression counts (address → count); populated by both the
+  // new-contact and existing-contact code paths
+  const suppressions = new Map<string, number>();
 
   /** Reconcile an EXISTING contact row to the staged values (adopted stubs
    * and already-mapped rows — makes crash-interrupted absorption resumable).
@@ -422,12 +443,27 @@ async function main() {
       writes++;
     }
     let email = vals.email;
+    // Suppress placeholder emails before the dedupe check (T12 ruling)
+    if (email && isPlaceholderEmail(email)) {
+      suppressions.set(email, (suppressions.get(email) ?? 0) + 1);
+      email = null;
+    }
     if (email && emailOwner.has(email) && emailOwner.get(email) !== contactId) {
       rejects.add("duplicate_email", { nid: cNid }, cNid);
       email = null;
     }
-    if (email && existing.email?.toLowerCase() !== email) {
+    // If the existing row carries a stale placeholder value written by a prior
+    // run (before suppression existed), treat it as null so the rerun clears it
+    // rather than leaving the fake address in place.
+    const existingEmailNorm = existing.email ? existing.email.trim().toLowerCase() : null;
+    const existingIsPlaceholder = existingEmailNorm != null && isPlaceholderEmail(existingEmailNorm);
+    const effectiveExistingEmail = existingIsPlaceholder ? null : (existing.email?.toLowerCase() ?? null);
+    if (email != null && effectiveExistingEmail !== email) {
       await withNotificationsSuppressed(() => storage.contacts.updateEmail(contactId, email));
+      writes++;
+    } else if (existingIsPlaceholder && email == null) {
+      // Clear the stale placeholder — never leave a fake address in place
+      await withNotificationsSuppressed(() => storage.contacts.updateEmail(contactId, null));
       writes++;
     }
     if (email) emailOwner.set(email, contactId);
@@ -497,6 +533,11 @@ async function main() {
         }
       } else {
         // fresh contact
+        // Suppress placeholder emails before the dedupe check (T12 ruling)
+        if (email && isPlaceholderEmail(email)) {
+          suppressions.set(email, (suppressions.get(email) ?? 0) + 1);
+          email = null;
+        }
         if (email && emailOwner.has(email)) {
           rejects.add("duplicate_email", { nid: c.nid }, c.nid);
           email = null;
@@ -636,6 +677,10 @@ async function main() {
     }
   }
   report.contacts = cStats;
+  // Per-address suppression counts (omit entirely when nothing was suppressed)
+  if (suppressions.size > 0) {
+    report.placeholderEmailsSuppressed = Object.fromEntries(suppressions);
+  }
 
   // ---------------- workers pass ----------------
   // worker-id types (06 §4.9) via unified options — ensure by name
@@ -963,6 +1008,28 @@ async function main() {
       if (!row) {
         console.error(`VERIFY: contact nid ${c.nid} maps to missing row ${m.s2Id}`);
         verifyFailures++;
+      }
+    }
+
+    // Verify no placeholder address slipped through to contacts.email
+    {
+      const phList = [...PLACEHOLDER_EMAILS];
+      const phCheck = await db.execute(sql`
+        SELECT lower(email) AS email, count(*)::int AS cnt
+          FROM contacts
+         WHERE lower(email) IN (${sql.join(phList.map((e) => sql`${e}`), sql`, `)})
+         GROUP BY lower(email)
+      `);
+      const leaks = (phCheck as unknown as { rows: Array<{ email: string; cnt: number }> }).rows;
+      if (leaks.length > 0) {
+        for (const r of leaks) {
+          console.error(`VERIFY: ${r.cnt} contact(s) still carry placeholder email "${r.email}" — must be null`);
+          verifyFailures++;
+        }
+      }
+      // Log per-address suppression counts prominently so rehearsal runs show the split
+      if (suppressions.size > 0) {
+        console.log("placeholder emails suppressed:", Object.fromEntries(suppressions));
       }
     }
     const legacyNidTypeId = idTypeByLabel.get("Legacy NID");
