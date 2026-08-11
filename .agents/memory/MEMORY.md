@@ -117,3 +117,4 @@
 - [S1 deleted-node dangling refs](s1-deleted-node-dangles.md) — *_unmapped rejects are usually refs to deleted S1 nodes; LEFT JOIN node before blaming a loader gap.
 - [S1 shop JSON is the employer config store](s1-shop-json-config.md) — policy history + charge-plugin rate histories live in field_sirius_json; hourly-uuid allow-list ruling inside; variable dumps carry live Stripe keys.
 - [S1 smoke vs regenerated staging](s1-smoke-regen-fallout.md) — staging regen typed all synthetic payments; smoke guard fingerprint + t16–t19 expectations stale (17 pre-existing failures, guard refuses).
+- [Task-merge SHA rewrite vs deploy branches](task-merge-divergent-deploy-branch.md) — non-fast-forward on push-branch.sh = duplicate content, different SHAs; verify empty diff then `merge -s ours`.
