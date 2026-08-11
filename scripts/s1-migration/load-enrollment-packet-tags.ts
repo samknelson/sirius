@@ -1,13 +1,25 @@
 /**
- * T29 loader — smf_worker_month "Comms: Received Enrollment Packet" tag →
- * one offline `comm` record per tagged (worker, month).
+ * T29 loader — sirius_contact "Comms: Received Enrollment Packet" tag →
+ * one offline `comm` record per tagged contact node.
  *
- * RULING (2026-08-05, closes N24): every smf_worker_month tag stays
- * extract-and-stage only EXCEPT exactly one — "Comms: Received Enrollment
- * Packet" — which migrates into S2. All other tag terms are stale computed
- * eligibility state and must NOT load.
+ * RULING (2026-08-05, closes N24; grain corrected 2026-08-11): every S1 tag
+ * stays extract-and-stage only EXCEPT exactly one — "Comms: Received
+ * Enrollment Packet" — which migrates into S2. All other tag terms are stale
+ * computed eligibility state and must NOT load.
  *
- * S2 HOME DECISION (build-time, this loader is the record of it):
+ * GRAIN CORRECTION (2026-08-11): the original N24 ruling assumed the keep-tag
+ * lived on `smf_worker_month` rows. Diagnostic queries against both
+ * s1_staging.records and the live S1 MariaDB proved otherwise: the tag NEVER
+ * appears on worker-month nodes (they carry only the ruled-drop stale
+ * eligibility tags, e.g. tid 1578). It is a CONTACT-level tag: 14,801
+ * `sirius_contact` nodes carry tid 1689; zero worker-month rows do. The prod
+ * run's inScope: 0 was this loader scanning the wrong bundle. The
+ * worker-month grain and first-of-month dating are therefore DEAD; this
+ * loader now scopes staged `sirius_contact` rows and writes one comm per
+ * tagged contact node, resolved directly through the contact id_map (no
+ * worker hop, no month grain, no worker/month dedupe).
+ *
+ * S2 HOME DECISION (unchanged, still the record of it):
  * The N24 leading candidate was the comm + comm_interaction shape from
  * load-call-logs.ts. Investigation ruled that out: `comm_interaction`
  * requires a NOT NULL `call_reason_id` FK into the seeded MSR call reasons
@@ -24,35 +36,45 @@
  *                                    getCommWithDetails falls through with
  *                                    all child details null)
  *   status   = 'logged'             (shared/commStatus.ts)
- *   contact  = the tagged worker's contact (workers.contact_id)
- *   sent = received = first-of-month UTC of the tagged month
+ *   contact  = the tagged contact (id_map entity "contact", nid → contact id)
+ *   sent = received = the DATE ANCHOR ruled below
  *   data     = { s1Loader, kind: 'enrollment_packet_received', label,
- *                ym, s1: { nid, workerNid, tid } }
- * so the record shows up in the worker's comm history dated to the tagged
- * month, without inventing interaction or postal detail rows.
+ *                dateSource, dateApproximate: true, s1: { nid, tid } }
  *
- * Scope: staged `smf_worker_month` rows whose multi-value
+ * DATE ANCHOR RULING (2026-08-11): the contact node carries NO
+ * packet-received date — the only candidates are the node's `created` and
+ * `changed` epochs. RULED: use node `changed`. Rationale: the tag is applied
+ * by an EDIT to a contact node that almost always long predates the packet
+ * (contacts are created at intake), so `created` is systematically far too
+ * early; `changed` is the only timestamp guaranteed to be >= the moment the
+ * tag was applied and is the closest available approximation. It is still
+ * approximate (later unrelated edits move it), so the comm's `data` marks
+ * dateSource: 's1_node_changed' and dateApproximate: true — consumers must
+ * not treat the date as an exact packet-received date.
+ *
+ * Scope: staged `sirius_contact` rows whose multi-value
  * `field_sirius_contact_tags` tids include the keep-tag term (resolved from
  * s1_staging.terms by normalized name in vocabulary `sirius_contact_tags`).
  * Rows with other tags / no tags are out of scope — NOT rejects, they are
  * ruled stage-only. A keep-tag-named term staged under any OTHER vocabulary
  * hard-fails the run before any write (never guess scope).
  *
- * GRAIN: one S2 record per (worker, month). Duplicate tagged worker-month
- * nodes for the same (worker, month) adopt the first node's comm (both nids
- * map to it) — counted, never duplicated.
+ * GRAIN: one S2 comm per tagged contact node. Should duplicate tagged nodes
+ * resolve to the SAME S2 contact (possible via contact-dedupe adoption in
+ * the contacts loader), the later node adopts the first node's comm — both
+ * nids map to it — counted, never duplicated.
  *
- * Idempotent via id_map entity "wm-packet" (nid → comm id); crash repair by
- * provenance: an unmapped row whose (contact, month) already has a comm
+ * Idempotent via id_map entity "contact-packet" (nid → comm id); crash
+ * repair by provenance: an unmapped row whose contact already has a comm
  * created by this loader (data->>'s1Loader') is re-adopted, never
  * re-created (T16/T19 pattern). Mapped rows whose comm was deleted
  * hard-reject (`mapped_comm_missing`) — repair the map, never remap
  * silently.
  *
- * Prod scale: the bundle is ~2.53M nodes / 13.57M tag field rows; the
- * loader streams staged rows via keyset paging (pagedStaged) and every
- * lookup (worker id_map, workers.contact_id, provenance prefetch, mapped
- * comm existence, verify) is a page-bounded batched IN-query.
+ * Prod scale: the sirius_contact bundle is large; the loader streams staged
+ * rows via keyset paging (pagedStaged) and every lookup (contact id_map,
+ * contacts existence, provenance prefetch, mapped comm existence, verify)
+ * is a page-bounded batched IN-query.
  *
  * REJECT POLICY (fail loud): every reject reason present in the run must be
  * explicitly allowed via `--allow-rejects r1,r2,...` or the run exits 1
@@ -69,7 +91,7 @@
  * sirius_contact_tags tids are all NULL and no tag terms exist), so a dev
  * run is a documented no-op (keepTagTids=0, inScope=0). Real coverage lives
  * in scripts/oneoffs/s1-t29-packet-tag-smoke.ts (seeded fakes,
- * self-cleaning).
+ * self-cleaning). Prod expectation: inScope ≈ 14,801.
  *
  * Output is AGGREGATES ONLY (plus S1 nids/tids, which are opaque ids).
  */
@@ -85,18 +107,19 @@ import {
 } from "../../server/middleware/request-context";
 import { ensureStagingSchema, recordRun } from "./lib/staging";
 import { ensureIdMap, getMappings, putMapping } from "./lib/idmap";
-import { RejectLog, pagedStaged, stagedCountOf, chunk, strOf, toYmd, throttleStorageOpLogs } from "./lib/loader-utils";
+import { RejectLog, pagedStaged, stagedCountOf, chunk, epochToYmd, throttleStorageOpLogs } from "./lib/loader-utils";
 import { makeProgressLogger } from "./lib/progress";
 import { createCommStorage } from "../../server/storage/comm";
 
 const LOADER = "t29-enrollment-packet-tags";
-const BUNDLE = "smf_worker_month";
-const ID_MAP_ENTITY = "wm-packet";
+const BUNDLE = "sirius_contact";
+const ID_MAP_ENTITY = "contact-packet";
 const KEEP_TAG_NAME = "comms: received enrollment packet"; // normalized (TRIM/LOWER)
 const KEEP_TAG_VOCABULARY = "sirius_contact_tags";
 const COMM_MEDIUM = "offline";
 const COMM_KIND = "enrollment_packet_received";
 const COMM_LABEL = "Received Enrollment Packet";
+const DATE_SOURCE = "s1_node_changed"; // see DATE ANCHOR RULING above
 
 const DRY_RUN = process.argv.includes("--dry-run");
 const MIGRATION_MODE = process.argv.includes("--migration-mode");
@@ -113,9 +136,8 @@ function loaderScope<T>(fn: () => Promise<T>): Promise<T> {
 
 /** All reasons are row-skipping (fatal) — the verify pass skips exactly these. */
 const FATAL_REASONS = [
-  "worker_ref_missing",
-  "worker_unmapped",
-  "worker_row_missing",
+  "contact_unmapped",
+  "contact_row_missing",
   "date_missing",
   "bad_date",
   "create_failed",
@@ -140,23 +162,6 @@ function tidsOf(fields: Record<string, unknown>, key: string): number[] {
   }
   return out;
 }
-
-/** Entityreference target nid (single-value) — bare scalar or object shape. */
-function workerNidOf(fields: Record<string, unknown>): number | null {
-  const raw = fields["field_sirius_worker"];
-  const s = Array.isArray(raw) ? raw[0] : raw;
-  if (typeof s === "number") return s;
-  if (typeof s === "string" && /^\d+$/.test(s)) return Number(s);
-  if (s && typeof s === "object") {
-    const o = s as Record<string, unknown>;
-    const cand = o.target_id ?? o.value;
-    if (typeof cand === "number") return cand;
-    if (typeof cand === "string" && /^\d+$/.test(cand)) return Number(cand);
-  }
-  return null;
-}
-
-const dedupeKey = (contactId: string, ym: string) => `${contactId}|${ym}`;
 
 async function main() {
   const startedAt = new Date();
@@ -211,13 +216,12 @@ async function main() {
   let alreadyMapped = 0;
   let created = 0;
   let adoptedByProvenance = 0;
-  let duplicateWorkerMonth = 0;
+  let duplicateContactNode = 0;
   let verifyFailures = 0;
-  const distinctWorkerNids = new Set<number>();
-  const distinctMonths = new Set<string>();
+  const distinctContactIds = new Set<string>();
   const verifySamples: Array<Record<string, unknown>> = [];
-  /** comm ids created in THIS run (all pages) — distinguishes duplicate
-   * worker-month adoption from crash-repair provenance adoption. */
+  /** comm ids created in THIS run (all pages) — distinguishes
+   * duplicate-node adoption from crash-repair provenance adoption. */
   const createdThisRun = new Set<string>();
 
   // ---- keyset-paged pipeline: filter → resolve → write → verify per page ----
@@ -234,25 +238,19 @@ async function main() {
     inScope += scoped.length;
 
     // ---- page-batched lookups ----
-    const workerNids: number[] = [];
-    for (const s of scoped) {
-      const n = workerNidOf(s.fields);
-      if (n != null) workerNids.push(n);
-    }
-    const [workerMap, idMap] = await Promise.all([
-      getMappings("worker", workerNids),
+    const [contactMap, idMap] = await Promise.all([
+      getMappings("contact", scoped.map((s) => s.nid)),
       getMappings(ID_MAP_ENTITY, scoped.map((s) => s.nid)),
     ]);
 
-    // workers.contact_id for the page's mapped workers
-    const contactByWorkerId = new Map<string, string>();
-    const workerIds = [...new Set([...workerMap.values()].map((v) => v.s2Id))];
-    for (const ids of chunk(workerIds, 500)) {
+    // contact row existence for the page's mapped contacts
+    const contactExists = new Set<string>();
+    const pageContactIds = [...new Set([...contactMap.values()].map((v) => v.s2Id))];
+    for (const ids of chunk(pageContactIds, 500)) {
       const res = (await db.execute(sql`
-        SELECT id, contact_id FROM workers
-         WHERE id IN (${sql.join(ids.map((id) => sql`${id}`), sql`, `)})
-      `)) as unknown as { rows: Array<{ id: string; contact_id: string }> };
-      for (const r of res.rows) contactByWorkerId.set(r.id, r.contact_id);
+        SELECT id FROM contacts WHERE id IN (${sql.join(ids.map((id) => sql`${id}`), sql`, `)})
+      `)) as unknown as { rows: Array<{ id: string }> };
+      for (const r of res.rows) contactExists.add(r.id);
     }
 
     // mapped comm existence (idempotent re-runs; broken maps hard-reject)
@@ -266,18 +264,15 @@ async function main() {
     }
 
     // provenance prefetch: this loader's comms for the page's contacts,
-    // keyed (contact, ym) — crash repair AND duplicate worker-month adoption.
-    const provenanceByKey = new Map<string, string>(); // (contactId|ym) → comm id
-    const pageContactIds = [...new Set([...contactByWorkerId.values()])];
+    // keyed by contact id — crash repair AND duplicate-node adoption.
+    const provenanceByContact = new Map<string, string>(); // contactId → comm id
     for (const ids of chunk(pageContactIds, 200)) {
       const res = (await db.execute(sql`
-        SELECT id, contact_id, data->>'ym' AS ym FROM comm
+        SELECT id, contact_id FROM comm
          WHERE medium = ${COMM_MEDIUM} AND data->>'s1Loader' = ${LOADER}
            AND contact_id IN (${sql.join(ids.map((id) => sql`${id}`), sql`, `)})
-      `)) as unknown as { rows: Array<{ id: string; contact_id: string; ym: string | null }> };
-      for (const r of res.rows) {
-        if (r.ym) provenanceByKey.set(dedupeKey(r.contact_id, r.ym), r.id);
-      }
+      `)) as unknown as { rows: Array<{ id: string; contact_id: string }> };
+      for (const r of res.rows) provenanceByContact.set(r.contact_id, r.id);
     }
 
     // ---- resolve + write pass ----
@@ -298,48 +293,39 @@ async function main() {
         continue;
       }
 
-      const workerNid = workerNidOf(s.fields);
-      if (workerNid == null) {
-        rejects.add("worker_ref_missing", { nid }, nid);
-        continue;
-      }
-      const workerId = workerMap.get(workerNid)?.s2Id;
-      if (!workerId) {
-        rejects.add("worker_unmapped", { nid, workerNid }, nid);
-        continue;
-      }
-      const contactId = contactByWorkerId.get(workerId);
+      const contactId = contactMap.get(nid)?.s2Id;
       if (!contactId) {
-        rejects.add("worker_row_missing", { nid, workerNid }, nid);
+        rejects.add("contact_unmapped", { nid }, nid);
+        continue;
+      }
+      if (!contactExists.has(contactId)) {
+        rejects.add("contact_row_missing", { nid }, nid);
         continue;
       }
 
-      const dateRaw = strOf(s.fields, "field_sirius_date_start");
-      if (!dateRaw) {
+      // DATE ANCHOR (ruled above): node `changed` epoch, marked approximate.
+      if (s.changed == null) {
         rejects.add("date_missing", { nid }, nid);
         continue;
       }
-      const ymd = toYmd(dateRaw);
+      const ymd = epochToYmd(s.changed);
       if (!ymd) {
         rejects.add("bad_date", { nid }, nid);
         continue;
       }
-      const ym = ymd.slice(0, 7); // YYYY-MM (month grain)
-      const [y, m] = [Number(ym.slice(0, 4)), Number(ym.slice(5, 7))];
-      const monthDate = new Date(Date.UTC(y, m - 1, 1));
+      const commDate = new Date(`${ymd}T00:00:00.000Z`);
 
-      distinctWorkerNids.add(workerNid);
-      distinctMonths.add(ym);
+      distinctContactIds.add(contactId);
 
-      // one record per (worker, month): adopt an existing comm for the same
-      // (contact, ym) — either crash repair or a duplicate tagged node.
-      const key = dedupeKey(contactId, ym);
-      const existing = provenanceByKey.get(key);
+      // one comm per contact: adopt an existing comm for the same contact —
+      // either crash repair or a duplicate tagged node mapping to the same
+      // S2 contact.
+      const existing = provenanceByContact.get(contactId);
       if (existing) {
-        // rows created earlier THIS run = duplicate worker-month node sharing
-        // the comm; provenance rows preexisting the run = crash repair.
+        // rows created earlier THIS run = duplicate node sharing the comm;
+        // provenance rows preexisting the run = crash repair.
         const isDuplicateNode = createdThisRun.has(existing) || existing.startsWith("dry:");
-        if (isDuplicateNode) duplicateWorkerMonth++;
+        if (isDuplicateNode) duplicateContactNode++;
         else adoptedByProvenance++;
         if (!DRY_RUN) {
           await putMapping(ID_MAP_ENTITY, nid, existing, { stub: false, loader: LOADER });
@@ -350,7 +336,7 @@ async function main() {
 
       if (DRY_RUN) {
         created++;
-        provenanceByKey.set(key, `dry:${nid}`);
+        provenanceByContact.set(contactId, `dry:${nid}`);
         continue;
       }
 
@@ -361,19 +347,20 @@ async function main() {
             medium: COMM_MEDIUM,
             contactId,
             status: "logged",
-            sent: monthDate,
-            received: monthDate,
+            sent: commDate,
+            received: commDate,
             data: {
               s1Loader: LOADER,
               kind: COMM_KIND,
               label: COMM_LABEL,
-              ym,
-              s1: { nid, workerNid, tid },
+              dateSource: DATE_SOURCE,
+              dateApproximate: true,
+              s1: { nid, tid },
             },
           }),
         );
         await putMapping(ID_MAP_ENTITY, nid, row.id, { stub: false, loader: LOADER });
-        provenanceByKey.set(key, row.id);
+        provenanceByContact.set(contactId, row.id);
         createdThisRun.add(row.id);
         expected.set(nid, row.id);
         created++;
@@ -414,12 +401,11 @@ async function main() {
 
   report.pages = pages;
   report.inScope = inScope;
-  report.distinctWorkers = distinctWorkerNids.size;
-  report.distinctMonths = distinctMonths.size;
+  report.distinctContacts = distinctContactIds.size;
   report.alreadyMapped = alreadyMapped;
   report.created = created;
   report.adoptedByProvenance = adoptedByProvenance;
-  report.duplicateWorkerMonth = duplicateWorkerMonth;
+  report.duplicateContactNode = duplicateContactNode;
   report.rejects = rejects.counts;
   report.rejectSamples = rejects.samples;
   report.verifyFailures = verifyFailures;

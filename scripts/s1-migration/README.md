@@ -101,7 +101,7 @@ loaders against ANY target (fresh branch or production), ensure:
   relationships → employee-ids → elections → benefit-history → **payments →
   ledger** → hours → enrollment-packet-tags. Payments run BEFORE ledger:
   negative AR rows reference payment nids, and T18 resolves them through
-  id_map `payment`. T29 (enrollment-packet-tags) only needs the `worker`
+  id_map `payment`. T29 (enrollment-packet-tags) only needs the `contact`
   id_map, so any slot after contacts/workers works; it is listed last to
   keep the spine loads together.
   Later loaders resolve earlier loaders' `id_map` entries; missing mappings
@@ -406,35 +406,49 @@ doesn't match. It must never point at production.
   `data.s1ReferenceNid` is always stashed for audit. `date` = raw epoch ts;
   `statement_ymd` = LA-calendar first-of-month of that ts.
 
-- `load-enrollment-packet-tags.ts` — T29 (closes N24, ruled 2026-08-05):
-  `smf_worker_month` tags stay extract-and-stage only EXCEPT exactly one —
-  **"Comms: Received Enrollment Packet"** — which loads as one offline
-  `comm` record per tagged (worker, month). **S2 home decision (build-time
-  ruling, recorded here + in the loader header):** NOT comm +
-  comm_interaction (its `call_reason_id` is a NOT NULL FK into the seeded
-  MSR call reasons and its channel is constrained to the six call/visit
-  channels — a packet is not a member-service interaction) and NOT
-  comm_postal (NOT NULL to-address columns; S1 has no packet address).
+- `load-enrollment-packet-tags.ts` — T29 (closes N24, ruled 2026-08-05;
+  **grain corrected 2026-08-11**): S1 tags stay extract-and-stage only
+  EXCEPT exactly one — **"Comms: Received Enrollment Packet"** — which
+  loads as one offline `comm` record per tagged **`sirius_contact` node**.
+  **Grain correction:** the original ruling assumed the keep-tag lived on
+  `smf_worker_month`; diagnostics against staging AND live S1 proved it
+  never does (14,801 `sirius_contact` nodes carry tid 1689, zero
+  worker-month rows — the prod run's `inScope: 0` was the loader scanning
+  the wrong bundle). The worker-month grain and first-of-month dating are
+  dead; the loader scopes staged `sirius_contact` rows and resolves each
+  directly via id_map `contact` (no worker hop, no month grain).
+  **S2 home decision (unchanged, recorded here + in the loader header):**
+  NOT comm + comm_interaction (its `call_reason_id` is a NOT NULL FK into
+  the seeded MSR call reasons and its channel is constrained to the six
+  call/visit channels — a packet is not a member-service interaction) and
+  NOT comm_postal (NOT NULL to-address columns; S1 has no packet address).
   Instead: a parent-only `comm` row, medium `offline`, status `logged`,
-  contact = the worker's contact, `sent` = `received` = first-of-month UTC,
-  provenance + month in `data` (`s1Loader`, `kind:
-  enrollment_packet_received`, `ym`, `s1.{nid,workerNid,tid}`). The comm
-  history UI renders unknown mediums as a plain capitalized label with no
+  contact = the tagged contact. **Date anchor ruling (2026-08-11):** the
+  contact node has no packet-received date; `sent` = `received` = the
+  node's `changed` date (the only timestamp guaranteed ≥ the tag edit;
+  `created` is systematically too early). The date is approximate and
+  flagged in `data` (`dateSource: 's1_node_changed'`,
+  `dateApproximate: true`, plus `s1Loader`, `kind:
+  enrollment_packet_received`, `s1.{nid,tid}`). The comm history UI
+  renders unknown mediums as a plain capitalized label with no
   child-details requirement. Keep-tag tid(s) resolve from `s1_staging.terms`
   by normalized name in vocabulary `sirius_contact_tags`; the same name in
   any OTHER vocabulary hard-fails before any write. Grain is one comm per
-  (worker, month): duplicate tagged nodes adopt the first node's comm
-  (`duplicateWorkerMonth`). Idempotent via id_map `wm-packet`; crash repair
-  re-adopts by (contact, month) provenance (T16/T19 pattern); mapped-but-
-  deleted comms hard-reject (`mapped_comm_missing` — repair the map).
-  Prod scale (2.53M nodes / 13.57M tag rows) is covered by `pagedStaged`
-  keyset paging + page-batched IN-queries for every lookup. Dev: the
-  synthetic S1 MariaDB predates the tag vocabulary (all worker-month tag
-  tids are NULL, no `sirius_contact_tags` terms), so the dev run is a
-  documented no-op (`keepTagTids=[]`, `inScope=0`);
-  `scripts/oneoffs/s1-t29-packet-tag-smoke.ts` seeds self-cleaning fakes
-  for the real paths (scope filter, grain adoption, reject gate, idempotent
-  re-run, crash repair, foreign-vocabulary preflight).
+  tagged contact node; duplicate nodes resolving to the same S2 contact
+  adopt the first node's comm (`duplicateContactNode`). Idempotent via
+  id_map `contact-packet`; crash repair re-adopts by contact provenance
+  (T16/T19 pattern); mapped-but-deleted comms hard-reject
+  (`mapped_comm_missing` — repair the map). Rejects: `contact_unmapped`,
+  `contact_row_missing`, `date_missing`, `bad_date`, `create_failed`,
+  `mapped_comm_missing`. Prod expectation: `inScope ≈ 14,801`. Prod scale
+  is covered by `pagedStaged` keyset paging + page-batched IN-queries for
+  every lookup. Dev: the synthetic S1 MariaDB predates the tag vocabulary
+  (all contact tag tids are NULL, no `sirius_contact_tags` terms), so the
+  dev run is a documented no-op (`keepTagTids=[]`, `inScope=0`);
+  `scripts/oneoffs/s1-t29-packet-tag-smoke.ts` seeds self-cleaning
+  `sirius_contact` fakes for the real paths (scope filter, contact-grain
+  adoption, reject gate, idempotent re-run, crash repair,
+  foreign-vocabulary preflight).
 
 `scripts/oneoffs/s1-t16-t19-smoke.ts` covers the four loaders end-to-end:
 it seeds fully-populated fake staged rows against real dev entities (the
@@ -524,10 +538,13 @@ S2 or staged data.
   policy: every reason present must be allowed; dev's synthetic spans all
   need `start_missing`).
 
-  The S1 side is a pluggable **evidence source** (`EVIDENCE_SOURCES`): when
-  the staged worker-month tags land (T29), they register as a second source
-  and the same comparison/gate machinery reports both independently —
-  cross-source disagreement then shows up as diverging per-source reports.
+  The S1 side is a pluggable **evidence source** (`EVIDENCE_SOURCES`): if a
+  second S1 evidence stream is ever adopted (the staged worker-month tags
+  were the original candidate, but they are stale computed eligibility state
+  ruled stage-only — T29's grain correction confirmed no keep-tag lives
+  there), it registers as another source and the same comparison/gate
+  machinery reports each independently — cross-source disagreement then
+  shows up as diverging per-source reports.
 
 **Thresholds:** the defaults (0-cent tolerance, no month-parity default at
 all) are deliberately the most conservative options; they came from the
