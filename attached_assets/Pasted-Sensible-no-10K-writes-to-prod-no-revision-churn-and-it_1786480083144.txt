@@ -1,0 +1,53 @@
+Sensible — no 10K writes to prod, no revision churn, and it's reversible if the ruling changes.
+
+Note for Replit agent
+Context
+
+load-contacts-workers.ts (t3t1) rejected 10,614 duplicate_email on the last rehearsal run. Investigation against S1 production shows 94% of that class is two placeholder addresses, not real duplicates:
+
+Address	Contacts	Backing workers	Origin
+fastload@nodomain.com	10,000	0	BPA bulk import, May–Dec 2022, dormant contacts, no new records since
+no_email@avolta.net	38	38	Employer had no addresses to supply at onboarding
+
+Neither is a routable address. Today the first record of each set wins the S2 unique index and the remaining ~10,036 reject as duplicates — meaning two arbitrary contacts end up owning a fake address, which is worse than none of them having it. The remaining ~584 rejects are genuine household sharing across 433 real addresses and are handled by a separate ruling.
+
+The fund has ruled these are suppressed at load rather than cleaned in S1.
+
+Behavior
+Before dedupe or write, the loader treats a staged email as absent if, after trimming and lowercasing, it matches a known placeholder. Initial list: fastload@nodomain.com, no_email@avolta.net, and any address whose domain is nodomain.com.
+A suppressed email means the contact loads normally without an email. It is not a reject, and it must not be counted as duplicate_email.
+The run report counts suppressions per address, e.g. placeholderEmailsSuppressed: { "fastload@nodomain.com": 10000, "no_email@avolta.net": 38 }. Do not collapse to a single total — a new placeholder appearing in prod must be visible, not hidden inside an aggregate.
+The placeholder list is a named constant in one place, not inline literals, so additions are a one-line change.
+Matching is trimmed and case-insensitive, consistent with the existing dedupe.
+Idempotent: a rerun over already-loaded contacts must not attempt to write the suppressed value, and must not flag drift on contacts whose email is legitimately null.
+Data touchpoints
+Object	Effect
+contacts.email	~10,038 rows keep NULL instead of one arbitrary row winning a fake address
+s1_staging.records	read-only; S1 is unchanged
+run report	new placeholderEmailsSuppressed map
+
+No other loader is affected — no other loader resolves contacts by email.
+
+Edge cases
+Case	Expected
+Placeholder on a contact backing a worker (the 38)	Suppressed; worker loads normally with a null-email contact
+Placeholder with different case/whitespace	Suppressed
+A real address at a real domain shared by 2+ contacts	Unchanged — still duplicate_email, still needs the household ruling
+Contact already loaded with a placeholder from a prior run	Should be cleared to null on rerun, or reported as drift — do not silently leave the fake address in place
+A new @nodomain.com address appears in prod	Suppressed by the domain rule, and visible in the per-address report
+Out of scope
+Any write to S1.
+The ~584 genuine household duplicates — separate ruling (see Open questions).
+Changing how contacts.email uniqueness is modelled.
+Open questions
+#	Question	Owner
+1	When a household shares a real address, who keeps it in S2? Today it's lowest S1 nid — i.e. record creation order — so dependents routinely beat subscribers. Recommend subscriber-wins, but it needs an explicit ruling. ~584 contacts affected.	Kristin
+2	contacts_email_unique indexes raw email; the loader dedupes case-insensitively. John@x.com and john@x.com are duplicates to the loader and distinct to Postgres. Should the index become lower(email)?	Sam
+Validation
+Rerun t3t1 on the rehearsal target: duplicate_email drops from 10,614 to ~584; placeholderEmailsSuppressed reports 10000 / 38.
+SELECT COUNT(*) FROM contacts WHERE email IN ('fastload@nodomain.com','no_email@avolta.net') returns 0.
+SELECT COUNT(*), COUNT(email), COUNT(DISTINCT lower(email)) FROM contacts — COUNT(email) should fall by 1–2 versus the prior run (the two records that previously won the placeholder), and the last two figures stay equal.
+Second consecutive run reports zero writes — idempotent.
+The 38 Avolta-linked workers still load; worker_contact_unresolved unchanged.
+
+One thing to keep on your side: the 38 Avolta records are the only marker that a whole employer's members have no reachable email. Once suppression is live, that pattern is invisible in both systems. Worth pulling the worker list and passing it to Luis before the next run, so the fund can ask Avolta for addresses — it's an operational gap, not a migration one, but it'll be much harder to spot later.
