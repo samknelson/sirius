@@ -58,6 +58,10 @@ Sirius is a full-stack web application designed for comprehensive worker managem
 
 Preferred communication style: Simple, everyday language.
 
+**Never push to `bao-prd` or `bao-dev` automatically.** If you think
+something needs to be pushed to either branch, stop and ask the user —
+they will do the push themselves.
+
 ## Git remotes & branch policy
 
 -   **`main` → `origin` (github.com/samknelson/sirius) only.** `main` must
