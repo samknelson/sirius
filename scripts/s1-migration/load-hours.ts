@@ -12,10 +12,12 @@
  *     are rejected and reported); tid → options_employment_status by name
  *   - legacy-format rows (entries is an ARRAY) are skipped with reason
  *     `legacy_json_format`, nids logged (N18: exactly 10 in production)
- *   - month attribution: field_sirius_date_start's calendar month (OPEN-5 is
- *     pending — boundary-spanning periods are counted and surfaced in the run
- *     report, not guessed at)
- *   - negative hours totals load as-is and are counted (OPEN-3 pending)
+ *   - month attribution: field_sirius_date_start's calendar month (OPEN-5
+ *     CLOSED 2026-08-04: production has 0 boundary-spanning payperiods;
+ *     `boundarySpanningPeriods_OPEN5` stays as a tripwire that must read 0)
+ *   - negative hours totals load as-is and are counted (OPEN-3 CLOSED
+ *     2026-08-05: import as-is — BPA-era corrections, kept for pension
+ *     vesting; no charges generate from negative hours)
  *   - $.entries keys are provenance — aggregated in the run report; row-level
  *     provenance stays derivable from staging (worker_hours has no data column)
  *   - multiple payperiods in one (worker, employer, month) SUM their hours;
@@ -25,7 +27,11 @@
  * Reference resolution goes through s1_staging.id_map. Until T4 (workers) and
  * T7 (employers) exist, `--stub-missing` creates minimal S2 rows through
  * storage (marked stub=true in id_map) so the pipeline verifies end-to-end in
- * dev. Without the flag, unresolved references are counted skips.
+ * dev. Without the flag, unresolved references are counted skips; the report
+ * carries distinct-nid counts plus ≤20 sample nids per side (same pattern as
+ * skipNids) so unresolved refs are triaged from the report alone — classify
+ * each nid as staged-but-unmapped (loader gap) vs not-staged (deleted in S1)
+ * via 07-prod-query-pack §P7.
  *
  * Charge plugins: worker_hours upserts trigger hour-driven charge plugins
  * (bao-hourly, ECHP, ...). During a production migration these must NOT run —
@@ -248,6 +254,12 @@ async function main() {
   let verified = 0;
   let unresolvedWorker = 0;
   let unresolvedEmployer = 0;
+  // Distinct unresolved refs + ≤20 sample nids per side (counts stay exact) —
+  // aggregates and opaque S1 nids only, same disclosure rule as skipNids.
+  const unresolvedWorkerNids = new Set<number>();
+  const unresolvedWorkerSamples: number[] = [];
+  const unresolvedEmployerNids = new Set<number>();
+  const unresolvedEmployerSamples: number[] = [];
   let stubbedWorkers = 0;
   let stubbedEmployers = 0;
   let verifyMismatchCount = 0;
@@ -310,10 +322,18 @@ async function main() {
       const employer = employerMap.get(g.employerNid);
       if (!worker) {
         unresolvedWorker++;
+        if (!unresolvedWorkerNids.has(g.workerNid)) {
+          unresolvedWorkerNids.add(g.workerNid);
+          if (unresolvedWorkerSamples.length < 20) unresolvedWorkerSamples.push(g.workerNid);
+        }
         continue;
       }
       if (!employer) {
         unresolvedEmployer++;
+        if (!unresolvedEmployerNids.has(g.employerNid)) {
+          unresolvedEmployerNids.add(g.employerNid);
+          if (unresolvedEmployerSamples.length < 20) unresolvedEmployerSamples.push(g.employerNid);
+        }
         continue;
       }
       if (DRY_RUN) {
@@ -489,8 +509,8 @@ async function main() {
       continue;
     }
     const end = yearMonthOf(r.fields["field_sirius_date_end"]);
-    if (end && end.ym !== start.ym) boundarySpanning++; // OPEN-5 — surfaced, not guessed
-    if (total < 0) negativeHours++; // OPEN-3 — loaded as-is, surfaced
+    if (end && end.ym !== start.ym) boundarySpanning++; // OPEN-5 CLOSED — tripwire, prod expects 0
+    if (total < 0) negativeHours++; // OPEN-3 CLOSED — import as-is (ruled 2026-08-05), counted
 
     const entries = json?.entries;
     if (entries && typeof entries === "object") {
@@ -540,6 +560,12 @@ async function main() {
     verifyMismatchMonths: verifyMismatchSamples,
     unresolvedWorker,
     unresolvedEmployer,
+    // Triage inputs (07-prod-query-pack §P7): distinct S1 nids behind the
+    // month-group counts above, plus ≤20 sample nids each (opaque ids only).
+    unresolvedWorkerDistinctNids: unresolvedWorkerNids.size,
+    unresolvedWorkerSampleNids: unresolvedWorkerSamples,
+    unresolvedEmployerDistinctNids: unresolvedEmployerNids.size,
+    unresolvedEmployerSampleNids: unresolvedEmployerSamples,
     stubbedWorkers,
     stubbedEmployers,
     negativeHours_OPEN3: negativeHours,

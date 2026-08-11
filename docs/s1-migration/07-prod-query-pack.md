@@ -389,3 +389,165 @@ LEFT JOIN field_data_field_sirius_date_start s ON s.entity_id=n.nid AND s.delete
 LEFT JOIN field_data_field_sirius_date_end   e ON e.entity_id=n.nid AND e.deleted=0
 WHERE n.type='sirius_contact_relationship';
 ```
+
+### P7 — T20 hours unresolved-ref + missing_json triage (added 2026-08-11 after the first full real-target run)
+
+The 2026-08-09 rehearsal run (3,620,645 staged payperiods → 3,613,766
+written+verified, 0 verify mismatches) reported `unresolvedWorker: 3363` /
+`unresolvedEmployer: 7` month-groups and `missing_json: 3462` skips. Hours has
+no `--allow-rejects` gate by design — this triage IS the gate. Two query
+groups: **P7a–P7d run against the rehearsal/prod TARGET Postgres** (Neon SQL
+editor or an ECS one-off — the staging schema lives there, not here);
+**P7e–P7g run against S1 MariaDB** (CloudShell VPC tab / drush). Aggregates
+and opaque nids only.
+
+#### P7a/P7b (target Postgres) — distinct unresolved refs, classified
+
+Classification rule: `staged_but_unmapped > 0` = a LOADER GAP (the entity was
+extracted but its loader never mapped it — must fix before cutover);
+`not_staged` = the nid was not in the extract, i.e. deleted in S1 (confirm
+with P7e/P7f).
+
+```sql
+-- P7a: worker refs (swap the two field names + bundle for P7b employers:
+--      field_grievance_shop / grievance_shop / entity 'employer')
+WITH refs AS (
+  SELECT DISTINCT
+    CASE
+      WHEN jsonb_typeof(fields->'field_sirius_worker') = 'array'
+        THEN (fields->'field_sirius_worker'->>0)::bigint
+      WHEN fields->>'field_sirius_worker' ~ '^[0-9]+$'
+        THEN (fields->>'field_sirius_worker')::bigint
+    END AS nid
+  FROM s1_staging.records WHERE bundle = 'sirius_payperiod'
+), unresolved AS (
+  SELECT r.nid FROM refs r
+  WHERE r.nid IS NOT NULL
+    AND NOT EXISTS (SELECT 1 FROM s1_staging.id_map m
+                     WHERE m.entity = 'worker' AND m.s1_id = r.nid)
+)
+SELECT count(*) AS distinct_unresolved,
+       count(*) FILTER (WHERE EXISTS (SELECT 1 FROM s1_staging.records w
+                                       WHERE w.bundle = 'sirius_worker' AND w.nid = u.nid)) AS staged_but_unmapped,
+       count(*) FILTER (WHERE NOT EXISTS (SELECT 1 FROM s1_staging.records w
+                                           WHERE w.bundle = 'sirius_worker' AND w.nid = u.nid)) AS not_staged
+FROM unresolved u;
+
+-- P7c (worker): ≤20 sample nids with their class — self-contained statement:
+WITH refs AS (
+  SELECT DISTINCT
+    CASE
+      WHEN jsonb_typeof(fields->'field_sirius_worker') = 'array'
+        THEN (fields->'field_sirius_worker'->>0)::bigint
+      WHEN fields->>'field_sirius_worker' ~ '^[0-9]+$'
+        THEN (fields->>'field_sirius_worker')::bigint
+    END AS nid
+  FROM s1_staging.records WHERE bundle = 'sirius_payperiod'
+), unresolved AS (
+  SELECT r.nid FROM refs r
+  WHERE r.nid IS NOT NULL
+    AND NOT EXISTS (SELECT 1 FROM s1_staging.id_map m
+                     WHERE m.entity = 'worker' AND m.s1_id = r.nid)
+)
+SELECT u.nid,
+       EXISTS (SELECT 1 FROM s1_staging.records w
+                WHERE w.bundle = 'sirius_worker' AND w.nid = u.nid) AS staged
+FROM unresolved u ORDER BY u.nid LIMIT 20;
+
+-- P7c (employer): same, for shop refs:
+WITH refs AS (
+  SELECT DISTINCT
+    CASE
+      WHEN jsonb_typeof(fields->'field_grievance_shop') = 'array'
+        THEN (fields->'field_grievance_shop'->>0)::bigint
+      WHEN fields->>'field_grievance_shop' ~ '^[0-9]+$'
+        THEN (fields->>'field_grievance_shop')::bigint
+    END AS nid
+  FROM s1_staging.records WHERE bundle = 'sirius_payperiod'
+), unresolved AS (
+  SELECT r.nid FROM refs r
+  WHERE r.nid IS NOT NULL
+    AND NOT EXISTS (SELECT 1 FROM s1_staging.id_map m
+                     WHERE m.entity = 'employer' AND m.s1_id = r.nid)
+)
+SELECT u.nid,
+       EXISTS (SELECT 1 FROM s1_staging.records w
+                WHERE w.bundle = 'grievance_shop' AND w.nid = u.nid) AS staged
+FROM unresolved u ORDER BY u.nid LIMIT 20;
+```
+
+(Validated 2026-08-11 against the dev staging schema; on dev, employer refs
+show `staged_but_unmapped` simply because the employers loader hasn't run
+there — on the rehearsal target after the full chain, staged_but_unmapped
+should be 0 and any non-zero value is a must-fix loader gap.)
+
+#### P7d (target Postgres) — missing_json profile vs the ~1,853 baseline
+
+Profile-time baseline: ~1,853 payperiods lacked the JSON row entirely (sparse
+field). The run's 3,462 suggests the extract raced S1's live hours imports
+(no freeze): a node row extracted before its field_sirius_json row was
+written. Confirmation = the surplus concentrating in created-months at/after
+the extract window with high nids.
+
+```sql
+SELECT to_char(to_timestamp(created), 'YYYY-MM') AS created_ym,
+       count(*) AS n, min(nid) AS min_nid, max(nid) AS max_nid
+  FROM s1_staging.records
+ WHERE bundle = 'sirius_payperiod'
+   AND (fields->'field_sirius_json' IS NULL
+        OR jsonb_typeof(COALESCE(fields#>'{field_sirius_json,value}',
+                                 fields->'field_sirius_json')) = 'null')
+ GROUP BY 1 ORDER BY 1;
+```
+
+#### P7e/P7f (S1 MariaDB) — deleted-node confirmation for not-staged refs
+
+Per the standing rule, LEFT JOIN node before blaming a loader gap: a
+dangling target_id whose node row is gone was deleted in S1 — unloadable,
+documented skip, no action.
+
+```sql
+-- P7e: payperiod worker refs whose node no longer exists (expect ≈ the
+--      P7a not_staged count; still_exists > 0 would mean a stage.ts gap)
+SELECT COUNT(DISTINCT w.field_sirius_worker_target_id) AS distinct_refs,
+       COUNT(DISTINCT CASE WHEN n.nid IS NULL THEN w.field_sirius_worker_target_id END) AS deleted_in_s1,
+       COUNT(DISTINCT CASE WHEN n.nid IS NOT NULL THEN w.field_sirius_worker_target_id END) AS still_exists
+FROM field_data_field_sirius_worker w
+LEFT JOIN node n ON n.nid = w.field_sirius_worker_target_id
+WHERE w.entity_type='node' AND w.bundle='sirius_payperiod' AND w.deleted=0
+  AND NOT EXISTS (SELECT 1 FROM node wn
+                   WHERE wn.nid = w.field_sirius_worker_target_id
+                     AND wn.type = 'sirius_worker');
+
+-- P7f: same for employer refs
+SELECT COUNT(DISTINCT s.field_grievance_shop_target_id) AS distinct_refs,
+       COUNT(DISTINCT CASE WHEN n.nid IS NULL THEN s.field_grievance_shop_target_id END) AS deleted_in_s1,
+       COUNT(DISTINCT CASE WHEN n.nid IS NOT NULL THEN s.field_grievance_shop_target_id END) AS still_exists
+FROM field_data_field_grievance_shop s
+LEFT JOIN node n ON n.nid = s.field_grievance_shop_target_id
+WHERE s.entity_type='node' AND s.bundle='sirius_payperiod' AND s.deleted=0
+  AND NOT EXISTS (SELECT 1 FROM node sn
+                   WHERE sn.nid = s.field_grievance_shop_target_id
+                     AND sn.type = 'grievance_shop');
+```
+
+#### P7g (S1 MariaDB) — missing_json against the live source
+
+```sql
+-- Payperiods with no JSON field row, by created month (compare the tail
+-- months against P7d — the surplus over ~1,853 should sit in the extract
+-- window if the raced-the-live-import hypothesis holds):
+SELECT FROM_UNIXTIME(p.created, '%Y-%m') AS ym, COUNT(*) AS n,
+       MIN(p.nid) AS min_nid, MAX(p.nid) AS max_nid
+FROM node p
+LEFT JOIN field_data_field_sirius_json j
+       ON j.entity_id = p.nid AND j.bundle='sirius_payperiod' AND j.deleted=0
+WHERE p.type='sirius_payperiod' AND j.entity_id IS NULL
+GROUP BY ym ORDER BY ym;
+```
+
+**Recurrence expectation (no-freeze reality):** without a freeze, ANY live
+extract will contain some payperiods whose JSON row lands after the node row
+is read — these rows recur run over run and are NOT a loader defect. Their
+pickup belongs to the parallel-run full-sync / delta re-stage design (a
+separate upcoming effort), not to T20.
