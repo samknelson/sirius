@@ -2684,6 +2684,10 @@ export const INTERACTION_CHANNELS = [
   "helpline",
   "hotline",
   "walk_in",
+  // "issue_reported": S1 migration ruling 2026-08-11 — S1 sirius_log category
+  // "issue reported for member" becomes its own interaction channel rather
+  // than folding into an existing channel or staying in cold archive.
+  "issue_reported",
 ] as const;
 export type InteractionChannel = (typeof INTERACTION_CHANNELS)[number];
 

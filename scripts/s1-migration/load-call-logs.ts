@@ -16,11 +16,21 @@
  *     (aliases like "kaiser issues" fold into "mlk issues"); resolved at
  *     start, fail loud if a seeded reason is missing.
  *   - channel: normalized `field_sirius_category` → interaction channel;
- *     unmapped categories reject as `category_unmapped`.
+ *     unmapped categories reject as `category_unmapped` (full per-value tally
+ *     in the report's `unmappedCategories`). RULING 2026-08-11: category
+ *     "issue reported for member" (700 prod rows) maps to the NEW
+ *     `issue_reported` channel (added to INTERACTION_CHANNELS) rather than
+ *     folding into an existing channel or staying in cold archive.
  *   - contact: `field_sirius_log_handler` targets (multi) through
- *     s1_staging.id_map entity "contact" — first resolvable target wins;
- *     none resolvable rejects as `handler_unresolved`, no handler at all as
- *     `handler_missing`.
+ *     s1_staging.id_map entity "contact", falling back per-target to entity
+ *     "worker" (S1 handler refs also point at sirius_worker nodes — the
+ *     worker's S2 contact_id is used). First resolvable target wins; no
+ *     handler at all rejects as `handler_missing`. When nothing resolves:
+ *     `handler_unresolved` if at least one target exists in
+ *     s1_staging.records (staged but unmapped — a real resolution gap),
+ *     `handler_dangling` if none do (refs to S1 nodes deleted/absent from
+ *     staging). The report's `unresolvedHandlerNids` tallies distinct
+ *     unresolved nids by staged bundle plus a notStaged count.
  *   - notes: field_sirius_summary + field_sirius_notes (concatenated).
  *   - timestamp: node `created` epoch → comm.sent.
  *   - provenance: original type/category/nid preserved in
@@ -77,6 +87,7 @@ function loaderScope<T>(fn: () => Promise<T>): Promise<T> {
 const FATAL_REASONS = [
   "handler_missing",
   "handler_unresolved",
+  "handler_dangling",
   "category_missing",
   "category_unmapped",
   "create_failed",
@@ -113,6 +124,9 @@ const CATEGORY_TO_CHANNEL: Record<string, string> = {
   "walk in": "walk_in",
   "walk-in": "walk_in",
   "walkin": "walk_in",
+  // RULING 2026-08-11 (rehearsal triage): all 700 category_unmapped rejects in
+  // the first rehearsal carried this one value; it becomes a NEW channel.
+  "issue reported for member": "issue_reported",
 };
 
 function norm(s: string | null): string | null {
@@ -217,11 +231,19 @@ async function main() {
 
   let stagedLogs = 0;
   let inScope = 0;
-  const stats = { alreadyMapped: 0, created: 0 };
+  const stats = { alreadyMapped: 0, created: 0, handlerViaWorker: 0 };
   const byReason: Record<string, number> = {};
   const byChannel: Record<string, number> = {};
   /** nid array for the verify pass (mapped nids only — ~12K max). */
   const mappedNids: number[] = [];
+  // ---- triage aggregates (counts only — never note/summary content) ----
+  /** Every category_unmapped occurrence tallied by normalized value. */
+  const unmappedCategories: Record<string, number> = {};
+  /** Distinct unresolved handler nids tallied by their staged bundle... */
+  const unresolvedHandlersByBundle: Record<string, number> = {};
+  /** ...plus the count of distinct unresolved handler nids not staged at all. */
+  let unresolvedHandlersNotStaged = 0;
+  const talliedUnresolvedNids = new Set<number>();
 
   progress.phase(null); // row loop
 
@@ -237,11 +259,56 @@ async function main() {
 
     if (scopedPage.length === 0) continue;
 
-    // Fetch id_map and contact handler mappings for this page only
+    // Fetch id_map and handler mappings for this page only.
+    // Handler resolution is per-target: id_map("contact") first, then
+    // id_map("worker") (worker's S2 contact_id) — S1 handler refs target both
+    // sirius_contact and sirius_worker nodes.
     const idMap = await getMappings(ID_MAP_ENTITY, scopedPage.map((r) => r.nid));
     const handlerNids = new Set<number>();
     for (const r of scopedPage) for (const n of targetNidsOf(r.fields, "field_sirius_log_handler")) handlerNids.add(n);
     const contactMap = await getMappings("contact", [...handlerNids]);
+
+    const unresolvedAfterContact = [...handlerNids].filter((n) => !contactMap.has(n));
+    const workerMap = await getMappings("worker", unresolvedAfterContact);
+    /** handler nid → S2 contact id, via the worker fallback. */
+    const workerContactIdByNid = new Map<number, string>();
+    if (workerMap.size > 0) {
+      const workerS2Ids = [...new Set([...workerMap.values()].map((m) => m.s2Id))];
+      const contactIdByWorkerId = new Map<string, string>();
+      for (let i = 0; i < workerS2Ids.length; i += 500) {
+        const chunk = workerS2Ids.slice(i, i + 500);
+        const res = await db.execute(sql`
+          SELECT id, contact_id FROM workers
+           WHERE id IN (${sql.join(chunk.map((s) => sql`${s}`), sql`, `)})
+        `);
+        for (const row of (res as unknown as { rows: Array<{ id: string; contact_id: string }> }).rows) {
+          contactIdByWorkerId.set(row.id, row.contact_id);
+        }
+      }
+      for (const [nid, m] of workerMap) {
+        const cid = contactIdByWorkerId.get(m.s2Id);
+        if (cid) workerContactIdByNid.set(nid, cid);
+      }
+    }
+
+    // Staged-existence lookup for handler nids resolvable via neither map —
+    // splits handler_unresolved (staged but unmapped) from handler_dangling
+    // (target absent from staging entirely) and feeds the bundle triage tally.
+    const stillUnresolved = unresolvedAfterContact.filter((n) => !workerContactIdByNid.has(n));
+    const stagedBundlesByNid = new Map<number, string[]>();
+    for (let i = 0; i < stillUnresolved.length; i += 500) {
+      const chunk = stillUnresolved.slice(i, i + 500);
+      const res = await db.execute(sql`
+        SELECT nid, bundle FROM s1_staging.records
+         WHERE nid IN (${sql.join(chunk.map((n) => sql`${n}`), sql`, `)})
+      `);
+      for (const row of (res as unknown as { rows: Array<{ nid: string | number; bundle: string }> }).rows) {
+        const k = Number(row.nid);
+        const arr = stagedBundlesByNid.get(k);
+        if (arr) arr.push(row.bundle);
+        else stagedBundlesByNid.set(k, [row.bundle]);
+      }
+    }
 
     for (const r of scopedPage) {
       progress.add(1);
@@ -264,6 +331,7 @@ async function main() {
       }
       const channel = CATEGORY_TO_CHANNEL[category];
       if (!channel) {
+        unmappedCategories[category] = (unmappedCategories[category] ?? 0) + 1;
         rejects.add("category_unmapped", { nid: r.nid, type, category }, r.nid);
         continue;
       }
@@ -273,11 +341,41 @@ async function main() {
         rejects.add("handler_missing", { nid: r.nid, type }, r.nid);
         continue;
       }
-      const contactHit = handlers.map((n) => contactMap.get(n)).find((m) => m != null);
-      if (!contactHit) {
-        rejects.add("handler_unresolved", { nid: r.nid, type, handlers }, r.nid);
+      // First resolvable target wins: contact mapping, else worker fallback.
+      let resolvedContactId: string | null = null;
+      let viaWorker = false;
+      for (const n of handlers) {
+        const c = contactMap.get(n);
+        if (c) {
+          resolvedContactId = c.s2Id;
+          break;
+        }
+        const wc = workerContactIdByNid.get(n);
+        if (wc) {
+          resolvedContactId = wc;
+          viaWorker = true;
+          break;
+        }
+      }
+      if (!resolvedContactId) {
+        // Triage tally: distinct unresolved handler nids by staged bundle vs
+        // not staged at all (aggregate counts only).
+        for (const n of handlers) {
+          if (talliedUnresolvedNids.has(n)) continue;
+          talliedUnresolvedNids.add(n);
+          const bundles = stagedBundlesByNid.get(n);
+          if (!bundles) unresolvedHandlersNotStaged++;
+          else for (const b of bundles) unresolvedHandlersByBundle[b] = (unresolvedHandlersByBundle[b] ?? 0) + 1;
+        }
+        const anyStaged = handlers.some((n) => stagedBundlesByNid.has(n));
+        rejects.add(
+          anyStaged ? "handler_unresolved" : "handler_dangling",
+          { nid: r.nid, type, handlers },
+          r.nid,
+        );
         continue;
       }
+      if (viaWorker) stats.handlerViaWorker++;
 
       const summary = strOf(r.fields, "field_sirius_summary");
       const notes = strOf(r.fields, "field_sirius_notes");
@@ -295,7 +393,7 @@ async function main() {
       try {
         const { comm } = await loaderScope(() =>
           interactions.createInteractionWithComm({
-            contactId: contactHit.s2Id,
+            contactId: resolvedContactId,
             channel,
             callReasonId,
             notes: combinedNotes,
@@ -351,6 +449,14 @@ async function main() {
   report.stats = stats;
   report.byReason = byReason;
   report.byChannel = byChannel;
+  // Triage aggregates (counts only): every unmapped category by normalized
+  // value; distinct unresolved/dangling handler nids by staged bundle plus a
+  // not-staged count — future runs are self-explanatory without re-profiling.
+  report.unmappedCategories = unmappedCategories;
+  report.unresolvedHandlerNids = {
+    byStagedBundle: unresolvedHandlersByBundle,
+    notStaged: unresolvedHandlersNotStaged,
+  };
   report.rejects = rejects.counts;
   report.rejectSamples = rejects.samples;
   report.verifyFailures = verifyFailures;

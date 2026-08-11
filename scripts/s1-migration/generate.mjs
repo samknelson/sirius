@@ -48,7 +48,12 @@
  *        N4:  duplicate_code (2 in-run; on RE-run one becomes
  *             code_owned_by_other_worker and one adopts)
  *        N21: category_missing (1), category_unmapped (1),
- *             handler_missing (1), handler_unresolved (1)
+ *             handler_missing (1); the worker-nid handler row is NO LONGER a
+ *             trap — the loader's id_map("worker") fallback resolves it
+ *             (handlerViaWorker). handler_unresolved / handler_dangling and
+ *             the issue_reported channel row are covered by SEEDED STAGED
+ *             FAKES (dev/seed-call-log-traps.ts), NOT by regenerating this DB
+ *             (regen invalidates id_map).
  *        T15: none — the 2 no-start rows load via the N26 default-dates ruling
  *
  * DEPENDENCIES (dev environment, before loading):
@@ -1210,11 +1215,12 @@ for (let i = 0; i < 25; i++) {
   } else {
     await fd('field_data_field_sirius_category', [{bundle:'sirius_log', entity_id:nid, values:{field_sirius_category_value:MSR_CATEGORIES[i % MSR_CATEGORIES.length]}}]);
   }
-  // handlers: multi-value contact refs; row 21 unresolvable (worker nid),
-  // row 22 missing — documented traps
+  // handlers: multi-value contact refs; row 21 is a WORKER nid — formerly the
+  // handler_unresolved trap, now resolved by the loader's id_map("worker")
+  // fallback (kept: it exercises the fallback path). Row 22 missing — trap.
   if (i === 21) {
     await fd('field_data_field_sirius_log_handler', [{bundle:'sirius_log', entity_id:nid, values:{field_sirius_log_handler_target_id:workers[0].nid}}]);
-    trap('call_log_handler_unresolved');
+    trap('call_log_handler_via_worker_fallback');
   } else if (i === 22) {
     trap('call_log_handler_missing');
   } else {

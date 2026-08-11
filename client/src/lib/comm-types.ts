@@ -60,6 +60,7 @@ export const INTERACTION_CHANNEL_LABELS: Record<string, string> = {
   helpline: "Helpline",
   hotline: "Hotline",
   walk_in: "Walk-in",
+  issue_reported: "Issue reported",
 };
 
 export function interactionChannelLabel(channel: string | null | undefined): string {
