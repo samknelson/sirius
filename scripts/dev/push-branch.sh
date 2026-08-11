@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # Push the workspace's main branch to a deployment branch on GitHub.
-# Usage: scripts/dev/push-branch.sh <bao-dev|bao-prd>
+# Usage: scripts/dev/push-branch.sh <bao-dev|bao-stg|bao-prd>
 # Also refreshes the bao-replit-main mirror branch.
 # Requires GITHUB_TOKEN (a GitHub PAT with repo push access) as a Replit Secret.
 set -euo pipefail
 
-TARGET="${1:?usage: push-branch.sh <bao-dev|bao-prd>}"
+TARGET="${1:?usage: push-branch.sh <bao-dev|bao-stg|bao-prd>}"
 case "$TARGET" in
-  bao-dev|bao-prd) ;;
-  *) echo "ERROR: target must be bao-dev or bao-prd (got '$TARGET')"; exit 1 ;;
+  bao-dev|bao-stg|bao-prd) ;;
+  *) echo "ERROR: target must be bao-dev, bao-stg, or bao-prd (got '$TARGET')"; exit 1 ;;
 esac
 
 if [ -z "${GITHUB_TOKEN:-}" ]; then
