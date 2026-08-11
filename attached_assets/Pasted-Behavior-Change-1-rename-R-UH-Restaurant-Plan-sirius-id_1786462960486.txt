@@ -1,0 +1,27 @@
+Behavior — Change 1: rename R → UH
+
+Restaurant Plan (sirius_id = R) is renamed to Unite Here Plan (sirius_id = UH). Same policy row, new identity. R / Restaurant Plan is retired and must not exist after this change.
+
+The seeders produce sirius_id = UH, name = Unite Here Plan on a fresh target. R / Restaurant Plan appears nowhere in seed data.
+On an existing target, the seeder must rename, not create. Resolution order for this policy: match sirius_id = UH → else match sirius_id = R and update it in place to UH / Unite Here Plan → else create. Skipping the middle step produces a duplicate policy row and orphans every existing mapping — that is the primary failure mode of this change.
+The rename is counted and reported (renamedFromR: 1) so an operator can confirm it happened rather than inferring it from silence.
+The alias table in load-policies.ts targets UH wherever it previously targeted R.
+Because this is a rename of the same row, existing id_map entries, employer_policy_history rows, and employers.denorm_policy_id values remain correct and require no correction. Do not add drift-correction logic for this change.
+If a target somehow contains both R and UH rows, abort with both ids listed rather than guessing which to keep.
+Behavior — Change 2: deleted policy nodes → Inactive
+
+Where an election references a policy nid absent from staging (S1 node deleted) but the elections are live, the reference maps to sirius_id = U, name = Inactive.
+
+When an election's policy nid has no staged sirius_json_definition row, write an id_map entry pointing that nid at the Inactive policy instead of emitting policy_ref_not_staged.
+Every distinct nid absorbed this way is reported with its election count — e.g. mappedToInactive: { "8868662": 41 }. Do not collapse to a single counter; an unexpected nid must be visible.
+policy_ref_not_staged is retired only if (7) fully covers it. Any nid that can't resolve even to Inactive still rejects.
+If the Inactive policy is absent from the target, abort at startup with a clear message rather than proceeding.
+load-employer-policies.ts (5b) rejects policy_unmapped from the same root cause — shops whose ledger.policy.ebh references a deleted nid. Confirm it resolves through the new id_map entries without a separate code change; if it doesn't, say so rather than working around it.
+Data touchpoints
+Object	Read	Written
+policies	matched by sirius_id	one row renamed R → UH (existing targets); Inactive row created if absent
+s1_staging.id_map (entity='policy')	existing mappings	new entries for deleted-nid → Inactive
+s1_staging.records (sirius_json_definition)	staged policy refs	—
+employer_policy_history, employers.denorm_policy_id	—	unchanged — rename preserves the row UUID
+
+Elections store policy_id = NULL by design and derive policy from the employer at read time, so no election rows are touched by either change.
