@@ -14,9 +14,9 @@ export const REJECT_SAMPLE_CAP = 25;
 
 /**
  * Storage-operation log sampling for loader runs (S1_LOADER_LOG_SAMPLE):
- *   0   = suppress storage-op logging entirely
+ *   0   = suppress storage-op logging entirely (DEFAULT)
  *   1   = full logging (throttle disabled — dev debugging)
- *   N>1 = log the 1st call per operation, then every Nth (default 500)
+ *   N>1 = log the 1st call per operation, then every Nth
  *
  * Long loaders call throttleStorageOpLogs() unconditionally: per-row
  * "Storage operation" logging costs extra WAN round-trips (before-state
@@ -26,9 +26,9 @@ export const REJECT_SAMPLE_CAP = 25;
  */
 export const LOADER_LOG_SAMPLE_EVERY = (() => {
   const raw = process.env.S1_LOADER_LOG_SAMPLE;
-  if (raw == null || raw.trim() === "") return 500; // Number("") is 0 — guard the default
+  if (raw == null || raw.trim() === "") return 0; // Number("") is 0 anyway — keep intent explicit
   const n = Number(raw);
-  return Number.isInteger(n) && n >= 0 ? n : 500;
+  return Number.isInteger(n) && n >= 0 ? n : 0;
 })();
 
 export function throttleStorageOpLogs(): void {
@@ -41,7 +41,7 @@ export function throttleStorageOpLogs(): void {
   setStorageLogSampling(LOADER_LOG_SAMPLE_EVERY);
   console.error(
     LOADER_LOG_SAMPLE_EVERY === 0
-      ? "storage-operation logging SUPPRESSED for this run (S1_LOADER_LOG_SAMPLE=0) — winston_logs will not reflect this run"
+      ? "storage-operation logging SUPPRESSED for this run (default) — winston_logs will not reflect this run; failures surface via the RejectLog/run report. Re-enable with S1_LOADER_LOG_SAMPLE=1 (full) or N>1 (sampled)"
       : `storage-operation logging throttled for this run: 1 in ${LOADER_LOG_SAMPLE_EVERY} sampled per operation — winston_logs is NOT a progress proxy; use table counts`,
   );
 }

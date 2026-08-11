@@ -11,7 +11,7 @@ heartbeat (`scripts/s1-migration/lib/progress.ts`) and throttle per-row
 
 **Knobs:**
 - `S1_PROGRESS_INTERVAL_MS` — heartbeat interval (default 60s; lower only for dev/smoke).
-- `S1_LOADER_LOG_SAMPLE` — 0 = suppress storage-op logs, 1 = full logging, N = 1-in-N per operation (default 500).
+- `S1_LOADER_LOG_SAMPLE` — 0 = suppress storage-op logs (default since 2026-08-11), 1 = full logging, N = 1-in-N per operation.
 
 **Why:** per-row storage logging cost extra WAN round-trips per write (before-state
 read + winston_logs insert) and made long prod loaders unobservable except by

@@ -221,12 +221,13 @@ beyond counts, or row contents):
   Compute the instantaneous rate from the delta between two heartbeat lines
   before calling a run slow.
 
-**Storage-op log throttling (migration runs only).** The same loaders throttle
-the per-row `Storage operation: ...` logging — both the console line and the
-`winston_logs` DB insert — to 1-in-500 per operation by default, so each row
-write costs one round-trip instead of several. A one-line notice on stderr at
-loader start confirms throttling is active. `S1_LOADER_LOG_SAMPLE` tunes it
-(`0` = suppress entirely, `1` = full per-row logging, `N` = every Nth).
+**Storage-op log suppression (migration runs only).** The same loaders
+suppress the per-row `Storage operation: ...` logging entirely by default —
+both the console line and the `winston_logs` DB insert — so each row write
+costs one round-trip instead of several. Failures still surface via the
+RejectLog/run report. A one-line notice on stderr at loader start confirms
+suppression is active. `S1_LOADER_LOG_SAMPLE` tunes it (`0` = suppress
+entirely — the default, `1` = full per-row logging, `N` = every Nth).
 App-server logging behavior is unchanged — only loader processes throttle.
 
 **Charge-executor WARN throttling (`--migration-mode`).** The charge
