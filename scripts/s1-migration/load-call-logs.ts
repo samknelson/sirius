@@ -54,7 +54,7 @@ import {
 } from "../../server/middleware/request-context";
 import { ensureStagingSchema, recordRun } from "./lib/staging";
 import { ensureIdMap, getMappings, putMapping } from "./lib/idmap";
-import { RejectLog, strOf, throttleStorageOpLogs } from "./lib/loader-utils";
+import { RejectLog, strOf, throttleStorageOpLogs, LOADER_PAGE_SIZE, stagedCountOf } from "./lib/loader-utils";
 import { makeProgressLogger } from "./lib/progress";
 import { createCommInteractionStorage } from "../../server/storage/comm";
 
@@ -145,20 +145,38 @@ interface StagedLogRow {
   fields: Record<string, unknown>;
 }
 
-/** Like loadStaged, but keeps node.created (the original interaction time). */
-async function loadStagedLogs(): Promise<StagedLogRow[]> {
-  const res = await db.execute(sql`
-    SELECT nid, created, fields FROM s1_staging.records WHERE bundle = 'sirius_log' ORDER BY nid
-  `);
-  return (
-    res as unknown as {
-      rows: Array<{ nid: string | number; created: string | number | null; fields: unknown }>;
-    }
-  ).rows.map((r) => ({
+type RawLogRow = { nid: string | number; created: string | number | null; fields: unknown };
+
+function mapLogRow(r: RawLogRow): StagedLogRow {
+  return {
     nid: Number(r.nid),
     created: r.created == null ? null : Number(r.created),
     fields: (typeof r.fields === "string" ? JSON.parse(r.fields) : r.fields ?? {}) as Record<string, unknown>,
-  }));
+  };
+}
+
+/**
+ * Keyset-paged staged read for sirius_log: yields pages of at most `pageSize`
+ * StagedLogRows in ascending nid order. Selects `nid, created, fields` (not
+ * title/changed like the generic pagedStaged helper, which is why this is a
+ * local variant).
+ */
+async function* pagedStagedLogs(
+  pageSize: number = LOADER_PAGE_SIZE,
+): AsyncGenerator<StagedLogRow[]> {
+  let lastNid = -1;
+  for (;;) {
+    const res = await db.execute(sql`
+      SELECT nid, created, fields FROM s1_staging.records
+       WHERE bundle = 'sirius_log' AND nid > ${lastNid}
+       ORDER BY nid LIMIT ${pageSize}
+    `);
+    const rows = (res as unknown as { rows: RawLogRow[] }).rows.map(mapLogRow);
+    if (rows.length === 0) return;
+    lastNid = rows[rows.length - 1].nid;
+    yield rows;
+    if (rows.length < pageSize) return;
+  }
 }
 
 async function main() {
@@ -187,118 +205,131 @@ async function main() {
     );
   }
 
-  // throttle per-row storage-op logging + heartbeat (aggregates only) — from
-  // process start: the staged log load below is the long pole at prod volume
-  // and must emit liveness, not silence.
+  // throttle per-row storage-op logging + heartbeat (aggregates only)
   throttleStorageOpLogs();
-  const progress = makeProgressLogger(LOADER, 0);
+
+  // fetch total staged count up front so progress has a meaningful total
+  const totalStaged = await stagedCountOf("sirius_log");
+  const progress = makeProgressLogger(LOADER, totalStaged);
   progress.phase("pre-scan");
-
-  const allRows = await loadStagedLogs();
-  report.stagedLogs = allRows.length;
-
-  // ---- scope: MSR call-reason types only ----
-  const rows = allRows.filter((r) => {
-    const t = norm(strOf(r.fields, "field_sirius_type"));
-    return t != null && t in TYPE_TO_REASON_SIRIUS_ID;
-  });
-  report.inScope = rows.length;
-  progress.setTotal(rows.length);
-
-  const idMap = await getMappings(ID_MAP_ENTITY, rows.map((r) => r.nid));
-  const handlerNids = new Set<number>();
-  for (const r of rows) for (const n of targetNidsOf(r.fields, "field_sirius_log_handler")) handlerNids.add(n);
-  const contactMap = await getMappings("contact", [...handlerNids]);
 
   const interactions = createCommInteractionStorage();
 
+  let stagedLogs = 0;
+  let inScope = 0;
   const stats = { alreadyMapped: 0, created: 0 };
   const byReason: Record<string, number> = {};
   const byChannel: Record<string, number> = {};
-  /** nid → created comm id (verify pass). */
-  const expected = new Map<number, string>();
+  /** nid array for the verify pass (mapped nids only — ~12K max). */
+  const mappedNids: number[] = [];
 
   progress.phase(null); // row loop
-  for (const r of rows) {
-    progress.add(1);
-    if (idMap.has(r.nid)) {
-      stats.alreadyMapped++;
-      continue;
-    }
 
-    const type = norm(strOf(r.fields, "field_sirius_type"))!;
-    const reasonSiriusId = TYPE_TO_REASON_SIRIUS_ID[type];
-    const callReasonId = reasonIdBySiriusId.get(reasonSiriusId)!;
+  for await (const page of pagedStagedLogs()) {
+    stagedLogs += page.length;
 
-    const rawCategory = strOf(r.fields, "field_sirius_category");
-    const category = norm(rawCategory);
-    if (category == null) {
-      rejects.add("category_missing", { nid: r.nid, type }, r.nid);
-      continue;
-    }
-    const channel = CATEGORY_TO_CHANNEL[category];
-    if (!channel) {
-      rejects.add("category_unmapped", { nid: r.nid, type, category }, r.nid);
-      continue;
-    }
+    // Filter to in-scope rows (MSR call-reason types only)
+    const scopedPage = page.filter((r) => {
+      const t = norm(strOf(r.fields, "field_sirius_type"));
+      return t != null && t in TYPE_TO_REASON_SIRIUS_ID;
+    });
+    inScope += scopedPage.length;
 
-    const handlers = targetNidsOf(r.fields, "field_sirius_log_handler");
-    if (handlers.length === 0) {
-      rejects.add("handler_missing", { nid: r.nid, type }, r.nid);
-      continue;
-    }
-    const contactHit = handlers.map((n) => contactMap.get(n)).find((m) => m != null);
-    if (!contactHit) {
-      rejects.add("handler_unresolved", { nid: r.nid, type, handlers }, r.nid);
-      continue;
-    }
+    if (scopedPage.length === 0) continue;
 
-    const summary = strOf(r.fields, "field_sirius_summary");
-    const notes = strOf(r.fields, "field_sirius_notes");
-    const combinedNotes = [summary, notes].filter(Boolean).join("\n\n") || null;
-    const occurredAt = r.created != null ? new Date(r.created * 1000) : null;
+    // Fetch id_map and contact handler mappings for this page only
+    const idMap = await getMappings(ID_MAP_ENTITY, scopedPage.map((r) => r.nid));
+    const handlerNids = new Set<number>();
+    for (const r of scopedPage) for (const n of targetNidsOf(r.fields, "field_sirius_log_handler")) handlerNids.add(n);
+    const contactMap = await getMappings("contact", [...handlerNids]);
 
-    byReason[reasonSiriusId] = (byReason[reasonSiriusId] ?? 0) + 1;
-    byChannel[channel] = (byChannel[channel] ?? 0) + 1;
+    for (const r of scopedPage) {
+      progress.add(1);
+      if (idMap.has(r.nid)) {
+        stats.alreadyMapped++;
+        // still track it for the verify pass
+        mappedNids.push(r.nid);
+        continue;
+      }
 
-    if (DRY_RUN) {
-      stats.created++;
-      continue;
-    }
+      const type = norm(strOf(r.fields, "field_sirius_type"))!;
+      const reasonSiriusId = TYPE_TO_REASON_SIRIUS_ID[type];
+      const callReasonId = reasonIdBySiriusId.get(reasonSiriusId)!;
 
-    try {
-      const { comm } = await loaderScope(() =>
-        interactions.createInteractionWithComm({
-          contactId: contactHit.s2Id,
-          channel,
-          callReasonId,
-          notes: combinedNotes,
-          occurredAt,
-          data: { s1: { nid: r.nid, type, category: rawCategory } },
-          commData: { s1Loader: LOADER },
-        }),
-      );
-      await putMapping(ID_MAP_ENTITY, r.nid, comm.id, { stub: false, loader: LOADER });
-      expected.set(r.nid, comm.id);
-      stats.created++;
-    } catch {
-      // SANITIZED: never log raw error text here — notes/summary content may
-      // be embedded in driver messages.
-      rejects.add("create_failed", { nid: r.nid, type }, r.nid);
+      const rawCategory = strOf(r.fields, "field_sirius_category");
+      const category = norm(rawCategory);
+      if (category == null) {
+        rejects.add("category_missing", { nid: r.nid, type }, r.nid);
+        continue;
+      }
+      const channel = CATEGORY_TO_CHANNEL[category];
+      if (!channel) {
+        rejects.add("category_unmapped", { nid: r.nid, type, category }, r.nid);
+        continue;
+      }
+
+      const handlers = targetNidsOf(r.fields, "field_sirius_log_handler");
+      if (handlers.length === 0) {
+        rejects.add("handler_missing", { nid: r.nid, type }, r.nid);
+        continue;
+      }
+      const contactHit = handlers.map((n) => contactMap.get(n)).find((m) => m != null);
+      if (!contactHit) {
+        rejects.add("handler_unresolved", { nid: r.nid, type, handlers }, r.nid);
+        continue;
+      }
+
+      const summary = strOf(r.fields, "field_sirius_summary");
+      const notes = strOf(r.fields, "field_sirius_notes");
+      const combinedNotes = [summary, notes].filter(Boolean).join("\n\n") || null;
+      const occurredAt = r.created != null ? new Date(r.created * 1000) : null;
+
+      byReason[reasonSiriusId] = (byReason[reasonSiriusId] ?? 0) + 1;
+      byChannel[channel] = (byChannel[channel] ?? 0) + 1;
+
+      if (DRY_RUN) {
+        stats.created++;
+        continue;
+      }
+
+      try {
+        const { comm } = await loaderScope(() =>
+          interactions.createInteractionWithComm({
+            contactId: contactHit.s2Id,
+            channel,
+            callReasonId,
+            notes: combinedNotes,
+            occurredAt,
+            data: { s1: { nid: r.nid, type, category: rawCategory } },
+            commData: { s1Loader: LOADER },
+          }),
+        );
+        await putMapping(ID_MAP_ENTITY, r.nid, comm.id, { stub: false, loader: LOADER });
+        mappedNids.push(r.nid);
+        stats.created++;
+      } catch {
+        // SANITIZED: never log raw error text here — notes/summary content may
+        // be embedded in driver messages.
+        rejects.add("create_failed", { nid: r.nid, type }, r.nid);
+      }
     }
   }
 
+  report.stagedLogs = stagedLogs;
+  report.inScope = inScope;
+
   // ---------------- verify pass ----------------
-  progress.phase("verify", rows.length);
+  progress.phase("verify", mappedNids.length);
   let verifyFailures = 0;
   if (!DRY_RUN) {
-    const vMap = await getMappings(ID_MAP_ENTITY, rows.map((r) => r.nid));
-    for (const r of rows) {
+    // Re-fetch all mappings for mapped nids (small set, ~12K max)
+    const vMap = await getMappings(ID_MAP_ENTITY, mappedNids);
+    for (const nid of mappedNids) {
       progress.add(1);
-      if (rejects.hasAnyIn(r.nid, FATAL_REASONS)) continue;
-      const m = vMap.get(r.nid);
+      if (rejects.hasAnyIn(nid, FATAL_REASONS)) continue;
+      const m = vMap.get(nid);
       if (!m) {
-        console.error(`VERIFY: call_log nid ${r.nid} has no id_map entry`);
+        console.error(`VERIFY: call_log nid ${nid} has no id_map entry`);
         verifyFailures++;
         continue;
       }
@@ -309,7 +340,7 @@ async function main() {
       `);
       const hit = (res as unknown as { rows: Array<{ id: string; interaction_id: string | null }> }).rows[0];
       if (!hit || !hit.interaction_id) {
-        console.error(`VERIFY: call_log nid ${r.nid} maps to missing/incomplete comm ${m.s2Id}`);
+        console.error(`VERIFY: call_log nid ${nid} maps to missing/incomplete comm ${m.s2Id}`);
         verifyFailures++;
       }
     }
