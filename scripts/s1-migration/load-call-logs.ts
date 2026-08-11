@@ -127,6 +127,9 @@ const CATEGORY_TO_CHANNEL: Record<string, string> = {
   // RULING 2026-08-11 (rehearsal triage): all 700 category_unmapped rejects in
   // the first rehearsal carried this one value; it becomes a NEW channel.
   "issue reported for member": "issue_reported",
+  // RULING 2026-08-11 (prod triage): 7 "appeal denial" logs carry category
+  // "letter" (written correspondence); becomes its own channel.
+  "letter": "letter",
 };
 
 function norm(s: string | null): string | null {

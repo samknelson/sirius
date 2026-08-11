@@ -2688,6 +2688,10 @@ export const INTERACTION_CHANNELS = [
   // "issue reported for member" becomes its own interaction channel rather
   // than folding into an existing channel or staying in cold archive.
   "issue_reported",
+  // "letter": S1 migration ruling 2026-08-11 — S1 sirius_log category "letter"
+  // (7 "appeal denial" logs sent as written correspondence) becomes its own
+  // interaction channel rather than being skipped as category_unmapped.
+  "letter",
 ] as const;
 export type InteractionChannel = (typeof INTERACTION_CHANNELS)[number];
 

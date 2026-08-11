@@ -153,6 +153,7 @@ import "./core/1106_add_trust_benefit_provider";
 import "./core/1120_reapply_comm_interaction";
 import "./core/1121_worker_hours_worker_id_index";
 import "./core/1122_add_issue_reported_interaction_channel";
+import "./core/1123_add_letter_interaction_channel";
 
 export {
   runMigrations,
