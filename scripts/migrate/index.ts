@@ -152,6 +152,7 @@ import "./core/1106_add_trust_benefit_provider";
 // Re-apply of 1117, skipped on prod by the version-counter collision.
 import "./core/1120_reapply_comm_interaction";
 import "./core/1121_worker_hours_worker_id_index";
+import "./core/1122_add_issue_reported_interaction_channel";
 
 export {
   runMigrations,
