@@ -1,0 +1,41 @@
+One-off documentation task. Do NOT write app code or change behavior.
+Only create/edit markdown docs.
+
+Scan this entire chat thread from the beginning. Extract everything with
+lasting value, priority on the s1 data migration work. Write it to disk:
+
+1. replit.md — MERGE into the correct existing section (Run & Operate,
+   Stack, Where things live, Non-Negotiable Rules, etc.). Never append a
+   new section at the bottom if an existing section covers the topic.
+   Only durable rules that should govern every future session. Skip
+   anything already enforced by the automated validations
+   (check-migrations, constraint-names, storage-encapsulation, typecheck).
+
+2. Migration docs — update in place, do NOT create docs/MIGRATION.md:
+   - Field mapping changes → docs/s1-migration/02-mapping.md
+   - Transformation rules / dirty-data handling → docs/s1-migration/03-transformations.md
+   - Batching, idempotency, rerun behavior, operational rulings
+     → scripts/s1-migration/RUNBOOK.md
+   - Validation / reconciliation queries → docs/s1-migration/07-prod-query-pack.md
+   - Current status (migrated / pending / blocked) → docs/s1-migration/README.md
+   - Anything discussed but never resolved → docs/s1-migration/05-open-questions.md
+     under "Unresolved" — never guess.
+
+3. docs/architecture-decisions.md — append one entry per decision made
+   this session: what we chose, what we rejected, why. Include abandoned
+   approaches. Migration-semantics rulings go in the RUNBOOK instead.
+
+4. docs/GOTCHAS.md — create or update. Non-obvious things a fresh session
+   would break: workarounds, fragile spots, env/config quirks, data
+   surprises. Cross-link (don't duplicate) docs/nNN-*.md task reports and
+   replit.md Non-Negotiable Rules.
+
+Rules:
+- Source everything from this thread. Do not invent, infer, or fill gaps
+  from general knowledge.
+- Prefer specifics: real table names, column names, file paths, commands,
+  error messages.
+- If you cannot see the earliest portion of this thread (compaction),
+  say so explicitly and state roughly where your visibility starts.
+
+When done, print a summary of what you wrote to each file.
