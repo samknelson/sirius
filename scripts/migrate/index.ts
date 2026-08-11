@@ -151,6 +151,7 @@ import "./core/1105_reapply_ebs";
 import "./core/1106_add_trust_benefit_provider";
 // Re-apply of 1117, skipped on prod by the version-counter collision.
 import "./core/1120_reapply_comm_interaction";
+import "./core/1121_worker_hours_worker_id_index";
 
 export {
   runMigrations,

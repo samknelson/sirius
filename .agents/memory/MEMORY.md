@@ -45,7 +45,7 @@
 - [ProtectedRoute vs nav-registry component prop](protectedroute-vs-navregistry-component-prop.md) — gate routes with `component=`; gate sidebar items with `requiresComponent:`.
 - [Derived "current" flag needs parent-row lock](derived-current-flag-row-lock.md) — clear-then-set is_current under a partial unique index races across txs.
 - [Denorm backfill is enqueue-then-recompute](denorm-backfill-enqueue-semantics.md) — backfillAllDenorm only enqueues stale rows + deletes widows; compute/write happens later in denorm_stale cron.
-- [Dual DB driver + empty-DB bootstrap](dual-db-driver-and-bootstrap.md) — dev DB is plain Postgres (helium, sslmode=disable) so dev boots the pg driver, not Neon.
+- [Dual DB driver + empty-DB bootstrap](dual-db-driver-and-bootstrap.md) — app resolves EXTERNAL_DATABASE_URL (Neon) first; shell $DATABASE_URL is a stale helium PG — never verify app DB state via psql $DATABASE_URL.
 - [Core migrations vs optional components](core-migrations-optional-components.md) — core migrations must tolerate optional-component tables (enabledByDefault:false) being absent.
 - [Wizard plugin needsReadOnlyDb flag](wizard-plugin-readonly-db-flag.md) — wizard read lives in engine/types/*.ts but the needsReadOnlyDb flag lives on the plugins/*.ts wrapper.
 - [tsc not in dev loop](tsc-not-in-dev-loop.md) — dev runs under tsx (no type-check); tsc now runs automatically as the `typecheck` validation; treat red tsc as a possible real runtime bug.

@@ -356,6 +356,13 @@ export const workerHours = pgTable("worker_hours", {
     columns: [table.employmentStatusId],
     foreignColumns: [optionsEmploymentStatus.id],
   }).onDelete("cascade"),
+  // deriveHomeEmployerId (server/storage/worker-hours.ts) filters by
+  // worker_id on every upsert; the unique constraint above leads with `year`,
+  // so without this index each call seq-scans the whole table (measured on
+  // the S1 hours load: 6.4M seq scans / 1.34T tuples read). Name matches the
+  // index created live on the load target on 2026-08-10; migration 1121
+  // creates it everywhere else.
+  workerIdIdx: index("worker_hours_worker_id_idx").on(table.workerId),
 }));
 
 export const trustProviders = pgTable("trust_providers", {
