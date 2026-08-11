@@ -2692,6 +2692,11 @@ export const INTERACTION_CHANNELS = [
   // (7 "appeal denial" logs sent as written correspondence) becomes its own
   // interaction channel rather than being skipped as category_unmapped.
   "letter",
+  // "provider_call": S1 migration ruling 2026-08-12 — S1 sirius_log category
+  // "provider call" (1 "enrollment" log) becomes its own interaction channel:
+  // no generic call channel exists and the member-call channels don't fit a
+  // call with a provider.
+  "provider_call",
 ] as const;
 export type InteractionChannel = (typeof INTERACTION_CHANNELS)[number];
 

@@ -19,6 +19,11 @@
  *     mapped contact nid picked from id_map at run time.
  *   - 99900904 → the staged-but-unmapped handler target (out of N21 scope by
  *     type, so it adds 1 to stagedLogs but not to inScope).
+ *   - 99900905 → loads on office_visit via category "In Person Visit"
+ *     (ruling 2026-08-12: folds into office_visit like "visit"); real mapped
+ *     contact handler.
+ *   - 99900906 → loads on the NEW provider_call channel (category
+ *     "Provider Call", ruling 2026-08-12); real mapped contact handler.
  *
  * Idempotent (upsert by (bundle, nid)); nids live in a 999xxxxx range far
  * above synthetic nids. NOTE: a full restage sweeps these rows (stale-delete
@@ -94,6 +99,26 @@ async function main() {
       title: "TRAP handler target (staged, never mapped)",
       fields: {
         field_sirius_type: scalar("system"),
+      },
+    },
+    {
+      nid: 99900905,
+      title: "In person visit channel row",
+      fields: {
+        field_sirius_type: scalar("Enrollment"),
+        field_sirius_category: scalar("In Person Visit"),
+        field_sirius_log_handler: [contactNid],
+        field_sirius_summary: scalar("Synthetic: in person visit folds into office_visit"),
+      },
+    },
+    {
+      nid: 99900906,
+      title: "Provider call channel row",
+      fields: {
+        field_sirius_type: scalar("Enrollment"),
+        field_sirius_category: scalar("Provider Call"),
+        field_sirius_log_handler: [contactNid],
+        field_sirius_summary: scalar("Synthetic: provider call channel mapping"),
       },
     },
   ];

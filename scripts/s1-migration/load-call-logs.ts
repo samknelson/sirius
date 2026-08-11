@@ -130,6 +130,15 @@ const CATEGORY_TO_CHANNEL: Record<string, string> = {
   // RULING 2026-08-11 (prod triage): 7 "appeal denial" logs carry category
   // "letter" (written correspondence); becomes its own channel.
   "letter": "letter",
+  // RULING 2026-08-12 (prod triage): 1 "enrollment" log (nid 17239418) carries
+  // category "in person visit"; folds into the existing office_visit channel
+  // (same disposition as "visit").
+  "in person visit": "office_visit",
+  // RULING 2026-08-12 (prod triage): 1 "enrollment" log (nid 17267794) carries
+  // category "provider call"; becomes a NEW provider_call channel (no generic
+  // call channel exists, and the member-call channels don't fit a provider
+  // call).
+  "provider call": "provider_call",
 };
 
 function norm(s: string | null): string | null {
