@@ -21,6 +21,11 @@ Sirius is a full-stack web application designed for comprehensive worker managem
     `check-migrations` now also sees untracked files (`git ls-files
     --others`), so a freshly written migration counts before it is
     committed.
+-   **`scripts/` is OUTSIDE the app typecheck.** `npm run check` (the
+    `typecheck` validation) covers the app tsconfig only; migration loaders
+    and other scripts under `scripts/` compile under their own config. Run
+    `npx tsc -p tsconfig.scripts.json --noEmit` before first execution of a
+    new or changed script — a green app typecheck says nothing about them.
 
 ## Stack
 
@@ -67,9 +72,19 @@ Preferred communication style: Simple, everyday language.
     using `git add -f` (the paths are gitignored). The on-disk copies in the
     main working tree are untracked-and-ignored — do not `git add` them.
 -   Helper script for the one-time history split: `.local/split-branches.sh`.
+-   **`bao-dev` / `bao-prd` (deployment branches) are pushed only via the
+    "Push to bao-dev" / "Push to bao-prd" workflows**
+    (`scripts/dev/push-branch.sh`) — never a manual `git push`; verify the
+    push in the workflow's logs. Workspace commits use
+    `git -c core.hooksPath=/dev/null commit` (bypasses hook interference;
+    the registered validations still run on task completion).
 
 ## Gotchas
 
+-   **S1→S2 migration / loader-operations gotchas live in `docs/GOTCHAS.md`**
+    (election bundle-name trap, cumulative rate display, end-of-run reject
+    gates, ECS image pinning, …). Read it before running or debugging
+    migration loaders.
 -   **Facility Contact Sync**: Renaming a facility must go through `storage.facilities.updateContactName` to keep the facility and its associated contact in sync.
 -   **Wizard Access Control**: While `/wizards/:id` only requires authentication, the API endpoints enforce granular authorization.
 -   **T631 Facility Sync**: The `sitespecific-t631-facility-fetch` cron job is disabled by default and gated by the `sitespecific.t631.client` component. It only syncs `name` and `sirius_id` and does not delete local-only rows or write arbitrary `data` jsonb.
@@ -341,6 +356,9 @@ width.
 
 -   **Architecture decisions** (YMD date convention, charge plugin
     idempotency, VDB pension reconciliation, etc.) — `docs/architecture-decisions.md`
+-   **S1→S2 migration** (mapping spec, transformations, open questions,
+    prod query pack) — `docs/s1-migration/`; operating procedure —
+    `scripts/s1-migration/RUNBOOK.md`; operational traps — `docs/GOTCHAS.md`
 -   **System architecture & external dependencies** (full stack
     breakdown, system design choices, third-party libraries) —
     `docs/architecture.md`

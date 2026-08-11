@@ -42,6 +42,14 @@ from the dedicated **`migration` build target** of the same `Dockerfile`:
 docker build --target migration -t sirius-migration:<git-sha> .
 ```
 
+⚠ **The image pins the source at build time.** A loader fix landed on
+`bao-dev` does nothing for ECS runs until the image is rebuilt from the new
+SHA — and a run already in flight keeps its old image to the end. Before
+attributing behavior to a fix, confirm the task's image SHA includes it
+(2026-08-09 example: the t16 typed-elections fix required an image
+≥ `a000e65b`; the long t20 hours run started on an image predating the
+heartbeat-ETA and WARN-throttle commits, so neither shows in its logs).
+
 It contains the full source tree + all node_modules (incl. `tsx`) and starts
 no server. Execute it as an **ECS one-off task** (`run-task`) in the same VPC
 as the target DB — never through the web app or any HTTP path. One task per
@@ -186,8 +194,8 @@ the staging heartbeat, aggregates only (counts/elapsed/rate; never names, nids
 beyond counts, or row contents):
 
 ```
-  progress <loader>: done=N/M (P%) elapsed=Es rate=R rows/s        # row loop
-  progress <loader>: phase=pre-scan done=N/M elapsed=Es (liveness) # silent phases
+  progress <loader>: done=N/M (P%) elapsed=Es rate=R rows/s eta=1h23m  # row loop
+  progress <loader>: phase=pre-scan done=N/M elapsed=Es rate=R rows/s (liveness)
 ```
 
 - The `phase=` form fires during the otherwise-silent stretches (`pre-scan`,
@@ -201,6 +209,16 @@ beyond counts, or row contents):
 - `S1_PROGRESS_INTERVAL_MS` overrides the 60s interval (dev/smoke only).
 - Heartbeat lines are separate stdout lines; the final JSON report block and
   exit-code gates are unchanged.
+- **`rate=`/`eta=` appear on every heartbeat form** — including liveness
+  ticks — on images built from commits ≥ 2026-08-09. `eta` (format `1h23m`)
+  is omitted when the total is unknown or nothing is done yet; an absent eta
+  is honest, not broken.
+- ⚠ **`rate=` is the cumulative average since loader start, not current
+  speed.** Early fast pages inflate it and it declines for hours toward
+  steady state on big loaders (t17 settled ≈41 spans/s on the real target) —
+  a falling displayed rate is normal index-growth behavior, not degradation.
+  Compute the instantaneous rate from the delta between two heartbeat lines
+  before calling a run slow.
 
 **Storage-op log throttling (migration runs only).** The same loaders throttle
 the per-row `Storage operation: ...` logging — both the console line and the
@@ -209,6 +227,14 @@ write costs one round-trip instead of several. A one-line notice on stderr at
 loader start confirms throttling is active. `S1_LOADER_LOG_SAMPLE` tunes it
 (`0` = suppress entirely, `1` = full per-row logging, `N` = every Nth).
 App-server logging behavior is unchanged — only loader processes throttle.
+
+**Charge-executor WARN throttling (`--migration-mode`).** The charge
+executor's per-row "suppressed by migration mode" WARN is throttled to one
+line per trigger per 5 minutes, carrying a `suppressedSinceLastWarn` count
+(images from commits ≥ 2026-08-09). On older images a multi-million-row
+migration-mode load emits one WARN per row and floods the CloudWatch
+stream — filter Live Tail to ERROR/FAIL to see real problems until the run
+is on a rebuilt image.
 
 ⚠ **Consequence: `winston_logs` is no longer a reliable progress proxy** once
 throttling is active. Measure progress from the heartbeat lines in the ECS
@@ -234,11 +260,11 @@ SELECT count(*) FROM worker_trust_elections;  -- elections
 | 5c | `npx tsx scripts/s1-migration/load-employer-rates.ts --allow-rejects bad_rate` | same (dev no-ops: synthetic shops lack charge_plugins JSON; covered via seeded staged fakes) | **After employers (4) + fund config (bao-hourly charge config must exist — the loader resolves its account and aborts unless exactly one is enabled).** Imports per-employer hourly rate history from shop `field_sirius_json` → `charge_plugins.settings.<uuid>.rates.history` into `sitespecific_bao_employer_rates`; without it post-cutover hours rows silently create NO hourly charges. Prod expects ≈698 rates / ≈136 shops (incl. future-dated rows to 2028 — real negotiated increases). Expected rejects: `bad_rate=2` (known colon typos `6:00`/`6:75` on one shop, cleanly re-entered under another uuid — allow), `rate_conflict=1` — shop 8865846 (CONRAD LOS ANGELES, H0305) has BOTH 5.75 and 6.50 entered for 2023-12-01 under the same instance; the S1 UI report shows the same duplicate pair. Conrad is an ACTIVE hourly employer (rates through 2025) — do NOT skip it via allow; have the fund delete the wrong 2023-12-01 row in S1, re-stage `grievance_shop` (the loader reads staged JSON, not live S1), and rerun. Allowing `rate_conflict` drops Conrad's ENTIRE rate history. `verifyFailures: 0` | 10 staged, 0 with rates (documented no-op; parse/precedence/write/idempotency covered via seeded staged fakes) |
 | 6 | `npx tsx scripts/s1-migration/load-relationships.ts` | same | `rejects: {}` — no-start rows load via the N26 default-dates ruling; prod expects `datesDefaulted ≈ 115` | 24 relations, datesDefaulted=2 |
 | 7 | `npx tsx scripts/s1-migration/load-employee-ids.ts` | `--allow-rejects duplicate_code` (2 synthetic) | Run clean first. `duplicate_code` may genuinely occur in prod — inspect, then allow with the observed count. On RE-run, one of a dup pair becomes `code_owned_by_other_worker` and one adopts. | 28 created, 10 types, duplicate_code=2 |
-| 8 | `npx tsx scripts/s1-migration/load-elections.ts` | same | `resolved == staged`, `benefitResolution.unresolved: 0`, `ambiguousNames: 0`; untyped elections are the prod majority (expected) | 40/40; 30 untyped |
-| 9 | `npx tsx scripts/s1-migration/load-benefit-history.ts --open-end-through 2026-09` | `--open-end-through 2026-12` + `--allow-rejects start_missing,subscriber_worker_mismatch,relation_subscriber_mismatch` (3 synthetic traps) | **`--open-end-through 2026-09` is the RULED production value** (freeze month; cutover 2026-10-01). Prod ~609K spans. Run clean first; every reject is a triage item. `benefitResolution.unresolved: 0`, `verifyFailures: 0`, open-span share ≈ 27%. | 102 spans → 99 resolved, 24 open, 896 month rows, 3 trap rejects |
+| 8 | `npx tsx scripts/s1-migration/load-elections.ts` | same | `resolved == staged`, `benefitResolution.unresolved: 0`, `ambiguousNames: 0`; untyped elections are the prod majority (expected). **Typed elections (finding 2026-08-09):** S1's election-type vocabulary holds COVERAGE TIERS (single/family/waived), not enrollment types — typed rows load with NULL `enrollment_type` exactly like untyped ones (fix in images ≥ `a000e65b`; earlier images skipped typed rows entirely, which also starved t17's election→employer fallback). **Real-target run 2026-08-09:** staged 243,475 → resolved 242,532 (adopted 180,709 + created 61,823 previously-skipped typed rows on the post-fix rerun); 943 rejects, all allowed after triage (deleted-node refs / dirty rows). | 40/40; 30 untyped |
+| 9 | `npx tsx scripts/s1-migration/load-benefit-history.ts --open-end-through <transition-month>` | `--open-end-through 2026-12` + `--allow-rejects start_missing,subscriber_worker_mismatch,relation_subscriber_mismatch` (3 synthetic traps) | **`--open-end-through` = the month the migration run happens in (RULED, amended 2026-08-09** — supersedes the fixed `2026-09`, which assumed the 2026-10-01 cutover; "when we actually transition we go through the month of transition"). Open spans project coverage months through that value; the 2026-08 rehearsal used `2026-08`. Run clean first; every reject is a triage item — ruled classes in §5. **Real-target run 2026-08-09:** 612,076 staged spans → 528,656 anchors, 6,435,517 month rows, ≈4.2 h wall (steady ≈41 spans/s); 83,420 rejects, every class §5-ruled. The first pass failed the END gate only on the then-new `benefit_ref_missing` class — all writes had persisted — and the rerun with it allowed was pure adopt (created 0). `benefitResolution.unresolved: 0`, `verifyFailures: 0`. | 102 spans → 99 resolved, 24 open, 896 month rows, 3 trap rejects |
 | 10 | `npx tsx scripts/s1-migration/load-payments.ts` | same | `created+adopted == staged`, `accounts.failed: 0`; per-status split mirrors S1 (Cleared/Received/Canceled/Failed → cleared/draft/canceled/error) | 30 payments across 3 accounts |
 | 11 | `npx tsx scripts/s1-migration/load-ledger.ts` | `--allow-rejects non_cleared_status` (2 Pending) | **After payments.** Non-cleared S1 AR rows are intentionally not migrated → `non_cleared_status` is expected in prod too: verify the count equals the frozen S1 non-cleared count, then allow. `perAccount[*].ok: true` for every account (count+sum match is built in). | 58/58 rows, all 3 accounts ok, sums exact |
-| 12 | `npx tsx scripts/s1-migration/load-hours.ts --migration-mode` | same | **`--migration-mode` is REQUIRED on prod** (suppresses charge plugins — T18 already migrated ledger; replay = double-billing; the loader preflight aborts if runnable charge plugins exist without it). `verifyMismatchCount: 0`, `unresolvedWorker/Employer: 0`; `legacy_json_format` skips are known-format legacy rows | 300 staged → 298 written+verified, 2 legacy skips |
+| 12 | `npx tsx scripts/s1-migration/load-hours.ts --migration-mode` | same | **`--migration-mode` is REQUIRED on prod** (suppresses charge plugins — T18 already migrated ledger; replay = double-billing; the loader preflight aborts if runnable charge plugins exist without it). `verifyMismatchCount: 0`, `unresolvedWorker/Employer: 0`; `legacy_json_format` skips are known-format legacy rows. **No `--allow-rejects` gate by design:** hours has no reject gate — problem rows are counted skips (`legacy_json_format`, `missing_worker_ref`, …), never fatal; review the final skip block instead. `--stub-missing` is FORBIDDEN on a real target (dev-only crutch). Real-target volume (2026-08-09 rehearsal): 3,620,645 staged payperiods at ≈44 rows/s cumulative → roughly a day of runtime; don't interrupt it. | 300 staged → 298 written+verified, 2 legacy skips |
 | 13 | `npx tsx scripts/s1-migration/load-call-logs.ts --migration-mode` | + `--allow-rejects category_missing,category_unmapped,handler_missing,handler_unresolved` (4 synthetic traps, 1 each) | Prod ~12K sirius_log rows, only MSR types in scope (others silently out-of-scope, not rejects). Run clean first; triage real handler/category rejects before allowing. | 42 staged → 25 in scope → 21 created, 4 trap rejects |
 | 14 | `npx tsx scripts/s1-migration/load-enrollment-packet-tags.ts --migration-mode` | same (dev no-ops: synthetic data lacks the keep tag) | `inScope > 0` on prod (dev `keepTagTids: []` no-op is a synthetic gap, NOT expected in prod); `duplicateWorkerMonth` small; `rejects: {}` | 200 staged, 0 in scope (documented no-op) |
 | 15 | `npx tsx scripts/s1-migration/load-users.ts` | `--allow-rejects missing_mail,invalid_mail,duplicate_user_email` (synthetic traps) | **After contacts/workers** (T27, active accounts only; uid 0/1 never migrate). Run clean first; triage every fatal class. Reconciliation report (`reconciliation` in output) lists `no_resolvable_worker` / `ambiguous_worker_email` annotations for staff review — annotations don't block accounts. Reruns deactivate accounts blocked/deleted in S1 since the last run (`deactivatedBlocked`/`deactivatedDeleted`) and revoke their migration-owned worker link + role. Role name collisions with pre-existing S2 roles bind to zero-permission `<name> (s1-migrated)` review roles (`roles.collisionDetails`) — review before cutover. `verifyFailures: 0`; `workerLinked` should cover the expected member-account share. | see §4.15 |
@@ -246,7 +272,9 @@ SELECT count(*) FROM worker_trust_elections;  -- elections
 
 ### 4.15 Okta pre-provisioning (after load-users + parity)
 
-```bash
+*(Commands and procedure notes follow §9 below, kept together with the §4.16
+canary and §4.17 cutover sections.)*
+
 ## 5. Allow-rejects policy table
 
 | Reject class | Loader | Dev rehearsal | Production |
@@ -258,11 +286,12 @@ SELECT count(*) FROM worker_trust_elections;  -- elections
 | `start_missing` | benefit-history | ALLOWED (1 synthetic trap) | **RULED 2026-08-09 (rehearsal triage): allow.** 16 spans with no start anchor (mostly inactive end-only rows) — unloadable. |
 | `subscriber_worker_mismatch` | benefit-history | ALLOWED (1 synthetic trap) | **RULED 2026-08-09: allow.** 69 spans / 4 distinct pairs; the `field_sirius_worker` side is deleted from S1 (subscriber side maps fine) — unresolvable either way. |
 | `relation_subscriber_mismatch` | benefit-history | ALLOWED (1 synthetic trap) | Run clean; triage before allowing |
-| `end_before_start` | benefit-history | not present | **RULED 2026-08-09: allow.** Zero/negative-length spans (dominant pattern end = start − 1 day, an S1 cancellation convention, plus raw dirt) — they encode no coverage months. |
-| `benefit_unmapped` | benefit-history, elections | not present | **RULED 2026-08-09: allow.** Entirely deleted benefit nid 2457521 (BPA-era bad data) — out of scope. |
-| `worker_unmapped` | benefit-history, elections | ALLOWED (synthetic) | Sampled nids all deleted from S1 (deleted/merged contacts). Allow with observed counts. |
-| `relation_unmapped` | benefit-history | not present | **RULED 2026-08-09: allow, documented.** Deleted relationship nodes (15,778 of 37,520 distinct refs). Of 73,891 dangling spans, 73,833 are inactive + end-dated (BPA era). 58 carry active=Yes (54 open-ended, half started 2023+) but a deleted relationship cannot grant benefits (fund rule: relationship must be active), so they are stale-open rows, not live coverage — the 58-nid list was delivered to the fund for S1 cleanup (end-date or verify intentional removal). Underlying S1 gap: deleting a relationship does not close its benefit spans. |
-| `employer_unresolved` | benefit-history | not present | Shopless spans (heavily 2020–2021, BPA era). **First rerun t16 elections with the typed-elections fix** (pre-fix, 61,823 coverage-tier-typed elections were skipped entirely and never reached id_map, so the election→employer fallback failed). Remainder after that = fund ruling (drop vs designated employer). |
+| `end_before_start` | benefit-history | not present | **RULED 2026-08-09: allow.** Zero/negative-length spans (dominant pattern end = start − 1 day, an S1 cancellation convention, plus raw dirt) — they encode no coverage months. Observed 2026-08-09: 2,553. |
+| `benefit_ref_missing` | benefit-history | not present | **RULED 2026-08-09: allow.** Spans with NO benefit field row at all (vs `benefit_unmapped`: ref present but dangling) — same deleted-node family, nothing loadable. Observed: 41. New class surfaced only at the END gate of the first full t17 pass; all writes had persisted, so the rerun with it allowed was adopt-only. |
+| `benefit_unmapped` | benefit-history, elections | not present | **RULED 2026-08-09: allow.** Entirely deleted benefit nid 2457521 (BPA-era bad data) — out of scope. Observed 2026-08-09: 6,863 (benefit-history). |
+| `worker_unmapped` | benefit-history, elections | ALLOWED (synthetic) | Sampled nids all deleted from S1 (deleted/merged contacts). Allow with observed counts. Observed 2026-08-09: 452 (benefit-history). |
+| `relation_unmapped` | benefit-history | not present | **RULED 2026-08-09: allow, documented.** Deleted relationship nodes (15,778 of 37,520 distinct refs). Of 73,891 dangling spans, 73,833 are inactive + end-dated (BPA era). 58 carry active=Yes (54 open-ended, half started 2023+) but a deleted relationship cannot grant benefits (fund rule: relationship must be active), so they are stale-open rows, not live coverage — the 58-nid list was delivered to the fund for S1 cleanup (end-date or verify intentional removal). Underlying S1 gap: deleting a relationship does not close its benefit spans. Final 2026-08-09 run count: 71,964. |
+| `employer_unresolved` | benefit-history | not present | Shopless spans (heavily 2020–2021, BPA era). **First rerun t16 elections with the typed-elections fix** (pre-fix, 61,823 coverage-tier-typed elections were skipped entirely and never reached id_map, so the election→employer fallback failed). **2026-08-09 rerun result: the fix worked** — 35,103 → **1,462** (`employerFromElection` rescued 33,881). The 1,462 residue was allowed for the rehearsal; its production disposition (drop vs designated employer) is STILL a pending fund ruling (05-open-questions "Unresolved"). |
 | `non_cleared_status` | ledger | ALLOWED (2 Pending) | **Expected** — verify count == frozen S1 non-cleared AR count, then allow |
 | `category_missing` / `category_unmapped` / `handler_missing` / `handler_unresolved` | call-logs | ALLOWED (1 each, synthetic traps) | Run clean; triage real occurrences, then allow with observed counts |
 | `ssn_collision_q36`, `worker_contact_unresolved`, `worker_gender_unresolved`, `sirius_id_assigned`, … | contacts-workers | reported (annotations — non-fatal) | Same; review the report, no flag needed. `sirius_id_assigned` = workers with no/non-numeric `field_sirius_id` loaded with a sequence-assigned sirius_id (documented T1 rule) |
@@ -292,7 +321,7 @@ npx tsx scripts/s1-migration/verify-month-parity.ts \
 
 Rules:
 - `--open-end-through` MUST equal the value given to the benefit-history loader
-  (prod: **2026-09**).
+  (= the transition month, §4 row 9; the 2026-08 rehearsal used **2026-08**).
 - `--max-disagreement-pct` has no default on purpose; 0 is the target. Any
   non-zero threshold is an explicit fund decision.
 - `--allow-unresolved` must mirror the loader's `--allow-rejects` EXACTLY —
@@ -321,6 +350,11 @@ disagreement; 2026-06 (open-span era) — 24/24 matched, 0%.
   snapshot.
 - If a loader exits 1 with `FAIL: reject reason(s) not allowed`, that is the
   fail-loud policy working: triage each reason, then allow explicitly.
+- **The allow-gate evaluates at END of run, after all writes.** A run that
+  fails the gate has already persisted its rows and id_map entries — the
+  corrected re-run is adopt-only and much faster (2026-08-09: t17's gated
+  first pass wrote everything in ≈4.2 h; the rerun with the new class allowed
+  adopted 528,656 anchors / 6,435,517 month rows, created 0).
 - The verify pass inside each loader (`verifyFailures`) re-reads what was
   written; any non-zero value is a stop-the-line defect, never allowable.
 
@@ -358,6 +392,15 @@ big four at prod volume (~557 employer contacts, ~243K elections, ~609K spans,
 (low-latency DB link) should be much faster, but plan the freeze window from a
 measured in-boundary rate, not this table, and treat hours (T20) and
 benefit-history (T17) as the long poles.
+
+**Real-target reference points (migration-rehearsal-2026-08-06, ECS in-VPC →
+Neon, 2026-08-09):** benefit-history — 612,076 staged spans in ≈4.2 h
+(cumulative rate declines to a ≈41 spans/s steady state as indexes grow —
+normal). Hours — 3,620,645 staged payperiods, ≈44 rows/s cumulative early,
+projected roughly a day (still in progress when recorded). Idempotent
+adopt-only re-runs are far faster than first loads. Use these, not the dev
+table, as the basis for the cutover-window plan until better in-boundary
+measurements exist.
 
 ## 9. Rehearsal reset procedure (dev only, recoverable)
 
@@ -402,11 +445,14 @@ Dev-only notes:
   shared dev DB; it stays green as long as the shared dev staging schema is not
   re-staged from the regenerated S1. Re-staging the shared dev DB requires
   updating the smoke guard fingerprint first.
-- Dev uses `--open-end-through 2026-12` (synthetic open spans extend past the
-  ruled prod freeze month); production uses **2026-09**. The parity harness must
-  be given the same value the loader used, in each environment.
+- Dev uses `--open-end-through 2026-12` (synthetic open spans extend past any
+  realistic transition month); production uses the transition month (§4 row 9).
+  The parity harness must be given the same value the loader used, in each
+  environment.
 
+### 4.15 (continued) Okta pre-provisioning commands
 
+```bash
 # ALWAYS first: dry-run — reports would-create/reuse/ambiguous, touches nothing
 npx tsx scripts/s1-migration/provision-okta-users.ts
 

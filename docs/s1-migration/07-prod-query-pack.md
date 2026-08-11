@@ -281,6 +281,10 @@ SELECT tid, name FROM taxonomy_term_data WHERE name LIKE 'Benefit:%' ORDER BY na
 
 Paste both lists back; I'll draft the alias→canonical table pre-filled with the four confirmed identity groups (UHDC, MLK, Express Scripts, Carelon) for the fund to correct and sign off.
 
+### P4 — Bundle-name trap for ad-hoc election SQL
+
+The election node bundle is **`sirius_trust_worker_election`** — ad-hoc field-table queries filtering `bundle='sirius_trust_election'` return empty and produce false conclusions (hit 2026-08-09 while triaging special employers; the loaders use the correct name and were unaffected).
+
 ## N. N3 / N4 — one aggregate each + your S1 knowledge
 
 ```sql

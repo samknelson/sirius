@@ -108,9 +108,9 @@ S1 keeps person data on a separate `sirius_contact` node referenced by the worke
 | S1 field | S2 destination | Class |
 |---|---|---|
 | `field_sirius_trust_benefits` (`_target_id`, multi delta≤3) | `worker_trust_elections.benefit_ids` (array of S2 benefit ids) | NEEDS-TRANSFORM T16 |
-| `field_sirius_trust_policy` (`_target_id`) | **not stored** — S2 derives election policy (`resolveEmployerPolicyAsOf`); keep S1 value in `data.s1PolicyNid` for audit | NEEDS-TRANSFORM T16 |
+| `field_sirius_trust_policy` (`_target_id`) | **not stored** — S2 derives election policy (`resolveEmployerPolicyAsOf`); keep S1 value in `data.s1PolicyNid` for audit. Real-data note (2026-08-09): COBRA elections carry policy "COBRA" (json definition nid 13226124); DISABILITY elections have NO policy by design → they fall through to S2's policy-default resolution, which is correct | NEEDS-TRANSFORM T16 |
 | `field_sirius_contact_relations` (`_target_id`, multi) | `worker_trust_elections.relationship_ids` (via relationship nid→`worker_relations.id`) | NEEDS-TRANSFORM T16 |
-| `field_sirius_trust_election_type` (`_tid` — only 62,032 of 243,328 elections carry it) | `worker_trust_elections.enrollment_type` (coded remap; decide default for the ~181k without a type) | NEEDS-TRANSFORM T16 |
+| `field_sirius_trust_election_type` (`_tid` — only 62,032 of 243,328 elections carry it) | `worker_trust_elections.enrollment_type` — **RULED 2026-08-09: S1's election-type vocabulary holds coverage tiers (e.g. single/family/waived), NOT enrollment types.** Typed and untyped elections BOTH load with NULL `enrollment_type` (the tier is not an S2 enrollment type; original tid preserved in staged data). Pre-fix, typed rows were skipped entirely — 61,823 elections missing until the 2026-08-09 rerun | NEEDS-TRANSFORM T16 |
 | `field_sirius_worker` (243,325) | `worker_trust_elections.worker_id` | NEEDS-TRANSFORM T2 — **Q16 structurally closed**: field exists in production |
 | `field_grievance_shop` (243,325 — employer ref, naming trap 06 §5) | `worker_trust_elections.employer_id` | NEEDS-TRANSFORM T2 |
 | `field_sirius_date_start` (243,325) / `field_sirius_date_end` (171,308) | `worker_trust_elections.start_ymd/end_ymd` (open-ended elections have no end) | direct (date cast) |
@@ -123,7 +123,7 @@ S1 keeps person data on a separate `sirius_contact` node referenced by the worke
 
 | S1 field | S2 destination | Class |
 |---|---|---|
-| `field_sirius_trust_benefit` (`_target_id`) | `trust_wmb.benefit_id` | NEEDS-TRANSFORM T17 |
+| `field_sirius_trust_benefit` (`_target_id`) | `trust_wmb.benefit_id`. Real-data note (2026-08-09): 41 prod spans have NO benefit field row at all (vs a dangling ref) — reject class `benefit_ref_missing`, allowed (deleted-node family) | NEEDS-TRANSFORM T17 |
 | `field_sirius_trust_subscriber` (`_target_id` → worker nid) | `trust_wmb.worker_id` (subscriber) | NEEDS-TRANSFORM T17 |
 | `field_sirius_contact_relation` (`_target_id`) | covered dependent (S2 models coverage through election `relationship_ids`) | NEEDS-TRANSFORM T17 (import per N17 ruling 2026-08-05) |
 | `field_sirius_trust_election` (`_target_id`, 517,841 of 609,486 — some grants have no election link) | link to owning election (`worker_trust_elections` via nid map) | NEEDS-TRANSFORM T17 |
@@ -225,6 +225,8 @@ Production has the full grievance table set (290 tables: 145 `field_data_*` + 14
 | `field_grievance_attachments` (`_fid` multi) | `files` rows (`entity_type='employer'`) | NEEDS-TRANSFORM T10 |
 | `field_grievance_tags` (`_tid`) | employer tags — no S2 home | NO-S2-EQUIVALENT |
 | `field_sirius_name_tts` | text-to-speech name → `employers.data.ttsName` | NO-S2-EQUIVALENT (jsonb stash) |
+
+**Special employers (verified on real S1, 2026-08-09):** DISABILITY (nid 12639701), DISABILITY-INDUSTRIAL (12639702) and "COBRA Employer" (13226164) are ordinary `grievance_shop` nodes — they map through this table like any other shop, need no special-casing in T2, and their elections resolve normally (COBRA elections carry policy "COBRA", nid 13226124; DISABILITY elections carry no policy by design — see §5b).
 
 ### 9c. Shop contacts — bundle `node/grievance_shop_contact` → `contacts` + `employer_contacts` + `contact_postal`/`contact_phone`
 

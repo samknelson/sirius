@@ -21,16 +21,25 @@ Design spec for converting the legacy **S1** system — Drupal 7 on **MariaDB 10
 
 ## ETL status
 
-The **extract/staging framework is built**: `scripts/s1-migration/` (committed to the repo — code only, no S1 details). `stage.ts` reassembles all in-scope node bundles + taxonomy terms from S1 into the lossless `s1_staging` Postgres schema (records/terms/runs), idempotent by `(bundle, nid)`, aggregates-only reporting. First full run against the synthetic DB: 18 bundles + 36 terms, all counts verified (2026-08-04). Next phase: per-transform loaders (T1…T29) reading from `s1_staging` and writing through the S2 storage layer in the §12 load order.
+The **extract/staging framework and the loaders are built**: `scripts/s1-migration/` (committed to the repo — code only, no S1 details). `stage.ts` reassembles all in-scope node bundles + taxonomy terms from S1 into the lossless `s1_staging` Postgres schema (records/terms/runs), idempotent by `(bundle, nid)`, aggregates-only reporting; per-transform loaders read from `s1_staging` and write through the S2 storage layer in the RUNBOOK §4 order. The **full dev rehearsal passed 2026-08-06** against a separate empty-bootstrap rehearsal DB — [`scripts/s1-migration/RUNBOOK.md`](../../scripts/s1-migration/RUNBOOK.md) is the resulting step-by-step procedure.
 
-## Current blocking items (before the affected ETL builds)
+**Real-data rehearsal (target `migration-rehearsal-2026-08-06`, loaders as ECS one-off tasks inside the HIPAA boundary) — state as of 2026-08-11:**
 
-Both JSON payloads are now RESOLVED (06 v4): payperiod hours live at `$.totals.hours.total` (§4.12, T20) and `smf_worker_month`'s JSON is autotag bookkeeping — its **tags** are the payload (§4.2, T29). Remaining blockers:
+- **Elections (T16, RUNBOOK §4 row 8) — complete.** 243,475 staged → 180,709 adopted + 61,823 created (the coverage-tier-typed rows previously skipped entirely; see 02 §5b), 943 rejects, all allowed after triage.
+- **Benefit history (T17, row 9) — complete.** 612,076 staged spans → 528,656 anchors / 6,435,517 month rows in ≈4.2 h; 83,420 rejects, all allowed after triage (breakdown in RUNBOOK §5).
+- **Employer policy history + hourly rates (rows 5b/5c) — loaded** (one outstanding data fix: the Conrad duplicate rate, below).
+- **Hours (T20, row 12) — in progress** (started 2026-08-09): 3,620,645 staged payperiods at ≈44 rows/s cumulative → roughly a day of runtime.
+- Later loaders (payments, ledger, users, …): state not recorded here — see RUNBOOK §4 and the run log for current truth.
 
-1. **N11 — worker-month tag vocabulary** → S2 target (blocks T29's 2.53M rows). Vocabulary enumeration: [07-prod-query-pack.md](07-prod-query-pack.md) §A.
-2. **N12 — member_status** — S2 target confirmed (`options_worker_ms` + `worker_msh`, per-industry current); only the same-industry co-assignment check remains (07 §B) before T6 can build.
-3. **N17 — benefit history import-vs-regenerate** — deferred by design until the staged extract's regenerate-vs-actual diff produces a disagreement rate (T17 stages now, loads nothing).
-4. **Validation gates** (06 §9): dev MariaDB instance up (`10.6.25-MariaDB`, live — `S1_DATABASE_URL`, TLS off for dev only), collation split 807/11, profiler output matching `profile/*.tsv` shape, all reassembly SQL executing against dev, one multi-value bundle reassembly returning correct counts, date-transform test covering both timezone conventions and both DST edges.
+## Current blocking items
+
+The original design blockers are **closed**: N11/N12 resolved, N17 ruled 2026-08-05 (import in full — 02 §5c), JSON payloads resolved (06 v4), validation gates passed via the dev rehearsal. Outstanding before cutover:
+
+1. **Conrad duplicate rate** — shop 8865846 has two 2023-12-01 rates; fund must fix S1, then re-stage + rerun row 5c ([05-open-questions.md](05-open-questions.md) "Unresolved").
+2. **`employer_unresolved` residue (1,462 spans)** — production disposition needs a fund ruling (drop vs designated employer).
+3. **58 active-flagged dangling-relation spans** — nid list delivered to the fund for S1 cleanup; re-stage after they fix.
+4. **Parity gates after the hours load completes** (RUNBOOK §6).
+5. **Q38 — file-blob access** for T10 (the DB has no bytes; needs the S1 private-files store / S3 bucket).
 
 **Do not write ETL code that connects to production.** The reader module takes its DSN from an environment variable; the production DSN is supplied only inside the HIPAA-scope deployment.
 
