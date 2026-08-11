@@ -20,12 +20,18 @@
  *       2. Direct name / siriusId match (byName fallback).
  *     → id_map entity "policy" (audit trail for T16's data.s1PolicyNid stash).
  *
- * Three S2 policies must be created before the prod run (siriusIds RES, TT, U
- * — run seed-migration-policies.ts on every target DB first; dev DB included).
+ * Run seed-migration-policies.ts on every target DB first (dev DB included) —
+ * it seeds/renames the full 7-policy catalogue (PA, UH, EC, COBRA, RES, TT, U;
+ * R→UH rename ruling 2026-08-11).
  *
- * 23 prod refs point at deleted S1 nodes (refs_without_node from §P4 query).
- * These become policy_ref_not_staged rejects — expected and allowable:
- *   --allow-rejects policy_ref_not_staged
+ * Deleted policy nodes → Inactive (ruling 2026-08-11): election refs whose S1
+ * node was deleted (no staged sirius_json_definition row — 23 such refs in
+ * prod, refs_without_node from §P4) map to the Inactive policy (sirius_id=U)
+ * via id_map like any other resolution. Each absorbed nid is reported with
+ * its election count in `mappedToInactive` (per-nid map, never a collapsed
+ * counter — an unexpected nid must be visible). The former
+ * policy_ref_not_staged reject class is retired: the fallback fully covers
+ * it, and the loader aborts at startup if the Inactive policy row is absent.
  *
  * Staged sirius_json_definition rows that NO election references and that
  * match no S2 policy reject as policy_unmatched_unreferenced (the bundle is a
@@ -41,7 +47,7 @@
  *
  * Usage:
  *   npx tsx scripts/s1-migration/load-policies.ts [--dry-run] \
- *     [--allow-rejects policy_ref_not_staged]
+ *     [--allow-rejects policy_unmatched_unreferenced]
  *
  * Output is AGGREGATES ONLY — safe inside the HIPAA boundary.
  */
@@ -78,11 +84,12 @@ const S1_TITLE_TO_SIRIUS_ID: Record<string, string> = {
   "participation agreement - delta appeal": "PA",
   // COBRA
   "cobra": "COBRA",
-  // UNITE HERE Plan family → S2 "Restaurant Plan" (sirius_id=R)
-  "unite here plan": "R",
-  "unite here plan - delta appeal": "R",
-  "unite here plan - kaiser appeal": "R",
-  "unite here plan - healthnet appeal": "R",
+  // UNITE HERE Plan family → S2 "Unite Here Plan" (sirius_id=UH; renamed
+  // from R / "Restaurant Plan" — same row — per the 2026-08-11 ruling)
+  "unite here plan": "UH",
+  "unite here plan - delta appeal": "UH",
+  "unite here plan - kaiser appeal": "UH",
+  "unite here plan - healthnet appeal": "UH",
   // Event Center family (sirius_id=EC)
   "event center plan": "EC",
   "event center plan - delta appeal": "EC",
@@ -118,11 +125,14 @@ async function main() {
     ...(await loadStaged("sirius_trust_policy")),
     ...(await loadStaged("sirius_json_definition")),
   ];
-  const electionReferencedNids = new Set<number>();
+  // Per-nid election counts feed the mappedToInactive report (ruling
+  // 2026-08-11) — every deleted-node nid must surface with its election count.
+  const electionRefCounts = new Map<number, number>();
   for (const e of elections) {
     const nid = targetNidOf(e.fields, "field_sirius_trust_policy");
-    if (nid != null) electionReferencedNids.add(nid);
+    if (nid != null) electionRefCounts.set(nid, (electionRefCounts.get(nid) ?? 0) + 1);
   }
+  const electionReferencedNids = new Set<number>(electionRefCounts.keys());
   const refNids = new Set<number>([...policyBundleRows.map((r) => r.nid), ...electionReferencedNids]);
   report.stagedElections = elections.length;
   report.stagedPolicyBundleRows = policyBundleRows.length;
@@ -130,6 +140,18 @@ async function main() {
 
   const s2Policies = await storage.policies.getAllPolicies();
   report.s2Policies = s2Policies.length;
+
+  // Startup precondition (ruling 2026-08-11): the Inactive policy must exist
+  // BEFORE any resolution/writes — deleted-node election refs map to it.
+  const inactivePolicy = s2Policies.find((p) => p.siriusId.trim().toUpperCase() === "U");
+  if (!inactivePolicy) {
+    console.error(
+      "FAIL: Inactive policy (sirius_id=U) is missing from this target. Election refs to deleted " +
+        "S1 policy nodes map to it (ruling 2026-08-11), so the loader cannot proceed without it. " +
+        "Run seed-migration-policies.ts first. Nothing was written.",
+    );
+    process.exit(1);
+  }
 
   if (refNids.size === 0) {
     report.note =
@@ -173,24 +195,30 @@ async function main() {
 
   const resolved = new Map<number, string>(); // nid → policy row id
   const targetBundles: Record<string, number> = {};
+  const mappedToInactive: Record<string, number> = {};
   for (const nid of nidList) {
-    if (existing.get(nid)) {
-      resolved.set(nid, existing.get(nid)!.s2Id);
-      continue;
-    }
     const staged = stagedByNid.get(nid);
     if (!staged) {
-      // Expected for the 23 prod orphan refs (P4 query: refs_without_node=23).
-      // Allow via --allow-rejects policy_ref_not_staged.
-      rejects.add("policy_ref_not_staged", { nid }, nid);
+      // Deleted S1 node (the 23 prod orphan refs — P4 query:
+      // refs_without_node=23). Ruling 2026-08-11: map to the Inactive policy
+      // (sirius_id=U) instead of rejecting as policy_ref_not_staged (retired).
+      // Reported per nid with its election count so an unexpected nid stays
+      // visible; on re-runs the existing mapping wins (idempotent) but the
+      // nid is still reported.
+      mappedToInactive[String(nid)] = electionRefCounts.get(nid) ?? 0;
+      resolved.set(nid, existing.get(nid)?.s2Id ?? inactivePolicy.id);
+      continue;
+    }
+    if (existing.get(nid)) {
+      resolved.set(nid, existing.get(nid)!.s2Id);
       continue;
     }
     targetBundles[staged.bundle] = (targetBundles[staged.bundle] ?? 0) + 1;
 
     // Resolution order:
     //   1. Fund-ruled S1-title alias (N27) — covers sirius_json_definition nodes
-    //      where S1 and S2 use different names for the same plan (e.g. S1's
-    //      "UNITE HERE Plan" → S2's "Restaurant Plan" / sirius_id=R).
+    //      where S1 and S2 use different names/codes for the same plan (e.g.
+    //      S1's "UNITE HERE Plan" appeal variants → sirius_id=UH).
     //   2. Direct name / siriusId match against S2 policy rows.
     let match: string | undefined;
     if (staged.title) {
@@ -223,11 +251,13 @@ async function main() {
     resolved.set(nid, match);
   }
   report.policyTargetBundles = targetBundles;
+  report.mappedToInactive = mappedToInactive;
 
   // policy_unmatched is always fatal (fix the alias table or seed missing S2
-  // policy rows). policy_ref_not_staged is expected (23 prod orphans) and
-  // allowable via --allow-rejects, as is policy_unmatched_unreferenced
-  // (non-policy rows of the sirius_json_definition bundle).
+  // policy rows). policy_unmatched_unreferenced (non-policy rows of the
+  // sirius_json_definition bundle) is allowable via --allow-rejects. Unstaged
+  // refs no longer reject — they map to the Inactive policy (see
+  // mappedToInactive above; ruling 2026-08-11).
   const unmatchedCount = rejects.counts["policy_unmatched"] ?? 0;
   if (unmatchedCount > 0) {
     report.rejects = rejects.counts;
@@ -257,12 +287,13 @@ async function main() {
   report.mappingsWritten = written;
   report.matchedIdMap = matchedIdMap;
 
-  // 4) Verify: every resolved ref maps to an existing policies row.
+  // 4) Verify: every resolved ref maps to an existing policies row —
+  // including deleted-node orphans, which now map to Inactive (2026-08-11)
+  // and are no longer skipped here.
   let verifyFailures = 0;
   if (!DRY_RUN) {
     const vMap = await getMappings("policy", nidList);
     for (const nid of nidList) {
-      if (!stagedByNid.has(nid)) continue; // orphan — not expected to have a mapping
       if (rejects.has("policy_unmatched_unreferenced", nid)) continue; // non-policy bundle row — no mapping by design
       const m = vMap.get(nid);
       if (!m) {

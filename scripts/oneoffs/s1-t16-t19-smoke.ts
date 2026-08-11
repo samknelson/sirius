@@ -16,6 +16,12 @@
  *     re-adopt the existing S2 row by provenance (s1Nid), never duplicate.
  *   - T18: raw AR rows load with reference resolution (trust_wmb via T17's
  *     anchor mapping, ledger_payment via T19), per-account sum parity holds.
+ *   - Policies (2026-08-11 rulings): seeder R→UH rename in place (row UUID
+ *     preserved) + both-rows abort; alias table resolves "UNITE HERE Plan"
+ *     to UH; election refs to a deleted (unstaged) policy nid map to the
+ *     Inactive policy with a per-nid mappedToInactive report; and
+ *     load-employer-policies (5b) resolves a shop ebh ref to the same
+ *     deleted nid through the new id_map entry with no code change.
  * Cleanup removes every fake staged row, id_map entry, and S2 row.
  *
  * Run: npx tsx scripts/oneoffs/s1-t16-t19-smoke.ts
@@ -43,9 +49,12 @@ const N = {
   payment: 99900501,
   ar1: 99900601, // +50.00 charge referencing wb1 (→ trust_wmb anchor)
   ar2: 99900602, // -25.00 allocation referencing payment (→ ledger_payment)
-  // T-policies smoke (§P4 N27 alias table)
+  // T-policies smoke (§P4 N27 alias table + 2026-08-11 rulings)
   policyDef: 99900701,         // sirius_json_definition node: title "UNITE HERE Plan"
   electionWithPolicy: 99900702,// election referencing policyDef via field_sirius_trust_policy
+  deletedPolicyNid: 99900703,  // policy nid with NO staged row (deleted S1 node) → Inactive fallback
+  electionDeletedPolicy: 99900704, // election referencing deletedPolicyNid
+  shopDeletedPolicy: 99900705, // grievance_shop whose ledger.policy.ebh references deletedPolicyNid (5b)
 };
 const EPOCH_2024_04_15 = Date.UTC(2024, 3, 15) / 1000; // node.changed for end-dating
 const EPOCH_AR_TS = Date.UTC(2024, 5, 1, 12) / 1000; // 2024-06-01T12:00Z → LA 2024-06-01
@@ -122,6 +131,7 @@ async function main() {
   const acctNid = Number(acctNids[0].nid);
 
   let relId: string | null = null;
+  let tmpEmployerId: string | null = null;
 
   try {
     // ---- seed: relation row (loader reads worker_1/worker_2) ---------------
@@ -374,12 +384,47 @@ async function main() {
     check("t18b adopted 52", t18b.report.adopted === 52, t18b.report.adopted);
     check("t18b verify clean", t18b.report.verifyFailures === 0, t18b.report.verifyFailures);
 
-    // ---- T-policies (N27 alias table: sirius_json_definition bundle) -------
-    // Seed one sirius_json_definition node + one election referencing it.
-    // Title "UNITE HERE Plan" must resolve via the alias table to S2 siriusId=R.
-    // Policy_ref_not_staged allowed because the election also carries the ref
-    // but the policy node IS staged — no actual orphan in this smoke run.
-    console.log("T-policies run 1 (alias-table match + idmap write):");
+    // ---- Seeder: R→UH rename ruling (2026-08-11) ----------------------------
+    // Converge the catalogue first (renames a legacy R row in place if the
+    // dev DB still carries one), then exercise the rename path and the
+    // both-rows-present abort deterministically.
+    console.log("Seeder run (converge catalogue; legacy R renames in place):");
+    const seed1 = runLoader("seed-migration-policies.ts", []);
+    check("seed1 exit 0", seed1.status === 0, seed1.status);
+    const uhRows = await rows<{ id: string; name: string | null }>(sql`SELECT id, name FROM policies WHERE sirius_id = 'UH'`);
+    const rRows = await rows<{ id: string }>(sql`SELECT id FROM policies WHERE sirius_id = 'R'`);
+    check("seeder UH exists", uhRows.length === 1, uhRows.length);
+    check("seeder UH named Unite Here Plan", uhRows[0]?.name === "Unite Here Plan", uhRows[0]?.name);
+    check("seeder R gone", rRows.length === 0, rRows.length);
+    const uhId = uhRows[0]?.id;
+
+    console.log("Seeder rename path (flip UH back to R, re-run — same row UUID):");
+    await db.execute(sql`UPDATE policies SET sirius_id = 'R', name = 'Restaurant Plan' WHERE id = ${uhId}`);
+    const seed2 = runLoader("seed-migration-policies.ts", []);
+    check("seed2 exit 0", seed2.status === 0, seed2.status);
+    check("seed2 renamedFromR 1", seed2.report.renamedFromR === 1, seed2.report.renamedFromR);
+    check("seed2 created 0", seed2.report.created === 0, seed2.report.created);
+    const uhAfter = await rows<{ id: string; name: string | null }>(sql`SELECT id, name FROM policies WHERE sirius_id = 'UH'`);
+    check("seed2 UH same row UUID", uhAfter[0]?.id === uhId, uhAfter[0]?.id);
+    check("seed2 UH renamed to Unite Here Plan", uhAfter[0]?.name === "Unite Here Plan", uhAfter[0]?.name);
+
+    console.log("Seeder abort path (BOTH R and UH present):");
+    const fakeR = await rows<{ id: string }>(
+      sql`INSERT INTO policies (sirius_id, name) VALUES ('R', 'Restaurant Plan') RETURNING id`,
+    );
+    const seed3 = runLoader("seed-migration-policies.ts", []);
+    check("seed3 aborts (exit 1)", seed3.status === 1, seed3.status);
+    const uhUntouched = await rows<{ id: string; name: string | null }>(sql`SELECT id, name FROM policies WHERE sirius_id = 'UH'`);
+    check("seed3 UH row untouched", uhUntouched[0]?.id === uhId && uhUntouched[0]?.name === "Unite Here Plan", uhUntouched[0]);
+    await db.execute(sql`DELETE FROM policies WHERE id = ${fakeR[0].id}`);
+
+    // ---- T-policies (N27 alias table + Inactive fallback) -------------------
+    // Seed one sirius_json_definition node + one election referencing it
+    // (title "UNITE HERE Plan" must resolve via the alias table to S2
+    // siriusId=UH), plus one election referencing a nid with NO staged row
+    // (deleted S1 node) — that ref must map to the Inactive policy (U) and
+    // surface in the per-nid mappedToInactive report (ruling 2026-08-11).
+    console.log("T-policies run 1 (alias-table match + Inactive fallback + idmap write):");
     const policyBase = { vid: null as number | null, uid: 1, status: 1, created: EPOCH_2024_04_15, changed: EPOCH_2024_04_15 };
     await upsertRecords([
       {
@@ -397,24 +442,98 @@ async function main() {
         // field_sirius_trust_policy = reference to policyDef
         fields: { field_sirius_trust_policy: N.policyDef },
       },
+      {
+        ...policyBase,
+        bundle: "sirius_trust_worker_election",
+        nid: N.electionDeletedPolicy,
+        title: null,
+        // reference to a nid that is NOT staged (deleted S1 node)
+        fields: { field_sirius_trust_policy: N.deletedPolicyNid },
+      },
     ]);
-    const tPol1 = runLoader("load-policies.ts", []);
+    // Dev staging carries the non-policy "workers_v1" sirius_json_definition
+    // node → allow policy_unmatched_unreferenced (documented dev allowance).
+    const tPol1 = runLoader("load-policies.ts", ["--allow-rejects", "policy_unmatched_unreferenced"]);
     check("tPol1 exit 0", tPol1.status === 0, tPol1.status);
-    check("tPol1 distinctPolicyRefs ≥ 1", (tPol1.report.distinctPolicyRefs as number) >= 1, tPol1.report.distinctPolicyRefs);
-    check("tPol1 mappingsWritten ≥ 1", (tPol1.report.mappingsWritten as number) >= 1, tPol1.report.mappingsWritten);
+    check("tPol1 distinctPolicyRefs ≥ 2", (tPol1.report.distinctPolicyRefs as number) >= 2, tPol1.report.distinctPolicyRefs);
+    check("tPol1 mappingsWritten ≥ 2", (tPol1.report.mappingsWritten as number) >= 2, tPol1.report.mappingsWritten);
     check("tPol1 verify clean", tPol1.report.verifyFailures === 0, tPol1.report.verifyFailures);
-    // Confirm id_map entry points at S2 policy with siriusId=R
+    // Confirm id_map entry points at S2 policy with siriusId=UH
     const policyMaps = await getMappings("policy", [N.policyDef]);
     const mappedPolicyId = policyMaps.get(N.policyDef)?.s2Id;
     const policyRow = mappedPolicyId ? await storage.policies.getPolicyById(mappedPolicyId) : null;
-    check("tPol1 alias UNITE HERE Plan → R", policyRow?.siriusId === "R", policyRow?.siriusId);
+    check("tPol1 alias UNITE HERE Plan → UH", policyRow?.siriusId === "UH", policyRow?.siriusId);
+    // Inactive fallback: per-nid election counts, retired reject class,
+    // non-stub id_map entry pointing at the U policy.
+    check(
+      "tPol1 mappedToInactive per-nid count",
+      tPol1.report.mappedToInactive?.[String(N.deletedPolicyNid)] === 1,
+      tPol1.report.mappedToInactive,
+    );
+    check(
+      "tPol1 no policy_ref_not_staged reject (retired)",
+      tPol1.report.rejects?.policy_ref_not_staged === undefined,
+      tPol1.report.rejects,
+    );
+    const inactiveMaps = await getMappings("policy", [N.deletedPolicyNid]);
+    const inactiveEntry = inactiveMaps.get(N.deletedPolicyNid);
+    const inactiveRow = inactiveEntry ? await storage.policies.getPolicyById(inactiveEntry.s2Id) : null;
+    check("tPol1 deleted nid → Inactive (U)", inactiveRow?.siriusId === "U", inactiveRow?.siriusId);
+    check("tPol1 Inactive mapping non-stub", inactiveEntry?.stub === false, inactiveEntry);
 
     console.log("T-policies run 2 (idempotent — zero writes):");
-    const tPol2 = runLoader("load-policies.ts", []);
+    const tPol2 = runLoader("load-policies.ts", ["--allow-rejects", "policy_unmatched_unreferenced"]);
     check("tPol2 exit 0", tPol2.status === 0, tPol2.status);
     check("tPol2 mappingsWritten 0", tPol2.report.mappingsWritten === 0, tPol2.report.mappingsWritten);
-    check("tPol2 matchedIdMap ≥ 1", (tPol2.report.matchedIdMap as number) >= 1, tPol2.report.matchedIdMap);
+    check("tPol2 matchedIdMap ≥ 2", (tPol2.report.matchedIdMap as number) >= 2, tPol2.report.matchedIdMap);
     check("tPol2 verify clean", tPol2.report.verifyFailures === 0, tPol2.report.verifyFailures);
+    check(
+      "tPol2 mappedToInactive still reported",
+      tPol2.report.mappedToInactive?.[String(N.deletedPolicyNid)] === 1,
+      tPol2.report.mappedToInactive,
+    );
+
+    // ---- 5b: load-employer-policies resolves deleted-nid ebh refs ----------
+    // A shop whose ledger.policy.ebh references the SAME deleted nid must now
+    // resolve through the Inactive id_map entry with NO code change (formerly
+    // a policy_unmapped reject) — the shop gains Inactive policy history.
+    console.log("T-employer-policies (deleted-nid ebh ref resolves via Inactive mapping):");
+    const tmpEmp = await rows<{ id: string }>(
+      sql`INSERT INTO employers (name, sirius_id) VALUES ('Smoke 5b Employer', ${"smoke-" + N.shopDeletedPolicy}) RETURNING id`,
+    );
+    tmpEmployerId = tmpEmp[0].id;
+    await putMapping("employer", N.shopDeletedPolicy, tmpEmployerId, { stub: false, loader: "smoke" });
+    await upsertRecords([
+      {
+        ...policyBase,
+        bundle: "grievance_shop",
+        nid: N.shopDeletedPolicy,
+        title: "Smoke 5b Shop",
+        fields: {
+          field_sirius_json: JSON.stringify({
+            ledger: { policy: { ebh: [{ policy: String(N.deletedPolicyNid), date: "1990-01-01" }], nid: String(N.deletedPolicyNid) } },
+          }),
+        },
+      },
+    ]);
+    const tEmpPol = runLoader("load-employer-policies.ts", []);
+    check("tEmpPol exit 0", tEmpPol.status === 0, tEmpPol.status);
+    check("tEmpPol no policy_unmapped reject", (tEmpPol.report.rejects?.policy_unmapped ?? 0) === 0, tEmpPol.report.rejects);
+    check("tEmpPol historyCreated 1", tEmpPol.report.historyCreated === 1, tEmpPol.report.historyCreated);
+    check("tEmpPol verify clean", tEmpPol.report.verifyFailures === 0, tEmpPol.report.verifyFailures);
+    const uPolicy = await rows<{ id: string }>(sql`SELECT id FROM policies WHERE sirius_id = 'U'`);
+    const hist5b = await rows<{ policy_id: string; date: string }>(
+      sql`SELECT policy_id, date::text AS date FROM employer_policy_history WHERE employer_id = ${tmpEmployerId}`,
+    );
+    check(
+      "tEmpPol shop gains Inactive policy history",
+      hist5b.length === 1 && hist5b[0]?.policy_id === uPolicy[0]?.id && hist5b[0]?.date === "1990-01-01",
+      hist5b,
+    );
+    const tmpEmpRow = await rows<{ denorm_policy_id: string | null }>(
+      sql`SELECT denorm_policy_id FROM employers WHERE id = ${tmpEmployerId}`,
+    );
+    check("tEmpPol denorm synced to Inactive", tmpEmpRow[0]?.denorm_policy_id === uPolicy[0]?.id, tmpEmpRow[0]);
   } finally {
     // ---- cleanup (best-effort, loud on error) -------------------------------
     console.log("cleanup:");
@@ -427,6 +546,8 @@ async function main() {
           AND NOT EXISTS (SELECT 1 FROM ledger l WHERE l.ea_id = ea.id)
           AND NOT EXISTS (SELECT 1 FROM ledger_payments p WHERE p.ledger_ea_id = ea.id)`],
       ["relation row", sql`DELETE FROM worker_relations WHERE id = ${relId}`],
+      // employer_policy_history cascades on employer delete (5b fake shop)
+      ["5b temp employer", sql`DELETE FROM employers WHERE sirius_id = ${"smoke-" + N.shopDeletedPolicy}`],
       ["staged fakes", sql`DELETE FROM s1_staging.records WHERE nid BETWEEN 99900000 AND 99999999`],
       ["raw ledger fakes", sql`DELETE FROM s1_staging.raw_ledger_ar WHERE ledger_id BETWEEN 99900000 AND 99999999`],
       ["id_map fakes", sql`DELETE FROM s1_staging.id_map WHERE s1_id BETWEEN 99900000 AND 99999999`],

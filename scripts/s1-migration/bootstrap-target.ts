@@ -20,7 +20,8 @@
  *   4. Components: enables the fund component set (bulk, debug,
  *      employer.company, ledger + all ledger.*, sitespecific.bao,
  *      system.sftp.client, all trust.*, worker.relations).
- *   5. Seeds: policies (all 7, incl. core PA/R/EC/COBRA), employment
+ *   5. Seeds: policies (all 7, incl. core PA/UH/EC/COBRA; a legacy R row is
+ *      renamed in place to UH per the 2026-08-11 ruling), employment
  *      statuses, genders, call reasons. All idempotent.
  *
  * trust_providers / trust_benefits are NOT seeded here — they derive from

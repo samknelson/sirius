@@ -65,13 +65,20 @@ loaders against ANY target (fresh branch or production), ensure:
   (`copy-fund-config.ts` remains as a dev utility for id-preserving copies from
   `SOURCE_CONFIG_DATABASE_URL`, but is no longer part of the run.)
 - **Policies** — `load-policies.ts` is ADOPT-ONLY: every referenced S1 trust
-  policy must match an existing S2 `policies` row by name or `sirius_id`
-  (case-insensitive). Unmatched or unstaged targets hard-fail the whole run
-  before any writes; no allowance flag. Matched policies are assumed to be
-  correctly configured (benefit lists etc.) — the loader does not validate
-  that. Synthetic runs have zero policy refs (no-op); production must stage
-  the policy bundle explicitly (`--bundles`, it is not in the default list)
-  and have the policy catalogue configured beforehand.
+  policy must match an existing S2 `policies` row via the N27 alias table or
+  by name / `sirius_id` (case-insensitive). Unmatched STAGED targets
+  hard-fail the whole run before any writes; no allowance flag. UNSTAGED
+  refs (deleted S1 nodes) map to the Inactive policy (`sirius_id=U`) and
+  report per-nid in `mappedToInactive` (2026-08-11 ruling) — the loader
+  aborts at startup if the Inactive policy is absent. The 7-policy catalogue
+  (PA, UH, EC, COBRA, RES, TT, U) comes from `seed-migration-policies.ts`,
+  which also renames a legacy `R`/"Restaurant Plan" row in place to
+  `UH`/"Unite Here Plan" (same row UUID; reported `renamedFromR`). Matched
+  policies are assumed to be correctly configured (benefit lists etc.) — the
+  loader does not validate that. Synthetic runs have zero policy refs
+  (no-op); production must stage the policy bundle explicitly (`--bundles`,
+  it is not in the default list) and have the policy catalogue configured
+  beforehand.
 - `options_gender` rows for any gender values the contacts loader must
   resolve by name (unresolvable → counted reject, not silent).
 
@@ -265,14 +272,20 @@ doesn't match. It must never point at production.
 
 - `load-policies.ts` — ADOPT-ONLY mapper, not a creator: S1 policy references
   (election `field_sirius_trust_policy` targets + any staged
-  `sirius_trust_policy` bundle rows) resolve to EXISTING `policies` rows by
-  name / `sirius_id` (case-insensitive) and land in id_map entity `policy`.
-  S2 policies are configuration (benefitIds etc.) — creating them from S1
-  titles would produce broken configs, so unresolvable refs hard-fail BEFORE
-  any id_map write. Elections never store a policy id in S2 (02 §5b — derived
-  via `resolveEmployerPolicyAsOf`); the id_map exists for T16's
-  `data.s1PolicyNid` stash + audit. Dev: the synthetic policy field table is
-  EMPTY → documented no-op. **Prod prereq: 07 §P4** must identify the target
+  `sirius_trust_policy`/`sirius_json_definition` bundle rows) resolve to
+  EXISTING `policies` rows via the N27 alias table (UNITE HERE Plan family →
+  `UH` since the 2026-08-11 R→UH rename) or by name / `sirius_id`
+  (case-insensitive) and land in id_map entity `policy`. S2 policies are
+  configuration (benefitIds etc.) — creating them from S1 titles would
+  produce broken configs, so unresolvable STAGED refs hard-fail BEFORE any
+  id_map write. UNSTAGED refs (deleted S1 nodes) map to the Inactive policy
+  (`sirius_id=U`; abort at startup if it is absent) and report per-nid
+  election counts in `mappedToInactive` — the former `policy_ref_not_staged`
+  reject class is retired (2026-08-11 ruling). Elections never store a
+  policy id in S2 (02 §5b — derived via `resolveEmployerPolicyAsOf`); the
+  id_map exists for T16's `data.s1PolicyNid` stash + audit. Dev: the
+  synthetic policy field table is EMPTY → documented no-op. **Prod prereq:
+  07 §P4** must identify the target
   bundle; stage it (add to `stage.ts` in-scope list if missing) before running.
 
 - `load-member-statuses.ts` — T6: worker `field_sirius_member_status`
