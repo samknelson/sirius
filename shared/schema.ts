@@ -771,6 +771,18 @@ export const wizardEmploymentStatusMappings = pgTable("wizard_employment_status_
   index("idx_wizard_esm_employer").on(table.employerId),
 ]);
 
+export const wizardWorkLocationMappings = pgTable("wizard_work_location_mappings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  employerId: varchar("employer_id").notNull().references(() => employers.id, { onDelete: 'cascade' }),
+  sourceLocation: text("source_location").notNull(),
+  targetEmployerId: varchar("target_employer_id").notNull().references(() => employers.id, { onDelete: 'cascade' }),
+  createdAt: timestamp("created_at").default(sql`now()`).notNull(),
+  updatedAt: timestamp("updated_at").default(sql`now()`).notNull(),
+}, (table) => [
+  unique("idx_wizard_wlm_employer_source").on(table.employerId, table.sourceLocation),
+  index("idx_wizard_wlm_employer").on(table.employerId),
+]);
+
 export const wizardReportData = pgTable("wizard_report_data", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   wizardId: varchar("wizard_id").notNull().references(() => wizards.id, { onDelete: 'cascade' }),
@@ -1630,6 +1642,9 @@ export type WizardEmploymentStatusMapping = typeof wizardEmploymentStatusMapping
 
 export type InsertWizardReportData = z.infer<typeof insertWizardReportDataSchema>;
 export type WizardReportData = typeof wizardReportData.$inferSelect;
+
+export type WizardWorkLocationMapping = typeof wizardWorkLocationMappings.$inferSelect;
+export type InsertWizardWorkLocationMapping = typeof wizardWorkLocationMappings.$inferInsert;
 
 export const wizardStepProgressSchema = z.object({
   status: z.enum(['pending', 'in_progress', 'completed']),

@@ -53,7 +53,7 @@ export interface WorkerHoursStorage {
   createWorkerHours(data: { workerId: string; month: number; year: number; day: number; employerId: string; employmentStatusId: string; hours: number | null; home?: boolean; jobTitle?: string | null }): Promise<WorkerHoursResult>;
   updateWorkerHours(id: string, data: { year?: number; month?: number; day?: number; employerId?: string; employmentStatusId?: string; hours?: number | null; home?: boolean; jobTitle?: string | null }): Promise<WorkerHoursResult | undefined>;
   deleteWorkerHours(id: string): Promise<WorkerHoursDeleteResult>;
-  upsertWorkerHours(data: { workerId: string; month: number; year: number; employerId: string; employmentStatusId: string; hours: number | null; home?: boolean; jobTitle?: string | null }): Promise<WorkerHoursResult>;
+  upsertWorkerHours(data: { workerId: string; month: number; year: number; day?: number; employerId: string; employmentStatusId: string; hours: number | null; home?: boolean; jobTitle?: string | null }): Promise<WorkerHoursResult>;
   /**
    * All hours rows for one employer + reporting period (year/month). Used by
    * the wizard-cancellation flow to enumerate what a monthly upload wrote.
@@ -542,7 +542,7 @@ export function createWorkerHoursStorage(
       return { success: result.length > 0, notifications };
     },
 
-    async upsertWorkerHours(data: { workerId: string; month: number; year: number; employerId: string; employmentStatusId: string; hours: number | null; home?: boolean; jobTitle?: string | null }): Promise<WorkerHoursResult> {
+    async upsertWorkerHours(data: { workerId: string; month: number; year: number; day?: number; employerId: string; employmentStatusId: string; hours: number | null; home?: boolean; jobTitle?: string | null }): Promise<WorkerHoursResult> {
       const client = getClient();
       const setFields: Record<string, unknown> = {
         employmentStatusId: data.employmentStatusId,
@@ -555,7 +555,9 @@ export function createWorkerHoursStorage(
         .insert(workerHours)
         .values({
           ...data,
-          day: 1,
+          // Default day 1 keeps the legacy monthly-granularity behavior;
+          // weekly importers (GBHE Local 26 Hourly) pass the week date's day.
+          day: data.day ?? 1,
         })
         .onConflictDoUpdate({
           target: [workerHours.workerId, workerHours.employerId, workerHours.year, workerHours.month, workerHours.day],

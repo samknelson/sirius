@@ -27,6 +27,7 @@ import "./plugins/btu-cardcheck-sig-import";
 import "./plugins/btu-cardcheck-scrape-import";
 import "./plugins/hta-union-import";
 import "./plugins/gbhet-legal-workers";
+import "./plugins/gbhe-local26-hourly";
 import "./plugins/employer-onboarding";
 
 let kindRegistered = false;

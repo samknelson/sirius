@@ -54,6 +54,10 @@ import {
   createWizardEmploymentStatusMappingStorage,
 } from "./wizard-employment-status-mappings";
 import {
+  createWizardWorkLocationMappingStorage,
+  type WizardWorkLocationMappingStorage,
+} from "./wizard-work-location-mappings";
+import {
   type FileStorage,
   createFileStorage,
   fileLoggingConfig,
@@ -197,6 +201,7 @@ export interface IStorage {
   wizardFeedMappings: WizardFeedMappingStorage;
   wizardEmployerMonthly: WizardEmployerMonthlyStorage;
   wizardEmploymentStatusMappings: WizardEmploymentStatusMappingStorage;
+  wizardWorkLocationMappings: WizardWorkLocationMappingStorage;
   files: FileStorage;
   cronJobRuns: CronJobRunStorage;
   pluginConfigs: PluginConfigStorage;
@@ -300,6 +305,7 @@ export class DatabaseStorage implements IStorage {
   wizardFeedMappings: WizardFeedMappingStorage;
   wizardEmployerMonthly: WizardEmployerMonthlyStorage;
   wizardEmploymentStatusMappings: WizardEmploymentStatusMappingStorage;
+  wizardWorkLocationMappings: WizardWorkLocationMappingStorage;
   files: FileStorage;
   cronJobRuns: CronJobRunStorage;
   pluginConfigs: PluginConfigStorage;
@@ -450,6 +456,7 @@ export class DatabaseStorage implements IStorage {
     this.wizardFeedMappings = createWizardFeedMappingStorage();
     this.wizardEmployerMonthly = createWizardEmployerMonthlyStorage();
     this.wizardEmploymentStatusMappings = createWizardEmploymentStatusMappingStorage();
+    this.wizardWorkLocationMappings = createWizardWorkLocationMappingStorage();
     this.files = withStorageLogging(createFileStorage(), fileLoggingConfig);
     this.cronJobRuns = createCronJobRunStorage();
     this.pluginConfigs = createPluginConfigStorage();
