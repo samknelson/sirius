@@ -24,14 +24,16 @@ export default function Workers() {
   const { toast } = useToast();
   const [page, setPage] = useState(1);
   const [pageSize] = useState(50);
-  const [searchInput, setSearchInput] = useState("");
-  const [appliedSearch, setAppliedSearch] = useState("");
-  const [appliedJobTitle, setAppliedJobTitle] = useState("");
+  // Pending (typed/selected but not yet applied) search + filter state. Nothing
+  // re-queries the server until the user presses the single "Apply" button
+  // (mirrors the BTU deployment's apply-button filter model).
+  const [nameIdInput, setNameIdInput] = useState("");
+  const [contactInput, setContactInput] = useState("");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [sortBy, setSortBy] = useState<"lastName" | "firstName" | "employer">("lastName");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isSelectingAll, setIsSelectingAll] = useState(false);
-  const [filters, setFilters] = useState<WorkerFilters>({
+  const defaultFilters: WorkerFilters = {
     employerId: "all",
     employerTypeId: "all",
     bargainingUnitId: "all",
@@ -39,48 +41,42 @@ export default function Workers() {
     contactStatus: "all",
     jobTitle: "",
     memberStatusId: "all",
-  });
+  };
+  const [filters, setFilters] = useState<WorkerFilters>(defaultFilters);
+  // Applied state — the only inputs the server query sees.
+  const [appliedNameId, setAppliedNameId] = useState("");
+  const [appliedContact, setAppliedContact] = useState("");
+  const [appliedFilters, setAppliedFilters] = useState<WorkerFilters>(defaultFilters);
 
   const handleApplySearch = useCallback(() => {
-    setAppliedSearch(searchInput);
-    setAppliedJobTitle(filters.jobTitle);
+    setAppliedNameId(nameIdInput);
+    setAppliedContact(contactInput);
+    setAppliedFilters(filters);
     setPage(1);
-  }, [searchInput, filters.jobTitle]);
+  }, [nameIdInput, contactInput, filters]);
 
+  // Filter controls just accumulate locally; applying happens via the button.
   const handleFiltersChange = useCallback((newFilters: WorkerFilters) => {
-    setFilters(prev => {
-      const jobTitleOnly = prev.employerId === newFilters.employerId
-        && prev.employerTypeId === newFilters.employerTypeId
-        && prev.bargainingUnitId === newFilters.bargainingUnitId
-        && prev.benefitId === newFilters.benefitId
-        && prev.contactStatus === newFilters.contactStatus
-        && prev.hasMultipleEmployers === newFilters.hasMultipleEmployers
-        && prev.memberStatusId === newFilters.memberStatusId
-        && prev.representativeId === newFilters.representativeId
-        && prev.jobTitle !== newFilters.jobTitle;
-      if (!jobTitleOnly) {
-        setPage(1);
-      }
-      return newFilters;
-    });
+    setFilters(newFilters);
   }, []);
 
   // Build the filter param object exactly the way the paginated query does, so the
   // "all matching IDs" endpoint receives identical inputs and can never drift.
   const filterParams = useMemo(() => ({
-    search: appliedSearch,
+    nameIdSearch: appliedNameId,
+    contactSearch: appliedContact,
     sortOrder,
     sortBy,
-    employerId: filters.employerId,
-    employerTypeId: filters.employerTypeId,
-    bargainingUnitId: filters.bargainingUnitId,
-    benefitId: filters.benefitId,
-    contactStatus: filters.contactStatus,
-    hasMultipleEmployers: filters.hasMultipleEmployers,
-    jobTitle: appliedJobTitle,
-    memberStatusId: filters.memberStatusId,
-    representativeId: filters.representativeId,
-  }), [appliedSearch, sortOrder, sortBy, filters, appliedJobTitle]);
+    employerId: appliedFilters.employerId,
+    employerTypeId: appliedFilters.employerTypeId,
+    bargainingUnitId: appliedFilters.bargainingUnitId,
+    benefitId: appliedFilters.benefitId,
+    contactStatus: appliedFilters.contactStatus,
+    hasMultipleEmployers: appliedFilters.hasMultipleEmployers,
+    jobTitle: appliedFilters.jobTitle,
+    memberStatusId: appliedFilters.memberStatusId,
+    representativeId: appliedFilters.representativeId,
+  }), [appliedNameId, appliedContact, sortOrder, sortBy, appliedFilters]);
 
   // Reset selection whenever the effective filter set changes so users can never
   // accidentally bulk-message recipients that no longer match their current filters.
@@ -181,17 +177,20 @@ export default function Workers() {
           totalPages={totalPages}
           total={total}
           onPageChange={setPage}
-          searchQuery={searchInput}
-          onSearchChange={setSearchInput}
+          nameIdQuery={nameIdInput}
+          onNameIdChange={setNameIdInput}
+          contactQuery={contactInput}
+          onContactChange={setContactInput}
           onApplySearch={handleApplySearch}
-          appliedSearch={appliedSearch}
+          appliedNameId={appliedNameId}
+          appliedContact={appliedContact}
           sortOrder={sortOrder}
           onSortOrderChange={setSortOrder}
           sortBy={sortBy}
           onSortByChange={setSortBy}
           filters={filters}
           onFiltersChange={handleFiltersChange}
-          appliedJobTitle={appliedJobTitle}
+          appliedFilters={appliedFilters}
           selectable
           selectedIds={selectedIds}
           onSelectionChange={setSelectedIds}

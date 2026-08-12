@@ -9,7 +9,6 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Worker, Contact, PhoneNumber, Employer, ContactPostal } from "@shared/schema";
 import { ComponentConfig } from "@shared/components";
-import { formatSSN } from "@shared/schema";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -53,17 +52,21 @@ interface WorkersTableProps {
   totalPages?: number;
   total?: number;
   onPageChange?: (page: number) => void;
-  searchQuery?: string;
-  onSearchChange?: (query: string) => void;
+  nameIdQuery?: string;
+  onNameIdChange?: (query: string) => void;
+  contactQuery?: string;
+  onContactChange?: (query: string) => void;
   onApplySearch?: () => void;
-  appliedSearch?: string;
+  appliedNameId?: string;
+  appliedContact?: string;
   sortOrder?: "asc" | "desc";
   onSortOrderChange?: (order: "asc" | "desc") => void;
   sortBy?: "lastName" | "firstName" | "employer";
   onSortByChange?: (sortBy: "lastName" | "firstName" | "employer") => void;
   filters?: WorkerFilters;
   onFiltersChange?: (filters: WorkerFilters) => void;
-  appliedJobTitle?: string;
+  /** Last-applied filters (apply-button model); used for CSV export so it matches the visible list. */
+  appliedFilters?: WorkerFilters;
   selectable?: boolean;
   selectedIds?: Set<string>;
   onSelectionChange?: (selectedIds: Set<string>) => void;
@@ -148,17 +151,20 @@ export function WorkersTable({
   totalPages = 1,
   total = 0,
   onPageChange,
-  searchQuery: externalSearchQuery,
-  onSearchChange,
+  nameIdQuery: externalNameIdQuery,
+  onNameIdChange,
+  contactQuery: externalContactQuery,
+  onContactChange,
   onApplySearch,
-  appliedSearch: externalAppliedSearch,
+  appliedNameId: externalAppliedNameId,
+  appliedContact: externalAppliedContact,
   sortOrder: externalSortOrder,
   onSortOrderChange,
   sortBy: externalSortBy,
   onSortByChange,
   filters: externalFilters,
   onFiltersChange,
-  appliedJobTitle: externalAppliedJobTitle,
+  appliedFilters: externalAppliedFilters,
   selectable = false,
   selectedIds,
   onSelectionChange,
@@ -167,7 +173,8 @@ export function WorkersTable({
   const isPaginated = onPageChange !== undefined;
   const [internalSortOrder, setInternalSortOrder] = useState<"asc" | "desc">("asc");
   const [internalSortBy, setInternalSortBy] = useState<"lastName" | "firstName" | "employer">("lastName");
-  const [internalSearchQuery, setInternalSearchQuery] = useState("");
+  const [internalNameIdQuery, setInternalNameIdQuery] = useState("");
+  const [internalContactQuery, setInternalContactQuery] = useState("");
   const [internalFilters, setInternalFilters] = useState<WorkerFilters>({
     employerId: "all",
     employerTypeId: "all",
@@ -182,8 +189,10 @@ export function WorkersTable({
   const setSortOrder = onSortOrderChange ?? setInternalSortOrder;
   const sortBy = externalSortBy ?? internalSortBy;
   const setSortBy = onSortByChange ?? setInternalSortBy;
-  const searchQuery = externalSearchQuery ?? internalSearchQuery;
-  const setSearchQuery = onSearchChange ?? setInternalSearchQuery;
+  const nameIdQuery = externalNameIdQuery ?? internalNameIdQuery;
+  const setNameIdQuery = onNameIdChange ?? setInternalNameIdQuery;
+  const contactQuery = externalContactQuery ?? internalContactQuery;
+  const setContactQuery = onContactChange ?? setInternalContactQuery;
   
   // Use external filters if provided (server-side filtering), otherwise use internal
   const filters = externalFilters ?? internalFilters;
@@ -641,25 +650,27 @@ export function WorkersTable({
         });
       }
       
-      // Filter by search query (only client-side when not paginated)
-      if (searchQuery.trim()) {
-        const query = searchQuery.toLowerCase();
+      // Filter by search queries (only client-side when not paginated)
+      if (nameIdQuery.trim()) {
+        const query = nameIdQuery.toLowerCase();
         filtered = filtered.filter(worker => {
           const name = (worker.contactName || '').toLowerCase();
+          const siriusId = String(worker.siriusId ?? '');
+          return name.includes(query) || siriusId.includes(query);
+        });
+      }
+      if (contactQuery.trim()) {
+        const query = contactQuery.toLowerCase();
+        filtered = filtered.filter(worker => {
           const email = (worker.email || '').toLowerCase();
           const phone = (worker.phoneNumber || '').toLowerCase();
-          const ssn = formatSSN(worker.ssn).toLowerCase();
-          
-          return name.includes(query) || 
-                 email.includes(query) || 
-                 phone.includes(query) || 
-                 ssn.includes(query);
+          return email.includes(query) || phone.includes(query);
         });
       }
     }
     
     return filtered;
-  }, [workersWithNames, searchQuery, selectedEmployerId, selectedEmployerTypeId, selectedBargainingUnitId, selectedBenefitId, contactStatusFilter, trustBenefitsEnabled, isPaginated]);
+  }, [workersWithNames, nameIdQuery, contactQuery, selectedEmployerId, selectedEmployerTypeId, selectedBargainingUnitId, selectedBenefitId, contactStatusFilter, trustBenefitsEnabled, isPaginated]);
 
   const sortedWorkers = [...filteredWorkers].sort((a, b) => {
     const familyA = a.family || '';
@@ -693,20 +704,23 @@ export function WorkersTable({
 
   // CSV Export function - calls server endpoint to get all matching workers
   const handleExportCSV = () => {
-    // Build URL with current filter parameters - use applied search when available
+    // Build URL with the last-APPLIED search/filter parameters so the export
+    // always matches what the list is showing (apply-button model).
     const params = new URLSearchParams();
-    const exportSearch = externalAppliedSearch ?? searchQuery;
-    if (exportSearch) params.set('search', exportSearch);
+    const exportNameId = externalAppliedNameId ?? nameIdQuery;
+    const exportContact = externalAppliedContact ?? contactQuery;
+    const exportFilters = externalAppliedFilters ?? filters;
+    if (exportNameId) params.set('nameIdSearch', exportNameId);
+    if (exportContact) params.set('contactSearch', exportContact);
     params.set('sortOrder', sortOrder);
-    if (selectedEmployerId !== 'all') params.set('employerId', selectedEmployerId);
-    if (selectedEmployerTypeId !== 'all') params.set('employerTypeId', selectedEmployerTypeId);
-    if (selectedBargainingUnitId !== 'all') params.set('bargainingUnitId', selectedBargainingUnitId);
-    if (selectedBenefitId !== 'all') params.set('benefitId', selectedBenefitId);
-    if (contactStatusFilter !== 'all') params.set('contactStatus', contactStatusFilter);
-    const exportJobTitle = externalAppliedJobTitle ?? filters.jobTitle;
-    if (exportJobTitle) params.set('jobTitle', exportJobTitle);
-    if (filters.memberStatusId !== 'all') params.set('memberStatusId', filters.memberStatusId);
-    if (filters.representativeId && filters.representativeId !== 'all') params.set('representativeId', filters.representativeId);
+    if (exportFilters.employerId !== 'all') params.set('employerId', exportFilters.employerId);
+    if (exportFilters.employerTypeId !== 'all') params.set('employerTypeId', exportFilters.employerTypeId);
+    if (exportFilters.bargainingUnitId !== 'all') params.set('bargainingUnitId', exportFilters.bargainingUnitId);
+    if (exportFilters.benefitId !== 'all') params.set('benefitId', exportFilters.benefitId);
+    if (exportFilters.contactStatus !== 'all') params.set('contactStatus', exportFilters.contactStatus);
+    if (exportFilters.jobTitle) params.set('jobTitle', exportFilters.jobTitle);
+    if (exportFilters.memberStatusId !== 'all') params.set('memberStatusId', exportFilters.memberStatusId);
+    if (exportFilters.representativeId && exportFilters.representativeId !== 'all') params.set('representativeId', exportFilters.representativeId);
     if (trustBenefitsEnabled) params.set('includeBenefits', 'true');
     
     // Trigger download by opening the export URL
@@ -782,29 +796,46 @@ export function WorkersTable({
             </div>
           </div>
           
-          {/* Search Input with Apply button */}
-          <div className="flex gap-2 mb-3">
-            <div className="relative flex-1">
+          {/* Two-field search (Name/ID vs Contact) with a single Apply button.
+              Nothing re-queries until Apply is pressed (Enter also applies). */}
+          <div className="flex gap-2 mb-3 flex-wrap">
+            <div className="relative flex-1 min-w-48">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" size={16} />
               <Input
                 type="text"
-                placeholder="Search by name, email, phone, SSN, or worker ID..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Name, Sirius ID, or worker ID..."
+                value={nameIdQuery}
+                onChange={(e) => setNameIdQuery(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && onApplySearch) {
                     onApplySearch();
                   }
                 }}
                 className="pl-10"
-                data-testid="input-search-workers"
+                data-testid="input-search-name-id"
+              />
+            </div>
+            <div className="relative flex-1 min-w-48">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" size={16} />
+              <Input
+                type="text"
+                placeholder="Email, phone, or address..."
+                value={contactQuery}
+                onChange={(e) => setContactQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && onApplySearch) {
+                    onApplySearch();
+                  }
+                }}
+                className="pl-10"
+                data-testid="input-search-contact"
               />
             </div>
             <Button
               onClick={() => onApplySearch?.()}
               data-testid="button-apply-search"
             >
-              Search
+              Apply
             </Button>
           </div>
           
@@ -1076,7 +1107,7 @@ export function WorkersTable({
             <thead className="bg-muted/20">
               <tr>
                 {selectable && (
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-12">
+                  <th className="px-3 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-12">
                     <Checkbox
                       checked={
                         sortedWorkers.length > 0 &&
@@ -1097,7 +1128,7 @@ export function WorkersTable({
                   </th>
                 )}
                 <th 
-                  className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider cursor-pointer hover:text-foreground transition-colors"
+                  className="px-3 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider cursor-pointer hover:text-foreground transition-colors"
                   onClick={toggleSort}
                   data-testid="button-sort-name"
                 >
@@ -1106,28 +1137,26 @@ export function WorkersTable({
                     <ArrowUpDown size={12} />
                   </div>
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                <th className="px-3 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   <span>Contact</span>
                 </th>
                 {cardcheckEnabled && (
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  <th className="px-3 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     <span>Membership</span>
                   </th>
                 )}
                 {trustBenefitsEnabled && (
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  <th className="px-3 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     <span>Benefits</span>
                   </th>
                 )}
-                {showOnListsIdTypes.map((idType) => (
-                  <th key={idType.id} className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                    <span>{idType.name}</span>
-                  </th>
-                ))}
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                {/* List-enabled worker-ID types render inside the Worker Name
+                    cell (no per-ID columns) so the table fits without
+                    horizontal scrolling — mirrors the BTU layout change. */}
+                <th className="px-3 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   <span>Employment</span>
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                <th className="px-3 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   <span>Actions</span>
                 </th>
               </tr>
@@ -1139,7 +1168,7 @@ export function WorkersTable({
                 return (
                 <tr key={worker.id} className={`hover:bg-muted/30 transition-colors ${isDisabled ? 'opacity-50' : ''}`} data-testid={`row-worker-${worker.id}`}>
                   {selectable && (
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-3 py-3 whitespace-nowrap">
                       <Checkbox
                         checked={isDisabled || isSelected}
                         disabled={!!isDisabled}
@@ -1154,7 +1183,7 @@ export function WorkersTable({
                       />
                     </td>
                   )}
-                  <td className="px-6 py-4 whitespace-nowrap">
+                  <td className="px-3 py-3 whitespace-nowrap">
                     <div className="flex items-center space-x-3">
                       <div className={`w-8 h-8 ${avatarColors[index % avatarColors.length]} rounded-full flex items-center justify-center`}>
                         <User size={12} />
@@ -1162,7 +1191,7 @@ export function WorkersTable({
                       <div>
                         <Link href={`/workers/${worker.id}`}>
                           <span 
-                            className="text-sm font-medium text-foreground hover:text-primary hover:underline cursor-pointer"
+                            className="text-base font-medium text-foreground hover:text-primary hover:underline cursor-pointer"
                             data-testid={`text-worker-name-${worker.id}`}
                           >
                             {worker.contactName}
@@ -1171,10 +1200,21 @@ export function WorkersTable({
                         <p className="text-xs text-muted-foreground" data-testid={`text-job-title-${worker.id}`}>
                           {worker.siriusId}{worker.denormJobTitle ? ` · ${worker.denormJobTitle}` : ""}
                         </p>
+                        {/* One small labeled row per list-enabled worker ID
+                            (replaces the former per-ID-type columns; mirrors BTU). */}
+                        {showOnListsIdTypes.map((idType) => {
+                          const value = workerIdValueMap.get(worker.id)?.get(idType.id);
+                          if (!value) return null;
+                          return (
+                            <p key={idType.id} className="text-xs text-muted-foreground" data-testid={`worker-id-${idType.id}-${worker.id}`}>
+                              {idType.name}: {value}
+                            </p>
+                          );
+                        })}
                       </div>
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
+                  <td className="px-3 py-3 whitespace-nowrap">
                     <div className="flex items-center gap-2" data-testid={`contact-indicators-${worker.id}`}>
                       {worker.email ? (
                         <HoverCard>
@@ -1295,20 +1335,15 @@ export function WorkersTable({
                     </div>
                   </td>
                   {cardcheckEnabled && (
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-3 py-3 whitespace-nowrap">
                       {(() => {
                         const msIds = worker.denormMsIdsParsed || [];
                         const statuses = msIds
                           .map(msId => memberStatusMap.get(msId))
                           .filter((ms): ms is MemberStatusOption => ms !== undefined);
                         const statusName = statuses.length > 0 ? statuses[0].name : null;
-                        const statusCode = statuses.length > 0 ? statuses[0].code : null;
                         const dues = latestDuesMap[worker.id];
                         const buName = worker.bargainingUnitName;
-                        const statusColor = statusCode === 'paid' ? 'text-green-600'
-                          : statusCode === 'delinquent' ? 'text-red-600'
-                          : statusCode === 'pend' ? 'text-yellow-600'
-                          : 'text-muted-foreground';
 
                         if (authorizationMode) {
                           const authorized = cardcheckAuthMap[worker.id] === true;
@@ -1316,11 +1351,6 @@ export function WorkersTable({
                           const election = electionPolicyMap[worker.id];
                           const hasElection = election?.hasActiveElection === true;
                           const policyName = election?.policyName ?? null;
-                          const memberStatusText = statuses.length === 1
-                            ? statuses[0].name
-                            : statuses.length > 1
-                              ? statuses.map(ms => ms.code || ms.name).join(", ")
-                              : null;
                           return (
                             <HoverCard>
                               <HoverCardTrigger asChild>
@@ -1328,9 +1358,12 @@ export function WorkersTable({
                                   {buName && (
                                     <span className="text-xs text-muted-foreground" data-testid={`membership-bu-${worker.id}`}>{buName}</span>
                                   )}
-                                  {memberStatusText && (
-                                    <span className="text-sm font-medium text-foreground" data-testid={`membership-status-${worker.id}`}>
-                                      {memberStatusText}
+                                  {/* Member statuses: smaller text, stacked one per line (mirrors BTU change) */}
+                                  {statuses.length > 0 && (
+                                    <span className="flex flex-col" data-testid={`membership-status-${worker.id}`}>
+                                      {statuses.map(ms => (
+                                        <span key={ms.id} className="text-xs font-medium text-foreground">{ms.name}</span>
+                                      ))}
                                     </span>
                                   )}
                                   {hasElection ? (
@@ -1357,8 +1390,12 @@ export function WorkersTable({
                                   {buName && (
                                     <p className="text-xs text-muted-foreground">{buName}</p>
                                   )}
-                                  {memberStatusText && (
-                                    <p className="text-sm font-semibold text-foreground" data-testid={`membership-hover-status-${worker.id}`}>{memberStatusText}</p>
+                                  {statuses.length > 0 && (
+                                    <div data-testid={`membership-hover-status-${worker.id}`}>
+                                      {statuses.map(ms => (
+                                        <p key={ms.id} className="text-sm font-semibold text-foreground">{ms.name}</p>
+                                      ))}
+                                    </div>
                                   )}
                                   <p className="text-sm font-semibold text-foreground">
                                     {hasElection
@@ -1401,12 +1438,21 @@ export function WorkersTable({
                             {buName && (
                               <span className="text-xs text-muted-foreground" data-testid={`membership-bu-${worker.id}`}>{buName}</span>
                             )}
-                            {statusName ? (
-                              <span className={`text-sm font-medium ${statusColor}`}>
-                                {statusName}
-                              </span>
+                            {/* Member statuses: smaller text, stacked one per line (mirrors BTU change) */}
+                            {statuses.length > 0 ? (
+                              statuses.map(ms => {
+                                const msColor = ms.code === 'paid' ? 'text-green-600'
+                                  : ms.code === 'delinquent' ? 'text-red-600'
+                                  : ms.code === 'pend' ? 'text-yellow-600'
+                                  : 'text-muted-foreground';
+                                return (
+                                  <span key={ms.id} className={`text-xs font-medium ${msColor}`}>
+                                    {ms.name}
+                                  </span>
+                                );
+                              })
                             ) : (
-                              <span className="text-sm text-muted-foreground italic">-</span>
+                              <span className="text-xs text-muted-foreground italic">-</span>
                             )}
                           </div>
                         );
@@ -1427,7 +1473,9 @@ export function WorkersTable({
                                 {buName && (
                                   <p className="text-xs text-muted-foreground">{buName}</p>
                                 )}
-                                <p className="text-sm font-semibold text-foreground">{statusName}</p>
+                                {statuses.map(ms => (
+                                  <p key={ms.id} className="text-sm font-semibold text-foreground">{ms.name}</p>
+                                ))}
                                 {dues?.amount !== undefined && dues?.date ? (
                                   <div className="text-sm text-muted-foreground">
                                     <p>Last dues: ${parseFloat(dues.amount).toFixed(2)}</p>
@@ -1449,7 +1497,7 @@ export function WorkersTable({
                     </td>
                   )}
                   {trustBenefitsEnabled && (
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-3 py-3 whitespace-nowrap">
                       <TooltipProvider>
                         <div className="flex items-center gap-2" data-testid={`benefits-icons-${worker.id}`}>
                           {worker.benefits && worker.benefits.length > 0 ? (
@@ -1476,16 +1524,7 @@ export function WorkersTable({
                       </TooltipProvider>
                     </td>
                   )}
-                  {showOnListsIdTypes.map((idType) => {
-                    const typeMap = workerIdValueMap.get(worker.id);
-                    const value = typeMap?.get(idType.id);
-                    return (
-                      <td key={idType.id} className="px-6 py-4 whitespace-nowrap text-sm" data-testid={`worker-id-${idType.id}-${worker.id}`}>
-                        {value || <span className="text-muted-foreground italic">-</span>}
-                      </td>
-                    );
-                  })}
-                  <td className="px-6 py-4 whitespace-nowrap">
+                  <td className="px-3 py-4 whitespace-nowrap">
                     <TooltipProvider>
                       <div className="flex items-center gap-1" data-testid={`employment-indicators-${worker.id}`}>
                         {worker.employers && worker.employers.length > 0 ? (
@@ -1518,7 +1557,7 @@ export function WorkersTable({
                       </div>
                     </TooltipProvider>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm">
+                  <td className="px-3 py-3 whitespace-nowrap text-sm">
                     <div className="flex items-center space-x-2">
                       <Link href={`/workers/${worker.id}`}>
                         <Button
@@ -1557,7 +1596,7 @@ export function WorkersTable({
 
         {/* Pagination Controls */}
         {isPaginated && totalPages > 1 && (
-          <div className="px-6 py-4 border-t border-border flex flex-wrap items-center justify-between gap-4">
+          <div className="px-3 py-3 border-t border-border flex flex-wrap items-center justify-between gap-4">
             <div className="text-sm text-muted-foreground" data-testid="text-pagination-info">
               Showing {((page - 1) * pageSize) + 1} - {Math.min(page * pageSize, total)} of {total.toLocaleString()} workers
             </div>

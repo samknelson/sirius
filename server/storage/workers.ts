@@ -147,7 +147,8 @@ export interface PaginatedWorkersResult {
 }
 
 export interface WorkersExportParams {
-  search?: string;
+  nameIdSearch?: string;
+  contactSearch?: string;
   sortOrder?: 'asc' | 'desc';
   employerId?: string;
   employerTypeId?: string;
@@ -162,7 +163,8 @@ export interface WorkersExportParams {
 export interface WorkersPaginationParams {
   page?: number;
   pageSize?: number;
-  search?: string;
+  nameIdSearch?: string;
+  contactSearch?: string;
   sortField?: 'name' | 'email';
   sortBy?: 'lastName' | 'firstName' | 'employer';
   sortOrder?: 'asc' | 'desc';
@@ -277,7 +279,8 @@ export interface WorkerStorage {
 }
 
 interface InternalSearchParams {
-  search?: string;
+  nameIdSearch?: string;
+  contactSearch?: string;
   sortOrder?: 'asc' | 'desc';
   sortBy?: 'lastName' | 'firstName' | 'employer';
   employerId?: string;
@@ -330,7 +333,8 @@ function _buildContactStatusCondition(contactStatus: string | undefined) {
 
 async function _searchWorkers(params: InternalSearchParams): Promise<InternalSearchResult> {
   const client = getClient();
-  const search = params.search?.trim() ?? '';
+  const nameIdSearch = params.nameIdSearch?.trim() ?? '';
+  const contactSearch = params.contactSearch?.trim() ?? '';
   const sortOrder = params.sortOrder ?? 'asc';
   const sortBy = params.sortBy ?? 'lastName';
   const { employerId, employerTypeId, bargainingUnitId, benefitId, contactStatus, hasMultipleEmployers, jobTitle, memberStatusId, representativeId } = params;
@@ -343,54 +347,69 @@ async function _searchWorkers(params: InternalSearchParams): Promise<InternalSea
   const bargainingUnitsEnabled = isComponentEnabledSync('bargainingunits');
   const politicalEnabled = isComponentEnabledSync('sitespecific.btu.political');
 
-  const searchCondition = (() => {
-    if (!search) return sql``;
-    const terms = search.toLowerCase().split(/\s+/).filter(t => t.length > 0);
+  // Two-field search (mirrors the BTU deployment's split-search change):
+  // "Name/ID" terms match name fields, the Sirius ID, and enabled worker-ID
+  // values; "Contact" terms match email, phone, and postal address fields.
+  // Both fields can be used together (AND). Every term within a field must
+  // match (AND), each term against any of that field's columns (OR).
+  const buildTermsCondition = (raw: string, buildTerm: (term: string) => ReturnType<typeof sql>) => {
+    if (!raw) return sql``;
+    const terms = raw.toLowerCase().split(/\s+/).filter(t => t.length > 0);
     if (terms.length === 0) return sql``;
-    const termConditions = terms.map(term => {
-      const pattern = `%${term}%`;
-      const digitsOnly = term.replace(/\D/g, '');
-      const phonePattern = digitsOnly.length >= 3 ? `%${digitsOnly}%` : null;
-      return sql`(
-        LOWER(c.display_name) LIKE ${pattern}
-        OR LOWER(c.email) LIKE ${pattern}
-        OR LOWER(c.given) LIKE ${pattern}
-        OR LOWER(c.family) LIKE ${pattern}
-        OR EXISTS (
-          SELECT 1 FROM worker_ids wid
-          INNER JOIN options_worker_id_type widt ON wid.type_id = widt.id
-          WHERE wid.worker_id = w.id
-            AND (widt.data->>'showOnLists')::boolean = true
-            AND LOWER(wid.value) LIKE ${pattern}
-        )
-        OR EXISTS (
-          SELECT 1 FROM contact_phone cp
-          WHERE cp.contact_id = c.id
-            AND cp.is_active = true
-            AND (
-              LOWER(cp.phone_number) LIKE ${pattern}
-              ${phonePattern ? sql`OR REGEXP_REPLACE(cp.phone_number, '[^0-9]', '', 'g') LIKE ${phonePattern}` : sql``}
-            )
-        )
-        OR EXISTS (
-          SELECT 1 FROM contact_postal cpo
-          WHERE cpo.contact_id = c.id
-            AND cpo.is_active = true
-            AND (
-              LOWER(cpo.street) LIKE ${pattern}
-              OR LOWER(cpo.city) LIKE ${pattern}
-              OR LOWER(cpo.state) LIKE ${pattern}
-              OR cpo.postal_code LIKE ${pattern}
-            )
-        )
-      )`;
-    });
-    let combined = termConditions[0];
-    for (let i = 1; i < termConditions.length; i++) {
-      combined = sql`${combined} AND ${termConditions[i]}`;
+    let combined = buildTerm(terms[0]);
+    for (let i = 1; i < terms.length; i++) {
+      combined = sql`${combined} AND ${buildTerm(terms[i])}`;
     }
     return sql`AND (${combined})`;
-  })();
+  };
+
+  const nameIdSearchCondition = buildTermsCondition(nameIdSearch, (term) => {
+    const pattern = `%${term}%`;
+    return sql`(
+      LOWER(c.display_name) LIKE ${pattern}
+      OR LOWER(c.given) LIKE ${pattern}
+      OR LOWER(c.family) LIKE ${pattern}
+      OR CAST(w.sirius_id AS TEXT) LIKE ${pattern}
+      OR EXISTS (
+        SELECT 1 FROM worker_ids wid
+        INNER JOIN options_worker_id_type widt ON wid.type_id = widt.id
+        WHERE wid.worker_id = w.id
+          AND (widt.data->>'showOnLists')::boolean = true
+          AND LOWER(wid.value) LIKE ${pattern}
+      )
+    )`;
+  });
+
+  const contactSearchCondition = buildTermsCondition(contactSearch, (term) => {
+    const pattern = `%${term}%`;
+    const digitsOnly = term.replace(/\D/g, '');
+    const phonePattern = digitsOnly.length >= 3 ? `%${digitsOnly}%` : null;
+    return sql`(
+      LOWER(c.email) LIKE ${pattern}
+      OR EXISTS (
+        SELECT 1 FROM contact_phone cp
+        WHERE cp.contact_id = c.id
+          AND cp.is_active = true
+          AND (
+            LOWER(cp.phone_number) LIKE ${pattern}
+            ${phonePattern ? sql`OR REGEXP_REPLACE(cp.phone_number, '[^0-9]', '', 'g') LIKE ${phonePattern}` : sql``}
+          )
+      )
+      OR EXISTS (
+        SELECT 1 FROM contact_postal cpo
+        WHERE cpo.contact_id = c.id
+          AND cpo.is_active = true
+          AND (
+            LOWER(cpo.street) LIKE ${pattern}
+            OR LOWER(cpo.city) LIKE ${pattern}
+            OR LOWER(cpo.state) LIKE ${pattern}
+            OR cpo.postal_code LIKE ${pattern}
+          )
+      )
+    )`;
+  });
+
+  const searchCondition = sql`${nameIdSearchCondition} ${contactSearchCondition}`;
 
   const employerCondition = employerId 
     ? sql`AND EXISTS (
@@ -705,7 +724,8 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
       const pageSize = params.pageSize ?? 50;
 
       const { rows, total } = await _searchWorkers({
-        search: params.search,
+        nameIdSearch: params.nameIdSearch,
+        contactSearch: params.contactSearch,
         sortOrder: params.sortOrder,
         sortBy: params.sortBy,
         employerId: params.employerId,
@@ -732,7 +752,8 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
 
     async getWorkersForExport(params: WorkersExportParams): Promise<WorkerWithDetails[]> {
       const { rows } = await _searchWorkers({
-        search: params.search,
+        nameIdSearch: params.nameIdSearch,
+        contactSearch: params.contactSearch,
         sortOrder: params.sortOrder,
         employerId: params.employerId,
         employerTypeId: params.employerTypeId,
@@ -748,7 +769,8 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
 
     async getAllMatchingContactIds(params: Omit<WorkersPaginationParams, 'page' | 'pageSize' | 'sortField'>): Promise<string[]> {
       const { rows } = await _searchWorkers({
-        search: params.search,
+        nameIdSearch: params.nameIdSearch,
+        contactSearch: params.contactSearch,
         sortOrder: params.sortOrder,
         sortBy: params.sortBy,
         employerId: params.employerId,

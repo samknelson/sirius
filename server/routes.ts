@@ -533,7 +533,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // listing and the "all matching IDs" endpoint route through this single helper
   // so the two query interpretations cannot drift.
   const parseWorkersWithDetailsFilters = (query: Request['query']) => {
-    const search = typeof query.search === 'string' ? query.search : undefined;
+    const nameIdSearch = typeof query.nameIdSearch === 'string' ? query.nameIdSearch : undefined;
+    const contactSearch = typeof query.contactSearch === 'string' ? query.contactSearch : undefined;
     const sortOrderParam = query.sortOrder as string;
     const sortOrder: 'asc' | 'desc' = sortOrderParam === 'desc' ? 'desc' : 'asc';
     const sortByParam = query.sortBy as string;
@@ -555,7 +556,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     const representativeId = typeof query.representativeId === 'string' && query.representativeId !== 'all' ? query.representativeId : undefined;
 
     return {
-      search,
+      nameIdSearch,
+      contactSearch,
       sortOrder,
       sortBy,
       employerId,
@@ -731,7 +733,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // GET /api/workers/export - Export workers to CSV with filters
   app.get("/api/workers/export", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
-      const search = typeof req.query.search === 'string' ? req.query.search : undefined;
+      const nameIdSearch = typeof req.query.nameIdSearch === 'string' ? req.query.nameIdSearch : undefined;
+      const contactSearch = typeof req.query.contactSearch === 'string' ? req.query.contactSearch : undefined;
       const sortOrderParam = req.query.sortOrder as string;
       const sortOrder = sortOrderParam === 'desc' ? 'desc' : 'asc';
       
@@ -750,7 +753,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       
       // Get all workers matching filters
       const workers = await storage.workers.getWorkersForExport({
-        search,
+        nameIdSearch,
+        contactSearch,
         sortOrder,
         employerId,
         employerTypeId,

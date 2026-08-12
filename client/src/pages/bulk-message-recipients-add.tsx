@@ -31,13 +31,14 @@ function BulkMessageRecipientsAddContent() {
 
   const [page, setPage] = useState(1);
   const [pageSize] = useState(50);
-  const [searchInput, setSearchInput] = useState("");
-  const [appliedSearch, setAppliedSearch] = useState("");
-  const [appliedJobTitle, setAppliedJobTitle] = useState("");
+  // Apply-button model: search text and filter controls accumulate locally and
+  // only hit the server when Apply is pressed (same as the main workers page).
+  const [nameIdInput, setNameIdInput] = useState("");
+  const [contactInput, setContactInput] = useState("");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [sortBy, setSortBy] = useState<"lastName" | "firstName" | "employer">("lastName");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [filters, setFilters] = useState<WorkerFilters>({
+  const defaultFilters: WorkerFilters = {
     employerId: "all",
     employerTypeId: "all",
     bargainingUnitId: "all",
@@ -45,48 +46,40 @@ function BulkMessageRecipientsAddContent() {
     contactStatus: "all",
     jobTitle: "",
     memberStatusId: "all",
-  });
+  };
+  const [filters, setFilters] = useState<WorkerFilters>(defaultFilters);
+  const [appliedNameId, setAppliedNameId] = useState("");
+  const [appliedContact, setAppliedContact] = useState("");
+  const [appliedFilters, setAppliedFilters] = useState<WorkerFilters>(defaultFilters);
 
   const handleApplySearch = useCallback(() => {
-    setAppliedSearch(searchInput);
-    setAppliedJobTitle(filters.jobTitle);
+    setAppliedNameId(nameIdInput);
+    setAppliedContact(contactInput);
+    setAppliedFilters(filters);
     setPage(1);
-  }, [searchInput, filters.jobTitle]);
+  }, [nameIdInput, contactInput, filters]);
 
   const handleFiltersChange = useCallback((newFilters: WorkerFilters) => {
-    setFilters(prev => {
-      const jobTitleOnly = prev.employerId === newFilters.employerId
-        && prev.employerTypeId === newFilters.employerTypeId
-        && prev.bargainingUnitId === newFilters.bargainingUnitId
-        && prev.benefitId === newFilters.benefitId
-        && prev.contactStatus === newFilters.contactStatus
-        && prev.hasMultipleEmployers === newFilters.hasMultipleEmployers
-        && prev.memberStatusId === newFilters.memberStatusId
-        && prev.representativeId === newFilters.representativeId
-        && prev.jobTitle !== newFilters.jobTitle;
-      if (!jobTitleOnly) {
-        setPage(1);
-      }
-      return newFilters;
-    });
+    setFilters(newFilters);
   }, []);
 
   const { data: paginatedData, isLoading: workersLoading } = useQuery<PaginatedWorkersResponse>({
     queryKey: ["/api/workers/with-details/paginated", {
       page,
       pageSize,
-      search: appliedSearch,
+      nameIdSearch: appliedNameId,
+      contactSearch: appliedContact,
       sortOrder,
       sortBy,
-      employerId: filters.employerId,
-      employerTypeId: filters.employerTypeId,
-      bargainingUnitId: filters.bargainingUnitId,
-      benefitId: filters.benefitId,
-      contactStatus: filters.contactStatus,
-      hasMultipleEmployers: filters.hasMultipleEmployers,
-      jobTitle: appliedJobTitle,
-      memberStatusId: filters.memberStatusId,
-      representativeId: filters.representativeId,
+      employerId: appliedFilters.employerId,
+      employerTypeId: appliedFilters.employerTypeId,
+      bargainingUnitId: appliedFilters.bargainingUnitId,
+      benefitId: appliedFilters.benefitId,
+      contactStatus: appliedFilters.contactStatus,
+      hasMultipleEmployers: appliedFilters.hasMultipleEmployers,
+      jobTitle: appliedFilters.jobTitle,
+      memberStatusId: appliedFilters.memberStatusId,
+      representativeId: appliedFilters.representativeId,
     }],
   });
 
@@ -204,17 +197,20 @@ function BulkMessageRecipientsAddContent() {
           totalPages={totalPages}
           total={total}
           onPageChange={setPage}
-          searchQuery={searchInput}
-          onSearchChange={setSearchInput}
+          nameIdQuery={nameIdInput}
+          onNameIdChange={setNameIdInput}
+          contactQuery={contactInput}
+          onContactChange={setContactInput}
           onApplySearch={handleApplySearch}
-          appliedSearch={appliedSearch}
+          appliedNameId={appliedNameId}
+          appliedContact={appliedContact}
           sortOrder={sortOrder}
           onSortOrderChange={setSortOrder}
           sortBy={sortBy}
           onSortByChange={setSortBy}
           filters={filters}
           onFiltersChange={handleFiltersChange}
-          appliedJobTitle={appliedJobTitle}
+          appliedFilters={appliedFilters}
           selectable
           selectedIds={selectedIds}
           onSelectionChange={setSelectedIds}
