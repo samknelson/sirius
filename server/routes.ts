@@ -65,7 +65,7 @@ import { registerSftpClientDestinationRoutes } from "./modules/sftp-client-desti
 import { registerTrustProviderEdiRoutes } from "./modules/trust/provider/edi";
 import { registerBulkMessageRoutes } from "./modules/bulk/messages";
 import { registerEmployerComplianceRoutes } from "./modules/employer-compliance";
-import { registerEmployerRoutes, registerEmployerLookupRoutes } from "./modules/employers/employers";
+import { registerEmployerRoutes, registerEmployerLookupRoutes, registerEmployerCountsRoute } from "./modules/employers/employers";
 import { registerEmployerPolicyHistoryRoutes } from "./modules/employers/policy-history";
 import { registerWorkerBenefitsScanRoutes } from "./modules/worker-benefits-scan";
 import { registerWmbScanQueueRoutes } from "./modules/wmb-scan-queue";
@@ -504,7 +504,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // listing and the "all matching IDs" endpoint route through this single helper
   // so the two query interpretations cannot drift.
   const parseWorkersWithDetailsFilters = (query: Request['query']) => {
-    const search = typeof query.search === 'string' ? query.search : undefined;
+    const nameIdSearch = typeof query.nameIdSearch === 'string' ? query.nameIdSearch : undefined;
+    const contactSearch = typeof query.contactSearch === 'string' ? query.contactSearch : undefined;
     const sortOrderParam = query.sortOrder as string;
     const sortOrder: 'asc' | 'desc' = sortOrderParam === 'desc' ? 'desc' : 'asc';
     const sortByParam = query.sortBy as string;
@@ -526,7 +527,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
     const representativeId = typeof query.representativeId === 'string' && query.representativeId !== 'all' ? query.representativeId : undefined;
 
     return {
-      search,
+      nameIdSearch,
+      contactSearch,
       sortOrder,
       sortBy,
       employerId,
@@ -607,7 +609,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // GET /api/workers/export - Export workers to CSV with filters
   app.get("/api/workers/export", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
-      const search = typeof req.query.search === 'string' ? req.query.search : undefined;
+      const nameIdSearch = typeof req.query.nameIdSearch === 'string' ? req.query.nameIdSearch : undefined;
+      const contactSearch = typeof req.query.contactSearch === 'string' ? req.query.contactSearch : undefined;
       const sortOrderParam = req.query.sortOrder as string;
       const sortOrder = sortOrderParam === 'desc' ? 'desc' : 'asc';
       
@@ -626,7 +629,8 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
       
       // Get all workers matching filters
       const workers = await storage.workers.getWorkersForExport({
-        search,
+        nameIdSearch,
+        contactSearch,
         sortOrder,
         employerId,
         employerTypeId,
@@ -1177,37 +1181,10 @@ export async function registerRoutes(app: Express, existingServer?: Server): Pro
   // (the modular handler additionally enriches each row with companyId/companyName
   // when the employer.company component is enabled)
 
-  // GET /api/employers/counts - Must be registered BEFORE /api/employers/:id so it
-  // isn't matched as :id="counts". Returns worker counts per employer and (when the
-  // trust.benefits component is enabled) latest-period worker counts per employer x benefit.
-  app.get("/api/employers/counts", requireAuth, requireAccess('staff'), async (_req, res) => {
-    try {
-      const { isComponentEnabled } = await import("./modules/components");
-
-      const workerCountRows = await storage.workerHours.getDistinctWorkerCountsByEmployer();
-      const workerCounts: Record<string, number> = {};
-      for (const row of workerCountRows) {
-        workerCounts[row.employerId] = row.workerCount;
-      }
-
-      const trustBenefitsEnabled = await isComponentEnabled("trust.benefits");
-      let benefitCounts: Record<string, Record<string, number>> | undefined;
-
-      if (trustBenefitsEnabled) {
-        const benefitCountRows = await storage.trust.wmb.getActiveBenefitWorkerCountsByEmployerLatestPeriod();
-        benefitCounts = {};
-        for (const row of benefitCountRows) {
-          if (!benefitCounts[row.employerId]) benefitCounts[row.employerId] = {};
-          benefitCounts[row.employerId][row.benefitId] = row.workerCount;
-        }
-      }
-
-      res.json({ workerCounts, benefitCounts });
-    } catch (error) {
-      console.error("Failed to fetch employer counts:", error);
-      res.status(500).json({ message: "Failed to fetch employer counts" });
-    }
-  });
+  // GET /api/employers/counts - modular handler lives in
+  // server/modules/employers/employers.ts; must be registered BEFORE the
+  // legacy /api/employers/:id below, or Express captures "counts" as :id.
+  registerEmployerCountsRoute(app, requireAuth, requireAccess);
 
   // GET /api/employers/contact-indicators - Must be registered BEFORE /api/employers/:id
   // so it isn't matched as :id="contact-indicators". Returns one indicator per contact

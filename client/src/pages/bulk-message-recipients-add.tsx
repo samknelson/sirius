@@ -31,8 +31,10 @@ function BulkMessageRecipientsAddContent() {
 
   const [page, setPage] = useState(1);
   const [pageSize] = useState(50);
-  const [searchInput, setSearchInput] = useState("");
-  const [appliedSearch, setAppliedSearch] = useState("");
+  const [nameIdSearchInput, setNameIdSearchInput] = useState("");
+  const [contactSearchInput, setContactSearchInput] = useState("");
+  const [appliedNameIdSearch, setAppliedNameIdSearch] = useState("");
+  const [appliedContactSearch, setAppliedContactSearch] = useState("");
   const [appliedJobTitle, setAppliedJobTitle] = useState("");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [sortBy, setSortBy] = useState<"lastName" | "firstName" | "employer">("lastName");
@@ -48,10 +50,11 @@ function BulkMessageRecipientsAddContent() {
   });
 
   const handleApplySearch = useCallback(() => {
-    setAppliedSearch(searchInput);
+    setAppliedNameIdSearch(nameIdSearchInput);
+    setAppliedContactSearch(contactSearchInput);
     setAppliedJobTitle(filters.jobTitle);
     setPage(1);
-  }, [searchInput, filters.jobTitle]);
+  }, [nameIdSearchInput, contactSearchInput, filters.jobTitle]);
 
   const handleFiltersChange = useCallback((newFilters: WorkerFilters) => {
     setFilters(prev => {
@@ -75,7 +78,8 @@ function BulkMessageRecipientsAddContent() {
     queryKey: ["/api/workers/with-details/paginated", {
       page,
       pageSize,
-      search: appliedSearch,
+      nameIdSearch: appliedNameIdSearch,
+      contactSearch: appliedContactSearch,
       sortOrder,
       sortBy,
       employerId: filters.employerId,
@@ -204,10 +208,13 @@ function BulkMessageRecipientsAddContent() {
           totalPages={totalPages}
           total={total}
           onPageChange={setPage}
-          searchQuery={searchInput}
-          onSearchChange={setSearchInput}
+          nameIdSearchQuery={nameIdSearchInput}
+          onNameIdSearchChange={setNameIdSearchInput}
+          contactSearchQuery={contactSearchInput}
+          onContactSearchChange={setContactSearchInput}
           onApplySearch={handleApplySearch}
-          appliedSearch={appliedSearch}
+          appliedNameIdSearch={appliedNameIdSearch}
+          appliedContactSearch={appliedContactSearch}
           sortOrder={sortOrder}
           onSortOrderChange={setSortOrder}
           sortBy={sortBy}

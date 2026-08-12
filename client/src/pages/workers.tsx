@@ -24,8 +24,10 @@ export default function Workers() {
   const { toast } = useToast();
   const [page, setPage] = useState(1);
   const [pageSize] = useState(50);
-  const [searchInput, setSearchInput] = useState("");
-  const [appliedSearch, setAppliedSearch] = useState("");
+  const [nameIdSearchInput, setNameIdSearchInput] = useState("");
+  const [contactSearchInput, setContactSearchInput] = useState("");
+  const [appliedNameIdSearch, setAppliedNameIdSearch] = useState("");
+  const [appliedContactSearch, setAppliedContactSearch] = useState("");
   const [appliedJobTitle, setAppliedJobTitle] = useState("");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [sortBy, setSortBy] = useState<"lastName" | "firstName" | "employer">("lastName");
@@ -42,10 +44,11 @@ export default function Workers() {
   });
 
   const handleApplySearch = useCallback(() => {
-    setAppliedSearch(searchInput);
+    setAppliedNameIdSearch(nameIdSearchInput);
+    setAppliedContactSearch(contactSearchInput);
     setAppliedJobTitle(filters.jobTitle);
     setPage(1);
-  }, [searchInput, filters.jobTitle]);
+  }, [nameIdSearchInput, contactSearchInput, filters.jobTitle]);
 
   const handleFiltersChange = useCallback((newFilters: WorkerFilters) => {
     setFilters(prev => {
@@ -68,7 +71,8 @@ export default function Workers() {
   // Build the filter param object exactly the way the paginated query does, so the
   // "all matching IDs" endpoint receives identical inputs and can never drift.
   const filterParams = useMemo(() => ({
-    search: appliedSearch,
+    nameIdSearch: appliedNameIdSearch,
+    contactSearch: appliedContactSearch,
     sortOrder,
     sortBy,
     employerId: filters.employerId,
@@ -80,7 +84,7 @@ export default function Workers() {
     jobTitle: appliedJobTitle,
     memberStatusId: filters.memberStatusId,
     representativeId: filters.representativeId,
-  }), [appliedSearch, sortOrder, sortBy, filters, appliedJobTitle]);
+  }), [appliedNameIdSearch, appliedContactSearch, sortOrder, sortBy, filters, appliedJobTitle]);
 
   // Reset selection whenever the effective filter set changes so users can never
   // accidentally bulk-message recipients that no longer match their current filters.
@@ -181,10 +185,13 @@ export default function Workers() {
           totalPages={totalPages}
           total={total}
           onPageChange={setPage}
-          searchQuery={searchInput}
-          onSearchChange={setSearchInput}
+          nameIdSearchQuery={nameIdSearchInput}
+          onNameIdSearchChange={setNameIdSearchInput}
+          contactSearchQuery={contactSearchInput}
+          onContactSearchChange={setContactSearchInput}
           onApplySearch={handleApplySearch}
-          appliedSearch={appliedSearch}
+          appliedNameIdSearch={appliedNameIdSearch}
+          appliedContactSearch={appliedContactSearch}
           sortOrder={sortOrder}
           onSortOrderChange={setSortOrder}
           sortBy={sortBy}

@@ -3,6 +3,7 @@ import { storage } from "../../storage";
 import { type InsertEmployer } from "@shared/schema";
 import { getEffectiveUser } from "../masquerade";
 import { isComponentEnabled } from "../components";
+import { createUnifiedOptionsStorage } from "../../storage/unified-options";
 
 type AuthMiddleware = (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
 type PermissionMiddleware = (permissionKey: string) => (req: Request, res: Response, next: NextFunction) => void | Promise<any>;
@@ -25,6 +26,68 @@ export async function getCompanyMapIfEnabled(): Promise<Map<string, { companyId:
     }
     return null;
   }
+}
+
+/**
+ * List enrichment for GET /api/employers: batch-loads industries and the full
+ * employer policy history, resolves each employer's current policy as-of
+ * today, and (when the employer.company component is enabled) joins company
+ * name/id. Failures to load auxiliary data degrade to null fields rather than
+ * failing the list.
+ */
+async function enrichEmployersList<T extends { id: string; industryId?: string | null }>(
+  employers: T[]
+): Promise<Array<T & {
+  industryName: string | null;
+  currentPolicyId: string | null;
+  currentPolicyName: string | null;
+  companyId?: string | null;
+  companyName?: string | null;
+}>> {
+  const [industryMap, policyByEmployer, companyMap] = await Promise.all([
+    (async () => {
+      const map = new Map<string, string>();
+      try {
+        const industries = await createUnifiedOptionsStorage().list("industry");
+        for (const ind of industries) {
+          if (ind?.id) map.set(ind.id, ind.name ?? null);
+        }
+      } catch (error) {
+        console.error("Failed to load industries for employer list:", error);
+      }
+      return map;
+    })(),
+    (async () => {
+      // Resolve each employer's policy as-of today (one row per employer,
+      // resolved in the database).
+      const map = new Map<string, { policyId: string; policyName: string | null }>();
+      try {
+        const today = new Date().toISOString().slice(0, 10);
+        const rows = await storage.employerPolicyHistory.getCurrentPolicyByEmployer(today);
+        for (const row of rows) {
+          map.set(row.employerId, { policyId: row.policyId, policyName: row.policyName });
+        }
+      } catch (error) {
+        console.error("Failed to load policy history for employer list:", error);
+      }
+      return map;
+    })(),
+    getCompanyMapIfEnabled(),
+  ]);
+
+  return employers.map(emp => {
+    const policy = policyByEmployer.get(emp.id);
+    const companyEntry = companyMap?.get(emp.id);
+    return {
+      ...emp,
+      industryName: (emp.industryId && industryMap.get(emp.industryId)) || null,
+      currentPolicyId: policy?.policyId ?? null,
+      currentPolicyName: policy?.policyName ?? null,
+      ...(companyMap
+        ? { companyId: companyEntry?.companyId || null, companyName: companyEntry?.companyName || null }
+        : {}),
+    };
+  });
 }
 
 /**
@@ -95,40 +158,16 @@ export function registerEmployerLookupRoutes(
   });
 }
 
-export function registerEmployerRoutes(
+/**
+ * Registers /api/employers/counts. Kept separate from registerEmployerRoutes
+ * because routes.ts must register it BEFORE its legacy /api/employers/:id
+ * route, or Express captures "counts" as :id.
+ */
+export function registerEmployerCountsRoute(
   app: Express,
   requireAuth: AuthMiddleware,
-  requirePermission: PermissionMiddleware,
   requireAccess: AccessMiddleware
 ) {
-  app.get("/api/employers", requireAuth, requireAccess('staff'), async (req, res) => {
-    try {
-      const includeInactive = req.query.includeInactive === 'true';
-      const allEmployers = await storage.employers.getAllEmployers();
-      
-      const employers = includeInactive 
-        ? allEmployers 
-        : allEmployers.filter(emp => emp.isActive);
-
-      const companyMap = await getCompanyMapIfEnabled();
-      if (companyMap) {
-        const enriched = employers.map(emp => {
-          const entry = companyMap.get(emp.id);
-          return {
-            ...emp,
-            companyId: entry?.companyId || null,
-            companyName: entry?.companyName || null,
-          };
-        });
-        return res.json(enriched);
-      }
-      
-      res.json(employers);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch employers" });
-    }
-  });
-
   app.get("/api/employers/counts", requireAuth, requireAccess('staff'), async (_req, res) => {
     try {
       const workerCountRows = await storage.workerHours.getDistinctWorkerCountsByEmployer();
@@ -153,6 +192,30 @@ export function registerEmployerRoutes(
     } catch (error) {
       console.error("Failed to fetch employer counts:", error);
       res.status(500).json({ message: "Failed to fetch employer counts" });
+    }
+  });
+}
+
+export function registerEmployerRoutes(
+  app: Express,
+  requireAuth: AuthMiddleware,
+  requirePermission: PermissionMiddleware,
+  requireAccess: AccessMiddleware
+) {
+  app.get("/api/employers", requireAuth, requireAccess('staff'), async (req, res) => {
+    try {
+      const includeInactive = req.query.includeInactive === 'true';
+      const allEmployers = await storage.employers.getAllEmployers();
+      
+      const employers = includeInactive 
+        ? allEmployers 
+        : allEmployers.filter(emp => emp.isActive);
+
+      const enriched = await enrichEmployersList(employers);
+      res.json(enriched);
+    } catch (error) {
+      console.error("Failed to fetch employers:", error);
+      res.status(500).json({ message: "Failed to fetch employers" });
     }
   });
 

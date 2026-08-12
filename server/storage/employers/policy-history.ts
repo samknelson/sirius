@@ -15,6 +15,12 @@ export const validate = createNoopValidator<{ employerId: string; date: string; 
 
 export interface EmployerPolicyHistoryStorage {
   getEmployerPolicyHistory(employerId: string): Promise<any[]>;
+  /**
+   * The current (as-of the given date) policy per employer: for each employer,
+   * the newest history row whose date is not after asOfDate. One row per
+   * employer. Read-only; used by the employers list enrichment.
+   */
+  getCurrentPolicyByEmployer(asOfDate: string): Promise<Array<{ employerId: string; policyId: string; policyName: string | null }>>;
   createEmployerPolicyHistory(data: { employerId: string; date: string; policyId: string; data?: any }): Promise<EmployerPolicyHistory>;
   updateEmployerPolicyHistory(id: string, data: { date?: string; policyId?: string; data?: any }): Promise<EmployerPolicyHistory | undefined>;
   deleteEmployerPolicyHistory(id: string): Promise<boolean>;
@@ -36,6 +42,23 @@ export function createEmployerPolicyHistoryStorage(
   }
 
   const storage: EmployerPolicyHistoryStorage = {
+    async getCurrentPolicyByEmployer(asOfDate: string): Promise<Array<{ employerId: string; policyId: string; policyName: string | null }>> {
+      const client = getClient();
+      // DISTINCT ON picks the single newest eligible history row per employer,
+      // using the same tiebreak ordering as syncEmployerCurrentPolicy.
+      const result = await client.execute(sql`
+        SELECT DISTINCT ON (eph.employer_id)
+          eph.employer_id AS "employerId",
+          eph.policy_id AS "policyId",
+          p.name AS "policyName"
+        FROM employer_policy_history eph
+        LEFT JOIN policies p ON p.id = eph.policy_id
+        WHERE eph.date <= ${asOfDate}
+        ORDER BY eph.employer_id, eph.date DESC, eph.created_at DESC NULLS LAST, eph.id DESC
+      `);
+      return result.rows as Array<{ employerId: string; policyId: string; policyName: string | null }>;
+    },
+
     async getEmployerPolicyHistory(employerId: string): Promise<any[]> {
       const client = getClient();
       const results = await client

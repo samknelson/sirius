@@ -297,6 +297,7 @@ export const workerHours = pgTable("worker_hours", {
   jobTitle: text("job_title"),
 }, (table) => ({
   uniqueWorkerEmployerYearMonthDay: unique().on(table.workerId, table.employerId, table.year, table.month, table.day),
+  workerIdIdx: index("worker_hours_worker_id_idx").on(table.workerId),
 }));
 
 export const trustProviders = pgTable("trust_providers", {

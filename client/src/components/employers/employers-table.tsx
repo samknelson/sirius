@@ -15,7 +15,13 @@ import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { renderIcon } from "@/components/ui/icon-picker";
 
-type EmployerWithCompany = Employer & { companyId?: string | null; companyName?: string | null };
+type EmployerWithCompany = Employer & {
+  companyId?: string | null;
+  companyName?: string | null;
+  industryName?: string | null;
+  currentPolicyId?: string | null;
+  currentPolicyName?: string | null;
+};
 type BenefitWithIcon = TrustBenefit & { benefitTypeIcon?: string | null };
 
 interface ContactIndicator {
@@ -298,6 +304,12 @@ export function EmployersTable({ employers, isLoading, includeInactive, onToggle
                   </div>
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  <span>Industry</span>
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  <span>Current Policy</span>
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   <span>Contacts</span>
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
@@ -359,6 +371,16 @@ export function EmployersTable({ employers, isLoading, includeInactive, onToggle
                       data-testid={`text-employer-name-${employer.id}`}
                     >
                       {employer.name}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <span className="text-sm text-muted-foreground" data-testid={`text-employer-industry-${employer.id}`}>
+                      {employer.industryName || "—"}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <span className="text-sm text-muted-foreground" data-testid={`text-employer-policy-${employer.id}`}>
+                      {employer.currentPolicyName || "—"}
                     </span>
                   </td>
                   <td className="px-6 py-4" data-testid={`cell-employer-contacts-${employer.id}`}>

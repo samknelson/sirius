@@ -54,10 +54,13 @@ interface WorkersTableProps {
   totalPages?: number;
   total?: number;
   onPageChange?: (page: number) => void;
-  searchQuery?: string;
-  onSearchChange?: (query: string) => void;
+  nameIdSearchQuery?: string;
+  onNameIdSearchChange?: (query: string) => void;
+  contactSearchQuery?: string;
+  onContactSearchChange?: (query: string) => void;
   onApplySearch?: () => void;
-  appliedSearch?: string;
+  appliedNameIdSearch?: string;
+  appliedContactSearch?: string;
   sortOrder?: "asc" | "desc";
   onSortOrderChange?: (order: "asc" | "desc") => void;
   sortBy?: "lastName" | "firstName" | "employer";
@@ -183,10 +186,13 @@ export function WorkersTable({
   totalPages = 1,
   total = 0,
   onPageChange,
-  searchQuery: externalSearchQuery,
-  onSearchChange,
+  nameIdSearchQuery: externalNameIdSearchQuery,
+  onNameIdSearchChange,
+  contactSearchQuery: externalContactSearchQuery,
+  onContactSearchChange,
   onApplySearch,
-  appliedSearch: externalAppliedSearch,
+  appliedNameIdSearch: externalAppliedNameIdSearch,
+  appliedContactSearch: externalAppliedContactSearch,
   sortOrder: externalSortOrder,
   onSortOrderChange,
   sortBy: externalSortBy,
@@ -202,7 +208,8 @@ export function WorkersTable({
   const isPaginated = onPageChange !== undefined;
   const [internalSortOrder, setInternalSortOrder] = useState<"asc" | "desc">("asc");
   const [internalSortBy, setInternalSortBy] = useState<"lastName" | "firstName" | "employer">("lastName");
-  const [internalSearchQuery, setInternalSearchQuery] = useState("");
+  const [internalNameIdSearchQuery, setInternalNameIdSearchQuery] = useState("");
+  const [internalContactSearchQuery, setInternalContactSearchQuery] = useState("");
   const [internalFilters, setInternalFilters] = useState<WorkerFilters>({
     employerId: "all",
     employerTypeId: "all",
@@ -217,8 +224,10 @@ export function WorkersTable({
   const setSortOrder = onSortOrderChange ?? setInternalSortOrder;
   const sortBy = externalSortBy ?? internalSortBy;
   const setSortBy = onSortByChange ?? setInternalSortBy;
-  const searchQuery = externalSearchQuery ?? internalSearchQuery;
-  const setSearchQuery = onSearchChange ?? setInternalSearchQuery;
+  const nameIdSearchQuery = externalNameIdSearchQuery ?? internalNameIdSearchQuery;
+  const setNameIdSearchQuery = onNameIdSearchChange ?? setInternalNameIdSearchQuery;
+  const contactSearchQuery = externalContactSearchQuery ?? internalContactSearchQuery;
+  const setContactSearchQuery = onContactSearchChange ?? setInternalContactSearchQuery;
   
   // Use external filters if provided (server-side filtering), otherwise use internal
   const filters = externalFilters ?? internalFilters;
@@ -625,25 +634,52 @@ export function WorkersTable({
         });
       }
       
-      // Filter by search query (only client-side when not paginated)
-      if (searchQuery.trim()) {
-        const query = searchQuery.toLowerCase();
+      // Filter by search queries (only client-side when not paginated).
+      // Mirrors the server split and term semantics: terms are whitespace-split,
+      // every term must match (AND), and a term may match any of the field's
+      // values (OR). Name/ID terms match name/sirius ID/worker IDs; Contact
+      // terms match email/phone (raw or digit-normalized)/address. Note the
+      // client only sees each worker's primary phone/address, so this is a
+      // best-effort mirror of the server's active-record search.
+      const nameIdTerms = nameIdSearchQuery.toLowerCase().split(/\s+/).filter(t => t.length > 0);
+      if (nameIdTerms.length > 0) {
         filtered = filtered.filter(worker => {
           const name = (worker.contactName || '').toLowerCase();
+          const given = (worker.given || '').toLowerCase();
+          const family = (worker.family || '').toLowerCase();
+          const siriusId = String(worker.siriusId ?? '');
+          const idValues = Array.from(workerIdValueMap.get(worker.id)?.values() ?? []).map(v => v.toLowerCase());
+          return nameIdTerms.every(term =>
+            name.includes(term) ||
+            given.includes(term) ||
+            family.includes(term) ||
+            siriusId.includes(term) ||
+            idValues.some(v => v.includes(term))
+          );
+        });
+      }
+      const contactTerms = contactSearchQuery.toLowerCase().split(/\s+/).filter(t => t.length > 0);
+      if (contactTerms.length > 0) {
+        filtered = filtered.filter(worker => {
           const email = (worker.email || '').toLowerCase();
           const phone = (worker.phoneNumber || '').toLowerCase();
-          const ssn = formatSSN(worker.ssn).toLowerCase();
-          
-          return name.includes(query) || 
-                 email.includes(query) || 
-                 phone.includes(query) || 
-                 ssn.includes(query);
+          const phoneDigits = phone.replace(/\D/g, '');
+          const address = worker.address
+            ? `${worker.address.street ?? ''} ${worker.address.city ?? ''} ${worker.address.state ?? ''} ${worker.address.postalCode ?? ''}`.toLowerCase()
+            : '';
+          return contactTerms.every(term => {
+            const termDigits = term.replace(/\D/g, '');
+            return email.includes(term) ||
+                   phone.includes(term) ||
+                   (termDigits.length >= 3 && phoneDigits.includes(termDigits)) ||
+                   address.includes(term);
+          });
         });
       }
     }
     
     return filtered;
-  }, [workersWithNames, searchQuery, selectedEmployerId, selectedEmployerTypeId, selectedBargainingUnitId, selectedBenefitId, contactStatusFilter, trustBenefitsEnabled, isPaginated]);
+  }, [workersWithNames, nameIdSearchQuery, contactSearchQuery, workerIdValueMap, selectedEmployerId, selectedEmployerTypeId, selectedBargainingUnitId, selectedBenefitId, contactStatusFilter, trustBenefitsEnabled, isPaginated]);
 
   const sortedWorkers = [...filteredWorkers].sort((a, b) => {
     const familyA = a.family || '';
@@ -679,8 +715,10 @@ export function WorkersTable({
   const handleExportCSV = () => {
     // Build URL with current filter parameters - use applied search when available
     const params = new URLSearchParams();
-    const exportSearch = externalAppliedSearch ?? searchQuery;
-    if (exportSearch) params.set('search', exportSearch);
+    const exportNameIdSearch = externalAppliedNameIdSearch ?? nameIdSearchQuery;
+    if (exportNameIdSearch) params.set('nameIdSearch', exportNameIdSearch);
+    const exportContactSearch = externalAppliedContactSearch ?? contactSearchQuery;
+    if (exportContactSearch) params.set('contactSearch', exportContactSearch);
     params.set('sortOrder', sortOrder);
     if (selectedEmployerId !== 'all') params.set('employerId', selectedEmployerId);
     if (selectedEmployerTypeId !== 'all') params.set('employerTypeId', selectedEmployerTypeId);
@@ -766,22 +804,38 @@ export function WorkersTable({
             </div>
           </div>
           
-          {/* Search Input with Apply button */}
-          <div className="flex gap-2 mb-3">
+          {/* Two-field search (Name/ID + Contact) with a single Apply button */}
+          <div className="flex flex-col sm:flex-row gap-2 mb-3">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" size={16} />
               <Input
                 type="text"
-                placeholder="Search by name, email, phone, SSN, or worker ID..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Name, Sirius ID, or worker ID..."
+                value={nameIdSearchQuery}
+                onChange={(e) => setNameIdSearchQuery(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && onApplySearch) {
                     onApplySearch();
                   }
                 }}
                 className="pl-10"
-                data-testid="input-search-workers"
+                data-testid="input-search-name-id"
+              />
+            </div>
+            <div className="relative flex-1">
+              <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" size={16} />
+              <Input
+                type="text"
+                placeholder="Email, phone, or address..."
+                value={contactSearchQuery}
+                onChange={(e) => setContactSearchQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && onApplySearch) {
+                    onApplySearch();
+                  }
+                }}
+                className="pl-10"
+                data-testid="input-search-contact"
               />
             </div>
             <Button
@@ -1096,11 +1150,6 @@ export function WorkersTable({
                     <span>Benefits</span>
                   </th>
                 )}
-                {showOnListsIdTypes.map((idType) => (
-                  <th key={idType.id} className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                    <span>{idType.name}</span>
-                  </th>
-                ))}
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   <span>Employment</span>
                 </th>
@@ -1148,6 +1197,23 @@ export function WorkersTable({
                         <p className="text-xs text-muted-foreground" data-testid={`text-job-title-${worker.id}`}>
                           {worker.siriusId}{worker.denormJobTitle ? ` · ${worker.denormJobTitle}` : ""}
                         </p>
+                        {showOnListsIdTypes.length > 0 && (() => {
+                          const typeMap = workerIdValueMap.get(worker.id);
+                          const idParts = showOnListsIdTypes
+                            .map((idType) => ({ idType, value: typeMap?.get(idType.id) }))
+                            .filter((p): p is { idType: { id: string; name: string }; value: string } => Boolean(p.value));
+                          if (idParts.length === 0) return null;
+                          return (
+                            <p className="text-xs text-muted-foreground">
+                              {idParts.map(({ idType, value }, i) => (
+                                <span key={idType.id} data-testid={`worker-id-${idType.id}-${worker.id}`}>
+                                  {i > 0 && " · "}
+                                  {idType.name}: {value}
+                                </span>
+                              ))}
+                            </p>
+                          );
+                        })()}
                       </div>
                     </div>
                   </td>
@@ -1370,15 +1436,6 @@ export function WorkersTable({
                       </TooltipProvider>
                     </td>
                   )}
-                  {showOnListsIdTypes.map((idType) => {
-                    const typeMap = workerIdValueMap.get(worker.id);
-                    const value = typeMap?.get(idType.id);
-                    return (
-                      <td key={idType.id} className="px-6 py-4 whitespace-nowrap text-sm" data-testid={`worker-id-${idType.id}-${worker.id}`}>
-                        {value || <span className="text-muted-foreground italic">-</span>}
-                      </td>
-                    );
-                  })}
                   <td className="px-6 py-4 whitespace-nowrap">
                     <TooltipProvider>
                       <div className="flex items-center gap-1" data-testid={`employment-indicators-${worker.id}`}>

@@ -47,4 +47,5 @@
 - [tsc not in dev loop](tsc-not-in-dev-loop.md) — dev runs under tsx (no type-check); tsc/`npm run check` is the only gate, and stale errors often hide real runtime bugs (wrong google-maps setOptions keys, wrong DB columns, missing modules).
 - [Policy fallback loader silent deny](policy-fallback-loader-silent-deny.md) — wrong optional-chained storage method in policy-context fallback map → "not found" 403 only for non-staff (admins bypass); download anchors save the JSON error as a file.
 - [Enabling a component in dev](component-enable-table-first.md) — create its tables via DDL first, then flip the `components` variable; drift gate refuses boot on missing component tables.
+- [Storage import init cycle in scripts](storage-import-init-cycle.md) — tsx scripts importing anything that loads storage/database.ts crash on init order; keep pure logic in storage-free files and test those.
 - [Drizzle .notNull() breaks null-autogen inserts](drizzle-notnull-breaks-autogen.md) — .notNull() (no default) makes $inferInsert required; keep zod field nullish + pass a definite string at the .values/.set site.
