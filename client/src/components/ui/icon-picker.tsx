@@ -130,8 +130,23 @@ import {
   SmilePlus,
   Scan,
   Dna,
+  createLucideIcon,
   type LucideIcon,
 } from "lucide-react";
+
+// lucide-react v0.453 has no tooth icon; render a stroke-based tooth
+// outline through createLucideIcon so it matches the lucide style and
+// inherits size/color props like every other icon in the set.
+const Tooth: LucideIcon = createLucideIcon("Tooth", [
+  [
+    "path",
+    {
+      d: "M12 5.5c-1.074-.586-2.583-1.5-4-1.5-2.1 0-4 1.247-4 5 0 4.899 1.056 8.41 2.671 10.537.573.756 1.97.521 2.567-.236.398-.505.819-1.439 1.262-2.801.292-.771.892-1.504 1.5-1.5.602.004 1.21.737 1.5 1.5.443 1.362.864 2.295 1.262 2.8.597.759 1.994.993 2.567.237C18.944 17.41 20 13.9 20 9c0-3.74-1.908-5-4-5-1.406 0-2.926.914-4 1.5z",
+      key: "tooth-outline",
+    },
+  ],
+  ["path", { d: "M12 5.5 15 7", key: "tooth-shine" }],
+]);
 import { Button } from "./button";
 import { Popover, PopoverContent, PopoverTrigger } from "./popover";
 import { cn } from "@/lib/utils";
@@ -268,6 +283,7 @@ const iconMap: Record<string, LucideIcon> = {
   SmilePlus,
   Scan,
   Dna,
+  Tooth,
 };
 
 export function getIconByName(name: string | undefined): LucideIcon | null {
