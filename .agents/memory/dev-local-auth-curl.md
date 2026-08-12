@@ -5,7 +5,7 @@ description: How to hit authenticated API routes from the shell in dev, and the 
 
 In the dev environment the local email/password provider is the DEFAULT auth provider (Okta is prod). To exercise authenticated/admin API routes with curl:
 
-1. `curl -c jar -X POST http://127.0.0.1:5000/api/auth/local/login -H 'Content-Type: application/json' -d '{"email":"<seeded admin email>","password":"$INITIAL_ADMIN_PASSWORD"}'` — the first-created user is the seeded admin.
+1. `curl -c jar -X POST http://127.0.0.1:5000/api/auth/local/login -H 'Content-Type: application/json' -d '{"email":"<seeded admin email>","password":"$INITIAL_ADMIN_PASSWORD"}'` — iterate every user holding a local credential (auth_identities.provider_type='local' with a password_hash) and try login until one succeeds — the seeded-admin account is NOT guaranteed to be the first-created user.
 2. Reuse the cookie jar (`-b jar`) for subsequent requests.
 
 **Why:** avoids spinning up the Playwright tester for plain API verification; Okta cannot be curl-driven.
