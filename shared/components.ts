@@ -299,6 +299,21 @@ export const componentRegistry: ComponentDefinition[] = [
     }
   },
   {
+    id: "sitespecific.gbhet.shifts",
+    name: "GBHET Worker Shifts",
+    description: "Worker shift-count tracking for GBHE (per-worker shift counts by statement date, used by the Local 26 Hourly upload)",
+    enabledByDefault: false,
+    category: "sitespecific.gbhet",
+    managesSchema: true,
+    schemaManifest: {
+      version: 1,
+      schemaPath: "./shared/schema/sitespecific/gbhet-shifts/schema.ts",
+      tables: [
+        "gbhet_worker_shifts"
+      ]
+    }
+  },
+  {
     id: "sitespecific.btu",
     name: "BTU Customization",
     description: "Custom functionality for BTU",

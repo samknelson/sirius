@@ -982,6 +982,7 @@ export {
 } from "./schema/sitespecific/btu/political-schema";
 
 export * from "./schema/sitespecific/gbhet-pension/schema";
+export * from "./schema/sitespecific/gbhet-shifts/schema";
 
 export * from "./schema/sitespecific/bao/schema";
 

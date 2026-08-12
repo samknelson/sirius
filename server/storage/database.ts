@@ -117,6 +117,7 @@ import { type DispatchJobStorage, createDispatchJobStorage, dispatchJobLoggingCo
 import { type DispatchJobGroupStorage, createDispatchJobGroupStorage, dispatchJobGroupLoggingConfig } from "./dispatch/job-groups";
 import { type FacilityStorage, createFacilityStorage, facilityLoggingConfig } from "./facility/facilities";
 import { type GbhetPensionStorage, createGbhetPensionStorage } from "./sitespecific/gbhet/pension";
+import { type GbhetShiftsStorage, createGbhetShiftsStorage } from "./sitespecific/gbhet/shifts";
 import { type DispatchStorage, createDispatchStorage, dispatchLoggingConfig } from "./dispatch/dispatches";
 import { type WorkerStewardAssignmentStorage, createWorkerStewardAssignmentStorage, workerStewardAssignmentLoggingConfig } from "./worker-steward-assignments";
 import { type BtuCsgStorage, createBtuCsgStorage, btuCsgLoggingConfig } from "./sitespecific/btu/csg";
@@ -270,6 +271,7 @@ export interface IStorage {
   bulkTokens: BulkTokensStorage;
   facilities: FacilityStorage;
   gbhetPension: GbhetPensionStorage;
+  gbhetShifts: GbhetShiftsStorage;
   contactLinks: ContactLinkStorage;
   commTags: CommTagsStorage;
   comm: CommStorage;
@@ -372,6 +374,7 @@ export class DatabaseStorage implements IStorage {
   bulkTokens: BulkTokensStorage;
   facilities: FacilityStorage;
   gbhetPension: GbhetPensionStorage;
+  gbhetShifts: GbhetShiftsStorage;
   contactLinks: ContactLinkStorage;
   commTags: CommTagsStorage;
   comm: CommStorage;
@@ -612,6 +615,7 @@ export class DatabaseStorage implements IStorage {
     this.bulkTokens = createBulkTokensStorage();
     this.facilities = withStorageLogging(createFacilityStorage(this.contacts), facilityLoggingConfig);
     this.gbhetPension = createGbhetPensionStorage();
+    this.gbhetShifts = createGbhetShiftsStorage();
     this.contactLinks = createContactLinkStorage();
     this.commTags = withStorageLogging(
       createCommTagsStorage({

@@ -82,6 +82,15 @@ export interface DuesImportSavedContext {
   accountId: string;
   deductionCode: string | null;
   memo: string | null;
+  /**
+   * Statement date (YYYY-MM-DD) of the reporting week this dues row belongs
+   * to. Set by weekly-granular importers (e.g. GBHE Local 26 Hourly) that
+   * emit one event per worker-week; weekly dues plugins require it.
+   */
+  weekYmd?: string;
+  /** Employer that withheld the dues, for weekly dues memos. */
+  withholdingEmployerId?: string | null;
+  withholdingEmployerName?: string | null;
 }
 
 export type PluginContext = HoursSavedContext | PaymentSavedContext | WmbSavedContext | ParticipantSavedContext | CronContext | DuesImportSavedContext;
