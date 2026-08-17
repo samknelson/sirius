@@ -6,3 +6,10 @@ id = "VzSJuf7rPOFZRNff6EQEn"
 uri = "file://exports/wizard-plugin-framework-spike.pdf"
 type = "pdf"
 title = "Wizard plugin framework spike — plan"
+
+[[outputs]]
+id = "yev97dvP--EioqbRBm0Ie"
+uri = "file://docs/s1-rehearsal-reject-triage.xlsx"
+type = "table"
+title = "S1 Rehearsal Reject Triage"
+description = "56 triage rows across 18 loaders — sorted largest-count-first, with dropdown validations, trend data, run history, and instructions."

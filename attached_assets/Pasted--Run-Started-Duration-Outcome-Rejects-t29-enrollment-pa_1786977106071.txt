@@ -1,0 +1,142 @@
+	Run	Started	Duration	Outcome	Rejects
+	t29-enrollment-packet-tags	8/11/2026, 4:17:53 PM	133.2s	verified	none
+	n21-call-logs	8/11/2026, 4:14:24 PM	111.5s	verified	
+handler_dangling: 2
+	n21-call-logs	8/11/2026, 4:08:09 PM	169s	verified	
+handler_dangling: 2
+	n21-call-logs	8/11/2026, 1:31:13 PM	182.7s	verified	
+handler_dangling: 2
+category_unmapped: 2
+	n21-call-logs	8/11/2026, 12:59:54 PM	406.8s	verified	
+handler_dangling: 2
+category_unmapped: 7
+	n21-call-logs	8/11/2026, 11:44:29 AM	61.8s	verified	
+category_unmapped: 700
+handler_unresolved: 9202
+	t29-enrollment-packet-tags	8/11/2026, 10:30:03 AM	83.4s	verified	none
+	t20-hours	8/9/2026, 5:08:00 PM	142557.4s	completed	none
+	t17-benefit-history	8/9/2026, 4:33:32 PM	1263.7s	verified	
+start_missing: 16
+worker_unmapped: 452
+benefit_unmapped: 6863
+end_before_start: 2553
+relation_unmapped: 71964
+benefit_ref_missing: 41
+employer_unresolved: 1462
+subscriber_worker_mismatch: 69
+	t17-benefit-history	8/9/2026, 11:58:15 AM	16172.5s	verified	
+start_missing: 16
+worker_unmapped: 452
+benefit_unmapped: 6863
+end_before_start: 2553
+relation_unmapped: 71964
+benefit_ref_missing: 41
+employer_unresolved: 1462
+subscriber_worker_mismatch: 69
+	t16-elections	8/9/2026, 11:29:39 AM	1399.8s	verified	
+start_missing: 3
+worker_unmapped: 234
+benefit_unmapped: 54
+relation_unmapped: 22
+worker_ref_missing: 3
+end_not_after_start: 625
+employer_ref_missing: 2
+	t17-benefit-history	8/8/2026, 10:29:04 PM	17754s	verified	
+start_missing: 16
+worker_unmapped: 452
+benefit_unmapped: 6863
+end_before_start: 2553
+relation_unmapped: 71964
+benefit_ref_missing: 41
+employer_unresolved: 35103
+open_end_through_required: 159735
+subscriber_worker_mismatch: 69
+	t16-elections	8/8/2026, 10:25:40 PM	36.1s	verified	
+start_missing: 3
+worker_unmapped: 234
+benefit_unmapped: 54
+relation_unmapped: 22
+worker_ref_missing: 3
+end_not_after_start: 625
+employer_ref_missing: 2
+	t-employer-rates	8/8/2026, 10:20:32 PM	2.5s	verified	
+bad_rate: 2
+rate_conflict: 1
+	t-employer-policies	8/8/2026, 10:13:52 PM	3.4s	verified	
+policy_unmapped: 2
+	t-employer-rates	8/8/2026, 10:08:57 PM	4.4s	verified	
+bad_rate: 2
+rate_conflict: 1
+	t-employer-policies	8/8/2026, 9:56:41 PM	6.3s	verified	
+policy_unmapped: 2
+	t16-elections	8/8/2026, 6:56:34 PM	4367.7s	verified	
+start_missing: 3
+worker_unmapped: 234
+benefit_unmapped: 54
+relation_unmapped: 22
+worker_ref_missing: 3
+end_not_after_start: 625
+employer_ref_missing: 2
+election_type_unmapped: 61823
+	t19-payments	8/8/2026, 7:17:26 PM	0.8s	verified	
+date_missing: 1
+amount_missing: 102
+status_missing: 3
+account_unensured: 3
+payer_ref_missing: 40
+payment_type_missing: 1
+	t19-payments	8/8/2026, 7:06:36 PM	36.4s	verified	
+date_missing: 1
+amount_missing: 102
+status_missing: 3
+account_unensured: 3
+payer_ref_missing: 40
+payment_type_missing: 1
+	t18-ledger	8/8/2026, 6:26:05 PM	2279.1s	verified	none
+	t15-relationships	8/8/2026, 6:50:15 PM	196.1s	verified	
+alt_worker_unmapped: 7
+owner_has_no_worker: 42
+alt_contact_unmapped: 2
+relation_create_failed: 6
+	t15-relationships	8/8/2026, 6:25:44 PM	910.6s	verified	
+alt_worker_unmapped: 7
+owner_has_no_worker: 42
+alt_contact_unmapped: 2
+relation_create_failed: 6
+	n4-employee-ids	8/8/2026, 6:31:15 PM	2.9s	verified	
+worker_unmapped: 80
+employer_unmapped: 4
+	n4-employee-ids	8/8/2026, 6:25:48 PM	9s	verified	
+worker_unmapped: 80
+employer_unmapped: 4
+	t6-member-statuses	8/8/2026, 5:35:55 PM	2089.3s	verified	
+worker_unmapped: 1
+	t7t24-employers	8/8/2026, 5:43:19 PM	14.1s	verified	
+phone_invalid: 7
+duplicate_email: 442
+shopcontact_no_name: 73
+shopcontact_employer_unresolved: 5
+	t27-users	8/8/2026, 5:36:00 PM	186.3s	verified	
+no_resolvable_worker: 335
+ambiguous_worker_email: 26
+	t7t24-employers	8/8/2026, 5:35:42 PM	28.9s	verified	
+phone_invalid: 7
+duplicate_email: 442
+shopcontact_no_name: 73
+shopcontact_employer_unresolved: 5
+	t3t1-contacts-workers	8/8/2026, 1:46:02 PM	13542.5s	verified	
+phone_invalid: 21
+contact_no_name: 9
+duplicate_email: 10614
+ssn_collision_q36: 1
+address_incomplete: 1089
+worker_contact_unresolved: 4
+worker_id_value_collision: 17107
+	t-policies	8/8/2026, 5:07:27 PM	40.2s	verified	
+policy_ref_not_staged: 1
+policy_unmatched_unreferenced: 129
+	t-policies	8/8/2026, 5:01:54 PM	55.4s	verified	
+policy_ref_not_staged: 1
+policy_unmatched_unreferenced: 129
+	seed-trust-config	8/8/2026, 4:42:17 PM	0.7s	completed	none
+	t4-options	8/8/2026, 1:43:24 PM	0.6s	verified	none
