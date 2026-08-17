@@ -218,6 +218,14 @@ export interface WorkerStorage {
   getWorkerDisplayName(id: string | undefined | null): Promise<string>;
   getWorkerBySSN(ssn: string): Promise<Worker | undefined>;
   /**
+   * Bulk variant of `getWorkerBySSN`: resolve many SSNs in ONE query.
+   * Returns a map keyed by the normalized 9-digit SSN. SSNs that fail to
+   * parse or match nothing are simply absent from the map (same semantics
+   * as the single lookup returning undefined). Used by feed wizards to
+   * prefetch worker rows instead of issuing one query per file row.
+   */
+  getWorkersBySSNs(ssns: string[]): Promise<Map<string, Worker>>;
+  /**
    * Near-match candidates for new-worker verification: existing workers whose
    * contact matches at least two of (given name, family name, birth date),
    * case-insensitively for names. Used to catch changed-SSN / duplicate rows
@@ -1027,6 +1035,33 @@ export function createWorkerStorage(contactsStorage: ContactsStorage): WorkerSto
         .where(sql`regexp_replace(${workers.ssn}, '[^0-9]', '', 'g') = ${normalizedSSN}`);
       
       return worker ? stripWorkerData(worker) : undefined;
+    },
+
+    async getWorkersBySSNs(ssns: string[]): Promise<Map<string, Worker>> {
+      const result = new Map<string, Worker>();
+      const { parseSSN } = await import('@shared/utils/ssn');
+      const normalized = new Set<string>();
+      for (const raw of ssns) {
+        try {
+          normalized.add(parseSSN(raw));
+        } catch {
+          // Unparseable SSNs match nothing — same as the single lookup.
+        }
+      }
+      if (normalized.size === 0) return result;
+      const client = getClient();
+      const values = Array.from(normalized);
+      // Same normalized comparison as getWorkerBySSN, in one query.
+      // (`IN (${sql.join(...)})` — `= ANY(${array})` is unreliable here.)
+      const rows = await client
+        .select()
+        .from(workers)
+        .where(sql`regexp_replace(${workers.ssn}, '[^0-9]', '', 'g') IN (${sql.join(values.map((v) => sql`${v}`), sql`, `)})`);
+      for (const row of rows) {
+        const key = (row.ssn || '').replace(/[^0-9]/g, '');
+        result.set(key, stripWorkerData(row) as Worker);
+      }
+      return result;
     },
 
     async findPotentialSsnMatches(criteria: {

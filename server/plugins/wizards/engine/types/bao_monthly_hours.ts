@@ -491,6 +491,13 @@ export class BaoMonthlyHoursWizard extends GbhetLegalWorkersWizard {
       return total;
     };
 
+    // Bulk-resolve every SSN in the file in ONE query (previously one
+    // worker lookup per row).
+    const allSsns = mappedRows
+      .map((r) => r.ssn?.toString().trim())
+      .filter((s): s is string => !!s);
+    const workersBySsn = await storage.workers.getWorkersBySSNs(allSsns);
+
     return this.runWithEmployerStatusContext(employerId, async () => {
       const bySsn = new Map<string, PreviewWorkerRow>();
 
@@ -520,7 +527,7 @@ export class BaoMonthlyHoursWizard extends GbhetLegalWorkersWizard {
           notes.push(`Employment status "${row.employmentStatus}" could not be resolved`);
         }
 
-        const worker = padded ? await storage.workers.getWorkerBySSN(padded) : undefined;
+        const worker = padded ? workersBySsn.get(padded) : undefined;
         const workerId = worker?.id ?? null;
         if (!worker) {
           notes.push('New worker (will be created during processing)');
@@ -685,6 +692,56 @@ export class BaoMonthlyHoursWizard extends GbhetLegalWorkersWizard {
   }
 
   /**
+   * Per-wizard-run memo of the withholding fund-account resolution (the
+   * wizard object identity is stable for the duration of one processFeedData
+   * run). Stores the settled promise so a resolution error re-throws
+   * identically for every row.
+   */
+  private withholdingAccountMemo = new WeakMap<object, Promise<string>>();
+
+  /**
+   * Fund account: taken from the enabled BAO hourly charge-plugin config.
+   * Prefer a config scoped to THIS employer; fall back to a global config.
+   * Ambiguity (multiple candidates at the winning scope) is an explicit
+   * error rather than a silent first-match pick.
+   */
+  private resolveWithholdingAccountId(wizard: object, employerId: string): Promise<string> {
+    const memo = this.withholdingAccountMemo.get(wizard);
+    if (memo) return memo;
+    const promise = (async () => {
+      const configs = await storage.pluginConfigs.search('charge', {
+        pluginId: 'bao-hourly',
+        enabled: true,
+      });
+      type ChargeSub = { account?: string | null; scope?: string | null; employerId?: string | null } | null;
+      const withAccount = configs.filter((c) => (c.subsidiary as ChargeSub)?.account);
+      const employerScoped = withAccount.filter(
+        (c) => (c.subsidiary as ChargeSub)?.employerId === employerId,
+      );
+      const globalScoped = withAccount.filter(
+        (c) => !(c.subsidiary as ChargeSub)?.employerId,
+      );
+      const candidates = employerScoped.length > 0 ? employerScoped : globalScoped;
+      if (candidates.length === 0) {
+        throw new Error(
+          'No enabled BAO Hourly charge plugin config with a ledger account applies to this employer; configure one before uploading withholding amounts',
+        );
+      }
+      if (candidates.length > 1) {
+        throw new Error(
+          'Multiple enabled BAO Hourly charge plugin configs with ledger accounts apply to this employer; disambiguate the configs before uploading withholding amounts',
+        );
+      }
+      return (candidates[0].subsidiary as ChargeSub)!.account as string;
+    })();
+    // Avoid an unhandled-rejection warning when a row is never processed
+    // after a failed resolution.
+    promise.catch(() => {});
+    this.withholdingAccountMemo.set(wizard, promise);
+    return promise;
+  }
+
+  /**
    * Feed-processing hook (duck-typed from `processFeedData`): record the
    * optional Employee Withholding Amount as a stored withholding ALLOCATION
    * (upload/worker/month/worker-EA/amount). The worker's EA is ensured at
@@ -716,38 +773,16 @@ export class BaoMonthlyHoursWizard extends GbhetLegalWorkersWizard {
     const ym = `${year}-${pad2(month)}`;
     const statementYmd = `${ym}-01`;
 
-    // Fund account: taken from the enabled BAO hourly charge-plugin config.
-    // Prefer a config scoped to THIS employer; fall back to a global config.
-    // Ambiguity (multiple candidates at the winning scope) is an explicit
-    // error rather than a silent first-match pick.
     const employerId = wizard.entityId;
     if (!employerId) {
       throw new Error('Wizard is not linked to an employer');
     }
-    const configs = await storage.pluginConfigs.search('charge', {
-      pluginId: 'bao-hourly',
-      enabled: true,
-    });
-    type ChargeSub = { account?: string | null; scope?: string | null; employerId?: string | null } | null;
-    const withAccount = configs.filter((c) => (c.subsidiary as ChargeSub)?.account);
-    const employerScoped = withAccount.filter(
-      (c) => (c.subsidiary as ChargeSub)?.employerId === employerId,
-    );
-    const globalScoped = withAccount.filter(
-      (c) => !(c.subsidiary as ChargeSub)?.employerId,
-    );
-    const candidates = employerScoped.length > 0 ? employerScoped : globalScoped;
-    if (candidates.length === 0) {
-      throw new Error(
-        'No enabled BAO Hourly charge plugin config with a ledger account applies to this employer; configure one before uploading withholding amounts',
-      );
-    }
-    if (candidates.length > 1) {
-      throw new Error(
-        'Multiple enabled BAO Hourly charge plugin configs with ledger accounts apply to this employer; disambiguate the configs before uploading withholding amounts',
-      );
-    }
-    const accountId = (candidates[0].subsidiary as ChargeSub)!.account as string;
+    // The fund-account resolution is invariant across a processing run, so
+    // it is memoized per wizard object (one config search per run instead of
+    // one per row with a withholding value). A resolution failure is cached
+    // as a rejected promise so every row fails with the SAME error the
+    // per-row search used to throw.
+    const accountId = await this.resolveWithholdingAccountId(wizard, employerId);
 
     try {
       if (amount === 0) {

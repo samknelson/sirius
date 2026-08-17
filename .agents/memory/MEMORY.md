@@ -118,4 +118,5 @@
 - [S1 shop JSON is the employer config store](s1-shop-json-config.md) — policy history + charge-plugin rate histories live in field_sirius_json; hourly-uuid allow-list ruling inside; variable dumps carry live Stripe keys.
 - [S1 smoke vs regenerated staging](s1-smoke-regen-fallout.md) — staging regen typed all synthetic payments; smoke guard fingerprint + t16–t19 expectations stale (17 pre-existing failures, guard refuses).
 - [Task-merge SHA rewrite vs deploy branches](task-merge-divergent-deploy-branch.md) — non-fast-forward on push-branch.sh = duplicate content, different SHAs; verify empty diff then `merge -s ours`.
+- [BAO hours upload performance](bao-hours-upload-performance.md) — parse-once file cache by file id + bulk SSN prefetch; tests stubbing getWorkerBySSN must also stub getWorkersBySSNs.
 - [.replit gitignored vs task review](dotreplit-gitignored-review.md) — .replit workflow changes never show in the task diff; completion review rejects unless drift_reason explains it.

@@ -166,6 +166,15 @@ async function testPreview() {
     "900114444": { id: "smoke-worker-3" },
   };
   stub(storage.workers, "getWorkerBySSN", async (ssn: string) => workerBySsn[String(ssn).replace(/\D/g, "")]);
+  stub(storage.workers, "getWorkersBySSNs", async (ssns: string[]) => {
+    const map = new Map<string, any>();
+    for (const raw of ssns) {
+      const digits = String(raw).replace(/\D/g, "").padStart(9, "0");
+      const w = workerBySsn[digits];
+      if (w) map.set(digits, w);
+    }
+    return map;
+  });
   stub(storage.employers, "getEmployer", async () => ({ id: EMPLOYER_ID, industryId: "smoke-industry" }));
   // Member-status history: threshold 80 lives on the ms JSON, matching
   // readThresholdFromMs (ms.data.threshold or similar shape).

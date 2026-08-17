@@ -93,6 +93,19 @@ function buildVerifyStep(): WizardStepHandler {
         ctx.wizardId,
       );
 
+      // Bulk-resolve every SSN in the file in one query instead of a
+      // per-row lookup; padded SSNs absent from the map are new workers.
+      const paddedSsns: string[] = [];
+      for (const row of mappedRows) {
+        const rawSsn = row.ssn?.toString().trim();
+        if (!rawSsn) continue;
+        const digits = rawSsn.replace(/\D/g, "");
+        if (digits.length === 0 || digits.length > 9) continue;
+        paddedSsns.push(digits.padStart(9, "0"));
+      }
+      const existingBySsn =
+        await ctx.storage.workers.getWorkersBySSNs(paddedSsns);
+
       const rows: VerifyRow[] = [];
       const seenSsns = new Set<string>();
       let processed = 0;
@@ -113,7 +126,7 @@ function buildVerifyStep(): WizardStepHandler {
         const padded = digits.padStart(9, "0");
         if (seenSsns.has(padded)) continue;
 
-        const existing = await ctx.storage.workers.getWorkerBySSN(padded);
+        const existing = existingBySsn.get(padded);
         if (existing) continue;
         seenSsns.add(padded);
 

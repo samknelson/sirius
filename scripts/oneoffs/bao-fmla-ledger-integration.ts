@@ -88,6 +88,13 @@ async function main() {
   let previewRows: Array<Record<string, any>> = [];
   stub(baoMonthlyHours, "loadMappedRows", async () => ({ wizard, wizardData: wizard.data, file: {}, rawRows: [], hasHeaders: true, mode: "create", mappedRows: previewRows }));
   stub(storage.workers, "getWorkerBySSN", async () => ({ id: ids.worker }));
+  stub(storage.workers, "getWorkersBySSNs", async (ssns: string[]) => {
+    const map = new Map<string, any>();
+    for (const raw of ssns) {
+      map.set(String(raw).replace(/\D/g, "").padStart(9, "0"), { id: ids.worker });
+    }
+    return map;
+  });
   stub(baoMonthlyHours as any, "syncWorkStatusFromEmployment", async () => {});
 
   const scenario = async (label: string, status: string, hours: string, expectTotal: string, expectSplit: boolean) => {

@@ -51,6 +51,13 @@ interface RunContext {
   unmappedValues: Set<string>;
   unmappedOnlyRows: Set<number>;
   ssnWarnings: SsnWarning[];
+  // Per-run caches for option lists that were previously fetched per row.
+  employmentStatusOptions?: Array<{ id: string; name: string; code: string; employed: boolean }>;
+  workStatusOptions?: Array<{ id: string; name: string }>;
+}
+
+function freshRunContext(employerId: string): RunContext {
+  return { employerId, mappings: null, unmappedValues: new Set(), unmappedOnlyRows: new Set(), ssnWarnings: [] };
 }
 
 const runContextStorage = new AsyncLocalStorage<RunContext>();
@@ -326,8 +333,12 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
    * Get employment status options from the database
    */
   protected async getEmploymentStatusOptions(): Promise<Array<{ id: string; name: string; code: string; employed: boolean }>> {
+    const ctx = runContextStorage.getStore();
+    if (ctx?.employmentStatusOptions) return ctx.employmentStatusOptions;
     const statuses = await unifiedOptionsStorage.list("employment-status");
-    return statuses.map(s => ({ id: s.id, name: s.name, code: s.code, employed: s.employed }));
+    const options = statuses.map(s => ({ id: s.id, name: s.name, code: s.code, employed: s.employed }));
+    if (ctx) ctx.employmentStatusOptions = options;
+    return options;
   }
 
   protected async getEmployerStatusMappings(): Promise<Array<{ sourceStatus: string; targetStatusId: string }>> {
@@ -343,8 +354,12 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
    * Get work status options from the database
    */
   private async getWorkStatusOptions(): Promise<Array<{ id: string; name: string }>> {
+    const ctx = runContextStorage.getStore();
+    if (ctx?.workStatusOptions) return ctx.workStatusOptions;
     const statuses = await unifiedOptionsStorage.list("worker-ws");
-    return statuses.map(s => ({ id: s.id, name: s.name }));
+    const options = statuses.map(s => ({ id: s.id, name: s.name }));
+    if (ctx) ctx.workStatusOptions = options;
+    return options;
   }
 
   /**
@@ -378,8 +393,15 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
     // Get current work status name if it exists
     let currentWorkStatusName: string | null = null;
     if (worker.denormWsId) {
-      const currentWs = await unifiedOptionsStorage.get("worker-ws", worker.denormWsId);
-      currentWorkStatusName = currentWs?.name || null;
+      // Resolve from the (run-cached) options list; fall back to a direct
+      // get only if the id is somehow absent from the list.
+      const cached = (await this.getWorkStatusOptions()).find(ws => ws.id === worker.denormWsId);
+      if (cached) {
+        currentWorkStatusName = cached.name;
+      } else {
+        const currentWs = await unifiedOptionsStorage.get("worker-ws", worker.denormWsId);
+        currentWorkStatusName = currentWs?.name || null;
+      }
     }
 
     // Rule: Never change if current status is "Deceased" (using robust pattern matching)
@@ -457,7 +479,7 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
     onProgress?: (progress: { processed: number; total: number; validRows: number; invalidRows: number }) => void
   ): Promise<ValidationResults> {
     const wizard = await storage.wizards.getById(wizardId);
-    const ctx: RunContext = { employerId: wizard?.entityId || '', mappings: null, unmappedValues: new Set(), unmappedOnlyRows: new Set(), ssnWarnings: [] };
+    const ctx: RunContext = freshRunContext(wizard?.entityId || '');
 
     return runContextStorage.run(ctx, async () => {
       const results = await super.validateFeedData(wizardId, batchSize, onProgress);
@@ -522,7 +544,7 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
     }) => void
   ): Promise<ProcessResults> {
     const wizard = await storage.wizards.getById(wizardId);
-    const ctx: RunContext = { employerId: wizard?.entityId || '', mappings: null, unmappedValues: new Set(), unmappedOnlyRows: new Set(), ssnWarnings: [] };
+    const ctx: RunContext = freshRunContext(wizard?.entityId || '');
     return runContextStorage.run(ctx, () => super.processFeedData(wizardId, batchSize, onProgress));
   }
 
@@ -642,7 +664,7 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
    * wrappers (e.g. during a read-only preview computation).
    */
   protected async runWithEmployerStatusContext<T>(employerId: string, fn: () => Promise<T>): Promise<T> {
-    const ctx: RunContext = { employerId, mappings: null, unmappedValues: new Set(), unmappedOnlyRows: new Set(), ssnWarnings: [] };
+    const ctx: RunContext = freshRunContext(employerId);
     return runContextStorage.run(ctx, fn);
   }
 

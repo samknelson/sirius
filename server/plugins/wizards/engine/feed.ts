@@ -5,6 +5,48 @@ import { parse as parseCSV } from 'csv-parse/sync';
 import { stringify as stringifyCSV } from 'csv-stringify/sync';
 import * as XLSX from 'xlsx';
 import { fileSystemService } from '../../../services/files/index.js';
+import { parseSSN, validateSSN } from '@shared/utils/ssn';
+import { logger } from '../../../logger.js';
+
+/**
+ * Cache of parsed upload rows keyed by file id. File contents are immutable
+ * (re-uploading always creates a NEW files row and `associateFile` clears
+ * downstream state), so entries never go stale; the cap only bounds memory.
+ * Cached rows are the post-`filterEmptyColumns` raw rows — column mapping
+ * and header handling are applied per call (cheap, in-memory) so a mapping
+ * change never needs invalidation either. Callers must treat the cached
+ * arrays as read-only.
+ */
+const parsedRowsCache = new Map<string, any[][]>();
+const PARSED_ROWS_CACHE_MAX = 8;
+
+function getCachedParsedRows(fileId: string): any[][] | undefined {
+  const hit = parsedRowsCache.get(fileId);
+  if (hit) {
+    // Refresh recency (Map preserves insertion order).
+    parsedRowsCache.delete(fileId);
+    parsedRowsCache.set(fileId, hit);
+  }
+  return hit;
+}
+
+function setCachedParsedRows(fileId: string, rows: any[][]): void {
+  if (parsedRowsCache.size >= PARSED_ROWS_CACHE_MAX && !parsedRowsCache.has(fileId)) {
+    const oldest = parsedRowsCache.keys().next().value;
+    if (oldest !== undefined) parsedRowsCache.delete(oldest);
+  }
+  parsedRowsCache.set(fileId, rows);
+}
+
+/** Coarse step timing, logged only when FEED_PROFILE is set. */
+function feedProfile(label: string, startedAtMs: number, extra?: Record<string, unknown>): void {
+  if (!process.env.FEED_PROFILE) return;
+  logger.info(`feed-profile ${label}`, {
+    service: 'feed-wizard-profile',
+    durationMs: Date.now() - startedAtMs,
+    ...extra,
+  });
+}
 
 /**
  * Filter out completely empty columns from parsed rows
@@ -235,7 +277,6 @@ export abstract class FeedWizard extends BaseWizard {
 
       // SSN validation using centralized utility
       if (field.format === 'ssn') {
-        const { parseSSN, validateSSN } = await import('@shared/utils/ssn');
         try {
           // Parse SSN to normalize format
           const parsed = parseSSN(String(value));
@@ -301,59 +342,12 @@ export abstract class FeedWizard extends BaseWizard {
     batchSize: number = 100,
     onProgress?: (progress: { processed: number; total: number; validRows: number; invalidRows: number }) => void
   ): Promise<ValidationResults> {
-    const wizard = await storage.wizards.getById(wizardId);
-    if (!wizard) {
-      throw new Error('Wizard not found');
-    }
-
-    const wizardData = wizard.data as any;
-    const fileId = wizardData?.uploadedFileId;
-    const rawColumnMapping: Record<string, string> = wizardData?.columnMapping || {};
-    validateMappingDuplicates(rawColumnMapping);
-    const columnMapping = normalizeColumnMapping(rawColumnMapping);
-    const hasHeaders = wizardData?.hasHeaders ?? true;
-    const mode = wizardData?.mode || 'create';
-
-    if (!fileId) {
-      throw new Error('No uploaded file found');
-    }
-
-    const file = await storage.files.getById(fileId);
-    if (!file) {
-      throw new Error('File not found');
-    }
-
-    const buffer = await fileSystemService.download(file.fileSystemId, file.storagePath);
-
-    let rawRows: any[] = [];
-    if (file.mimeType === 'text/csv') {
-      rawRows = parseCSV(buffer, {
-        columns: false,
-        skip_empty_lines: true,
-        relax_column_count: true
-      });
-    } else if (file.mimeType?.includes('spreadsheet') || file.mimeType?.includes('excel')) {
-      const workbook = XLSX.read(buffer, { type: 'buffer' });
-      const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-      rawRows = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
-    } else {
-      throw new Error('Unsupported file type');
-    }
-
-    rawRows = filterEmptyColumns(rawRows);
-
-    const dataRows = hasHeaders ? rawRows.slice(1) : rawRows;
-
-    const mappedRows = dataRows.map((row: any[]) => {
-      const mapped: Record<string, any> = {};
-      Object.entries(columnMapping).forEach(([sourceCol, fieldId]) => {
-        if (fieldId && fieldId !== '_unmapped') {
-          const colIndex = parseInt(sourceCol.replace('col_', ''));
-          mapped[fieldId] = row[colIndex];
-        }
-      });
-      return mapped;
-    });
+    // Single shared download/parse/map path (cached by file id) — this used
+    // to duplicate the parsing logic inline.
+    const tValidate = Date.now();
+    const loaded = await this.loadMappedRows(wizardId);
+    const { wizardData, mappedRows } = loaded;
+    const mode = loaded.mode as 'create' | 'update';
 
     const totalRows = mappedRows.length;
     let validRows = 0;
@@ -415,6 +409,7 @@ export abstract class FeedWizard extends BaseWizard {
       errorSummary,
       completedAt: new Date()
     };
+    feedProfile('validateFeedData', tValidate, { rows: totalRows });
 
     // Save validation results to wizard data
     await storage.wizards.update(wizardId, {
@@ -547,7 +542,7 @@ export abstract class FeedWizard extends BaseWizard {
     validateMappingDuplicates(rawColumnMapping);
     const columnMapping = normalizeColumnMapping(rawColumnMapping);
     const hasHeaders = wizardData?.hasHeaders ?? true;
-    const mode = wizardData?.mode || 'create';
+    const mode = (wizardData?.mode || 'create') as 'create' | 'update';
 
     if (!fileId) {
       throw new Error('No uploaded file found');
@@ -558,24 +553,33 @@ export abstract class FeedWizard extends BaseWizard {
       throw new Error('File not found');
     }
 
-    const buffer = await fileSystemService.download(file.fileSystemId, file.storagePath);
+    // Parse once, reuse everywhere: the file's parsed rows are cached by
+    // file id, so validate/verify/preview/process after the first load skip
+    // the download + parse entirely.
+    let rawRows: any[][] | undefined = getCachedParsedRows(file.id);
+    if (!rawRows) {
+      const t0 = Date.now();
+      const buffer = await fileSystemService.download(file.fileSystemId, file.storagePath);
+      const tParse = Date.now();
 
-    let rawRows: any[] = [];
-    if (file.mimeType === 'text/csv') {
-      rawRows = parseCSV(buffer, {
-        columns: false,
-        skip_empty_lines: true,
-        relax_column_count: true
-      });
-    } else if (file.mimeType?.includes('spreadsheet') || file.mimeType?.includes('excel')) {
-      const workbook = XLSX.read(buffer, { type: 'buffer' });
-      const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-      rawRows = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
-    } else {
-      throw new Error('Unsupported file type');
+      if (file.mimeType === 'text/csv') {
+        rawRows = parseCSV(buffer, {
+          columns: false,
+          skip_empty_lines: true,
+          relax_column_count: true
+        });
+      } else if (file.mimeType?.includes('spreadsheet') || file.mimeType?.includes('excel')) {
+        const workbook = XLSX.read(buffer, { type: 'buffer' });
+        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+        rawRows = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
+      } else {
+        throw new Error('Unsupported file type');
+      }
+
+      rawRows = filterEmptyColumns(rawRows!);
+      setCachedParsedRows(file.id, rawRows);
+      feedProfile('loadMappedRows:download+parse', t0, { downloadMs: tParse - t0, fileId: file.id, rows: rawRows.length });
     }
-
-    rawRows = filterEmptyColumns(rawRows);
 
     const dataRows = hasHeaders ? rawRows.slice(1) : rawRows;
 
@@ -621,6 +625,22 @@ export abstract class FeedWizard extends BaseWizard {
       throw new Error('No validation results found. Please validate the data first.');
     }
 
+    const tProcess = Date.now();
+
+    // Prefetch existing workers for every SSN in the file in ONE query
+    // (instead of a per-row lookup). Rows whose SSN is absent from the map
+    // are new workers; the map is kept current as workers are created so a
+    // duplicate SSN later in the file resolves to the just-created worker —
+    // identical to the old per-row lookup behavior.
+    const allSsns: string[] = [];
+    for (const row of mappedRows) {
+      const raw = row.ssn?.toString().trim();
+      if (raw) allSsns.push(raw);
+    }
+    const workersBySsn = await storage.workers.getWorkersBySSNs(allSsns);
+    feedProfile('processFeedData:ssn-prefetch', tProcess, { ssns: allSsns.length, matched: workersBySsn.size });
+    const lookupWorker = (normalizedSsn: string) => workersBySsn.get(normalizedSsn.replace(/[^0-9]/g, ''));
+
     // Process in batches
     const totalRows = mappedRows.length;
     let createdCount = 0;
@@ -648,7 +668,6 @@ export abstract class FeedWizard extends BaseWizard {
           const rawBirthDate = row.dateOfBirth?.toString().trim();
 
           // Parse SSN early to normalize format (strips non-digits, pads with zeros)
-          const { parseSSN, validateSSN } = await import('@shared/utils/ssn');
           let ssn: string | undefined;
           let ssnSsaWarning: string | null = null;
           if (rawSSN) {
@@ -675,7 +694,7 @@ export abstract class FeedWizard extends BaseWizard {
               throw new Error('SSN is required for update mode');
             }
 
-            const existingWorker = await storage.workers.getWorkerBySSN(ssn);
+            const existingWorker = lookupWorker(ssn);
             if (!existingWorker) {
               throw new Error(`No worker found with SSN ${ssn}`);
             }
@@ -788,8 +807,8 @@ export abstract class FeedWizard extends BaseWizard {
             let isNewWorker = false;
             let creationWarning: string | null = null;
             
-            // Check if worker with this SSN already exists
-            const existingWorker = await storage.workers.getWorkerBySSN(ssn);
+            // Check if worker with this SSN already exists (prefetched map)
+            const existingWorker = lookupWorker(ssn);
             if (existingWorker) {
               // Worker exists, update it
               workerId = existingWorker.id;
@@ -811,7 +830,12 @@ export abstract class FeedWizard extends BaseWizard {
               // Set SSN for the new worker. SSA-rule-invalid (e.g. ITIN-style)
               // SSNs are accepted here with a per-row warning; parse and
               // duplicate checks remain blocking in storage.
-              await storage.workers.updateWorkerSSN(workerId, ssn, { allowSsaRuleInvalid: !!ssnSsaWarning });
+              const created = await storage.workers.updateWorkerSSN(workerId, ssn, { allowSsaRuleInvalid: !!ssnSsaWarning });
+              // Keep the prefetch map current so a duplicate SSN later in the
+              // file resolves to this just-created worker.
+              if (created) {
+                workersBySsn.set(ssn.replace(/[^0-9]/g, ''), created);
+              }
               isNewWorker = true;
             }
 
@@ -951,6 +975,8 @@ export abstract class FeedWizard extends BaseWizard {
         }
       }
     }
+
+    feedProfile('processFeedData:rows', tProcess, { rows: totalRows });
 
     // Generate results CSV file
     let resultsFileId: string | undefined;
