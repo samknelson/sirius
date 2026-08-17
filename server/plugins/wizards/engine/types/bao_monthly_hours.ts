@@ -6,6 +6,8 @@ import { WITHHOLDING_CONSUMED } from '../../../../storage/sitespecific/bao/withh
 import { logger } from '../../../../logger.js';
 import { resolveBaoThreshold, lastDayOfMonthYmd } from '../../../trust/eligibility/plugins/bao-shared.js';
 import { isStatusBilled } from '../../../ledger/charge/plugins/sitespecific-bao-hourly.js';
+import { withChargeConfigCache } from '../../../../middleware/request-context.js';
+import { withChargeBatchCollector } from '../../../ledger/charge/charge-batch.js';
 
 function pad2(n: number): string {
   return String(n).padStart(2, '0');
@@ -299,11 +301,46 @@ export class BaoMonthlyHoursWizard extends GbhetLegalWorkersWizard {
   }
 
   /**
+   * Per-wizardId cache of existing (employer, year, month) hours rows,
+   * pre-fetched once before the processing loop begins. The `dirty` set
+   * tracks workers that have already had reconcile+upsert run during this
+   * pass; a duplicate SSN whose worker is dirty gets a fresh targeted query
+   * so it sees rows written by its first occurrence. Keyed by wizardId so
+   * concurrent uploads don't collide. Cleared in `processFeedData` finally.
+   */
+  private readonly _monthHoursRunCache = new Map<
+    string,
+    {
+      rows: Map<string, Array<{ id: string; day: number }>>;
+      dirty: Set<string>;
+    }
+  >();
+
+  /**
+   * Mark a worker as having been fully processed (reconcile + upsert done)
+   * within the current run so its next reconcile re-queries actual DB state.
+   */
+  private _markWorkerDirty(wizardId: string | undefined, workerId: string): void {
+    if (wizardId) {
+      this._monthHoursRunCache.get(wizardId)?.dirty.add(workerId);
+    }
+  }
+
+  /**
    * Reconcile the full worker/employer/month row set: delete every existing
    * hours row whose day is not in `keepDays` (stale FMLA top-ups, legacy
    * multi-day/manual rows) BEFORE the upserts write the intended rows, so the
    * month never carries duplicate hours. `deleteWorkerHours` executes the
    * charge plugins with hours:0 for each removed row, reversing its charges.
+   *
+   * Cache usage during a run:
+   * - First occurrence of a worker: O(1) lookup in the pre-fetch cache.
+   * - Duplicate SSN (worker already dirty): issues a targeted
+   *   `getWorkerHoursForMonth` query so it sees rows written by the earlier
+   *   occurrence — far cheaper than the original full scan but correct.
+   * - No cache (called outside a run): targeted query as fallback.
+   * - New worker (absent from cache, not dirty): treated as having no prior
+   *   rows — correct since none exist yet.
    */
   private async reconcileMonthRows(
     workerId: string,
@@ -311,14 +348,40 @@ export class BaoMonthlyHoursWizard extends GbhetLegalWorkersWizard {
     year: number,
     month: number,
     keepDays: number[],
+    wizardId?: string,
   ): Promise<void> {
     const keep = new Set(keepDays);
-    const rows = await storage.workerHours.getWorkerHours(workerId);
-    const stale = rows.filter(
-      (r: any) => r.employerId === employerId && r.year === year && r.month === month && !keep.has(r.day ?? 1),
-    );
+
+    const runCache = wizardId ? this._monthHoursRunCache.get(wizardId) : undefined;
+    let existingRows: Array<{ id: string; day: number }>;
+
+    if (runCache) {
+      if (runCache.dirty.has(workerId)) {
+        // Duplicate SSN: re-query to see rows written by the earlier
+        // occurrence and refresh the cache entry for subsequent deletes.
+        existingRows = await storage.workerHours.getWorkerHoursForMonth(workerId, employerId, year, month);
+        runCache.rows.set(workerId, existingRows.slice());
+      } else {
+        // First occurrence: use the O(1) pre-fetch snapshot.
+        existingRows = runCache.rows.get(workerId) ?? [];
+      }
+    } else {
+      // No run cache (outside processFeedData): targeted query, never the
+      // expensive all-employers/all-months full scan.
+      existingRows = await storage.workerHours.getWorkerHoursForMonth(workerId, employerId, year, month);
+    }
+
+    const stale = existingRows.filter((r) => !keep.has(r.day ?? 1));
     for (const r of stale) {
       await storage.workerHours.deleteWorkerHours(r.id);
+      // Keep the in-memory cache coherent within this reconcile call.
+      if (runCache) {
+        const workerRows = runCache.rows.get(workerId);
+        if (workerRows) {
+          const idx = workerRows.findIndex((x) => x.id === r.id);
+          if (idx >= 0) workerRows.splice(idx, 1);
+        }
+      }
     }
   }
 
@@ -373,57 +436,70 @@ export class BaoMonthlyHoursWizard extends GbhetLegalWorkersWizard {
       }
     }
 
-    if (!splitPlan) {
-      // Record as reported (single day-1 row) and remove every other row in
-      // the month (e.g. a stale FMLA top-up from a prior split upload).
-      if (employerId && isFinite(year) && isFinite(month)) {
-        await this.reconcileMonthRows(workerId, employerId, year, month, [FMLA_SPLIT_ACTIVE_DAY]);
+    // Mark dirty in a finally so that even a partial write (upserts completed
+    // but syncWorkStatusFromEmployment or another later step throws) leaves
+    // the worker marked dirty. Any subsequent duplicate-SSN row then
+    // re-queries current DB state rather than reading the stale pre-fetch
+    // snapshot, preventing leftover FMLA top-up rows.
+    try {
+      if (!splitPlan) {
+        // Record as reported (single day-1 row) and remove every other row in
+        // the month (e.g. a stale FMLA top-up from a prior split upload).
+        if (employerId && isFinite(year) && isFinite(month)) {
+          await this.reconcileMonthRows(workerId, employerId, year, month, [FMLA_SPLIT_ACTIVE_DAY], wizard.id);
+        }
+        await super.processWorkerHours(workerId, row, wizard);
+        return;
       }
-      await super.processWorkerHours(workerId, row, wizard);
-      return;
+
+      const jobTitle = row.jobTitle?.toString().trim() || null;
+
+      // Only the day-1 Active and day-15 FMLA rows may survive for the month.
+      await this.reconcileMonthRows(workerId, employerId, year, month, [FMLA_SPLIT_ACTIVE_DAY, FMLA_SPLIT_FMLA_DAY], wizard.id);
+
+      // Active row (reported hours), dated earlier in the month.
+      // skipHomeEmployerEvent: FMLA splits never set the `home` flag, so the
+      // 2 × deriveHomeEmployerId queries per upsert are always a no-op.
+      await storage.workerHours.upsertWorkerHours({
+        workerId,
+        employerId,
+        employmentStatusId: splitPlan.activeOption.id,
+        year,
+        month,
+        day: FMLA_SPLIT_ACTIVE_DAY,
+        hours: splitPlan.activeHours,
+        jobTitle,
+      }, { skipHomeEmployerEvent: true });
+
+      // FMLA top-up row, dated later so the timeline shows the FMLA transition.
+      await storage.workerHours.upsertWorkerHours({
+        workerId,
+        employerId,
+        employmentStatusId: splitPlan.fmlaOption.id,
+        year,
+        month,
+        day: FMLA_SPLIT_FMLA_DAY,
+        hours: splitPlan.fmlaHours,
+        jobTitle,
+      }, { skipHomeEmployerEvent: true });
+
+      logger.info('BAO FMLA split recorded', {
+        service: 'wizard-bao-monthly-hours',
+        wizardId: wizard.id,
+        workerId,
+        year,
+        month,
+        activeHours: splitPlan.activeHours,
+        fmlaHours: splitPlan.fmlaHours,
+      });
+
+      // Work status syncs from the REPORTED (FMLA) status.
+      await this.syncWorkStatusFromEmployment(workerId, splitPlan.fmlaOption, year, month);
+    } finally {
+      // Always mark dirty after any reconcile/write attempt, successful or
+      // not, so duplicate-SSN rows always re-read current DB state.
+      this._markWorkerDirty(wizard.id, workerId);
     }
-
-    const jobTitle = row.jobTitle?.toString().trim() || null;
-
-    // Only the day-1 Active and day-15 FMLA rows may survive for the month.
-    await this.reconcileMonthRows(workerId, employerId, year, month, [FMLA_SPLIT_ACTIVE_DAY, FMLA_SPLIT_FMLA_DAY]);
-
-    // Active row (reported hours), dated earlier in the month.
-    await storage.workerHours.upsertWorkerHours({
-      workerId,
-      employerId,
-      employmentStatusId: splitPlan.activeOption.id,
-      year,
-      month,
-      day: FMLA_SPLIT_ACTIVE_DAY,
-      hours: splitPlan.activeHours,
-      jobTitle,
-    });
-
-    // FMLA top-up row, dated later so the timeline shows the FMLA transition.
-    await storage.workerHours.upsertWorkerHours({
-      workerId,
-      employerId,
-      employmentStatusId: splitPlan.fmlaOption.id,
-      year,
-      month,
-      day: FMLA_SPLIT_FMLA_DAY,
-      hours: splitPlan.fmlaHours,
-      jobTitle,
-    });
-
-    logger.info('BAO FMLA split recorded', {
-      service: 'wizard-bao-monthly-hours',
-      wizardId: wizard.id,
-      workerId,
-      year,
-      month,
-      activeHours: splitPlan.activeHours,
-      fmlaHours: splitPlan.fmlaHours,
-    });
-
-    // Work status syncs from the REPORTED (FMLA) status.
-    await this.syncWorkStatusFromEmployment(workerId, splitPlan.fmlaOption, year, month);
   }
 
   /**
@@ -654,6 +730,72 @@ export class BaoMonthlyHoursWizard extends GbhetLegalWorkersWizard {
 
   async generateRecords(_year: number, _month: number): Promise<any[]> {
     return [];
+  }
+
+  /**
+   * Override to bulk-pre-fetch existing hours for the upload's
+   * (employer, year, month) before the row loop begins, so every
+   * `reconcileMonthRows` call during the loop reads from the in-memory cache
+   * rather than issuing an individual DB query per worker. The cache is
+   * stored in `_monthHoursRunCache` keyed by wizardId and cleared in a
+   * finally block once the run finishes, even on errors.
+   *
+   * Why this is safe: the pre-fetch snapshot is taken before any writes;
+   * the cache is updated as stale rows are deleted (so a duplicate SSN in
+   * the file sees an already-reconciled state on its second pass). New
+   * workers simply have no cache entry — correct, since they have no prior
+   * rows to remove.
+   */
+  async processFeedData(
+    wizardId: string,
+    batchSize: number = 100,
+    onProgress?: (progress: {
+      processed: number;
+      total: number;
+      createdCount: number;
+      updatedCount: number;
+      successCount: number;
+      failureCount: number;
+      currentRow?: { index: number; status: 'success' | 'error'; error?: string };
+      phase?: string;
+      phaseMessage?: string;
+    }) => void,
+  ): Promise<import('../feed.js').ProcessResults> {
+    // Pull enough wizard state to pre-fetch.
+    const wizard = await storage.wizards.getById(wizardId);
+    const employerId = wizard?.entityId;
+    if (employerId) {
+      const launchArguments = ((wizard?.data as any) || {}).launchArguments || {};
+      const year =
+        typeof launchArguments.year === 'number'
+          ? launchArguments.year
+          : parseInt(String(launchArguments.year), 10);
+      const month =
+        typeof launchArguments.month === 'number'
+          ? launchArguments.month
+          : parseInt(String(launchArguments.month), 10);
+      if (isFinite(year) && isFinite(month) && month >= 1 && month <= 12) {
+        // One query for all workers in this (employer, year, month) — replaces
+        // the 500 individual getWorkerHours(workerId) full-scans that the old
+        // reconcileMonthRows called per row.
+        const bulk = await storage.workerHours.getWorkerHoursForEmployerMonth(employerId, year, month);
+        this._monthHoursRunCache.set(wizardId, { rows: bulk, dirty: new Set() });
+      }
+    }
+    try {
+      // withChargeBatchCollector defers all ledger entry INSERTs produced by
+      // executeChargePlugins during the loop into a single bulk INSERT at the
+      // end, replacing N per-row writes with one statement. withChargeConfigCache
+      // is already installed by gbhet_legal_workers.processFeedData (the parent
+      // override) when this BAO subclass override delegates to super, but we
+      // also install it here so the BAO-only path (when called directly) is
+      // equally optimized.
+      return await withChargeConfigCache(() =>
+        withChargeBatchCollector(() => super.processFeedData(wizardId, batchSize, onProgress)),
+      );
+    } finally {
+      this._monthHoursRunCache.delete(wizardId);
+    }
   }
 
   /**

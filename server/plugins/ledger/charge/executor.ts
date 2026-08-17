@@ -6,7 +6,8 @@ import {
   LedgerNotification,
 } from "./types";
 import { getEnabledChargePluginsByTrigger, getAllEnabledChargePlugins } from "./registry";
-import { areChargePluginsSuppressed } from "../../../middleware/request-context";
+import { areChargePluginsSuppressed, requestContext } from "../../../middleware/request-context";
+import { getOrCreateEaCached } from "./ea-cache";
 import { mergeEnabledChargeConfigs, toChargeConfig } from "./charge-config-resolution";
 import { storage } from "../../../storage";
 import { dateToYmd } from "@shared/utils/date";
@@ -217,16 +218,34 @@ export async function executeChargePlugins(
 }
 
 /**
- * Create ledger entries for transactions
+ * Create ledger entries for transactions.
+ *
+ * When the current request context has a `chargeTransactionSink` (set by
+ * `withChargeBatchCollector`), transactions are pushed to the collector for
+ * deferred bulk insertion rather than being written immediately. The sink's
+ * `flush()` is called by the collector wrapper after the processing loop
+ * finishes. When no sink is present, the original per-transaction write path
+ * is used.
  */
 async function createLedgerEntries(transactions: LedgerTransaction[]): Promise<void> {
+  const sink = requestContext.getStore()?.chargeTransactionSink;
+  if (sink) {
+    // Batch mode: defer writes to the collector; the wrapper flushes at the end.
+    for (const t of transactions) {
+      sink.push(t);
+    }
+    return;
+  }
+
+  // Per-transaction mode (original behavior, now using the EA cache helper).
   for (const transaction of transactions) {
     try {
-      // Find or create EA entry for this entity-account pair using storage layer
-      const ea = await storage.ledger.ea.getOrCreate(
+      // Use the shared EA cache so repeated calls for the same (type, entity,
+      // account) within a request don't issue redundant DB round-trips.
+      const ea = await getOrCreateEaCached(
         transaction.entityType,
         transaction.entityId,
-        transaction.accountId
+        transaction.accountId,
       );
 
       await storage.ledger.entries.create({
@@ -285,12 +304,26 @@ export async function hasRunnableChargePlugins(): Promise<{
 }
 
 /**
- * Get enabled configs for a plugin (global or employer-specific)
+ * Get enabled configs for a plugin (global or employer-specific).
+ *
+ * When a `chargeConfigCache` is present on the current request context (set
+ * by `withChargeConfigCache`), results are memoised for the lifetime of that
+ * scope: the first call for a (pluginId, employerId) pair hits the DB, every
+ * subsequent call returns the cached value. Configs are invariant within a
+ * single processing run (e.g. a bulk upload), so caching is safe and produces
+ * identical ledger output while eliminating hundreds of redundant searches.
  */
 async function getEnabledConfigsForPlugin(
   pluginId: string,
   employerId: string | null
 ): Promise<any[]> {
+  const cacheKey = `${pluginId}|${employerId ?? ''}`;
+  const ctx = requestContext.getStore();
+  const cache = ctx?.chargeConfigCache;
+  if (cache?.has(cacheKey)) {
+    return cache.get(cacheKey)!;
+  }
+
   // All enabled global configs (one per account).
   const globalConfigs = (
     await storage.pluginConfigs.search("charge", {
@@ -300,19 +333,24 @@ async function getEnabledConfigsForPlugin(
     })
   ).map(toChargeConfig);
 
+  let result: any[];
+
   if (!employerId) {
-    return globalConfigs;
+    result = globalConfigs;
+  } else {
+    // Employer-specific configs override globals targeting the same account.
+    const employerConfigs = (
+      await storage.pluginConfigs.search("charge", {
+        pluginId,
+        enabled: true,
+        scope: "employer",
+        employerId,
+      })
+    ).map(toChargeConfig);
+
+    result = mergeEnabledChargeConfigs(globalConfigs, employerConfigs);
   }
 
-  // Employer-specific configs override globals targeting the same account.
-  const employerConfigs = (
-    await storage.pluginConfigs.search("charge", {
-      pluginId,
-      enabled: true,
-      scope: "employer",
-      employerId,
-    })
-  ).map(toChargeConfig);
-
-  return mergeEnabledChargeConfigs(globalConfigs, employerConfigs);
+  cache?.set(cacheKey, result);
+  return result;
 }

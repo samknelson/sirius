@@ -58,8 +58,28 @@ export interface WorkerHoursStorage {
    * `day` defaults to 1 — the historical single-row-per-month behavior.
    * Callers that need MULTIPLE rows in the same month (e.g. the BAO FMLA
    * split writing an Active row and an FMLA row) pass distinct days.
+   *
+   * `options.skipHomeEmployerEvent` — when true, the pre/post
+   * `deriveHomeEmployerId` queries and `emitEmploymentSavedIfChanged` call are
+   * skipped entirely. Safe when the caller knows `home` is not set in `data`
+   * (i.e. a bulk upload that never touches the home flag) — saves 2 DB round-
+   * trips per row with identical ledger/event semantics.
    */
-  upsertWorkerHours(data: { workerId: string; month: number; year: number; day?: number; employerId: string; employmentStatusId: string; hours: number | null; home?: boolean; jobTitle?: string | null }): Promise<WorkerHoursResult>;
+  upsertWorkerHours(data: { workerId: string; month: number; year: number; day?: number; employerId: string; employmentStatusId: string; hours: number | null; home?: boolean; jobTitle?: string | null }, options?: { skipHomeEmployerEvent?: boolean }): Promise<WorkerHoursResult>;
+  /**
+   * Lightweight targeted read: return just the (id, day) pairs for a specific
+   * (worker, employer, year, month). Used by `reconcileMonthRows` as a fast
+   * fallback when the bulk pre-fetch cache is unavailable — avoids loading
+   * the worker's entire hours history across all employers and months.
+   */
+  getWorkerHoursForMonth(workerId: string, employerId: string, year: number, month: number): Promise<Array<{ id: string; day: number }>>;
+  /**
+   * Bulk read for all workers in a given (employer, year, month): returns a
+   * Map<workerId, [{id, day}]>. Used by the BAO upload wizard to pre-load the
+   * full month's existing rows in ONE query before processing begins, so
+   * `reconcileMonthRows` never hits the DB per-worker during the loop.
+   */
+  getWorkerHoursForEmployerMonth(employerId: string, year: number, month: number): Promise<Map<string, Array<{ id: string; day: number }>>>;
   getDistinctWorkerIdsByStatusAndMonths(
     statusIds: string[],
     months: Array<{ year: number; month: number }>,
@@ -639,9 +659,16 @@ export function createWorkerHoursStorage(
       return { success: result.length > 0, notifications };
     },
 
-    async upsertWorkerHours(data: { workerId: string; month: number; year: number; day?: number; employerId: string; employmentStatusId: string; hours: number | null; home?: boolean; jobTitle?: string | null }): Promise<WorkerHoursResult> {
+    async upsertWorkerHours(data: { workerId: string; month: number; year: number; day?: number; employerId: string; employmentStatusId: string; hours: number | null; home?: boolean; jobTitle?: string | null }, options?: { skipHomeEmployerEvent?: boolean }): Promise<WorkerHoursResult> {
       const client = getClient();
-      const preHomeEmployerId = await deriveHomeEmployerId(data.workerId);
+      // Skip the pre/post home-employer derivation when the caller guarantees
+      // that `home` is not being changed by this upsert (bulk uploads that
+      // never touch the home flag). The two DISTINCT ON queries are O(worker
+      // history) and amount to 2× the row count in DB round-trips for a run
+      // that never triggers `emitEmploymentSavedIfChanged` anyway.
+      const preHomeEmployerId = options?.skipHomeEmployerEvent
+        ? null
+        : await deriveHomeEmployerId(data.workerId);
       const setFields: Record<string, unknown> = {
         employmentStatusId: data.employmentStatusId,
         hours: data.hours,
@@ -702,7 +729,7 @@ export function createWorkerHoursStorage(
         }
       }
 
-      if (savedHours) {
+      if (savedHours && !options?.skipHomeEmployerEvent) {
         emitEmploymentSavedIfChanged(
           savedHours.workerId,
           preHomeEmployerId,
@@ -713,6 +740,40 @@ export function createWorkerHoursStorage(
 
       await notifyWorkerDataChanged(savedHours.workerId);
       return { data: savedHours, notifications };
+    },
+
+    async getWorkerHoursForMonth(workerId: string, employerId: string, year: number, month: number): Promise<Array<{ id: string; day: number }>> {
+      const client = getClient();
+      const result = await client.execute(sql`
+        SELECT id, day
+        FROM worker_hours
+        WHERE worker_id = ${workerId}
+          AND employer_id = ${employerId}
+          AND year = ${year}
+          AND month = ${month}
+      `);
+      return (result.rows as Array<{ id: string; day: number }>).map(r => ({ id: r.id, day: r.day }));
+    },
+
+    async getWorkerHoursForEmployerMonth(employerId: string, year: number, month: number): Promise<Map<string, Array<{ id: string; day: number }>>> {
+      const client = getClient();
+      const result = await client.execute(sql`
+        SELECT worker_id, id, day
+        FROM worker_hours
+        WHERE employer_id = ${employerId}
+          AND year = ${year}
+          AND month = ${month}
+      `);
+      const byWorker = new Map<string, Array<{ id: string; day: number }>>();
+      for (const row of result.rows as Array<{ worker_id: string; id: string; day: number }>) {
+        const existing = byWorker.get(row.worker_id);
+        if (existing) {
+          existing.push({ id: row.id, day: row.day });
+        } else {
+          byWorker.set(row.worker_id, [{ id: row.id, day: row.day }]);
+        }
+      }
+      return byWorker;
     },
 
     async getDistinctWorkerIdsByStatusAndMonths(

@@ -3,6 +3,8 @@ import { FeedWizard, FeedField, ValidationError, type ValidationResults, type Pr
 import { WizardStatus, WizardStep, LaunchArgument } from '../base.js';
 import { storage } from '../../../../storage/index.js';
 import { createUnifiedOptionsStorage } from '../../../../storage/unified-options.js';
+import { withChargeConfigCache } from '../../../../middleware/request-context.js';
+import { withChargeBatchCollector } from '../../../../plugins/ledger/charge/charge-batch.js';
 
 const unifiedOptionsStorage = createUnifiedOptionsStorage();
 
@@ -545,7 +547,15 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
   ): Promise<ProcessResults> {
     const wizard = await storage.wizards.getById(wizardId);
     const ctx: RunContext = freshRunContext(wizard?.entityId || '');
-    return runContextStorage.run(ctx, () => super.processFeedData(wizardId, batchSize, onProgress));
+    // withChargeConfigCache: memoises getEnabledConfigsForPlugin for the run
+    // (configs are invariant) — turns N×2 DB searches into 2.
+    // withChargeBatchCollector: defers ledger entry INSERTs into a single bulk
+    // INSERT after the loop, replacing N per-row writes.
+    return runContextStorage.run(ctx, () =>
+      withChargeConfigCache(() =>
+        withChargeBatchCollector(() => super.processFeedData(wizardId, batchSize, onProgress))
+      )
+    );
   }
 
   async validateRow(row: Record<string, any>, rowIndex: number, mode: 'create' | 'update'): Promise<ValidationError[]> {
@@ -766,6 +776,9 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
 
     const jobTitle = row.jobTitle?.toString().trim() || null;
 
+    // skipHomeEmployerEvent: bulk uploads never set the `home` flag, so the
+    // pre/post deriveHomeEmployerId derivation is always a no-op — skip the
+    // 2 extra DISTINCT ON queries per row for identical output.
     await storage.workerHours.upsertWorkerHours({
       workerId,
       employerId,
@@ -774,7 +787,7 @@ export abstract class GbhetLegalWorkersWizard extends FeedWizard {
       month,
       hours,
       jobTitle
-    });
+    }, { skipHomeEmployerEvent: true });
 
     // Sync work status from employment status
     await this.syncWorkStatusFromEmployment(workerId, matchingOption, year, month);

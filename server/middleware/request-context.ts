@@ -47,6 +47,51 @@ export interface RequestContext {
    * for this (it is a loader/operator concern, never a client opt-in).
    */
   suppressChargePlugins?: boolean;
+  /**
+   * Per-run cache for charge plugin configs, keyed by `${pluginId}|${employerId??''}`.
+   * Populated lazily by the charge executor to avoid repeated identical DB
+   * searches across rows in a single bulk upload or batch job — configs are
+   * invariant within a request / processing run. Absent outside
+   * {@link withChargeConfigCache} scopes; when absent the executor fetches
+   * normally. Never write to this outside the executor.
+   */
+  chargeConfigCache?: Map<string, any[]>;
+  /**
+   * Per-run cache for ledger entity-account (EA) records, keyed by
+   * `${entityType}:${entityId}:${accountId}`. Populated by
+   * `getOrCreateEaCached` in the charge EA-cache helper. Eliminates the
+   * redundant `getOrCreate` DB calls that both the charge plugin (to compute
+   * the `chargePluginKey`) and the executor (to resolve the `eaId` for the
+   * INSERT) issue for every row — within one upload the EA is always the same.
+   * Absent outside {@link withChargeBatchCollector} scopes.
+   */
+  ledgerEaCache?: Map<string, { id: string }>;
+  /**
+   * When set, the charge executor pushes `LedgerTransaction` objects here
+   * instead of writing them immediately to the DB. The sink's `flush()`
+   * method runs inside the same `requestContext.run` scope (so the EA cache
+   * is still live), bulk-inserting accumulated entries in one statement.
+   *
+   * The extended interface also supports collector-aware storage reads so that
+   * the plugin's own delete/adjustment logic (which calls `getByChargePluginKey`
+   * and `getByReferenceAndConfig`) can see pending entries as if they were in
+   * the DB — allowing the plugin to correctly cancel pending creates when an
+   * hours row is deleted or a later duplicate row changes the billing outcome.
+   * `cancelBySyntheticId` is called by the patched `delete(id)` when it
+   * detects a synthetic-id prefix.
+   *
+   * Absent outside {@link withChargeBatchCollector} scopes; executor falls back
+   * to the normal per-row write path when absent.
+   */
+  chargeTransactionSink?: {
+    push(transaction: unknown): void;
+    /** Returns a synthetic Ledger-like record for a pending transaction, or `undefined`. */
+    getPendingAsEntry(chargePlugin: string, chargePluginKey: string): { id: string; amount: string; chargePlugin: string; chargePluginKey: string; chargePluginConfigId: string | null; eaId: null; referenceType: string | null; referenceId: string | null; date: null; memo: string | null; data: unknown; statementYmd: string } | undefined;
+    /** Returns all pending synthetic entries matching a referenceId + configId. */
+    getPendingByReference(referenceId: string, chargePluginConfigId: string): Array<{ id: string; amount: string; chargePlugin: string; chargePluginKey: string; chargePluginConfigId: string | null; eaId: null; referenceType: string | null; referenceId: string | null; date: null; memo: string | null; data: unknown; statementYmd: string }>;
+    /** Cancel a pending entry by its synthetic id. Returns `true` if found. */
+    cancelBySyntheticId(id: string): boolean;
+  };
 }
 
 export const requestContext = new AsyncLocalStorage<RequestContext>();
@@ -116,6 +161,22 @@ export function withChargePluginsSuppressed<T>(fn: () => Promise<T>): Promise<T>
  */
 export function isWmbScanWrite(): boolean {
   return requestContext.getStore()?.wmbScanWrite === true;
+}
+
+/**
+ * Run `fn` in a nested request context that carries a fresh charge-plugin
+ * config cache. The charge executor populates the cache on the first lookup
+ * for each (pluginId, employerId) pair and reuses it for subsequent rows,
+ * eliminating the repeated `pluginConfigs.search` calls that a bulk upload
+ * fires once per row. Configs are invariant within a single processing run,
+ * so caching them for the lifetime of `fn` produces identical ledger output.
+ * The cache is discarded when `fn` returns; the surrounding context is
+ * restored automatically.
+ */
+export function withChargeConfigCache<T>(fn: () => Promise<T>): Promise<T> {
+  const current = requestContext.getStore();
+  const next: RequestContext = { ...(current ?? {}), chargeConfigCache: new Map() };
+  return requestContext.run(next, fn);
 }
 
 /**

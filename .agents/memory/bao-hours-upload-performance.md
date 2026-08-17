@@ -1,14 +1,20 @@
 ---
 name: BAO hours upload performance
-description: Where feed-wizard upload time goes and the caching/batching invariants added to keep steps fast
+description: Invariants for the three-axis bulk-upload optimization; what must stay true for correctness.
 ---
 
-Profiled (500-row synthetic upload, dev Neon): Process is dominated by per-row DB WRITES — hours upsert firing charge plugins (~2s/row), month reconciliation, work-status writes. Read-side steps were dominated by re-download/re-parse plus per-row lookups; those are now cached/batched:
+## Invariants
 
-- `feed.ts` caches parsed raw rows by FILE ID (module-level bounded Map). Safe because upload files are immutable — a re-upload creates a new files row. Column mapping is applied per call, so mapping changes need no invalidation. Cached arrays must be treated read-only.
-- `storage.workers.getWorkersBySSNs(ssns)` bulk-resolves SSNs in one query (keys = normalized 9 digits). Feed process/preview/verify prefetch it; the process loop must add newly created workers to the map so duplicate SSNs later in the file resolve (matches old per-row behavior).
-- gbhet RunContext caches employment-status/work-status option lists per run; withholding fund-account resolution memoized per wizard object (settled promise so failures rethrow identically per row).
+**1. Dirty-set rule**: any worker that has had reconcile+write attempted (even on error) must be in the run-cache `dirty` set before a subsequent duplicate-SSN row runs. Use `try/finally` around the entire write path — not just after success — so a partial write (upserts done, later step throws) still marks the worker dirty.
 
-**Why:** validate went 18.3s→0.25s, preview 40.2s→2.4s, verify 25.6s→6.7s; process only 996s→902s because charge-plugin execution per row dominates (parallelizing it was explicitly out of scope).
+**Why**: the pre-fetch snapshot reflects DB state at the start of the run. Once any row is written for a worker, the snapshot is stale. A duplicate-SSN row reading the stale snapshot will miss newly-written rows and fail to delete them (e.g. leaving a FMLA day-15 top-up when the duplicate is Active).
 
-**How to apply:** any smoke test that stubs `getWorkerBySSN` on the storage singleton must ALSO stub `getWorkersBySSNs` or previews see every worker as new. `FEED_PROFILE=1` enables coarse step timing logs. Result-CSV generation needs the "private" filesystem in FILESYSTEMS; shell-run scripts without it log "Failed to generate results CSV" (non-fatal).
+**2. skipHomeEmployerEvent is safe only when `home` is never set**: the flag suppresses both pre- and post-upsert `deriveHomeEmployerId` calls. Only pass it from upload paths that never write `home: true`.
+
+**3. chargeConfigCache scope is one run**: `withChargeConfigCache` must wrap the outer processing loop, not individual row handlers. Configs must not be cached across separate uploads (different employers or different processing runs).
+
+**4. withChargeBatchCollector defers all CREATE ledger writes to one bulk INSERT**: installed by `processFeedData` in both `bao_monthly_hours.ts` and `gbhet_legal_workers.ts`. The executor checks `chargeTransactionSink` on the request context; when present it pushes transactions instead of writing immediately. `flush()` runs in a `finally` block so it executes even if the processing loop throws. DELETE paths (non-billed status, `deleteWorkerHours`) are unaffected — they always execute immediately.
+
+**5. EA cache (`ledgerEaCache`) eliminates per-row EA getOrCreate round-trips**: installed by `withChargeBatchCollector`. The plugin's `getOrCreateEaCached` call (to compute `chargePluginKey`) and the collector's flush (to resolve `eaId` for the bulk INSERT) both check this cache first. For a typical BAO upload, all rows share one (employer, account) pair → 1 DB call total regardless of row count.
+
+**6. bulkCreate uses ON CONFLICT DO UPDATE on (chargePlugin, chargePluginKey)**: re-uploading the same hours row overwrites rather than fails. Matches the `getByChargePluginKey` idempotency guarantee of the per-row path. New file: `server/plugins/ledger/charge/charge-batch.ts` (ChargeTransactionCollector + withChargeBatchCollector); `server/plugins/ledger/charge/ea-cache.ts` (getOrCreateEaCached).

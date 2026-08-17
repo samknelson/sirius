@@ -13,6 +13,7 @@ import { z } from "zod";
 import { logger } from "../../../../logger";
 import { storage } from "../../../../storage/database";
 import type { Ledger, ChargePluginConfig } from "@shared/schema";
+import { getOrCreateEaCached } from "../ea-cache";
 
 /**
  * BAO Hourly charge plugin.
@@ -298,8 +299,9 @@ class BaoHourlyChargePlugin extends ChargePlugin {
         };
       }
 
-      // The employer is always the billed entity.
-      const ea = await storage.ledger.ea.getOrCreate(
+      // The employer is always the billed entity. Use the run-scoped EA cache
+      // so repeated rows for the same employer+config do not re-query the DB.
+      const ea = await getOrCreateEaCached(
         "employer",
         hoursContext.employerId,
         config.account,

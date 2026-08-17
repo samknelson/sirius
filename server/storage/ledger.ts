@@ -119,6 +119,13 @@ export interface LedgerEntryStorage {
     side: 'charges' | 'payments',
   ): Promise<Ledger[]>;
   create(entry: InsertLedger): Promise<Ledger>;
+  /**
+   * Bulk-insert ledger entries in a single statement. Uses
+   * `ON CONFLICT (chargePlugin, chargePluginKey) DO UPDATE` so re-uploading
+   * the same hours row overwrites rather than fails. Called by the
+   * `ChargeTransactionCollector` flush after a bulk-upload processing loop.
+   */
+  bulkCreate(entries: InsertLedger[]): Promise<Ledger[]>;
   update(id: string, entry: Partial<InsertLedger>): Promise<Ledger | undefined>;
   delete(id: string): Promise<boolean>;
   deleteByReference(referenceType: string, referenceId: string): Promise<number>;
@@ -1448,6 +1455,40 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
       }
     },
 
+    async bulkCreate(entries: InsertLedger[]): Promise<Ledger[]> {
+      if (entries.length === 0) return [];
+      const now = new Date();
+      const values: Array<typeof ledger.$inferInsert> = entries.map((e) => {
+        const resolvedDate =
+          e.date instanceof Date ? e.date : e.date ? new Date(e.date) : now;
+        const statementYmd = e.statementYmd ?? dateToYmd(resolvedDate);
+        return { ...e, date: resolvedDate, statementYmd };
+      });
+      const client = getClient();
+      const inserted = await client
+        .insert(ledger)
+        .values(values)
+        .onConflictDoUpdate({
+          target: [ledger.chargePlugin, ledger.chargePluginKey],
+          set: {
+            amount: sqlRaw`excluded.amount`,
+            chargePluginConfigId: sqlRaw`excluded.charge_plugin_config_id`,
+            eaId: sqlRaw`excluded.ea_id`,
+            memo: sqlRaw`excluded.memo`,
+            data: sqlRaw`excluded.data`,
+            statementYmd: sqlRaw`excluded.statement_ymd`,
+          },
+        })
+        .returning();
+      if (inserted.length > 0) {
+        await emitLedgerEntryEvents(
+          inserted.map((e) => ({ id: e.id, eaId: e.eaId, statementYmd: e.statementYmd })),
+          "created",
+        );
+      }
+      return inserted;
+    },
+
     async update(id: string, entryUpdate: Partial<InsertLedger>): Promise<Ledger | undefined> {
       validate.validateOrThrow(id);
       const { date, ...rest } = entryUpdate;
@@ -1485,6 +1526,13 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
     },
 
     async delete(id: string): Promise<boolean> {
+      // Synthetic ids (created by the collector for pending entries) start with
+      // "pending::". Cancel the queued transaction instead of touching the DB.
+      if (id.startsWith('pending::')) {
+        const { requestContext: rc } = await import("../middleware/request-context");
+        const cancelled = rc.getStore()?.chargeTransactionSink?.cancelBySyntheticId(id) ?? false;
+        return cancelled;
+      }
       const client = getClient();
       const deleted = await client.delete(ledger)
         .where(eq(ledger.id, id))
@@ -1506,6 +1554,14 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
     },
 
     async getByChargePluginKey(chargePlugin: string, chargePluginKey: string): Promise<Ledger | undefined> {
+      // When a charge-batch collector is active, check pending transactions
+      // first. A pending entry is returned as a synthetic Ledger record so the
+      // plugin's delete-path logic (which relies on finding an existing entry
+      // here) can cancel the pending create rather than leaving it orphaned.
+      const { requestContext: rc } = await import("../middleware/request-context");
+      const pending = rc.getStore()?.chargeTransactionSink?.getPendingAsEntry(chargePlugin, chargePluginKey);
+      if (pending) return pending as unknown as Ledger;
+
       const client = getClient();
       const [entry] = await client.select()
         .from(ledger)
@@ -1518,13 +1574,32 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
     },
 
     async getByReferenceAndConfig(referenceId: string, chargePluginConfigId: string): Promise<Ledger[]> {
+      // Merge DB results with any pending synthetic entries from the collector
+      // so that when the plugin's delete loop calls this method it finds entries
+      // that were queued but not yet written to the DB.
+      const { requestContext: rc } = await import("../middleware/request-context");
+      const pendingEntries = rc.getStore()?.chargeTransactionSink?.getPendingByReference(
+        referenceId,
+        chargePluginConfigId,
+      ) ?? [];
+
       const client = getClient();
-      return await client.select()
+      const dbEntries = await client.select()
         .from(ledger)
         .where(and(
           eq(ledger.referenceId, referenceId),
           eq(ledger.chargePluginConfigId, chargePluginConfigId)
         ));
+
+      // Merge: DB entries first, then any pending synthetics not already in DB.
+      const dbKeys = new Set(dbEntries.map(e => e.chargePluginKey));
+      const merged: Ledger[] = [...dbEntries];
+      for (const p of pendingEntries) {
+        if (!dbKeys.has(p.chargePluginKey)) {
+          merged.push(p as unknown as Ledger);
+        }
+      }
+      return merged;
     },
 
     async listReferenceIdsByConfigAndType(chargePluginConfigId: string, referenceType: string): Promise<string[]> {

@@ -257,18 +257,28 @@ async function testProcessingReconciliation() {
     obj[key] = fn;
   }
 
-  const deleted: number[] = [];
+  const deleted: string[] = [];
   const upserted: Array<{ day: number; hours: number | null; statusId: string }> = [];
-  let existingRows: Array<{ id: string; employerId: string; year: number; month: number; day: number }> = [];
+  // Represents the current DB state for (workerId, employerId, year, month).
+  // Tests update this between calls to simulate DB writes from upserts.
+  let currentMonthRows: Array<{ id: string; day: number }> = [];
 
-  stub(storage.workerHours, "getWorkerHours", async () => existingRows);
+  stub(storage.workerHours, "getWorkerHoursForMonth", async (_wid: string, _eid: string, _yr: number, _mo: number) => {
+    return currentMonthRows.slice();
+  });
   stub(storage.workerHours, "deleteWorkerHours", async (id: string) => {
-    deleted.push(Number(id));
+    deleted.push(id);
+    currentMonthRows = currentMonthRows.filter((r) => r.id !== id);
     return { success: true, notifications: [] };
   });
+  let nextUpsertId = 100;
   stub(storage.workerHours, "upsertWorkerHours", async (data: any) => {
-    upserted.push({ day: data.day ?? 1, hours: data.hours, statusId: data.employmentStatusId });
-    return { workerHours: { id: "x" }, notifications: [] };
+    const day = data.day ?? 1;
+    upserted.push({ day, hours: data.hours, statusId: data.employmentStatusId });
+    // Simulate an upsert: replace existing row for this day or add a new one.
+    currentMonthRows = currentMonthRows.filter((r) => r.day !== day);
+    currentMonthRows.push({ id: String(nextUpsertId++), day });
+    return { data: { id: String(nextUpsertId - 1) }, notifications: [] };
   });
   stub(storage.employers, "getEmployer", async () => ({ id: EMPLOYER_ID, industryId: "smoke-industry" }));
   stub(storage.workerMsh, "getWorkerMsh", async () => [
@@ -279,48 +289,156 @@ async function testProcessingReconciliation() {
   const wizard = { id: "smoke-wizard", entityId: EMPLOYER_ID, data: { launchArguments: { year: 2026, month: 7 } } };
 
   try {
-    // Split month with stale legacy rows on other days → only non-kept days deleted.
-    existingRows = [
-      { id: "10", employerId: EMPLOYER_ID, year: 2026, month: 7, day: 10 },
-      { id: "15", employerId: EMPLOYER_ID, year: 2026, month: 7, day: 15 },
-      { id: "1", employerId: "other-employer", year: 2026, month: 7, day: 20 }, // other employer: untouched
-      { id: "2", employerId: EMPLOYER_ID, year: 2026, month: 6, day: 22 }, // other month: untouched
+    // [A] FMLA split with stale legacy rows on other days → only non-kept days deleted.
+    currentMonthRows = [
+      { id: "10", day: 10 },
+      { id: "15", day: 15 },
     ];
     await (baoMonthlyHours as any).processWorkerHours(
       WORKER_ID,
       { employmentStatus: "FMLA", numberOfHours: "32" },
       wizard,
     );
-    check("split: legacy day-10 row deleted, day-15 kept for upsert", deleted.length === 1 && deleted[0] === 10, deleted);
+    check("[A] split: legacy day-10 deleted, day-15 kept for upsert", deleted.length === 1 && deleted[0] === "10", deleted);
     check(
-      "split: writes day-1 (32h) + day-15 (48h)",
+      "[A] split: writes day-1 (32h) + day-15 (48h)",
       upserted.length === 2 &&
         upserted.some((u) => u.day === 1 && u.hours === 32) &&
         upserted.some((u) => u.day === 15 && u.hours === 48),
       upserted,
     );
 
-    // Transition back to a plain Active month → all non-day-1 rows deleted.
+    // [B] Re-upload same worker as Active → day-15 FMLA top-up deleted, single day-1 written.
     deleted.length = 0;
     upserted.length = 0;
-    existingRows = [
-      { id: "15", employerId: EMPLOYER_ID, year: 2026, month: 7, day: 15 },
-      { id: "9", employerId: EMPLOYER_ID, year: 2026, month: 7, day: 9 },
+    currentMonthRows = [
+      { id: "15", day: 15 },
+      { id: "9", day: 9 },
     ];
     await (baoMonthlyHours as any).processWorkerHours(
       WORKER_ID,
       { employmentStatus: "Active", numberOfHours: "100" },
       wizard,
     );
-    check("re-upload: stale day-15 and day-9 rows deleted", deleted.sort().join(",") === "15,9".split(",").sort().join(","), deleted);
-    check("re-upload: single day-1 row written", upserted.length === 1 && upserted[0].day === 1 && upserted[0].hours === 100, upserted);
+    check("[B] re-upload: stale day-15 and day-9 deleted", [...deleted].sort().join(",") === ["15","9"].sort().join(","), deleted);
+    check("[B] re-upload: single day-1 row written", upserted.length === 1 && upserted[0].day === 1 && upserted[0].hours === 100, upserted);
+  } finally {
+    for (const [obj, key, fn] of originals.reverse()) obj[key] = fn;
+  }
+}
+
+async function testDuplicateSsnReconciliation() {
+  console.log("\n[5] duplicate-SSN reconciliation (split→non-split and non-split→split)");
+
+  const EMPLOYER_ID = "smoke-employer";
+  const WORKER_ID = "smoke-worker-dup";
+
+  const originals: Array<[any, string, any]> = [];
+  function stub(obj: any, key: string, fn: any) {
+    originals.push([obj, key, obj[key]]);
+    obj[key] = fn;
+  }
+
+  const deleted: string[] = [];
+  const upserted: Array<{ day: number; hours: number | null }> = [];
+  let currentMonthRows: Array<{ id: string; day: number }> = [];
+
+  stub(storage.workerHours, "getWorkerHoursForMonth", async () => currentMonthRows.slice());
+  stub(storage.workerHours, "deleteWorkerHours", async (id: string) => {
+    deleted.push(id);
+    currentMonthRows = currentMonthRows.filter((r) => r.id !== id);
+    return { success: true, notifications: [] };
+  });
+  let nextId = 200;
+  stub(storage.workerHours, "upsertWorkerHours", async (data: any) => {
+    const day = data.day ?? 1;
+    upserted.push({ day, hours: data.hours });
+    currentMonthRows = currentMonthRows.filter((r) => r.day !== day);
+    currentMonthRows.push({ id: String(nextId++), day });
+    return { data: { id: String(nextId - 1) }, notifications: [] };
+  });
+  stub(storage.employers, "getEmployer", async () => ({ id: EMPLOYER_ID, industryId: "smoke-industry" }));
+  stub(storage.workerMsh, "getWorkerMsh", async () => [
+    { industryId: "smoke-industry", date: "2026-01-01", ms: { data: { sitespecific: { bao: { threshold: 80 } } } } },
+  ]);
+  stub(baoMonthlyHours as any, "syncWorkStatusFromEmployment", async () => {});
+
+  const wizard = { id: "dup-wizard", entityId: EMPLOYER_ID, data: { launchArguments: { year: 2026, month: 7 } } };
+
+  try {
+    // --- Scenario 1: split → non-split (FMLA row first, then Active overrides) ---
+    // No pre-existing rows. Row 1 = FMLA 32h → creates day-1 (32h Active) + day-15 (48h FMLA).
+    // Row 2 = Active 100h → must delete day-15, upsert day-1 as Active 100h.
+    currentMonthRows = [];
+    deleted.length = 0;
+    upserted.length = 0;
+
+    await (baoMonthlyHours as any).processWorkerHours(WORKER_ID, { employmentStatus: "FMLA", numberOfHours: "32" }, wizard);
+    check("dup[S1] first row (FMLA): 2 upserts written", upserted.length === 2, upserted.length);
+    check("dup[S1] first row: day-1 + day-15 exist", currentMonthRows.length === 2, currentMonthRows.map(r=>r.day));
+
+    deleted.length = 0;
+    upserted.length = 0;
+    await (baoMonthlyHours as any).processWorkerHours(WORKER_ID, { employmentStatus: "Active", numberOfHours: "100" }, wizard);
+    check("dup[S1] second row (Active): day-15 FMLA top-up deleted", deleted.length === 1, deleted);
+    check("dup[S1] second row: only day-1 remains in DB", currentMonthRows.length === 1 && currentMonthRows[0].day === 1, currentMonthRows.map(r=>r.day));
+    check("dup[S1] second row: day-1 upsert written", upserted.length === 1 && upserted[0].day === 1 && upserted[0].hours === 100, upserted);
+
+    // --- Scenario 2: non-split → split (Active first, then FMLA overrides) ---
+    // No pre-existing rows. Row 1 = Active 100h → creates day-1 (100h).
+    // Row 2 = FMLA 32h → reconcile sees day-1 and keeps it, also creates day-15.
+    currentMonthRows = [];
+    deleted.length = 0;
+    upserted.length = 0;
+
+    await (baoMonthlyHours as any).processWorkerHours(WORKER_ID, { employmentStatus: "Active", numberOfHours: "100" }, wizard);
+    check("dup[S2] first row (Active): day-1 written", upserted.length === 1 && upserted[0].day === 1, upserted);
+    check("dup[S2] first row: day-1 exists in DB", currentMonthRows.length === 1, currentMonthRows.map(r=>r.day));
+
+    deleted.length = 0;
+    upserted.length = 0;
+    await (baoMonthlyHours as any).processWorkerHours(WORKER_ID, { employmentStatus: "FMLA", numberOfHours: "32" }, wizard);
+    check("dup[S2] second row (FMLA): no prior rows deleted (day-1 and day-15 both kept)", deleted.length === 0, deleted);
+    check("dup[S2] second row: 2 upserts (day-1 Active + day-15 FMLA)", upserted.length === 2, upserted.length);
+    check("dup[S2] second row: day-1 + day-15 in DB", currentMonthRows.length === 2, currentMonthRows.map(r=>r.day));
+
+    // --- Scenario 3: FMLA row with post-write syncWorkStatus failure, then duplicate Active row ---
+    // Verifies the finally-block dirty-marking: even though the first row's
+    // processWorkerHours threw (after writing day-1 + day-15), the worker was
+    // marked dirty, so the duplicate Active row re-queries and deletes day-15.
+    currentMonthRows = [];
+    deleted.length = 0;
+    upserted.length = 0;
+
+    stub(baoMonthlyHours as any, "syncWorkStatusFromEmployment", async () => {
+      throw new Error("simulated work-status sync failure");
+    });
+
+    let threw = false;
+    try {
+      await (baoMonthlyHours as any).processWorkerHours(WORKER_ID, { employmentStatus: "FMLA", numberOfHours: "32" }, wizard);
+    } catch {
+      threw = true;
+    }
+    check("dup[S3] first row (FMLA, sync fails): throws", threw);
+    check("dup[S3] first row: day-1 + day-15 written before the throw", currentMonthRows.length === 2, currentMonthRows.map(r=>r.day));
+
+    // Restore syncWorkStatusFromEmployment before the duplicate row.
+    originals.pop(); // remove the throwing stub
+    stub(baoMonthlyHours as any, "syncWorkStatusFromEmployment", async () => {});
+
+    deleted.length = 0;
+    upserted.length = 0;
+    await (baoMonthlyHours as any).processWorkerHours(WORKER_ID, { employmentStatus: "Active", numberOfHours: "100" }, wizard);
+    check("dup[S3] duplicate Active row: day-15 FMLA top-up deleted despite prior failure", deleted.length === 1, deleted);
+    check("dup[S3] duplicate Active row: only day-1 remains in DB", currentMonthRows.length === 1 && currentMonthRows[0].day === 1, currentMonthRows.map(r=>r.day));
   } finally {
     for (const [obj, key, fn] of originals.reverse()) obj[key] = fn;
   }
 }
 
 async function testStalePreviewInvalidation() {
-  console.log("\n[5] stale-preview invalidation + Process gating");
+  console.log("\n[6] stale-preview invalidation + Process gating");
   const { prepareBaoDataUpdate } = await import("../../server/plugins/wizards/plugins/bao-monthly-hours");
 
   const oldValidation = { totalRows: 3, invalidRows: 0, completedAt: "2026-07-01T00:00:00Z" };
@@ -364,12 +482,302 @@ async function testStalePreviewInvalidation() {
   }
 }
 
+/**
+ * Test 7: ChargeTransactionCollector batching behaviour.
+ *
+ * Verifies that when `withChargeBatchCollector` is active:
+ *  - The executor's `createLedgerEntries` pushes to the sink instead of
+ *    calling `storage.ledger.entries.create` immediately.
+ *  - `flush()` resolves EAs in parallel and calls `bulkCreate` exactly once
+ *    with all accumulated transactions.
+ *  - The EA cache is populated during the run so the plugin's
+ *    `getOrCreateEaCached` calls don't repeat DB round-trips.
+ *  - If `fn` throws, flush still runs (finally block) and accumulated
+ *    transactions are not lost.
+ */
+async function testChargeBatchCollector() {
+  console.log("\n[7] ChargeTransactionCollector: deferred bulk-insert behaviour");
+
+  const { withChargeBatchCollector, ChargeTransactionCollector } =
+    await import("../../server/plugins/ledger/charge/charge-batch");
+  const { requestContext } = await import("../../server/middleware/request-context");
+
+  // ---- 7a: transactions are deferred, not written immediately ----
+  {
+    const createCalls: any[] = [];
+    const bulkCalls: any[] = [];
+    const eaGetOrCreateCalls: any[] = [];
+
+    const origCreate = storage.ledger.entries.create;
+    const origBulkCreate = (storage.ledger.entries as any).bulkCreate;
+    const origEaGetOrCreate = storage.ledger.ea.getOrCreate;
+
+    (storage.ledger.entries as any).create = async (entry: any) => {
+      createCalls.push(entry);
+      return { id: "x", ...entry };
+    };
+    (storage.ledger.entries as any).bulkCreate = async (entries: any[]) => {
+      bulkCalls.push(entries);
+      return entries.map((e, i) => ({ id: String(i), ...e }));
+    };
+    (storage.ledger.ea as any).getOrCreate = async (type: string, entityId: string, accountId: string) => {
+      eaGetOrCreateCalls.push({ type, entityId, accountId });
+      return { id: `ea-${entityId}-${accountId}`, entityType: type, entityId, accountId };
+    };
+
+    try {
+      await withChargeBatchCollector(async () => {
+        // Simulate two transactions being pushed by the executor
+        const sink = requestContext.getStore()?.chargeTransactionSink;
+        check("7a: sink is installed inside withChargeBatchCollector", !!sink);
+
+        // Push two fake transactions (same EA → only one EA getOrCreate during flush)
+        sink?.push({
+          chargePlugin: "bao-hourly",
+          chargePluginKey: "cfg-1:ea-emp1-acc1:hours-1",
+          chargePluginConfigId: "cfg-1",
+          accountId: "acc1",
+          entityType: "employer",
+          entityId: "emp1",
+          amount: "25.00",
+          description: "BAO hours",
+          transactionDate: new Date("2026-07-31"),
+          referenceType: "worker_hours",
+          referenceId: "hours-1",
+        });
+        sink?.push({
+          chargePlugin: "bao-hourly",
+          chargePluginKey: "cfg-1:ea-emp1-acc1:hours-2",
+          chargePluginConfigId: "cfg-1",
+          accountId: "acc1",
+          entityType: "employer",
+          entityId: "emp1",
+          amount: "30.00",
+          description: "BAO hours",
+          transactionDate: new Date("2026-07-31"),
+          referenceType: "worker_hours",
+          referenceId: "hours-2",
+        });
+
+        // While still inside the scope, immediate create should NOT have been called
+        check("7a: no immediate create while inside scope", createCalls.length === 0, createCalls.length);
+        check("7a: no bulkCreate while inside scope", bulkCalls.length === 0, bulkCalls.length);
+      });
+
+      // After withChargeBatchCollector returns, flush was called
+      check("7a: create was never called (deferred)", createCalls.length === 0, createCalls.length);
+      check("7a: bulkCreate called exactly once", bulkCalls.length === 1, bulkCalls.length);
+      check(
+        "7a: bulkCreate received both transactions",
+        bulkCalls[0]?.length === 2,
+        bulkCalls[0]?.length,
+      );
+      check(
+        "7a: EA resolved once (1 unique triplet for 2 transactions)",
+        eaGetOrCreateCalls.length === 1,
+        eaGetOrCreateCalls.length,
+      );
+      check("7a: sink is absent after scope exits", !requestContext.getStore()?.chargeTransactionSink);
+    } finally {
+      (storage.ledger.entries as any).create = origCreate;
+      (storage.ledger.entries as any).bulkCreate = origBulkCreate;
+      (storage.ledger.ea as any).getOrCreate = origEaGetOrCreate;
+    }
+  }
+
+  // ---- 7b: flush runs even when fn throws ----
+  {
+    const bulkCalls: any[] = [];
+    const origBulkCreate = (storage.ledger.entries as any).bulkCreate;
+    const origEaGetOrCreate = storage.ledger.ea.getOrCreate;
+
+    (storage.ledger.entries as any).bulkCreate = async (entries: any[]) => {
+      bulkCalls.push(entries);
+      return entries.map((e, i) => ({ id: String(i), ...e }));
+    };
+    (storage.ledger.ea as any).getOrCreate = async (_t: string, entityId: string, accountId: string) => ({
+      id: `ea-${entityId}-${accountId}`,
+      entityType: _t,
+      entityId,
+      accountId,
+    });
+
+    let caught = false;
+    try {
+      await withChargeBatchCollector(async () => {
+        const sink = requestContext.getStore()?.chargeTransactionSink;
+        sink?.push({
+          chargePlugin: "bao-hourly",
+          chargePluginKey: "cfg-1:ea-emp2-acc1:hours-3",
+          chargePluginConfigId: "cfg-1",
+          accountId: "acc1",
+          entityType: "employer",
+          entityId: "emp2",
+          amount: "10.00",
+          description: "test",
+          transactionDate: new Date(),
+        });
+        throw new Error("simulated outer failure");
+      });
+    } catch {
+      caught = true;
+    } finally {
+      (storage.ledger.entries as any).bulkCreate = origBulkCreate;
+      (storage.ledger.ea as any).getOrCreate = origEaGetOrCreate;
+    }
+    check("7b: withChargeBatchCollector re-throws fn error", caught);
+    check("7b: flush still ran despite error (bulkCreate called)", bulkCalls.length === 1, bulkCalls.length);
+    check("7b: the accumulated transaction was flushed", bulkCalls[0]?.length === 1, bulkCalls[0]?.length);
+  }
+
+  // ---- 7b2: duplicate keys in the same run are coalesced (last-writer-wins) ----
+  // Simulates a duplicate-SSN upload where two rows produce transactions for
+  // the same chargePluginKey (because the hours row was upserted in-place via
+  // ON CONFLICT, returning the same id). The collector must keep only the last
+  // transaction, and flush must issue a single-row INSERT (not two rows for
+  // the same key, which PostgreSQL would reject with a cardinality violation).
+  {
+    const bulkCalls: any[][] = [];
+    const origBulkCreate = (storage.ledger.entries as any).bulkCreate;
+    const origEaGetOrCreate = storage.ledger.ea.getOrCreate;
+
+    (storage.ledger.entries as any).bulkCreate = async (entries: any[]) => {
+      bulkCalls.push(entries);
+      return entries.map((e, i) => ({ id: String(i), ...e }));
+    };
+    (storage.ledger.ea as any).getOrCreate = async (_t: string, entityId: string, accountId: string) => ({
+      id: `ea-${entityId}-${accountId}`, entityType: _t, entityId, accountId,
+    });
+
+    try {
+      await withChargeBatchCollector(async () => {
+        const sink = requestContext.getStore()?.chargeTransactionSink!;
+        // Row A: creates transaction for hours-id "h1" at $25
+        sink.push({
+          chargePlugin: "bao-hourly", chargePluginKey: "cfg-1:ea-emp4-acc1:h1",
+          chargePluginConfigId: "cfg-1", accountId: "acc1",
+          entityType: "employer", entityId: "emp4",
+          amount: "25.00", description: "row A", transactionDate: new Date("2026-07-31"),
+          referenceType: "worker_hours", referenceId: "h1",
+        });
+        // Row B (duplicate SSN, same hours id h1 due to ON CONFLICT): creates at $30
+        sink.push({
+          chargePlugin: "bao-hourly", chargePluginKey: "cfg-1:ea-emp4-acc1:h1",
+          chargePluginConfigId: "cfg-1", accountId: "acc1",
+          entityType: "employer", entityId: "emp4",
+          amount: "30.00", description: "row B", transactionDate: new Date("2026-07-31"),
+          referenceType: "worker_hours", referenceId: "h1",
+        });
+      });
+      check("7b2: only ONE entry flushed (duplicate key coalesced)", bulkCalls[0]?.length === 1, bulkCalls[0]?.length);
+      check("7b2: coalesced entry has row B's amount (last-writer-wins)", bulkCalls[0]?.[0]?.amount === "30.00", bulkCalls[0]?.[0]?.amount);
+    } finally {
+      (storage.ledger.entries as any).bulkCreate = origBulkCreate;
+      (storage.ledger.ea as any).getOrCreate = origEaGetOrCreate;
+    }
+  }
+
+  // ---- 7b3: orphaned-entry cancellation via collector-aware delete ----
+  // Simulates the FMLA-then-Active duplicate-SSN case at the collector level:
+  // Row A queues a pending entry for h2 (FMLA top-up). Then deleteWorkerHours
+  // fires for h2 (hours=0): the plugin calls getByChargePluginKey → sees the
+  // pending synthetic entry → takes the delete path → calls delete(syntheticId)
+  // → collector cancels the pending create. flush must produce NO entries for h2.
+  {
+    const bulkCalls: any[][] = [];
+    const origBulkCreate = (storage.ledger.entries as any).bulkCreate;
+    const origEaGetOrCreate = storage.ledger.ea.getOrCreate;
+    const origGetByChargePluginKey = storage.ledger.entries.getByChargePluginKey.bind(storage.ledger.entries);
+    const origGetByReferenceAndConfig = storage.ledger.entries.getByReferenceAndConfig.bind(storage.ledger.entries);
+    const origDelete = storage.ledger.entries.delete.bind(storage.ledger.entries);
+
+    (storage.ledger.entries as any).bulkCreate = async (entries: any[]) => {
+      bulkCalls.push(entries);
+      return entries.map((e, i) => ({ id: String(i), ...e }));
+    };
+    (storage.ledger.ea as any).getOrCreate = async (_t: string, entityId: string, accountId: string) => ({
+      id: `ea-${entityId}-${accountId}`, entityType: _t, entityId, accountId,
+    });
+
+    try {
+      await withChargeBatchCollector(async () => {
+        const sink = requestContext.getStore()?.chargeTransactionSink!;
+
+        // Row A queues h1 (Active, day-1) and h2 (FMLA top-up, day-15).
+        sink.push({
+          chargePlugin: "bao-hourly", chargePluginKey: "cfg-1:ea-emp5-acc1:h1",
+          chargePluginConfigId: "cfg-1", accountId: "acc1",
+          entityType: "employer", entityId: "emp5",
+          amount: "25.00", description: "h1 active", transactionDate: new Date("2026-07-31"),
+          referenceType: "worker_hours", referenceId: "h1",
+        });
+        sink.push({
+          chargePlugin: "bao-hourly", chargePluginKey: "cfg-1:ea-emp5-acc1:h2",
+          chargePluginConfigId: "cfg-1", accountId: "acc1",
+          entityType: "employer", entityId: "emp5",
+          amount: "15.00", description: "h2 fmla", transactionDate: new Date("2026-07-31"),
+          referenceType: "worker_hours", referenceId: "h2",
+        });
+        check("7b3: h2 is pending before delete", !!sink.getPendingAsEntry("bao-hourly", "cfg-1:ea-emp5-acc1:h2"));
+
+        // Simulate deleteWorkerHours(h2) firing the plugin's delete path:
+        // - getByChargePluginKey sees the pending synthetic entry
+        // - getByReferenceAndConfig returns the synthetic entry
+        // - delete(syntheticId) cancels from collector
+        const existingEntry = sink.getPendingAsEntry("bao-hourly", "cfg-1:ea-emp5-acc1:h2");
+        check("7b3: getByChargePluginKey via sink returns synthetic entry", !!existingEntry && existingEntry.amount === "15.00");
+        const allEntries = sink.getPendingByReference("h2", "cfg-1");
+        check("7b3: getPendingByReference finds h2's synthetic entry", allEntries.length === 1, allEntries.length);
+        // Plugin's delete loop:
+        for (const entry of allEntries) {
+          const cancelled = sink.cancelBySyntheticId(entry.id);
+          check("7b3: cancelBySyntheticId returns true for pending id", cancelled);
+        }
+
+        check("7b3: h2 is no longer pending after delete", !sink.getPendingAsEntry("bao-hourly", "cfg-1:ea-emp5-acc1:h2"));
+        check("7b3: h1 is still pending (not affected)", !!sink.getPendingAsEntry("bao-hourly", "cfg-1:ea-emp5-acc1:h1"));
+      });
+      // After scope: flush should have written only h1 (h2 was cancelled).
+      check("7b3: flush writes only h1 (h2 was cancelled)", bulkCalls[0]?.length === 1, bulkCalls[0]?.length);
+      check("7b3: flushed entry is h1", bulkCalls[0]?.[0]?.referenceId === "h1", bulkCalls[0]?.[0]?.referenceId);
+    } finally {
+      (storage.ledger.entries as any).bulkCreate = origBulkCreate;
+      (storage.ledger.ea as any).getOrCreate = origEaGetOrCreate;
+    }
+  }
+
+  // ---- 7c: EA cache is populated during run (second getOrCreate call is cache hit) ----
+  {
+    const { getOrCreateEaCached } = await import("../../server/plugins/ledger/charge/ea-cache");
+    const eaDbCalls: string[] = [];
+    const origEaGetOrCreate = storage.ledger.ea.getOrCreate;
+
+    (storage.ledger.ea as any).getOrCreate = async (_t: string, entityId: string, accountId: string) => {
+      eaDbCalls.push(`${_t}:${entityId}:${accountId}`);
+      return { id: `ea-${entityId}-${accountId}`, entityType: _t, entityId, accountId };
+    };
+
+    try {
+      await withChargeBatchCollector(async () => {
+        // Call getOrCreateEaCached twice for the same triplet
+        await getOrCreateEaCached("employer", "emp3", "acc1");
+        await getOrCreateEaCached("employer", "emp3", "acc1");
+      });
+      check("7c: only 1 DB getOrCreate despite 2 calls (cache hit on 2nd)", eaDbCalls.length === 1, eaDbCalls);
+    } finally {
+      (storage.ledger.ea as any).getOrCreate = origEaGetOrCreate;
+    }
+  }
+}
+
 async function main() {
   await testFmlaSplitMath();
   await testValidateRow();
   await testPreview();
   await testProcessingReconciliation();
+  await testDuplicateSsnReconciliation();
   await testStalePreviewInvalidation();
+  await testChargeBatchCollector();
 
   console.log(failures === 0 ? "\nALL CHECKS PASSED" : `\n${failures} CHECK(S) FAILED`);
   process.exit(failures === 0 ? 0 : 1);
