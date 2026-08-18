@@ -1,0 +1,104 @@
+# Note for Replit — S1 cardcheck (authorization) data
+
+## What it is
+
+A cardcheck is a signed authorization on a worker — payroll deduction forms and arbitration agreements. Four definitions in production. They gate benefit eligibility, so fidelity matters.
+
+## Where it lives
+
+Cardchecks are **`sirius_log` nodes**. There is no cardcheck table and no cardcheck bundle.
+
+**Discriminator — this is the filter:**
+
+```sql
+node.type = 'sirius_log'
+AND field_data_field_sirius_category.field_sirius_category_value = 'cardcheck'
+```
+
+Do not filter on `field_sirius_type` or on the log handler. `sirius_log` is ~1.8M rows across dozens of unrelated categories; `category = 'cardcheck'` is the only correct selector.
+
+## Field map
+
+| Field | Contents |
+|---|---|
+| `field_sirius_category` | `'cardcheck'` — the discriminator |
+| `field_sirius_type` | status: `unsigned` \| `signed` \| `revoked`. Mutated in place, no separate status field. |
+| `field_sirius_log_handler` | **multi-value entity reference**, holds *both* the definition nid and the worker nid |
+| `field_sirius_domain` | domain scoping |
+| `field_sirius_json` | the payload (see below) |
+| `node.title` | `"<worker title>: <definition title>"`, generated |
+| `node.created` / `node.changed` | real timestamps |
+
+### Handler resolution — critical
+
+`field_sirius_log_handler` is one multi-delta field containing two different target bundles. **Resolve by loading the target node and checking its type. Never resolve by delta index.**
+
+- target where `node.type = 'sirius_json_definition'` → the cardcheck definition
+- target where `node.type = 'sirius_worker'` → the subject worker
+
+S1's `create()` happens to push definition first, but nothing enforces it and nothing prevents reordering on later saves.
+
+**Some cardchecks have no worker handler** — `create()` supports a null subject and titles them `[No Handler]`. Loader must tolerate a missing worker and not crash or silently mis-assign.
+
+## JSON payload shape
+
+`field_sirius_json_value` (longtext), parsed:
+
+```
+cardcheck.acceptance.ts          int unix timestamp
+cardcheck.acceptance.uid         Drupal user id of the accepting staff/member
+cardcheck.acceptance.user_name   string
+cardcheck.acceptance.offline.*   complete / filename / date  — see note, absent in prod
+cardcheck.revocation.ts          int unix timestamp
+cardcheck.revocation.uid
+cardcheck.revocation.user_name
+cardcheck.bu                     bargaining unit nid (BAO: component disabled, expect empty)
+cardcheck.title                  worker job title at signing
+disclaimer[<disclaimer_nid>].acceptances[0]   separate disclaimer acceptance record
+esig                             e-signature blob
+customfield                      form field results, keyed to definition's customfield_nid
+```
+
+`clear()` unsets `cardcheck`, `disclaimer`, `esig`, `customfield` and resets status to `unsigned` — in place. So an unsigned record may be a never-started form *or* a wiped signed one. Don't infer history from current state.
+
+## The definitions
+
+`sirius_json_definition` nodes with `field_sirius_type = 'sirius:cardcheck'`. Four in production:
+
+| nid | Title |
+|---|---|
+| 13230404 | Payroll Deduction Form - Kaiser |
+| 13230405 | Payroll Deduction Form - Health Net |
+| 13231606 | Health Net Binding Arbitration Agreement |
+| 13231607 | Kaiser Foundation Health Plan Arbitration Agreement |
+
+Each definition's own `field_sirius_json` contains `cardcheck_definition.disclaimer_nid` and optionally `cardcheck_definition.customfield_nid`, pointing at `sirius:disclaimer` and `customfield` definition nodes respectively. Those need staging too if S2 is to render or reproduce what was agreed to.
+
+## Production counts — reconciliation baseline
+
+| Definition | Signed | Unsigned | Revoked | Total |
+|---|---|---|---|---|
+| PDF – Kaiser | 591 | 148 | 38 | 777 |
+| PDF – Health Net | 109 | 187 | 22 | 318 |
+| Health Net Arbitration | 6 | 6 | 0 | 12 |
+| Kaiser Arbitration | 2 | 5 | 0 | 7 |
+| **Total** | **708** | **346** | **60** | **1,114** |
+
+Also: 772 records carry a JSON payload; 770 have an `esig`; **0 offline**; 2 have neither esig nor offline. Re-pull immediately before cutover — S1 is live.
+
+## Traps
+
+1. **Offline path is dead.** `accept_offline()`, the filename field, and the offline feed exist in code with zero rows in production. Don't build for it; do tolerate the keys if they appear.
+2. **Acceptance is recorded twice** — once at `cardcheck.acceptance.ts`, once in `disclaimer[nid].acceptances[0]`. They should agree. Report any that don't rather than silently picking one.
+3. **`signed` + `revoked` = 768 but only 770 records have an esig.** Small mismatch, needs reconciling during the load — a signed record without a signature is a defect worth surfacing in the run report, not dropping.
+4. **Status is a mutation, not an event log.** There is no history of signed→revoked transitions except `field_revision_field_sirius_json` and node revisions. If S2 wants an audit trail, it has to be constructed from revisions, not from current state.
+5. **Worker key** — resolve nid → `node.uuid` → S2 worker. Do not join on `sirius_id`; it is not unique in S1.
+
+## Asks
+
+1. Confirm whether `sirius_log` (bundle) is already in the staging in-scope list, and whether `field_sirius_category`, `field_sirius_type`, `field_sirius_log_handler`, `field_sirius_json` are all staged for it. If `sirius_log` was staged wholesale, cardchecks are already there and this is a loader-only job — same as beneficiaries.
+2. Staged count reconciliation against the table above, broken out by definition and status.
+3. Whether the multi-delta `field_sirius_log_handler` survived staging with all deltas intact — a single-value collapse would silently drop either the worker or the definition link.
+4. Confirm `sirius_json_definition` nodes are staged (needed for definition titles, disclaimer text, customfield schemas).
+
+Report state first; we'll scope the loader once we know what's already landed.

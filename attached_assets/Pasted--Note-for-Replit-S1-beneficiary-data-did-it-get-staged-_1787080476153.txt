@@ -1,0 +1,49 @@
+**Note for Replit — S1 beneficiary data: did it get staged?**
+
+---
+
+**Where it lives in S1**
+
+Beneficiary designations are **not** in a dedicated table and **not** in Field API fields. They're inside a JSON blob on the worker node.
+
+- Table: `field_data_field_sirius_json`
+- Filter: `entity_type = 'node' AND bundle = 'sirius_worker' AND deleted = 0`
+- Column: `field_sirius_json_value` (longtext)
+- Path within the JSON: `beneficiaries.primary[]`
+
+Each array element:
+
+| Key | Notes |
+|---|---|
+| `name` | free text |
+| `ssn` | free text, unvalidated, no formatting guarantee — **PHI/PII** |
+| `phone` | free text |
+| `address` | free text, single line, not parsed |
+| `relationship` | free text, ~110 distinct values incl. Spanish and misspellings |
+| `pct` | integer-as-value; sets always total 100 in current data |
+
+Other top-level keys seen in the same blob include `history`, `smf`, `addr`. Don't assume that list is exhaustive.
+
+**Corpus size (S1 production, verified):** 5,315 workers have a `beneficiaries` key; 3,109 have at least one populated designation; 5,155 populated rows total.
+
+---
+
+**Three traps**
+
+1. **Blank rows are padded.** The form writes a fixed number of rows regardless of how many are filled. Empty rows have all keys present as empty strings. Filter on populated-ness (e.g. `name` non-empty), never on array length.
+2. **`primary` is the only tier present.** No `contingent` anywhere in current data. Don't hardcode against `primary` if the loader can accommodate a sibling key, but don't fabricate one either.
+3. **2,206 workers have the `beneficiaries` key with nothing usable in it.** Presence of the key is not presence of a designation.
+
+Also: there is a Drupal node type named `sirius_trust_worker_beneficiary`. It has **zero rows** and has never been used. Ignore it — it is not the data source.
+
+---
+
+**What we need back**
+
+1. Did the extract/staging pass capture `field_data_field_sirius_json` for bundle `sirius_worker` at all — full blob, or selected keys only?
+2. If captured: where did it land in staging, and is the `beneficiaries` subtree intact or was it dropped/flattened?
+3. Staged counts, so we can reconcile against S1: workers with a `beneficiaries` key, workers with ≥1 populated row, total populated rows. Target numbers are 5,315 / 3,109 / 5,155.
+4. If the blob was staged but the loader ignores it, say so explicitly — that's a different fix than a missing extract.
+5. Confirm whether `ssn` values are present in staging as-is. If they are, flag it — that changes the PHI handling posture for the staging environment.
+
+No remediation yet. Report state only; we'll scope the fix after we know whether this is a missing extract, a dropped subtree, or a loader gap.
