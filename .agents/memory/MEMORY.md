@@ -120,3 +120,4 @@
 - [Task-merge SHA rewrite vs deploy branches](task-merge-divergent-deploy-branch.md) — non-fast-forward on push-branch.sh = duplicate content, different SHAs; verify empty diff then `merge -s ours`.
 - [BAO hours upload performance](bao-hours-upload-performance.md) — bulk pre-fetch + charge config cache + skipHomeEmployerEvent; see file for the three-axis approach.
 - [.replit gitignored vs task review](dotreplit-gitignored-review.md) — .replit workflow changes never show in the task diff; completion review rejects unless drift_reason explains it.
+- [S1 shared-email ownership](s1-shared-email-ownership.md) — raw_user_contact (user↔contact assoc) is THE ownership signal; no-owner shared addresses defer to email=null (737 pending fund ruling).

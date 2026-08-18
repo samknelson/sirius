@@ -35,6 +35,7 @@ import {
   upsertRawUsersRoles,
   upsertRawRoles,
   upsertRawAuthmap,
+  upsertRawUserContacts,
   deleteStaleRawUserTable,
   stagedRawUserTableCount,
   type RawUserTable,
@@ -187,8 +188,10 @@ interface RawTableReport {
 /**
  * T27 raw user tables: `users` (uid>1 only — anonymous + superuser excluded;
  * pass/tfa columns never selected),
- * `users_roles`, `role`, `authmap`. Small tables in prod (~2.5k users) but
- * users is keyset-paged anyway for uniformity.
+ * `users_roles`, `role`, `authmap`, plus the user↔contact association
+ * (`field_data_field_sirius_contact` rows with entity_type='user'). Small
+ * tables in prod (~2.5k users) but users is keyset-paged anyway for
+ * uniformity.
  */
 async function stageRawUserTables(s1: Pool, batch: number): Promise<RawTableReport[]> {
   await ensureRawUserTables();
@@ -278,6 +281,26 @@ async function stageRawUserTables(s1: Pool, batch: number): Promise<RawTableRepo
             uid: Number(r.uid),
             authname: r.authname == null ? null : String(r.authname),
             module: r.module == null ? null : String(r.module),
+          })),
+        ),
+    },
+    {
+      // user↔contact association — the ownership signal for shared email
+      // addresses (contacts + users loaders both resolve through it).
+      table: "field_data_field_sirius_contact (entity_type='user')",
+      raw: "raw_user_contact",
+      countSql: `SELECT COUNT(*) AS n FROM field_data_field_sirius_contact
+                  WHERE entity_type = 'user' AND deleted = 0`,
+      selectSql: `SELECT entity_id AS uid, delta, field_sirius_contact_target_id AS contact_nid
+                    FROM field_data_field_sirius_contact
+                   WHERE entity_type = 'user' AND deleted = 0
+                   ORDER BY entity_id, delta`,
+      upsert: (rows) =>
+        upsertRawUserContacts(
+          rows.map((r) => ({
+            uid: Number(r.uid),
+            delta: Number(r.delta),
+            contactNid: Number(r.contact_nid),
           })),
         ),
     },

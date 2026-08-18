@@ -2,8 +2,14 @@
  * Smoke test for the T27 user loader (load-users.ts). Seeds fake staged rows
  * (uids 9990xx, contact/worker nids 999008xx) covering:
  *   - clean linked member (mail == exactly-one contact email of a worker)
- *   - AMBIGUOUS mail (two workers whose contacts share the email) →
- *     annotation ambiguous_worker_email, account still migrates, no link
+ *   - AMBIGUOUS mail (two workers whose contacts share the email, NO user
+ *     association) → annotation ambiguous_worker_email, account still
+ *     migrates, no link
+ *   - association-resolved mail (two workers whose contacts share the email,
+ *     but raw_user_contact ties the uid to ONE of them) → linked to the
+ *     associated contact's worker, no annotation
+ *   - association that cannot settle it (uid tied to ONE contact carrying
+ *     TWO worker records) → still ambiguous_worker_email, no link
  *   - mail matching nothing → no_resolvable_worker annotation
  *   - duplicate mails (higher uid rejects duplicate_user_email)
  *   - blocked account (never created)
@@ -24,11 +30,15 @@ import {
   upsertRawUsers,
   upsertRawUsersRoles,
   upsertRawRoles,
+  upsertRawUserContacts,
 } from "../s1-migration/lib/staging";
 import { ensureIdMap, getMappings, putMapping } from "../s1-migration/lib/idmap";
 
-const U = { linked: 999001, ambiguous: 999002, unmatched: 999003, dupA: 999004, dupB: 999005, blocked: 999006 };
-const N = { c1: 99900801, w1: 99900802, c2: 99900803, w2: 99900804, c3: 99900805, w3: 99900806 };
+const U = { linked: 999001, ambiguous: 999002, unmatched: 999003, dupA: 999004, dupB: 999005, blocked: 999006, assoc: 999007, assocAmb: 999008 };
+const N = {
+  c1: 99900801, w1: 99900802, c2: 99900803, w2: 99900804, c3: 99900805, w3: 99900806,
+  c4: 99900807, w4: 99900808, c5: 99900809, w5: 99900810, c6: 99900811, w6a: 99900812, w6b: 99900813,
+};
 const RID_CUSTOM = 999101;
 const RID_AUTH = 999102;
 const RID_COLLIDE = 999103;
@@ -38,6 +48,8 @@ const EMAILS = {
   unmatched: "t27.smoke.unmatched@example.test",
   dup: "t27.smoke.dup@example.test",
   blocked: "t27.smoke.blocked@example.test",
+  assoc: "t27.smoke.assoc@example.test",
+  assocAmb: "t27.smoke.assocamb@example.test",
 };
 const ROLE_NAME = "T27 Smoke Role";
 
@@ -84,6 +96,17 @@ async function seed() {
     rec("sirius_worker", N.w2, "T27 Amb A", { field_sirius_contact: N.c2 }),
     rec("sirius_contact", N.c3, "T27 Amb B", { field_sirius_email: { value: EMAILS.ambiguous } }),
     rec("sirius_worker", N.w3, "T27 Amb B", { field_sirius_contact: N.c3 }),
+    // association-resolved: c4/c5 SHARE the assoc email, raw_user_contact
+    // ties U.assoc to c5 → deterministic link to w5.
+    rec("sirius_contact", N.c4, "T27 Assoc A", { field_sirius_email: { value: EMAILS.assoc } }),
+    rec("sirius_worker", N.w4, "T27 Assoc A", { field_sirius_contact: N.c4 }),
+    rec("sirius_contact", N.c5, "T27 Assoc B", { field_sirius_email: { value: EMAILS.assoc } }),
+    rec("sirius_worker", N.w5, "T27 Assoc B", { field_sirius_contact: N.c5 }),
+    // association CANNOT settle: one contact c6, TWO worker records → still
+    // ambiguous even though U.assocAmb is tied to c6.
+    rec("sirius_contact", N.c6, "T27 AssocAmb", { field_sirius_email: { value: EMAILS.assocAmb } }),
+    rec("sirius_worker", N.w6a, "T27 AssocAmb A", { field_sirius_contact: N.c6 }),
+    rec("sirius_worker", N.w6b, "T27 AssocAmb B", { field_sirius_contact: N.c6 }),
   ]);
 
   // real S2 workers behind w1/w2/w3 (id_map targets)
@@ -94,9 +117,17 @@ async function seed() {
   const w1 = await mk("Linked");
   const w2 = await mk("AmbA");
   const w3 = await mk("AmbB");
+  const w4 = await mk("AssocA");
+  const w5 = await mk("AssocB");
+  const w6a = await mk("AssocAmbA");
+  const w6b = await mk("AssocAmbB");
   await putMapping("worker", N.w1, w1.id, { stub: false, loader: "t27-smoke" });
   await putMapping("worker", N.w2, w2.id, { stub: false, loader: "t27-smoke" });
   await putMapping("worker", N.w3, w3.id, { stub: false, loader: "t27-smoke" });
+  await putMapping("worker", N.w4, w4.id, { stub: false, loader: "t27-smoke" });
+  await putMapping("worker", N.w5, w5.id, { stub: false, loader: "t27-smoke" });
+  await putMapping("worker", N.w6a, w6a.id, { stub: false, loader: "t27-smoke" });
+  await putMapping("worker", N.w6b, w6b.id, { stub: false, loader: "t27-smoke" });
 
   await upsertRawRoles([
     { rid: RID_CUSTOM, name: ROLE_NAME, weight: 0 },
@@ -109,13 +140,20 @@ async function seed() {
     { uid: U.dupA, name: "t27-dup-a", mail: EMAILS.dup, created: now, access: now, login: now, status: 1, timezone: null, data: null },
     { uid: U.dupB, name: "t27-dup-b", mail: EMAILS.dup, created: now, access: now, login: now, status: 1, timezone: null, data: null },
     { uid: U.blocked, name: "t27-blocked", mail: EMAILS.blocked, created: now, access: now, login: now, status: 0, timezone: null, data: null },
+    { uid: U.assoc, name: "t27-assoc", mail: EMAILS.assoc, created: now, access: now, login: now, status: 1, timezone: null, data: null },
+    { uid: U.assocAmb, name: "t27-assocamb", mail: EMAILS.assocAmb, created: now, access: now, login: now, status: 1, timezone: null, data: null },
+  ]);
+  // S1 user↔contact association (the shared-email ownership signal)
+  await upsertRawUserContacts([
+    { uid: U.assoc, delta: 0, contactNid: N.c5 },
+    { uid: U.assocAmb, delta: 0, contactNid: N.c6 },
   ]);
   await upsertRawUsersRoles([
     { uid: U.linked, rid: RID_CUSTOM },
     { uid: U.linked, rid: RID_AUTH },
     { uid: U.unmatched, rid: RID_CUSTOM },
   ]);
-  return { w1, w2, w3 };
+  return { w1, w5 };
 }
 
 async function cleanup() {
@@ -128,16 +166,17 @@ async function cleanup() {
     await db.execute(sql`DELETE FROM users WHERE id = ${m.s2Id}`);
   }
   await db.execute(sql`DELETE FROM s1_staging.id_map WHERE entity = 'user' AND s1_id IN (${sql.join(uids.map((n) => sql`${n}`), sql`, `)})`);
-  const wMap = await getMappings("worker", [N.w1, N.w2, N.w3]);
+  const wMap = await getMappings("worker", [N.w1, N.w2, N.w3, N.w4, N.w5, N.w6a, N.w6b]);
   for (const [, m] of wMap) {
     const w = await storage.workers.getWorker(m.s2Id);
     await db.execute(sql`DELETE FROM workers WHERE id = ${m.s2Id}`);
     if (w?.contactId) await db.execute(sql`DELETE FROM contacts WHERE id = ${w.contactId}`);
   }
-  await db.execute(sql`DELETE FROM s1_staging.id_map WHERE entity = 'worker' AND s1_id IN (${N.w1}, ${N.w2}, ${N.w3})`);
+  await db.execute(sql`DELETE FROM s1_staging.id_map WHERE entity = 'worker' AND s1_id IN (${N.w1}, ${N.w2}, ${N.w3}, ${N.w4}, ${N.w5}, ${N.w6a}, ${N.w6b})`);
   await db.execute(sql`DELETE FROM s1_staging.records WHERE nid IN (${sql.join(Object.values(N).map((n) => sql`${n}`), sql`, `)})`);
   await db.execute(sql`DELETE FROM s1_staging.raw_users WHERE uid IN (${sql.join(uids.map((n) => sql`${n}`), sql`, `)})`);
   await db.execute(sql`DELETE FROM s1_staging.raw_users_roles WHERE uid IN (${sql.join(uids.map((n) => sql`${n}`), sql`, `)})`);
+  await db.execute(sql`DELETE FROM s1_staging.raw_user_contact WHERE uid IN (${sql.join(uids.map((n) => sql`${n}`), sql`, `)})`);
   await db.execute(sql`DELETE FROM s1_staging.raw_roles WHERE rid IN (${RID_CUSTOM}, ${RID_AUTH}, ${RID_COLLIDE})`);
   for (const name of [ROLE_NAME, "T27 Privileged Smoke", "T27 Privileged Smoke (s1-migrated)"]) {
     const role = await storage.users.getRoleByName(name);
@@ -149,7 +188,7 @@ async function cleanup() {
 }
 
 async function main() {
-  const { w1 } = await seed();
+  const { w1, w5 } = await seed();
 
   console.log("run 0: --dry-run leaves S2 untouched");
   const preUsers = await db.execute(sql`SELECT count(*)::int AS n FROM users`);
@@ -186,6 +225,20 @@ async function main() {
 
   const amb = map.get(U.ambiguous) ? await storage.users.getUser(map.get(U.ambiguous)!.s2Id) : null;
   check("ambiguous user has NO worker link", !((amb?.data as any)?.migratedWorkerId), amb?.data);
+
+  // association-based disambiguation (shared-email ownership signal)
+  const assocU = map.get(U.assoc) ? await storage.users.getUser(map.get(U.assoc)!.s2Id) : null;
+  check(
+    "shared-email user links to the ASSOCIATED contact's worker (w5)",
+    ((assocU?.data as any)?.migratedWorkerId) === w5.id,
+    assocU?.data,
+  );
+  const assocAmbU = map.get(U.assocAmb) ? await storage.users.getUser(map.get(U.assocAmb)!.s2Id) : null;
+  check(
+    "one-contact-two-workers stays ambiguous (association cannot settle it)",
+    !!assocAmbU && !((assocAmbU?.data as any)?.migratedWorkerId),
+    assocAmbU?.data,
+  );
 
   const role = await storage.users.getRoleByName(ROLE_NAME);
   check("custom role upserted", !!role);

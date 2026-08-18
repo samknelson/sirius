@@ -33,8 +33,13 @@
  *     recorded in users.data ({ migratedWorkerId, s1Uid }) so first Okta
  *     sign-in lands on the pre-linked account with no fuzzy matching.
  *     0 matches → annotation `no_resolvable_worker` (staff-only or
- *     reconciliation); >1 → annotation `ambiguous_worker_email`. Annotations
- *     do NOT skip the user row — the account still migrates, only unlinked.
+ *     reconciliation); >1 → the uid's OWN S1 contact association
+ *     (raw_user_contact — the same ownership signal the contacts loader uses
+ *     for shared addresses) picks the candidate; only when the association
+ *     does not settle it (duplicate worker records on one contact, or the
+ *     association points elsewhere) → annotation `ambiguous_worker_email`.
+ *     Annotations do NOT skip the user row — the account still migrates,
+ *     only unlinked.
  *   - `pass` / `tfa_*` are never staged, never read, never migrated.
  *   - `authmap` rows are staged for audit but NOT loaded — S2 Okta identities
  *     are created by the pre-provisioning script / first login, keyed by the
@@ -60,6 +65,7 @@ import {
   pagedRawUsers,
   loadRawUsersRoles,
   loadRawRoles,
+  loadRawUserContacts,
   type RawUserRow,
 } from "./lib/staging";
 import { ensureIdMap, getMappings, getAllMappings, putMapping, deleteMapping } from "./lib/idmap";
@@ -146,21 +152,42 @@ async function main() {
   const workerMap = await getMappings("worker", workers.map((w) => w.nid));
   const contactMap = await getMappings("contact", contacts.map((c) => c.nid));
 
+  // S1 user↔contact association (raw_user_contact) — the SAME ownership
+  // signal the contacts loader uses for shared email addresses. When a mail
+  // matches several contacts' workers, the uid's own contact reference picks
+  // the candidate; only genuinely unresolvable cases (e.g. one contact with
+  // two worker records) stay annotated ambiguous_worker_email.
+  const contactNidsByUid = new Map<number, number[]>();
+  for (const a of await loadRawUserContacts()) {
+    contactNidsByUid.set(a.uid, [...(contactNidsByUid.get(a.uid) ?? []), a.contactNid]);
+  }
+
   /** Resolve mail → exactly-one S2 worker id, or a classification. */
-  function resolveWorker(mailLower: string):
+  function resolveWorker(mailLower: string, uid: number):
     | { kind: "linked"; workerNid: number; workerS2Id: string; contactNid: number }
     | { kind: "none" }
     | { kind: "ambiguous"; candidates: number[] } {
     const cnids = contactNidsByEmail.get(mailLower) ?? [];
-    const workerCandidates: Array<{ workerNid: number; contactNid: number }> = [];
+    let workerCandidates: Array<{ workerNid: number; contactNid: number }> = [];
     for (const cnid of cnids) {
       for (const wnid of workerNidsByContactNid.get(cnid) ?? []) {
         workerCandidates.push({ workerNid: wnid, contactNid: cnid });
       }
     }
     if (workerCandidates.length === 0) return { kind: "none" };
-    if (workerCandidates.length > 1)
-      return { kind: "ambiguous", candidates: workerCandidates.map((c) => c.workerNid) };
+    if (workerCandidates.length > 1) {
+      // Prefer the candidate(s) whose contact is tied to THIS uid's own S1
+      // account. One survivor → deterministic link; several (duplicate worker
+      // records on one contact) or none (association points elsewhere) →
+      // annotate as before.
+      const own = new Set(contactNidsByUid.get(uid) ?? []);
+      if (own.size > 0) {
+        const filtered = workerCandidates.filter((c) => own.has(c.contactNid));
+        if (filtered.length > 0) workerCandidates = filtered;
+      }
+      if (workerCandidates.length > 1)
+        return { kind: "ambiguous", candidates: workerCandidates.map((c) => c.workerNid) };
+    }
     const only = workerCandidates[0];
     const mapped = workerMap.get(only.workerNid);
     if (!mapped || mapped.stub) return { kind: "none" };
@@ -299,7 +326,7 @@ async function main() {
     seenEmailByUid.set(email, u.uid);
 
     // worker resolution (annotation-only outcomes)
-    const resolution = resolveWorker(email);
+    const resolution = resolveWorker(email, u.uid);
     let workerS2Id: string | null = null;
     let contactNid: number | null = null;
     if (resolution.kind === "linked") {

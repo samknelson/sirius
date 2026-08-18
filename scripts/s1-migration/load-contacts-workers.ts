@@ -5,10 +5,23 @@
  * Contacts pass (02-mapping §2):
  *   - name parts (T11): field_sirius_name subcolumns map 1:1; display_name =
  *     S1 node title, else trim(given + family)
- *   - email (T12): contacts.email is UNIQUE — first contact (lowest nid)
- *     keeps it; later duplicates load with email=null + a rejects entry
- *     (contacts has no data column yet, so the duplicate email lives only in
- *     the run report — revisit if a data/language column lands per Q10)
+ *   - email (T12, amended by the shared-email ownership ruling): contacts.email
+ *     is UNIQUE (case-insensitive since migration 1125). When multiple staged
+ *     contacts share an address (case-insensitive, trimmed, after placeholder
+ *     suppression), ownership resolves via the S1 user↔contact association
+ *     (raw_user_contact): the contact referenced by the S1 user account whose
+ *     mail matches the address keeps the email; every other contact loads
+ *     with email=null. No owning account → ALL contacts load with email=null
+ *     (fund ruling: deferred until an ownership rule is issued; reported
+ *     under report.sharedEmails as the follow-up worklist). More than one
+ *     owning account → FATAL reject class `shared_email_multiple_owners`
+ *     (does not occur in prod data; guard only) — the pre-scan aborts before
+ *     any write unless the class is explicitly allowed via --allow-rejects,
+ *     in which case the address is deferred (all null). Re-runs REPAIR
+ *     first-wins assignments from older runs: a non-owner holding a shared
+ *     address is cleared before the row loop so the owner can claim it.
+ *     An address whose only claim is a DB row outside the staged group keeps
+ *     today's duplicate_email semantics (reject + null on the staged side).
  *   - phones (T5): strip non-digits → E.164 (+1, len 10 or 11-leading-1);
  *     field_sirius_phone is_primary=true, field_sirius_phone_alt "Alt";
  *     rejects counted. Twilio validation is NOT invoked (bulk mode).
@@ -67,20 +80,36 @@
  *
  * Usage:
  *   npx tsx scripts/s1-migration/load-contacts-workers.ts [--dry-run]
+ *       [--allow-rejects shared_email_multiple_owners]
  *
  * Output is AGGREGATES ONLY (plus S1 nids / opaque ids) — safe inside the
- * HIPAA boundary.
+ * HIPAA boundary. Email addresses are NEVER printed; shared-address report
+ * entries carry contact nids only (any member nid resolves the address in S1).
  */
 import { db, pool } from "../../server/storage/db";
 import { sql } from "drizzle-orm";
 import { storage } from "../../server/storage/database";
 import { withNotificationsSuppressed } from "../../server/middleware/request-context";
-import { ensureStagingSchema, recordRun } from "./lib/staging";
+import {
+  ensureStagingSchema,
+  recordRun,
+  ensureRawUserTables,
+  loadRawUserContacts,
+  loadRawUserMails,
+} from "./lib/staging";
 import { ensureIdMap, getMappings, putMapping, markAbsorbed } from "./lib/idmap";
 import { throttleStorageOpLogs } from "./lib/loader-utils";
 import { makeProgressLogger } from "./lib/progress";
 
 const DRY_RUN = process.argv.includes("--dry-run");
+/** Reject classes the operator explicitly allows for THIS run (comma-sep).
+ * Only FATAL classes consult this list — today that is exactly
+ * `shared_email_multiple_owners` (sirius_id collisions have NO allow flag by
+ * ruling). Allowing it defers the affected addresses (all contacts null). */
+const ALLOWED_REJECTS: string[] = (() => {
+  const i = process.argv.indexOf("--allow-rejects");
+  return i >= 0 ? String(process.argv[i + 1] ?? "").split(",").map((s) => s.trim()).filter(Boolean) : [];
+})();
 const LOADER = "t3t1-contacts-workers";
 const REJECT_SAMPLE_CAP = 25;
 
@@ -242,8 +271,10 @@ async function main() {
   const startedAt = new Date();
   await ensureStagingSchema();
   await ensureIdMap();
+  await ensureRawUserTables(); // raw_user_contact may predate a full staging run
 
   const report: Record<string, unknown> = { loader: LOADER, dryRun: DRY_RUN };
+  if (ALLOWED_REJECTS.length > 0) report.allowedRejects = ALLOWED_REJECTS;
   const rejects = new RejectLog();
 
   // throttle per-row storage-op logging + heartbeat (aggregates only:
@@ -293,6 +324,102 @@ async function main() {
     }
   }
 
+  // ---- shared-email ownership pre-scan (S1 user↔contact association) ----
+  // 1,008 S1 contacts share addresses; first-wins by nid put a child's email
+  // on the parent's contact (PHI exposure). S1 records ownership directly:
+  // field_data_field_sirius_contact rows with entity_type='user' (staged as
+  // raw_user_contact), and no address is associated with more than one S1
+  // user account — so wherever a matching account exists, it is
+  // authoritative. The users loader resolves logins through the SAME signal,
+  // keeping the contact that carries an email and the worker its login
+  // resolves to the same person.
+  interface SharedEmailPlan {
+    winnerNid: number | null;
+    rule: "byUserAccount" | "deferredNoOwner" | "deferredMultipleOwners";
+    ownerUid?: number;
+    memberNids: number[];
+    nulled: number; // counted as the row loop applies the plan
+  }
+  const sharedEmailPlan = new Map<string, SharedEmailPlan>(); // normalized address → plan
+  {
+    const groups = new Map<string, number[]>(); // normalized address → staged contact nids
+    for (const c of stagedContacts) {
+      const raw = strOf(c.fields, "field_sirius_email");
+      if (!raw) continue;
+      const norm = raw.trim().toLowerCase();
+      if (isPlaceholderEmail(norm)) continue; // suppressed separately (T12)
+      groups.set(norm, [...(groups.get(norm) ?? []), c.nid]);
+    }
+    const shared = [...groups.entries()].filter(([, nids]) => nids.length > 1);
+    if (shared.length > 0) {
+      const assoc = await loadRawUserContacts();
+      const contactNidsByUid = new Map<number, number[]>();
+      for (const a of assoc) {
+        contactNidsByUid.set(a.uid, [...(contactNidsByUid.get(a.uid) ?? []), a.contactNid]);
+      }
+      const uidsByMail = new Map<string, number[]>();
+      for (const u of await loadRawUserMails()) {
+        const m = (u.mail ?? "").trim().toLowerCase();
+        if (!m) continue;
+        uidsByMail.set(m, [...(uidsByMail.get(m) ?? []), u.uid]);
+      }
+      for (const [addr, nids] of shared) {
+        const nidSet = new Set(nids);
+        // owning accounts: mail matches the address AND the account's contact
+        // reference points INTO the sharing group
+        const owners: Array<{ uid: number; nid: number }> = [];
+        for (const uid of uidsByMail.get(addr) ?? []) {
+          for (const n of new Set((contactNidsByUid.get(uid) ?? []).filter((n) => nidSet.has(n)))) {
+            owners.push({ uid, nid: n });
+          }
+        }
+        if (owners.length === 1) {
+          sharedEmailPlan.set(addr, {
+            winnerNid: owners[0].nid,
+            rule: "byUserAccount",
+            ownerUid: owners[0].uid,
+            memberNids: nids,
+            nulled: 0,
+          });
+        } else if (owners.length > 1) {
+          // Fund ruling: cannot occur in S1 (no address has >1 user account).
+          // Guard only — never auto-picked.
+          rejects.add(
+            "shared_email_multiple_owners",
+            { contactNids: nids, uids: owners.map((o) => o.uid) },
+          );
+          sharedEmailPlan.set(addr, { winnerNid: null, rule: "deferredMultipleOwners", memberNids: nids, nulled: 0 });
+        } else {
+          sharedEmailPlan.set(addr, { winnerNid: null, rule: "deferredNoOwner", memberNids: nids, nulled: 0 });
+        }
+      }
+      const multi = rejects.counts["shared_email_multiple_owners"] ?? 0;
+      if (multi > 0 && !ALLOWED_REJECTS.includes("shared_email_multiple_owners")) {
+        console.error(
+          `FATAL: ${multi} shared email address(es) are each associated with MORE THAN ONE S1 user ` +
+            `account — the fund ruled this cannot occur; triage with the fund before loading. ` +
+            `Nothing was written. (Deferring these addresses instead — every sharing contact loads ` +
+            `with email=null — requires --allow-rejects shared_email_multiple_owners.)`,
+        );
+        for (const s of rejects.samples["shared_email_multiple_owners"] ?? []) {
+          console.error(`  contact nids ${(s.contactNids as number[]).join(", ")}: uids ${(s.uids as number[]).join(", ")}`);
+        }
+        await pool.end();
+        process.exit(1);
+      }
+    }
+  }
+  /** Apply the shared-address plan: the email this contact may carry (null
+   * when another contact owns the address, or ownership is deferred).
+   * Placeholders never enter the plan, so ordering vs suppression is moot. */
+  const applySharedOwnership = (nid: number, email: string | null): string | null => {
+    if (!email) return email;
+    const plan = sharedEmailPlan.get(email);
+    if (!plan || plan.winnerNid === nid) return email;
+    plan.nulled++;
+    return null;
+  };
+
   // contact nid → referencing worker nid (for stub absorption)
   const workerNidByContactNid = new Map<number, number>();
   for (const w of stagedWorkers) {
@@ -320,6 +447,31 @@ async function main() {
   const emailOwner = new Map(
     (emailRes as unknown as { rows: Array<{ id: string; email: string }> }).rows.map((r) => [r.email, r.id]),
   );
+
+  // ---- rerun repair: clear shared addresses held by non-owners ----
+  // A prior run's first-wins rule may have written a shared address onto a
+  // contact the plan does NOT declare the owner. Clear those BEFORE the row
+  // loop so the owner's reconcile can claim the address without tripping the
+  // unique index, and drop the map entry so the dedupe check stays exact.
+  // Only rows mapped to a nid in the sharing group are touched — a DB row
+  // outside the group (operator-created) keeps its email and the staged side
+  // rejects duplicate_email as before.
+  let sharedEmailsCleared = 0;
+  if (!DRY_RUN) {
+    for (const [addr, plan] of sharedEmailPlan) {
+      const holderId = emailOwner.get(addr);
+      if (!holderId) continue;
+      const winnerId = plan.winnerNid != null ? contactMap.get(plan.winnerNid)?.s2Id : undefined;
+      if (winnerId != null && holderId === winnerId) continue; // correctly owned — never reassigned
+      const memberIds = new Set(
+        plan.memberNids.map((n) => contactMap.get(n)?.s2Id).filter((id): id is string => id != null),
+      );
+      if (!memberIds.has(holderId)) continue; // outside the staged group
+      await withNotificationsSuppressed(() => storage.contacts.updateEmail(holderId, null));
+      emailOwner.delete(addr);
+      sharedEmailsCleared++;
+    }
+  }
   // ssn → owning S1 nid via id_map (NULL for pre-migration rows) so a re-run
   // doesn't count a worker's own already-loaded SSN as a collision. Keyed on
   // nid through id_map — workers.sirius_id is NOT the nid anymore (T1 ruling
@@ -494,6 +646,9 @@ async function main() {
     }
 
     let email = strOf(c.fields, "field_sirius_email")?.toLowerCase() ?? null;
+    // shared-address ownership (S1 user association) — non-owners and
+    // deferred addresses load with email=null
+    email = applySharedOwnership(c.nid, email);
 
     // worker node pre-join: dob / gender / gender_calc live on the worker (§1)
     const wnid = workerNidByContactNid.get(c.nid);
@@ -680,6 +835,29 @@ async function main() {
   // Per-address suppression counts (omit entirely when nothing was suppressed)
   if (suppressions.size > 0) {
     report.placeholderEmailsSuppressed = Object.fromEntries(suppressions);
+  }
+  // Shared-address ownership report — one entry per shared address, keyed by
+  // contact nids only (addresses are PII and never printed; any member nid
+  // resolves the address in S1). deferredNoOwner entries are the follow-up
+  // worklist for the fund's ownership ruling.
+  if (sharedEmailPlan.size > 0) {
+    const entries = [...sharedEmailPlan.values()].map((p) => ({
+      rule: p.rule,
+      winnerNid: p.winnerNid,
+      ...(p.ownerUid != null ? { ownerUid: p.ownerUid } : {}),
+      memberNids: p.memberNids,
+      nulled: p.nulled,
+    }));
+    const countBy = (rule: SharedEmailPlan["rule"]) => entries.filter((e) => e.rule === rule).length;
+    report.sharedEmails = {
+      addresses: sharedEmailPlan.size,
+      byUserAccount: countBy("byUserAccount"),
+      deferredNoOwner: countBy("deferredNoOwner"),
+      deferredMultipleOwners: countBy("deferredMultipleOwners"),
+      contactsNulled: entries.reduce((n, e) => n + e.nulled, 0),
+      clearedOnRerun: sharedEmailsCleared,
+      entries,
+    };
   }
 
   // ---------------- workers pass ----------------
@@ -1030,6 +1208,29 @@ async function main() {
       // Log per-address suppression counts prominently so rehearsal runs show the split
       if (suppressions.size > 0) {
         console.log("placeholder emails suppressed:", Object.fromEntries(suppressions));
+      }
+    }
+
+    // Shared-address ownership: the owner carries the address, nobody else
+    // does. (Skips the owner check when the owner lost the address to a
+    // pre-existing DB row outside the group — that is a duplicate_email
+    // reject, reported separately.)
+    for (const [addr, plan] of sharedEmailPlan) {
+      for (const nid of plan.memberNids) {
+        const m = vContactMap.get(nid);
+        if (!m) continue;
+        const row = await storage.contacts.getContact(m.s2Id);
+        if (!row) continue;
+        const rowEmail = row.email ? row.email.trim().toLowerCase() : null;
+        if (nid === plan.winnerNid) {
+          if (rowEmail !== addr && !rejects.has("duplicate_email", nid)) {
+            console.error(`VERIFY: shared-address owner contact nid ${nid} does not carry its address`);
+            verifyFailures++;
+          }
+        } else if (rowEmail === addr) {
+          console.error(`VERIFY: contact nid ${nid} carries a shared address it does not own (rule ${plan.rule})`);
+          verifyFailures++;
+        }
       }
     }
     const legacyNidTypeId = idTypeByLabel.get("Legacy NID");

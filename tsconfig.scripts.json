@@ -3,6 +3,8 @@
   "include": [
     "scripts/s1-migration/**/*",
     "scripts/oneoffs/s1-t16-t19-smoke.ts",
+    "scripts/oneoffs/s1-t27-users-smoke.ts",
+    "scripts/oneoffs/s1-t3-shared-email-smoke.ts",
     "scripts/oneoffs/s1-t29-packet-tag-smoke.ts",
     "scripts/oneoffs/s1-parity-smoke.ts",
     "scripts/oneoffs/s1-trackc-bench.ts",

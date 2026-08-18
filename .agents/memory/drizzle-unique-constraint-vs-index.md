@@ -33,3 +33,9 @@ END $$;
 **Why:** the drift gate is the real enforcement (the author-time
 `check-migrations.ts` false-fails on untracked migration files anyway). Match the
 constraint/index KIND the Drizzle schema declares, not just the name.
+
+## Expression uniques that PASS the drift gate (proven pattern)
+A case-insensitive unique on a column works end-to-end as:
+- schema.ts extra-config: `uniqueIndex("name_lower_unique").on(sql`lower(${table.col})`)` — renders qualified, normalizes to `lower(col)`, matching `pg_get_indexdef` pretty output.
+- migration: `CREATE UNIQUE INDEX name_lower_unique ON t (lower(col))` after dropping the old plain unique CONSTRAINT (drop both `<t>_<col>_unique` and legacy `<t>_<col>_key` IF EXISTS).
+Drift gate stays green with this pairing (verified on contacts.email, migration 1125-era).

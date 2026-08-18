@@ -395,6 +395,17 @@ export interface RawAuthmapRow {
   module: string | null;
 }
 
+/** S1 user↔contact association: `field_data_field_sirius_contact` rows with
+ * `entity_type='user'` (deleted=0). The authoritative ownership signal for
+ * shared email addresses — both the contacts and the users loaders resolve
+ * shared addresses through it, so the contact carrying an email and the
+ * worker a login resolves to are the same person. */
+export interface RawUserContactRow {
+  uid: number;
+  delta: number;
+  contactNid: number;
+}
+
 export async function ensureRawUserTables(): Promise<void> {
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS s1_staging.raw_users (
@@ -433,6 +444,15 @@ export async function ensureRawUserTables(): Promise<void> {
       authname text,
       module text,
       extracted_at timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS s1_staging.raw_user_contact (
+      uid bigint NOT NULL,
+      delta int NOT NULL,
+      contact_nid bigint NOT NULL,
+      extracted_at timestamptz NOT NULL DEFAULT now(),
+      PRIMARY KEY (uid, delta)
     )
   `);
 }
@@ -495,7 +515,21 @@ export async function upsertRawAuthmap(rows: RawAuthmapRow[]): Promise<void> {
   }
 }
 
-const RAW_USER_TABLES = ["raw_users", "raw_users_roles", "raw_roles", "raw_authmap"] as const;
+export async function upsertRawUserContacts(rows: RawUserContactRow[]): Promise<void> {
+  if (rows.length === 0) return;
+  for (let i = 0; i < rows.length; i += MAX_CHUNK_ROWS) {
+    const chunk = rows.slice(i, i + MAX_CHUNK_ROWS);
+    const values = chunk.map((r) => sql`(${r.uid}, ${r.delta}, ${r.contactNid}, now())`);
+    await db.execute(sql`
+      INSERT INTO s1_staging.raw_user_contact (uid, delta, contact_nid, extracted_at)
+      VALUES ${sql.join(values, sql`, `)}
+      ON CONFLICT (uid, delta) DO UPDATE SET
+        contact_nid = EXCLUDED.contact_nid, extracted_at = EXCLUDED.extracted_at
+    `);
+  }
+}
+
+const RAW_USER_TABLES = ["raw_users", "raw_users_roles", "raw_roles", "raw_authmap", "raw_user_contact"] as const;
 export type RawUserTable = (typeof RAW_USER_TABLES)[number];
 
 export async function deleteStaleRawUserTable(table: RawUserTable, watermark: string): Promise<number> {
@@ -551,6 +585,29 @@ export async function loadRawRoles(): Promise<RawRoleRow[]> {
     rid: Number(r.rid),
     name: r.name == null ? null : String(r.name),
     weight: r.weight == null ? null : Number(r.weight),
+  }));
+}
+
+/** Full user↔contact association read (small: at most one row per S1 user). */
+export async function loadRawUserContacts(): Promise<RawUserContactRow[]> {
+  const res = await db.execute(
+    sql`SELECT uid, delta, contact_nid FROM s1_staging.raw_user_contact ORDER BY uid, delta`,
+  );
+  return (res as unknown as { rows: Array<Record<string, unknown>> }).rows.map((r) => ({
+    uid: Number(r.uid),
+    delta: Number(r.delta),
+    contactNid: Number(r.contact_nid),
+  }));
+}
+
+/** Lightweight uid→mail read for shared-email ownership resolution (the
+ * contacts loader needs mails only — never pages the full user shape). */
+export async function loadRawUserMails(): Promise<Array<{ uid: number; mail: string | null; status: number }>> {
+  const res = await db.execute(sql`SELECT uid, mail, status FROM s1_staging.raw_users ORDER BY uid`);
+  return (res as unknown as { rows: Array<Record<string, unknown>> }).rows.map((r) => ({
+    uid: Number(r.uid),
+    mail: r.mail == null ? null : String(r.mail),
+    status: Number(r.status ?? 0),
   }));
 }
 

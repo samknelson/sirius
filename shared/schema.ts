@@ -255,12 +255,16 @@ export const contacts = pgTable("contacts", {
   generational: text("generational"),
   credentials: text("credentials"),
   displayName: text("display_name").notNull(),
-  email: text("email").unique(),
+  email: text("email"),
   birthDate: date("birth_date"),
   gender: varchar("gender").references(() => optionsGender.id, { onDelete: 'set null' }),
   genderNota: text("gender_nota"),
   genderCalc: text("gender_calc"),
-});
+}, (table) => [
+  // Case-insensitive uniqueness (migration 1125): two contacts must not hold
+  // emails differing only by case — matches the S1 loaders' lower() dedupe.
+  uniqueIndex("contacts_email_lower_unique").on(sql`lower(${table.email})`),
+]);
 
 export const workers = pgTable("workers", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
