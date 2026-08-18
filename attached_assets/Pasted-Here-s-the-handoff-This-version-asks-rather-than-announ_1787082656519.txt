@@ -1,0 +1,50 @@
+Here's the handoff. This version asks rather than announces, so nothing is committed before you have the answer to item 4.
+
+---
+
+**Neon topology problem — need input before we pick a migration target**
+
+**Current state**
+
+```
+production  (root, default, EMPTY)
+└── migration-rehearsal-2026-08-06   ← all rehearsal work has run here
+    └── bao-stg
+```
+
+**The problem.** We assumed we could finish the migration on the rehearsal branch and then either promote it to default or copy it into `production`. Neither is clean:
+
+- Snapshots, scheduled backups, and point-in-time restore are **root-branch-only** in Neon. Child branches have none of them. We can't run a HIPAA system with an append-only financial ledger without PITR.
+- A child branch cannot be promoted to root. There is no metadata-only fix — getting data onto a root branch requires a physical copy.
+
+So the data has to end up on `production`. Two ways to get it there:
+
+| | **Option A — `pg_dump` rehearsal → `production`** | **Option B — run the final migration against `production` directly** |
+|---|---|---|
+| Rehearsal branch | Source of truth; deleted after | Stays a rehearsal branch; discarded |
+| PHI dump file at rest | Yes — full extract, needs compliant host + secure deletion | No |
+| Role / sequence / extension reconciliation | Required | Not required |
+| Requires migration be fully reproducible from scripts | **No** | **Yes** |
+| Storage during transition | Two copies | One |
+
+**What decides it:** whether the migration is reproducible from scripts alone. If everything that shaped the rehearsal branch lives in loader code and migration files, Option B is cheaper and safer. If there are manual fixes on that branch that never made it back into code, Option B silently loses them and Option A is the only choice.
+
+**Questions — please answer before we commit to either path**
+
+1. **Out-of-band changes (most important).** Were any fixes applied directly to `migration-rehearsal-2026-08-06` — manual SQL, one-off patches, hand-corrected rows, schema tweaks — that are *not* reflected in loader code or migration files? If yes, list them specifically. A vague "probably not" isn't usable here.
+2. **Cold-start.** Can the full loader sequence run against a completely empty database in one pass, with no prior state?
+3. **Schema creation.** Do the loaders emit DDL, or do they assume a schema created by a separate step? If separate, what's the run order?
+4. **Prerequisites.** Do the loaders assume any roles, extensions, or schemas already exist?
+5. **Connection target.** Is the destination a config/env value, or is the rehearsal branch connection string hardcoded anywhere? List every location.
+6. **Sequences.** Where rows are inserted with explicit IDs, do the loaders reset sequence values afterward, or is that a separate step?
+7. **External state.** Any checkpoint files, resume logs, or run-tracking tables outside the database that would need clearing before a fresh run?
+8. **Run sequence and runtime.** Documented order from empty DB to fully loaded, plus an estimate for a single clean run.
+
+Don't change anything yet — answers first.
+
+---
+
+Two things this note deliberately leaves out, since they're yours and Sam's rather than the agent's:
+
+- **`bao-stg` gets recreated either way.** It currently hangs off the rehearsal branch, so post-cutover it needs to be a child of `production` — new branch, new connection string, and anyone pointed at the current one needs rewiring.
+- **Pre-go-live on `production`:** set the restore window length (drives both PITR reach and history storage cost — worth picking against Kristin's retention answer rather than taking the default) and configure the snapshot schedule once real data lands.
