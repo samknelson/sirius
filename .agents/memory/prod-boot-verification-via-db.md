@@ -24,7 +24,8 @@ image rebuild/rollout is human-run CloudShell per docs/s1-migration/FC-ENVIRONME
 the stale-image trap is building before the fix commit is on origin/bao-prd —
 check `git log origin/bao-prd` vs the fix commit before rebuilding.
 
-## Two prod-like Neon DBs (2026-08-07)
-- `EXTERNAL_DATABASE_URL` (ep-fragrant-meadow…) = Mitchell's prod-migrate-test DB.
+## Workspace-reachable Neon DBs (corrected 2026-08-18)
+- `EXTERNAL_DATABASE_URL` (ep-fragrant-meadow…) = the **shared dev DB** (synthetic ~50-worker data; probed 2026-08-18 — the earlier "Mitchell's prod-migrate-test" label is obsolete). Same host also carries a stale partial `s2_rehearsal` database from the 2026-08-06 dev rehearsal — not the real target.
 - `SOURCE_CONFIG_DATABASE_URL` (ep-holy-paper…) = John's bao-prd DB, despite the misleading secret name.
+- The REAL rehearsal target (Neon DB `migration-rehearsal-2026-08-06`) is reachable only in-VPC (ECS/CloudShell); its DSN lives in AWS Secrets Manager, NOT in workspace secrets.
 Check `migrations_version` on BOTH when diagnosing "prod won't boot"; a stalled counter can be healed from the workspace by running the real runner (`scripts/oneoffs/run-core-migrations-status.ts`) with `EXTERNAL_DATABASE_URL` overridden to the target DB — migrations are idempotent by contract.

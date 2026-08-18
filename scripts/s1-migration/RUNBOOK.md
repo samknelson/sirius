@@ -355,6 +355,11 @@ Rehearsal evidence: balance parity — 58/58 AR rows, 30/30 payments, drift 0¢ 
 all 3 accounts and aggregate. Month parity 2025-06 — 82/82 matched, 0%
 disagreement; 2026-06 (open-span era) — 24/24 matched, 0%.
 
+Balance-parity triage procedure (mismatch classes → root causes →
+allow-list → drift 0): `docs/s1-migration/08-ledger-payment-reconciliation.md`
+— includes the validated debug-query kit (R/M series) and the expected
+mismatch-class census derived from recorded t19 rejects.
+
 ## 7. Failure & retry guidance
 
 - **Loaders are idempotent.** Every loader resolves `s1_staging.id_map` first and

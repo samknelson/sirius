@@ -551,3 +551,22 @@ extract will contain some payperiods whose JSON row lands after the node row
 is read — these rows recur run over run and are NOT a loader defect. Their
 pickup belongs to the parallel-run full-sync / delta re-stage design (a
 separate upcoming effort), not to T20.
+
+#### P8 — ledger/payment reconciliation kit (added 2026-08-18)
+
+The full money-parity validation kit (target-Postgres R-series + S1-MariaDB
+M-series, all target queries validated verbatim against dev) lives in
+**`08-ledger-payment-reconciliation.md`**. Run it after T18+T19 (and, on the
+rehearsal DB, after the reference-type repair one-off) and before signing the
+balance-parity gate:
+
+- **R2/R3** — staged − rejects = id_map = loaded identity, reproduced from
+  staged data in loader precedence order.
+- **R5a–R5c** — reference-vocabulary + payment-linkage gates
+  (`dangling = 0`, no `ledger_payment`/`trust_wmb` rows remaining).
+- **R6a–R6c + M1/M2** — `s1-unknown` residuals classified: staged-but-in-scope
+  = loader gap; not staged + `(deleted)` in MariaDB = deleted S1 source
+  (same rule as P7a/P7e).
+- **R4a + M3** — reject dispositions (money at stake or not) per reason.
+- §6 of that doc predicts the parity harness's mismatch classes from the
+  recorded reject counts — deviations from the prediction are the findings.

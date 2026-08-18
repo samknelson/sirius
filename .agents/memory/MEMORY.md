@@ -101,13 +101,13 @@
 - [Migration scripts outside app tsconfig](scripts-tsconfig-gap.md) — app tsc green says nothing about scripts/; run tsc -p tsconfig.scripts.json before first execution of new loaders.
 - [Synthetic S1 tag-data gap](s1-synthetic-tag-gap.md) — dev MariaDB predates sirius_contact_tags (NULL tids, no terms); tag consumers legitimately no-op in dev; cover via seeded staged fakes, don't regenerate.
 - [Dev curl auth shortcut](dev-local-auth-curl.md) — local login is dev default (seeded admin + INITIAL_ADMIN_PASSWORD); component enables via SQL need a restart (boot-time cache); tsx server has no hot reload.
-- [S1 rehearsal target pattern](s1-rehearsal-pattern.md) — separate s2_rehearsal DB; empty bootstrap skips data seeds + optional components; S1 DSN whitespace; RUNBOOK.md is the prod procedure.
+- [S1 rehearsal target pattern](s1-rehearsal-pattern.md) — rehearsal DB is in-VPC only: ship operator-run SQL kits validated verbatim on dev; empty bootstrap skips seeds/components; S1 DSN whitespace.
 - [ShellExec background process lifetime](shellexec-background-process-lifetime.md) — nohup jobs die when the call ends; use a temp console workflow for long one-shots.
 - [FC migration ECS ops](fc-migration-ecs-ops.md) — CloudShell regular tab = internet/AWS APIs, VPC tab = RDS only; silent stall = wrong tab; run-task per runbook step.
 - [Synthetic S1 regen invalidates id_map](s1-regen-idmap-staleness.md) — regen assigns new nids; restage + re-run contacts-workers before any id_map-resolving loader.
 - [S1 prod vocab renames](s1-prod-vocab-renames.md) — prod taxonomy vocab names differ from synthetic dev (election type etc.); terms-querying loaders must accept both.
 - [S1 staging NUL bytes](s1-staging-nul-bytes.md) — real S1 data has \u0000 in JSON; Postgres 22P05; staging strips at write boundary (only "verbatim" exception).
-- [Prod boot verification via DB](prod-boot-verification-via-db.md) — no AWS/URL access here; verify via migrations_version + winston liveness; SOURCE_CONFIG_DATABASE_URL is John's bao-prd DB, EXTERNAL is Mitchell's.
+- [Prod boot verification via DB](prod-boot-verification-via-db.md) — no AWS/URL access here; verify via migrations_version + winston liveness; SOURCE_CONFIG=John's bao-prd, EXTERNAL=shared dev DB.
 - [gitPush needs upstream tracking](gitpush-callback-upstream.md) — pushing to an existing remote branch requires `git branch -u origin/<b>` first, else opaque BRANCH_ALREADY_EXISTS.
 - [BAO member status scan codes](bao-member-status-codes.md) — scan resolves options by code (EC100/EC80/H60); dev DB options lack codes → scan fails explicitly until seeded.
 - [S1 load-options required-column gaps](s1-load-options-required-columns.md) — fresh-target create/adopt paths hit NOT NULL columns (gender.code) and empty-patch updates that id_map-matched runs never exercised.
@@ -121,3 +121,4 @@
 - [BAO hours upload performance](bao-hours-upload-performance.md) — bulk pre-fetch + charge config cache + skipHomeEmployerEvent; see file for the three-axis approach.
 - [.replit gitignored vs task review](dotreplit-gitignored-review.md) — .replit workflow changes never show in the task diff; completion review rejects unless drift_reason explains it.
 - [S1 shared-email ownership](s1-shared-email-ownership.md) — raw_user_contact (user↔contact assoc) is THE ownership signal; no-owner shared addresses defer to email=null (737 pending fund ruling).
+- [S1 loader run order](s1-loader-run-order.md) — t18 references resolve via id_map; loading ledger before payments/WMB silently types everything s1-unknown; adopt never re-resolves.

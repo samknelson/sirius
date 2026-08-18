@@ -17,3 +17,7 @@ The verified procedure lives in `scripts/s1-migration/RUNBOOK.md` (incl. the dev
 - After touching wipe/retry logic, rerun its failure-injection harness. SIGKILLed children's DB backends briefly outlive the process — poll pg_stat_activity before asserting rollback, and scope assertions to fixture rows.
 
 **DB nomenclature (user ruling 2026-08-09):** the S2 rehearsal target Neon DB is named **migration-rehearsal-2026-08-06**; the source stays **S1**. Never invent ad-hoc names ("rehearsal PG") — pinned in RUNBOOK §1.
+
+**Operator-run validation kits (ruling 2026-08-18):** the user will NOT grant the workspace rehearsal-DB credentials. Validation against the rehearsal target is operator-run: deliver pure SQL for the Neon SQL editor + ECS one-off commands + S1-MariaDB (CloudShell VPC tab) queries, and fold pasted-back aggregates into the tracked docs. Validate every target-Postgres query VERBATIM against the shared dev DB first (no app imports — it must paste into a SQL editor). Kit exemplar: docs/s1-migration/08-ledger-payment-reconciliation.md.
+
+**URL gotcha:** swapping the database name in a Neon DSN with sed can hit the username too (`neondb_owner`) — anchor the replacement to the end of the URL.
