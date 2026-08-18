@@ -1,0 +1,83 @@
+That settles it — two loaders, symmetric change. Here's the note.
+
+---
+
+## Note for Replit agent
+
+### Context
+
+Shared email addresses are handled inconsistently across two loaders, and the current behavior can attribute one member's email — and therefore their portal identity — to a different member.
+
+**1,008 contacts sit on shared email addresses** in S1 (excluding the placeholder addresses handled separately). `load-contacts-workers.ts` assigns each address to whichever contact loads first, i.e. S1 nid order — record creation date, not a rule anyone chose.
+
+Confirmed case: a parent and child are both employed members with their own coverage. S1 records the email on the child's contact and associates the user account with the child. S2 assigned it to the parent (lower nid). If the Okta account authenticates on that address and resolves via the S2 contact, the child sees the parent's member record. That's a PHI exposure, not just lost contactability.
+
+Separately, `load-users.ts` raises `ambiguous_worker_email` for 26 accounts — it resolves the worker link from staged S1 contacts, so every contact sharing the address remains a candidate regardless of what lands in S2.
+
+S1's data is correct in both cases. Both defects are loader-side.
+
+### Verified facts
+
+- **No email address is associated with more than one S1 user account.** The user↔contact association is therefore an unambiguous ownership signal wherever it exists.
+- 271 of the 1,008 shared-email contacts have a user account; 737 do not.
+- S1 records the association directly: `field_data_field_sirius_contact` with `entity_type='user'`.
+
+### Behavior — `load-contacts-workers.ts`
+
+1. When two or more staged contacts share an email (case-insensitive, trimmed), resolve the owner from the S1 user↔contact association: the contact referenced by the account whose `mail` matches that address keeps the email. All other contacts on that address load with `email = null`.
+2. If an address resolves to more than one user account, **reject** rather than choose. This does not occur in current prod data; the guard exists so a future occurrence fails loud.
+3. Where no contact on a shared address has a user account, apply the fund's fallback ruling (see Open questions).
+4. Report per address: winning contact, rule applied (`byUserAccount` / `byFallback`), and count nulled.
+
+### Behavior — `load-users.ts`
+
+5. In `resolveWorker`, when the email lookup yields multiple worker candidates, prefer the contact tied to that uid's own user account before annotating `ambiguous_worker_email`. Annotate only when the association doesn't settle it.
+6. Keep `ambiguous_worker_email` as an annotation, not a FATAL reject — accounts must continue to load with `workerS2Id = null` when unresolvable.
+7. Preserve the existing distinction: a single candidate whose worker mapping is missing or a stub still falls through to `no_resolvable_worker`.
+8. Note ambiguity can arise from a single contact with two worker records (duplicate workers), which the user-account association does **not** resolve. Those must still annotate — see Open questions.
+
+### Consistency requirement
+
+Both loaders must use the same ownership signal, so the S2 contact carrying the email and the S2 worker the login resolves to are the same person. A change to one without the other reintroduces the split.
+
+### Data touchpoints
+
+| Object | Effect |
+|---|---|
+| `contacts.email` | Owner determined by user-account association rather than load order |
+| users loader worker link | Disambiguated by the same association |
+| S1 | **No writes** — S1 is correct |
+
+### Edge cases
+
+| Case | Expected |
+|---|---|
+| Shared email, one contact has an account | That contact keeps it; others null |
+| Shared email, no account on any contact | Fallback ruling; report as `byFallback` |
+| Address with two user accounts | Reject — does not occur today |
+| One contact, two worker records, same email | Still `ambiguous_worker_email` — association can't resolve it |
+| Case/whitespace variants | Treated as the same address |
+| Rerun | Idempotent; no reassignment of a correctly-owned email |
+
+### Out of scope
+
+- Any S1 write.
+- The placeholder-email suppression (`fastload@nodomain.com`, `no_email@avolta.net`) — separate change.
+- Merging duplicate worker records — an S1 data task.
+
+### Open questions
+
+| # | Question | Owner |
+|---|---|---|
+| 1 | For the 737 shared-email contacts with no user account, who keeps the address? Recommend subscriber-over-dependent, with most-recently-updated as the tiebreak between two subscribers. | Kristin |
+| 2 | `contacts_email_unique` indexes raw `email` while the loader dedupes case-insensitively. Change to `lower(email)`? | Sam |
+| 3 | Duplicate worker records sharing an email (both records for one person) cause ambiguity the association can't fix. Merge in S1, or accept the annotation? ~26 accounts affected. | Kristin + fund |
+
+### Validation
+
+1. `s1-t27-users-smoke.ts` — establish a baseline run before the change, since `ambiguous_worker_email` firing conditions are changing.
+2. After both changes: `ambiguous_worker_email` drops from 26 to only those caused by duplicate worker records.
+3. Spot-check the parent/child case: the email sits on the child's contact, and the child's account resolves to the child's worker.
+4. `SELECT count(*), count(email), count(DISTINCT lower(email)) FROM contacts` — last two remain equal.
+5. Confirm the S2 contact holding a given email and the S2 worker its login resolves to are the same person, for several shared-email cases.
+6. Second consecutive run of each loader reports zero writes.
