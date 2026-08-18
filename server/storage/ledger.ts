@@ -16,7 +16,7 @@ import type {
   Ledger,
   InsertLedger
 } from "@shared/schema";
-import { eq, ne, and, desc, or, isNull, asc, sql as sqlRaw, sum, min, max, count, inArray, notInArray, gte, lte, lt } from "drizzle-orm";
+import { eq, ne, and, desc, or, isNull, asc, sql as sqlRaw, sum, min, max, count, inArray, notInArray, gte, lte, lt, ilike } from "drizzle-orm";
 import { alias as pgAlias } from "drizzle-orm/pg-core";
 import { defineLoggingConfig, withStorageLogging, type StorageLoggingConfig } from "./middleware/logging";
 import { formatAmount, getCurrency } from "@shared/currency";
@@ -83,6 +83,22 @@ export type TransactionFilter =
   | { eaId: string } 
   | { referenceType: string; referenceId: string };
 
+/**
+ * Optional view filters applied server-side on top of a TransactionFilter
+ * scope, so pagination totals/pages and exports reflect the whole filtered
+ * dataset (not just the visible page). amountMin/amountMax are decimal
+ * strings compared numerically against ledger.amount.
+ */
+export interface TransactionViewFilters {
+  entityType?: string;
+  entityName?: string;
+  memo?: string;
+  amountMin?: string;
+  amountMax?: string;
+  dateFrom?: Date;
+  dateTo?: Date;
+}
+
 export interface LedgerEntryFilter {
   chargePlugins?: string[];
   dateFrom?: Date;
@@ -103,10 +119,17 @@ export interface LedgerEntryStorage {
   listReferenceIdsByConfigAndType(chargePluginConfigId: string, referenceType: string): Promise<string[]>;
   getByFilter(filter: LedgerEntryFilter): Promise<Ledger[]>;
   getTransactions(filter: TransactionFilter): Promise<LedgerEntryWithDetails[]>;
-  getTransactionsPaginated(filter: TransactionFilter, limit: number, offset: number): Promise<{ data: LedgerEntryWithDetails[]; total: number }>;
+  /**
+   * Paginated transaction view. `viewFilters` narrows the scoped dataset
+   * server-side; `opts.skipCount` skips the COUNT query (total is -1) for
+   * batched export loops.
+   */
+  getTransactionsPaginated(filter: TransactionFilter, limit: number, offset: number, viewFilters?: TransactionViewFilters, opts?: { skipCount?: boolean }): Promise<{ data: LedgerEntryWithDetails[]; total: number }>;
+  /** Distinct EA entity types present in the given transaction scope (for filter options). */
+  getTransactionEntityTypes(filter: TransactionFilter): Promise<string[]>;
   getByAccountId(accountId: string): Promise<LedgerEntryWithDetails[]>;
   getRawByAccountId(accountId: string): Promise<RawLedgerEntryWithEntity[]>;
-  getByAccountIdPaginated(accountId: string, limit: number, offset: number): Promise<{ data: LedgerEntryWithDetails[]; total: number }>;
+  getByAccountIdPaginated(accountId: string, limit: number, offset: number, viewFilters?: TransactionViewFilters): Promise<{ data: LedgerEntryWithDetails[]; total: number }>;
   getAccountMonthlySummary(
     accountId: string,
     basis: 'cash' | 'accrual',
@@ -1153,7 +1176,7 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
       return this.getTransactions({ accountId });
     },
 
-    async getTransactionsPaginated(filter: TransactionFilter, limit: number, offset: number): Promise<{ data: LedgerEntryWithDetails[]; total: number }> {
+    async getTransactionsPaginated(filter: TransactionFilter, limit: number, offset: number, viewFilters?: TransactionViewFilters, opts?: { skipCount?: boolean }): Promise<{ data: LedgerEntryWithDetails[]; total: number }> {
       const client = getClient();
       try {
         const refEmployers = pgAlias(employers, 'ref_employers');
@@ -1161,25 +1184,73 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
         const refWorkers = pgAlias(workers, 'ref_workers');
         const refContacts = pgAlias(contacts, 'ref_contacts');
 
-        let whereClause;
+        const conditions = [];
         if ('accountId' in filter) {
-          whereClause = eq(ledgerEa.accountId, filter.accountId);
+          conditions.push(eq(ledgerEa.accountId, filter.accountId));
         } else if ('eaId' in filter) {
-          whereClause = eq(ledger.eaId, filter.eaId);
+          conditions.push(eq(ledger.eaId, filter.eaId));
         } else {
-          whereClause = and(
+          conditions.push(
             eq(ledger.referenceType, filter.referenceType),
             eq(ledger.referenceId, filter.referenceId)
           );
         }
 
-        const [countResult] = await client
-          .select({ count: count() })
-          .from(ledger)
-          .innerJoin(ledgerEa, eq(ledger.eaId, ledgerEa.id))
-          .where(whereClause);
-        
-        const total = countResult?.count || 0;
+        // Escape ILIKE wildcards so user input matches literally.
+        const escapeLike = (s: string) => s.replace(/[\\%_]/g, (c) => `\\${c}`);
+        const needsEntityJoins = !!viewFilters?.entityName;
+        if (viewFilters) {
+          if (viewFilters.entityType) {
+            conditions.push(eq(ledgerEa.entityType, viewFilters.entityType));
+          }
+          if (viewFilters.memo) {
+            conditions.push(ilike(ledger.memo, `%${escapeLike(viewFilters.memo)}%`));
+          }
+          if (viewFilters.amountMin !== undefined) {
+            conditions.push(gte(ledger.amount, viewFilters.amountMin));
+          }
+          if (viewFilters.amountMax !== undefined) {
+            conditions.push(lte(ledger.amount, viewFilters.amountMax));
+          }
+          if (viewFilters.dateFrom) {
+            conditions.push(gte(ledger.date, viewFilters.dateFrom));
+          }
+          if (viewFilters.dateTo) {
+            conditions.push(lte(ledger.date, viewFilters.dateTo));
+          }
+          if (viewFilters.entityName) {
+            // Mirrors the displayed entityName resolution: employer name →
+            // trust provider name → worker contact name → "Worker #<sirius>"
+            // → "<type> <id-prefix>".
+            const pattern = `%${escapeLike(viewFilters.entityName)}%`;
+            conditions.push(sqlRaw`COALESCE(
+              ${employers.name},
+              ${trustProviders.name},
+              NULLIF(TRIM(COALESCE(${contacts.given}, '') || ' ' || COALESCE(${contacts.family}, '')), ''),
+              CASE WHEN ${workers.siriusId} IS NOT NULL THEN 'Worker #' || ${workers.siriusId}::text END,
+              ${ledgerEa.entityType} || ' ' || left(${ledgerEa.entityId}, 8)
+            ) ILIKE ${pattern}`);
+          }
+        }
+        const whereClause = and(...conditions);
+
+        let total = -1;
+        if (!opts?.skipCount) {
+          let countQuery = client
+            .select({ count: count() })
+            .from(ledger)
+            .innerJoin(ledgerEa, eq(ledger.eaId, ledgerEa.id))
+            .$dynamic();
+          if (needsEntityJoins) {
+            countQuery = countQuery
+              .leftJoin(employers, and(eq(ledgerEa.entityType, 'employer'), eq(ledgerEa.entityId, employers.id)))
+              .leftJoin(trustProviders, and(eq(ledgerEa.entityType, 'trustProvider'), eq(ledgerEa.entityId, trustProviders.id)))
+              .leftJoin(workers, and(eq(ledgerEa.entityType, 'worker'), eq(ledgerEa.entityId, workers.id)))
+              .leftJoin(contacts, and(eq(ledgerEa.entityType, 'worker'), eq(workers.contactId, contacts.id)));
+          }
+          const [countResult] = await countQuery.where(whereClause);
+          total = countResult?.count || 0;
+        }
 
         const results = await client
           .select({
@@ -1243,9 +1314,9 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
             const formattedAmount = formatAmount(parseFloat(row.payment.amount), currencyCode);
             
             if (row.payment.memo) {
-              referenceName = `${currencyLabel} Adjustment: ${formattedAmount} - ${row.payment.memo}`;
+              referenceName = `${currencyLabel} Payment: ${formattedAmount} - ${row.payment.memo}`;
             } else {
-              referenceName = `${currencyLabel} Adjustment: ${formattedAmount}`;
+              referenceName = `${currencyLabel} Payment: ${formattedAmount}`;
             }
           } else if (row.entry.referenceType === 'employer' && row.refEmployer) {
             referenceName = `Employer: ${row.refEmployer.name}`;
@@ -1291,8 +1362,37 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
       }
     },
 
-    async getByAccountIdPaginated(accountId: string, limit: number, offset: number): Promise<{ data: LedgerEntryWithDetails[]; total: number }> {
-      return this.getTransactionsPaginated({ accountId }, limit, offset);
+    async getByAccountIdPaginated(accountId: string, limit: number, offset: number, viewFilters?: TransactionViewFilters): Promise<{ data: LedgerEntryWithDetails[]; total: number }> {
+      return this.getTransactionsPaginated({ accountId }, limit, offset, viewFilters);
+    },
+
+    async getTransactionEntityTypes(filter: TransactionFilter): Promise<string[]> {
+      const client = getClient();
+      if ('accountId' in filter) {
+        // All EA entity types under the account — filter options must cover
+        // the whole scope, not just the current page.
+        const rows = await client
+          .selectDistinct({ entityType: ledgerEa.entityType })
+          .from(ledgerEa)
+          .where(eq(ledgerEa.accountId, filter.accountId));
+        return rows.map(r => r.entityType).sort();
+      }
+      if ('eaId' in filter) {
+        const rows = await client
+          .select({ entityType: ledgerEa.entityType })
+          .from(ledgerEa)
+          .where(eq(ledgerEa.id, filter.eaId));
+        return rows.map(r => r.entityType);
+      }
+      const rows = await client
+        .selectDistinct({ entityType: ledgerEa.entityType })
+        .from(ledger)
+        .innerJoin(ledgerEa, eq(ledger.eaId, ledgerEa.id))
+        .where(and(
+          eq(ledger.referenceType, filter.referenceType),
+          eq(ledger.referenceId, filter.referenceId)
+        ));
+      return rows.map(r => r.entityType).sort();
     },
 
     async getAccountMonthlySummary(
@@ -1317,7 +1417,9 @@ export function createLedgerEntryStorage(): LedgerEntryStorage {
       const bucketExpr = basis === 'cash'
         ? sqlRaw<string>`to_char(${ledger.date}, 'YYYY-MM')`
         : sqlRaw<string>`substring(${ledger.statementYmd}, 1, 7)`;
-      const isPaymentExpr = sqlRaw<boolean>`${ledger.chargePlugin} = 'payment-simple-allocation'`;
+      // referenceType-first: migrated (s1-import) allocations reference a
+      // payment without the payment-simple-allocation charge plugin.
+      const isPaymentExpr = sqlRaw<boolean>`(${ledger.referenceType} = 'payment' OR ${ledger.chargePlugin} = 'payment-simple-allocation')`;
 
       const whereConds = [eq(ledgerEa.accountId, accountId)];
       if (basis === 'cash') {
@@ -1757,6 +1859,11 @@ function classifyEntriesForPeriod(
       const amt = parseFloat(entry.amount);
       if (amt > 0) {
         chargesCents += toCents(entry.amount);
+      } else if (amt < 0) {
+        // Negative non-payment entries (e.g. migrated credits without a
+        // resolvable payment reference) surface as adjustments instead of
+        // silently dropping out of every bucket.
+        adjustmentsCents += toCents(entry.amount);
       }
     }
   }

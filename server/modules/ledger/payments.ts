@@ -9,6 +9,7 @@ import { logger } from "../../logger";
 import { eventBus, EventType } from "../../services/event-bus";
 import { isValidYmd, ymdToDateForPicker, dateToYmd } from "@shared/utils/date";
 import { isComponentEnabled } from "../components";
+import { respondWithTransactions } from "./transaction-query";
 
 const unifiedOptionsStorage = createUnifiedOptionsStorage();
 
@@ -552,14 +553,12 @@ export function registerLedgerPaymentRoutes(app: Express) {
     }
   });
 
-  // GET /api/ledger/payments/:id/transactions - Get ledger entries for a payment (paginated)
+  // GET /api/ledger/payments/:id/transactions - Get ledger entries for a payment
+  // (paginated, server-side filters; format=csv streams the full filtered set)
   app.get("/api/ledger/payments/:id/transactions", requireComponent("ledger"), requireAccess('authenticated'), async (req, res) => {
     try {
       const { id } = req.params;
-      const maxLimit = req.query.export === 'true' ? 100000 : 200;
-      const limit = Math.min(parseInt(req.query.limit as string) || 50, maxLimit);
-      const offset = parseInt(req.query.offset as string) || 0;
-      
+
       // First get the payment to find its EA
       const payment = await storage.ledger.payments.get(id);
       if (!payment) {
@@ -576,14 +575,12 @@ export function registerLedgerPaymentRoutes(app: Express) {
       
       // Check EA-level access
       if (!await checkPaymentEaAccessInline(req, res, ea, 'ledger.ea.view')) return;
-      
-      const result = await storage.ledger.entries.getTransactionsPaginated({
-        referenceType: "payment",
-        referenceId: id,
-      }, limit, offset);
-      res.json(result);
+
+      await respondWithTransactions(req, res, { referenceType: "payment", referenceId: id }, "payment-transactions");
     } catch (error) {
-      res.status(500).json({ message: "Failed to fetch payment transactions" });
+      if (!res.headersSent) {
+        res.status(500).json({ message: "Failed to fetch payment transactions" });
+      }
     }
   });
 

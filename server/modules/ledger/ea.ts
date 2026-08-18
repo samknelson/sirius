@@ -6,6 +6,7 @@ import { requireComponent } from "../components";
 import { generateInvoicePdf } from "../../utils/pdfGenerator";
 import { isValidYmd, ymdToDateForPicker } from "@shared/utils/date";
 import { buildContentDisposition } from "../../utils/content-disposition";
+import { respondWithTransactions } from "./transaction-query";
 
 async function checkEaAccessInline(req: Request, res: Response, ea: { entityType: string; entityId: string }, policyId: string): Promise<boolean> {
   const result = await checkAccessInline(req, policyId, ea.entityId, { entityType: ea.entityType, entityId: ea.entityId });
@@ -188,14 +189,12 @@ export function registerLedgerEaRoutes(app: Express) {
     }
   });
 
-  // GET /api/ledger/ea/:id/transactions - Get ledger entries for an EA (paginated)
+  // GET /api/ledger/ea/:id/transactions - Get ledger entries for an EA
+  // (paginated, server-side filters; format=csv streams the full filtered set)
   app.get("/api/ledger/ea/:id/transactions", requireComponent("ledger"), requireAccess('authenticated'), async (req, res) => {
     try {
       const { id } = req.params;
-      const maxLimit = req.query.export === 'true' ? 100000 : 200;
-      const limit = Math.min(parseInt(req.query.limit as string) || 50, maxLimit);
-      const offset = parseInt(req.query.offset as string) || 0;
-      
+
       // Check if EA exists
       const ea = await storage.ledger.ea.get(id);
       if (!ea) {
@@ -205,11 +204,11 @@ export function registerLedgerEaRoutes(app: Express) {
 
       if (!await checkEaAccessInline(req, res, ea, 'ledger.ea.view')) return;
 
-      // Get paginated transactions for this EA
-      const result = await storage.ledger.entries.getTransactionsPaginated({ eaId: id }, limit, offset);
-      res.json(result);
+      await respondWithTransactions(req, res, { eaId: id }, "ea-transactions");
     } catch (error) {
-      res.status(500).json({ message: "Failed to fetch ledger transactions" });
+      if (!res.headersSent) {
+        res.status(500).json({ message: "Failed to fetch ledger transactions" });
+      }
     }
   });
 
@@ -385,9 +384,16 @@ export function registerLedgerEaRoutes(app: Express) {
           data: e.data,
         }));
 
+      // Payment-referenced entries are classified as payments regardless of
+      // which charge plugin wrote them (referenceType-first, matching the
+      // statement-period classifier) — migrated s1-import allocations carry
+      // referenceType 'payment' but not the payment-simple-allocation plugin.
+      const isPaymentEntry = (e: { referenceType: string | null; referenceId: string | null; chargePlugin: string | null }) =>
+        (e.referenceType === "payment" && !!e.referenceId) || e.chargePlugin === "payment-simple-allocation";
+
       const paymentRefIds = [...new Set(
         entries
-          .filter(e => e.chargePlugin === "payment-simple-allocation" && e.referenceId)
+          .filter(e => isPaymentEntry(e) && e.referenceId)
           .map(e => e.referenceId!)
       )];
 
@@ -526,7 +532,7 @@ export function registerLedgerEaRoutes(app: Express) {
           preIncomingCents += amountCents;
         }
 
-        if (entry.chargePlugin === "payment-simple-allocation") {
+        if (isPaymentEntry(entry)) {
           const payment = entry.referenceId ? paymentMap.get(entry.referenceId) : undefined;
           const pt = payment ? paymentTypeMap.get(payment.paymentType) : undefined;
           const category = pt?.category || "financial";
@@ -564,10 +570,9 @@ export function registerLedgerEaRoutes(app: Express) {
             catData.interestPenaltyEntryCount++;
           }
         } else {
-          const positiveAmount = amountCents > BigInt(0) ? amountCents : BigInt(0);
           const catData = getVisibleMonth(bucketMonth, bucketYear);
-          if (catData && positiveAmount > BigInt(0)) {
-            catData.charges += positiveAmount;
+          if (catData && amountCents > BigInt(0)) {
+            catData.charges += amountCents;
             catData.chargeEntryCount++;
             if (entry.referenceId) {
               catData.chargeWorkerIds.add(entry.referenceId);
@@ -576,6 +581,12 @@ export function registerLedgerEaRoutes(app: Express) {
             if (meta && typeof meta.hours === "number") {
               catData.chargeHours += meta.hours;
             }
+          } else if (catData && amountCents < BigInt(0)) {
+            // Negative non-payment entries (e.g. migrated credits without a
+            // resolvable payment reference) surface as adjustments instead of
+            // silently dropping out of every bucket.
+            catData.adjustments += amountCents;
+            catData.adjustmentEntryCount++;
           }
         }
       }

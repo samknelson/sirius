@@ -369,13 +369,13 @@ async function main() {
            WHERE charge_plugin = 's1-import' AND charge_plugin_key = ${"ar-" + N.ar1}`,
     );
     check("t18 charge amount verbatim", Number(e1row[0]?.amount) === 50.0, e1row[0]?.amount);
-    check("t18 charge references wmb anchor", e1row[0]?.reference_type === "trust_wmb" && e1row[0]?.reference_id === anchor, e1row[0]);
+    check("t18 charge references wmb anchor", e1row[0]?.reference_type === "wmb" && e1row[0]?.reference_id === anchor, e1row[0]);
     check("t18 statement first-of-month (LA)", e1row[0]?.statement_ymd === "2024-06-01", e1row[0]?.statement_ymd);
     const e2row = await rows<{ amount: string; reference_type: string | null }>(
       sql`SELECT amount, reference_type FROM ledger WHERE charge_plugin = 's1-import' AND charge_plugin_key = ${"ar-" + N.ar2}`,
     );
     check("t18 negative allocation verbatim", Number(e2row[0]?.amount) === -25.0, e2row[0]?.amount);
-    check("t18 allocation references payment", e2row[0]?.reference_type === "ledger_payment", e2row[0]);
+    check("t18 allocation references payment", e2row[0]?.reference_type === "payment", e2row[0]);
 
     console.log("T18 run 2 (idempotent adopt):");
     const t18b = runLoader("load-ledger.ts", ["--allow-rejects", "non_cleared_status"]);

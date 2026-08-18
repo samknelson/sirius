@@ -4,6 +4,7 @@ import { insertLedgerAccountSchema, ledgerAccountDataSchema } from "@shared/sche
 import { getAllCurrencies, hasCurrency } from "@shared/currency";
 import { requireAccess } from "../../services/access-policy-evaluator";
 import { requireComponent } from "../components";
+import { respondWithTransactions } from "./transaction-query";
 
 export function registerLedgerAccountRoutes(app: Express) {
   // GET /api/ledger/currencies - Get all available currencies
@@ -240,14 +241,12 @@ export function registerLedgerAccountRoutes(app: Express) {
     }
   });
 
-  // GET /api/ledger/accounts/:id/transactions - Get ledger entries for an account (paginated)
+  // GET /api/ledger/accounts/:id/transactions - Get ledger entries for an account
+  // (paginated, server-side filters; format=csv streams the full filtered set)
   app.get("/api/ledger/accounts/:id/transactions", requireComponent("ledger"), requireAccess('staff'), async (req, res) => {
     try {
       const { id } = req.params;
-      const maxLimit = req.query.export === 'true' ? 100000 : 200;
-      const limit = Math.min(parseInt(req.query.limit as string) || 50, maxLimit);
-      const offset = parseInt(req.query.offset as string) || 0;
-      
+
       // Check if account exists
       const account = await storage.ledger.accounts.get(id);
       if (!account) {
@@ -255,12 +254,12 @@ export function registerLedgerAccountRoutes(app: Express) {
         return;
       }
 
-      // Get paginated transactions for this account
-      const result = await storage.ledger.entries.getByAccountIdPaginated(id, limit, offset);
-      res.json(result);
+      await respondWithTransactions(req, res, { accountId: id }, "account-transactions");
     } catch (error) {
       console.error("Error fetching ledger transactions:", error);
-      res.status(500).json({ message: "Failed to fetch ledger transactions" });
+      if (!res.headersSent) {
+        res.status(500).json({ message: "Failed to fetch ledger transactions" });
+      }
     }
   });
 }

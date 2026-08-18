@@ -21,8 +21,9 @@
  *   - participant nid → worker → shell-worker → contact → employer (EA
  *     getOrCreate). Contact-typed EAs are counted for review.
  *   - reference nid → best-effort resolve across id_map entities
- *     (wb→trust_wmb anchor, election, payment, worker, relation, employer,
- *     shell-worker/contact); unresolved keeps referenceType='s1-unknown'
+ *     (wb→wmb anchor, election, payment, worker, relation, employer,
+ *     shell-worker/contact) using the RUNTIME reference-type vocabulary
+ *     ('payment', 'wmb', …); unresolved keeps referenceType='s1-unknown'
  *     with the raw nid — data.s1ReferenceNid preserves it either way.
  *   - memo/key/json staged → memo column + data provenance (verbatim).
  *
@@ -77,9 +78,16 @@ const toCents = (amount: string): number => parseCents(amount) ?? 0;
  * node so overlaps only exist for shell-worker vs contact, resolved worker-
  * first like participants). */
 const REFERENCE_ENTITIES: Array<{ entity: string; referenceType: string }> = [
-  { entity: "wb", referenceType: "trust_wmb" },
+  // Runtime vocabulary: charge plugins write referenceType "wmb" for
+  // worker-month-benefit rows and "payment" for payment allocations; every
+  // consumer (payment history, transaction views, statement/invoice
+  // classification) matches those exact strings. Migration-only names like
+  // "ledger_payment"/"trust_wmb" leave imported rows invisible to them —
+  // scripts/oneoffs/repair-s1-import-reference-types.ts repairs rows loaded
+  // before this alignment.
+  { entity: "wb", referenceType: "wmb" },
   { entity: "election", referenceType: "worker_trust_election" },
-  { entity: "payment", referenceType: "ledger_payment" },
+  { entity: "payment", referenceType: "payment" },
   { entity: "worker", referenceType: "worker" },
   { entity: "shell-worker", referenceType: "worker" },
   { entity: "relation", referenceType: "worker_relation" },

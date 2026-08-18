@@ -12,9 +12,8 @@ import {
 } from "@/components/ui/dialog";
 import { useQuery } from "@tanstack/react-query";
 import { Download, ArrowUpDown, Filter, X, Eye, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { stringify } from "csv-stringify/browser/esm/sync";
 import { Link } from "wouter";
 import { formatAmount as formatCurrencyAmount } from "@shared/currency";
 
@@ -51,6 +50,8 @@ type SortDirection = "asc" | "desc";
 interface PaginatedResponse {
   data: LedgerEntryWithDetails[];
   total: number;
+  /** Distinct entity types across the whole scope (not just the page). */
+  entityTypes?: string[];
 }
 
 interface LedgerTransactionsViewProps {
@@ -120,7 +121,6 @@ export function LedgerTransactionsView({
   // Pagination state
   const [page, setPage] = useState(0);
   const [limit] = useState(pageSize);
-  const [isExporting, setIsExporting] = useState(false);
   
   // Filter state
   const [showFilters, setShowFilters] = useState(false);
@@ -131,16 +131,59 @@ export function LedgerTransactionsView({
   const [filterDateFrom, setFilterDateFrom] = useState("");
   const [filterDateTo, setFilterDateTo] = useState("");
   const [filterDescription, setFilterDescription] = useState("");
+
+  // Filters are applied SERVER-SIDE across the whole scoped dataset (not just
+  // the current page). Text inputs are debounced before hitting the API.
+  const [debouncedFilters, setDebouncedFilters] = useState({
+    entityType: "all",
+    entityName: "",
+    memo: "",
+    amountMin: "",
+    amountMax: "",
+    dateFrom: "",
+    dateTo: "",
+  });
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedFilters(prev => {
+        const next = {
+          entityType: filterEntityType,
+          entityName: filterEntityName.trim(),
+          memo: filterDescription.trim(),
+          amountMin: filterAmountMin.trim(),
+          amountMax: filterAmountMax.trim(),
+          dateFrom: filterDateFrom,
+          dateTo: filterDateTo,
+        };
+        if (JSON.stringify(prev) === JSON.stringify(next)) return prev;
+        setPage(0); // filtered dataset changed — restart from the first page
+        return next;
+      });
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [filterEntityType, filterEntityName, filterDescription, filterAmountMin, filterAmountMax, filterDateFrom, filterDateTo]);
+
+  const filterParams = useMemo(() => {
+    const params = new URLSearchParams();
+    if (debouncedFilters.entityType !== "all") params.set("entityType", debouncedFilters.entityType);
+    if (debouncedFilters.entityName) params.set("entityName", debouncedFilters.entityName);
+    if (debouncedFilters.memo) params.set("memo", debouncedFilters.memo);
+    if (debouncedFilters.amountMin) params.set("amountMin", debouncedFilters.amountMin);
+    if (debouncedFilters.amountMax) params.set("amountMax", debouncedFilters.amountMax);
+    if (debouncedFilters.dateFrom) params.set("dateFrom", debouncedFilters.dateFrom);
+    if (debouncedFilters.dateTo) params.set("dateTo", debouncedFilters.dateTo);
+    return params.toString();
+  }, [debouncedFilters]);
   
-  // Sort state
+  // Sort state (sorting stays client-side within the current page)
   const [sortField, setSortField] = useState<SortField>("date");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
 
   const offset = page * limit;
-  const queryUrl = `${baseUrl}?limit=${limit}&offset=${offset}`;
+  const queryUrl = `${baseUrl}?limit=${limit}&offset=${offset}${filterParams ? `&${filterParams}` : ""}`;
 
   const { data: response, isLoading } = useQuery<PaginatedResponse>({
-    queryKey: [baseUrl, page, limit],
+    queryKey: [baseUrl, page, limit, filterParams],
     queryFn: async () => {
       const res = await fetch(queryUrl, { credentials: 'include' });
       if (!res.ok) throw new Error('Failed to fetch transactions');
@@ -162,50 +205,12 @@ export function LedgerTransactionsView({
     (showEntityName ? 1 : 0) +
     (showEaAccount ? 1 : 0);
 
-  // Filter and sort transactions (client-side filtering of current page)
+  // Sort transactions (filtering happens server-side; sorting stays
+  // client-side within the current page)
   const filteredAndSortedTransactions = useMemo(() => {
     if (!transactions || transactions.length === 0) return [];
 
-    let result = [...transactions];
-
-    // Apply filters
-    if (filterEntityType !== "all") {
-      result = result.filter(t => t.entityType === filterEntityType);
-    }
-
-    if (filterEntityName) {
-      result = result.filter(t => {
-        return t.entityName?.toLowerCase().includes(filterEntityName.toLowerCase());
-      });
-    }
-
-    if (filterDescription) {
-      result = result.filter(t => {
-        return t.memo?.toLowerCase().includes(filterDescription.toLowerCase());
-      });
-    }
-
-    if (filterAmountMin) {
-      const min = parseFloat(filterAmountMin);
-      result = result.filter(t => parseFloat(t.amount) >= min);
-    }
-
-    if (filterAmountMax) {
-      const max = parseFloat(filterAmountMax);
-      result = result.filter(t => parseFloat(t.amount) <= max);
-    }
-
-    // Date filters
-    if (filterDateFrom) {
-      const from = new Date(filterDateFrom);
-      result = result.filter(t => t.date && new Date(t.date) >= from);
-    }
-
-    if (filterDateTo) {
-      const to = new Date(filterDateTo);
-      to.setHours(23, 59, 59, 999);
-      result = result.filter(t => t.date && new Date(t.date) <= to);
-    }
+    const result = [...transactions];
 
     // Apply sorting
     result.sort((a, b) => {
@@ -259,23 +264,18 @@ export function LedgerTransactionsView({
     return result;
   }, [
     transactions,
-    filterEntityType,
-    filterEntityName,
-    filterDescription,
-    filterAmountMin,
-    filterAmountMax,
-    filterDateFrom,
-    filterDateTo,
     sortField,
     sortDirection,
   ]);
 
-  // Get unique entity types (from current page)
+  // Entity type filter options — the server reports the distinct types
+  // across the whole scope; fall back to the current page for older routes.
   const entityTypes = useMemo(() => {
+    if (response?.entityTypes) return response.entityTypes;
     if (!transactions || transactions.length === 0) return [];
     const types = new Set(transactions.map(t => t.entityType));
     return Array.from(types).sort();
-  }, [transactions]);
+  }, [response?.entityTypes, transactions]);
 
   // Clear all filters
   const clearFilters = () => {
@@ -288,114 +288,22 @@ export function LedgerTransactionsView({
     setFilterDateTo("");
   };
 
-  // Apply filters to transactions
-  const applyFilters = (data: LedgerEntryWithDetails[]) => {
-    let result = [...data];
+  // Export to CSV — the server streams the ENTIRE filtered dataset (no row
+  // cap), so we navigate to the CSV URL instead of buffering it in memory.
+  const exportToCSV = () => {
+    const params = new URLSearchParams(filterParams);
+    params.set("format", "csv");
+    params.set("filename", csvFilename);
+    const link = document.createElement("a");
+    link.href = `${baseUrl}?${params.toString()}`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
 
-    if (filterEntityType !== "all") {
-      result = result.filter(t => t.entityType === filterEntityType);
-    }
-    if (filterEntityName) {
-      result = result.filter(t => t.entityName?.toLowerCase().includes(filterEntityName.toLowerCase()));
-    }
-    if (filterDescription) {
-      result = result.filter(t => t.memo?.toLowerCase().includes(filterDescription.toLowerCase()));
-    }
-    if (filterAmountMin) {
-      const min = parseFloat(filterAmountMin);
-      result = result.filter(t => parseFloat(t.amount) >= min);
-    }
-    if (filterAmountMax) {
-      const max = parseFloat(filterAmountMax);
-      result = result.filter(t => parseFloat(t.amount) <= max);
-    }
-    if (filterDateFrom) {
-      const from = new Date(filterDateFrom);
-      result = result.filter(t => t.date && new Date(t.date) >= from);
-    }
-    if (filterDateTo) {
-      const to = new Date(filterDateTo);
-      to.setHours(23, 59, 59, 999);
-      result = result.filter(t => t.date && new Date(t.date) <= to);
-    }
-
-    return result;
-  };
-
-  // Export to CSV - fetches all data then applies filters
-  const exportToCSV = async () => {
-    setIsExporting(true);
-    try {
-      // Fetch all transactions (use export=true to bypass pagination limit)
-      const allDataUrl = `${baseUrl}?limit=100000&offset=0&export=true`;
-      const res = await fetch(allDataUrl, { credentials: 'include' });
-      if (!res.ok) throw new Error('Failed to fetch transactions for export');
-      const allResponse: PaginatedResponse = await res.json();
-      
-      // Apply current filters to full dataset
-      const dataToExport = applyFilters(allResponse.data);
-
-      if (!dataToExport.length) {
-        toast({
-          title: "No data to export",
-          description: "There are no transactions matching your filters.",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      const csvData = dataToExport.map(transaction => ({
-        Date: transaction.date ? new Date(transaction.date).toLocaleDateString() : "",
-        Statement: transaction.statementYmd ? transaction.statementYmd.slice(0, 7) : "",
-        Amount: parseFloat(transaction.amount).toFixed(2),
-        "Entity Type": transaction.entityType,
-        "Entity Name": transaction.entityName || "",
-        Memo: transaction.memo || "",
-        "Reference Type": transaction.referenceType || "",
-        "Reference": transaction.referenceName || "",
-        "EA Account": transaction.eaAccountName || "",
-        "Transaction ID": transaction.id,
-      }));
-
-      const csv = stringify(csvData, {
-        header: true,
-        columns: [
-          "Date",
-          "Statement",
-          "Amount",
-          "Entity Type",
-          "Entity Name",
-          "Memo",
-          "Reference Type",
-          "Reference",
-          "EA Account",
-          "Transaction ID",
-        ],
-      });
-
-      const blob = new Blob([csv], { type: "text/csv" });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `${csvFilename}-${new Date().toISOString().split("T")[0]}.csv`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-
-      toast({
-        title: "Export successful",
-        description: `Exported ${dataToExport.length} transaction(s) to CSV.`,
-      });
-    } catch (error) {
-      toast({
-        title: "Export failed",
-        description: "Failed to export transactions. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsExporting(false);
-    }
+    toast({
+      title: "Export started",
+      description: "Your download will begin shortly. Large ledgers can take a minute to generate.",
+    });
   };
 
   const handleSort = (field: SortField) => {
@@ -432,10 +340,10 @@ export function LedgerTransactionsView({
               {total > 0 ? (
                 <>
                   Showing {offset + 1}-{Math.min(offset + transactions.length, total)} of {total.toLocaleString()} transactions
-                  {filteredAndSortedTransactions.length !== transactions.length && (
-                    <> ({filteredAndSortedTransactions.length} after page filters)</>
-                  )}
+                  {hasActiveFilters && <> (filtered)</>}
                 </>
+              ) : hasActiveFilters ? (
+                "No transactions match your filters"
               ) : (
                 "No transactions found"
               )}
@@ -455,11 +363,11 @@ export function LedgerTransactionsView({
               variant="outline"
               size="sm"
               onClick={exportToCSV}
-              disabled={total === 0 || isExporting}
+              disabled={total === 0}
               data-testid="button-export-csv"
             >
               <Download size={16} className="mr-2" />
-              {isExporting ? "Exporting..." : "Export CSV"}
+              Export CSV
             </Button>
           </div>
         </div>

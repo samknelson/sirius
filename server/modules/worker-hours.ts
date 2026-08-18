@@ -1,6 +1,11 @@
 import type { Express } from "express";
 import type { WorkerHoursStorage } from "../storage/worker-hours";
 import type { LedgerStorage } from "../storage/ledger";
+import {
+  parseTransactionViewFilters,
+  applyViewFiltersInMemory,
+  sendTransactionsCsvFromRows,
+} from "./ledger/transaction-query";
 
 export function registerWorkerHoursRoutes(
   app: Express,
@@ -150,8 +155,7 @@ export function registerWorkerHoursRoutes(
   app.get("/api/worker-hours/:id/transactions", requireAuth, requirePermission("staff"), async (req, res) => {
     try {
       const { id } = req.params;
-      const maxLimit = req.query.export === 'true' ? 100000 : 200;
-      const limit = Math.min(parseInt(req.query.limit as string) || 50, maxLimit);
+      const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
       const offset = parseInt(req.query.offset as string) || 0;
       
       const hoursEntry = await workerHoursStorage.getWorkerHoursById(id);
@@ -187,12 +191,23 @@ export function registerWorkerHoursRoutes(
         const dateB = b.date ? new Date(b.date).getTime() : 0;
         return dateB - dateA;
       });
-      
+
+      // Apply the shared view filters in memory (this route merges multiple
+      // small result sets, so there is no single storage query to filter).
+      const filtered = applyViewFiltersInMemory(uniqueTransactions, parseTransactionViewFilters(req));
+
+      if (req.query.format === 'csv') {
+        sendTransactionsCsvFromRows(req, res, filtered, "hours-transactions");
+        return;
+      }
+
       // Apply pagination in memory since this merges multiple sources
-      const total = uniqueTransactions.length;
-      const paginatedData = uniqueTransactions.slice(offset, offset + limit);
-      
-      res.json({ data: paginatedData, total });
+      const total = filtered.length;
+      const paginatedData = filtered.slice(offset, offset + limit);
+      // Options come from the whole (unfiltered) scope, not the current page.
+      const entityTypes = Array.from(new Set(uniqueTransactions.map(t => t.entityType))).sort();
+
+      res.json({ data: paginatedData, total, entityTypes });
     } catch (error) {
       console.error("Failed to fetch hours transactions:", error);
       res.status(500).json({ message: "Failed to fetch hours transactions" });

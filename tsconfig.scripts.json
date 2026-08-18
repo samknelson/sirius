@@ -8,6 +8,8 @@
     "scripts/oneoffs/s1-t29-packet-tag-smoke.ts",
     "scripts/oneoffs/s1-parity-smoke.ts",
     "scripts/oneoffs/s1-trackc-bench.ts",
+    "scripts/oneoffs/repair-s1-import-reference-types.ts",
+    "scripts/oneoffs/ledger-linkage-filters-smoke.ts",
     "scripts/dev/run-s1-smoke-guarded.ts"
   ],
   "compilerOptions": {
