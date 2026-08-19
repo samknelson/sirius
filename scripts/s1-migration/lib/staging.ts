@@ -9,6 +9,7 @@
  */
 import { db } from "../../../server/storage/db";
 import { sql } from "drizzle-orm";
+import { contentHashOf } from "./sync";
 
 /**
  * Postgres cannot represent NUL (\u0000) in text or jsonb (error 22P05) —
@@ -83,6 +84,7 @@ export async function ensureStagingSchema(): Promise<void> {
       created bigint,
       changed bigint,
       fields jsonb NOT NULL DEFAULT '{}'::jsonb,
+      content_hash text,
       extracted_at timestamptz NOT NULL DEFAULT now(),
       PRIMARY KEY (bundle, nid)
     )
@@ -95,9 +97,16 @@ export async function ensureStagingSchema(): Promise<void> {
       description text,
       weight integer NOT NULL DEFAULT 0,
       fields jsonb NOT NULL DEFAULT '{}'::jsonb,
+      content_hash text,
       extracted_at timestamptz NOT NULL DEFAULT now()
     )
   `);
+  // In-place upgrade of pre-sync staging tables (Task 292): content_hash is
+  // the canonical source-content hash written at upsert time. Rows staged
+  // before the upgrade keep a NULL hash (never fast-skipped) until the next
+  // stage run re-upserts them.
+  await db.execute(sql`ALTER TABLE s1_staging.records ADD COLUMN IF NOT EXISTS content_hash text`);
+  await db.execute(sql`ALTER TABLE s1_staging.terms ADD COLUMN IF NOT EXISTS content_hash text`);
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS s1_staging.runs (
       id serial PRIMARY KEY,
@@ -114,18 +123,49 @@ export async function ensureStagingSchema(): Promise<void> {
 const MAX_CHUNK_ROWS = 200;
 const MAX_CHUNK_BYTES = 4 * 1024 * 1024;
 
+/**
+ * Canonical hash input for a staged record: source content ONLY (scalars +
+ * sanitized fields), never extraction metadata (extracted_at). Exported so
+ * smokes/backfills can recompute what upsert would store. Callers must pass
+ * the SANITIZED row (NUL-stripped) — upsert hashes exactly what it writes.
+ */
+export function stagedRecordHashInput(r: StagedRecord): Record<string, unknown> {
+  return {
+    bundle: r.bundle,
+    nid: r.nid,
+    vid: r.vid ?? null,
+    title: r.title ?? null,
+    uid: r.uid ?? null,
+    status: r.status ?? null,
+    created: r.created ?? null,
+    changed: r.changed ?? null,
+    fields: r.fields,
+  };
+}
+
+export function stagedTermHashInput(t: StagedTerm): Record<string, unknown> {
+  return {
+    tid: t.tid,
+    vocabulary: t.vocabulary,
+    name: t.name,
+    description: t.description ?? null,
+    weight: t.weight,
+    fields: t.fields,
+  };
+}
+
 export async function upsertRecords(rows: StagedRecord[]): Promise<void> {
   if (rows.length === 0) return;
-  let chunk: Array<{ r: StagedRecord; fieldsJson: string }> = [];
+  let chunk: Array<{ r: StagedRecord; fieldsJson: string; hash: string }> = [];
   let chunkBytes = 0;
   const flush = async () => {
     if (chunk.length === 0) return;
     const values = chunk.map(
-      ({ r, fieldsJson }) =>
-        sql`(${stripNul(r.bundle)}, ${r.nid}, ${r.vid}, ${stripNulNullable(r.title)}, ${r.uid}, ${r.status}, ${r.created}, ${r.changed}, ${fieldsJson}::jsonb, now())`,
+      ({ r, fieldsJson, hash }) =>
+        sql`(${r.bundle}, ${r.nid}, ${r.vid}, ${r.title}, ${r.uid}, ${r.status}, ${r.created}, ${r.changed}, ${fieldsJson}::jsonb, ${hash}, now())`,
     );
     await db.execute(sql`
-      INSERT INTO s1_staging.records (bundle, nid, vid, title, uid, status, created, changed, fields, extracted_at)
+      INSERT INTO s1_staging.records (bundle, nid, vid, title, uid, status, created, changed, fields, content_hash, extracted_at)
       VALUES ${sql.join(values, sql`, `)}
       ON CONFLICT (bundle, nid) DO UPDATE SET
         vid = EXCLUDED.vid,
@@ -135,14 +175,29 @@ export async function upsertRecords(rows: StagedRecord[]): Promise<void> {
         created = EXCLUDED.created,
         changed = EXCLUDED.changed,
         fields = EXCLUDED.fields,
+        content_hash = EXCLUDED.content_hash,
         extracted_at = EXCLUDED.extracted_at
     `);
     chunk = [];
     chunkBytes = 0;
   };
-  for (const r of rows) {
-    const fieldsJson = JSON.stringify(sanitizeNulDeep(r.fields));
-    chunk.push({ r, fieldsJson });
+  for (const raw of rows) {
+    // Sanitize ONCE into a clean row used for both the INSERT values and the
+    // content hash — the hash covers exactly what lands in staging, and the
+    // NUL counter increments exactly once per dirty value.
+    const r: StagedRecord = {
+      bundle: stripNul(raw.bundle),
+      nid: raw.nid,
+      vid: raw.vid,
+      title: stripNulNullable(raw.title),
+      uid: raw.uid,
+      status: raw.status,
+      created: raw.created,
+      changed: raw.changed,
+      fields: sanitizeNulDeep(raw.fields),
+    };
+    const fieldsJson = JSON.stringify(r.fields);
+    chunk.push({ r, fieldsJson, hash: contentHashOf(stagedRecordHashInput(r)) });
     chunkBytes += fieldsJson.length + (r.title?.length ?? 0) + 64;
     if (chunk.length >= MAX_CHUNK_ROWS || chunkBytes >= MAX_CHUNK_BYTES) await flush();
   }
@@ -151,12 +206,19 @@ export async function upsertRecords(rows: StagedRecord[]): Promise<void> {
 
 export async function upsertTerms(rows: StagedTerm[]): Promise<void> {
   if (rows.length === 0) return;
-  const values = rows.map(
-    (r) =>
-      sql`(${r.tid}, ${stripNul(r.vocabulary)}, ${stripNul(r.name)}, ${stripNulNullable(r.description)}, ${r.weight}, ${JSON.stringify(sanitizeNulDeep(r.fields))}::jsonb, now())`,
-  );
+  const values = rows.map((raw) => {
+    const r: StagedTerm = {
+      tid: raw.tid,
+      vocabulary: stripNul(raw.vocabulary),
+      name: stripNul(raw.name),
+      description: stripNulNullable(raw.description),
+      weight: raw.weight,
+      fields: sanitizeNulDeep(raw.fields),
+    };
+    return sql`(${r.tid}, ${r.vocabulary}, ${r.name}, ${r.description}, ${r.weight}, ${JSON.stringify(r.fields)}::jsonb, ${contentHashOf(stagedTermHashInput(r))}, now())`;
+  });
   await db.execute(sql`
-    INSERT INTO s1_staging.terms (tid, vocabulary, name, description, weight, fields, extracted_at)
+    INSERT INTO s1_staging.terms (tid, vocabulary, name, description, weight, fields, content_hash, extracted_at)
     VALUES ${sql.join(values, sql`, `)}
     ON CONFLICT (tid) DO UPDATE SET
       vocabulary = EXCLUDED.vocabulary,
@@ -164,6 +226,7 @@ export async function upsertTerms(rows: StagedTerm[]): Promise<void> {
       description = EXCLUDED.description,
       weight = EXCLUDED.weight,
       fields = EXCLUDED.fields,
+      content_hash = EXCLUDED.content_hash,
       extracted_at = EXCLUDED.extracted_at
   `);
 }
@@ -255,9 +318,27 @@ export async function ensureRawLedgerTable(): Promise<void> {
       ledger_memo text,
       ledger_key text,
       ledger_json text,
+      content_hash text,
       extracted_at timestamptz NOT NULL DEFAULT now()
     )
   `);
+  await db.execute(sql`ALTER TABLE s1_staging.raw_ledger_ar ADD COLUMN IF NOT EXISTS content_hash text`);
+}
+
+/** Canonical hash input for a raw AR row (source content only). */
+export function rawLedgerHashInput(r: RawLedgerRow): Record<string, unknown> {
+  return {
+    ledgerId: r.ledgerId,
+    amount: r.amount ?? null,
+    status: r.status ?? null,
+    account: r.account ?? null,
+    participant: r.participant ?? null,
+    reference: r.reference ?? null,
+    ts: r.ts ?? null,
+    memo: r.memo ?? null,
+    key: r.key ?? null,
+    json: r.json ?? null,
+  };
 }
 
 export async function upsertRawLedger(rows: RawLedgerRow[]): Promise<void> {
@@ -266,13 +347,20 @@ export async function upsertRawLedger(rows: RawLedgerRow[]): Promise<void> {
   let chunkBytes = 0;
   const flush = async () => {
     if (chunk.length === 0) return;
-    const values = chunk.map(
-      (r) =>
-        sql`(${r.ledgerId}, ${stripNulNullable(r.amount)}, ${stripNulNullable(r.status)}, ${r.account}, ${r.participant}, ${r.reference}, ${r.ts}, ${stripNulNullable(r.memo)}, ${stripNulNullable(r.key)}, ${stripNulNullable(r.json)}, now())`,
-    );
+    const values = chunk.map((raw) => {
+      const r: RawLedgerRow = {
+        ...raw,
+        amount: stripNulNullable(raw.amount),
+        status: stripNulNullable(raw.status),
+        memo: stripNulNullable(raw.memo),
+        key: stripNulNullable(raw.key),
+        json: stripNulNullable(raw.json),
+      };
+      return sql`(${r.ledgerId}, ${r.amount}, ${r.status}, ${r.account}, ${r.participant}, ${r.reference}, ${r.ts}, ${r.memo}, ${r.key}, ${r.json}, ${contentHashOf(rawLedgerHashInput(r))}, now())`;
+    });
     await db.execute(sql`
       INSERT INTO s1_staging.raw_ledger_ar
-        (ledger_id, ledger_amount, ledger_status, ledger_account, ledger_participant, ledger_reference, ledger_ts, ledger_memo, ledger_key, ledger_json, extracted_at)
+        (ledger_id, ledger_amount, ledger_status, ledger_account, ledger_participant, ledger_reference, ledger_ts, ledger_memo, ledger_key, ledger_json, content_hash, extracted_at)
       VALUES ${sql.join(values, sql`, `)}
       ON CONFLICT (ledger_id) DO UPDATE SET
         ledger_amount = EXCLUDED.ledger_amount,
@@ -284,6 +372,7 @@ export async function upsertRawLedger(rows: RawLedgerRow[]): Promise<void> {
         ledger_memo = EXCLUDED.ledger_memo,
         ledger_key = EXCLUDED.ledger_key,
         ledger_json = EXCLUDED.ledger_json,
+        content_hash = EXCLUDED.content_hash,
         extracted_at = EXCLUDED.extracted_at
     `);
     chunk = [];
@@ -418,6 +507,7 @@ export async function ensureRawUserTables(): Promise<void> {
       status int NOT NULL DEFAULT 0,
       timezone text,
       data text,
+      content_hash text,
       extracted_at timestamptz NOT NULL DEFAULT now()
     )
   `);
@@ -425,6 +515,7 @@ export async function ensureRawUserTables(): Promise<void> {
     CREATE TABLE IF NOT EXISTS s1_staging.raw_users_roles (
       uid bigint NOT NULL,
       rid bigint NOT NULL,
+      content_hash text,
       extracted_at timestamptz NOT NULL DEFAULT now(),
       PRIMARY KEY (uid, rid)
     )
@@ -434,6 +525,7 @@ export async function ensureRawUserTables(): Promise<void> {
       rid bigint PRIMARY KEY,
       name text,
       weight int,
+      content_hash text,
       extracted_at timestamptz NOT NULL DEFAULT now()
     )
   `);
@@ -443,6 +535,7 @@ export async function ensureRawUserTables(): Promise<void> {
       uid bigint NOT NULL,
       authname text,
       module text,
+      content_hash text,
       extracted_at timestamptz NOT NULL DEFAULT now()
     )
   `);
@@ -451,27 +544,65 @@ export async function ensureRawUserTables(): Promise<void> {
       uid bigint NOT NULL,
       delta int NOT NULL,
       contact_nid bigint NOT NULL,
+      content_hash text,
       extracted_at timestamptz NOT NULL DEFAULT now(),
       PRIMARY KEY (uid, delta)
     )
   `);
+  for (const table of RAW_USER_TABLES) {
+    await db.execute(sql.raw(`ALTER TABLE s1_staging.${table} ADD COLUMN IF NOT EXISTS content_hash text`));
+  }
+}
+
+/** Canonical hash inputs for the raw user tables (source content only). */
+export function rawUserHashInput(r: RawUserRow): Record<string, unknown> {
+  return {
+    uid: r.uid,
+    name: r.name ?? null,
+    mail: r.mail ?? null,
+    created: r.created ?? null,
+    access: r.access ?? null,
+    login: r.login ?? null,
+    status: r.status,
+    timezone: r.timezone ?? null,
+    data: r.data ?? null,
+  };
+}
+export function rawUserRoleHashInput(r: RawUserRoleRow): Record<string, unknown> {
+  return { uid: r.uid, rid: r.rid };
+}
+export function rawRoleHashInput(r: RawRoleRow): Record<string, unknown> {
+  return { rid: r.rid, name: r.name ?? null, weight: r.weight ?? null };
+}
+export function rawAuthmapHashInput(r: RawAuthmapRow): Record<string, unknown> {
+  return { aid: r.aid, uid: r.uid, authname: r.authname ?? null, module: r.module ?? null };
+}
+export function rawUserContactHashInput(r: RawUserContactRow): Record<string, unknown> {
+  return { uid: r.uid, delta: r.delta, contactNid: r.contactNid };
 }
 
 export async function upsertRawUsers(rows: RawUserRow[]): Promise<void> {
   if (rows.length === 0) return;
   for (let i = 0; i < rows.length; i += MAX_CHUNK_ROWS) {
     const chunk = rows.slice(i, i + MAX_CHUNK_ROWS);
-    const values = chunk.map(
-      (r) =>
-        sql`(${r.uid}, ${stripNulNullable(r.name)}, ${stripNulNullable(r.mail)}, ${r.created}, ${r.access}, ${r.login}, ${r.status}, ${stripNulNullable(r.timezone)}, ${stripNulNullable(r.data)}, now())`,
-    );
+    const values = chunk.map((raw) => {
+      const r: RawUserRow = {
+        ...raw,
+        name: stripNulNullable(raw.name),
+        mail: stripNulNullable(raw.mail),
+        timezone: stripNulNullable(raw.timezone),
+        data: stripNulNullable(raw.data),
+      };
+      return sql`(${r.uid}, ${r.name}, ${r.mail}, ${r.created}, ${r.access}, ${r.login}, ${r.status}, ${r.timezone}, ${r.data}, ${contentHashOf(rawUserHashInput(r))}, now())`;
+    });
     await db.execute(sql`
-      INSERT INTO s1_staging.raw_users (uid, name, mail, created, access, login, status, timezone, data, extracted_at)
+      INSERT INTO s1_staging.raw_users (uid, name, mail, created, access, login, status, timezone, data, content_hash, extracted_at)
       VALUES ${sql.join(values, sql`, `)}
       ON CONFLICT (uid) DO UPDATE SET
         name = EXCLUDED.name, mail = EXCLUDED.mail, created = EXCLUDED.created,
         access = EXCLUDED.access, login = EXCLUDED.login, status = EXCLUDED.status,
-        timezone = EXCLUDED.timezone, data = EXCLUDED.data, extracted_at = EXCLUDED.extracted_at
+        timezone = EXCLUDED.timezone, data = EXCLUDED.data,
+        content_hash = EXCLUDED.content_hash, extracted_at = EXCLUDED.extracted_at
     `);
   }
 }
@@ -480,23 +611,28 @@ export async function upsertRawUsersRoles(rows: RawUserRoleRow[]): Promise<void>
   if (rows.length === 0) return;
   for (let i = 0; i < rows.length; i += MAX_CHUNK_ROWS) {
     const chunk = rows.slice(i, i + MAX_CHUNK_ROWS);
-    const values = chunk.map((r) => sql`(${r.uid}, ${r.rid}, now())`);
+    const values = chunk.map((r) => sql`(${r.uid}, ${r.rid}, ${contentHashOf(rawUserRoleHashInput(r))}, now())`);
     await db.execute(sql`
-      INSERT INTO s1_staging.raw_users_roles (uid, rid, extracted_at)
+      INSERT INTO s1_staging.raw_users_roles (uid, rid, content_hash, extracted_at)
       VALUES ${sql.join(values, sql`, `)}
-      ON CONFLICT (uid, rid) DO UPDATE SET extracted_at = EXCLUDED.extracted_at
+      ON CONFLICT (uid, rid) DO UPDATE SET
+        content_hash = EXCLUDED.content_hash, extracted_at = EXCLUDED.extracted_at
     `);
   }
 }
 
 export async function upsertRawRoles(rows: RawRoleRow[]): Promise<void> {
   if (rows.length === 0) return;
-  const values = rows.map((r) => sql`(${r.rid}, ${stripNulNullable(r.name)}, ${r.weight}, now())`);
+  const values = rows.map((raw) => {
+    const r: RawRoleRow = { ...raw, name: stripNulNullable(raw.name) };
+    return sql`(${r.rid}, ${r.name}, ${r.weight}, ${contentHashOf(rawRoleHashInput(r))}, now())`;
+  });
   await db.execute(sql`
-    INSERT INTO s1_staging.raw_roles (rid, name, weight, extracted_at)
+    INSERT INTO s1_staging.raw_roles (rid, name, weight, content_hash, extracted_at)
     VALUES ${sql.join(values, sql`, `)}
     ON CONFLICT (rid) DO UPDATE SET
-      name = EXCLUDED.name, weight = EXCLUDED.weight, extracted_at = EXCLUDED.extracted_at
+      name = EXCLUDED.name, weight = EXCLUDED.weight,
+      content_hash = EXCLUDED.content_hash, extracted_at = EXCLUDED.extracted_at
   `);
 }
 
@@ -504,13 +640,16 @@ export async function upsertRawAuthmap(rows: RawAuthmapRow[]): Promise<void> {
   if (rows.length === 0) return;
   for (let i = 0; i < rows.length; i += MAX_CHUNK_ROWS) {
     const chunk = rows.slice(i, i + MAX_CHUNK_ROWS);
-    const values = chunk.map((r) => sql`(${r.aid}, ${r.uid}, ${stripNulNullable(r.authname)}, ${stripNulNullable(r.module)}, now())`);
+    const values = chunk.map((raw) => {
+      const r: RawAuthmapRow = { ...raw, authname: stripNulNullable(raw.authname), module: stripNulNullable(raw.module) };
+      return sql`(${r.aid}, ${r.uid}, ${r.authname}, ${r.module}, ${contentHashOf(rawAuthmapHashInput(r))}, now())`;
+    });
     await db.execute(sql`
-      INSERT INTO s1_staging.raw_authmap (aid, uid, authname, module, extracted_at)
+      INSERT INTO s1_staging.raw_authmap (aid, uid, authname, module, content_hash, extracted_at)
       VALUES ${sql.join(values, sql`, `)}
       ON CONFLICT (aid) DO UPDATE SET
         uid = EXCLUDED.uid, authname = EXCLUDED.authname, module = EXCLUDED.module,
-        extracted_at = EXCLUDED.extracted_at
+        content_hash = EXCLUDED.content_hash, extracted_at = EXCLUDED.extracted_at
     `);
   }
 }
@@ -519,12 +658,13 @@ export async function upsertRawUserContacts(rows: RawUserContactRow[]): Promise<
   if (rows.length === 0) return;
   for (let i = 0; i < rows.length; i += MAX_CHUNK_ROWS) {
     const chunk = rows.slice(i, i + MAX_CHUNK_ROWS);
-    const values = chunk.map((r) => sql`(${r.uid}, ${r.delta}, ${r.contactNid}, now())`);
+    const values = chunk.map((r) => sql`(${r.uid}, ${r.delta}, ${r.contactNid}, ${contentHashOf(rawUserContactHashInput(r))}, now())`);
     await db.execute(sql`
-      INSERT INTO s1_staging.raw_user_contact (uid, delta, contact_nid, extracted_at)
+      INSERT INTO s1_staging.raw_user_contact (uid, delta, contact_nid, content_hash, extracted_at)
       VALUES ${sql.join(values, sql`, `)}
       ON CONFLICT (uid, delta) DO UPDATE SET
-        contact_nid = EXCLUDED.contact_nid, extracted_at = EXCLUDED.extracted_at
+        contact_nid = EXCLUDED.contact_nid,
+        content_hash = EXCLUDED.content_hash, extracted_at = EXCLUDED.extracted_at
     `);
   }
 }

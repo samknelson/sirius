@@ -52,6 +52,9 @@ export interface StagedNode {
   /** node.changed epoch seconds (end-dating conventions read this). */
   changed: number | null;
   fields: Record<string, unknown>;
+  /** Canonical source-content hash written at staging upsert time; null for
+   * rows staged before the sync upgrade (never fast-skipped — see lib/sync). */
+  contentHash: string | null;
 }
 
 export function scalarOf(v: unknown): unknown {
@@ -132,7 +135,13 @@ export function epochToYmd(epoch: number): string | null {
   return new Date(epoch * 1000).toISOString().slice(0, 10);
 }
 
-type RawStagedRow = { nid: string | number; title: string | null; changed: string | number | null; fields: unknown };
+type RawStagedRow = {
+  nid: string | number;
+  title: string | null;
+  changed: string | number | null;
+  fields: unknown;
+  content_hash?: string | null;
+};
 
 function mapStagedRow(r: RawStagedRow): StagedNode {
   return {
@@ -140,12 +149,13 @@ function mapStagedRow(r: RawStagedRow): StagedNode {
     title: r.title,
     changed: r.changed == null ? null : Number(r.changed),
     fields: (typeof r.fields === "string" ? JSON.parse(r.fields) : r.fields ?? {}) as Record<string, unknown>,
+    contentHash: r.content_hash == null ? null : String(r.content_hash),
   };
 }
 
 export async function loadStaged(bundle: string): Promise<StagedNode[]> {
   const res = await db.execute(sql`
-    SELECT nid, title, changed, fields FROM s1_staging.records WHERE bundle = ${bundle} ORDER BY nid
+    SELECT nid, title, changed, fields, content_hash FROM s1_staging.records WHERE bundle = ${bundle} ORDER BY nid
   `);
   return (res as unknown as { rows: RawStagedRow[] }).rows.map(mapStagedRow);
 }
@@ -169,7 +179,7 @@ export async function* pagedStaged(
   let lastNid = -1;
   for (;;) {
     const res = await db.execute(sql`
-      SELECT nid, title, changed, fields FROM s1_staging.records
+      SELECT nid, title, changed, fields, content_hash FROM s1_staging.records
        WHERE bundle = ${bundle} AND nid > ${lastNid}
        ORDER BY nid LIMIT ${pageSize}
     `);

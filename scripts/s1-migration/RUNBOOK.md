@@ -272,13 +272,13 @@ SELECT count(*) FROM worker_trust_elections;  -- elections
 
 | # | Command (prod) | Dev rehearsal delta | Expected counter shape (prod) | Dev-observed (reference) |
 |---|---|---|---|---|
-| 1 | `npx tsx scripts/s1-migration/load-options.ts` | same | `unhandledVocabularies: {}`, `workerMsUnresolvedIndustry: 0`, `hourTypeVerify: "ok"`, `verifyFailures: 0`. Every worker-ms term resolves an industry (Q37). | 70 terms; created 4 industries, 10 relation types, 7 member statuses, 8 payment types |
+| 1 | `npx tsx scripts/s1-migration/load-options.ts` | same | **Standard sync envelope (§10)** — top level is `summary` (created/updated/unchanged/…) + `rejectGate`/`verify`/`findings`; the legacy counters now sit under `detail`: `detail.unhandledVocabularies: {}`, `detail.workerMsUnresolvedIndustry: 0`, `detail.hourTypeVerify: "ok"`, `verify.failures: []`. Every worker-ms term resolves an industry (Q37). Re-runs fast-skip unchanged terms via consumed fingerprints (`detail.fastPathSkips`). Deletion policy: report-only — a term vanished from staging emits a blocking `deleted_in_s1` finding (§10). | 70 terms; created 4 industries, 10 relation types, 7 member statuses, 8 payment types |
 | 2 | `npx tsx scripts/s1-migration/load-contacts-workers.ts` | same | `contacts.created+matched ≈ staged`; **T1 ruling 2026-08-06:** `workers.sirius_id = field_sirius_id`, nid → "Legacy NID" worker_ids row (every loaded worker gets one; no "Sirius ID" rows). Rejects are **annotations** (row still loads where possible): expect `ssn_collision_q36` (small), `worker_contact_unresolved` (small), `sirius_id_assigned` (workers with no field_sirius_id — count unknown in prod, triage the report); `sirius_id_not_numeric` expects 0 — triage any occurrence; **sirius_id collisions are FATAL** (pre-scan aborts before any write; no allow flag — see §5); `verifyFailures: 0` (includes sirius_id==field_sirius_id and Legacy NID coverage checks) | 74 contacts, 50 workers, 184 worker ids; rejects ssn_collision_q36=2, worker_contact_unresolved=2, sirius_id_assigned=2 |
 | 2b | `npx tsx scripts/s1-migration/load-beneficiaries.ts` | requires `dev/seed-beneficiary-fakes.ts` first (synthetic worker JSON has no `beneficiaries`; re-run after any restage) + `--allow-rejects worker_unmapped,percent_sum_mismatch,pct_unusable,bad_json,unexpected_tier,list_exists_foreign,worker_map_broken` (seeded traps, 1 each); optional failure-path smoke `dev/smoke-beneficiary-clear-write-failure.ts` (exercises `write_failed` phase "clear" via a temporary trigger — dev only) | **After contacts/workers (2).** Loads `beneficiaries.primary[]` from worker `field_sirius_json` into the BAO beneficiaries store (replace-all via storage; authorship in id_map `bao-beneficiaries` — re-runs refresh loader-owned lists, NEVER clobber foreign ones). Values load VERBATIM (fund ruling: SSNs/phones that would fail the route schema are the legal record) — `softMismatches.ssnInvalid/phoneInvalid/percentOutOfRange` are report-only triage counts, not rejects. Staged-side reference (recomputed at run time, emitted as `stagedCounts` for fund comparison): ≈5,227 workers with key / ≈3,062 with ≥1 populated row / ≈5,087 populated rows. Run clean first; triage every fatal class (§5). `unexpected_tier` = ANNOTATION (primary still loads; a `contingent` tier is out of scope by ruling). Reconciliation is built in: `reconciliation.workersOk/rowsOk` true, `verifyFailures: 0`. | 14 seeded traps: 7 workers / 11 rows written (incl. legacy trailing-dot "50."/"50." → 50/50 and fractional 50.5/49.5 with precision retained), 1 owned stale list cleared (contingent-only staging); rejects 1 each of the 6 fatal trap classes (incl. worker_map_broken from a broken clear-path authorship row; pct_unusable worker carries 2 bad rows — blank + "50..") + unexpected_tier=2 (annotations — one on a loaded worker, one on the cleared worker); soft ssnInvalid=1, phoneInvalid=1, percentOutOfRange=2; re-run adopts 7, clears 0; clear-write-failure smoke all-PASS |
 | 3 | `npx tsx scripts/s1-migration/load-member-statuses.ts` | same | `assignments == workersWithMs`, `rejects: {}` | 28/28 |
 | 4 | `npx tsx scripts/s1-migration/load-employers.ts` | same | `rejects: {}`; prod expects ~557 shop contacts → ~920 links (T24) | 10 employers, 8 contacts, 16 links |
 | 4b (optional, post-review) | `npx tsx scripts/s1-migration/cleanup-contact-type-options.ts` (report) → operator review → `--apply` | same | Task 344 cleanup after step 4's title-as-type correction: reports every `options_employer_contact_type` row with its `employer_contacts` ref count, split loader-stamped (`data.s1Loader`) vs staff-created. `--apply` deletes ONLY loader-stamped options with zero refs — each delete is one transaction taking FOR UPDATE on the option row and re-checking stamp + refs under the lock, so a concurrent adoption blocks and then fails FK instead of being silently NULLed (smoke: `dev/smoke-contact-type-cleanup.ts`); staff-created rows are never touched, only reported. Optional `--ids id1,id2` limits deletion to an operator-approved subset. Idempotent. | verified with seeded loader/staff orphan pair: report split correct; apply deleted the loader orphan, kept the staff orphan |
-| 5 | `npx tsx scripts/s1-migration/load-policies.ts` | `--allow-rejects policy_unmatched_unreferenced` (non-policy `workers_v1` node) | Adopt-only. Prod: 15 referenced policy nodes all resolve via the N27 alias table (UNITE HERE Plan family → `UH` since the 2026-08-11 R→UH rename). **Deleted-node orphan refs (23 per §P4) no longer reject** — they map to the Inactive policy (`sirius_id=U`) and surface as `mappedToInactive`, a PER-NID map of election counts (expect nid 8868662 among them; an unexpected nid is a triage item, not an allowance). `policy_ref_not_staged` is retired; the loader aborts at startup if the Inactive policy is missing (run seed-migration-policies first). `policy_unmatched` (referenced, unmatched) is ALWAYS fatal. If the bundle carries non-policy JSON definitions, they reject as `policy_unmatched_unreferenced` — inspect titles, then allow. | 4 mappings, 1 unreferenced non-policy node |
+| 5 | `npx tsx scripts/s1-migration/load-policies.ts` | `--allow-rejects policy_unmatched_unreferenced` (non-policy `workers_v1` node) | Adopt-only. **Standard sync envelope (§10)** — legacy counters (incl. `mappedToInactive`) under `detail`; re-runs fast-skip unchanged nodes via consumed fingerprints; an S1 retitle re-resolves the nid and RETARGETS its mapping (`detail.remappedNids`). Deletion policy: report-only (`deleted_in_s1` findings block unless allowed, §10). Prod: 15 referenced policy nodes all resolve via the N27 alias table (UNITE HERE Plan family → `UH` since the 2026-08-11 R→UH rename). **Deleted-node orphan refs (23 per §P4) no longer reject** — they map to the Inactive policy (`sirius_id=U`) and surface as `detail.mappedToInactive`, a PER-NID map of election counts (expect nid 8868662 among them; an unexpected nid is a triage item, not an allowance). `policy_ref_not_staged` is retired; the loader aborts at startup if the Inactive policy is missing (run seed-migration-policies first). `policy_unmatched` (referenced, unmatched) is ALWAYS fatal. If the bundle carries non-policy JSON definitions, they reject as `policy_unmatched_unreferenced` — inspect titles, then allow. | 4 mappings, 1 unreferenced non-policy node |
 | 5b | `npx tsx scripts/s1-migration/load-employer-policies.ts` | same, no allow flag needed (dev no-ops: synthetic shops lack ledger.policy JSON) | **After employers (4) + policies (5).** Backfills employer_policy_history + denorm_policy_id from the shop's `field_sirius_json` → `ledger.policy.ebh` (the S1 employer Policy tab); without it EVERY migrated election shows "Unknown policy" (elections derive policy from the employer at read time — no election rerun needed). Prod expects `shopsWithPolicy ≈ 248`. **`policy_unmapped` is no longer expected (2026-08-11 ruling):** the former 2 expected rejects — shops 2470203 (HORSESHOE CLUB) + 6283991 (BILTMORE LOS ANGELES), both DEAD accounts whose only "history" is one 1990-01-01 sentinel pointing at deleted policy nid 8868662 — now resolve through step 5's deleted-nid → Inactive id_map entries with no code change (confirmed via seeded-staged-fake smoke 2026-08-11), so those shops gain Inactive policy history dated 1990-01-01 (denorm_policy_id → Inactive), which accurately reflects "referenced a plan that no longer exists". Any `policy_unmapped`, `current_mismatch` or `current_without_history` now means S1 is self-inconsistent — triage before allowing. `verifyFailures: 0`. **Special employers (ruled 2026-08-09):** DISABILITY (12639701), DISABILITY-INDUSTRIAL (12639702), COBRA Employer (13226164) are real S1 shops that map like any employer. COBRA Employer elections carry policy "COBRA" (json definition 13226124); DISABILITY employers have NO policy by design (user corrected the one stray COBRA-policy election in S1) — their elections resolve to the policy default in S2, which is correct; do not treat as `policy_unmapped`. | 10 staged, 0 with policy (documented no-op; parse/write/idempotency covered via seeded staged fakes) |
 | 5c | `npx tsx scripts/s1-migration/load-employer-rates.ts --allow-rejects bad_rate` | same (dev no-ops: synthetic shops lack charge_plugins JSON; covered via seeded staged fakes) | **After employers (4) + fund config (bao-hourly charge config must exist — the loader resolves its account and aborts unless exactly one is enabled).** Imports per-employer hourly rate history from shop `field_sirius_json` → `charge_plugins.settings.<uuid>.rates.history` into `sitespecific_bao_employer_rates`; without it post-cutover hours rows silently create NO hourly charges. Prod expects ≈698 rates / ≈136 shops (incl. future-dated rows to 2028 — real negotiated increases). Expected rejects: `bad_rate=2` (known colon typos `6:00`/`6:75` on one shop, cleanly re-entered under another uuid — allow), `rate_conflict=1` — shop 8865846 (CONRAD LOS ANGELES, H0305) has BOTH 5.75 and 6.50 entered for 2023-12-01 under the same instance; the S1 UI report shows the same duplicate pair. Conrad is an ACTIVE hourly employer (rates through 2025) — do NOT skip it via allow; have the fund delete the wrong 2023-12-01 row in S1, re-stage `grievance_shop` (the loader reads staged JSON, not live S1), and rerun. Allowing `rate_conflict` drops Conrad's ENTIRE rate history. `verifyFailures: 0` | 10 staged, 0 with rates (documented no-op; parse/precedence/write/idempotency covered via seeded staged fakes) |
 | 6 | `npx tsx scripts/s1-migration/load-relationships.ts` | same | `rejects: {}` — no-start rows load via the N26 default-dates ruling; prod expects `datesDefaulted ≈ 115` | 24 relations, datesDefaulted=2 |
@@ -388,7 +388,16 @@ mismatch-class census derived from recorded t19 rejects.
   `code_owned_by_other_worker`.
 - **stage.ts re-run** re-extracts and re-verifies counts; safe to repeat, but
   re-staging after loaders have run must only happen from the SAME freeze
-  snapshot.
+  snapshot — **except for loaders converted to sync semantics (§10: options,
+  policies), whose re-run after ANY restage is a true reconcile by design.**
+  The same-freeze rule is retired wholesale only once the entire fleet is
+  converted.
+- **Converted loaders reconcile, not just adopt (§10).** Their re-runs
+  classify every mapped row (created / updated / unchanged / deleted-in-S1)
+  from consumed fingerprints and skip unchanged rows without per-row storage
+  reads. Any transform-logic change REQUIRES a `LOGIC_VERSION` bump in the
+  loader, or corrected shapes silently fail to propagate to rows whose S1
+  content didn't change.
 - If a loader exits 1 with `FAIL: reject reason(s) not allowed`, that is the
   fail-loud policy working: triage each reason, then allow explicitly.
 - **The allow-gate evaluates at END of run, after all writes.** A run that
@@ -499,6 +508,80 @@ Dev-only notes:
   realistic transition month); production uses the transition month (§4 row 9).
   The parity harness must be given the same value the loader used, in each
   environment.
+
+## 10. Dual-run sync semantics (converted loaders: options, policies)
+
+S1 stays live and authoritative for ~1 month after the initial production
+load, with roughly daily S1→S2 syncs (full re-stage → re-run loaders). S2 is
+shadow/read-only during the dual-run; **S1 wins migration-owned fields
+unconditionally** (ruled conflict policy). Staging already mirrors S1 exactly
+(upsert + watermark stale-delete); this section covers how converted loaders
+turn a re-run into a true reconcile.
+
+**Mechanism.**
+- Staged rows (records, terms, raw ledger, raw user tables) carry
+  `content_hash` — a canonical SHA-256 of source content only (scalars +
+  key-sorted fields JSON; extraction metadata excluded), written at staging
+  upsert time. Count-verify and watermark semantics are unchanged.
+- `s1_staging.id_map` carries `consumed_fingerprint`, `logic_version`,
+  `last_synced_at`, `s1_deleted_at` (upgraded in place by `ensureIdMap`).
+- Each converted loader declares a required `LOGIC_VERSION`. The consumed
+  fingerprint is derived from the staged hash(es) — composite inputs combine
+  multiple labeled hashes — so a row reconciles when EITHER its S1 content
+  changed OR the loader's transform logic changed (version bump).
+- Fast path: mapped + fingerprint match + version match → `unchanged`,
+  skipped without any per-row storage read. Fingerprints advance only AFTER
+  the loader's verify pass, so failed writes stay retryable. Rows with NULL
+  staged hashes never fast-skip (they classify as changed until the next
+  real `stage.ts` run populates hashes — harmless adopt/patch).
+- **`--force-reconcile`** ignores matching fingerprints for the run (envelope
+  reports `forceReconcile: true`). Use for emergency repair — e.g. S2 rows
+  edited or damaged out-of-band — and for validation; ordinary
+  adoption/ownership safeguards still apply. S1 wins: forced runs overwrite
+  migration-owned fields back to staged values.
+
+**Deletion sweep.** After its writes+verify, a converted loader sweeps
+non-stub id_map entries whose S1 source vanished from staging and applies its
+declared per-entity policy: hard-delete (through storage), deactivate (stamps
+`s1_deleted_at`), or report-only. Options and policies are both
+**report-only** (options rows and policies may be FK-referenced by live S2
+data — deletion needs an operator ruling). Report-only findings are TYPED
+(`deleted_in_s1`) and BLOCKING: the loader exits 1 until the finding is
+resolved (restore in S1 + restage, or rule and remove the mapping) or
+explicitly acknowledged per run via `--allow-findings deleted_in_s1`.
+Mappings and provenance stay intact; findings re-emit on every run until
+resolved. Already-deactivated entries count as `alreadyHandled`, not new
+findings.
+
+**Standard result envelope.** Converted loaders emit (stdout JSON, plus a
+file when `S1_RESULT_JSON_PATH` is set — for orchestration):
+
+```
+summary:  { created, updated, unchanged, deleted, deactivated, reportOnly, rejected }
+rejectGate: { status: pass|fail, counts, allowed, disallowed }
+verify:     { status: pass|fail, failures: [] }
+findings / blockingFindings   (typed, aggregates-only)
+detail:     the loader's full legacy domain report (nested, nothing dropped)
+```
+
+Exit code is 1 on reject-gate failure, verify failure, or unresolved blocking
+findings. Reports stay aggregates-only (no names/PII), and say when
+`--force-reconcile` was used.
+
+**Rules of thumb.**
+- Transform change → bump that loader's `LOGIC_VERSION` in the same commit.
+- Unchanged counters on a post-restage re-run mean "confirmed in sync", not
+  "skipped work": that IS the daily sync green path.
+- `--force-reconcile` is the escape hatch when fingerprints can't be trusted
+  (repair after out-of-band S2 changes); it never changes source data or
+  mappings.
+- Unconverted loaders keep §7's same-freeze restage rule until their
+  conversion tasks land.
+- Dev smoke: `npx tsx scripts/s1-migration/dev/smoke-sync-foundation.ts
+  --phase units|options|policies` proves unchanged-skip, S1-edit update,
+  logic-version-only update, forced update, and vanished-source handling
+  end to end (also wired into the `typecheck`/`typecheck-scripts`
+  validations for static health).
 
 ### 4.15 (continued) Okta pre-provisioning commands
 

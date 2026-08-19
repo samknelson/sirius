@@ -299,7 +299,7 @@ async function main() {
         if (winner !== worker.id) {
           console.error(`RACE: worker nid ${nid} already mapped; created S2 worker ${worker.id} is an ORPHAN — clean up manually`);
         }
-        workerMap.set(nid, { s2Id: winner, stub: true });
+        workerMap.set(nid, { s2Id: winner, stub: true, consumedFingerprint: null, logicVersion: null, lastSyncedAt: null, s1DeletedAt: null });
         stubbedWorkers++;
       }
       for (const nid of new Set(batch.map((g) => g.employerNid))) {

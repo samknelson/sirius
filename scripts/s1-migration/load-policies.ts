@@ -45,9 +45,20 @@
  *
  * Idempotent: re-run resolves via id_map, zero writes.
  *
+ * Sync semantics (Task 292 — RUNBOOK §10): this loader is RECONCILING by
+ * design. Mapped refs whose staged content_hash matches the consumed
+ * fingerprint (same logic version) short-circuit without re-resolving;
+ * CHANGED refs re-resolve and may REMAP their id_map entry onto a different
+ * configured policy (S1 wins during the dual-run). Deleted-node refs keep
+ * resolving to Inactive. A deletion sweep reports mapped nids that are no
+ * longer staged NOR referenced by any staged election (report-only policy —
+ * this loader adopts configured S2 rows; nothing is deleted without a
+ * ruling; acknowledge per run via --allow-findings deleted_in_s1).
+ *
  * Usage:
  *   npx tsx scripts/s1-migration/load-policies.ts [--dry-run] \
- *     [--allow-rejects policy_unmatched_unreferenced]
+ *     [--allow-rejects policy_unmatched_unreferenced] \
+ *     [--force-reconcile] [--allow-findings deleted_in_s1]
  *
  * Output is AGGREGATES ONLY — safe inside the HIPAA boundary.
  */
@@ -55,12 +66,28 @@ import { db } from "../../server/storage/db";
 import { sql } from "drizzle-orm";
 import { storage } from "../../server/storage/database";
 import { ensureStagingSchema, recordRun } from "./lib/staging";
-import { ensureIdMap, getMappings, putMapping } from "./lib/idmap";
+import { ensureIdMap, getMappings, putMapping, advanceFingerprints, remapMapping } from "./lib/idmap";
 import { RejectLog, loadStaged, targetNidOf, strOf } from "./lib/loader-utils";
 import { makeProgressLogger } from "./lib/progress";
+import {
+  buildLoaderResult,
+  classifyRow,
+  emitLoaderResult,
+  emptySummary,
+  loaderExitCode,
+  parseAllowedFindings,
+  parseForceReconcile,
+  sweepDeletions,
+  type SyncFinding,
+} from "./lib/sync";
 
 const DRY_RUN = process.argv.includes("--dry-run");
 const LOADER = "t-policies";
+/** Loader logic version — BUMP whenever resolution logic (alias table,
+ * fallback rules) changes so mapped refs re-resolve on their next run. */
+const LOGIC_VERSION = 1;
+const FORCE_RECONCILE = parseForceReconcile();
+const ALLOWED_FINDINGS = parseAllowedFindings();
 const ALLOWED_REJECTS: string[] = (() => {
   const i = process.argv.indexOf("--allow-rejects");
   return i >= 0 && process.argv[i + 1] ? process.argv[i + 1].split(",").map((s) => s.trim()).filter(Boolean) : [];
@@ -107,8 +134,10 @@ async function main() {
   await ensureStagingSchema();
   await ensureIdMap();
 
-  const report: Record<string, unknown> = { loader: LOADER, dryRun: DRY_RUN, allowedRejects: ALLOWED_REJECTS };
+  const report: Record<string, unknown> = {};
   const rejects = new RejectLog();
+  const summary = emptySummary();
+  let fastPathSkips = 0;
 
   // Heartbeat: the ~243k-row staged election load below is this loader's only
   // long stretch (the resolution work after it is ~150 refs); liveness-only
@@ -157,8 +186,20 @@ async function main() {
     report.note =
       "no policy references in staging (synthetic gap — prod has 242,664 refs; see 07 §P4). " +
       "Stage sirius_json_definition before running on prod.";
-    report.verifyFailures = 0;
-    console.log(JSON.stringify(report, null, 2));
+    progress.stop();
+    emitLoaderResult(
+      buildLoaderResult({
+        loader: LOADER,
+        logicVersion: LOGIC_VERSION,
+        dryRun: DRY_RUN,
+        forceReconcile: FORCE_RECONCILE,
+        summary,
+        rejects,
+        allowedRejects: ALLOWED_REJECTS,
+        verifyFailures: 0,
+        detail: report,
+      }),
+    );
     if (!DRY_RUN) await recordRun(startedAt, { loader: LOADER }, report);
     process.exit(0);
   }
@@ -177,23 +218,27 @@ async function main() {
 
   const nidList = [...refNids];
   const stagedRes = await db.execute(sql`
-    SELECT nid, bundle, title, fields FROM s1_staging.records
+    SELECT nid, bundle, title, fields, content_hash FROM s1_staging.records
      WHERE nid IN (${sql.join(nidList.map((n) => sql`${n}`), sql`, `)})
   `);
   const stagedByNid = new Map(
-    (stagedRes as unknown as { rows: Array<{ nid: string | number; bundle: string; title: string | null; fields: unknown }> }).rows.map(
+    (stagedRes as unknown as { rows: Array<{ nid: string | number; bundle: string; title: string | null; fields: unknown; content_hash: string | null }> }).rows.map(
       (r) => [
         Number(r.nid),
         {
           bundle: r.bundle,
           title: r.title,
           fields: (typeof r.fields === "string" ? JSON.parse(r.fields) : r.fields ?? {}) as Record<string, unknown>,
+          contentHash: r.content_hash == null ? null : String(r.content_hash),
         },
       ],
     ),
   );
 
   const resolved = new Map<number, string>(); // nid → policy row id
+  /** nids short-circuited by the consumed-fingerprint fast path — step 3
+   * must not re-count them, and their fingerprints are already current. */
+  const fastPathNids = new Set<number>();
   const targetBundles: Record<string, number> = {};
   const mappedToInactive: Record<string, number> = {};
   for (const nid of nidList) {
@@ -204,13 +249,22 @@ async function main() {
       // (sirius_id=U) instead of rejecting as policy_ref_not_staged (retired).
       // Reported per nid with its election count so an unexpected nid stays
       // visible; on re-runs the existing mapping wins (idempotent) but the
-      // nid is still reported.
+      // nid is still reported. No staged hash exists, so these mappings keep
+      // a null consumed fingerprint — the branch itself IS the cheap path.
       mappedToInactive[String(nid)] = electionRefCounts.get(nid) ?? 0;
       resolved.set(nid, existing.get(nid)?.s2Id ?? inactivePolicy.id);
       continue;
     }
-    if (existing.get(nid)) {
-      resolved.set(nid, existing.get(nid)!.s2Id);
+    const mapping = existing.get(nid);
+    // Consumed-fingerprint fast path (Task 292): unchanged staged content at
+    // the same logic version keeps the existing mapping without re-resolving.
+    // CHANGED refs fall through and re-resolve — S1 wins during the dual-run,
+    // so a ref that now resolves elsewhere is REMAPPED in step 3.
+    if (mapping && classifyRow(mapping, staged.contentHash, LOGIC_VERSION, FORCE_RECONCILE) === "unchanged") {
+      resolved.set(nid, mapping.s2Id);
+      fastPathNids.add(nid);
+      summary.unchanged++;
+      fastPathSkips++;
       continue;
     }
     targetBundles[staged.bundle] = (targetBundles[staged.bundle] ?? 0) + 1;
@@ -265,33 +319,83 @@ async function main() {
     report.error =
       `${unmatchedCount} policy reference(s) unmatched — fix the S1_TITLE_TO_SIRIUS_ID alias table ` +
       `or run seed-migration-policies.ts to create missing S2 policies. No id_map rows written.`;
-    console.log(JSON.stringify(report, null, 2));
+    progress.stop();
+    emitLoaderResult(
+      buildLoaderResult({
+        loader: LOADER,
+        logicVersion: LOGIC_VERSION,
+        dryRun: DRY_RUN,
+        forceReconcile: FORCE_RECONCILE,
+        summary,
+        rejects,
+        allowedRejects: ALLOWED_REJECTS,
+        verifyFailures: 0,
+        detail: report,
+      }),
+    );
     if (!DRY_RUN) await recordRun(startedAt, { loader: LOADER }, report);
     process.exit(1);
   }
 
-  // 3) Write id_map entries (the only write this loader performs).
+  // 3) Write id_map entries (the only writes this loader performs): new
+  // mappings, and S1-wins REMAPS when a changed source resolves elsewhere.
   let written = 0;
   let matchedIdMap = 0;
+  const remappedNids: number[] = [];
+  /** fingerprint advances for pre-existing mappings of STAGED refs, applied
+   * after verify (deleted-node refs keep a null fingerprint by design). */
+  const pendingAdvance: Array<{ s1Id: number; fingerprint: string | null }> = [];
   for (const [nid, policyId] of resolved) {
-    if (existing.get(nid)) {
+    if (fastPathNids.has(nid)) {
       matchedIdMap++;
+      continue; // fingerprint already current — nothing to write or advance
+    }
+    const mapping = existing.get(nid);
+    const stagedHash = stagedByNid.get(nid)?.contentHash ?? null;
+    if (mapping) {
+      if (mapping.s2Id !== policyId) {
+        // Changed source resolves onto a DIFFERENT configured policy: S1 wins
+        // during the dual-run — retarget the mapping (T16 stash/audits follow it).
+        if (!DRY_RUN) await remapMapping("policy", nid, policyId, LOADER);
+        remappedNids.push(nid);
+        summary.updated++;
+      } else {
+        matchedIdMap++;
+        summary.unchanged++; // reconciled and proven drift-free
+      }
+      if (!DRY_RUN && stagedByNid.has(nid)) pendingAdvance.push({ s1Id: nid, fingerprint: stagedHash });
       continue;
     }
     if (!DRY_RUN) {
-      const winner = await putMapping("policy", nid, policyId, { stub: false, loader: LOADER });
+      const winner = await putMapping("policy", nid, policyId, {
+        stub: false,
+        loader: LOADER,
+        // Stamped at insert: the mapping IS this loader's write; verify below
+        // re-checks the target against the already-loaded policy set.
+        fingerprint: stagedByNid.has(nid) ? stagedHash : null,
+        logicVersion: LOGIC_VERSION,
+      });
       if (winner !== policyId) console.error(`RACE: policy nid ${nid} already mapped to ${winner}`);
     }
     written++;
+    summary.created++;
   }
   report.mappingsWritten = written;
   report.matchedIdMap = matchedIdMap;
+  report.remappedNids = remappedNids;
+  report.fastPathSkips = fastPathSkips;
 
   // 4) Verify: every resolved ref maps to an existing policies row —
   // including deleted-node orphans, which now map to Inactive (2026-08-11)
   // and are no longer skipped here.
   let verifyFailures = 0;
+  const verifyFailedNids = new Set<number>();
   if (!DRY_RUN) {
+    // Target-existence check against the policy set loaded at startup — this
+    // loader never creates policies rows, so the set is current. No per-row
+    // storage reads (sync contract); the single batched getMappings re-read
+    // proves the mapping writes landed.
+    const policyIdSet = new Set(s2Policies.map((p) => p.id));
     const vMap = await getMappings("policy", nidList);
     for (const nid of nidList) {
       if (rejects.has("policy_unmatched_unreferenced", nid)) continue; // non-policy bundle row — no mapping by design
@@ -299,33 +403,81 @@ async function main() {
       if (!m) {
         console.error(`VERIFY: policy nid ${nid} has no id_map entry`);
         verifyFailures++;
+        verifyFailedNids.add(nid);
         continue;
       }
-      const row = await storage.policies.getPolicyById(m.s2Id);
-      if (!row) {
+      if (!policyIdSet.has(m.s2Id)) {
         console.error(`VERIFY: policy nid ${nid} maps to missing policies row ${m.s2Id}`);
         verifyFailures++;
+        verifyFailedNids.add(nid);
       }
     }
   }
 
+  // ---- advance consumed fingerprints (pre-existing mappings) — only after
+  // the mapping writes landed and the verify target is established ----
+  if (!DRY_RUN) {
+    const toAdvance = pendingAdvance.filter((p) => !verifyFailedNids.has(p.s1Id));
+    await advanceFingerprints("policy", toAdvance, LOGIC_VERSION);
+  }
+
+  // ---- deletion sweep: mapped nids no longer staged NOR election-referenced.
+  // Deleted-node refs stay CURRENT while elections reference them (Inactive
+  // absorption ruling) — only fully-vanished sources become candidates.
+  // Policy: report-only — this loader adopts configured S2 policies; nothing
+  // S2-side is deleted without an operator ruling. ----
+  const findings: SyncFinding[] = [];
+  const sweep = await sweepDeletions({
+    entity: "policy",
+    loaders: [LOADER],
+    sourceIds: refNids,
+    dryRun: DRY_RUN,
+    policy: async () => ({
+      action: "report-only",
+      detail: { reason: "policy mappings adopt configured S2 policies; S1 deletion needs an operator ruling" },
+    }),
+  });
+  summary.deleted += sweep.deleted;
+  summary.deactivated += sweep.deactivated;
+  summary.reportOnly += sweep.reportOnly;
+  findings.push(...sweep.findings);
+  report.sweep = { candidates: sweep.candidates, alreadyHandled: sweep.alreadyHandled };
+
   progress.stop();
   report.rejects = rejects.counts;
   report.rejectSamples = rejects.samples;
-  report.verifyFailures = verifyFailures;
 
-  console.log(JSON.stringify(report, null, 2));
-  if (!DRY_RUN) await recordRun(startedAt, { loader: LOADER }, report);
+  const result = buildLoaderResult({
+    loader: LOADER,
+    logicVersion: LOGIC_VERSION,
+    dryRun: DRY_RUN,
+    forceReconcile: FORCE_RECONCILE,
+    summary,
+    rejects,
+    allowedRejects: ALLOWED_REJECTS,
+    verifyFailures,
+    findings,
+    allowedFindings: ALLOWED_FINDINGS,
+    detail: report,
+  });
+  emitLoaderResult(result);
+  if (!DRY_RUN) {
+    await recordRun(startedAt, { loader: LOADER, forceReconcile: FORCE_RECONCILE }, result as unknown as Record<string, unknown>);
+  }
 
-  const disallowed = rejects.disallowedReasons(ALLOWED_REJECTS);
-  if (disallowed.length > 0) {
+  if (result.rejectGate.status === "fail") {
     console.error(
-      `FAIL: reject reason(s) not allowed for this run: ${disallowed.map((d) => `${d.reason}=${d.count}`).join(", ")}. ` +
+      `FAIL: reject reason(s) not allowed for this run: ${result.rejectGate.disallowed.map((d) => `${d.reason}=${d.count}`).join(", ")}. ` +
         `Every expected reject class must be explicitly allowed via --allow-rejects.`,
     );
-    process.exit(1);
   }
-  process.exit(verifyFailures > 0 ? 1 : 0);
+  if (result.blockingFindings.length > 0) {
+    console.error(
+      `FAIL: ${result.blockingFindings.length} blocking sync finding(s) (${[...new Set(result.blockingFindings.map((f) => f.kind))].join(", ")}). ` +
+        `Resolve them or acknowledge per run via --allow-findings.`,
+    );
+  }
+  process.exit(loaderExitCode(result));
 }
 
 main().catch((err) => {

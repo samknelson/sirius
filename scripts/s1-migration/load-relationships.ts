@@ -344,7 +344,7 @@ async function main() {
         console.error(`RACE: shell worker for contact nid ${altNid} already mapped to ${winner}; row ${created.id} may be an orphan`);
       }
       w2Id = winner;
-      shellMap.set(altNid, { s2Id: winner, stub: false });
+      shellMap.set(altNid, { s2Id: winner, stub: false, consumedFingerprint: null, logicVersion: null, lastSyncedAt: null, s1DeletedAt: null });
       stats.shellWorkersCreated++;
     }
     if (!w2Id) {

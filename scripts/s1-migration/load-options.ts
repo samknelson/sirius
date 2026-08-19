@@ -18,7 +18,17 @@
  *   3. else create {name, siriusId, sequence, description}
  * Every migrated term is recorded in s1_staging.id_map (entity `term`, s1_id = tid).
  *
+ * Sync semantics (Task 292 — RUNBOOK §10): this loader is RECONCILING by
+ * design. Mapped terms whose staged content_hash matches the consumed
+ * fingerprint in id_map (same logic version) are skipped cheaply — no
+ * storage reads. S1 edits and logic-version bumps reprocess exactly the
+ * affected rows; --force-reconcile reprocesses everything. A deletion sweep
+ * reports mapped terms that vanished from staging (report-only policy:
+ * options rows may be FK-referenced by S2 data, so S1 deletions need an
+ * operator ruling — acknowledge per run via --allow-findings deleted_in_s1).
+ *
  * Usage: npx tsx scripts/s1-migration/load-options.ts [--dry-run]
+ *          [--force-reconcile] [--allow-findings deleted_in_s1]
  * Output is aggregates + term names (taxonomy labels, not PII).
  */
 import { db } from "../../server/storage/db";
@@ -26,9 +36,27 @@ import { sql } from "drizzle-orm";
 import { createUnifiedOptionsStorage, type OptionsTypeName } from "../../server/storage/unified-options";
 import { withNotificationsSuppressed } from "../../server/middleware/request-context";
 import { ensureStagingSchema, recordRun } from "./lib/staging";
-import { ensureIdMap, getMappings, putMapping } from "./lib/idmap";
+import { ensureIdMap, getMappings, putMapping, advanceFingerprints } from "./lib/idmap";
+import {
+  buildLoaderResult,
+  classifyRow,
+  emitLoaderResult,
+  emptySummary,
+  loaderExitCode,
+  parseAllowedFindings,
+  parseForceReconcile,
+  sweepDeletions,
+  type RowDisposition,
+  type SyncFinding,
+} from "./lib/sync";
 
 const DRY_RUN = process.argv.includes("--dry-run");
+const LOADER = "t4-options";
+/** Loader logic version — BUMP whenever transform logic changes so unchanged
+ * S1 terms reprocess into the corrected S2 shape on their next run. */
+const LOGIC_VERSION = 1;
+const FORCE_RECONCILE = parseForceReconcile();
+const ALLOWED_FINDINGS = parseAllowedFindings();
 /** Dev-only: synthetic member-status terms stage no industry field. In
  * production every term must resolve (Q37) — without this flag, unresolved
  * industries fail the run. */
@@ -175,6 +203,8 @@ interface StagedTermRow {
   description: string | null;
   weight: number;
   fields: Record<string, unknown>;
+  /** Staged content_hash (consumed fingerprint source); null pre-upgrade. */
+  contentHash: string | null;
 }
 
 /** Term-attached industry reference (Q37: prod member-status terms carry
@@ -195,17 +225,20 @@ async function main() {
   const options = createUnifiedOptionsStorage();
 
   const res = await db.execute(sql`
-    SELECT tid, vocabulary, name, description, weight, fields FROM s1_staging.terms ORDER BY vocabulary, weight, tid
+    SELECT tid, vocabulary, name, description, weight, fields, content_hash FROM s1_staging.terms ORDER BY vocabulary, weight, tid
   `);
-  const terms = (res as unknown as { rows: StagedTermRow[] }).rows.map((t) => ({
-    ...t,
+  const terms: StagedTermRow[] = (res as unknown as { rows: Array<Record<string, unknown>> }).rows.map((t) => ({
     tid: Number(t.tid),
+    vocabulary: String(t.vocabulary),
+    name: String(t.name),
+    description: t.description == null ? null : String(t.description),
     weight: Number(t.weight),
-    fields: typeof t.fields === "string" ? JSON.parse(t.fields as unknown as string) : (t.fields ?? {}),
+    fields: (typeof t.fields === "string" ? JSON.parse(t.fields) : (t.fields ?? {})) as Record<string, unknown>,
+    contentHash: t.content_hash == null ? null : String(t.content_hash),
   }));
 
-  const report: Record<string, unknown> = { loader: "t4-options", dryRun: DRY_RUN, stagedTerms: terms.length };
-  const perVocab: Record<string, { matchedIdMap: number; matchedSiriusId: number; adoptedByName: number; adoptedByCode: number; created: number; updated: number }> = {};
+  const report: Record<string, unknown> = { stagedTerms: terms.length };
+  const perVocab: Record<string, { matchedIdMap: number; matchedSiriusId: number; adoptedByName: number; adoptedByCode: number; created: number; updated: number; unchanged: number }> = {};
   const skippedVocabs: Record<string, { reason: string; terms: number }> = {};
   const unhandled: Record<string, number> = {};
 
@@ -234,6 +267,12 @@ async function main() {
   });
   /** industry term tid → S2 options_industries id (filled while loading industries) */
   const industryByTid = new Map<number, string>();
+  const summary = emptySummary();
+  /** rows skipped by the consumed-fingerprint fast path (subset of summary.unchanged) */
+  let fastPathSkips = 0;
+  /** fingerprint advances for PRE-EXISTING mappings, applied after verify —
+   * NEW mappings are stamped at putMapping time (the S2 write just landed). */
+  const pendingAdvance: Array<{ s1Id: number; fingerprint: string | null }> = [];
   let workerMsUnresolvedIndustry = 0;
   let workerMsFallbackIndustry = 0;
   /** resolved lazily on first use; null = lookup failed (throws) */
@@ -262,7 +301,29 @@ async function main() {
       skippedVocabs[vocab] = { reason: KNOWN_SKIPPED[vocab], terms: vterms.length };
       continue;
     }
-    const stats = (perVocab[vocab] = { matchedIdMap: 0, matchedSiriusId: 0, adoptedByName: 0, adoptedByCode: 0, created: 0, updated: 0 });
+    const stats = (perVocab[vocab] = { matchedIdMap: 0, matchedSiriusId: 0, adoptedByName: 0, adoptedByCode: 0, created: 0, updated: 0, unchanged: 0 });
+    // Consumed-fingerprint fast path (Task 292): classify every term BEFORE
+    // touching storage. An unchanged term is skipped outright — but industry
+    // terms must still feed the intra-run industryByTid cache from their
+    // mapping, or changed worker-ms terms would falsely fail industry
+    // resolution.
+    const dispositions = new Map<number, RowDisposition>();
+    for (const t of vterms) {
+      dispositions.set(t.tid, classifyRow(existingMap.get(t.tid), t.contentHash, LOGIC_VERSION, FORCE_RECONCILE));
+    }
+    const skipUnchanged = (t: StagedTermRow) => {
+      stats.unchanged++;
+      summary.unchanged++;
+      fastPathSkips++;
+      if (type === "industry") {
+        const m = existingMap.get(t.tid);
+        if (m) industryByTid.set(t.tid, m.s2Id);
+      }
+    };
+    if (vterms.every((t) => dispositions.get(t.tid) === "unchanged")) {
+      for (const t of vterms) skipUnchanged(t);
+      continue; // whole vocabulary unchanged — no storage reads at all
+    }
     const rows: Array<{ id: string; name: string; code?: string | null; siriusId?: string | null; sequence?: number | null; industryId?: string | null }> =
       await options.list(type);
     const supportsSiriusId = rows.length > 0 ? "siriusId" in rows[0] : SIRIUSID_SUPPORTED.has(type);
@@ -297,6 +358,10 @@ async function main() {
     };
 
     for (const t of vterms) {
+      if (dispositions.get(t.tid) === "unchanged") {
+        skipUnchanged(t);
+        continue;
+      }
       // The sirius_id VALUE for this term: letter code for relation types
       // (EDI plugins match codes), tid string for everything else.
       const tidStr = type === "worker-relation-type" ? reltypeSiriusIdOf(t) : String(t.tid);
@@ -355,8 +420,8 @@ async function main() {
         // Heal sirius_id drift on matched rows (e.g. relation-type letter
         // codes introduced 2026-08-05, incl. the ES→EX ruling).
         if (supportsSiriusId && row.siriusId !== tidStr) patch.siriusId = tidStr;
-        if (!DRY_RUN && Object.keys(patch).length > 0) {
-          await withNotificationsSuppressed(() => options.update(type, row!.id, patch));
+        if (Object.keys(patch).length > 0) {
+          if (!DRY_RUN) await withNotificationsSuppressed(() => options.update(type, row!.id, patch));
           stats.updated++;
         }
       } else if ((row = byName.get(t.name.toLowerCase()))) {
@@ -419,12 +484,23 @@ async function main() {
       if (!DRY_RUN && row) {
         let winnerId = row.id;
         if (!existingMap.has(t.tid)) {
-          winnerId = await putMapping("term", t.tid, row.id, { stub: false, loader: "t4-options" });
+          // New mapping: consumed fingerprint stamped at insert time — the S2
+          // write just landed and the verify pass below re-lists the table.
+          winnerId = await putMapping("term", t.tid, row.id, {
+            stub: false,
+            loader: LOADER,
+            fingerprint: t.contentHash,
+            logicVersion: LOGIC_VERSION,
+          });
           if (winnerId !== row.id) {
             console.error(
               `RACE: ${vocab} tid ${t.tid} already mapped to ${winnerId}; row ${row.id} may be an orphan — clean up manually`,
             );
           }
+        } else {
+          // Pre-existing mapping reconciled (updated or proven drift-free):
+          // advance only AFTER verify so failed writes stay retryable.
+          pendingAdvance.push({ s1Id: t.tid, fingerprint: t.contentHash });
         }
         if (type === "industry") industryByTid.set(t.tid, winnerId);
       }
@@ -434,6 +510,7 @@ async function main() {
   // ---- verify: every migrated tid resolves to an existing row — via the
   // siriusId column where the table has one, else via id_map ----
   let verifyFailures = 0;
+  const verifyFailedTids = new Set<number>();
   if (!DRY_RUN) {
     const finalMap = await getMappings("term", terms.map((t) => t.tid));
     for (const [vocab, vterms] of byVocab) {
@@ -450,9 +527,44 @@ async function main() {
         if (!ok) {
           console.error(`VERIFY: ${vocab} tid ${t.tid} "${t.name}" not resolvable in ${type} (siriusId or id_map)`);
           verifyFailures++;
+          verifyFailedTids.add(t.tid);
         }
       }
     }
+  }
+
+  // ---- advance consumed fingerprints (pre-existing mappings) — only after
+  // the S2 writes landed and the verify pass established the target, so
+  // failed writes stay retryable on the next run ----
+  if (!DRY_RUN) {
+    const toAdvance = pendingAdvance.filter((p) => !verifyFailedTids.has(p.s1Id));
+    await advanceFingerprints("term", toAdvance, LOGIC_VERSION);
+  }
+
+  // ---- deletion sweep: mapped terms whose staged source vanished (deleted
+  // in S1). Policy: report-only — options rows may be FK-referenced by S2
+  // data, so S1 term deletions need an operator ruling per finding. ----
+  const findings: SyncFinding[] = [];
+  const sweep = await sweepDeletions({
+    entity: "term",
+    loaders: [LOADER],
+    sourceSql: sql`SELECT tid AS s1_id FROM s1_staging.terms`,
+    dryRun: DRY_RUN,
+    policy: async () => ({
+      action: "report-only",
+      detail: { reason: "options rows may be FK-referenced by S2 data; S1 term deletion needs an operator ruling" },
+    }),
+  });
+  summary.deleted += sweep.deleted;
+  summary.deactivated += sweep.deactivated;
+  summary.reportOnly += sweep.reportOnly;
+  findings.push(...sweep.findings);
+
+  for (const s of Object.values(perVocab)) {
+    summary.created += s.created;
+    summary.updated += s.updated + s.adoptedByName + s.adoptedByCode;
+    // matched rows whose drift patch was empty were reconciled but unchanged
+    summary.unchanged += Math.max(0, s.matchedIdMap + s.matchedSiriusId - s.updated);
   }
 
   report.perVocab = perVocab;
@@ -460,10 +572,24 @@ async function main() {
   report.workerMsFallbackIndustry = workerMsFallbackIndustry;
   report.skippedVocabs = skippedVocabs;
   report.unhandledVocabularies = unhandled;
-  report.verifyFailures = verifyFailures;
+  report.fastPathSkips = fastPathSkips;
+  report.sweep = { candidates: sweep.candidates, alreadyHandled: sweep.alreadyHandled };
 
-  console.log(JSON.stringify(report, null, 2));
-  if (!DRY_RUN) await recordRun(startedAt, { loader: "t4-options" }, report);
+  const result = buildLoaderResult({
+    loader: LOADER,
+    logicVersion: LOGIC_VERSION,
+    dryRun: DRY_RUN,
+    forceReconcile: FORCE_RECONCILE,
+    summary,
+    verifyFailures,
+    findings,
+    allowedFindings: ALLOWED_FINDINGS,
+    detail: report,
+  });
+  emitLoaderResult(result);
+  if (!DRY_RUN) {
+    await recordRun(startedAt, { loader: LOADER, forceReconcile: FORCE_RECONCILE }, result as unknown as Record<string, unknown>);
+  }
 
   if (workerMsUnresolvedIndustry > 0 && !ALLOW_UNRESOLVED_INDUSTRY) {
     console.error(
@@ -471,8 +597,13 @@ async function main() {
     );
     process.exit(1);
   }
-  if (verifyFailures > 0) process.exit(1);
-  process.exit(0);
+  if (result.blockingFindings.length > 0) {
+    console.error(
+      `FAIL: ${result.blockingFindings.length} blocking sync finding(s) (${[...new Set(result.blockingFindings.map((f) => f.kind))].join(", ")}). ` +
+        `Resolve them or acknowledge per run via --allow-findings.`,
+    );
+  }
+  process.exit(loaderExitCode(result));
 }
 
 main().catch((err) => {

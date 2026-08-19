@@ -125,3 +125,4 @@
 - [Loader writes precede reject gate](loader-writes-before-reject-gate.md) — a run failing on disallowed rejects already wrote; smokes need --allow-rejects on run 1 (dry-run priming); FK crash = dangling id_map.
 - [S1 loader run order](s1-loader-run-order.md) — t18 references resolve via id_map; loading ledger before payments/WMB silently types everything s1-unknown; adopt never re-resolves.
 - [FK parent delete race](fk-parent-delete-race.md) — deleting an ON DELETE SET NULL parent needs FOR UPDATE + recheck in one tx, or concurrent child inserts get silently NULLed.
+- [S1 sync fingerprints & sweeps](s1-sync-fingerprints.md) — fast-skip must feed intra-run caches; fps stamp on INSERT, advance post-verify; dev id_map repairs need per-type liveness.
