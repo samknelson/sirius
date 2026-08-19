@@ -24,6 +24,12 @@
  *   R9  staged T deleted → blocking pending_retention finding (exit 1);
  *       S2 row + mapping PRESERVED
  *   R10 --allow-findings pending_retention → exit 0, still reported
+ *   R10b/c signed S relocated onto an OCCUPIED pair → duplicate_signed
+ *       blocks (validator fires on pair CHANGE, not just sign), row +
+ *       fingerprint frozen; restore fast-skips
+ *   R10d/e signed S relocated to a FREE pair → clean update (and back);
+ *       then a storage-level probe asserts CARDCHECK_SAVED fires for BOTH
+ *       affected workers on a signed→signed relocation
  *   R11 payload-only edit (seeded signed record) + record logic_version=0
  *       (different seeded record) + disclaimer-node edit → exactly one
  *       record updated, one adopted, definition updated; records of the
@@ -45,6 +51,7 @@ import { readFileSync, unlinkSync, existsSync } from "node:fs";
 import { db } from "../../../server/storage/db";
 import { sql } from "drizzle-orm";
 import { storage } from "../../../server/storage/database";
+import { eventBus, EventType } from "../../../server/services/event-bus";
 import { ensureStagingSchema, upsertRecords, type StagedRecord } from "../lib/staging";
 import { ensureIdMap, deleteMapping, getMappings } from "../lib/idmap";
 import { type LoaderResult } from "../lib/sync";
@@ -517,6 +524,82 @@ async function main() {
         (r10c.result?.rejectGate.counts ?? {})["duplicate_signed"] == null,
       JSON.stringify({ updated: statsOf(r10c).updated, adopted: statsOf(r10c).adopted }));
     check("R10c S still signed on its own pair", (await s2Cardcheck(S_NID))?.workerId === wS2);
+
+    // R10d — NON-conflicting relocation: move S to a FREE pair (another
+    // mapped worker with no signed cardcheck on this definition). A
+    // legitimate S1 correction ("signed under the wrong worker") must
+    // update the mapped row cleanly and advance the fingerprint.
+    let w2Nid = 0, w2S2 = "";
+    for (const cand of candidates) {
+      if (cand.nid === wNid) continue;
+      const signed = rowsOf(await db.execute(sql`
+        SELECT 1 FROM cardchecks WHERE worker_id = ${cand.s2} AND cardcheck_definition_id = ${pairDefS2} AND status = 'signed' LIMIT 1
+      `));
+      if (signed.length === 0) { w2Nid = cand.nid; w2S2 = cand.s2; break; }
+    }
+    check("R10d found a second free worker for the non-conflicting relocation", w2Nid > 0, `w2=${w2Nid}`);
+    {
+      const rec = await readRecord("sirius_log", S_NID);
+      rec.fields["field_sirius_log_handler"] = [String(pairDefNid), String(w2Nid)];
+      await upsertRecords([rec]);
+    }
+    const r10d = runLoader(baseArgs);
+    check("R10d exits 0 (no conflict on the free pair)", r10d.code === 0);
+    check("R10d relocation updated exactly one record", statsOf(r10d).updated === 1, `updated=${statsOf(r10d).updated}`);
+    const s10d = await s2Cardcheck(S_NID);
+    check("R10d S moved to the new worker, still signed on the same definition",
+      s10d?.status === "signed" && s10d.workerId === w2S2 && s10d.definitionId === pairDefS2,
+      JSON.stringify({ status: s10d?.status, moved: s10d?.workerId === w2S2 }));
+    const fpAfterFree = (await getMappings(REC_ENTITY, [S_NID])).get(S_NID)?.consumedFingerprint ?? null;
+    check("R10d fingerprint advanced on the successful relocation",
+      fpAfterFree != null && fpAfterFree !== fpAfterReloc);
+
+    // R10e — restore S to its own pair (also a relocation; converges back).
+    {
+      const rec = await readRecord("sirius_log", S_NID);
+      rec.fields["field_sirius_log_handler"] = [String(pairDefNid), String(wNid)];
+      await upsertRecords([rec]);
+    }
+    const r10e = runLoader(baseArgs);
+    check("R10e exits 0", r10e.code === 0);
+    check("R10e restore updated exactly one record", statsOf(r10e).updated === 1, `updated=${statsOf(r10e).updated}`);
+    check("R10e S back on its own worker", (await s2Cardcheck(S_NID))?.workerId === wS2);
+
+    // Storage-level probe — a signed→signed relocation IS a signed-cardcheck
+    // situation change: CARDCHECK_SAVED must fire for BOTH the pre-update
+    // and post-update rows (the old worker loses an effective signature,
+    // the new one gains it), exactly as sign/revoke does. Loader child
+    // processes can't be observed from here, so this asserts the emit
+    // contract at the storage choke point every writer goes through — in
+    // the running app these emits drive the WMB auto-rescan for each
+    // affected worker.
+    const sRowId = (await s2Cardcheck(S_NID))!.id;
+    const emits: Array<{ workerId: string; status: string }> = [];
+    const probeId = eventBus.on({
+      name: "smoke-cardcheck-saved-probe",
+      description: "smoke: captures CARDCHECK_SAVED emits for relocation assertions",
+      event: EventType.CARDCHECK_SAVED,
+      handler: async (p) => { emits.push({ workerId: p.workerId, status: p.status }); },
+    });
+    try {
+      await storage.cardchecks.updateCardcheck(sRowId, { workerId: w2S2 });
+      await new Promise((r) => setTimeout(r, 250));
+      check("signed relocation emits CARDCHECK_SAVED for BOTH affected workers",
+        emits.length === 2 && emits.some((e) => e.workerId === wS2) && emits.some((e) => e.workerId === w2S2),
+        JSON.stringify(emits));
+      check("both relocation emits carry signed status",
+        emits.length > 0 && emits.every((e) => e.status === "signed"), JSON.stringify(emits));
+      emits.length = 0;
+      // Revert through storage too — S2 again matches the R10e fingerprint
+      // state, and the reverse relocation must emit for both workers as well.
+      await storage.cardchecks.updateCardcheck(sRowId, { workerId: wS2 });
+      await new Promise((r) => setTimeout(r, 250));
+      check("reverse relocation also emits for both workers",
+        emits.length === 2 && emits.some((e) => e.workerId === wS2) && emits.some((e) => e.workerId === w2S2),
+        JSON.stringify(emits));
+    } finally {
+      eventBus.off(probeId);
+    }
 
     // R11 — combined reconcile-precision run:
     //   · payload-only edit on seeded signed record 99910101 → updated

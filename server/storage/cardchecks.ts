@@ -253,8 +253,10 @@ function toYmd(date: Date | string | null | undefined): string | null {
 /**
  * Defer a CARDCHECK_SAVED emit to after the surrounding transaction (if any)
  * commits, so listeners never see uncommitted state. Emitted only for writes
- * that change the worker's signed-cardcheck situation (sign / revoke /
- * delete); see CardcheckSavedPayload.
+ * that change a worker's signed-cardcheck situation: sign, revoke, delete,
+ * or an in-place change to WHOSE/WHICH/WHEN a signature applies (a signed
+ * row's worker, definition, or signed date changing); see
+ * CardcheckSavedPayload.
  */
 function emitCardcheckSaved(
   cardcheck: Pick<Cardcheck, 'id' | 'workerId' | 'status' | 'signedDate'>,
@@ -680,12 +682,26 @@ export function createCardcheckStorage(): CardcheckStorage {
         .set(data)
         .where(eq(cardchecks.id, id))
         .returning();
-      if (updated && (current.status === 'signed') !== (updated.status === 'signed')) {
-        // Sign or revoke: the worker's signed-cardcheck situation changed.
-        // Emit both the old and new states so listeners cover the previously
-        // effective month as well as the new one.
-        emitCardcheckSaved(current, 'updated');
-        emitCardcheckSaved(updated, 'updated');
+      if (updated) {
+        const wasSigned = current.status === 'signed';
+        const isSigned = updated.status === 'signed';
+        // The signed-cardcheck situation changes on a sign/revoke flip, and
+        // ALSO when a still-signed row's worker, definition, or signed date
+        // changes (relocation / date correction): the old worker loses an
+        // effective signature and the new one gains it. Emit both the old
+        // and new states so listeners cover the previously effective
+        // worker+month as well as the new one.
+        const situationChanged =
+          wasSigned !== isSigned ||
+          (isSigned && (
+            current.workerId !== updated.workerId ||
+            current.cardcheckDefinitionId !== updated.cardcheckDefinitionId ||
+            toYmd(current.signedDate) !== toYmd(updated.signedDate)
+          ));
+        if (situationChanged) {
+          emitCardcheckSaved(current, 'updated');
+          emitCardcheckSaved(updated, 'updated');
+        }
       }
       return updated || undefined;
     },
