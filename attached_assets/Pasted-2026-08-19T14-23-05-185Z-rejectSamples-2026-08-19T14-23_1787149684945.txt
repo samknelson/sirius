@@ -1,0 +1,55 @@
+2026-08-19T14:23:05.185Z	"rejectSamples": {
+2026-08-19T14:23:05.185Z	},
+2026-08-19T14:23:05.185Z	"list_exists_foreign": 1
+2026-08-19T14:23:05.185Z	"rejects": {
+2026-08-19T14:23:05.185Z	},
+2026-08-19T14:23:05.185Z	"rowsOk": true
+2026-08-19T14:23:05.185Z	"workersOk": true,
+2026-08-19T14:23:05.185Z	"accountedRows": 5087,
+2026-08-19T14:23:05.185Z	"stagedPopulatedRows": 5087,
+2026-08-19T14:23:05.185Z	"populatedWorkersRejected": 1,
+2026-08-19T14:23:05.185Z	"accountedWorkers": 3062,
+2026-08-19T14:23:05.185Z	"stagedPopulatedWorkers": 3062,
+2026-08-19T14:23:05.185Z	"reconciliation": {
+2026-08-19T14:23:05.185Z	},
+2026-08-19T14:23:05.185Z	"percentOutOfRange": 0
+2026-08-19T14:23:05.185Z	"phoneInvalid": 75,
+2026-08-19T14:23:05.185Z	"ssnInvalid": 143,
+2026-08-19T14:23:05.185Z	"softMismatches": {
+2026-08-19T14:23:05.185Z	"rowsSkipped": 1,
+2026-08-19T14:23:05.185Z	"rowsAdopted": 0,
+2026-08-19T14:23:05.185Z	"rowsWritten": 5086,
+2026-08-19T14:23:05.185Z	"workersCleared": 0,
+2026-08-19T14:23:05.185Z	"workersAdopted": 0,
+2026-08-19T14:23:05.185Z	"workersWritten": 3061,
+2026-08-19T14:23:05.185Z	},
+2026-08-19T14:23:05.185Z	"populatedRows": 5087
+2026-08-19T14:23:05.185Z	"workersWithPopulatedRows": 3062,
+2026-08-19T14:23:05.185Z	"workersWithBeneficiariesKey": 5227,
+2026-08-19T14:23:05.185Z	"stagedCounts": {
+2026-08-19T14:23:05.185Z	"blankNameWithData": 0,
+2026-08-19T14:23:05.185Z	"blankRowsFiltered": 36729,
+2026-08-19T14:23:05.185Z	"extraDeltaArrays": 0,
+2026-08-19T14:23:05.185Z	"workersWithJson": 116641,
+2026-08-19T14:23:05.185Z	"stagedWorkers": 117736,
+2026-08-19T14:23:05.185Z	"allowedRejects": [],
+2026-08-19T14:23:05.185Z	"dryRun": false,
+2026-08-19T14:23:05.185Z	"loader": "t-bao-beneficiaries",
+2026-08-19T14:23:05.185Z	{
+2026-08-19T14:22:54.388Z	progress t-bao-beneficiaries: phase=write done=2935/3062 (95.9%) elapsed=60s rate=53 rows/s eta=2s
+2026-08-19T14:21:54.261Z	storage-operation logging SUPPRESSED for this run (default) — winston_logs will not reflect this run; failures surface via the RejectLog/run report. Re-enable with S1_LOADER_LOG_SAMPLE=1 (full) or N>1 (sampled)
+2026-08-19T14:21:53.808Z	02:21:53 PM [app] INFO: Registered charge plugin: bao-er-report-to-ee-allocation {"service":"charge-plugin-registry","triggers":["payment_saved"],"requiredComponent":"sitespecific.bao"}
+2026-08-19T14:21:53.808Z	02:21:53 PM [app] INFO: Registered charge plugin: bao-hourly {"service":"charge-plugin-registry","triggers":["hours_saved"],"requiredComponent":"sitespecific.bao"}
+2026-08-19T14:21:53.808Z	02:21:53 PM [app] INFO: Registered charge plugin: sitespecific-bao-premium {"service":"charge-plugin-registry","triggers":["wmb_saved"],"requiredComponent":"sitespecific.bao"}
+2026-08-19T14:21:53.807Z	02:21:53 PM [app] INFO: Registered charge plugin: sitespecific-bao-echp {"service":"charge-plugin-registry","triggers":["hours_saved"],"requiredComponent":"sitespecific.bao"}
+2026-08-19T14:21:53.807Z	02:21:53 PM [app] INFO: Registered eligibility plugin: sitespecific-bao-buildup {"service":"eligibility-plugin-registry"}
+2026-08-19T14:21:53.807Z	02:21:53 PM [app] INFO: Registered charge plugin: sitespecific-bao-dp {"service":"charge-plugin-registry","triggers":["cron"],"requiredComponent":"sitespecific.bao"}
+2026-08-19T14:21:53.806Z	02:21:53 PM [app] INFO: Registered charge plugin: sitespecific-bao-cobra {"service":"charge-plugin-registry","triggers":["cron"],"requiredComponent":"sitespecific.bao"}
+2026-08-19T14:21:53.806Z	02:21:53 PM [app] INFO: Registered charge plugin: btu-dues-allocation {"service":"charge-plugin-registry","triggers":["dues_import_saved"],"requiredComponent":"sitespecific.btu"}
+2026-08-19T14:21:53.806Z	02:21:53 PM [app] INFO: Registered charge plugin: btu-steward-attendance {"service":"charge-plugin-registry","triggers":["participant_saved"],"requiredComponent":"sitespecific.btu"}
+2026-08-19T14:21:53.805Z	02:21:53 PM [app] INFO: Registered charge plugin: payment-simple-allocation {"service":"charge-plugin-registry","triggers":["payment_saved"]}
+2026-08-19T14:21:53.805Z	02:21:53 PM [app] INFO: Registered charge plugin: gbhet-pension-sla-hourly {"service":"charge-plugin-registry","triggers":["hours_saved"],"requiredComponent":"sitespecific.gbhet.pension"}
+2026-08-19T14:21:53.805Z	02:21:53 PM [app] INFO: Registered charge plugin: gbhe-hourly-charge {"service":"charge-plugin-registry","triggers":["hours_saved"],"requiredComponent":"sitespecific.gbhet"}
+2026-08-19T14:21:53.804Z	02:21:53 PM [app] INFO: Registered charge plugin: gbhet-legal-benefit {"service":"charge-plugin-registry","triggers":["wmb_saved"],"requiredComponent":"sitespecific.gbhet.legal"}
+2026-08-19T14:21:53.301Z	[db] driver=neon (serverless/WebSocket)
+2026-08-19T14:21:53.295Z	[db] Target database: ep-delicate-frog-aflo0zan.c-2.us-west-2.aws.neon.tech/neondb (from EXTERNAL_DATABASE_URL)

@@ -1,0 +1,18 @@
+Plan proposed — five tasks forming a small DAG:
+
+Task #292 (Sync foundation: fingerprints and deletion sweeps) — the shared machinery everything else builds on:
+
+Content hashes computed at stage time on staged rows; id_map gains the consumed fingerprint + last-synced, so "mapped but changed" is a set-based SQL question (daily runs cost O(churn), not O(everything))
+Generic deletion sweep: non-stub mappings with no staged source → per-entity policy (delete / deactivate / report-only)
+Standard sync report counters (created/updated/unchanged/deleted/reported), proven on two pilot loaders (options, policies)
+Then three parallel conversion tasks (disjoint loader files, all depend on #292):
+
+Task #293 — people/employer/config loaders: full S1-wins field coverage, collections reconcile as sets (phones/addresses/policy history), deletions swept for safe child rows, report-only for workers/contacts/employers
+Task #294 — the hottest gap: elections update/delete, and benefit spans diffed into exact trust_wmb month sets (stale months deleted via existing storage method), with open-end-through advancing per sync run
+Task #295 — money: ledger status/amount updates keyed by charge-plugin key, payments update-instead-of-verify-fail, hours stale-key cleanup; charge suppression audited on every new path
+Task #296 (One-command daily sync) — depends on all three: stage → fleet in ruled order with checked-in allow-flag config → parity gates (0¢ balance drift + rolling month parity) → one aggregated report; dry-run mode; RUNBOOK dual-run section; and a rehearsal-target proof that mutates synthetic S1 across all domains and requires parity PASS.
+
+Design decisions baked in from your answers: S1-wins blind overwrite (no conflict detection — S2 is shadow), staging stays full-re-extract (already sync-correct; incremental extraction deliberately rejected), and the final cutover reuses the same sync command at freeze before Okta provisioning — so the daily tool and the cutover tool are one code path, exercised ~30 times before the day it matters most.
+
+One operational note: until all five merge, the current RUNBOOK rule still applies — don't re-stage a target that loaders have already run against unless it's from the same freeze snapshot (or you accept wipe + full reload).
+
