@@ -51,7 +51,7 @@
  * side); defects dualAcceptanceMismatch=1, signedWithoutEsig=1 (99910108;
  * 99910106 revoked carries an esig), offlineKeysPresent=1.
  *
- * Converted-sync re-runs (§10 / Task 348): with nothing changed, records
+ * Converted-sync re-runs (RUNBOOK §10): with nothing changed, records
  * fast-skip 6 and definitions fast-skip 2 — `disclaimer_missing` fires ONLY
  * when definition B actually reprocesses (first run after seeding/restage,
  * definition change, LOGIC_VERSION bump, or --force-reconcile), while the

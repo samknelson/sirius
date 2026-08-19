@@ -557,7 +557,7 @@ Mappings and provenance stay intact; findings re-emit on every run until
 resolved. Already-deactivated entries count as `alreadyHandled`, not new
 findings.
 
-**Beneficiaries & cardchecks specifics (Task 348).**
+**Beneficiaries & cardchecks specifics.**
 - `load-beneficiaries` (entity `bao-beneficiaries`): the consumed fingerprint
   encodes the DECODED staged state — absent key, empty primary list,
   malformed JSON and populated rows are all distinguishable — so absent/empty
@@ -617,7 +617,8 @@ findings. Reports stay aggregates-only (no names/PII), and say when
   logic-version-only update, forced update, and vanished-source handling
   end to end (also wired into the `typecheck`/`typecheck-scripts`
   validations for static health).
-- Task 348 smokes (both need the §4 seeded fakes in place):
+- Beneficiaries & cardchecks sync smokes (both need the §4 seeded fakes in
+  place):
   `dev/smoke-sync-beneficiaries.ts` — unchanged skip without S2 reads, drift
   immunity, force/version reconcile, owned clear, vanished-source
   `source_worker_missing` policy (block → acknowledge → restore);

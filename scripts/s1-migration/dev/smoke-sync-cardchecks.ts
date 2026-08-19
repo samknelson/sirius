@@ -466,6 +466,58 @@ async function main() {
     // T's job is done — remove it entirely (S2 + mapping + staging).
     await cleanupSynthetic(T_NID);
 
+    // R10b — RELOCATION duplicate: S is already signed; point its staged
+    // handler at a (worker, definition) pair that ALREADY has a signed
+    // cardcheck (the seeded signed record's own pair). The storage validator
+    // must fire DUPLICATE_SIGNED on the pair CHANGE (not just on a
+    // transition to signed), the loader must surface duplicate_signed, the
+    // S2 row must stay signed on its ORIGINAL pair, and the fingerprint must
+    // NOT advance (the reject re-fires until the S1 side is fixed).
+    const cc101 = await s2Cardcheck(SEED_LO);
+    check("R10b seeded conflict row is signed", cc101?.status === "signed", `status=${cc101?.status}`);
+    const conflictDefNid = cc101!.definitionId === defAS2 ? DEF_A : DEF_B;
+    const conflictWorkerRow = rowsOf(await db.execute(sql`
+      SELECT s1_id FROM s1_staging.id_map WHERE entity = 'worker' AND s2_id = ${cc101!.workerId} AND stub = false LIMIT 1
+    `))[0];
+    const conflictWorkerNid = Number(conflictWorkerRow?.s1_id ?? 0);
+    check("R10b resolved the conflict pair's worker nid", conflictWorkerNid > 0, `workerNid=${conflictWorkerNid}`);
+    const fpBeforeReloc = (await getMappings(REC_ENTITY, [S_NID])).get(S_NID)?.consumedFingerprint ?? null;
+    {
+      const rec = await readRecord("sirius_log", S_NID);
+      rec.fields["field_sirius_log_handler"] = [String(conflictDefNid), String(conflictWorkerNid)];
+      await upsertRecords([rec]);
+    }
+    const r10b = runLoader(baseArgs);
+    check("R10b relocating a signed row onto an occupied pair blocks (exit 1)", r10b.code === 1);
+    check("R10b duplicate_signed rejected exactly once (mapped relocation)",
+      (r10b.result?.rejectGate.counts ?? {})["duplicate_signed"] === 1,
+      JSON.stringify(r10b.result?.rejectGate.counts ?? {}));
+    const sAfterReloc = await s2Cardcheck(S_NID);
+    check("R10b S2 row untouched — still signed on the ORIGINAL pair",
+      sAfterReloc?.status === "signed" && sAfterReloc.workerId === wS2 && sAfterReloc.definitionId === pairDefS2,
+      JSON.stringify({ status: sAfterReloc?.status, moved: sAfterReloc?.workerId !== wS2 }));
+    const fpAfterReloc = (await getMappings(REC_ENTITY, [S_NID])).get(S_NID)?.consumedFingerprint ?? null;
+    check("R10b fingerprint did NOT advance on the rejected relocation",
+      fpBeforeReloc != null && fpAfterReloc === fpBeforeReloc,
+      JSON.stringify({ before: fpBeforeReloc, after: fpAfterReloc }));
+    check("R10b conflict row untouched", (await s2Cardcheck(SEED_LO))?.status === "signed");
+
+    // R10c — restore S's handler: content returns to the last VERIFIED
+    // state, so the surviving fingerprint fast-skips it — no write, no
+    // adopt, no duplicate_signed.
+    {
+      const rec = await readRecord("sirius_log", S_NID);
+      rec.fields["field_sirius_log_handler"] = [String(pairDefNid), String(wNid)];
+      await upsertRecords([rec]);
+    }
+    const r10c = runLoader(baseArgs);
+    check("R10c exits 0 after restoring the handler", r10c.code === 0);
+    check("R10c restored S fast-skips on the surviving fingerprint",
+      statsOf(r10c).updated === 0 && statsOf(r10c).adopted === 0 &&
+        (r10c.result?.rejectGate.counts ?? {})["duplicate_signed"] == null,
+      JSON.stringify({ updated: statsOf(r10c).updated, adopted: statsOf(r10c).adopted }));
+    check("R10c S still signed on its own pair", (await s2Cardcheck(S_NID))?.workerId === wS2);
+
     // R11 — combined reconcile-precision run:
     //   · payload-only edit on seeded signed record 99910101 → updated
     //   · logic_version=0 on another MAPPED seeded record → adopted (version-only;

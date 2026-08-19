@@ -1,7 +1,7 @@
 import { getClient, onAfterCommit } from './transaction-context';
 import { eventBus, EventType } from '../services/event-bus';
 import { cardchecks, cardcheckDefinitions, workers, contacts, bargainingUnits, employers, esigs, workerHours, optionsEmploymentStatus, type Cardcheck, type InsertCardcheck, type Esig, type InsertEsig, type File } from "@shared/schema";
-import { eq, and, gte, lte, sql, isNull, isNotNull, inArray, count } from "drizzle-orm";
+import { eq, ne, and, gte, lte, sql, isNull, isNotNull, inArray, count } from "drizzle-orm";
 import type { StorageLoggingConfig } from "./middleware/logging";
 import { 
   type ValidationError,
@@ -20,16 +20,25 @@ export const cardcheckValidate = createAsyncStorageValidator<InsertCardcheck, Ca
     
     if (status === "signed" && workerId && cardcheckDefinitionId) {
       const wasAlreadySigned = existing?.status === "signed";
-      
-      if (!wasAlreadySigned) {
+      // The duplicate-signed invariant must hold for BOTH ways a signed row
+      // can land on an occupied (worker, definition) pair: a transition to
+      // signed, and an ALREADY-signed row whose effective worker/definition
+      // changes (relocation). The self-row is excluded so unrelated updates
+      // to a signed row never conflict with themselves.
+      const pairChanged = existing != null &&
+        (workerId !== existing.workerId || cardcheckDefinitionId !== existing.cardcheckDefinitionId);
+
+      if (!wasAlreadySigned || pairChanged) {
+        const conflictFilters = [
+          eq(cardchecks.workerId, workerId),
+          eq(cardchecks.cardcheckDefinitionId, cardcheckDefinitionId),
+          eq(cardchecks.status, "signed"),
+        ];
+        if (existing) conflictFilters.push(ne(cardchecks.id, existing.id));
         const existingSigned = await client
           .select()
           .from(cardchecks)
-          .where(and(
-            eq(cardchecks.workerId, workerId),
-            eq(cardchecks.cardcheckDefinitionId, cardcheckDefinitionId),
-            eq(cardchecks.status, "signed")
-          ));
+          .where(and(...conflictFilters));
         
         if (existingSigned.length > 0) {
           errors.push({
