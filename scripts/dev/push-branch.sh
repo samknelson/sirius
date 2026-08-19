@@ -21,6 +21,8 @@ fi
 REMOTE="https://x-access-token:${GITHUB_TOKEN}@github.com/samknelson/sirius.git"
 MIRROR="bao-replit-main"
 TRACKING_NAMESPACE="refs/remotes/push-workflow"
+WORKFLOW_GIT_NAME="Sirius Deployment Workflow"
+WORKFLOW_GIT_EMAIL="deployment-workflow@users.noreply.github.com"
 TEMP_FILES=()
 
 cleanup() {
@@ -82,6 +84,10 @@ reconcile_equivalent_remote_history() {
   reconciled_main=$(
     printf 'Reconcile %s before deployment push\n\nRemote-only changes were verified as already present in main; keep the main tree unchanged.\n' \
       "origin/$branch" |
+      GIT_AUTHOR_NAME="$WORKFLOW_GIT_NAME" \
+      GIT_AUTHOR_EMAIL="$WORKFLOW_GIT_EMAIL" \
+      GIT_COMMITTER_NAME="$WORKFLOW_GIT_NAME" \
+      GIT_COMMITTER_EMAIL="$WORKFLOW_GIT_EMAIL" \
       git commit-tree "$main_tree" -p "$old_main" -p "$remote_ref"
   )
   git update-ref refs/heads/main "$reconciled_main" "$old_main"

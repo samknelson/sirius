@@ -24,5 +24,7 @@ the older duplicate.
 **How to apply:** Fetch both the selected deployment branch and
 `bao-replit-main`, check each independently, and refuse the push if either patch
 does not reverse-apply. Push both refs atomically so one cannot advance while
-the other fails. The workflow remains user-triggered; never push a bao branch
-outside that workflow.
+the other fails. Give the generated reconciliation commit an explicit
+workflow-only author/committer identity; workflow shells may have no Git
+identity configured. The workflow remains user-triggered; never push a bao
+branch outside that workflow.
