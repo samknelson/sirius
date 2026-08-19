@@ -285,9 +285,9 @@ SELECT count(*) FROM worker_trust_elections;  -- elections
 | 7 | `npx tsx scripts/s1-migration/load-employee-ids.ts` | `--allow-rejects duplicate_code` (2 synthetic) | Run clean first. `duplicate_code` may genuinely occur in prod — inspect, then allow with the observed count. On RE-run, one of a dup pair becomes `code_owned_by_other_worker` and one adopts. | 28 created, 10 types, duplicate_code=2 |
 | 8 | `npx tsx scripts/s1-migration/load-elections.ts` | `--allow-rejects relation_unmapped` (synthetic dangling relation refs) | **Standard sync envelope (§10) — full reconcile.** Re-runs fast-skip unchanged nids via consumed fingerprints (`detail.fastPathSkips`); an election edited in S1 (dates/benefits/relationships/employer/active) is UPDATED in S2 (`summary.updated`, migration-owned fields overwritten verbatim, S1 wins; policy stays derived — never written); an election deleted in S1 is hard-DELETED via the sweep (`detail.sweep`, suppressed side effects); a mapped S2 row deleted out-of-band rejects as `mapped_row_missing` (triage; drop the mapping to let the next run recreate). Expect `resolved + fastPathSkips + rejects == staged` and `verifyFailures: 0`; rejected nids re-resolve every run (never fingerprint-advanced). Untyped elections remain the prod majority (typed = COVERAGE TIERS, load with NULL `enrollment_type` — finding 2026-08-09; fix ≥ `a000e65b`). **Freeze-era real-target run 2026-08-09:** staged 243,475 → resolved 242,532; 943 rejects, all allowed after triage. First converted run re-resolves everything once (fingerprint bootstrap), then dailies fast-skip. | 40 staged: 35 steady-state fast-skips, 5 `relation_unmapped` traps |
 | 9 | `npx tsx scripts/s1-migration/load-benefit-history.ts [--open-end-through <YYYY-MM>]` | `--open-end-through 2026-12` + `--allow-rejects start_missing,subscriber_worker_mismatch,relation_subscriber_mismatch,employer_unresolved` (4 synthetic traps) | **Standard sync envelope (§10) — month-set reconcile.** Desired months are computed set-based into the persistent scratch table `s1_staging.t17_desired_spans` (fingerprints live THERE, not id_map) and diffed against `trust_wmb` for migrated workers: missing months created, stale months deleted, `source_relation_id` divergence repaired, wb anchors auto-created/repointed/retired (`detail.anchors`) so T18 provenance never dangles. `--open-end-through` is now OPTIONAL: **omitted → current LA month** (`detail.openEndThroughSource: "default-current-la-month"`) — the daily dual-run default; pass it explicitly only for the ruled transition month at final cutover (**= the month the migration run happens in, RULED, amended 2026-08-09**) or dev's 2026-12 convention. A later horizon adds only the delta months for open spans; spans closed in S1 retract previously-projected months. Retired rejects: `open_end_through_required`, `open_span_after_through` (now counter `detail.openSpansStartingAfterHorizon`, loads with empty month set), `mapped_anchor_missing` (anchors self-heal). Months beyond the horizon are never deleted (`detail.staleBeyondHorizon` — nonzero during dual-run means something else writes migrated months; investigate). Expect `verifyFailures: 0` (missing/stale/relDiverged/danglingAnchors all 0 post-apply). **Freeze-era real-target run 2026-08-09:** 612,076 staged spans → 528,656 anchors, 6,435,517 month rows, ≈4.2 h wall; 83,420 rejects, every class §5-ruled. First converted run re-resolves everything once (scratch bootstrap — expect freeze-scale wall time), then dailies fast-skip unchanged spans (`detail.fastPathSkips`) and write proportionally to churn. | 102 spans → 98 in scratch, 894 desired months, 24 open, 4 trap rejects |
-| 10 | `npx tsx scripts/s1-migration/load-payments.ts` | same | `created+adopted == staged`, `accounts.failed: 0`; per-status split mirrors S1 (Cleared/Received/Canceled/Failed → cleared/draft/canceled/error) | 30 payments across 3 accounts |
-| 11 | `npx tsx scripts/s1-migration/load-ledger.ts` | `--allow-rejects non_cleared_status` (2 Pending) | **After payments.** Non-cleared S1 AR rows are intentionally not migrated → `non_cleared_status` is expected in prod too: verify the count equals the frozen S1 non-cleared count, then allow. `perAccount[*].ok: true` for every account (count+sum match is built in). | 58/58 rows, all 3 accounts ok, sums exact |
-| 12 | `npx tsx scripts/s1-migration/load-hours.ts --migration-mode` | same | **`--migration-mode` is REQUIRED on prod** (suppresses charge plugins — T18 already migrated ledger; replay = double-billing; the loader preflight aborts if runnable charge plugins exist without it). Hard gate: `verifyMismatchCount: 0`. **`unresolvedWorker`/`unresolvedEmployer` are NOT expected to be 0 on a real extract** (first full real-target run 2026-08-09: 3363 / 7 month-groups) — the report now carries `unresolved*DistinctNids` + ≤20 sample nids per side; triage via 07 §P7: `staged_but_unmapped > 0` = loader gap (MUST fix before cutover), `not_staged` = deleted in S1 (documented skip, confirm with the §P7e/P7f LEFT JOIN node queries). `missing_json` will exceed the ~1,853 sparse-field baseline on any no-freeze extract (observed 3,462) — surplus rows are payperiods whose JSON row landed after the extract read the node (live hours imports racing the extract); they recur in every live extract and their pickup belongs to the parallel-run full-sync design, not to T20 (profile with §P7d/P7g). `legacy_json_format` skips are known-format legacy rows. `multiStatusMonths` counts SAME-employer mixed hour types within one month only — a worker with different statuses at different employers is the supported norm (status is per-employer) and never hits this counter. **No `--allow-rejects` gate by design:** hours has no reject gate — problem rows are counted skips, never fatal; the skip-block + §P7 triage IS the gate. `--stub-missing` is FORBIDDEN on a real target (dev-only crutch). | 300 staged → 298 written+verified, 2 legacy skips |
+| 10 | `npx tsx scripts/s1-migration/load-payments.ts` | same | **Standard sync envelope (§10)** — `created+updated+unchanged == staged`, `accounts.failed: 0`; per-status split mirrors S1 (Cleared/Received/Canceled/Failed → cleared/draft/canceled/error). Re-runs fast-skip unchanged payments via fingerprints; a payment changed in S1 (status/amount/date/payer/type) UPDATES the mapped row (memo never touched); a payment deleted in S1 sweeps (hard-delete payment + mapping — the delete cascades that payment's referencing ledger rows, and the sweep FIRST drops those cascaded `ar-*` rows' `ledger-ar` mappings so the standard step-11 run recreates every still-staged AR row without `--force-reconcile`; keep the 10→11 order; `detail.sweep.cascadedArMappingsDropped` / `foreignS1ImportCascades` report the fallout). Crash-repair provenance adoption (`details.s1Nid`) intact. | 30 payments across 3 accounts |
+| 11 | `npx tsx scripts/s1-migration/load-ledger.ts` | `--allow-rejects non_cleared_status` (2 Pending) | **After payments.** Non-cleared S1 AR rows are intentionally not migrated → `non_cleared_status` is expected in prod too: verify the count equals the frozen S1 non-cleared count, then allow. `perAccount[*].ok: true` for every account (count+sum match is built in, recomputed post-sweep). **Standard sync envelope (§10)** — identity is id_map `ledger-ar` (`s1 ledger_id ↔ chargePluginKey 'ar-<id>'`); the FIRST converted run mass-adopts every pre-sync s1-import row into id_map (content-equal → mapping only; drifted → update). Changed AR rows (status/amount/memo/account/ts) update in place; rows deleted-or-no-longer-Cleared in S1 sweep (hard-delete via charge-plugin key + mapping). Non-`ar-*` s1-import keys are foreign (t16/t19 allocations) and are never swept. | 58/58 rows, all 3 accounts ok, sums exact |
+| 12 | `npx tsx scripts/s1-migration/load-hours.ts --migration-mode` | same | **`--migration-mode` is REQUIRED on prod** (suppresses charge plugins — T18 already migrated ledger; replay = double-billing; the loader preflight aborts if runnable charge plugins exist without it). Hard gate: `verifyMismatchCount: 0`. **`unresolvedWorker`/`unresolvedEmployer` are NOT expected to be 0 on a real extract** (first full real-target run 2026-08-09: 3363 / 7 month-groups) — the report now carries `unresolved*DistinctNids` + ≤20 sample nids per side; triage via 07 §P7: `staged_but_unmapped > 0` = loader gap (MUST fix before cutover), `not_staged` = deleted in S1 (documented skip, confirm with the §P7e/P7f LEFT JOIN node queries). `missing_json` will exceed the ~1,853 sparse-field baseline on any no-freeze extract (observed 3,462) — surplus rows are payperiods whose JSON row landed after the extract read the node (live hours imports racing the extract); they recur in every live extract and their pickup belongs to the parallel-run full-sync design, not to T20 (profile with §P7d/P7g). `legacy_json_format` skips are known-format legacy rows. `multiStatusMonths` counts SAME-employer mixed hour types within one month only — a worker with different statuses at different employers is the supported norm (status is per-employer) and never hits this counter. **No `--allow-rejects` gate by design:** hours has no reject gate — problem rows are counted skips, never fatal; the skip-block + §P7 triage IS the gate. `--stub-missing` is FORBIDDEN on a real target (dev-only crutch). **Sync (§10):** monthly rows converge via the `s1_staging.hours_keys` sidecar — every written (worker, employer, month) key is stamped after its flush; keys NOT restamped by the current run mark stale day=1 rows (payperiods deleted or month-retargeted in S1) for deletion + key removal (`detail.staleHoursCleanup`; skipped on `--dry-run` or when the run's own verify failed). First sync run over a pre-sync target: add `--adopt-hours-keys` once to seed the sidecar from existing mapped-pair rows. | 300 staged → 298 written+verified, 2 legacy skips |
 | 13 | `npx tsx scripts/s1-migration/load-call-logs.ts --migration-mode` | + `--allow-rejects category_missing,category_unmapped,handler_missing,handler_unresolved,handler_dangling` (5 synthetic traps, 1 each — requires `dev/seed-call-log-traps.ts` first, re-run after any restage) | Prod ~12K sirius_log rows, only MSR types in scope (others silently out-of-scope, not rejects). Handler refs resolve via id_map contact THEN worker fallback (worker's contact_id; `stats.handlerViaWorker`) — this recovered the rehearsal's ~9.2K `handler_unresolved` (worker refs). `handler_dangling` = no target staged at all (deleted S1 nodes) vs `handler_unresolved` = staged but unmapped (real gap — triage, don't just allow). Category `"issue reported for member"` maps to the new `issue_reported` channel (ruling 2026-08-11); `"letter"` maps to `letter` (ruling 2026-08-11); `"in person visit"` folds into `office_visit` and `"provider call"` maps to the new `provider_call` channel (rulings 2026-08-12 — the prod run's only 2 `category_unmapped` rejects), so residual `category_unmapped` should now be **0** in prod. Expected prod reject profile: `handler_dangling=2` (handler nids 17748264 and 17748261, `unresolvedHandlerNids.notStaged=2`) — verify both as deleted S1 nodes (LEFT JOIN node in MariaDB, §P7e pattern) before allowing via `--allow-rejects handler_dangling`. Triage from the report itself: `unmappedCategories` (per-value tally) and `unresolvedHandlerNids` (byStagedBundle + notStaged). Run clean first; triage real rejects before allowing. | 48 staged → 30 in scope → 25 created (1 via worker fallback, 1 on issue_reported, 1 on office_visit via "in person visit", 1 on provider_call), 5 trap rejects |
 | 13b | `npx tsx scripts/s1-migration/load-cardchecks.ts --migration-mode` | requires `dev/seed-cardcheck-fakes.ts` first (synthetic staging has ZERO cardcheck rows; re-run after any restage) + `--allow-rejects disclaimer_missing,handler_dangling,bad_json,handler_unresolved` (seeded traps; steady-state re-runs with unchanged definitions drop `disclaimer_missing` — see dev column); sync smoke `dev/smoke-sync-cardchecks.ts` | **After contacts-workers. ⚠ PREREQUISITE: `cardcheck` component enabled + schema provisioned + app restarted (NOT in the §2 bootstrap set; preflight aborts loudly otherwise).** Definitions upsert by `sirius_id` = definition nid (prod: 4 — two payroll deduction forms, two arbitration agreements), then records (~1,114 at last fund pull). Report emits the staged per-definition × per-status table — diff it against the fund baseline (Kaiser PDF 777 / Health Net PDF 318 / HN arb 12 / Kaiser arb 7; drift expected, S1 is live) — plus defect-class counts (`dualAcceptanceMismatch`, `signedWithoutEsig` — the 768-vs-770 family, `noWorkerHandler` — tolerated skip, never a reject, `unresolvedHandlerNids` dangling vs staged). Expect `handler_dangling` (deleted S1 nodes) in prod — triage nid samples, then allow observed counts; `duplicate_signed`/`create_failed`/`bad_json` need fund triage, never blind-allow. `verifyFailures: 0`; per-cell staged = loaded + rejected + skipped is asserted. **Sync-converted (§10):** mapped records RECONCILE — in-place S1 transitions (unsigned→signed→revoked→wiped-back) and payload edits converge on the next sync through storage updates (the old unconditional mapped-skip is gone; duplicate-signed validation retained); definitions carry composite fingerprints (definition row + resolved disclaimer/customfield nodes); staged-vanished records → report-only `pending_retention` findings (rows + mappings preserved, never deleted/revoked; `--allow-findings pending_retention` per run; STOP-THE-LINE for the final freeze run pending the retention ruling); definition removals → standard `deleted_in_s1`. | defs 2 created; 10 in scope: 6 created, 1 noWorkerHandler skip; rejects 1 each disclaimer_missing, handler_dangling, bad_json, handler_unresolved; defects dualAcceptanceMismatch=1, signedWithoutEsig=1, offlineKeysPresent=1; rerun: records fast-skip 6, defs fast-skip 2, created=0 — `disclaimer_missing` STOPS re-firing once its definition fast-skips, while the record-side seeded rejects (handler_dangling/bad_json/handler_unresolved) re-fire every run because rejected rows never map |
 | 14 | `npx tsx scripts/s1-migration/load-enrollment-packet-tags.ts --migration-mode` | same (dev no-ops: synthetic data lacks the keep tag) | scans `sirius_contact` (grain corrected 2026-08-11); `inScope ≈ 14,801` on prod (dev `keepTagTids: []` no-op is a synthetic gap, NOT expected in prod); `duplicateContactNode` small; `rejects: {}`; comm dates are approximate (node `changed`, flagged `dateApproximate`) | 0 in scope (documented no-op) |
@@ -512,6 +512,120 @@ Dev-only notes:
   The parity harness must be given the same value the loader used, in each
   environment.
 
+
+## 10. Dual-run sync semantics (converted loaders: options, policies, payments, ledger, hours)
+
+S1 stays live and authoritative for ~1 month after the initial production
+load, with roughly daily S1→S2 syncs (full re-stage → re-run loaders). S2 is
+shadow/read-only during the dual-run; **S1 wins migration-owned fields
+unconditionally** (ruled conflict policy). Staging already mirrors S1 exactly
+(upsert + watermark stale-delete); this section covers how converted loaders
+turn a re-run into a true reconcile.
+
+**Mechanism.**
+- Staged rows (records, terms, raw ledger, raw user tables) carry
+  `content_hash` — a canonical SHA-256 of source content only (scalars +
+  key-sorted fields JSON; extraction metadata excluded), written at staging
+  upsert time. Count-verify and watermark semantics are unchanged.
+- `s1_staging.id_map` carries `consumed_fingerprint`, `logic_version`,
+  `last_synced_at`, `s1_deleted_at` (upgraded in place by `ensureIdMap`).
+- Each converted loader declares a required `LOGIC_VERSION`. The consumed
+  fingerprint is derived from the staged hash(es) — composite inputs combine
+  multiple labeled hashes — so a row reconciles when EITHER its S1 content
+  changed OR the loader's transform logic changed (version bump).
+- Fast path: mapped + fingerprint match + version match → `unchanged`,
+  skipped without any per-row storage read. Fingerprints advance only AFTER
+  the loader's verify pass, so failed writes stay retryable. Rows with NULL
+  staged hashes never fast-skip (they classify as changed until the next
+  real `stage.ts` run populates hashes — harmless adopt/patch).
+- **`--force-reconcile`** ignores matching fingerprints for the run (envelope
+  reports `forceReconcile: true`). Use for emergency repair — e.g. S2 rows
+  edited or damaged out-of-band — and for validation; ordinary
+  adoption/ownership safeguards still apply. S1 wins: forced runs overwrite
+  migration-owned fields back to staged values.
+
+**Deletion sweep.** After its writes+verify, a converted loader sweeps
+non-stub id_map entries whose S1 source vanished from staging and applies its
+declared per-entity policy: hard-delete (through storage), deactivate (stamps
+`s1_deleted_at`), or report-only. Options and policies are both
+**report-only** (options rows and policies may be FK-referenced by live S2
+data — deletion needs an operator ruling). Report-only findings are TYPED
+(`deleted_in_s1`) and BLOCKING: the loader exits 1 until the finding is
+resolved (restore in S1 + restage, or rule and remove the mapping) or
+explicitly acknowledged per run via `--allow-findings deleted_in_s1`.
+Mappings and provenance stay intact; findings re-emit on every run until
+resolved. Already-deactivated entries count as `alreadyHandled`, not new
+findings.
+
+**Money loaders (t19 payments / t18 ledger / t20 hours).** All three
+reconcile with **hard-delete** sweep policies (S1 wins; every write under
+charge-plugin + notification suppression — no sync run can bill):
+- *t18 ledger* — identity is id_map entity `ledger-ar` (S1 `ledger_id` ↔
+  `chargePluginKey 'ar-<id>'`, plugin `s1-import`). The first converted run
+  mass-adopts every pre-sync s1-import row (content-equal rows get a mapping
+  write only). Changed AR rows update through `ledger.entries.update`; rows
+  deleted OR no-longer-Cleared in S1 hard-delete by charge-plugin key. Every
+  run also opens with a degraded-reference heal pre-pass (`detail.refHeal`):
+  rows carrying `referenceType='s1-unknown'` whose stashed nid NOW resolves
+  in id_map get their fingerprint cleared and re-resolve through the normal
+  update path — a payment deleted-then-restored in S1 (or any late-arriving
+  mapping) converges on the ordinary next run, no `--force-reconcile`;
+  still-dangling refs (S1-deleted nodes) are counted and never re-written. The
+  per-account count + cents-exact verify recomputes AFTER the sweep. Non-`ar-*`
+  s1-import keys belong to other loaders and are never swept.
+- *t19 payments* — changed S1 payments update migration-owned fields on the
+  mapped row (status/allocated/amount/type/payer EA/dates; memo is
+  staff-owned and never touched); S1-deleted payments hard-delete the payment
+  + mapping. `payments.delete` cascades that payment's referencing ledger
+  rows, so the sweep FIRST drops the cascaded `ar-*` rows' `ledger-ar`
+  mappings (drop-before-delete: mapping-gone-but-row-present converges via
+  t18's adopt path; the reverse would fast-skip forever) — then **t18 runs
+  after t19** (RUNBOOK order rows 10→11) and recreates still-staged AR rows
+  through its ordinary new-row path, no `--force-reconcile` needed. Payment
+  references in AR rows resolve via id_map `payment`, which is also why t19
+  runs first. Cascaded s1-import rows with non-`ar-*` keys belong to other
+  loaders and are only counted (`foreignS1ImportCascades`) for triage.
+- *t20 hours* — aggregates (payperiods → monthly rows) can't fingerprint
+  per-row; convergence uses the `s1_staging.hours_keys` sidecar: written
+  (worker, employer, month) keys are stamped per flush; keys not restamped by
+  the current run mark stale day=1 rows for delete + key removal
+  (`detail.staleHoursCleanup`), gated off on `--dry-run` or a failed verify so
+  a broken run never deletes. Only sidecar-listed keys are ever deletable
+  (rows are reconstructible aggregates). `--adopt-hours-keys` seeds the
+  sidecar from existing mapped-pair rows — needed ONCE on a pre-sync target.
+- Dev smoke: `npx tsx scripts/s1-migration/dev/smoke-money-sync.ts --phase
+  payments|ledger|hours|parity` proves update/sweep convergence per loader
+  plus a 0-drift `verify-balance-parity` run.
+
+**Standard result envelope.** Converted loaders emit (stdout JSON, plus a
+file when `S1_RESULT_JSON_PATH` is set — for orchestration):
+
+```
+summary:  { created, updated, unchanged, deleted, deactivated, reportOnly, rejected }
+rejectGate: { status: pass|fail, counts, allowed, disallowed }
+verify:     { status: pass|fail, failures: [] }
+findings / blockingFindings   (typed, aggregates-only)
+detail:     the loader's full legacy domain report (nested, nothing dropped)
+```
+
+Exit code is 1 on reject-gate failure, verify failure, or unresolved blocking
+findings. Reports stay aggregates-only (no names/PII), and say when
+`--force-reconcile` was used.
+
+**Rules of thumb.**
+- Transform change → bump that loader's `LOGIC_VERSION` in the same commit.
+- Unchanged counters on a post-restage re-run mean "confirmed in sync", not
+  "skipped work": that IS the daily sync green path.
+- `--force-reconcile` is the escape hatch when fingerprints can't be trusted
+  (repair after out-of-band S2 changes); it never changes source data or
+  mappings.
+- Unconverted loaders keep §7's same-freeze restage rule until their
+  conversion tasks land.
+- Dev smoke: `npx tsx scripts/s1-migration/dev/smoke-sync-foundation.ts
+  --phase units|options|policies` proves unchanged-skip, S1-edit update,
+  logic-version-only update, forced update, and vanished-source handling
+  end to end (also wired into the `typecheck`/`typecheck-scripts`
+  validations for static health).
 
 ## 10. Dual-run sync semantics (converted loaders: options, policies, beneficiaries, cardchecks)
 

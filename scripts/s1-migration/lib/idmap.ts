@@ -110,6 +110,22 @@ export async function getAllMappings(entity: string): Promise<Map<number, Mappin
 }
 
 /** Remove a mapping (lifecycle remediation, e.g. reserved uids). */
+/**
+ * Clear consumed fingerprints so the next run reclassifies these rows as
+ * changed and rewrites them through the standard update path (used by
+ * degraded-state heal passes — e.g. re-resolving references once a
+ * late-arriving mapping appears).
+ */
+export async function clearFingerprints(entity: string, s1Ids: number[]): Promise<void> {
+  for (let i = 0; i < s1Ids.length; i += 500) {
+    const batch = s1Ids.slice(i, i + 500);
+    await db.execute(sql`
+      UPDATE s1_staging.id_map SET consumed_fingerprint = NULL
+       WHERE entity = ${entity} AND s1_id IN (${sql.join(batch.map((n) => sql`${n}`), sql`, `)})
+    `);
+  }
+}
+
 export async function deleteMapping(entity: string, s1Id: number): Promise<void> {
   await db.execute(sql`
     DELETE FROM s1_staging.id_map WHERE entity = ${entity} AND s1_id = ${s1Id}
@@ -141,6 +157,33 @@ export async function putMapping(
   `);
   const rows = (res as unknown as { rows: Array<{ s2_id: string }> }).rows;
   return rows[0]?.s2_id ?? s2Id;
+}
+
+/**
+ * Bulk putMapping for mass-adoption paths (e.g. first converted t18 run
+ * adopting ~547K pre-sync ledger rows): multi-VALUES INSERT, ON CONFLICT the
+ * existing mapping wins untouched. Every row is stamped as consumed at
+ * insert (fingerprint/logicVersion/last_synced_at) — callers only enqueue
+ * rows whose S2 state is verified-desired at enqueue time. Unlike
+ * putMapping, the winner s2_id is NOT returned — bulk callers must not need
+ * it (they resolve identity through the S2 row itself, not the mapping).
+ */
+export async function putMappings(
+  entity: string,
+  rows: Array<{ s1Id: number; s2Id: string; fingerprint: string | null }>,
+  opts: { loader: string; logicVersion: number },
+): Promise<void> {
+  for (let i = 0; i < rows.length; i += 500) {
+    const chunk = rows.slice(i, i + 500);
+    const values = chunk.map(
+      (r) => sql`(${entity}, ${r.s1Id}, ${r.s2Id}, false, ${opts.loader}, ${r.fingerprint}, ${opts.logicVersion}, now())`,
+    );
+    await db.execute(sql`
+      INSERT INTO s1_staging.id_map (entity, s1_id, s2_id, stub, loader, consumed_fingerprint, logic_version, last_synced_at)
+      VALUES ${sql.join(values, sql`, `)}
+      ON CONFLICT (entity, s1_id) DO NOTHING
+    `);
+  }
 }
 
 /** Mark a stub mapping as absorbed by the entity's real loader (stub=false). */

@@ -25,6 +25,18 @@ Also: a numeric siriusId is only "retired" relative to its OWN type — regen ti
 
 **Sweep semantics:** report-only policy re-emits `deleted_in_s1` findings on EVERY run and blocks (exit 1) until resolved or `--allow-findings deleted_in_s1` per run; deactivate stamps `s1_deleted_at` so later sweeps count `alreadyHandled`; stubs are never swept.
 
+**Fingerprints capture SOURCE CONTENT, not the resolution environment.** A row loaded while a referenced entity was unmapped keeps its degraded resolution (e.g. `referenceType='s1-unknown'`) even after the mapping appears later — the source hash never changed, so the fast path skips it forever.
+**Why:** reference resolution happens at load time via id_map; nothing re-runs it on unchanged rows.
+**How to apply:** loader ORDER is a correctness constraint under sync (referenced entities' loaders run before referrers'). For rows that STORE a degraded resolution marker, give the referrer loader a heal pre-pass: each run, re-check only the degraded set and clear fingerprints for rows whose target now resolves — the standard update path then rewrites them (bounded work; permanently-dangling rows are never re-written). `--force-reconcile` remains the blunt fallback after mass re-mapping events.
+
+**A storage delete that cascades across loader-owned rows must invalidate the OTHER loader's id_map mappings, drop-before-delete.** Otherwise the cascaded rows keep matching fingerprints and the other loader fast-skips their still-staged sources forever (permanent holes only `--force-reconcile` heals).
+**Why:** payment deletes cascade referencing ledger rows; the ledger loader's unchanged path never checks row existence (that's the point of the fast path).
+**How to apply:** in the sweeping loader, look up cascade victims' identity keys and delete their mappings BEFORE the storage delete — mapping-gone-but-row-present converges via adopt; row-gone-but-mapping-present never converges. Count non-own-entity cascade victims for triage.
+
+**Hard-delete sweep policies self-heal regen/id_map fallout on their first converged run:** stale mappings whose nids left staging sweep their S2 rows; staged rows under new nids create fresh. Big create+delete pairs on a first post-regen run are convergence, not a bug.
+
+**Aggregation loaders can't fingerprint per-row:** convergence uses a sidecar key registry (stamp every written key per flush; keys NOT restamped this run = stale rows to delete), gated on the run's own verify passing (a broken run must never delete). An adoption flag seeds the sidecar once on a pre-sync target; forgetting it is safe (no cleanup, no damage).
+
 **Cross-entity dependency fingerprints (cardchecks pattern — reuse in future conversions).** Dependent-record fingerprints embed the resolved dependency's IDENTITY (mapped s2 id), never its content; the dependency entity gets its own composite fingerprint over its row hash + resolved pointer-node hashes, with sentinels for unresolvable pointers (`missing:<nid>`, `staged-unhashed:<nid>`, null = not configured).
 **Why:** identity-not-content keeps a dependency edit from stampeding all dependents, and it moves dependency-pass rejects behind the fast path — they fire only when the dependency actually reprocesses, so steady-state rerun reject COUNTS drop while allow-lists stay valid (expected-shape docs must say so).
 **How to apply:** any converted loader with a resolver/definition side-entity; document the rerun reject-count change in RUNBOOK §5/§4 or operators will think a trap vanished.

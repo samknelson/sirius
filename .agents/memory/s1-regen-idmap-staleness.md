@@ -13,4 +13,8 @@ keys look like "no resolvable worker", not like an error.
 
 **How to apply:** after any regen: restage, then re-run `load-contacts-workers`
 (writes id_map rows for the new nids) before any loader that resolves
-workers/contacts. Old rows for dead nids are harmless.
+workers/contacts. Old rows for dead nids are harmless — EXCEPT for converted
+sync loaders with hard-delete sweep policies, whose first post-regen run
+deletes the S2 rows behind retired-nid mappings and recreates staged rows
+under new nids. That churn is convergence (S1 wins), not data loss; run the
+loaders in RUNBOOK order so cross-loader cascades heal the same run.

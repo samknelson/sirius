@@ -195,11 +195,14 @@ doesn't match. It must never point at production.
   `stub=true` for T4/T7 to enrich later).
 - `lib/idmap.ts` — `s1_staging.id_map`, the S1→S2 crosswalk all loaders share.
   On mapping races the existing row wins (`putMapping` returns the winner).
-- **Loader semantics are one-shot-at-freeze, not continuous sync**: re-runs
-  upsert current groups but do NOT delete `worker_hours` rows whose source
-  payperiods disappeared from a re-extraction. A full reload after the source
-  changed requires wiping the loader's output first (or ownership tracking —
-  see TODOs).
+- **Hours sync (RUNBOOK §10)**: re-runs upsert current groups AND clean up
+  stale monthly rows via the `s1_staging.hours_keys` sidecar — written
+  (worker, employer, month) keys are stamped per flush; keys not restamped by
+  the current run mark day=1 rows whose staged payperiods vanished or moved
+  for deletion (`staleHoursCleanup` in the report; gated off on `--dry-run`
+  or a failed verify). Only sidecar-listed keys are ever deletable, so
+  staff-entered hours rows are never touched. `--adopt-hours-keys` seeds the
+  sidecar from existing mapped-pair rows (needed once on a pre-sync target).
 
 - `seed-employment-statuses.ts` — fresh-database prerequisite for T4/T20:
   idempotently creates the 11 `options_employment_status` rows the hour-type
@@ -413,9 +416,17 @@ doesn't match. It must never point at production.
   `createForMigration` skips the storage cross-check. Crash repair: a payment
   created before its id_map write landed is re-adopted by provenance
   (`details.s1Nid`), never duplicated (same pattern in T16 via `data.s1Nid`).
-  Dev: the 30 synthetic payments stage no type → run with
-  `--allow-rejects payment_type_missing`; the smoke covers the typed path,
-  currency preflight, and crash repair end-to-end.
+  **Sync (RUNBOOK §10):** re-runs fast-skip unchanged payments via id_map
+  fingerprints; changed S1 payments UPDATE the mapped row's migration-owned
+  fields through `payments.updateForMigration` (status/allocated/amount/type/
+  payer EA/dates — memo is staff-owned, never touched); S1-deleted payments
+  sweep (hard-delete payment + mapping; the delete cascades referencing
+  ledger rows — the sweep first drops those `ar-*` rows' `ledger-ar`
+  mappings so the t18 run AFTER t19 recreates still-staged AR rows through
+  its standard path instead of fast-skipping them). Dev: the regenerated
+  synthetic staging types all 30 payments — runs are reject-free; the money
+  smoke (`dev/smoke-money-sync.ts --phase payments`) covers update, sweep,
+  and recreate end-to-end.
 
 - `load-ledger.ts` — T18: `s1_staging.raw_ledger_ar` → `ledger` charge
   entries under charge plugin `s1-import` with
@@ -430,7 +441,17 @@ doesn't match. It must never point at production.
   contact; unresolved references keep the row loadable with
   `referenceType='s1-unknown'` + `referenceId=String(nid)`, and
   `data.s1ReferenceNid` is always stashed for audit. `date` = raw epoch ts;
-  `statement_ymd` = LA-calendar first-of-month of that ts.
+  `statement_ymd` = LA-calendar first-of-month of that ts. **Sync (RUNBOOK
+  §10):** identity is id_map `ledger-ar` (`ledger_id ↔ 'ar-<id>'`); the first
+  converted run mass-adopts pre-sync s1-import rows; changed AR rows update
+  in place via `ledger.entries.update`; rows deleted-or-no-longer-Cleared in
+  S1 hard-delete by charge-plugin key (mapping removed too). Each run opens
+  with a degraded-reference heal pre-pass: `s1-unknown` rows whose stashed
+  nid now resolves get their fingerprint cleared and re-resolve through the
+  normal update path (payment restores converge without `--force-reconcile`).
+  Per-account count+cents verify recomputes post-sweep; fingerprints advance
+  only after verify passes. Dev smoke: `dev/smoke-money-sync.ts --phase
+  ledger` (+ `--phase cascade` for the cross-loader delete/restore flow).
 
 - `load-enrollment-packet-tags.ts` — T29 (closes N24, ruled 2026-08-05;
   **grain corrected 2026-08-11**): S1 tags stay extract-and-stage only

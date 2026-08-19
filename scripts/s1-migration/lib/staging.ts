@@ -8,7 +8,7 @@
  * through the storage layer per the spec's routing rule.
  */
 import { db } from "../../../server/storage/db";
-import { sql } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
 import { contentHashOf } from "./sync";
 
 /**
@@ -303,6 +303,11 @@ export interface RawLedgerRow {
   memo: string | null;
   key: string | null;
   json: string | null; // longtext staged verbatim
+  /** Canonical source-content hash written at staging upsert time; null for
+   * rows staged before the sync upgrade. Populated on READS (loadRawLedger /
+   * pagedRawLedger); extract writers never set it — upsertRawLedger computes
+   * it from rawLedgerHashInput. */
+  contentHash?: string | null;
 }
 
 export async function ensureRawLedgerTable(): Promise<void> {
@@ -403,7 +408,7 @@ export async function stagedRawLedgerCount(): Promise<number> {
 export async function loadRawLedger(): Promise<RawLedgerRow[]> {
   const res = await db.execute(sql`
     SELECT ledger_id, ledger_amount, ledger_status, ledger_account, ledger_participant,
-           ledger_reference, ledger_ts, ledger_memo, ledger_key, ledger_json
+           ledger_reference, ledger_ts, ledger_memo, ledger_key, ledger_json, content_hash
       FROM s1_staging.raw_ledger_ar ORDER BY ledger_id
   `);
   return (res as unknown as { rows: Array<Record<string, unknown>> }).rows.map(mapRawLedgerRow);
@@ -421,6 +426,7 @@ function mapRawLedgerRow(r: Record<string, unknown>): RawLedgerRow {
     memo: r.ledger_memo == null ? null : String(r.ledger_memo),
     key: r.ledger_key == null ? null : String(r.ledger_key),
     json: r.ledger_json == null ? null : String(r.ledger_json),
+    contentHash: r.content_hash == null ? null : String(r.content_hash),
   };
 }
 
@@ -434,7 +440,7 @@ export async function* pagedRawLedger(pageSize: number): AsyncGenerator<RawLedge
   for (;;) {
     const res = await db.execute(sql`
       SELECT ledger_id, ledger_amount, ledger_status, ledger_account, ledger_participant,
-             ledger_reference, ledger_ts, ledger_memo, ledger_key, ledger_json
+             ledger_reference, ledger_ts, ledger_memo, ledger_key, ledger_json, content_hash
         FROM s1_staging.raw_ledger_ar WHERE ledger_id > ${last}
        ORDER BY ledger_id LIMIT ${pageSize}
     `);
@@ -444,6 +450,121 @@ export async function* pagedRawLedger(pageSize: number): AsyncGenerator<RawLedge
     yield rows;
     if (rows.length < pageSize) return;
   }
+}
+
+// ---------------------------------------------------------------------------
+// T20 hours provenance sidecar. worker_hours has no provenance column, so the
+// hours loader records every (worker, employer, year, month) key it writes in
+// s1_staging.hours_keys. That makes stale-row cleanup safe by construction:
+// only keys THIS loader stamped can ever be deleted, so operator-entered
+// hours rows (never stamped) are untouchable. A run stamps last_seen_at on
+// every key it (re)writes; keys with last_seen_at older than the run
+// watermark are no longer backed by any staged payperiod → stale.
+// ---------------------------------------------------------------------------
+
+export interface HoursKey {
+  workerId: string;
+  employerId: string;
+  year: number;
+  month: number;
+}
+
+export async function ensureHoursKeysTable(): Promise<void> {
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS s1_staging.hours_keys (
+      worker_id varchar NOT NULL,
+      employer_id varchar NOT NULL,
+      year integer NOT NULL,
+      month integer NOT NULL,
+      last_seen_at timestamptz NOT NULL DEFAULT now(),
+      PRIMARY KEY (worker_id, employer_id, year, month)
+    )
+  `);
+}
+
+/** Stamp keys as seen by the current run (insert or refresh last_seen_at). */
+export async function upsertHoursKeys(keys: HoursKey[]): Promise<void> {
+  for (let i = 0; i < keys.length; i += 500) {
+    const batch = keys.slice(i, i + 500);
+    const values = batch.map(
+      (k) => sql`(${k.workerId}, ${k.employerId}, ${k.year}, ${k.month}, now())`,
+    );
+    await db.execute(sql`
+      INSERT INTO s1_staging.hours_keys (worker_id, employer_id, year, month, last_seen_at)
+      VALUES ${sql.join(values, sql`, `)}
+      ON CONFLICT (worker_id, employer_id, year, month)
+      DO UPDATE SET last_seen_at = EXCLUDED.last_seen_at
+    `);
+  }
+}
+
+/**
+ * Keyset-paged stream of keys NOT stamped by the current run (stale).
+ * Async generator so the caller processes (and deletes) one page before the
+ * next is fetched — a large first reconciliation or broad S1 deletion must
+ * never materialize the whole sidecar in memory. Deleting the yielded page's
+ * rows between iterations is safe: they sort at or before the cursor.
+ */
+export async function* pagedStaleHoursKeys(
+  watermark: string,
+  pageSize: number,
+): AsyncGenerator<HoursKey[]> {
+  let last: HoursKey | null = null;
+  for (;;) {
+    const after: SQL = last
+      ? sql`AND (worker_id, employer_id, year, month) > (${last.workerId}, ${last.employerId}, ${last.year}, ${last.month})`
+      : sql``;
+    const res: unknown = await db.execute(sql`
+      SELECT worker_id, employer_id, year, month
+        FROM s1_staging.hours_keys
+       WHERE last_seen_at < ${watermark}::timestamptz ${after}
+       ORDER BY worker_id, employer_id, year, month
+       LIMIT ${pageSize}
+    `);
+    const rows: HoursKey[] = (res as { rows: Array<Record<string, unknown>> }).rows.map((r) => ({
+      workerId: String(r.worker_id),
+      employerId: String(r.employer_id),
+      year: Number(r.year),
+      month: Number(r.month),
+    }));
+    if (rows.length === 0) break;
+    yield rows;
+    last = rows[rows.length - 1];
+    if (rows.length < pageSize) break;
+  }
+}
+
+export async function deleteHoursKeys(keys: HoursKey[]): Promise<void> {
+  for (let i = 0; i < keys.length; i += 500) {
+    const batch = keys.slice(i, i + 500);
+    const tuples = batch.map((k) => sql`(${k.workerId}, ${k.employerId}, ${k.year}, ${k.month})`);
+    await db.execute(sql`
+      DELETE FROM s1_staging.hours_keys
+       WHERE (worker_id, employer_id, year, month) IN (${sql.join(tuples, sql`, `)})
+    `);
+  }
+}
+
+/** One-time adoption for targets loaded before the sidecar existed: seed keys
+ * from existing day=1 worker_hours rows whose worker AND employer both map in
+ * id_map (i.e. migration-covered pairs), with an epoch last_seen_at so the
+ * very next run must re-stamp them or they count as stale. PRECONDITION
+ * (operator-verified): every day=1 hours row for mapped pairs on the target
+ * was written by this loader — do NOT run after manual hours entry for
+ * migrated employers. */
+export async function adoptHoursKeysFromWorkerHours(): Promise<number> {
+  const res = await db.execute(sql`
+    INSERT INTO s1_staging.hours_keys (worker_id, employer_id, year, month, last_seen_at)
+    SELECT wh.worker_id, wh.employer_id, wh.year, wh.month, to_timestamp(0)
+      FROM worker_hours wh
+     WHERE wh.day = 1
+       AND EXISTS (SELECT 1 FROM s1_staging.id_map mw
+                    WHERE mw.entity = 'worker' AND mw.s2_id = wh.worker_id)
+       AND EXISTS (SELECT 1 FROM s1_staging.id_map me
+                    WHERE me.entity = 'employer' AND me.s2_id = wh.employer_id)
+    ON CONFLICT (worker_id, employer_id, year, month) DO NOTHING
+  `);
+  return Number((res as unknown as { rowCount?: number }).rowCount ?? 0);
 }
 
 // ---------------------------------------------------------------------------

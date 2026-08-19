@@ -39,9 +39,31 @@
  * Pass --migration-mode to run every write inside a charge-plugin-suppressed
  * scope. Without it, the loader preflights: if any charge plugin is runnable
  * (component enabled + enabled config), it ABORTS before writing anything.
+ * The stale-key cleanup below is a write path too — it runs after the same
+ * preflight and inside the same loaderScope suppression.
+ *
+ * SYNC (Task 295 — S1-wins dual-run reconciliation, RUNBOOK §10):
+ *   Upsert re-aggregation already converges changed payperiods; what it
+ *   cannot see is a month whose staged payperiods VANISHED (deleted in S1)
+ *   or MOVED (retargeted worker/employer/month) — the old (worker, employer,
+ *   year, month) row would stay stale forever. worker_hours has no
+ *   provenance column, so the loader keeps a sidecar
+ *   (s1_staging.hours_keys): every key it writes is stamped last_seen_at per
+ *   run. After a fully-verified run, keys NOT stamped this run (stale) have
+ *   their day=1 worker_hours row deleted through storage and the key
+ *   removed. Only ever-stamped keys can be deleted, so operator-entered
+ *   hours rows are untouchable by construction. Deleted rows are pure
+ *   aggregates of staged data — a resolution regression (mapping removed,
+ *   group skipped, row cleaned) self-heals on the next run after the
+ *   mapping is repaired.
+ *   --adopt-hours-keys (one-time per pre-sidecar target): seed keys from
+ *   existing day=1 worker_hours rows whose worker AND employer map in
+ *   id_map, with an epoch stamp. PRECONDITION: no manual hours entry for
+ *   migrated pairs has happened on that target.
  *
  * Usage:
- *   npx tsx scripts/s1-migration/load-hours.ts [--dry-run] [--stub-missing] [--migration-mode]
+ *   npx tsx scripts/s1-migration/load-hours.ts [--dry-run] [--stub-missing] \
+ *     [--migration-mode] [--adopt-hours-keys]
  *
  * Output is AGGREGATES ONLY (plus S1 nids, which are opaque ids) — safe inside
  * the HIPAA boundary.
@@ -58,14 +80,28 @@ import {
 // the executor module directly leaves the registry empty, and the preflight
 // below would falsely report "no runnable plugins".
 import { hasRunnableChargePlugins, getAllChargePlugins } from "../../server/plugins/ledger/charge";
-import { ensureStagingSchema, recordRun } from "./lib/staging";
+import {
+  ensureStagingSchema,
+  recordRun,
+  stagingNow,
+  ensureHoursKeysTable,
+  upsertHoursKeys,
+  pagedStaleHoursKeys,
+  deleteHoursKeys,
+  adoptHoursKeysFromWorkerHours,
+  type HoursKey,
+} from "./lib/staging";
 import { ensureIdMap, getMappings, putMapping } from "./lib/idmap";
-import { LOADER_PAGE_SIZE, stagedCountOf, throttleStorageOpLogs } from "./lib/loader-utils";
+import { LOADER_PAGE_SIZE, stagedCountOf, chunk, throttleStorageOpLogs } from "./lib/loader-utils";
 import { makeProgressLogger } from "./lib/progress";
+import { buildLoaderResult, emitLoaderResult, loaderExitCode, emptySummary } from "./lib/sync";
 
+const LOADER = "t20-hours";
+const LOGIC_VERSION = 1;
 const DRY_RUN = process.argv.includes("--dry-run");
 const STUB_MISSING = process.argv.includes("--stub-missing");
 const MIGRATION_MODE = process.argv.includes("--migration-mode");
+const ADOPT_HOURS_KEYS = process.argv.includes("--adopt-hours-keys");
 
 /**
  * Run `fn` in a notification-suppressed scope, additionally suppressing
@@ -132,6 +168,10 @@ async function main() {
   const startedAt = new Date();
   await ensureStagingSchema();
   await ensureIdMap();
+  await ensureHoursKeysTable();
+  // DB-clock watermark BEFORE any stamp: keys stamped by this run's flushes
+  // are >= watermark; keys still below it afterwards are stale.
+  const watermark = await stagingNow();
 
   // ---- charge-plugin preflight (fail loudly BEFORE any write) ----
   // worker_hours upserts trigger hour-driven charge plugins. In migration
@@ -159,6 +199,13 @@ async function main() {
   }
   if (MIGRATION_MODE) {
     console.error("MIGRATION MODE: charge-plugin execution is suppressed for all writes in this run.");
+  }
+
+  // ---- one-time sidecar adoption for pre-sidecar targets (see header) ----
+  let adoptedKeys = 0;
+  if (ADOPT_HOURS_KEYS && !DRY_RUN) {
+    adoptedKeys = await adoptHoursKeysFromWorkerHours();
+    console.error(`ADOPT: seeded ${adoptedKeys} hours_keys from existing mapped-pair worker_hours rows (epoch stamp).`);
   }
 
   // ---- resolve the employment-status mapping up front; fail loudly ----
@@ -359,6 +406,13 @@ async function main() {
       written++;
     }
 
+    // stamp the sidecar for every key this run wrote — right after the
+    // writes, independent of verify (desiredness ≠ verify success; a
+    // verify-failed run never reaches the stale cleanup anyway).
+    if (!DRY_RUN && writtenKeys.length > 0) {
+      await upsertHoursKeys(writtenKeys.map((k) => ({ workerId: k.workerId, employerId: k.employerId, year: k.year, month: k.month })));
+    }
+
     // verify: re-read every written key and compare hours exactly
     if (!DRY_RUN) {
       for (let i = 0; i < writtenKeys.length; i += 200) {
@@ -539,6 +593,64 @@ async function main() {
   groups.clear();
   await flush(pending);
   pending = [];
+
+  // ---- stale-key cleanup (SYNC, header): keys not stamped this run lost
+  // their staged payperiods (deleted or retargeted in S1) — delete the
+  // day=1 worker_hours row through storage and drop the key. Gated on a
+  // fully-verified run: a run that failed verify (or wrote nothing it could
+  // verify) must not treat its own gaps as S1 deletions. ----
+  let staleKeys = 0;
+  let staleDeleted = 0;
+  let staleAlreadyGone = 0;
+  let staleDeleteFailed = 0;
+  let cleanupSkipped: string | null = null;
+  if (DRY_RUN) {
+    cleanupSkipped = "dry_run";
+  } else if (verifyMismatchCount > 0 || written !== verified) {
+    cleanupSkipped = "verify_failed";
+  } else {
+    progress.phase("stale-cleanup");
+    for await (const batch of pagedStaleHoursKeys(watermark, 500)) {
+      staleKeys += batch.length;
+      const processed: HoursKey[] = [];
+      for (const rows of chunk(batch, 200)) {
+        const conditions = rows.map(
+          (k) =>
+            sql`(worker_id = ${k.workerId} AND employer_id = ${k.employerId} AND year = ${k.year} AND month = ${k.month} AND day = 1)`,
+        );
+        const res = await db.execute(sql`
+          SELECT id, worker_id, employer_id, year, month FROM worker_hours
+           WHERE ${sql.join(conditions, sql` OR `)}
+        `);
+        const found = new Map(
+          (res as unknown as { rows: Array<{ id: string; worker_id: string; employer_id: string; year: number; month: number }> }).rows.map(
+            (r) => [`${r.worker_id}|${r.employer_id}|${r.year}|${r.month}`, r.id],
+          ),
+        );
+        for (const k of rows) {
+          const rowId = found.get(`${k.workerId}|${k.employerId}|${k.year}|${k.month}`);
+          if (!rowId) {
+            staleAlreadyGone++;
+            processed.push(k);
+            continue;
+          }
+          try {
+            const del = await loaderScope(() => storage.workerHours.deleteWorkerHours(rowId));
+            if (del.success) {
+              staleDeleted++;
+              processed.push(k);
+            } else {
+              staleDeleteFailed++; // key kept — retried next run
+            }
+          } catch {
+            staleDeleteFailed++; // key kept — retried next run
+          }
+        }
+      }
+      if (processed.length > 0) await deleteHoursKeys(processed);
+    }
+    progress.phase(null);
+  }
   progress.stop();
 
   const report = {
@@ -573,14 +685,43 @@ async function main() {
     multiStatusMonths,
     provenanceCounts,
     hourTypeCounts,
+    adoptedKeys,
+    staleHoursCleanup: cleanupSkipped
+      ? { skipped: cleanupSkipped }
+      : { staleKeys, deletedRows: staleDeleted, alreadyGone: staleAlreadyGone, deleteFailed: staleDeleteFailed },
   };
 
-  console.log(JSON.stringify(report, null, 2));
-  if (!DRY_RUN) await recordRun(startedAt, { loader: "t20-hours", stubMissing: STUB_MISSING, migrationMode: MIGRATION_MODE }, report);
+  // Envelope (RUNBOOK §10): upserts cannot split create vs update, so all
+  // writes report as `updated`; skips are documented data-shape exclusions,
+  // not gate-relevant rejects (no RejectLog → reject gate passes trivially).
+  const summary = emptySummary();
+  summary.updated = written;
+  summary.deleted = staleDeleted;
+  const verifyFailures =
+    verifyMismatchCount + (!DRY_RUN && written !== verified && verifyMismatchCount === 0 ? 1 : 0) + staleDeleteFailed;
+  const result = buildLoaderResult({
+    loader: LOADER,
+    logicVersion: LOGIC_VERSION,
+    dryRun: DRY_RUN,
+    forceReconcile: false, // no fingerprint fast path exists for hours — every run re-aggregates
+    summary,
+    verifyFailures,
+    detail: report,
+  });
+  emitLoaderResult(result);
+  if (!DRY_RUN) {
+    await recordRun(
+      startedAt,
+      { loader: LOADER, stubMissing: STUB_MISSING, migrationMode: MIGRATION_MODE, adoptHoursKeys: ADOPT_HOURS_KEYS },
+      result as unknown as Record<string, unknown>,
+    );
+  }
 
   if (!DRY_RUN && (verifyMismatchCount > 0 || written !== verified)) {
     console.error(`VERIFY FAILED: wrote ${written}, verified ${verified}`);
-    process.exit(1);
+  }
+  if (staleDeleteFailed > 0) {
+    console.error(`STALE CLEANUP: ${staleDeleteFailed} row deletion(s) failed — keys kept for retry next run.`);
   }
   const unresolved = unresolvedWorker + unresolvedEmployer;
   if (unresolved > 0) {
@@ -588,7 +729,7 @@ async function main() {
       `NOTE: ${unresolved} month-groups skipped on unresolved references — run worker/employer loaders (or --stub-missing in dev) and re-run.`,
     );
   }
-  process.exit(0);
+  process.exit(loaderExitCode(result));
 }
 
 main().catch((err) => {

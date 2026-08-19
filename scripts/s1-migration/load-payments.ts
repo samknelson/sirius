@@ -32,11 +32,35 @@
  *   - payer nid resolves worker → shell-worker → contact → employer; the
  *     ledger_ea row is getOrCreate(entityType, entityId, account).
  *
- * Idempotency: id_map entity `payment`; mapped rows are adopted and
- * re-verified (amount/status/EA equality) — drift fails the verify pass.
+ * SYNC (Task 295 — S1-wins dual-run reconciliation, RUNBOOK §10):
+ *   - id_map entity `payment` carries consumed fingerprints (staged
+ *     content_hash) at LOGIC_VERSION. Unchanged mapped rows fast-skip —
+ *     including the verify pass, which therefore re-checks exactly the rows
+ *     each run wrote.
+ *   - Changed mapped rows are UPDATED in place via updateForMigration with
+ *     every migration-owned field (status/allocated/amount/type/EA/details/
+ *     dates); memo stays untouched (S2-side annotations survive). Fingerprints
+ *     advance per page AFTER the row verifies.
+ *   - Crash-repair provenance adoption stays: an unmapped row found by
+ *     details.s1Nid re-enters id_map (no fingerprint) and is immediately
+ *     reconciled as a changed row this run.
+ *   - Deletion sweep: mapped payments whose staged source vanished are
+ *     hard-deleted through storage (payments.delete also removes the
+ *     payment's referencing ledger rows and emits their events so paid-state
+ *     recompute re-queues — deliberate) and their mapping removed. Before
+ *     the delete, the sweep drops the id_map `ledger-ar` mappings of any
+ *     referencing s1-import `ar-*` rows the cascade is about to remove —
+ *     otherwise those rows would keep a matching fingerprint and the next
+ *     T18 run would fast-skip them as unchanged instead of recreating them.
+ *     Mapping-drop happens FIRST for crash safety: mapping-gone-but-row-
+ *     present converges via T18's adopt path, while row-gone-but-mapping-
+ *     present would be a permanent hole. Still-staged AR rows then recreate
+ *     on the T18 run that follows T19 in the sync order (no --force needed).
+ *     Referencing s1-import rows with non-`ar-*` keys belong to other
+ *     loaders (e.g. T16); they are counted in the sweep report for triage.
  *
  * Usage: npx tsx scripts/s1-migration/load-payments.ts \
- *          [--dry-run] [--allow-rejects r1,r2]
+ *          [--dry-run] [--allow-rejects r1,r2] [--force-reconcile]
  * Output is aggregate counts only (no PII).
  */
 import { storage } from "../../server/storage/database";
@@ -47,15 +71,29 @@ import {
 import { db, pool as pgPool } from "../../server/storage/db";
 import { sql } from "drizzle-orm";
 import { ensureStagingSchema, recordRun } from "./lib/staging";
-import { ensureIdMap, getMappings, putMapping } from "./lib/idmap";
+import { ensureIdMap, getMappings, putMapping, advanceFingerprints, deleteMapping } from "./lib/idmap";
 import { RejectLog, pagedStaged, stagedCountOf, chunk, strOf, tidOf, targetNidOf, toYmd, throttleStorageOpLogs } from "./lib/loader-utils";
 import { makeProgressLogger } from "./lib/progress";
 import { buildEntityResolver, ensureLedgerAccounts } from "./lib/resolvers";
 import { AMOUNT_RE, PAYMENT_STATUS_MAP as STATUS_MAP, type S2PaymentStatus } from "./lib/parity";
+import {
+  classifyRow,
+  parseForceReconcile,
+  parseAllowedFindings,
+  sweepDeletions,
+  buildLoaderResult,
+  emitLoaderResult,
+  loaderExitCode,
+  emptySummary,
+} from "./lib/sync";
 
 const LOADER = "t19-payments";
 const BUNDLE = "sirius_payment";
+const ENTITY = "payment";
+const LOGIC_VERSION = 1;
 const DRY_RUN = process.argv.includes("--dry-run");
+const FORCE_RECONCILE = parseForceReconcile();
+const ALLOWED_FINDINGS = parseAllowedFindings();
 const ALLOWED_REJECTS: string[] = (() => {
   const i = process.argv.indexOf("--allow-rejects");
   return i >= 0 && process.argv[i + 1] ? process.argv[i + 1].split(",").map((s) => s.trim()).filter(Boolean) : [];
@@ -78,6 +116,7 @@ const FATAL_REASONS = [
   "payment_type_option_missing",
   "currency_mismatch",
   "payment_create_failed",
+  "payment_update_failed",
   "mapped_row_missing",
 ] as const;
 
@@ -103,23 +142,20 @@ async function main() {
   await ensureStagingSchema();
   await ensureIdMap();
 
-  const report: Record<string, unknown> = {
-    loader: LOADER,
-    dryRun: DRY_RUN,
-    allowedRejects: ALLOWED_REJECTS,
-  };
+  const detail: Record<string, unknown> = {};
   const rejects = new RejectLog();
+  const summary = emptySummary();
   throttleStorageOpLogs();
 
-  report.staged = await stagedCountOf(BUNDLE);
+  detail.staged = await stagedCountOf(BUNDLE);
 
   // heartbeat: aggregates only (counts/elapsed/rate — never row contents)
-  const progress = makeProgressLogger(LOADER, report.staged as number);
+  const progress = makeProgressLogger(LOADER, detail.staged as number);
   progress.phase("pre-scan");
 
   // ---- accounts (T18a shared policy: id_map → adopt by name → create) ----
   const accounts = await ensureLedgerAccounts(LOADER, DRY_RUN);
-  report.accounts = {
+  detail.accounts = {
     staged: accounts.stagedAccounts,
     viaIdMap: accounts.viaIdMap,
     adoptedByName: accounts.adoptedByName,
@@ -149,7 +185,7 @@ async function main() {
   }
 
   // Currency preflight map — replaces the storage create() cross-check that
-  // createForMigration deliberately skips.
+  // createForMigration/updateForMigration deliberately skip.
   const acctCurrencyRes = await db.execute(sql`SELECT id, currency_code FROM ledger_accounts`);
   const acctCurrency = new Map(
     (acctCurrencyRes as unknown as { rows: Array<{ id: string; currency_code: string }> }).rows.map(
@@ -158,20 +194,22 @@ async function main() {
   );
 
   // ---- global counters (accumulated across pages) ----
-  let created = 0;
-  let adopted = 0;
   let adoptedByProvenance = 0;
   let negativeAmounts = 0;
   let payerContactEAs = 0;
+  let staleFingerprintRows = 0; // staged rows with NULL content_hash (pre-sync staging)
   let verifyFailures = 0;
+  let fingerprintsAdvanced = 0;
   const verifySamples: Array<Record<string, unknown>> = [];
   const perStatus: Record<string, number> = {};
   const eaCache = new Map<string, string>();
   let pages = 0;
 
-  // ---- keyset-paged pipeline: resolve → write → verify per page. Staged
-  // rows, id_map lookups and verification reads are page-bounded so memory
-  // stays flat at production volume.
+  // ---- keyset-paged pipeline: classify → resolve → write → verify →
+  // advance per page. Staged rows, id_map lookups and verification reads are
+  // page-bounded so memory stays flat at production volume. Unchanged mapped
+  // rows fast-skip everything (resolution, writes AND verify) — the verify
+  // pass therefore re-checks exactly the rows this run wrote.
   for await (const staged of pagedStaged(BUNDLE)) {
     pages++;
     progress.phase(null);
@@ -187,7 +225,7 @@ async function main() {
     }
     const [termMap, paymentMap] = await Promise.all([
       getMappings("term", typeTids),
-      getMappings("payment", staged.map((s) => s.nid)),
+      getMappings(ENTITY, staged.map((s) => s.nid)),
     ]);
     const resolveEntity = await buildEntityResolver(payerNids);
 
@@ -196,13 +234,17 @@ async function main() {
       s2Id: string;
       amount: string;
       status: S2PaymentStatus;
-      ledgerEaId: string | null; // null = adopted before EA resolution (dry)
+      allocated: boolean;
+      ledgerEaId: string;
     }> = [];
+    // fingerprints advanced after the page verify, minus failed rows
+    const pendingAdvance: Array<{ s1Id: number; fingerprint: string | null }> = [];
 
     for (const s of staged) {
     progress.add(1);
     const nid = s.nid;
     const f = s.fields;
+    if (s.contentHash == null) staleFingerprintRows++;
 
     const statusRaw = strOf(f, "field_sirius_payment_status");
     if (!statusRaw) {
@@ -286,24 +328,31 @@ async function main() {
 
     perStatus[mapped.status] = (perStatus[mapped.status] ?? 0) + 1;
 
-    // idempotency: adopt mapped rows (verified below)
-    const existingId = paymentMap.get(nid)?.s2Id;
-    if (existingId) {
-      adopted++;
-      expectations.push({ nid, s2Id: existingId, amount, status: mapped.status, ledgerEaId: null });
+    // ---- sync classification ----
+    const mapping = paymentMap.get(nid);
+    const disposition = classifyRow(mapping, s.contentHash ?? null, LOGIC_VERSION, FORCE_RECONCILE);
+
+    if (disposition === "unchanged") {
+      summary.unchanged++;
       continue;
     }
-    // crash-repair: row exists (provenance) but id_map lost the mapping
-    const orphanId = provenanceByNid.get(nid);
-    if (orphanId) {
-      const winner = DRY_RUN ? orphanId : await putMapping("payment", nid, orphanId, { stub: false, loader: LOADER });
-      adopted++;
-      adoptedByProvenance++;
-      expectations.push({ nid, s2Id: winner, amount, status: mapped.status, ledgerEaId: null });
-      continue;
+
+    // crash-repair: row exists (provenance) but id_map lost the mapping —
+    // adopt the mapping (no fingerprint) and reconcile it as changed NOW.
+    let targetId = mapping?.s2Id;
+    let viaProvenance = false;
+    if (!targetId) {
+      const orphanId = provenanceByNid.get(nid);
+      if (orphanId) {
+        viaProvenance = true;
+        targetId = DRY_RUN ? orphanId : await putMapping(ENTITY, nid, orphanId, { stub: false, loader: LOADER });
+        adoptedByProvenance++;
+      }
     }
+
     if (DRY_RUN) {
-      created++;
+      if (targetId) summary.updated++;
+      else summary.created++;
       continue;
     }
 
@@ -324,11 +373,44 @@ async function main() {
       if (alloc) details.s1LedgerAllocated = alloc;
       if (isNegative) details.s1NegativeAmount = true;
 
+      const allocated = mapped.status === "cleared";
+
+      if (targetId) {
+        // S1 wins: rewrite every migration-owned field on the mapped row.
+        // memo is deliberately NOT touched (S2-side annotations survive).
+        const row = await withNotificationsSuppressed(() =>
+          withChargePluginsSuppressed(() =>
+            storage.ledger.payments.updateForMigration(targetId!, {
+              status: mapped.status,
+              allocated,
+              amount,
+              paymentType: paymentTypeId!,
+              ledgerEaId: eaId!,
+              details,
+              dateCreated,
+              dateReceived: mapped.setReceived ? dateCreated : null,
+              dateCleared: mapped.setCleared ? dateCreated : null,
+            }),
+          ),
+        );
+        if (!row) {
+          // Mapping (or provenance) points at a vanished row — operator
+          // repairs id_map; never silently re-create under a stale mapping.
+          rejects.add("mapped_row_missing", { nid }, nid);
+          continue;
+        }
+        summary.updated++;
+        expectations.push({ nid, s2Id: row.id, amount, status: mapped.status, allocated, ledgerEaId: eaId! });
+        pendingAdvance.push({ s1Id: nid, fingerprint: s.contentHash ?? null });
+        if (viaProvenance) { /* counted above */ }
+        continue;
+      }
+
       const row = await withNotificationsSuppressed(() =>
         withChargePluginsSuppressed(() =>
           storage.ledger.payments.createForMigration({
             status: mapped.status,
-            allocated: mapped.status === "cleared",
+            allocated,
             amount,
             paymentType: paymentTypeId!,
             ledgerEaId: eaId!,
@@ -340,16 +422,23 @@ async function main() {
           }),
         ),
       );
-      const winner = await putMapping("payment", nid, row.id, { stub: false, loader: LOADER });
-      created++;
-      expectations.push({ nid, s2Id: winner, amount, status: mapped.status, ledgerEaId: row.ledgerEaId });
+      const winner = await putMapping(ENTITY, nid, row.id, {
+        stub: false,
+        loader: LOADER,
+        fingerprint: s.contentHash ?? null,
+        logicVersion: LOGIC_VERSION,
+      });
+      summary.created++;
+      expectations.push({ nid, s2Id: winner, amount, status: mapped.status, allocated, ledgerEaId: row.ledgerEaId });
     } catch {
-      rejects.add("payment_create_failed", { nid }, nid);
+      rejects.add(targetId ? "payment_update_failed" : "payment_create_failed", { nid }, nid);
     }
     }
 
-    // ---- verify pass (page-scoped): exact row equality for every loaded payment ----
+    // ---- verify pass (page-scoped): exact row equality for every row this
+    // run wrote (created, updated, provenance-adopted) ----
     progress.phase("verify", expectations.length);
+    const failedNids = new Set<number>();
     for (const batch of chunk(expectations, 200)) {
       progress.add(batch.length);
       const rows = await storage.ledger.payments.getByIds(batch.map((e) => e.s2Id));
@@ -362,24 +451,88 @@ async function main() {
         } else {
           if (Number(row.amount) !== Number(ex.amount)) mismatches.push("amount");
           if (row.status !== ex.status) mismatches.push("status");
-          if (ex.ledgerEaId && row.ledgerEaId !== ex.ledgerEaId) mismatches.push("ledgerEaId");
+          if (row.allocated !== ex.allocated) mismatches.push("allocated");
+          if (row.ledgerEaId !== ex.ledgerEaId) mismatches.push("ledgerEaId");
         }
         if (mismatches.length > 0) {
           verifyFailures++;
+          failedNids.add(ex.nid);
           if (verifySamples.length < 25) verifySamples.push({ nid: ex.nid, fields: mismatches });
         }
       }
     }
+
+    // ---- advance fingerprints for verified updated rows (created rows were
+    // stamped at putMapping insert; failed rows stay retryable) ----
+    if (!DRY_RUN) {
+      const ok = pendingAdvance.filter((p) => !failedNids.has(p.s1Id));
+      if (ok.length > 0) {
+        await advanceFingerprints(ENTITY, ok, LOGIC_VERSION);
+        fingerprintsAdvanced += ok.length;
+      }
+    }
   }
+
+  // ---- deletion sweep: mapped payments whose staged source vanished.
+  // payments.delete also removes the payment's referencing ledger rows and
+  // emits their delete events (paid-state recompute re-queues). Cascaded
+  // s1-import `ar-*` rows must ALSO lose their id_map `ledger-ar` mappings
+  // (dropped BEFORE the delete — crash-safe direction), or the next T18 run
+  // would fast-skip the still-staged AR rows as unchanged and never recreate
+  // them. With the mappings gone, the T18 run after T19 recreates them via
+  // its standard new-row/adopt path — no --force-reconcile required.
+  progress.phase("sweep");
+  let cascadedArMappingsDropped = 0;
+  let foreignS1ImportCascades = 0;
+  const foreignCascadeSampleKeys: string[] = [];
+  const sweep = await sweepDeletions({
+    entity: ENTITY,
+    loaders: [LOADER],
+    sourceSql: sql`SELECT nid AS s1_id FROM s1_staging.records WHERE bundle = ${BUNDLE}`,
+    dryRun: DRY_RUN,
+    policy: async (c) => ({
+      action: "delete",
+      apply: async () => {
+        const refRows = (await db.execute(sql`
+          SELECT charge_plugin_key FROM ledger
+           WHERE reference_type = 'payment' AND reference_id = ${c.s2Id}
+             AND charge_plugin = 's1-import'
+        `)) as unknown as { rows: Array<{ charge_plugin_key: string | null }> };
+        for (const r of refRows.rows) {
+          const key = r.charge_plugin_key ?? "";
+          const m = /^ar-(\d+)$/.exec(key);
+          if (m) {
+            await deleteMapping("ledger-ar", Number(m[1]));
+            cascadedArMappingsDropped++;
+          } else {
+            foreignS1ImportCascades++;
+            if (foreignCascadeSampleKeys.length < 5) foreignCascadeSampleKeys.push(key);
+          }
+        }
+        await withNotificationsSuppressed(() =>
+          withChargePluginsSuppressed(() => storage.ledger.payments.delete(c.s2Id)),
+        );
+      },
+    }),
+  });
+  summary.deleted = sweep.deleted;
+  detail.sweep = {
+    candidates: sweep.candidates,
+    deleted: sweep.deleted,
+    alreadyHandled: sweep.alreadyHandled,
+    cascadedArMappingsDropped,
+    foreignS1ImportCascades,
+    ...(foreignCascadeSampleKeys.length > 0 ? { foreignCascadeSampleKeys } : {}),
+  };
   progress.stop();
 
-  report.pages = pages;
-  report.created = created;
-  report.adopted = adopted;
-  report.adoptedByProvenance = adoptedByProvenance;
-  report.perStatus = perStatus;
-  report.negativeAmounts = negativeAmounts;
-  report.payerContactEAs = payerContactEAs;
+  detail.pages = pages;
+  detail.adoptedByProvenance = adoptedByProvenance;
+  detail.perStatus = perStatus;
+  detail.negativeAmounts = negativeAmounts;
+  detail.payerContactEAs = payerContactEAs;
+  detail.staleFingerprintRows = staleFingerprintRows;
+  detail.fingerprintsAdvanced = fingerprintsAdvanced;
 
   // ---- per-account aggregate parity (loaded s1 payments vs staged) ----
   const loadedAgg = (
@@ -390,27 +543,36 @@ async function main() {
        GROUP BY ea.account_id ORDER BY ea.account_id
     `)) as unknown as { rows: Array<{ account_id: string; n: number; total: string }> }
   ).rows;
-  report.loadedPerAccount = loadedAgg;
+  detail.loadedPerAccount = loadedAgg;
 
-  report.rejects = rejects.counts;
-  report.rejectSamples = rejects.samples;
-  report.verifyFailures = verifyFailures;
-  if (verifySamples.length > 0) report.verifyFailureSamples = verifySamples;
+  detail.rejectSamples = rejects.samples;
+  if (verifySamples.length > 0) detail.verifyFailureSamples = verifySamples;
 
-  const disallowed = rejects.disallowedReasons(ALLOWED_REJECTS);
-  console.log(JSON.stringify(report, null, 2));
-  if (!DRY_RUN) await recordRun(startedAt, { loader: LOADER, allowedRejects: ALLOWED_REJECTS }, report);
+  const result = buildLoaderResult({
+    loader: LOADER,
+    logicVersion: LOGIC_VERSION,
+    dryRun: DRY_RUN,
+    forceReconcile: FORCE_RECONCILE,
+    summary,
+    rejects,
+    allowedRejects: ALLOWED_REJECTS,
+    verifyFailures,
+    findings: sweep.findings,
+    allowedFindings: ALLOWED_FINDINGS,
+    detail,
+  });
+  emitLoaderResult(result);
+  if (!DRY_RUN) await recordRun(startedAt, { loader: LOADER, allowedRejects: ALLOWED_REJECTS, forceReconcile: FORCE_RECONCILE }, result as unknown as Record<string, unknown>);
 
   await pgPool.end();
-  if (verifyFailures > 0) process.exit(1);
-  if (disallowed.length > 0) {
+  const code = loaderExitCode(result);
+  if (code !== 0 && result.rejectGate.status === "fail") {
     console.error(
-      `FAIL: reject reason(s) not allowed for this run: ${disallowed.map((d) => `${d.reason}=${d.count}`).join(", ")}. ` +
+      `FAIL: reject reason(s) not allowed for this run: ${result.rejectGate.disallowed.map((d) => `${d.reason}=${d.count}`).join(", ")}. ` +
         `Every expected reject class must be explicitly allowed via --allow-rejects.`,
     );
-    process.exit(1);
   }
-  process.exit(0);
+  process.exit(code);
 }
 
 main().catch((err) => {
