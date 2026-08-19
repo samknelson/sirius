@@ -26,6 +26,30 @@
  * side no longer has populated rows); a non-empty list the loader did not
  * write is NEVER clobbered — counted as `list_exists_foreign` and skipped.
  *
+ * Sync semantics (Task 292/348 — RUNBOOK §10): the ownership mapping carries
+ * a VERSIONED consumed fingerprint derived from the worker's DECODED
+ * beneficiary state (never the whole staged row hash — worker rows change
+ * for unrelated reasons). The fingerprint distinguishes absent / empty /
+ * malformed / populated staged states, so an OWNED worker whose decoded
+ * state is unchanged at the current logic version skips Pass 2 entirely —
+ * no S2 read, no rewrite, and no clear-sweep read. Fingerprints advance ONLY
+ * after successful write/adopt/clear verification (a failed write stays
+ * retryable). Pass 1 (decode/classify/counts + annotations) always runs in
+ * full — staged counts, soft mismatches, and `unexpected_tier` annotations
+ * are recomputed every run. Bump LOGIC_VERSION whenever the transform
+ * changes so unchanged S1 workers reprocess; `--force-reconcile` does the
+ * same for one run without a code change.
+ *
+ * Vanished source workers: if an authored mapping's worker nid disappears
+ * from staging ENTIRELY (not "present with zero designations" — that still
+ * clears), the loader preserves both the S2 list and the authorship mapping
+ * and emits a report-only `source_worker_missing` finding. These are signed
+ * legal designations; nothing is deleted without a fund ruling. The finding
+ * BLOCKS (exit 1) unless acknowledged per run via
+ * `--allow-findings source_worker_missing`, and it is stop-the-line for the
+ * final freeze run until explicitly ruled. A mapping whose S2 worker row is
+ * missing remains the fatal `worker_map_broken` reject (repair id_map).
+ *
  * Reject classes (fatal = row-skipping; every class present in a run must be
  * explicitly allowed via --allow-rejects or the run fails):
  *   bad_json              — field_sirius_json present but unparseable (worker skipped)
@@ -49,22 +73,26 @@
  *                           a sibling key under `beneficiaries` other than
  *                           `primary` exists (e.g. a contingent tier S2 does
  *                           not model) — counted per worker, never dropped
- *                           silently.
+ *                           silently. Sibling-tier content is NOT part of the
+ *                           consumed fingerprint (only the primary list is
+ *                           owned), but the annotation re-fires every run
+ *                           because Pass 1 always decodes everything.
  *
  * Pre-scan/abort: every parse/mapping-phase reject class is evaluated BEFORE
- * any write — a disallowed class aborts with nothing written. Write-phase
- * classes (list_exists_foreign, worker_map_broken, write_failed) gate the
- * exit code at the end per the standard contract.
+ * any write — a disallowed class aborts with nothing written (the standard
+ * envelope is still emitted). Write-phase classes (list_exists_foreign,
+ * worker_map_broken, write_failed) gate the exit code at the end per the
+ * standard contract.
  *
  * Verify gate (built-in reconciliation): recomputes the staged-side counts
  * (workers with a `beneficiaries` key, workers with ≥1 populated row,
  * populated rows) shape-tolerantly at run time and asserts
- *   stagedPopulatedWorkers == written + adopted + fatal-rejected
- *   populatedRows          == rowsWritten + rowsAdopted + rowsSkipped
- * plus a re-read of every written/adopted/cleared worker's list. The staged
- * counts are emitted so the fund can compare against their S1-side numbers.
- * Every fatal reason is in FATAL_REASONS — verification cannot silently
- * inflate when a new class is added (add it to BOTH lists).
+ *   stagedPopulatedWorkers == written + adopted + fast-skipped + fatal-rejected
+ *   populatedRows          == rowsWritten + rowsAdopted + rowsFastSkipped + rowsSkipped
+ * plus a re-read of every written/adopted/cleared worker's EXACT list. The
+ * staged counts are emitted so the fund can compare against their S1-side
+ * numbers. Every fatal reason is in FATAL_REASONS — verification cannot
+ * silently inflate when a new class is added (add it to BOTH lists).
  *
  * Ordering: AFTER load-contacts-workers (worker id_map).
  *
@@ -72,12 +100,14 @@
  * Never names, SSNs, phones, or any row values (S1 reporting bar).
  *
  * Usage:
- *   npx tsx scripts/s1-migration/load-beneficiaries.ts [--dry-run] [--allow-rejects a,b]
+ *   npx tsx scripts/s1-migration/load-beneficiaries.ts [--dry-run] \
+ *     [--allow-rejects a,b] [--force-reconcile] \
+ *     [--allow-findings source_worker_missing]
  */
 import { storage } from "../../server/storage/database";
 import { withNotificationsSuppressed } from "../../server/middleware/request-context";
 import { ensureStagingSchema, recordRun } from "./lib/staging";
-import { ensureIdMap, getMappings, putMapping } from "./lib/idmap";
+import { ensureIdMap, getMappings, putMapping, advanceFingerprints } from "./lib/idmap";
 import {
   RejectLog,
   pagedStaged,
@@ -85,6 +115,18 @@ import {
   throttleStorageOpLogs,
 } from "./lib/loader-utils";
 import { makeProgressLogger } from "./lib/progress";
+import {
+  buildLoaderResult,
+  classifyRow,
+  contentHashOf,
+  emitLoaderResult,
+  emptySummary,
+  loaderExitCode,
+  parseAllowedFindings,
+  parseForceReconcile,
+  sweepDeletions,
+  type SyncFinding,
+} from "./lib/sync";
 import {
   BAO_BENEFICIARY_PERCENT_EPSILON,
   type BaoBeneficiary,
@@ -97,6 +139,18 @@ const DRY_RUN = process.argv.includes("--dry-run");
 const LOADER = "t-bao-beneficiaries";
 /** id_map entity recording which workers' lists THIS loader wrote. */
 const OWNERSHIP_ENTITY = "bao-beneficiaries";
+/** Loader logic version — BUMP whenever the decode/normalize/write transform
+ * changes so unchanged S1 workers reprocess into the corrected shape on
+ * their next run (RUNBOOK §10). */
+const LOGIC_VERSION = 1;
+const FORCE_RECONCILE = parseForceReconcile();
+const ALLOWED_FINDINGS = parseAllowedFindings();
+/** An authored mapping's worker nid vanished from staging entirely. The S2
+ * list and the mapping are PRESERVED (signed legal designations — deletion
+ * needs a fund ruling); report-only, blocking unless explicitly allowed.
+ * Distinct from the framework's deleted_in_s1 so operators rule on it as a
+ * beneficiary-specific question. */
+const FINDING_SOURCE_WORKER_MISSING = "source_worker_missing";
 const ALLOWED_REJECTS: string[] = (() => {
   const i = process.argv.indexOf("--allow-rejects");
   return i >= 0 && process.argv[i + 1]
@@ -218,6 +272,25 @@ function listsEqual(a: BaoBeneficiaryList, b: BaoBeneficiaryList): boolean {
   return a.length === b.length && a.every((r, i) => rowEqual(r, b[i]));
 }
 
+// ---------------------------------------------------------------------------
+// Consumed fingerprint — derived from the DECODED beneficiary state, not the
+// whole staged row (worker rows change for unrelated reasons: hours, member
+// status, addresses...). Absent / empty / malformed / populated staged
+// states are all distinguishable; sibling tiers are EXCLUDED (only the
+// primary list is owned — annotations re-fire from Pass 1 regardless).
+// NaN percents (pct_unusable placeholders) serialize as null via
+// canonicalJson, so malformed-percent states fingerprint deterministically.
+// ---------------------------------------------------------------------------
+
+type FingerprintState =
+  | { state: "absent" }
+  | { state: "malformed"; problem: "bad_json" | "beneficiaries_not_object" | "primary_not_array" | "row_not_object" }
+  | { state: "parsed"; rows: BaoBeneficiaryList };
+
+function fingerprintOf(s: FingerprintState): string {
+  return contentHashOf(s);
+}
+
 async function main() {
   const startedAt = new Date();
   await ensureStagingSchema();
@@ -232,7 +305,7 @@ async function main() {
   report.stagedWorkers = stagedTotal;
   const progress = makeProgressLogger(LOADER, stagedTotal);
 
-  // ── Pass 1 (keyset-paged): decode, parse, classify ───────────────────────
+  // ── Pass 1 (keyset-paged): decode, parse, classify, fingerprint ──────────
   interface Candidate {
     nid: number;
     rows: BaoBeneficiaryList;
@@ -242,6 +315,8 @@ async function main() {
    * — never eligible for the loader-owned clear sweep. */
   const unparseableNids = new Set<number>();
   const allNids: number[] = [];
+  /** Consumed fingerprint per staged nid — set for EVERY staged worker. */
+  const fpByNid = new Map<number, string>();
   let workersWithJson = 0;
   let extraDeltaArrays = 0;
   let workersWithKey = 0;
@@ -261,20 +336,32 @@ async function main() {
       allNids.push(w.nid);
       const decoded = decodeStagedJson(w.fields);
       if (decoded.extraDeltas) extraDeltaArrays++;
-      if (!decoded.present) continue;
+      if (!decoded.present) {
+        fpByNid.set(w.nid, fingerprintOf({ state: "absent" }));
+        continue;
+      }
       workersWithJson++;
       if (decoded.parseError) {
         rejects.add("bad_json", { nid: w.nid }, w.nid);
         unparseableNids.add(w.nid);
+        fpByNid.set(w.nid, fingerprintOf({ state: "malformed", problem: "bad_json" }));
         continue;
       }
-      if (!isPlainObject(decoded.parsed)) continue; // parseable, but no object → no beneficiaries key
+      if (!isPlainObject(decoded.parsed)) {
+        // parseable, but no object → no beneficiaries key
+        fpByNid.set(w.nid, fingerprintOf({ state: "absent" }));
+        continue;
+      }
       const bens = decoded.parsed["beneficiaries"];
-      if (bens === undefined) continue;
+      if (bens === undefined) {
+        fpByNid.set(w.nid, fingerprintOf({ state: "absent" }));
+        continue;
+      }
       workersWithKey++;
       if (!isPlainObject(bens)) {
         rejects.add("bad_shape", { nid: w.nid, problem: "beneficiaries_not_object" }, w.nid);
         unparseableNids.add(w.nid);
+        fpByNid.set(w.nid, fingerprintOf({ state: "malformed", problem: "beneficiaries_not_object" }));
         continue;
       }
       const tierKeys = Object.keys(bens).filter((k) => k !== "primary");
@@ -288,6 +375,7 @@ async function main() {
       if (primary !== undefined && !Array.isArray(primary)) {
         rejects.add("bad_shape", { nid: w.nid, problem: "primary_not_array" }, w.nid);
         unparseableNids.add(w.nid);
+        fpByNid.set(w.nid, fingerprintOf({ state: "malformed", problem: "primary_not_array" }));
         continue;
       }
       const entries = (primary ?? []) as unknown[];
@@ -336,8 +424,14 @@ async function main() {
       if (badShape) {
         rejects.add("bad_shape", { nid: w.nid, problem: "row_not_object" }, w.nid);
         unparseableNids.add(w.nid);
+        fpByNid.set(w.nid, fingerprintOf({ state: "malformed", problem: "row_not_object" }));
         continue;
       }
+      // Fingerprint the fully-decoded state (including empty lists and
+      // pct-unusable placeholders — rejected workers never ADVANCE to this
+      // fingerprint, so they reprocess and re-reject until the source or the
+      // transform changes).
+      fpByNid.set(w.nid, fingerprintOf({ state: "parsed", rows }));
       if (rows.length === 0) continue; // key present, nothing populated → clear-sweep candidate
 
       workersPopulated++;
@@ -396,28 +490,62 @@ async function main() {
     if (disallowed.length > 0) {
       report.rejects = rejects.counts;
       report.rejectSamples = rejects.samples;
-      console.log(JSON.stringify(report, null, 2));
+      report.error =
+        "pre-scan abort: disallowed parse/mapping reject class(es) — nothing was written";
+      progress.stop();
+      emitLoaderResult(
+        buildLoaderResult({
+          loader: LOADER,
+          logicVersion: LOGIC_VERSION,
+          dryRun: DRY_RUN,
+          forceReconcile: FORCE_RECONCILE,
+          summary: emptySummary(),
+          rejects,
+          allowedRejects: ALLOWED_REJECTS,
+          verifyFailures: 0,
+          detail: report,
+        }),
+      );
       console.error(
         `FATAL (pre-scan): reject reason(s) not allowed for this run: ` +
           `${disallowed.map((d) => `${d.reason}=${d.count}`).join(", ")}. ` +
           `Nothing was written. Triage, then re-run with --allow-rejects for the classes you have justified.`,
       );
-      progress.stop();
       process.exit(1);
     }
   }
 
   // ── Pass 2: write (replace-all through storage; ownership via id_map) ────
+  // Consumed-fingerprint fast path (Task 348): an OWNED worker whose decoded
+  // staged state is unchanged at the current logic version skips WITHOUT any
+  // S2 read — the previous run verified exactly this list. worker_unmapped
+  // was already checked above (cheap id_map batch). A broken S2 target
+  // behind an unchanged fingerprint surfaces on the next changed/forced run.
   progress.phase("write", writeList.length);
-  let workersWritten = 0;
+  let workersCreated = 0; // first-time writes (no prior ownership mapping)
+  let workersRewritten = 0; // owned rewrites (staged content changed)
   let workersAdopted = 0;
   let rowsWritten = 0;
   let rowsAdopted = 0;
-  const verifyTargets: Array<{ nid: number; workerId: string; expected: BaoBeneficiaryList }> = [];
+  let fastPathPopulatedSkips = 0;
+  let rowsFastSkipped = 0;
+  const verifyTargets: Array<{
+    nid: number;
+    workerId: string;
+    expected: BaoBeneficiaryList;
+    fingerprint: string;
+  }> = [];
 
   for (const c of writeList) {
     progress.add(1);
-    const owned = ownershipMap.has(c.nid);
+    const ownership = ownershipMap.get(c.nid);
+    const owned = ownership != null;
+    const fp = fpByNid.get(c.nid)!;
+    if (ownership && classifyRow(ownership, fp, LOGIC_VERSION, FORCE_RECONCILE) === "unchanged") {
+      fastPathPopulatedSkips++;
+      rowsFastSkipped += c.rows.length;
+      continue;
+    }
     let current: BaoBeneficiaryList;
     try {
       current = await storage.baoBeneficiaries.get(c.workerId);
@@ -443,20 +571,24 @@ async function main() {
     if (owned && listsEqual(current, c.rows)) {
       workersAdopted++;
       rowsAdopted += c.rows.length;
-      verifyTargets.push({ nid: c.nid, workerId: c.workerId, expected: c.rows });
+      verifyTargets.push({ nid: c.nid, workerId: c.workerId, expected: c.rows, fingerprint: fp });
       continue;
     }
     if (DRY_RUN) {
-      workersWritten++;
+      if (owned) workersRewritten++;
+      else workersCreated++;
       rowsWritten += c.rows.length;
       continue;
     }
     try {
       await withNotificationsSuppressed(() => storage.baoBeneficiaries.set(c.workerId, c.rows));
+      // Authorship only — the fingerprint advances AFTER verification (a new
+      // mapping starts with a NULL consumed fingerprint until then).
       await putMapping(OWNERSHIP_ENTITY, c.nid, c.workerId, { stub: false, loader: LOADER });
-      workersWritten++;
+      if (owned) workersRewritten++;
+      else workersCreated++;
       rowsWritten += c.rows.length;
-      verifyTargets.push({ nid: c.nid, workerId: c.workerId, expected: c.rows });
+      verifyTargets.push({ nid: c.nid, workerId: c.workerId, expected: c.rows, fingerprint: fp });
     } catch (err) {
       // Sanitized: class/code only — never raw error text (S1 reporting bar).
       const code = err instanceof Error ? err.constructor.name : "unknown";
@@ -474,8 +606,18 @@ async function main() {
   // staged blob now holds only an out-of-scope sibling tier has zero staged
   // primary designations, and keeping a stale loader-written primary list
   // would contradict replace-all semantics.
+  // Fingerprint fast path: an owned worker whose staged state is still the
+  // same absent/empty state that was verified cleared last run skips the
+  // read entirely. A worker read as ALREADY empty advances its fingerprint
+  // directly — the read IS the verification (this backfills fingerprints
+  // for historically-cleared workers, which would otherwise re-read forever).
   const candidateNids = new Set(candidates.map((c) => c.nid));
   let workersCleared = 0;
+  let workersAlreadyEmpty = 0;
+  let fastPathClearSkips = 0;
+  /** Advances with no verify-pass target (already-empty reads) — the read is
+   * the verification; merged into the post-verify advance batch. */
+  const directAdvance: Array<{ s1Id: number; fingerprint: string | null }> = [];
   {
     const clearable = allNids.filter(
       (nid) =>
@@ -485,7 +627,13 @@ async function main() {
         !rejects.hasAnyIn(nid, FATAL_REASONS),
     );
     for (const nid of clearable) {
-      const workerId = ownershipMap.get(nid)!.s2Id;
+      const ownership = ownershipMap.get(nid)!;
+      const fp = fpByNid.get(nid)!;
+      if (classifyRow(ownership, fp, LOGIC_VERSION, FORCE_RECONCILE) === "unchanged") {
+        fastPathClearSkips++;
+        continue;
+      }
+      const workerId = ownership.s2Id;
       let current: BaoBeneficiaryList;
       try {
         current = await storage.baoBeneficiaries.get(workerId);
@@ -502,7 +650,11 @@ async function main() {
         }
         continue;
       }
-      if (current.length === 0) continue;
+      if (current.length === 0) {
+        workersAlreadyEmpty++;
+        if (!DRY_RUN) directAdvance.push({ s1Id: nid, fingerprint: fp });
+        continue;
+      }
       if (DRY_RUN) {
         workersCleared++;
         continue;
@@ -520,20 +672,28 @@ async function main() {
         continue;
       }
       workersCleared++;
-      verifyTargets.push({ nid, workerId, expected: [] });
+      verifyTargets.push({ nid, workerId, expected: [], fingerprint: fp });
     }
   }
 
+  const workersWritten = workersCreated + workersRewritten;
   report.workersWritten = workersWritten;
+  report.workersCreated = workersCreated;
+  report.workersRewritten = workersRewritten;
   report.workersAdopted = workersAdopted;
   report.workersCleared = workersCleared;
+  report.workersAlreadyEmpty = workersAlreadyEmpty;
   report.rowsWritten = rowsWritten;
   report.rowsAdopted = rowsAdopted;
   report.rowsSkipped = rowsSkipped;
+  report.rowsFastSkipped = rowsFastSkipped;
+  report.fastPathSkips = fastPathPopulatedSkips + fastPathClearSkips;
+  report.fastPathDetail = { populated: fastPathPopulatedSkips, clear: fastPathClearSkips };
   report.softMismatches = soft;
 
-  // ── Verify: re-read every written/adopted/cleared list + reconcile ───────
+  // ── Verify: re-read every written/adopted/cleared list (EXACT match) ─────
   let verifyFailures = 0;
+  const verifyFailedNids = new Set<number>();
   if (!DRY_RUN) {
     progress.phase("verify", verifyTargets.length);
     for (const t of verifyTargets) {
@@ -543,38 +703,79 @@ async function main() {
         if (!listsEqual(got, t.expected)) {
           console.error(`VERIFY: worker nid ${t.nid} list does not match the loaded designation set`);
           verifyFailures++;
+          verifyFailedNids.add(t.nid);
         }
       } catch {
         console.error(`VERIFY: worker nid ${t.nid} unreadable after load`);
         verifyFailures++;
+        verifyFailedNids.add(t.nid);
       }
     }
   }
 
+  // ---- advance consumed fingerprints — ONLY after write/adopt/clear
+  // verification passed (task mandate; failed rows stay retryable) ----
+  if (!DRY_RUN) {
+    const advance = [
+      ...verifyTargets
+        .filter((t) => !verifyFailedNids.has(t.nid))
+        .map((t) => ({ s1Id: t.nid, fingerprint: t.fingerprint as string | null })),
+      ...directAdvance,
+    ];
+    await advanceFingerprints(OWNERSHIP_ENTITY, advance, LOGIC_VERSION);
+  }
+
+  // ---- vanished-source sweep: authored mappings whose worker nid is gone
+  // from staging ENTIRELY (distinct from "present with zero designations",
+  // which clears above). Policy: report-only — list + mapping preserved;
+  // stop-the-line for the final freeze run until explicitly ruled. No loader
+  // filter: authorship rows seeded by dev tooling are still THIS loader's
+  // ownership domain. ----
+  const findings: SyncFinding[] = [];
+  const sweep = await sweepDeletions({
+    entity: OWNERSHIP_ENTITY,
+    sourceIds: new Set(allNids),
+    dryRun: DRY_RUN,
+    policy: async () => ({
+      action: "report-only",
+      detail: {
+        reason:
+          "source worker vanished from staging; beneficiary designations are legal records — " +
+          "S2 list and authorship mapping preserved pending a fund ruling",
+      },
+    }),
+  });
+  const summary = emptySummary();
+  findings.push(...sweep.findings.map((f) => ({ ...f, kind: FINDING_SOURCE_WORKER_MISSING })));
+  report.sweep = { candidates: sweep.candidates, alreadyHandled: sweep.alreadyHandled };
+
   // Reconciliation — every populated staged worker/row must be accounted for
-  // by a write, an adopt, or a counted fatal reject on the populated path
-  // (exactly one per worker by construction). Clear-sweep rejects hit
-  // non-populated workers and are deliberately outside this equation — they
-  // still gate the exit code via --allow-rejects like every other class.
+  // by a write, an adopt, a fast-path skip, or a counted fatal reject on the
+  // populated path (exactly one per worker by construction). Clear-sweep
+  // rejects hit non-populated workers and are deliberately outside this
+  // equation — they still gate the exit code via --allow-rejects like every
+  // other class.
   const reconciliation = {
     stagedPopulatedWorkers: workersPopulated,
-    accountedWorkers: workersWritten + workersAdopted + populatedWorkersRejected,
+    accountedWorkers: workersWritten + workersAdopted + fastPathPopulatedSkips + populatedWorkersRejected,
     populatedWorkersRejected,
+    fastPathPopulatedSkips,
     stagedPopulatedRows: populatedRows,
-    accountedRows: rowsWritten + rowsAdopted + rowsSkipped,
-    workersOk: workersPopulated === workersWritten + workersAdopted + populatedWorkersRejected,
-    rowsOk: populatedRows === rowsWritten + rowsAdopted + rowsSkipped,
+    accountedRows: rowsWritten + rowsAdopted + rowsFastSkipped + rowsSkipped,
+    workersOk:
+      workersPopulated === workersWritten + workersAdopted + fastPathPopulatedSkips + populatedWorkersRejected,
+    rowsOk: populatedRows === rowsWritten + rowsAdopted + rowsFastSkipped + rowsSkipped,
   };
   report.reconciliation = reconciliation;
   if (!reconciliation.workersOk) {
     console.error(
-      `VERIFY: staged populated workers (${reconciliation.stagedPopulatedWorkers}) != written+adopted+rejected (${reconciliation.accountedWorkers})`,
+      `VERIFY: staged populated workers (${reconciliation.stagedPopulatedWorkers}) != written+adopted+fastSkipped+rejected (${reconciliation.accountedWorkers})`,
     );
     verifyFailures++;
   }
   if (!reconciliation.rowsOk) {
     console.error(
-      `VERIFY: staged populated rows (${reconciliation.stagedPopulatedRows}) != written+adopted+skipped (${reconciliation.accountedRows})`,
+      `VERIFY: staged populated rows (${reconciliation.stagedPopulatedRows}) != written+adopted+fastSkipped+skipped (${reconciliation.accountedRows})`,
     );
     verifyFailures++;
   }
@@ -585,18 +786,52 @@ async function main() {
   report.verifyFailures = verifyFailures;
   report.elapsedSeconds = Math.round((Date.now() - startedAt.getTime()) / 1000);
 
-  console.log(JSON.stringify(report, null, 2));
-  if (!DRY_RUN) await recordRun(startedAt, { loader: LOADER, allowedRejects: ALLOWED_REJECTS }, report);
+  // Standard sync summary (Task 348): created = first-time writes, updated =
+  // owned rewrites + clears, unchanged = adopts + fast-path skips +
+  // verified-already-empty. Legacy counters remain under detail.
+  summary.created = workersCreated;
+  summary.updated = workersRewritten + workersCleared;
+  summary.unchanged = workersAdopted + fastPathPopulatedSkips + fastPathClearSkips + workersAlreadyEmpty;
+  summary.deleted = sweep.deleted;
+  summary.deactivated = sweep.deactivated;
+  summary.reportOnly = sweep.reportOnly;
 
-  const disallowed = rejects.disallowedReasons(ALLOWED_REJECTS);
-  if (disallowed.length > 0) {
+  const result = buildLoaderResult({
+    loader: LOADER,
+    logicVersion: LOGIC_VERSION,
+    dryRun: DRY_RUN,
+    forceReconcile: FORCE_RECONCILE,
+    summary,
+    rejects,
+    allowedRejects: ALLOWED_REJECTS,
+    verifyFailures,
+    findings,
+    allowedFindings: ALLOWED_FINDINGS,
+    detail: report,
+  });
+  emitLoaderResult(result);
+  if (!DRY_RUN) {
+    await recordRun(
+      startedAt,
+      { loader: LOADER, allowedRejects: ALLOWED_REJECTS, forceReconcile: FORCE_RECONCILE },
+      result as unknown as Record<string, unknown>,
+    );
+  }
+
+  if (result.rejectGate.status === "fail") {
     console.error(
-      `FAIL: reject reason(s) not allowed for this run: ${disallowed.map((d) => `${d.reason}=${d.count}`).join(", ")}. ` +
+      `FAIL: reject reason(s) not allowed for this run: ${result.rejectGate.disallowed.map((d) => `${d.reason}=${d.count}`).join(", ")}. ` +
         `Every expected reject class must be explicitly allowed via --allow-rejects.`,
     );
-    process.exit(1);
   }
-  process.exit(verifyFailures > 0 ? 1 : 0);
+  if (result.blockingFindings.length > 0) {
+    console.error(
+      `FAIL: ${result.blockingFindings.length} blocking sync finding(s) (${[...new Set(result.blockingFindings.map((f) => f.kind))].join(", ")}). ` +
+        `source_worker_missing preserves the S2 list + mapping and needs a fund ruling — ` +
+        `acknowledge per run via --allow-findings source_worker_missing. STOP-THE-LINE for the final freeze run.`,
+    );
+  }
+  process.exit(loaderExitCode(result));
 }
 
 main().catch((err) => {
