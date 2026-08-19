@@ -51,6 +51,13 @@
  * side); defects dualAcceptanceMismatch=1, signedWithoutEsig=1 (99910108;
  * 99910106 revoked carries an esig), offlineKeysPresent=1.
  *
+ * Converted-sync re-runs (§10 / Task 348): with nothing changed, records
+ * fast-skip 6 and definitions fast-skip 2 — `disclaimer_missing` fires ONLY
+ * when definition B actually reprocesses (first run after seeding/restage,
+ * definition change, LOGIC_VERSION bump, or --force-reconcile), while the
+ * record-side rejects (handler_dangling/bad_json/handler_unresolved) re-fire
+ * every run because rejected rows never map.
+ *
  * Idempotent (upsert by (bundle, nid)); nids live in the 999xxxxx range far
  * above synthetic nids. NOTE: a full restage sweeps these rows (stale-delete
  * by watermark) — re-run this script after any restage, BEFORE the
