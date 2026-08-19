@@ -167,14 +167,18 @@ function trimmedOrAbsent(v: unknown): string | undefined {
   return s.length > 0 ? s : undefined;
 }
 
-/** `pct` → number. Tolerates numeric strings and a trailing "%"; anything
- * else is unusable (hard reject — a designation without a share is not a
- * loadable legal record). */
+/** `pct` → number. Tolerates numeric strings, a trailing "%", and the legacy
+ * whole-number-with-terminal-dot form ("50." → 50, found on real S1 rows);
+ * anything else is unusable (hard reject — a designation without a share is
+ * not a loadable legal record). */
 function parsePct(v: unknown): number | null {
   if (typeof v === "number") return Number.isFinite(v) ? v : null;
   if (typeof v === "string") {
     const s = v.trim().replace(/%$/, "").trim();
-    if (!/^-?\d+(\.\d+)?$/.test(s)) return null;
+    // `\.\d*` accepts ONLY the terminal-dot legacy form ("50.") alongside
+    // real decimals ("50.5"); a bare ".", repeated dots ("50.."), embedded
+    // punctuation, and empty values still fall through to pct_unusable.
+    if (!/^-?\d+(\.\d*)?$/.test(s)) return null;
     const n = Number(s);
     return Number.isFinite(n) ? n : null;
   }

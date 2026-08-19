@@ -27,7 +27,8 @@
  *      writes the operator list through storage and deletes any
  *      bao-beneficiaries id_map authorship row so the trap holds even after
  *      a prior loader run)
- *   7. populated row with unusable pct → pct_unusable
+ *   7. populated rows with unusable pcts (blank + repeated-dot "50..") →
+ *      pct_unusable (normalization must NOT rescue "50..")
  *   8. unparseable JSON → bad_json
  *   9. out-of-range percents that still sum to 100 (150 / -50) — loads,
  *      softMismatches.percentOutOfRange = 2
@@ -41,6 +42,10 @@
  *      beneficiaries JSON staged) → the clear sweep must report
  *      worker_map_broken (phase "clear"), never silently skip. The broken
  *      row persists across runs by design — the loader repairs nothing.
+ *  13. legacy trailing-dot whole percents ("50." / "50.") — loads as 50/50
+ *      (rehearsal-discovered S1 formatting; must NOT reject)
+ *  14. fractional percents ("50.5" / "49.5") — loads with decimal precision
+ *      retained; participates in the 100% sum check
  *
  * The clear-WRITE failure path (write_failed, phase "clear") cannot be
  * seeded with data alone; `dev/smoke-beneficiary-clear-write-failure.ts`
@@ -96,14 +101,14 @@ async function main() {
   const mappedRes = await db.execute(sql`
     SELECT r.nid, m.s2_id FROM s1_staging.records r
       JOIN s1_staging.id_map m ON m.entity = 'worker' AND m.s1_id = r.nid AND m.stub = false
-     WHERE r.bundle = 'sirius_worker' ORDER BY r.nid LIMIT 11
+     WHERE r.bundle = 'sirius_worker' ORDER BY r.nid LIMIT 13
   `);
   const mapped = (mappedRes as unknown as { rows: Array<{ nid: string | number; s2_id: string }> }).rows.map(
     (r) => ({ nid: Number(r.nid), workerId: r.s2_id }),
   );
-  if (mapped.length < 11) {
+  if (mapped.length < 13) {
     throw new Error(
-      `ABORTING: need 11 mapped staged workers, found ${mapped.length} — run load-contacts-workers first.`,
+      `ABORTING: need 13 mapped staged workers, found ${mapped.length} — run load-contacts-workers first.`,
     );
   }
   const unmappedRes = await db.execute(sql`
@@ -121,7 +126,7 @@ async function main() {
     );
   }
 
-  const [w1, w2, w3, w4, w5, w6, w7, w8, w9, w10, w11] = mapped;
+  const [w1, w2, w3, w4, w5, w6, w7, w8, w9, w10, w11, w12, w13] = mapped;
 
   const traps: Array<{ nid: number; label: string; fieldValue: unknown }> = [
     {
@@ -181,7 +186,13 @@ async function main() {
       nid: w7.nid,
       label: "unusable pct on a populated row",
       fieldValue: shapeA({
-        beneficiaries: { primary: [bene("GOLF NO PCT", ""), bene("GOLF OK", "50")] },
+        beneficiaries: {
+          primary: [
+            bene("GOLF NO PCT", ""),
+            bene("GOLF DOUBLE DOT", "50.."), // repeated dots — must stay unusable
+            bene("GOLF OK", "50"),
+          ],
+        },
       }),
     },
     {
@@ -206,6 +217,20 @@ async function main() {
       label: "loader-owned stale list + contingent-only staging (clear sweep)",
       fieldValue: shapeA({
         beneficiaries: { primary: [], contingent: [bene("KILO CONTINGENT", "100")] },
+      }),
+    },
+    {
+      nid: w12.nid,
+      label: "legacy trailing-dot whole percents (\"50.\" + \"50.\") — loads as 50/50",
+      fieldValue: shapeA({
+        beneficiaries: { primary: [bene("LIMA DOT ONE", "50."), bene("LIMA DOT TWO", "50.")] },
+      }),
+    },
+    {
+      nid: w13.nid,
+      label: "fractional percents retain precision (50.5 + 49.5, sum check passes)",
+      fieldValue: shapeA({
+        beneficiaries: { primary: [bene("MIKE FRACTION HIGH", "50.5"), bene("MIKE FRACTION LOW", "49.5")] },
       }),
     },
   ];
