@@ -124,3 +124,4 @@
 - [S1 shared-email ownership](s1-shared-email-ownership.md) — raw_user_contact (user↔contact assoc) is THE ownership signal; no-owner shared addresses defer to email=null (737 pending fund ruling).
 - [Loader writes precede reject gate](loader-writes-before-reject-gate.md) — a run failing on disallowed rejects already wrote; smokes need --allow-rejects on run 1 (dry-run priming); FK crash = dangling id_map.
 - [S1 loader run order](s1-loader-run-order.md) — t18 references resolve via id_map; loading ledger before payments/WMB silently types everything s1-unknown; adopt never re-resolves.
+- [FK parent delete race](fk-parent-delete-race.md) — deleting an ON DELETE SET NULL parent needs FOR UPDATE + recheck in one tx, or concurrent child inserts get silently NULLed.
