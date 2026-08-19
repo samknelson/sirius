@@ -59,9 +59,13 @@ loaders against ANY target (fresh branch or production), ensure:
   the `employed` flags with the fund (they gate eligibility and the
   member-status scan).
 - Target setup is one command: `bootstrap-target.ts` (schema + optional `--wipe`
-  preserving the admin user + components + idempotent seeds). `trust_providers`
-  and `trust_benefits` are NOT preconfigured — `seed-trust-config.ts` derives
-  them from the staged S1 nodes after `stage.ts` (§4.15 carry-over-as-is).
+  preserving the admin user + the explicit production component allowlist +
+  idempotent baseline seeds). It creates the contribution accounts and BAO
+  Hourly status allowlist, and materializes every current cron configuration
+  disabled. `trust_providers` and `trust_benefits` are NOT preconfigured —
+  `seed-trust-config.ts` derives them from staged S1 nodes after `stage.ts`,
+  then `seed-policy-benefits.ts` assigns that target-resolved benefit set to
+  EC and UH (§4.15 carry-over-as-is).
   (`copy-fund-config.ts` remains as a dev utility for id-preserving copies from
   `SOURCE_CONFIG_DATABASE_URL`, but is no longer part of the run.)
 - **Policies** — `load-policies.ts` is ADOPT-ONLY: every referenced S1 trust
@@ -104,7 +108,8 @@ loaders against ANY target (fresh branch or production), ensure:
   rehearsal on 2026-08-06. Operators follow the runbook; this README is the
   loader reference.
 - **Load order matters:** bootstrap-target → stage → seed-trust-config →
-  options → contacts/workers → member-statuses → employers → policies →
+  seed-policy-benefits → options → contacts/workers → member-statuses →
+  employers → policies →
   relationships → employee-ids → elections → benefit-history → **payments →
   ledger** → hours → enrollment-packet-tags. Payments run BEFORE ledger:
   negative AR rows reference payment nids, and T18 resolves them through

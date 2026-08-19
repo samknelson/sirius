@@ -98,14 +98,20 @@ to the exact state the loaders expect:
    assignments, and drops `s1_staging` for a fresh stage (`--keep-staging` to
    skip).
 3. **Admin** — creates each listed admin user + full-permission `admin` role if absent.
-4. **Components** — enables the fund set: `bulk`, `debug`, `employer.company`,
-   `ledger` + all `ledger.*`, `sitespecific.bao`, `system.sftp.client`, all
-   `trust.*`, `worker.relations`.
+4. **Components** — enables the production-owned positive allowlist:
+   `bulk`, `cardcheck`, `employer.company`, `ledger`,
+   `ledger.payment.batch`, `sitespecific.bao`, `system.sftp.client`,
+   `trust.benefits`, `trust.benefits.scan`, `trust.elections`,
+   `trust.providers`, `trust.providers.edi`, and `worker.relations`. Debug,
+   dummy gateway, facility, and staging-only components remain disabled.
 5. **Seeds** (all idempotent) — policies (all 7: PA, UH, EC, COBRA + RES, TT,
    U; a legacy `R`/"Restaurant Plan" row renames IN PLACE to `UH`/"Unite Here
    Plan" per the 2026-08-11 ruling — reported `renamedFromR: 1`, row UUID
    preserved so id_map/policy history need no correction; a target holding
-   BOTH R and UH aborts), employment statuses, genders, call reasons.
+   BOTH R and UH aborts), employment statuses, the Employee/Employer
+   Contributions accounts, the single global BAO Hourly configuration,
+   genders, and call reasons. Every registered singleton cron config is
+   materialized and every cron config is disabled.
 
 `trust_providers` / `trust_benefits` are **not** seeded here — they derive from
 the staged S1 nodes (§4.0b), so no hand-maintained benefit list exists anywhere.
@@ -119,7 +125,8 @@ Remaining manual preconditions:
 ## 3. Load order (load-bearing — do not reorder)
 
 ```
-bootstrap-target → stage → seed-trust-config → options → contacts/workers
+bootstrap-target → stage → seed-trust-config → seed-policy-benefits
+→ options → contacts/workers
 → beneficiaries → member-statuses → employers → policies → relationships
 → employee-ids → users → elections → benefit-history → payments → ledger
 → hours → call-logs → cardchecks → enrollment-packet-tags → parity gates
@@ -136,8 +143,10 @@ Key ordering facts:
   (restage sweeps the fakes); enrollment-packet-tags needs
   contacts (contact-level grain, corrected 2026-08-11 — no worker/wmb
   dependency).
-- **seed-trust-config after stage, before elections/benefit-history** — it
-  creates `trust_providers`/`trust_benefits` from the staged S1 nodes.
+- **seed-trust-config + seed-policy-benefits after stage, before
+  elections/benefit-history** — the first creates
+  `trust_providers`/`trust_benefits` from staged S1 nodes; the second assigns
+  every target-resolved staged benefit to EC and UH without source UUIDs.
 - **users after contacts/workers** — the T27 uid→worker pre-link resolves
   through id_map `worker`; running users first leaves every account unlinked.
 - **beneficiaries after contacts/workers** — designations resolve workers via
@@ -146,12 +155,10 @@ Key ordering facts:
   `beneficiaries`; restage sweeps the fakes).
 - **cardchecks after contacts/workers** — records resolve the worker side of
   the `field_sirius_log_handler` ref via id_map `worker`; definitions load
-  before records inside the loader (single command). ⚠ PREREQUISITE: the
-  `cardcheck` component is `enabledByDefault: false` and is NOT part of the
-  §2 bootstrap component set — the operator must enable it on the target
-  (component lifecycle provisions `cardcheck_definitions`/`cardchecks`) and
-  restart the app (boot-time cache) BEFORE this step; the loader preflight
-  aborts loudly otherwise. Dev needs `dev/seed-cardcheck-fakes.ts` after
+  before records inside the loader (single command). The production bootstrap
+  provisions the cardcheck schema, but definitions remain migration/manual
+  configuration and are not invented by bootstrap. Dev needs
+  `dev/seed-cardcheck-fakes.ts` after
   staging (synthetic staging has ZERO cardcheck rows; restage sweeps the
   fakes).
 
@@ -190,6 +197,7 @@ npx tsx scripts/s1-migration/stage.ts          # prod: default in-scope bundles
 
 ```bash
 npx tsx scripts/s1-migration/seed-trust-config.ts
+npx tsx scripts/s1-migration/seed-policy-benefits.ts
 ```
 
 Creates `trust_providers` and `trust_benefits` from the staged
@@ -203,6 +211,11 @@ historical plans) — no hand-maintained name list to go stale. Idempotent
 staged node missing a title. Benefit↔provider links are intentionally not
 created (S1 has no such relation). Expect `titleMissingNids: []` and, on a
 wiped target, `created == staged` on both sides.
+
+`seed-policy-benefits.ts` resolves EC/UH by Sirius ID and benefits through the
+staged `benefit` id_map. It assigns the complete resolved set only when a
+policy has no assignment, adopts an exact existing set, and fails rather than
+overwriting a differing non-empty assignment. Other policy metadata is kept.
 
 ### 4.1 – 4.14 Loaders
 

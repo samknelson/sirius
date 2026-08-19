@@ -1,12 +1,13 @@
 /**
- * Copy fund CONFIGURATION (trust providers, trust benefits, policies, and
- * their option types) from another S2 database into the current target.
+ * DEV-ONLY legacy utility: copy fund CONFIGURATION (trust providers, trust
+ * benefits, policies, and their option types) from another S2 database into
+ * the current target.
  *
- * Purpose: a fresh schema-only branch lacks the fund config that
- * load-policies adopts against (it never creates policies). This copies ONLY
- * config tables — never worker/contact/ledger data — preserving row ids so
- * cross-references (benefit provider links, policy benefit lists in data)
- * stay intact.
+ * Not part of the production migration flow. Purpose: a development branch
+ * lacks the fund config that load-policies adopts against (it never creates
+ * policies). This copies ONLY config tables — never worker/contact/ledger
+ * data — preserving row ids so cross-references (benefit provider links,
+ * policy benefit lists in data) stay intact.
  *
  * Source:  SOURCE_CONFIG_DATABASE_URL (read-only usage)
  * Target:  EXTERNAL_DATABASE_URL (resolved exactly like the app; banner printed)

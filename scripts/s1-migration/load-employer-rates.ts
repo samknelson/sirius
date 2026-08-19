@@ -69,8 +69,8 @@
  *     Unparseable JSON keeps the shop in the source set — never sweep over a
  *     parse failure.
  *
- * Ordering: AFTER load-employers (employer id_map) and after fund config
- * exists (copy-fund-config — provides the bao-hourly config + account).
+ * Ordering: AFTER load-employers (employer id_map) and after bootstrap-target
+ * has seeded the BAO Hourly config + Employer Contributions account.
  *
  * Reject classes (fatal unless explicitly allowed via --allow-rejects):
  *   bad_json             — field_sirius_json present but unparseable (whole shop)

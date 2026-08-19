@@ -17,12 +17,13 @@
  *      Refuses to touch a populated DB without --wipe.
  *   3. Admin: creates the admin user + full-permission `admin` role if absent
  *      (fresh target), so the operator can always sign in.
- *   4. Components: enables the fund component set (bulk, debug,
- *      employer.company, ledger + all ledger.*, sitespecific.bao,
- *      system.sftp.client, all trust.*, worker.relations).
+ *   4. Components: enables the explicit production BAO migration allowlist.
+ *      Includes cardcheck and payment batches; excludes debug, dummy gateway,
+ *      facility, and staging-only components.
  *   5. Seeds: policies (all 7, incl. core PA/UH/EC/COBRA; a legacy R row is
  *      renamed in place to UH per the 2026-08-11 ruling), employment
- *      statuses, genders, call reasons. All idempotent.
+ *      statuses, contribution accounts, BAO Hourly, genders, and call reasons.
+ *      Materializes every singleton cron config and leaves every cron disabled.
  *
  * trust_providers / trust_benefits are NOT seeded here — they derive from
  * the staged S1 nodes (seed-trust-config.ts, run AFTER stage.ts) per the
@@ -63,6 +64,8 @@ const MIGRATION_LOCK_KEY = 727001;
  * scripts/oneoffs/s1-wipe-retry-tests.ts to prove atomicity). Values:
  *   S1_BOOTSTRAP_TEST_FAULT=after_truncate|before_commit        → throw mid-tx
  *   S1_BOOTSTRAP_TEST_FAULT=after_truncate:kill|before_commit:kill → SIGKILL self
+ *   S1_BOOTSTRAP_TEST_PAUSE_BEFORE_CHILDREN_MS=<milliseconds>   → pause while
+ *      retaining the parent advisory lock (concurrency harness only)
  * Never set in production; unset = zero behavior change.
  */
 function injectTestFault(point: "after_truncate" | "before_commit") {
@@ -81,8 +84,7 @@ function runStep(label: string, script: string) {
   console.log(`\n=== ${label}: npx tsx ${script} ===`);
   const res = spawnSync("npx", ["tsx", script], { stdio: "inherit", env: process.env });
   if (res.status !== 0) {
-    console.error(`FAIL: step "${label}" exited ${res.status}`);
-    process.exit(1);
+    throw new Error(`step "${label}" exited ${res.status}`);
   }
 }
 
@@ -277,19 +279,34 @@ async function main() {
     }
   });
 
-  lockClient.release(); // advisory lock is session-scoped; freed when pool closes
-  await pool.end();
-
   // --- 4/5. Components + seeds (child processes: fresh caches per step) ---
   const base = path.dirname(new URL(import.meta.url).pathname);
-  runStep("components", path.join(base, "dev/enable-components.ts"));
-  runStep("policies", path.join(base, "seed-migration-policies.ts"));
-  runStep("employment statuses", path.join(base, "seed-employment-statuses.ts"));
-  runStep("genders", path.join(base, "dev/seed-genders.ts"));
-  runStep("call reasons", path.join(base, "dev/seed-call-reasons.ts"));
+  process.env.S1_BOOTSTRAP_LOCK_HELD = "1";
+  try {
+    const pauseBeforeChildrenMs = Number(process.env.S1_BOOTSTRAP_TEST_PAUSE_BEFORE_CHILDREN_MS ?? "0");
+    if (Number.isFinite(pauseBeforeChildrenMs) && pauseBeforeChildrenMs > 0) {
+      console.log(`TEST PAUSE: retaining advisory lock before child seeds for ${pauseBeforeChildrenMs}ms`);
+      await new Promise((resolve) => setTimeout(resolve, pauseBeforeChildrenMs));
+    }
+    runStep("production components", path.join(base, "enable-production-components.ts"));
+    runStep("policies", path.join(base, "seed-migration-policies.ts"));
+    runStep("employment statuses", path.join(base, "seed-employment-statuses.ts"));
+    runStep("BAO ledger and hourly baseline", path.join(base, "seed-bao-production-baseline.ts"));
+    runStep("cron lockout", path.join(base, "lockout-bootstrap-crons.ts"));
+    runStep("genders", path.join(base, "dev/seed-genders.ts"));
+    runStep("call reasons", path.join(base, "dev/seed-call-reasons.ts"));
+  } finally {
+    delete process.env.S1_BOOTSTRAP_LOCK_HELD;
+    lockClient.release(); // parent lock spans every synchronous child seed
+    await pool.end();
+  }
 
   console.log(
-    `\nDONE. Next: stage.ts (at freeze) → seed-trust-config.ts → loaders (RUNBOOK §4).`,
+    `\nDONE. Next (at freeze):\n` +
+      `  npx tsx scripts/s1-migration/stage.ts\n` +
+      `  npx tsx scripts/s1-migration/seed-trust-config.ts\n` +
+      `  npx tsx scripts/s1-migration/seed-policy-benefits.ts\n` +
+      `Then run the loaders (RUNBOOK §4).`,
   );
   process.exit(0);
 }
