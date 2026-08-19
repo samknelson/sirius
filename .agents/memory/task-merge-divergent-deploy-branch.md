@@ -1,6 +1,6 @@
 ---
 name: Task-merge SHA rewrite vs deployment branches
-description: Why push-branch.sh hits non-fast-forward after a task agent pushed to bao-dev/bao-replit-main, and the safe -s ours reconcile.
+description: Why deployment pushes diverge after task-agent commits and the proof required for automatic history-only reconciliation.
 ---
 
 The platform's task merge rewrites the task agent's commits into NEW SHAs on
@@ -9,18 +9,20 @@ commits to a deployment branch (`bao-dev`, `bao-replit-main`), the remote tip
 and `main` end up with identical content under different SHAs → the
 "Push to bao-dev" workflow fails with `non-fast-forward` on both refs.
 
-**How to fix:**
-1. `git fetch`, then confirm the remote-only commits carry nothing unique:
-   `git diff <main's merge commit> <remote tip> -- <files touched by remote-only commits>`
-   must be empty.
-2. Reconnect ancestry keeping main's tree byte-for-byte:
-   `git -c core.hooksPath=/dev/null merge -s ours origin/bao-dev -m "..."`.
-3. Do NOT push — replit.md rule: never push bao-dev/bao-prd automatically;
-   the user re-runs the push workflow themselves.
+**Rule:** A user-triggered deployment push may auto-reconcile divergent remote
+history only when the remote branch's complete net patch since its merge base
+reverse-applies cleanly to committed `main`. That proves the remote changes are
+already present. The resulting reconciliation commit must reuse `main`'s exact
+tree and add the remote tip only as a parent.
 
-**Why `-s ours` is safe here:** the remote commits are a duplicate of content
-already merged into main, and main is strictly newer; a content merge would
-only risk resurrecting the older duplicate.
+**Why:** Patch IDs are not reliable here because the same task may be applied
+against a different parent/context during the platform merge. Reverse-applying
+the full net patch is conservative and handles rewritten commits without
+accepting unrelated content. Keeping the tree unchanged avoids resurrecting
+the older duplicate.
 
-If the diff in step 1 is NOT empty, stop — the remote has real work `main`
-lacks, and a normal merge (with conflict review) is required instead.
+**How to apply:** Fetch both the selected deployment branch and
+`bao-replit-main`, check each independently, and refuse the push if either patch
+does not reverse-apply. Push both refs atomically so one cannot advance while
+the other fails. The workflow remains user-triggered; never push a bao branch
+outside that workflow.
