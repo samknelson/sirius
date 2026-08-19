@@ -338,10 +338,24 @@ taxonomy terms.
 
 **Ruling (2026-08-05):** widen `employer_contacts` to **MULTI-LINK** — one row per
 (contact, employer, type). Shipped same day: storage uniqueness moved from the
-(contact, employer) pair to the triple; the T24 loader creates one link per resolved
-type (co_role first, then term order), heals prior single-link rows (an untyped link
-is retyped to the first missing type), keeps operator-added links (`s2ExtraLinksKept`).
-**Prod expectation: ~920 links (557 + 363), 0 assignments lost; `extra_contact_types_dropped` no longer exists as a reject class.**
+(contact, employer) pair to the triple; the T24 loader heals prior single-link rows
+(an untyped link is retyped to the first missing type), keeps operator-added links
+(`s2ExtraLinksKept`).
+
+**Re-stated 2026-08-19 (title-mapping correction):** `co_role` is the Company Rep
+Title → `employer_contacts.position`, NOT a contact type. Only taxonomy
+`contact_types` terms produce typed links, so the ~920-link figure (which counted
+each `co_role` as a type link) is obsolete. **New prod expectation: one link per
+(contact, employer, taxonomy term) = SUM(term_n), plus one untyped link per contact
+with `term_n = 0`; every contact with a non-empty `co_role` carries it as `position`
+on its loader-owned links (NULL-only backfill — staff-entered positions are
+preserved and reported as `positionConflictsKept`). Removing the previously created
+title-as-type links (`roleTypeLinksRemoved`) requires the audited
+`--correct-role-links` flag for the pre-stamp legacy import (links to
+loader-stamped options need no flag); ambiguous/staff-edited links are preserved and
+listed in `roleLinkCandidateSamples` for manual review. Option rows are never
+deleted.** The old `role_n` column in the query below now sizes the position
+backfill, not link count.
 
 Representative re-run query (aggregates only):
 

@@ -248,16 +248,29 @@ doesn't match. It must never point at production.
   hours-loader stubs in place; `sirius_id = String(nid)`; industry via term
   id_map → industry options `siriusId` fallback, unresolved = counted reject +
   NULL), `grievance_shop_contact` → contacts + `employer_contacts` (contact
-  types ensured BY NAME in `options_employer_contact_type` from `co_role` free
-  text + `contact_types` term names). **T24 multi-link (N25 ruling
-  2026-08-05):** one `employer_contacts` row per (contact, employer, type) —
-  co_role-derived type first, then term order; storage now enforces
-  uniqueness on the (contact, employer, type) triple instead of the pair.
-  Milestone-3 single-link rows self-heal on re-run (an untyped link is
-  retyped to the first missing type, remaining types become new links);
-  operator-added links with other types are KEPT (`s2ExtraLinksKept`); no
-  type info → one NULL-type link, and drift-reconcile never nulls an
-  operator-set type. Prod expectation (07 §P5): 557 contacts → ~920 links
+  types ensured BY NAME in `options_employer_contact_type` from
+  `contact_types` term names ONLY — corrected 2026-08-19; `co_role` free text
+  is the Company Rep Title → `employer_contacts.position`,
+  whitespace-normalized, on every loader-owned link). **T24 multi-link (N25
+  ruling 2026-08-05):** one `employer_contacts` row per (contact, employer,
+  type) in term order; storage enforces uniqueness on the (contact, employer,
+  type) triple instead of the pair. Milestone-3 single-link rows self-heal on
+  re-run (an untyped link is retyped to the first missing type, remaining
+  types become new links); a re-run also CORRECTS the earlier title-as-type
+  import — a link whose type name matches the source rep title (no same-named
+  taxonomy term) is removed (`roleTypeLinksRemoved`) only when ownership is
+  demonstrable: the option carries the loader provenance stamp
+  (`data.s1Loader`) or the operator passes `--correct-role-links` for the
+  pre-stamp legacy import, and the link's position shows no independent staff
+  edit. Ambiguous candidates are preserved and reported
+  (`roleLinkCandidatesKept` + `roleLinkCandidateSamples`). Position is only
+  BACKFILLED into NULL (`positionsSet` on create, `positionsBackfilled` on
+  existing links); a differing staff-entered position is preserved and
+  reported (`positionConflictsKept` + samples). Option rows are never
+  deleted. Operator-added links with other types are KEPT (`s2ExtraLinksKept`);
+  no taxonomy type → one NULL-type link carrying the position, and
+  drift-reconcile never nulls an operator-set type or position. Prod
+  expectation re-stated in 07 §P5 (taxonomy-term links only)
   (the 363 assignments dropped under single-link now load); verify checks
   every resolved type has its link.
   Phones (Phone / Phone 2 / Fax) and address (`address_2` merged into street —
@@ -639,7 +652,17 @@ harnesses are green again.
   `employer_contacts` widened to MULTI-LINK: one row per (contact, employer,
   type); storage guard + loader + verify updated, smoke-tested by
   `scripts/oneoffs/s1-n25-n26-smoke.ts`. Prod numbers in 07 §P5 (557
-  contacts, 351 multi-type, 363 previously-dropped assignments now load).
+  contacts, 351 multi-type; link expectation re-stated 2026-08-19).
+- **T24 title mapping — CORRECTED (2026-08-19).** `co_role` (Company Rep
+  Title) → `employer_contacts.position`, never a contact type; taxonomy
+  `contact_types` terms are the sole type source. Re-runs backfill position
+  (NULL-only; staff values preserved + reported) and remove the old
+  title-as-type links only with demonstrable ownership (provenance stamp) or
+  under the audited `--correct-role-links` flag; ambiguous links are reported
+  for review and option rows are never deleted. Smoke-tested end-to-end
+  (taxonomy-only, title-only, mixed, legacy correction with/without the flag,
+  staff-collision preservation, manual-position preservation, idempotent
+  re-run) by `scripts/oneoffs/s1-t24-contact-title-smoke.ts`.
 - **Relationship date constraints — RESOLVED (N26 ruling 2026-08-05).**
   The 115 missing-start rows load with default dates (start `2000-01-01`,
   end `2000-01-02` unless a real S1 end exists; `data.datesDefaulted=true`).

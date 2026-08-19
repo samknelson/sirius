@@ -18,15 +18,33 @@
  * Shop-contacts pass (02-mapping §9c, T24):
  *   - one contact per node: display_name = co_name (else title) — NO
  *     given/family guessing (T24); email with cross-contact dedupe (T12)
- *   - contact types: co_role free text + contact_types term names →
- *     options_employer_contact_type ensured BY NAME via unified options
- *     (dedupe case/whitespace). MULTI-LINK per the 2026-08-05 ruling (N25
- *     closed): one employer_contacts row per (contact, employer, type) —
- *     co_role first, then term order. A milestone-3 single-link row gets
- *     healed: an untyped link is retyped to the first missing type, then the
- *     remaining types are created as additional links. Operator-added links
- *     with types the source doesn't carry are KEPT (counted
- *     s2ExtraLinksKept); no type info at all → one untyped link.
+ *   - contact types (CORRECTED per task 2026-08-19): S1 Contact Type taxonomy
+ *     (`field_grievance_contact_types` term names) is the SOLE source of
+ *     employer_contacts.contact_type_id — options_employer_contact_type
+ *     ensured BY NAME via unified options (dedupe case/whitespace).
+ *     MULTI-LINK per the 2026-08-05 ruling (N25 closed): one
+ *     employer_contacts row per (contact, employer, type) in term order. A
+ *     milestone-3 single-link row gets healed: an untyped link is retyped to
+ *     the first missing type, then the remaining types are created as
+ *     additional links. Operator-added links with types the source doesn't
+ *     carry are KEPT (counted s2ExtraLinksKept); no type info at all → one
+ *     untyped link.
+ *   - Company Rep Title (`field_grievance_co_role` free text, e.g. "Director
+ *     of People Operations") is NOT a contact type: it lands, whitespace-
+ *     normalized, in employer_contacts.position on every loader-owned link
+ *     for that (contact, employer) — but only backfilled into NULL positions:
+ *     a differing staff-entered value is preserved and reported
+ *     (positionConflictsKept). Re-runs CORRECT earlier imports that treated
+ *     the rep title as a type: a link whose contact type matches the source
+ *     rep title (and no same-named taxonomy term exists) is removed
+ *     (roleTypeLinksRemoved) only when ownership is demonstrable — the
+ *     option carries the loader provenance stamp (data.s1Loader) or the
+ *     operator passed --correct-role-links for the pre-stamp legacy import —
+ *     and the link shows no independent staff position edit. Ambiguous
+ *     candidates are preserved + reported (roleLinkCandidatesKept, samples).
+ *     Valid taxonomy-derived and operator-managed links stay, and the
+ *     erroneously-created option rows are LEFT in place (staff may have
+ *     adopted them; deleting risks data).
  *   - phones co_phone/_phone_2/_fax → E.164 rows (Phone / Phone 2 / Fax)
  *   - address co_address(+_2 merged into street — createOrMatchAddress has no
  *     line2)/city/state/zip → contact_postal via createOrMatchAddress
@@ -42,7 +60,7 @@
  * allowance must be a conscious ruling.
  *
  * Usage:
- *   npx tsx scripts/s1-migration/load-employers.ts [--dry-run] [--allow-rejects r1,r2]
+ *   npx tsx scripts/s1-migration/load-employers.ts [--dry-run] [--allow-rejects r1,r2] [--correct-role-links]
  *
  * Output is AGGREGATES ONLY (plus S1 nids / opaque ids) — safe inside the
  * HIPAA boundary.
@@ -57,6 +75,10 @@ import { RejectLog, loadStaged, strOf, tidOf, targetNidOf, toE164 } from "./lib/
 import { makeProgressLogger } from "./lib/progress";
 
 const DRY_RUN = process.argv.includes("--dry-run");
+/** Opt-in, audited one-time correction: remove legacy title-as-type links
+ * even when the option row carries no loader provenance stamp (pre-stamp
+ * imports). Without the flag such links are only REPORTED as candidates. */
+const CORRECT_ROLE_LINKS = process.argv.includes("--correct-role-links");
 const ALLOWED_REJECTS: string[] = (() => {
   const i = process.argv.indexOf("--allow-rejects");
   return i >= 0 ? String(process.argv[i + 1] ?? "").split(",").filter(Boolean) : [];
@@ -179,9 +201,15 @@ async function main() {
   report.shopFieldsWithoutS2Home = unloadedFieldCounts;
 
   // ---------------- shop-contacts pass (§9c, T24) ----------------
-  const scStats = { matched: 0, created: 0, updated: 0, linksCreated: 0, linksRetyped: 0, s2ExtraLinksKept: 0, phonesCreated: 0, addressesUpserted: 0, addressesMatched: 0, typesEnsured: 0, companyRefsDeferred: 0 };
-  /** contact nid → the employer + full type set the verify pass must see (N25 multi-link). */
-  const expectedLinksByContactNid = new Map<number, { employerId: string; typeIds: string[] }>();
+  const scStats = { matched: 0, created: 0, updated: 0, linksCreated: 0, linksRetyped: 0, roleTypeLinksRemoved: 0, roleLinkCandidatesKept: 0, positionsSet: 0, positionsBackfilled: 0, positionConflictsKept: 0, s2ExtraLinksKept: 0, phonesCreated: 0, addressesUpserted: 0, addressesMatched: 0, typesEnsured: 0, companyRefsDeferred: 0 };
+  /** Ambiguous title-as-type links preserved for manual review (capped). */
+  const roleLinkCandidateSamples: Array<{ nid: number; linkId: string; typeId: string; staffEditedPosition: boolean }> = [];
+  /** Loader-owned links whose existing non-null position differs from the source title (never overwritten; capped). */
+  const positionConflictSamples: Array<{ nid: number; linkId: string }> = [];
+  /** contact nid → what the verify pass must see: employer + full taxonomy
+   * type set (N25 multi-link), the expected position (rep title), and the
+   * erroneous title-as-type id that must NOT remain linked (null when n/a). */
+  const expectedLinksByContactNid = new Map<number, { employerId: string; typeIds: string[]; position: string | null; removedTypeId: string | null; positionConflict: boolean }>();
 
   const contactMap = await getMappings("contact", shopContacts.map((c) => c.nid));
   const employerMapFinal = await getMappings("employer", shops.map((s) => s.nid));
@@ -212,19 +240,26 @@ async function main() {
     }
   }
 
-  // options_employer_contact_type ensured by (case/whitespace-normalized) name
-  const typeRows: Array<{ id: string; name: string }> = await options.list("employer-contact-type");
+  // options_employer_contact_type ensured by (case/whitespace-normalized) name.
+  // Loader-created options are provenance-stamped (data.s1Loader) so future
+  // corrections can prove ownership instead of guessing by name.
+  const typeRows: Array<{ id: string; name: string; data?: Record<string, unknown> | null }> = await options.list("employer-contact-type");
   const typeIdByNorm = new Map(typeRows.map((r) => [r.name.trim().replace(/\s+/g, " ").toLowerCase(), r.id]));
+  const loaderStampedTypeIds = new Set(typeRows.filter((r) => (r.data as any)?.s1Loader).map((r) => r.id));
+  const normKey = (s: string) => s.trim().replace(/\s+/g, " ").toLowerCase();
   const ensureType = async (label: string): Promise<string | null> => {
     const norm = label.trim().replace(/\s+/g, " ");
     if (!norm) return null;
     const key = norm.toLowerCase();
     let id = typeIdByNorm.get(key);
     if (!id && !DRY_RUN) {
-      const created = await withNotificationsSuppressed(() => options.create("employer-contact-type", { name: norm }));
+      const created = await withNotificationsSuppressed(() =>
+        options.create("employer-contact-type", { name: norm, data: { s1Loader: LOADER } }),
+      );
       id = created.id;
       if (id) {
         typeIdByNorm.set(key, id);
+        loaderStampedTypeIds.add(id);
         scStats.typesEnsured++;
       }
     }
@@ -292,12 +327,13 @@ async function main() {
 
     if (DRY_RUN || !contactId) continue;
 
-    // contact types (T24, MULTI-LINK per N25 ruling 2026-08-05): one
-    // employer_contacts row per (contact, employer, type) — role free text
-    // first, then contact_types term names (delta order)
+    // contact types (T24, MULTI-LINK per N25 ruling 2026-08-05, source
+    // CORRECTED 2026-08-19): the Contact Type taxonomy terms are the SOLE
+    // type source, in delta order. The co_role free text is the rep title →
+    // employer_contacts.position, never a type.
     const typeLabels: string[] = [];
     const role = strOf(c.fields, "field_grievance_co_role");
-    if (role) typeLabels.push(role);
+    const position = role ? role.replace(/\s+/g, " ").trim() : null;
     {
       const raw = c.fields["field_grievance_contact_types"];
       const arr = Array.isArray(raw) ? raw : raw != null ? [raw] : [];
@@ -309,6 +345,7 @@ async function main() {
         else rejects.add("contact_type_term_unstaged", { nid: c.nid, tid });
       }
     }
+    const taxonomyKeys = new Set(typeLabels.map(normKey).filter(Boolean));
     const typeIds: string[] = [];
     for (const label of [...new Set(typeLabels.map((l) => l.trim().replace(/\s+/g, " ")).filter(Boolean))]) {
       const id = await ensureType(label);
@@ -316,17 +353,53 @@ async function main() {
     }
 
     const allLinks = await storage.employerContacts.listByContactId(contactId);
-    const links = allLinks.filter((l) => l.employerId === employerMapping.s2Id);
+    let links = allLinks.filter((l) => l.employerId === employerMapping.s2Id);
+
+    // Corrective re-run (2026-08-19): earlier loads created a link whose
+    // contact type IS the rep title. A link is a CANDIDATE when the source
+    // rep title's normalized name matches an existing type option and no
+    // taxonomy term of the same name exists for this contact. It is removed
+    // only when ownership is demonstrable: the option carries the loader's
+    // provenance stamp, or the operator explicitly opted in with
+    // --correct-role-links (pre-stamp legacy imports) AND the link's position
+    // shows no independent staff edit (null or already equal to the title).
+    // Everything else is preserved and REPORTED (roleLinkCandidatesKept +
+    // samples) for manual review. Option rows are never deleted.
+    let removedTypeId: string | null = null;
+    if (position && !taxonomyKeys.has(normKey(position))) {
+      const badTypeId = typeIdByNorm.get(normKey(position)) ?? null;
+      if (badTypeId) {
+        const candidates = links.filter((l) => l.contactTypeId === badTypeId);
+        for (const bad of candidates) {
+          const staffEditedPosition = bad.position != null && bad.position !== position;
+          const demonstrable = loaderStampedTypeIds.has(badTypeId) || CORRECT_ROLE_LINKS;
+          if (demonstrable && !staffEditedPosition) {
+            await withNotificationsSuppressed(() => storage.employerContacts.delete(bad.id));
+            scStats.roleTypeLinksRemoved++;
+            removedTypeId = badTypeId;
+            links = links.filter((l) => l.id !== bad.id);
+          } else {
+            scStats.roleLinkCandidatesKept++;
+            if (roleLinkCandidateSamples.length < 25) {
+              roleLinkCandidateSamples.push({ nid: c.nid, linkId: bad.id, typeId: badTypeId, staffEditedPosition });
+            }
+          }
+        }
+      }
+    }
     const haveTypes = new Set(links.map((l) => (l.contactTypeId ?? null) as string | null));
 
     if (typeIds.length === 0) {
-      // no type info at all → ensure ONE untyped link; never null-out an
-      // operator-set type on an existing link
-      if (links.length === 0) {
-        await withNotificationsSuppressed(() =>
-          storage.employerContacts.create({ contactId: contactId!, employerId: employerMapping.s2Id, contactTypeId: null }),
+      // no Contact Type taxonomy value → ensure ONE loader-owned untyped link
+      // (carrying the position), even alongside operator-added typed links;
+      // never null-out an operator-set type on an existing link
+      if (!links.some((l) => (l.contactTypeId ?? null) === null)) {
+        const created = await withNotificationsSuppressed(() =>
+          storage.employerContacts.create({ contactId: contactId!, employerId: employerMapping.s2Id, contactTypeId: null, position }),
         );
+        links.push(created as (typeof links)[number]);
         scStats.linksCreated++;
+        if (position) scStats.positionsSet++;
       }
     } else {
       const missingTypes = typeIds.filter((t) => !haveTypes.has(t));
@@ -336,22 +409,49 @@ async function main() {
       if (nullLink && missingTypes.length > 0) {
         const t = missingTypes.shift()!;
         await withNotificationsSuppressed(() => storage.employerContacts.update(nullLink.id, { contactTypeId: t }));
+        nullLink.contactTypeId = t;
         haveTypes.delete(null);
         haveTypes.add(t);
         scStats.linksRetyped++;
       }
       for (const t of missingTypes) {
-        await withNotificationsSuppressed(() =>
-          storage.employerContacts.create({ contactId: contactId!, employerId: employerMapping.s2Id, contactTypeId: t }),
+        const created = await withNotificationsSuppressed(() =>
+          storage.employerContacts.create({ contactId: contactId!, employerId: employerMapping.s2Id, contactTypeId: t, position }),
         );
+        links.push(created as (typeof links)[number]);
         haveTypes.add(t);
         scStats.linksCreated++;
+        if (position) scStats.positionsSet++;
       }
       // operator-added links whose type the source doesn't carry are KEPT
       const extras = links.filter((l) => (l.contactTypeId ?? null) !== null && !typeIds.includes(l.contactTypeId!)).length;
       if (extras > 0) scStats.s2ExtraLinksKept += extras;
     }
-    expectedLinksByContactNid.set(c.nid, { employerId: employerMapping.s2Id, typeIds });
+
+    // Position backfill on loader-owned links only: links carrying a
+    // source-derived taxonomy type, or the untyped link(s) when the source
+    // has no taxonomy types. Only a NULL position is filled — an existing
+    // non-null value may be staff-entered, so a differing one is preserved
+    // and reported (positionConflictsKept), never overwritten; and the
+    // loader never nulls a position when the source carries no rep title.
+    let positionConflict = false;
+    if (position) {
+      const owned = typeIds.length === 0
+        ? links.filter((l) => (l.contactTypeId ?? null) === null)
+        : links.filter((l) => l.contactTypeId != null && typeIds.includes(l.contactTypeId));
+      for (const l of owned) {
+        if (l.position == null) {
+          await withNotificationsSuppressed(() => storage.employerContacts.update(l.id, { position }));
+          l.position = position;
+          scStats.positionsBackfilled++;
+        } else if (l.position !== position) {
+          positionConflict = true;
+          scStats.positionConflictsKept++;
+          if (positionConflictSamples.length < 25) positionConflictSamples.push({ nid: c.nid, linkId: l.id });
+        }
+      }
+    }
+    expectedLinksByContactNid.set(c.nid, { employerId: employerMapping.s2Id, typeIds, position, removedTypeId, positionConflict });
 
     // phones (T5): Phone / Phone 2 / Fax
     const phoneSpecs: Array<{ key: string; friendly: string; primary: boolean }> = [
@@ -420,6 +520,8 @@ async function main() {
     }
   }
   report.shopContacts = scStats;
+  report.roleLinkCandidateSamples = roleLinkCandidateSamples;
+  report.positionConflictSamples = positionConflictSamples;
 
   // ---------------- verify pass ----------------
   progress.phase("verify", shops.length + shopContacts.length);
@@ -463,16 +565,38 @@ async function main() {
         verifyFailures++;
         continue;
       }
-      // N25 multi-link: every resolved source type must have its own link row
+      // N25 multi-link: every resolved source type must have its own link row.
+      // 2026-08-19: also verify position mapping (rep title → position on
+      // every loader-owned link, including type-less contacts) and that the
+      // erroneous title-as-type link is gone.
       const exp = expectedLinksByContactNid.get(c.nid);
-      if (exp && exp.typeIds.length > 0) {
-        const have = new Set(
-          links.filter((l) => l.employerId === exp.employerId).map((l) => (l.contactTypeId ?? null) as string | null),
-        );
-        const missing = exp.typeIds.filter((t) => !have.has(t));
-        if (missing.length > 0) {
-          console.error(`VERIFY: shop contact nid ${c.nid} missing ${missing.length} typed employer link(s)`);
+      if (exp) {
+        const empLinks = links.filter((l) => l.employerId === exp.employerId);
+        if (exp.typeIds.length > 0) {
+          const have = new Set(empLinks.map((l) => (l.contactTypeId ?? null) as string | null));
+          const missing = exp.typeIds.filter((t) => !have.has(t));
+          if (missing.length > 0) {
+            console.error(`VERIFY: shop contact nid ${c.nid} missing ${missing.length} typed employer link(s)`);
+            verifyFailures++;
+          }
+        }
+        if (exp.removedTypeId && empLinks.some((l) => l.contactTypeId === exp.removedTypeId)) {
+          console.error(`VERIFY: shop contact nid ${c.nid} still has the erroneous title-as-type link`);
           verifyFailures++;
+        }
+        if (exp.position) {
+          const owned = exp.typeIds.length === 0
+            ? empLinks.filter((l) => (l.contactTypeId ?? null) === null)
+            : empLinks.filter((l) => l.contactTypeId != null && exp.typeIds.includes(l.contactTypeId));
+          // a reported staff-position conflict is preserved, so only require
+          // a non-null position there; everywhere else the exact title
+          const ok = owned.length > 0 && owned.every((l) =>
+            exp.positionConflict ? l.position != null : (l.position ?? null) === exp.position,
+          );
+          if (!ok) {
+            console.error(`VERIFY: shop contact nid ${c.nid} position not applied to all source-derived link(s)`);
+            verifyFailures++;
+          }
         }
       }
     }

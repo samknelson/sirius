@@ -584,6 +584,7 @@ for (let i = 0; i < 8; i++) {
   await fd('field_data_field_grievance_contact_types', ctRows);
   if (i < 6) await fd('field_data_field_grievance_co_name', [{bundle:'grievance_shop_contact', entity_id:nid, values:{field_grievance_co_name_value:`${first} ${last}`}}]);
   if (i < 6) await fd('field_data_field_grievance_co_email', [{bundle:'grievance_shop_contact', entity_id:nid, values:{field_grievance_co_email_email:`hr${i}@example.test`}}]);
+  // co_role = free-text Company Rep Title → employer_contacts.position in T24 (NOT a contact type)
   if (i < 5) await fd('field_data_field_grievance_co_role', [{bundle:'grievance_shop_contact', entity_id:nid, values:{field_grievance_co_role_value:pick(['HR Manager','Benefits Coordinator','Payroll Supervisor','Office Manager'])}}]);
   if (i < 2) await fd('field_data_field_grievance_co_phone', [{bundle:'grievance_shop_contact', entity_id:nid, values:{field_grievance_co_phone_value:`213-555-${String(ri(0,9999)).padStart(4,'0')}`}}]);
   if (i === 0) await fd('field_data_field_grievance_co_phone_2', [{bundle:'grievance_shop_contact', entity_id:nid, values:{field_grievance_co_phone_2_value:`213-555-${String(ri(0,9999)).padStart(4,'0')}`}}]);

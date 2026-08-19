@@ -233,13 +233,13 @@ Production has the full grievance table set (290 tables: 145 `field_data_*` + 14
 | S1 field | S2 destination | Class |
 |---|---|---|
 | `field_grievance_co_name` | `contacts.display_name` (split given/family unavailable) | NEEDS-TRANSFORM T24 |
-| `field_grievance_co_role` | `employer_contacts.contact_type_id` → `options_employer_contact_type` (free text → coded) | NEEDS-TRANSFORM T24 |
+| `field_grievance_co_role` | `employer_contacts.position` (free-text rep title, whitespace-normalized; **NOT a contact type** — corrected 2026-08-19, re-run removes the old title-as-type links) | NEEDS-TRANSFORM T24 |
 | `field_grievance_co_email` (`_email`) | `contacts.email` | direct |
 | `field_grievance_co_phone`/`_phone_2`/`_fax` | `contact_phone` rows (friendly_name Phone/Phone 2/Fax) | NEEDS-TRANSFORM T5 |
 | `field_grievance_co_address`/`_address_2`/`_city`/`_state`/`_zip` | `contact_postal.street(+line2)/city/state/postal_code` | NEEDS-TRANSFORM T13 |
 | `field_grievance_shops` (`_target_id`, employer) | `employer_contacts.employer_id` | NEEDS-TRANSFORM T2 |
 | `field_grievance_company` (`_target_id`) | `companies` (has `sirius_id`) + `employer_companies` | NEEDS-TRANSFORM T2 |
-| `field_grievance_contact_types` (`_tid`, multi) | `employer_contacts.contact_type_id` — **MULTI-LINK (N25 closed 2026-08-05): one row per (contact, employer, type)** — storage widened + loader shipped. Prod (07 §P5): 351/557 multi-type; the 363 assignments dropped under single-link now load | NEEDS-TRANSFORM T24 |
+| `field_grievance_contact_types` (`_tid`, multi) | `employer_contacts.contact_type_id` — **SOLE source of contact types (2026-08-19)**; **MULTI-LINK (N25 closed 2026-08-05): one row per (contact, employer, type)** — storage widened + loader shipped. Prod (07 §P5, re-stated 2026-08-19): term-derived links only; `co_role` no longer counts toward links | NEEDS-TRANSFORM T24 |
 | `field_grievance_description` | MASKED | masked, confirm Q1 |
 
 ### 9d. Letter templates — bundle `node/grievance_letter_template`

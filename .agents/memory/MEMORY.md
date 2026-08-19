@@ -122,4 +122,5 @@
 - [.replit gitignored vs task review](dotreplit-gitignored-review.md) — .replit workflow changes never show in the task diff; completion review rejects unless drift_reason explains it.
 - [jsonb adopt-compare key order](jsonb-adopt-compare-key-order.md) — Postgres jsonb reorders keys; "unchanged, adopt" checks must canonical-stringify or reruns churn updates forever.
 - [S1 shared-email ownership](s1-shared-email-ownership.md) — raw_user_contact (user↔contact assoc) is THE ownership signal; no-owner shared addresses defer to email=null (737 pending fund ruling).
+- [Loader writes precede reject gate](loader-writes-before-reject-gate.md) — a run failing on disallowed rejects already wrote; smokes need --allow-rejects on run 1 (dry-run priming); FK crash = dangling id_map.
 - [S1 loader run order](s1-loader-run-order.md) — t18 references resolve via id_map; loading ledger before payments/WMB silently types everything s1-unknown; adopt never re-resolves.
