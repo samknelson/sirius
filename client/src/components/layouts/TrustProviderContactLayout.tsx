@@ -36,6 +36,7 @@ interface TrustProviderContact {
   providerId: string;
   contactId: string;
   contactTypeId: string | null;
+  position: string | null;
   contact: Contact;
   contactType?: ContactType | null;
 }

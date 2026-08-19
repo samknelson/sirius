@@ -331,6 +331,10 @@ export const employerContacts = pgTable("employer_contacts", {
   employerId: varchar("employer_id").notNull().references(() => employers.id, { onDelete: 'cascade' }),
   contactId: varchar("contact_id").notNull().references(() => contacts.id, { onDelete: 'cascade' }),
   contactTypeId: varchar("contact_type_id"),
+  // Relationship-specific job position (free text, e.g. "Director of Human
+  // Resources"). Lives on the association, not the person: one contact can
+  // hold a different position at each employer.
+  position: text("position"),
 }, (table) => [
   foreignKey({
     name: "employer_contacts_contact_type_id_options_employer_contact_type",
@@ -380,6 +384,9 @@ export const trustProviderContacts = pgTable("trust_provider_contacts", {
   providerId: varchar("provider_id").notNull().references(() => trustProviders.id, { onDelete: 'cascade' }),
   contactId: varchar("contact_id").notNull().references(() => contacts.id, { onDelete: 'cascade' }),
   contactTypeId: varchar("contact_type_id"),
+  // Relationship-specific job position, same semantics as
+  // employer_contacts.position.
+  position: text("position"),
 }, (table) => [
   foreignKey({
     name: "trust_provider_contacts_contact_type_id_options_trust_provider_",

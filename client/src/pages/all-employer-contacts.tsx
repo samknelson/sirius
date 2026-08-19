@@ -124,6 +124,7 @@ export default function AllEmployerContacts() {
     const csvData = employerContacts.map(ec => ({
       "Employer": ec.employer.name,
       "Contact Type": ec.contactType?.name || "",
+      "Position": ec.position || "",
       "Display Name": ec.contact.displayName || "",
       "Title": ec.contact.title || "",
       "First Name": ec.contact.given || "",
@@ -144,6 +145,7 @@ export default function AllEmployerContacts() {
     const grouped = new Map<string, {
       contact: EmployerContactWithDetails["contact"];
       contactTypes: Set<string>;
+      positions: Set<string>;
       employers: string[];
     }>();
 
@@ -153,6 +155,7 @@ export default function AllEmployerContacts() {
         grouped.set(key, {
           contact: ec.contact,
           contactTypes: new Set(),
+          positions: new Set(),
           employers: [],
         });
       }
@@ -161,9 +164,12 @@ export default function AllEmployerContacts() {
       if (ec.contactType?.name) {
         entry.contactTypes.add(ec.contactType.name);
       }
+      if (ec.position) {
+        entry.positions.add(ec.position);
+      }
     }
 
-    const csvData = Array.from(grouped.values()).map(({ contact, contactTypes, employers }) => ({
+    const csvData = Array.from(grouped.values()).map(({ contact, contactTypes, positions, employers }) => ({
       "Display Name": contact.displayName || "",
       "Title": contact.title || "",
       "First Name": contact.given || "",
@@ -173,6 +179,7 @@ export default function AllEmployerContacts() {
       "Credentials": contact.credentials || "",
       "Email": contact.email || "",
       "Contact Types": Array.from(contactTypes).join(", "),
+      "Positions": Array.from(positions).join(", "),
       "Employers": employers.join(", "),
     }));
 
@@ -405,6 +412,7 @@ export default function AllEmployerContacts() {
                     <TableHead>Contact Name</TableHead>
                     <TableHead>Email</TableHead>
                     <TableHead>Contact Type</TableHead>
+                    <TableHead>Position</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -443,6 +451,7 @@ export default function AllEmployerContacts() {
                           </div>
                         ) : "—"}
                       </TableCell>
+                      <TableCell data-testid={`text-position-${ec.id}`}>{ec.position || "—"}</TableCell>
                       <TableCell className="text-right">
                         <Link href={`/employer-contacts/${ec.id}`}>
                           <Button

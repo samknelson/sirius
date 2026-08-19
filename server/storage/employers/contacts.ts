@@ -4,14 +4,20 @@ import { eq, and, or, like, ilike, sql, inArray } from "drizzle-orm";
 import { withStorageLogging, type StorageLoggingConfig } from "../middleware/logging";
 import type { ContactsStorage } from "../contacts";
 
+/** Trim free-entry position text; whitespace-only becomes null. */
+export function normalizePosition(position: string | null | undefined): string | null {
+  const trimmed = position?.trim();
+  return trimmed ? trimmed : null;
+}
+
 export interface EmployerContactStorage {
-  create(data: { contactId: string; employerId: string; contactTypeId?: string | null }): Promise<EmployerContact>;
+  create(data: { contactId: string; employerId: string; contactTypeId?: string | null; position?: string | null }): Promise<EmployerContact>;
   listByEmployer(employerId: string): Promise<Array<EmployerContact & { contact: Contact; contactType?: { id: string; name: string; description: string | null } | null }>>;
   listByContactId(contactId: string): Promise<Array<EmployerContact & { contact: Contact; employer: Employer; contactType?: { id: string; name: string; description: string | null } | null }>>;
   getAll(filters?: { employerId?: string; contactName?: string; contactTypeId?: string }): Promise<Array<EmployerContact & { contact: Contact; employer: Employer; contactType?: { id: string; name: string; description: string | null } | null }>>;
   getByEmployerIds(employerIds: string[], contactTypeIds?: string[]): Promise<Array<{ employerContactId: string; employerId: string; contactId: string; contactTypeId: string | null; displayName: string | null; email: string | null }>>;
   get(id: string): Promise<(EmployerContact & { contact: Contact; contactType?: { id: string; name: string; description: string | null } | null }) | null>;
-  update(id: string, data: { contactTypeId?: string | null }): Promise<(EmployerContact & { contact: Contact; contactType?: { id: string; name: string; description: string | null } | null }) | null>;
+  update(id: string, data: { contactTypeId?: string | null; position?: string | null }): Promise<(EmployerContact & { contact: Contact; contactType?: { id: string; name: string; description: string | null } | null }) | null>;
   updateContactEmail(id: string, email: string | null): Promise<(EmployerContact & { contact: Contact; contactType?: { id: string; name: string; description: string | null } | null }) | null>;
   updateContactName(id: string, components: {
     title?: string;
@@ -35,7 +41,7 @@ export interface EmployerContactStorage {
 
 export function createEmployerContactStorage(contactsStorage: ContactsStorage): EmployerContactStorage {
   return {
-    async create(data: { contactId: string; employerId: string; contactTypeId?: string | null }): Promise<EmployerContact> {
+    async create(data: { contactId: string; employerId: string; contactTypeId?: string | null; position?: string | null }): Promise<EmployerContact> {
       const client = getClient();
       const requestedTypeId = data.contactTypeId || null;
 
@@ -64,6 +70,7 @@ export function createEmployerContactStorage(contactsStorage: ContactsStorage): 
           employerId: data.employerId,
           contactId: data.contactId,
           contactTypeId: requestedTypeId,
+          position: normalizePosition(data.position),
         })
         .returning();
 
@@ -210,7 +217,7 @@ export function createEmployerContactStorage(contactsStorage: ContactsStorage): 
       };
     },
 
-    async update(id: string, data: { contactTypeId?: string | null }): Promise<(EmployerContact & { contact: Contact; contactType?: { id: string; name: string; description: string | null } | null }) | null> {
+    async update(id: string, data: { contactTypeId?: string | null; position?: string | null }): Promise<(EmployerContact & { contact: Contact; contactType?: { id: string; name: string; description: string | null } | null }) | null> {
       const client = getClient();
 
       // Multi-link: retyping a link must not collide with a sibling link of
@@ -221,23 +228,33 @@ export function createEmployerContactStorage(contactsStorage: ContactsStorage): 
       if (!current) {
         return null;
       }
-      const targetTypeId = data.contactTypeId ?? null;
-      const siblings = await client
-        .select()
-        .from(employerContacts)
-        .where(
-          and(
-            eq(employerContacts.employerId, current.employerId),
-            eq(employerContacts.contactId, current.contactId)
-          )
-        );
-      if (siblings.some((l) => l.id !== id && (l.contactTypeId ?? null) === targetTypeId)) {
-        throw new Error("This contact is already linked to this employer with this contact type");
+      const setData: { contactTypeId?: string | null; position?: string | null } = {};
+      if ("contactTypeId" in data) {
+        const targetTypeId = data.contactTypeId ?? null;
+        const siblings = await client
+          .select()
+          .from(employerContacts)
+          .where(
+            and(
+              eq(employerContacts.employerId, current.employerId),
+              eq(employerContacts.contactId, current.contactId)
+            )
+          );
+        if (siblings.some((l) => l.id !== id && (l.contactTypeId ?? null) === targetTypeId)) {
+          throw new Error("This contact is already linked to this employer with this contact type");
+        }
+        setData.contactTypeId = targetTypeId;
+      }
+      if ("position" in data) {
+        setData.position = normalizePosition(data.position);
+      }
+      if (Object.keys(setData).length === 0) {
+        return this.get(id);
       }
 
       const [updated] = await client
         .update(employerContacts)
-        .set({ contactTypeId: data.contactTypeId })
+        .set(setData)
         .where(eq(employerContacts.id, id))
         .returning();
 

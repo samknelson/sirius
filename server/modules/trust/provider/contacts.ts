@@ -57,14 +57,15 @@ export function registerTrustProviderContactRoutes(
       const { providerId } = req.params;
       const parsed = insertContactSchema.extend({ 
         email: z.string().email("Valid email is required"),
-        contactTypeId: z.string().optional().nullable()
+        contactTypeId: z.string().optional().nullable(),
+        position: z.string().optional().nullable()
       }).safeParse(req.body);
       
       if (!parsed.success) {
         return res.status(400).json({ message: "Invalid contact data", errors: parsed.error.errors });
       }
 
-      const { contactTypeId, email, ...contactFields } = parsed.data;
+      const { contactTypeId, position, email, ...contactFields } = parsed.data;
       const trimmedEmail = email?.trim() || null;
 
       if (!trimmedEmail) {
@@ -86,6 +87,7 @@ export function registerTrustProviderContactRoutes(
         contactId: contact.id,
         providerId,
         contactTypeId: contactTypeId || null,
+        position: position ?? null,
       });
       
       res.status(201).json({ providerContact, contact, ...(linked ? { linked: true } : {}) });
@@ -123,6 +125,7 @@ export function registerTrustProviderContactRoutes(
       const { id } = req.params;
       const updateSchema = z.object({
         contactTypeId: z.string().nullable().optional(),
+        position: z.string().nullable().optional(),
       });
       
       const parsed = updateSchema.safeParse(req.body);
@@ -130,7 +133,11 @@ export function registerTrustProviderContactRoutes(
         return res.status(400).json({ message: "Invalid data", errors: parsed.error.errors });
       }
 
-      const result = await storage.trustProviderContacts.update(id, parsed.data);
+      const updateData: { contactTypeId?: string | null; position?: string | null } = {};
+      if ("contactTypeId" in req.body) updateData.contactTypeId = parsed.data.contactTypeId ?? null;
+      if ("position" in req.body) updateData.position = parsed.data.position ?? null;
+
+      const result = await storage.trustProviderContacts.update(id, updateData);
 
       if (!result) {
         return res.status(404).json({ message: "Provider contact not found" });
@@ -515,6 +522,7 @@ export function registerTrustProviderContactRoutes(
       const parsed = z.object({
         providerId: z.string().uuid(),
         contactTypeId: z.string().uuid().nullable().optional(),
+        position: z.string().nullable().optional(),
       }).safeParse(req.body);
 
       if (!parsed.success) {
@@ -530,6 +538,7 @@ export function registerTrustProviderContactRoutes(
         contactId: providerContact.contactId,
         providerId: parsed.data.providerId,
         contactTypeId: parsed.data.contactTypeId || null,
+        position: parsed.data.position ?? null,
       });
 
       res.status(201).json(result);

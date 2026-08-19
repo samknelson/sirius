@@ -4,6 +4,7 @@ import { trustProviderContacts, contacts, optionsEmployerContactType, optionsTru
 import { eq, and, or, ilike, sql } from "drizzle-orm";
 import { withStorageLogging, type StorageLoggingConfig } from "../../middleware/logging";
 import type { ContactsStorage } from "../../contacts";
+import { normalizePosition } from "../../employers/contacts";
 
 /**
  * Stub validator - add validation logic here when needed
@@ -11,12 +12,12 @@ import type { ContactsStorage } from "../../contacts";
 export const validate = createNoopValidator();
 
 export interface TrustProviderContactStorage {
-  create(data: { contactId: string; providerId: string; contactTypeId?: string | null }): Promise<TrustProviderContact>;
+  create(data: { contactId: string; providerId: string; contactTypeId?: string | null; position?: string | null }): Promise<TrustProviderContact>;
   listByProvider(providerId: string): Promise<Array<TrustProviderContact & { contact: Contact; contactType?: { id: string; name: string; description: string | null } | null }>>;
   listByContactId(contactId: string): Promise<Array<TrustProviderContact & { contact: Contact; provider: TrustProvider; contactType?: { id: string; name: string; description: string | null } | null }>>;
   getAll(filters?: { providerId?: string; contactName?: string; contactTypeId?: string }): Promise<Array<TrustProviderContact & { contact: Contact; provider: TrustProvider; contactType?: { id: string; name: string; description: string | null } | null }>>;
   get(id: string): Promise<(TrustProviderContact & { contact: Contact; contactType?: { id: string; name: string; description: string | null } | null }) | null>;
-  update(id: string, data: { contactTypeId?: string | null }): Promise<(TrustProviderContact & { contact: Contact; contactType?: { id: string; name: string; description: string | null } | null }) | null>;
+  update(id: string, data: { contactTypeId?: string | null; position?: string | null }): Promise<(TrustProviderContact & { contact: Contact; contactType?: { id: string; name: string; description: string | null } | null }) | null>;
   updateContactEmail(id: string, email: string | null): Promise<(TrustProviderContact & { contact: Contact; contactType?: { id: string; name: string; description: string | null } | null }) | null>;
   updateContactName(id: string, components: {
     title?: string;
@@ -32,7 +33,7 @@ export interface TrustProviderContactStorage {
 
 export function createTrustProviderContactStorage(contactsStorage: ContactsStorage): TrustProviderContactStorage {
   return {
-    async create(data: { contactId: string; providerId: string; contactTypeId?: string | null }): Promise<TrustProviderContact> {
+    async create(data: { contactId: string; providerId: string; contactTypeId?: string | null; position?: string | null }): Promise<TrustProviderContact> {
       validate.validateOrThrow(data);
       const client = getClient();
 
@@ -57,6 +58,7 @@ export function createTrustProviderContactStorage(contactsStorage: ContactsStora
           providerId: data.providerId,
           contactId: data.contactId,
           contactTypeId: data.contactTypeId || null,
+          position: normalizePosition(data.position),
         })
         .returning();
 
@@ -158,11 +160,21 @@ export function createTrustProviderContactStorage(contactsStorage: ContactsStora
       };
     },
 
-    async update(id: string, data: { contactTypeId?: string | null }): Promise<(TrustProviderContact & { contact: Contact; contactType?: { id: string; name: string; description: string | null } | null }) | null> {
+    async update(id: string, data: { contactTypeId?: string | null; position?: string | null }): Promise<(TrustProviderContact & { contact: Contact; contactType?: { id: string; name: string; description: string | null } | null }) | null> {
       const client = getClient();
+      const setData: { contactTypeId?: string | null; position?: string | null } = {};
+      if ("contactTypeId" in data) {
+        setData.contactTypeId = data.contactTypeId ?? null;
+      }
+      if ("position" in data) {
+        setData.position = normalizePosition(data.position);
+      }
+      if (Object.keys(setData).length === 0) {
+        return this.get(id);
+      }
       const [updated] = await client
         .update(trustProviderContacts)
-        .set({ contactTypeId: data.contactTypeId })
+        .set(setData)
         .where(eq(trustProviderContacts.id, id))
         .returning();
 

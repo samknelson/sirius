@@ -94,6 +94,15 @@ function EmployerContactViewContent() {
           )}
 
           <div>
+            <div className="text-sm font-medium text-muted-foreground mb-1">Position</div>
+            <div className="text-base" data-testid="text-contact-position">
+              {employerContact.position || "None"}
+            </div>
+          </div>
+
+          <Separator />
+
+          <div>
             <div className="text-sm font-medium text-muted-foreground mb-1">Contact Type</div>
             <div className="text-base" data-testid="text-contact-type">
               {employerContact.contactType ? employerContact.contactType.name : "None"}

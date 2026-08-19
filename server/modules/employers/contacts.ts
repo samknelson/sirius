@@ -249,14 +249,15 @@ export function registerEmployerContactRoutes(
           z.null(),
           z.undefined()
         ]).transform(val => val === "" ? null : val),
-        contactTypeId: z.string().optional().nullable()
+        contactTypeId: z.string().optional().nullable(),
+        position: z.string().optional().nullable()
       }).safeParse(req.body);
       
       if (!parsed.success) {
         return res.status(400).json({ message: "Invalid contact data", errors: parsed.error.errors });
       }
 
-      const { contactTypeId, email: rawEmail, ...contactFields } = parsed.data;
+      const { contactTypeId, position, email: rawEmail, ...contactFields } = parsed.data;
       const email = rawEmail?.trim() || null;
 
       let contact;
@@ -278,6 +279,7 @@ export function registerEmployerContactRoutes(
         contactId: contact.id,
         employerId,
         contactTypeId: contactTypeId || null,
+        position: position ?? null,
       });
 
       res.status(201).json({ employerContact, contact, ...(linked ? { linked: true } : {}) });
@@ -331,6 +333,7 @@ export function registerEmployerContactRoutes(
       // Validate and parse other fields
       const parsed = z.object({
         contactTypeId: z.string().uuid().nullable().optional(),
+        position: z.string().nullable().optional(),
         email: z.string().email().or(z.literal("")).nullable().optional().transform(val => {
           if (val === null || val === "" || val === "null") return null;
           return val?.trim() || null;
@@ -341,13 +344,15 @@ export function registerEmployerContactRoutes(
         return res.status(400).json({ message: "Invalid update data", errors: parsed.error.errors });
       }
       
-      // Handle contactTypeId updates - check this FIRST before email
-      if ("contactTypeId" in req.body) {
-        const updateData = {
-          contactTypeId: parsed.data.contactTypeId === null || parsed.data.contactTypeId === undefined 
-            ? null 
-            : parsed.data.contactTypeId,
-        };
+      // Handle contactTypeId/position updates - check this FIRST before email
+      if ("contactTypeId" in req.body || "position" in req.body) {
+        const updateData: { contactTypeId?: string | null; position?: string | null } = {};
+        if ("contactTypeId" in req.body) {
+          updateData.contactTypeId = parsed.data.contactTypeId ?? null;
+        }
+        if ("position" in req.body) {
+          updateData.position = parsed.data.position ?? null;
+        }
         
         const updated = await storage.employerContacts.update(id, updateData);
         
@@ -654,6 +659,7 @@ export function registerEmployerContactRoutes(
       const parsed = z.object({
         employerId: z.string().uuid(),
         contactTypeId: z.string().uuid().nullable().optional(),
+        position: z.string().nullable().optional(),
       }).safeParse(req.body);
 
       if (!parsed.success) {
@@ -669,6 +675,7 @@ export function registerEmployerContactRoutes(
         contactId: employerContact.contactId,
         employerId: parsed.data.employerId,
         contactTypeId: parsed.data.contactTypeId || null,
+        position: parsed.data.position ?? null,
       });
 
       res.status(201).json(result);

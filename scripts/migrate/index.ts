@@ -156,6 +156,7 @@ import "./core/1122_add_issue_reported_interaction_channel";
 import "./core/1123_add_letter_interaction_channel";
 import "./core/1124_add_provider_call_interaction_channel";
 import "./core/1125_contacts_email_ci_unique";
+import "./core/1126_add_contact_position";
 
 export {
   runMigrations,

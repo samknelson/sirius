@@ -23,6 +23,7 @@ interface TrustProviderContactResponse {
   providerId: string;
   contactId: string;
   contactTypeId: string | null;
+  position: string | null;
   contact: {
     id: string;
     title: string | null;
@@ -54,6 +55,7 @@ const createContactSchema = z.object({
   generational: z.string().optional(),
   credentials: z.string().optional(),
   contactTypeId: z.string().optional(),
+  position: z.string().optional(),
 });
 
 type CreateContactFormData = z.infer<typeof createContactSchema>;
@@ -137,6 +139,7 @@ function TrustProviderContactsContent() {
       generational: "",
       credentials: "",
       contactTypeId: undefined,
+      position: "",
     },
   });
 
@@ -387,6 +390,24 @@ function TrustProviderContactsContent() {
                           </FormItem>
                         )}
                       />
+
+                      <FormField
+                        control={form.control}
+                        name="position"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Position</FormLabel>
+                            <FormControl>
+                              <Input
+                                {...field}
+                                placeholder="e.g. Director of Human Resources"
+                                data-testid="input-contact-position"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
                     </div>
 
                     <div className="flex justify-end space-x-2">
@@ -449,6 +470,11 @@ function TrustProviderContactsContent() {
                         </div>
 
                         <div className="space-y-2 text-sm text-muted-foreground">
+                          {contact.position && (
+                            <div data-testid={`text-contact-position-${contact.id}`}>
+                              <span className="font-medium">Position:</span> {contact.position}
+                            </div>
+                          )}
                           {contact.contact.email && (
                             <div className="flex items-center gap-2">
                               <User size={14} />

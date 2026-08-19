@@ -24,6 +24,7 @@ interface EmployerContactResponse {
   employerId: string;
   contactId: string;
   contactTypeId: string | null;
+  position: string | null;
   contact: {
     id: string;
     title: string | null;
@@ -58,6 +59,7 @@ const createContactSchema = z.object({
   generational: z.string().optional(),
   credentials: z.string().optional(),
   contactTypeId: z.string().optional(),
+  position: z.string().optional(),
 });
 
 type CreateContactFormData = z.infer<typeof createContactSchema>;
@@ -169,6 +171,7 @@ function EmployerContactsContent() {
       generational: "",
       credentials: "",
       contactTypeId: "",
+      position: "",
     },
   });
 
@@ -362,6 +365,19 @@ function EmployerContactsContent() {
                     />
                     <FormField
                       control={form.control}
+                      name="position"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Position</FormLabel>
+                          <FormControl>
+                            <Input placeholder="e.g. Director of Human Resources" {...field} data-testid="input-position" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
                       name="contactTypeId"
                       render={({ field }) => (
                         <FormItem>
@@ -435,6 +451,11 @@ function EmployerContactsContent() {
                       {contact.contact.email}
                     </div>
                     <div className="flex flex-wrap gap-4 text-sm">
+                      {contact.position && (
+                        <div className="text-muted-foreground" data-testid={`text-contact-position-${contact.id}`}>
+                          <span className="font-medium">Position:</span> {contact.position}
+                        </div>
+                      )}
                       {contact.contactType && (
                         <div className="text-muted-foreground" data-testid={`text-contact-type-${contact.id}`}>
                           <span className="font-medium">Type:</span> {contact.contactType.name}

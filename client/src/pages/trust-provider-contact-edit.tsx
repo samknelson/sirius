@@ -9,12 +9,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import type { TrustProviderType } from "@shared/schema";
 
 const updateContactTypeSchema = z.object({
   contactTypeId: z.string().nullable(),
+  position: z.string().nullable(),
 });
 
 type UpdateContactTypeFormData = z.infer<typeof updateContactTypeSchema>;
@@ -32,6 +34,7 @@ function TrustProviderContactEditContent() {
     resolver: zodResolver(updateContactTypeSchema),
     defaultValues: {
       contactTypeId: null,
+      position: null,
     },
   });
 
@@ -40,6 +43,7 @@ function TrustProviderContactEditContent() {
     if (trustProviderContact) {
       form.reset({
         contactTypeId: trustProviderContact.contactTypeId || null,
+        position: trustProviderContact.position || null,
       });
     }
   }, [trustProviderContact, form]);
@@ -49,6 +53,7 @@ function TrustProviderContactEditContent() {
       // Normalize "null" string to actual null
       const normalizedData = {
         contactTypeId: data.contactTypeId === "null" ? null : data.contactTypeId,
+        position: data.position?.trim() ? data.position.trim() : null,
       };
       return await apiRequest("PATCH", `/api/trust-provider-contacts/${trustProviderContact.id}`, normalizedData);
     },
@@ -121,6 +126,25 @@ function TrustProviderContactEditContent() {
                         ))}
                       </SelectContent>
                     </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="position"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Position</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="e.g. Director of Human Resources"
+                        {...field}
+                        value={field.value ?? ""}
+                        data-testid="input-position"
+                      />
+                    </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}

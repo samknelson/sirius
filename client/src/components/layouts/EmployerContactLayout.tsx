@@ -13,6 +13,7 @@ interface EmployerContactDetail {
   employerId: string;
   contactId: string;
   contactTypeId: string | null;
+  position: string | null;
   contact: {
     id: string;
     displayName: string;

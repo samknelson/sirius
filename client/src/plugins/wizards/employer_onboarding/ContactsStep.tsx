@@ -28,6 +28,7 @@ interface Contact {
   lastName: string;
   email: string;
   phone: string;
+  position: string;
   contactTypeId: string | null;
   promoteToUser: boolean;
 }
@@ -37,6 +38,7 @@ const emptyContact: Contact = {
   lastName: "",
   email: "",
   phone: "",
+  position: "",
   contactTypeId: null,
   promoteToUser: false,
 };
@@ -171,6 +173,15 @@ export function ContactsStep({ wizardId, step, data }: WizardStepComponentProps)
                     placeholder="Phone number"
                     value={contact.phone}
                     onChange={(e) => updateContact(index, "phone", e.target.value)}
+                    onBlur={saveContacts}
+                  />
+                </div>
+                <div>
+                  <Label className="text-sm mb-1 block">Position</Label>
+                  <Input
+                    placeholder="e.g. Director of Human Resources"
+                    value={contact.position || ""}
+                    onChange={(e) => updateContact(index, "position", e.target.value)}
                     onBlur={saveContacts}
                   />
                 </div>

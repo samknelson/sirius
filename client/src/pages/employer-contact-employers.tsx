@@ -23,6 +23,7 @@ interface EmployerLink {
   employerId: string;
   contactId: string;
   contactTypeId: string | null;
+  position: string | null;
   employer: {
     id: string;
     name: string;
@@ -57,6 +58,7 @@ function EmployerContactEmployersContent() {
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [selectedEmployerIds, setSelectedEmployerIds] = useState<Set<string>>(new Set());
   const [selectedContactTypeId, setSelectedContactTypeId] = useState<string>("none");
+  const [position, setPosition] = useState("");
   const [employerSearch, setEmployerSearch] = useState("");
   const [companyFilter, setCompanyFilter] = useState<string>("all");
 
@@ -101,17 +103,19 @@ function EmployerContactEmployersContent() {
   const resetDialog = () => {
     setSelectedEmployerIds(new Set());
     setSelectedContactTypeId("none");
+    setPosition("");
     setEmployerSearch("");
     setCompanyFilter("all");
   };
 
   const linkMutation = useMutation({
-    mutationFn: async (data: { employerIds: string[]; contactTypeId: string | null }) => {
+    mutationFn: async (data: { employerIds: string[]; contactTypeId: string | null; position: string | null }) => {
       const results = await Promise.allSettled(
         data.employerIds.map(employerId =>
           apiRequest("POST", `/api/employer-contacts/${employerContact.id}/employers`, {
             employerId,
             contactTypeId: data.contactTypeId,
+            position: data.position,
           }),
         ),
       );
@@ -167,6 +171,7 @@ function EmployerContactEmployersContent() {
     linkMutation.mutate({
       employerIds: Array.from(selectedEmployerIds),
       contactTypeId: selectedContactTypeId === "none" ? null : selectedContactTypeId,
+      position: position.trim() ? position.trim() : null,
     });
   };
 
@@ -324,6 +329,16 @@ function EmployerContactEmployersContent() {
                       </SelectContent>
                     </Select>
                   </div>
+                  <div className="space-y-2">
+                    <Label>Position (optional)</Label>
+                    <Input
+                      type="text"
+                      placeholder="e.g. Director of Human Resources"
+                      value={position}
+                      onChange={(e) => setPosition(e.target.value)}
+                      data-testid="input-position"
+                    />
+                  </div>
                 </div>
                 <DialogFooter>
                   <Button variant="outline" onClick={() => setAddDialogOpen(false)}>Cancel</Button>
@@ -357,6 +372,7 @@ function EmployerContactEmployersContent() {
                 <TableRow>
                   <TableHead>Employer</TableHead>
                   <TableHead>Contact Type</TableHead>
+                  <TableHead>Position</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="w-[100px]">Actions</TableHead>
                 </TableRow>
@@ -383,6 +399,9 @@ function EmployerContactEmployersContent() {
                         ) : (
                           <span className="text-muted-foreground">—</span>
                         )}
+                      </TableCell>
+                      <TableCell data-testid={`text-position-${link.employerId}`}>
+                        {link.position || <span className="text-muted-foreground">—</span>}
                       </TableCell>
                       <TableCell>
                         <Badge variant={link.employer.isActive ? "default" : "secondary"}>

@@ -13,12 +13,14 @@ import { queryClient, apiRequest, getApiErrorMessage } from "@/lib/queryClient";
 import { Link } from "wouter";
 import { Building2, Plus, Trash2, ExternalLink, Loader2 } from "lucide-react";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 
 interface ProviderLink {
   id: string;
   providerId: string;
   contactId: string;
   contactTypeId: string | null;
+  position: string | null;
   provider: {
     id: string;
     name: string;
@@ -47,6 +49,7 @@ function TrustProviderContactProvidersContent() {
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [selectedProviderId, setSelectedProviderId] = useState<string>("");
   const [selectedContactTypeId, setSelectedContactTypeId] = useState<string>("none");
+  const [position, setPosition] = useState("");
 
   const { data: providerLinks = [], isLoading } = useQuery<ProviderLink[]>({
     queryKey: ["/api/trust-provider-contacts", trustProviderContact.id, "providers"],
@@ -66,7 +69,7 @@ function TrustProviderContactProvidersContent() {
   );
 
   const linkMutation = useMutation({
-    mutationFn: async (data: { providerId: string; contactTypeId: string | null }) => {
+    mutationFn: async (data: { providerId: string; contactTypeId: string | null; position: string | null }) => {
       return apiRequest("POST", `/api/trust-provider-contacts/${trustProviderContact.id}/providers`, data);
     },
     onSuccess: () => {
@@ -75,6 +78,7 @@ function TrustProviderContactProvidersContent() {
       setAddDialogOpen(false);
       setSelectedProviderId("");
       setSelectedContactTypeId("none");
+      setPosition("");
     },
     onError: (error: Error) => {
       toast({ title: "Error", description: getApiErrorMessage(error, "An unexpected error occurred"), variant: "destructive" });
@@ -99,6 +103,7 @@ function TrustProviderContactProvidersContent() {
     linkMutation.mutate({
       providerId: selectedProviderId,
       contactTypeId: selectedContactTypeId === "none" ? null : selectedContactTypeId,
+      position: position.trim() ? position.trim() : null,
     });
   };
 
@@ -162,6 +167,16 @@ function TrustProviderContactProvidersContent() {
                       </SelectContent>
                     </Select>
                   </div>
+                  <div className="space-y-2">
+                    <Label>Position (optional)</Label>
+                    <Input
+                      type="text"
+                      placeholder="e.g. Director of Human Resources"
+                      value={position}
+                      onChange={(e) => setPosition(e.target.value)}
+                      data-testid="input-position"
+                    />
+                  </div>
                 </div>
                 <DialogFooter>
                   <Button variant="outline" onClick={() => setAddDialogOpen(false)}>Cancel</Button>
@@ -193,6 +208,7 @@ function TrustProviderContactProvidersContent() {
                 <TableRow>
                   <TableHead>Provider</TableHead>
                   <TableHead>Contact Type</TableHead>
+                  <TableHead>Position</TableHead>
                   <TableHead className="w-[100px]">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -218,6 +234,9 @@ function TrustProviderContactProvidersContent() {
                         ) : (
                           <span className="text-muted-foreground">&mdash;</span>
                         )}
+                      </TableCell>
+                      <TableCell data-testid={`text-position-${link.providerId}`}>
+                        {link.position || <span className="text-muted-foreground">&mdash;</span>}
                       </TableCell>
                       <TableCell>
                         {!isCurrent && providerLinks.length > 1 && (

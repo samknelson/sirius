@@ -28,6 +28,7 @@ const processSchema = z.object({
         email: z.string().email(),
         phone: z.string().optional().nullable(),
         contactTypeId: z.string().uuid().optional().nullable(),
+        position: z.string().optional().nullable(),
         promoteToUser: z.boolean().optional().default(false),
       }),
     )
@@ -108,6 +109,7 @@ async function createEmployerFromWizard(
         contactId: contact.id,
         employerId: employer.id,
         contactTypeId: contactData.contactTypeId || null,
+        position: contactData.position ?? null,
       });
 
       if (contactData.phone) {
